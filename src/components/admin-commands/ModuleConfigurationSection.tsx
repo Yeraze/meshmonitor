@@ -359,7 +359,7 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
         headerActions={telemetryHeaderActions}
       >
         {/* Device Telemetry */}
-        <h4 style={{ margin: '0.5rem 0 0.75rem', color: 'var(--ctp-subtext0)' }}>
+        <h4 style={{ margin: '0.5rem 0 0.75rem', color: 'var(--color-text-subtle)' }}>
           {t('telemetry_config.device_section', 'Device Telemetry')}
         </h4>
         <div className="setting-item">
@@ -397,7 +397,7 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
         )}
 
         {/* Environment Telemetry */}
-        <h4 style={{ margin: '1rem 0 0.75rem', color: 'var(--ctp-subtext0)' }}>
+        <h4 style={{ margin: '1rem 0 0.75rem', color: 'var(--color-text-subtle)' }}>
           {t('telemetry_config.environment_section', 'Environment Telemetry')}
         </h4>
         <div className="setting-item">
@@ -473,7 +473,7 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
           nested={true}
         >
           {/* Air Quality */}
-          <h4 style={{ margin: '0.5rem 0 0.75rem', color: 'var(--ctp-subtext0)' }}>
+          <h4 style={{ margin: '0.5rem 0 0.75rem', color: 'var(--color-text-subtle)' }}>
             {t('telemetry_config.air_quality_section', 'Air Quality Metrics')}
           </h4>
           <div className="setting-item">
@@ -511,7 +511,7 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
           )}
 
           {/* Power Metrics */}
-          <h4 style={{ margin: '1rem 0 0.75rem', color: 'var(--ctp-subtext0)' }}>
+          <h4 style={{ margin: '1rem 0 0.75rem', color: 'var(--color-text-subtle)' }}>
             {t('telemetry_config.power_section', 'Power Metrics')}
           </h4>
           <div className="setting-item">
@@ -566,7 +566,7 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
           )}
 
           {/* Health Metrics */}
-          <h4 style={{ margin: '1rem 0 0.75rem', color: 'var(--ctp-subtext0)' }}>
+          <h4 style={{ margin: '1rem 0 0.75rem', color: 'var(--color-text-subtle)' }}>
             {t('telemetry_config.health_section', 'Health Metrics')}
           </h4>
           <div className="setting-item">
@@ -645,9 +645,9 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
         {statusMessageIsDisabled && (
           <div style={{
             padding: '1rem',
-            backgroundColor: 'var(--ctp-surface0)',
+            backgroundColor: 'var(--color-surface)',
             borderRadius: '0.5rem',
-            color: 'var(--ctp-subtext0)',
+            color: 'var(--color-text-subtle)',
             fontStyle: 'italic',
             marginBottom: '1rem'
           }}>
@@ -677,7 +677,7 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
                 right: '0.5rem',
                 bottom: '-1.2rem',
                 fontSize: '0.75rem',
-                color: statusMessageNodeStatus.length >= 70 ? 'var(--ctp-peach)' : 'var(--ctp-subtext0)'
+                color: statusMessageNodeStatus.length >= 70 ? 'var(--color-caution)' : 'var(--color-text-subtle)'
               }}>
                 {statusMessageNodeStatus.length}/80
               </span>
@@ -708,9 +708,9 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
         {trafficManagementIsDisabled && (
           <div style={{
             padding: '1rem',
-            backgroundColor: 'var(--ctp-surface0)',
+            backgroundColor: 'var(--color-surface)',
             borderRadius: '0.5rem',
-            color: 'var(--ctp-subtext0)',
+            color: 'var(--color-text-subtle)',
             fontStyle: 'italic',
             marginBottom: '1rem'
           }}>
@@ -737,8 +737,8 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
           {(trafficManagementEnabled || trafficManagementIsDisabled) && (
             <>
               {/* Position Dedup */}
-              <div style={{ marginLeft: '1rem', paddingLeft: '1rem', borderLeft: '2px solid var(--ctp-surface1)', marginBottom: '0.5rem' }}>
-                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--ctp-text)', marginBottom: '0.5rem' }}>{t('trafficmanagement_config.position_dedup', 'Position Deduplication')}</div>
+              <div style={{ marginLeft: '1rem', paddingLeft: '1rem', borderLeft: '2px solid var(--color-surface-hover)', marginBottom: '0.5rem' }}>
+                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--color-text)', marginBottom: '0.5rem' }}>{t('trafficmanagement_config.position_dedup', 'Position Deduplication')}</div>
                 <div className="setting-item">
                   <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
                     <input type="checkbox" checked={trafficManagementPositionDedupEnabled} onChange={(e) => onTrafficManagementConfigChange('positionDedupEnabled', e.target.checked)} disabled={isExecuting || trafficManagementIsDisabled} style={{ width: 'auto', margin: 0, flexShrink: 0 }} />
@@ -762,8 +762,8 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
               </div>
 
               {/* NodeInfo Direct Response */}
-              <div style={{ marginLeft: '1rem', paddingLeft: '1rem', borderLeft: '2px solid var(--ctp-surface1)', marginBottom: '0.5rem' }}>
-                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--ctp-text)', marginBottom: '0.5rem' }}>{t('trafficmanagement_config.nodeinfo_direct_response', 'NodeInfo Direct Response')}</div>
+              <div style={{ marginLeft: '1rem', paddingLeft: '1rem', borderLeft: '2px solid var(--color-surface-hover)', marginBottom: '0.5rem' }}>
+                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--color-text)', marginBottom: '0.5rem' }}>{t('trafficmanagement_config.nodeinfo_direct_response', 'NodeInfo Direct Response')}</div>
                 <div className="setting-item">
                   <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
                     <input type="checkbox" checked={trafficManagementNodeinfoDirectResponse} onChange={(e) => onTrafficManagementConfigChange('nodeinfoDirectResponse', e.target.checked)} disabled={isExecuting || trafficManagementIsDisabled} style={{ width: 'auto', margin: 0, flexShrink: 0 }} />
@@ -780,8 +780,8 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
               </div>
 
               {/* Rate Limiting */}
-              <div style={{ marginLeft: '1rem', paddingLeft: '1rem', borderLeft: '2px solid var(--ctp-surface1)', marginBottom: '0.5rem' }}>
-                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--ctp-text)', marginBottom: '0.5rem' }}>{t('trafficmanagement_config.rate_limiting', 'Rate Limiting')}</div>
+              <div style={{ marginLeft: '1rem', paddingLeft: '1rem', borderLeft: '2px solid var(--color-surface-hover)', marginBottom: '0.5rem' }}>
+                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--color-text)', marginBottom: '0.5rem' }}>{t('trafficmanagement_config.rate_limiting', 'Rate Limiting')}</div>
                 <div className="setting-item">
                   <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
                     <input type="checkbox" checked={trafficManagementRateLimitEnabled} onChange={(e) => onTrafficManagementConfigChange('rateLimitEnabled', e.target.checked)} disabled={isExecuting || trafficManagementIsDisabled} style={{ width: 'auto', margin: 0, flexShrink: 0 }} />
@@ -803,8 +803,8 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
               </div>
 
               {/* Drop Unknown */}
-              <div style={{ marginLeft: '1rem', paddingLeft: '1rem', borderLeft: '2px solid var(--ctp-surface1)', marginBottom: '0.5rem' }}>
-                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--ctp-text)', marginBottom: '0.5rem' }}>{t('trafficmanagement_config.drop_unknown', 'Drop Unknown Packets')}</div>
+              <div style={{ marginLeft: '1rem', paddingLeft: '1rem', borderLeft: '2px solid var(--color-surface-hover)', marginBottom: '0.5rem' }}>
+                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--color-text)', marginBottom: '0.5rem' }}>{t('trafficmanagement_config.drop_unknown', 'Drop Unknown Packets')}</div>
                 <div className="setting-item">
                   <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
                     <input type="checkbox" checked={trafficManagementDropUnknownEnabled} onChange={(e) => onTrafficManagementConfigChange('dropUnknownEnabled', e.target.checked)} disabled={isExecuting || trafficManagementIsDisabled} style={{ width: 'auto', margin: 0, flexShrink: 0 }} />
@@ -821,8 +821,8 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
               </div>
 
               {/* Hop Limit Exhaustion */}
-              <div style={{ marginLeft: '1rem', paddingLeft: '1rem', borderLeft: '2px solid var(--ctp-surface1)', marginBottom: '0.5rem' }}>
-                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--ctp-text)', marginBottom: '0.5rem' }}>{t('trafficmanagement_config.hop_exhaustion', 'Hop Limit Exhaustion')}</div>
+              <div style={{ marginLeft: '1rem', paddingLeft: '1rem', borderLeft: '2px solid var(--color-surface-hover)', marginBottom: '0.5rem' }}>
+                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--color-text)', marginBottom: '0.5rem' }}>{t('trafficmanagement_config.hop_exhaustion', 'Hop Limit Exhaustion')}</div>
                 <div className="setting-item">
                   <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
                     <input type="checkbox" checked={trafficManagementExhaustHopTelemetry} onChange={(e) => onTrafficManagementConfigChange('exhaustHopTelemetry', e.target.checked)} disabled={isExecuting || trafficManagementIsDisabled} style={{ width: 'auto', margin: 0, flexShrink: 0 }} />

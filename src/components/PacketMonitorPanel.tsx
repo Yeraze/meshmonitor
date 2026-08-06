@@ -677,7 +677,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                               cursor: 'pointer',
                             }}
                           >
-                            <td colSpan={14} style={{ textAlign: 'center', color: 'var(--ctp-blue, var(--text-secondary))' }}>
+                            <td colSpan={14} style={{ textAlign: 'center', color: 'var(--color-accent, var(--text-secondary))' }}>
                               {loadingMore ? t('packet_monitor.loading_more') : t('packet_monitor.load_more_click', 'Click to load more packets...')}
                             </td>
                           </tr>
@@ -840,7 +840,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                                     title={t('packet_monitor.decrypted_by_server')}
                                     style={{
                                       marginRight: '0.25rem',
-                                      color: 'var(--ctp-blue)',
+                                      color: 'var(--color-accent)',
                                       cursor: 'help'
                                     }}
                                   >
@@ -853,7 +853,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                                     title={t('packet_monitor.decrypted_by_node')}
                                     style={{
                                       marginRight: '0.25rem',
-                                      color: 'var(--ctp-green)',
+                                      color: 'var(--color-success)',
                                       cursor: 'help'
                                     }}
                                   >

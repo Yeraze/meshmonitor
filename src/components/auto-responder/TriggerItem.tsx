@@ -146,8 +146,8 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
         gap: '0.5rem',
         padding: '0.75rem',
         marginBottom: '0.5rem',
-        background: isEditing ? 'var(--ctp-surface1)' : 'var(--ctp-surface0)',
-        border: isEditing ? '2px solid var(--ctp-blue)' : '1px solid var(--ctp-overlay0)',
+        background: isEditing ? 'var(--color-surface-hover)' : 'var(--color-surface)',
+        border: isEditing ? '2px solid var(--color-accent)' : '1px solid var(--color-border-subtle)',
         borderRadius: '4px'
       }}
     >
@@ -165,7 +165,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                   style={{ 
                     flex: '1', 
                     fontFamily: 'monospace',
-                    borderColor: triggerValidation.valid ? undefined : 'var(--ctp-red)',
+                    borderColor: triggerValidation.valid ? undefined : 'var(--color-error)',
                     borderWidth: triggerValidation.valid ? undefined : '2px'
                   }}
                   placeholder="e.g., weather, weather {location}, w {location}"
@@ -175,7 +175,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                 <div style={{ 
                   marginLeft: '88px', 
                   fontSize: '0.75rem', 
-                  color: 'var(--ctp-red)',
+                  color: 'var(--color-error)',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '0.25rem'
@@ -188,7 +188,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                 <div style={{ 
                   marginLeft: '88px', 
                   fontSize: '0.75rem', 
-                  color: 'var(--ctp-green)',
+                  color: 'var(--color-success)',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '0.25rem'
@@ -226,7 +226,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                       style={{ width: '100%', fontFamily: 'monospace' }}
                       placeholder="e.g., {node} or MyNode"
                     />
-                    <span style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
                       Node name, short name, or node ID to traceroute to. Use <code>&#123;node&#125;</code> to capture from the trigger pattern.
                     </span>
                   </div>
@@ -261,7 +261,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                     ))}
                   </select>
                 ) : editResponseType === 'mailbox' ? (
-                  <span style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
                     Built-in async message store ("mesh voicemail"). No response text needed — the
                     mailbox handles <code>msg &lt;name&gt; &lt;text&gt;</code>, <code>inbox</code>,
                     {' '}<code>inbox play</code>, <code>inbox delete &lt;id&gt;</code> and <code>inbox clear</code>.
@@ -291,7 +291,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                     style={{ width: '100%', fontFamily: 'monospace' }}
                     placeholder="--ip {IP} --dest {NODE_ID} --flag"
                   />
-                  <span style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
                     {t('auto_responder.script_args_help', 'Optional CLI arguments. Tokens: {NODE_ID}, {IP}, {VERSION}, etc.')}
                   </span>
                 </div>
@@ -316,7 +316,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                         }
                       }}
                     />
-                    <label htmlFor={`edit-channel-none-${trigger.id}`} style={{ color: 'var(--ctp-subtext0)' }}>
+                    <label htmlFor={`edit-channel-none-${trigger.id}`} style={{ color: 'var(--color-text-subtle)' }}>
                       {t('auto_responder.channel_none', 'None (no mesh output)')}
                     </label>
                   </div>
@@ -367,7 +367,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
             </div>
             {editResponseType !== 'script' && editResponseType !== 'traceroute' && editResponseType !== 'mailbox' && (
               <div style={{ paddingLeft: '0.5rem', marginTop: '0.25rem' }}>
-                <label style={{ display: 'block', fontSize: '0.85rem', cursor: 'pointer', color: 'var(--ctp-subtext0)' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', cursor: 'pointer', color: 'var(--color-text-subtle)' }}>
                   <input
                     type="checkbox"
                     checked={editMultiline}
@@ -393,13 +393,13 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
               };
               
               return (
-                <div style={{ marginTop: '0.5rem', padding: '0.5rem', background: 'var(--ctp-surface1)', borderRadius: '4px' }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ marginTop: '0.5rem', padding: '0.5rem', background: 'var(--color-surface-hover)', borderRadius: '4px' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', marginBottom: '0.25rem', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>Response Preview:</span>
                     <button
                       onClick={() => setEditResponse('')}
                       style={{
-                        background: 'var(--ctp-red)',
+                        background: 'var(--color-error)',
                         border: 'none',
                         borderRadius: '3px',
                         color: 'white',
@@ -416,9 +416,9 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                   <div style={{
                     fontFamily: 'monospace',
                     fontSize: '0.85rem',
-                    color: 'var(--ctp-text)',
+                    color: 'var(--color-text)',
                     padding: '0.5rem',
-                    background: 'var(--ctp-surface2)',
+                    background: 'var(--color-surface-active)',
                     borderRadius: '3px',
                     whiteSpace: editMultiline ? 'pre-wrap' : 'nowrap',
                     overflowX: editMultiline ? 'visible' : 'auto'
@@ -429,7 +429,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
               );
             })()}
             <div style={{ paddingLeft: '0.5rem', marginTop: '0.25rem' }}>
-              <label style={{ display: 'block', fontSize: '0.85rem', cursor: editChannels.includes('dm') ? 'pointer' : 'not-allowed', color: 'var(--ctp-subtext0)', opacity: editChannels.includes('dm') ? 1 : 0.5 }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', cursor: editChannels.includes('dm') ? 'pointer' : 'not-allowed', color: 'var(--color-text-subtle)', opacity: editChannels.includes('dm') ? 1 : 0.5 }}>
                 <input
                   type="checkbox"
                   checked={editVerifyResponse}
@@ -452,11 +452,11 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                   className="setting-input"
                   style={{ width: '80px' }}
                 />
-                <span style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
                   {t('auto_responder.cooldown_help', 'seconds per node (0 = disabled)')}
                 </span>
               </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)', marginTop: '0.25rem', marginLeft: '85px' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', marginTop: '0.25rem', marginLeft: '85px' }}>
                 {t('auto_responder.cooldown_description', 'After this trigger responds to a node, ignore further matches from that node for this duration.')}
               </div>
             </div>
@@ -467,7 +467,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
               style={{
                 padding: '0.25rem 0.75rem',
                 fontSize: '12px',
-                background: 'var(--ctp-green)',
+                background: 'var(--color-success)',
                 color: 'white',
                 border: 'none',
                 borderRadius: '4px',
@@ -481,8 +481,8 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
               style={{
                 padding: '0.25rem 0.75rem',
                 fontSize: '12px',
-                background: 'var(--ctp-surface2)',
-                color: 'var(--ctp-text)',
+                background: 'var(--color-surface-active)',
+                color: 'var(--color-text)',
                 border: 'none',
                 borderRadius: '4px',
                 cursor: 'pointer'
@@ -511,7 +511,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                   }}>
                     {isMultiPattern && (
                       <span style={{ 
-                        color: 'var(--ctp-subtext0)', 
+                        color: 'var(--color-text-subtle)', 
                         fontSize: '1rem',
                         fontWeight: 'normal',
                         marginRight: '0',
@@ -606,7 +606,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                                       padding: '0.2rem 0.4rem',
                                       borderRadius: '4px',
                                       fontWeight: segment.type === 'parameter' ? 'bold' : 'normal',
-                                      color: segment.type === 'parameter' ? 'var(--ctp-green)' : 'var(--ctp-blue)',
+                                      color: segment.type === 'parameter' ? 'var(--color-success)' : 'var(--color-accent)',
                                       fontFamily: 'monospace',
                                       fontSize: '0.85rem',
                                       border: segment.type === 'parameter'
@@ -643,7 +643,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                                               : 'rgba(137, 180, 250, 0.2)',
                                             padding: '0.2rem 0.4rem',
                                             fontWeight: segment.type === 'parameter' ? 'bold' : 'normal',
-                                            color: segment.type === 'parameter' ? 'var(--ctp-green)' : 'var(--ctp-blue)'
+                                            color: segment.type === 'parameter' ? 'var(--color-success)' : 'var(--color-accent)'
                                           }}
                                         >
                                           {segment.type === 'literal' ? segment.text.trim() : segment.text}
@@ -665,7 +665,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                           </div>
                           {patternIdx < patterns.length - 1 && (
                             <span style={{ 
-                              color: 'var(--ctp-subtext0)', 
+                              color: 'var(--color-text-subtle)', 
                               fontSize: '0.9rem',
                               margin: '0',
                               padding: '0 0.1rem'
@@ -676,7 +676,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                     })}
                     {isMultiPattern && (
                       <span style={{ 
-                        color: 'var(--ctp-subtext0)', 
+                        color: 'var(--color-text-subtle)', 
                         fontSize: '1rem',
                         fontWeight: 'normal',
                         marginLeft: '0',
@@ -688,11 +688,11 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
               })()}
             </div>
             {(trigger.responseType === 'script' || trigger.responseType === 'traceroute') && (
-              <div style={{ color: 'var(--ctp-subtext0)', fontSize: '0.75rem', fontFamily: 'monospace', marginTop: '0.25rem' }}>
+              <div style={{ color: 'var(--color-text-subtle)', fontSize: '0.75rem', fontFamily: 'monospace', marginTop: '0.25rem' }}>
                 {trigger.responseType === 'traceroute' && <UiIcon name="forward" size={13} />} {trigger.response}
               </div>
             )}
-            <div style={{ color: 'var(--ctp-subtext0)', fontSize: '0.85rem', marginTop: '0.25rem', whiteSpace: 'pre-wrap' }}>
+            <div style={{ color: 'var(--color-text-subtle)', fontSize: '0.85rem', marginTop: '0.25rem', whiteSpace: 'pre-wrap' }}>
               {trigger.responseType !== 'script' && trigger.responseType !== 'traceroute' && trigger.responseType !== 'mailbox' ? trigger.response : null}
             </div>
           </div>
@@ -704,7 +704,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                     fontSize: '0.7rem',
                     padding: '0.15rem 0.4rem',
                     background: 'var(--ctp-teal)',
-                    color: 'var(--ctp-base)',
+                    color: 'var(--color-bg)',
                     borderRadius: '3px',
                     fontWeight: 'bold'
                   }}>
@@ -715,8 +715,8 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                   <span style={{
                     fontSize: '0.7rem',
                     padding: '0.15rem 0.4rem',
-                    background: 'var(--ctp-peach)',
-                    color: 'var(--ctp-base)',
+                    background: 'var(--color-caution)',
+                    color: 'var(--color-bg)',
                     borderRadius: '3px',
                     fontWeight: 'bold'
                   }}>
@@ -726,8 +726,8 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                 <span style={{
                   fontSize: '0.7rem',
                   padding: '0.15rem 0.4rem',
-                  background: trigger.responseType === 'text' ? 'var(--ctp-green)' : trigger.responseType === 'script' ? 'var(--ctp-yellow)' : trigger.responseType === 'traceroute' ? 'var(--ctp-sapphire)' : trigger.responseType === 'mailbox' ? 'var(--ctp-pink)' : 'var(--ctp-mauve)',
-                  color: 'var(--ctp-base)',
+                  background: trigger.responseType === 'text' ? 'var(--color-success)' : trigger.responseType === 'script' ? 'var(--color-warning)' : trigger.responseType === 'traceroute' ? 'var(--color-accent-hover)' : trigger.responseType === 'mailbox' ? 'var(--ctp-pink)' : 'var(--color-accent-alt)',
+                  color: 'var(--color-bg)',
                   borderRadius: '3px',
                   fontWeight: 'bold'
                 }}>
@@ -739,8 +739,8 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                     <span style={{
                       fontSize: '0.7rem',
                       padding: '0.15rem 0.4rem',
-                      background: triggerCh.includes('dm') ? 'var(--ctp-sky)' : 'var(--ctp-lavender)',
-                      color: 'var(--ctp-base)',
+                      background: triggerCh.includes('dm') ? 'var(--color-info)' : 'var(--color-accent-muted)',
+                      color: 'var(--color-bg)',
                       borderRadius: '3px',
                       fontWeight: 'bold'
                     }}>
@@ -753,7 +753,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                   );
                 })()}
                 {trigger.cooldownSeconds != null && trigger.cooldownSeconds > 0 && (
-                  <span style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
                     <UiIcon name="timer" size={13} /> {trigger.cooldownSeconds}s {t('auto_responder.cooldown_badge', 'cooldown')}
                   </span>
                 )}
@@ -767,7 +767,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                     padding: '0.25rem 0.5rem',
                     fontSize: '12px',
                     background: 'var(--ctp-teal)',
-                    color: 'var(--ctp-base)',
+                    color: 'var(--color-bg)',
                     border: 'none',
                     borderRadius: '4px',
                     cursor: 'pointer'
@@ -783,7 +783,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                 style={{
                   padding: '0.25rem 0.5rem',
                   fontSize: '12px',
-                  background: 'var(--ctp-blue)',
+                  background: 'var(--color-accent)',
                   color: 'white',
                   border: 'none',
                   borderRadius: '4px',
@@ -799,7 +799,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                 style={{
                   padding: '0.25rem 0.5rem',
                   fontSize: '12px',
-                  background: 'var(--ctp-red)',
+                  background: 'var(--color-error)',
                   color: 'white',
                   border: 'none',
                   borderRadius: '4px',
@@ -828,22 +828,22 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
           zIndex: 10000
         }}>
           <div style={{
-            background: 'var(--ctp-base)',
+            background: 'var(--color-bg)',
             borderRadius: '8px',
             padding: '1.5rem',
             maxWidth: '500px',
             width: '90%',
-            border: '1px solid var(--ctp-overlay0)'
+            border: '1px solid var(--color-border-subtle)'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ margin: 0, color: 'var(--ctp-text)' }}>Remove Trigger</h3>
+              <h3 style={{ margin: 0, color: 'var(--color-text)' }}>Remove Trigger</h3>
               <button
                 onClick={() => setShowRemoveModal(false)}
                 style={{
                   background: 'transparent',
                   border: 'none',
                   fontSize: '1.5rem',
-                  color: 'var(--ctp-subtext0)',
+                  color: 'var(--color-text-subtle)',
                   cursor: 'pointer',
                   padding: '0',
                   lineHeight: '1'
@@ -852,17 +852,17 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                 ×
               </button>
             </div>
-            <p style={{ color: 'var(--ctp-subtext0)', fontSize: '0.875rem', marginBottom: '1rem' }}>
+            <p style={{ color: 'var(--color-text-subtle)', fontSize: '0.875rem', marginBottom: '1rem' }}>
               Are you sure you want to remove this trigger? This action cannot be undone.
             </p>
             <div style={{ 
               marginBottom: '1rem',
               padding: '0.75rem',
-              background: 'var(--ctp-surface0)',
+              background: 'var(--color-surface)',
               borderRadius: '4px',
               fontFamily: 'monospace',
               fontSize: '0.85rem',
-              color: 'var(--ctp-text)'
+              color: 'var(--color-text)'
             }}>
               {formatTriggerPatterns(trigger.trigger)}
             </div>
@@ -871,9 +871,9 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                 onClick={() => setShowRemoveModal(false)}
                 style={{
                   padding: '0.5rem 1rem',
-                  background: 'var(--ctp-surface1)',
-                  color: 'var(--ctp-text)',
-                  border: '1px solid var(--ctp-overlay0)',
+                  background: 'var(--color-surface-hover)',
+                  color: 'var(--color-text)',
+                  border: '1px solid var(--color-border-subtle)',
                   borderRadius: '4px',
                   cursor: 'pointer'
                 }}
@@ -890,8 +890,8 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                 }}
                 style={{
                   padding: '0.5rem 1rem',
-                  background: 'var(--ctp-red)',
-                  color: 'var(--ctp-base)',
+                  background: 'var(--color-error)',
+                  color: 'var(--color-bg)',
                   border: 'none',
                   borderRadius: '4px',
                   cursor: 'pointer',

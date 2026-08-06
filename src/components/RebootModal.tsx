@@ -217,24 +217,24 @@ export const RebootModal: React.FC<RebootModalProps> = ({ isOpen, onClose }) => 
       <div
         style={{
           maxWidth: '500px',
-          background: 'var(--ctp-base)',
+          background: 'var(--color-bg)',
           borderRadius: '8px',
           padding: '2rem',
-          border: '2px solid var(--ctp-blue)',
+          border: '2px solid var(--color-accent)',
           boxShadow: '0 0 20px rgba(137, 180, 250, 0.5)'
         }}
       >
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--ctp-blue)', marginBottom: '1rem' }}>
+          <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--color-accent)', marginBottom: '1rem' }}>
             <UiIcon name={isVerifying ? 'check' : 'refresh'} /> {t('reboot.title')}
           </div>
 
-          <div style={{ fontSize: '1rem', color: 'var(--ctp-text)', marginBottom: '1.5rem' }}>
+          <div style={{ fontSize: '1rem', color: 'var(--color-text)', marginBottom: '1.5rem' }}>
             {t(statusKey, statusParams)}
           </div>
 
           {!isVerifying && elapsedSeconds > 0 && (
-            <div style={{ fontSize: '0.875rem', color: 'var(--ctp-subtext0)', marginBottom: '1.5rem' }}>
+            <div style={{ fontSize: '0.875rem', color: 'var(--color-text-subtle)', marginBottom: '1.5rem' }}>
               {t('reboot.elapsed', { seconds: elapsedSeconds })}
             </div>
           )}
@@ -244,7 +244,7 @@ export const RebootModal: React.FC<RebootModalProps> = ({ isOpen, onClose }) => 
               style={{
                 width: '100%',
                 height: '4px',
-                background: 'var(--ctp-surface1)',
+                background: 'var(--color-surface-hover)',
                 borderRadius: '2px',
                 overflow: 'hidden',
                 marginBottom: '1rem'
@@ -253,7 +253,7 @@ export const RebootModal: React.FC<RebootModalProps> = ({ isOpen, onClose }) => 
               <div
                 style={{
                   height: '100%',
-                  background: 'var(--ctp-blue)',
+                  background: 'var(--color-accent)',
                   animation: 'progress-bar 2s ease-in-out infinite',
                   width: '30%'
                 }}
@@ -269,7 +269,7 @@ export const RebootModal: React.FC<RebootModalProps> = ({ isOpen, onClose }) => 
             }
           `}</style>
 
-          <div style={{ fontSize: '0.875rem', color: 'var(--ctp-subtext1)', marginTop: '1rem' }}>
+          <div style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', marginTop: '1rem' }}>
             {t('reboot.do_not_close')}
           </div>
         </div>

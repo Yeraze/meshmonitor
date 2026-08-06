@@ -217,13 +217,13 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
       <h3>{t('backup_management.title')}</h3>
 
       <div style={{
-        backgroundColor: 'var(--ctp-surface0)',
+        backgroundColor: 'var(--color-surface)',
         padding: '1rem',
         borderRadius: '8px',
         marginBottom: '1.5rem'
       }}>
         <h4 style={{ marginTop: 0, marginBottom: '0.5rem' }}>{t('backup_management.about_title')}</h4>
-        <p style={{ color: 'var(--ctp-subtext0)', margin: 0, fontSize: '0.9rem', lineHeight: '1.6' }}>
+        <p style={{ color: 'var(--color-text-subtle)', margin: 0, fontSize: '0.9rem', lineHeight: '1.6' }}>
           {t('backup_management.about_description')}
         </p>
       </div>
@@ -231,13 +231,13 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
       {/* Manual Backup */}
       <div style={{ marginBottom: '1.5rem' }}>
         <h4 style={{ marginBottom: '0.5rem' }}>{t('backup_management.manual_title')}</h4>
-        <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '1rem', fontSize: '0.9rem' }}>
+        <p style={{ color: 'var(--color-text-subtle)', marginBottom: '1rem', fontSize: '0.9rem' }}>
           {t('backup_management.manual_description')}
         </p>
         <button
           onClick={handleManualBackup}
           style={{
-            backgroundColor: 'var(--ctp-mauve)',
+            backgroundColor: 'var(--color-accent-alt)',
             color: '#fff',
             padding: '0.75rem 1.5rem',
             border: 'none',
@@ -254,7 +254,7 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
           onClick={handleShowBackups}
           disabled={isLoadingBackups}
           style={{
-            backgroundColor: 'var(--ctp-blue)',
+            backgroundColor: 'var(--color-accent)',
             color: '#fff',
             padding: '0.75rem 1.5rem',
             border: 'none',
@@ -272,7 +272,7 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
       {/* Automated Backup Settings */}
       <div>
         <h4 style={{ marginBottom: '0.5rem' }}>{t('backup_management.auto_title')}</h4>
-        <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '1rem', fontSize: '0.9rem' }}>
+        <p style={{ color: 'var(--color-text-subtle)', marginBottom: '1rem', fontSize: '0.9rem' }}>
           {t('backup_management.auto_description')}
         </p>
 
@@ -303,14 +303,14 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
               style={{
                 padding: '0.5rem',
                 borderRadius: '4px',
-                border: '1px solid var(--ctp-surface2)',
-                backgroundColor: 'var(--ctp-surface0)',
-                color: 'var(--ctp-text)',
+                border: '1px solid var(--color-surface-active)',
+                backgroundColor: 'var(--color-surface)',
+                color: 'var(--color-text)',
                 width: '100px',
                 opacity: autoBackupEnabled ? 1 : 0.5
               }}
             />
-            <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-subtext0)', fontSize: '0.9rem' }}>
+            <span style={{ marginLeft: '0.5rem', color: 'var(--color-text-subtle)', fontSize: '0.9rem' }}>
               {t('backup_management.max_backups_hint')}
             </span>
           </div>
@@ -328,14 +328,14 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
               style={{
                 padding: '0.5rem',
                 borderRadius: '4px',
-                border: '1px solid var(--ctp-surface2)',
-                backgroundColor: 'var(--ctp-surface0)',
-                color: 'var(--ctp-text)',
+                border: '1px solid var(--color-surface-active)',
+                backgroundColor: 'var(--color-surface)',
+                color: 'var(--color-text)',
                 width: '150px',
                 opacity: autoBackupEnabled ? 1 : 0.5
               }}
             />
-            <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-subtext0)', fontSize: '0.9rem' }}>
+            <span style={{ marginLeft: '0.5rem', color: 'var(--color-text-subtle)', fontSize: '0.9rem' }}>
               {t('backup_management.backup_time_hint')}
             </span>
           </div>
@@ -355,7 +355,7 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
             <h3>{t('backup_management.modal_title')}</h3>
 
             {backupList.length === 0 ? (
-              <p style={{ color: 'var(--ctp-subtext0)' }}>
+              <p style={{ color: 'var(--color-text-subtle)' }}>
                 {t('backup_management.no_backups')}
               </p>
             ) : (

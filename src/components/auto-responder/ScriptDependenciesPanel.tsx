@@ -34,7 +34,7 @@ const KindRow: React.FC<{ title: string; manifest: string; status: KindStatus }>
         : `no ${manifest}`}
     </span>
     {status.packages.length > 0 && (
-      <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)', marginTop: '0.15rem' }}>
+      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', marginTop: '0.15rem' }}>
         {status.packages.join(', ')}
       </div>
     )}
@@ -91,7 +91,7 @@ const ScriptDependenciesPanel: React.FC = () => {
   const nothingDeclared = !status.python.manifestPresent && !status.node.manifestPresent;
 
   return (
-    <div className="setting-item" style={{ marginTop: '1.5rem', borderTop: '1px solid var(--ctp-surface1)', paddingTop: '1rem' }}>
+    <div className="setting-item" style={{ marginTop: '1.5rem', borderTop: '1px solid var(--color-surface-hover)', paddingTop: '1rem' }}>
       <h4 style={{ margin: '0 0 0.25rem 0' }}><UiIcon name="package" size={15} /> {t('scripts.deps.title', 'Script Dependencies')}</h4>
       <p className="setting-description" style={{ marginTop: 0 }}>
         {t('scripts.deps.description', 'Install Python/Node packages your scripts need. Add a requirements.txt (Python) or package.json (Node) to the scripts directory, then install. Packages are installed next to your scripts and persist across restarts.')}
@@ -113,15 +113,15 @@ const ScriptDependenciesPanel: React.FC = () => {
           style={{
             marginTop: '0.5rem', padding: '0.4rem 1rem', borderRadius: '4px', border: 'none',
             cursor: installing || nothingDeclared ? 'not-allowed' : 'pointer', fontWeight: 'bold',
-            background: installing || nothingDeclared ? 'var(--ctp-surface2)' : 'var(--ctp-blue)',
-            color: installing || nothingDeclared ? 'var(--ctp-subtext0)' : 'var(--ctp-base)',
+            background: installing || nothingDeclared ? 'var(--color-surface-active)' : 'var(--color-accent)',
+            color: installing || nothingDeclared ? 'var(--color-text-subtle)' : 'var(--color-bg)',
           }}
         >
           {installing ? t('scripts.deps.installing', 'Installing…') : <><UiIcon name="download" size={14} /> {t('scripts.deps.install', 'Install / Update dependencies')}</>}
         </button>
       )}
 
-      <p className="setting-description" style={{ marginTop: '0.5rem', color: 'var(--ctp-yellow)' }}>
+      <p className="setting-description" style={{ marginTop: '0.5rem', color: 'var(--color-warning)' }}>
         <UiIcon name="alert" size={14} /> {t('scripts.deps.warning', 'Installing downloads and runs third-party code, and requires internet access. On the slim Docker image, packages without a prebuilt musl wheel will fail unless SCRIPT_DEPS_ALLOW_SOURCE_BUILD=true.')}
       </p>
 
@@ -130,7 +130,7 @@ const ScriptDependenciesPanel: React.FC = () => {
       {log && (
         <pre style={{
           marginTop: '0.5rem', maxHeight: '240px', overflow: 'auto', fontSize: '0.7rem',
-          background: 'var(--ctp-mantle)', color: 'var(--ctp-subtext1)', padding: '0.5rem', borderRadius: '4px',
+          background: 'var(--color-bg-raised)', color: 'var(--color-text-muted)', padding: '0.5rem', borderRadius: '4px',
           whiteSpace: 'pre-wrap', wordBreak: 'break-word',
         }}>{log}</pre>
       )}

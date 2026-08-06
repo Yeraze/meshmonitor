@@ -74,9 +74,9 @@ const StatusMessageConfigSection: React.FC<StatusMessageConfigSectionProps> = ({
       {isDisabled && (
         <div style={{
           padding: '1rem',
-          backgroundColor: 'var(--ctp-surface0)',
+          backgroundColor: 'var(--color-surface)',
           borderRadius: '0.5rem',
-          color: 'var(--ctp-subtext0)',
+          color: 'var(--color-text-subtle)',
           fontStyle: 'italic',
           marginBottom: '1rem'
         }}>
@@ -109,7 +109,7 @@ const StatusMessageConfigSection: React.FC<StatusMessageConfigSectionProps> = ({
               right: '0.5rem',
               bottom: '-1.2rem',
               fontSize: '0.75rem',
-              color: nodeStatus.length >= 70 ? 'var(--ctp-peach)' : 'var(--ctp-subtext0)'
+              color: nodeStatus.length >= 70 ? 'var(--color-caution)' : 'var(--color-text-subtle)'
             }}>
               {nodeStatus.length}/80
             </span>

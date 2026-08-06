@@ -256,8 +256,8 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
         alignItems: 'center',
         marginBottom: '1.5rem',
         padding: '1rem 1.25rem',
-        background: 'var(--ctp-surface1)',
-        border: '1px solid var(--ctp-surface2)',
+        background: 'var(--color-surface-hover)',
+        border: '1px solid var(--color-surface-active)',
         borderRadius: '8px'
       }}>
         <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -295,33 +295,33 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
           marginLeft: '1.75rem',
           marginBottom: '1.5rem',
           padding: '1rem',
-          background: 'var(--ctp-surface0)',
-          border: '1px solid var(--ctp-surface2)',
+          background: 'var(--color-surface)',
+          border: '1px solid var(--color-surface-active)',
           borderRadius: '6px',
           display: 'flex',
           gap: '2rem',
         }}>
           <div>
-            <div style={{ fontSize: '24px', fontWeight: 600, color: 'var(--ctp-blue)' }}>
+            <div style={{ fontSize: '24px', fontWeight: 600, color: 'var(--color-accent)' }}>
               {stats.nodesWithAdmin}
             </div>
-            <div style={{ fontSize: '12px', color: 'var(--ctp-subtext0)' }}>
+            <div style={{ fontSize: '12px', color: 'var(--color-text-subtle)' }}>
               {t('automation.remote_admin_scanner.nodes_with_admin')}
             </div>
           </div>
           <div>
-            <div style={{ fontSize: '24px', fontWeight: 600, color: 'var(--ctp-text)' }}>
+            <div style={{ fontSize: '24px', fontWeight: 600, color: 'var(--color-text)' }}>
               {stats.nodesChecked}
             </div>
-            <div style={{ fontSize: '12px', color: 'var(--ctp-subtext0)' }}>
+            <div style={{ fontSize: '12px', color: 'var(--color-text-subtle)' }}>
               {t('automation.remote_admin_scanner.nodes_checked')}
             </div>
           </div>
           <div>
-            <div style={{ fontSize: '24px', fontWeight: 600, color: 'var(--ctp-subtext0)' }}>
+            <div style={{ fontSize: '24px', fontWeight: 600, color: 'var(--color-text-subtle)' }}>
               {stats.totalNodes}
             </div>
-            <div style={{ fontSize: '12px', color: 'var(--ctp-subtext0)' }}>
+            <div style={{ fontSize: '12px', color: 'var(--color-text-subtle)' }}>
               {t('automation.remote_admin_scanner.eligible_nodes')}
             </div>
           </div>
@@ -412,11 +412,11 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
         {/* Scan Log */}
         {localEnabled && (
           <div className="setting-item" style={{ marginTop: '2rem' }}>
-            <h4 style={{ marginBottom: '0.75rem', color: 'var(--ctp-text)' }}>
+            <h4 style={{ marginBottom: '0.75rem', color: 'var(--color-text)' }}>
               {t('automation.remote_admin_scanner.recent_log')}
             </h4>
             <div style={{
-              border: '1px solid var(--ctp-surface2)',
+              border: '1px solid var(--color-surface-active)',
               borderRadius: '6px',
               overflow: 'hidden',
               marginLeft: '1.75rem'
@@ -425,7 +425,7 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
                 <div style={{
                   padding: '1rem',
                   textAlign: 'center',
-                  color: 'var(--ctp-subtext0)',
+                  color: 'var(--color-text-subtle)',
                   fontSize: '12px'
                 }}>
                   {t('automation.remote_admin_scanner.no_log_entries')}
@@ -437,7 +437,7 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
                   fontSize: '12px'
                 }}>
                   <thead>
-                    <tr style={{ background: 'var(--ctp-surface1)' }}>
+                    <tr style={{ background: 'var(--color-surface-hover)' }}>
                       <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 500 }}>
                         {t('automation.remote_admin_scanner.log_timestamp')}
                       </th>
@@ -454,31 +454,31 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
                   </thead>
                   <tbody>
                     {scanLog.map((entry) => (
-                      <tr key={`${entry.nodeNum}-${entry.timestamp}`} style={{ borderTop: '1px solid var(--ctp-surface1)' }}>
-                        <td style={{ padding: '0.4rem 0.75rem', color: 'var(--ctp-subtext0)' }}>
+                      <tr key={`${entry.nodeNum}-${entry.timestamp}`} style={{ borderTop: '1px solid var(--color-surface-hover)' }}>
+                        <td style={{ padding: '0.4rem 0.75rem', color: 'var(--color-text-subtle)' }}>
                           {formatDateTime(new Date(entry.timestamp), timeFormat, dateFormat)}
                         </td>
-                        <td style={{ padding: '0.4rem 0.75rem', color: 'var(--ctp-text)' }}>
+                        <td style={{ padding: '0.4rem 0.75rem', color: 'var(--color-text)' }}>
                           {entry.nodeName || `!${entry.nodeNum.toString(16).padStart(8, '0')}`}
                         </td>
                         <td style={{ padding: '0.4rem 0.75rem', textAlign: 'center' }}>
                           {entry.hasRemoteAdmin ? (
                             <span style={{
-                              color: 'var(--ctp-green)',
+                              color: 'var(--color-success)',
                               fontSize: '14px'
                             }} title={t('automation.remote_admin_scanner.status_has_admin')}>
                               <UiIcon name="check" size={14} />
                             </span>
                           ) : (
                             <span style={{
-                              color: 'var(--ctp-red)',
+                              color: 'var(--color-error)',
                               fontSize: '14px'
                             }} title={t('automation.remote_admin_scanner.status_no_admin')}>
                               <UiIcon name="close" size={14} />
                             </span>
                           )}
                         </td>
-                        <td style={{ padding: '0.4rem 0.75rem', color: 'var(--ctp-subtext0)' }}>
+                        <td style={{ padding: '0.4rem 0.75rem', color: 'var(--color-text-subtle)' }}>
                           {entry.firmwareVersion || '-'}
                         </td>
                       </tr>

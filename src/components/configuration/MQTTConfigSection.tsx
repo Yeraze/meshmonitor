@@ -306,13 +306,13 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
             padding: '10px 12px',
             borderRadius: 6,
             background: 'rgba(137, 180, 250, 0.10)', // ctp-blue @ low alpha
-            border: '1px solid var(--ctp-blue, #89b4fa)',
-            color: 'var(--ctp-text)',
+            border: '1px solid var(--color-accent, #89b4fa)',
+            color: 'var(--color-text)',
             fontSize: 13,
             lineHeight: 1.4,
           }}
         >
-          <strong style={{ color: 'var(--ctp-blue, #89b4fa)' }}>
+          <strong style={{ color: 'var(--color-accent, #89b4fa)' }}>
             <UiIcon name="network" /> {t('mqtt_config.bridged_recommend_title', 'This is a bridged node')}
           </strong>
           <div style={{ marginTop: 4 }}>
@@ -332,13 +332,13 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
             padding: '10px 12px',
             borderRadius: 6,
             background: 'rgba(243, 139, 168, 0.10)', // ctp-red @ low alpha
-            border: '1px solid var(--ctp-red, #f38ba8)',
-            color: 'var(--ctp-text)',
+            border: '1px solid var(--color-error, #f38ba8)',
+            color: 'var(--color-text)',
             fontSize: 13,
             lineHeight: 1.4,
           }}
         >
-          <strong style={{ color: 'var(--ctp-red, #f38ba8)' }}>
+          <strong style={{ color: 'var(--color-error, #f38ba8)' }}>
             <UiIcon name="encrypted" /> {t('mqtt_config.permission_denied', "You don't have permission to modify MQTT settings for this source.")}
           </strong>
         </div>
@@ -355,13 +355,13 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
             padding: '10px 12px',
             borderRadius: 6,
             background: 'rgba(249, 226, 175, 0.10)', // ctp-yellow @ low alpha
-            border: '1px solid var(--ctp-yellow, #f9e2af)',
-            color: 'var(--ctp-text)',
+            border: '1px solid var(--color-warning, #f9e2af)',
+            color: 'var(--color-text)',
             fontSize: 13,
             lineHeight: 1.4,
           }}
         >
-          <strong style={{ color: 'var(--ctp-yellow, #f9e2af)' }}>
+          <strong style={{ color: 'var(--color-warning, #f9e2af)' }}>
             <UiIcon name="alert" /> {t('mqtt_config.proxy_warning_title', 'Client proxy is enabled but no broker is linked')}
           </strong>
           <div style={{ marginTop: 6 }}>
@@ -580,7 +580,7 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
             <div style={{
               marginLeft: '1rem',
               paddingLeft: '1rem',
-              borderLeft: '2px solid var(--ctp-surface2)',
+              borderLeft: '2px solid var(--color-surface-active)',
               marginTop: '0.5rem',
               marginBottom: '1rem'
             }}>

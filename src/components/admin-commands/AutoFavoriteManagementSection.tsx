@@ -174,9 +174,9 @@ const AutoFavoriteManagementSection: React.FC<AutoFavoriteManagementSectionProps
     let color: string;
     let label: string;
     let icon: UiIconName;
-    if (status === 'confirmed') { color = 'var(--ctp-green)'; icon = 'check'; label = t('auto_favorite.ack_confirmed', 'confirmed'); }
-    else if (status === 'timeout') { color = 'var(--ctp-yellow)'; icon = 'timer'; label = t('auto_favorite.ack_timeout', 'no ack'); }
-    else { color = 'var(--ctp-red)'; icon = 'error'; label = status; }
+    if (status === 'confirmed') { color = 'var(--color-success)'; icon = 'check'; label = t('auto_favorite.ack_confirmed', 'confirmed'); }
+    else if (status === 'timeout') { color = 'var(--color-warning)'; icon = 'timer'; label = t('auto_favorite.ack_timeout', 'no ack'); }
+    else { color = 'var(--color-error)'; icon = 'error'; label = status; }
     return (
       <span title={t('auto_favorite.ack_tooltip', 'Result of the last favorite command’s routing ACK')}
         style={{ color, fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
@@ -228,18 +228,18 @@ const AutoFavoriteManagementSection: React.FC<AutoFavoriteManagementSectionProps
     <div id="admin-auto-favorites" className="settings-section">
       <h3><UiIcon name="favorite" /> {t('auto_favorite.title', 'Automatic Favorites Management')}</h3>
 
-      <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '0.75rem' }}>
+      <p style={{ color: 'var(--color-text-subtle)', marginBottom: '0.75rem' }}>
         {t('auto_favorite.description',
           'Automatically keep the favorites list up to date on this remote node. MeshMonitor discovers the node’s neighbors (from NeighborInfo broadcasts and/or traceroutes that pass through it) and sends set-favorite commands via Remote Admin, preserving zero-hop routing as your mesh changes.')}
       </p>
 
       <div style={{
-        border: '1px solid var(--ctp-surface2)',
-        background: 'var(--ctp-mantle)',
+        border: '1px solid var(--color-surface-active)',
+        background: 'var(--color-bg-raised)',
         borderRadius: '8px',
         padding: '0.75rem 1rem',
         marginBottom: '1.25rem',
-        color: 'var(--ctp-subtext1)',
+        color: 'var(--color-text-muted)',
         fontSize: '0.9rem',
         lineHeight: 1.5,
       }}>
@@ -257,11 +257,11 @@ const AutoFavoriteManagementSection: React.FC<AutoFavoriteManagementSectionProps
       </div>
 
       {selectedNodeNum === null || !sourceId ? (
-        <p style={{ color: 'var(--ctp-subtext0)' }}>
+        <p style={{ color: 'var(--color-text-subtle)' }}>
           {t('auto_favorite.select_target', 'Select a target node above to configure automatic favorites management.')}
         </p>
       ) : isLoading || !config ? (
-        <p style={{ color: 'var(--ctp-subtext0)' }}>{t('auto_favorite.loading', 'Loading…')}</p>
+        <p style={{ color: 'var(--color-text-subtle)' }}>{t('auto_favorite.loading', 'Loading…')}</p>
       ) : (
         <>
           {checkboxRow(
@@ -271,7 +271,7 @@ const AutoFavoriteManagementSection: React.FC<AutoFavoriteManagementSectionProps
             (v) => update({ enabled: v })
           )}
 
-          <h4 style={{ marginTop: '1.25rem', marginBottom: '0.5rem', color: 'var(--ctp-text)' }}>
+          <h4 style={{ marginTop: '1.25rem', marginBottom: '0.5rem', color: 'var(--color-text)' }}>
             {t('auto_favorite.discovery_modes', 'Discovery modes')}
           </h4>
           {checkboxRow(
@@ -293,7 +293,7 @@ const AutoFavoriteManagementSection: React.FC<AutoFavoriteManagementSectionProps
             (v) => update({ useTraceroutes: v })
           )}
 
-          <h4 style={{ marginTop: '1.25rem', marginBottom: '0.5rem', color: 'var(--ctp-text)' }}>
+          <h4 style={{ marginTop: '1.25rem', marginBottom: '0.5rem', color: 'var(--color-text)' }}>
             {t('auto_favorite.timing_limits', 'Timing & limits')}
           </h4>
           {numberRow(
@@ -315,7 +315,7 @@ const AutoFavoriteManagementSection: React.FC<AutoFavoriteManagementSectionProps
             (v) => update({ maxRefavoritePerCycle: v })
           )}
 
-          <h4 style={{ marginTop: '1.25rem', marginBottom: '0.5rem', color: 'var(--ctp-text)' }}>
+          <h4 style={{ marginTop: '1.25rem', marginBottom: '0.5rem', color: 'var(--color-text)' }}>
             {t('auto_favorite.eligible_roles', 'Eligible neighbor roles')}
           </h4>
           <p className="setting-description" style={{ marginTop: 0 }}>
@@ -334,7 +334,7 @@ const AutoFavoriteManagementSection: React.FC<AutoFavoriteManagementSectionProps
             ))}
           </div>
 
-          <h4 style={{ marginTop: '1.25rem', marginBottom: '0.5rem', color: 'var(--ctp-text)' }}>
+          <h4 style={{ marginTop: '1.25rem', marginBottom: '0.5rem', color: 'var(--color-text)' }}>
             {t('auto_favorite.status', 'Status')}
           </h4>
           <div className="setting-description" style={{ marginBottom: '0.75rem' }}>
@@ -346,7 +346,7 @@ const AutoFavoriteManagementSection: React.FC<AutoFavoriteManagementSectionProps
             <div style={{
               maxHeight: '180px',
               overflowY: 'auto',
-              border: '1px solid var(--ctp-surface1)',
+              border: '1px solid var(--color-surface-hover)',
               borderRadius: '6px',
               marginBottom: '1rem',
             }}>
@@ -355,13 +355,13 @@ const AutoFavoriteManagementSection: React.FC<AutoFavoriteManagementSectionProps
                   display: 'flex',
                   justifyContent: 'space-between',
                   padding: '0.4rem 0.75rem',
-                  borderBottom: '1px solid var(--ctp-surface0)',
+                  borderBottom: '1px solid var(--color-surface)',
                   fontSize: '0.85rem',
                 }}>
                   <span>{nodeLabel(a.favoriteNodeNum)}</span>
                   <span style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
                     {ackBadge(a.lastAckStatus)}
-                    <span style={{ color: 'var(--ctp-subtext0)' }}>
+                    <span style={{ color: 'var(--color-text-subtle)' }}>
                       {t('auto_favorite.last_sent', 'last sent')}: {formatTime(a.lastAssignedAt)}
                     </span>
                   </span>

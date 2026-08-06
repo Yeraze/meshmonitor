@@ -677,16 +677,16 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: '0.5rem 0.75rem',
-    background: 'var(--ctp-surface0)',
-    border: '1px solid var(--ctp-surface2)',
+    background: 'var(--color-surface)',
+    border: '1px solid var(--color-surface-active)',
     borderRadius: '4px',
     cursor: 'pointer',
     marginBottom: '0.5rem',
   };
 
   const badgeStyle: React.CSSProperties = {
-    background: 'var(--ctp-blue)',
-    color: 'var(--ctp-base)',
+    background: 'var(--color-accent)',
+    color: 'var(--color-bg)',
     padding: '0.1rem 0.5rem',
     borderRadius: '10px',
     fontSize: '11px',
@@ -700,8 +700,8 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
         alignItems: 'center',
         marginBottom: '1.5rem',
         padding: '1rem 1.25rem',
-        background: 'var(--ctp-surface1)',
-        border: '1px solid var(--ctp-surface2)',
+        background: 'var(--color-surface-hover)',
+        border: '1px solid var(--color-surface-active)',
         borderRadius: '8px'
       }}>
         <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -860,8 +860,8 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
               marginTop: '1rem',
               marginLeft: '1.75rem',
               padding: '1rem',
-              background: 'var(--ctp-surface0)',
-              border: '1px solid var(--ctp-surface2)',
+              background: 'var(--color-surface)',
+              border: '1px solid var(--color-surface-active)',
               borderRadius: '6px',
               display: 'flex',
               gap: '1rem'
@@ -894,7 +894,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                   </span>
                 </div>
                 {expandedSections.nodes && (
-                  <div style={{ padding: '0.5rem', background: 'var(--ctp-base)', borderRadius: '4px' }}>
+                  <div style={{ padding: '0.5rem', background: 'var(--color-bg)', borderRadius: '4px' }}>
                     <input
                       type="text"
                       placeholder={t('automation.auto_traceroute.search_nodes')}
@@ -904,10 +904,10 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                         width: '100%',
                         padding: '0.5rem',
                         marginBottom: '0.5rem',
-                        background: 'var(--ctp-surface0)',
-                        border: '1px solid var(--ctp-surface2)',
+                        background: 'var(--color-surface)',
+                        border: '1px solid var(--color-surface-active)',
                         borderRadius: '4px',
-                        color: 'var(--ctp-text)'
+                        color: 'var(--color-text)'
                       }}
                     />
                     <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
@@ -918,9 +918,9 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                         {t('common.deselect_all')}
                       </button>
                     </div>
-                    <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--ctp-surface2)', borderRadius: '4px' }}>
+                    <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--color-surface-active)', borderRadius: '4px' }}>
                       {filteredNodes.length === 0 ? (
-                        <div style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--ctp-subtext0)', fontSize: '12px' }}>
+                        <div style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--color-text-subtle)', fontSize: '12px' }}>
                           {searchTerm ? t('automation.auto_traceroute.no_nodes_match') : t('automation.auto_traceroute.no_nodes_available')}
                         </div>
                       ) : (
@@ -929,7 +929,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                             key={node.nodeNum}
                             style={{
                               padding: '0.4rem 0.6rem',
-                              borderBottom: '1px solid var(--ctp-surface1)',
+                              borderBottom: '1px solid var(--color-surface-hover)',
                               display: 'flex',
                               alignItems: 'center',
                               cursor: 'pointer',
@@ -944,7 +944,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                               style={{ width: 'auto', margin: 0, marginRight: '0.5rem', cursor: 'pointer' }}
                               onClick={(e) => e.stopPropagation()}
                             />
-                            <span style={{ color: 'var(--ctp-text)' }}>
+                            <span style={{ color: 'var(--color-text)' }}>
                               {node.user?.longName || node.longName || node.user?.shortName || node.shortName || node.nodeId || 'Unknown'}
                             </span>
                           </div>
@@ -980,9 +980,9 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                   </span>
                 </div>
                 {expandedSections.channels && (
-                  <div style={{ padding: '0.5rem', background: 'var(--ctp-base)', borderRadius: '4px', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <div style={{ padding: '0.5rem', background: 'var(--color-bg)', borderRadius: '4px', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                     {availableChannels.length === 0 ? (
-                      <span style={{ color: 'var(--ctp-subtext0)', fontSize: '12px' }}>{t('automation.auto_traceroute.no_channels')}</span>
+                      <span style={{ color: 'var(--color-text-subtle)', fontSize: '12px' }}>{t('automation.auto_traceroute.no_channels')}</span>
                     ) : (
                       availableChannels.map(channel => (
                         <label key={channel} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer', fontSize: '12px' }}>
@@ -1025,9 +1025,9 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                   </span>
                 </div>
                 {expandedSections.roles && (
-                  <div style={{ padding: '0.5rem', background: 'var(--ctp-base)', borderRadius: '4px', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <div style={{ padding: '0.5rem', background: 'var(--color-bg)', borderRadius: '4px', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                     {availableRolesInNodes.length === 0 ? (
-                      <span style={{ color: 'var(--ctp-subtext0)', fontSize: '12px' }}>{t('automation.auto_traceroute.no_roles_available')}</span>
+                      <span style={{ color: 'var(--color-text-subtle)', fontSize: '12px' }}>{t('automation.auto_traceroute.no_roles_available')}</span>
                     ) : (
                       availableRolesInNodes.map(roleNum => {
                         const count = availableNodes.filter(n => getNodeRole(n) === roleNum).length;
@@ -1074,9 +1074,9 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                   </span>
                 </div>
                 {expandedSections.hwModels && (
-                  <div style={{ padding: '0.5rem', background: 'var(--ctp-base)', borderRadius: '4px', maxHeight: '200px', overflowY: 'auto' }}>
+                  <div style={{ padding: '0.5rem', background: 'var(--color-bg)', borderRadius: '4px', maxHeight: '200px', overflowY: 'auto' }}>
                     {availableHwModelsInNodes.length === 0 ? (
-                      <span style={{ color: 'var(--ctp-subtext0)', fontSize: '12px' }}>{t('automation.auto_traceroute.no_hardware_available')}</span>
+                      <span style={{ color: 'var(--color-text-subtle)', fontSize: '12px' }}>{t('automation.auto_traceroute.no_hardware_available')}</span>
                     ) : (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                         {availableHwModelsInNodes.map(hwModel => {
@@ -1124,7 +1124,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                   </span>
                 </div>
                 {expandedSections.regex && (
-                  <div style={{ padding: '0.5rem', background: 'var(--ctp-base)', borderRadius: '4px' }}>
+                  <div style={{ padding: '0.5rem', background: 'var(--color-bg)', borderRadius: '4px' }}>
                     <input
                       type="text"
                       value={filterNameRegex}
@@ -1134,15 +1134,15 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                         width: '100%',
                         padding: '0.5rem',
                         marginBottom: '0.25rem',
-                        background: 'var(--ctp-surface0)',
-                        border: '1px solid var(--ctp-surface2)',
+                        background: 'var(--color-surface)',
+                        border: '1px solid var(--color-surface-active)',
                         borderRadius: '4px',
-                        color: 'var(--ctp-text)',
+                        color: 'var(--color-text)',
                         fontFamily: 'monospace',
                         fontSize: '12px'
                       }}
                     />
-                    <div style={{ fontSize: '11px', color: 'var(--ctp-subtext0)' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--color-text-subtle)' }}>
                       {t('automation.auto_traceroute.regex_help')}
                     </div>
                   </div>
@@ -1174,7 +1174,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                   </span>
                 </div>
                 {expandedSections.lastHeard && (
-                  <div style={{ padding: '0.5rem', background: 'var(--ctp-base)', borderRadius: '4px' }}>
+                  <div style={{ padding: '0.5rem', background: 'var(--color-bg)', borderRadius: '4px' }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '12px' }}>
                       {t('automation.auto_traceroute.last_heard_within')}
                       <input
@@ -1215,7 +1215,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                   </span>
                 </div>
                 {expandedSections.hops && (
-                  <div style={{ padding: '0.5rem', background: 'var(--ctp-base)', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '12px' }}>
+                  <div style={{ padding: '0.5rem', background: 'var(--color-bg)', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '12px' }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                       {t('automation.auto_traceroute.min_hops')}
                       <input
@@ -1247,16 +1247,16 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
               <div style={{
                 width: '280px',
                 flexShrink: 0,
-                background: 'var(--ctp-base)',
-                border: '1px solid var(--ctp-surface2)',
+                background: 'var(--color-bg)',
+                border: '1px solid var(--color-surface-active)',
                 borderRadius: '6px',
                 display: 'flex',
                 flexDirection: 'column'
               }}>
                 <div style={{
                   padding: '0.5rem 0.75rem',
-                  borderBottom: '1px solid var(--ctp-surface2)',
-                  background: 'var(--ctp-surface1)',
+                  borderBottom: '1px solid var(--color-surface-active)',
+                  background: 'var(--color-surface-hover)',
                   borderRadius: '6px 6px 0 0',
                   fontSize: '13px',
                   fontWeight: 500
@@ -1273,7 +1273,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                     <div style={{
                       padding: '1rem',
                       textAlign: 'center',
-                      color: 'var(--ctp-subtext0)',
+                      color: 'var(--color-text-subtle)',
                       fontSize: '12px'
                     }}>
                       {t('automation.auto_traceroute.no_nodes_match_filters')}
@@ -1284,9 +1284,9 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                         key={node.nodeNum}
                         style={{
                           padding: '0.35rem 0.5rem',
-                          borderBottom: '1px solid var(--ctp-surface1)',
+                          borderBottom: '1px solid var(--color-surface-hover)',
                           fontSize: '12px',
-                          color: 'var(--ctp-text)',
+                          color: 'var(--color-text)',
                           whiteSpace: 'nowrap',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis'
@@ -1306,11 +1306,11 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
         {/* Auto-Traceroute Log Section */}
         {localEnabled && (
           <div className="setting-item" style={{ marginTop: '2rem' }}>
-            <h4 style={{ marginBottom: '0.75rem', color: 'var(--ctp-text)' }}>
+            <h4 style={{ marginBottom: '0.75rem', color: 'var(--color-text)' }}>
               {t('automation.auto_traceroute.recent_log')}
             </h4>
             <div style={{
-              border: '1px solid var(--ctp-surface2)',
+              border: '1px solid var(--color-surface-active)',
               borderRadius: '6px',
               overflow: 'hidden',
               marginLeft: '1.75rem'
@@ -1319,7 +1319,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                 <div style={{
                   padding: '1rem',
                   textAlign: 'center',
-                  color: 'var(--ctp-subtext0)',
+                  color: 'var(--color-text-subtle)',
                   fontSize: '12px'
                 }}>
                   {t('automation.auto_traceroute.no_log_entries')}
@@ -1331,7 +1331,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                   fontSize: '12px'
                 }}>
                   <thead>
-                    <tr style={{ background: 'var(--ctp-surface1)' }}>
+                    <tr style={{ background: 'var(--color-surface-hover)' }}>
                       <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 500 }}>
                         {t('automation.auto_traceroute.log_timestamp')}
                       </th>
@@ -1345,31 +1345,31 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                   </thead>
                   <tbody>
                     {tracerouteLog.map((entry) => (
-                      <tr key={entry.id} style={{ borderTop: '1px solid var(--ctp-surface1)' }}>
-                        <td style={{ padding: '0.4rem 0.75rem', color: 'var(--ctp-subtext0)' }}>
+                      <tr key={entry.id} style={{ borderTop: '1px solid var(--color-surface-hover)' }}>
+                        <td style={{ padding: '0.4rem 0.75rem', color: 'var(--color-text-subtle)' }}>
                           {new Date(entry.timestamp).toLocaleString()}
                         </td>
-                        <td style={{ padding: '0.4rem 0.75rem', color: 'var(--ctp-text)' }}>
+                        <td style={{ padding: '0.4rem 0.75rem', color: 'var(--color-text)' }}>
                           {entry.toNodeName || `!${entry.toNodeNum.toString(16).padStart(8, '0')}`}
                         </td>
                         <td style={{ padding: '0.4rem 0.75rem', textAlign: 'center' }}>
                           {entry.success === null ? (
                             <span style={{
-                              color: 'var(--ctp-yellow)',
+                              color: 'var(--color-warning)',
                               fontSize: '14px'
                             }} title={t('automation.auto_traceroute.status_pending')}>
                               <UiIcon name="time" />
                             </span>
                           ) : entry.success ? (
                             <span style={{
-                              color: 'var(--ctp-green)',
+                              color: 'var(--color-success)',
                               fontSize: '14px'
                             }} title={t('automation.auto_traceroute.status_success')}>
                               <UiIcon name="check" />
                             </span>
                           ) : (
                             <span style={{
-                              color: 'var(--ctp-red)',
+                              color: 'var(--color-error)',
                               fontSize: '14px'
                             }} title={t('automation.auto_traceroute.status_failed')}>
                               <UiIcon name="error" />

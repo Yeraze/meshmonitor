@@ -139,7 +139,7 @@ const AmbientLightingConfigSection: React.FC<AmbientLightingConfigSectionProps> 
           </div>
 
           {/* Color Controls */}
-          <h4 style={{ marginTop: '1.5rem', marginBottom: '0.5rem', color: 'var(--ctp-subtext0)' }}>
+          <h4 style={{ marginTop: '1.5rem', marginBottom: '0.5rem', color: 'var(--color-text-subtle)' }}>
             {t('ambientlighting_config.color_section')}
           </h4>
 
@@ -151,12 +151,12 @@ const AmbientLightingConfigSection: React.FC<AmbientLightingConfigSectionProps> 
                 height: '60px',
                 backgroundColor: previewColor,
                 borderRadius: '8px',
-                border: '2px solid var(--ctp-surface2)',
+                border: '2px solid var(--color-surface-active)',
                 boxShadow: ledState ? `0 0 20px ${previewColor}` : 'none'
               }}
               title={t('ambientlighting_config.preview')}
             />
-            <div style={{ flex: 1, color: 'var(--ctp-subtext0)', fontSize: '0.9rem' }}>
+            <div style={{ flex: 1, color: 'var(--color-text-subtle)', fontSize: '0.9rem' }}>
               {t('ambientlighting_config.preview')}: {previewColor}
             </div>
           </div>

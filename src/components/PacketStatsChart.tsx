@@ -63,13 +63,13 @@ const PacketStatsChart: React.FC<PacketStatsChartProps> = React.memo(({ title, d
               return [`${numValue.toLocaleString()} (${pct}%)`, entryName];
             }}
             contentStyle={{
-              backgroundColor: 'var(--ctp-surface0)',
-              border: '1px solid var(--ctp-surface2)',
+              backgroundColor: 'var(--color-surface)',
+              border: '1px solid var(--color-surface-active)',
               borderRadius: '4px',
               fontSize: '0.85em',
             }}
             itemStyle={{
-              color: 'var(--ctp-text)',
+              color: 'var(--color-text)',
             }}
           />
         </PieChart>

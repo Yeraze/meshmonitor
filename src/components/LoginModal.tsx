@@ -146,7 +146,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
         /* MFA Verification Step */
         <form onSubmit={handleMfaSubmit}>
           <div className="mfa-prompt" style={{ textAlign: 'center', marginBottom: '8px' }}>
-            <p style={{ color: 'var(--ctp-subtext0)', fontSize: '14px', margin: 0 }}>
+            <p style={{ color: 'var(--color-text-subtle)', fontSize: '14px', margin: 0 }}>
               {useBackupCode ? t('mfa.backup_code_prompt') : t('mfa.login_prompt')}
             </p>
           </div>
@@ -189,7 +189,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
             <button
               type="button"
               className="button-link"
-              style={{ background: 'none', border: 'none', color: 'var(--ctp-blue)', cursor: 'pointer', fontSize: '13px', textDecoration: 'underline', padding: '4px' }}
+              style={{ background: 'none', border: 'none', color: 'var(--color-accent)', cursor: 'pointer', fontSize: '13px', textDecoration: 'underline', padding: '4px' }}
               onClick={() => {
                 setUseBackupCode(!useBackupCode);
                 setMfaCode('');
@@ -201,7 +201,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
             <button
               type="button"
               className="button-link"
-              style={{ background: 'none', border: 'none', color: 'var(--ctp-blue)', cursor: 'pointer', fontSize: '13px', textDecoration: 'underline', padding: '4px' }}
+              style={{ background: 'none', border: 'none', color: 'var(--color-accent)', cursor: 'pointer', fontSize: '13px', textDecoration: 'underline', padding: '4px' }}
               onClick={handleBackToLogin}
             >
               {t('mfa.back_to_login')}

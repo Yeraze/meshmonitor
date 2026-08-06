@@ -152,14 +152,14 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
   const subGroupStyle = {
     marginLeft: '1rem',
     paddingLeft: '1rem',
-    borderLeft: '2px solid var(--ctp-surface1)',
+    borderLeft: '2px solid var(--color-surface-hover)',
     marginBottom: '1rem'
   };
 
   const subGroupTitleStyle = {
     fontSize: '0.9rem',
     fontWeight: 600 as const,
-    color: 'var(--ctp-text)',
+    color: 'var(--color-text)',
     marginBottom: '0.5rem',
     marginTop: '0.75rem'
   };
@@ -173,9 +173,9 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
       {isDisabled && (
         <div style={{
           padding: '1rem',
-          backgroundColor: 'var(--ctp-surface0)',
+          backgroundColor: 'var(--color-surface)',
           borderRadius: '0.5rem',
-          color: 'var(--ctp-subtext0)',
+          color: 'var(--color-text-subtle)',
           fontStyle: 'italic',
           marginBottom: '1rem'
         }}>
@@ -243,7 +243,7 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
                       className="setting-input"
                       style={{ width: '100%' }}
                     />
-                    <div style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
                       {t('trafficmanagement_config.position_precision_bits_value', '{{bits}} bits', { bits: positionPrecisionBits })}
                     </div>
                   </div>

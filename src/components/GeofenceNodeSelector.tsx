@@ -72,7 +72,7 @@ const GeofenceNodeSelector: React.FC<GeofenceNodeSelectorProps> = ({
             onChange={() => handleToggleMode('all')}
             style={{ cursor: 'pointer' }}
           />
-          <span style={{ color: 'var(--ctp-text)' }}>
+          <span style={{ color: 'var(--color-text)' }}>
             {t('automation.geofence_triggers.all_nodes', 'All Nodes')}
           </span>
         </label>
@@ -84,7 +84,7 @@ const GeofenceNodeSelector: React.FC<GeofenceNodeSelectorProps> = ({
             onChange={() => handleToggleMode('selected')}
             style={{ cursor: 'pointer' }}
           />
-          <span style={{ color: 'var(--ctp-text)' }}>
+          <span style={{ color: 'var(--color-text)' }}>
             {t('automation.geofence_triggers.selected_nodes', 'Selected Nodes')}
           </span>
         </label>
@@ -97,9 +97,9 @@ const GeofenceNodeSelector: React.FC<GeofenceNodeSelectorProps> = ({
           flexDirection: 'column',
           gap: '8px',
           padding: '12px',
-          backgroundColor: 'var(--ctp-surface0)',
+          backgroundColor: 'var(--color-surface)',
           borderRadius: '6px',
-          border: '1px solid var(--ctp-surface1)'
+          border: '1px solid var(--color-surface-hover)'
         }}>
           {/* Search Input */}
           <input
@@ -109,9 +109,9 @@ const GeofenceNodeSelector: React.FC<GeofenceNodeSelectorProps> = ({
             onChange={(e) => setSearchTerm(e.target.value)}
             style={{
               padding: '8px 12px',
-              backgroundColor: 'var(--ctp-base)',
-              color: 'var(--ctp-text)',
-              border: '1px solid var(--ctp-surface2)',
+              backgroundColor: 'var(--color-bg)',
+              color: 'var(--color-text)',
+              border: '1px solid var(--color-surface-active)',
               borderRadius: '4px',
               fontSize: '14px',
               outline: 'none'
@@ -129,7 +129,7 @@ const GeofenceNodeSelector: React.FC<GeofenceNodeSelectorProps> = ({
             {filteredNodes.length === 0 ? (
               <div style={{
                 padding: '12px',
-                color: 'var(--ctp-subtext0)',
+                color: 'var(--color-text-subtle)',
                 textAlign: 'center',
                 fontSize: '14px'
               }}>
@@ -152,14 +152,14 @@ const GeofenceNodeSelector: React.FC<GeofenceNodeSelectorProps> = ({
                       alignItems: 'center',
                       gap: '8px',
                       padding: '8px',
-                      backgroundColor: isChecked ? 'var(--ctp-surface1)' : 'transparent',
+                      backgroundColor: isChecked ? 'var(--color-surface-hover)' : 'transparent',
                       borderRadius: '4px',
                       cursor: 'pointer',
                       transition: 'background-color 0.15s ease'
                     }}
                     onMouseEnter={(e) => {
                       if (!isChecked) {
-                        e.currentTarget.style.backgroundColor = 'var(--ctp-surface0)';
+                        e.currentTarget.style.backgroundColor = 'var(--color-surface)';
                       }
                     }}
                     onMouseLeave={(e) => {
@@ -181,14 +181,14 @@ const GeofenceNodeSelector: React.FC<GeofenceNodeSelectorProps> = ({
                       flex: 1
                     }}>
                       <div style={{
-                        color: 'var(--ctp-text)',
+                        color: 'var(--color-text)',
                         fontWeight: 500
                       }}>
                         {displayName}
                         {node.shortName && node.longName && node.shortName !== node.longName && (
                           <span style={{
                             marginLeft: '6px',
-                            color: 'var(--ctp-subtext0)',
+                            color: 'var(--color-text-subtle)',
                             fontWeight: 400
                           }}>
                             ({node.shortName})
@@ -196,7 +196,7 @@ const GeofenceNodeSelector: React.FC<GeofenceNodeSelectorProps> = ({
                         )}
                       </div>
                       <div style={{
-                        color: 'var(--ctp-subtext0)',
+                        color: 'var(--color-text-subtle)',
                         fontSize: '12px'
                       }}>
                         {nodeIdStr}
@@ -212,9 +212,9 @@ const GeofenceNodeSelector: React.FC<GeofenceNodeSelectorProps> = ({
           {selectedNodeNums.length > 0 && (
             <div style={{
               padding: '8px',
-              backgroundColor: 'var(--ctp-base)',
+              backgroundColor: 'var(--color-bg)',
               borderRadius: '4px',
-              color: 'var(--ctp-subtext0)',
+              color: 'var(--color-text-subtle)',
               fontSize: '13px',
               textAlign: 'center'
             }}>

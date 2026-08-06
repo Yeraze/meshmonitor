@@ -320,8 +320,8 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
         alignItems: 'center',
         marginBottom: '1.5rem',
         padding: '1rem 1.25rem',
-        background: 'var(--ctp-surface1)',
-        border: '1px solid var(--ctp-surface2)',
+        background: 'var(--color-surface-hover)',
+        border: '1px solid var(--color-surface-active)',
         borderRadius: '8px',
       }}>
         <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -337,12 +337,12 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
         {/* Add/Edit Geofence Trigger Form */}
         <div style={{
           padding: '1rem',
-          background: editingTriggerId ? 'var(--ctp-surface1)' : 'var(--ctp-surface0)',
+          background: editingTriggerId ? 'var(--color-surface-hover)' : 'var(--color-surface)',
           borderRadius: '8px',
           marginBottom: '1rem',
-          border: editingTriggerId ? '2px solid var(--ctp-blue)' : 'none',
+          border: editingTriggerId ? '2px solid var(--color-accent)' : 'none',
         }}>
-          <h4 style={{ margin: '0 0 1rem 0', fontSize: '0.95rem', color: 'var(--ctp-text)' }}>
+          <h4 style={{ margin: '0 0 1rem 0', fontSize: '0.95rem', color: 'var(--color-text)' }}>
             {editingTriggerId
               ? t('automation.geofence_triggers.edit_trigger', 'Edit Geofence Trigger')
               : t('automation.geofence_triggers.add_new', 'Add New Geofence Trigger')}
@@ -432,7 +432,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
                   style={{ width: '100px' }}
                   min={1}
                 />
-                <span style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
                   {t('automation.geofence_triggers.while_inside_interval_help', 'How often to fire while nodes remain inside')}
                 </span>
               </div>
@@ -451,7 +451,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
                 style={{ width: '100px' }}
                 min={0}
               />
-              <span style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
                 {t('automation.geofence_triggers.cooldown_help', 'Minimum time between triggers for each node. 0 = no cooldown.')}
               </span>
             </div>
@@ -533,7 +533,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
                     style={{ width: '100%', fontFamily: 'monospace' }}
                     placeholder="--ip {IP} --dest {NODE_ID} --reboot"
                   />
-                  <span style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
                     {t('automation.geofence_triggers.script_args_help', 'Optional CLI arguments. Tokens: {IP}, {NODE_ID}, {EVENT}, {GEOFENCE_NAME}, etc.')}
                   </span>
                 </div>
@@ -555,12 +555,12 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
                     placeholder={t('automation.geofence_triggers.message_placeholder', 'e.g., {LONG_NAME} entered {GEOFENCE_NAME}')}
                   />
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: '0.25rem' }}>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)', flex: 1 }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', flex: 1 }}>
                       {t('automation.geofence_triggers.tokens_help', 'Available tokens:')}
                       {' '}
                       {AVAILABLE_TOKENS.map((tok, i) => (
                         <span key={tok.token}>
-                          <code style={{ background: 'var(--ctp-surface1)', padding: '0 0.25rem', borderRadius: '2px' }}>{tok.token}</code>
+                          <code style={{ background: 'var(--color-surface-hover)', padding: '0 0.25rem', borderRadius: '2px' }}>{tok.token}</code>
                           {i < AVAILABLE_TOKENS.length - 1 && ', '}
                         </span>
                       ))}
@@ -568,7 +568,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
                     <div style={{
                       fontSize: '0.75rem',
                       fontWeight: 'bold',
-                      color: newResponse.length > 200 ? 'var(--ctp-red)' : newResponse.length > 150 ? 'var(--ctp-yellow)' : 'var(--ctp-subtext0)',
+                      color: newResponse.length > 200 ? 'var(--color-error)' : newResponse.length > 150 ? 'var(--color-warning)' : 'var(--color-text-subtle)',
                       marginLeft: '0.5rem',
                       whiteSpace: 'nowrap',
                     }}>
@@ -603,7 +603,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
                   </option>
                 ))}
               </select>
-              <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
                 {newResponseType === 'script' && newChannel === 'none'
                   ? t('automation.geofence_triggers.channel_none_help', 'Script handles its own output (e.g., external integrations)')
                   : t('automation.geofence_triggers.channel_help', 'Output will be sent to this channel')}
@@ -615,7 +615,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
                     display: 'block',
                     fontSize: '0.85rem',
                     cursor: newChannel === 'dm' ? 'pointer' : 'not-allowed',
-                    color: 'var(--ctp-subtext0)',
+                    color: 'var(--color-text-subtle)',
                     opacity: newChannel === 'dm' ? 1 : 0.5
                   }}>
                     <input
@@ -638,9 +638,9 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
                   onClick={handleCancelEdit}
                   className="settings-button"
                   style={{
-                    background: 'var(--ctp-surface1)',
-                    color: 'var(--ctp-text)',
-                    border: '1px solid var(--ctp-overlay0)',
+                    background: 'var(--color-surface-hover)',
+                    color: 'var(--color-text)',
+                    border: '1px solid var(--color-border-subtle)',
                   }}
                 >
                   {t('common.cancel', 'Cancel')}
@@ -666,7 +666,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
         {/* Existing Triggers List */}
         {localTriggers.length > 0 && (
           <div style={{ marginBottom: '1rem' }}>
-            <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.95rem', color: 'var(--ctp-text)' }}>
+            <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.95rem', color: 'var(--color-text)' }}>
               {t('automation.geofence_triggers.existing', 'Existing Geofence Triggers')} ({localTriggers.length})
             </h4>
 
@@ -691,8 +691,8 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
           <div style={{
             padding: '2rem',
             textAlign: 'center',
-            color: 'var(--ctp-subtext0)',
-            background: 'var(--ctp-surface0)',
+            color: 'var(--color-text-subtle)',
+            background: 'var(--color-surface)',
             borderRadius: '8px',
           }}>
             {t('automation.geofence_triggers.no_triggers', 'No geofence triggers configured. Add one above to trigger actions based on node location.')}
@@ -739,15 +739,15 @@ const GeofenceTriggerItem: React.FC<GeofenceTriggerItemProps> = ({
         gap: '0.5rem',
         padding: '0.75rem',
         marginBottom: '0.5rem',
-        background: 'var(--ctp-surface0)',
-        border: '1px solid var(--ctp-overlay0)',
+        background: 'var(--color-surface)',
+        border: '1px solid var(--color-border-subtle)',
         borderRadius: '4px',
         opacity: trigger.enabled ? 1 : 0.6,
       }}
     >
       <div style={{ flex: 1 }}>
         <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>{trigger.name}</div>
-        <div style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+        <div style={{ fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
           {shapeLabel(trigger.shape)} | {eventLabel(trigger.event)}
           {trigger.event === 'while_inside' && trigger.whileInsideIntervalMinutes && (
             <> (every {trigger.whileInsideIntervalMinutes}min)</>
@@ -756,7 +756,7 @@ const GeofenceTriggerItem: React.FC<GeofenceTriggerItemProps> = ({
             <> | {t('automation.geofence_triggers.cooldown_display', 'Cooldown: {{minutes}}min', { minutes: trigger.cooldownMinutes })}</>
           )}
         </div>
-        <div style={{ fontSize: '0.8rem', color: 'var(--ctp-subtext0)', marginTop: '0.25rem' }}>
+        <div style={{ fontSize: '0.8rem', color: 'var(--color-text-subtle)', marginTop: '0.25rem' }}>
           {trigger.responseType === 'script' ? (
             <>Script: {trigger.scriptPath?.split('/').pop()}</>
           ) : (
@@ -766,16 +766,16 @@ const GeofenceTriggerItem: React.FC<GeofenceTriggerItemProps> = ({
             <> <UiIcon name="forward" size={14} /> {trigger.channel === 'dm' ? 'DM' : `Ch ${trigger.channel}: ${channels.find(c => c.id === trigger.channel)?.name || `Channel ${trigger.channel}`}`}</>
           )}
         </div>
-        <div style={{ fontSize: '0.8rem', color: 'var(--ctp-subtext0)', marginTop: '0.15rem' }}>
+        <div style={{ fontSize: '0.8rem', color: 'var(--color-text-subtle)', marginTop: '0.15rem' }}>
           Nodes: {trigger.nodeFilter.type === 'all' ? 'All' : `${trigger.nodeFilter.nodeNums.length} selected`}
         </div>
         {trigger.lastRun && (
-          <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)', marginTop: '0.25rem' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', marginTop: '0.25rem' }}>
             Last run: {formatLastRun(trigger.lastRun)}
             {trigger.lastResult && (
               <span style={{
                 marginLeft: '0.5rem',
-                color: trigger.lastResult === 'success' ? 'var(--ctp-green)' : 'var(--ctp-red)',
+                color: trigger.lastResult === 'success' ? 'var(--color-success)' : 'var(--color-error)',
               }}>
                 ({trigger.lastResult})
               </span>
@@ -787,8 +787,8 @@ const GeofenceTriggerItem: React.FC<GeofenceTriggerItemProps> = ({
         <span style={{
           fontSize: '0.7rem',
           padding: '0.15rem 0.4rem',
-          background: trigger.enabled ? 'var(--ctp-green)' : 'var(--ctp-surface2)',
-          color: trigger.enabled ? 'var(--ctp-base)' : 'var(--ctp-subtext0)',
+          background: trigger.enabled ? 'var(--color-success)' : 'var(--color-surface-active)',
+          color: trigger.enabled ? 'var(--color-bg)' : 'var(--color-text-subtle)',
           borderRadius: '3px',
           fontWeight: 'bold',
         }}>
@@ -798,8 +798,8 @@ const GeofenceTriggerItem: React.FC<GeofenceTriggerItemProps> = ({
           <span style={{
             fontSize: '0.7rem',
             padding: '0.15rem 0.4rem',
-            background: 'var(--ctp-peach)',
-            color: 'var(--ctp-base)',
+            background: 'var(--color-caution)',
+            color: 'var(--color-bg)',
             borderRadius: '3px',
             fontWeight: 'bold',
           }}>
@@ -811,8 +811,8 @@ const GeofenceTriggerItem: React.FC<GeofenceTriggerItemProps> = ({
           style={{
             padding: '0.25rem 0.5rem',
             fontSize: '12px',
-            background: trigger.enabled ? 'var(--ctp-yellow)' : 'var(--ctp-green)',
-            color: 'var(--ctp-base)',
+            background: trigger.enabled ? 'var(--color-warning)' : 'var(--color-success)',
+            color: 'var(--color-bg)',
             border: 'none',
             borderRadius: '4px',
             cursor: 'pointer',
@@ -827,7 +827,7 @@ const GeofenceTriggerItem: React.FC<GeofenceTriggerItemProps> = ({
               padding: '0.25rem 0.5rem',
               fontSize: '12px',
               background: 'var(--ctp-teal)',
-              color: 'var(--ctp-base)',
+              color: 'var(--color-bg)',
               border: 'none',
               borderRadius: '4px',
               cursor: 'pointer',
@@ -842,8 +842,8 @@ const GeofenceTriggerItem: React.FC<GeofenceTriggerItemProps> = ({
           style={{
             padding: '0.25rem 0.5rem',
             fontSize: '12px',
-            background: 'var(--ctp-blue)',
-            color: 'var(--ctp-base)',
+            background: 'var(--color-accent)',
+            color: 'var(--color-bg)',
             border: 'none',
             borderRadius: '4px',
             cursor: 'pointer',
@@ -856,7 +856,7 @@ const GeofenceTriggerItem: React.FC<GeofenceTriggerItemProps> = ({
           style={{
             padding: '0.25rem 0.5rem',
             fontSize: '12px',
-            background: 'var(--ctp-red)',
+            background: 'var(--color-error)',
             color: 'white',
             border: 'none',
             borderRadius: '4px',
@@ -882,15 +882,15 @@ const GeofenceTriggerItem: React.FC<GeofenceTriggerItemProps> = ({
           zIndex: 10000,
         }}>
           <div style={{
-            background: 'var(--ctp-base)',
+            background: 'var(--color-bg)',
             borderRadius: '8px',
             padding: '1.5rem',
             maxWidth: '400px',
             width: '90%',
-            border: '1px solid var(--ctp-overlay0)',
+            border: '1px solid var(--color-border-subtle)',
           }}>
-            <h3 style={{ margin: '0 0 1rem 0', color: 'var(--ctp-text)' }}>Remove Geofence Trigger</h3>
-            <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '1rem' }}>
+            <h3 style={{ margin: '0 0 1rem 0', color: 'var(--color-text)' }}>Remove Geofence Trigger</h3>
+            <p style={{ color: 'var(--color-text-subtle)', marginBottom: '1rem' }}>
               Are you sure you want to remove "{trigger.name}"?
             </p>
             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
@@ -898,9 +898,9 @@ const GeofenceTriggerItem: React.FC<GeofenceTriggerItemProps> = ({
                 onClick={() => setShowRemoveModal(false)}
                 style={{
                   padding: '0.5rem 1rem',
-                  background: 'var(--ctp-surface1)',
-                  color: 'var(--ctp-text)',
-                  border: '1px solid var(--ctp-overlay0)',
+                  background: 'var(--color-surface-hover)',
+                  color: 'var(--color-text)',
+                  border: '1px solid var(--color-border-subtle)',
                   borderRadius: '4px',
                   cursor: 'pointer',
                 }}
@@ -914,8 +914,8 @@ const GeofenceTriggerItem: React.FC<GeofenceTriggerItemProps> = ({
                 }}
                 style={{
                   padding: '0.5rem 1rem',
-                  background: 'var(--ctp-red)',
-                  color: 'var(--ctp-base)',
+                  background: 'var(--color-error)',
+                  color: 'var(--color-bg)',
                   border: 'none',
                   borderRadius: '4px',
                   cursor: 'pointer',

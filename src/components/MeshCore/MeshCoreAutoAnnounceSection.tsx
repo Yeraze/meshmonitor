@@ -324,8 +324,8 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
         marginBottom: '1.5rem',
         marginTop: '2rem',
         padding: '1rem 1.25rem',
-        background: 'var(--ctp-surface1)',
-        border: '1px solid var(--ctp-surface2)',
+        background: 'var(--color-surface-hover)',
+        border: '1px solid var(--color-surface-active)',
         borderRadius: '8px',
       }}>
         <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -374,7 +374,7 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
               {t('meshcore.automation.announce.on_start', 'Announce on connection')}
             </span>
           </label>
-          <div style={{ marginTop: '0.25rem', marginLeft: '1.75rem', fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+          <div style={{ marginTop: '0.25rem', marginLeft: '1.75rem', fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
             {t(
               'meshcore.automation.announce.on_start_description',
               'Fire a single announcement immediately whenever this source reconnects.',
@@ -396,7 +396,7 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
               {t('meshcore.automation.announce.use_schedule', 'Use cron schedule')}
             </span>
           </label>
-          <div style={{ marginTop: '0.25rem', marginLeft: '1.75rem', fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+          <div style={{ marginTop: '0.25rem', marginLeft: '1.75rem', fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
             {t(
               'meshcore.automation.announce.use_schedule_description',
               'When unchecked, the announcement runs every N hours. When checked, it follows a standard 5-field cron expression.',
@@ -438,7 +438,7 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
               style={{ fontFamily: 'monospace', width: '260px' }}
             />
             {scheduleError && (
-              <div style={{ marginTop: '0.25rem', fontSize: '0.85rem', color: 'var(--ctp-red)' }}>
+              <div style={{ marginTop: '0.25rem', fontSize: '0.85rem', color: 'var(--color-error)' }}>
                 {scheduleError}
               </div>
             )}
@@ -459,7 +459,7 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
           </label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
             {channels.length === 0 && (
-              <div style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+              <div style={{ fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
                 {t('meshcore.automation.announce.no_channels', 'No channels loaded yet.')}
               </div>
             )}
@@ -542,18 +542,18 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
             ))}
           </div>
           <div style={{ marginTop: '0.5rem' }}>
-            <label style={{ fontSize: '0.9rem', color: 'var(--ctp-subtext0)' }}>
+            <label style={{ fontSize: '0.9rem', color: 'var(--color-text-subtle)' }}>
               {t('meshcore.automation.announce.preview', 'Live preview')}:
             </label>
             <div style={{
               marginTop: '0.25rem',
               padding: '0.5rem',
-              background: 'var(--ctp-base)',
-              border: '1px solid var(--ctp-blue)',
+              background: 'var(--color-bg)',
+              border: '1px solid var(--color-accent)',
               borderRadius: '4px',
               fontFamily: 'monospace',
               fontSize: '0.9rem',
-              color: 'var(--ctp-text)',
+              color: 'var(--color-text)',
               minHeight: '1.5rem',
             }}>
               {preview || settings.message}
@@ -575,7 +575,7 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
               {t('meshcore.automation.announce.advert_enabled', 'Send advert after each announcement')}
             </span>
           </label>
-          <div style={{ marginTop: '0.25rem', marginLeft: '1.75rem', fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+          <div style={{ marginTop: '0.25rem', marginLeft: '1.75rem', fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
             {t(
               'meshcore.automation.announce.advert_description',
               'Fire a MeshCore advert N seconds after each announcement so neighbours rediscover this node.',
@@ -592,7 +592,7 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
                 disabled={disabled || !canWrite}
                 style={{ width: '100px', padding: '2px 4px' }}
               />
-              <span style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
                 {t('meshcore.automation.announce.advert_delay', 'seconds delay (0–600)')}
               </span>
             </div>
@@ -600,7 +600,7 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
         </div>
 
         {lastRunAt && (
-          <p style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)', marginTop: '1rem' }}>
+          <p style={{ fontSize: '0.85rem', color: 'var(--color-text-subtle)', marginTop: '1rem' }}>
             {t('meshcore.automation.announce.last_run', 'Last run')}:{' '}
             {new Date(lastRunAt).toLocaleString()}
           </p>

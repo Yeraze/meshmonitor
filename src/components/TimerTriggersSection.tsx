@@ -247,8 +247,8 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
         alignItems: 'center',
         marginBottom: '1.5rem',
         padding: '1rem 1.25rem',
-        background: 'var(--ctp-surface1)',
-        border: '1px solid var(--ctp-surface2)',
+        background: 'var(--color-surface-hover)',
+        border: '1px solid var(--color-surface-active)',
         borderRadius: '8px'
       }}>
         <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -277,11 +277,11 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
         {/* Add New Timer Form */}
         <div style={{
           padding: '1rem',
-          background: 'var(--ctp-surface0)',
+          background: 'var(--color-surface)',
           borderRadius: '8px',
           marginBottom: '1rem',
         }}>
-          <h4 style={{ margin: '0 0 1rem 0', fontSize: '0.95rem', color: 'var(--ctp-text)' }}>
+          <h4 style={{ margin: '0 0 1rem 0', fontSize: '0.95rem', color: 'var(--color-text)' }}>
             {t('automation.timer_triggers.add_new', 'Add New Timer')}
           </h4>
 
@@ -313,23 +313,23 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
                   style={{
                     width: '100%',
                     fontFamily: 'monospace',
-                    borderColor: cronError ? 'var(--ctp-red)' : undefined,
+                    borderColor: cronError ? 'var(--color-error)' : undefined,
                   }}
                   placeholder="0 */6 * * *"
                 />
                 {cronError && (
-                  <div style={{ color: 'var(--ctp-red)', fontSize: '0.75rem', marginTop: '0.25rem' }}>
+                  <div style={{ color: 'var(--color-error)', fontSize: '0.75rem', marginTop: '0.25rem' }}>
                     {cronError}
                   </div>
                 )}
-                <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)', marginTop: '0.25rem' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', marginTop: '0.25rem' }}>
                   {t('automation.timer_triggers.cron_help', 'Format: minute hour day month weekday')}
                   {' '}
                   <a
                     href="https://crontab.guru/"
                     target="_blank"
                     rel="noopener noreferrer"
-                    style={{ color: 'var(--ctp-blue)' }}
+                    style={{ color: 'var(--color-accent)' }}
                   >
                     crontab.guru
                   </a>
@@ -404,7 +404,7 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
                     style={{ width: '100%', fontFamily: 'monospace' }}
                     placeholder="--ip {IP} --count {NODECOUNT}"
                   />
-                  <span style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
                     {t('automation.timer_triggers.script_args_help', 'Optional CLI arguments. Tokens: {IP}, {PORT}, {VERSION}, {NODECOUNT}, etc.')}
                   </span>
                 </div>
@@ -425,12 +425,12 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
                     placeholder={t('automation.timer_triggers.message_placeholder', 'e.g., MeshMonitor {VERSION} - {NODECOUNT} nodes online')}
                   />
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: '0.25rem' }}>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)', flex: 1 }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', flex: 1 }}>
                       {t('automation.timer_triggers.tokens_help', 'Available tokens:')}
                       {' '}
                       {AVAILABLE_TOKENS.map((tok, i) => (
                         <span key={tok.token}>
-                          <code style={{ background: 'var(--ctp-surface1)', padding: '0 0.25rem', borderRadius: '2px' }}>{tok.token}</code>
+                          <code style={{ background: 'var(--color-surface-hover)', padding: '0 0.25rem', borderRadius: '2px' }}>{tok.token}</code>
                           {i < AVAILABLE_TOKENS.length - 1 && ', '}
                         </span>
                       ))}
@@ -438,7 +438,7 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
                     <div style={{
                       fontSize: '0.75rem',
                       fontWeight: 'bold',
-                      color: newResponse.length > 200 ? 'var(--ctp-red)' : newResponse.length > 150 ? 'var(--ctp-yellow)' : 'var(--ctp-subtext0)',
+                      color: newResponse.length > 200 ? 'var(--color-error)' : newResponse.length > 150 ? 'var(--color-warning)' : 'var(--color-text-subtle)',
                       marginLeft: '0.5rem',
                       whiteSpace: 'nowrap',
                     }}>
@@ -471,7 +471,7 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
                   </option>
                 ))}
               </select>
-              <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
                 {newResponseType === 'script' && newChannel === 'none'
                   ? t('automation.timer_triggers.channel_none_help', 'Script handles its own output (e.g., external integrations)')
                   : t('automation.timer_triggers.channel_help_generic', 'Output will be sent to this channel')}
@@ -497,7 +497,7 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
         {/* Existing Timers List */}
         {localTriggers.length > 0 && (
           <div style={{ marginBottom: '1rem' }}>
-            <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.95rem', color: 'var(--ctp-text)' }}>
+            <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.95rem', color: 'var(--color-text)' }}>
               {t('automation.timer_triggers.existing', 'Existing Timers')} ({localTriggers.length})
             </h4>
 
@@ -528,8 +528,8 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
           <div style={{
             padding: '2rem',
             textAlign: 'center',
-            color: 'var(--ctp-subtext0)',
-            background: 'var(--ctp-surface0)',
+            color: 'var(--color-text-subtle)',
+            background: 'var(--color-surface)',
             borderRadius: '8px',
           }}>
             {t('automation.timer_triggers.no_timers', 'No timer triggers configured. Add one above to schedule automatic script execution.')}
@@ -635,8 +635,8 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
         gap: '0.5rem',
         padding: '0.75rem',
         marginBottom: '0.5rem',
-        background: isEditing ? 'var(--ctp-surface1)' : 'var(--ctp-surface0)',
-        border: isEditing ? '2px solid var(--ctp-blue)' : '1px solid var(--ctp-overlay0)',
+        background: isEditing ? 'var(--color-surface-hover)' : 'var(--color-surface)',
+        border: isEditing ? '2px solid var(--color-accent)' : '1px solid var(--color-border-subtle)',
         borderRadius: '4px',
         opacity: trigger.enabled ? 1 : 0.6,
       }}
@@ -665,11 +665,11 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
                   style={{
                     width: '100%',
                     fontFamily: 'monospace',
-                    borderColor: editCronError ? 'var(--ctp-red)' : undefined,
+                    borderColor: editCronError ? 'var(--color-error)' : undefined,
                   }}
                 />
                 {editCronError && (
-                  <div style={{ color: 'var(--ctp-red)', fontSize: '0.75rem', marginTop: '0.25rem' }}>
+                  <div style={{ color: 'var(--color-error)', fontSize: '0.75rem', marginTop: '0.25rem' }}>
                     {editCronError}
                   </div>
                 )}
@@ -729,7 +729,7 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
                     style={{ width: '100%', fontFamily: 'monospace' }}
                     placeholder="--ip {IP} --count {NODECOUNT}"
                   />
-                  <span style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)' }}>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)' }}>
                     {t('automation.timer_triggers.script_args_help', 'Optional CLI arguments. Tokens: {IP}, {PORT}, {VERSION}, {NODECOUNT}, etc.')}
                   </span>
                 </div>
@@ -746,13 +746,13 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
                     style={{ width: '100%', minHeight: '60px', resize: 'vertical' }}
                   />
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.25rem' }}>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)' }}>
                       Tokens: {AVAILABLE_TOKENS.map(tok => tok.token).join(', ')}
                     </div>
                     <div style={{
                       fontSize: '0.7rem',
                       fontWeight: 'bold',
-                      color: editResponse.length > 200 ? 'var(--ctp-red)' : editResponse.length > 150 ? 'var(--ctp-yellow)' : 'var(--ctp-subtext0)',
+                      color: editResponse.length > 200 ? 'var(--color-error)' : editResponse.length > 150 ? 'var(--color-warning)' : 'var(--color-text-subtle)',
                     }}>
                       {editResponse.length}/200
                     </div>
@@ -789,7 +789,7 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
               style={{
                 padding: '0.25rem 0.75rem',
                 fontSize: '12px',
-                background: 'var(--ctp-green)',
+                background: 'var(--color-success)',
                 color: 'white',
                 border: 'none',
                 borderRadius: '4px',
@@ -804,8 +804,8 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
               style={{
                 padding: '0.25rem 0.75rem',
                 fontSize: '12px',
-                background: 'var(--ctp-surface2)',
-                color: 'var(--ctp-text)',
+                background: 'var(--color-surface-active)',
+                color: 'var(--color-text)',
                 border: 'none',
                 borderRadius: '4px',
                 cursor: 'pointer',
@@ -819,10 +819,10 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
         <>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>{trigger.name}</div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)', fontFamily: 'monospace' }}>
+            <div style={{ fontSize: '0.85rem', color: 'var(--color-text-subtle)', fontFamily: 'monospace' }}>
               {trigger.cronExpression}
             </div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--ctp-subtext0)', marginTop: '0.25rem' }}>
+            <div style={{ fontSize: '0.8rem', color: 'var(--color-text-subtle)', marginTop: '0.25rem' }}>
               {responseType === 'script' ? (
                 <>{scriptEmoji || <UiIcon name="fileCode" size={14} />} {scriptDisplayName}</>
               ) : (
@@ -831,12 +831,12 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
               {' '}<UiIcon name="forward" size={14} /> Ch {trigger.channel ?? 0}: {channels.find(c => c.id === (trigger.channel ?? 0))?.name || `Channel ${trigger.channel ?? 0}`}
             </div>
             {trigger.lastRun && (
-              <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)', marginTop: '0.25rem' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', marginTop: '0.25rem' }}>
                 Last run: {formatLastRun(trigger.lastRun)}
                 {trigger.lastResult && (
                   <span style={{
                     marginLeft: '0.5rem',
-                    color: trigger.lastResult === 'success' ? 'var(--ctp-green)' : 'var(--ctp-red)',
+                    color: trigger.lastResult === 'success' ? 'var(--color-success)' : 'var(--color-error)',
                   }}>
                     ({trigger.lastResult})
                   </span>
@@ -848,8 +848,8 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
             <span style={{
               fontSize: '0.7rem',
               padding: '0.15rem 0.4rem',
-              background: trigger.enabled ? 'var(--ctp-green)' : 'var(--ctp-surface2)',
-              color: trigger.enabled ? 'var(--ctp-base)' : 'var(--ctp-subtext0)',
+              background: trigger.enabled ? 'var(--color-success)' : 'var(--color-surface-active)',
+              color: trigger.enabled ? 'var(--color-bg)' : 'var(--color-text-subtle)',
               borderRadius: '3px',
               fontWeight: 'bold',
             }}>
@@ -860,8 +860,8 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
               style={{
                 padding: '0.25rem 0.5rem',
                 fontSize: '12px',
-                background: trigger.enabled ? 'var(--ctp-yellow)' : 'var(--ctp-green)',
-                color: 'var(--ctp-base)',
+                background: trigger.enabled ? 'var(--color-warning)' : 'var(--color-success)',
+                color: 'var(--color-bg)',
                 border: 'none',
                 borderRadius: '4px',
                 cursor: 'pointer',
@@ -876,7 +876,7 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
                   padding: '0.25rem 0.5rem',
                   fontSize: '12px',
                   background: 'var(--ctp-teal)',
-                  color: 'var(--ctp-base)',
+                  color: 'var(--color-bg)',
                   border: 'none',
                   borderRadius: '4px',
                   cursor: 'pointer',
@@ -891,7 +891,7 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
               style={{
                 padding: '0.25rem 0.5rem',
                 fontSize: '12px',
-                background: 'var(--ctp-blue)',
+                background: 'var(--color-accent)',
                 color: 'white',
                 border: 'none',
                 borderRadius: '4px',
@@ -905,7 +905,7 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
               style={{
                 padding: '0.25rem 0.5rem',
                 fontSize: '12px',
-                background: 'var(--ctp-red)',
+                background: 'var(--color-error)',
                 color: 'white',
                 border: 'none',
                 borderRadius: '4px',
@@ -933,15 +933,15 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
           zIndex: 10000,
         }}>
           <div style={{
-            background: 'var(--ctp-base)',
+            background: 'var(--color-bg)',
             borderRadius: '8px',
             padding: '1.5rem',
             maxWidth: '400px',
             width: '90%',
-            border: '1px solid var(--ctp-overlay0)',
+            border: '1px solid var(--color-border-subtle)',
           }}>
-            <h3 style={{ margin: '0 0 1rem 0', color: 'var(--ctp-text)' }}>Remove Timer</h3>
-            <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '1rem' }}>
+            <h3 style={{ margin: '0 0 1rem 0', color: 'var(--color-text)' }}>Remove Timer</h3>
+            <p style={{ color: 'var(--color-text-subtle)', marginBottom: '1rem' }}>
               Are you sure you want to remove "{trigger.name}"?
             </p>
             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
@@ -949,9 +949,9 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
                 onClick={() => setShowRemoveModal(false)}
                 style={{
                   padding: '0.5rem 1rem',
-                  background: 'var(--ctp-surface1)',
-                  color: 'var(--ctp-text)',
-                  border: '1px solid var(--ctp-overlay0)',
+                  background: 'var(--color-surface-hover)',
+                  color: 'var(--color-text)',
+                  border: '1px solid var(--color-border-subtle)',
                   borderRadius: '4px',
                   cursor: 'pointer',
                 }}
@@ -965,8 +965,8 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
                 }}
                 style={{
                   padding: '0.5rem 1rem',
-                  background: 'var(--ctp-red)',
-                  color: 'var(--ctp-base)',
+                  background: 'var(--color-error)',
+                  color: 'var(--color-bg)',
                   border: 'none',
                   borderRadius: '4px',
                   cursor: 'pointer',

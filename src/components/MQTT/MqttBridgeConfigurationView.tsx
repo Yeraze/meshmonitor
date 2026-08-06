@@ -79,7 +79,7 @@ function bboxFromForm(g: BridgeConfigForm['geo']): BBoxValue | null {
   return nums;
 }
 
-const labelStyle: React.CSSProperties = { fontSize: 11, color: 'var(--ctp-subtext0)', marginTop: 4 };
+const labelStyle: React.CSSProperties = { fontSize: 11, color: 'var(--color-text-subtle)', marginTop: 4 };
 
 export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewProps> = ({
   sourceId,
@@ -239,7 +239,7 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
 
   if (loadError) {
     return (
-      <div className="mqtt-bridge-config" style={{ padding: 16, color: 'var(--ctp-red)' }}>
+      <div className="mqtt-bridge-config" style={{ padding: 16, color: 'var(--color-error)' }}>
         {loadError}
       </div>
     );
@@ -378,7 +378,7 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
             <span className="dashboard-form-label" style={{ display: 'block' }}>
               {t('source.form.mqtt_bridge_ignore_ok_to_mqtt', 'Uplink all packets (ignore ok_to_mqtt bit)')}
             </span>
-            <span style={{ fontSize: 11, color: 'var(--ctp-yellow)' }}>
+            <span style={{ fontSize: 11, color: 'var(--color-warning)' }}>
               {t(
                 'source.form.mqtt_bridge_ignore_ok_to_mqtt_help',
                 'Overrides the originating node\'s "ok_to_mqtt" preference. Only enable for private bridges where every gateway has consented.',
@@ -402,8 +402,8 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
             onChange={(e) => patch('subscriptions', e.target.value)}
           />
         </label>
-        <fieldset style={{ border: '1px solid var(--ctp-surface1)', borderRadius: 6, padding: '8px 12px 12px', margin: '8px 0' }}>
-          <legend style={{ fontSize: 12, padding: '0 6px', color: 'var(--ctp-subtext0)' }}>
+        <fieldset style={{ border: '1px solid var(--color-surface-hover)', borderRadius: 6, padding: '8px 12px 12px', margin: '8px 0' }}>
+          <legend style={{ fontSize: 12, padding: '0 6px', color: 'var(--color-text-subtle)' }}>
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
               <input
                 type="checkbox"
@@ -430,8 +430,8 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
             </label>
           )}
         </fieldset>
-        <fieldset style={{ border: '1px solid var(--ctp-surface1)', borderRadius: 6, padding: '8px 12px 12px', margin: '8px 0' }}>
-          <legend style={{ fontSize: 12, padding: '0 6px', color: 'var(--ctp-subtext0)' }}>
+        <fieldset style={{ border: '1px solid var(--color-surface-hover)', borderRadius: 6, padding: '8px 12px 12px', margin: '8px 0' }}>
+          <legend style={{ fontSize: 12, padding: '0 6px', color: 'var(--color-text-subtle)' }}>
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
               <input
                 type="checkbox"
@@ -475,7 +475,7 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
 
       {/* --- Geo filter status (read-only observability, Phase 4 WP2) --- */}
       <CollapsibleSection title={t('mqtt_bridge_config.geo_status.title', 'Geo filter status')}>
-        <div style={{ fontSize: 13, color: 'var(--ctp-text)' }}>
+        <div style={{ fontSize: 13, color: 'var(--color-text)' }}>
           {t(
             'mqtt_bridge_config.geo_status.dropped_summary',
             'Out-of-bbox positions dropped — downlink: {{downlink}} · uplink: {{uplink}}',
@@ -488,7 +488,7 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
             'Counts plaintext positions only — encrypted positions are evaluated after decryption and are not counted here.',
           )}
         </span>
-        <div style={{ fontSize: 13, color: 'var(--ctp-text)', marginTop: 12 }}>
+        <div style={{ fontSize: 13, color: 'var(--color-text)', marginTop: 12 }}>
           {lastGeoSweep ? (
             t(
               'mqtt_bridge_config.geo_status.last_sweep',
@@ -528,7 +528,7 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
               gap: 4,
               maxHeight: 200,
               overflowY: 'auto',
-              border: '1px solid var(--ctp-surface1)',
+              border: '1px solid var(--color-surface-hover)',
               borderRadius: 6,
               padding: '8px 12px',
             }}
@@ -716,8 +716,8 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
         >
           {saving ? t('common.saving', 'Saving…') : t('common.save', 'Save')}
         </button>
-        {saved && <span style={{ color: 'var(--ctp-green)' }}><UiIcon name="check" size={14} /> {t('common.saved', 'Saved')}</span>}
-        {saveError && <span style={{ color: 'var(--ctp-red)' }}>{saveError}</span>}
+        {saved && <span style={{ color: 'var(--color-success)' }}><UiIcon name="check" size={14} /> {t('common.saved', 'Saved')}</span>}
+        {saveError && <span style={{ color: 'var(--color-error)' }}>{saveError}</span>}
       </div>
     </div>
   );

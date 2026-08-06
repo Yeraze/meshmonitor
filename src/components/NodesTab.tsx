@@ -1964,7 +1964,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                     <strong>{ni.neighborName}</strong> <UiIcon name={isBidirectional ? 'bidirectional' : 'forward'} size={14} /> <strong>{ni.nodeName}</strong>
                   </div>
                   {isBidirectional && (
-                    <div className="route-usage" style={{ color: 'var(--ctp-green)' }}>
+                    <div className="route-usage" style={{ color: 'var(--color-success)' }}>
                       <UiIcon name="bidirectional" size={14} /> {t('direct_links.bidirectional', 'Bidirectional')}
                     </div>
                   )}

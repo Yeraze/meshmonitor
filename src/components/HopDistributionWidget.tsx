@@ -84,15 +84,15 @@ const HopDistributionWidget: React.FC<HopDistributionWidgetProps> = ({
 
   // Color gradient from green (close) to yellow to red (far)
   const getBarColor = (hop: number | string): string => {
-    if (typeof hop === 'string') return 'var(--ctp-overlay1)';
+    if (typeof hop === 'string') return 'var(--color-text-disabled)';
     const colors = [
-      'var(--ctp-green)',
+      'var(--color-success)',
       'var(--ctp-teal)',
-      'var(--ctp-blue)',
-      'var(--ctp-lavender)',
-      'var(--ctp-mauve)',
+      'var(--color-accent)',
+      'var(--color-accent-muted)',
+      'var(--color-accent-alt)',
       'var(--ctp-pink)',
-      'var(--ctp-red)',
+      'var(--color-error)',
     ];
     return colors[Math.min(hop, colors.length - 1)];
   };
@@ -153,7 +153,7 @@ const HopDistributionWidget: React.FC<HopDistributionWidgetProps> = ({
                   className="hop-bar-fill"
                   style={{
                     width: `${(unknownCount / maxCount) * 100}%`,
-                    backgroundColor: 'var(--ctp-overlay1)',
+                    backgroundColor: 'var(--color-text-disabled)',
                   }}
                 />
               </div>

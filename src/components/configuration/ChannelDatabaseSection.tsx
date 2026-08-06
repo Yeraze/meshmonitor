@@ -94,11 +94,11 @@ const SortableChannelCard: React.FC<SortableChannelCardProps> = ({
     transform: CSS.Transform.toString(transform),
     transition,
     border: channel.isEnabled
-      ? '2px solid var(--ctp-green)'
-      : '1px solid var(--ctp-surface1)',
+      ? '2px solid var(--color-success)'
+      : '1px solid var(--color-surface-hover)',
     borderRadius: '8px',
     padding: '1rem',
-    backgroundColor: channel.isEnabled ? 'var(--ctp-surface0)' : 'var(--ctp-mantle)',
+    backgroundColor: channel.isEnabled ? 'var(--color-surface)' : 'var(--color-bg-raised)',
     opacity: isDragging ? 0.5 : (channel.isEnabled ? 1 : 0.7),
     cursor: isDragging ? 'grabbing' : 'default'
   };
@@ -116,7 +116,7 @@ const SortableChannelCard: React.FC<SortableChannelCardProps> = ({
             marginRight: '0.5rem',
             display: 'flex',
             alignItems: 'center',
-            color: 'var(--ctp-overlay0)',
+            color: 'var(--color-text-faint)',
             touchAction: 'none'
           }}
           title={t('channel_database.drag_to_reorder')}
@@ -131,20 +131,20 @@ const SortableChannelCard: React.FC<SortableChannelCardProps> = ({
           </svg>
         </div>
         <div style={{ flex: 1 }}>
-          <h4 style={{ margin: 0, color: 'var(--ctp-text)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <h4 style={{ margin: 0, color: 'var(--color-text)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             {channel.name}
             {channel.isEnabled ? (
-              <span style={{ color: 'var(--ctp-green)', fontSize: '0.8rem' }}>{t('channel_database.enabled')}</span>
+              <span style={{ color: 'var(--color-success)', fontSize: '0.8rem' }}>{t('channel_database.enabled')}</span>
             ) : (
-              <span style={{ color: 'var(--ctp-overlay0)', fontSize: '0.8rem' }}>{t('channel_database.disabled')}</span>
+              <span style={{ color: 'var(--color-text-faint)', fontSize: '0.8rem' }}>{t('channel_database.disabled')}</span>
             )}
           </h4>
           {channel.description && (
-            <p style={{ margin: '0.25rem 0', fontSize: '0.9rem', color: 'var(--ctp-subtext1)' }}>
+            <p style={{ margin: '0.25rem 0', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
               {channel.description}
             </p>
           )}
-          <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+          <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
             <div>
               {channel.pskLength === 0
                 ? 'PSK: (none) (None)'
@@ -168,8 +168,8 @@ const SortableChannelCard: React.FC<SortableChannelCardProps> = ({
             style={{
               padding: '0.4rem 0.6rem',
               fontSize: '0.85rem',
-              backgroundColor: channel.isEnabled ? 'var(--ctp-yellow)' : 'var(--ctp-green)',
-              color: 'var(--ctp-base)',
+              backgroundColor: channel.isEnabled ? 'var(--color-warning)' : 'var(--color-success)',
+              color: 'var(--color-bg)',
               border: 'none',
               borderRadius: '4px',
               cursor: 'pointer'
@@ -183,8 +183,8 @@ const SortableChannelCard: React.FC<SortableChannelCardProps> = ({
             style={{
               padding: '0.4rem 0.6rem',
               fontSize: '0.85rem',
-              backgroundColor: 'var(--ctp-blue)',
-              color: 'var(--ctp-base)',
+              backgroundColor: 'var(--color-accent)',
+              color: 'var(--color-bg)',
               border: 'none',
               borderRadius: '4px',
               cursor: 'pointer'
@@ -199,8 +199,8 @@ const SortableChannelCard: React.FC<SortableChannelCardProps> = ({
               style={{
                 padding: '0.4rem 0.6rem',
                 fontSize: '0.85rem',
-                backgroundColor: 'var(--ctp-mauve)',
-                color: 'var(--ctp-base)',
+                backgroundColor: 'var(--color-accent-alt)',
+                color: 'var(--color-bg)',
                 border: 'none',
                 borderRadius: '4px',
                 cursor: decryptionRunning ? 'not-allowed' : 'pointer',
@@ -216,8 +216,8 @@ const SortableChannelCard: React.FC<SortableChannelCardProps> = ({
             style={{
               padding: '0.4rem 0.6rem',
               fontSize: '0.85rem',
-              backgroundColor: 'var(--ctp-red)',
-              color: 'var(--ctp-base)',
+              backgroundColor: 'var(--color-error)',
+              color: 'var(--color-bg)',
               border: 'none',
               borderRadius: '4px',
               cursor: 'pointer'
@@ -788,8 +788,8 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
         {rebroadcastMode !== undefined && rebroadcastMode !== 0 && (
           <div
             style={{
-              backgroundColor: 'var(--ctp-peach)',
-              color: 'var(--ctp-base)',
+              backgroundColor: 'var(--color-caution)',
+              color: 'var(--color-bg)',
               padding: '1rem',
               borderRadius: '8px',
               marginBottom: '1rem',
@@ -817,8 +817,8 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
         {decryptionProgress && (decryptionProgress.status === 'running' || decryptionProgress.status === 'pending') && (
           <div
             style={{
-              backgroundColor: 'var(--ctp-blue)',
-              color: 'var(--ctp-base)',
+              backgroundColor: 'var(--color-accent)',
+              color: 'var(--color-bg)',
               padding: '1rem',
               borderRadius: '8px',
               marginBottom: '1rem'
@@ -843,7 +843,7 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
                 style={{
                   height: '100%',
                   width: `${decryptionProgress.total > 0 ? (decryptionProgress.processed / decryptionProgress.total) * 100 : 0}%`,
-                  backgroundColor: 'var(--ctp-green)',
+                  backgroundColor: 'var(--color-success)',
                   transition: 'width 0.3s ease'
                 }}
               />
@@ -857,8 +857,8 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
             onClick={handleAddChannel}
             style={{
               padding: '0.5rem 1rem',
-              backgroundColor: 'var(--ctp-green)',
-              color: 'var(--ctp-base)',
+              backgroundColor: 'var(--color-success)',
+              color: 'var(--color-bg)',
               border: 'none',
               borderRadius: '4px',
               cursor: 'pointer'
@@ -870,8 +870,8 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
             onClick={() => setShowImportModal(true)}
             style={{
               padding: '0.5rem 1rem',
-              backgroundColor: 'var(--ctp-yellow)',
-              color: 'var(--ctp-base)',
+              backgroundColor: 'var(--color-warning)',
+              color: 'var(--color-bg)',
               border: 'none',
               borderRadius: '4px',
               cursor: 'pointer'
@@ -884,8 +884,8 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
             title={t('channel_database.import_from_url_title')}
             style={{
               padding: '0.5rem 1rem',
-              backgroundColor: 'var(--ctp-peach)',
-              color: 'var(--ctp-base)',
+              backgroundColor: 'var(--color-caution)',
+              color: 'var(--color-bg)',
               border: 'none',
               borderRadius: '4px',
               cursor: 'pointer'
@@ -898,8 +898,8 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
             disabled={channels.length === 0}
             style={{
               padding: '0.5rem 1rem',
-              backgroundColor: 'var(--ctp-sapphire)',
-              color: 'var(--ctp-base)',
+              backgroundColor: 'var(--color-accent-hover)',
+              color: 'var(--color-bg)',
               border: 'none',
               borderRadius: '4px',
               cursor: channels.length === 0 ? 'not-allowed' : 'pointer',
@@ -915,8 +915,8 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
         {channels.length > 1 && (
           <div
             style={{
-              backgroundColor: 'var(--ctp-surface0)',
-              color: 'var(--ctp-subtext1)',
+              backgroundColor: 'var(--color-surface)',
+              color: 'var(--color-text-muted)',
               padding: '0.75rem 1rem',
               borderRadius: '8px',
               marginBottom: '1rem',
@@ -941,8 +941,8 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
             style={{
               textAlign: 'center',
               padding: '2rem',
-              color: 'var(--ctp-subtext0)',
-              backgroundColor: 'var(--ctp-mantle)',
+              color: 'var(--color-text-subtle)',
+              backgroundColor: 'var(--color-bg-raised)',
               borderRadius: '8px'
             }}
           >
@@ -997,7 +997,7 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
         >
           <div
             style={{
-              backgroundColor: 'var(--ctp-base)',
+              backgroundColor: 'var(--color-bg)',
               borderRadius: '8px',
               padding: '1.5rem',
               maxWidth: '500px',
@@ -1046,8 +1046,8 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
                   type="button"
                   style={{
                     padding: '0.5rem 1rem',
-                    backgroundColor: 'var(--ctp-green)',
-                    color: 'var(--ctp-base)',
+                    backgroundColor: 'var(--color-success)',
+                    color: 'var(--color-bg)',
                     border: 'none',
                     borderRadius: '4px',
                     cursor: 'pointer',
@@ -1115,8 +1115,8 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
                 style={{
                   flex: 1,
                   padding: '0.75rem',
-                  backgroundColor: 'var(--ctp-blue)',
-                  color: 'var(--ctp-base)',
+                  backgroundColor: 'var(--color-accent)',
+                  color: 'var(--color-bg)',
                   border: 'none',
                   borderRadius: '4px',
                   cursor: isSaving ? 'not-allowed' : 'pointer',
@@ -1131,8 +1131,8 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
                 style={{
                   flex: 1,
                   padding: '0.75rem',
-                  backgroundColor: 'var(--ctp-surface1)',
-                  color: 'var(--ctp-text)',
+                  backgroundColor: 'var(--color-surface-hover)',
+                  color: 'var(--color-text)',
                   border: 'none',
                   borderRadius: '4px',
                   cursor: isSaving ? 'not-allowed' : 'pointer'
@@ -1164,7 +1164,7 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
         >
           <div
             style={{
-              backgroundColor: 'var(--ctp-base)',
+              backgroundColor: 'var(--color-bg)',
               borderRadius: '8px',
               padding: '1.5rem',
               maxWidth: '500px',
@@ -1200,7 +1200,7 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
                 <label>{t('channel_database.preview')}:</label>
                 <pre
                   style={{
-                    backgroundColor: 'var(--ctp-surface0)',
+                    backgroundColor: 'var(--color-surface)',
                     padding: '0.75rem',
                     borderRadius: '4px',
                     fontSize: '0.85rem',
@@ -1220,8 +1220,8 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
                 style={{
                   flex: 1,
                   padding: '0.75rem',
-                  backgroundColor: 'var(--ctp-green)',
-                  color: 'var(--ctp-base)',
+                  backgroundColor: 'var(--color-success)',
+                  color: 'var(--color-bg)',
                   border: 'none',
                   borderRadius: '4px',
                   cursor: (isSaving || !importFileContent) ? 'not-allowed' : 'pointer',
@@ -1236,8 +1236,8 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
                 style={{
                   flex: 1,
                   padding: '0.75rem',
-                  backgroundColor: 'var(--ctp-surface1)',
-                  color: 'var(--ctp-text)',
+                  backgroundColor: 'var(--color-surface-hover)',
+                  color: 'var(--color-text)',
                   border: 'none',
                   borderRadius: '4px',
                   cursor: isSaving ? 'not-allowed' : 'pointer'
@@ -1273,7 +1273,7 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
         >
           <div
             style={{
-              backgroundColor: 'var(--ctp-base)',
+              backgroundColor: 'var(--color-bg)',
               borderRadius: '8px',
               padding: '1.5rem',
               maxWidth: '640px',
@@ -1315,8 +1315,8 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
                 style={{
                   marginTop: '0.5rem',
                   padding: '0.5rem 1rem',
-                  backgroundColor: 'var(--ctp-blue)',
-                  color: 'var(--ctp-base)',
+                  backgroundColor: 'var(--color-accent)',
+                  color: 'var(--color-bg)',
                   border: 'none',
                   borderRadius: '4px',
                   cursor: (isDecodingUrl || isSaving || !urlImportInput.trim()) ? 'not-allowed' : 'pointer',
@@ -1332,8 +1332,8 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
                 style={{
                   marginTop: '1rem',
                   padding: '0.5rem 0.75rem',
-                  backgroundColor: 'var(--ctp-red)',
-                  color: 'var(--ctp-base)',
+                  backgroundColor: 'var(--color-error)',
+                  color: 'var(--color-bg)',
                   borderRadius: '4px',
                   fontSize: '0.9rem'
                 }}
@@ -1349,7 +1349,7 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
                 </label>
                 <div
                   style={{
-                    backgroundColor: 'var(--ctp-surface0)',
+                    backgroundColor: 'var(--color-surface)',
                     padding: '0.5rem',
                     borderRadius: '4px',
                     maxHeight: '320px',
@@ -1378,7 +1378,7 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
                           display: 'flex',
                           gap: '0.5rem',
                           padding: '0.5rem',
-                          borderBottom: idx < urlDecodedChannels.length - 1 ? '1px solid var(--ctp-surface1)' : 'none',
+                          borderBottom: idx < urlDecodedChannels.length - 1 ? '1px solid var(--color-surface-hover)' : 'none',
                           opacity: isImportable ? 1 : 0.55
                         }}
                       >
@@ -1405,7 +1405,7 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
                               fontSize: '0.95rem'
                             }}
                           />
-                          <div style={{ fontSize: '0.8rem', color: 'var(--ctp-subtext0)', marginTop: '0.25rem' }}>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--color-text-subtle)', marginTop: '0.25rem' }}>
                             <span>{roleLabel}</span>
                             {' · '}
                             {normalizedPsk
@@ -1427,8 +1427,8 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
                 style={{
                   flex: 1,
                   padding: '0.75rem',
-                  backgroundColor: 'var(--ctp-green)',
-                  color: 'var(--ctp-base)',
+                  backgroundColor: 'var(--color-success)',
+                  color: 'var(--color-bg)',
                   border: 'none',
                   borderRadius: '4px',
                   cursor: (isSaving || urlSelectedIndexes.size === 0) ? 'not-allowed' : 'pointer',
@@ -1448,8 +1448,8 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
                 style={{
                   flex: 1,
                   padding: '0.75rem',
-                  backgroundColor: 'var(--ctp-surface1)',
-                  color: 'var(--ctp-text)',
+                  backgroundColor: 'var(--color-surface-hover)',
+                  color: 'var(--color-text)',
                   border: 'none',
                   borderRadius: '4px',
                   cursor: (isSaving || isDecodingUrl) ? 'not-allowed' : 'pointer'
@@ -1481,7 +1481,7 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
         >
           <div
             style={{
-              backgroundColor: 'var(--ctp-base)',
+              backgroundColor: 'var(--color-bg)',
               borderRadius: '8px',
               padding: '1.5rem',
               maxWidth: '400px',
@@ -1489,7 +1489,7 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 style={{ marginTop: 0, color: 'var(--ctp-red)' }}>{t('channel_database.confirm_delete')}</h3>
+            <h3 style={{ marginTop: 0, color: 'var(--color-error)' }}>{t('channel_database.confirm_delete')}</h3>
             <p>{t('channel_database.confirm_delete_message')}</p>
 
             <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem' }}>
@@ -1499,8 +1499,8 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
                 style={{
                   flex: 1,
                   padding: '0.75rem',
-                  backgroundColor: 'var(--ctp-red)',
-                  color: 'var(--ctp-base)',
+                  backgroundColor: 'var(--color-error)',
+                  color: 'var(--color-bg)',
                   border: 'none',
                   borderRadius: '4px',
                   cursor: isSaving ? 'not-allowed' : 'pointer',
@@ -1515,8 +1515,8 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
                 style={{
                   flex: 1,
                   padding: '0.75rem',
-                  backgroundColor: 'var(--ctp-surface1)',
-                  color: 'var(--ctp-text)',
+                  backgroundColor: 'var(--color-surface-hover)',
+                  color: 'var(--color-text)',
                   border: 'none',
                   borderRadius: '4px',
                   cursor: isSaving ? 'not-allowed' : 'pointer'

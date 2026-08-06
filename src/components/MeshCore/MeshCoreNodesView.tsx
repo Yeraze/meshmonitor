@@ -592,8 +592,8 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
         >
           <div
             style={{
-              background: 'var(--ctp-base, #1e1e2e)',
-              color: 'var(--ctp-text, #cdd6f4)',
+              background: 'var(--color-bg, #1e1e2e)',
+              color: 'var(--color-text, #cdd6f4)',
               padding: '1.25rem 1.5rem',
               borderRadius: '8px',
               maxWidth: '32rem',
@@ -628,7 +628,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
               autoFocus
             />
             {importError && (
-              <div style={{ color: 'var(--ctp-red)', marginBottom: '0.75rem' }} role="alert">
+              <div style={{ color: 'var(--color-error)', marginBottom: '0.75rem' }} role="alert">
                 {importError}
               </div>
             )}

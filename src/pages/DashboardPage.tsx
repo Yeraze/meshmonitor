@@ -1087,7 +1087,7 @@ function DashboardInner() {
             <h3>{t('source.kebab.prune_outside_roi')}</h3>
             <p>{t('source.prune_outside_roi_confirm')}</p>
             {pruneError && (
-              <p style={{ color: 'var(--ctp-red)', fontSize: 13 }}>{pruneError}</p>
+              <p style={{ color: 'var(--color-error)', fontSize: 13 }}>{pruneError}</p>
             )}
             <div className="dashboard-confirm-actions">
               <button onClick={() => setPruneConfirm(null)} disabled={prunePending}>
@@ -1172,7 +1172,7 @@ function DashboardInner() {
                     onChange={(e) => setFormMqttListenPort(e.target.value)}
                     placeholder="1883"
                   />
-                  <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
+                  <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
                     {t('source.form.mqtt_listen_port_help', 'Devices configure their MQTT module to point at this port on the MeshMonitor host.')}
                   </p>
                 </label>
@@ -1216,7 +1216,7 @@ function DashboardInner() {
                     <span className="dashboard-form-label" style={{ display: 'block' }}>
                       {t('source.form.mqtt_hop_limit_override', 'Override hop limit on delivery')}
                     </span>
-                    <span style={{ fontSize: 11, color: 'var(--ctp-subtext0)' }}>
+                    <span style={{ fontSize: 11, color: 'var(--color-text-subtle)' }}>
                       {t(
                         'source.form.mqtt_hop_limit_override_help',
                         'Rewrite hop_limit on packets the broker delivers to connected devices. 0 is zero-hop injection, matching the public Meshtastic broker — it prevents MQTT-bridged packets from being rebroadcast over RF.',
@@ -1243,7 +1243,7 @@ function DashboardInner() {
                       ))}
                     </select>
                     {formMqttHopOverrideValue > 0 && (
-                      <span style={{ fontSize: 11, color: 'var(--ctp-peach)', marginTop: 4 }}>
+                      <span style={{ fontSize: 11, color: 'var(--color-caution)', marginTop: 4 }}>
                         {t(
                           'source.form.mqtt_hop_limit_warning',
                           'Warning: packets arriving over MQTT may have originated on a distant, unrelated mesh. With a nonzero hop limit, every node in RF range will rebroadcast them up to this many hops — a real airtime and flood risk on a busy mesh.',
@@ -1266,7 +1266,7 @@ function DashboardInner() {
                       <span className="dashboard-form-label">
                         {t('source.form.bridge_topic_rewrites', 'Bridge topic rewrites')}
                       </span>
-                      <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 8px' }}>
+                      <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 8px' }}>
                         {t(
                           'source.form.bridge_topic_rewrites_help',
                           'For each bridge attached to this broker, replace a literal topic prefix on inbound (downlink) or outbound (uplink) messages. Leave both From and To empty to disable that direction.',
@@ -1292,24 +1292,24 @@ function DashboardInner() {
                             key={bridge.id}
                             open={Boolean(hasAny)}
                             style={{
-                              border: '1px solid var(--ctp-surface1)',
+                              border: '1px solid var(--color-surface-hover)',
                               borderRadius: 4,
                               padding: '6px 10px',
                               marginBottom: 6,
-                              background: 'var(--ctp-surface0)',
+                              background: 'var(--color-surface)',
                             }}
                           >
                             <summary style={{ cursor: 'pointer', fontWeight: 500 }}>
                               {bridge.name}
                               {hasAny && (
-                                <span style={{ marginLeft: 8, fontSize: 10, color: 'var(--ctp-blue)' }}>
+                                <span style={{ marginLeft: 8, fontSize: 10, color: 'var(--color-accent)' }}>
                                   • {t('source.form.bridge_topic_rewrites_active', 'configured')}
                                 </span>
                               )}
                             </summary>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
                               <div>
-                                <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ctp-subtext0)' }}>
+                                <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--color-text-subtle)' }}>
                                   {t('source.form.bridge_topic_rewrites_downlink', 'Downlink (to local broker)')}
                                 </span>
                                 <input
@@ -1330,7 +1330,7 @@ function DashboardInner() {
                                 />
                               </div>
                               <div>
-                                <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ctp-subtext0)' }}>
+                                <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--color-text-subtle)' }}>
                                   {t('source.form.bridge_topic_rewrites_uplink', 'Uplink (to upstream)')}
                                 </span>
                                 <input
@@ -1376,7 +1376,7 @@ function DashboardInner() {
                         </option>
                       ))}
                   </select>
-                  <span style={{ fontSize: 11, color: 'var(--ctp-subtext0)', marginTop: 4 }}>
+                  <span style={{ fontSize: 11, color: 'var(--color-text-subtle)', marginTop: 4 }}>
                     {t(
                       'source.form.mqtt_bridge_broker_help',
                       'With a parent broker, the bridge also republishes upstream traffic to local devices and forwards their packets upstream. Without one, it runs as a pure MQTT client — useful for monitoring or as a client-proxy target for a Meshtastic source.',
@@ -1427,7 +1427,7 @@ function DashboardInner() {
                     maintained in one place — not duplicated here. When editing
                     an existing source we can deep-link straight to it. */}
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 4 }}>
-                  <span style={{ fontSize: 11, color: 'var(--ctp-subtext0)', flex: 1 }}>
+                  <span style={{ fontSize: 11, color: 'var(--color-text-subtle)', flex: 1 }}>
                     {t(
                       'source.form.mqtt_bridge_advanced_hint',
                       'Mode, forwarding, publish/subscribe filters, geofence, and topic rewrites are on the bridge’s Configuration page.',
@@ -1442,8 +1442,8 @@ function DashboardInner() {
                         fontSize: 11,
                         padding: '4px 8px',
                         background: 'transparent',
-                        color: 'var(--ctp-blue)',
-                        border: '1px solid var(--ctp-blue)',
+                        color: 'var(--color-accent)',
+                        border: '1px solid var(--color-accent)',
                         borderRadius: 4,
                         cursor: 'pointer',
                       }}
@@ -1483,7 +1483,7 @@ function DashboardInner() {
                         onChange={(e) => setFormMcTcpHost(e.target.value)}
                         placeholder={t('source.form.host_placeholder')}
                       />
-                      <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
+                      <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
                         {t('meshcore.form.tcp_host_help', 'Hostname or IP of the MeshCore companion reachable over TCP (e.g. esp-link, ser2net, or native TCP firmware).')}
                       </p>
                     </label>
@@ -1509,7 +1509,7 @@ function DashboardInner() {
                       onChange={(e) => setFormMcSerialPort(e.target.value)}
                       placeholder="/dev/ttyACM0"
                     />
-                    <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
+                    <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
                       {t('meshcore.form.serial_port_help', 'OS path of the USB-connected MeshCore companion (e.g. /dev/ttyACM0, COM3).')}
                     </p>
                   </label>
@@ -1538,7 +1538,7 @@ function DashboardInner() {
                     onChange={(e) => setFormHeartbeat(e.target.value)}
                     placeholder="0"
                   />
-                  <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
+                  <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
                     {t('meshcore.form.heartbeat_help', 'Seconds between companion keepalive probes (0 = disabled). On repeated failure the source reconnects automatically with backoff. Applies to Companion devices only.')}
                   </p>
                 </label>
@@ -1551,12 +1551,12 @@ function DashboardInner() {
                   />
                   {t('source.form.auto_connect')}
                 </label>
-                <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '0 0 8px 24px' }}>
+                <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '0 0 8px 24px' }}>
                   {t('source.form.auto_connect_help')}
                 </p>
 
-                <fieldset style={{ border: '1px solid var(--ctp-surface1)', borderRadius: 6, padding: '8px 12px 12px', margin: '8px 0' }}>
-                  <legend style={{ fontSize: 12, padding: '0 6px', color: 'var(--ctp-subtext0)' }}>{t('source.form.virtual_node')}</legend>
+                <fieldset style={{ border: '1px solid var(--color-surface-hover)', borderRadius: 6, padding: '8px 12px 12px', margin: '8px 0' }}>
+                  <legend style={{ fontSize: 12, padding: '0 6px', color: 'var(--color-text-subtle)' }}>{t('source.form.virtual_node')}</legend>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginTop: 4 }}>
                     <input
                       type="checkbox"
@@ -1578,7 +1578,7 @@ function DashboardInner() {
                           onChange={(e) => setFormVnPort(e.target.value)}
                           placeholder="5000"
                         />
-                        <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
+                        <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
                           {t('meshcore.form.virtual_node_help', 'TCP port the MeshCore mobile app connects to. Point the app at this host and port over WiFi.')}
                         </p>
                       </label>
@@ -1590,7 +1590,7 @@ function DashboardInner() {
                         />
                         {t('meshcore.form.allow_admin_commands', 'Allow admin commands')}
                       </label>
-                      <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
+                      <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
                         {t('meshcore.form.allow_admin_help', 'Third-party clients connected to the virtual node can send config/admin commands to your MeshCore node. Leave off unless you trust the clients.')}
                       </p>
                       <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginTop: 8 }}>
@@ -1601,37 +1601,37 @@ function DashboardInner() {
                         />
                         {t('meshcore.form.allow_pki_export', 'Allow PKI export')}
                       </label>
-                      <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
+                      <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
                         {t('meshcore.form.allow_pki_export_help', 'Let connected clients read your node\'s private key. Some tools (e.g. Remote-Terminal\'s community MQTT) require it to authenticate as your node. The virtual node port has no client authentication, so anyone who can reach it can copy your node identity. Leave off unless you need it. Requires node firmware built with ENABLE_PRIVATE_KEY_EXPORT.')}
                       </p>
                     </>
                   )}
                 </fieldset>
 
-                <fieldset style={{ border: '1px solid var(--ctp-surface1)', borderRadius: 6, padding: '8px 12px 12px', margin: '8px 0' }}>
-                  <legend style={{ fontSize: 12, padding: '0 6px', color: 'var(--ctp-subtext0)' }}>{t('meshcore.form.observer', 'Analyzer Observer')}</legend>
+                <fieldset style={{ border: '1px solid var(--color-surface-hover)', borderRadius: 6, padding: '8px 12px 12px', margin: '8px 0' }}>
+                  <legend style={{ fontSize: 12, padding: '0 6px', color: 'var(--color-text-subtle)' }}>{t('meshcore.form.observer', 'Analyzer Observer')}</legend>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginTop: 4 }}>
                     <input type="checkbox" checked={formObserver.enabled} disabled={formMcDeviceType === 'repeater'} onChange={(e) => setFormObserver({ ...formObserver, enabled: e.target.checked })} />
                     {t('meshcore.form.observer_enable', 'Publish heard packets to a MeshCore Analyzer broker')}
                   </label>
-                  <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>{t('meshcore.form.observer_help', 'Relays every packet this Companion hears to a MeshCore Analyzer MQTT broker so your node counts as an observer. MeshMonitor only publishes — it never receives from the broker or transmits on the mesh. Companion devices only.')}</p>
+                  <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>{t('meshcore.form.observer_help', 'Relays every packet this Companion hears to a MeshCore Analyzer MQTT broker so your node counts as an observer. MeshMonitor only publishes — it never receives from the broker or transmits on the mesh. Companion devices only.')}</p>
                   {formMcDeviceType === 'repeater' ? (
-                    <p role="alert" style={{ fontSize: 11, color: 'var(--ctp-yellow)', margin: '4px 0 0' }}>{t('meshcore.form.observer_repeater_note', 'The Analyzer Observer requires a Companion device — a repeater cannot export the signing key it needs.')}</p>
+                    <p role="alert" style={{ fontSize: 11, color: 'var(--color-warning)', margin: '4px 0 0' }}>{t('meshcore.form.observer_repeater_note', 'The Analyzer Observer requires a Companion device — a repeater cannot export the signing key it needs.')}</p>
                   ) : formObserver.enabled && (
                     <>
                       {OBSERVER_FIELDS.map((f) => (
                         <label key={f.key} className="dashboard-form-field" style={{ marginTop: 8 }}>
                           <span className="dashboard-form-label">{t(f.labelKey, f.labelFallback)}</span>
                           <input className="dashboard-form-input" type="text" value={formObserver[f.key]} onChange={(e) => setFormObserver({ ...formObserver, [f.key]: e.target.value })} placeholder={f.placeholder} />
-                          <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>{t(f.helpKey, f.helpFallback)}</p>
+                          <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>{t(f.helpKey, f.helpFallback)}</p>
                         </label>
                       ))}
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 8 }}>
-                        <span style={{ fontSize: 11, color: 'var(--ctp-subtext0)', flex: 1 }}>{t('meshcore.form.observer_key_hint', "The signing key and live publish status are on this source's MeshCore → Configuration page.")}</span>
+                        <span style={{ fontSize: 11, color: 'var(--color-text-subtle)', flex: 1 }}>{t('meshcore.form.observer_key_hint', "The signing key and live publish status are on this source's MeshCore → Configuration page.")}</span>
                         {editingSourceId && (
                           <button
                             type="button"
-                            style={{ flexShrink: 0, whiteSpace: 'nowrap', fontSize: 11, padding: '4px 8px', background: 'transparent', color: 'var(--ctp-blue)', border: '1px solid var(--ctp-blue)', borderRadius: 4, cursor: 'pointer' }}
+                            style={{ flexShrink: 0, whiteSpace: 'nowrap', fontSize: 11, padding: '4px 8px', background: 'transparent', color: 'var(--color-accent)', border: '1px solid var(--color-accent)', borderRadius: 4, cursor: 'pointer' }}
                             title={t('meshcore.form.observer_open_config', 'Open Configuration page')}
                             onClick={() => { setShowSourceModal(false); void navigate(`/source/${editingSourceId}`); }}
                           >
@@ -1678,7 +1678,7 @@ function DashboardInner() {
                 onChange={(e) => setFormHeartbeat(e.target.value)}
                 placeholder="0"
               />
-              <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
+              <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
                 {t('source.form.heartbeat_help')}
               </p>
             </label>
@@ -1691,7 +1691,7 @@ function DashboardInner() {
               />
               {t('source.form.auto_connect')}
             </label>
-            <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '0 0 8px 24px' }}>
+            <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '0 0 8px 24px' }}>
               {t('source.form.auto_connect_help')}
             </p>
 
@@ -1703,7 +1703,7 @@ function DashboardInner() {
               />
               {t('source.form.passive_mode', 'Passive Mode')}
             </label>
-            <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '0 0 8px 24px' }}>
+            <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '0 0 8px 24px' }}>
               {t(
                 'source.form.passive_mode_help',
                 'Reduces outbound requests to large or fragile TCP nodes. Preserves cached config across reconnects and skips post-config device requests. Recommended for router-class nodes with large NodeDBs.'
@@ -1725,7 +1725,7 @@ function DashboardInner() {
                   onChange={(e) => setFormPassiveResyncStaleHours(e.target.value)}
                   placeholder={t('source.form.passive_resync_stale_default', '4 (default)')}
                 />
-                <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
+                <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
                   {t(
                     'source.form.passive_resync_stale_help',
                     'How long the cached config stays valid after a disconnect before the next reconnect forces a full sync. Leave blank for 4 hours (default). Range: 1 minute – 7 days.'
@@ -1734,8 +1734,8 @@ function DashboardInner() {
               </label>
             )}
 
-            <fieldset style={{ border: '1px solid var(--ctp-surface1)', borderRadius: 6, padding: '8px 12px 12px', margin: '8px 0' }}>
-              <legend style={{ fontSize: 12, padding: '0 6px', color: 'var(--ctp-subtext0)' }}>{t('source.form.virtual_node')}</legend>
+            <fieldset style={{ border: '1px solid var(--color-surface-hover)', borderRadius: 6, padding: '8px 12px 12px', margin: '8px 0' }}>
+              <legend style={{ fontSize: 12, padding: '0 6px', color: 'var(--color-text-subtle)' }}>{t('source.form.virtual_node')}</legend>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginTop: 4 }}>
                 <input
                   type="checkbox"
@@ -1764,7 +1764,7 @@ function DashboardInner() {
                     />
                     {t('source.form.allow_admin_commands')}
                   </label>
-                  <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
+                  <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
                     {t('source.form.allow_admin_help')}
                   </p>
                 </>
@@ -1790,7 +1790,7 @@ function DashboardInner() {
                       </option>
                     ))}
                 </select>
-                <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
+                <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
                   {t(
                     'source.form.mqtt_proxy_link_help',
                     'When set, MeshMonitor relays the device’s mqttClientProxyMessage traffic to the selected embedded broker. Requires the device’s MQTT module to have proxy_to_client_enabled = true.',
@@ -1802,12 +1802,12 @@ function DashboardInner() {
             )}
 
             {formError && (
-              <p style={{ color: 'var(--ctp-red)', fontSize: 12, margin: '8px 0 0' }}>{formError}</p>
+              <p style={{ color: 'var(--color-error)', fontSize: 12, margin: '8px 0 0' }}>{formError}</p>
             )}
 
             <div className="dashboard-confirm-actions" style={{ marginTop: 16 }}>
               <button onClick={() => setShowSourceModal(false)}>{t('common.cancel')}</button>
-              <button onClick={onSaveSource} disabled={formSaving} style={{ background: 'var(--ctp-blue)', color: 'var(--ctp-base)' }}>
+              <button onClick={onSaveSource} disabled={formSaving} style={{ background: 'var(--color-accent)', color: 'var(--color-bg)' }}>
                 {formSaving ? t('common.saving') : t('common.save')}
               </button>
             </div>

@@ -557,8 +557,8 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
         alignItems: 'center',
         marginBottom: '1.5rem',
         padding: '1rem 1.25rem',
-        background: 'var(--ctp-surface1)',
-        border: '1px solid var(--ctp-surface2)',
+        background: 'var(--color-surface-hover)',
+        border: '1px solid var(--color-surface-active)',
         borderRadius: '8px'
       }}>
         <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -611,7 +611,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               {t('auto_responder.skip_incomplete_nodes')}
             </label>
           </div>
-          <div style={{ marginTop: '0.5rem', marginLeft: '1.75rem', fontSize: '0.9rem', color: 'var(--ctp-subtext0)' }}>
+          <div style={{ marginTop: '0.5rem', marginLeft: '1.75rem', fontSize: '0.9rem', color: 'var(--color-text-subtle)' }}>
             {t('auto_responder.skip_incomplete_description')}
           </div>
         </div>
@@ -663,7 +663,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   style={{ 
                     width: '100%',
                     fontFamily: 'monospace',
-                    borderColor: newTriggerValidation.valid ? undefined : 'var(--ctp-red)',
+                    borderColor: newTriggerValidation.valid ? undefined : 'var(--color-error)',
                     borderWidth: newTriggerValidation.valid ? undefined : '2px'
                   }}
                   title="Trigger pattern: Use {param} for parameters, separate multiple patterns with commas"
@@ -675,7 +675,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                     top: '50%',
                     transform: 'translateY(-50%)',
                     fontSize: '0.7rem',
-                    color: 'var(--ctp-subtext0)',
+                    color: 'var(--color-text-subtle)',
                     pointerEvents: 'none'
                   }}>
                     {t('auto_responder.pattern_count', { count: splitTriggerPatterns(newTrigger).length })}
@@ -697,7 +697,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
             </select>
             <div style={{ flex: '2' }}>
               {newResponseType === 'mailbox' ? (
-                <span style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
                   Built-in async message store ("mesh voicemail"). No response text needed.
                   Set DM-only and use a pattern like:{' '}
                   <code>msg &#123;recipient&#125; &#123;body:.+&#125;,inbox,inbox play &#123;sender&#125;,inbox play,inbox delete &#123;id&#125;,inbox clear</code>
@@ -761,7 +761,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                 className="setting-input"
                 style={{ width: '80px' }}
               />
-              <span style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
                 {t('auto_responder.cooldown_help', 'seconds per node (0 = disabled)')}
               </span>
             </div>
@@ -792,7 +792,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               style={{
                 padding: '0.5rem 1rem',
                 fontSize: '14px',
-                background: 'var(--ctp-red)',
+                background: 'var(--color-error)',
                 color: 'white',
                 border: 'none',
                 borderRadius: '4px',
@@ -807,7 +807,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
             {!newTriggerValidation.valid && newTriggerValidation.error && (
               <div style={{ 
                 fontSize: '0.75rem', 
-                color: 'var(--ctp-red)',
+                color: 'var(--color-error)',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.25rem',
@@ -856,10 +856,10 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               })() : null;
               
               return (
-                <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: 'var(--ctp-surface0)', border: '1px solid var(--ctp-overlay0)', borderRadius: '4px' }}>
+                <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: 'var(--color-surface)', border: '1px solid var(--color-border-subtle)', borderRadius: '4px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--ctp-green)', fontWeight: 'bold' }}><UiIcon name="check" size={14} /> {t('auto_responder.valid')}</span>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)' }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--color-success)', fontWeight: 'bold' }}><UiIcon name="check" size={14} /> {t('auto_responder.valid')}</span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)' }}>
                       {t('auto_responder.pattern_count', { count: patterns.length })}
                       {uniqueParams.length > 0 && ` • ${t('auto_responder.parameter_count', { count: uniqueParams.length })}`}
                     </span>
@@ -867,10 +867,10 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   
                   {/* Real-time Pattern Preview with Highlighting */}
                   <div style={{ marginTop: '0.75rem', marginBottom: '0.75rem' }}>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', fontWeight: 'bold' }}>{t('auto_responder.pattern_preview')}</div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)', marginBottom: '0.25rem', fontWeight: 'bold' }}>{t('auto_responder.pattern_preview')}</div>
                     <div style={{ 
                       padding: '0.5rem', 
-                      background: 'var(--ctp-surface1)', 
+                      background: 'var(--color-surface-hover)', 
                       borderRadius: '4px', 
                       fontFamily: 'monospace', 
                       fontSize: '0.85rem',
@@ -950,7 +950,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                       padding: '2px 4px',
                                       borderRadius: '2px',
                                       fontWeight: segment.type === 'parameter' ? 'bold' : 'normal',
-                                      color: 'var(--ctp-text)'
+                                      color: 'var(--color-text)'
                                     }}
                                     title={segment.type === 'parameter' ? `Parameter: ${segment.paramName}` : 'Literal text'}
                                   >
@@ -977,7 +977,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                             backgroundColor: segment.type === 'parameter' ? 'rgba(166, 227, 161, 0.4)' : 'rgba(137, 180, 250, 0.4)',
                                             padding: '2px 4px',
                                             fontWeight: segment.type === 'parameter' ? 'bold' : 'normal',
-                                            color: 'var(--ctp-text)'
+                                            color: 'var(--color-text)'
                                           }}
                                         >
                                           {segment.type === 'literal' ? segment.text.trim() : segment.text}
@@ -997,13 +997,13 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                               }
                             })}
                             {patternIdx < patterns.length - 1 && (
-                              <span style={{ color: 'var(--ctp-subtext0)', margin: '0 0.25rem' }}>,</span>
+                              <span style={{ color: 'var(--color-text-subtle)', margin: '0 0.25rem' }}>,</span>
                             )}
                           </div>
                         );
                       })}
                     </div>
-                    <div style={{ marginTop: '0.5rem', fontSize: '0.7rem', color: 'var(--ctp-subtext0)', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <div style={{ marginTop: '0.5rem', fontSize: '0.7rem', color: 'var(--color-text-subtle)', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
                         <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: 'rgba(137, 180, 250, 0.4)', borderRadius: '2px' }}></span>
                         Literal text
@@ -1017,7 +1017,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   
                   {uniqueParams.length > 0 && (
                     <div style={{ marginTop: '0.5rem' }}>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', fontWeight: 'bold' }}>{t('auto_responder.detected_parameters')}</div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)', marginBottom: '0.25rem', fontWeight: 'bold' }}>{t('auto_responder.detected_parameters')}</div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
                         {uniqueParams.map((paramName, idx) => {
                           const param = allParams.find(p => p.name === paramName);
@@ -1029,8 +1029,8 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                 alignItems: 'center',
                                 gap: '0.25rem',
                                 padding: '0.2rem 0.5rem',
-                                background: 'var(--ctp-blue)',
-                                color: 'var(--ctp-base)',
+                                background: 'var(--color-accent)',
+                                color: 'var(--color-bg)',
                                 borderRadius: '3px',
                                 fontSize: '0.7rem',
                                 fontFamily: 'monospace',
@@ -1047,8 +1047,8 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   )}
                   
                   {/* Test Section - Merged pattern matching and response testing */}
-                  <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--ctp-overlay0)' }}>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)', marginBottom: '0.5rem', fontWeight: 'bold' }}><UiIcon name="test" size={14} /> Test:</div>
+                  <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--color-border-subtle)' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)', marginBottom: '0.5rem', fontWeight: 'bold' }}><UiIcon name="test" size={14} /> Test:</div>
                     <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'stretch' }}>
                       <input
                         type="text"
@@ -1064,7 +1064,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                           fontSize: '0.9rem',
                           padding: '0.5rem 0.75rem',
                           fontFamily: 'monospace',
-                          borderColor: newTriggerTestInput.trim() ? (testMatch ? 'var(--ctp-green)' : 'var(--ctp-red)') : undefined,
+                          borderColor: newTriggerTestInput.trim() ? (testMatch ? 'var(--color-success)' : 'var(--color-error)') : undefined,
                           borderWidth: newTriggerTestInput.trim() ? '2px' : undefined
                         }}
                         title="Test if a message matches your trigger pattern and execute the response"
@@ -1152,8 +1152,8 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                           style={{
                             padding: '0.5rem 1rem',
                             fontSize: '0.875rem',
-                            background: (newTriggerLiveTestResult?.loading || !testMatch || !newResponse.trim()) ? 'var(--ctp-surface2)' : 'var(--ctp-blue)',
-                            color: (newTriggerLiveTestResult?.loading || !testMatch || !newResponse.trim()) ? 'var(--ctp-subtext0)' : 'var(--ctp-base)',
+                            background: (newTriggerLiveTestResult?.loading || !testMatch || !newResponse.trim()) ? 'var(--color-surface-active)' : 'var(--color-accent)',
+                            color: (newTriggerLiveTestResult?.loading || !testMatch || !newResponse.trim()) ? 'var(--color-text-subtle)' : 'var(--color-bg)',
                             border: 'none',
                             borderRadius: '4px',
                             cursor: (newTriggerLiveTestResult?.loading || !testMatch || !newResponse.trim()) ? 'not-allowed' : 'pointer',
@@ -1172,12 +1172,12 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                           <div style={{ 
                             padding: '0.75rem', 
                             background: 'rgba(166, 227, 161, 0.1)', 
-                            border: '1px solid var(--ctp-green)', 
+                            border: '1px solid var(--color-success)', 
                             borderRadius: '4px' 
                           }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                              <span style={{ color: 'var(--ctp-green)', fontWeight: 'bold', fontSize: '0.85rem' }}><UiIcon name="check" size={14} /> Match Found!</span>
-                              <span style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)' }}>
+                              <span style={{ color: 'var(--color-success)', fontWeight: 'bold', fontSize: '0.85rem' }}><UiIcon name="check" size={14} /> Match Found!</span>
+                              <span style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)' }}>
                                 Pattern: {testMatch.matchedPattern || formatTriggerPatterns(newTrigger)}
                               </span>
                             </div>
@@ -1185,10 +1185,10 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                             {/* Highlighted Message Preview */}
                             {testMatch.matchPositions && testMatch.matchPositions.length > 0 && (
                               <div style={{ marginBottom: '0.5rem' }}>
-                                <div style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', fontWeight: 'bold' }}>Match Highlight:</div>
+                                <div style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)', marginBottom: '0.25rem', fontWeight: 'bold' }}>Match Highlight:</div>
                                 <div style={{ 
                                   padding: '0.5rem', 
-                                  background: 'var(--ctp-surface2)', 
+                                  background: 'var(--color-surface-active)', 
                                   borderRadius: '4px', 
                                   fontFamily: 'monospace', 
                                   fontSize: '0.85rem',
@@ -1217,15 +1217,15 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                             
                             {testMatch.params && Object.keys(testMatch.params).length > 0 && (
                               <div style={{ marginBottom: '0.5rem' }}>
-                                <div style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', fontWeight: 'bold' }}>{t('auto_responder.extracted_parameters')}</div>
+                                <div style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)', marginBottom: '0.25rem', fontWeight: 'bold' }}>{t('auto_responder.extracted_parameters')}</div>
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
                                   {Object.entries(testMatch.params).map(([key, value]) => (
                                     <span
                                       key={key}
                                       style={{
                                         padding: '0.2rem 0.5rem',
-                                        background: 'var(--ctp-blue)',
-                                        color: 'var(--ctp-base)',
+                                        background: 'var(--color-accent)',
+                                        color: 'var(--color-bg)',
                                         borderRadius: '3px',
                                         fontSize: '0.7rem',
                                         fontFamily: 'monospace',
@@ -1240,14 +1240,14 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                             )}
                             
                             {newResponse.trim() && newResponseType === 'text' && (
-                              <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--ctp-overlay0)' }}>
-                                <div style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--color-border-subtle)' }}>
+                                <div style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)', marginBottom: '0.25rem', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                   <span>Response Preview:</span>
                                   <button
                                     onClick={() => setNewResponse('')}
                                     disabled={!localEnabled}
                                     style={{
-                                      background: 'var(--ctp-red)',
+                                      background: 'var(--color-error)',
                                       border: 'none',
                                       borderRadius: '3px',
                                       color: 'white',
@@ -1264,11 +1264,11 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                 </div>
                                 <div style={{
                                   padding: '0.5rem',
-                                  background: 'var(--ctp-surface2)',
+                                  background: 'var(--color-surface-active)',
                                   borderRadius: '4px',
                                   fontFamily: 'monospace',
                                   fontSize: '0.85rem',
-                                  color: 'var(--ctp-text)'
+                                  color: 'var(--color-text)'
                                 }}>
                                   {generateSampleResponse({ trigger: newTrigger, responseType: newResponseType, response: newResponse } as AutoResponderTrigger, newTriggerTestInput.trim())}
                                 </div>
@@ -1277,14 +1277,14 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                             
                             {/* Test Results */}
                             {newTriggerLiveTestResult && !newTriggerLiveTestResult.loading && (
-                              <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--ctp-overlay0)' }}>
-                                <div style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--color-border-subtle)' }}>
+                                <div style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)', marginBottom: '0.25rem', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                   <span>Test Result:</span>
                                   <button
                                     onClick={() => setNewTriggerLiveTestResult(null)}
                                     disabled={!localEnabled}
                                     style={{
-                                      background: 'var(--ctp-red)',
+                                      background: 'var(--color-error)',
                                       border: 'none',
                                       borderRadius: '3px',
                                       color: 'white',
@@ -1303,9 +1303,9 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                   <div style={{ 
                                     padding: '0.5rem', 
                                     background: 'rgba(243, 139, 168, 0.1)', 
-                                    border: '1px solid var(--ctp-red)', 
+                                    border: '1px solid var(--color-error)', 
                                     borderRadius: '4px',
-                                    color: 'var(--ctp-red)',
+                                    color: 'var(--color-error)',
                                     fontSize: '0.85rem'
                                   }}>
                                     Error: {newTriggerLiveTestResult.error}
@@ -1314,11 +1314,11 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                   <div>
                                     <div style={{ 
                                       padding: '0.5rem', 
-                                      background: 'var(--ctp-surface2)', 
+                                      background: 'var(--color-surface-active)', 
                                       borderRadius: '4px', 
                                       fontFamily: 'monospace', 
                                       fontSize: '0.85rem',
-                                      color: 'var(--ctp-text)',
+                                      color: 'var(--color-text)',
                                       whiteSpace: 'pre-wrap',
                                       maxHeight: '200px',
                                       overflowY: 'auto'
@@ -1336,9 +1336,9 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                         marginTop: '0.25rem',
                                         padding: '0.2rem 0.4rem',
                                         fontSize: '0.7rem',
-                                        background: 'var(--ctp-surface2)',
-                                        color: 'var(--ctp-text)',
-                                        border: '1px solid var(--ctp-overlay0)',
+                                        background: 'var(--color-surface-active)',
+                                        color: 'var(--color-text)',
+                                        border: '1px solid var(--color-border-subtle)',
                                         borderRadius: '3px',
                                         cursor: 'pointer'
                                       }}
@@ -1354,9 +1354,9 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                           <div style={{ 
                             padding: '0.75rem', 
                             background: 'rgba(243, 139, 168, 0.1)', 
-                            border: '1px solid var(--ctp-red)', 
+                            border: '1px solid var(--color-error)', 
                             borderRadius: '4px',
-                            color: 'var(--ctp-red)',
+                            color: 'var(--color-error)',
                             fontSize: '0.85rem'
                           }}>
                             <UiIcon name="close" size={14} /> No match - This message does not match your trigger pattern
@@ -1370,7 +1370,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
             })()}
           </div>
           <div style={{ marginTop: '0.5rem', paddingLeft: '0.5rem' }}>
-            <label style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', display: 'block' }}>
+            <label style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--color-text-subtle)', marginBottom: '0.25rem', display: 'block' }}>
               Channels:
             </label>
             <div className="channel-checkbox-list" style={{ marginTop: '0.25rem' }}>
@@ -1420,7 +1420,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
           </div>
           {newResponseType !== 'script' && (
             <div style={{ marginTop: '0.5rem', paddingLeft: '0.5rem' }}>
-              <label style={{ display: 'block', fontSize: '0.85rem', cursor: localEnabled ? 'pointer' : 'not-allowed', color: 'var(--ctp-subtext0)' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', cursor: localEnabled ? 'pointer' : 'not-allowed', color: 'var(--color-text-subtle)' }}>
                 <input
                   type="checkbox"
                   checked={newMultiline}
@@ -1433,7 +1433,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
             </div>
           )}
           <div style={{ marginTop: '0.5rem', paddingLeft: '0.5rem' }}>
-            <label style={{ display: 'block', fontSize: '0.85rem', cursor: (localEnabled && newChannels.includes('dm')) ? 'pointer' : 'not-allowed', color: 'var(--ctp-subtext0)', opacity: newChannels.includes('dm') ? 1 : 0.5 }}>
+            <label style={{ display: 'block', fontSize: '0.85rem', cursor: (localEnabled && newChannels.includes('dm')) ? 'pointer' : 'not-allowed', color: 'var(--color-text-subtle)', opacity: newChannels.includes('dm') ? 1 : 0.5 }}>
               <input
                 type="checkbox"
                 checked={newVerifyResponse}
@@ -1451,7 +1451,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
           marginTop: '2rem', 
           marginBottom: '1.5rem',
           height: '1px',
-          background: 'linear-gradient(to right, transparent, var(--ctp-overlay0), transparent)',
+          background: 'linear-gradient(to right, transparent, var(--color-surface-inactive), transparent)',
           position: 'relative'
         }}>
           <div style={{
@@ -1459,9 +1459,9 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
             left: '50%',
             top: '50%',
             transform: 'translate(-50%, -50%)',
-            background: 'var(--ctp-base)',
+            background: 'var(--color-bg)',
             padding: '0 1rem',
-            color: 'var(--ctp-subtext0)',
+            color: 'var(--color-text-subtle)',
             fontSize: '0.75rem',
             fontWeight: 'bold'
           }}>
@@ -1505,13 +1505,13 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               gap: '1rem', 
               marginBottom: '0.75rem', 
               padding: '0.5rem',
-              background: 'var(--ctp-surface0)',
+              background: 'var(--color-surface)',
               borderRadius: '4px',
               fontSize: '0.75rem',
               alignItems: 'center',
               flexWrap: 'wrap'
             }}>
-              <span style={{ color: 'var(--ctp-subtext0)', fontWeight: 'bold' }}>{t('auto_responder.legend')}</span>
+              <span style={{ color: 'var(--color-text-subtle)', fontWeight: 'bold' }}>{t('auto_responder.legend')}</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <span style={{ 
                   display: 'inline-flex',
@@ -1526,7 +1526,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                     border: '1px solid rgba(137, 180, 250, 0.5)',
                     borderRadius: '2px' 
                   }}></span>
-                  <span style={{ color: 'var(--ctp-text)' }}>{t('auto_responder.literal')}</span>
+                  <span style={{ color: 'var(--color-text)' }}>{t('auto_responder.literal')}</span>
                 </span>
                 <span style={{
                   display: 'inline-flex',
@@ -1541,7 +1541,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                     border: '1px solid rgba(166, 227, 161, 0.5)',
                     borderRadius: '2px'
                   }}></span>
-                  <span style={{ color: 'var(--ctp-text)' }}>{t('auto_responder.parameter')}</span>
+                  <span style={{ color: 'var(--color-text)' }}>{t('auto_responder.parameter')}</span>
                 </span>
               </div>
             </div>
@@ -1582,9 +1582,9 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                 <div style={{ 
                   padding: '1rem', 
                   textAlign: 'center', 
-                  color: 'var(--ctp-subtext0)', 
+                  color: 'var(--color-text-subtle)', 
                   fontStyle: 'italic',
-                  background: 'var(--ctp-surface0)',
+                  background: 'var(--color-surface)',
                   borderRadius: '4px'
                 }}>
                   {t('auto_responder.no_triggers_match')}
@@ -1604,7 +1604,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
             </label>
             {/* Real-time test input */}
             <div style={{ marginTop: '0.5rem', marginBottom: '0.5rem' }}>
-              <label style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', display: 'block' }}>
+              <label style={{ fontSize: '0.85rem', color: 'var(--color-text-subtle)', marginBottom: '0.25rem', display: 'block' }}>
                 {t('auto_responder.quick_test')}
               </label>
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'stretch' }}>
@@ -1629,7 +1629,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   style={{
                     fontFamily: 'monospace',
                     flex: '1',
-                    borderColor: currentTestLine.trim() ? (testTriggerMatch(currentTestLine.trim()) ? 'var(--ctp-green)' : 'var(--ctp-red)') : undefined,
+                    borderColor: currentTestLine.trim() ? (testTriggerMatch(currentTestLine.trim()) ? 'var(--color-success)' : 'var(--color-error)') : undefined,
                     borderWidth: currentTestLine.trim() ? '2px' : undefined
                   }}
                 />
@@ -1739,14 +1739,14 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                     marginTop: '0.5rem',
                     padding: '0.5rem',
                     background: realtimeMatch ? 'rgba(166, 227, 161, 0.1)' : 'rgba(243, 139, 168, 0.1)',
-                    border: `1px solid ${realtimeMatch ? 'var(--ctp-green)' : 'var(--ctp-red)'}`,
+                    border: `1px solid ${realtimeMatch ? 'var(--color-success)' : 'var(--color-error)'}`,
                     borderRadius: '4px',
                     fontSize: '0.85rem'
                   }}>
                     {realtimeMatch ? (
                       <div>
                         <div style={{ marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                          <span style={{ color: 'var(--ctp-green)', fontWeight: 'bold' }}><UiIcon name="check" size={14} /> Matches:</span>
+                          <span style={{ color: 'var(--color-success)', fontWeight: 'bold' }}><UiIcon name="check" size={14} /> Matches:</span>
                           {(() => {
                             const pattern = realtimeMatch.matchedPattern || '';
                             const segments: Array<{ text: string; type: 'literal' | 'parameter'; paramName?: string; startPos: number; endPos: number }> = [];
@@ -1814,7 +1814,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                       padding: '0.2rem 0.4rem',
                                       borderRadius: '4px',
                                       fontWeight: segment.type === 'parameter' ? 'bold' : 'normal',
-                                      color: segment.type === 'parameter' ? 'var(--ctp-green)' : 'var(--ctp-blue)',
+                                      color: segment.type === 'parameter' ? 'var(--color-success)' : 'var(--color-accent)',
                                       fontFamily: 'monospace',
                                       fontSize: '0.85rem',
                                       border: segment.type === 'parameter' ? '1px solid rgba(166, 227, 161, 0.5)' : '1px solid rgba(137, 180, 250, 0.3)'
@@ -1844,7 +1844,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                             backgroundColor: segment.type === 'parameter' ? 'rgba(166, 227, 161, 0.3)' : 'rgba(137, 180, 250, 0.2)',
                                             padding: '0.2rem 0.4rem',
                                             fontWeight: segment.type === 'parameter' ? 'bold' : 'normal',
-                                            color: segment.type === 'parameter' ? 'var(--ctp-green)' : 'var(--ctp-blue)'
+                                            color: segment.type === 'parameter' ? 'var(--color-success)' : 'var(--color-accent)'
                                           }}
                                         >
                                           {segment.type === 'literal' ? segment.text.trim() : segment.text}
@@ -1866,21 +1866,21 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                           })()}
                         </div>
                         {allMatches.length > 1 && (
-                          <div style={{ color: 'var(--ctp-peach)', marginTop: '0.25rem', fontSize: '0.75rem' }}>
+                          <div style={{ color: 'var(--color-caution)', marginTop: '0.25rem', fontSize: '0.75rem' }}>
                             <UiIcon name="alert" size={14} /> Warning: {allMatches.length} triggers match this message (conflict!)
                           </div>
                         )}
 
                         {/* Response Preview for text responses */}
                         {realtimeMatch.trigger && realtimeMatch.trigger.responseType === 'text' && (
-                          <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--ctp-overlay0)' }}>
-                            <div style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--color-border-subtle)' }}>
+                            <div style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)', marginBottom: '0.25rem', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <span>Response Preview:</span>
                               <button
                                 onClick={() => setCurrentTestLine('')}
                                 disabled={!localEnabled}
                                 style={{
-                                  background: 'var(--ctp-red)',
+                                  background: 'var(--color-error)',
                                   border: 'none',
                                   borderRadius: '3px',
                                   color: 'white',
@@ -1897,11 +1897,11 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                             </div>
                             <div style={{
                               padding: '0.5rem',
-                              background: 'var(--ctp-surface2)',
+                              background: 'var(--color-surface-active)',
                               borderRadius: '4px',
                               fontFamily: 'monospace',
                               fontSize: '0.85rem',
-                              color: 'var(--ctp-text)',
+                              color: 'var(--color-text)',
                               whiteSpace: realtimeMatch.trigger.multiline ? 'pre-wrap' : 'nowrap',
                               overflowX: 'auto'
                             }}>
@@ -1912,14 +1912,14 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
 
                         {/* Test Results for HTTP/script */}
                         {quickTestResult && !quickTestResult.loading && (
-                          <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--ctp-overlay0)' }}>
-                            <div style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--color-border-subtle)' }}>
+                            <div style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)', marginBottom: '0.25rem', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <span>Test Result:</span>
                               <button
                                 onClick={() => setQuickTestResult(null)}
                                 disabled={!localEnabled}
                                 style={{
-                                  background: 'var(--ctp-red)',
+                                  background: 'var(--color-error)',
                                   border: 'none',
                                   borderRadius: '3px',
                                   color: 'white',
@@ -1938,9 +1938,9 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                               <div style={{
                                 padding: '0.5rem',
                                 background: 'rgba(243, 139, 168, 0.1)',
-                                border: '1px solid var(--ctp-red)',
+                                border: '1px solid var(--color-error)',
                                 borderRadius: '4px',
-                                color: 'var(--ctp-red)',
+                                color: 'var(--color-error)',
                                 fontSize: '0.85rem'
                               }}>
                                 Error: {quickTestResult.error}
@@ -1949,11 +1949,11 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                               <div>
                                 <div style={{
                                   padding: '0.5rem',
-                                  background: 'var(--ctp-surface2)',
+                                  background: 'var(--color-surface-active)',
                                   borderRadius: '4px',
                                   fontFamily: 'monospace',
                                   fontSize: '0.85rem',
-                                  color: 'var(--ctp-text)',
+                                  color: 'var(--color-text)',
                                   whiteSpace: 'pre-wrap',
                                   maxHeight: '200px',
                                   overflowY: 'auto'
@@ -1982,7 +1982,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                         )}
                       </div>
                     ) : (
-                      <div style={{ color: 'var(--ctp-red)' }}><UiIcon name="close" size={14} /> No matching trigger</div>
+                      <div style={{ color: 'var(--color-error)' }}><UiIcon name="close" size={14} /> No matching trigger</div>
                     )}
                   </div>
                 );
@@ -2021,7 +2021,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                         padding: '0.5rem',
                         marginBottom: '0.5rem',
                         backgroundColor: match ? 'rgba(166, 227, 161, 0.1)' : 'rgba(243, 139, 168, 0.1)',
-                        border: `1px solid ${match ? (hasConflict ? 'var(--ctp-peach)' : 'var(--ctp-green)') : 'var(--ctp-red)'}`,
+                        border: `1px solid ${match ? (hasConflict ? 'var(--color-caution)' : 'var(--color-success)') : 'var(--color-error)'}`,
                         borderRadius: '4px',
                         fontFamily: 'monospace',
                         fontSize: '0.85rem',
@@ -2035,12 +2035,12 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                             width: '12px',
                             height: '12px',
                             borderRadius: '50%',
-                            backgroundColor: match ? (hasConflict ? 'var(--ctp-peach)' : 'var(--ctp-green)') : 'var(--ctp-red)',
+                            backgroundColor: match ? (hasConflict ? 'var(--color-caution)' : 'var(--color-success)') : 'var(--color-error)',
                             marginRight: '0.5rem',
                             flexShrink: 0
                           }}
                         />
-                        <span style={{ color: 'var(--ctp-text)', fontWeight: 'bold', wordBreak: 'break-word', flex: '1' }}>
+                        <span style={{ color: 'var(--color-text)', fontWeight: 'bold', wordBreak: 'break-word', flex: '1' }}>
                           {message}
                         </span>
                         {match && (
@@ -2049,11 +2049,11 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                             style={{
                               fontSize: '0.7rem',
                               padding: '0.2rem 0.4rem',
-                              background: 'var(--ctp-surface1)',
-                              border: '1px solid var(--ctp-overlay0)',
+                              background: 'var(--color-surface-hover)',
+                              border: '1px solid var(--color-border-subtle)',
                               borderRadius: '3px',
                               cursor: 'pointer',
-                              color: 'var(--ctp-text)'
+                              color: 'var(--color-text)'
                             }}
                           >
                             <UiIcon name={showDetails ? 'chevronDown' : 'forward'} size={14} /> Details
@@ -2065,11 +2065,11 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                             style={{
                               fontSize: '0.7rem',
                               padding: '0.2rem 0.4rem',
-                              background: 'var(--ctp-surface1)',
-                              border: '1px solid var(--ctp-overlay0)',
+                              background: 'var(--color-surface-hover)',
+                              border: '1px solid var(--color-border-subtle)',
                               borderRadius: '3px',
                               cursor: 'pointer',
-                              color: 'var(--ctp-text)'
+                              color: 'var(--color-text)'
                             }}
                           >
                             <UiIcon name={showDebug ? 'chevronDown' : 'forward'} size={14} /> Debug
@@ -2084,20 +2084,20 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                           background: 'rgba(250, 179, 135, 0.2)',
                           borderRadius: '3px',
                           fontSize: '0.75rem',
-                          color: 'var(--ctp-peach)'
+                          color: 'var(--color-caution)'
                         }}>
                           <UiIcon name="alert" size={14} /> Conflict: {allMatches.length} triggers match this message
                         </div>
                       )}
                       {match ? (
                         <div style={{ marginLeft: '1.25rem', fontSize: '0.8rem' }}>
-                          <div style={{ color: 'var(--ctp-blue)', marginBottom: '0.15rem' }}>
+                          <div style={{ color: 'var(--color-accent)', marginBottom: '0.15rem' }}>
                             ▸ {match.matchedPattern ? match.matchedPattern : formatTriggerPatterns(match.trigger?.trigger || (Array.isArray(match.trigger?.trigger) ? match.trigger.trigger : ''))}
                             <span style={{
                               fontSize: '0.65rem',
                               padding: '0.1rem 0.3rem',
-                              background: match.trigger?.responseType === 'text' ? 'var(--ctp-green)' : match.trigger?.responseType === 'script' ? 'var(--ctp-yellow)' : 'var(--ctp-mauve)',
-                              color: 'var(--ctp-base)',
+                              background: match.trigger?.responseType === 'text' ? 'var(--color-success)' : match.trigger?.responseType === 'script' ? 'var(--color-warning)' : 'var(--color-accent-alt)',
+                              color: 'var(--color-bg)',
                               borderRadius: '2px',
                               fontWeight: 'bold',
                               marginLeft: '0.5rem'
@@ -2106,11 +2106,11 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                             </span>
                           </div>
                           {match.params && Object.keys(match.params).length > 0 && (
-                            <div style={{ color: 'var(--ctp-subtext0)', marginBottom: '0.15rem' }}>
+                            <div style={{ color: 'var(--color-text-subtle)', marginBottom: '0.15rem' }}>
                               <UiIcon name="copy" size={14} /> {Object.entries(match.params).map(([k, v]) => `${k}="${v}"`).join(', ')}
                             </div>
                           )}
-                          <div style={{ color: 'var(--ctp-subtext1)', marginBottom: '0.15rem' }}>
+                          <div style={{ color: 'var(--color-text-muted)', marginBottom: '0.15rem' }}>
                             <UiIcon name="messages" size={14} /> {generateSampleResponse(match.trigger!, message)}
                           </div>
                           {(match.trigger?.responseType === 'http' || match.trigger?.responseType === 'script') && (
@@ -2180,8 +2180,8 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                 style={{
                                   padding: '0.25rem 0.5rem',
                                   fontSize: '0.7rem',
-                                  background: liveTestResults[index]?.loading ? 'var(--ctp-surface2)' : 'var(--ctp-blue)',
-                                  color: liveTestResults[index]?.loading ? 'var(--ctp-subtext0)' : 'var(--ctp-base)',
+                                  background: liveTestResults[index]?.loading ? 'var(--color-surface-active)' : 'var(--color-accent)',
+                                  color: liveTestResults[index]?.loading ? 'var(--color-text-subtle)' : 'var(--color-bg)',
                                   border: 'none',
                                   borderRadius: '3px',
                                   cursor: liveTestResults[index]?.loading ? 'not-allowed' : 'pointer',
@@ -2191,9 +2191,9 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                 {liveTestResults[index]?.loading ? 'Testing...' : <><UiIcon name="test" size={14} /> Test</>}
                               </button>
                               {liveTestResults[index] && !liveTestResults[index].loading && (
-                                <div style={{ marginTop: '0.5rem', padding: '0.5rem', background: 'var(--ctp-surface1)', borderRadius: '4px', fontSize: '0.75rem' }}>
+                                <div style={{ marginTop: '0.5rem', padding: '0.5rem', background: 'var(--color-surface-hover)', borderRadius: '4px', fontSize: '0.75rem' }}>
                                   {liveTestResults[index].error ? (
-                                    <div style={{ color: 'var(--ctp-red)' }}>Error: {liveTestResults[index].error}</div>
+                                    <div style={{ color: 'var(--color-error)' }}>Error: {liveTestResults[index].error}</div>
                                   ) : liveTestResults[index].result ? (
                                     <div>
                                       <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>Live Test Result:</div>
@@ -2211,9 +2211,9 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                           marginTop: '0.25rem',
                                           padding: '0.2rem 0.4rem',
                                           fontSize: '0.7rem',
-                                          background: 'var(--ctp-surface2)',
-                                          color: 'var(--ctp-text)',
-                                          border: '1px solid var(--ctp-overlay0)',
+                                          background: 'var(--color-surface-active)',
+                                          color: 'var(--color-text)',
+                                          border: '1px solid var(--color-border-subtle)',
                                           borderRadius: '3px',
                                           cursor: 'pointer'
                                         }}
@@ -2230,7 +2230,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                             <div style={{ 
                               marginTop: '0.5rem', 
                               padding: '0.5rem', 
-                              background: 'var(--ctp-surface1)', 
+                              background: 'var(--color-surface-hover)', 
                               borderRadius: '4px',
                               fontSize: '0.75rem'
                             }}>
@@ -2252,12 +2252,12 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                 </div>
                               )}
                               {hasConflict && (
-                                <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--ctp-overlay0)' }}>
-                                  <div style={{ fontWeight: 'bold', marginBottom: '0.25rem', color: 'var(--ctp-peach)' }}>
+                                <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--color-border-subtle)' }}>
+                                  <div style={{ fontWeight: 'bold', marginBottom: '0.25rem', color: 'var(--color-caution)' }}>
                                     All Matching Triggers ({allMatches.length}):
                                   </div>
                                   {allMatches.map((m, idx) => (
-                                    <div key={idx} style={{ marginBottom: '0.25rem', paddingLeft: '0.5rem', borderLeft: '2px solid var(--ctp-peach)' }}>
+                                    <div key={idx} style={{ marginBottom: '0.25rem', paddingLeft: '0.5rem', borderLeft: '2px solid var(--color-caution)' }}>
                                       {m.matchedPattern} ({m.trigger.responseType})
                                     </div>
                                   ))}
@@ -2269,19 +2269,19 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                             <div style={{ 
                               marginTop: '0.5rem', 
                               padding: '0.5rem', 
-                              background: 'var(--ctp-surface1)', 
+                              background: 'var(--color-surface-hover)', 
                               borderRadius: '4px',
                               fontSize: '0.75rem',
                               fontFamily: 'monospace'
                             }}>
                               <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>Debug Info:</div>
                               <div style={{ marginBottom: '0.15rem' }}>
-                                <strong>Regex Pattern:</strong> <code style={{ background: 'var(--ctp-surface2)', padding: '2px 4px', borderRadius: '2px' }}>{match.regexPattern}</code>
+                                <strong>Regex Pattern:</strong> <code style={{ background: 'var(--color-surface-active)', padding: '2px 4px', borderRadius: '2px' }}>{match.regexPattern}</code>
                               </div>
                               {match.matchPositions && match.matchPositions.length > 0 && (
                                 <div style={{ marginTop: '0.25rem' }}>
                                   <strong>Match Positions (Highlighted):</strong>
-                                  <div style={{ marginTop: '0.25rem', padding: '0.5rem', background: 'var(--ctp-surface2)', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.85rem', lineHeight: '1.6' }}>
+                                  <div style={{ marginTop: '0.25rem', padding: '0.5rem', background: 'var(--color-surface-active)', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.85rem', lineHeight: '1.6' }}>
                                     {message.split('').map((char, pos) => {
                                       const posInfo = match.matchPositions?.find(p => pos >= p.start && pos < p.end);
                                       return (
@@ -2300,7 +2300,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                       );
                                     })}
                                   </div>
-                                  <div style={{ marginTop: '0.5rem', fontSize: '0.7rem', color: 'var(--ctp-subtext0)', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                  <div style={{ marginTop: '0.5rem', fontSize: '0.7rem', color: 'var(--color-text-subtle)', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
                                       <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: 'rgba(137, 180, 250, 0.4)', borderRadius: '2px' }}></span>
                                       Literal text
@@ -2316,7 +2316,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                           )}
                         </div>
                       ) : (
-                        <div style={{ marginLeft: '1.25rem', fontSize: '0.8rem', color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>
+                        <div style={{ marginLeft: '1.25rem', fontSize: '0.8rem', color: 'var(--color-text-subtle)', fontStyle: 'italic' }}>
                           <UiIcon name="close" size={14} /> No matching trigger
                         </div>
                       )}
@@ -2332,10 +2332,10 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
           <div style={{
             marginTop: '1.5rem',
             padding: '1rem',
-            background: 'var(--ctp-surface0)',
-            border: '1px solid var(--ctp-overlay0)',
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-border-subtle)',
             borderRadius: '4px',
-            color: 'var(--ctp-subtext0)',
+            color: 'var(--color-text-subtle)',
             textAlign: 'center',
             fontStyle: 'italic'
           }}>
@@ -2358,22 +2358,22 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
             zIndex: 10000
           }}>
             <div style={{
-              background: 'var(--ctp-base)',
+              background: 'var(--color-bg)',
               padding: '1.5rem',
               borderRadius: '8px',
               maxWidth: '500px',
               width: '90%',
-              border: '1px solid var(--ctp-overlay0)'
+              border: '1px solid var(--color-border-subtle)'
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h3 style={{ margin: 0, color: 'var(--ctp-text)' }}>{t('auto_responder.import_script')}</h3>
+                <h3 style={{ margin: 0, color: 'var(--color-text)' }}>{t('auto_responder.import_script')}</h3>
                 <button
                   onClick={() => setShowImportModal(false)}
                   style={{
                     background: 'transparent',
                     border: 'none',
                     fontSize: '1.5rem',
-                    color: 'var(--ctp-subtext0)',
+                    color: 'var(--color-text-subtle)',
                     cursor: 'pointer',
                     padding: '0',
                     lineHeight: '1'
@@ -2382,7 +2382,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   ×
                 </button>
               </div>
-              <p style={{ color: 'var(--ctp-subtext0)', fontSize: '0.875rem', marginBottom: '1rem' }}>
+              <p style={{ color: 'var(--color-text-subtle)', fontSize: '0.875rem', marginBottom: '1rem' }}>
                 Select a script file (.js, .mjs, .py, or .sh) to import into /data/scripts/
               </p>
               <input
@@ -2395,13 +2395,13 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   if (file) {
                     if (filenameDisplay) {
                       filenameDisplay.textContent = `Selected: ${file.name}`;
-                      filenameDisplay.style.color = 'var(--ctp-green)';
+                      filenameDisplay.style.color = 'var(--color-success)';
                     }
                     void handleImportScript(file);
                   } else {
                     if (filenameDisplay) {
                       filenameDisplay.textContent = 'No file selected';
-                      filenameDisplay.style.color = 'var(--ctp-subtext0)';
+                      filenameDisplay.style.color = 'var(--color-text-subtle)';
                     }
                   }
                 }}
@@ -2412,8 +2412,8 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                 style={{
                   display: 'block',
                   padding: '0.75rem 1rem',
-                  background: 'var(--ctp-blue)',
-                  color: 'var(--ctp-base)',
+                  background: 'var(--color-accent)',
+                  color: 'var(--color-bg)',
                   border: 'none',
                   borderRadius: '4px',
                   cursor: 'pointer',
@@ -2424,16 +2424,16 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   transition: 'background 0.2s'
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'var(--ctp-sky)';
+                  e.currentTarget.style.background = 'var(--color-info)';
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'var(--ctp-blue)';
+                  e.currentTarget.style.background = 'var(--color-accent)';
                 }}
               >
                 <UiIcon name="file" size={14} /> Choose File...
               </label>
               <div id="script-import-filename" style={{ 
-                color: 'var(--ctp-subtext0)', 
+                color: 'var(--color-text-subtle)', 
                 fontSize: '0.85rem', 
                 fontStyle: 'italic',
                 marginBottom: '1rem',
@@ -2450,14 +2450,14 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                     if (input) input.value = '';
                     if (filenameDisplay) {
                       filenameDisplay.textContent = 'No file selected';
-                      filenameDisplay.style.color = 'var(--ctp-subtext0)';
+                      filenameDisplay.style.color = 'var(--color-text-subtle)';
                     }
                   }}
                   style={{
                     padding: '0.5rem 1rem',
-                    background: 'var(--ctp-surface1)',
-                    color: 'var(--ctp-text)',
-                    border: '1px solid var(--ctp-overlay0)',
+                    background: 'var(--color-surface-hover)',
+                    color: 'var(--color-text)',
+                    border: '1px solid var(--color-border-subtle)',
                     borderRadius: '4px',
                     cursor: 'pointer'
                   }}
@@ -2484,22 +2484,22 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
             zIndex: 10000
           }}>
             <div style={{
-              background: 'var(--ctp-base)',
+              background: 'var(--color-bg)',
               padding: '1.5rem',
               borderRadius: '8px',
               maxWidth: '500px',
               width: '90%',
-              border: '1px solid var(--ctp-overlay0)'
+              border: '1px solid var(--color-border-subtle)'
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h3 style={{ margin: 0, color: 'var(--ctp-text)' }}>{t('auto_responder.export_scripts')}</h3>
+                <h3 style={{ margin: 0, color: 'var(--color-text)' }}>{t('auto_responder.export_scripts')}</h3>
                 <button
                   onClick={() => setShowExportModal(false)}
                   style={{
                     background: 'transparent',
                     border: 'none',
                     fontSize: '1.5rem',
-                    color: 'var(--ctp-subtext0)',
+                    color: 'var(--color-text-subtle)',
                     cursor: 'pointer',
                     padding: '0',
                     lineHeight: '1'
@@ -2508,19 +2508,19 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   ×
                 </button>
               </div>
-              <p style={{ color: 'var(--ctp-subtext0)', fontSize: '0.875rem', marginBottom: '1rem' }}>
+              <p style={{ color: 'var(--color-text-subtle)', fontSize: '0.875rem', marginBottom: '1rem' }}>
                 {selectedScripts.size > 0
                   ? `Export ${selectedScripts.size} selected script(s) as a zip file?`
                   : `Export all ${availableScripts.length} script(s) as a zip file?`}
               </p>
               {selectedScripts.size > 0 && (
-                <div style={{ marginBottom: '1rem', padding: '0.75rem', background: 'var(--ctp-surface0)', borderRadius: '4px', maxHeight: '200px', overflowY: 'auto' }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)', marginBottom: '0.5rem', fontWeight: 'bold' }}>Selected Scripts:</div>
+                <div style={{ marginBottom: '1rem', padding: '0.75rem', background: 'var(--color-surface)', borderRadius: '4px', maxHeight: '200px', overflowY: 'auto' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', marginBottom: '0.5rem', fontWeight: 'bold' }}>Selected Scripts:</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                     {Array.from(selectedScripts).map((script) => {
                       const filename = script.replace('/data/scripts/', '');
                       return (
-                        <div key={script} style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: 'var(--ctp-text)' }}>
+                        <div key={script} style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: 'var(--color-text)' }}>
                           <UiIcon name={getFileIcon(filename)} size={14} /> {filename}
                         </div>
                       );
@@ -2533,9 +2533,9 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   onClick={() => setShowExportModal(false)}
                   style={{
                     padding: '0.5rem 1rem',
-                    background: 'var(--ctp-surface1)',
-                    color: 'var(--ctp-text)',
-                    border: '1px solid var(--ctp-overlay0)',
+                    background: 'var(--color-surface-hover)',
+                    color: 'var(--color-text)',
+                    border: '1px solid var(--color-border-subtle)',
                     borderRadius: '4px',
                     cursor: 'pointer'
                   }}
@@ -2547,8 +2547,8 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   disabled={isExporting}
                   style={{
                     padding: '0.5rem 1rem',
-                    background: isExporting ? 'var(--ctp-surface2)' : 'var(--ctp-green)',
-                    color: isExporting ? 'var(--ctp-subtext0)' : 'var(--ctp-base)',
+                    background: isExporting ? 'var(--color-surface-active)' : 'var(--color-success)',
+                    color: isExporting ? 'var(--color-text-subtle)' : 'var(--color-bg)',
                     border: 'none',
                     borderRadius: '4px',
                     cursor: isExporting ? 'not-allowed' : 'pointer',
@@ -2577,15 +2577,15 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
             zIndex: 10000
           }}>
             <div style={{
-              background: 'var(--ctp-base)',
+              background: 'var(--color-bg)',
               padding: '1.5rem',
               borderRadius: '8px',
               maxWidth: '500px',
               width: '90%',
-              border: '1px solid var(--ctp-overlay0)'
+              border: '1px solid var(--color-border-subtle)'
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h3 style={{ margin: 0, color: 'var(--ctp-text)' }}>{t('auto_responder.delete_script')}</h3>
+                <h3 style={{ margin: 0, color: 'var(--color-text)' }}>{t('auto_responder.delete_script')}</h3>
                 <button
                   onClick={() => {
                     setShowDeleteModal(false);
@@ -2595,7 +2595,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                     background: 'transparent',
                     border: 'none',
                     fontSize: '1.5rem',
-                    color: 'var(--ctp-subtext0)',
+                    color: 'var(--color-text-subtle)',
                     cursor: 'pointer',
                     padding: '0',
                     lineHeight: '1'
@@ -2604,8 +2604,8 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   ×
                 </button>
               </div>
-              <p style={{ color: 'var(--ctp-subtext0)', fontSize: '0.875rem', marginBottom: '1rem' }}>
-                Are you sure you want to delete <strong style={{ color: 'var(--ctp-text)' }}>{scriptToDelete}</strong>? This action cannot be undone.
+              <p style={{ color: 'var(--color-text-subtle)', fontSize: '0.875rem', marginBottom: '1rem' }}>
+                Are you sure you want to delete <strong style={{ color: 'var(--color-text)' }}>{scriptToDelete}</strong>? This action cannot be undone.
               </p>
               <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
                 <button
@@ -2615,9 +2615,9 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   }}
                   style={{
                     padding: '0.5rem 1rem',
-                    background: 'var(--ctp-surface1)',
-                    color: 'var(--ctp-text)',
-                    border: '1px solid var(--ctp-overlay0)',
+                    background: 'var(--color-surface-hover)',
+                    color: 'var(--color-text)',
+                    border: '1px solid var(--color-border-subtle)',
                     borderRadius: '4px',
                     cursor: 'pointer'
                   }}
@@ -2629,8 +2629,8 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   disabled={isDeleting === scriptToDelete}
                   style={{
                     padding: '0.5rem 1rem',
-                    background: isDeleting === scriptToDelete ? 'var(--ctp-surface2)' : 'var(--ctp-red)',
-                    color: isDeleting === scriptToDelete ? 'var(--ctp-subtext0)' : 'var(--ctp-base)',
+                    background: isDeleting === scriptToDelete ? 'var(--color-surface-active)' : 'var(--color-error)',
+                    color: isDeleting === scriptToDelete ? 'var(--color-text-subtle)' : 'var(--color-bg)',
                     border: 'none',
                     borderRadius: '4px',
                     cursor: isDeleting === scriptToDelete ? 'not-allowed' : 'pointer',

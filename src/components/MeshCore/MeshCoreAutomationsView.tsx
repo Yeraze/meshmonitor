@@ -169,7 +169,7 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
         footer={
           <>
             <UiIcon name="sparkles" size={15} /> {t('meshcore.automation.tokens.engine_tip', 'Want maximum flexibility? Try the')}{' '}
-            <Link to="/automations" style={{ color: 'var(--ctp-mauve)', fontWeight: 'bold' }}>
+            <Link to="/automations" style={{ color: 'var(--color-accent-alt)', fontWeight: 'bold' }}>
               {t('automation.engine_link', 'Automation Engine')}
             </Link>{' '}
             {t('meshcore.automation.tokens.engine_tip2', '— build global “when this happens, do that” workflows across every source.')}
@@ -183,8 +183,8 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
         alignItems: 'center',
         marginBottom: '1.5rem',
         padding: '1rem 1.25rem',
-        background: 'var(--ctp-surface1)',
-        border: '1px solid var(--ctp-surface2)',
+        background: 'var(--color-surface-hover)',
+        border: '1px solid var(--color-surface-active)',
         borderRadius: '8px',
       }}>
         <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -203,8 +203,8 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
             fontSize: '0.8rem',
             padding: '0.25rem 0.5rem',
             borderRadius: '4px',
-            background: 'var(--ctp-green)',
-            color: 'var(--ctp-base)',
+            background: 'var(--color-success)',
+            color: 'var(--color-bg)',
           }}>
             {t('meshcore.automation.running', 'Running')}
           </span>
@@ -216,7 +216,7 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
         transition: 'opacity 0.2s',
         pointerEvents: settings.enabled ? 'auto' : 'none',
       }}>
-        <p style={{ marginBottom: '1.5rem', color: 'var(--ctp-subtext0)', lineHeight: '1.5', marginLeft: '1.75rem' }}>
+        <p style={{ marginBottom: '1.5rem', color: 'var(--color-text-subtle)', lineHeight: '1.5', marginLeft: '1.75rem' }}>
           {t('meshcore.automation.pathfinding.description',
             'Automatically discover paths and collect neighbor information from your MeshCore contacts on a recurring schedule.')}
         </p>
@@ -225,8 +225,8 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
         <div style={{
           padding: '1rem 1.25rem',
           marginBottom: '1rem',
-          background: 'var(--ctp-surface0)',
-          border: '1px solid var(--ctp-surface1)',
+          background: 'var(--color-surface)',
+          border: '1px solid var(--color-surface-hover)',
           borderRadius: '8px',
         }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: canWrite ? 'pointer' : 'default' }}>
@@ -239,7 +239,7 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
             />
             <div>
               <strong>{t('meshcore.automation.pathfinding.path_discovery', 'Path Discovery for Companions')}</strong>
-              <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+              <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
                 {t('meshcore.automation.pathfinding.path_discovery_desc',
                   'Sends a path discovery request to each Companion contact. The device learns the forwarding route via its normal path return mechanism.')}
               </p>
@@ -251,8 +251,8 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
         <div style={{
           padding: '1rem 1.25rem',
           marginBottom: '1.5rem',
-          background: 'var(--ctp-surface0)',
-          border: '1px solid var(--ctp-surface1)',
+          background: 'var(--color-surface)',
+          border: '1px solid var(--color-surface-hover)',
           borderRadius: '8px',
         }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: canWrite ? 'pointer' : 'default' }}>
@@ -265,7 +265,7 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
             />
             <div>
               <strong>{t('meshcore.automation.pathfinding.neighbors', 'Neighbors for Repeaters')}</strong>
-              <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+              <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
                 {t('meshcore.automation.pathfinding.neighbors_desc',
                   'Queries the neighbor list from each Repeater contact. Returns nearby nodes with signal quality information.')}
               </p>
@@ -277,7 +277,7 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
         <div className="setting-item" style={{ marginBottom: '1rem' }}>
           <label htmlFor="pathfindingInterval">
             {t('meshcore.automation.pathfinding.interval', 'Time between commands (minutes)')}
-            <span className="setting-description" style={{ display: 'block', fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+            <span className="setting-description" style={{ display: 'block', fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
               {t('meshcore.automation.pathfinding.interval_desc',
                 'Delay between each individual path discovery or neighbor request to avoid flooding the mesh.')}
             </span>
@@ -299,7 +299,7 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
         <div className="setting-item" style={{ marginBottom: '1rem' }}>
           <label htmlFor="pathfindingRepeat">
             {t('meshcore.automation.pathfinding.repeat', 'Repeat every (hours)')}
-            <span className="setting-description" style={{ display: 'block', fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+            <span className="setting-description" style={{ display: 'block', fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
               {t('meshcore.automation.pathfinding.repeat_desc',
                 'How often the full cycle runs. All eligible contacts are processed in each cycle.')}
             </span>
@@ -319,7 +319,7 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
 
         {/* Last run info */}
         {settings.lastRunAt ? (
-          <p style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)', marginTop: '1rem' }}>
+          <p style={{ fontSize: '0.85rem', color: 'var(--color-text-subtle)', marginTop: '1rem' }}>
             {t('meshcore.automation.pathfinding.last_run', 'Last run')}: {new Date(settings.lastRunAt).toLocaleString()}
           </p>
         ) : null}

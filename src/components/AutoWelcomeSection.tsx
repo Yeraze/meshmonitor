@@ -214,8 +214,8 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
         alignItems: 'center',
         marginBottom: '1.5rem',
         padding: '1rem 1.25rem',
-        background: 'var(--ctp-surface1)',
-        border: '1px solid var(--ctp-surface2)',
+        background: 'var(--color-surface-hover)',
+        border: '1px solid var(--color-surface-active)',
         borderRadius: '8px'
       }}>
         <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -396,8 +396,8 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
                 style={{
                   padding: '0.25rem 0.5rem',
                   fontSize: '12px',
-                  background: 'var(--ctp-surface2)',
-                  border: '1px solid var(--ctp-overlay0)',
+                  background: 'var(--color-surface-active)',
+                  border: '1px solid var(--color-border-subtle)',
                   borderRadius: '4px',
                   cursor: localEnabled ? 'pointer' : 'not-allowed',
                   opacity: localEnabled ? 1 : 0.5
@@ -418,12 +418,12 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
           </label>
           <div style={{
             padding: '0.75rem',
-            background: 'var(--ctp-surface0)',
-            border: '2px solid var(--ctp-blue)',
+            background: 'var(--color-surface)',
+            border: '2px solid var(--color-accent)',
             borderRadius: '4px',
             fontFamily: 'monospace',
             fontSize: '0.95rem',
-            color: 'var(--ctp-text)',
+            color: 'var(--color-text)',
             lineHeight: '1.5',
             minHeight: '50px'
           }}>

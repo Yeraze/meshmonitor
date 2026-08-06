@@ -50,14 +50,14 @@ export const AutomationTokenReference: React.FC<AutomationTokenReferenceProps> =
       style={{
         marginBottom: '1.5rem',
         padding: '1rem 1.25rem',
-        background: 'var(--ctp-surface0)',
-        border: '1px solid var(--ctp-surface1)',
+        background: 'var(--color-surface)',
+        border: '1px solid var(--color-surface-hover)',
         borderRadius: '8px',
       }}
     >
       <h3 style={{ margin: '0 0 0.25rem' }}>{title}</h3>
       {intro && (
-        <p style={{ margin: '0 0 1rem', fontSize: '0.85rem', color: 'var(--ctp-subtext0)', lineHeight: 1.5 }}>
+        <p style={{ margin: '0 0 1rem', fontSize: '0.85rem', color: 'var(--color-text-subtle)', lineHeight: 1.5 }}>
           {intro}
         </p>
       )}
@@ -66,7 +66,7 @@ export const AutomationTokenReference: React.FC<AutomationTokenReferenceProps> =
           <div key={group.title} style={{ flex: '1 1 260px', minWidth: '260px' }}>
             <div style={{ fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '0.25rem' }}>{group.title}</div>
             {group.note && (
-              <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)', marginBottom: '0.5rem', lineHeight: 1.4 }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', marginBottom: '0.5rem', lineHeight: 1.4 }}>
                 {group.note}
               </div>
             )}
@@ -74,9 +74,9 @@ export const AutomationTokenReference: React.FC<AutomationTokenReferenceProps> =
               {group.tokens.map((tok) => (
                 <React.Fragment key={tok.token}>
                   <dt>
-                    <code style={{ fontFamily: 'monospace', color: 'var(--ctp-mauve)' }}>{tok.token}</code>
+                    <code style={{ fontFamily: 'monospace', color: 'var(--color-accent-alt)' }}>{tok.token}</code>
                   </dt>
-                  <dd style={{ margin: 0, color: 'var(--ctp-subtext1)' }}>{tok.description}</dd>
+                  <dd style={{ margin: 0, color: 'var(--color-text-muted)' }}>{tok.description}</dd>
                 </React.Fragment>
               ))}
             </dl>
@@ -88,8 +88,8 @@ export const AutomationTokenReference: React.FC<AutomationTokenReferenceProps> =
           style={{
             marginTop: '1rem',
             padding: '0.6rem 0.85rem',
-            background: 'var(--ctp-surface1)',
-            border: '1px solid var(--ctp-mauve)',
+            background: 'var(--color-surface-hover)',
+            border: '1px solid var(--color-accent-alt)',
             borderRadius: '6px',
             fontSize: '0.85rem',
             lineHeight: 1.5,

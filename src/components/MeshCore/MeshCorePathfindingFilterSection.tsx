@@ -110,8 +110,8 @@ const sectionHeaderStyle: React.CSSProperties = {
 };
 
 const badgeStyle: React.CSSProperties = {
-  background: 'var(--ctp-blue)',
-  color: 'var(--ctp-base)',
+  background: 'var(--color-accent)',
+  color: 'var(--color-bg)',
   padding: '0.1rem 0.5rem',
   borderRadius: '10px',
   fontSize: '11px',
@@ -121,8 +121,8 @@ const badgeStyle: React.CSSProperties = {
 const attributeBoxStyle: React.CSSProperties = {
   padding: '0.75rem 1rem',
   marginBottom: '0.75rem',
-  background: 'var(--ctp-surface0)',
-  border: '1px solid var(--ctp-surface1)',
+  background: 'var(--color-surface)',
+  border: '1px solid var(--color-surface-hover)',
   borderRadius: '6px',
 };
 
@@ -396,7 +396,7 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
         </label>
       </div>
       <MeshCoreReceiveOnlyNote receiveOnly={receiveOnly} />
-      <p style={{ margin: '0 0 1rem', fontSize: '0.85rem', color: 'var(--ctp-subtext0)', lineHeight: '1.5' }}>
+      <p style={{ margin: '0 0 1rem', fontSize: '0.85rem', color: 'var(--color-text-subtle)', lineHeight: '1.5' }}>
         {t(
           'meshcore.automation.pathfinding.filter.description',
           'Optionally narrow which contacts Auto-Pathfinding targets, instead of every Companion and Repeater contact.',
@@ -448,10 +448,10 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
                 width: '100%',
                 padding: '0.4rem 0.5rem',
                 marginBottom: '0.5rem',
-                background: 'var(--ctp-surface1)',
-                border: '1px solid var(--ctp-surface2)',
+                background: 'var(--color-surface-hover)',
+                border: '1px solid var(--color-surface-active)',
                 borderRadius: '4px',
-                color: 'var(--ctp-text)',
+                color: 'var(--color-text)',
               }}
             />
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
@@ -474,9 +474,9 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
                 {t('meshcore.automation.pathfinding.filter.deselect_all', 'Deselect All')}
               </button>
             </div>
-            <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--ctp-surface2)', borderRadius: '4px' }}>
+            <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--color-surface-active)', borderRadius: '4px' }}>
               {filteredContacts.length === 0 ? (
-                <div style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--ctp-subtext0)', fontSize: '12px' }}>
+                <div style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--color-text-subtle)', fontSize: '12px' }}>
                   {t('meshcore.automation.pathfinding.filter.no_contacts', 'No contacts found')}
                 </div>
               ) : (
@@ -486,7 +486,7 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
                     onClick={() => canWrite && toggleContact(c.publicKey)}
                     style={{
                       padding: '0.4rem 0.6rem',
-                      borderBottom: '1px solid var(--ctp-surface1)',
+                      borderBottom: '1px solid var(--color-surface-hover)',
                       display: 'flex',
                       alignItems: 'center',
                       cursor: canWrite ? 'pointer' : 'default',
@@ -501,7 +501,7 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
                       disabled={!canWrite}
                       style={{ width: 'auto', margin: 0, marginRight: '0.5rem' }}
                     />
-                    <span style={{ color: 'var(--ctp-text)' }}>{contactDisplayName(c)}</span>
+                    <span style={{ color: 'var(--color-text)' }}>{contactDisplayName(c)}</span>
                   </div>
                 ))
               )}
@@ -523,7 +523,7 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
                 {t('meshcore.automation.pathfinding.filter.regex_enable', 'Filter by name (regex)')}
               </label>
             </div>
-            <label htmlFor="pfFilterNameRegex" style={{ display: 'block', fontSize: '0.8rem', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem' }}>
+            <label htmlFor="pfFilterNameRegex" style={{ display: 'block', fontSize: '0.8rem', color: 'var(--color-text-subtle)', marginBottom: '0.25rem' }}>
               {t('meshcore.automation.pathfinding.filter.regex_label', 'Name regex')}
             </label>
             <input
@@ -536,7 +536,7 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
               style={{ width: '100%' }}
             />
             {regexError && (
-              <p style={{ margin: '0.25rem 0 0', fontSize: '0.75rem', color: 'var(--ctp-red)' }}>
+              <p style={{ margin: '0.25rem 0 0', fontSize: '0.75rem', color: 'var(--color-error)' }}>
                 {t('meshcore.automation.pathfinding.filter.regex_invalid', 'Invalid regular expression')}: {regexError}
               </p>
             )}
@@ -563,7 +563,7 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
                 'Applies only to Auto-Pathfinding targeting. It is separate from the Nodes list / map age filter in Settings → Node Display.',
               )}
             </span>
-            <label htmlFor="pfFilterLastHeardHours" style={{ display: 'block', fontSize: '0.8rem', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem' }}>
+            <label htmlFor="pfFilterLastHeardHours" style={{ display: 'block', fontSize: '0.8rem', color: 'var(--color-text-subtle)', marginBottom: '0.25rem' }}>
               {t('meshcore.automation.pathfinding.filter.last_heard_label', 'Heard within (hours)')}
             </label>
             <input
@@ -595,7 +595,7 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
               </label>
             </div>
             <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.35rem' }}>
-              <label style={{ fontSize: '0.8rem', color: 'var(--ctp-subtext0)' }}>
+              <label style={{ fontSize: '0.8rem', color: 'var(--color-text-subtle)' }}>
                 {t('meshcore.automation.pathfinding.filter.hops_min_label', 'Min hops')}
                 <input
                   type="number"
@@ -612,7 +612,7 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
                   style={{ width: '80px', display: 'block', marginTop: '0.25rem' }}
                 />
               </label>
-              <label style={{ fontSize: '0.8rem', color: 'var(--ctp-subtext0)' }}>
+              <label style={{ fontSize: '0.8rem', color: 'var(--color-text-subtle)' }}>
                 {t('meshcore.automation.pathfinding.filter.hops_max_label', 'Max hops')}
                 <input
                   type="number"
@@ -629,7 +629,7 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
                 />
               </label>
             </div>
-            <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+            <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
               {t('meshcore.automation.pathfinding.filter.hops_unknown_note',
                 'Contacts with an unknown route (flood) are excluded when this is on.')}
             </p>
@@ -651,7 +651,7 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
               </label>
             </div>
             <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.35rem' }}>
-              <label style={{ fontSize: '0.8rem', color: 'var(--ctp-subtext0)' }}>
+              <label style={{ fontSize: '0.8rem', color: 'var(--color-text-subtle)' }}>
                 {t('meshcore.automation.pathfinding.filter.rssi_min_label', 'Min RSSI (dBm)')}
                 <input
                   type="number"
@@ -664,7 +664,7 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
                   style={{ width: '90px', display: 'block', marginTop: '0.25rem' }}
                 />
               </label>
-              <label style={{ fontSize: '0.8rem', color: 'var(--ctp-subtext0)' }}>
+              <label style={{ fontSize: '0.8rem', color: 'var(--color-text-subtle)' }}>
                 {t('meshcore.automation.pathfinding.filter.snr_min_label', 'Min SNR (dB)')}
                 <input
                   type="number"
@@ -678,7 +678,7 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
                 />
               </label>
             </div>
-            <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+            <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
               {t('meshcore.automation.pathfinding.filter.signal_note', 'Leave a threshold at its floor value to ignore it.')}
             </p>
           </div>
@@ -688,8 +688,8 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
         <div style={{
           width: '280px',
           flexShrink: 0,
-          background: 'var(--ctp-base)',
-          border: '1px solid var(--ctp-surface2)',
+          background: 'var(--color-bg)',
+          border: '1px solid var(--color-surface-active)',
           borderRadius: '6px',
           display: 'flex',
           flexDirection: 'column',
@@ -697,8 +697,8 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
         }}>
           <div style={{
             padding: '0.5rem 0.75rem',
-            borderBottom: '1px solid var(--ctp-surface2)',
-            background: 'var(--ctp-surface1)',
+            borderBottom: '1px solid var(--color-surface-active)',
+            background: 'var(--color-surface-hover)',
             borderRadius: '6px 6px 0 0',
             fontSize: '13px',
             fontWeight: 500,
@@ -710,7 +710,7 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
           </div>
           <div style={{ flex: 1, overflowY: 'auto', maxHeight: '400px', padding: '0.25rem' }}>
             {debouncedMatching.length === 0 ? (
-              <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--ctp-subtext0)', fontSize: '12px' }}>
+              <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--color-text-subtle)', fontSize: '12px' }}>
                 {t('meshcore.automation.pathfinding.filter.no_match', 'No contacts match the current filters')}
               </div>
             ) : (
@@ -720,9 +720,9 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
                   title={contactDisplayName(c)}
                   style={{
                     padding: '0.35rem 0.5rem',
-                    borderBottom: '1px solid var(--ctp-surface1)',
+                    borderBottom: '1px solid var(--color-surface-hover)',
                     fontSize: '12px',
-                    color: 'var(--ctp-text)',
+                    color: 'var(--color-text)',
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',

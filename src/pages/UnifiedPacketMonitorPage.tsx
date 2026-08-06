@@ -372,7 +372,7 @@ export default function UnifiedPacketMonitorPage() {
                           onClick={() => loadMore()}
                           style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: `${virtualRow.size}px`, transform: `translateY(${virtualRow.start}px)`, display: 'table', tableLayout: 'fixed', cursor: 'pointer' }}
                         >
-                          <td colSpan={15} style={{ textAlign: 'center', color: 'var(--ctp-blue, var(--text-secondary))' }}>
+                          <td colSpan={15} style={{ textAlign: 'center', color: 'var(--color-accent, var(--text-secondary))' }}>
                             {loadingMore ? t('packet_monitor.loading_more') : t('packet_monitor.load_more_click', 'Click to load more packets...')}
                           </td>
                         </tr>

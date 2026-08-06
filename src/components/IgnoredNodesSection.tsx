@@ -107,8 +107,8 @@ const IgnoredNodesSection: React.FC<IgnoredNodesSectionProps> = ({ baseUrl }) =>
         alignItems: 'center',
         marginBottom: '1.5rem',
         padding: '1rem 1.25rem',
-        background: 'var(--ctp-surface1)',
-        border: '1px solid var(--ctp-surface2)',
+        background: 'var(--color-surface-hover)',
+        border: '1px solid var(--color-surface-active)',
         borderRadius: '8px'
       }}>
         <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -140,20 +140,20 @@ const IgnoredNodesSection: React.FC<IgnoredNodesSectionProps> = ({ baseUrl }) =>
           marginLeft: '1.75rem',
           marginBottom: '1.5rem',
           padding: '1rem',
-          background: 'var(--ctp-surface0)',
-          border: '1px solid var(--ctp-surface2)',
+          background: 'var(--color-surface)',
+          border: '1px solid var(--color-surface-active)',
           borderRadius: '6px',
           display: 'flex',
           gap: '2rem',
         }}>
           <div>
-            <div style={{ fontSize: '24px', fontWeight: 600, color: 'var(--ctp-red)' }}>
+            <div style={{ fontSize: '24px', fontWeight: 600, color: 'var(--color-error)' }}>
               {ignoredNodes.length}
             </div>
-            <div style={{ fontSize: '12px', color: 'var(--ctp-subtext0)' }}>
+            <div style={{ fontSize: '12px', color: 'var(--color-text-subtle)' }}>
               {t('automation.ignored_nodes.total_ignored', 'Ignored Nodes')}
             </div>
-            <div style={{ fontSize: '11px', color: 'var(--ctp-subtext0)', marginTop: '0.25rem' }}>
+            <div style={{ fontSize: '11px', color: 'var(--color-text-subtle)', marginTop: '0.25rem' }}>
               {t('automation.ignored_nodes.count_summary', '{{count}} ignored · {{geo}} geo · {{manual}} manual', {
                 count: ignoredNodes.length,
                 geo: geoCount,
@@ -165,7 +165,7 @@ const IgnoredNodesSection: React.FC<IgnoredNodesSectionProps> = ({ baseUrl }) =>
 
         {/* Ignored Nodes Table */}
         <div style={{
-          border: '1px solid var(--ctp-surface2)',
+          border: '1px solid var(--color-surface-active)',
           borderRadius: '6px',
           overflow: 'hidden',
           marginLeft: '1.75rem'
@@ -174,7 +174,7 @@ const IgnoredNodesSection: React.FC<IgnoredNodesSectionProps> = ({ baseUrl }) =>
             <div style={{
               padding: '1rem',
               textAlign: 'center',
-              color: 'var(--ctp-subtext0)',
+              color: 'var(--color-text-subtle)',
               fontSize: '12px'
             }}>
               {t('automation.ignored_nodes.empty', 'No nodes are currently ignored.')}
@@ -186,7 +186,7 @@ const IgnoredNodesSection: React.FC<IgnoredNodesSectionProps> = ({ baseUrl }) =>
               fontSize: '12px'
             }}>
               <thead>
-                <tr style={{ background: 'var(--ctp-surface1)' }}>
+                <tr style={{ background: 'var(--color-surface-hover)' }}>
                   <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 500 }}>
                     {t('automation.ignored_nodes.col_node_id', 'Node ID')}
                   </th>
@@ -209,25 +209,25 @@ const IgnoredNodesSection: React.FC<IgnoredNodesSectionProps> = ({ baseUrl }) =>
               </thead>
               <tbody>
                 {ignoredNodes.map((node) => (
-                  <tr key={`${node.sourceId}:${node.nodeNum}`} style={{ borderTop: '1px solid var(--ctp-surface1)' }}>
-                    <td style={{ padding: '0.4rem 0.75rem', color: 'var(--ctp-text)', fontFamily: 'monospace' }}>
+                  <tr key={`${node.sourceId}:${node.nodeNum}`} style={{ borderTop: '1px solid var(--color-surface-hover)' }}>
+                    <td style={{ padding: '0.4rem 0.75rem', color: 'var(--color-text)', fontFamily: 'monospace' }}>
                       {node.nodeId}
                     </td>
-                    <td style={{ padding: '0.4rem 0.75rem', color: 'var(--ctp-text)' }}>
+                    <td style={{ padding: '0.4rem 0.75rem', color: 'var(--color-text)' }}>
                       {node.longName || '-'}
                     </td>
-                    <td style={{ padding: '0.4rem 0.75rem', color: 'var(--ctp-text)' }}>
+                    <td style={{ padding: '0.4rem 0.75rem', color: 'var(--color-text)' }}>
                       {node.shortName || '-'}
                     </td>
-                    <td style={{ padding: '0.4rem 0.75rem', color: 'var(--ctp-subtext0)' }}>
+                    <td style={{ padding: '0.4rem 0.75rem', color: 'var(--color-text-subtle)' }}>
                       {new Date(node.ignoredAt).toLocaleString()}
                     </td>
                     <td style={{ padding: '0.4rem 0.75rem' }}>
                       <span style={{
                         fontSize: '11px',
                         padding: '0.15rem 0.4rem',
-                        background: node.reason === 'geo' ? 'var(--ctp-blue)' : 'var(--ctp-surface2)',
-                        color: node.reason === 'geo' ? 'var(--ctp-base)' : 'var(--ctp-subtext0)',
+                        background: node.reason === 'geo' ? 'var(--color-accent)' : 'var(--color-surface-active)',
+                        color: node.reason === 'geo' ? 'var(--color-bg)' : 'var(--color-text-subtle)',
                         borderRadius: '4px',
                         fontWeight: 'bold',
                       }}>
@@ -243,8 +243,8 @@ const IgnoredNodesSection: React.FC<IgnoredNodesSectionProps> = ({ baseUrl }) =>
                         style={{
                           padding: '0.25rem 0.5rem',
                           fontSize: '11px',
-                          background: 'var(--ctp-red)',
-                          color: 'var(--ctp-base)',
+                          background: 'var(--color-error)',
+                          color: 'var(--color-bg)',
                           border: 'none',
                           borderRadius: '4px',
                           cursor: removingNodeNum === node.nodeNum ? 'not-allowed' : 'pointer',

@@ -53,14 +53,14 @@ function SegmentSnrChart({ chartData }: {
       <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
         <button
           className={`node-popup-tab ${mode === 'timeOfDay' ? 'active' : ''}`}
-          style={{ fontSize: '10px', padding: '2px 8px', border: '1px solid var(--ctp-surface2)', borderRadius: '4px', cursor: 'pointer', background: mode === 'timeOfDay' ? 'var(--ctp-blue)' : 'var(--ctp-surface0)', color: mode === 'timeOfDay' ? 'var(--ctp-base)' : 'var(--ctp-subtext1)' }}
+          style={{ fontSize: '10px', padding: '2px 8px', border: '1px solid var(--color-surface-active)', borderRadius: '4px', cursor: 'pointer', background: mode === 'timeOfDay' ? 'var(--color-accent)' : 'var(--color-surface)', color: mode === 'timeOfDay' ? 'var(--color-bg)' : 'var(--color-text-muted)' }}
           onClick={e => { e.stopPropagation(); setMode('timeOfDay'); }}
         >
           Time of Day
         </button>
         <button
           className={`node-popup-tab ${mode === 'chronological' ? 'active' : ''}`}
-          style={{ fontSize: '10px', padding: '2px 8px', border: '1px solid var(--ctp-surface2)', borderRadius: '4px', cursor: 'pointer', background: mode === 'chronological' ? 'var(--ctp-blue)' : 'var(--ctp-surface0)', color: mode === 'chronological' ? 'var(--ctp-base)' : 'var(--ctp-subtext1)' }}
+          style={{ fontSize: '10px', padding: '2px 8px', border: '1px solid var(--color-surface-active)', borderRadius: '4px', cursor: 'pointer', background: mode === 'chronological' ? 'var(--color-accent)' : 'var(--color-surface)', color: mode === 'chronological' ? 'var(--color-bg)' : 'var(--color-text-muted)' }}
           onClick={e => { e.stopPropagation(); setMode('chronological'); }}
         >
           Over Time
@@ -69,7 +69,7 @@ function SegmentSnrChart({ chartData }: {
       <ResponsiveContainer width="100%" height={150}>
         {mode === 'timeOfDay' ? (
           <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--ctp-surface2)" />
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-surface-active)" />
             <XAxis
               dataKey="timeDecimal"
               type="number"
@@ -80,27 +80,27 @@ function SegmentSnrChart({ chartData }: {
                 const minutes = Math.round((value - hours) * 60);
                 return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
               }}
-              tick={{ fill: 'var(--ctp-subtext1)', fontSize: 10 }}
-              stroke="var(--ctp-surface2)"
+              tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }}
+              stroke="var(--color-surface-active)"
             />
             <YAxis
-              tick={{ fill: 'var(--ctp-subtext1)', fontSize: 10 }}
-              stroke="var(--ctp-surface2)"
-              label={{ value: 'SNR (dB)', angle: -90, position: 'insideLeft', style: { fill: 'var(--ctp-subtext1)', fontSize: 10 } }}
+              tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }}
+              stroke="var(--color-surface-active)"
+              label={{ value: 'SNR (dB)', angle: -90, position: 'insideLeft', style: { fill: 'var(--color-text-muted)', fontSize: 10 } }}
             />
             <Tooltip
-              contentStyle={{ backgroundColor: 'var(--ctp-surface0)', border: '1px solid var(--ctp-surface2)', borderRadius: '4px', fontSize: '12px' }}
-              labelStyle={{ color: 'var(--ctp-text)' }}
+              contentStyle={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-surface-active)', borderRadius: '4px', fontSize: '12px' }}
+              labelStyle={{ color: 'var(--color-text)' }}
               labelFormatter={value => {
                 const item = chartData.find(d => d.timeDecimal === value);
                 return item ? item.timeLabel : String(value);
               }}
             />
-            <Line type="monotone" dataKey="snr" stroke="var(--ctp-mauve)" strokeWidth={2} dot={{ fill: 'var(--ctp-mauve)', r: 3 }} />
+            <Line type="monotone" dataKey="snr" stroke="var(--color-accent-alt)" strokeWidth={2} dot={{ fill: 'var(--color-accent-alt)', r: 3 }} />
           </LineChart>
         ) : (
           <LineChart data={chronoData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--ctp-surface2)" />
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-surface-active)" />
             <XAxis
               dataKey="chronoTime"
               type="number"
@@ -109,23 +109,23 @@ function SegmentSnrChart({ chartData }: {
                 const date = new Date(value);
                 return `${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')}`;
               }}
-              tick={{ fill: 'var(--ctp-subtext1)', fontSize: 10 }}
-              stroke="var(--ctp-surface2)"
+              tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }}
+              stroke="var(--color-surface-active)"
             />
             <YAxis
-              tick={{ fill: 'var(--ctp-subtext1)', fontSize: 10 }}
-              stroke="var(--ctp-surface2)"
-              label={{ value: 'SNR (dB)', angle: -90, position: 'insideLeft', style: { fill: 'var(--ctp-subtext1)', fontSize: 10 } }}
+              tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }}
+              stroke="var(--color-surface-active)"
+              label={{ value: 'SNR (dB)', angle: -90, position: 'insideLeft', style: { fill: 'var(--color-text-muted)', fontSize: 10 } }}
             />
             <Tooltip
-              contentStyle={{ backgroundColor: 'var(--ctp-surface0)', border: '1px solid var(--ctp-surface2)', borderRadius: '4px', fontSize: '12px' }}
-              labelStyle={{ color: 'var(--ctp-text)' }}
+              contentStyle={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-surface-active)', borderRadius: '4px', fontSize: '12px' }}
+              labelStyle={{ color: 'var(--color-text)' }}
               labelFormatter={value => {
                 const item = chronoData.find(d => d.chronoTime === value);
                 return item ? item.chronoLabel : String(value);
               }}
             />
-            <Line type="monotone" dataKey="snr" stroke="var(--ctp-mauve)" strokeWidth={2} dot={{ fill: 'var(--ctp-mauve)', r: 3 }} />
+            <Line type="monotone" dataKey="snr" stroke="var(--color-accent-alt)" strokeWidth={2} dot={{ fill: 'var(--color-accent-alt)', r: 3 }} />
           </LineChart>
         )}
       </ResponsiveContainer>
@@ -640,7 +640,7 @@ export function useTraceroutePaths({
                   e.stopPropagation();
                   callbacks.onSelectRouteSegment(nodeNum1, nodeNum2);
                 }}
-                style={{ cursor: 'pointer', color: 'var(--ctp-blue)', textDecoration: 'underline' }}
+                style={{ cursor: 'pointer', color: 'var(--color-accent)', textDecoration: 'underline' }}
                 title="Click to view all traceroutes using this segment"
               >
                 {usage}
@@ -832,7 +832,7 @@ export function useTraceroutePaths({
                 </div>
               )}
               {(seg.avgSnr !== null || seg.isMqtt) && (
-                <div className="route-usage" style={{ marginTop: '8px', borderTop: '1px solid var(--ctp-surface0)', paddingTop: '4px' }}>
+                <div className="route-usage" style={{ marginTop: '8px', borderTop: '1px solid var(--color-surface)', paddingTop: '4px' }}>
                   Segment SNR: <strong>{seg.avgSnr !== null ? `${seg.avgSnr.toFixed(1)} dB` : 'Unknown'}</strong>
                   {seg.isMqtt && ' (IP)'}
                 </div>
