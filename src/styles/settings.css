@@ -1,7 +1,7 @@
 /* Settings Page Styles */
 .settings-header-card {
-  background: var(--ctp-surface0);
-  border: 1px solid var(--ctp-surface1);
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-xl);
   padding: 2rem;
   margin-bottom: 2rem;
@@ -31,21 +31,21 @@
 
 .settings-app-name {
   margin: 0;
-  color: var(--ctp-lavender);
+  color: var(--color-accent-muted);
   font-size: 2rem;
   font-weight: 700;
 }
 
 .settings-version {
   margin: 0;
-  color: var(--ctp-subtext1);
+  color: var(--color-text-muted);
   font-size: 1rem;
   font-family: var(--font-mono);
 }
 
 .settings-content {
-  background: var(--ctp-surface0);
-  border: 1px solid var(--ctp-surface1);
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-xl);
   padding: 2rem;
   min-height: 200px;
@@ -60,8 +60,8 @@
   .settings-content.settings-multi-column .settings-section {
     margin-bottom: 1.5rem;
     break-inside: avoid;
-    background: var(--ctp-base);
-    border: 1px solid var(--ctp-surface1);
+    background: var(--color-bg);
+    border: 1px solid var(--color-surface-hover);
     border-radius: var(--radius-lg);
     padding: 1.25rem;
   }
@@ -76,11 +76,11 @@
 }
 
 .settings-section h3 {
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 1.2rem;
   margin: 0 0 1.5rem 0;
   padding-bottom: 0.75rem;
-  border-bottom: 2px solid var(--ctp-surface2);
+  border-bottom: 2px solid var(--color-surface-active);
 }
 
 .automation-section-header {
@@ -103,7 +103,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 1rem;
   font-weight: 500;
   margin-bottom: 0.75rem;
@@ -111,14 +111,14 @@
 
 .setting-description {
   font-size: 0.85rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-weight: normal;
 }
 
 .setting-input {
-  background: var(--ctp-surface1);
-  border: 2px solid var(--ctp-surface2);
-  color: var(--ctp-text);
+  background: var(--color-surface-hover);
+  border: 2px solid var(--color-surface-active);
+  color: var(--color-text);
   padding: 0.75rem 1rem;
   border-radius: var(--radius-lg);
   font-size: 1rem;
@@ -128,19 +128,19 @@
 
 .setting-input:focus {
   outline: none;
-  border-color: var(--ctp-blue);
-  background: var(--ctp-base);
+  border-color: var(--color-accent);
+  background: var(--color-bg);
 }
 
 .setting-input:hover {
-  border-color: var(--ctp-overlay0);
+  border-color: var(--color-border-subtle);
 }
 
 /* Channel Checkbox List Styles */
 .channel-checkbox-list {
   margin-top: 0.5rem;
   padding: 0.75rem;
-  background: var(--ctp-surface1);
+  background: var(--color-surface-hover);
   border-radius: var(--radius-sm);
 }
 
@@ -175,11 +175,11 @@
 }
 
 .channel-checkbox-row label.primary-channel {
-  color: var(--ctp-yellow);
+  color: var(--color-warning);
 }
 
 .channel-checkbox-row label.dm-channel {
-  color: var(--ctp-sky);
+  color: var(--color-info);
 }
 
 .channel-checkbox-row input[type="checkbox"]:disabled + label {
@@ -189,7 +189,7 @@
 
 /* Danger Zone Styles */
 .danger-zone {
-  border: 2px solid var(--ctp-red);
+  border: 2px solid var(--color-error);
   border-radius: var(--radius-lg);
   padding: 1.5rem;
   background: rgba(243, 139, 168, 0.05);
@@ -199,12 +199,12 @@
 }
 
 .danger-zone h3 {
-  color: var(--ctp-red);
-  border-bottom-color: var(--ctp-red);
+  color: var(--color-error);
+  border-bottom-color: var(--color-error);
 }
 
 .danger-zone-description {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.95rem;
   margin-bottom: 1.5rem;
   font-style: italic;
@@ -215,9 +215,9 @@
   flex-direction: column;
   padding: 1rem;
   margin-bottom: 1rem;
-  background: var(--ctp-surface0);
+  background: var(--color-surface);
   border-radius: var(--radius-lg);
-  border: 1px solid var(--ctp-surface2);
+  border: 1px solid var(--color-surface-active);
 }
 
 .danger-action:last-child {
@@ -229,14 +229,14 @@
 }
 
 .danger-action-info h4 {
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 1rem;
   margin: 0 0 0.5rem 0;
   font-weight: 600;
 }
 
 .danger-action-info p {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.875rem;
   margin: 0;
   line-height: 1.6;
@@ -247,8 +247,8 @@
 }
 
 .danger-button {
-  background: var(--ctp-red);
-  color: var(--ctp-accent-text);
+  background: var(--color-error);
+  color: var(--color-accent-text);
   border: none;
   padding: 0.75rem 1.5rem;
   border-radius: var(--radius-md);
@@ -261,7 +261,7 @@
 }
 
 .danger-button:hover {
-  background: var(--ctp-maroon);
+  background: var(--color-danger);
   transform: translateY(-1px);
 }
 
@@ -277,8 +277,8 @@
 }
 
 .settings-button {
-  background: var(--ctp-surface2);
-  color: var(--ctp-text);
+  background: var(--color-surface-active);
+  color: var(--color-text);
   border: none;
   padding: 0.5rem 1rem;
   border-radius: var(--radius-md);
@@ -290,7 +290,7 @@
 }
 
 .settings-button:hover:not(:disabled) {
-  background: var(--ctp-surface1);
+  background: var(--color-surface-hover);
   transform: translateY(-1px);
 }
 
@@ -304,8 +304,8 @@
 }
 
 .settings-button-primary {
-  background: var(--ctp-green);
-  color: var(--ctp-accent-text);
+  background: var(--color-success);
+  color: var(--color-accent-text);
 }
 
 .settings-button-primary:hover:not(:disabled) {
@@ -313,8 +313,8 @@
 }
 
 .save-button {
-  background: var(--ctp-green);
-  color: var(--ctp-accent-text);
+  background: var(--color-success);
+  color: var(--color-accent-text);
   border: none;
   padding: 0.75rem 1.5rem;
   border-radius: var(--radius-md);
@@ -344,8 +344,8 @@
 }
 
 .reset-button {
-  background: var(--ctp-yellow);
-  color: var(--ctp-accent-text);
+  background: var(--color-warning);
+  color: var(--color-accent-text);
   border: none;
   padding: 0.75rem 1.5rem;
   border-radius: var(--radius-md);
@@ -361,7 +361,7 @@
 }
 
 .reset-button:hover:not(:disabled) {
-  background: var(--ctp-peach);
+  background: var(--color-caution);
   transform: translateY(-1px);
 }
 
@@ -392,19 +392,19 @@
   justify-content: space-between;
   align-items: center;
   padding: 10px 12px;
-  background: var(--ctp-surface0);
+  background: var(--color-surface);
   border-radius: var(--radius-md);
-  border: 1px solid var(--ctp-surface1);
+  border: 1px solid var(--color-surface-hover);
 }
 
 .info-label {
-  color: var(--ctp-subtext1);
+  color: var(--color-text-muted);
   font-weight: 600;
   font-size: 0.9rem;
 }
 
 .info-value {
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-family: var(--font-mono);
   font-size: 0.9rem;
   text-align: right;
@@ -413,27 +413,27 @@
 }
 
 .status-secure {
-  color: var(--ctp-green);
+  color: var(--color-success);
   font-weight: 600;
 }
 
 .status-default-key {
-  color: var(--ctp-yellow);
+  color: var(--color-warning);
   font-weight: 600;
 }
 
 .status-unencrypted {
-  color: var(--ctp-red);
+  color: var(--color-error);
   font-weight: 600;
 }
 
 .status-enabled {
-  color: var(--ctp-green);
+  color: var(--color-success);
   font-weight: 600;
 }
 
 .status-disabled {
-  color: var(--ctp-overlay0);
+  color: var(--color-text-faint);
   font-weight: 600;
 }
 
