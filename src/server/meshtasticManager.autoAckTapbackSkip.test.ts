@@ -141,6 +141,17 @@ describe('MeshtasticManager — Auto-Ack skips tapbacks (#4569)', () => {
     expect(enqueue).toHaveBeenCalledTimes(1);
   });
 
+  it('does not skip a message whose emoji flag is 0', async () => {
+    // `emoji` is a flag: 0 means "not a reaction". The decode upstream happens
+    // to normalize 0 to undefined today, so this cannot arrive on the live TCP
+    // path — but the guard must not depend on that. An earlier `!= null`
+    // version treated 0 as a tapback, which would have silently stopped acking
+    // ordinary messages had the normalization moved or a new ingestion path
+    // skipped it. Ported from #4571.
+    const enqueue = await run({ emoji: 0 }, 'hello');
+    expect(enqueue).toHaveBeenCalledTimes(1);
+  });
+
   it('does not burn a dedup slot: a tapback does not suppress a later packet reusing its id', async () => {
     // The guard runs BEFORE the per-packet dedup guard, so a skipped tapback
     // never lands in `autoAckProcessedPackets`. Were the order reversed, the
