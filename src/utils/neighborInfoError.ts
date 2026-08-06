@@ -30,10 +30,19 @@ export interface NeighborInfoErrorToast {
   variant: 'warning' | 'error';
 }
 
-/** Shape of the parsed error body; every field optional since it may be `{}`. */
+/**
+ * Shape of the parsed error body; every field optional since it may be `{}`.
+ *
+ * The two endpoints this helper serves spell the countdown differently:
+ * Meshtastic's `/api/neighborinfo/request` sends `retryAfter`, MeshCore's
+ * `/meshcore/neighbors/request` sends `retryAfterSecs`. Both are read, so a
+ * MeshCore 429 reports a real number instead of silently degrading to the
+ * generic wording.
+ */
 interface NeighborInfoErrorBody {
   error?: unknown;
   retryAfter?: unknown;
+  retryAfterSecs?: unknown;
 }
 
 /**
@@ -56,10 +65,16 @@ export function resolveNeighborInfoErrorToast(
   }
 
   if (status === 429) {
-    // Only interpolate a countdown when the server actually sent a usable one;
-    // a missing/garbage `retryAfter` falls back to naming the 3-minute rule
+    // Only interpolate a countdown when the server actually sent a usable one,
     // rather than rendering "Try again in undefineds".
-    const retryAfter = parsed.retryAfter;
+    //
+    // Both spellings are accepted — see NeighborInfoErrorBody. In practice one
+    // of them is always present (each endpoint always sends its own), so the
+    // generic branch below is defensive only. That is why its wording stays
+    // source-neutral: it must not assert Meshtastic's 3-minute firmware rule,
+    // which does not describe MeshCore's "too soon since last transmission"
+    // throttle.
+    const retryAfter = typeof parsed.retryAfter === 'number' ? parsed.retryAfter : parsed.retryAfterSecs;
     if (typeof retryAfter === 'number' && Number.isFinite(retryAfter) && retryAfter > 0) {
       return {
         key: 'toast.neighbor_info_rate_limited_seconds',

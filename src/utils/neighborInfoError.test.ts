@@ -40,6 +40,30 @@ describe('resolveNeighborInfoErrorToast (#4568)', () => {
     expect(toast.params).toEqual({ seconds: 13 });
   });
 
+  it('reads MeshCore\'s retryAfterSecs spelling too', () => {
+    // The same handler serves both sources and they name the field
+    // differently: Meshtastic sends `retryAfter`, MeshCore sends
+    // `retryAfterSecs`. Reading only the former silently degraded every
+    // MeshCore 429 to the generic wording.
+    const toast = resolveNeighborInfoErrorToast(429, {
+      error: 'Too soon since last mesh transmission; retry in 8s',
+      retryAfterSecs: 8,
+    }, FALLBACK);
+
+    expect(toast.key).toBe('toast.neighbor_info_rate_limited_seconds');
+    expect(toast.params).toEqual({ seconds: 8 });
+  });
+
+  it('prefers retryAfter when a body somehow carries both spellings', () => {
+    const toast = resolveNeighborInfoErrorToast(429, { retryAfter: 30, retryAfterSecs: 8 }, FALLBACK);
+    expect(toast.params).toEqual({ seconds: 30 });
+  });
+
+  it('falls back cleanly when retryAfter is unusable but retryAfterSecs is good', () => {
+    const toast = resolveNeighborInfoErrorToast(429, { retryAfter: 'soon', retryAfterSecs: 45 }, FALLBACK);
+    expect(toast.params).toEqual({ seconds: 45 });
+  });
+
   it.each([
     ['missing', {}],
     ['a string', { retryAfter: 'soon' }],
