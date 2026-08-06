@@ -250,6 +250,18 @@ jobs:
           sudo systemctl stop clamav-freshclam || true
           sudo freshclam --verbose
 
+      # A .ign2 allow-list is only honored from inside the database directory —
+      # passing it as a second `-d` does NOT work (verified). Installed BEFORE
+      # the EICAR self-test below, so that test proves the allow-list did not
+      # disable detection. See .github/clamav-ignore.ign2 for why each entry is
+      # there and the evidence behind it.
+      - name: Install ClamAV false-positive allow-list
+        run: |
+          set -euo pipefail
+          sudo cp .github/clamav-ignore.ign2 /var/lib/clamav/
+          echo "Suppressed signatures:"
+          grep -v '^#' .github/clamav-ignore.ign2 | grep -v '^$'
+
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7
         with:
