@@ -597,10 +597,32 @@ export class AnalysisRepository {
 
   /**
    * Compute the hop count from each source's local node to every other
-   * node, taken from the most recent traceroute reaching that node. The
-   * `route` JSON column holds the array of intermediate node hops; its
-   * length is the hop count. Nodes never reached by a traceroute do not
-   * appear in the result.
+   * node, taken from the most recent traceroute that actually ANSWERED for
+   * that node. The `route` JSON column holds the array of intermediate node
+   * hops; its length is the hop count. Nodes never reached by a traceroute do
+   * not appear in the result, and the caller renders a missing entry as
+   * unknown (grey) rather than assuming anything about it.
+   *
+   * Rows with a NULL `route` are skipped rather than counted (#4570). A NULL
+   * route is this schema's marker for a **pending** traceroute — the row
+   * written when a request is sent, waiting to be filled in when the response
+   * arrives (see `insertTracerouteWithDedup`, which finds those rows with
+   * `isNull(traceroutes.route)`, and the "null for pending" insert in
+   * `DatabaseService`).
+   *
+   * This used to read `JSON.parse(r.route ?? '[]')`, so a pending row parsed
+   * to an empty array and reported **0 hops — i.e. "local"**. Because the scan
+   * takes the newest row per node, every outstanding request masked that
+   * node's real hop count, and an unanswered one (routine for distant nodes,
+   * and produced continuously by auto-traceroute) masked it indefinitely. The
+   * reported symptom was dozens of remote nodes across several hundred km all
+   * shading green/local on Map Analysis.
+   *
+   * Skipping rather than substituting a sentinel matters: `continue` leaves
+   * the key unseen, so an older ANSWERED traceroute for the same node still
+   * supplies its hop count. Only a node with no answered traceroute at all
+   * drops out and renders grey. A legitimately direct neighbour stores
+   * `'[]'` — a real empty route, not NULL — and still correctly reports 0.
    */
   async getHopCounts(args: GetHopCountsArgs): Promise<HopCountsResult> {
     if (args.sourceIds.length === 0) {
@@ -629,13 +651,22 @@ export class AnalysisRepository {
       const nodeNum = Number(r.toNodeNum);
       const key = `${sourceId}:${nodeNum}`;
       if (seen.has(key)) continue;
-      let hops = 0;
+
+      // Pending traceroute (no response yet) — carries no hop information.
+      // Skip WITHOUT marking the key seen, so an older answered row can still
+      // supply this node's hop count.
+      if (r.route == null) continue;
+
+      let hops: number;
       try {
-        const arr = JSON.parse(r.route ?? '[]');
-        hops = Array.isArray(arr) ? arr.length : 0;
+        const arr = JSON.parse(r.route);
+        // Anything that isn't an array is corrupt, not "zero hops".
+        if (!Array.isArray(arr)) continue;
+        hops = arr.length;
       } catch {
-        hops = 0;
+        continue;
       }
+
       seen.set(key, { sourceId, nodeNum, hops });
     }
     return { entries: Array.from(seen.values()) };
