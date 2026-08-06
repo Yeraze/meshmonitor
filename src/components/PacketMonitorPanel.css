@@ -125,13 +125,13 @@
 }
 
 .packet-filters select option {
-  background: var(--color-surface, #313244);
-  color: var(--color-text, #cdd6f4);
+  background: var(--color-surface);
+  color: var(--color-text);
   padding: 6px;
 }
 
 .packet-filters select option:hover {
-  background: var(--color-surface-hover, #45475a);
+  background: var(--color-surface-hover);
 }
 
 .clear-filters-btn {
@@ -322,21 +322,21 @@
 }
 
 .packet-table .direction-rx {
-  color: var(--color-success, #a6e3a1);
+  color: var(--color-success);
 }
 
 .packet-table .direction-tx {
-  color: var(--color-caution, #fab387);
+  color: var(--color-caution);
 }
 
 /* Impersonation/spoof-suspected packet (#2584): claims our local node id but
    arrived over RF. */
 .packet-table .direction.spoofed {
-  color: var(--color-error, #f38ba8);
+  color: var(--color-error);
 }
 
 .packet-table tr.spoofed-row td {
-  background: color-mix(in srgb, var(--color-error, #f38ba8) 12%, transparent);
+  background: color-mix(in srgb, var(--color-error) 12%, transparent);
 }
 
 /* Transport mechanism column colors */
@@ -346,22 +346,22 @@
 }
 
 .packet-table .transport-0 { /* INTERNAL */
-  color: var(--color-text-muted, #a6adc8);
+  color: var(--color-text-muted);
 }
 
 .packet-table .transport-1,
 .packet-table .transport-2,
 .packet-table .transport-3,
 .packet-table .transport-4 { /* LORA variants */
-  color: var(--color-success, #a6e3a1);
+  color: var(--color-success);
 }
 
 .packet-table .transport-5 { /* MQTT */
-  color: var(--color-accent-alt, #cba6f7);
+  color: var(--color-accent-alt);
 }
 
 .packet-table .transport-6 { /* UDP */
-  color: var(--color-accent, #89b4fa);
+  color: var(--color-accent);
 }
 
 .packet-table .transport-7 { /* API */
@@ -369,7 +369,7 @@
 }
 
 .packet-table .transport-unknown {
-  color: var(--color-text-subtle, #6c7086);
+  color: var(--color-text-subtle);
 }
 
 .encrypted-indicator {
@@ -397,8 +397,8 @@
 }
 
 .packet-detail-content {
-  background: var(--color-surface, #313244);
-  border: 3px solid var(--color-accent, #4a9eff);
+  background: var(--color-surface);
+  border: 3px solid var(--color-accent);
   border-radius: var(--radius-xl);
   max-width: 600px;
   width: 100%;
@@ -409,7 +409,7 @@
               0 0 20px rgba(74, 158, 255, 0.2);
   position: relative;
   z-index: 10000;
-  color: var(--color-text, #cdd6f4);
+  color: var(--color-text);
 }
 
 .packet-detail-header {

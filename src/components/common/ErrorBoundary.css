@@ -12,32 +12,32 @@
 }
 
 .error-boundary-content h2 {
-  color: var(--color-error, #f38ba8);
+  color: var(--color-error);
   margin: 0 0 var(--spacing-sm, 0.5rem);
   font-size: 1.25rem;
 }
 
 .error-boundary-content p {
-  color: var(--color-text-subtle, #a6adc8);
+  color: var(--color-text-subtle);
   margin: 0 0 var(--spacing-lg, 1rem);
 }
 
 .error-boundary-details {
   text-align: left;
   margin-bottom: var(--spacing-lg, 1rem);
-  background: var(--color-bg-raised, #181825);
+  background: var(--color-bg-raised);
   border-radius: var(--radius-md, 6px);
   padding: var(--spacing-sm, 0.5rem);
 }
 
 .error-boundary-details summary {
   cursor: pointer;
-  color: var(--color-text-muted, #bac2de);
+  color: var(--color-text-muted);
   font-size: 0.875rem;
 }
 
 .error-boundary-details pre {
-  color: var(--color-error, #f38ba8);
+  color: var(--color-error);
   font-size: 0.8rem;
   white-space: pre-wrap;
   word-break: break-word;
@@ -45,8 +45,8 @@
 }
 
 .error-boundary-retry {
-  background: var(--color-accent, #89b4fa);
-  color: var(--color-bg-sunken, #11111b);
+  background: var(--color-accent);
+  color: var(--color-bg-sunken);
   border: none;
   border-radius: var(--radius-md, 6px);
   padding: var(--spacing-sm, 0.5rem) var(--spacing-lg, 1rem);

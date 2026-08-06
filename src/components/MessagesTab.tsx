@@ -1688,9 +1688,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
               <div
                 style={{
                   backgroundColor: isDeviceDbWarningMitigatable(selectedNode)
-                    ? 'var(--color-warning, #f9e2af)'
-                    : 'var(--color-caution, #fab387)',
-                  color: 'var(--color-bg, #1e1e2e)',
+                    ? 'var(--color-warning)'
+                    : 'var(--color-caution)',
+                  color: 'var(--color-bg)',
                   padding: '10px 12px',
                   marginBottom: '10px',
                   borderRadius: '4px',
@@ -1721,8 +1721,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
             {dmReadOnlyReason === 'unmessageable' && (
               <div
                 style={{
-                  backgroundColor: 'var(--color-warning, #f9e2af)',
-                  color: 'var(--color-bg, #1e1e2e)',
+                  backgroundColor: 'var(--color-warning)',
+                  color: 'var(--color-bg)',
                   padding: '10px 12px',
                   marginBottom: '10px',
                   borderRadius: '4px',
@@ -1749,7 +1749,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                         background: 'none',
                         border: 'none',
                         padding: 0,
-                        color: 'var(--color-accent, #1e66f5)',
+                        color: 'var(--color-accent)',
                         textDecoration: 'underline',
                         cursor: 'pointer',
                         fontWeight: 'bold',
