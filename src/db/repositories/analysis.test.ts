@@ -278,7 +278,10 @@ describe('AnalysisRepository.getHopCounts', () => {
     close();
   });
 
-  it('handles malformed JSON route by treating as 0 hops', async () => {
+  // #4570: this used to assert `hops === 0`, which was itself the bug — 0
+  // renders as "local" green on the map, so corrupt data claimed the node was
+  // a direct neighbour. Omitting the entry makes the caller render it grey.
+  it('omits a node whose route JSON is malformed rather than calling it 0 hops', async () => {
     const t = createTestDb();
     const { sqlite, db, close } = t;
     const now = Date.now();
@@ -289,7 +292,114 @@ describe('AnalysisRepository.getHopCounts', () => {
       .run(1, 50, '!00000001', '!00000032', 'src-a', 'not-json', now, now);
     const repo = new AnalysisRepository(db, 'sqlite');
     const r = await repo.getHopCounts({ sourceIds: ['src-a'] });
-    expect(r.entries.find((e: { nodeNum: number; hops: number }) => e.nodeNum === 50)?.hops).toBe(0);
+    expect(r.entries.find((e: { nodeNum: number }) => e.nodeNum === 50)).toBeUndefined();
+    close();
+  });
+
+  it('omits a node whose route JSON parses to a non-array', async () => {
+    const t = createTestDb();
+    const { sqlite, db, close } = t;
+    const now = Date.now();
+    const ins = sqlite.prepare(
+      'INSERT INTO traceroutes (fromNodeNum, toNodeNum, fromNodeId, toNodeId, sourceId, route, timestamp, createdAt) VALUES (?,?,?,?,?,?,?,?)',
+    );
+    ins.run(1, 51, '!00000001', '!00000033', 'src-a', '{"hops":2}', now, now);
+    ins.run(1, 52, '!00000001', '!00000034', 'src-a', '7', now, now);
+    const repo = new AnalysisRepository(db, 'sqlite');
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'] });
+    expect(r.entries.find((e: { nodeNum: number }) => e.nodeNum === 51)).toBeUndefined();
+    expect(r.entries.find((e: { nodeNum: number }) => e.nodeNum === 52)).toBeUndefined();
+    close();
+  });
+});
+
+/**
+ * #4570 — a NULL `route` marks a PENDING traceroute (request sent, no response
+ * yet); `insertTracerouteWithDedup` finds exactly those rows via
+ * `isNull(traceroutes.route)`. It used to parse as `'[]'` → 0 hops → "local"
+ * green, so every outstanding request painted its target as a direct
+ * neighbour. Auto-traceroute produces these continuously, and one that is
+ * never answered (routine for distant nodes) never resolves — which is how
+ * dozens of remote nodes ended up shaded green on Map Analysis.
+ */
+describe('AnalysisRepository.getHopCounts — pending traceroutes (#4570)', () => {
+  const INSERT =
+    'INSERT INTO traceroutes (fromNodeNum, toNodeNum, fromNodeId, toNodeId, sourceId, route, timestamp, createdAt) VALUES (?,?,?,?,?,?,?,?)';
+
+  it('does not report a pending traceroute as 0 hops / local', async () => {
+    const { sqlite, db, close } = createTestDb();
+    const now = Date.now();
+    sqlite.prepare(INSERT).run(1, 99, '!00000001', '!00000063', 'src-a', null, now, now);
+
+    const repo = new AnalysisRepository(db, 'sqlite');
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'] });
+
+    // Absent entirely — the map renders a missing entry as unknown/grey.
+    expect(r.entries.find((e: { nodeNum: number }) => e.nodeNum === 99)).toBeUndefined();
+    close();
+  });
+
+  it('does not let a newer pending request mask an older answered traceroute', async () => {
+    // The core regression: re-tracing a known 3-hop node must not turn it
+    // green while the response is outstanding.
+    const { sqlite, db, close } = createTestDb();
+    const now = Date.now();
+    const ins = sqlite.prepare(INSERT);
+    ins.run(1, 99, '!00000001', '!00000063', 'src-a', '[10,20,30]', now - 5000, now - 5000);
+    ins.run(1, 99, '!00000001', '!00000063', 'src-a', null, now, now); // newest, pending
+
+    const repo = new AnalysisRepository(db, 'sqlite');
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'] });
+
+    expect(r.entries.find((e: { nodeNum: number }) => e.nodeNum === 99)?.hops).toBe(3);
+    close();
+  });
+
+  it('still reports a genuinely direct neighbour as 0 hops', async () => {
+    // The distinction `route ?? '[]'` destroyed: an EMPTY route is a real
+    // answered traceroute with no intermediate hops and must stay green; a
+    // NULL route is no answer at all. Both used to produce 0.
+    const { sqlite, db, close } = createTestDb();
+    const now = Date.now();
+    sqlite.prepare(INSERT).run(1, 77, '!00000001', '!0000004d', 'src-a', '[]', now, now);
+
+    const repo = new AnalysisRepository(db, 'sqlite');
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'] });
+
+    expect(r.entries.find((e: { nodeNum: number }) => e.nodeNum === 77)?.hops).toBe(0);
+    close();
+  });
+
+  it('skips past several consecutive pending rows to the newest answered one', async () => {
+    // Repeated auto-traceroute attempts against an unresponsive node stack up
+    // pending rows; the last good answer must still win.
+    const { sqlite, db, close } = createTestDb();
+    const now = Date.now();
+    const ins = sqlite.prepare(INSERT);
+    ins.run(1, 99, '!00000001', '!00000063', 'src-a', '[10,20]', now - 9000, now - 9000);
+    ins.run(1, 99, '!00000001', '!00000063', 'src-a', null, now - 3000, now - 3000);
+    ins.run(1, 99, '!00000001', '!00000063', 'src-a', null, now - 2000, now - 2000);
+    ins.run(1, 99, '!00000001', '!00000063', 'src-a', null, now, now);
+
+    const repo = new AnalysisRepository(db, 'sqlite');
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'] });
+
+    expect(r.entries.find((e: { nodeNum: number }) => e.nodeNum === 99)?.hops).toBe(2);
+    close();
+  });
+
+  it('keeps sources independent when one has a pending row and the other does not', async () => {
+    const { sqlite, db, close } = createTestDb();
+    const now = Date.now();
+    const ins = sqlite.prepare(INSERT);
+    ins.run(1, 99, '!00000001', '!00000063', 'src-a', null, now, now);
+    ins.run(1, 99, '!00000001', '!00000063', 'src-b', '[10,20,30,40]', now, now);
+
+    const repo = new AnalysisRepository(db, 'sqlite');
+    const r = await repo.getHopCounts({ sourceIds: ['src-a', 'src-b'] });
+
+    expect(r.entries.find((e: { nodeNum: number; sourceId: string }) => e.nodeNum === 99 && e.sourceId === 'src-a')).toBeUndefined();
+    expect(r.entries.find((e: { nodeNum: number; sourceId: string }) => e.nodeNum === 99 && e.sourceId === 'src-b')?.hops).toBe(4);
     close();
   });
 });
