@@ -20,7 +20,7 @@
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { MySql2Database } from 'drizzle-orm/mysql2';
-import { and, desc, gte, inArray, lt, or, eq } from 'drizzle-orm';
+import { and, desc, gte, inArray, isNotNull, lt, max, or, eq } from 'drizzle-orm';
 import { isBogusPosition } from '../../utils/nullIsland.js';
 import {
   telemetrySqlite,
@@ -618,11 +618,18 @@ export class AnalysisRepository {
    * reported symptom was dozens of remote nodes across several hundred km all
    * shading green/local on Map Analysis.
    *
-   * Skipping rather than substituting a sentinel matters: `continue` leaves
-   * the key unseen, so an older ANSWERED traceroute for the same node still
-   * supplies its hop count. Only a node with no answered traceroute at all
+   * Excluding rather than substituting a sentinel matters: a node's newest
+   * ANSWERED traceroute still supplies its hop count even while a fresh
+   * request is outstanding. Only a node with no answered traceroute at all
    * drops out and renders grey. A legitimately direct neighbour stores
    * `'[]'` — a real empty route, not NULL — and still correctly reports 0.
+   *
+   * Note on corrupt data: the selection of "newest answered row" happens in
+   * SQL, which cannot judge whether `route` is valid JSON. So if that newest
+   * row's JSON is unparseable or not an array, the node is omitted (grey)
+   * rather than falling back to an older row. Both writers store
+   * `JSON.stringify(route)`, so this is unreachable short of manual database
+   * edits — and grey is the honest answer for data we cannot read.
    */
   async getHopCounts(args: GetHopCountsArgs): Promise<HopCountsResult> {
     if (args.sourceIds.length === 0) {
@@ -632,16 +639,49 @@ export class AnalysisRepository {
     const traceroutes = pickTraceroutesTable(this.dbType);
 
     /* eslint-disable @typescript-eslint/no-explicit-any -- Drizzle cross-dialect union */
-    const rows: any[] = await (this.db as any)
+    const db = this.db as any;
+
+    // Narrow to the newest ANSWERED row per (sourceId, toNodeNum) in SQL
+    // rather than fetching the whole table and reducing in JS.
+    //
+    // Traceroute history is capped per node-pair by TRACEROUTE_HISTORY_LIMIT
+    // (default 50, env-tunable up to much higher), so the old "select
+    // everything, keep the first row per node" scan read ~50x the rows it
+    // needed — a 500-node mesh pulled ~25,000 rows to produce ~500 entries,
+    // on every Map Analysis load. Both halves also filter `route IS NOT NULL`,
+    // which drops PENDING rows (see the doc comment above) at the database
+    // instead of skipping them one by one in the loop.
+    //
+    // Plain GROUP BY + INNER JOIN rather than a window function: identical
+    // standard SQL on SQLite, PostgreSQL and MySQL, so there is no dialect
+    // branch to get wrong. Verified against all three.
+    const newest = db
+      .select({
+        sourceId: traceroutes.sourceId,
+        toNodeNum: traceroutes.toNodeNum,
+        maxTs: max(traceroutes.timestamp).as('maxTs'),
+      })
+      .from(traceroutes)
+      .where(and(inArray(traceroutes.sourceId, args.sourceIds), isNotNull(traceroutes.route)))
+      .groupBy(traceroutes.sourceId, traceroutes.toNodeNum)
+      .as('newest');
+
+    const rows: any[] = await db
       .select({
         sourceId: traceroutes.sourceId,
         toNodeNum: traceroutes.toNodeNum,
         route: traceroutes.route,
-        timestamp: traceroutes.timestamp,
       })
       .from(traceroutes)
-      .where(inArray(traceroutes.sourceId, args.sourceIds))
-      .orderBy(desc(traceroutes.timestamp));
+      .innerJoin(
+        newest,
+        and(
+          eq(traceroutes.sourceId, newest.sourceId),
+          eq(traceroutes.toNodeNum, newest.toNodeNum),
+          eq(traceroutes.timestamp, newest.maxTs),
+        ),
+      )
+      .where(and(inArray(traceroutes.sourceId, args.sourceIds), isNotNull(traceroutes.route)));
     /* eslint-enable @typescript-eslint/no-explicit-any */
 
     const seen = new Map<string, HopEntry>();
@@ -650,11 +690,11 @@ export class AnalysisRepository {
       if (!sourceId) continue;
       const nodeNum = Number(r.toNodeNum);
       const key = `${sourceId}:${nodeNum}`;
+      // Two rows can share the max timestamp for one node; either is "newest",
+      // so take the first and ignore the rest.
       if (seen.has(key)) continue;
 
-      // Pending traceroute (no response yet) — carries no hop information.
-      // Skip WITHOUT marking the key seen, so an older answered row can still
-      // supply this node's hop count.
+      // Belt-and-braces: the query already excludes NULL routes.
       if (r.route == null) continue;
 
       let hops: number;
