@@ -36,8 +36,8 @@ function formatSnrElement(snrValue: number | null, key: string): React.ReactNode
         style={{
           marginLeft: '0.25rem',
           padding: '0.1rem 0.3rem',
-          backgroundColor: 'var(--ctp-overlay0)',
-          color: 'var(--ctp-text)',
+          backgroundColor: 'var(--color-surface-inactive)',
+          color: 'var(--color-text)',
           borderRadius: '3px',
           fontSize: '0.85em',
           fontWeight: 500,
@@ -205,8 +205,8 @@ export function formatTracerouteRoute(
           <span
             key={`highlight-${idx}`}
             style={{
-              background: 'var(--ctp-yellow)',
-              color: 'var(--ctp-base)',
+              background: 'var(--color-warning)',
+              color: 'var(--color-bg)',
               padding: '0.1rem 0.3rem',
               borderRadius: '3px',
               fontWeight: 'bold'

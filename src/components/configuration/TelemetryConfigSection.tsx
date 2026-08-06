@@ -192,7 +192,7 @@ const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
       </h3>
 
       {/* Device Telemetry Section */}
-      <h4 style={{ marginTop: '1.5rem', marginBottom: '0.5rem', color: 'var(--ctp-subtext0)' }}>
+      <h4 style={{ marginTop: '1.5rem', marginBottom: '0.5rem', color: 'var(--color-text-subtle)' }}>
         {t('telemetry_config.device_section')}
       </h4>
 
@@ -241,7 +241,7 @@ const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
       )}
 
       {/* Environment Telemetry Section */}
-      <h4 style={{ marginTop: '1.5rem', marginBottom: '0.5rem', color: 'var(--ctp-subtext0)' }}>
+      <h4 style={{ marginTop: '1.5rem', marginBottom: '0.5rem', color: 'var(--color-text-subtle)' }}>
         {t('telemetry_config.environment_section')}
       </h4>
 
@@ -329,8 +329,8 @@ const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
           className="advanced-toggle-btn"
           style={{
             background: 'transparent',
-            border: '1px solid var(--ctp-surface2)',
-            color: 'var(--ctp-subtext0)',
+            border: '1px solid var(--color-surface-active)',
+            color: 'var(--color-text-subtle)',
             padding: '0.5rem 1rem',
             borderRadius: '4px',
             cursor: 'pointer',
@@ -349,10 +349,10 @@ const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
         <div className="advanced-section" style={{
           marginLeft: '1rem',
           paddingLeft: '1rem',
-          borderLeft: '2px solid var(--ctp-surface2)'
+          borderLeft: '2px solid var(--color-surface-active)'
         }}>
           {/* Air Quality Section */}
-          <h4 style={{ marginTop: '1rem', marginBottom: '0.5rem', color: 'var(--ctp-subtext0)' }}>
+          <h4 style={{ marginTop: '1rem', marginBottom: '0.5rem', color: 'var(--color-text-subtle)' }}>
             {t('telemetry_config.air_quality_section')}
           </h4>
 
@@ -399,7 +399,7 @@ const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
           </div>
 
           {/* Power Metrics Section */}
-          <h4 style={{ marginTop: '1.5rem', marginBottom: '0.5rem', color: 'var(--ctp-subtext0)' }}>
+          <h4 style={{ marginTop: '1.5rem', marginBottom: '0.5rem', color: 'var(--color-text-subtle)' }}>
             {t('telemetry_config.power_section')}
           </h4>
 
@@ -463,7 +463,7 @@ const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
           </div>
 
           {/* Health Metrics Section */}
-          <h4 style={{ marginTop: '1.5rem', marginBottom: '0.5rem', color: 'var(--ctp-subtext0)' }}>
+          <h4 style={{ marginTop: '1.5rem', marginBottom: '0.5rem', color: 'var(--color-text-subtle)' }}>
             {t('telemetry_config.health_section')}
           </h4>
 

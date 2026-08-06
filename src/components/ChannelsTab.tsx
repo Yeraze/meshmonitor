@@ -676,8 +676,8 @@ export default function ChannelsTab({
                       top: '100%',
                       right: 0,
                       marginTop: '4px',
-                      background: 'var(--ctp-surface0)',
-                      border: '1px solid var(--ctp-surface2)',
+                      background: 'var(--color-surface)',
+                      border: '1px solid var(--color-surface-active)',
                       borderRadius: '4px',
                       zIndex: 1000,
                       minWidth: '180px',
@@ -686,8 +686,8 @@ export default function ChannelsTab({
                     }}>
                       {isChannelMuted(selectedChannel) && (
                         <button
-                          style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', background: 'none', border: 'none', color: 'var(--ctp-text)', cursor: 'pointer', textAlign: 'left', fontSize: '0.85rem' }}
-                          onMouseEnter={e => (e.currentTarget.style.background = 'var(--ctp-surface1)')}
+                          style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', background: 'none', border: 'none', color: 'var(--color-text)', cursor: 'pointer', textAlign: 'left', fontSize: '0.85rem' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-surface-hover)')}
                           onMouseLeave={e => (e.currentTarget.style.background = 'none')}
                           onClick={() => handleUnmuteChannel(selectedChannel)}
                         >
@@ -695,24 +695,24 @@ export default function ChannelsTab({
                         </button>
                       )}
                       <button
-                        style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', background: 'none', border: 'none', color: 'var(--ctp-text)', cursor: 'pointer', textAlign: 'left', fontSize: '0.85rem' }}
-                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--ctp-surface1)')}
+                        style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', background: 'none', border: 'none', color: 'var(--color-text)', cursor: 'pointer', textAlign: 'left', fontSize: '0.85rem' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-surface-hover)')}
                         onMouseLeave={e => (e.currentTarget.style.background = 'none')}
                         onClick={() => handleMuteChannel(selectedChannel, null)}
                       >
                         <UiIcon name="muted" /> {t('notifications.mute_indefinite', 'Mute indefinitely')}
                       </button>
                       <button
-                        style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', background: 'none', border: 'none', color: 'var(--ctp-text)', cursor: 'pointer', textAlign: 'left', fontSize: '0.85rem' }}
-                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--ctp-surface1)')}
+                        style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', background: 'none', border: 'none', color: 'var(--color-text)', cursor: 'pointer', textAlign: 'left', fontSize: '0.85rem' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-surface-hover)')}
                         onMouseLeave={e => (e.currentTarget.style.background = 'none')}
                         onClick={() => handleMuteChannel(selectedChannel, Date.now() + 60 * 60 * 1000)}
                       >
                         <UiIcon name="time" /> {t('notifications.mute_1h', 'Mute for 1 hour')}
                       </button>
                       <button
-                        style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', background: 'none', border: 'none', color: 'var(--ctp-text)', cursor: 'pointer', textAlign: 'left', fontSize: '0.85rem' }}
-                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--ctp-surface1)')}
+                        style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', background: 'none', border: 'none', color: 'var(--color-text)', cursor: 'pointer', textAlign: 'left', fontSize: '0.85rem' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-surface-hover)')}
                         onMouseLeave={e => (e.currentTarget.style.background = 'none')}
                         onClick={() => handleMuteChannel(selectedChannel, Date.now() + 7 * 24 * 60 * 60 * 1000)}
                       >
@@ -938,8 +938,8 @@ export default function ChannelsTab({
                 {selectedChannel >= CHANNEL_DB_OFFSET && (
                   <div
                     style={{
-                      backgroundColor: 'var(--ctp-surface0)',
-                      color: 'var(--ctp-blue)',
+                      backgroundColor: 'var(--color-surface)',
+                      color: 'var(--color-accent)',
                       padding: '0.5rem 1rem',
                       borderRadius: '0.25rem',
                       marginBottom: '0.5rem',
@@ -972,12 +972,12 @@ export default function ChannelsTab({
                           onClick={scrollToBottom}
                           style={{
                             padding: '0.5rem 1rem',
-                            backgroundColor: 'var(--ctp-blue)',
+                            backgroundColor: 'var(--color-accent)',
                             border: 'none',
                             borderRadius: '20px',
                             cursor: 'pointer',
                             fontSize: '0.85rem',
-                            color: 'var(--ctp-base)',
+                            color: 'var(--color-bg)',
                             fontWeight: 'bold',
                             boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
                             display: 'flex',
@@ -1368,15 +1368,15 @@ export default function ChannelsTab({
                             style={{
                               padding: '0.25rem 0.5rem',
                               fontSize: '0.75rem',
-                              background: 'var(--ctp-surface1)',
-                              border: '1px solid var(--ctp-surface2)',
+                              background: 'var(--color-surface-hover)',
+                              border: '1px solid var(--color-surface-active)',
                               borderRadius: '4px',
-                              color: 'var(--ctp-text)',
+                              color: 'var(--color-text)',
                               cursor: 'pointer',
                               transition: 'all 0.2s',
                             }}
-                            onMouseOver={e => (e.currentTarget.style.background = 'var(--ctp-surface2)')}
-                            onMouseOut={e => (e.currentTarget.style.background = 'var(--ctp-surface1)')}
+                            onMouseOver={e => (e.currentTarget.style.background = 'var(--color-surface-active)')}
+                            onMouseOut={e => (e.currentTarget.style.background = 'var(--color-surface-hover)')}
                           >
                             {showPsk ? t('channels.hide') : t('channels.show')}
                           </button>
@@ -1437,7 +1437,7 @@ export default function ChannelsTab({
                       style={{
                         marginTop: '1.5rem',
                         paddingTop: '1rem',
-                        borderTop: '1px solid var(--ctp-surface2)',
+                        borderTop: '1px solid var(--color-surface-active)',
                       }}
                     >
                       <button
@@ -1464,7 +1464,7 @@ export default function ChannelsTab({
                         style={{
                           marginTop: '0.5rem',
                           fontSize: '0.85rem',
-                          color: 'var(--ctp-subtext0)',
+                          color: 'var(--color-text-subtle)',
                           textAlign: 'center',
                         }}
                       >
@@ -1526,15 +1526,15 @@ export default function ChannelsTab({
                         style={{
                           padding: '0.25rem 0.5rem',
                           fontSize: '0.75rem',
-                          background: 'var(--ctp-surface1)',
-                          border: '1px solid var(--ctp-surface2)',
+                          background: 'var(--color-surface-hover)',
+                          border: '1px solid var(--color-surface-active)',
                           borderRadius: '4px',
-                          color: 'var(--ctp-text)',
+                          color: 'var(--color-text)',
                           cursor: 'pointer',
                           transition: 'all 0.2s',
                         }}
-                        onMouseOver={e => (e.currentTarget.style.background = 'var(--ctp-surface2)')}
-                        onMouseOut={e => (e.currentTarget.style.background = 'var(--ctp-surface1)')}
+                        onMouseOver={e => (e.currentTarget.style.background = 'var(--color-surface-active)')}
+                        onMouseOut={e => (e.currentTarget.style.background = 'var(--color-surface-hover)')}
                       >
                         {showPsk ? t('channels.hide') : t('channels.show')}
                       </button>
@@ -1554,7 +1554,7 @@ export default function ChannelsTab({
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: '0.25rem',
-                      color: 'var(--ctp-blue)',
+                      color: 'var(--color-accent)',
                     }}>
                       <UiIcon name="key" /> {t('channels.channel_database', 'Channel Database')}
                     </span>
@@ -1563,7 +1563,7 @@ export default function ChannelsTab({
                 <div className="info-row">
                   <span className="info-label">{t('channels.access_mode', 'Access Mode')}</span>
                   <span className="info-value">
-                    <span style={{ color: 'var(--ctp-yellow)' }}>
+                    <span style={{ color: 'var(--color-warning)' }}>
                       {t('channels.read_only', 'Read-only')}
                     </span>
                   </span>

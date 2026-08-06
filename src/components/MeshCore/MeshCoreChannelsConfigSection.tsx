@@ -356,11 +356,11 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
               <li
                 key={row.id}
                 style={{
-                  border: '1px solid var(--ctp-surface1)',
+                  border: '1px solid var(--color-surface-hover)',
                   borderRadius: 6,
                   padding: '0.75rem',
                   marginBottom: '0.5rem',
-                  backgroundColor: 'var(--ctp-surface0)',
+                  backgroundColor: 'var(--color-surface)',
                 }}
               >
                 {!isEditing && (
@@ -387,7 +387,7 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
                       type="button"
                       onClick={() => handleDelete(row.id)}
                       disabled={!canConfigure}
-                      style={{ color: 'var(--ctp-red)' }}
+                      style={{ color: 'var(--color-error)' }}
                     >
                       {t('common.delete', 'Delete')}
                     </button>
@@ -424,11 +424,11 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
       {editingIdx !== null && !channels.some(c => c.id === editingIdx) && (
         <div
           style={{
-            border: '1px dashed var(--ctp-blue)',
+            border: '1px dashed var(--color-accent)',
             borderRadius: 6,
             padding: '0.75rem',
             marginTop: '0.5rem',
-            backgroundColor: 'var(--ctp-surface0)',
+            backgroundColor: 'var(--color-surface)',
           }}
         >
           <div className="hint" style={{ marginBottom: '0.5rem' }}>

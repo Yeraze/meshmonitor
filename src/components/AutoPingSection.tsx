@@ -200,8 +200,8 @@ const AutoPingSection: React.FC<AutoPingSectionProps> = ({ baseUrl }) => {
         alignItems: 'center',
         marginBottom: '1.5rem',
         padding: '1rem 1.25rem',
-        background: 'var(--ctp-surface1)',
-        border: '1px solid var(--ctp-surface2)',
+        background: 'var(--color-surface-hover)',
+        border: '1px solid var(--color-surface-active)',
         borderRadius: '8px'
       }}>
         <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -296,18 +296,18 @@ const AutoPingSection: React.FC<AutoPingSectionProps> = ({ baseUrl }) => {
           marginTop: '2rem',
           marginLeft: '1.75rem',
           padding: '1rem',
-          background: 'var(--ctp-surface0)',
-          border: '1px solid var(--ctp-surface2)',
+          background: 'var(--color-surface)',
+          border: '1px solid var(--color-surface-active)',
           borderRadius: '6px',
         }}>
-          <div style={{ fontWeight: 600, marginBottom: '0.5rem', color: 'var(--ctp-text)' }}>
+          <div style={{ fontWeight: 600, marginBottom: '0.5rem', color: 'var(--color-text)' }}>
             {t('automation.auto_ping.dm_commands', 'DM Commands')}
           </div>
-          <div style={{ fontSize: '12px', color: 'var(--ctp-subtext0)', lineHeight: '1.8' }}>
-            <code style={{ background: 'var(--ctp-surface1)', padding: '0.2rem 0.4rem', borderRadius: '3px' }}>ping 5</code>
+          <div style={{ fontSize: '12px', color: 'var(--color-text-subtle)', lineHeight: '1.8' }}>
+            <code style={{ background: 'var(--color-surface-hover)', padding: '0.2rem 0.4rem', borderRadius: '3px' }}>ping 5</code>
             {' '}{t('automation.auto_ping.dm_start_help', '- Start 5 pings at the configured interval')}
             <br />
-            <code style={{ background: 'var(--ctp-surface1)', padding: '0.2rem 0.4rem', borderRadius: '3px' }}>ping stop</code>
+            <code style={{ background: 'var(--color-surface-hover)', padding: '0.2rem 0.4rem', borderRadius: '3px' }}>ping stop</code>
             {' '}{t('automation.auto_ping.dm_stop_help', '- Cancel an active ping session')}
           </div>
         </div>
@@ -319,44 +319,44 @@ const AutoPingSection: React.FC<AutoPingSectionProps> = ({ baseUrl }) => {
               {t('automation.auto_ping.active_sessions', 'Active Sessions')}
             </h3>
             <div style={{
-              border: '1px solid var(--ctp-surface2)',
+              border: '1px solid var(--color-surface-active)',
               borderRadius: '6px',
               overflow: 'hidden',
             }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                 <thead>
-                  <tr style={{ background: 'var(--ctp-surface0)' }}>
-                    <th style={{ padding: '0.5rem', textAlign: 'left', borderBottom: '1px solid var(--ctp-surface2)' }}>
+                  <tr style={{ background: 'var(--color-surface)' }}>
+                    <th style={{ padding: '0.5rem', textAlign: 'left', borderBottom: '1px solid var(--color-surface-active)' }}>
                       {t('automation.auto_ping.requested_by', 'Requested By')}
                     </th>
-                    <th style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '1px solid var(--ctp-surface2)' }}>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '1px solid var(--color-surface-active)' }}>
                       {t('automation.auto_ping.progress', 'Progress')}
                     </th>
-                    <th style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '1px solid var(--ctp-surface2)' }}>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '1px solid var(--color-surface-active)' }}>
                       {t('automation.auto_ping.successful', 'Successful')}
                     </th>
-                    <th style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '1px solid var(--ctp-surface2)' }}>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '1px solid var(--color-surface-active)' }}>
                       {t('automation.auto_ping.failed', 'Failed')}
                     </th>
-                    <th style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '1px solid var(--ctp-surface2)' }}>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '1px solid var(--color-surface-active)' }}>
                       {t('automation.auto_ping.elapsed', 'Elapsed')}
                     </th>
-                    <th style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '1px solid var(--ctp-surface2)' }}>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '1px solid var(--color-surface-active)' }}>
                       {t('common.actions', 'Actions')}
                     </th>
                   </tr>
                 </thead>
                 <tbody>
                   {sessions.map(session => (
-                    <tr key={session.requestedBy} style={{ borderBottom: '1px solid var(--ctp-surface1)' }}>
+                    <tr key={session.requestedBy} style={{ borderBottom: '1px solid var(--color-surface-hover)' }}>
                       <td style={{ padding: '0.5rem' }}>{session.requestedByName}</td>
                       <td style={{ padding: '0.5rem', textAlign: 'center' }}>
                         {session.completedPings}/{session.totalPings}
                       </td>
-                      <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--ctp-green)' }}>
+                      <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--color-success)' }}>
                         {session.successfulPings}
                       </td>
-                      <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--ctp-red)' }}>
+                      <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--color-error)' }}>
                         {session.failedPings}
                       </td>
                       <td style={{ padding: '0.5rem', textAlign: 'center' }}>

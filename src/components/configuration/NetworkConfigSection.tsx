@@ -165,13 +165,13 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
             padding: '10px 12px',
             borderRadius: 6,
             background: 'rgba(137, 180, 250, 0.10)', // ctp-blue @ low alpha
-            border: '1px solid var(--ctp-blue, #89b4fa)',
-            color: 'var(--ctp-text)',
+            border: '1px solid var(--color-accent, #89b4fa)',
+            color: 'var(--color-text)',
             fontSize: 13,
             lineHeight: 1.4,
           }}
         >
-          <strong style={{ color: 'var(--ctp-blue, #89b4fa)' }}>
+          <strong style={{ color: 'var(--color-accent, #89b4fa)' }}>
             <UiIcon name="network" /> {t('network_config.bridged_inert_title', 'This is a bridged node')}
           </strong>
           <div style={{ marginTop: 4 }}>
@@ -241,8 +241,8 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
                 onClick={() => setShowPassword(!showPassword)}
                 style={{
                   background: 'transparent',
-                  border: '1px solid var(--ctp-surface2)',
-                  color: 'var(--ctp-subtext0)',
+                  border: '1px solid var(--color-surface-active)',
+                  color: 'var(--color-text-subtle)',
                   padding: '0.5rem',
                   borderRadius: '4px',
                   cursor: 'pointer'
@@ -278,10 +278,10 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
             <div style={{
               marginLeft: '1rem',
               paddingLeft: '1rem',
-              borderLeft: '2px solid var(--ctp-surface2)',
+              borderLeft: '2px solid var(--color-surface-active)',
               marginTop: '1rem'
             }}>
-              <h4 style={{ marginBottom: '1rem', color: 'var(--ctp-subtext0)' }}>
+              <h4 style={{ marginBottom: '1rem', color: 'var(--color-text-subtle)' }}>
                 {t('network_config.static_ip_settings')}
               </h4>
 

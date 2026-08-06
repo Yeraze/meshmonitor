@@ -132,8 +132,8 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
         alignItems: 'center',
         marginBottom: '1.5rem',
         padding: '1rem 1.25rem',
-        background: 'var(--ctp-surface1)',
-        border: '1px solid var(--ctp-surface2)',
+        background: 'var(--color-surface-hover)',
+        border: '1px solid var(--color-surface-active)',
         borderRadius: '8px'
       }}>
         <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -183,11 +183,11 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
                 marginLeft: '1.75rem',
                 marginBottom: '1rem',
                 padding: '0.75rem 1rem',
-                background: 'var(--ctp-surface0)',
-                border: '1px solid var(--ctp-yellow)',
-                borderLeft: '4px solid var(--ctp-yellow)',
+                background: 'var(--color-surface)',
+                border: '1px solid var(--color-warning)',
+                borderLeft: '4px solid var(--color-warning)',
                 borderRadius: '6px',
-                color: 'var(--ctp-yellow)',
+                color: 'var(--color-warning)',
                 fontSize: '13px',
                 lineHeight: '1.5',
               }}>
@@ -201,11 +201,11 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
                 marginLeft: '1.75rem',
                 marginBottom: '1rem',
                 padding: '0.75rem 1rem',
-                background: 'var(--ctp-surface0)',
-                border: '1px solid var(--ctp-yellow)',
-                borderLeft: '4px solid var(--ctp-yellow)',
+                background: 'var(--color-surface)',
+                border: '1px solid var(--color-warning)',
+                borderLeft: '4px solid var(--color-warning)',
                 borderRadius: '6px',
-                color: 'var(--ctp-yellow)',
+                color: 'var(--color-warning)',
                 fontSize: '13px',
                 lineHeight: '1.5',
               }}>
@@ -219,11 +219,11 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
                 marginLeft: '1.75rem',
                 marginBottom: '1rem',
                 padding: '0.75rem 1rem',
-                background: 'var(--ctp-surface0)',
-                border: '1px solid var(--ctp-green)',
-                borderLeft: '4px solid var(--ctp-green)',
+                background: 'var(--color-surface)',
+                border: '1px solid var(--color-success)',
+                borderLeft: '4px solid var(--color-success)',
                 borderRadius: '6px',
-                color: 'var(--ctp-green)',
+                color: 'var(--color-success)',
                 fontSize: '13px',
                 lineHeight: '1.5',
               }}>
@@ -241,11 +241,11 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
                 marginLeft: '1.75rem',
                 marginBottom: '1rem',
                 padding: '0.75rem 1rem',
-                background: 'var(--ctp-surface0)',
-                border: '1px solid var(--ctp-sapphire)',
-                borderLeft: '4px solid var(--ctp-sapphire)',
+                background: 'var(--color-surface)',
+                border: '1px solid var(--color-accent-hover)',
+                borderLeft: '4px solid var(--color-accent-hover)',
                 borderRadius: '6px',
-                color: 'var(--ctp-sapphire)',
+                color: 'var(--color-accent-hover)',
                 fontSize: '13px',
                 lineHeight: '1.5',
               }}>
@@ -284,30 +284,30 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
               {t('automation.auto_favorite.managed_nodes', 'Auto-Favorited Nodes')}
             </h3>
             <div style={{
-              border: '1px solid var(--ctp-surface2)',
+              border: '1px solid var(--color-surface-active)',
               borderRadius: '6px',
               overflow: 'hidden',
             }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                 <thead>
-                  <tr style={{ background: 'var(--ctp-surface0)' }}>
-                    <th style={{ padding: '0.5rem', textAlign: 'left', borderBottom: '1px solid var(--ctp-surface2)' }}>
+                  <tr style={{ background: 'var(--color-surface)' }}>
+                    <th style={{ padding: '0.5rem', textAlign: 'left', borderBottom: '1px solid var(--color-surface-active)' }}>
                       {t('common.node', 'Node')}
                     </th>
-                    <th style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '1px solid var(--ctp-surface2)' }}>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '1px solid var(--color-surface-active)' }}>
                       {t('common.role', 'Role')}
                     </th>
-                    <th style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '1px solid var(--ctp-surface2)' }}>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '1px solid var(--color-surface-active)' }}>
                       {t('common.hops', 'Hops')}
                     </th>
-                    <th style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '1px solid var(--ctp-surface2)' }}>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '1px solid var(--color-surface-active)' }}>
                       {t('automation.auto_favorite.lock_header', 'Lock')}
                     </th>
                   </tr>
                 </thead>
                 <tbody>
                   {status.autoFavoriteNodes.map((node) => (
-                    <tr key={node.nodeNum} style={{ borderBottom: '1px solid var(--ctp-surface1)' }}>
+                    <tr key={node.nodeNum} style={{ borderBottom: '1px solid var(--color-surface-hover)' }}>
                       <td style={{ padding: '0.5rem' }}>{node.longName || node.shortName || node.nodeId}</td>
                       <td style={{ padding: '0.5rem', textAlign: 'center' }}>{ROLE_NAMES[node.role ?? 0] || 'Unknown'}</td>
                       <td style={{ padding: '0.5rem', textAlign: 'center' }}>{node.hopsAway ?? '?'}</td>
@@ -334,12 +334,12 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
                           disabled={node.favoriteLocked}
                           style={{
                             background: 'none',
-                            border: '1px solid var(--ctp-surface2)',
+                            border: '1px solid var(--color-surface-active)',
                             borderRadius: '4px',
                             padding: '0.2rem 0.5rem',
                             cursor: node.favoriteLocked ? 'default' : 'pointer',
                             fontSize: '11px',
-                            color: node.favoriteLocked ? 'var(--ctp-subtext0)' : 'var(--ctp-text)',
+                            color: node.favoriteLocked ? 'var(--color-text-subtle)' : 'var(--color-text)',
                             opacity: node.favoriteLocked ? 0.5 : 1,
                           }}
                           title={node.favoriteLocked
@@ -357,7 +357,7 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
           </div>
         )}
         {status && status.autoFavoriteNodes.length === 0 && (
-          <p style={{ marginTop: '1rem', marginLeft: '1.75rem', color: 'var(--ctp-subtext0)', fontSize: '13px' }}>
+          <p style={{ marginTop: '1rem', marginLeft: '1.75rem', color: 'var(--color-text-subtle)', fontSize: '13px' }}>
             {t('automation.auto_favorite.no_nodes', 'No nodes auto-favorited yet.')}
           </p>
         )}

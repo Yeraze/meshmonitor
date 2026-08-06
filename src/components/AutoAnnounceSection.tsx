@@ -330,8 +330,8 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
         alignItems: 'center',
         marginBottom: '1.5rem',
         padding: '1rem 1.25rem',
-        background: 'var(--ctp-surface1)',
-        border: '1px solid var(--ctp-surface2)',
+        background: 'var(--color-surface-hover)',
+        border: '1px solid var(--color-surface-active)',
         borderRadius: '8px'
       }}>
         <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -383,11 +383,11 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
           <div style={{
             marginBottom: '1rem',
             padding: '0.75rem',
-            background: 'var(--ctp-surface0)',
-            border: '1px solid var(--ctp-surface2)',
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-surface-active)',
             borderRadius: '4px',
             fontSize: '0.9rem',
-            color: 'var(--ctp-subtext0)'
+            color: 'var(--color-text-subtle)'
           }}>
             <strong>{t('automation.auto_announce.last_announcement')}:</strong> {new Date(lastAnnouncementTime).toLocaleString()}
           </div>
@@ -457,12 +457,12 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
               placeholder="0 */6 * * *"
               style={{
                 fontFamily: 'monospace',
-                borderColor: scheduleError ? 'var(--ctp-red)' : undefined
+                borderColor: scheduleError ? 'var(--color-error)' : undefined
               }}
             />
             {scheduleError && (
               <div style={{
-                color: 'var(--ctp-red)',
+                color: 'var(--color-error)',
                 fontSize: '0.875rem',
                 marginTop: '0.25rem'
               }}>
@@ -471,7 +471,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
             )}
             {!scheduleError && localSchedule && (
               <div style={{
-                color: 'var(--ctp-green)',
+                color: 'var(--color-success)',
                 fontSize: '0.875rem',
                 marginTop: '0.25rem'
               }}>
@@ -565,8 +565,8 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
               style={{
                 padding: '0.25rem 0.5rem',
                 fontSize: '12px',
-                background: 'var(--ctp-surface2)',
-                border: '1px solid var(--ctp-overlay0)',
+                background: 'var(--color-surface-active)',
+                border: '1px solid var(--color-border-subtle)',
                 borderRadius: '4px',
                 cursor: localEnabled ? 'pointer' : 'not-allowed',
                 opacity: localEnabled ? 1 : 0.5
@@ -581,8 +581,8 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
               style={{
                 padding: '0.25rem 0.5rem',
                 fontSize: '12px',
-                background: 'var(--ctp-surface2)',
-                border: '1px solid var(--ctp-overlay0)',
+                background: 'var(--color-surface-active)',
+                border: '1px solid var(--color-border-subtle)',
                 borderRadius: '4px',
                 cursor: localEnabled ? 'pointer' : 'not-allowed',
                 opacity: localEnabled ? 1 : 0.5
@@ -597,8 +597,8 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
               style={{
                 padding: '0.25rem 0.5rem',
                 fontSize: '12px',
-                background: 'var(--ctp-surface2)',
-                border: '1px solid var(--ctp-overlay0)',
+                background: 'var(--color-surface-active)',
+                border: '1px solid var(--color-border-subtle)',
                 borderRadius: '4px',
                 cursor: localEnabled ? 'pointer' : 'not-allowed',
                 opacity: localEnabled ? 1 : 0.5
@@ -613,8 +613,8 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
               style={{
                 padding: '0.25rem 0.5rem',
                 fontSize: '12px',
-                background: 'var(--ctp-surface2)',
-                border: '1px solid var(--ctp-overlay0)',
+                background: 'var(--color-surface-active)',
+                border: '1px solid var(--color-border-subtle)',
                 borderRadius: '4px',
                 cursor: localEnabled ? 'pointer' : 'not-allowed',
                 opacity: localEnabled ? 1 : 0.5
@@ -629,8 +629,8 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
               style={{
                 padding: '0.25rem 0.5rem',
                 fontSize: '12px',
-                background: 'var(--ctp-surface2)',
-                border: '1px solid var(--ctp-overlay0)',
+                background: 'var(--color-surface-active)',
+                border: '1px solid var(--color-border-subtle)',
                 borderRadius: '4px',
                 cursor: localEnabled ? 'pointer' : 'not-allowed',
                 opacity: localEnabled ? 1 : 0.5
@@ -645,8 +645,8 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
               style={{
                 padding: '0.25rem 0.5rem',
                 fontSize: '12px',
-                background: 'var(--ctp-surface2)',
-                border: '1px solid var(--ctp-overlay0)',
+                background: 'var(--color-surface-active)',
+                border: '1px solid var(--color-border-subtle)',
                 borderRadius: '4px',
                 cursor: localEnabled ? 'pointer' : 'not-allowed',
                 opacity: localEnabled ? 1 : 0.5
@@ -661,8 +661,8 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
               style={{
                 padding: '0.25rem 0.5rem',
                 fontSize: '12px',
-                background: 'var(--ctp-surface2)',
-                border: '1px solid var(--ctp-overlay0)',
+                background: 'var(--color-surface-active)',
+                border: '1px solid var(--color-border-subtle)',
                 borderRadius: '4px',
                 cursor: localEnabled ? 'pointer' : 'not-allowed',
                 opacity: localEnabled ? 1 : 0.5
@@ -677,8 +677,8 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
               style={{
                 padding: '0.25rem 0.5rem',
                 fontSize: '12px',
-                background: 'var(--ctp-surface2)',
-                border: '1px solid var(--ctp-overlay0)',
+                background: 'var(--color-surface-active)',
+                border: '1px solid var(--color-border-subtle)',
                 borderRadius: '4px',
                 cursor: localEnabled ? 'pointer' : 'not-allowed',
                 opacity: localEnabled ? 1 : 0.5
@@ -698,12 +698,12 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
           </label>
           <div style={{
             padding: '0.75rem',
-            background: 'var(--ctp-surface0)',
-            border: '2px solid var(--ctp-blue)',
+            background: 'var(--color-surface)',
+            border: '2px solid var(--color-accent)',
             borderRadius: '4px',
             fontFamily: 'monospace',
             fontSize: '0.95rem',
-            color: 'var(--ctp-text)',
+            color: 'var(--color-text)',
             lineHeight: '1.5',
             minHeight: '50px'
           }}>
@@ -718,11 +718,11 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
         <div style={{
           marginTop: '1rem',
           padding: '0.75rem',
-          background: 'var(--ctp-surface0)',
-          border: '1px solid var(--ctp-surface2)',
+          background: 'var(--color-surface)',
+          border: '1px solid var(--color-surface-active)',
           borderRadius: '4px',
           fontSize: '0.9rem',
-          color: 'var(--ctp-subtext0)'
+          color: 'var(--color-text-subtle)'
         }}>
           <strong>{t('automation.auto_announce.feature_emojis')}:</strong>
           <ul style={{ margin: '0.5rem 0', paddingLeft: '1.5rem' }}>
@@ -744,8 +744,8 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
         <div style={{
           marginTop: '2rem',
           padding: '1rem',
-          background: 'var(--ctp-surface0)',
-          border: '1px solid var(--ctp-surface2)',
+          background: 'var(--color-surface)',
+          border: '1px solid var(--color-surface-active)',
           borderRadius: '8px'
         }}>
           <div style={{ marginBottom: '1rem' }}>
@@ -759,7 +759,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
               />
               {t('automation.auto_announce.nodeinfo_title')}
             </label>
-            <p style={{ marginTop: '0.5rem', color: 'var(--ctp-subtext0)', fontSize: '0.9rem' }}>
+            <p style={{ marginTop: '0.5rem', color: 'var(--color-text-subtle)', fontSize: '0.9rem' }}>
               {t('automation.auto_announce.nodeinfo_description')}
             </p>
           </div>
@@ -802,7 +802,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
                 {localNodeInfoChannels.length === 0 && localNodeInfoEnabled && (
                   <div style={{
                     marginTop: '0.5rem',
-                    color: 'var(--ctp-yellow)',
+                    color: 'var(--color-warning)',
                     fontSize: '0.875rem'
                   }}>
                     {t('automation.auto_announce.nodeinfo_no_channels_warning')}
@@ -828,7 +828,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
                   className="setting-input"
                   style={{ width: '100px' }}
                 />
-                <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-subtext0)' }}>
+                <span style={{ marginLeft: '0.5rem', color: 'var(--color-text-subtle)' }}>
                   {t('automation.auto_announce.seconds')}
                 </span>
               </div>

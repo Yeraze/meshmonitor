@@ -334,7 +334,7 @@ const SortableSourceCard: React.FC<{
           width: '1.4rem',
           marginLeft: '8px',
           cursor: isDragging ? 'grabbing' : 'grab',
-          color: isDragging ? 'var(--ctp-blue)' : 'var(--ctp-overlay1)',
+          color: isDragging ? 'var(--color-accent)' : 'var(--color-text-disabled)',
           fontSize: '1.2rem',
           userSelect: 'none',
           flexShrink: 0,

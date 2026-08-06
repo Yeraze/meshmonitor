@@ -168,8 +168,8 @@ const PositionEstimationSection: React.FC<PositionEstimationSectionProps> = ({ b
         alignItems: 'center',
         marginBottom: '1.5rem',
         padding: '1rem 1.25rem',
-        background: 'var(--ctp-surface1)',
-        border: '1px solid var(--ctp-surface2)',
+        background: 'var(--color-surface-hover)',
+        border: '1px solid var(--color-surface-active)',
         borderRadius: '8px'
       }}>
         <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -250,14 +250,14 @@ const PositionEstimationSection: React.FC<PositionEstimationSectionProps> = ({ b
             disabled={!localEnabled}
             className="setting-input"
           />
-          <p style={{ fontSize: '12px', color: 'var(--ctp-subtext0)', margin: '0.35rem 0 0 0' }}>
+          <p style={{ fontSize: '12px', color: 'var(--color-text-subtle)', margin: '0.35rem 0 0 0' }}>
             {t('automation.position_estimation.max_uncertainty_help',
               'Estimates with an uncertainty radius larger than this are discarded rather than stored, so low-confidence guesses don’t draw huge circles on the map. Set 0 for no limit.')}
           </p>
         </div>
 
         {status && (
-          <div style={{ marginTop: '1.5rem', marginLeft: '1.75rem', fontSize: '13px', color: 'var(--ctp-subtext1)' }}>
+          <div style={{ marginTop: '1.5rem', marginLeft: '1.75rem', fontSize: '13px', color: 'var(--color-text-muted)' }}>
             <div>
               {t('automation.position_estimation.last_run', 'Last run')}:{' '}
               {status.lastRunTime ? new Date(status.lastRunTime).toLocaleString() : t('automation.position_estimation.never', 'never')}

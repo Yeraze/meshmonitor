@@ -478,7 +478,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
           style={{
             marginTop: '0.5rem',
             padding: '0.5rem 0.75rem',
-            border: '1px solid var(--ctp-yellow, #d4a017)',
+            border: '1px solid var(--color-warning, #d4a017)',
             borderRadius: '4px',
           }}
         >
@@ -565,7 +565,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
 
       {/* Check Now + Last Checked */}
       <div className="setting-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ color: 'var(--ctp-text)', fontSize: '0.9rem' }}>
+        <span style={{ color: 'var(--color-text)', fontSize: '0.9rem' }}>
           {t('firmware.last_checked', 'Last Checked')}: {formatTimestamp(lastChecked)}
         </span>
         <button
@@ -583,18 +583,18 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
         <div style={{
           padding: '1.5rem',
           borderRadius: '8px',
-          backgroundColor: 'var(--ctp-base)',
+          backgroundColor: 'var(--color-bg)',
           border: effectiveStatus.state === 'error'
-            ? '2px solid var(--ctp-red)'
+            ? '2px solid var(--color-error)'
             : effectiveStatus.state === 'success'
               ? '2px solid #10b981'
-              : '2px solid var(--ctp-blue)',
+              : '2px solid var(--color-accent)',
           width: '90%',
           maxWidth: '600px',
           maxHeight: '85vh',
           overflow: 'auto',
         }}>
-          <h3 style={{ margin: '0 0 1rem', color: 'var(--ctp-text)' }}>
+          <h3 style={{ margin: '0 0 1rem', color: 'var(--color-text)' }}>
             {t('firmware.update_wizard', 'Firmware Update')}
           </h3>
 
@@ -614,10 +614,10 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
               const isCurrent = s.key === effectiveStatus.step;
               const isFailed = isCurrent && effectiveStatus.state === 'error';
 
-              let dotColor = 'var(--ctp-surface2)'; // future
+              let dotColor = 'var(--color-surface-active)'; // future
               if (isComplete) dotColor = '#10b981'; // green
-              if (isCurrent && !isFailed) dotColor = 'var(--ctp-blue)';
-              if (isFailed) dotColor = 'var(--ctp-red)';
+              if (isCurrent && !isFailed) dotColor = 'var(--color-accent)';
+              if (isFailed) dotColor = 'var(--color-error)';
 
               return (
                 <React.Fragment key={s.key}>
@@ -625,7 +625,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
                     <div style={{
                       flex: 1,
                       height: '2px',
-                      backgroundColor: isComplete ? '#10b981' : 'var(--ctp-surface2)',
+                      backgroundColor: isComplete ? '#10b981' : 'var(--color-surface-active)',
                     }} />
                   )}
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '48px' }}>
@@ -634,12 +634,12 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
                       height: isCurrent ? '14px' : '10px',
                       borderRadius: '50%',
                       backgroundColor: dotColor,
-                      border: isCurrent ? '2px solid var(--ctp-text)' : 'none',
+                      border: isCurrent ? '2px solid var(--color-text)' : 'none',
                       transition: 'all 0.2s',
                     }} />
                     <span style={{
                       fontSize: '0.7rem',
-                      color: isCurrent ? 'var(--ctp-text)' : 'var(--ctp-subtext0)',
+                      color: isCurrent ? 'var(--color-text)' : 'var(--color-text-subtle)',
                       fontWeight: isCurrent ? 600 : 400,
                       marginTop: '4px',
                     }}>
@@ -653,10 +653,10 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
 
           {/* Step title & message */}
           <div style={{ marginBottom: '0.75rem' }}>
-            <h4 style={{ margin: 0, color: 'var(--ctp-text)' }}>
+            <h4 style={{ margin: 0, color: 'var(--color-text)' }}>
               {getStepTitle(effectiveStatus.step)}
             </h4>
-            <p style={{ margin: '0.25rem 0 0', color: 'var(--ctp-text)', fontSize: '0.9rem' }}>
+            <p style={{ margin: '0.25rem 0 0', color: 'var(--color-text)', fontSize: '0.9rem' }}>
               {effectiveStatus.message}
             </p>
           </div>
@@ -670,7 +670,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
                 alignItems: 'center',
                 marginBottom: '0.35rem',
                 fontSize: '0.85rem',
-                color: 'var(--ctp-text)',
+                color: 'var(--color-text)',
               }}>
                 <span>{t('firmware.uploading', 'Uploading firmware...')}</span>
                 <span style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
@@ -680,14 +680,14 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
               <div style={{
                 width: '100%',
                 height: '16px',
-                backgroundColor: 'var(--ctp-surface2)',
+                backgroundColor: 'var(--color-surface-active)',
                 borderRadius: '8px',
                 overflow: 'hidden',
               }}>
                 <div style={{
                   width: `${Math.min(effectiveStatus.progress, 100)}%`,
                   height: '100%',
-                  backgroundColor: 'var(--ctp-blue)',
+                  backgroundColor: 'var(--color-accent)',
                   borderRadius: '8px',
                   transition: 'width 0.5s ease',
                 }} />
@@ -700,7 +700,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
             <div style={{
               padding: '0.75rem',
               borderRadius: '6px',
-              backgroundColor: 'var(--ctp-surface1)',
+              backgroundColor: 'var(--color-surface-hover)',
               marginBottom: '0.75rem',
               fontSize: '0.85rem',
               lineHeight: '1.6',
@@ -721,8 +721,8 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
               padding: '0.5rem 0.75rem',
               borderRadius: '4px',
               backgroundColor: 'rgba(250, 179, 40, 0.1)',
-              border: '1px solid var(--ctp-peach)',
-              color: 'var(--ctp-text)',
+              border: '1px solid var(--color-caution)',
+              color: 'var(--color-text)',
               fontSize: '0.85rem',
               marginBottom: '0.75rem',
               lineHeight: '1.5',
@@ -745,7 +745,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
           {effectiveStatus.matchedFile && (
             <div style={{ marginBottom: '0.5rem', fontSize: '0.85rem' }}>
               <strong>{t('firmware.matched_file', 'Selected Firmware')}:</strong>{' '}
-              <code style={{ color: 'var(--ctp-blue)' }}>{effectiveStatus.matchedFile}</code>
+              <code style={{ color: 'var(--color-accent)' }}>{effectiveStatus.matchedFile}</code>
             </div>
           )}
 
@@ -757,7 +757,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
                 style={{
                   background: 'none',
                   border: 'none',
-                  color: 'var(--ctp-text)',
+                  color: 'var(--color-text)',
                   cursor: 'pointer',
                   padding: 0,
                   fontSize: '0.85rem',
@@ -772,7 +772,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
                   margin: '0.25rem 0 0 1rem',
                   padding: 0,
                   listStyle: 'disc',
-                  color: 'var(--ctp-text)',
+                  color: 'var(--color-text)',
                   opacity: 0.8,
                 }}>
                   {effectiveStatus.rejectedFiles.map((f, i) => (
@@ -792,8 +792,8 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
                 overflow: 'auto',
                 padding: '0.5rem',
                 borderRadius: '4px',
-                backgroundColor: 'var(--ctp-base)',
-                color: 'var(--ctp-text)',
+                backgroundColor: 'var(--color-bg)',
+                color: 'var(--color-text)',
                 fontSize: '0.8rem',
                 fontFamily: 'monospace',
                 marginBottom: '0.75rem',
@@ -811,7 +811,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
               padding: '0.5rem 0.75rem',
               borderRadius: '4px',
               backgroundColor: 'rgba(235, 87, 87, 0.1)',
-              color: 'var(--ctp-red)',
+              color: 'var(--color-error)',
               fontSize: '0.85rem',
               marginBottom: '0.75rem',
             }}>
@@ -823,7 +823,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
           {effectiveStatus.step === 'extract' &&
             effectiveStatus.state === 'awaiting-confirm' && (
             <p style={{
-              color: 'var(--ctp-peach)',
+              color: 'var(--color-caution)',
               fontSize: '0.85rem',
               margin: '0 0 0.75rem',
             }}>
@@ -839,8 +839,8 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
               padding: '0.75rem',
               borderRadius: '6px',
               backgroundColor: 'rgba(250, 179, 40, 0.1)',
-              border: '1px solid var(--ctp-peach)',
-              color: 'var(--ctp-text)',
+              border: '1px solid var(--color-caution)',
+              color: 'var(--color-text)',
               fontSize: '0.85rem',
               marginBottom: '0.75rem',
               lineHeight: '1.5',
@@ -860,7 +860,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
                   width: '10px',
                   height: '10px',
                   borderRadius: '50%',
-                  backgroundColor: isGatewayOnline ? '#10b981' : 'var(--ctp-red)',
+                  backgroundColor: isGatewayOnline ? '#10b981' : 'var(--color-error)',
                   flexShrink: 0,
                 }} />
                 <span>
@@ -937,7 +937,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
       {!isUpdateActive && (
         <div style={{ marginTop: '1rem' }}>
           {releases.length === 0 ? (
-            <p style={{ color: 'var(--ctp-text)', fontStyle: 'italic', fontSize: '0.9rem' }}>
+            <p style={{ color: 'var(--color-text)', fontStyle: 'italic', fontSize: '0.9rem' }}>
               {t('firmware.no_releases', "No releases found. Click 'Check Now' to fetch available firmware versions.")}
             </p>
           ) : (
@@ -947,23 +947,23 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
               fontSize: '0.9rem',
             }}>
               <thead>
-                <tr style={{ borderBottom: '1px solid var(--ctp-surface2)' }}>
-                  <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--ctp-text)' }}>
+                <tr style={{ borderBottom: '1px solid var(--color-surface-active)' }}>
+                  <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--color-text)' }}>
                     {t('firmware.version', 'Version')}
                   </th>
-                  <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--ctp-text)' }}>
+                  <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--color-text)' }}>
                     {t('firmware.release_date', 'Release Date')}
                   </th>
-                  <th style={{ textAlign: 'center', padding: '0.5rem', color: 'var(--ctp-text)' }}>
+                  <th style={{ textAlign: 'center', padding: '0.5rem', color: 'var(--color-text)' }}>
                     {t('firmware.release_notes', 'Release Notes')}
                   </th>
-                  <th style={{ textAlign: 'right', padding: '0.5rem', color: 'var(--ctp-text)' }}></th>
+                  <th style={{ textAlign: 'right', padding: '0.5rem', color: 'var(--color-text)' }}></th>
                 </tr>
               </thead>
               <tbody>
                 {releases.map((release) => (
-                  <tr key={release.tagName} style={{ borderBottom: '1px solid var(--ctp-surface1)' }}>
-                    <td style={{ padding: '0.5rem', color: 'var(--ctp-text)' }}>
+                  <tr key={release.tagName} style={{ borderBottom: '1px solid var(--color-surface-hover)' }}>
+                    <td style={{ padding: '0.5rem', color: 'var(--color-text)' }}>
                       {release.version}
                       {release.prerelease && (
                         <span style={{
@@ -971,14 +971,14 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
                           padding: '0.1rem 0.4rem',
                           fontSize: '0.75rem',
                           borderRadius: '3px',
-                          backgroundColor: 'var(--ctp-peach)',
-                          color: 'var(--ctp-base)',
+                          backgroundColor: 'var(--color-caution)',
+                          color: 'var(--color-bg)',
                         }}>
                           alpha
                         </span>
                       )}
                     </td>
-                    <td style={{ padding: '0.5rem', color: 'var(--ctp-text)' }}>
+                    <td style={{ padding: '0.5rem', color: 'var(--color-text)' }}>
                       {new Date(release.publishedAt).toLocaleDateString()}
                     </td>
                     <td style={{ textAlign: 'center', padding: '0.5rem' }}>
@@ -1024,11 +1024,11 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
 
       {/* Configuration Backups */}
       <div style={{ marginTop: '2rem' }}>
-        <h4 style={{ color: 'var(--ctp-text)', marginBottom: '0.5rem' }}>
+        <h4 style={{ color: 'var(--color-text)', marginBottom: '0.5rem' }}>
           {t('firmware.backups_title', 'Configuration Backups')}
         </h4>
         {backups.length === 0 ? (
-          <p style={{ color: 'var(--ctp-text)', fontStyle: 'italic', fontSize: '0.9rem' }}>
+          <p style={{ color: 'var(--color-text)', fontStyle: 'italic', fontSize: '0.9rem' }}>
             {t('firmware.no_backups', 'No configuration backups found.')}
           </p>
         ) : (
@@ -1039,14 +1039,14 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
           }}>
             <tbody>
               {backups.map((backup) => (
-                <tr key={backup.filename} style={{ borderBottom: '1px solid var(--ctp-surface1)' }}>
-                  <td style={{ padding: '0.5rem', color: 'var(--ctp-text)' }}>
+                <tr key={backup.filename} style={{ borderBottom: '1px solid var(--color-surface-hover)' }}>
+                  <td style={{ padding: '0.5rem', color: 'var(--color-text)' }}>
                     {backup.filename}
                   </td>
-                  <td style={{ padding: '0.5rem', color: 'var(--ctp-text)' }}>
+                  <td style={{ padding: '0.5rem', color: 'var(--color-text)' }}>
                     {new Date(backup.timestamp).toLocaleString()}
                   </td>
-                  <td style={{ padding: '0.5rem', color: 'var(--ctp-text)' }}>
+                  <td style={{ padding: '0.5rem', color: 'var(--color-text)' }}>
                     {formatBytes(backup.size)}
                   </td>
                   <td style={{ textAlign: 'right', padding: '0.5rem' }}>

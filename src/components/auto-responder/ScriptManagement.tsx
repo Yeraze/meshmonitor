@@ -62,16 +62,16 @@ const ScriptManagement: React.FC<ScriptManagementProps> = ({
         style={{
           width: '100%',
           padding: '0.75rem 1rem',
-          background: 'var(--ctp-surface1)',
+          background: 'var(--color-surface-hover)',
           border: 'none',
-          borderBottom: showScriptManagement ? '1px solid var(--ctp-overlay0)' : 'none',
+          borderBottom: showScriptManagement ? '1px solid var(--color-border-subtle)' : 'none',
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           fontSize: '0.9rem',
           fontWeight: 'bold',
-          color: 'var(--ctp-blue)'
+          color: 'var(--color-accent)'
         }}
       >
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}><UiIcon name="list" size={16} /> Script Management</span>
@@ -82,8 +82,8 @@ const ScriptManagement: React.FC<ScriptManagementProps> = ({
         <div style={{ 
           marginTop: '0.75rem', 
           padding: '1rem', 
-          background: 'var(--ctp-surface0)', 
-          border: '1px solid var(--ctp-overlay0)', 
+          background: 'var(--color-surface)', 
+          border: '1px solid var(--color-border-subtle)', 
           borderRadius: '4px' 
         }}>
           <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
@@ -93,8 +93,8 @@ const ScriptManagement: React.FC<ScriptManagementProps> = ({
               style={{
                 padding: '0.5rem 1rem',
                 fontSize: '0.875rem',
-                background: isImporting ? 'var(--ctp-surface2)' : 'var(--ctp-blue)',
-                color: isImporting ? 'var(--ctp-subtext0)' : 'var(--ctp-base)',
+                background: isImporting ? 'var(--color-surface-active)' : 'var(--color-accent)',
+                color: isImporting ? 'var(--color-text-subtle)' : 'var(--color-bg)',
                 border: 'none',
                 borderRadius: '4px',
                 cursor: isImporting ? 'not-allowed' : 'pointer',
@@ -109,8 +109,8 @@ const ScriptManagement: React.FC<ScriptManagementProps> = ({
               style={{
                 padding: '0.5rem 1rem',
                 fontSize: '0.875rem',
-                background: (isExporting || availableScripts.length === 0) ? 'var(--ctp-surface2)' : 'var(--ctp-green)',
-                color: (isExporting || availableScripts.length === 0) ? 'var(--ctp-subtext0)' : 'var(--ctp-base)',
+                background: (isExporting || availableScripts.length === 0) ? 'var(--color-surface-active)' : 'var(--color-success)',
+                color: (isExporting || availableScripts.length === 0) ? 'var(--color-text-subtle)' : 'var(--color-bg)',
                 border: 'none',
                 borderRadius: '4px',
                 cursor: (isExporting || availableScripts.length === 0) ? 'not-allowed' : 'pointer',
@@ -126,9 +126,9 @@ const ScriptManagement: React.FC<ScriptManagementProps> = ({
                   style={{
                     padding: '0.5rem 1rem',
                     fontSize: '0.875rem',
-                    background: 'var(--ctp-surface1)',
-                    color: 'var(--ctp-text)',
-                    border: '1px solid var(--ctp-overlay0)',
+                    background: 'var(--color-surface-hover)',
+                    color: 'var(--color-text)',
+                    border: '1px solid var(--color-border-subtle)',
                     borderRadius: '4px',
                     cursor: 'pointer'
                   }}
@@ -140,9 +140,9 @@ const ScriptManagement: React.FC<ScriptManagementProps> = ({
                   style={{
                     padding: '0.5rem 1rem',
                     fontSize: '0.875rem',
-                    background: 'var(--ctp-surface1)',
-                    color: 'var(--ctp-text)',
-                    border: '1px solid var(--ctp-overlay0)',
+                    background: 'var(--color-surface-hover)',
+                    color: 'var(--color-text)',
+                    border: '1px solid var(--color-border-subtle)',
                     borderRadius: '4px',
                     cursor: 'pointer'
                   }}
@@ -158,8 +158,8 @@ const ScriptManagement: React.FC<ScriptManagementProps> = ({
               style={{
                 padding: '0.5rem 1rem',
                 fontSize: '0.875rem',
-                background: 'var(--ctp-mauve)',
-                color: 'var(--ctp-base)',
+                background: 'var(--color-accent-alt)',
+                color: 'var(--color-bg)',
                 border: 'none',
                 borderRadius: '4px',
                 cursor: 'pointer',
@@ -177,7 +177,7 @@ const ScriptManagement: React.FC<ScriptManagementProps> = ({
             <div style={{ 
               padding: '1rem', 
               textAlign: 'center', 
-              color: 'var(--ctp-subtext0)', 
+              color: 'var(--color-text-subtle)', 
               fontStyle: 'italic' 
             }}>
               No scripts found in /data/scripts/
@@ -194,8 +194,8 @@ const ScriptManagement: React.FC<ScriptManagementProps> = ({
                       alignItems: 'center',
                       gap: '0.75rem',
                       padding: '0.75rem',
-                      background: isSelected ? 'var(--ctp-surface1)' : 'transparent',
-                      border: '1px solid var(--ctp-overlay0)',
+                      background: isSelected ? 'var(--color-surface-hover)' : 'transparent',
+                      border: '1px solid var(--color-border-subtle)',
                       borderRadius: '4px'
                     }}
                   >
@@ -215,8 +215,8 @@ const ScriptManagement: React.FC<ScriptManagementProps> = ({
                       style={{
                         padding: '0.25rem 0.75rem',
                         fontSize: '0.75rem',
-                        background: isDeleting === script.filename ? 'var(--ctp-surface2)' : 'var(--ctp-red)',
-                        color: isDeleting === script.filename ? 'var(--ctp-subtext0)' : 'var(--ctp-base)',
+                        background: isDeleting === script.filename ? 'var(--color-surface-active)' : 'var(--color-error)',
+                        color: isDeleting === script.filename ? 'var(--color-text-subtle)' : 'var(--color-bg)',
                         border: 'none',
                         borderRadius: '3px',
                         cursor: isDeleting === script.filename ? 'not-allowed' : 'pointer',

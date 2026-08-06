@@ -36,27 +36,27 @@ const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '0.75rem 1rem',
-          backgroundColor: nested ? 'var(--ctp-surface0)' : 'var(--ctp-mantle)',
+          backgroundColor: nested ? 'var(--color-surface)' : 'var(--color-bg-raised)',
           borderRadius: '8px',
           cursor: 'pointer',
           userSelect: 'none',
           marginBottom: expanded ? '0.5rem' : '0',
           transition: 'background-color 0.2s',
-          border: `1px solid ${nested ? 'var(--ctp-surface1)' : 'var(--ctp-surface2)'}`,
+          border: `1px solid ${nested ? 'var(--color-surface-hover)' : 'var(--color-surface-active)'}`,
           paddingLeft: nested ? '2rem' : '1rem',
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.backgroundColor = nested ? 'var(--ctp-surface1)' : 'var(--ctp-surface0)';
+          e.currentTarget.style.backgroundColor = nested ? 'var(--color-surface-hover)' : 'var(--color-surface)';
         }}
         onMouseLeave={(e) => {
-          e.currentTarget.style.backgroundColor = nested ? 'var(--ctp-surface0)' : 'var(--ctp-mantle)';
+          e.currentTarget.style.backgroundColor = nested ? 'var(--color-surface)' : 'var(--color-bg-raised)';
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1 }}>
           <span style={{ fontSize: '0.875rem', transition: 'transform 0.2s', transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>
             <UiIcon name="forward" size={15} />
           </span>
-          <h3 style={{ margin: 0, fontSize: nested ? '0.95rem' : '1rem', fontWeight: nested ? 500 : 600, color: 'var(--ctp-text)' }}>
+          <h3 style={{ margin: 0, fontSize: nested ? '0.95rem' : '1rem', fontWeight: nested ? 500 : 600, color: 'var(--color-text)' }}>
             {title}
           </h3>
         </div>

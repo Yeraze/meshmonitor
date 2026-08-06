@@ -221,16 +221,16 @@ const AutoTimeSyncSection: React.FC<AutoTimeSyncSectionProps> = ({
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: '0.5rem 0.75rem',
-    background: 'var(--ctp-surface0)',
-    border: '1px solid var(--ctp-surface2)',
+    background: 'var(--color-surface)',
+    border: '1px solid var(--color-surface-active)',
     borderRadius: '4px',
     cursor: 'pointer',
     marginBottom: '0.5rem',
   };
 
   const badgeStyle: React.CSSProperties = {
-    background: 'var(--ctp-blue)',
-    color: 'var(--ctp-base)',
+    background: 'var(--color-accent)',
+    color: 'var(--color-bg)',
     padding: '0.1rem 0.5rem',
     borderRadius: '10px',
     fontSize: '11px',
@@ -244,8 +244,8 @@ const AutoTimeSyncSection: React.FC<AutoTimeSyncSectionProps> = ({
         alignItems: 'center',
         marginBottom: '1.5rem',
         padding: '1rem 1.25rem',
-        background: 'var(--ctp-surface1)',
-        border: '1px solid var(--ctp-surface2)',
+        background: 'var(--color-surface-hover)',
+        border: '1px solid var(--color-surface-active)',
         borderRadius: '8px'
       }}>
         <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -340,8 +340,8 @@ const AutoTimeSyncSection: React.FC<AutoTimeSyncSectionProps> = ({
               marginTop: '1rem',
               marginLeft: '1.75rem',
               padding: '1rem',
-              background: 'var(--ctp-surface0)',
-              border: '1px solid var(--ctp-surface2)',
+              background: 'var(--color-surface)',
+              border: '1px solid var(--color-surface-active)',
               borderRadius: '6px',
             }}>
               {/* Specific Nodes Filter */}
@@ -359,7 +359,7 @@ const AutoTimeSyncSection: React.FC<AutoTimeSyncSectionProps> = ({
                   </span>
                 </div>
                 {nodeListExpanded && (
-                  <div style={{ padding: '0.5rem', background: 'var(--ctp-base)', borderRadius: '4px' }}>
+                  <div style={{ padding: '0.5rem', background: 'var(--color-bg)', borderRadius: '4px' }}>
                     <input
                       type="text"
                       placeholder={t('automation.time_sync.search_nodes')}
@@ -370,10 +370,10 @@ const AutoTimeSyncSection: React.FC<AutoTimeSyncSectionProps> = ({
                         width: '100%',
                         padding: '0.5rem',
                         marginBottom: '0.5rem',
-                        background: 'var(--ctp-surface0)',
-                        border: '1px solid var(--ctp-surface2)',
+                        background: 'var(--color-surface)',
+                        border: '1px solid var(--color-surface-active)',
                         borderRadius: '4px',
-                        color: 'var(--ctp-text)'
+                        color: 'var(--color-text)'
                       }}
                     />
                     <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
@@ -384,9 +384,9 @@ const AutoTimeSyncSection: React.FC<AutoTimeSyncSectionProps> = ({
                         {t('common.deselect_all')}
                       </button>
                     </div>
-                    <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--ctp-surface2)', borderRadius: '4px' }}>
+                    <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--color-surface-active)', borderRadius: '4px' }}>
                       {filteredNodes.length === 0 ? (
-                        <div style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--ctp-subtext0)', fontSize: '12px' }}>
+                        <div style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--color-text-subtle)', fontSize: '12px' }}>
                           {searchTerm ? t('automation.time_sync.no_nodes_match') : t('automation.time_sync.no_nodes_available')}
                         </div>
                       ) : (
@@ -395,7 +395,7 @@ const AutoTimeSyncSection: React.FC<AutoTimeSyncSectionProps> = ({
                             key={node.nodeNum}
                             style={{
                               padding: '0.4rem 0.6rem',
-                              borderBottom: '1px solid var(--ctp-surface1)',
+                              borderBottom: '1px solid var(--color-surface-hover)',
                               display: 'flex',
                               alignItems: 'center',
                               cursor: 'pointer',
@@ -410,7 +410,7 @@ const AutoTimeSyncSection: React.FC<AutoTimeSyncSectionProps> = ({
                               style={{ width: 'auto', margin: 0, marginRight: '0.5rem', cursor: 'pointer' }}
                               onClick={(e) => e.stopPropagation()}
                             />
-                            <span style={{ color: 'var(--ctp-text)' }}>
+                            <span style={{ color: 'var(--color-text)' }}>
                               {node.user?.longName || node.longName || node.user?.shortName || node.shortName || node.nodeId || 'Unknown'}
                             </span>
                           </div>
@@ -425,13 +425,13 @@ const AutoTimeSyncSection: React.FC<AutoTimeSyncSectionProps> = ({
               <div style={{
                 marginTop: '1rem',
                 padding: '0.75rem',
-                background: 'var(--ctp-base)',
-                border: '1px solid var(--ctp-surface2)',
+                background: 'var(--color-bg)',
+                border: '1px solid var(--color-surface-active)',
                 borderRadius: '4px',
                 fontSize: '12px'
               }}>
-                <div style={{ color: 'var(--ctp-subtext0)' }}>
-                  {t('automation.time_sync.eligible_nodes')}: <strong style={{ color: 'var(--ctp-text)' }}>
+                <div style={{ color: 'var(--color-text-subtle)' }}>
+                  {t('automation.time_sync.eligible_nodes')}: <strong style={{ color: 'var(--color-text)' }}>
                     {filterEnabled ? selectedNodeNums.length : availableNodes.length}
                   </strong> / {availableNodes.length} {t('automation.time_sync.nodes_with_remote_admin')}
                 </div>
@@ -445,13 +445,13 @@ const AutoTimeSyncSection: React.FC<AutoTimeSyncSectionProps> = ({
               marginTop: '1rem',
               marginLeft: '1.75rem',
               padding: '0.75rem',
-              background: 'var(--ctp-surface0)',
-              border: '1px solid var(--ctp-surface2)',
+              background: 'var(--color-surface)',
+              border: '1px solid var(--color-surface-active)',
               borderRadius: '4px',
               fontSize: '12px'
             }}>
-              <div style={{ color: 'var(--ctp-subtext0)' }}>
-                {t('automation.time_sync.eligible_nodes')}: <strong style={{ color: 'var(--ctp-text)' }}>
+              <div style={{ color: 'var(--color-text-subtle)' }}>
+                {t('automation.time_sync.eligible_nodes')}: <strong style={{ color: 'var(--color-text)' }}>
                   {availableNodes.length}
                 </strong> {t('automation.time_sync.nodes_with_remote_admin')}
               </div>

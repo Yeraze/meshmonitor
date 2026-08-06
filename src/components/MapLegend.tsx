@@ -150,7 +150,7 @@ const MapLegend: React.FC<MapLegendProps> = ({ positionHistory, unmappedCount, s
         </svg>
         <span className="legend-label">{t('map.legend.unidirectional', 'One-way')}</span>
       </div>
-      <span className="legend-sublabel" style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)', marginTop: '2px' }}>
+      <span className="legend-sublabel" style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)', marginTop: '2px' }}>
         {t('map.legend.thickerBrighter', 'Thicker line = stronger signal')}
       </span>
       <div className="legend-divider" />
@@ -212,7 +212,7 @@ const MapLegend: React.FC<MapLegendProps> = ({ positionHistory, unmappedCount, s
       {unmappedCount != null && unmappedCount > 0 && (
         <>
           <div className="legend-divider" />
-          <span className="legend-sublabel" style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+          <span className="legend-sublabel" style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
             {t('map.legend.unmappedNodes', '{{count}} node(s) without location', { count: unmappedCount })}
           </span>
         </>

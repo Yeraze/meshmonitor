@@ -752,7 +752,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                     className="btn-secondary"
                     onClick={handleRemoveContact}
                     disabled={removing}
-                    style={{ color: 'var(--ctp-red)' }}
+                    style={{ color: 'var(--color-error)' }}
                     aria-label={t('meshcore.contact_details.remove_contact_button', 'Remove')}
                   >
                     {removing
@@ -761,26 +761,26 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                   </button>
                 )}
                 {resetError && (
-                  <span style={{ color: 'var(--ctp-red)' }} role="alert">{resetError}</span>
+                  <span style={{ color: 'var(--color-error)' }} role="alert">{resetError}</span>
                 )}
                 {shareError && (
-                  <span style={{ color: 'var(--ctp-red)' }} role="alert">{shareError}</span>
+                  <span style={{ color: 'var(--color-error)' }} role="alert">{shareError}</span>
                 )}
                 {removeError && (
-                  <span style={{ color: 'var(--ctp-red)' }} role="alert">{removeError}</span>
+                  <span style={{ color: 'var(--color-error)' }} role="alert">{removeError}</span>
                 )}
                 {shareSuccess && (
-                  <span style={{ color: 'var(--ctp-green)' }} role="status">
+                  <span style={{ color: 'var(--color-success)' }} role="status">
                     {t('meshcore.contact_details.share_contact_success', 'Advert broadcast.')}
                   </span>
                 )}
                 {exportSuccess && (
-                  <span style={{ color: 'var(--ctp-green)' }} role="status">
+                  <span style={{ color: 'var(--color-success)' }} role="status">
                     {t('meshcore.contact_details.export_contact_success', 'Copied to clipboard.')}
                   </span>
                 )}
                 {traceError && (
-                  <span style={{ color: 'var(--ctp-red)' }} role="alert">{traceError}</span>
+                  <span style={{ color: 'var(--color-error)' }} role="alert">{traceError}</span>
                 )}
               </div>
             </div>
@@ -796,7 +796,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
               </div>
               <div className="node-detail-value" role="status">
                 {pingResult.ok ? (
-                  <span style={{ color: 'var(--ctp-green)' }}>
+                  <span style={{ color: 'var(--color-success)' }}>
                     {t('meshcore.contact_details.ping_zero_hop_direct', 'Direct — in range')}
                     {' · '}
                     {t('meshcore.contact_details.ping_zero_hop_rtt', 'RTT')} {pingResult.rttMs} ms
@@ -816,7 +816,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                     </span>
                   </span>
                 ) : (
-                  <span style={{ color: 'var(--ctp-red)' }}>{pingResult.error}</span>
+                  <span style={{ color: 'var(--color-error)' }}>{pingResult.error}</span>
                 )}
               </div>
             </div>
@@ -831,7 +831,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
               <div className="node-detail-value">
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--font-mono, monospace)', fontSize: '0.9em' }}>
                   <thead>
-                    <tr style={{ borderBottom: '1px solid var(--ctp-surface1, #45475a)' }}>
+                    <tr style={{ borderBottom: '1px solid var(--color-surface-hover, #45475a)' }}>
                       <th style={{ textAlign: 'left', padding: '0.25rem 0.5rem' }}>
                         {t('meshcore.contact_details.trace_hop', 'Hop')}
                       </th>
@@ -857,7 +857,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                         </tr>
                       );
                     })}
-                    <tr style={{ borderTop: '1px solid var(--ctp-surface1, #45475a)' }}>
+                    <tr style={{ borderTop: '1px solid var(--color-surface-hover, #45475a)' }}>
                       <td style={{ padding: '0.25rem 0.5rem' }} colSpan={2}>
                         {t('meshcore.contact_details.trace_destination', 'Destination')}
                       </td>
@@ -892,7 +892,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                 ) : (
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--font-mono, monospace)', fontSize: '0.9em' }}>
                     <thead>
-                      <tr style={{ borderBottom: '1px solid var(--ctp-surface1, #45475a)' }}>
+                      <tr style={{ borderBottom: '1px solid var(--color-surface-hover, #45475a)' }}>
                         <th style={{ textAlign: 'left', padding: '0.25rem 0.5rem' }}>
                           {t('meshcore.contact_details.neighbours_name', 'Node')}
                         </th>
@@ -1008,8 +1008,8 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
         >
           <div
             style={{
-              background: 'var(--ctp-base, #1e1e2e)',
-              color: 'var(--ctp-text, #cdd6f4)',
+              background: 'var(--color-bg, #1e1e2e)',
+              color: 'var(--color-text, #cdd6f4)',
               padding: '1.25rem 1.5rem',
               borderRadius: '8px',
               maxWidth: '32rem',
@@ -1028,8 +1028,8 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
             </p>
             <div
               style={{
-                background: 'var(--ctp-surface0, #313244)',
-                color: 'var(--ctp-yellow, #f9e2af)',
+                background: 'var(--color-surface, #313244)',
+                color: 'var(--color-warning, #f9e2af)',
                 padding: '0.6rem 0.8rem',
                 borderRadius: '4px',
                 marginBottom: '0.75rem',
@@ -1084,7 +1084,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                         gap: '0.5rem',
                         padding: '0.35rem 0.5rem',
                         marginBottom: '0.25rem',
-                        background: 'var(--ctp-surface0, #313244)',
+                        background: 'var(--color-surface, #313244)',
                         borderRadius: '4px',
                       }}
                     >
@@ -1149,7 +1149,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
               </button>
             </div>
             {editorError && (
-              <div style={{ color: 'var(--ctp-red)', marginBottom: '0.75rem' }} role="alert">
+              <div style={{ color: 'var(--color-error)', marginBottom: '0.75rem' }} role="alert">
                 {editorError}
               </div>
             )}

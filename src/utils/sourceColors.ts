@@ -7,14 +7,14 @@
  * so a given source keeps the same color across filter/sort changes.
  */
 export const SOURCE_COLORS = [
-  'var(--ctp-blue)',
-  'var(--ctp-mauve)',
-  'var(--ctp-green)',
-  'var(--ctp-peach)',
-  'var(--ctp-yellow)',
+  'var(--color-accent)',
+  'var(--color-accent-alt)',
+  'var(--color-success)',
+  'var(--color-caution)',
+  'var(--color-warning)',
   'var(--ctp-teal)',
   'var(--ctp-pink)',
-  'var(--ctp-sapphire)',
+  'var(--color-accent-hover)',
 ];
 
 /**
@@ -30,7 +30,7 @@ export function getSourceColor(sourceId: string, sourceIds: string[]): string {
  * Resolve a color value to a literal (hex/rgb) string.
  *
  * The palette in {@link SOURCE_COLORS} is expressed as CSS custom properties
- * (`var(--ctp-blue)`). CSS variables resolve fine when set on an element's
+ * (`var(--color-accent)`). CSS variables resolve fine when set on an element's
  * `style` (backgrounds, borders, legend swatches), but Leaflet paints SVG
  * strokes via the presentation *attribute* (`setAttribute('stroke', color)`),
  * which does NOT evaluate `var()`. Leaflet overlays (e.g. the polar grid on the

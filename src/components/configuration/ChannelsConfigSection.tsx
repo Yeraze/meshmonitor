@@ -118,11 +118,11 @@ const SortableChannelCard: React.FC<{
             width: '2.5rem',
             minHeight: '100%',
             cursor: isDragging ? 'grabbing' : 'grab',
-            backgroundColor: isDragging ? 'var(--ctp-surface2)' : 'var(--ctp-surface0)',
+            backgroundColor: isDragging ? 'var(--color-surface-active)' : 'var(--color-surface)',
             borderRadius: '8px 0 0 8px',
-            borderRight: '1px solid var(--ctp-surface1)',
+            borderRight: '1px solid var(--color-surface-hover)',
             fontSize: '1.4rem',
-            color: isDragging ? 'var(--ctp-blue)' : 'var(--ctp-overlay1)',
+            color: isDragging ? 'var(--color-accent)' : 'var(--color-text-disabled)',
             userSelect: 'none',
             flexShrink: 0,
             transition: 'background-color 0.15s, color 0.15s',
@@ -479,12 +479,12 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
             gap: '0.5rem',
             marginBottom: '1rem',
             padding: '0.75rem',
-            backgroundColor: 'var(--ctp-surface0)',
+            backgroundColor: 'var(--color-surface)',
             borderRadius: '8px',
-            border: '1px solid var(--ctp-blue)',
+            border: '1px solid var(--color-accent)',
             alignItems: 'center'
           }}>
-            <span style={{ flex: 1, color: 'var(--ctp-text)' }}>
+            <span style={{ flex: 1, color: 'var(--color-text)' }}>
               {t('channels_config.reorder_pending', 'Channel order changed. Apply to device?')}
             </span>
             <button
@@ -492,8 +492,8 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
               disabled={isReordering}
               style={{
                 padding: '0.5rem 1rem',
-                backgroundColor: 'var(--ctp-blue)',
-                color: 'var(--ctp-base)',
+                backgroundColor: 'var(--color-accent)',
+                color: 'var(--color-bg)',
                 border: 'none',
                 borderRadius: '4px',
                 cursor: isReordering ? 'not-allowed' : 'pointer',
@@ -507,8 +507,8 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
               disabled={isReordering}
               style={{
                 padding: '0.5rem 1rem',
-                backgroundColor: 'var(--ctp-surface1)',
-                color: 'var(--ctp-text)',
+                backgroundColor: 'var(--color-surface-hover)',
+                color: 'var(--color-text)',
                 border: 'none',
                 borderRadius: '4px',
                 cursor: isReordering ? 'not-allowed' : 'pointer'
@@ -527,11 +527,11 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                   <div
                     style={{
                       border: (hasReorderChanges ? displaySlot === 0 : channel?.role === 1)
-                        ? '2px solid var(--ctp-blue)'
-                        : '1px solid var(--ctp-surface1)',
+                        ? '2px solid var(--color-accent)'
+                        : '1px solid var(--color-surface-hover)',
                       borderRadius: '8px',
                       padding: '1rem',
-                      backgroundColor: channel ? 'var(--ctp-surface0)' : 'var(--ctp-mantle)',
+                      backgroundColor: channel ? 'var(--color-surface)' : 'var(--color-bg-raised)',
                       opacity: channel?.role === 0 ? 0.5 : 1,
                       boxShadow: (hasReorderChanges ? displaySlot === 0 : channel?.role === 1)
                         ? '0 0 10px rgba(137, 180, 250, 0.3)' : 'none'
@@ -539,18 +539,18 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
                       <div>
-                        <h4 style={{ margin: 0, color: 'var(--ctp-text)' }}>
+                        <h4 style={{ margin: 0, color: 'var(--color-text)' }}>
                           {t('channels_config.slot', { slot: hasReorderChanges ? displaySlot : slotId })}: {channel ? (
                             <>
-                              {channel.name || <span style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>{t('channels_config.unnamed')}</span>}
-                              {!hasReorderChanges && channel.role === 1 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-blue)', fontSize: '0.8rem' }}><UiIcon name="favorite" size={13} /> {t('channels_config.primary')}</span>}
-                              {hasReorderChanges && displaySlot === 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-blue)', fontSize: '0.8rem' }}><UiIcon name="favorite" size={13} /> {t('channels_config.primary')}</span>}
-                              {channel.role === 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-overlay0)', fontSize: '0.8rem' }}><UiIcon name="blocked" size={13} /> {t('channels_config.disabled')}</span>}
+                              {channel.name || <span style={{ color: 'var(--color-text-subtle)', fontStyle: 'italic' }}>{t('channels_config.unnamed')}</span>}
+                              {!hasReorderChanges && channel.role === 1 && <span style={{ marginLeft: '0.5rem', color: 'var(--color-accent)', fontSize: '0.8rem' }}><UiIcon name="favorite" size={13} /> {t('channels_config.primary')}</span>}
+                              {hasReorderChanges && displaySlot === 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--color-accent)', fontSize: '0.8rem' }}><UiIcon name="favorite" size={13} /> {t('channels_config.primary')}</span>}
+                              {channel.role === 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--color-text-faint)', fontSize: '0.8rem' }}><UiIcon name="blocked" size={13} /> {t('channels_config.disabled')}</span>}
                             </>
-                          ) : <span style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>{t('channels_config.empty')}</span>}
+                          ) : <span style={{ color: 'var(--color-text-subtle)', fontStyle: 'italic' }}>{t('channels_config.empty')}</span>}
                         </h4>
                   {channel && (
-                    <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: 'var(--ctp-subtext1)' }}>
+                    <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
                       {(() => {
                         const status = channelEncryptionStatus(channel);
                         if (status === 'secure') {
@@ -576,7 +576,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                       )}
                       {collisionDbNamesByChannelId.has(channel.id) && (
                         <div
-                          style={{ marginTop: '0.5rem', color: 'var(--ctp-yellow)', fontSize: '0.85rem' }}
+                          style={{ marginTop: '0.5rem', color: 'var(--color-warning)', fontSize: '0.85rem' }}
                           title={t('channels_config.collision_tooltip', 'This channel shares its encryption key with a Channel Database (server-side decryption) entry under a different name, so its messages are filed under that entry instead.')}
                         >
                           <UiIcon name="alert" /> {t('channels_config.collision_warning', {
@@ -594,8 +594,8 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                     style={{
                       padding: '0.5rem 0.75rem',
                       fontSize: '0.9rem',
-                      backgroundColor: 'var(--ctp-blue)',
-                      color: 'var(--ctp-base)',
+                      backgroundColor: 'var(--color-accent)',
+                      color: 'var(--color-bg)',
                       border: 'none',
                       borderRadius: '4px',
                       cursor: 'pointer'
@@ -609,8 +609,8 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                       style={{
                         padding: '0.5rem 0.75rem',
                         fontSize: '0.9rem',
-                        backgroundColor: 'var(--ctp-green)',
-                        color: 'var(--ctp-base)',
+                        backgroundColor: 'var(--color-success)',
+                        color: 'var(--color-bg)',
                         border: 'none',
                         borderRadius: '4px',
                         cursor: 'pointer'
@@ -624,8 +624,8 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                     style={{
                       padding: '0.5rem 0.75rem',
                       fontSize: '0.9rem',
-                      backgroundColor: 'var(--ctp-yellow)',
-                      color: 'var(--ctp-base)',
+                      backgroundColor: 'var(--color-warning)',
+                      color: 'var(--color-bg)',
                       border: 'none',
                       borderRadius: '4px',
                       cursor: 'pointer'
@@ -639,8 +639,8 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                       style={{
                         padding: '0.5rem 0.75rem',
                         fontSize: '0.9rem',
-                        backgroundColor: 'var(--ctp-red)',
-                        color: 'var(--ctp-base)',
+                        backgroundColor: 'var(--color-error)',
+                        color: 'var(--color-bg)',
                         border: 'none',
                         borderRadius: '4px',
                         cursor: 'pointer'
@@ -661,16 +661,16 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
               const ch = channels.find(c => c.id === activeDragId);
               return (
                 <div style={{
-                  border: '2px solid var(--ctp-blue)',
+                  border: '2px solid var(--color-accent)',
                   borderRadius: '8px',
                   padding: '1rem',
-                  backgroundColor: 'var(--ctp-surface0)',
+                  backgroundColor: 'var(--color-surface)',
                   boxShadow: '0 12px 32px rgba(0, 0, 0, 0.5)',
                   opacity: 0.95,
                 }}>
-                  <h4 style={{ margin: 0, color: 'var(--ctp-text)' }}>
+                  <h4 style={{ margin: 0, color: 'var(--color-text)' }}>
                     {ch?.name || t('channels_config.empty')}
-                    {ch?.role === 1 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-blue)', fontSize: '0.8rem' }}><UiIcon name="favorite" size={13} /> {t('channels_config.primary')}</span>}
+                    {ch?.role === 1 && <span style={{ marginLeft: '0.5rem', color: 'var(--color-accent)', fontSize: '0.8rem' }}><UiIcon name="favorite" size={13} /> {t('channels_config.primary')}</span>}
                   </h4>
                 </div>
               );
@@ -698,7 +698,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
         >
           <div
             style={{
-              backgroundColor: 'var(--ctp-base)',
+              backgroundColor: 'var(--color-bg)',
               borderRadius: '8px',
               padding: '1.5rem',
               maxWidth: '500px',
@@ -748,8 +748,8 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                   type="button"
                   style={{
                     padding: '0.5rem 1rem',
-                    backgroundColor: 'var(--ctp-green)',
-                    color: 'var(--ctp-base)',
+                    backgroundColor: 'var(--color-success)',
+                    color: 'var(--color-bg)',
                     border: 'none',
                     borderRadius: '4px',
                     cursor: 'pointer',
@@ -842,8 +842,8 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                 style={{
                   flex: 1,
                   padding: '0.75rem',
-                  backgroundColor: 'var(--ctp-blue)',
-                  color: 'var(--ctp-base)',
+                  backgroundColor: 'var(--color-accent)',
+                  color: 'var(--color-bg)',
                   border: 'none',
                   borderRadius: '4px',
                   cursor: isSaving ? 'not-allowed' : 'pointer',
@@ -858,8 +858,8 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                 style={{
                   flex: 1,
                   padding: '0.75rem',
-                  backgroundColor: 'var(--ctp-surface1)',
-                  color: 'var(--ctp-text)',
+                  backgroundColor: 'var(--color-surface-hover)',
+                  color: 'var(--color-text)',
                   border: 'none',
                   borderRadius: '4px',
                   cursor: isSaving ? 'not-allowed' : 'pointer'
@@ -891,7 +891,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
         >
           <div
             style={{
-              backgroundColor: 'var(--ctp-base)',
+              backgroundColor: 'var(--color-bg)',
               borderRadius: '8px',
               padding: '1.5rem',
               maxWidth: '500px',
@@ -927,7 +927,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                 <label>{t('channels_config.preview')}:</label>
                 <pre
                   style={{
-                    backgroundColor: 'var(--ctp-surface0)',
+                    backgroundColor: 'var(--color-surface)',
                     padding: '0.75rem',
                     borderRadius: '4px',
                     fontSize: '0.85rem',
@@ -947,8 +947,8 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                 style={{
                   flex: 1,
                   padding: '0.75rem',
-                  backgroundColor: 'var(--ctp-green)',
-                  color: 'var(--ctp-base)',
+                  backgroundColor: 'var(--color-success)',
+                  color: 'var(--color-bg)',
                   border: 'none',
                   borderRadius: '4px',
                   cursor: (isSaving || !importFileContent) ? 'not-allowed' : 'pointer',
@@ -963,8 +963,8 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                 style={{
                   flex: 1,
                   padding: '0.75rem',
-                  backgroundColor: 'var(--ctp-surface1)',
-                  color: 'var(--ctp-text)',
+                  backgroundColor: 'var(--color-surface-hover)',
+                  color: 'var(--color-text)',
                   border: 'none',
                   borderRadius: '4px',
                   cursor: isSaving ? 'not-allowed' : 'pointer'

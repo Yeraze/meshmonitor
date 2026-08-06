@@ -190,8 +190,8 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
             className="setting-input"
             style={{
               flex: 1,
-              backgroundColor: 'var(--ctp-surface0)',
-              color: 'var(--ctp-subtext0)',
+              backgroundColor: 'var(--color-surface)',
+              color: 'var(--color-text-subtle)',
               fontFamily: 'monospace',
               fontSize: '0.85rem'
             }}
@@ -202,11 +202,11 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
               onClick={() => navigator.clipboard.writeText(publicKey)}
               style={{
                 padding: '0.5rem',
-                backgroundColor: 'var(--ctp-surface1)',
+                backgroundColor: 'var(--color-surface-hover)',
                 border: 'none',
                 borderRadius: '4px',
                 cursor: 'pointer',
-                color: 'var(--ctp-text)'
+                color: 'var(--color-text)'
               }}
               title={t('common.copy_to_clipboard')}
             >
@@ -231,8 +231,8 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
             className="setting-input"
             style={{
               flex: 1,
-              backgroundColor: 'var(--ctp-surface0)',
-              color: 'var(--ctp-subtext0)',
+              backgroundColor: 'var(--color-surface)',
+              color: 'var(--color-text-subtle)',
               fontFamily: 'monospace',
               fontSize: '0.85rem'
             }}
@@ -243,11 +243,11 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
               onClick={handleCopyPrivateKey}
               style={{
                 padding: '0.5rem',
-                backgroundColor: 'var(--ctp-surface1)',
+                backgroundColor: 'var(--color-surface-hover)',
                 border: 'none',
                 borderRadius: '4px',
                 cursor: 'pointer',
-                color: 'var(--ctp-text)'
+                color: 'var(--color-text)'
               }}
               title={t('common.copy_to_clipboard')}
             >
@@ -255,13 +255,13 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
             </button>
           )}
         </div>
-        <span className="setting-description" style={{ display: 'block', marginTop: '0.25rem', color: 'var(--ctp-yellow)' }}>
+        <span className="setting-description" style={{ display: 'block', marginTop: '0.25rem', color: 'var(--color-warning)' }}>
           <UiIcon name="alert" /> {t('security_config.private_key_warning')}
         </span>
       </div>
 
       {/* Separator */}
-      <hr style={{ border: 'none', borderTop: '1px solid var(--ctp-surface2)', margin: '1.5rem 0' }} />
+      <hr style={{ border: 'none', borderTop: '1px solid var(--color-surface-active)', margin: '1.5rem 0' }} />
 
       {/* Admin Keys */}
       <div className="setting-item">
@@ -283,8 +283,8 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
                     flex: 1,
                     fontFamily: 'monospace',
                     fontSize: '0.85rem',
-                    borderColor: isInvalid ? 'var(--ctp-red)' : undefined,
-                    boxShadow: isInvalid ? '0 0 0 1px var(--ctp-red)' : undefined
+                    borderColor: isInvalid ? 'var(--color-error)' : undefined,
+                    boxShadow: isInvalid ? '0 0 0 1px var(--color-error)' : undefined
                   }}
                   placeholder={t('security_config.admin_key_placeholder')}
                 />
@@ -294,7 +294,7 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
                     onClick={() => handleRemoveAdminKey(index)}
                     style={{
                       padding: '0.5rem 0.75rem',
-                      backgroundColor: 'var(--ctp-red)',
+                      backgroundColor: 'var(--color-error)',
                       border: 'none',
                       borderRadius: '4px',
                       cursor: 'pointer',
@@ -306,7 +306,7 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
                 )}
               </div>
               {isInvalid && (
-                <span style={{ color: 'var(--ctp-red)', fontSize: '0.85rem' }}>
+                <span style={{ color: 'var(--color-error)', fontSize: '0.85rem' }}>
                   {t('security_config.invalid_base64')}
                 </span>
               )}
@@ -319,7 +319,7 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
             onClick={handleAddAdminKey}
             style={{
               padding: '0.5rem 1rem',
-              backgroundColor: 'var(--ctp-green)',
+              backgroundColor: 'var(--color-success)',
               border: 'none',
               borderRadius: '4px',
               cursor: 'pointer',

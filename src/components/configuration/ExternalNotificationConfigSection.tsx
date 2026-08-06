@@ -228,7 +228,7 @@ const ExternalNotificationConfigSection: React.FC<ExternalNotificationConfigSect
           </div>
 
           {/* Alert Settings Section */}
-          <h4 style={{ marginTop: '1.5rem', marginBottom: '0.5rem', color: 'var(--ctp-subtext0)' }}>
+          <h4 style={{ marginTop: '1.5rem', marginBottom: '0.5rem', color: 'var(--color-text-subtle)' }}>
             {t('extnotif_config.alert_section')}
           </h4>
 
@@ -342,8 +342,8 @@ const ExternalNotificationConfigSection: React.FC<ExternalNotificationConfigSect
               className="advanced-toggle-btn"
               style={{
                 background: 'transparent',
-                border: '1px solid var(--ctp-surface2)',
-                color: 'var(--ctp-subtext0)',
+                border: '1px solid var(--color-surface-active)',
+                color: 'var(--color-text-subtle)',
                 padding: '0.5rem 1rem',
                 borderRadius: '4px',
                 cursor: 'pointer',
@@ -362,7 +362,7 @@ const ExternalNotificationConfigSection: React.FC<ExternalNotificationConfigSect
             <div className="advanced-section" style={{
               marginLeft: '1rem',
               paddingLeft: '1rem',
-              borderLeft: '2px solid var(--ctp-surface2)'
+              borderLeft: '2px solid var(--color-surface-active)'
             }}>
               {/* Use PWM */}
               <div className="setting-item">
@@ -417,7 +417,7 @@ const ExternalNotificationConfigSection: React.FC<ExternalNotificationConfigSect
               </div>
 
               {/* GPIO Settings */}
-              <h4 style={{ marginTop: '1.5rem', marginBottom: '0.5rem', color: 'var(--ctp-subtext0)' }}>
+              <h4 style={{ marginTop: '1.5rem', marginBottom: '0.5rem', color: 'var(--color-text-subtle)' }}>
                 {t('extnotif_config.gpio_section')}
               </h4>
 

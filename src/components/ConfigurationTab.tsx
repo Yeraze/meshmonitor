@@ -1961,8 +1961,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
               onClick={() => setShowChanges(!showChanges)}
               style={{
                 background: 'transparent',
-                border: '1px solid var(--ctp-surface2)',
-                color: 'var(--ctp-text)',
+                border: '1px solid var(--color-surface-active)',
+                color: 'var(--color-text)',
                 padding: '0.5rem 1rem',
                 borderRadius: '4px',
                 cursor: 'pointer',
@@ -1978,24 +1978,24 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
               <div style={{
                 marginTop: '0.5rem',
                 padding: '1rem',
-                backgroundColor: 'var(--ctp-surface0)',
+                backgroundColor: 'var(--color-surface)',
                 borderRadius: '4px',
-                border: '1px solid var(--ctp-surface2)'
+                border: '1px solid var(--color-surface-active)'
               }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
-                    <tr style={{ borderBottom: '1px solid var(--ctp-surface2)' }}>
-                      <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--ctp-subtext0)' }}>{t('config.field')}</th>
-                      <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--ctp-subtext0)' }}>{t('config.old_value')}</th>
-                      <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--ctp-subtext0)' }}>{t('config.new_value')}</th>
+                    <tr style={{ borderBottom: '1px solid var(--color-surface-active)' }}>
+                      <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--color-text-subtle)' }}>{t('config.field')}</th>
+                      <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--color-text-subtle)' }}>{t('config.old_value')}</th>
+                      <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--color-text-subtle)' }}>{t('config.new_value')}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {configChanges.map((change, idx) => (
-                      <tr key={idx} style={{ borderBottom: '1px solid var(--ctp-surface1)' }}>
+                      <tr key={idx} style={{ borderBottom: '1px solid var(--color-surface-hover)' }}>
                         <td style={{ padding: '0.5rem' }}>{change.field}</td>
-                        <td style={{ padding: '0.5rem', color: 'var(--ctp-red)' }}>{change.oldValue}</td>
-                        <td style={{ padding: '0.5rem', color: 'var(--ctp-green)' }}>{change.newValue}</td>
+                        <td style={{ padding: '0.5rem', color: 'var(--color-error)' }}>{change.oldValue}</td>
+                        <td style={{ padding: '0.5rem', color: 'var(--color-success)' }}>{change.newValue}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -2009,14 +2009,14 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
       {/* Import/Export Configuration Section */}
       <div id="config-import-export" className="settings-section" style={{ marginBottom: '2rem' }}>
         <h3>{t('config.import_export_title')}</h3>
-        <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '1rem' }}>
+        <p style={{ color: 'var(--color-text-subtle)', marginBottom: '1rem' }}>
           {t('config.import_export_description')}
         </p>
         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
           <button
             onClick={() => setIsImportModalOpen(true)}
             style={{
-              backgroundColor: 'var(--ctp-blue)',
+              backgroundColor: 'var(--color-accent)',
               color: '#fff',
               padding: '0.75rem 1.5rem',
               border: 'none',
@@ -2031,7 +2031,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           <button
             onClick={() => setIsExportModalOpen(true)}
             style={{
-              backgroundColor: 'var(--ctp-green)',
+              backgroundColor: 'var(--color-success)',
               color: '#fff',
               padding: '0.75rem 1.5rem',
               border: 'none',

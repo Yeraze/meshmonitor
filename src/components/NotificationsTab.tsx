@@ -801,7 +801,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
                 {preferences.notifyOnLowBattery && !isMeshCore && (
                   <div style={{ marginLeft: '28px', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <label htmlFor="lowBatteryThreshold" style={{ margin: 0, fontSize: '0.9em', color: 'var(--ctp-subtext0)' }}>
+                    <label htmlFor="lowBatteryThreshold" style={{ margin: 0, fontSize: '0.9em', color: 'var(--color-text-subtle)' }}>
                       {t('notifications.low_battery_threshold_label')}
                     </label>
                     <input
@@ -821,19 +821,19 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                       style={{
                         width: '70px',
                         padding: '0.35rem 0.5rem',
-                        background: 'var(--ctp-base)',
-                        border: '1px solid var(--ctp-surface2)',
+                        background: 'var(--color-bg)',
+                        border: '1px solid var(--color-surface-active)',
                         borderRadius: '4px',
-                        color: 'var(--ctp-text)'
+                        color: 'var(--color-text)'
                       }}
                     />
-                    <span style={{ fontSize: '0.9em', color: 'var(--ctp-subtext0)' }}>%</span>
+                    <span style={{ fontSize: '0.9em', color: 'var(--color-text-subtle)' }}>%</span>
                   </div>
                 )}
 
                 {preferences.notifyOnLowBattery && isMeshCore && (
                   <div style={{ marginLeft: '28px', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <label htmlFor="lowBatteryVoltageThreshold" style={{ margin: 0, fontSize: '0.9em', color: 'var(--ctp-subtext0)' }}>
+                    <label htmlFor="lowBatteryVoltageThreshold" style={{ margin: 0, fontSize: '0.9em', color: 'var(--color-text-subtle)' }}>
                       {t('notifications.low_battery_voltage_threshold_label')}
                     </label>
                     <input
@@ -854,18 +854,18 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                       style={{
                         width: '90px',
                         padding: '0.35rem 0.5rem',
-                        background: 'var(--ctp-base)',
-                        border: '1px solid var(--ctp-surface2)',
+                        background: 'var(--color-bg)',
+                        border: '1px solid var(--color-surface-active)',
                         borderRadius: '4px',
-                        color: 'var(--ctp-text)'
+                        color: 'var(--color-text)'
                       }}
                     />
-                    <span style={{ fontSize: '0.9em', color: 'var(--ctp-subtext0)' }}>mV</span>
+                    <span style={{ fontSize: '0.9em', color: 'var(--color-text-subtle)' }}>mV</span>
                   </div>
                 )}
 
                 {preferences.notifyOnLowBattery && (
-                  <p style={{ marginLeft: '28px', marginTop: '6px', marginBottom: 0, fontSize: '0.8em', color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>
+                  <p style={{ marginLeft: '28px', marginTop: '6px', marginBottom: 0, fontSize: '0.8em', color: 'var(--color-text-subtle)', fontStyle: 'italic' }}>
                     {isMeshCore
                       ? t('notifications.low_battery_threshold_hint_voltage', 'MeshCore nodes report battery as a voltage (mV) rather than a percentage.')
                       : t('notifications.low_battery_threshold_hint_percent', 'Meshtastic nodes report battery as a percentage of full charge.')}
@@ -877,11 +877,11 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                     marginLeft: '28px', 
                     marginTop: '12px',
                     padding: '12px',
-                    background: 'var(--ctp-surface0)',
-                    border: '1px solid var(--ctp-surface2)',
+                    background: 'var(--color-surface)',
+                    border: '1px solid var(--color-surface-active)',
                     borderRadius: '6px'
                   }}>
-                    <p style={{ marginBottom: '0.75rem', fontSize: '0.9em', color: 'var(--ctp-subtext0)' }}>
+                    <p style={{ marginBottom: '0.75rem', fontSize: '0.9em', color: 'var(--color-text-subtle)' }}>
                       {t('notifications.monitored_nodes_description')}
                     </p>
                     
@@ -895,10 +895,10 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                         width: '100%',
                         padding: '0.5rem',
                         marginBottom: '0.75rem',
-                        background: 'var(--ctp-base)',
-                        border: '1px solid var(--ctp-surface2)',
+                        background: 'var(--color-bg)',
+                        border: '1px solid var(--color-surface-active)',
                         borderRadius: '4px',
-                        color: 'var(--ctp-text)'
+                        color: 'var(--color-text)'
                       }}
                     />
                     
@@ -943,12 +943,12 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                     <div style={{
                       maxHeight: '300px',
                       overflowY: 'auto',
-                      border: '1px solid var(--ctp-surface2)',
+                      border: '1px solid var(--color-surface-active)',
                       borderRadius: '4px',
-                      background: 'var(--ctp-base)'
+                      background: 'var(--color-bg)'
                     }}>
                       {filteredNodes.length === 0 ? (
-                        <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--ctp-subtext0)' }}>
+                        <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--color-text-subtle)' }}>
                           {nodeSearchTerm ? t('notifications.no_nodes_match') : t('notifications.no_nodes_available')}
                         </div>
                       ) : (
@@ -959,13 +959,13 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                               key={nodeId}
                               style={{
                                 padding: '0.5rem 0.75rem',
-                                borderBottom: '1px solid var(--ctp-surface1)',
+                                borderBottom: '1px solid var(--color-surface-hover)',
                                 display: 'flex',
                                 alignItems: 'center',
                                 cursor: 'pointer',
                                 transition: 'background 0.1s'
                               }}
-                              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--ctp-surface0)'}
+                              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--color-surface)'}
                               onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                               onClick={() => {
                                 setSelectedMonitoredNodes(prev =>
@@ -989,11 +989,11 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                                 style={{ width: 'auto', margin: 0, marginRight: '0.75rem', cursor: 'pointer' }}
                               />
                               <div style={{ flex: 1 }}>
-                                <div style={{ fontWeight: '500', color: 'var(--ctp-text)' }}>
+                                <div style={{ fontWeight: '500', color: 'var(--color-text)' }}>
                                   {node.user?.longName || node.longName || node.user?.shortName || node.shortName || nodeId || 'Unknown'}
                                 </div>
                                 {(node.user?.longName || node.longName || node.user?.shortName || node.shortName) && (
-                                  <div style={{ fontSize: '12px', color: 'var(--ctp-subtext0)' }}>
+                                  <div style={{ fontSize: '12px', color: 'var(--color-text-subtle)' }}>
                                     {nodeId}
                                   </div>
                                 )}
@@ -1005,10 +1005,10 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                     </div>
                     
                     {/* Selection count */}
-                    <div style={{ marginTop: '0.75rem', fontSize: '13px', color: 'var(--ctp-subtext0)' }}>
+                    <div style={{ marginTop: '0.75rem', fontSize: '13px', color: 'var(--color-text-subtle)' }}>
                       {t('notifications.monitored_nodes_count', { count: selectedMonitoredNodes.length })}
                       {selectedMonitoredNodes.length === 0 && (
-                        <span style={{ color: 'var(--ctp-yellow)', marginLeft: '0.5rem' }}>
+                        <span style={{ color: 'var(--color-warning)', marginLeft: '0.5rem' }}>
                           ({t('notifications.no_nodes_selected_warning')})
                         </span>
                       )}
@@ -1045,18 +1045,18 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                     marginLeft: '28px',
                     marginTop: '12px',
                     padding: '12px',
-                    background: 'var(--ctp-surface0)',
-                    border: '1px solid var(--ctp-surface2)',
+                    background: 'var(--color-surface)',
+                    border: '1px solid var(--color-surface-active)',
                     borderRadius: '6px'
                   }}>
-                    <p style={{ marginBottom: '0.5rem', fontSize: '0.9em', color: 'var(--ctp-subtext0)' }}>
+                    <p style={{ marginBottom: '0.5rem', fontSize: '0.9em', color: 'var(--color-text-subtle)' }}>
                       {t('notifications.server_events_description')}
                     </p>
                     <ul style={{
                       margin: '0.5rem 0 0 1.5rem',
                       padding: 0,
                       fontSize: '0.85em',
-                      color: 'var(--ctp-subtext1)',
+                      color: 'var(--color-text-muted)',
                       listStyleType: 'disc'
                     }}>
                       <li>{t('notifications.server_events_startup')}</li>
@@ -1095,11 +1095,11 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                     marginLeft: '28px',
                     marginTop: '12px',
                     padding: '12px',
-                    background: 'var(--ctp-surface0)',
-                    border: '1px solid var(--ctp-surface2)',
+                    background: 'var(--color-surface)',
+                    border: '1px solid var(--color-surface-active)',
                     borderRadius: '6px'
                   }}>
-                    <p style={{ marginBottom: '0', fontSize: '0.9em', color: 'var(--ctp-subtext0)' }}>
+                    <p style={{ marginBottom: '0', fontSize: '0.9em', color: 'var(--color-text-subtle)' }}>
                       {t('notifications.prefix_with_node_name_description')}
                     </p>
                   </div>

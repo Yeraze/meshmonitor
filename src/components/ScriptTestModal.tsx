@@ -195,7 +195,7 @@ const ScriptTestModal: React.FC<ScriptTestModalProps> = ({
     >
       <div
         style={{
-          background: 'var(--ctp-base)',
+          background: 'var(--color-bg)',
           borderRadius: '8px',
           width: '90%',
           maxWidth: '700px',
@@ -203,7 +203,7 @@ const ScriptTestModal: React.FC<ScriptTestModalProps> = ({
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          border: '1px solid var(--ctp-overlay0)',
+          border: '1px solid var(--color-border-subtle)',
         }}
       >
         {/* Header */}
@@ -213,11 +213,11 @@ const ScriptTestModal: React.FC<ScriptTestModalProps> = ({
             justifyContent: 'space-between',
             alignItems: 'center',
             padding: '1rem 1.25rem',
-            borderBottom: '1px solid var(--ctp-surface1)',
-            background: 'var(--ctp-surface0)',
+            borderBottom: '1px solid var(--color-surface-hover)',
+            background: 'var(--color-surface)',
           }}
         >
-          <h3 style={{ margin: 0, color: 'var(--ctp-text)', fontSize: '1.1rem' }}>
+          <h3 style={{ margin: 0, color: 'var(--color-text)', fontSize: '1.1rem' }}>
             {t('script_test.title', 'Test Script')}: {scriptFilename}
           </h3>
           <button
@@ -226,7 +226,7 @@ const ScriptTestModal: React.FC<ScriptTestModalProps> = ({
               background: 'transparent',
               border: 'none',
               fontSize: '1.5rem',
-              color: 'var(--ctp-subtext0)',
+              color: 'var(--color-text-subtle)',
               cursor: 'pointer',
               padding: '0',
               lineHeight: '1',
@@ -240,13 +240,13 @@ const ScriptTestModal: React.FC<ScriptTestModalProps> = ({
         <div style={{ padding: '1.25rem', overflowY: 'auto', flex: 1 }}>
           {/* Mock Context Section */}
           <div style={{ marginBottom: '1rem' }}>
-            <h4 style={{ margin: '0 0 0.75rem 0', color: 'var(--ctp-text)', fontSize: '0.95rem' }}>
+            <h4 style={{ margin: '0 0 0.75rem 0', color: 'var(--color-text)', fontSize: '0.95rem' }}>
               {t('script_test.mock_context', 'Test Context')}
             </h4>
 
             <div
               style={{
-                background: 'var(--ctp-surface0)',
+                background: 'var(--color-surface)',
                 borderRadius: '6px',
                 padding: '1rem',
               }}
@@ -254,7 +254,7 @@ const ScriptTestModal: React.FC<ScriptTestModalProps> = ({
               {/* Auto-responder fields */}
               {triggerType === 'auto-responder' && (
                 <div style={{ marginBottom: '0.75rem' }}>
-                  <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', color: 'var(--ctp-subtext0)' }}>
+                  <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', color: 'var(--color-text-subtle)' }}>
                     {t('script_test.mock.message', 'Test Message')} *
                   </label>
                   <input
@@ -265,8 +265,8 @@ const ScriptTestModal: React.FC<ScriptTestModalProps> = ({
                     style={{ width: '100%' }}
                     placeholder={t('script_test.mock.message_hint', 'Enter a message that would trigger this script')}
                   />
-                  <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)', marginTop: '0.25rem' }}>
-                    {t('script_test.mock.trigger_pattern', 'Trigger pattern')}: <code style={{ background: 'var(--ctp-surface1)', padding: '0 0.25rem', borderRadius: '2px' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', marginTop: '0.25rem' }}>
+                    {t('script_test.mock.trigger_pattern', 'Trigger pattern')}: <code style={{ background: 'var(--color-surface-hover)', padding: '0 0.25rem', borderRadius: '2px' }}>
                       {Array.isArray(trigger) ? trigger.join(' | ') : trigger}
                     </code>
                   </div>
@@ -276,7 +276,7 @@ const ScriptTestModal: React.FC<ScriptTestModalProps> = ({
               {/* Geofence fields */}
               {triggerType === 'geofence' && (
                 <div style={{ marginBottom: '0.75rem' }}>
-                  <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', color: 'var(--ctp-subtext0)' }}>
+                  <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', color: 'var(--color-text-subtle)' }}>
                     {t('script_test.mock.event_type', 'Geofence Event')}
                   </label>
                   <select
@@ -295,7 +295,7 @@ const ScriptTestModal: React.FC<ScriptTestModalProps> = ({
               {/* Common mock node fields */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', color: 'var(--ctp-subtext0)' }}>
+                  <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', color: 'var(--color-text-subtle)' }}>
                     {t('script_test.mock.from_node', 'From Node Number')}
                   </label>
                   <input
@@ -307,7 +307,7 @@ const ScriptTestModal: React.FC<ScriptTestModalProps> = ({
                   />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', color: 'var(--ctp-subtext0)' }}>
+                  <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', color: 'var(--color-text-subtle)' }}>
                     {t('script_test.mock.from_short_name', 'From Short Name')}
                   </label>
                   <input
@@ -319,7 +319,7 @@ const ScriptTestModal: React.FC<ScriptTestModalProps> = ({
                   />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', color: 'var(--ctp-subtext0)' }}>
+                  <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', color: 'var(--color-text-subtle)' }}>
                     {t('script_test.mock.from_long_name', 'From Long Name')}
                   </label>
                   <input
@@ -333,7 +333,7 @@ const ScriptTestModal: React.FC<ScriptTestModalProps> = ({
                 {(triggerType === 'geofence' || triggerType === 'auto-responder') && (
                   <>
                     <div>
-                      <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', color: 'var(--ctp-subtext0)' }}>
+                      <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', color: 'var(--color-text-subtle)' }}>
                         {t('script_test.mock.node_lat', 'Node Latitude')}
                       </label>
                       <input
@@ -345,7 +345,7 @@ const ScriptTestModal: React.FC<ScriptTestModalProps> = ({
                       />
                     </div>
                     <div>
-                      <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', color: 'var(--ctp-subtext0)' }}>
+                      <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', color: 'var(--color-text-subtle)' }}>
                         {t('script_test.mock.node_lon', 'Node Longitude')}
                       </label>
                       <input
@@ -388,23 +388,23 @@ const ScriptTestModal: React.FC<ScriptTestModalProps> = ({
                   marginBottom: '1rem',
                   borderRadius: '6px',
                   background: testResult.success ? 'rgba(166, 227, 161, 0.15)' : 'rgba(243, 139, 168, 0.15)',
-                  border: `1px solid ${testResult.success ? 'var(--ctp-green)' : 'var(--ctp-red)'}`,
+                  border: `1px solid ${testResult.success ? 'var(--color-success)' : 'var(--color-error)'}`,
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ color: testResult.success ? 'var(--ctp-green)' : 'var(--ctp-red)', fontWeight: 'bold' }}>
+                  <span style={{ color: testResult.success ? 'var(--color-success)' : 'var(--color-error)', fontWeight: 'bold' }}>
                     {testResult.success
                       ? t('script_test.success', 'Script executed successfully')
                       : t('script_test.error', 'Script execution failed')}
                   </span>
                   {testResult.executionTimeMs !== undefined && (
-                    <span style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
                       {t('script_test.execution_time', 'Execution time: {{time}}ms', { time: testResult.executionTimeMs })}
                     </span>
                   )}
                 </div>
                 {testResult.error && (
-                  <div style={{ marginTop: '0.5rem', color: 'var(--ctp-red)', fontSize: '0.9rem' }}>
+                  <div style={{ marginTop: '0.5rem', color: 'var(--color-error)', fontSize: '0.9rem' }}>
                     {testResult.error}
                   </div>
                 )}
@@ -422,7 +422,7 @@ const ScriptTestModal: React.FC<ScriptTestModalProps> = ({
                     display: 'flex',
                     alignItems: 'center',
                     gap: '0.5rem',
-                    color: 'var(--ctp-text)',
+                    color: 'var(--color-text)',
                     fontSize: '0.95rem',
                     fontWeight: 'bold',
                     marginBottom: '0.5rem',
@@ -436,7 +436,7 @@ const ScriptTestModal: React.FC<ScriptTestModalProps> = ({
                 {showConsole && (
                   <div
                     style={{
-                      background: 'var(--ctp-crust)',
+                      background: 'var(--color-bg-sunken)',
                       borderRadius: '4px',
                       padding: '0.75rem',
                       fontFamily: 'monospace',
@@ -446,17 +446,17 @@ const ScriptTestModal: React.FC<ScriptTestModalProps> = ({
                     }}
                   >
                     {testResult.stdout && (
-                      <div style={{ color: 'var(--ctp-text)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                        <span style={{ color: 'var(--ctp-green)', fontWeight: 'bold' }}>stdout:</span> {testResult.stdout}
+                      <div style={{ color: 'var(--color-text)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                        <span style={{ color: 'var(--color-success)', fontWeight: 'bold' }}>stdout:</span> {testResult.stdout}
                       </div>
                     )}
                     {testResult.stderr && (
-                      <div style={{ color: 'var(--ctp-yellow)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: testResult.stdout ? '0.5rem' : 0 }}>
+                      <div style={{ color: 'var(--color-warning)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: testResult.stdout ? '0.5rem' : 0 }}>
                         <span style={{ fontWeight: 'bold' }}>stderr:</span> {testResult.stderr}
                       </div>
                     )}
                     {!testResult.stdout && !testResult.stderr && (
-                      <span style={{ color: 'var(--ctp-subtext0)' }}>(no output)</span>
+                      <span style={{ color: 'var(--color-text-subtle)' }}>(no output)</span>
                     )}
                   </div>
                 )}
@@ -474,7 +474,7 @@ const ScriptTestModal: React.FC<ScriptTestModalProps> = ({
                     display: 'flex',
                     alignItems: 'center',
                     gap: '0.5rem',
-                    color: 'var(--ctp-text)',
+                    color: 'var(--color-text)',
                     fontSize: '0.95rem',
                     fontWeight: 'bold',
                     marginBottom: '0.5rem',
@@ -488,12 +488,12 @@ const ScriptTestModal: React.FC<ScriptTestModalProps> = ({
                 {showWouldSend && (
                   <div
                     style={{
-                      background: 'var(--ctp-surface0)',
+                      background: 'var(--color-surface)',
                       borderRadius: '4px',
                       padding: '0.75rem',
                     }}
                   >
-                    <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)', marginBottom: '0.5rem' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', marginBottom: '0.5rem' }}>
                       {t('script_test.would_send_note', 'These messages would be sent if this were a real trigger (NOT sent during test)')}
                     </div>
                     {testResult.wouldSendMessages && testResult.wouldSendMessages.length > 0 ? (
@@ -501,21 +501,21 @@ const ScriptTestModal: React.FC<ScriptTestModalProps> = ({
                         <div
                           key={idx}
                           style={{
-                            background: 'var(--ctp-surface1)',
+                            background: 'var(--color-surface-hover)',
                             padding: '0.5rem 0.75rem',
                             borderRadius: '4px',
                             marginBottom: idx < testResult.wouldSendMessages!.length - 1 ? '0.5rem' : 0,
                             fontFamily: 'monospace',
                             fontSize: '0.9rem',
-                            color: 'var(--ctp-text)',
-                            border: '1px solid var(--ctp-blue)',
+                            color: 'var(--color-text)',
+                            border: '1px solid var(--color-accent)',
                           }}
                         >
                           {msg}
                         </div>
                       ))
                     ) : (
-                      <div style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>
+                      <div style={{ color: 'var(--color-text-subtle)', fontStyle: 'italic' }}>
                         {t('script_test.no_messages', 'No messages to send')}
                       </div>
                     )}
@@ -526,21 +526,21 @@ const ScriptTestModal: React.FC<ScriptTestModalProps> = ({
               {/* Extracted Params (auto-responder only) */}
               {triggerType === 'auto-responder' && testResult.extractedParams && Object.keys(testResult.extractedParams).length > 0 && (
                 <div style={{ marginBottom: '1rem' }}>
-                  <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--ctp-text)', fontSize: '0.95rem' }}>
+                  <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--color-text)', fontSize: '0.95rem' }}>
                     Extracted Parameters
                   </h4>
                   <div
                     style={{
-                      background: 'var(--ctp-surface0)',
+                      background: 'var(--color-surface)',
                       borderRadius: '4px',
                       padding: '0.75rem',
                     }}
                   >
                     {Object.entries(testResult.extractedParams).map(([key, value]) => (
                       <div key={key} style={{ marginBottom: '0.25rem' }}>
-                        <code style={{ color: 'var(--ctp-blue)' }}>PARAM_{key}</code>
-                        <span style={{ color: 'var(--ctp-subtext0)' }}> = </span>
-                        <code style={{ color: 'var(--ctp-green)' }}>{value}</code>
+                        <code style={{ color: 'var(--color-accent)' }}>PARAM_{key}</code>
+                        <span style={{ color: 'var(--color-text-subtle)' }}> = </span>
+                        <code style={{ color: 'var(--color-success)' }}>{value}</code>
                       </div>
                     ))}
                   </div>
@@ -561,7 +561,7 @@ const ScriptTestModal: React.FC<ScriptTestModalProps> = ({
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.5rem',
-                color: 'var(--ctp-subtext0)',
+                color: 'var(--color-text-subtle)',
                 fontSize: '0.9rem',
                 marginBottom: '0.5rem',
               }}
@@ -574,7 +574,7 @@ const ScriptTestModal: React.FC<ScriptTestModalProps> = ({
             {showEnvVars && (
               <div
                 style={{
-                  background: 'var(--ctp-crust)',
+                  background: 'var(--color-bg-sunken)',
                   borderRadius: '4px',
                   padding: '0.75rem',
                   fontFamily: 'monospace',
@@ -585,9 +585,9 @@ const ScriptTestModal: React.FC<ScriptTestModalProps> = ({
               >
                 {Object.entries(getEnvironmentVariables()).map(([key, value]) => (
                   <div key={key} style={{ marginBottom: '0.15rem' }}>
-                    <span style={{ color: 'var(--ctp-blue)' }}>{key}</span>
-                    <span style={{ color: 'var(--ctp-subtext0)' }}>=</span>
-                    <span style={{ color: 'var(--ctp-text)' }}>{value}</span>
+                    <span style={{ color: 'var(--color-accent)' }}>{key}</span>
+                    <span style={{ color: 'var(--color-text-subtle)' }}>=</span>
+                    <span style={{ color: 'var(--color-text)' }}>{value}</span>
                   </div>
                 ))}
               </div>

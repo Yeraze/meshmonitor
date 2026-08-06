@@ -303,14 +303,14 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
         marginBottom: '1.5rem',
         marginTop: '2rem',
         padding: '1rem 1.25rem',
-        background: 'var(--ctp-surface1)',
-        border: '1px solid var(--ctp-surface2)',
+        background: 'var(--color-surface-hover)',
+        border: '1px solid var(--color-surface-active)',
         borderRadius: '8px',
       }}>
         <h2 style={{ margin: 0 }}>
           {t('meshcore.automation.timers.title', 'Timer Triggers')}
         </h2>
-        <span style={{ marginLeft: 'auto', fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+        <span style={{ marginLeft: 'auto', fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
           {t('meshcore.automation.timers.count', '{{count}} triggers', { count: triggers.length })}
         </span>
       </div>
@@ -327,7 +327,7 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
 
         {/* List of existing triggers */}
         {triggers.length === 0 && (
-          <p style={{ marginLeft: '1.75rem', fontSize: '0.9rem', color: 'var(--ctp-subtext0)' }}>
+          <p style={{ marginLeft: '1.75rem', fontSize: '0.9rem', color: 'var(--color-text-subtle)' }}>
             {t('meshcore.automation.timers.empty', 'No timer triggers configured yet.')}
           </p>
         )}
@@ -543,13 +543,13 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
             )}
 
             {tr.lastRun && (
-              <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: 'var(--ctp-subtext0)' }}>
+              <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: 'var(--color-text-subtle)' }}>
                 {t('meshcore.automation.timers.last_run', 'Last run')}: {new Date(tr.lastRun).toLocaleString()}{' '}
                 {tr.lastResult === 'error' && (
-                  <span style={{ color: 'var(--ctp-red)' }}>— {tr.lastError || 'error'}</span>
+                  <span style={{ color: 'var(--color-error)' }}>— {tr.lastError || 'error'}</span>
                 )}
                 {tr.lastResult === 'success' && (
-                  <span style={{ color: 'var(--ctp-green)' }}>— success</span>
+                  <span style={{ color: 'var(--color-success)' }}>— success</span>
                 )}
               </div>
             )}

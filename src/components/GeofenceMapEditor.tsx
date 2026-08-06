@@ -51,21 +51,21 @@ const MapDrawingLayer: React.FC<{
 
   const centerIcon = useMemo(() => L.divIcon({
     className: 'custom-center-icon',
-    html: '<div style="width: 12px; height: 12px; background: var(--ctp-blue); border: 2px solid white; border-radius: 50%; cursor: move;"></div>',
+    html: '<div style="width: 12px; height: 12px; background: var(--color-accent); border: 2px solid white; border-radius: 50%; cursor: move;"></div>',
     iconSize: [12, 12],
     iconAnchor: [6, 6],
   }), []);
 
   const radiusIcon = useMemo(() => L.divIcon({
     className: 'custom-radius-icon',
-    html: '<div style="width: 10px; height: 10px; background: var(--ctp-green); border: 2px solid white; border-radius: 50%; cursor: move;"></div>',
+    html: '<div style="width: 10px; height: 10px; background: var(--color-success); border: 2px solid white; border-radius: 50%; cursor: move;"></div>',
     iconSize: [10, 10],
     iconAnchor: [5, 5],
   }), []);
 
   const vertexIcon = useMemo(() => L.divIcon({
     className: 'custom-vertex-icon',
-    html: '<div style="width: 14px; height: 14px; background: var(--ctp-mauve); border: 2px solid white; border-radius: 50%; cursor: move; box-shadow: 0 0 4px rgba(0,0,0,0.4);"></div>',
+    html: '<div style="width: 14px; height: 14px; background: var(--color-accent-alt); border: 2px solid white; border-radius: 50%; cursor: move; box-shadow: 0 0 4px rgba(0,0,0,0.4);"></div>',
     iconSize: [14, 14],
     iconAnchor: [7, 7],
   }), []);
@@ -126,8 +126,8 @@ const MapDrawingLayer: React.FC<{
 
     const circle = L.circle(center, {
       radius: radiusMeters,
-      color: 'var(--ctp-blue)',
-      fillColor: 'var(--ctp-blue)',
+      color: 'var(--color-accent)',
+      fillColor: 'var(--color-accent)',
       fillOpacity: 0.2,
       weight: 2,
     }).addTo(map);
@@ -185,8 +185,8 @@ const MapDrawingLayer: React.FC<{
     const latLngs = polygonData.vertices.map(c => L.latLng(c.lat, c.lng));
 
     const polygon = L.polygon(latLngs, {
-      color: 'var(--ctp-mauve)',
-      fillColor: 'var(--ctp-mauve)',
+      color: 'var(--color-accent-alt)',
+      fillColor: 'var(--color-accent-alt)',
       fillOpacity: 0.2,
       weight: 2,
     }).addTo(map);
@@ -324,8 +324,8 @@ const MapDrawingLayer: React.FC<{
 
       if (polygonVertices.length >= 2) {
         const tempPolygon = L.polygon(polygonVertices, {
-          color: 'var(--ctp-mauve)',
-          fillColor: 'var(--ctp-mauve)',
+          color: 'var(--color-accent-alt)',
+          fillColor: 'var(--color-accent-alt)',
           fillOpacity: 0.1,
           weight: 2,
           dashArray: '5, 5',
@@ -405,7 +405,7 @@ const GeofenceMapEditor: React.FC<GeofenceMapEditorProps> = ({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-      <div style={{ height: '400px', border: '1px solid var(--ctp-surface2)', borderRadius: '8px', overflow: 'hidden' }}>
+      <div style={{ height: '400px', border: '1px solid var(--color-surface-active)', borderRadius: '8px', overflow: 'hidden' }}>
         <BaseMap center={[30, 0]} zoom={3}>
           <MapDrawingLayer
             shapeType={shapeType}
@@ -423,12 +423,12 @@ const GeofenceMapEditor: React.FC<GeofenceMapEditorProps> = ({
             gridTemplateColumns: '1fr 1fr 1fr',
             gap: '8px',
             padding: '12px',
-            background: 'var(--ctp-surface0)',
+            background: 'var(--color-surface)',
             borderRadius: '8px',
           }}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '12px', color: 'var(--ctp-subtext0)' }}>
+            <label style={{ fontSize: '12px', color: 'var(--color-text-subtle)' }}>
               {t('automation.geofence_triggers.center_lat')}
             </label>
             <input
@@ -440,10 +440,10 @@ const GeofenceMapEditor: React.FC<GeofenceMapEditorProps> = ({
               onChange={(e) => handleCenterLatChange(e.target.value)}
               style={{
                 padding: '6px 8px',
-                background: 'var(--ctp-base)',
-                border: '1px solid var(--ctp-surface2)',
+                background: 'var(--color-bg)',
+                border: '1px solid var(--color-surface-active)',
                 borderRadius: '4px',
-                color: 'var(--ctp-text)',
+                color: 'var(--color-text)',
                 fontSize: '14px',
               }}
               placeholder="0.000000"
@@ -451,7 +451,7 @@ const GeofenceMapEditor: React.FC<GeofenceMapEditorProps> = ({
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '12px', color: 'var(--ctp-subtext0)' }}>
+            <label style={{ fontSize: '12px', color: 'var(--color-text-subtle)' }}>
               {t('automation.geofence_triggers.center_lng')}
             </label>
             <input
@@ -463,10 +463,10 @@ const GeofenceMapEditor: React.FC<GeofenceMapEditorProps> = ({
               onChange={(e) => handleCenterLngChange(e.target.value)}
               style={{
                 padding: '6px 8px',
-                background: 'var(--ctp-base)',
-                border: '1px solid var(--ctp-surface2)',
+                background: 'var(--color-bg)',
+                border: '1px solid var(--color-surface-active)',
                 borderRadius: '4px',
-                color: 'var(--ctp-text)',
+                color: 'var(--color-text)',
                 fontSize: '14px',
               }}
               placeholder="0.000000"
@@ -474,7 +474,7 @@ const GeofenceMapEditor: React.FC<GeofenceMapEditorProps> = ({
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '12px', color: 'var(--ctp-subtext0)' }}>
+            <label style={{ fontSize: '12px', color: 'var(--color-text-subtle)' }}>
               {t('automation.geofence_triggers.radius_km')}
             </label>
             <input
@@ -485,10 +485,10 @@ const GeofenceMapEditor: React.FC<GeofenceMapEditorProps> = ({
               onChange={(e) => handleRadiusChange(e.target.value)}
               style={{
                 padding: '6px 8px',
-                background: 'var(--ctp-base)',
-                border: '1px solid var(--ctp-surface2)',
+                background: 'var(--color-bg)',
+                border: '1px solid var(--color-surface-active)',
                 borderRadius: '4px',
-                color: 'var(--ctp-text)',
+                color: 'var(--color-text)',
                 fontSize: '14px',
               }}
               placeholder="10.00"
@@ -501,14 +501,14 @@ const GeofenceMapEditor: React.FC<GeofenceMapEditorProps> = ({
         <div
           style={{
             padding: '12px',
-            background: 'var(--ctp-surface0)',
+            background: 'var(--color-surface)',
             borderRadius: '8px',
           }}
         >
-          <div style={{ fontSize: '14px', color: 'var(--ctp-text)' }}>
+          <div style={{ fontSize: '14px', color: 'var(--color-text)' }}>
             {t('automation.geofence_triggers.vertices_count')}: {shape.vertices.length}
           </div>
-          <div style={{ fontSize: '12px', color: 'var(--ctp-subtext0)', marginTop: '4px' }}>
+          <div style={{ fontSize: '12px', color: 'var(--color-text-subtle)', marginTop: '4px' }}>
             {t('automation.geofence_triggers.click_to_add_vertex')}
           </div>
         </div>
@@ -518,10 +518,10 @@ const GeofenceMapEditor: React.FC<GeofenceMapEditorProps> = ({
         <div
           style={{
             padding: '12px',
-            background: 'var(--ctp-surface0)',
+            background: 'var(--color-surface)',
             borderRadius: '8px',
             fontSize: '12px',
-            color: 'var(--ctp-subtext0)',
+            color: 'var(--color-text-subtle)',
           }}
         >
           {t('automation.geofence_triggers.click_map_to_start')}

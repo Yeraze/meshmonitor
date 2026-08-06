@@ -127,13 +127,13 @@ const DistanceDistributionWidget: React.FC<DistanceDistributionWidgetProps> = ({
   // Color gradient based on distance
   const getBarColor = (index: number, total: number): string => {
     const colors = [
-      'var(--ctp-green)',
+      'var(--color-success)',
       'var(--ctp-teal)',
-      'var(--ctp-blue)',
-      'var(--ctp-lavender)',
-      'var(--ctp-mauve)',
+      'var(--color-accent)',
+      'var(--color-accent-muted)',
+      'var(--color-accent-alt)',
       'var(--ctp-pink)',
-      'var(--ctp-red)',
+      'var(--color-error)',
     ];
     if (total <= 1) return colors[0];
     const colorIndex = Math.round((index / (total - 1)) * (colors.length - 1));
@@ -243,7 +243,7 @@ const DistanceDistributionWidget: React.FC<DistanceDistributionWidgetProps> = ({
                       className="hop-bar-fill"
                       style={{
                         width: `${(noPositionCount / maxCount) * 100}%`,
-                        backgroundColor: 'var(--ctp-overlay1)',
+                        backgroundColor: 'var(--color-text-disabled)',
                       }}
                     />
                   </div>

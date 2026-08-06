@@ -233,10 +233,10 @@ export const RadioConfigurationSection: React.FC<RadioConfigurationSectionProps>
               style={{
                 marginTop: '0.5rem',
                 padding: '0.6rem 0.75rem',
-                border: '1px solid var(--ctp-yellow)',
+                border: '1px solid var(--color-warning)',
                 borderRadius: '4px',
                 backgroundColor: 'rgba(249, 226, 175, 0.12)',
-                color: 'var(--ctp-yellow)',
+                color: 'var(--color-warning)',
                 lineHeight: '1.4'
               }}
             >
@@ -370,8 +370,8 @@ export const RadioConfigurationSection: React.FC<RadioConfigurationSectionProps>
                   disabled={isExecuting}
                   style={{
                     padding: '0.5rem 1rem',
-                    backgroundColor: 'var(--ctp-red)',
-                    color: 'var(--ctp-base)',
+                    backgroundColor: 'var(--color-error)',
+                    color: 'var(--color-bg)',
                     border: 'none',
                     borderRadius: '4px',
                     cursor: isExecuting ? 'not-allowed' : 'pointer',
@@ -484,29 +484,29 @@ export const RadioConfigurationSection: React.FC<RadioConfigurationSectionProps>
                 key={index}
                 style={{
                   border: channel?.role === 1
-                    ? '2px solid var(--ctp-blue)'
-                    : '1px solid var(--ctp-surface1)',
+                    ? '2px solid var(--color-accent)'
+                    : '1px solid var(--color-surface-hover)',
                   borderRadius: '8px',
                   padding: '1rem',
-                  backgroundColor: channel ? 'var(--ctp-surface0)' : 'var(--ctp-mantle)',
+                  backgroundColor: channel ? 'var(--color-surface)' : 'var(--color-bg-raised)',
                   opacity: channel?.role === 0 ? 0.5 : 1,
                   boxShadow: channel?.role === 1 ? '0 0 10px rgba(137, 180, 250, 0.3)' : 'none'
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
                   <div>
-                    <h4 style={{ margin: 0, color: 'var(--ctp-text)' }}>
+                    <h4 style={{ margin: 0, color: 'var(--color-text)' }}>
                       {t('admin_commands.channel_slot', { index })}: {channel ? (
                         <>
-                          {channel.name && channel.name.trim().length > 0 ? channel.name : <span style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>{t('admin_commands.unnamed')}</span>}
-                          {channel.role === 1 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-blue)', fontSize: '0.8rem' }}><UiIcon name="favorite" size={13} /> {t('admin_commands.primary')}</span>}
-                          {channel.role === 2 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-green)', fontSize: '0.8rem' }}><UiIcon name="statusOn" size={13} /> {t('admin_commands.secondary')}</span>}
-                          {channel.role === 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-overlay0)', fontSize: '0.8rem' }}><UiIcon name="blocked" size={13} /> {t('admin_commands.disabled')}</span>}
+                          {channel.name && channel.name.trim().length > 0 ? channel.name : <span style={{ color: 'var(--color-text-subtle)', fontStyle: 'italic' }}>{t('admin_commands.unnamed')}</span>}
+                          {channel.role === 1 && <span style={{ marginLeft: '0.5rem', color: 'var(--color-accent)', fontSize: '0.8rem' }}><UiIcon name="favorite" size={13} /> {t('admin_commands.primary')}</span>}
+                          {channel.role === 2 && <span style={{ marginLeft: '0.5rem', color: 'var(--color-success)', fontSize: '0.8rem' }}><UiIcon name="statusOn" size={13} /> {t('admin_commands.secondary')}</span>}
+                          {channel.role === 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--color-text-faint)', fontSize: '0.8rem' }}><UiIcon name="blocked" size={13} /> {t('admin_commands.disabled')}</span>}
                         </>
-                      ) : <span style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>{t('admin_commands.empty')}</span>}
+                      ) : <span style={{ color: 'var(--color-text-subtle)', fontStyle: 'italic' }}>{t('admin_commands.empty')}</span>}
                     </h4>
                     {channel && (
-                      <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: 'var(--ctp-subtext1)' }}>
+                      <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
                         <div><UiIcon name={channel.psk && channel.psk !== 'AQ==' ? 'encrypted' : 'unencrypted'} /> {channel.psk && channel.psk !== 'AQ==' ? t('admin_commands.encrypted') : t('admin_commands.unencrypted')}</div>
                         <div>
                           {channel.uplinkEnabled && <><UiIcon name="sortAscending" /> {t('admin_commands.uplink')} </>}
@@ -523,8 +523,8 @@ export const RadioConfigurationSection: React.FC<RadioConfigurationSectionProps>
                       style={{
                         padding: '0.5rem 0.75rem',
                         fontSize: '0.9rem',
-                        backgroundColor: 'var(--ctp-blue)',
-                        color: 'var(--ctp-base)',
+                        backgroundColor: 'var(--color-accent)',
+                        color: 'var(--color-bg)',
                         border: 'none',
                         borderRadius: '4px',
                         cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer',
@@ -540,8 +540,8 @@ export const RadioConfigurationSection: React.FC<RadioConfigurationSectionProps>
                         style={{
                           padding: '0.5rem 0.75rem',
                           fontSize: '0.9rem',
-                          backgroundColor: 'var(--ctp-green)',
-                          color: 'var(--ctp-base)',
+                          backgroundColor: 'var(--color-success)',
+                          color: 'var(--color-bg)',
                           border: 'none',
                           borderRadius: '4px',
                           cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer',
@@ -557,8 +557,8 @@ export const RadioConfigurationSection: React.FC<RadioConfigurationSectionProps>
                       style={{
                         padding: '0.5rem 0.75rem',
                         fontSize: '0.9rem',
-                        backgroundColor: 'var(--ctp-yellow)',
-                        color: 'var(--ctp-base)',
+                        backgroundColor: 'var(--color-warning)',
+                        color: 'var(--color-bg)',
                         border: 'none',
                         borderRadius: '4px',
                         cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer',

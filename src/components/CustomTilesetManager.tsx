@@ -206,7 +206,7 @@ export function CustomTilesetManager() {
             target="_blank"
             rel="noopener noreferrer"
             style={{
-              color: 'var(--ctp-blue)',
+              color: 'var(--color-accent)',
               textDecoration: 'underline',
               fontWeight: '500'
             }}
@@ -486,28 +486,28 @@ export function CustomTilesetManager() {
             <div style={{
               marginTop: '0.75rem',
               padding: '0.75rem',
-              backgroundColor: 'var(--ctp-surface0)',
-              borderLeft: '3px solid var(--ctp-blue)',
+              backgroundColor: 'var(--color-surface)',
+              borderLeft: '3px solid var(--color-accent)',
               borderRadius: '4px',
               fontSize: '0.85rem'
             }}>
-              <strong style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--ctp-blue)' }}>
+              <strong style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--color-accent)' }}>
                 <UiIcon name="info" /> {t('tileset_manager.tileserver_tip_title')}
               </strong>
-              <div style={{ color: 'var(--ctp-subtext0)', lineHeight: '1.5' }}>
+              <div style={{ color: 'var(--color-text-subtle)', lineHeight: '1.5' }}>
                 {t('tileset_manager.tileserver_tip_desc')}
                 <br />
                 <code style={{
                   display: 'block',
                   marginTop: '0.5rem',
                   padding: '0.25rem 0.5rem',
-                  backgroundColor: 'var(--ctp-base)',
+                  backgroundColor: 'var(--color-bg)',
                   borderRadius: '3px',
                   fontSize: '0.8rem'
                 }}>
                   docker run -p 8080:8080 -v /path/to/tiles:/data maptiler/tileserver-gl-light
                 </code>
-                <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: 'var(--ctp-subtext1)' }}>
+                <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
                   <strong>{t('tileset_manager.tileserver_tip_support')}</strong>
                 </div>
                 <div style={{ marginTop: '0.5rem', fontSize: '0.8rem' }}>
@@ -516,7 +516,7 @@ export function CustomTilesetManager() {
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{
-                      color: 'var(--ctp-blue)',
+                      color: 'var(--color-accent)',
                       textDecoration: 'underline'
                     }}
                   >

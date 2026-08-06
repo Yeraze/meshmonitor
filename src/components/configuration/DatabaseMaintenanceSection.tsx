@@ -261,13 +261,13 @@ const DatabaseMaintenanceSection: React.FC = () => {
       <h3>{t('maintenance.title')}</h3>
 
       <div style={{
-        backgroundColor: 'var(--ctp-surface0)',
+        backgroundColor: 'var(--color-surface)',
         padding: '1rem',
         borderRadius: '8px',
         marginBottom: '1.5rem'
       }}>
         <h4 style={{ marginTop: 0, marginBottom: '0.5rem' }}>{t('maintenance.about_title')}</h4>
-        <p style={{ color: 'var(--ctp-subtext0)', margin: 0, fontSize: '0.9rem', lineHeight: '1.6' }}>
+        <p style={{ color: 'var(--color-text-subtle)', margin: 0, fontSize: '0.9rem', lineHeight: '1.6' }}>
           {t('maintenance.about_description')}
         </p>
       </div>
@@ -275,11 +275,11 @@ const DatabaseMaintenanceSection: React.FC = () => {
       {/* Database Size */}
       <div style={{ marginBottom: '1.5rem' }}>
         <h4 style={{ marginBottom: '0.5rem' }}>{t('maintenance.database_size')}</h4>
-        <p style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--ctp-blue)', margin: 0 }}>
+        <p style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--color-accent)', margin: 0 }}>
           {databaseSize !== null ? formatBytes(databaseSize) : '...'}
         </p>
         {status?.lastRunStats && (
-          <p style={{ color: 'var(--ctp-subtext0)', fontSize: '0.85rem', marginTop: '0.5rem' }}>
+          <p style={{ color: 'var(--color-text-subtle)', fontSize: '0.85rem', marginTop: '0.5rem' }}>
             {t('maintenance.last_run')}: {formatLastRun()}
             {status.lastRunStats && ` (${t('maintenance.deleted_records', { count:
               status.lastRunStats.messagesDeleted +
@@ -294,7 +294,7 @@ const DatabaseMaintenanceSection: React.FC = () => {
       {/* Manual Run */}
       <div style={{ marginBottom: '1.5rem' }}>
         <h4 style={{ marginBottom: '0.5rem' }}>{t('maintenance.manual_title')}</h4>
-        <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '1rem', fontSize: '0.9rem' }}>
+        <p style={{ color: 'var(--color-text-subtle)', marginBottom: '1rem', fontSize: '0.9rem' }}>
           {t('maintenance.manual_description')}
         </p>
         <button
@@ -311,7 +311,7 @@ const DatabaseMaintenanceSection: React.FC = () => {
       {/* Automated Maintenance */}
       <div style={{ marginBottom: '1.5rem' }}>
         <h4 style={{ marginBottom: '0.5rem' }}>{t('maintenance.auto_title')}</h4>
-        <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '1rem', fontSize: '0.9rem' }}>
+        <p style={{ color: 'var(--color-text-subtle)', marginBottom: '1rem', fontSize: '0.9rem' }}>
           {t('maintenance.auto_description')}
         </p>
 
@@ -339,13 +339,13 @@ const DatabaseMaintenanceSection: React.FC = () => {
                   style={{
                     padding: '0.5rem',
                     borderRadius: '4px',
-                    border: '1px solid var(--ctp-surface2)',
-                    backgroundColor: 'var(--ctp-surface0)',
-                    color: 'var(--ctp-text)',
+                    border: '1px solid var(--color-surface-active)',
+                    backgroundColor: 'var(--color-surface)',
+                    color: 'var(--color-text)',
                     fontSize: '1rem'
                   }}
                 />
-                <p style={{ color: 'var(--ctp-subtext0)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
+                <p style={{ color: 'var(--color-text-subtle)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
                   {t('maintenance.next_run')}: {formatNextRun()}
                 </p>
               </div>
@@ -368,14 +368,14 @@ const DatabaseMaintenanceSection: React.FC = () => {
                     style={{
                       padding: '0.5rem',
                       borderRadius: '4px',
-                      border: '1px solid var(--ctp-surface2)',
-                      backgroundColor: 'var(--ctp-surface0)',
-                      color: 'var(--ctp-text)',
+                      border: '1px solid var(--color-surface-active)',
+                      backgroundColor: 'var(--color-surface)',
+                      color: 'var(--color-text)',
                       fontSize: '1rem',
                       width: '100px'
                     }}
                   />
-                  <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-subtext0)' }}>{t('common.days')}</span>
+                  <span style={{ marginLeft: '0.5rem', color: 'var(--color-text-subtle)' }}>{t('common.days')}</span>
                 </div>
 
                 <div>
@@ -391,14 +391,14 @@ const DatabaseMaintenanceSection: React.FC = () => {
                     style={{
                       padding: '0.5rem',
                       borderRadius: '4px',
-                      border: '1px solid var(--ctp-surface2)',
-                      backgroundColor: 'var(--ctp-surface0)',
-                      color: 'var(--ctp-text)',
+                      border: '1px solid var(--color-surface-active)',
+                      backgroundColor: 'var(--color-surface)',
+                      color: 'var(--color-text)',
                       fontSize: '1rem',
                       width: '100px'
                     }}
                   />
-                  <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-subtext0)' }}>{t('common.days')}</span>
+                  <span style={{ marginLeft: '0.5rem', color: 'var(--color-text-subtle)' }}>{t('common.days')}</span>
                 </div>
 
                 <div>
@@ -414,14 +414,14 @@ const DatabaseMaintenanceSection: React.FC = () => {
                     style={{
                       padding: '0.5rem',
                       borderRadius: '4px',
-                      border: '1px solid var(--ctp-surface2)',
-                      backgroundColor: 'var(--ctp-surface0)',
-                      color: 'var(--ctp-text)',
+                      border: '1px solid var(--color-surface-active)',
+                      backgroundColor: 'var(--color-surface)',
+                      color: 'var(--color-text)',
                       fontSize: '1rem',
                       width: '100px'
                     }}
                   />
-                  <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-subtext0)' }}>{t('common.days')}</span>
+                  <span style={{ marginLeft: '0.5rem', color: 'var(--color-text-subtle)' }}>{t('common.days')}</span>
                 </div>
 
                 <div>
@@ -437,18 +437,18 @@ const DatabaseMaintenanceSection: React.FC = () => {
                     style={{
                       padding: '0.5rem',
                       borderRadius: '4px',
-                      border: '1px solid var(--ctp-surface2)',
-                      backgroundColor: 'var(--ctp-surface0)',
-                      color: 'var(--ctp-text)',
+                      border: '1px solid var(--color-surface-active)',
+                      backgroundColor: 'var(--color-surface)',
+                      color: 'var(--color-text)',
                       fontSize: '1rem',
                       width: '100px'
                     }}
                   />
-                  <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-subtext0)' }}>{t('common.days')}</span>
+                  <span style={{ marginLeft: '0.5rem', color: 'var(--color-text-subtle)' }}>{t('common.days')}</span>
                 </div>
               </div>
 
-              <p style={{ color: 'var(--ctp-subtext0)', fontSize: '0.85rem', margin: 0 }}>
+              <p style={{ color: 'var(--color-text-subtle)', fontSize: '0.85rem', margin: 0 }}>
                 {t('maintenance.retention_hint')}
               </p>
             </>

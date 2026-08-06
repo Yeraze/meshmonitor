@@ -243,7 +243,7 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
         onClick={(e) => e.stopPropagation()}
         style={{
           maxWidth: '600px',
-          background: 'var(--ctp-base)',
+          background: 'var(--color-bg)',
           borderRadius: '8px',
           padding: '1.5rem',
           maxHeight: '90vh',
@@ -269,8 +269,8 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
             disabled={loading || !url.trim()}
             style={{
               marginTop: '0.5rem',
-              background: 'var(--ctp-blue)',
-              color: 'var(--ctp-base)',
+              background: 'var(--color-accent)',
+              color: 'var(--color-bg)',
               border: 'none',
               borderRadius: '4px',
               padding: '0.5rem 1rem',
@@ -296,7 +296,7 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
         </div>
 
         {error && (
-          <div style={{ color: 'var(--ctp-red)', marginBottom: '1rem', padding: '0.5rem', background: 'var(--ctp-surface0)', borderRadius: '4px' }}>
+          <div style={{ color: 'var(--color-error)', marginBottom: '1rem', padding: '0.5rem', background: 'var(--color-surface)', borderRadius: '4px' }}>
             {error}
           </div>
         )}
@@ -313,10 +313,10 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
                     key={idx}
                     style={{
                       padding: '0.75rem',
-                      background: 'var(--ctp-surface0)',
+                      background: 'var(--color-surface)',
                       borderRadius: '4px',
                       marginBottom: '0.5rem',
-                      border: selectedChannels.has(idx) ? '2px solid var(--ctp-blue)' : '2px solid transparent'
+                      border: selectedChannels.has(idx) ? '2px solid var(--color-accent)' : '2px solid transparent'
                     }}
                   >
                     <label style={{ display: 'flex', alignItems: 'flex-start', cursor: 'pointer' }}>
@@ -330,7 +330,7 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
                         <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>
                           {t('import_config.channel_label', { idx, name: channel.name || t('import_config.channel_unnamed') })}
                         </div>
-                        <div style={{ fontSize: '0.875rem', color: 'var(--ctp-subtext0)' }}>
+                        <div style={{ fontSize: '0.875rem', color: 'var(--color-text-subtle)' }}>
                           {channel.psk ? t('import_config.psk_label', { psk: channel.psk }) : t('import_config.psk_none')}
                           {channel.positionPrecision !== undefined && ` | ${t('import_config.position_precision', { bits: channel.positionPrecision })}`}
                           {channel.uplinkEnabled !== undefined && ` | ${channel.uplinkEnabled ? t('import_config.uplink_enabled') : t('import_config.uplink_disabled')}`}
@@ -348,9 +348,9 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
                 <div
                   style={{
                     padding: '0.75rem',
-                    background: 'var(--ctp-surface0)',
+                    background: 'var(--color-surface)',
                     borderRadius: '4px',
-                    border: includeLoraConfig ? '2px solid var(--ctp-blue)' : '2px solid transparent'
+                    border: includeLoraConfig ? '2px solid var(--color-accent)' : '2px solid transparent'
                   }}
                 >
                   <label style={{ display: 'flex', alignItems: 'flex-start', cursor: 'pointer' }}>
@@ -364,7 +364,7 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
                       <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>
                         {t('import_config.lora_settings')}
                       </div>
-                      <div style={{ fontSize: '0.875rem', color: 'var(--ctp-subtext0)' }}>
+                      <div style={{ fontSize: '0.875rem', color: 'var(--color-text-subtle)' }}>
                         {t('import_config.preset', { preset: modemPresetNames[decoded.loraConfig.modemPreset ?? 0] || decoded.loraConfig.modemPreset })}
                         {decoded.loraConfig.region !== undefined && ` | ${t('import_config.region', { region: regionNames[decoded.loraConfig.region] || decoded.loraConfig.region })}`}
                         {decoded.loraConfig.hopLimit !== undefined && ` | ${t('import_config.hop_limit', { limit: decoded.loraConfig.hopLimit })}`}
@@ -381,23 +381,23 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
                 style={{
                   marginTop: '1rem',
                   padding: '1rem',
-                  background: 'var(--ctp-surface0)',
+                  background: 'var(--color-surface)',
                   borderRadius: '8px',
-                  border: '2px solid var(--ctp-blue)',
+                  border: '2px solid var(--color-accent)',
                   textAlign: 'center'
                 }}
               >
-                <div style={{ fontSize: '1rem', fontWeight: 'bold', color: 'var(--ctp-blue)', marginBottom: '0.5rem' }}>
+                <div style={{ fontSize: '1rem', fontWeight: 'bold', color: 'var(--color-accent)', marginBottom: '0.5rem' }}>
                   {t('import_config.import_in_progress')}
                 </div>
-                <div style={{ fontSize: '0.875rem', color: 'var(--ctp-text)', marginBottom: '0.75rem' }}>
+                <div style={{ fontSize: '0.875rem', color: 'var(--color-text)', marginBottom: '0.75rem' }}>
                   {importStatus}
                 </div>
                 <div
                   style={{
                     width: '100%',
                     height: '4px',
-                    background: 'var(--ctp-surface1)',
+                    background: 'var(--color-surface-hover)',
                     borderRadius: '2px',
                     overflow: 'hidden'
                   }}
@@ -405,7 +405,7 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
                   <div
                     style={{
                       height: '100%',
-                      background: 'var(--ctp-blue)',
+                      background: 'var(--color-accent)',
                       animation: 'progress-bar 2s ease-in-out infinite',
                       width: '30%'
                     }}
@@ -421,14 +421,14 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
               </div>
             )}
 
-            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--ctp-surface0)' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--color-surface)' }}>
               <button
                 onClick={handleClose}
                 disabled={importing}
                 style={{
-                  background: 'var(--ctp-surface1)',
-                  color: 'var(--ctp-text)',
-                  border: '1px solid var(--ctp-surface2)',
+                  background: 'var(--color-surface-hover)',
+                  color: 'var(--color-text)',
+                  border: '1px solid var(--color-surface-active)',
                   borderRadius: '4px',
                   padding: '0.5rem 1rem',
                   cursor: importing ? 'not-allowed' : 'pointer',
@@ -439,12 +439,12 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
                 }}
                 onMouseOver={(e) => {
                   if (!importing) {
-                    e.currentTarget.style.background = 'var(--ctp-surface2)';
+                    e.currentTarget.style.background = 'var(--color-surface-active)';
                   }
                 }}
                 onMouseOut={(e) => {
                   if (!importing) {
-                    e.currentTarget.style.background = 'var(--ctp-surface1)';
+                    e.currentTarget.style.background = 'var(--color-surface-hover)';
                   }
                 }}
               >
@@ -454,8 +454,8 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
                 onClick={handleImport}
                 disabled={loading || importing || (selectedChannels.size === 0 && !includeLoraConfig)}
                 style={{
-                  background: 'var(--ctp-blue)',
-                  color: 'var(--ctp-base)',
+                  background: 'var(--color-accent)',
+                  color: 'var(--color-bg)',
                   border: 'none',
                   borderRadius: '4px',
                   padding: '0.5rem 1rem',

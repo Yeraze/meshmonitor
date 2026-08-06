@@ -92,14 +92,14 @@ const PAGE_SIZE = 100;
 const POLL_INTERVAL_MS = 10_000;
 
 const SOURCE_COLORS = [
-  'var(--ctp-blue)',
-  'var(--ctp-mauve)',
-  'var(--ctp-green)',
-  'var(--ctp-peach)',
-  'var(--ctp-yellow)',
+  'var(--color-accent)',
+  'var(--color-accent-alt)',
+  'var(--color-success)',
+  'var(--color-caution)',
+  'var(--color-warning)',
   'var(--ctp-teal)',
   'var(--ctp-pink)',
-  'var(--ctp-sapphire)',
+  'var(--color-accent-hover)',
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────────────

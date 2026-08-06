@@ -300,7 +300,7 @@ function RunLog({ automation, onClose }: { automation: Automation; onClose: () =
         <div className="ae-card" key={r.id}>
           <div className="ae-row">
             <div className="ae-row-main">
-              <span style={{ fontWeight: 700, color: r.status === 'completed' ? 'var(--ctp-green)' : r.status === 'failed' ? 'var(--ctp-red)' : 'inherit' }}>{r.status}</span>
+              <span style={{ fontWeight: 700, color: r.status === 'completed' ? 'var(--color-success)' : r.status === 'failed' ? 'var(--color-error)' : 'inherit' }}>{r.status}</span>
               <span className="ae-chip">{r.sourceId ?? '—'}</span>
             </div>
             <span className="ae-muted">{new Date(r.startedAt).toLocaleString()}</span>

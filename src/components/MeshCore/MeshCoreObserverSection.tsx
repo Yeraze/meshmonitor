@@ -425,7 +425,7 @@ export const MeshCoreObserverSection: React.FC<MeshCoreObserverSectionProps> = (
               : t('meshcore.observer.fetch_button', 'Fetch from device')}
           </button>
           {importedFlash && (
-            <span style={{ color: 'var(--ctp-green)' }}>
+            <span style={{ color: 'var(--color-success)' }}>
               <UiIcon name="check" size={14} /> {t('meshcore.observer.key_imported', 'Key saved')}
             </span>
           )}
@@ -442,7 +442,7 @@ export const MeshCoreObserverSection: React.FC<MeshCoreObserverSectionProps> = (
           <button
             type="button"
             className="btn-secondary"
-            style={{ color: 'var(--ctp-red)' }}
+            style={{ color: 'var(--color-error)' }}
             onClick={() => void handleClear()}
             disabled={busy !== null || !status?.stored}
           >

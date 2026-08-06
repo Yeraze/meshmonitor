@@ -4,7 +4,7 @@
  * The app used to consume raw Catppuccin palette names (`--ctp-blue`) directly,
  * so a custom theme could only restyle a role if the role happened to share a
  * name with the swatch wired to it. `App.css` now defines a role layer
- * (`--color-error: var(--ctp-red)`) that components consume instead.
+ * (`--color-error: var(--color-error)`) that components consume instead.
  *
  * These tests pin the two properties that make the layer trustworthy:
  *  1. Every semantic token resolves to a palette var that actually exists in
