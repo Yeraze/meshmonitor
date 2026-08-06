@@ -20,7 +20,7 @@
 }
 
 .users-list {
-  background: var(--ctp-surface0);
+  background: var(--color-surface);
   border-radius: var(--radius-xl);
   padding: 16px;
   overflow-y: auto;
@@ -33,12 +33,12 @@
   gap: 16px;
   margin-bottom: 16px;
   padding-bottom: 12px;
-  border-bottom: 1px solid var(--ctp-surface2);
+  border-bottom: 1px solid var(--color-surface-active);
 }
 
 .users-list-header h2 {
   margin: 0;
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 1.2em;
   flex-shrink: 0;
 }
@@ -52,8 +52,8 @@
 
 .user-item {
   padding: 12px;
-  background: var(--ctp-base);
-  border: 1px solid var(--ctp-surface1);
+  background: var(--color-bg);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-lg);
   margin-bottom: 8px;
   cursor: pointer;
@@ -64,13 +64,13 @@
 }
 
 .user-item:hover {
-  background: var(--ctp-surface1);
-  border-color: var(--ctp-blue);
+  background: var(--color-surface-hover);
+  border-color: var(--color-accent);
 }
 
 .user-item.selected {
-  background: var(--ctp-surface1);
-  border-color: var(--ctp-blue);
+  background: var(--color-surface-hover);
+  border-color: var(--color-accent);
   box-shadow: 0 0 0 2px rgba(137, 180, 250, 0.2);
 }
 
@@ -80,7 +80,7 @@
 
 .user-item-name {
   font-weight: 600;
-  color: var(--ctp-text);
+  color: var(--color-text);
   margin-bottom: 4px;
   display: flex;
   align-items: center;
@@ -89,22 +89,22 @@
 
 .user-item-meta {
   font-size: 0.85em;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .inactive-badge {
   padding: 2px 8px;
   background: rgba(243, 139, 168, 0.2);
-  border: 1px solid var(--ctp-red);
+  border: 1px solid var(--color-error);
   border-radius: var(--radius-sm);
   font-size: 0.75em;
-  color: var(--ctp-red);
+  color: var(--color-error);
   text-transform: uppercase;
   font-weight: 600;
 }
 
 .user-details {
-  background: var(--ctp-surface0);
+  background: var(--color-surface);
   border-radius: var(--radius-xl);
   padding: 24px;
   overflow-y: auto;
@@ -112,12 +112,12 @@
 
 .user-details h2 {
   margin: 0 0 20px 0;
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 .user-details h3 {
   margin: 24px 0 16px 0;
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 1.1em;
 }
 
@@ -130,21 +130,21 @@
 
 .info-item {
   padding: 12px;
-  background: var(--ctp-base);
+  background: var(--color-bg);
   border-radius: var(--radius-lg);
-  border: 1px solid var(--ctp-surface1);
+  border: 1px solid var(--color-surface-hover);
 }
 
 .info-item label {
   display: block;
   font-size: 0.85em;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   margin-bottom: 4px;
   font-weight: 600;
 }
 
 .info-item div {
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 1em;
 }
 
@@ -176,10 +176,10 @@
 
 .permission-scope-select {
   padding: 4px 8px;
-  background: var(--ctp-surface0);
-  border: 1px solid var(--ctp-surface2);
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-active);
   border-radius: 4px;
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 0.9em;
 }
 
@@ -188,14 +188,14 @@
   justify-content: space-between;
   align-items: center;
   padding: 12px;
-  background: var(--ctp-base);
-  border: 1px solid var(--ctp-surface1);
+  background: var(--color-bg);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-lg);
 }
 
 .permission-label {
   font-weight: 600;
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 .permission-actions {
@@ -207,7 +207,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--ctp-subtext1);
+  color: var(--color-text-muted);
   cursor: pointer;
   user-select: none;
 }
