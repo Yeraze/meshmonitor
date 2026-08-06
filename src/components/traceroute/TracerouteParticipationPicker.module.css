@@ -4,8 +4,9 @@
  * this nests inside the existing `.traceroute-info` box, which supplies the
  * surrounding card chrome.
  *
- * Layout only — no color literals. All colors reference the existing
- * `--ctp-*` custom properties shared across the app.
+ * Layout only — no color literals. Colors reference the semantic role tokens
+ * (`--color-*`, defined in App.css over the palette) rather than raw `--ctp-*`
+ * palette names — see #4567.
  */
 
 .row {

@@ -60,7 +60,10 @@
 }
 
 .list::-webkit-scrollbar-thumb:hover {
-  /* Raw palette on purpose (#4579): scrollbar chrome, not a semantic role. */
+  /* Raw palette on purpose (#4579). The resting thumb above uses
+     --color-surface-active because "raised surface" genuinely describes it;
+     this hover step just needs the next notch of grey, and overlay0 has no
+     role that means that. Renaming it would not add meaning. */
   background: var(--ctp-overlay0);
 }
 

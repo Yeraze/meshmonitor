@@ -84,6 +84,8 @@
   max-width: 100%;
   /* qrcode writes an inline height; responsive sizing must override it. */
   height: auto !important;
+  /* Intentionally hardcoded, not themed: QR scanners need a high-contrast
+     quiet zone, so this frame must stay white on every theme. */
   border: 8px solid #ffffff;
   border-radius: var(--radius-sm);
 }

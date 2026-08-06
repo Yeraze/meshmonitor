@@ -32,7 +32,7 @@
   padding: 0.75rem 1rem;
   margin-bottom: 1rem;
   border-radius: 6px;
-  background: rgba(243, 139, 168, 0.1);
+  background: color-mix(in srgb, var(--color-error) 10%, transparent);
   border: 1px solid var(--color-error);
   color: var(--color-text);
 }
@@ -44,7 +44,7 @@
   padding: 0.75rem 1rem;
   margin-bottom: 1rem;
   border-radius: 6px;
-  background: rgba(249, 226, 175, 0.12);
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
   border: 1px solid var(--color-warning);
 }
 
@@ -121,7 +121,7 @@
 }
 
 .reportGroupWarning {
-  background: rgba(250, 179, 135, 0.1);
+  background: color-mix(in srgb, var(--color-caution) 10%, transparent);
   border-color: var(--color-caution);
 }
 
@@ -245,7 +245,7 @@
   gap: 0.5rem;
   padding: 0.75rem 1rem;
   border-radius: 6px;
-  background: rgba(166, 227, 161, 0.12);
+  background: color-mix(in srgb, var(--color-success) 12%, transparent);
   border: 1px solid var(--color-success);
   margin-bottom: 0.5rem;
 }
