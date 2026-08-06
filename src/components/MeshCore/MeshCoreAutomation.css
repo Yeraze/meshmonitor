@@ -25,7 +25,7 @@
 }
 .meshcore-automations-view select.setting-input:hover,
 .meshcore-automations-view select.meshcore-select:hover {
-  border-color: var(--ctp-overlay0);
+  border-color: var(--color-border-subtle);
 }
 .meshcore-automations-view select.setting-input:focus,
 .meshcore-automations-view select.meshcore-select:focus {
@@ -62,7 +62,7 @@
 }
 .meshcore-automations-view input.meshcore-input:hover,
 .meshcore-automations-view textarea.meshcore-input:hover {
-  border-color: var(--ctp-overlay0);
+  border-color: var(--color-border-subtle);
 }
 .meshcore-automations-view input.meshcore-input:focus,
 .meshcore-automations-view textarea.meshcore-input:focus {
@@ -231,7 +231,7 @@
 }
 .meshcore-automations-view .meshcore-token-chip:hover:not(:disabled) {
   background: var(--color-surface-active);
-  border-color: var(--ctp-overlay0);
+  border-color: var(--color-border-subtle);
 }
 .meshcore-automations-view .meshcore-token-chip:disabled {
   cursor: default;

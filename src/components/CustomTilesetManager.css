@@ -7,7 +7,7 @@
   padding: 1rem;
   background-color: var(--color-surface);
   border-radius: var(--radius-lg);
-  border: 1px solid var(--ctp-overlay0);
+  border: 1px solid var(--color-border-subtle);
 }
 
 .manager-header {
@@ -53,7 +53,7 @@
   align-items: flex-start;
   padding: 1rem;
   background-color: var(--color-bg-sunken);
-  border: 1px solid var(--ctp-overlay0);
+  border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-md);
   transition: border-color 0.2s;
 }
@@ -126,7 +126,7 @@
 }
 
 .tileset-meta .meta-separator {
-  color: var(--ctp-overlay0);
+  color: var(--color-text-faint);
 }
 
 .tileset-actions {
@@ -138,7 +138,7 @@
 
 .tileset-actions button {
   padding: 0.4rem 0.8rem;
-  border: 1px solid var(--ctp-overlay0);
+  border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-sm);
   background-color: var(--color-surface);
   color: var(--color-text);
@@ -148,7 +148,7 @@
 }
 
 .tileset-actions button:hover:not(:disabled) {
-  background-color: var(--ctp-overlay0);
+  background-color: var(--color-surface-inactive);
 }
 
 .btn-edit:hover:not(:disabled) {
@@ -202,7 +202,7 @@
   width: 100%;
   padding: 0.6rem;
   background-color: var(--color-surface);
-  border: 1px solid var(--ctp-overlay0);
+  border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-sm);
   color: var(--color-text);
   font-size: 0.9rem;
@@ -260,7 +260,7 @@
   gap: 0.75rem;
   margin-top: 1.5rem;
   padding-top: 1rem;
-  border-top: 1px solid var(--ctp-overlay0);
+  border-top: 1px solid var(--color-border-subtle);
 }
 
 .form-actions button {
@@ -290,11 +290,11 @@
 .btn-cancel {
   background-color: var(--color-surface);
   color: var(--color-text);
-  border: 1px solid var(--ctp-overlay0);
+  border: 1px solid var(--color-border-subtle);
 }
 
 .btn-cancel:hover:not(:disabled) {
-  background-color: var(--ctp-overlay0);
+  background-color: var(--color-surface-inactive);
 }
 
 .btn-cancel:disabled {
@@ -306,7 +306,7 @@
   width: 100%;
   padding: 0.75rem;
   background-color: var(--color-surface);
-  border: 2px dashed var(--ctp-overlay0);
+  border: 2px dashed var(--color-border-subtle);
   border-radius: var(--radius-md);
   color: var(--color-accent);
   font-size: 0.9rem;
@@ -339,7 +339,7 @@
 .btn-test {
   padding: 0.6rem 1rem;
   background-color: var(--color-surface-hover);
-  border: 1px solid var(--ctp-overlay0);
+  border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-sm);
   color: var(--color-text);
   font-size: 0.9rem;
@@ -408,7 +408,7 @@
 .test-result-detail {
   margin-top: 0.5rem;
   padding-top: 0.5rem;
-  border-top: 1px solid var(--ctp-overlay0);
+  border-top: 1px solid var(--color-border-subtle);
   color: var(--color-text-subtle);
   font-size: 0.85rem;
 }
@@ -453,7 +453,7 @@
   padding: 1rem;
   background-color: var(--color-surface);
   border-radius: var(--radius-md);
-  border: 1px solid var(--ctp-overlay0);
+  border: 1px solid var(--color-border-subtle);
 }
 
 .autodetect-header {
@@ -479,7 +479,7 @@
   flex: 1;
   padding: 0.6rem;
   background-color: var(--color-bg-sunken);
-  border: 1px solid var(--ctp-overlay0);
+  border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-sm);
   color: var(--color-text);
   font-size: 0.9rem;
@@ -527,7 +527,7 @@
 
 .progress-bar {
   height: 6px;
-  background-color: var(--ctp-overlay0);
+  background-color: var(--color-surface-inactive);
   border-radius: var(--radius-xs);
   overflow: hidden;
 }
@@ -582,7 +582,7 @@
   padding: 0.5rem 0.75rem;
   background-color: var(--color-bg-sunken);
   border-radius: var(--radius-sm);
-  border: 1px solid var(--ctp-overlay0);
+  border: 1px solid var(--color-border-subtle);
 }
 
 .autodetect-url-info {

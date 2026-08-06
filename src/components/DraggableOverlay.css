@@ -36,7 +36,7 @@
 .drag-handle:active,
 .draggable-overlay.dragging .drag-handle {
   cursor: grabbing;
-  background: linear-gradient(to right, var(--ctp-overlay0), var(--color-surface-active));
+  background: linear-gradient(to right, var(--color-surface-inactive), var(--color-surface-active));
 }
 
 .drag-handle-icon {
@@ -50,7 +50,7 @@
   display: block;
   width: 8px;
   height: 2px;
-  background-color: var(--ctp-overlay0);
+  background-color: var(--color-surface-inactive);
   border-radius: 1px;
 }
 

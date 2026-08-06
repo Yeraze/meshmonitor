@@ -87,10 +87,21 @@
   --color-text-muted: var(--ctp-subtext1);
   --color-text-subtle: var(--ctp-subtext0);
   --color-text-disabled: var(--ctp-overlay1);
+  /* Fainter than `subtle` — timestamps, placeholders, de-emphasised metadata. */
+  --color-text-faint: var(--ctp-overlay0);
 
   /* Lines */
   --color-border: var(--ctp-surface1);
   --color-border-strong: var(--ctp-surface2);
+  /* A hairline that should barely register, e.g. dividers inside a dense list. */
+  --color-border-subtle: var(--ctp-overlay0);
+
+  /* The neutral "nothing is happening here" fill: scrollbar thumbs, inactive
+     status dots, empty progress tracks. Distinct from `--color-surface`, which
+     is a raised panel, and from the text/border roles above — these three share
+     the overlay0 swatch today but mean different things, and a theme that wants
+     lighter chrome without lightening faint text needs them separable. */
+  --color-surface-inactive: var(--ctp-overlay0);
 }
 
 /* ==============================
