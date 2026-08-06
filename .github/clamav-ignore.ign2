@@ -1,0 +1,59 @@
+# ClamAV signature allow-list (.ign2 — one signature name per line).
+#
+# Entries here are suppressed by NAME. Every other signature still fails the
+# build, and the EICAR self-test in ci.yml runs *after* this file is installed
+# so a mistake here cannot silently disable scanning.
+#
+# Add an entry only after verifying the detection against a pristine tarball
+# fetched straight from the registry — never because a scan is inconvenient.
+# Re-check entries periodically and delete them once upstream corrects the
+# signature.
+#
+# ---------------------------------------------------------------------------
+# Html.Phishing.SVGForeignObject-10060407-0
+# Html.Phishing.SVGDecryption-10060408-0
+# Html.Phishing.SVGDynamicFunction-10060409-0
+#
+# Added 2026-08-06 (PR #4578). Matches react-router (4 files),
+# @vue/compiler-sfc and vitepress's bundled vite in node_modules. Verified
+# false positives:
+#
+#  * The signature requires `<script` + `crypto.subtle` + base64-encoded
+#    variants of `crypto.subtle.importKey` (read out of daily.ldb with
+#    `sigtool --find-sigs`). It targets phishing HTML that decrypts a payload
+#    with WebCrypto.
+#  * SVGForeignObject-10060407 requires `<script` + `<foreignObject` + a
+#    `.src = … atob/String.fromCharCode` pattern. In vite 5.4.21 it matches
+#    `svgToDataURL()`, which checks whether an SVG contains `<text` or
+#    `<foreignObject` to decide between base64 and URL encoding — an asset
+#    pipeline, verified against the pristine registry tarball.
+#  * What SVGDecryption actually matches in react-router is the signed-cookie
+#    implementation: `crypto.subtle.sign("HMAC", …)`, `.verify("HMAC", …)` and
+#    `.importKey("raw", …, {name:"HMAC", hash:"SHA-256"})`, in a bundle that
+#    also emits one `<script>` tag for hydration.
+#  * Reproduced against tarballs downloaded fresh from the npm registry — the
+#    untouched `.tgz` triggers it — so the detection is on published upstream
+#    code, not on anything in this repository.
+#  * Old code, new signature: react-router 7.10.0 (published months earlier)
+#    also matches, while 7.0.0 and 7.5.0 do not — WebCrypto cookie signing
+#    landed between those releases. The same node_modules passed this job on
+#    2026-08-05 with an identical package-lock.json.
+#  * Supply chain independently checked: `npm audit signatures` verified all
+#    1253 packages; the installed tree is byte-identical to the registry
+#    tarball; no preinstall/postinstall hooks; no eval / new Function /
+#    child_process in the flagged bundles; no known Shai-Hulud IOCs.
+#
+# Note: the 2026 "Mini Shai-Hulud" npm worm hit @tanstack/react-router, which
+# is a DIFFERENT package from react-router and is not a dependency here.
+# ---------------------------------------------------------------------------
+# NOTE: these three come from one bad signature batch (IDs 10060407/08/09).
+# The DB holds three more in the same family that have not fired on this tree:
+# SVG_JS_PHISHING-10060388, SVGEvalFromCharCode-10060411,
+# SVGForeignObjectRedirect-10060412. They are deliberately NOT pre-emptively
+# listed — every entry here is one whose detection was reproduced against a
+# pristine registry tarball first. `--phishing-sigs=no` does NOT disable this
+# family (verified); they are ordinary logical signatures that merely carry
+# "Phishing" in the name.
+Html.Phishing.SVGForeignObject-10060407-0
+Html.Phishing.SVGDecryption-10060408-0
+Html.Phishing.SVGDynamicFunction-10060409-0

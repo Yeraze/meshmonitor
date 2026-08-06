@@ -415,6 +415,12 @@ export function mergeUnifiedSourceData(
       // it must stay in sync with the node-selection feature (#3788), which
       // keys markers/trails identically.
       const key = unifiedNodeKey(n);
+      // #4573: a null key silently removes the node from the unified view while
+      // the per-source view still shows it — the undercount users actually see.
+      // `unifiedNodeKey` now falls back through BIGINT-string nodeNums, the hex
+      // `!aabbccdd` nodeId, and finally any stable id, so this is unreachable
+      // for a node carrying any identity at all. It remains as a guard against
+      // a genuinely identity-less record poisoning the `mt:undefined` bucket.
       if (key == null) continue;
       const entry = { node: n, source };
       const bucket = recordsByKey.get(key);

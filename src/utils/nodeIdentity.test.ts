@@ -25,6 +25,90 @@ describe('unifiedNodeKey', () => {
   it('returns null for a Meshtastic node missing nodeNum', () => {
     expect(unifiedNodeKey({})).toBeNull();
   });
+
+  // #4573 — every case below used to return null, which made
+  // mergeUnifiedSourceData drop the node from the unified view while the
+  // per-source view kept showing it.
+  describe('identity fallbacks (#4573)', () => {
+    it('accepts a BIGINT nodeNum that arrived as a numeric string', () => {
+      // PostgreSQL/MySQL surface nodeNum as a string; `typeof === "number"`
+      // rejected it and the node vanished from the unified view.
+      expect(unifiedNodeKey({ nodeNum: '2864434397' })).toBe('mt:2864434397');
+    });
+
+    it('recovers nodeNum from the hex nodeId when the numeric field is unusable', () => {
+      expect(unifiedNodeKey({ nodeId: '!aabbccdd' })).toBe(`mt:${0xaabbccdd}`);
+    });
+
+    it('buckets the numeric and hex forms of the same node together', () => {
+      // The whole point of preferring the numeric identity: one physical node
+      // reported both ways by two sources must not split into two rows.
+      expect(unifiedNodeKey({ nodeNum: 0xaabbccdd })).toBe(unifiedNodeKey({ nodeId: '!aabbccdd' }));
+      expect(unifiedNodeKey({ nodeNum: '2864434397' })).toBe(unifiedNodeKey({ nodeId: '!aabbccdd' }));
+    });
+
+    it('keys nodeNum 0 rather than treating it as absent', () => {
+      expect(unifiedNodeKey({ nodeNum: 0 })).toBe('mt:0');
+    });
+
+    it('falls back to any stable string id before giving up', () => {
+      expect(unifiedNodeKey({ nodeId: 'weird-but-stable' })).toBe('mt:weird-but-stable');
+    });
+
+    it('still returns null when there is no identity at all', () => {
+      expect(unifiedNodeKey({ nodeNum: null, nodeId: null })).toBeNull();
+      expect(unifiedNodeKey({ nodeNum: 'not-a-number' })).toBeNull();
+    });
+  });
+});
+
+describe('unified view never undercounts (#4573)', () => {
+  const bundle = (sourceId: string, nodes: unknown[]): UnifiedSourceBundle => ({
+    sourceId,
+    sourceName: sourceId,
+    protocol: 'Meshtastic',
+    nodes,
+    traceroutes: [],
+    neighborInfo: [],
+    channels: [],
+  });
+
+  it('keeps a node whose nodeNum arrived as a BIGINT string', () => {
+    const merged = mergeUnifiedSourceData([
+      bundle('src-1', [{ nodeNum: '111', longName: 'A' }, { nodeNum: 222, longName: 'B' }]),
+    ]);
+    // Before the fix the string-nodeNum row was dropped and this was 1.
+    expect(merged.nodes).toHaveLength(2);
+  });
+
+  it('merges the numeric and hex forms of one node across two sources into one row', () => {
+    const merged = mergeUnifiedSourceData([
+      bundle('src-1', [{ nodeNum: 0xaabbccdd, nodeId: '!aabbccdd', longName: 'Same Node' }]),
+      bundle('src-2', [{ nodeId: '!aabbccdd', longName: 'Same Node' }]),
+    ]);
+    expect(merged.nodes).toHaveLength(1);
+    expect((merged.nodes[0] as { sources?: unknown[] }).sources).toHaveLength(2);
+  });
+
+  it('never returns fewer nodes than the largest single source contributed', () => {
+    // The invariant the reported symptom violates. A union cannot be smaller
+    // than any of its inputs, so any view showing fewer nodes than one of its
+    // sources is dropping rows, not over-merging them.
+    const sourceA = [{ nodeNum: 1 }, { nodeNum: 2 }, { nodeNum: 3 }];
+    const sourceB = [{ nodeNum: 3 }, { nodeNum: 4 }];
+    const sourceC = [{ nodeNum: '5' }, { nodeId: '!00000006' }];
+
+    const merged = mergeUnifiedSourceData([
+      bundle('src-a', sourceA),
+      bundle('src-b', sourceB),
+      bundle('src-c', sourceC),
+    ]);
+
+    const largestSource = Math.max(sourceA.length, sourceB.length, sourceC.length);
+    expect(merged.nodes.length).toBeGreaterThanOrEqual(largestSource);
+    // nodeNums 1,2,3,4,5,6 — 3 is shared by A and B and must collapse to one.
+    expect(merged.nodes).toHaveLength(6);
+  });
 });
 
 describe('unifiedNodeKey drift guard', () => {

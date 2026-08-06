@@ -200,4 +200,42 @@ describe('mergeNodesAcrossSources (issue #3135)', () => {
     const merged = mergeNodesAcrossSources(rows);
     expect(merged.map((n) => n.nodeNum)).toEqual([801, 802, 800]);
   });
+
+  // #4573 pinned the unified undercount on this function grouping by nodeNum
+  // alone. Grouping by nodeNum is deliberate (#3135: one physical node heard by
+  // N sources is ONE row), and it cannot produce an undercount: the output is
+  // exactly the distinct-nodeNum count, and each source's own rows already have
+  // distinct nodeNums thanks to the composite PK. So the result is always at
+  // least as large as the biggest single source. A unified view showing fewer
+  // nodes than one of its sources is dropping rows somewhere else — for the
+  // real cause see unifiedNodeKey / mergeUnifiedSourceData on the client.
+  describe('cannot undercount relative to a single source (#4573)', () => {
+    it('returns at least as many nodes as the largest contributing source', () => {
+      const sourceA = [makeNode(1), makeNode(2), makeNode(3)].map((n) => ({
+        ...n,
+        sourceId: 'a',
+      })) as DbNode[];
+      const sourceB = [makeNode(3), makeNode(4)].map((n) => ({
+        ...n,
+        sourceId: 'b',
+      })) as DbNode[];
+
+      const merged = mergeNodesAcrossSources([...sourceA, ...sourceB]);
+
+      expect(merged.length).toBeGreaterThanOrEqual(Math.max(sourceA.length, sourceB.length));
+      // nodeNum 3 is the same physical node on both sources — collapsing it to
+      // one row is the intended behaviour, not the bug.
+      expect(merged).toHaveLength(4);
+    });
+
+    it('output size equals the distinct nodeNum count, whatever the source mix', () => {
+      const rows: DbNode[] = [
+        { ...makeNode(10), sourceId: 'a' } as DbNode,
+        { ...makeNode(10), sourceId: 'b' } as DbNode,
+        { ...makeNode(10), sourceId: 'c' } as DbNode,
+        { ...makeNode(11), sourceId: 'b' } as DbNode,
+      ];
+      expect(mergeNodesAcrossSources(rows)).toHaveLength(2);
+    });
+  });
 });
