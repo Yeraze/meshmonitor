@@ -35,6 +35,9 @@
 .returnEdge,
 .statEdge {
   fill: none;
+  /* Raw palette on purpose (#4579): this is a diagram series color, not a
+     role. Routing data-viz strokes through a semantic token would make the
+     role vocabulary meaningless. */
   stroke: var(--ctp-pink);
   stroke-width: 2;
 }
@@ -66,7 +69,7 @@
 }
 
 .node:focus-visible {
-  outline: 2px solid var(--ctp-blue);
+  outline: 2px solid var(--color-accent);
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -97,7 +100,7 @@
 
 .shortName {
   font-size: 0.7rem;
-  color: var(--ctp-subtext1);
+  color: var(--color-text-muted);
   max-width: 58px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -109,7 +112,7 @@
   position: absolute;
   transform: translate(-50%, -50%);
   font-size: 0.7rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   white-space: nowrap;
   pointer-events: none;
 }
@@ -127,8 +130,10 @@
 .snrUnknown {
   display: inline-block;
   padding: 0.05rem 0.3rem;
+  /* Raw palette on purpose (#4579): a neutral "no SNR data" swatch. There is
+     no role for it, and inventing one would be renaming, not meaning. */
   background-color: var(--ctp-overlay0);
-  color: var(--ctp-text);
+  color: var(--color-text);
   border-radius: 3px;
   font-size: 0.85em;
   font-weight: 500;
@@ -190,7 +195,7 @@
   /* Paints the edge itself blue rather than an outline box around the
    * segment's bounding rect, which for a diagonal edge would be a large,
    * misleading rectangle. */
-  stroke: var(--ctp-blue);
+  stroke: var(--color-accent);
   stroke-width: 3;
   outline: none;
 }

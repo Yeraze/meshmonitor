@@ -14,11 +14,11 @@
   font: inherit;
   text-transform: inherit;
   letter-spacing: inherit;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .sortHeaderActive {
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 .sortIcon {
@@ -35,7 +35,7 @@
 }
 
 .pagerInfo {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.85rem;
 }
 
@@ -49,7 +49,7 @@
 
 .detailInner {
   padding: 0.75rem 1rem;
-  background: var(--ctp-mantle);
+  background: var(--color-bg-raised);
 }
 
 .detailHeader {
@@ -61,16 +61,16 @@
 }
 
 .suspectedCell {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-family: var(--font-mono, monospace);
 }
 
 .suspectedOnlyRow {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .mutedZero {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-family: var(--font-mono, monospace);
 }
 
@@ -110,13 +110,13 @@
 
 .hint {
   font-size: 12px;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .expandButton {
   width: 1.5rem;
   text-align: center;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 /* The actual expand/collapse control (carries aria-expanded — see

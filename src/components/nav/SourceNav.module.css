@@ -15,8 +15,8 @@
    * equal-specificity rule instead would make the result depend on CSS import
    * order — the exact failure mode that hid the send button in #4478.
    */
-  --source-nav-bg: var(--ctp-mantle);
-  --source-nav-border: 1px solid var(--ctp-surface1);
+  --source-nav-bg: var(--color-bg-raised);
+  --source-nav-border: 1px solid var(--color-surface-hover);
 
   display: flex;
   flex-direction: column;
@@ -55,18 +55,22 @@
 }
 
 .list::-webkit-scrollbar-thumb {
-  background: var(--ctp-surface2);
+  background: var(--color-surface-active);
   border-radius: var(--radius-xs);
 }
 
 .list::-webkit-scrollbar-thumb:hover {
+  /* Raw palette on purpose (#4579). The resting thumb above uses
+     --color-surface-active because "raised surface" genuinely describes it;
+     this hover step just needs the next notch of grey, and overlay0 has no
+     role that means that. Renaming it would not add meaning. */
   background: var(--ctp-overlay0);
 }
 
 .sectionHeader {
   font-size: 11px;
   font-weight: 600;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   padding: 12px 12px 4px 12px;
@@ -87,7 +91,7 @@
   background: transparent;
   border: none;
   border-radius: var(--radius-md);
-  color: var(--ctp-text);
+  color: var(--color-text);
   cursor: pointer;
   transition: background-color 0.2s;
   text-align: left;
@@ -98,12 +102,12 @@
 }
 
 .item:hover {
-  background: var(--ctp-surface0);
+  background: var(--color-surface);
 }
 
 .active {
-  background: var(--ctp-blue);
-  color: var(--ctp-crust);
+  background: var(--color-accent);
+  color: var(--color-bg-sunken);
 }
 
 .icon {
@@ -129,9 +133,9 @@
   right: -2px;
   width: 8px;
   height: 8px;
-  background: var(--ctp-red);
+  background: var(--color-error);
   border-radius: var(--radius-full);
-  border: 1px solid var(--ctp-mantle);
+  border: 1px solid var(--color-bg-raised);
   pointer-events: none;
 }
 
@@ -159,8 +163,8 @@
 
 .toggle {
   background: transparent;
-  border: 1px solid var(--ctp-surface2);
-  color: var(--ctp-subtext0);
+  border: 1px solid var(--color-surface-active);
+  color: var(--color-text-subtle);
   border-radius: var(--radius-md);
   padding: 0.35rem;
   cursor: pointer;
@@ -170,8 +174,8 @@
 }
 
 .toggle:hover {
-  color: var(--ctp-text);
-  background: var(--ctp-surface1);
+  color: var(--color-text);
+  background: var(--color-surface-hover);
 }
 
 /* ============================================================
@@ -323,8 +327,8 @@
   .mobileBottomBar .active {
     /* A filled pill is too heavy at bar size; underline the active entry. */
     background: transparent;
-    color: var(--ctp-blue);
-    box-shadow: inset 0 -2px 0 0 var(--ctp-blue);
+    color: var(--color-accent);
+    box-shadow: inset 0 -2px 0 0 var(--color-accent);
   }
 
   /*

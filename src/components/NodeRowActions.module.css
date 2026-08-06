@@ -28,5 +28,5 @@
  * `:empty` matches because JSX emits no text nodes for the false branches. */
 .indicators:not(:empty) + .actions {
   padding-left: 0.5rem;
-  border-left: 1px solid var(--ctp-surface1);
+  border-left: 1px solid var(--color-surface-hover);
 }
