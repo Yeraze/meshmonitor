@@ -59,11 +59,17 @@
   --color-success: var(--ctp-green);
   --color-error: var(--ctp-red);
   --color-warning: var(--ctp-yellow);
+  /* A step below `warning`. The palette distinguishes the two (yellow=warning,
+     peach=caution) and so do consumers — AutoAckConvertDialog renders red,
+     yellow and peach as three severity tiers. */
+  --color-caution: var(--ctp-peach);
   --color-info: var(--ctp-sky);
   --color-danger: var(--ctp-maroon);
 
   /* Accents */
   --color-accent: var(--ctp-blue);
+  /* Hover shade of the accent, not a separate accent. */
+  --color-accent-hover: var(--ctp-sapphire);
   --color-accent-alt: var(--ctp-mauve);
   --color-accent-muted: var(--ctp-lavender);
   --color-accent-text: var(--ctp-accent-text);

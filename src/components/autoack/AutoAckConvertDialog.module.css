@@ -12,7 +12,7 @@
   align-items: center;
   gap: 0.75rem;
   padding: 2rem 0;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .spinner {
@@ -33,8 +33,8 @@
   margin-bottom: 1rem;
   border-radius: 6px;
   background: rgba(243, 139, 168, 0.1);
-  border: 1px solid var(--ctp-red);
-  color: var(--ctp-text);
+  border: 1px solid var(--color-error);
+  color: var(--color-text);
 }
 
 .existingBanner {
@@ -45,7 +45,7 @@
   margin-bottom: 1rem;
   border-radius: 6px;
   background: rgba(249, 226, 175, 0.12);
-  border: 1px solid var(--ctp-yellow);
+  border: 1px solid var(--color-warning);
 }
 
 .twoAutomationsNote {
@@ -55,11 +55,11 @@
   padding: 0.75rem 1rem;
   margin: 0 0 1rem;
   border-radius: 6px;
-  background: var(--ctp-surface0);
-  border: 1px solid var(--ctp-surface2);
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-active);
   font-size: 0.9rem;
   line-height: 1.5;
-  color: var(--ctp-subtext1);
+  color: var(--color-text-muted);
 }
 
 .automationCards {
@@ -72,8 +72,8 @@
 .automationCard {
   padding: 0.85rem 1rem;
   border-radius: 8px;
-  background: var(--ctp-surface0);
-  border: 1px solid var(--ctp-surface2);
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-active);
 }
 
 .automationCardHeader {
@@ -91,8 +91,8 @@
   font-size: 0.75rem;
   padding: 0.1rem 0.5rem;
   border-radius: 999px;
-  background: var(--ctp-surface2);
-  color: var(--ctp-subtext0);
+  background: var(--color-surface-active);
+  color: var(--color-text-subtle);
 }
 
 .ruleList {
@@ -100,7 +100,7 @@
   padding-left: 1.25rem;
   font-size: 0.85rem;
   line-height: 1.5;
-  color: var(--ctp-subtext1);
+  color: var(--color-text-muted);
 }
 
 .reportSection {
@@ -116,13 +116,13 @@
   margin-bottom: 0.85rem;
   padding: 0.6rem 0.85rem;
   border-radius: 6px;
-  background: var(--ctp-surface0);
-  border: 1px solid var(--ctp-surface2);
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-active);
 }
 
 .reportGroupWarning {
   background: rgba(250, 179, 135, 0.1);
-  border-color: var(--ctp-peach);
+  border-color: var(--color-caution);
 }
 
 .reportGroupTitle {
@@ -137,7 +137,7 @@
 .reportEmpty {
   margin: 0;
   font-size: 0.85rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .reportList {
@@ -156,7 +156,7 @@
 .reportEntryKey {
   font-family: monospace;
   font-size: 0.8rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   margin-right: 0.4rem;
 }
 
@@ -166,7 +166,7 @@
 }
 
 .reportEntryDetail {
-  color: var(--ctp-subtext1);
+  color: var(--color-text-muted);
 }
 
 .optionsSection {
@@ -176,8 +176,8 @@
   padding: 0.85rem 1rem;
   margin-bottom: 1.25rem;
   border-radius: 8px;
-  background: var(--ctp-surface0);
-  border: 1px solid var(--ctp-surface2);
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-active);
 }
 
 .checkboxRow {
@@ -196,7 +196,7 @@
 .helperText {
   margin: 0.1rem 0 0 1.6rem;
   font-size: 0.8rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .actions {
@@ -217,9 +217,9 @@
 }
 
 .primaryButton {
-  background: var(--ctp-blue);
-  color: var(--ctp-base);
-  border: 1px solid var(--ctp-blue);
+  background: var(--color-accent);
+  color: var(--color-bg);
+  border: 1px solid var(--color-accent);
 }
 
 .primaryButton:disabled {
@@ -229,8 +229,8 @@
 
 .secondaryButton {
   background: transparent;
-  color: var(--ctp-text);
-  border: 1px solid var(--ctp-surface2);
+  color: var(--color-text);
+  border: 1px solid var(--color-surface-active);
 }
 
 .result {
@@ -246,6 +246,6 @@
   padding: 0.75rem 1rem;
   border-radius: 6px;
   background: rgba(166, 227, 161, 0.12);
-  border: 1px solid var(--ctp-green);
+  border: 1px solid var(--color-success);
   margin-bottom: 0.5rem;
 }

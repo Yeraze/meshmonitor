@@ -18,7 +18,7 @@
 
 .label {
   font-size: 0.75rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   white-space: nowrap;
 }
 
@@ -28,9 +28,9 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 0.8rem;
-  color: var(--ctp-text);
-  background-color: var(--ctp-surface0);
-  border: 1px solid var(--ctp-surface1);
+  color: var(--color-text);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-surface-hover);
   border-radius: 4px;
   padding: 0.15rem 0.35rem;
 }

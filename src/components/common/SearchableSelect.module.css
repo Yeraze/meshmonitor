@@ -15,10 +15,10 @@
   /* Matches `.packet-filters select` so the row stays visually even. */
   width: 100%;
   padding: 6px 10px;
-  border: 1px solid var(--ctp-surface2);
+  border: 1px solid var(--color-surface-active);
   border-radius: var(--radius-sm);
-  background: var(--ctp-base);
-  color: var(--ctp-text);
+  background: var(--color-bg);
+  color: var(--color-text);
   font-size: 13px;
   font-family: inherit;
 }
@@ -30,12 +30,12 @@
 }
 
 .input::placeholder {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .input:focus {
   outline: none;
-  border-color: var(--ctp-blue);
+  border-color: var(--color-accent);
 }
 
 .input:disabled {
@@ -58,15 +58,15 @@
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 16px;
   line-height: 1;
   cursor: pointer;
 }
 
 .clear:hover {
-  background: var(--ctp-surface1);
-  color: var(--ctp-text);
+  background: var(--color-surface-hover);
+  color: var(--color-text);
 }
 
 .list {
@@ -81,8 +81,8 @@
   list-style: none;
   max-height: 280px;
   overflow-y: auto;
-  background: var(--ctp-surface0, #313244);
-  border: 1px solid var(--ctp-surface2);
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-active);
   border-radius: var(--radius-sm);
   box-shadow: 0 6px 18px rgb(0 0 0 / 35%);
 }
@@ -90,7 +90,7 @@
 .option {
   padding: 6px 10px;
   font-size: 13px;
-  color: var(--ctp-text);
+  color: var(--color-text);
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
@@ -100,11 +100,11 @@
 /* Keyboard/pointer highlight. Kept distinct from `.selected` so arrowing
    through the list never hides which option is currently in effect. */
 .active {
-  background: var(--ctp-surface1, #45475a);
+  background: var(--color-surface-hover);
 }
 
 .selected {
-  color: var(--ctp-blue);
+  color: var(--color-accent);
   font-weight: 600;
 }
 
@@ -112,7 +112,7 @@
 .more {
   padding: 6px 10px;
   font-size: 12px;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-style: italic;
   cursor: default;
 }
