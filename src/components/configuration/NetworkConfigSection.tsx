@@ -165,13 +165,13 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
             padding: '10px 12px',
             borderRadius: 6,
             background: 'rgba(137, 180, 250, 0.10)', // ctp-blue @ low alpha
-            border: '1px solid var(--color-accent, #89b4fa)',
+            border: '1px solid var(--color-accent)',
             color: 'var(--color-text)',
             fontSize: 13,
             lineHeight: 1.4,
           }}
         >
-          <strong style={{ color: 'var(--color-accent, #89b4fa)' }}>
+          <strong style={{ color: 'var(--color-accent)' }}>
             <UiIcon name="network" /> {t('network_config.bridged_inert_title', 'This is a bridged node')}
           </strong>
           <div style={{ marginTop: 4 }}>

@@ -47,9 +47,9 @@
 }
 
 .sidebar-toggle {
-  background: var(--color-accent, #2a2a2a);
-  border: 1px solid var(--color-accent-hover, #333);
-  color: var(--color-bg, #e0e0e0);
+  background: var(--color-accent);
+  border: 1px solid var(--color-accent-hover);
+  color: var(--color-bg);
   width: 36px;
   height: 36px;
   border-radius: var(--radius-md);
@@ -64,7 +64,7 @@
 }
 
 .sidebar-toggle:hover {
-  background: var(--color-accent-hover, #74c7ec);
+  background: var(--color-accent-hover);
   transform: scale(1.05);
 }
 

@@ -677,7 +677,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                               cursor: 'pointer',
                             }}
                           >
-                            <td colSpan={14} style={{ textAlign: 'center', color: 'var(--color-accent, var(--text-secondary))' }}>
+                            <td colSpan={14} style={{ textAlign: 'center', color: 'var(--color-accent)' }}>
                               {loadingMore ? t('packet_monitor.loading_more') : t('packet_monitor.load_more_click', 'Click to load more packets...')}
                             </td>
                           </tr>

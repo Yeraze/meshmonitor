@@ -592,8 +592,8 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
         >
           <div
             style={{
-              background: 'var(--color-bg, #1e1e2e)',
-              color: 'var(--color-text, #cdd6f4)',
+              background: 'var(--color-bg)',
+              color: 'var(--color-text)',
               padding: '1.25rem 1.5rem',
               borderRadius: '8px',
               maxWidth: '32rem',

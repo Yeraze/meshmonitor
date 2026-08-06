@@ -156,8 +156,8 @@
 .ae-test-advanced { border-top: 1px dashed var(--color-surface-hover); margin-top: 0.5rem; padding-top: 0.3rem; }
 .ae-test-result { border-top: 1px solid var(--color-surface); margin-top: 0.7rem; padding-top: 0.5rem; }
 .ae-test-badge { font-weight: 800; font-size: 0.78rem; padding: 0.18rem 0.6rem; border-radius: 999px; }
-.ae-test-badge--ok { background: var(--color-success); color: var(--color-accent-text, #11111b); }
-.ae-test-badge--err { background: var(--color-error); color: var(--color-accent-text, #11111b); }
+.ae-test-badge--ok { background: var(--color-success); color: var(--color-accent-text); }
+.ae-test-badge--err { background: var(--color-error); color: var(--color-accent-text); }
 .ae-test-badge--no { background: var(--color-surface-hover); color: var(--color-text-muted); }
 .ae-test-badge--muted { background: var(--color-surface-hover); color: var(--color-text-muted); }
 .ae-trace { display: flex; flex-direction: column; gap: 0.2rem; }

@@ -72,7 +72,7 @@ const Layer: React.FC<{
     () =>
       L.divIcon({
         className: 'bbox-corner-icon',
-        html: '<div style="width:14px;height:14px;background:var(--color-accent,#89b4fa);border:2px solid white;border-radius:3px;cursor:move;box-shadow:0 0 4px rgba(0,0,0,0.4);"></div>',
+        html: '<div style="width:14px;height:14px;background:var(--color-accent);border:2px solid white;border-radius:3px;cursor:move;box-shadow:0 0 4px rgba(0,0,0,0.4);"></div>',
         iconSize: [14, 14],
         iconAnchor: [7, 7],
       }),
@@ -83,7 +83,7 @@ const Layer: React.FC<{
     () =>
       L.divIcon({
         className: 'bbox-pending-icon',
-        html: '<div style="width:12px;height:12px;background:var(--color-warning,#f9e2af);border:2px solid white;border-radius:50%;box-shadow:0 0 4px rgba(0,0,0,0.4);"></div>',
+        html: '<div style="width:12px;height:12px;background:var(--color-warning);border:2px solid white;border-radius:50%;box-shadow:0 0 4px rgba(0,0,0,0.4);"></div>',
         iconSize: [12, 12],
         iconAnchor: [6, 6],
       }),
@@ -119,8 +119,8 @@ const Layer: React.FC<{
       const se = L.latLng(value.minLat, value.maxLng);
 
       const rect = L.rectangle(L.latLngBounds(sw, ne), {
-        color: 'var(--color-accent, #89b4fa)',
-        fillColor: 'var(--color-accent, #89b4fa)',
+        color: 'var(--color-accent)',
+        fillColor: 'var(--color-accent)',
         fillOpacity: 0.18,
         weight: 2,
       }).addTo(map);
@@ -254,8 +254,8 @@ const Layer: React.FC<{
         previewRectRef.current.setBounds(bounds);
       } else {
         previewRectRef.current = L.rectangle(bounds, {
-          color: 'var(--color-warning, #f9e2af)',
-          fillColor: 'var(--color-warning, #f9e2af)',
+          color: 'var(--color-warning)',
+          fillColor: 'var(--color-warning)',
           fillOpacity: 0.1,
           weight: 2,
           dashArray: '5, 5',

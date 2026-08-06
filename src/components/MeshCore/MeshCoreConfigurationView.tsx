@@ -639,8 +639,8 @@ const MeshCoreDeviceManagement: React.FC<{
   };
 
   return (
-    <div className="meshcore-config-section" style={{ borderTop: '2px solid var(--color-error, #f38ba8)', marginTop: '1.5rem', paddingTop: '1rem' }}>
-      <h3 style={{ color: 'var(--color-error, #f38ba8)' }}>
+    <div className="meshcore-config-section" style={{ borderTop: '2px solid var(--color-error)', marginTop: '1.5rem', paddingTop: '1rem' }}>
+      <h3 style={{ color: 'var(--color-error)' }}>
         {t('meshcore.config.device_management', 'Device Management')}
       </h3>
 
@@ -680,7 +680,7 @@ const MeshCoreDeviceManagement: React.FC<{
 
       {exportedKey && (
         <div style={{
-          background: 'var(--color-surface, #313244)',
+          background: 'var(--color-surface)',
           padding: '0.75rem',
           borderRadius: '6px',
           marginBottom: '1rem',
@@ -688,7 +688,7 @@ const MeshCoreDeviceManagement: React.FC<{
           fontSize: '0.85em',
           wordBreak: 'break-all',
         }}>
-          <div style={{ marginBottom: '0.5rem', color: 'var(--color-warning, #f9e2af)' }}>
+          <div style={{ marginBottom: '0.5rem', color: 'var(--color-warning)' }}>
             {t('meshcore.config.export_key_warning', 'Store this key securely. Anyone with it can impersonate this device.')}
           </div>
           <div>{exportedKey}</div>
@@ -705,12 +705,12 @@ const MeshCoreDeviceManagement: React.FC<{
 
       {importKeyOpen && (
         <div style={{
-          background: 'var(--color-surface, #313244)',
+          background: 'var(--color-surface)',
           padding: '0.75rem',
           borderRadius: '6px',
           marginBottom: '1rem',
         }}>
-          <div style={{ marginBottom: '0.5rem', color: 'var(--color-error, #f38ba8)' }}>
+          <div style={{ marginBottom: '0.5rem', color: 'var(--color-error)' }}>
             {t('meshcore.config.import_key_warning', 'This replaces the device identity. All contacts will need to re-discover this node.')}
           </div>
           <input

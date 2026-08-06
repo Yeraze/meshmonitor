@@ -37,7 +37,7 @@ const Toast: React.FC<ToastProps> = ({ id, message, type, duration = 5000, onClo
     <div
       style={{
         backgroundColor,
-        color: 'var(--color-bg-sunken, #1e1e2e)',
+        color: 'var(--color-bg-sunken)',
         padding: '1rem 1.5rem',
         borderRadius: '4px',
         boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
@@ -58,7 +58,7 @@ const Toast: React.FC<ToastProps> = ({ id, message, type, duration = 5000, onClo
         style={{
           background: 'none',
           border: 'none',
-          color: 'var(--color-bg-sunken, #1e1e2e)',
+          color: 'var(--color-bg-sunken)',
           fontSize: '1.25rem',
           cursor: 'pointer',
           padding: '0 0.25rem',
