@@ -48,6 +48,7 @@ import api, { type ChannelDatabaseEntry } from './services/api';
 import { getPacketStats } from './services/packetApi';
 import { logger } from './utils/logger';
 import { isTxDisabledBody } from './utils/txDisabled';
+import { resolveNeighborInfoErrorToast } from './utils/neighborInfoError';
 // generateArrowMarkers moved to useTraceroutePaths hook
 // isNodeComplete/getEffectivePosition/effectiveMapMaxAgeHours/
 // nodePassesTransportFilter/transportCutoffSec moved with processedNodes/
@@ -2122,6 +2123,14 @@ function App() {
         setNeighborInfoLoading(null);
         if (isTxDisabledBody(response.status, errorData)) {
           showToast(t(isMeshCoreSource ? 'meshcore.receive_only.blocked_toast' : 'tx_disabled.send_blocked_toast'), 'warning');
+        } else {
+          // #4568: every other rejection — 403 (node is multi-hop, so not
+          // eligible) and 429 (rate limited) chief among them — used to fall
+          // straight through to `return` with no toast. The spinner cleared
+          // correctly, but on a LAN the round trip is milliseconds, so the
+          // button just flashed and the user was told nothing.
+          const toast = resolveNeighborInfoErrorToast(response.status, errorData, t('errors.unknown'));
+          showToast(t(toast.key, toast.params), toast.variant);
         }
         return;
       }
