@@ -2,6 +2,10 @@
  * rules to the global sheets (CLAUDE.md CSS containment rule). MeshCorePage.css
  * and src/styles/nodes.css stay frozen; this file owns layout/semantics only —
  * buttons keep the shared global `btn-secondary` / `btn-primary` classes.
+ *
+ * Colors: semantic tokens (`--color-*`), not raw palette names (`--ctp-*`) —
+ * see the token block in App.css and issue #4567. This file is one of the two
+ * pilot migrations; new components should follow it.
  */
 
 .section {
@@ -26,12 +30,12 @@
 }
 
 .statusLabel {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.85em;
 }
 
 .statusValue {
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 .pubkey {
@@ -40,11 +44,11 @@
 }
 
 .warning {
-  color: var(--ctp-yellow);
+  color: var(--color-warning);
 }
 
 .error {
-  color: var(--ctp-red);
+  color: var(--color-error);
 }
 
 .actions {
@@ -56,7 +60,7 @@
 }
 
 .panel {
-  background: var(--ctp-surface0);
+  background: var(--color-surface);
   padding: 0.75rem;
   border-radius: 6px;
   width: 100%;
@@ -74,5 +78,5 @@
 
 .hint {
   font-size: 11px;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }

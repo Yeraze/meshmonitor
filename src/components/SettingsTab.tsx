@@ -2438,7 +2438,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                   className="setting-description"
                   style={{
                     marginTop: '0.5rem',
-                    color: appriseTestResult.ok ? 'var(--color-success, #10b981)' : 'var(--color-error, #ef4444)',
+                    color: appriseTestResult.ok ? 'var(--color-success)' : 'var(--color-error)',
                   }}
                 >
                   {appriseTestResult.message}
@@ -2523,7 +2523,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                   className="setting-description"
                   style={{
                     marginTop: '0.5rem',
-                    color: elevationTestResult.ok ? 'var(--color-success, #10b981)' : 'var(--color-error, #ef4444)',
+                    color: elevationTestResult.ok ? 'var(--color-success)' : 'var(--color-error)',
                   }}
                 >
                   {elevationTestResult.message}

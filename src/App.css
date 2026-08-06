@@ -33,6 +33,58 @@
 
   /* Accent text (for text on bright accent-colored buttons) */
   --ctp-accent-text: #000000;
+
+  /* ==============================
+     Semantic color tokens (issue #4567)
+     ==============================
+
+     Role-based indirection over the Catppuccin palette. Components should
+     consume THESE, not `--ctp-*` directly: a role says what a color means
+     ("this is an error") rather than which swatch it happens to be today.
+
+     Why this works for custom themes with no schema change: a custom theme
+     sets `--ctp-*` inline on :root (see SettingsContext), and `var()` resolves
+     at USE time — so redefining `red` in a theme automatically restyles every
+     error surface that consumes `--color-error`. The user-facing theme schema
+     (REQUIRED_THEME_COLORS, 26 palette keys) is untouched, so existing custom
+     themes keep working with no migration.
+
+     Deliberately NOT redeclared per theme block below: each token points at a
+     palette var, and every theme redefines those. One definition is enough.
+
+     Migration is incremental — most of the app still reads `--ctp-*`
+     directly. See the tracking issue linked from #4567. */
+
+  /* Status / feedback */
+  --color-success: var(--ctp-green);
+  --color-error: var(--ctp-red);
+  --color-warning: var(--ctp-yellow);
+  --color-info: var(--ctp-sky);
+  --color-danger: var(--ctp-maroon);
+
+  /* Accents */
+  --color-accent: var(--ctp-blue);
+  --color-accent-alt: var(--ctp-mauve);
+  --color-accent-muted: var(--ctp-lavender);
+  --color-accent-text: var(--ctp-accent-text);
+
+  /* Surfaces, from furthest back to furthest forward */
+  --color-bg: var(--ctp-base);
+  --color-bg-raised: var(--ctp-mantle);
+  --color-bg-sunken: var(--ctp-crust);
+  --color-surface: var(--ctp-surface0);
+  --color-surface-hover: var(--ctp-surface1);
+  --color-surface-active: var(--ctp-surface2);
+
+  /* Text, from highest to lowest emphasis */
+  --color-text: var(--ctp-text);
+  --color-text-muted: var(--ctp-subtext1);
+  --color-text-subtle: var(--ctp-subtext0);
+  --color-text-disabled: var(--ctp-overlay1);
+
+  /* Lines */
+  --color-border: var(--ctp-surface1);
+  --color-border-strong: var(--ctp-surface2);
 }
 
 /* ==============================
