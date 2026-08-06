@@ -4,7 +4,7 @@
 }
 
 .telemetry-modal-subtitle {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   margin-bottom: 20px;
   font-size: 0.95em;
 }
@@ -20,8 +20,8 @@
   align-items: center;
   gap: 12px;
   padding: 16px;
-  background-color: var(--ctp-surface0);
-  border: 1px solid var(--ctp-surface1);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-lg);
   cursor: pointer;
   transition: all 0.2s ease;
@@ -30,13 +30,13 @@
 }
 
 .telemetry-type-button:hover:not(:disabled) {
-  background-color: var(--ctp-surface1);
-  border-color: var(--ctp-blue);
+  background-color: var(--color-surface-hover);
+  border-color: var(--color-accent);
   transform: translateX(4px);
 }
 
 .telemetry-type-button:focus {
-  outline: 2px solid var(--ctp-blue);
+  outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
@@ -61,13 +61,13 @@
 
 .telemetry-type-name {
   font-weight: 600;
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 1em;
 }
 
 .telemetry-type-description {
   font-size: 0.85em;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   line-height: 1.4;
 }
 

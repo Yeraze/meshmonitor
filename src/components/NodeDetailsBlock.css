@@ -3,7 +3,7 @@
   width: 100%;
   margin-bottom: 20px;
   padding: 20px;
-  background-color: var(--ctp-mantle);
+  background-color: var(--color-bg-raised);
   border-radius: var(--radius-lg);
 }
 
@@ -15,7 +15,7 @@
 }
 
 .node-details-title {
-  color: var(--ctp-text);
+  color: var(--color-text);
   margin: 0;
   font-size: 1.2rem;
   font-weight: 600;
@@ -24,7 +24,7 @@
 .node-details-toggle {
   background: none;
   border: none;
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 1rem;
   cursor: pointer;
   padding: 5px 10px;
@@ -33,12 +33,12 @@
 }
 
 .node-details-toggle:hover {
-  background-color: var(--ctp-surface0);
-  color: var(--ctp-blue);
+  background-color: var(--color-surface);
+  color: var(--color-accent);
 }
 
 .node-details-toggle:focus {
-  outline: 2px solid var(--ctp-blue);
+  outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
@@ -49,19 +49,19 @@
 }
 
 .node-detail-card {
-  background-color: var(--ctp-crust);
-  border: 1px solid var(--ctp-surface1);
+  background-color: var(--color-bg-sunken);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-lg);
   padding: 12px 15px;
   transition: border-color 0.2s ease;
 }
 
 .node-detail-card:hover {
-  border-color: var(--ctp-surface2);
+  border-color: var(--color-surface-active);
 }
 
 .node-detail-label {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.85rem;
   font-weight: 500;
   margin-bottom: 6px;
@@ -70,14 +70,14 @@
 }
 
 .node-detail-value {
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 1.1rem;
   font-weight: 600;
   transition: color 0.2s ease;
 }
 
 .node-detail-secondary {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.9rem;
   font-weight: 400;
 }
@@ -110,49 +110,49 @@
 
 /* A device-reported fix: the trustworthy case, styled quietly. */
 .position-source-pill-gps {
-  background-color: color-mix(in srgb, var(--ctp-green) 18%, transparent);
-  border-color: color-mix(in srgb, var(--ctp-green) 45%, transparent);
-  color: var(--ctp-green);
+  background-color: color-mix(in srgb, var(--color-success) 18%, transparent);
+  border-color: color-mix(in srgb, var(--color-success) 45%, transparent);
+  color: var(--color-success);
 }
 
 /* A trilaterated guess — the case this pill exists to disclose. */
 .position-source-pill-estimated {
-  background-color: color-mix(in srgb, var(--ctp-peach) 18%, transparent);
-  border-color: color-mix(in srgb, var(--ctp-peach) 45%, transparent);
-  color: var(--ctp-peach);
+  background-color: color-mix(in srgb, var(--color-caution) 18%, transparent);
+  border-color: color-mix(in srgb, var(--color-caution) 45%, transparent);
+  color: var(--color-caution);
 }
 
 /* Operator-placed, so accurate by definition but not from the device. */
 .position-source-pill-override {
-  background-color: color-mix(in srgb, var(--ctp-blue) 18%, transparent);
-  border-color: color-mix(in srgb, var(--ctp-blue) 45%, transparent);
-  color: var(--ctp-blue);
+  background-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+  color: var(--color-accent);
 }
 
 /* Battery Level Color Indicators */
 .battery-good {
-  color: var(--ctp-green);
+  color: var(--color-success);
 }
 
 .battery-medium {
-  color: var(--ctp-yellow);
+  color: var(--color-warning);
 }
 
 .battery-low {
-  color: var(--ctp-red);
+  color: var(--color-error);
 }
 
 /* Signal Quality Color Indicators */
 .signal-good {
-  color: var(--ctp-green);
+  color: var(--color-success);
 }
 
 .signal-medium {
-  color: var(--ctp-yellow);
+  color: var(--color-warning);
 }
 
 .signal-low {
-  color: var(--ctp-red);
+  color: var(--color-error);
 }
 
 /* Signal Trend Badge (#4110) */
@@ -167,28 +167,28 @@
 }
 
 .signal-trend-improving {
-  color: var(--ctp-green);
+  color: var(--color-success);
 }
 
 .signal-trend-stable {
-  color: var(--ctp-subtext0, var(--ctp-text));
+  color: var(--color-text-subtle, var(--color-text));
 }
 
 .signal-trend-degrading {
-  color: var(--ctp-red);
+  color: var(--color-error);
 }
 
 /* Utilization Color Indicators */
 .utilization-good {
-  color: var(--ctp-green);
+  color: var(--color-success);
 }
 
 .utilization-medium {
-  color: var(--ctp-yellow);
+  color: var(--color-warning);
 }
 
 .utilization-high {
-  color: var(--ctp-red);
+  color: var(--color-error);
 }
 
 /* Wide card styling - spans full width */
@@ -207,9 +207,9 @@
   box-sizing: border-box;
   margin-top: 4px;
   padding: 8px 10px;
-  background-color: var(--ctp-base);
-  color: var(--ctp-text);
-  border: 1px solid var(--ctp-surface1);
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-sm);
   font-family: inherit;
   font-size: 0.95rem;
@@ -219,7 +219,7 @@
 
 .node-detail-notes-input:focus {
   outline: none;
-  border-color: var(--ctp-blue);
+  border-color: var(--color-accent);
 }
 
 .node-detail-notes-input:disabled {
@@ -235,7 +235,7 @@
 
 .node-detail-notes-error {
   display: block;
-  color: var(--ctp-red);
+  color: var(--color-error);
   font-size: 0.85rem;
   margin-top: 4px;
 }
@@ -247,8 +247,8 @@
 }
 
 .node-detail-notes-save {
-  background-color: var(--ctp-blue);
-  color: var(--ctp-base);
+  background-color: var(--color-accent);
+  color: var(--color-bg);
   border: none;
   border-radius: var(--radius-sm);
   padding: 6px 14px;
@@ -291,13 +291,13 @@
   /* SVG inversion for dark theme - makes dark SVGs visible */
   filter: invert(1) hue-rotate(180deg);
   border-radius: var(--radius-sm);
-  background-color: var(--ctp-crust);
+  background-color: var(--color-bg-sunken);
   padding: 8px;
 }
 
 .hardware-name {
   flex: 1;
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 /* Responsive Design */

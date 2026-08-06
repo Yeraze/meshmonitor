@@ -6,8 +6,8 @@
   width: 100vw;
   height: 100dvh;
   overflow: hidden;
-  background: var(--bg-primary, var(--ctp-base));
-  color: var(--text-primary, var(--ctp-text));
+  background: var(--bg-primary, var(--color-bg));
+  color: var(--text-primary, var(--color-text));
 }
 
 .unified-packets-header {
@@ -15,29 +15,29 @@
   align-items: center;
   gap: 1rem;
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--ctp-surface0, var(--border-color));
+  border-bottom: 1px solid var(--color-surface, var(--border-color));
   flex-shrink: 0;
   flex-wrap: wrap;
 }
 
 .unified-packets-back {
-  background: var(--ctp-surface0, transparent);
-  color: var(--text-secondary, var(--ctp-subtext0));
-  border: 1px solid var(--ctp-surface1, var(--border-color));
+  background: var(--color-surface, transparent);
+  color: var(--text-secondary, var(--color-text-subtle));
+  border: 1px solid var(--color-surface-hover, var(--border-color));
   border-radius: 6px;
   padding: 0.4rem 0.75rem;
   cursor: pointer;
   font-size: 0.85rem;
 }
-.unified-packets-back:hover { background: var(--ctp-surface1); }
+.unified-packets-back:hover { background: var(--color-surface-hover); }
 
 .unified-packets-title { flex: 1; min-width: 180px; }
 .unified-packets-title h1 { margin: 0; font-size: 1.1rem; }
-.unified-packets-title p { margin: 0.1rem 0 0; font-size: 0.8rem; color: var(--text-secondary, var(--ctp-subtext0)); }
+.unified-packets-title p { margin: 0.1rem 0 0; font-size: 0.8rem; color: var(--text-secondary, var(--color-text-subtle)); }
 
 .unified-packets-count {
   font-size: 0.85rem;
-  color: var(--text-secondary, var(--ctp-subtext0));
+  color: var(--text-secondary, var(--color-text-subtle));
   white-space: nowrap;
 }
 
@@ -45,9 +45,9 @@
 
 /* Reuse the .control-btn look from PacketMonitorPanel.css; add an active state. */
 .unified-packets-controls .control-btn.active {
-  background: var(--ctp-blue, #4a9eff);
-  color: var(--ctp-base, #fff);
-  border-color: var(--ctp-blue, #4a9eff);
+  background: var(--color-accent, #4a9eff);
+  color: var(--color-bg, #fff);
+  border-color: var(--color-accent, #4a9eff);
 }
 
 .unified-packets-filters { flex-shrink: 0; }
@@ -56,7 +56,7 @@
 .unified-packets-charts {
   flex-shrink: 0;
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--ctp-surface0, var(--border-color));
+  border-bottom: 1px solid var(--color-surface, var(--border-color));
   max-height: 38vh;
   overflow-y: auto;
 }
@@ -69,17 +69,17 @@
   overflow: hidden;
 }
 .unified-packets-charts__range button {
-  background: var(--ctp-surface0, transparent);
-  color: var(--text-secondary, var(--ctp-subtext0));
-  border: 1px solid var(--ctp-surface1, var(--border-color));
+  background: var(--color-surface, transparent);
+  color: var(--text-secondary, var(--color-text-subtle));
+  border: 1px solid var(--color-surface-hover, var(--border-color));
   padding: 0.3rem 0.7rem;
   cursor: pointer;
   font-size: 0.8rem;
 }
 .unified-packets-charts__range button.active {
-  background: var(--ctp-blue, #4a9eff);
-  color: var(--ctp-base, #fff);
-  border-color: var(--ctp-blue, #4a9eff);
+  background: var(--color-accent, #4a9eff);
+  color: var(--color-bg, #fff);
+  border-color: var(--color-accent, #4a9eff);
 }
 
 .unified-packets-charts__grid {

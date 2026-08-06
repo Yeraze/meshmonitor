@@ -12,10 +12,10 @@
   gap: 0.75rem;
   padding: 0.75rem;
   margin-top: 0.75rem;
-  border: 1px solid var(--ctp-surface1);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-md, 6px);
-  background: var(--ctp-mantle);
-  color: var(--ctp-text);
+  background: var(--color-bg-raised);
+  color: var(--color-text);
 }
 
 .mrc-header {
@@ -29,7 +29,7 @@
   margin: 0;
   font-size: 1rem;
   font-weight: 600;
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 .mrc-status-chip {
@@ -40,20 +40,20 @@
 }
 
 .mrc-status-ok {
-  background: var(--ctp-green);
-  color: var(--ctp-crust);
+  background: var(--color-success);
+  color: var(--color-bg-sunken);
 }
 
 .mrc-status-idle {
-  background: var(--ctp-surface2);
-  color: var(--ctp-subtext0);
+  background: var(--color-surface-active);
+  color: var(--color-text-subtle);
 }
 
 /* Saved-password-available (not yet logged in): teal, distinct from the
    green "session active" so it doesn't read as an active session. */
 .mrc-status-saved {
   background: var(--ctp-teal);
-  color: var(--ctp-crust);
+  color: var(--color-bg-sunken);
 }
 
 .mrc-banner {
@@ -73,23 +73,23 @@
 }
 
 .mrc-banner-warn {
-  background: var(--ctp-surface0);
-  color: var(--ctp-text);
-  border: 1px solid var(--ctp-yellow);
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-warning);
 }
 
 .mrc-banner-warn strong {
-  color: var(--ctp-yellow);
+  color: var(--color-warning);
 }
 
 .mrc-banner-info {
-  background: var(--ctp-surface0);
-  color: var(--ctp-text);
-  border: 1px solid var(--ctp-blue);
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-accent);
 }
 
 .mrc-muted {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .mrc-actions {
@@ -100,7 +100,7 @@
 .mrc-link-btn {
   background: none;
   border: none;
-  color: var(--ctp-blue);
+  color: var(--color-accent);
   text-decoration: underline;
   cursor: pointer;
   padding: 0;
@@ -108,14 +108,14 @@
 }
 
 .mrc-link-btn:hover {
-  color: var(--ctp-lavender);
+  color: var(--color-accent-muted);
 }
 
 .mrc-btn-primary {
   padding: 0.4rem 0.9rem;
   border: none;
-  background: var(--ctp-mauve);
-  color: var(--ctp-accent-text);
+  background: var(--color-accent-alt);
+  color: var(--color-accent-text);
   border-radius: var(--radius-md, 4px);
   cursor: pointer;
   font-size: 0.9rem;
@@ -128,16 +128,16 @@
 }
 
 .mrc-btn-primary:disabled {
-  background: var(--ctp-surface2);
+  background: var(--color-surface-active);
   color: var(--ctp-overlay0);
   cursor: not-allowed;
 }
 
 .mrc-btn-secondary {
   padding: 0.4rem 0.9rem;
-  border: 1px solid var(--ctp-surface2);
+  border: 1px solid var(--color-surface-active);
   background: transparent;
-  color: var(--ctp-text);
+  color: var(--color-text);
   border-radius: var(--radius-md, 4px);
   cursor: pointer;
   font-size: 0.9rem;
@@ -145,7 +145,7 @@
 }
 
 .mrc-btn-secondary:hover:not(:disabled) {
-  background: var(--ctp-surface1);
+  background: var(--color-surface-hover);
 }
 
 .mrc-btn-secondary:disabled {
@@ -156,9 +156,9 @@
 .mrc-transcript {
   max-height: 280px;
   overflow-y: auto;
-  background: var(--ctp-crust);
-  color: var(--ctp-text);
-  border: 1px solid var(--ctp-surface0);
+  background: var(--color-bg-sunken);
+  color: var(--color-text);
+  border: 1px solid var(--color-surface);
   border-radius: var(--radius-md, 4px);
   padding: 0.6rem 0.8rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -168,7 +168,7 @@
 .mrc-transcript-empty {
   margin: 0;
   font-style: italic;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .mrc-line {
@@ -191,27 +191,27 @@
 }
 
 .mrc-line-sent .mrc-line-text {
-  color: var(--ctp-blue);
+  color: var(--color-accent);
 }
 
 .mrc-line-sent .mrc-line-prefix {
-  color: var(--ctp-blue);
+  color: var(--color-accent);
 }
 
 .mrc-line-reply .mrc-line-text {
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 .mrc-line-error .mrc-line-text {
-  color: var(--ctp-red);
+  color: var(--color-error);
 }
 
 .mrc-line-error .mrc-line-prefix {
-  color: var(--ctp-red);
+  color: var(--color-error);
 }
 
 .mrc-line-info .mrc-line-text {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-style: italic;
 }
 
@@ -223,9 +223,9 @@
 .mrc-input {
   flex: 1;
   padding: 0.45rem 0.7rem;
-  border: 1px solid var(--ctp-surface2);
-  background: var(--ctp-base);
-  color: var(--ctp-text);
+  border: 1px solid var(--color-surface-active);
+  background: var(--color-bg);
+  color: var(--color-text);
   border-radius: var(--radius-md, 4px);
   font: inherit;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -234,7 +234,7 @@
 
 .mrc-input:focus {
   outline: none;
-  border-color: var(--ctp-mauve);
+  border-color: var(--color-accent-alt);
 }
 
 .mrc-input::placeholder {
@@ -252,9 +252,9 @@
 }
 
 .mrc-modal {
-  background: var(--ctp-mantle);
-  color: var(--ctp-text);
-  border: 1px solid var(--ctp-surface1);
+  background: var(--color-bg-raised);
+  color: var(--color-text);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-lg, 6px);
   padding: 1rem 1.25rem;
   min-width: 340px;
@@ -267,7 +267,7 @@
 
 .mrc-modal h4 {
   margin: 0;
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 .mrc-modal-label {
@@ -275,13 +275,13 @@
   flex-direction: column;
   gap: 0.25rem;
   font-size: 0.9rem;
-  color: var(--ctp-subtext1, var(--ctp-text));
+  color: var(--color-text-muted, var(--color-text));
 }
 
 .mrc-modal-hint {
   margin: 0;
   font-size: 0.8rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .mrc-modal-checkbox {
@@ -289,17 +289,17 @@
   align-items: center;
   gap: 0.5rem;
   font-size: 0.9rem;
-  color: var(--ctp-text);
+  color: var(--color-text);
   cursor: pointer;
 }
 
 .mrc-modal-checkbox.mrc-disabled {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   cursor: not-allowed;
 }
 
 .mrc-modal-error {
-  color: var(--ctp-red);
+  color: var(--color-error);
   font-size: 0.85rem;
 }
 
@@ -313,15 +313,15 @@
   margin: 0;
   font-size: 0.9rem;
   line-height: 1.4;
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 .mrc-modal-danger {
-  border-color: var(--ctp-red);
+  border-color: var(--color-error);
 }
 
 .mrc-modal-danger h4 {
-  color: var(--ctp-red);
+  color: var(--color-error);
 }
 
 /* Quick-action buttons row (Phase 4a) */
@@ -334,9 +334,9 @@
 
 .mrc-btn-quick {
   padding: 0.3rem 0.7rem;
-  border: 1px solid var(--ctp-surface2);
-  background: var(--ctp-surface0);
-  color: var(--ctp-text);
+  border: 1px solid var(--color-surface-active);
+  background: var(--color-surface);
+  color: var(--color-text);
   border-radius: var(--radius-sm, 4px);
   cursor: pointer;
   font-size: 0.82rem;
@@ -345,8 +345,8 @@
 }
 
 .mrc-btn-quick:hover:not(:disabled) {
-  background: var(--ctp-surface1);
-  border-color: var(--ctp-mauve);
+  background: var(--color-surface-hover);
+  border-color: var(--color-accent-alt);
 }
 
 .mrc-btn-quick:disabled {
@@ -357,8 +357,8 @@
 .mrc-btn-danger {
   padding: 0.4rem 0.9rem;
   border: none;
-  background: var(--ctp-red);
-  color: var(--ctp-accent-text);
+  background: var(--color-error);
+  color: var(--color-accent-text);
   border-radius: var(--radius-md, 4px);
   cursor: pointer;
   font-size: 0.85rem;
@@ -367,11 +367,11 @@
 }
 
 .mrc-btn-danger:hover:not(:disabled) {
-  background: var(--ctp-maroon);
+  background: var(--color-danger);
 }
 
 .mrc-btn-danger:disabled {
-  background: var(--ctp-surface2);
+  background: var(--color-surface-active);
   color: var(--ctp-overlay0);
   cursor: not-allowed;
 }

@@ -4,7 +4,7 @@
 }
 
 .relay-info-section {
-  background-color: var(--ctp-mantle);
+  background-color: var(--color-bg-raised);
   border-radius: var(--radius-md);
   padding: 16px;
   margin-bottom: 24px;
@@ -18,34 +18,34 @@
 }
 
 .relay-info-row:not(:last-child) {
-  border-bottom: 1px solid var(--ctp-surface2);
+  border-bottom: 1px solid var(--color-surface-active);
 }
 
 .unknown-relay-notice {
   margin: 12px 0 0 0;
   padding: 12px;
-  background-color: var(--ctp-surface0);
-  border-left: 4px solid var(--ctp-blue);
+  background-color: var(--color-surface);
+  border-left: 4px solid var(--color-accent);
   border-radius: var(--radius-sm);
   font-size: 0.9em;
-  color: var(--ctp-text);
+  color: var(--color-text);
   line-height: 1.5;
 }
 
 .relay-info-label {
   font-weight: 600;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .relay-info-value {
   font-family: var(--font-mono);
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 .potential-relays-section h3 {
   margin-top: 0;
   margin-bottom: 16px;
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 1.1em;
 }
 
@@ -60,27 +60,27 @@
   flex-direction: column;
   gap: 8px;
   padding: 12px 16px;
-  background-color: var(--ctp-mantle);
-  border: 1px solid var(--ctp-surface2);
+  background-color: var(--color-bg-raised);
+  border: 1px solid var(--color-surface-active);
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .relay-node-item:hover {
-  background-color: var(--ctp-surface0);
-  border-color: var(--ctp-blue);
+  background-color: var(--color-surface);
+  border-color: var(--color-accent);
   transform: translateX(4px);
 }
 
 .relay-node-item:focus {
-  outline: 2px solid var(--ctp-blue);
+  outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
 .relay-node-item.never-heard {
   opacity: 0.6;
-  background-color: var(--ctp-crust);
+  background-color: var(--color-bg-sunken);
 }
 
 .relay-node-item.never-heard:hover {
@@ -103,7 +103,7 @@
 
 .node-name {
   font-weight: 500;
-  color: var(--ctp-text);
+  color: var(--color-text);
   flex: 1;
   display: flex;
   align-items: center;
@@ -111,7 +111,7 @@
 }
 
 .direct-indicator {
-  color: var(--ctp-green);
+  color: var(--color-success);
   font-weight: bold;
   margin-right: 4px;
 }
@@ -124,8 +124,8 @@
 .node-rssi {
   font-family: var(--font-mono);
   font-size: 0.85em;
-  color: var(--ctp-blue);
-  background-color: var(--ctp-surface0);
+  color: var(--color-accent);
+  background-color: var(--color-surface);
   padding: 2px 8px;
   border-radius: 10px;
   flex-shrink: 0;
@@ -133,8 +133,8 @@
 
 .node-hops {
   font-size: 0.85em;
-  color: var(--ctp-green);
-  background-color: var(--ctp-surface0);
+  color: var(--color-success);
+  background-color: var(--color-surface);
   padding: 2px 8px;
   border-radius: 10px;
   flex-shrink: 0;
@@ -142,15 +142,15 @@
 
 .node-id {
   font-family: var(--font-mono);
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.9em;
 }
 
 .no-matches {
   padding: 20px;
   text-align: center;
-  color: var(--ctp-subtext0);
-  background-color: var(--ctp-mantle);
+  color: var(--color-text-subtle);
+  background-color: var(--color-bg-raised);
   border-radius: var(--radius-md);
   font-style: italic;
 }
@@ -158,11 +158,11 @@
 .multiple-matches-note {
   margin-top: 16px;
   padding: 12px;
-  background-color: var(--ctp-surface0);
-  border-left: 4px solid var(--ctp-yellow);
+  background-color: var(--color-surface);
+  border-left: 4px solid var(--color-warning);
   border-radius: var(--radius-sm);
   font-size: 0.9em;
-  color: var(--ctp-yellow);
+  color: var(--color-warning);
 }
 
 /* Dark mode adjustments */

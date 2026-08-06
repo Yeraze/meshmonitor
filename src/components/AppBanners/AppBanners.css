@@ -15,15 +15,15 @@
 
 .warning-banner {
   top: var(--header-height);
-  background-color: var(--ctp-red);
-  color: var(--ctp-crust);
-  border-bottom: 2px solid var(--ctp-maroon);
+  background-color: var(--color-error);
+  color: var(--color-bg-sunken);
+  border-bottom: 2px solid var(--color-danger);
 }
 
 .update-banner {
-  background-color: var(--ctp-blue);
-  color: var(--ctp-crust);
-  border-bottom: 2px solid var(--ctp-sapphire);
+  background-color: var(--color-accent);
+  color: var(--color-bg-sunken);
+  border-bottom: 2px solid var(--color-accent-hover);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -78,8 +78,8 @@
 }
 
 .update-banner-command {
-  background: var(--ctp-crust);
-  color: var(--ctp-text);
+  background: var(--color-bg-sunken);
+  color: var(--color-text);
   padding: 0.2rem 0.6rem;
   border-radius: 4px;
   font-family: monospace;

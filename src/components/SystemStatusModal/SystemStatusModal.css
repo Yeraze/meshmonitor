@@ -12,12 +12,12 @@
 }
 
 .status-item strong {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.875rem;
 }
 
 .status-item span {
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 1rem;
 }
 
