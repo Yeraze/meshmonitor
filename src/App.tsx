@@ -2193,8 +2193,21 @@ function App() {
         setTelemetryRequestLoading(null);
       }, 30000);
     } catch (error) {
+      // The throw above and a genuine network failure both land here, and this
+      // used to only log — so a rejected telemetry request cleared its spinner
+      // and told the user nothing: the same silent-failure shape fixed for
+      // neighbor info in #4568. Unlike that endpoint there is no 403/429 to
+      // explain specially — the server answers 400 (validation), 503 (not
+      // connected) or 500 — so its own message is the most specific thing
+      // available and gets surfaced directly.
       logger.error('Failed to send telemetry request:', error);
       setTelemetryRequestLoading(null);
+      showToast(
+        t('toast.telemetry_request_failed', {
+          error: error instanceof Error ? error.message : t('errors.network'),
+        }),
+        'error',
+      );
     }
   };
 
