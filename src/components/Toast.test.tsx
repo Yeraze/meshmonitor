@@ -141,25 +141,25 @@ describe('Toast Component', () => {
       const { container } = render(<Toast {...defaultProps} type="success" />);
       const toastDiv = container.firstChild as HTMLElement;
       // Component uses Catppuccin CSS variables
-      expect(toastDiv.style.backgroundColor).toBe('var(--ctp-green)');
+      expect(toastDiv.style.backgroundColor).toBe('var(--color-success)');
     });
 
     it('should apply error background color', () => {
       const { container } = render(<Toast {...defaultProps} type="error" />);
       const toastDiv = container.firstChild as HTMLElement;
-      expect(toastDiv.style.backgroundColor).toBe('var(--ctp-red)');
+      expect(toastDiv.style.backgroundColor).toBe('var(--color-error)');
     });
 
     it('should apply warning background color', () => {
       const { container } = render(<Toast {...defaultProps} type="warning" />);
       const toastDiv = container.firstChild as HTMLElement;
-      expect(toastDiv.style.backgroundColor).toBe('var(--ctp-peach)');
+      expect(toastDiv.style.backgroundColor).toBe('var(--color-caution)');
     });
 
     it('should apply info background color', () => {
       const { container } = render(<Toast {...defaultProps} type="info" />);
       const toastDiv = container.firstChild as HTMLElement;
-      expect(toastDiv.style.backgroundColor).toBe('var(--ctp-blue)');
+      expect(toastDiv.style.backgroundColor).toBe('var(--color-accent)');
     });
 
     it('should have slideIn animation', () => {

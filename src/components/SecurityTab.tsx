@@ -968,8 +968,8 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
                       style={{
                         padding: '0.4rem 0.75rem',
                         fontSize: '0.85rem',
-                        backgroundColor: 'var(--ctp-surface1)',
-                        color: 'var(--ctp-text)',
+                        backgroundColor: 'var(--color-surface-hover)',
+                        color: 'var(--color-text)',
                         border: 'none',
                         borderRadius: '4px',
                         cursor: 'pointer'
@@ -986,8 +986,8 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
                         style={{
                           padding: '0.4rem 0.75rem',
                           fontSize: '0.85rem',
-                          backgroundColor: 'var(--ctp-red)',
-                          color: 'var(--ctp-base)',
+                          backgroundColor: 'var(--color-error)',
+                          color: 'var(--color-bg)',
                           border: 'none',
                           borderRadius: '4px',
                           cursor: isDeletingNodes ? 'not-allowed' : 'pointer',
@@ -1022,9 +1022,9 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
                             />
                           </td>
                           <td>
-                            {node.longName || node.shortName || <span style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>Unknown</span>}
+                            {node.longName || node.shortName || <span style={{ color: 'var(--color-text-subtle)', fontStyle: 'italic' }}>Unknown</span>}
                             {node.shortName && node.longName && (
-                              <span style={{ color: 'var(--ctp-subtext0)', marginLeft: '0.5rem', fontSize: '0.8rem' }}>({node.shortName})</span>
+                              <span style={{ color: 'var(--color-text-subtle)', marginLeft: '0.5rem', fontSize: '0.8rem' }}>({node.shortName})</span>
                             )}
                           </td>
                           <td style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{node.nodeId}</td>
@@ -1032,11 +1032,11 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
                           <td>{formatLastHeard(node.lastHeard)}</td>
                           <td>
                             {node.inDeviceDb ? (
-                              <span title={t('security.dead_nodes_in_both', 'In both local and device database')} style={{ color: 'var(--ctp-yellow)' }}>
+                              <span title={t('security.dead_nodes_in_both', 'In both local and device database')} style={{ color: 'var(--color-warning)' }}>
                                 <UiIcon name="radioSignal" /> {t('security.dead_nodes_local_and_device', 'Local + Device')}
                               </span>
                             ) : (
-                              <span title={t('security.dead_nodes_local_only', 'Only in local database')} style={{ color: 'var(--ctp-subtext0)' }}>
+                              <span title={t('security.dead_nodes_local_only', 'Only in local database')} style={{ color: 'var(--color-text-subtle)' }}>
                                 <UiIcon name="database" /> {t('security.dead_nodes_local_only_short', 'Local Only')}
                               </span>
                             )}

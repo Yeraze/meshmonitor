@@ -234,8 +234,8 @@ const SerialConfigSection: React.FC<SerialConfigSectionProps> = ({
               className="advanced-toggle-btn"
               style={{
                 background: 'transparent',
-                border: '1px solid var(--ctp-surface2)',
-                color: 'var(--ctp-subtext0)',
+                border: '1px solid var(--color-surface-active)',
+                color: 'var(--color-text-subtle)',
                 padding: '0.5rem 1rem',
                 borderRadius: '4px',
                 cursor: 'pointer',
@@ -254,7 +254,7 @@ const SerialConfigSection: React.FC<SerialConfigSectionProps> = ({
             <div className="advanced-section" style={{
               marginLeft: '1rem',
               paddingLeft: '1rem',
-              borderLeft: '2px solid var(--ctp-surface2)'
+              borderLeft: '2px solid var(--color-surface-active)'
             }}>
               {/* RXD Pin */}
               <div className="setting-item">

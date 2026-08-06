@@ -29,8 +29,8 @@ interface TelemetryEntry {
 }
 
 const SOURCE_COLORS = [
-  'var(--ctp-blue)', 'var(--ctp-mauve)', 'var(--ctp-green)',
-  'var(--ctp-red)', 'var(--ctp-yellow)', 'var(--ctp-teal)',
+  'var(--color-accent)', 'var(--color-accent-alt)', 'var(--color-success)',
+  'var(--color-error)', 'var(--color-warning)', 'var(--ctp-teal)',
 ];
 
 function getSourceColor(sourceId: string, sourceIds: string[]): string {

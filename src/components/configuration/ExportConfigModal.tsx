@@ -191,7 +191,7 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
         onClick={(e) => e.stopPropagation()}
         style={{
           maxWidth: '600px',
-          background: 'var(--ctp-base)',
+          background: 'var(--color-bg)',
           borderRadius: '8px',
           padding: '1.5rem',
           maxHeight: '90vh',
@@ -200,16 +200,16 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
       >
         <h2>{t('export_config.title')}</h2>
 
-        <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '1rem' }}>
+        <p style={{ color: 'var(--color-text-subtle)', marginBottom: '1rem' }}>
           {t('export_config.description')}
         </p>
 
         <div style={{ marginBottom: '1rem' }}>
           <h3>{t('export_config.select_channels')}</h3>
           {channels.length === 0 ? (
-            <div style={{ padding: '1.5rem', background: 'var(--ctp-surface0)', borderRadius: '4px', border: '1px solid var(--ctp-surface2)' }}>
-              <div style={{ color: 'var(--ctp-subtext0)', marginBottom: '1rem' }}>
-                <div style={{ fontWeight: 'bold', color: 'var(--ctp-text)', marginBottom: '0.5rem' }}>
+            <div style={{ padding: '1.5rem', background: 'var(--color-surface)', borderRadius: '4px', border: '1px solid var(--color-surface-active)' }}>
+              <div style={{ color: 'var(--color-text-subtle)', marginBottom: '1rem' }}>
+                <div style={{ fontWeight: 'bold', color: 'var(--color-text)', marginBottom: '0.5rem' }}>
                   {t('export_config.no_channels_title')}
                 </div>
                 <div style={{ marginBottom: '0.75rem', lineHeight: '1.6' }}>
@@ -230,7 +230,7 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
                     }}
                     disabled={isLoadingChannels}
                     style={{
-                      backgroundColor: isLoadingChannels ? 'var(--ctp-surface1)' : 'var(--ctp-blue)',
+                      backgroundColor: isLoadingChannels ? 'var(--color-surface-hover)' : 'var(--color-accent)',
                       color: '#fff',
                       border: 'none',
                       borderRadius: '4px',
@@ -263,10 +263,10 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
                 key={channel.id}
                 style={{
                   padding: '0.75rem',
-                  background: 'var(--ctp-surface0)',
+                  background: 'var(--color-surface)',
                   borderRadius: '4px',
                   marginBottom: '0.5rem',
-                  border: selectedChannels.has(channel.id) ? '2px solid var(--ctp-blue)' : '2px solid transparent'
+                  border: selectedChannels.has(channel.id) ? '2px solid var(--color-accent)' : '2px solid transparent'
                 }}
               >
                 <label style={{ display: 'flex', alignItems: 'flex-start', cursor: 'pointer' }}>
@@ -280,7 +280,7 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
                     <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>
                       {t('export_config.channel_label', { id: channel.id, name: channel.name })}
                     </div>
-                    <div style={{ fontSize: '0.875rem', color: 'var(--ctp-subtext0)' }}>
+                    <div style={{ fontSize: '0.875rem', color: 'var(--color-text-subtle)' }}>
                       PSK: {channel.psk ? t('export_config.psk_set') : t('export_config.psk_none')}
                       {channel.positionPrecision !== undefined && channel.positionPrecision !== null && ` | ${t('export_config.position_precision', { bits: channel.positionPrecision })}`}
                       {` | ${channel.uplinkEnabled ? t('export_config.uplink_enabled') : t('export_config.uplink_disabled')}`}
@@ -298,9 +298,9 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
               <div
                 style={{
                   padding: '0.75rem',
-                  background: 'var(--ctp-surface0)',
+                  background: 'var(--color-surface)',
                   borderRadius: '4px',
-                  border: includeLoraConfig ? '2px solid var(--ctp-blue)' : '2px solid transparent'
+                  border: includeLoraConfig ? '2px solid var(--color-accent)' : '2px solid transparent'
                 }}
               >
                 <label style={{ display: 'flex', alignItems: 'flex-start', cursor: 'pointer' }}>
@@ -314,7 +314,7 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
                     <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>
                       {t('export_config.lora_config')}
                     </div>
-                    <div style={{ fontSize: '0.875rem', color: 'var(--ctp-subtext0)' }}>
+                    <div style={{ fontSize: '0.875rem', color: 'var(--color-text-subtle)' }}>
                       {t('export_config.lora_config_description')}
                     </div>
                   </div>
@@ -325,7 +325,7 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
         </div>
 
         {error && (
-          <div style={{ color: 'var(--ctp-red)', marginBottom: '1rem', padding: '0.5rem', background: 'var(--ctp-surface0)', borderRadius: '4px' }}>
+          <div style={{ color: 'var(--color-error)', marginBottom: '1rem', padding: '0.5rem', background: 'var(--color-surface)', borderRadius: '4px' }}>
             {error}
           </div>
         )}
@@ -343,8 +343,8 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
                 style={{
                   flex: 1,
                   padding: '0.5rem',
-                  background: 'var(--ctp-surface0)',
-                  border: '1px solid var(--ctp-surface2)',
+                  background: 'var(--color-surface)',
+                  border: '1px solid var(--color-surface-active)',
                   borderRadius: '4px',
                   fontFamily: 'monospace',
                   fontSize: '0.875rem'
@@ -353,8 +353,8 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
               <button
                 onClick={handleCopy}
                 style={{
-                  background: copied ? 'var(--ctp-green)' : 'var(--ctp-blue)',
-                  color: 'var(--ctp-base)',
+                  background: copied ? 'var(--color-success)' : 'var(--color-accent)',
+                  color: 'var(--color-bg)',
                   border: 'none',
                   borderRadius: '4px',
                   padding: '0.5rem 1rem',
@@ -376,7 +376,7 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
                 {copied ? <><UiIcon name="check" /> {t('export_config.copied')}</> : t('export_config.copy')}
               </button>
             </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)', marginTop: '0.5rem' }}>
+            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', marginTop: '0.5rem' }}>
               {t('export_config.share_url_description')}
             </div>
 
@@ -386,7 +386,7 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
               </label>
               <div style={{
                 padding: '1rem',
-                background: 'var(--ctp-surface0)',
+                background: 'var(--color-surface)',
                 borderRadius: '8px',
                 display: 'inline-block'
               }}>
@@ -397,20 +397,20 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
                   onError={(err) => console.error('Failed to generate QR code:', err)}
                 />
               </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)', marginTop: '0.5rem', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', marginTop: '0.5rem', textAlign: 'center' }}>
                 {t('export_config.scan_qr_description')}
               </div>
             </div>
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--ctp-surface0)' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--color-surface)' }}>
           <button
             onClick={handleClose}
             style={{
-              background: 'var(--ctp-surface1)',
-              color: 'var(--ctp-text)',
-              border: '1px solid var(--ctp-surface2)',
+              background: 'var(--color-surface-hover)',
+              color: 'var(--color-text)',
+              border: '1px solid var(--color-surface-active)',
               borderRadius: '4px',
               padding: '0.5rem 1rem',
               cursor: 'pointer',
@@ -418,8 +418,8 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
               fontWeight: '500',
               transition: 'all 0.2s ease'
             }}
-            onMouseOver={(e) => e.currentTarget.style.background = 'var(--ctp-surface2)'}
-            onMouseOut={(e) => e.currentTarget.style.background = 'var(--ctp-surface1)'}
+            onMouseOver={(e) => e.currentTarget.style.background = 'var(--color-surface-active)'}
+            onMouseOut={(e) => e.currentTarget.style.background = 'var(--color-surface-hover)'}
           >
             {t('export_config.close')}
           </button>

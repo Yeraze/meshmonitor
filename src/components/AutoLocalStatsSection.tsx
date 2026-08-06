@@ -400,11 +400,11 @@ const AutoLocalStatsSection: React.FC<AutoLocalStatsSectionProps> = ({
 
   const sectionHeaderStyle: React.CSSProperties = {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: '0.5rem 0.75rem', background: 'var(--ctp-surface0)',
-    border: '1px solid var(--ctp-surface2)', borderRadius: '4px', cursor: 'pointer', marginBottom: '0.5rem',
+    padding: '0.5rem 0.75rem', background: 'var(--color-surface)',
+    border: '1px solid var(--color-surface-active)', borderRadius: '4px', cursor: 'pointer', marginBottom: '0.5rem',
   };
   const badgeStyle: React.CSSProperties = {
-    background: 'var(--ctp-blue)', color: 'var(--ctp-base)',
+    background: 'var(--color-accent)', color: 'var(--color-bg)',
     padding: '0.1rem 0.5rem', borderRadius: '10px', fontSize: '11px', fontWeight: '600',
   };
 
@@ -412,8 +412,8 @@ const AutoLocalStatsSection: React.FC<AutoLocalStatsSectionProps> = ({
     <>
       <div className="automation-section-header" style={{
         display: 'flex', alignItems: 'center', marginBottom: '1.5rem',
-        padding: '1rem 1.25rem', background: 'var(--ctp-surface1)',
-        border: '1px solid var(--ctp-surface2)', borderRadius: '8px'
+        padding: '1rem 1.25rem', background: 'var(--color-surface-hover)',
+        border: '1px solid var(--color-surface-active)', borderRadius: '8px'
       }}>
         <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <input
@@ -511,7 +511,7 @@ const AutoLocalStatsSection: React.FC<AutoLocalStatsSectionProps> = ({
           {filterEnabled && localEnabled && (
             <div style={{
               marginTop: '1rem', marginLeft: '1.75rem', padding: '1rem',
-              background: 'var(--ctp-surface0)', border: '1px solid var(--ctp-surface2)',
+              background: 'var(--color-surface)', border: '1px solid var(--color-surface-active)',
               borderRadius: '6px', display: 'flex', gap: '1rem'
             }}>
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -529,28 +529,28 @@ const AutoLocalStatsSection: React.FC<AutoLocalStatsSectionProps> = ({
                     </span>
                   </div>
                   {expandedSections.nodes && (
-                    <div style={{ padding: '0.5rem', background: 'var(--ctp-base)', borderRadius: '4px' }}>
+                    <div style={{ padding: '0.5rem', background: 'var(--color-bg)', borderRadius: '4px' }}>
                       <input type="text" placeholder={t('automation.auto_localstats.search_nodes')} value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        style={{ width: '100%', padding: '0.5rem', marginBottom: '0.5rem', background: 'var(--ctp-surface0)', border: '1px solid var(--ctp-surface2)', borderRadius: '4px', color: 'var(--ctp-text)' }} />
+                        style={{ width: '100%', padding: '0.5rem', marginBottom: '0.5rem', background: 'var(--color-surface)', border: '1px solid var(--color-surface-active)', borderRadius: '4px', color: 'var(--color-text)' }} />
                       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
                         <button onClick={handleSelectAll} className="btn-secondary" style={{ padding: '0.3rem 0.6rem', fontSize: '11px' }}>{t('common.select_all')}</button>
                         <button onClick={handleDeselectAll} className="btn-secondary" style={{ padding: '0.3rem 0.6rem', fontSize: '11px' }}>{t('common.deselect_all')}</button>
                       </div>
-                      <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--ctp-surface2)', borderRadius: '4px' }}>
+                      <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--color-surface-active)', borderRadius: '4px' }}>
                         {filteredNodes.length === 0 ? (
-                          <div style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--ctp-subtext0)', fontSize: '12px' }}>
+                          <div style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--color-text-subtle)', fontSize: '12px' }}>
                             {searchTerm ? t('automation.auto_localstats.no_nodes_match') : t('automation.auto_localstats.no_nodes_available')}
                           </div>
                         ) : (
                           filteredNodes.map(node => (
                             <div key={node.nodeNum}
-                              style={{ padding: '0.4rem 0.6rem', borderBottom: '1px solid var(--ctp-surface1)', display: 'flex', alignItems: 'center', cursor: 'pointer', fontSize: '12px' }}
+                              style={{ padding: '0.4rem 0.6rem', borderBottom: '1px solid var(--color-surface-hover)', display: 'flex', alignItems: 'center', cursor: 'pointer', fontSize: '12px' }}
                               onClick={() => handleNodeToggle(node.nodeNum)}>
                               <input type="checkbox" checked={selectedNodeNums.includes(node.nodeNum)}
                                 onChange={() => handleNodeToggle(node.nodeNum)} onClick={(e) => e.stopPropagation()}
                                 style={{ width: 'auto', margin: 0, marginRight: '0.5rem', cursor: 'pointer' }} />
-                              <span style={{ color: 'var(--ctp-text)' }}>
+                              <span style={{ color: 'var(--color-text)' }}>
                                 {node.user?.longName || node.longName || node.user?.shortName || node.shortName || node.nodeId || 'Unknown'}
                               </span>
                             </div>
@@ -574,9 +574,9 @@ const AutoLocalStatsSection: React.FC<AutoLocalStatsSectionProps> = ({
                     </span>
                   </div>
                   {expandedSections.roles && (
-                    <div style={{ padding: '0.5rem', background: 'var(--ctp-base)', borderRadius: '4px', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <div style={{ padding: '0.5rem', background: 'var(--color-bg)', borderRadius: '4px', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                       {availableRolesInNodes.length === 0 ? (
-                        <span style={{ color: 'var(--ctp-subtext0)', fontSize: '12px' }}>{t('automation.auto_localstats.no_roles_available')}</span>
+                        <span style={{ color: 'var(--color-text-subtle)', fontSize: '12px' }}>{t('automation.auto_localstats.no_roles_available')}</span>
                       ) : (
                         availableRolesInNodes.map(roleNum => {
                           const count = availableNodes.filter(n => getNodeRole(n) === roleNum).length;
@@ -618,10 +618,10 @@ const AutoLocalStatsSection: React.FC<AutoLocalStatsSectionProps> = ({
                     </span>
                   </div>
                   {expandedSections.regex && (
-                    <div style={{ padding: '0.5rem', background: 'var(--ctp-base)', borderRadius: '4px' }}>
+                    <div style={{ padding: '0.5rem', background: 'var(--color-bg)', borderRadius: '4px' }}>
                       <input type="text" value={filterNameRegex} onChange={(e) => setFilterNameRegex(e.target.value)} placeholder=".*"
-                        style={{ width: '100%', padding: '0.5rem', marginBottom: '0.25rem', background: 'var(--ctp-surface0)', border: '1px solid var(--ctp-surface2)', borderRadius: '4px', color: 'var(--ctp-text)', fontFamily: 'monospace', fontSize: '12px' }} />
-                      <div style={{ fontSize: '11px', color: 'var(--ctp-subtext0)' }}>{t('automation.auto_localstats.regex_help')}</div>
+                        style={{ width: '100%', padding: '0.5rem', marginBottom: '0.25rem', background: 'var(--color-surface)', border: '1px solid var(--color-surface-active)', borderRadius: '4px', color: 'var(--color-text)', fontFamily: 'monospace', fontSize: '12px' }} />
+                      <div style={{ fontSize: '11px', color: 'var(--color-text-subtle)' }}>{t('automation.auto_localstats.regex_help')}</div>
                     </div>
                   )}
                 </div>
@@ -639,7 +639,7 @@ const AutoLocalStatsSection: React.FC<AutoLocalStatsSectionProps> = ({
                     </span>
                   </div>
                   {expandedSections.lastHeard && (
-                    <div style={{ padding: '0.5rem', background: 'var(--ctp-base)', borderRadius: '4px' }}>
+                    <div style={{ padding: '0.5rem', background: 'var(--color-bg)', borderRadius: '4px' }}>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '12px' }}>
                         {t('automation.auto_localstats.last_heard_within')}
                         <input type="number" value={filterLastHeardHours}
@@ -653,19 +653,19 @@ const AutoLocalStatsSection: React.FC<AutoLocalStatsSectionProps> = ({
               </div>
 
               {/* Right column: matching nodes preview */}
-              <div style={{ width: '280px', flexShrink: 0, background: 'var(--ctp-base)', border: '1px solid var(--ctp-surface2)', borderRadius: '6px', display: 'flex', flexDirection: 'column' }}>
-                <div style={{ padding: '0.5rem 0.75rem', borderBottom: '1px solid var(--ctp-surface2)', background: 'var(--ctp-surface1)', borderRadius: '6px 6px 0 0', fontSize: '13px', fontWeight: 500 }}>
+              <div style={{ width: '280px', flexShrink: 0, background: 'var(--color-bg)', border: '1px solid var(--color-surface-active)', borderRadius: '6px', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ padding: '0.5rem 0.75rem', borderBottom: '1px solid var(--color-surface-active)', background: 'var(--color-surface-hover)', borderRadius: '6px 6px 0 0', fontSize: '13px', fontWeight: 500 }}>
                   {t('automation.auto_localstats.matching_nodes', { count: debouncedMatchingNodes.length })} / {availableNodes.length} {t('common.total')}
                 </div>
                 <div style={{ flex: 1, overflowY: 'auto', maxHeight: '400px', padding: '0.25rem' }}>
                   {debouncedMatchingNodes.length === 0 ? (
-                    <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--ctp-subtext0)', fontSize: '12px' }}>
+                    <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--color-text-subtle)', fontSize: '12px' }}>
                       {t('automation.auto_localstats.no_nodes_match_filters')}
                     </div>
                   ) : (
                     debouncedMatchingNodes.map(node => (
                       <div key={node.nodeNum}
-                        style={{ padding: '0.35rem 0.5rem', borderBottom: '1px solid var(--ctp-surface1)', fontSize: '12px', color: 'var(--ctp-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                        style={{ padding: '0.35rem 0.5rem', borderBottom: '1px solid var(--color-surface-hover)', fontSize: '12px', color: 'var(--color-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
                         title={node.user?.longName || node.longName || node.user?.shortName || node.shortName || node.nodeId || 'Unknown'}>
                         {node.user?.longName || node.longName || node.user?.shortName || node.shortName || node.nodeId || 'Unknown'}
                       </div>

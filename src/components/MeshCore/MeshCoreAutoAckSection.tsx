@@ -262,8 +262,8 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
         marginBottom: '1.5rem',
         marginTop: '2rem',
         padding: '1rem 1.25rem',
-        background: 'var(--ctp-surface1)',
-        border: '1px solid var(--ctp-surface2)',
+        background: 'var(--color-surface-hover)',
+        border: '1px solid var(--color-surface-active)',
         borderRadius: '8px',
       }}>
         <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -338,7 +338,7 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
               </label>
             </div>
             {channels.length === 0 && (
-              <div style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)', marginLeft: '1.5rem' }}>
+              <div style={{ fontSize: '0.85rem', color: 'var(--color-text-subtle)', marginLeft: '1.5rem' }}>
                 {t('meshcore.automation.autoack.no_channels', 'No channels loaded yet.')}
               </div>
             )}
@@ -393,7 +393,7 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
               {t('meshcore.automation.autoack.always_respond_dm', 'Always respond via DM')}
             </label>
           </div>
-          <div style={{ marginTop: '0.5rem', marginLeft: '1.75rem', fontSize: '0.9rem', color: 'var(--ctp-subtext0)' }}>
+          <div style={{ marginTop: '0.5rem', marginLeft: '1.75rem', fontSize: '0.9rem', color: 'var(--color-text-subtle)' }}>
             {t(
               'meshcore.automation.autoack.always_respond_dm_description',
               'When enabled, replies are always sent as a DM to the sender, even when the trigger came from a channel. Requires the sender to be in your contact list.',
@@ -422,7 +422,7 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
               disabled={disabled || !canWrite}
               style={{ width: '100px', padding: '2px 4px' }}
             />
-            <span style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+            <span style={{ fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
               {t('meshcore.automation.autoack.cooldown_help', 'seconds (0 = no cooldown)')}
             </span>
           </div>
@@ -449,7 +449,7 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
               disabled={disabled || !canWrite}
               style={{ width: '100px', padding: '2px 4px' }}
             />
-            <span style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+            <span style={{ fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
               {t('meshcore.automation.autoack.presend_delay_help', 'seconds (0 = send immediately, max 120)')}
             </span>
           </div>
@@ -520,18 +520,18 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
             style={{ fontFamily: 'monospace', resize: 'vertical', minHeight: '60px' }}
           />
           <div style={{ marginTop: '0.5rem' }}>
-            <label style={{ fontSize: '0.9rem', color: 'var(--ctp-subtext0)' }}>
+            <label style={{ fontSize: '0.9rem', color: 'var(--color-text-subtle)' }}>
               {t('meshcore.automation.autoack.sample_preview', 'Sample preview')}:
             </label>
             <div style={{
               marginTop: '0.25rem',
               padding: '0.5rem',
-              background: 'var(--ctp-base)',
-              border: '1px solid var(--ctp-blue)',
+              background: 'var(--color-bg)',
+              border: '1px solid var(--color-accent)',
               borderRadius: '4px',
               fontFamily: 'monospace',
               fontSize: '0.9rem',
-              color: 'var(--ctp-text)',
+              color: 'var(--color-text)',
             }}>
               {sample}
             </div>
@@ -585,7 +585,7 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
                         padding: '0.25rem 0.5rem',
                         marginBottom: '0.15rem',
                         backgroundColor: matches ? 'rgba(166, 227, 161, 0.1)' : 'rgba(243, 139, 168, 0.1)',
-                        border: `1px solid ${matches ? 'var(--ctp-green)' : 'var(--ctp-red)'}`,
+                        border: `1px solid ${matches ? 'var(--color-success)' : 'var(--color-error)'}`,
                         borderRadius: '4px',
                         fontFamily: 'monospace',
                         fontSize: '0.9rem',
@@ -598,12 +598,12 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
                           width: '16px',
                           height: '16px',
                           borderRadius: '50%',
-                          backgroundColor: matches ? 'var(--ctp-green)' : 'var(--ctp-red)',
+                          backgroundColor: matches ? 'var(--color-success)' : 'var(--color-error)',
                           marginRight: '0.5rem',
                           flexShrink: 0,
                         }}
                       />
-                      <span style={{ color: 'var(--ctp-text)', wordBreak: 'break-word' }}>
+                      <span style={{ color: 'var(--color-text)', wordBreak: 'break-word' }}>
                         {message}
                       </span>
                     </div>

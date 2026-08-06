@@ -404,12 +404,12 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
               onClick={scrollToBottom}
               style={{
                 padding: '0.5rem 1rem',
-                backgroundColor: 'var(--ctp-blue)',
+                backgroundColor: 'var(--color-accent)',
                 border: 'none',
                 borderRadius: '20px',
                 cursor: 'pointer',
                 fontSize: '0.85rem',
-                color: 'var(--ctp-base)',
+                color: 'var(--color-bg)',
                 fontWeight: 'bold',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
                 display: 'flex',

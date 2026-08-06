@@ -85,14 +85,14 @@ const RouteSegmentTraceroutesModal: React.FC<RouteSegmentTraceroutesModalProps> 
         </div>
 
         {relevantTraceroutes.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--ctp-subtext0)' }}>
+          <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-subtle)' }}>
             {t('route_segment.no_traceroutes')}
           </div>
         )}
 
         {relevantTraceroutes.length > 0 && (
           <div>
-            <p style={{ marginBottom: '1rem', color: 'var(--ctp-subtext0)' }}>
+            <p style={{ marginBottom: '1rem', color: 'var(--color-text-subtle)' }}>
               {t('route_segment.showing_count', { count: relevantTraceroutes.length })}
             </p>
 
@@ -115,28 +115,28 @@ const RouteSegmentTraceroutesModal: React.FC<RouteSegmentTraceroutesModalProps> 
                   style={{
                     marginBottom: '1.5rem',
                     padding: '1rem',
-                    background: 'var(--ctp-surface0)',
-                    border: '1px solid var(--ctp-surface2)',
+                    background: 'var(--color-surface)',
+                    border: '1px solid var(--color-surface-active)',
                     borderRadius: '8px',
                   }}
                 >
                   <div style={{ marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                       <strong>#{relevantTraceroutes.length - index}</strong>{' '}
-                      <span style={{ color: 'var(--ctp-subtext0)' }}>
+                      <span style={{ color: 'var(--color-text-subtle)' }}>
                         {fromName} <UiIcon name="forward" size={14} /> {toName}
                       </span>
-                      <span style={{ marginLeft: '1rem', color: 'var(--ctp-subtext0)' }}>
+                      <span style={{ marginLeft: '1rem', color: 'var(--color-text-subtle)' }}>
                         {formatDateTime(new Date(tr.timestamp || tr.createdAt || Date.now()), timeFormat, dateFormat)}
                       </span>
                     </div>
-                    <span style={{ fontSize: '0.9em', color: 'var(--ctp-subtext0)' }}>
+                    <span style={{ fontSize: '0.9em', color: 'var(--color-text-subtle)' }}>
                       {ageStr}
                     </span>
                   </div>
 
                   <div style={{ marginBottom: '0.5rem' }}>
-                    <strong style={{ color: 'var(--ctp-green)' }}><UiIcon name="forward" size={14} /> {t('traceroute_history.forward')}:</strong>{' '}
+                    <strong style={{ color: 'var(--color-success)' }}><UiIcon name="forward" size={14} /> {t('traceroute_history.forward')}:</strong>{' '}
                     <span style={{ fontFamily: 'monospace', fontSize: '0.95em' }}>
                       {formatTracerouteRoute(
                         tr.route,
@@ -155,7 +155,7 @@ const RouteSegmentTraceroutesModal: React.FC<RouteSegmentTraceroutesModalProps> 
                   </div>
 
                   <div>
-                    <strong style={{ color: 'var(--ctp-yellow)' }}><UiIcon name="back" size={14} /> {t('traceroute_history.return')}:</strong>{' '}
+                    <strong style={{ color: 'var(--color-warning)' }}><UiIcon name="back" size={14} /> {t('traceroute_history.return')}:</strong>{' '}
                     <span style={{ fontFamily: 'monospace', fontSize: '0.95em' }}>
                       {formatTracerouteRoute(
                         tr.routeBack,

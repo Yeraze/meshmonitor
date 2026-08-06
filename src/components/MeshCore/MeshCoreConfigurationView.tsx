@@ -188,7 +188,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
 
   return (
     <div className="meshcore-form-view">
-      <h2 style={{ color: 'var(--ctp-text)', marginBottom: '1rem' }}>
+      <h2 style={{ color: 'var(--color-text)', marginBottom: '1rem' }}>
         {t('meshcore.nav.configuration', 'Configuration')}
       </h2>
 
@@ -201,7 +201,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
       {!canWriteConfig && (
         <div
           className="meshcore-empty-state"
-          style={{ marginBottom: '1rem', color: 'var(--ctp-yellow)' }}
+          style={{ marginBottom: '1rem', color: 'var(--color-warning)' }}
           role="status"
         >
           {t(
@@ -234,7 +234,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
               : t('meshcore.config.save_name', 'Save name')}
           </button>
           {nameSaved && (
-            <span style={{ marginLeft: '0.75rem', color: 'var(--ctp-green)' }}>
+            <span style={{ marginLeft: '0.75rem', color: 'var(--color-success)' }}>
               <UiIcon name="check" size={14} /> {t('meshcore.config.saved', 'Saved')}
             </span>
           )}
@@ -286,7 +286,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
               : t('meshcore.config.save_location', 'Save location')}
           </button>
           {locationSaved && (
-            <span style={{ marginLeft: '0.75rem', color: 'var(--ctp-green)' }}>
+            <span style={{ marginLeft: '0.75rem', color: 'var(--color-success)' }}>
               <UiIcon name="check" size={14} /> {t('meshcore.config.saved', 'Saved')}
             </span>
           )}
@@ -384,7 +384,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
               : t('meshcore.config.save_radio', 'Save radio settings')}
           </button>
           {radioSaved && (
-            <span style={{ marginLeft: '0.75rem', color: 'var(--ctp-green)' }}>
+            <span style={{ marginLeft: '0.75rem', color: 'var(--color-success)' }}>
               <UiIcon name="check" size={14} /> {t('meshcore.config.saved', 'Saved')}
             </span>
           )}
@@ -424,7 +424,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
               : t('meshcore.config.save_tx_power', 'Save TX power')}
           </button>
           {txPowerSaved && (
-            <span style={{ marginLeft: '0.75rem', color: 'var(--ctp-green)' }}>
+            <span style={{ marginLeft: '0.75rem', color: 'var(--color-success)' }}>
               <UiIcon name="check" size={14} /> {t('meshcore.config.saved', 'Saved')}
             </span>
           )}
@@ -437,7 +437,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
             'Control what telemetry this node shares. Always = broadcast on advert; Device only = only respond to direct requests from your contacts; Never = disable.')}
         </p>
         {connected && isCompanionOnly && (
-          <p className="hint" style={{ color: 'var(--ctp-yellow)' }}>
+          <p className="hint" style={{ color: 'var(--color-warning)' }}>
             {t('meshcore.config.telemetry_companion_only',
               'Telemetry mode is only configurable on companion devices.')}
           </p>
@@ -508,7 +508,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
               : t('meshcore.config.save_telemetry', 'Save telemetry settings')}
           </button>
           {telemetrySaved && (
-            <span style={{ marginLeft: '0.75rem', color: 'var(--ctp-green)' }}>
+            <span style={{ marginLeft: '0.75rem', color: 'var(--color-success)' }}>
               <UiIcon name="check" size={14} /> {t('meshcore.config.saved', 'Saved')}
             </span>
           )}
@@ -639,8 +639,8 @@ const MeshCoreDeviceManagement: React.FC<{
   };
 
   return (
-    <div className="meshcore-config-section" style={{ borderTop: '2px solid var(--ctp-red, #f38ba8)', marginTop: '1.5rem', paddingTop: '1rem' }}>
-      <h3 style={{ color: 'var(--ctp-red, #f38ba8)' }}>
+    <div className="meshcore-config-section" style={{ borderTop: '2px solid var(--color-error, #f38ba8)', marginTop: '1.5rem', paddingTop: '1rem' }}>
+      <h3 style={{ color: 'var(--color-error, #f38ba8)' }}>
         {t('meshcore.config.device_management', 'Device Management')}
       </h3>
 
@@ -650,7 +650,7 @@ const MeshCoreDeviceManagement: React.FC<{
           className="btn-secondary"
           onClick={handleReboot}
           disabled={rebooting}
-          style={{ color: 'var(--ctp-red)' }}
+          style={{ color: 'var(--color-error)' }}
         >
           {rebooting
             ? t('meshcore.config.rebooting', 'Rebooting…')
@@ -672,7 +672,7 @@ const MeshCoreDeviceManagement: React.FC<{
           type="button"
           className="btn-secondary"
           onClick={() => { setImportKeyDraft(''); setImportKeyError(null); setImportKeyOpen(true); }}
-          style={{ color: 'var(--ctp-red)' }}
+          style={{ color: 'var(--color-error)' }}
         >
           {t('meshcore.config.import_key_button', 'Restore Private Key')}
         </button>
@@ -680,7 +680,7 @@ const MeshCoreDeviceManagement: React.FC<{
 
       {exportedKey && (
         <div style={{
-          background: 'var(--ctp-surface0, #313244)',
+          background: 'var(--color-surface, #313244)',
           padding: '0.75rem',
           borderRadius: '6px',
           marginBottom: '1rem',
@@ -688,7 +688,7 @@ const MeshCoreDeviceManagement: React.FC<{
           fontSize: '0.85em',
           wordBreak: 'break-all',
         }}>
-          <div style={{ marginBottom: '0.5rem', color: 'var(--ctp-yellow, #f9e2af)' }}>
+          <div style={{ marginBottom: '0.5rem', color: 'var(--color-warning, #f9e2af)' }}>
             {t('meshcore.config.export_key_warning', 'Store this key securely. Anyone with it can impersonate this device.')}
           </div>
           <div>{exportedKey}</div>
@@ -705,12 +705,12 @@ const MeshCoreDeviceManagement: React.FC<{
 
       {importKeyOpen && (
         <div style={{
-          background: 'var(--ctp-surface0, #313244)',
+          background: 'var(--color-surface, #313244)',
           padding: '0.75rem',
           borderRadius: '6px',
           marginBottom: '1rem',
         }}>
-          <div style={{ marginBottom: '0.5rem', color: 'var(--ctp-red, #f38ba8)' }}>
+          <div style={{ marginBottom: '0.5rem', color: 'var(--color-error, #f38ba8)' }}>
             {t('meshcore.config.import_key_warning', 'This replaces the device identity. All contacts will need to re-discover this node.')}
           </div>
           <input
@@ -728,14 +728,14 @@ const MeshCoreDeviceManagement: React.FC<{
             }}
           />
           {importKeyError && (
-            <div style={{ color: 'var(--ctp-red)', marginBottom: '0.5rem' }} role="alert">{importKeyError}</div>
+            <div style={{ color: 'var(--color-error)', marginBottom: '0.5rem' }} role="alert">{importKeyError}</div>
           )}
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button type="button" className="btn-secondary" onClick={() => setImportKeyOpen(false)} disabled={importingKey}>
               {t('meshcore.config.cancel', 'Cancel')}
             </button>
             <button type="button" className="btn-primary" onClick={handleImportKey} disabled={importingKey || importKeyDraft.trim().length === 0}
-              style={{ color: 'var(--ctp-red)' }}>
+              style={{ color: 'var(--color-error)' }}>
               {importingKey
                 ? t('meshcore.config.importing_key', 'Importing…')
                 : t('meshcore.config.import_key_confirm_button', 'Import Key')}

@@ -500,8 +500,8 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
         {rebroadcastMode !== 0 && (
           <div
             style={{
-              backgroundColor: 'var(--ctp-peach)',
-              color: 'var(--ctp-base)',
+              backgroundColor: 'var(--color-caution)',
+              color: 'var(--color-bg)',
               padding: '0.75rem',
               borderRadius: '6px',
               marginTop: '0.5rem',
@@ -600,8 +600,8 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
           className="advanced-toggle-btn"
           style={{
             background: 'transparent',
-            border: '1px solid var(--ctp-surface2)',
-            color: 'var(--ctp-subtext0)',
+            border: '1px solid var(--color-surface-active)',
+            color: 'var(--color-text-subtle)',
             padding: '0.5rem 1rem',
             borderRadius: '4px',
             cursor: 'pointer',
@@ -620,7 +620,7 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
         <div className="advanced-section" style={{
           marginLeft: '1rem',
           paddingLeft: '1rem',
-          borderLeft: '2px solid var(--ctp-surface2)'
+          borderLeft: '2px solid var(--color-surface-active)'
         }}>
           {/* Button GPIO */}
           <div className="setting-item">

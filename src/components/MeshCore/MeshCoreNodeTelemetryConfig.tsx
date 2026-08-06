@@ -209,7 +209,7 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
       {!canWriteConfig && (
         <div
           className="meshcore-empty-state"
-          style={{ marginBottom: '0.75rem', color: 'var(--ctp-yellow)' }}
+          style={{ marginBottom: '0.75rem', color: 'var(--color-warning)' }}
           role="status"
         >
           {t(
@@ -276,7 +276,7 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
         </div>
       )}
 
-      <div style={{ marginTop: '1rem', borderTop: '1px solid var(--ctp-surface0)', paddingTop: '0.75rem' }}>
+      <div style={{ marginTop: '1rem', borderTop: '1px solid var(--color-surface)', paddingTop: '0.75rem' }}>
         <div className="node-details-header">
           <h4 className="node-details-title" style={{ fontSize: '0.95rem' }}>
             {t('meshcore.telemetry_config.poll_title', 'Poll Now')}
@@ -316,7 +316,7 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
         {pollMsg && (
           <div
             className="meshcore-empty-state"
-            style={{ marginTop: '0.5rem', color: pollMsg.kind === 'ok' ? 'var(--ctp-green)' : 'var(--ctp-red)' }}
+            style={{ marginTop: '0.5rem', color: pollMsg.kind === 'ok' ? 'var(--color-success)' : 'var(--color-error)' }}
             role={pollMsg.kind === 'ok' ? 'status' : 'alert'}
           >
             {pollMsg.text}
@@ -325,12 +325,12 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
       </div>
 
       {error && (
-        <div className="meshcore-empty-state" style={{ marginTop: '0.5rem', color: 'var(--ctp-red)' }} role="alert">
+        <div className="meshcore-empty-state" style={{ marginTop: '0.5rem', color: 'var(--color-error)' }} role="alert">
           {error}
         </div>
       )}
       {saved && (
-        <div className="meshcore-empty-state" style={{ marginTop: '0.5rem', color: 'var(--ctp-green)' }} role="status">
+        <div className="meshcore-empty-state" style={{ marginTop: '0.5rem', color: 'var(--color-success)' }} role="status">
           {t('meshcore.telemetry_config.saved', 'Saved.')}
         </div>
       )}

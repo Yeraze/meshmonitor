@@ -722,7 +722,7 @@ const UsersTab: React.FC = () => {
                 <div>
                   @{selectedUser.username}
                   {selectedUser.username === 'anonymous' && (
-                    <span style={{ marginLeft: '8px', padding: '2px 6px', background: 'var(--ctp-surface2)', borderRadius: '4px', fontSize: '0.8em', color: 'var(--ctp-subtext0)' }}>
+                    <span style={{ marginLeft: '8px', padding: '2px 6px', background: 'var(--color-surface-active)', borderRadius: '4px', fontSize: '0.8em', color: 'var(--color-text-subtle)' }}>
                       {t('users.special_user')}
                     </span>
                   )}
@@ -733,7 +733,7 @@ const UsersTab: React.FC = () => {
                 <div>
                   {selectedUser.displayName || '-'}
                   {selectedUser.username === 'anonymous' && (
-                    <div style={{ marginTop: '4px', fontSize: '0.9em', color: 'var(--ctp-subtext0)' }}>
+                    <div style={{ marginTop: '4px', fontSize: '0.9em', color: 'var(--color-text-subtle)' }}>
                       <UiIcon name="info" /> {t('users.anonymous_hint')}
                     </div>
                   )}
@@ -792,7 +792,7 @@ const UsersTab: React.FC = () => {
                 className="button button-secondary"
                 onClick={() => handleDeactivateUser(selectedUser)}
                 disabled={selectedUser.id === authStatus.user?.id || selectedUser.username === 'anonymous'}
-                style={{ color: 'var(--ctp-red)' }}
+                style={{ color: 'var(--color-error)' }}
                 title={selectedUser.username === 'anonymous' ? t('users.cannot_deactivate_anonymous') : ''}
               >
                 {t('users.deactivate_user')}
@@ -801,7 +801,7 @@ const UsersTab: React.FC = () => {
                 className="button button-secondary"
                 onClick={() => handlePermanentDeleteUser(selectedUser)}
                 disabled={selectedUser.id === authStatus.user?.id || selectedUser.username === 'anonymous'}
-                style={{ color: 'var(--ctp-red)', backgroundColor: 'var(--ctp-surface0)' }}
+                style={{ color: 'var(--color-error)', backgroundColor: 'var(--color-surface)' }}
                 title={selectedUser.username === 'anonymous' ? t('users.cannot_delete_anonymous') : t('users.permanently_delete_hint')}
               >
                 {t('users.permanently_delete')}
@@ -928,9 +928,9 @@ const UsersTab: React.FC = () => {
                     style={{
                       margin: '8px 0 12px',
                       padding: '8px 12px',
-                      background: 'var(--ctp-surface0)',
-                      color: 'var(--ctp-text)',
-                      borderLeft: '3px solid var(--ctp-blue)',
+                      background: 'var(--color-surface)',
+                      color: 'var(--color-text)',
+                      borderLeft: '3px solid var(--color-accent)',
                       borderRadius: '4px',
                       fontSize: '0.9em',
                     }}
@@ -1393,7 +1393,7 @@ const UsersTab: React.FC = () => {
 
             <div className="modal-body">
               <p><Trans i18nKey="users.deactivate_confirm_text" values={{ username: userToDeactivate.username }} components={{ strong: <strong /> }} /></p>
-              <p style={{ color: 'var(--ctp-red)', marginTop: '1rem' }}>
+              <p style={{ color: 'var(--color-error)', marginTop: '1rem' }}>
                 {t('users.deactivate_warning')}
               </p>
 
@@ -1410,7 +1410,7 @@ const UsersTab: React.FC = () => {
                 <button
                   className="button button-primary"
                   onClick={confirmDeactivateUser}
-                  style={{ backgroundColor: 'var(--ctp-red)', borderColor: 'var(--ctp-red)' }}
+                  style={{ backgroundColor: 'var(--color-error)', borderColor: 'var(--color-error)' }}
                 >
                   {t('users.deactivate_user')}
                 </button>
@@ -1431,10 +1431,10 @@ const UsersTab: React.FC = () => {
 
             <div className="modal-body">
               <p><Trans i18nKey="users.permanent_delete_confirm_text" values={{ username: userToPermanentlyDelete.username }} components={{ strong: <strong /> }} /></p>
-              <p style={{ color: 'var(--ctp-red)', marginTop: '1rem', fontWeight: 'bold' }}>
+              <p style={{ color: 'var(--color-error)', marginTop: '1rem', fontWeight: 'bold' }}>
                 {t('users.permanent_delete_warning')}
               </p>
-              <p style={{ marginTop: '0.5rem', fontSize: '0.9em', color: 'var(--ctp-subtext0)' }}>
+              <p style={{ marginTop: '0.5rem', fontSize: '0.9em', color: 'var(--color-text-subtle)' }}>
                 {t('users.permanent_delete_details')}
               </p>
 
@@ -1451,7 +1451,7 @@ const UsersTab: React.FC = () => {
                 <button
                   className="button button-primary"
                   onClick={confirmPermanentDeleteUser}
-                  style={{ backgroundColor: 'var(--ctp-red)', borderColor: 'var(--ctp-red)' }}
+                  style={{ backgroundColor: 'var(--color-error)', borderColor: 'var(--color-error)' }}
                 >
                   {t('users.permanently_delete')}
                 </button>

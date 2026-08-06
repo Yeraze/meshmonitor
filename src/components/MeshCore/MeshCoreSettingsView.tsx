@@ -275,7 +275,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
 
   return (
     <div className="meshcore-form-view">
-      <h2 style={{ color: 'var(--ctp-text)', marginBottom: '1rem' }}>
+      <h2 style={{ color: 'var(--color-text)', marginBottom: '1rem' }}>
         {t('meshcore.nav.settings', 'Settings')}
       </h2>
 
@@ -402,7 +402,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
             <div style={{ marginTop: '0.75rem', overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9em' }}>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid var(--ctp-surface1)', textAlign: 'left' }}>
+                  <tr style={{ borderBottom: '1px solid var(--color-surface-hover)', textAlign: 'left' }}>
                     <th style={{ padding: '0.25rem 0.5rem' }}>
                       {t('meshcore.discover.col_node', 'Node')}
                     </th>
@@ -419,7 +419,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
                 </thead>
                 <tbody>
                   {discoveredNodes.map((node) => (
-                    <tr key={node.publicKey} style={{ borderBottom: '1px solid var(--ctp-surface0)' }}>
+                    <tr key={node.publicKey} style={{ borderBottom: '1px solid var(--color-surface)' }}>
                       <td style={{ padding: '0.25rem 0.5rem' }}>
                         {node.name || (
                           <span style={{ opacity: 0.6 }}>
@@ -431,7 +431,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
                             style={{
                               marginLeft: '0.4rem', padding: '0 0.3rem', borderRadius: 4,
                               fontSize: '0.75em', fontWeight: 600,
-                              color: 'var(--ctp-base)', background: 'var(--ctp-green)',
+                              color: 'var(--color-bg)', background: 'var(--color-success)',
                             }}
                           >
                             {t('meshcore.discover.new_badge', 'NEW')}
@@ -524,8 +524,8 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
                       key={region}
                       style={{
                         display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
-                        padding: '0.1rem 0.3rem', borderRadius: 999, border: '1px solid var(--ctp-blue)',
-                        background: scopeInput.trim().replace(/^#/, '') === region ? 'var(--ctp-blue)' : 'transparent',
+                        padding: '0.1rem 0.3rem', borderRadius: 999, border: '1px solid var(--color-accent)',
+                        background: scopeInput.trim().replace(/^#/, '') === region ? 'var(--color-accent)' : 'transparent',
                       }}
                     >
                       <button
@@ -600,7 +600,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
                   padding: '0.2rem 0.5rem', borderRadius: 999,
-                  border: '1px solid var(--ctp-surface2)', background: 'var(--ctp-surface0)',
+                  border: '1px solid var(--color-surface-active)', background: 'var(--color-surface)',
                 }}
               >
                 <span>{region.name}</span>
@@ -622,7 +622,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
       {status?.localNode && (
         <div className="form-section">
           <h3>{t('meshcore.settings.local_node', 'Local node')}</h3>
-          <div style={{ color: 'var(--ctp-subtext0)', fontSize: '0.85rem', lineHeight: 1.7 }}>
+          <div style={{ color: 'var(--color-text-subtle)', fontSize: '0.85rem', lineHeight: 1.7 }}>
             <div>{t('meshcore.settings.name', 'Name')}: {status.localNode.name || '—'}</div>
             <div>{t('meshcore.settings.type', 'Type')}: {status.deviceTypeName}</div>
             <div>
@@ -644,7 +644,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
       {canPurgeMessages && (
         <div className="form-section">
           <h3>{t('meshcore.settings.message_data', 'Message data')}</h3>
-          <p style={{ color: 'var(--ctp-subtext0)', fontSize: '0.85rem', lineHeight: 1.6 }}>
+          <p style={{ color: 'var(--color-text-subtle)', fontSize: '0.85rem', lineHeight: 1.6 }}>
             {t(
               'meshcore.settings.purge_all_messages_desc',
               'Permanently delete every stored MeshCore message (all channels and direct messages) for this source.',

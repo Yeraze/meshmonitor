@@ -227,8 +227,8 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
         alignItems: 'center',
         marginBottom: '1.5rem',
         padding: '1rem 1.25rem',
-        background: 'var(--ctp-surface1)',
-        border: '1px solid var(--ctp-surface2)',
+        background: 'var(--color-surface-hover)',
+        border: '1px solid var(--color-surface-active)',
         borderRadius: '8px'
       }}>
         <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -394,11 +394,11 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
             marginTop: '0.5rem',
             marginLeft: 0,
             padding: '0.5rem 0.75rem',
-            background: 'var(--ctp-surface0)',
-            border: '1px solid var(--ctp-surface2)',
-            borderLeft: '3px solid var(--ctp-yellow)',
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-surface-active)',
+            borderLeft: '3px solid var(--color-warning)',
             borderRadius: '4px',
-            color: 'var(--ctp-subtext1)',
+            color: 'var(--color-text-muted)',
             fontSize: '12px',
             lineHeight: '1.5',
           }}>
@@ -409,7 +409,7 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
         </div>
 
         {homeLat == null && (
-          <p style={{ marginTop: '1rem', marginLeft: '1.75rem', color: 'var(--ctp-yellow)', fontSize: '12px' }}>
+          <p style={{ marginTop: '1rem', marginLeft: '1.75rem', color: 'var(--color-warning)', fontSize: '12px' }}>
             {t('automation.distance_delete.no_home_coordinate')}
           </p>
         )}
@@ -423,27 +423,27 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
             <p className="text-muted">{t('automation.distance_delete.no_log_entries')}</p>
           ) : (
             <div style={{
-              border: '1px solid var(--ctp-surface2)',
+              border: '1px solid var(--color-surface-active)',
               borderRadius: '6px',
               overflow: 'hidden',
             }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                 <thead>
-                  <tr style={{ background: 'var(--ctp-surface0)' }}>
-                    <th style={{ padding: '0.5rem', textAlign: 'left', borderBottom: '1px solid var(--ctp-surface2)' }}>
+                  <tr style={{ background: 'var(--color-surface)' }}>
+                    <th style={{ padding: '0.5rem', textAlign: 'left', borderBottom: '1px solid var(--color-surface-active)' }}>
                       {t('automation.distance_delete.timestamp', 'Time')}
                     </th>
-                    <th style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '1px solid var(--ctp-surface2)' }}>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '1px solid var(--color-surface-active)' }}>
                       {t('automation.distance_delete.nodes_deleted')}
                     </th>
-                    <th style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '1px solid var(--ctp-surface2)' }}>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '1px solid var(--color-surface-active)' }}>
                       {t('automation.distance_delete.threshold_used')} ({unitLabel})
                     </th>
                   </tr>
                 </thead>
                 <tbody>
                   {logEntries.map((entry) => (
-                    <tr key={entry.id} style={{ borderBottom: '1px solid var(--ctp-surface1)' }}>
+                    <tr key={entry.id} style={{ borderBottom: '1px solid var(--color-surface-hover)' }}>
                       <td style={{ padding: '0.5rem' }}>
                         {new Date(Number(entry.timestamp)).toLocaleString()}
                       </td>

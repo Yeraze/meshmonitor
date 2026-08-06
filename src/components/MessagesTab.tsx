@@ -130,7 +130,7 @@ const DistanceDisplay = React.memo<{
       title={t('nodes.distance')}
       style={{
         fontSize: '0.75rem',
-        color: 'var(--ctp-subtext0)',
+        color: 'var(--color-text-subtle)',
         marginLeft: '0.5rem',
       }}
     >
@@ -1209,7 +1209,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             className="last-message-preview"
                             style={{
                               fontSize: '0.85rem',
-                              color: selectedDMNode === node.user?.id ? '#000000' : 'var(--ctp-subtext0)',
+                              color: selectedDMNode === node.user?.id ? '#000000' : 'var(--color-text-subtle)',
                               fontStyle: 'italic',
                               overflow: 'hidden',
                               textOverflow: 'ellipsis',
@@ -1240,10 +1240,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                 style={
                                   node.unreadCount > 0
                                     ? {
-                                        border: '2px solid var(--ctp-red)',
+                                        border: '2px solid var(--color-error)',
                                         borderRadius: '12px',
                                         padding: '2px 6px',
-                                        backgroundColor: 'var(--ctp-surface0)',
+                                        backgroundColor: 'var(--color-surface)',
                                       }
                                     : undefined
                                 }
@@ -1688,9 +1688,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
               <div
                 style={{
                   backgroundColor: isDeviceDbWarningMitigatable(selectedNode)
-                    ? 'var(--ctp-yellow, #f9e2af)'
-                    : 'var(--ctp-peach, #fab387)',
-                  color: 'var(--ctp-base, #1e1e2e)',
+                    ? 'var(--color-warning, #f9e2af)'
+                    : 'var(--color-caution, #fab387)',
+                  color: 'var(--color-bg, #1e1e2e)',
                   padding: '10px 12px',
                   marginBottom: '10px',
                   borderRadius: '4px',
@@ -1721,8 +1721,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
             {dmReadOnlyReason === 'unmessageable' && (
               <div
                 style={{
-                  backgroundColor: 'var(--ctp-yellow, #f9e2af)',
-                  color: 'var(--ctp-base, #1e1e2e)',
+                  backgroundColor: 'var(--color-warning, #f9e2af)',
+                  color: 'var(--color-bg, #1e1e2e)',
                   padding: '10px 12px',
                   marginBottom: '10px',
                   borderRadius: '4px',
@@ -1749,7 +1749,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                         background: 'none',
                         border: 'none',
                         padding: 0,
-                        color: 'var(--ctp-blue, #1e66f5)',
+                        color: 'var(--color-accent, #1e66f5)',
                         textDecoration: 'underline',
                         cursor: 'pointer',
                         fontWeight: 'bold',
@@ -1789,12 +1789,12 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     onClick={scrollToBottom}
                     style={{
                       padding: '0.5rem 1rem',
-                      backgroundColor: 'var(--ctp-blue)',
+                      backgroundColor: 'var(--color-accent)',
                       border: 'none',
                       borderRadius: '20px',
                       cursor: 'pointer',
                       fontSize: '0.85rem',
-                      color: 'var(--ctp-base)',
+                      color: 'var(--color-bg)',
                       fontWeight: 'bold',
                       boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
                       display: 'flex',
@@ -2201,7 +2201,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             {isPending && (
                               <span className="traceroute-pending-badge" style={{
                                 marginLeft: '0.5rem',
-                                color: 'var(--ctp-yellow)',
+                                color: 'var(--color-warning)',
                                 fontWeight: 'bold'
                               }}>
                                 ({t('messages.traceroute_pending', 'Pending')})
@@ -2210,7 +2210,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             {isFailed && (
                               <span className="traceroute-failed-badge" style={{
                                 marginLeft: '0.5rem',
-                                color: 'var(--ctp-red)',
+                                color: 'var(--color-error)',
                                 fontWeight: 'bold'
                               }}>
                                 ({t('messages.traceroute_failed')})
@@ -2265,7 +2265,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                   <div className="neighbor-info-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                       <strong>{t('messages.neighbor_info_title', 'Neighbor Info')}</strong>
-                      <span className="neighbor-info-age" style={{ marginLeft: '0.5rem', fontSize: '0.85em', color: 'var(--ctp-subtext0)' }}>
+                      <span className="neighbor-info-age" style={{ marginLeft: '0.5rem', fontSize: '0.85em', color: 'var(--color-text-subtle)' }}>
                         ({ageStr})
                       </span>
                     </div>
@@ -2276,9 +2276,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       style={{
                         padding: '0.25rem 0.5rem',
                         fontSize: '0.8em',
-                        backgroundColor: 'var(--ctp-surface0)',
-                        color: 'var(--ctp-text)',
-                        border: '1px solid var(--ctp-surface1)',
+                        backgroundColor: 'var(--color-surface)',
+                        color: 'var(--color-text)',
+                        border: '1px solid var(--color-surface-hover)',
                         borderRadius: '4px',
                         cursor: purgingNeighbors ? 'not-allowed' : 'pointer',
                         opacity: purgingNeighbors ? 0.6 : 1,
@@ -2306,10 +2306,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                           display: 'flex',
                           justifyContent: 'space-between',
                           padding: '0.25rem 0',
-                          borderBottom: idx < nodeNeighbors.length - 1 ? '1px solid var(--ctp-surface0)' : 'none'
+                          borderBottom: idx < nodeNeighbors.length - 1 ? '1px solid var(--color-surface)' : 'none'
                         }}>
                           <span>{neighbor.neighborName || neighbor.neighborNodeId || `!${neighbor.neighborNodeNum.toString(16)}`}</span>
-                          <span style={{ color: 'var(--ctp-subtext0)' }}>
+                          <span style={{ color: 'var(--color-text-subtle)' }}>
                             {neighbor.snr != null && `SNR: ${neighbor.snr.toFixed(1)} dB`}
                             {distanceStr && ` | ${distanceStr}`}
                           </span>
@@ -2338,8 +2338,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     flex: '1 1 auto',
                     minWidth: '120px',
                     padding: '0.5rem 1rem',
-                    backgroundColor: 'var(--ctp-blue)',
-                    color: 'var(--ctp-base)',
+                    backgroundColor: 'var(--color-accent)',
+                    color: 'var(--color-bg)',
                     border: 'none',
                     borderRadius: '4px',
                     cursor: 'pointer',
@@ -2360,8 +2360,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     style={{
                       flex: 1,
                       padding: '0.5rem 1rem',
-                      backgroundColor: 'var(--ctp-blue)',
-                      color: 'var(--ctp-base)',
+                      backgroundColor: 'var(--color-accent)',
+                      color: 'var(--color-bg)',
                       border: 'none',
                       borderRadius: channels.length > 1 ? '4px 0 0 4px' : '4px',
                       cursor: connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode || txDisabled ? 'not-allowed' : 'pointer',
@@ -2382,10 +2382,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       aria-label={t('messages.traceroute_channel')}
                       style={{
                         padding: '0.5rem 0.5rem',
-                        backgroundColor: 'var(--ctp-blue)',
-                        color: 'var(--ctp-base)',
+                        backgroundColor: 'var(--color-accent)',
+                        color: 'var(--color-bg)',
                         border: 'none',
-                        borderLeft: '1px solid var(--ctp-base)',
+                        borderLeft: '1px solid var(--color-bg)',
                         borderRadius: '0 4px 4px 0',
                         cursor: connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode || txDisabled ? 'not-allowed' : 'pointer',
                         opacity: connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode || txDisabled ? 0.5 : 1,
@@ -2401,8 +2401,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       top: '100%',
                       right: 0,
                       marginTop: '4px',
-                      background: 'var(--ctp-surface0)',
-                      border: '1px solid var(--ctp-surface2)',
+                      background: 'var(--color-surface)',
+                      border: '1px solid var(--color-surface-active)',
                       borderRadius: '4px',
                       zIndex: 1000,
                       minWidth: '160px',
@@ -2421,12 +2421,12 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             padding: '0.5rem 1rem',
                             background: 'none',
                             border: 'none',
-                            color: 'var(--ctp-text)',
+                            color: 'var(--color-text)',
                             cursor: 'pointer',
                             textAlign: 'left',
                             fontSize: '0.85rem'
                           }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--ctp-surface1)')}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-surface-hover)')}
                           onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                         >
                           {ch.name || `Channel ${ch.id}`}{ch.id === 0 ? ' (Primary)' : ''}
@@ -2447,8 +2447,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     style={{
                       flex: 1,
                       padding: '0.5rem 1rem',
-                      backgroundColor: 'var(--ctp-blue)',
-                      color: 'var(--ctp-base)',
+                      backgroundColor: 'var(--color-accent)',
+                      color: 'var(--color-bg)',
                       border: 'none',
                       borderRadius: channels.length > 1 ? '4px 0 0 4px' : '4px',
                       cursor: connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode || txDisabled ? 'not-allowed' : 'pointer',
@@ -2469,10 +2469,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       aria-label={t('messages.exchange_node_info_channel')}
                       style={{
                         padding: '0.5rem 0.5rem',
-                        backgroundColor: 'var(--ctp-blue)',
-                        color: 'var(--ctp-base)',
+                        backgroundColor: 'var(--color-accent)',
+                        color: 'var(--color-bg)',
                         border: 'none',
-                        borderLeft: '1px solid var(--ctp-base)',
+                        borderLeft: '1px solid var(--color-bg)',
                         borderRadius: '0 4px 4px 0',
                         cursor: connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode || txDisabled ? 'not-allowed' : 'pointer',
                         opacity: connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode || txDisabled ? 0.5 : 1,
@@ -2488,8 +2488,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       top: '100%',
                       right: 0,
                       marginTop: '4px',
-                      background: 'var(--ctp-surface0)',
-                      border: '1px solid var(--ctp-surface2)',
+                      background: 'var(--color-surface)',
+                      border: '1px solid var(--color-surface-active)',
                       borderRadius: '4px',
                       zIndex: 1000,
                       minWidth: '160px',
@@ -2508,12 +2508,12 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             padding: '0.5rem 1rem',
                             background: 'none',
                             border: 'none',
-                            color: 'var(--ctp-text)',
+                            color: 'var(--color-text)',
                             cursor: 'pointer',
                             textAlign: 'left',
                             fontSize: '0.85rem'
                           }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--ctp-surface1)')}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-surface-hover)')}
                           onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                         >
                           {ch.name || `Channel ${ch.id}`}{ch.id === 0 ? ' (Primary)' : ''}
@@ -2534,8 +2534,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     style={{
                       flex: 1,
                       padding: '0.5rem 1rem',
-                      backgroundColor: 'var(--ctp-blue)',
-                      color: 'var(--ctp-base)',
+                      backgroundColor: 'var(--color-accent)',
+                      color: 'var(--color-bg)',
                       border: 'none',
                       borderRadius: channels.length > 1 ? '4px 0 0 4px' : '4px',
                       cursor: connectionStatus !== 'connected' || positionLoading === selectedDMNode || txDisabled ? 'not-allowed' : 'pointer',
@@ -2556,10 +2556,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       aria-label={t('messages.exchange_position_channel')}
                       style={{
                         padding: '0.5rem 0.5rem',
-                        backgroundColor: 'var(--ctp-blue)',
-                        color: 'var(--ctp-base)',
+                        backgroundColor: 'var(--color-accent)',
+                        color: 'var(--color-bg)',
                         border: 'none',
-                        borderLeft: '1px solid var(--ctp-base)',
+                        borderLeft: '1px solid var(--color-bg)',
                         borderRadius: '0 4px 4px 0',
                         cursor: connectionStatus !== 'connected' || positionLoading === selectedDMNode || txDisabled ? 'not-allowed' : 'pointer',
                         opacity: connectionStatus !== 'connected' || positionLoading === selectedDMNode || txDisabled ? 0.5 : 1,
@@ -2575,8 +2575,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       top: '100%',
                       right: 0,
                       marginTop: '4px',
-                      background: 'var(--ctp-surface0)',
-                      border: '1px solid var(--ctp-surface2)',
+                      background: 'var(--color-surface)',
+                      border: '1px solid var(--color-surface-active)',
                       borderRadius: '4px',
                       zIndex: 1000,
                       minWidth: '160px',
@@ -2595,12 +2595,12 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             padding: '0.5rem 1rem',
                             background: 'none',
                             border: 'none',
-                            color: 'var(--ctp-text)',
+                            color: 'var(--color-text)',
                             cursor: 'pointer',
                             textAlign: 'left',
                             fontSize: '0.85rem'
                           }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--ctp-surface1)')}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-surface-hover)')}
                           onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                         >
                           {ch.name || `Channel ${ch.id}`}{ch.id === 0 ? ' (Primary)' : ''}
@@ -2621,8 +2621,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     flex: '1 1 auto',
                     minWidth: '120px',
                     padding: '0.5rem 1rem',
-                    backgroundColor: 'var(--ctp-blue)',
-                    color: 'var(--ctp-base)',
+                    backgroundColor: 'var(--color-accent)',
+                    color: 'var(--color-bg)',
                     border: 'none',
                     borderRadius: '4px',
                     cursor: connectionStatus !== 'connected' || neighborInfoLoading === selectedDMNode || txDisabled ? 'not-allowed' : 'pointer',

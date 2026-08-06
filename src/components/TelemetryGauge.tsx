@@ -87,7 +87,7 @@ const TelemetryGauge: React.FC<TelemetryGaugeProps> = ({
     <div className="telemetry-gauge">
       <svg viewBox="0 0 200 160" width="100%" aria-label={`Gauge: ${displayValue}${unit ? ` ${unit}` : ''}`}>
         {/* Background arc */}
-        <path d={bgPath} fill="none" stroke="var(--ctp-surface0)" strokeWidth={14} strokeLinecap="round" />
+        <path d={bgPath} fill="none" stroke="var(--color-surface)" strokeWidth={14} strokeLinecap="round" />
         {/* Value arc */}
         {valuePath && (
           <path d={valuePath} fill="none" stroke={color} strokeWidth={14} strokeLinecap="round" />
@@ -98,7 +98,7 @@ const TelemetryGauge: React.FC<TelemetryGaugeProps> = ({
           y={minLabel.y}
           textAnchor="middle"
           fontSize="9"
-          fill="var(--ctp-subtext0)"
+          fill="var(--color-text-subtle)"
         >
           {displayMin}
         </text>
@@ -108,20 +108,20 @@ const TelemetryGauge: React.FC<TelemetryGaugeProps> = ({
           y={maxLabel.y}
           textAnchor="middle"
           fontSize="9"
-          fill="var(--ctp-subtext0)"
+          fill="var(--color-text-subtle)"
         >
           {displayMax}
         </text>
         {/* Value */}
-        <text x={cx} y={cy + 4} textAnchor="middle" fontSize="26" fontWeight="bold" fill="var(--ctp-text)">
+        <text x={cx} y={cy + 4} textAnchor="middle" fontSize="26" fontWeight="bold" fill="var(--color-text)">
           {displayValue}
         </text>
         {/* Unit */}
-        <text x={cx} y={cy + 18} textAnchor="middle" fontSize="11" fill="var(--ctp-subtext0)">
+        <text x={cx} y={cy + 18} textAnchor="middle" fontSize="11" fill="var(--color-text-subtle)">
           {unit}
         </text>
         {/* Timestamp */}
-        <text x={cx} y={148} textAnchor="middle" fontSize="9" fontStyle="italic" fill="var(--ctp-subtext0)">
+        <text x={cx} y={148} textAnchor="middle" fontSize="9" fontStyle="italic" fill="var(--color-text-subtle)">
           {timeStr}
         </text>
       </svg>

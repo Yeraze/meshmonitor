@@ -216,18 +216,18 @@ const SystemBackupSection: React.FC = () => {
       <h3>{t('system_backup.title')}</h3>
 
       <div style={{
-        backgroundColor: 'var(--ctp-surface0)',
+        backgroundColor: 'var(--color-surface)',
         padding: '1rem',
         borderRadius: '8px',
         marginBottom: '1.5rem'
       }}>
         <h4 style={{ marginTop: 0, marginBottom: '0.5rem' }}>{t('system_backup.about_title')}</h4>
-        <p style={{ color: 'var(--ctp-subtext0)', margin: 0, fontSize: '0.9rem', lineHeight: '1.6' }}>
+        <p style={{ color: 'var(--color-text-subtle)', margin: 0, fontSize: '0.9rem', lineHeight: '1.6' }}>
           {t('system_backup.about_description')}
         </p>
         <div style={{
-          backgroundColor: 'var(--ctp-yellow)',
-          color: 'var(--ctp-base)',
+          backgroundColor: 'var(--color-warning)',
+          color: 'var(--color-bg)',
           padding: '0.75rem',
           borderRadius: '6px',
           marginTop: '1rem',
@@ -240,7 +240,7 @@ const SystemBackupSection: React.FC = () => {
       {/* Manual Backup */}
       <div style={{ marginBottom: '1.5rem' }}>
         <h4 style={{ marginBottom: '0.5rem' }}>{t('system_backup.manual_title')}</h4>
-        <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '1rem', fontSize: '0.9rem' }}>
+        <p style={{ color: 'var(--color-text-subtle)', marginBottom: '1rem', fontSize: '0.9rem' }}>
           {t('system_backup.manual_description')}
         </p>
         <div className="settings-buttons">
@@ -264,7 +264,7 @@ const SystemBackupSection: React.FC = () => {
       {/* Automated Backups */}
       <div style={{ marginBottom: '1.5rem' }}>
         <h4 style={{ marginBottom: '0.5rem' }}>{t('system_backup.auto_title')}</h4>
-        <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '1rem', fontSize: '0.9rem' }}>
+        <p style={{ color: 'var(--color-text-subtle)', marginBottom: '1rem', fontSize: '0.9rem' }}>
           {t('system_backup.auto_description')}
         </p>
 
@@ -292,9 +292,9 @@ const SystemBackupSection: React.FC = () => {
                   style={{
                     padding: '0.5rem',
                     borderRadius: '4px',
-                    border: '1px solid var(--ctp-surface2)',
-                    backgroundColor: 'var(--ctp-surface0)',
-                    color: 'var(--ctp-text)',
+                    border: '1px solid var(--color-surface-active)',
+                    backgroundColor: 'var(--color-surface)',
+                    color: 'var(--color-text)',
                     fontSize: '1rem'
                   }}
                 />
@@ -313,14 +313,14 @@ const SystemBackupSection: React.FC = () => {
                   style={{
                     padding: '0.5rem',
                     borderRadius: '4px',
-                    border: '1px solid var(--ctp-surface2)',
-                    backgroundColor: 'var(--ctp-surface0)',
-                    color: 'var(--ctp-text)',
+                    border: '1px solid var(--color-surface-active)',
+                    backgroundColor: 'var(--color-surface)',
+                    color: 'var(--color-text)',
                     fontSize: '1rem',
                     width: '100px'
                   }}
                 />
-                <p style={{ color: 'var(--ctp-subtext0)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
+                <p style={{ color: 'var(--color-text-subtle)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
                   {t('system_backup.max_backups_hint')}
                 </p>
               </div>
@@ -346,7 +346,7 @@ const SystemBackupSection: React.FC = () => {
 
             <div className="backup-list">
               {backupList.length === 0 ? (
-                <p style={{ textAlign: 'center', color: 'var(--ctp-subtext0)', padding: '2rem' }}>
+                <p style={{ textAlign: 'center', color: 'var(--color-text-subtle)', padding: '2rem' }}>
                   {t('system_backup.no_backups')}
                 </p>
               ) : (

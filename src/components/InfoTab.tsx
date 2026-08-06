@@ -417,10 +417,10 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
                           padding: '0.5rem',
                           fontSize: '0.85rem',
                           fontFamily: 'monospace',
-                          backgroundColor: 'var(--ctp-surface0)',
-                          border: '1px solid var(--ctp-surface2)',
+                          backgroundColor: 'var(--color-surface)',
+                          border: '1px solid var(--color-surface-active)',
                           borderRadius: '4px',
-                          color: 'var(--ctp-text)'
+                          color: 'var(--color-text)'
                         }}
                       />
                     </div>
@@ -437,10 +437,10 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
                             paddingRight: '2.5rem',
                             fontSize: '0.85rem',
                             fontFamily: 'monospace',
-                            backgroundColor: 'var(--ctp-surface0)',
-                            border: '1px solid var(--ctp-surface2)',
+                            backgroundColor: 'var(--color-surface)',
+                            border: '1px solid var(--color-surface-active)',
                             borderRadius: '4px',
-                            color: 'var(--ctp-text)'
+                            color: 'var(--color-text)'
                           }}
                         />
                         <button
@@ -457,7 +457,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
                             cursor: 'pointer',
                             padding: '0.25rem',
                             fontSize: '1rem',
-                            color: 'var(--ctp-subtext0)',
+                            color: 'var(--color-text-subtle)',
                             lineHeight: 1
                           }}
                         >
@@ -522,7 +522,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
                           <div key={client.id} style={{
                             marginTop: '0.5rem',
                             padding: '0.5rem',
-                            backgroundColor: 'var(--ctp-surface0)',
+                            backgroundColor: 'var(--color-surface)',
                             borderRadius: '4px'
                           }}>
                             <p style={{ margin: '0.25rem 0' }}><strong>{t('info.client_id')}</strong> {client.id}</p>
@@ -693,8 +693,8 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
             borderRadius: '4px',
             cursor: 'pointer',
             fontWeight: active ? 600 : 400,
-            background: active ? 'var(--ctp-blue)' : 'var(--ctp-surface1)',
-            color: active ? 'var(--ctp-crust)' : 'var(--ctp-subtext0)',
+            background: active ? 'var(--color-accent)' : 'var(--color-surface-hover)',
+            color: active ? 'var(--color-bg-sunken)' : 'var(--color-text-subtle)',
           });
 
           const timeRangeButtons = (
@@ -733,7 +733,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem' }}>
                       <h3 style={{ margin: 0 }}>{t('info.packet_distribution', 'Packet Distribution')}</h3>
-                      <span style={{ fontSize: '0.9em', color: 'var(--ctp-subtext0)', fontWeight: 600 }}>
+                      <span style={{ fontSize: '0.9em', color: 'var(--color-text-subtle)', fontWeight: 600 }}>
                         {t('info.total_packets', { count: packetDistribution.total, defaultValue: 'Total: {{count}} packets' })}
                       </span>
                     </div>
@@ -786,9 +786,9 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
                   padding: '0.25rem 0.5rem',
                   fontSize: '0.85em',
                   borderRadius: '4px',
-                  border: '1px solid var(--ctp-surface2)',
-                  background: 'var(--ctp-surface0)',
-                  color: 'var(--ctp-text)',
+                  border: '1px solid var(--color-surface-active)',
+                  background: 'var(--color-surface)',
+                  color: 'var(--color-text)',
                 }}
               >
                 <option value="">--</option>
@@ -983,11 +983,11 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
           zIndex: 1000
         }}>
           <div style={{
-            backgroundColor: 'var(--ctp-base)',
+            backgroundColor: 'var(--color-bg)',
             padding: '2rem',
             borderRadius: '8px',
             maxWidth: '400px',
-            border: '1px solid var(--ctp-surface2)'
+            border: '1px solid var(--color-surface-active)'
           }}>
             <h3 style={{ marginTop: 0 }}>{t('info.clear_record_title')}</h3>
             <p>{t('info.clear_record_confirm')}</p>

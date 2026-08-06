@@ -225,16 +225,16 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               justifyContent: 'space-between',
               alignItems: 'center',
               padding: '0.75rem 1rem',
-              background: 'var(--ctp-surface0)',
-              border: '1px solid var(--ctp-surface2)',
+              background: 'var(--color-surface)',
+              border: '1px solid var(--color-surface-active)',
               borderRadius: '8px',
               cursor: 'pointer',
               marginBottom: isExpanded ? '1rem' : '0.5rem',
               transition: 'all 0.2s ease',
             }}
             onClick={() => toggleSection(id)}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--ctp-surface1)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'var(--ctp-surface0)'}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--color-surface-hover)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'var(--color-surface)'}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1 }}>
               <span style={{
@@ -2368,8 +2368,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   // if (!nodes || nodes.length === 0) {
   //   return (
   //     <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
-  //       <h2 style={{ marginBottom: '1.5rem', color: 'var(--ctp-text)' }}>{t('admin_commands.title')}</h2>
-  //       <p style={{ color: 'var(--ctp-subtext0)' }}>{t('admin_commands.loading_nodes')}</p>
+  //       <h2 style={{ marginBottom: '1.5rem', color: 'var(--color-text)' }}>{t('admin_commands.title')}</h2>
+  //       <p style={{ color: 'var(--color-text-subtle)' }}>{t('admin_commands.loading_nodes')}</p>
   //     </div>
   //   );
   // }
@@ -2390,8 +2390,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             style={{
               width: '1rem',
               height: '1rem',
-              border: '2px solid var(--ctp-surface2)',
-              borderTopColor: 'var(--ctp-blue)',
+              border: '2px solid var(--color-surface-active)',
+              borderTopColor: 'var(--color-accent)',
               borderRadius: '50%',
               animation: 'spin 1s linear infinite',
               display: 'inline-block'
@@ -2400,10 +2400,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           />
         )}
         {status === 'success' && (
-          <span style={{ color: 'var(--ctp-green)', fontSize: '1rem', fontWeight: 'bold' }} title={t('admin_commands.section_loaded')}><UiIcon name="check" /></span>
+          <span style={{ color: 'var(--color-success)', fontSize: '1rem', fontWeight: 'bold' }} title={t('admin_commands.section_loaded')}><UiIcon name="check" /></span>
         )}
         {status === 'error' && (
-          <span style={{ color: 'var(--ctp-red)', fontSize: '1rem', fontWeight: 'bold' }} title={t('admin_commands.section_load_failed')}><UiIcon name="error" /></span>
+          <span style={{ color: 'var(--color-error)', fontSize: '1rem', fontWeight: 'bold' }} title={t('admin_commands.section_load_failed')}><UiIcon name="error" /></span>
         )}
         <button
           onClick={() => handleLoadSingleConfig(configType)}
@@ -2445,8 +2445,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             padding: '0.75rem 1rem',
             marginBottom: '1rem',
             borderRadius: '4px',
-            backgroundColor: 'var(--ctp-yellow)',
-            color: 'var(--ctp-base)',
+            backgroundColor: 'var(--color-warning)',
+            color: 'var(--color-bg)',
             fontWeight: 500
           }}
         >
@@ -2513,8 +2513,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                 left: 0,
                 right: 0,
                 marginTop: '4px',
-                background: 'var(--ctp-base)',
-                border: '2px solid var(--ctp-surface2)',
+                background: 'var(--color-bg)',
+                border: '2px solid var(--color-surface-active)',
                 borderRadius: '8px',
                 maxHeight: '300px',
                 overflowY: 'auto',
@@ -2528,26 +2528,26 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                     style={{
                       padding: '0.75rem 1rem',
                       cursor: 'pointer',
-                      borderBottom: '1px solid var(--ctp-surface1)',
+                      borderBottom: '1px solid var(--color-surface-hover)',
                       transition: 'background 0.1s',
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center'
                     }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = 'var(--ctp-surface0)'}
+                    onMouseEnter={(e) => e.currentTarget.style.background = 'var(--color-surface)'}
                     onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                   >
                     <div>
-                      <div style={{ fontWeight: '500', color: 'var(--ctp-text)' }}>
-                        {node.longName} {node.isLocal && <span style={{ color: 'var(--ctp-blue)' }}>({t('admin_commands.local_node_indicator')})</span>}
+                      <div style={{ fontWeight: '500', color: 'var(--color-text)' }}>
+                        {node.longName} {node.isLocal && <span style={{ color: 'var(--color-accent)' }}>({t('admin_commands.local_node_indicator')})</span>}
                       </div>
-                      <div style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)', marginTop: '0.25rem' }}>
+                      <div style={{ fontSize: '0.85rem', color: 'var(--color-text-subtle)', marginTop: '0.25rem' }}>
                         {node.shortName && node.shortName !== node.longName && `${node.shortName} • `}
                         {node.nodeId}
                       </div>
                     </div>
                     {selectedNodeNum === node.nodeNum && (
-                      <span style={{ color: 'var(--ctp-blue)', fontSize: '1.2rem' }}><UiIcon name="check" /></span>
+                      <span style={{ color: 'var(--color-accent)', fontSize: '1.2rem' }}><UiIcon name="check" /></span>
                     )}
                   </div>
                 ))}
@@ -2555,11 +2555,11 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             )}
           </div>
           {selectedNode && (
-            <div style={{ marginTop: '0.75rem', fontSize: '0.875rem', color: 'var(--ctp-subtext0)' }}>
+            <div style={{ marginTop: '0.75rem', fontSize: '0.875rem', color: 'var(--color-text-subtle)' }}>
               {selectedNode.isLocal ? (
                 <span>{t('admin_commands.local_node_no_passkey')}</span>
               ) : passkeyStatus?.hasPasskey && passkeyStatus.remainingSeconds !== null ? (
-                <span style={{ color: 'var(--ctp-green)' }}>
+                <span style={{ color: 'var(--color-success)' }}>
                   {t('admin_commands.remote_node_passkey_acquired', { seconds: passkeyStatus.remainingSeconds })}
                 </span>
               ) : (
@@ -2620,7 +2620,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                   flex: 1,
                   opacity: (isLoadingReboot || selectedNodeNum === null || remoteAdminBlocked) ? 0.5 : 1,
                   cursor: (isLoadingReboot || selectedNodeNum === null || remoteAdminBlocked) ? 'not-allowed' : 'pointer',
-                  backgroundColor: 'var(--ctp-red)'
+                  backgroundColor: 'var(--color-error)'
                 }}
               >
                 {isLoadingReboot ? t('common.loading') : t('admin_commands.send_reboot', 'Send Reboot')}
@@ -2645,30 +2645,30 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                 style={{
                   marginTop: '0.75rem',
                   padding: '1rem',
-                  backgroundColor: 'var(--ctp-surface0)',
+                  backgroundColor: 'var(--color-surface)',
                   borderRadius: '8px',
-                  border: '1px solid var(--ctp-overlay0)',
+                  border: '1px solid var(--color-border-subtle)',
                   maxWidth: '600px'
                 }}
               >
-                <h4 style={{ margin: '0 0 0.75rem 0', color: 'var(--ctp-text)' }}>
+                <h4 style={{ margin: '0 0 0.75rem 0', color: 'var(--color-text)' }}>
                   {t('admin_commands.device_metadata_title', 'Device Metadata')}
                 </h4>
                 <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.5rem 1rem', fontSize: '0.9rem' }}>
-                  <span style={{ color: 'var(--ctp-subtext0)', fontWeight: 500 }}>{t('admin_commands.firmware_version', 'Firmware Version')}:</span>
-                  <span style={{ color: 'var(--ctp-text)' }}>{deviceMetadata.firmwareVersion}</span>
+                  <span style={{ color: 'var(--color-text-subtle)', fontWeight: 500 }}>{t('admin_commands.firmware_version', 'Firmware Version')}:</span>
+                  <span style={{ color: 'var(--color-text)' }}>{deviceMetadata.firmwareVersion}</span>
 
-                  <span style={{ color: 'var(--ctp-subtext0)', fontWeight: 500 }}>{t('admin_commands.hardware_model', 'Hardware Model')}:</span>
-                  <span style={{ color: 'var(--ctp-text)' }}>{getHardwareModelName(deviceMetadata.hwModel) || deviceMetadata.hwModel}</span>
+                  <span style={{ color: 'var(--color-text-subtle)', fontWeight: 500 }}>{t('admin_commands.hardware_model', 'Hardware Model')}:</span>
+                  <span style={{ color: 'var(--color-text)' }}>{getHardwareModelName(deviceMetadata.hwModel) || deviceMetadata.hwModel}</span>
 
-                  <span style={{ color: 'var(--ctp-subtext0)', fontWeight: 500 }}>{t('admin_commands.device_role', 'Device Role')}:</span>
-                  <span style={{ color: 'var(--ctp-text)' }}>{getRoleName(deviceMetadata.role) || deviceMetadata.role}</span>
+                  <span style={{ color: 'var(--color-text-subtle)', fontWeight: 500 }}>{t('admin_commands.device_role', 'Device Role')}:</span>
+                  <span style={{ color: 'var(--color-text)' }}>{getRoleName(deviceMetadata.role) || deviceMetadata.role}</span>
 
-                  <span style={{ color: 'var(--ctp-subtext0)', fontWeight: 500 }}>{t('admin_commands.device_state_version', 'State Version')}:</span>
-                  <span style={{ color: 'var(--ctp-text)' }}>{deviceMetadata.deviceStateVersion}</span>
+                  <span style={{ color: 'var(--color-text-subtle)', fontWeight: 500 }}>{t('admin_commands.device_state_version', 'State Version')}:</span>
+                  <span style={{ color: 'var(--color-text)' }}>{deviceMetadata.deviceStateVersion}</span>
 
-                  <span style={{ color: 'var(--ctp-subtext0)', fontWeight: 500 }}>{t('admin_commands.capabilities', 'Capabilities')}:</span>
-                  <span style={{ color: 'var(--ctp-text)' }}>
+                  <span style={{ color: 'var(--color-text-subtle)', fontWeight: 500 }}>{t('admin_commands.capabilities', 'Capabilities')}:</span>
+                  <span style={{ color: 'var(--color-text)' }}>
                     {[
                       deviceMetadata.hasWifi && 'WiFi',
                       deviceMetadata.hasBluetooth && 'Bluetooth',
@@ -2679,8 +2679,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                     ].filter(Boolean).join(', ') || t('common.none', 'None')}
                   </span>
 
-                  <span style={{ color: 'var(--ctp-subtext0)', fontWeight: 500 }}>{t('admin_commands.position_flags', 'Position Flags')}:</span>
-                  <span style={{ color: 'var(--ctp-text)' }}>{decodePositionFlagNames(deviceMetadata.positionFlags ?? 0)}</span>
+                  <span style={{ color: 'var(--color-text-subtle)', fontWeight: 500 }}>{t('admin_commands.position_flags', 'Position Flags')}:</span>
+                  <span style={{ color: 'var(--color-text)' }}>{decodePositionFlagNames(deviceMetadata.positionFlags ?? 0)}</span>
                 </div>
               </div>
             )}
@@ -2692,17 +2692,17 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         <div style={{
           padding: '0.75rem 1rem',
           marginBottom: '1rem',
-          backgroundColor: 'var(--ctp-surface0)',
-          border: '1px solid var(--ctp-blue)',
+          backgroundColor: 'var(--color-surface)',
+          border: '1px solid var(--color-accent)',
           borderRadius: '8px',
-          color: 'var(--ctp-subtext1)',
+          color: 'var(--color-text-muted)',
           fontSize: '0.9rem',
           lineHeight: '1.4'
         }}>
           {t('admin_commands.local_node_config_hint', 'All local device configuration, including many features not available in Remote Admin, is available on the')}{' '}
           <a
             href="#configuration"
-            style={{ color: 'var(--ctp-blue)', textDecoration: 'underline', cursor: 'pointer' }}
+            style={{ color: 'var(--color-accent)', textDecoration: 'underline', cursor: 'pointer' }}
           >
             {t('admin_commands.device_configuration_page_link', 'Device Configuration')}
           </a>{' '}
@@ -3033,8 +3033,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                   disabled={isExecuting}
                   style={{
                     padding: '0.5rem 1rem',
-                    backgroundColor: 'var(--ctp-red)',
-                    color: 'var(--ctp-base)',
+                    backgroundColor: 'var(--color-error)',
+                    color: 'var(--color-bg)',
                     border: 'none',
                     borderRadius: '4px',
                     cursor: isExecuting ? 'not-allowed' : 'pointer',
@@ -3158,29 +3158,29 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                 key={index}
                 style={{
                   border: channel?.role === 1
-                    ? '2px solid var(--ctp-blue)'
-                    : '1px solid var(--ctp-surface1)',
+                    ? '2px solid var(--color-accent)'
+                    : '1px solid var(--color-surface-hover)',
                   borderRadius: '8px',
                   padding: '1rem',
-                  backgroundColor: channel ? 'var(--ctp-surface0)' : 'var(--ctp-mantle)',
+                  backgroundColor: channel ? 'var(--color-surface)' : 'var(--color-bg-raised)',
                   opacity: channel?.role === 0 ? 0.5 : 1,
                   boxShadow: channel?.role === 1 ? '0 0 10px rgba(137, 180, 250, 0.3)' : 'none'
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
                   <div>
-                    <h4 style={{ margin: 0, color: 'var(--ctp-text)' }}>
+                    <h4 style={{ margin: 0, color: 'var(--color-text)' }}>
                       {t('admin_commands.channel_slot', { index })}: {channel ? (
                         <>
-                          {channel.name && channel.name.trim().length > 0 ? channel.name : <span style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>{t('admin_commands.unnamed')}</span>}
-                          {channel.role === 1 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-blue)', fontSize: '0.8rem' }}><UiIcon name="favorite" size={13} /> {t('admin_commands.primary')}</span>}
-                          {channel.role === 2 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-green)', fontSize: '0.8rem' }}><UiIcon name="radio" size={13} /> {t('admin_commands.secondary')}</span>}
-                          {channel.role === 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-overlay0)', fontSize: '0.8rem' }}><UiIcon name="power" size={13} /> {t('admin_commands.disabled')}</span>}
+                          {channel.name && channel.name.trim().length > 0 ? channel.name : <span style={{ color: 'var(--color-text-subtle)', fontStyle: 'italic' }}>{t('admin_commands.unnamed')}</span>}
+                          {channel.role === 1 && <span style={{ marginLeft: '0.5rem', color: 'var(--color-accent)', fontSize: '0.8rem' }}><UiIcon name="favorite" size={13} /> {t('admin_commands.primary')}</span>}
+                          {channel.role === 2 && <span style={{ marginLeft: '0.5rem', color: 'var(--color-success)', fontSize: '0.8rem' }}><UiIcon name="radio" size={13} /> {t('admin_commands.secondary')}</span>}
+                          {channel.role === 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--color-text-faint)', fontSize: '0.8rem' }}><UiIcon name="power" size={13} /> {t('admin_commands.disabled')}</span>}
                         </>
-                      ) : <span style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>{t('admin_commands.empty')}</span>}
+                      ) : <span style={{ color: 'var(--color-text-subtle)', fontStyle: 'italic' }}>{t('admin_commands.empty')}</span>}
                     </h4>
                     {channel && (
-                      <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: 'var(--ctp-subtext1)' }}>
+                      <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
                         <div><UiIcon name={channel.psk && channel.psk !== 'AQ==' ? 'encrypted' : 'unencrypted'} /> {channel.psk && channel.psk !== 'AQ==' ? t('admin_commands.encrypted') : t('admin_commands.unencrypted')}</div>
                         <div>
                           {channel.uplinkEnabled && <><UiIcon name="sortAscending" /> {t('admin_commands.uplink')} </>}
@@ -3197,8 +3197,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                       style={{
                         padding: '0.5rem 0.75rem',
                         fontSize: '0.9rem',
-                        backgroundColor: 'var(--ctp-blue)',
-                        color: 'var(--ctp-base)',
+                        backgroundColor: 'var(--color-accent)',
+                        color: 'var(--color-bg)',
                         border: 'none',
                         borderRadius: '4px',
                         cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer',
@@ -3214,8 +3214,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                         style={{
                           padding: '0.5rem 0.75rem',
                           fontSize: '0.9rem',
-                          backgroundColor: 'var(--ctp-green)',
-                          color: 'var(--ctp-base)',
+                          backgroundColor: 'var(--color-success)',
+                          color: 'var(--color-bg)',
                           border: 'none',
                           borderRadius: '4px',
                           cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer',
@@ -3231,8 +3231,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                       style={{
                         padding: '0.5rem 0.75rem',
                         fontSize: '0.9rem',
-                        backgroundColor: 'var(--ctp-yellow)',
-                        color: 'var(--ctp-base)',
+                        backgroundColor: 'var(--color-warning)',
+                        color: 'var(--color-bg)',
                         border: 'none',
                         borderRadius: '4px',
                         cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer',
@@ -3393,7 +3393,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         id="admin-import-export"
         title={t('admin_commands.config_import_export')}
       >
-        <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '1rem' }}>
+        <p style={{ color: 'var(--color-text-subtle)', marginBottom: '1rem' }}>
           {t('admin_commands.config_import_export_description')}
         </p>
         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
@@ -3401,7 +3401,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             onClick={() => setShowConfigImportModal(true)}
             disabled={selectedNodeNum === null || isExecuting}
             style={{
-              backgroundColor: 'var(--ctp-blue)',
+              backgroundColor: 'var(--color-accent)',
               color: '#fff',
               padding: '0.75rem 1.5rem',
               border: 'none',
@@ -3427,7 +3427,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             }}
             disabled={selectedNodeNum === null || isExecuting}
             style={{
-              backgroundColor: 'var(--ctp-green)',
+              backgroundColor: 'var(--color-success)',
               color: '#fff',
               padding: '0.75rem 1.5rem',
               border: 'none',
@@ -3449,7 +3449,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         id="admin-node-management"
         title={t('admin_commands.node_favorites_ignored')}
       >
-        <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '1.5rem' }}>
+        <p style={{ color: 'var(--color-text-subtle)', marginBottom: '1.5rem' }}>
           {t('admin_commands.node_favorites_ignored_description')}
         </p>
         
@@ -3483,8 +3483,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                 left: 0,
                 right: 0,
                 marginTop: '4px',
-                background: 'var(--ctp-base)',
-                border: '2px solid var(--ctp-surface2)',
+                background: 'var(--color-bg)',
+                border: '2px solid var(--color-surface-active)',
                 borderRadius: '8px',
                 maxHeight: '300px',
                 overflowY: 'auto',
@@ -3502,27 +3502,27 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                     style={{
                       padding: '0.75rem 1rem',
                       cursor: 'pointer',
-                      borderBottom: '1px solid var(--ctp-surface1)',
+                      borderBottom: '1px solid var(--color-surface-hover)',
                       transition: 'background 0.1s',
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center'
                     }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = 'var(--ctp-surface0)'}
+                    onMouseEnter={(e) => e.currentTarget.style.background = 'var(--color-surface)'}
                     onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                   >
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: '500', color: 'var(--ctp-text)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <div style={{ fontWeight: '500', color: 'var(--color-text)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                         <span>{node.longName}</span>
-                        {node.isLocal && <span style={{ color: 'var(--ctp-blue)', fontSize: '0.85rem' }}>({t('admin_commands.local_node_indicator')})</span>}
+                        {node.isLocal && <span style={{ color: 'var(--color-accent)', fontSize: '0.85rem' }}>({t('admin_commands.local_node_indicator')})</span>}
                         {/* These badges come from OUR node's DB. While the admin
                             target is a remote device they describe the wrong
                             device, so hide them rather than mislabel remote
                             state (#4511, the display bug behind #950). */}
                         {!isManagingRemoteNode && node.isFavorite && (
                           <span style={{ 
-                            backgroundColor: 'var(--ctp-yellow)', 
-                            color: 'var(--ctp-base)', 
+                            backgroundColor: 'var(--color-warning)', 
+                            color: 'var(--color-bg)', 
                             padding: '0.125rem 0.5rem', 
                             borderRadius: '4px', 
                             fontSize: '0.75rem',
@@ -3533,8 +3533,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                         )}
                         {!isManagingRemoteNode && node.isIgnored && (
                           <span style={{
-                            backgroundColor: 'var(--ctp-red)',
-                            color: 'var(--ctp-base)', 
+                            backgroundColor: 'var(--color-error)',
+                            color: 'var(--color-bg)', 
                             padding: '0.125rem 0.5rem', 
                             borderRadius: '4px', 
                             fontSize: '0.75rem',
@@ -3544,13 +3544,13 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                           </span>
                         )}
                       </div>
-                      <div style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)', marginTop: '0.25rem' }}>
+                      <div style={{ fontSize: '0.85rem', color: 'var(--color-text-subtle)', marginTop: '0.25rem' }}>
                         {node.shortName && node.shortName !== node.longName && `${node.shortName} • `}
                         {node.nodeId}
                       </div>
                     </div>
                     {nodeManagementNodeNum === node.nodeNum && (
-                      <span style={{ color: 'var(--ctp-blue)', fontSize: '1.2rem' }}><UiIcon name="check" /></span>
+                      <span style={{ color: 'var(--color-accent)', fontSize: '1.2rem' }}><UiIcon name="check" /></span>
                     )}
                   </div>
                 ))}
@@ -3572,10 +3572,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             const isIgnored = isManagingRemoteNode
               ? (remoteStatus?.isIgnored ?? false)
               : (selectedNode?.isIgnored ?? false);
-            const favoriteBadge = <span style={{ color: 'var(--ctp-yellow)' }}><UiIcon name="favorite" /> {t('admin_commands.favorite')}</span>;
-            const ignoredBadge = <span style={{ color: 'var(--ctp-red)', marginLeft: '0.5rem' }}><UiIcon name="blocked" /> {t('admin_commands.ignored')}</span>;
+            const favoriteBadge = <span style={{ color: 'var(--color-warning)' }}><UiIcon name="favorite" /> {t('admin_commands.favorite')}</span>;
+            const ignoredBadge = <span style={{ color: 'var(--color-error)', marginLeft: '0.5rem' }}><UiIcon name="blocked" /> {t('admin_commands.ignored')}</span>;
             return (
-              <div style={{ marginTop: '0.75rem', fontSize: '0.875rem', color: 'var(--ctp-subtext0)' }}>
+              <div style={{ marginTop: '0.75rem', fontSize: '0.875rem', color: 'var(--color-text-subtle)' }}>
                 {t('admin_commands.selected')}: {selectedNode?.longName || t('admin_commands.node_fallback', { nodeNum: nodeManagementNodeNum })}
                 {isManagingRemoteNode ? (
                   <span style={{ marginLeft: '0.5rem' }}>
@@ -3600,7 +3600,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '1.5rem' }}>
           <div style={{ flex: 1, minWidth: '200px' }}>
-            <h4 style={{ marginBottom: '0.75rem', color: 'var(--ctp-text)' }}><UiIcon name="favorite" /> {t('admin_commands.favorites')}</h4>
+            <h4 style={{ marginBottom: '0.75rem', color: 'var(--color-text)' }}><UiIcon name="favorite" /> {t('admin_commands.favorites')}</h4>
             {(() => {
               const isDisabled = isExecuting || nodeManagementNodeNum === null || remoteAdminBlocked;
               const blockedTitle = remoteAdminBlocked ? t('tx_disabled.remote_admin_notice') : undefined;
@@ -3614,8 +3614,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                     style={{
                       flex: 1,
                       padding: '0.75rem 1rem',
-                      backgroundColor: 'var(--ctp-yellow)',
-                      color: 'var(--ctp-base)',
+                      backgroundColor: 'var(--color-warning)',
+                      color: 'var(--color-bg)',
                       border: 'none',
                       borderRadius: '4px',
                       cursor: isDisabled ? 'not-allowed' : 'pointer',
@@ -3633,8 +3633,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                     style={{
                       flex: 1,
                       padding: '0.75rem 1rem',
-                      backgroundColor: 'var(--ctp-surface2)',
-                      color: 'var(--ctp-text)',
+                      backgroundColor: 'var(--color-surface-active)',
+                      color: 'var(--color-text)',
                       border: 'none',
                       borderRadius: '4px',
                       cursor: isDisabled ? 'not-allowed' : 'pointer',
@@ -3650,7 +3650,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             })()}
           </div>
           <div style={{ flex: 1, minWidth: '200px' }}>
-            <h4 style={{ marginBottom: '0.75rem', color: 'var(--ctp-text)' }}><UiIcon name="blocked" /> {t('admin_commands.ignored_nodes')}</h4>
+            <h4 style={{ marginBottom: '0.75rem', color: 'var(--color-text)' }}><UiIcon name="blocked" /> {t('admin_commands.ignored_nodes')}</h4>
             {(() => {
               const isDisabled = isExecuting || nodeManagementNodeNum === null || remoteAdminBlocked;
               const blockedTitle = remoteAdminBlocked ? t('tx_disabled.remote_admin_notice') : undefined;
@@ -3664,8 +3664,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                     style={{
                       flex: 1,
                       padding: '0.75rem 1rem',
-                      backgroundColor: 'var(--ctp-red)',
-                      color: 'var(--ctp-base)',
+                      backgroundColor: 'var(--color-error)',
+                      color: 'var(--color-bg)',
                       border: 'none',
                       borderRadius: '4px',
                       cursor: isDisabled ? 'not-allowed' : 'pointer',
@@ -3683,8 +3683,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                     style={{
                       flex: 1,
                       padding: '0.75rem 1rem',
-                      backgroundColor: 'var(--ctp-surface2)',
-                      color: 'var(--ctp-text)',
+                      backgroundColor: 'var(--color-surface-active)',
+                      color: 'var(--color-text)',
                       border: 'none',
                       borderRadius: '4px',
                       cursor: isDisabled ? 'not-allowed' : 'pointer',
@@ -3701,11 +3701,11 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           </div>
         </div>
         {isManagingRemoteNode && (
-          <p style={{ marginTop: '1rem', fontSize: '0.85rem', color: 'var(--ctp-subtext1)', fontStyle: 'italic' }}>
+          <p style={{ marginTop: '1rem', fontSize: '0.85rem', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>
             {t('admin_commands.remote_status_readback_note')}
           </p>
         )}
-        <p style={{ marginTop: '1rem', fontSize: '0.85rem', color: 'var(--ctp-subtext1)', fontStyle: 'italic' }}>
+        <p style={{ marginTop: '1rem', fontSize: '0.85rem', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>
           {t('admin_commands.firmware_requirement_note')}
         </p>
       </CollapsibleSection>
@@ -3739,18 +3739,18 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         >
           <div
             style={{
-              background: 'var(--ctp-base)',
+              background: 'var(--color-bg)',
               padding: '2rem',
               borderRadius: '8px',
               maxWidth: '600px',
               width: '90%',
               maxHeight: '90vh',
               overflowY: 'auto',
-              border: '2px solid var(--ctp-surface2)'
+              border: '2px solid var(--color-surface-active)'
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 style={{ marginTop: 0, marginBottom: '1.5rem', color: 'var(--ctp-text)' }}>
+            <h3 style={{ marginTop: 0, marginBottom: '1.5rem', color: 'var(--color-text)' }}>
               {t('admin_commands.edit_channel', { slot: editingChannelSlot })}
             </h3>
             
@@ -3874,9 +3874,9 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                 disabled={isExecuting}
                 style={{
                   padding: '0.75rem 1.5rem',
-                  backgroundColor: 'var(--ctp-surface0)',
-                  color: 'var(--ctp-text)',
-                  border: '1px solid var(--ctp-surface2)',
+                  backgroundColor: 'var(--color-surface)',
+                  color: 'var(--color-text)',
+                  border: '1px solid var(--color-surface-active)',
                   borderRadius: '4px',
                   cursor: isExecuting ? 'not-allowed' : 'pointer',
                   fontSize: '1rem',
@@ -3909,7 +3909,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         >
           <div
             style={{
-              backgroundColor: 'var(--ctp-base)',
+              backgroundColor: 'var(--color-bg)',
               borderRadius: '8px',
               padding: '1.5rem',
               maxWidth: '500px',
@@ -3945,7 +3945,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                 <label>{t('admin_commands.preview')}:</label>
                 <pre
                   style={{
-                    backgroundColor: 'var(--ctp-surface0)',
+                    backgroundColor: 'var(--color-surface)',
                     padding: '0.75rem',
                     borderRadius: '4px',
                     fontSize: '0.85rem',
@@ -3965,8 +3965,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                 style={{
                   flex: 1,
                   padding: '0.75rem',
-                  backgroundColor: 'var(--ctp-green)',
-                  color: 'var(--ctp-base)',
+                  backgroundColor: 'var(--color-success)',
+                  color: 'var(--color-bg)',
                   border: 'none',
                   borderRadius: '4px',
                   cursor: (isExecuting || !importFileContent) ? 'not-allowed' : 'pointer',
@@ -3981,8 +3981,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                 style={{
                   flex: 1,
                   padding: '0.75rem',
-                  backgroundColor: 'var(--ctp-surface1)',
-                  color: 'var(--ctp-text)',
+                  backgroundColor: 'var(--color-surface-hover)',
+                  color: 'var(--color-text)',
                   border: 'none',
                   borderRadius: '4px',
                   cursor: isExecuting ? 'not-allowed' : 'pointer'
@@ -4010,7 +4010,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         </p>
         <div style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--ctp-text)' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--color-text)' }}>
               {t('admin_commands.reboot_delay_label')}:
               <input
                 type="number"

@@ -117,11 +117,11 @@ const RemoteHardwareConfigSection: React.FC<RemoteHardwareConfigSectionProps> = 
 
           <div className="setting-item" style={{
             padding: '0.75rem',
-            backgroundColor: 'var(--ctp-surface0)',
+            backgroundColor: 'var(--color-surface)',
             borderRadius: '4px',
             marginTop: '0.5rem'
           }}>
-            <span style={{ color: 'var(--ctp-yellow)' }}>
+            <span style={{ color: 'var(--color-warning)' }}>
               {t('remotehw_config.pins_note')}
             </span>
           </div>

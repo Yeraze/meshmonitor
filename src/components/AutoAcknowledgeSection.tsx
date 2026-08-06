@@ -348,8 +348,8 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
         justifyContent: 'space-between',
         marginBottom: '1.5rem',
         padding: '1rem 1.25rem',
-        background: 'var(--ctp-surface1)',
-        border: '1px solid var(--ctp-surface2)',
+        background: 'var(--color-surface-hover)',
+        border: '1px solid var(--color-surface-active)',
         borderRadius: '8px'
       }}>
         <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -392,9 +392,9 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             gap: '0.4rem',
             padding: '0.4rem 0.85rem',
             borderRadius: '6px',
-            background: 'var(--ctp-surface2)',
-            color: isConvertDisabled ? 'var(--ctp-subtext0)' : 'var(--ctp-text)',
-            border: '1px solid var(--ctp-surface2)',
+            background: 'var(--color-surface-active)',
+            color: isConvertDisabled ? 'var(--color-text-subtle)' : 'var(--color-text)',
+            border: '1px solid var(--color-surface-active)',
             cursor: isConvertDisabled ? 'not-allowed' : 'pointer',
             opacity: isConvertDisabled ? 0.6 : 1,
             fontSize: '0.85rem',
@@ -491,7 +491,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
               {t('automation.auto_ack.skip_incomplete')}
             </label>
           </div>
-          <div style={{ marginTop: '0.5rem', marginLeft: '1.75rem', fontSize: '0.9rem', color: 'var(--ctp-subtext0)' }}>
+          <div style={{ marginTop: '0.5rem', marginLeft: '1.75rem', fontSize: '0.9rem', color: 'var(--color-text-subtle)' }}>
             {t('automation.auto_ack.skip_incomplete_description')}
           </div>
 
@@ -499,7 +499,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             <label htmlFor="autoAckIgnoredNodes" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
               {t('automation.auto_ack.node_ignore_list')}
             </label>
-            <div style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--ctp-subtext0)' }}>
+            <div style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--color-text-subtle)' }}>
               {t('automation.auto_ack.node_ignore_list_description')}
             </div>
             <textarea
@@ -522,7 +522,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
               {t('automation.auto_ack.cooldown_label')}
             </label>
-            <div style={{ marginBottom: '0.5rem', fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+            <div style={{ marginBottom: '0.5rem', fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
               {t('automation.auto_ack.cooldown_description')}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -534,7 +534,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
                 disabled={!localEnabled}
                 style={{ width: '80px', padding: '2px 4px' }}
               />
-              <span style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
                 {t('automation.auto_ack.cooldown_help')}
               </span>
             </div>
@@ -545,7 +545,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
               {t('automation.auto_ack.presend_delay_label', 'Pre-Send Delay')}
             </label>
-            <div style={{ marginBottom: '0.5rem', fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+            <div style={{ marginBottom: '0.5rem', fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
               {t('automation.auto_ack.presend_delay_description', 'Wait this many seconds before sending the acknowledgement. Gives a repeater time to finish its own transmission so a zero-hop ack is not dropped. 0 sends immediately.')}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -558,7 +558,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
                 disabled={!localEnabled}
                 style={{ width: '80px', padding: '2px 4px' }}
               />
-              <span style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
                 {t('automation.auto_ack.presend_delay_help', 'seconds (0 = send immediately, max 120)')}
               </span>
             </div>
@@ -569,7 +569,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             <label htmlFor="autoAckMaxAttempts" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
               {t('automation.auto_ack.max_attempts_label', 'Auto-Ack Resend Attempts')}
             </label>
-            <div style={{ marginBottom: '0.5rem', fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+            <div style={{ marginBottom: '0.5rem', fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
               {t('automation.auto_ack.max_attempts_description', 'How many times to resend an unacknowledged DM auto-ack reply. Lower values save airtime on busy channels; higher values improve delivery reliability. Channel replies always send once.')}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -584,7 +584,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
                 <option value={2}>2</option>
                 <option value={3}>3</option>
               </select>
-              <span style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
                 {t('automation.auto_ack.max_attempts_help', 'attempts (1 = least airtime, 3 = default)')}
               </span>
             </div>
@@ -611,7 +611,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             {AUTOACK_CELLS.map((cell) => {
               const config = localMatrix[cell.id];
               const isDirect = cell.type === 'direct';
-              const borderColor = cell.hop === 'zeroHop' ? 'var(--ctp-green)' : 'var(--ctp-blue)';
+              const borderColor = cell.hop === 'zeroHop' ? 'var(--color-success)' : 'var(--color-accent)';
               // Direct replies are inherently DMs: show the "Respond via DM" checkbox
               // checked + disabled. Channel cells gate it on the cell's reply toggle.
               const replyDmChecked = isDirect ? true : config.replyDm;
@@ -624,7 +624,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
                   key={cell.id}
                   style={{
                     padding: '1rem',
-                    background: 'var(--ctp-surface0)',
+                    background: 'var(--color-surface)',
                     border: `2px solid ${borderColor}`,
                     borderRadius: '8px',
                   }}
@@ -706,18 +706,18 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             }}
           />
           <div style={{ marginTop: '0.5rem' }}>
-            <label style={{ fontSize: '0.9rem', color: 'var(--ctp-subtext0)' }}>
+            <label style={{ fontSize: '0.9rem', color: 'var(--color-text-subtle)' }}>
               {t('automation.auto_ack.sample_preview_multihop')}:
             </label>
             <div style={{
               marginTop: '0.25rem',
               padding: '0.5rem',
-              background: 'var(--ctp-base)',
-              border: '1px solid var(--ctp-blue)',
+              background: 'var(--color-bg)',
+              border: '1px solid var(--color-accent)',
               borderRadius: '4px',
               fontFamily: 'monospace',
               fontSize: '0.9rem',
-              color: 'var(--ctp-text)'
+              color: 'var(--color-text)'
             }}>
               {generateSampleMessage(false)}
             </div>
@@ -747,18 +747,18 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             }}
           />
           <div style={{ marginTop: '0.5rem' }}>
-            <label style={{ fontSize: '0.9rem', color: 'var(--ctp-subtext0)' }}>
+            <label style={{ fontSize: '0.9rem', color: 'var(--color-text-subtle)' }}>
               {t('automation.auto_ack.sample_preview_direct')}:
             </label>
             <div style={{
               marginTop: '0.25rem',
               padding: '0.5rem',
-              background: 'var(--ctp-base)',
-              border: '1px solid var(--ctp-green)',
+              background: 'var(--color-bg)',
+              border: '1px solid var(--color-success)',
               borderRadius: '4px',
               fontFamily: 'monospace',
               fontSize: '0.9rem',
-              color: 'var(--ctp-text)'
+              color: 'var(--color-text)'
             }}>
               {generateSampleMessage(true)}
             </div>
@@ -802,7 +802,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
                       padding: '0.25rem 0.5rem',
                       marginBottom: '0.15rem',
                       backgroundColor: matches ? 'rgba(166, 227, 161, 0.1)' : 'rgba(243, 139, 168, 0.1)',
-                      border: `1px solid ${matches ? 'var(--ctp-green)' : 'var(--ctp-red)'}`,
+                      border: `1px solid ${matches ? 'var(--color-success)' : 'var(--color-error)'}`,
                       borderRadius: '4px',
                       fontFamily: 'monospace',
                       fontSize: '0.9rem',
@@ -815,12 +815,12 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
                         width: '16px',
                         height: '16px',
                         borderRadius: '50%',
-                        backgroundColor: matches ? 'var(--ctp-green)' : 'var(--ctp-red)',
+                        backgroundColor: matches ? 'var(--color-success)' : 'var(--color-error)',
                         marginRight: '0.5rem',
                         flexShrink: 0
                       }}
                     />
-                    <span style={{ color: 'var(--ctp-text)', wordBreak: 'break-word' }}>
+                    <span style={{ color: 'var(--color-text)', wordBreak: 'break-word' }}>
                       {message}
                     </span>
                   </div>

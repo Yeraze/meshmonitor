@@ -529,7 +529,7 @@ const SolarNodeCard: React.FC<{
                   data={chartData}
                   margin={{ top: 8, right: 16, bottom: 4, left: 8 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--ctp-surface0)" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-surface)" />
                   <XAxis
                     dataKey="timestamp"
                     type="number"
@@ -540,20 +540,20 @@ const SolarNodeCard: React.FC<{
                         day: 'numeric',
                       })
                     }
-                    stroke="var(--ctp-subtext0)"
+                    stroke="var(--color-text-subtle)"
                     fontSize={11}
                   />
                   <YAxis
                     yAxisId="left"
                     domain={[yMin, yMax]}
-                    stroke="var(--ctp-subtext0)"
+                    stroke="var(--color-text-subtle)"
                     fontSize={11}
                     tickFormatter={(v: number) => (isPercent ? `${v}%` : `${v.toFixed(1)}V`)}
                   />
                   <YAxis
                     yAxisId="right"
                     orientation="right"
-                    stroke="var(--ctp-yellow)"
+                    stroke="var(--color-warning)"
                     fontSize={11}
                     tickFormatter={(v: number) => `${Math.round(v)} Wh`}
                     hide={!hasSolar}
@@ -561,12 +561,12 @@ const SolarNodeCard: React.FC<{
                   <Tooltip
                     labelFormatter={(ts) => new Date(Number(ts)).toLocaleString()}
                     contentStyle={{
-                      background: 'var(--ctp-mantle)',
-                      border: '1px solid var(--ctp-surface1)',
+                      background: 'var(--color-bg-raised)',
+                      border: '1px solid var(--color-surface-hover)',
                       borderRadius: 6,
-                      color: 'var(--ctp-text)',
+                      color: 'var(--color-text)',
                     }}
-                    labelStyle={{ color: 'var(--ctp-subtext0)' }}
+                    labelStyle={{ color: 'var(--color-text-subtle)' }}
                     formatter={(value, name) => {
                       if (name === 'solarWh') return [`${Number(value).toFixed(0)} Wh`, 'Solar'];
                       if (name === 'forecastBattery')
@@ -581,7 +581,7 @@ const SolarNodeCard: React.FC<{
                     }}
                   />
                   <Legend
-                    wrapperStyle={{ fontSize: 11, color: 'var(--ctp-subtext0)' }}
+                    wrapperStyle={{ fontSize: 11, color: 'var(--color-text-subtle)' }}
                   />
 
                   {/* Reference levels — drawn behind the data lines */}
@@ -592,17 +592,17 @@ const SolarNodeCard: React.FC<{
                       y={rl.y}
                       stroke={
                         rl.tone === 'good'
-                          ? 'var(--ctp-green)'
+                          ? 'var(--color-success)'
                           : rl.tone === 'mid'
-                            ? 'var(--ctp-yellow)'
-                            : 'var(--ctp-red)'
+                            ? 'var(--color-warning)'
+                            : 'var(--color-error)'
                       }
                       strokeDasharray="4 4"
                       strokeOpacity={0.5}
                       label={{
                         value: rl.label,
                         position: 'insideRight',
-                        fill: 'var(--ctp-subtext0)',
+                        fill: 'var(--color-text-subtle)',
                         fontSize: 10,
                       }}
                     />
@@ -614,9 +614,9 @@ const SolarNodeCard: React.FC<{
                       yAxisId="right"
                       type="monotone"
                       dataKey="solarWh"
-                      fill="var(--ctp-yellow)"
+                      fill="var(--color-warning)"
                       fillOpacity={0.18}
-                      stroke="var(--ctp-yellow)"
+                      stroke="var(--color-warning)"
                       strokeOpacity={0.4}
                       strokeWidth={1}
                       isAnimationActive={false}
@@ -630,7 +630,7 @@ const SolarNodeCard: React.FC<{
                     yAxisId="left"
                     type="monotone"
                     dataKey="value"
-                    stroke="var(--ctp-blue)"
+                    stroke="var(--color-accent)"
                     dot={false}
                     strokeWidth={2}
                     isAnimationActive={false}
@@ -644,7 +644,7 @@ const SolarNodeCard: React.FC<{
                       yAxisId="left"
                       type="monotone"
                       dataKey="forecastBattery"
-                      stroke="var(--ctp-mauve)"
+                      stroke="var(--color-accent-alt)"
                       strokeDasharray="6 4"
                       strokeWidth={2}
                       dot={{ r: 3 }}

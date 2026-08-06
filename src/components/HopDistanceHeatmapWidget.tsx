@@ -150,12 +150,12 @@ const HopDistanceHeatmapWidget: React.FC<HopDistanceHeatmapWidgetProps> = ({
 
   // Intensity-based color with dark text for readability
   const getCellStyle = (count: number): { backgroundColor: string; color: string; opacity: number } => {
-    if (count === 0) return { backgroundColor: 'transparent', color: 'var(--ctp-text)', opacity: 0 };
+    if (count === 0) return { backgroundColor: 'transparent', color: 'var(--color-text)', opacity: 0 };
     const intensity = count / maxCount;
-    if (intensity <= 0.25) return { backgroundColor: 'var(--ctp-surface1)', color: 'var(--ctp-text)', opacity: 1 };
-    if (intensity <= 0.5) return { backgroundColor: 'var(--ctp-blue)', color: 'var(--ctp-crust)', opacity: 1 };
-    if (intensity <= 0.75) return { backgroundColor: 'var(--ctp-sapphire)', color: 'var(--ctp-crust)', opacity: 1 };
-    return { backgroundColor: 'var(--ctp-teal)', color: 'var(--ctp-crust)', opacity: 1 };
+    if (intensity <= 0.25) return { backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text)', opacity: 1 };
+    if (intensity <= 0.5) return { backgroundColor: 'var(--color-accent)', color: 'var(--color-bg-sunken)', opacity: 1 };
+    if (intensity <= 0.75) return { backgroundColor: 'var(--color-accent-hover)', color: 'var(--color-bg-sunken)', opacity: 1 };
+    return { backgroundColor: 'var(--ctp-teal)', color: 'var(--color-bg-sunken)', opacity: 1 };
   };
 
   const hasHomePosition = homeNode?.position?.latitude != null && homeNode?.position?.longitude != null;
@@ -266,9 +266,9 @@ const HopDistanceHeatmapWidget: React.FC<HopDistanceHeatmapWidgetProps> = ({
             <div className="heatmap-legend">
               <span className="heatmap-legend-label">{t('dashboard.widget.hop_distance_heatmap.fewer')}</span>
               <div className="heatmap-legend-bar">
-                <span className="heatmap-legend-cell" style={{ backgroundColor: 'var(--ctp-surface1)' }} />
-                <span className="heatmap-legend-cell" style={{ backgroundColor: 'var(--ctp-blue)' }} />
-                <span className="heatmap-legend-cell" style={{ backgroundColor: 'var(--ctp-sapphire)' }} />
+                <span className="heatmap-legend-cell" style={{ backgroundColor: 'var(--color-surface-hover)' }} />
+                <span className="heatmap-legend-cell" style={{ backgroundColor: 'var(--color-accent)' }} />
+                <span className="heatmap-legend-cell" style={{ backgroundColor: 'var(--color-accent-hover)' }} />
                 <span className="heatmap-legend-cell" style={{ backgroundColor: 'var(--ctp-teal)' }} />
               </div>
               <span className="heatmap-legend-label">{t('dashboard.widget.hop_distance_heatmap.more')}</span>

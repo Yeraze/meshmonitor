@@ -114,16 +114,16 @@ const GpioPinSummary: React.FC<GpioPinSummaryProps> = (props) => {
     return (
       <div style={{
         padding: '1rem',
-        backgroundColor: 'var(--ctp-surface0)',
+        backgroundColor: 'var(--color-surface)',
         borderRadius: '8px',
-        border: '1px solid var(--ctp-surface2)',
+        border: '1px solid var(--color-surface-active)',
         maxHeight: 'calc(100dvh - 2rem)',
         overflowY: 'auto'
       }}>
-        <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--ctp-text)' }}>
+        <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--color-text)' }}>
           {t('gpio_summary.title')}
         </h4>
-        <p style={{ margin: 0, color: 'var(--ctp-subtext0)', fontSize: '0.85rem' }}>
+        <p style={{ margin: 0, color: 'var(--color-text-subtle)', fontSize: '0.85rem' }}>
           {t('gpio_summary.no_pins')}
         </p>
       </div>
@@ -133,16 +133,16 @@ const GpioPinSummary: React.FC<GpioPinSummaryProps> = (props) => {
   return (
     <div style={{
       padding: '1rem',
-      backgroundColor: 'var(--ctp-surface0)',
+      backgroundColor: 'var(--color-surface)',
       borderRadius: '8px',
-      border: '1px solid var(--ctp-surface2)',
+      border: '1px solid var(--color-surface-active)',
       maxHeight: 'calc(100dvh - 2rem)',
       overflowY: 'auto'
     }}>
-      <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--ctp-text)' }}>
+      <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--color-text)' }}>
         {t('gpio_summary.title')}
       </h4>
-      <p style={{ margin: '0 0 1rem 0', color: 'var(--ctp-subtext0)', fontSize: '0.85rem' }}>
+      <p style={{ margin: '0 0 1rem 0', color: 'var(--color-text-subtle)', fontSize: '0.85rem' }}>
         {t('gpio_summary.description')}
       </p>
 
@@ -166,7 +166,7 @@ const GpioPinSummary: React.FC<GpioPinSummaryProps> = (props) => {
         fontSize: '0.8rem'
       }}>
         <thead>
-          <tr style={{ borderBottom: '2px solid var(--ctp-surface2)' }}>
+          <tr style={{ borderBottom: '2px solid var(--color-surface-active)' }}>
             <th style={{ textAlign: 'left', padding: '0.4rem', width: '55px' }}>
               {t('gpio_summary.pin')}
             </th>
@@ -179,7 +179,7 @@ const GpioPinSummary: React.FC<GpioPinSummaryProps> = (props) => {
           {pinGroups.map(([pin, usages]) => {
             const isConflict = conflictPins.has(pin);
             const rowStyle: React.CSSProperties = {
-              borderBottom: '1px solid var(--ctp-surface1)',
+              borderBottom: '1px solid var(--color-surface-hover)',
               backgroundColor: isConflict ? 'rgba(255, 68, 68, 0.1)' : 'transparent'
             };
             const cellStyle: React.CSSProperties = {
@@ -199,7 +199,7 @@ const GpioPinSummary: React.FC<GpioPinSummaryProps> = (props) => {
                     <div key={idx} style={{ marginBottom: idx < usages.length - 1 ? '0.25rem' : 0 }}>
                       <span style={{ fontWeight: 500 }}>{usage.field}</span>
                       <br />
-                      <span style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
                         {usage.section}
                       </span>
                     </div>

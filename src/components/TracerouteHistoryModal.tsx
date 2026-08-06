@@ -132,20 +132,20 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
         )}
 
         {error && (
-          <div style={{ padding: '1rem', background: 'var(--ctp-red)', color: 'var(--ctp-base)', borderRadius: '4px' }}>
+          <div style={{ padding: '1rem', background: 'var(--color-error)', color: 'var(--color-bg)', borderRadius: '4px' }}>
             {error}
           </div>
         )}
 
         {!loading && !error && filteredTraceroutes.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--ctp-subtext0)' }}>
+          <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-subtle)' }}>
             {traceroutes.length === 0 ? t('traceroute_history.no_history') : t('traceroute_history.no_matches')}
           </div>
         )}
 
         {!loading && !error && filteredTraceroutes.length > 0 && (
           <div>
-            <p style={{ marginBottom: '1rem', color: 'var(--ctp-subtext0)' }}>
+            <p style={{ marginBottom: '1rem', color: 'var(--color-text-subtle)' }}>
               {t('traceroute_history.showing_count', { count: filteredTraceroutes.length })}
               {!showFailedTraceroutes && traceroutes.length > filteredTraceroutes.length && (
                 <span> {t('traceroute_history.failed_hidden', { count: traceroutes.length - filteredTraceroutes.length })}</span>
@@ -166,32 +166,32 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
                   style={{
                     marginBottom: '1.5rem',
                     padding: '1rem',
-                    background: 'var(--ctp-surface0)',
-                    border: '1px solid var(--ctp-surface2)',
+                    background: 'var(--color-surface)',
+                    border: '1px solid var(--color-surface-active)',
                     borderRadius: '8px',
                   }}
                 >
                   <div style={{ marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                       <strong>#{filteredTraceroutes.length - index}</strong>
-                      <span style={{ marginLeft: '1rem', color: 'var(--ctp-subtext0)' }}>
+                      <span style={{ marginLeft: '1rem', color: 'var(--color-text-subtle)' }}>
                         {formatDateTime(new Date(tr.timestamp), timeFormat, dateFormat)}
                       </span>
                     </div>
-                    <span style={{ fontSize: '0.9em', color: 'var(--ctp-subtext0)' }}>
+                    <span style={{ fontSize: '0.9em', color: 'var(--color-text-subtle)' }}>
                       {ageStr}
                     </span>
                   </div>
 
                   <div style={{ marginBottom: '0.5rem' }}>
-                    <strong style={{ color: 'var(--ctp-green)' }}><UiIcon name="forward" size={14} /> {t('traceroute_history.forward')}:</strong>{' '}
+                    <strong style={{ color: 'var(--color-success)' }}><UiIcon name="forward" size={14} /> {t('traceroute_history.forward')}:</strong>{' '}
                     <span style={{ fontFamily: 'monospace', fontSize: '0.95em' }}>
                       {formatTracerouteRoute(tr.route, tr.snrTowards, tr.fromNodeNum, tr.toNodeNum, nodes, distanceUnit)}
                     </span>
                   </div>
 
                   <div>
-                    <strong style={{ color: 'var(--ctp-yellow)' }}><UiIcon name="back" size={14} /> {t('traceroute_history.return')}:</strong>{' '}
+                    <strong style={{ color: 'var(--color-warning)' }}><UiIcon name="back" size={14} /> {t('traceroute_history.return')}:</strong>{' '}
                     <span style={{ fontFamily: 'monospace', fontSize: '0.95em' }}>
                       {formatTracerouteRoute(tr.routeBack, tr.snrBack, tr.toNodeNum, tr.fromNodeNum, nodes, distanceUnit)}
                     </span>

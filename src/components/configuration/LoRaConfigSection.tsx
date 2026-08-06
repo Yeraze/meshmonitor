@@ -420,10 +420,10 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
             style={{
               marginTop: '0.5rem',
               padding: '0.6rem 0.75rem',
-              border: '1px solid var(--ctp-yellow, #f9e2af)',
+              border: '1px solid var(--color-warning, #f9e2af)',
               borderRadius: '4px',
               backgroundColor: 'rgba(249, 226, 175, 0.12)',
-              color: 'var(--ctp-yellow, #f9e2af)',
+              color: 'var(--color-warning, #f9e2af)',
               lineHeight: '1.4'
             }}
           >

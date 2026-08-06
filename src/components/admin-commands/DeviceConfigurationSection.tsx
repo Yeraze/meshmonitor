@@ -294,13 +294,13 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
               }}
             >
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 'bold', fontSize: '1.1em', color: 'var(--ctp-text)', marginBottom: '0.5rem' }}>
+                <div style={{ fontWeight: 'bold', fontSize: '1.1em', color: 'var(--color-text)', marginBottom: '0.5rem' }}>
                   {ROLE_OPTIONS.find(opt => opt.value === deviceRole)?.name || 'CLIENT'}
                 </div>
-                <div style={{ fontSize: '0.9em', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem', lineHeight: '1.4' }}>
+                <div style={{ fontSize: '0.9em', color: 'var(--color-text-subtle)', marginBottom: '0.25rem', lineHeight: '1.4' }}>
                   {ROLE_OPTIONS.find(opt => opt.value === deviceRole)?.shortDesc || ''}
                 </div>
-                <div style={{ fontSize: '0.85em', color: 'var(--ctp-subtext1)', fontStyle: 'italic', lineHeight: '1.4' }}>
+                <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)', fontStyle: 'italic', lineHeight: '1.4' }}>
                   {ROLE_OPTIONS.find(opt => opt.value === deviceRole)?.description || ''}
                 </div>
               </div>
@@ -315,8 +315,8 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
                   left: 0,
                   width: '100%',
                   maxWidth: '800px',
-                  background: 'var(--ctp-base)',
-                  border: '2px solid var(--ctp-surface2)',
+                  background: 'var(--color-bg)',
+                  border: '2px solid var(--color-surface-active)',
                   borderRadius: '8px',
                   maxHeight: '500px',
                   overflowY: 'auto',
@@ -331,13 +331,13 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
                     style={{
                       padding: '0.75rem 1rem',
                       cursor: 'pointer',
-                      borderBottom: '1px solid var(--ctp-surface1)',
-                      background: option.value === deviceRole ? 'var(--ctp-surface0)' : 'transparent',
+                      borderBottom: '1px solid var(--color-surface-hover)',
+                      background: option.value === deviceRole ? 'var(--color-surface)' : 'transparent',
                       transition: 'background 0.2s'
                     }}
                     onMouseEnter={(e) => {
                       if (option.value !== deviceRole) {
-                        e.currentTarget.style.background = 'var(--ctp-surface0)';
+                        e.currentTarget.style.background = 'var(--color-surface)';
                       }
                     }}
                     onMouseLeave={(e) => {
@@ -346,13 +346,13 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
                       }
                     }}
                   >
-                    <div style={{ fontWeight: 'bold', fontSize: '1em', color: 'var(--ctp-text)', marginBottom: '0.4rem' }}>
+                    <div style={{ fontWeight: 'bold', fontSize: '1em', color: 'var(--color-text)', marginBottom: '0.4rem' }}>
                       {option.name}
                     </div>
-                    <div style={{ fontSize: '0.9em', color: 'var(--ctp-subtext0)', marginBottom: '0.3rem', lineHeight: '1.4' }}>
+                    <div style={{ fontSize: '0.9em', color: 'var(--color-text-subtle)', marginBottom: '0.3rem', lineHeight: '1.4' }}>
                       {option.shortDesc}
                     </div>
-                    <div style={{ fontSize: '0.85em', color: 'var(--ctp-subtext1)', fontStyle: 'italic', lineHeight: '1.4' }}>
+                    <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)', fontStyle: 'italic', lineHeight: '1.4' }}>
                       {option.description}
                     </div>
                   </div>
@@ -368,10 +368,10 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
                 marginTop: '0.75rem',
                 padding: '0.75rem 1rem',
                 background: 'var(--ctp-yellow-soft, rgba(249, 226, 175, 0.15))',
-                border: '1px solid var(--ctp-yellow, #f9e2af)',
-                borderLeft: '4px solid var(--ctp-yellow, #f9e2af)',
+                border: '1px solid var(--color-warning, #f9e2af)',
+                borderLeft: '4px solid var(--color-warning, #f9e2af)',
                 borderRadius: '6px',
-                color: 'var(--ctp-text)',
+                color: 'var(--color-text)',
                 fontSize: '0.9em',
                 lineHeight: '1.5',
                 display: 'flex',
@@ -1096,10 +1096,10 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
               <div style={{
                 marginLeft: '1rem',
                 paddingLeft: '1rem',
-                borderLeft: '2px solid var(--ctp-surface2)',
+                borderLeft: '2px solid var(--color-surface-active)',
                 marginTop: '1rem'
               }}>
-                <h4 style={{ marginBottom: '1rem', color: 'var(--ctp-subtext0)' }}>
+                <h4 style={{ marginBottom: '1rem', color: 'var(--color-text-subtle)' }}>
                   {t('admin_commands.static_ip_settings', 'Static IP Settings')}
                 </h4>
 

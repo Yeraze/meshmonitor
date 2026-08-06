@@ -155,11 +155,13 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
     : t('automation.airtime_cutoff.source_local_label', 'local');
 
   // Banner colour: red when paused, green when active, neutral when disabled/unknown.
+  // The neutral sibling of the error/success roles below. Uses the text role
+  // because the value lands on `color:` as well as the two border rules.
   const bannerColor = disabled
-    ? 'var(--ctp-overlay0)'
+    ? 'var(--color-text-faint)'
     : gated
-      ? 'var(--ctp-red)'
-      : 'var(--ctp-green)';
+      ? 'var(--color-error)'
+      : 'var(--color-success)';
 
   return (
     <>
@@ -168,8 +170,8 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
         alignItems: 'center',
         marginBottom: '1.5rem',
         padding: '1rem 1.25rem',
-        background: 'var(--ctp-surface1)',
-        border: '1px solid var(--ctp-surface2)',
+        background: 'var(--color-surface-hover)',
+        border: '1px solid var(--color-surface-active)',
         borderRadius: '8px'
       }}>
         <h2 style={{ margin: 0 }}>
@@ -178,7 +180,7 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
       </div>
 
       <div className="settings-section">
-        <p style={{ marginLeft: '0.25rem', marginBottom: '1rem', color: 'var(--ctp-subtext1)', fontSize: '13px', lineHeight: '1.5' }}>
+        <p style={{ marginLeft: '0.25rem', marginBottom: '1rem', color: 'var(--color-text-muted)', fontSize: '13px', lineHeight: '1.5' }}>
           {t('automation.airtime_cutoff.description',
             'Pauses all automations (auto-traceroute, auto-announce, timers, etc.) whenever the connected node\'s Channel Utilization rises above this threshold, so bots stop adding traffic while the mesh is busy with real activity. Automations resume automatically once utilization drops back below the threshold. Set to 0 to disable.')}
         </p>
@@ -187,7 +189,7 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
         <div style={{
           marginBottom: '1.25rem',
           padding: '0.6rem 1rem',
-          background: 'var(--ctp-surface0)',
+          background: 'var(--color-surface)',
           border: `1px solid ${bannerColor}`,
           borderLeft: `4px solid ${bannerColor}`,
           borderRadius: '6px',
@@ -215,7 +217,7 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
         {/* Infrastructure nodes contributing to the neighbour-averaged reading */}
         {!disabled && statusSource === 'neighbors' && contributors.length > 0 && (
           <div style={{ marginBottom: '1.25rem' }}>
-            <div style={{ marginBottom: '0.4rem', color: 'var(--ctp-subtext1)', fontSize: '12px', fontWeight: 600 }}>
+            <div style={{ marginBottom: '0.4rem', color: 'var(--color-text-muted)', fontSize: '12px', fontWeight: 600 }}>
               {t('automation.airtime_cutoff.contributors_label', 'Infrastructure nodes in calculation')}
             </div>
             <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
@@ -230,16 +232,16 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
                       alignItems: 'center',
                       gap: '1rem',
                       padding: '0.45rem 0.75rem',
-                      background: 'var(--ctp-surface0)',
-                      border: '1px solid var(--ctp-surface2)',
+                      background: 'var(--color-surface)',
+                      border: '1px solid var(--color-surface-active)',
                       borderRadius: '6px',
                       fontSize: '13px',
                     }}
                   >
-                    <span style={{ color: 'var(--ctp-text)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ color: 'var(--color-text)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {name}
                     </span>
-                    <span style={{ color: 'var(--ctp-subtext0)', whiteSpace: 'nowrap' }}>
+                    <span style={{ color: 'var(--color-text-subtle)', whiteSpace: 'nowrap' }}>
                       {t('automation.airtime_cutoff.contributor_detail', '{{util}}% · {{rssi}} dBm', { util: formatPercent(node.channelUtilization), rssi: node.rssi })}
                     </span>
                   </li>

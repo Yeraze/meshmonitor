@@ -212,8 +212,8 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
           alignItems: 'center',
           marginBottom: '1.5rem',
           padding: '1rem 1.25rem',
-          background: 'var(--ctp-surface1)',
-          border: '1px solid var(--ctp-surface2)',
+          background: 'var(--color-surface-hover)',
+          border: '1px solid var(--color-surface-active)',
           borderRadius: '8px',
         }}
       >
@@ -351,8 +351,8 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
           <label>{t('automation.auto_key_management.activity_log')}</label>
           <div
             style={{
-              background: 'var(--ctp-surface0)',
-              border: '1px solid var(--ctp-surface2)',
+              background: 'var(--color-surface)',
+              border: '1px solid var(--color-surface-active)',
               borderRadius: '4px',
               maxHeight: '250px',
               overflow: 'auto',
@@ -364,7 +364,7 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
                 style={{
                   padding: '1rem',
                   textAlign: 'center',
-                  color: 'var(--ctp-subtext0)',
+                  color: 'var(--color-text-subtle)',
                 }}
               >
                 {t('automation.auto_key_management.no_activity')}
@@ -372,7 +372,7 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                 <thead>
-                  <tr style={{ background: 'var(--ctp-surface1)' }}>
+                  <tr style={{ background: 'var(--color-surface-hover)' }}>
                     <th
                       style={{
                         padding: '0.5rem 0.75rem',
@@ -431,8 +431,8 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
                 </thead>
                 <tbody>
                   {repairLog.map((entry) => (
-                    <tr key={entry.id} style={{ borderTop: '1px solid var(--ctp-surface1)' }}>
-                      <td style={{ padding: '0.4rem 0.75rem', color: 'var(--ctp-subtext0)' }}>
+                    <tr key={entry.id} style={{ borderTop: '1px solid var(--color-surface-hover)' }}>
+                      <td style={{ padding: '0.4rem 0.75rem', color: 'var(--color-text-subtle)' }}>
                         {new Date(entry.timestamp).toLocaleString()}
                       </td>
                       <td style={{ padding: '0.4rem 0.75rem' }}>

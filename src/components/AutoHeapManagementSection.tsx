@@ -118,8 +118,8 @@ const AutoHeapManagementSection: React.FC<AutoHeapManagementSectionProps> = ({ b
         alignItems: 'center',
         marginBottom: '1.5rem',
         padding: '1rem 1.25rem',
-        background: 'var(--ctp-surface1)',
-        border: '1px solid var(--ctp-surface2)',
+        background: 'var(--color-surface-hover)',
+        border: '1px solid var(--color-surface-active)',
         borderRadius: '8px'
       }}>
         <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -139,11 +139,11 @@ const AutoHeapManagementSection: React.FC<AutoHeapManagementSectionProps> = ({ b
           marginLeft: '1.75rem',
           marginBottom: '1rem',
           padding: '0.75rem 1rem',
-          background: 'var(--ctp-surface0)',
-          border: '1px solid var(--ctp-yellow)',
-          borderLeft: '4px solid var(--ctp-yellow)',
+          background: 'var(--color-surface)',
+          border: '1px solid var(--color-warning)',
+          borderLeft: '4px solid var(--color-warning)',
           borderRadius: '6px',
-          color: 'var(--ctp-yellow)',
+          color: 'var(--color-warning)',
           fontSize: '13px',
           lineHeight: '1.5',
         }}>
@@ -157,11 +157,11 @@ const AutoHeapManagementSection: React.FC<AutoHeapManagementSectionProps> = ({ b
             marginLeft: '1.75rem',
             marginBottom: '1rem',
             padding: '0.5rem 1rem',
-            background: 'var(--ctp-surface0)',
-            border: '1px solid var(--ctp-surface2)',
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-surface-active)',
             borderRadius: '6px',
             fontSize: '13px',
-            color: 'var(--ctp-subtext1)',
+            color: 'var(--color-text-muted)',
           }}>
             {t('automation.auto_heap.heap_status', 'Current heap: {{kb}} KB free', {
               kb: Math.round(heapFreeBytes / 1000),

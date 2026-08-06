@@ -266,8 +266,8 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
         marginBottom: '1.5rem',
         marginTop: '2rem',
         padding: '1rem 1.25rem',
-        background: 'var(--ctp-surface1)',
-        border: '1px solid var(--ctp-surface2)',
+        background: 'var(--color-surface-hover)',
+        border: '1px solid var(--color-surface-active)',
         borderRadius: '8px',
       }}>
         <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -280,7 +280,7 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
           />
           {t('meshcore.automation.responder.title', 'Auto-Responder')}
         </h2>
-        <span style={{ marginLeft: 'auto', fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+        <span style={{ marginLeft: 'auto', fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
           {t('meshcore.automation.responder.count', '{{count}} triggers', { count: triggers.length })}
         </span>
       </div>
@@ -296,7 +296,7 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
         </p>
 
         {triggers.length === 0 && (
-          <p style={{ marginLeft: '1.75rem', fontSize: '0.9rem', color: 'var(--ctp-subtext0)' }}>
+          <p style={{ marginLeft: '1.75rem', fontSize: '0.9rem', color: 'var(--color-text-subtle)' }}>
             {t('meshcore.automation.responder.empty', 'No triggers configured yet.')}
           </p>
         )}
@@ -345,7 +345,7 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
                   style={{ width: '100%', marginTop: '0.25rem', fontFamily: 'monospace' }}
                 />
                 {!v.valid && tr.pattern && (
-                  <div style={{ fontSize: '0.8rem', color: 'var(--ctp-red)', marginTop: '0.25rem' }}>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--color-error)', marginTop: '0.25rem' }}>
                     {v.error}
                   </div>
                 )}
@@ -467,12 +467,12 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
               </div>
 
               {/* Channels */}
-              <fieldset style={{ border: '1px solid var(--ctp-surface2)', borderRadius: '4px', padding: '0.5rem' }}>
+              <fieldset style={{ border: '1px solid var(--color-surface-active)', borderRadius: '4px', padding: '0.5rem' }}>
                 <legend style={{ fontSize: '0.8rem', padding: '0 0.5rem' }}>
                   {t('meshcore.automation.responder.channels', 'Listen on channels')}
                 </legend>
                 {channels.length === 0 && (
-                  <span style={{ fontSize: '0.8rem', color: 'var(--ctp-subtext0)' }}>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--color-text-subtle)' }}>
                     {t('meshcore.automation.responder.no_channels', 'No channels loaded')}
                   </span>
                 )}
