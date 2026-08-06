@@ -92,6 +92,36 @@ MeshMonitor comes with 15 built-in themes:
 
 3. Click **Create Theme**
 
+## How colors reach the interface {#semantic-tokens}
+
+::: tip New in 4.14.1
+:::
+
+You author the 26 palette colors above and nothing else — that has not changed, and existing custom themes need no edits. What changed is how the app *reads* them.
+
+MeshMonitor resolves every color through a **role**, and each role points at one of your palette colors:
+
+| Role | Palette color | Used for |
+| --- | --- | --- |
+| `--color-success` | `green` | Success states, healthy status |
+| `--color-error` | `red` | Errors, failures |
+| `--color-warning` | `yellow` | Warnings, degraded status |
+| `--color-info` | `sky` | Informational notices |
+| `--color-danger` | `maroon` | Destructive actions |
+| `--color-accent` | `blue` | Primary accent, links, focus |
+| `--color-accent-alt` | `mauve` | Secondary accent |
+| `--color-accent-muted` | `lavender` | Tertiary accent |
+| `--color-bg` / `--color-bg-raised` / `--color-bg-sunken` | `base` / `mantle` / `crust` | Page and panel backgrounds |
+| `--color-surface` / `-hover` / `-active` | `surface0` / `surface1` / `surface2` | Cards, rows, controls |
+| `--color-text` / `-muted` / `-subtle` / `-disabled` | `text` / `subtext1` / `subtext0` / `overlay1` | Text, by descending emphasis |
+| `--color-border` / `-strong` | `surface1` / `surface2` | Dividers and outlines |
+
+**What this means for you:** change what `red` means in your theme and every error surface follows, because they all ask for "the error color" rather than "the red one". Most roles map to the palette name you would expect, so the effect is usually what you already assumed was happening.
+
+::: warning Migration in progress
+Parts of the interface still read palette colors directly and will not pick up a role remap until they are converted. Conversion is tracked as follow-up work to [issue #4567](https://github.com/Yeraze/meshmonitor/issues/4567). If a specific surface ignores a color change, that is why — please report it on that issue with a screenshot so it can be prioritized.
+:::
+
 ## Cloning Themes
 
 To create a variation of an existing theme:

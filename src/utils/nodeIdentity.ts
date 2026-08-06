@@ -7,20 +7,61 @@
  * function calls this helper directly so the two can never drift.
  */
 export interface IdentifiableNode {
-  nodeNum?: number | null;
+  /**
+   * Accepts a string as well as a number: `nodeNum` is BIGINT on
+   * PostgreSQL/MySQL and can reach the client as a numeric string. Treating
+   * that as "no identity" used to drop the node from the unified view
+   * entirely (#4573).
+   */
+  nodeNum?: number | string | null;
   isMeshCore?: boolean | null;
   publicKey?: string | null;
   nodeId?: string | null;
 }
 
-/** Canonical cross-source node key — MUST match mergeUnifiedSourceData's keying. */
+/** Coerce a `nodeNum` that may arrive as a BIGINT string. `0` is a real value. */
+function toNodeNum(raw: unknown): number | null {
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
+  if (typeof raw === 'string' && raw.trim() !== '') {
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+/**
+ * Recover a nodeNum from the `!aabbccdd` hex form when the numeric field is
+ * unusable. Bounded to 8 hex digits because nodeNum is a 32-bit unsigned
+ * value — a longer string is not a nodeId, so it falls through to the
+ * string-id branch rather than being parsed into a nonsense number.
+ */
+function nodeNumFromNodeId(nodeId: unknown): number | null {
+  if (typeof nodeId !== 'string' || !/^![0-9a-fA-F]{1,8}$/.test(nodeId)) return null;
+  const n = parseInt(nodeId.slice(1), 16);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Canonical cross-source node key — MUST match mergeUnifiedSourceData's keying.
+ *
+ * Returns null only when a node carries no usable identity at all. That case
+ * makes a node invisible in the unified view, so the fallbacks below matter:
+ * every `null` is a node the per-source view shows and the unified view does
+ * not, which is exactly the undercount reported in #4573.
+ */
 export function unifiedNodeKey(n: IdentifiableNode): string | null {
   if (n.isMeshCore) {
     if (typeof n.publicKey === 'string' && n.publicKey.length > 0) return `mc:${n.publicKey}`;
     if (typeof n.nodeId === 'string' && n.nodeId.length > 0) return `mc:${n.nodeId}`;
     return null;
   }
-  if (typeof n.nodeNum === 'number') return `mt:${n.nodeNum}`;
+  // Prefer the numeric identity so a node reported with a numeric `nodeNum` by
+  // one source and a hex `nodeId` by another lands in ONE bucket rather than
+  // two — keying the fallback on the raw nodeId string would split it.
+  const num = toNodeNum(n.nodeNum) ?? nodeNumFromNodeId(n.nodeId);
+  if (num !== null) return `mt:${num}`;
+  // Last resort: any stable string identity beats dropping the node.
+  if (typeof n.nodeId === 'string' && n.nodeId.length > 0) return `mt:${n.nodeId}`;
   return null;
 }
 
