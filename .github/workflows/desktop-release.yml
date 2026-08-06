@@ -74,6 +74,7 @@ jobs:
         run: |
           if not exist desktop\resources\dist mkdir desktop\resources\dist
           xcopy /E /I /Y dist\server desktop\resources\dist\server
+          xcopy /E /I /Y dist\components desktop\resources\dist\components
           xcopy /E /I /Y dist\services desktop\resources\dist\services
           xcopy /E /I /Y dist\db desktop\resources\dist\db
           xcopy /E /I /Y dist\utils desktop\resources\dist\utils
@@ -311,6 +312,7 @@ jobs:
           mkdir -p desktop/resources/dist
           # Copy server-side compiled code
           cp -r dist/server desktop/resources/dist/
+          cp -r dist/components desktop/resources/dist/
           cp -r dist/services desktop/resources/dist/
           cp -r dist/db desktop/resources/dist/
           cp -r dist/utils desktop/resources/dist/
@@ -691,6 +693,7 @@ jobs:
           mkdir -p desktop/resources/dist
           # Copy server-side compiled code
           cp -r dist/server desktop/resources/dist/
+          cp -r dist/components desktop/resources/dist/
           cp -r dist/services desktop/resources/dist/
           cp -r dist/db desktop/resources/dist/
           cp -r dist/utils desktop/resources/dist/

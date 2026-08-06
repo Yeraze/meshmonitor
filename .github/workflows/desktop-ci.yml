@@ -71,6 +71,7 @@ jobs:
           mkdir desktop\resources\dist
           mkdir desktop\resources\binaries
           xcopy /E /I /Y dist\server desktop\resources\dist\server
+          xcopy /E /I /Y dist\components desktop\resources\dist\components
           xcopy /E /I /Y dist\services desktop\resources\dist\services
           xcopy /E /I /Y dist\utils desktop\resources\dist\utils
           xcopy /E /I /Y dist\types desktop\resources\dist\types
@@ -186,6 +187,7 @@ jobs:
           mkdir -p desktop/resources/binaries
           # Copy server-side compiled code
           cp -r dist/server desktop/resources/dist/
+          cp -r dist/components desktop/resources/dist/
           cp -r dist/services desktop/resources/dist/
           cp -r dist/utils desktop/resources/dist/
           cp -r dist/types desktop/resources/dist/
@@ -302,6 +304,7 @@ jobs:
           mkdir -p desktop/resources/binaries
           # Copy server-side compiled code
           cp -r dist/server desktop/resources/dist/
+          cp -r dist/components desktop/resources/dist/
           cp -r dist/services desktop/resources/dist/
           cp -r dist/utils desktop/resources/dist/
           cp -r dist/types desktop/resources/dist/
