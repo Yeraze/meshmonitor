@@ -105,7 +105,7 @@
 
 .meshcore-tab button:disabled {
   background: var(--color-surface-active);
-  color: var(--ctp-overlay0);
+  color: var(--color-text-faint);
   cursor: not-allowed;
 }
 
@@ -142,7 +142,7 @@
   width: 10px;
   height: 10px;
   border-radius: var(--radius-full);
-  background: var(--ctp-overlay0);
+  background: var(--color-surface-inactive);
 }
 
 .status-dot.connected {
@@ -251,7 +251,7 @@
 }
 
 .message-time {
-  color: var(--ctp-overlay0);
+  color: var(--color-text-faint);
   font-size: 0.75rem;
 }
 
@@ -318,7 +318,7 @@
 
 /* Empty state */
 .meshcore-empty {
-  color: var(--ctp-overlay0);
+  color: var(--color-text-faint);
   text-align: center;
   padding: 1.5rem;
   font-style: italic;
@@ -348,5 +348,5 @@
 .meshcore-node-list::-webkit-scrollbar-thumb:hover,
 .meshcore-contact-list::-webkit-scrollbar-thumb:hover,
 .meshcore-messages::-webkit-scrollbar-thumb:hover {
-  background: var(--ctp-overlay0);
+  background: var(--color-surface-inactive);
 }

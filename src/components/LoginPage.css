@@ -166,7 +166,7 @@
   position: relative;
   background-color: var(--color-bg);
   padding: 0 15px;
-  color: var(--ctp-overlay0);
+  color: var(--color-text-faint);
   font-size: 14px;
   font-weight: 500;
 }

@@ -85,7 +85,7 @@
 }
 
 .dashboard-search::placeholder {
-  color: var(--ctp-overlay0);
+  color: var(--color-text-faint);
 }
 
 .dashboard-filter-select {
@@ -186,7 +186,7 @@
 }
 
 .dashboard-no-roles {
-  color: var(--ctp-overlay0);
+  color: var(--color-text-faint);
   font-size: 0.85rem;
   font-style: italic;
   padding: 8px;
@@ -629,7 +629,7 @@
 }
 
 .node-status-search::placeholder {
-  color: var(--ctp-overlay0);
+  color: var(--color-text-faint);
 }
 
 .node-status-search-dropdown {
@@ -1078,7 +1078,7 @@
 }
 
 .traceroute-search::placeholder {
-  color: var(--ctp-overlay0);
+  color: var(--color-text-faint);
 }
 
 .traceroute-search-dropdown {
@@ -1191,7 +1191,7 @@
 }
 
 .traceroute-arrow {
-  color: var(--ctp-overlay0);
+  color: var(--color-text-faint);
   font-size: 0.9rem;
 }
 
@@ -1275,7 +1275,7 @@
 
 /* Node without position indicator */
 .traceroute-hop.no-position {
-  border: 1px dashed var(--ctp-overlay0);
+  border: 1px dashed var(--color-border-subtle);
   opacity: 0.8;
 }
 

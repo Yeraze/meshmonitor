@@ -265,7 +265,7 @@
 }
 
 .mqpm-oktomqtt-unknown {
-  color: var(--ctp-overlay0);
+  color: var(--color-text-faint);
 }
 
 /* The Type cell can now hold the portnum/outcome badge plus the violation badge. */
