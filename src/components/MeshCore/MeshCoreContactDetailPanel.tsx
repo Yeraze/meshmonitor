@@ -831,7 +831,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
               <div className="node-detail-value">
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--font-mono, monospace)', fontSize: '0.9em' }}>
                   <thead>
-                    <tr style={{ borderBottom: '1px solid var(--color-surface-hover, #45475a)' }}>
+                    <tr style={{ borderBottom: '1px solid var(--color-surface-hover)' }}>
                       <th style={{ textAlign: 'left', padding: '0.25rem 0.5rem' }}>
                         {t('meshcore.contact_details.trace_hop', 'Hop')}
                       </th>
@@ -857,7 +857,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                         </tr>
                       );
                     })}
-                    <tr style={{ borderTop: '1px solid var(--color-surface-hover, #45475a)' }}>
+                    <tr style={{ borderTop: '1px solid var(--color-surface-hover)' }}>
                       <td style={{ padding: '0.25rem 0.5rem' }} colSpan={2}>
                         {t('meshcore.contact_details.trace_destination', 'Destination')}
                       </td>
@@ -892,7 +892,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                 ) : (
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--font-mono, monospace)', fontSize: '0.9em' }}>
                     <thead>
-                      <tr style={{ borderBottom: '1px solid var(--color-surface-hover, #45475a)' }}>
+                      <tr style={{ borderBottom: '1px solid var(--color-surface-hover)' }}>
                         <th style={{ textAlign: 'left', padding: '0.25rem 0.5rem' }}>
                           {t('meshcore.contact_details.neighbours_name', 'Node')}
                         </th>
@@ -1008,8 +1008,8 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
         >
           <div
             style={{
-              background: 'var(--color-bg, #1e1e2e)',
-              color: 'var(--color-text, #cdd6f4)',
+              background: 'var(--color-bg)',
+              color: 'var(--color-text)',
               padding: '1.25rem 1.5rem',
               borderRadius: '8px',
               maxWidth: '32rem',
@@ -1028,8 +1028,8 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
             </p>
             <div
               style={{
-                background: 'var(--color-surface, #313244)',
-                color: 'var(--color-warning, #f9e2af)',
+                background: 'var(--color-surface)',
+                color: 'var(--color-warning)',
                 padding: '0.6rem 0.8rem',
                 borderRadius: '4px',
                 marginBottom: '0.75rem',
@@ -1084,7 +1084,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                         gap: '0.5rem',
                         padding: '0.35rem 0.5rem',
                         marginBottom: '0.25rem',
-                        background: 'var(--color-surface, #313244)',
+                        background: 'var(--color-surface)',
                         borderRadius: '4px',
                       }}
                     >

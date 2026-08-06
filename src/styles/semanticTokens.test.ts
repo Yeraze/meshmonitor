@@ -105,6 +105,23 @@ describe('semantic color tokens (#4567)', () => {
     expect(Array.from(dangling)).toEqual([]);
   });
 
+  it('has no fallback value on a semantic token', () => {
+    // `var(--color-error, #f38ba8)` is dead code: the test above proves every
+    // referenced token is defined, so the fallback can never apply. Worse, it
+    // hides a hardcoded color that is usually wrong — Sidebar.css carried
+    // `var(--color-accent, #2a2a2a)`, a dark grey standing in for the blue
+    // accent, and PacketMonitorPanel had `#4a9eff` for the same token. If one
+    // ever DID apply, the theme would silently break. Ban the shape outright.
+    const offenders: string[] = [];
+    for (const file of walk(resolve('src'))) {
+      const text = readFileSync(file, 'utf8');
+      for (const m of text.matchAll(/var\(\s*(--color-[a-z0-9-]+)\s*,/g)) {
+        offenders.push(`${m[1]} in ${file.replace(resolve('.') + '/', '')}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
   it('keeps the user-facing theme schema unchanged', () => {
     // The whole point of the indirection: users still author the 26 palette
     // keys they always have. If a semantic token ever needs to be authored

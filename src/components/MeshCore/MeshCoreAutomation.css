@@ -101,7 +101,7 @@
   color: var(--color-bg);
 }
 .meshcore-automations-view .meshcore-btn-primary:hover:not(:disabled) {
-  background: var(--color-accent-hover, var(--color-accent));
+  background: var(--color-accent-hover);
 }
 
 .meshcore-automations-view .meshcore-btn-danger {
@@ -109,7 +109,7 @@
   color: var(--color-bg);
 }
 .meshcore-automations-view .meshcore-btn-danger:hover:not(:disabled) {
-  background: var(--color-danger, var(--color-error));
+  background: var(--color-danger);
 }
 
 .meshcore-automations-view .meshcore-btn-secondary {
@@ -154,7 +154,7 @@
 
 .meshcore-automations-view .meshcore-trigger-card label {
   font-size: 0.85rem;
-  color: var(--color-text-muted, var(--color-text));
+  color: var(--color-text-muted);
   display: block;
 }
 
