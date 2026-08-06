@@ -388,6 +388,25 @@ describe('AnalysisRepository.getHopCounts — pending traceroutes (#4570)', () =
     close();
   });
 
+  it('does not fall back to an older row when the newest answered route is corrupt', async () => {
+    // Documents a deliberate consequence of selecting "newest answered row"
+    // in SQL: the database cannot judge whether `route` is valid JSON, so a
+    // corrupt newest row yields grey rather than reaching past it to an older
+    // one. Both writers store JSON.stringify(route), so reaching this needs
+    // manual DB editing — and grey is the honest answer for unreadable data.
+    const { sqlite, db, close } = createTestDb();
+    const now = Date.now();
+    const ins = sqlite.prepare(INSERT);
+    ins.run(1, 98, '!00000001', '!00000062', 'src-a', '[10,20]', now - 5000, now - 5000);
+    ins.run(1, 98, '!00000001', '!00000062', 'src-a', 'not-json', now, now);
+
+    const repo = new AnalysisRepository(db, 'sqlite');
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'] });
+
+    expect(r.entries.find((e: { nodeNum: number }) => e.nodeNum === 98)).toBeUndefined();
+    close();
+  });
+
   it('keeps sources independent when one has a pending row and the other does not', async () => {
     const { sqlite, db, close } = createTestDb();
     const now = Date.now();
