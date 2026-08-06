@@ -47,7 +47,7 @@
   width: 10px;
   height: 10px;
   border-radius: var(--radius-full);
-  background: var(--ctp-overlay0);
+  background: var(--color-surface-inactive);
   flex-shrink: 0;
 }
 
@@ -84,7 +84,7 @@
 .meshcore-status-bar button:hover { background: var(--ctp-pink); }
 .meshcore-status-bar button:disabled {
   background: var(--color-surface-active);
-  color: var(--ctp-overlay0);
+  color: var(--color-text-faint);
   cursor: not-allowed;
 }
 .meshcore-status-bar button.disconnect { background: var(--color-error); }
@@ -574,7 +574,7 @@
 }
 
 .mc-node-row-key {
-  color: var(--ctp-overlay0);
+  color: var(--color-text-faint);
   font-size: 0.7rem;
   font-family: monospace;
 }
@@ -762,10 +762,10 @@
   margin-left: 0.25rem;
 }
 
-.mc-delivery-sent { color: var(--ctp-overlay0); }
+.mc-delivery-sent { color: var(--color-text-faint); }
 .mc-delivery-delivered { color: var(--color-success); }
 .mc-delivery-failed { color: var(--color-error); }
-.mc-delivery-sending { color: var(--ctp-overlay0); }
+.mc-delivery-sending { color: var(--color-text-faint); }
 
 /* Channel "heard repeaters" badge + expandable list (#3700) */
 .mc-heard-by-badge {
@@ -796,7 +796,7 @@
   color: var(--color-accent);
 }
 .mc-heard-by-snr {
-  color: var(--ctp-overlay0);
+  color: var(--color-text-faint);
 }
 
 .meshcore-send-bar {
@@ -834,7 +834,7 @@
 .meshcore-send-bar button:hover { background: var(--ctp-pink); }
 .meshcore-send-bar button:disabled {
   background: var(--color-surface-active);
-  color: var(--ctp-overlay0);
+  color: var(--color-text-faint);
   cursor: not-allowed;
 }
 
@@ -986,14 +986,14 @@
 .meshcore-form-view button:hover { background: var(--ctp-pink); }
 .meshcore-form-view button:disabled {
   background: var(--color-surface-active);
-  color: var(--ctp-overlay0);
+  color: var(--color-text-faint);
   cursor: not-allowed;
 }
 
 /* Empty state shared by list panes */
 .meshcore-empty-state {
   text-align: center;
-  color: var(--ctp-overlay0);
+  color: var(--color-text-faint);
   font-style: italic;
   padding: 1.5rem 0.5rem;
   font-size: 0.85rem;
@@ -1196,7 +1196,7 @@
   color: var(--color-warning);
 }
 .mc-room-row-status.not-logged-in {
-  color: var(--ctp-overlay0);
+  color: var(--color-text-faint);
 }
 
 .meshcore-room-login-overlay {
@@ -1368,7 +1368,7 @@
 }
 
 .meshcore-search-input::placeholder {
-  color: var(--ctp-overlay0);
+  color: var(--color-text-faint);
 }
 
 .meshcore-search-clear {
@@ -1376,7 +1376,7 @@
   right: 0.75rem;
   background: transparent;
   border: none;
-  color: var(--ctp-overlay0);
+  color: var(--color-text-faint);
   font-size: 1.1rem;
   cursor: pointer;
   padding: 0 0.3rem;
@@ -1757,7 +1757,7 @@
 
 .mc-scope-override-unscoped:hover {
   color: var(--color-text);
-  border-color: var(--ctp-overlay0);
+  border-color: var(--color-border-subtle);
 }
 
 /* Active = this send will go out explicitly unscoped (overrideScope === ''). */

@@ -129,7 +129,7 @@
 
 .mrc-btn-primary:disabled {
   background: var(--color-surface-active);
-  color: var(--ctp-overlay0);
+  color: var(--color-text-faint);
   cursor: not-allowed;
 }
 
@@ -180,7 +180,7 @@
 .mrc-line-prefix {
   width: 1ch;
   flex-shrink: 0;
-  color: var(--ctp-overlay0);
+  color: var(--color-text-faint);
 }
 
 .mrc-line-text {
@@ -238,7 +238,7 @@
 }
 
 .mrc-input::placeholder {
-  color: var(--ctp-overlay0);
+  color: var(--color-text-faint);
 }
 
 .mrc-modal-backdrop {
@@ -372,7 +372,7 @@
 
 .mrc-btn-danger:disabled {
   background: var(--color-surface-active);
-  color: var(--ctp-overlay0);
+  color: var(--color-text-faint);
   cursor: not-allowed;
 }
 

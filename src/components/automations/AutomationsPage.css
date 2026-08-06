@@ -167,7 +167,7 @@
 .ae-trace-step--ok .ae-trace-icon { color: var(--color-success); }
 .ae-trace-step--no .ae-trace-icon { color: var(--color-warning); }
 .ae-trace-step--err .ae-trace-icon { color: var(--color-error); }
-.ae-trace-step--muted .ae-trace-icon { color: var(--ctp-overlay0); }
+.ae-trace-step--muted .ae-trace-icon { color: var(--color-text-faint); }
 .ae-test-action { background: var(--color-bg); border: 1px solid var(--color-surface); border-radius: var(--radius-sm, 6px); padding: 0.4rem 0.55rem; margin-bottom: 0.4rem; }
 .ae-test-action.is-err { border-color: var(--color-error); }
 .ae-test-params { margin: 0.3rem 0 0; font-size: 0.72rem; overflow-x: auto; white-space: pre-wrap; }

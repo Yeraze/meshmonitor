@@ -115,13 +115,14 @@ MeshMonitor resolves every color through a **role**, and each role points at one
 | `--color-accent-muted` | `lavender` | Tertiary accent |
 | `--color-bg` / `--color-bg-raised` / `--color-bg-sunken` | `base` / `mantle` / `crust` | Page and panel backgrounds |
 | `--color-surface` / `-hover` / `-active` | `surface0` / `surface1` / `surface2` | Cards, rows, controls |
-| `--color-text` / `-muted` / `-subtle` / `-disabled` | `text` / `subtext1` / `subtext0` / `overlay1` | Text, by descending emphasis |
-| `--color-border` / `-strong` | `surface1` / `surface2` | Dividers and outlines |
+| `--color-text` / `-muted` / `-subtle` / `-disabled` / `-faint` | `text` / `subtext1` / `subtext0` / `overlay1` / `overlay0` | Text, by descending emphasis |
+| `--color-border` / `-strong` / `-subtle` | `surface1` / `surface2` / `overlay0` | Dividers and outlines |
+| `--color-surface-inactive` | `overlay0` | Scrollbar thumbs, inactive dots, empty progress tracks |
 
 **What this means for you:** change what `red` means in your theme and every error surface follows, because they all ask for "the error color" rather than "the red one". Most roles map to the palette name you would expect, so the effect is usually what you already assumed was happening.
 
 ::: warning Migration in progress
-Parts of the interface still read palette colors directly and will not pick up a role remap until they are converted. Component-scoped stylesheets (CSS modules) are done; the global stylesheets and inline component styles are not. Conversion is tracked as follow-up work to [issue #4567](https://github.com/Yeraze/meshmonitor/issues/4567). If a specific surface ignores a color change, that is why — please report it on that issue with a screenshot so it can be prioritized.
+Parts of the interface still read palette colors directly and will not pick up a role remap until they are converted. Component stylesheets are done; the global stylesheets in `src/styles` and inline component styles are not. Conversion is tracked as follow-up work to [issue #4567](https://github.com/Yeraze/meshmonitor/issues/4567). If a specific surface ignores a color change, that is why — please report it on that issue with a screenshot so it can be prioritized.
 :::
 
 ## Cloning Themes

@@ -132,7 +132,7 @@
   padding: 0.05rem 0.3rem;
   /* Raw palette on purpose (#4579): a neutral "no SNR data" swatch. There is
      no role for it, and inventing one would be renaming, not meaning. */
-  background-color: var(--ctp-overlay0);
+  background-color: var(--color-surface-inactive);
   color: var(--color-text);
   border-radius: 3px;
   font-size: 0.85em;
