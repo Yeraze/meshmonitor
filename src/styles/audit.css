@@ -18,7 +18,7 @@
 .audit-log-header h2 {
   font-size: 1.5rem;
   font-weight: 600;
-  color: var(--ctp-text);
+  color: var(--color-text);
   margin: 0;
 }
 
@@ -31,8 +31,8 @@
 }
 
 .stat-card {
-  background: var(--ctp-surface0);
-  border: 1px solid var(--ctp-surface1);
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-lg);
   padding: 16px;
 }
@@ -40,28 +40,28 @@
 .stat-card h3 {
   font-size: 0.875rem;
   font-weight: 500;
-  color: var(--ctp-subtext1);
+  color: var(--color-text-muted);
   margin: 0 0 8px 0;
 }
 
 .stat-value {
   font-size: 1.875rem;
   font-weight: 700;
-  color: var(--ctp-text);
+  color: var(--color-text);
   margin: 0;
 }
 
 .stat-label {
   font-size: 1.125rem;
   font-weight: 600;
-  color: var(--ctp-text);
+  color: var(--color-text);
   margin: 0;
 }
 
 /* Filters Section */
 .audit-filters {
-  background: var(--ctp-surface0);
-  border: 1px solid var(--ctp-surface1);
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-lg);
   padding: 20px;
   margin-bottom: 24px;
@@ -70,7 +70,7 @@
 .audit-filters h3 {
   font-size: 1rem;
   font-weight: 600;
-  color: var(--ctp-text);
+  color: var(--color-text);
   margin: 0 0 16px 0;
 }
 
@@ -109,8 +109,8 @@
 
 /* Table Styles */
 .audit-table-container {
-  background: var(--ctp-surface0);
-  border: 1px solid var(--ctp-surface1);
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-lg);
   overflow: hidden;
   margin-bottom: 24px;
@@ -122,7 +122,7 @@
 }
 
 .audit-table thead {
-  background: var(--ctp-surface1);
+  background: var(--color-surface-hover);
 }
 
 .audit-table thead th {
@@ -130,34 +130,34 @@
   text-align: left;
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--ctp-subtext1);
+  color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 .audit-table tbody tr.audit-row {
-  border-bottom: 1px solid var(--ctp-surface1);
+  border-bottom: 1px solid var(--color-surface-hover);
   cursor: pointer;
   transition: background-color 0.15s ease;
 }
 
 .audit-table tbody tr.audit-row:hover {
-  background: var(--ctp-surface1);
+  background: var(--color-surface-hover);
 }
 
 .audit-table tbody td {
   padding: 12px 16px;
   font-size: 0.875rem;
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 .timestamp-cell {
   white-space: nowrap;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .system-label {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-style: italic;
 }
 
@@ -166,15 +166,15 @@
 }
 
 .action-error {
-  color: var(--ctp-red);
+  color: var(--color-error);
 }
 
 .action-warning {
-  color: var(--ctp-yellow);
+  color: var(--color-warning);
 }
 
 .action-success {
-  color: var(--ctp-green);
+  color: var(--color-success);
 }
 
 .details-cell {
@@ -187,7 +187,7 @@
 /* Expanded Row Details */
 .audit-detail-row td {
   padding: 0 !important;
-  background: var(--ctp-mantle);
+  background: var(--color-bg-raised);
 }
 
 .audit-details {
@@ -206,20 +206,20 @@
   display: block;
   font-size: 0.875rem;
   font-weight: 600;
-  color: var(--ctp-text);
+  color: var(--color-text);
   margin-bottom: 8px;
 }
 
 .detail-pre {
-  background: var(--ctp-base);
-  border: 1px solid var(--ctp-surface1);
+  background: var(--color-bg);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-sm);
   padding: 12px;
   font-size: 0.75rem;
   font-family: var(--font-mono);
   overflow-x: auto;
   margin: 0;
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 .detail-comparison {
@@ -230,12 +230,12 @@
 
 .detail-section.before .detail-pre {
   background: rgba(243, 139, 168, 0.1);
-  border-color: var(--ctp-red);
+  border-color: var(--color-error);
 }
 
 .detail-section.after .detail-pre {
   background: rgba(166, 227, 161, 0.1);
-  border-color: var(--ctp-green);
+  border-color: var(--color-success);
 }
 
 /* Pagination */
@@ -249,7 +249,7 @@
 
 .pagination-info {
   font-size: 0.875rem;
-  color: var(--ctp-subtext1);
+  color: var(--color-text-muted);
 }
 
 .pagination-controls {
@@ -261,7 +261,7 @@
 .page-indicator {
   padding: 8px 12px;
   font-size: 0.875rem;
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 /* Loading and Empty States */
@@ -269,13 +269,13 @@
 .audit-empty {
   text-align: center;
   padding: 48px 24px;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 1rem;
 }
 
 .audit-empty {
-  background: var(--ctp-surface0);
-  border: 1px solid var(--ctp-surface1);
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-lg);
 }
 

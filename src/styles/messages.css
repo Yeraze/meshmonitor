@@ -29,14 +29,14 @@
 .date-separator::after {
   content: '';
   flex: 1;
-  border-bottom: 1px solid var(--ctp-surface2);
+  border-bottom: 1px solid var(--color-surface-active);
 }
 
 .date-separator-text {
   padding: 0 1rem;
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -45,8 +45,8 @@
   width: 32px;
   height: 32px;
   border-radius: var(--radius-full);
-  background: var(--ctp-blue);
-  color: var(--ctp-accent-text);
+  background: var(--color-accent);
+  color: var(--color-accent-text);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -76,24 +76,24 @@
 }
 
 .message-bubble.mine {
-  background: var(--ctp-chatBubbleSentBg, var(--ctp-blue));
-  color: var(--ctp-chatBubbleSentText, var(--ctp-accent-text));
+  background: var(--ctp-chatBubbleSentBg, var(--color-accent));
+  color: var(--ctp-chatBubbleSentText, var(--color-accent-text));
   border-bottom-right-radius: 6px;
 }
 
 .message-bubble.mine,
 .message-bubble.mine * {
-  color: var(--ctp-chatBubbleSentText, var(--ctp-accent-text));
+  color: var(--ctp-chatBubbleSentText, var(--color-accent-text));
 }
 
 .message-bubble.mine a.message-link {
-  color: var(--ctp-chatBubbleSentText, var(--ctp-accent-text));
+  color: var(--ctp-chatBubbleSentText, var(--color-accent-text));
   text-decoration: underline;
 }
 
 .message-bubble.theirs {
-  background: var(--ctp-chatBubbleReceivedBg, var(--ctp-surface1));
-  color: var(--ctp-chatBubbleReceivedText, var(--ctp-text));
+  background: var(--ctp-chatBubbleReceivedBg, var(--color-surface-hover));
+  color: var(--ctp-chatBubbleReceivedText, var(--color-text));
   border-bottom-left-radius: 6px;
 }
 
@@ -126,14 +126,14 @@
 
 /* Clickable links in messages */
 .message-bubble .message-text a.message-link {
-  color: var(--ctp-blue);
+  color: var(--color-accent);
   text-decoration: underline;
   cursor: pointer;
   word-break: break-all;
 }
 
 .message-bubble .message-text a.message-link:hover {
-  color: var(--ctp-sky);
+  color: var(--color-info);
   text-decoration: none;
 }
 
@@ -145,19 +145,19 @@
 
 .link-preview {
   display: flex;
-  border: 1px solid var(--ctp-surface2);
+  border: 1px solid var(--color-surface-active);
   border-radius: var(--radius-lg);
   overflow: hidden;
   text-decoration: none;
   color: inherit;
-  background: var(--ctp-mantle);
+  background: var(--color-bg-raised);
   transition: background 0.2s ease, border-color 0.2s ease;
   max-width: 400px;
 }
 
 .link-preview:hover {
-  background: var(--ctp-surface0);
-  border-color: var(--ctp-surface1);
+  background: var(--color-surface);
+  border-color: var(--color-surface-hover);
 }
 
 .link-preview-image {
@@ -165,7 +165,7 @@
   width: 120px;
   height: 120px;
   overflow: hidden;
-  background: var(--ctp-surface0);
+  background: var(--color-surface);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -189,7 +189,7 @@
 .link-preview-title {
   font-weight: 600;
   font-size: 0.9rem;
-  color: var(--ctp-text);
+  color: var(--color-text);
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
@@ -200,7 +200,7 @@
 
 .link-preview-description {
   font-size: 0.85rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
@@ -211,7 +211,7 @@
 
 .link-preview-url {
   font-size: 0.75rem;
-  color: var(--ctp-subtext1);
+  color: var(--color-text-muted);
   opacity: 0.8;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -222,9 +222,9 @@
 .link-preview.loading {
   padding: 12px;
   text-align: center;
-  color: var(--ctp-subtext0);
-  background: var(--ctp-mantle);
-  border: 1px solid var(--ctp-surface2);
+  color: var(--color-text-subtle);
+  background: var(--color-bg-raised);
+  border: 1px solid var(--color-surface-active);
   border-radius: var(--radius-lg);
 }
 
@@ -251,11 +251,11 @@
 }
 
 .message-bubble.theirs .message-time {
-  color: var(--ctp-subtext1);
+  color: var(--color-text-muted);
 }
 
 .message-bubble.mine .message-time {
-  color: var(--ctp-chatBubbleSentText, var(--ctp-accent-text));
+  color: var(--ctp-chatBubbleSentText, var(--color-accent-text));
   opacity: 0.85;
 }
 
@@ -288,7 +288,7 @@
 
 /* Highlight the message bubble on hover to show action relationship */
 .message-bubble-container:hover .message-bubble {
-  outline: 1px solid var(--ctp-overlay1);
+  outline: 1px solid var(--color-text-disabled);
   outline-offset: 2px;
 }
 
@@ -314,9 +314,9 @@
 .emoji-button,
 .emoji-picker-button,
 .delete-button {
-  background: var(--ctp-surface2);
-  color: var(--ctp-text);
-  border: 1px solid var(--ctp-overlay0);
+  background: var(--color-surface-active);
+  color: var(--color-text);
+  border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-xl);
   padding: 0.25rem 0.5rem;
   font-size: 0.75rem;
@@ -343,15 +343,15 @@
 .emoji-button:hover,
 .emoji-picker-button:hover,
 .delete-button:hover {
-  background: var(--ctp-surface1);
-  border-color: var(--ctp-overlay1);
+  background: var(--color-surface-hover);
+  border-color: var(--color-text-disabled);
   transform: scale(1.1);
 }
 
 .delete-button:hover {
-  background: var(--ctp-red);
-  border-color: var(--ctp-red);
-  color: var(--ctp-accent-text);
+  background: var(--color-error);
+  border-color: var(--color-error);
+  color: var(--color-accent-text);
 }
 
 .emoji-button:active,
@@ -361,8 +361,8 @@
 
 /* Reply indicator in send box */
 .reply-indicator {
-  background: var(--ctp-surface1);
-  border: 1px solid var(--ctp-surface2);
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-surface-active);
   border-radius: var(--radius-lg);
   padding: 0.5rem 0.75rem;
   margin-bottom: 0.5rem;
@@ -379,14 +379,14 @@
 
 .reply-indicator-label {
   font-size: 0.75rem;
-  color: var(--ctp-blue);
+  color: var(--color-accent);
   font-weight: 600;
   margin-bottom: 0.25rem;
 }
 
 .reply-indicator-text {
   font-size: 0.85rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -395,7 +395,7 @@
 .reply-indicator-close {
   background: transparent;
   border: none;
-  color: var(--ctp-overlay1);
+  color: var(--color-text-disabled);
   cursor: pointer;
   font-size: 1.2rem;
   padding: 0;
@@ -410,8 +410,8 @@
 }
 
 .reply-indicator-close:hover {
-  background: var(--ctp-surface2);
-  color: var(--ctp-text);
+  background: var(--color-surface-active);
+  color: var(--color-text);
 }
 
 .message-status {
@@ -425,18 +425,18 @@
 }
 
 .status-pending {
-  color: var(--ctp-yellow);
+  color: var(--color-warning);
   font-size: 0.8rem;
 }
 
 .status-delivered {
-  color: var(--ctp-green);
+  color: var(--color-success);
   font-size: 0.8rem;
   font-weight: bold;
 }
 
 .status-failed {
-  color: var(--ctp-red);
+  color: var(--color-error);
   font-size: 0.8rem;
   font-weight: bold;
 }
@@ -447,19 +447,19 @@
 }
 
 .status-received-target {
-  color: var(--ctp-green);
+  color: var(--color-success);
   font-size: 0.8rem;
   font-weight: bold;
 }
 
 .status-confirmed {
-  color: var(--ctp-blue);
+  color: var(--color-accent);
   font-size: 0.8rem;
   font-weight: bold;
 }
 
 .status-timeout {
-  color: var(--ctp-peach);
+  color: var(--color-caution);
   font-size: 0.8rem;
 }
 
@@ -474,12 +474,12 @@
 }
 
 .messages-container::-webkit-scrollbar-thumb {
-  background: var(--ctp-overlay0);
+  background: var(--color-surface-inactive);
   border-radius: var(--radius-xs);
 }
 
 .messages-container::-webkit-scrollbar-thumb:hover {
-  background: var(--ctp-overlay1);
+  background: var(--color-text-disabled);
 }
 
 /* Loading indicator for infinite scroll */
@@ -489,17 +489,17 @@
   justify-content: center;
   gap: 0.5rem;
   padding: 0.75rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.875rem;
-  border-bottom: 1px solid var(--ctp-surface1);
+  border-bottom: 1px solid var(--color-surface-hover);
   margin-bottom: 0.5rem;
 }
 
 .loading-spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid var(--ctp-surface2);
-  border-top-color: var(--ctp-mauve);
+  border: 2px solid var(--color-surface-active);
+  border-top-color: var(--color-accent-alt);
   border-radius: var(--radius-full);
   animation: spin 0.8s linear infinite;
 }

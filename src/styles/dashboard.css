@@ -9,8 +9,8 @@
   height: 100dvh;
   display: flex;
   flex-direction: column;
-  background: var(--ctp-base);
-  color: var(--ctp-text);
+  background: var(--color-bg);
+  color: var(--color-text);
   font-family: var(--font-family, sans-serif);
   overflow: hidden;
 }
@@ -23,8 +23,8 @@
   padding: 0 24px;
   height: var(--header-height, 64px);
   flex-shrink: 0;
-  background: var(--ctp-mantle);
-  border-bottom: 1px solid var(--ctp-surface0);
+  background: var(--color-bg-raised);
+  border-bottom: 1px solid var(--color-surface);
 }
 
 .dashboard-topbar-logo {
@@ -41,7 +41,7 @@
 }
 
 .dashboard-topbar-title {
-  color: var(--ctp-lavender);
+  color: var(--color-accent-muted);
   font-size: 1.6rem;
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -71,7 +71,7 @@
   display: none; /* Hidden on desktop — shown via media query below */
   background: none;
   border: none;
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 22px;
   line-height: 1;
   padding: 6px 10px;
@@ -81,7 +81,7 @@
 }
 
 .dashboard-topbar-hamburger:hover {
-  background-color: var(--ctp-surface0);
+  background-color: var(--color-surface);
 }
 
 /* ── Sidebar backdrop (mobile overlay) ──────────────────────────────────── */
@@ -104,11 +104,11 @@
      persisted value, falling back to the default when unset. */
   width: var(--dashboard-sidebar-width, 240px);
   flex-shrink: 0;
-  background: var(--ctp-mantle);
+  background: var(--color-bg-raised);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  border-right: 1px solid var(--ctp-surface0);
+  border-right: 1px solid var(--color-surface);
 }
 
 /* Drag-to-resize handle — sits in the flex row between the sidebar and the
@@ -125,7 +125,7 @@
 
 .dashboard-sidebar-resize-handle:hover,
 .dashboard-sidebar-resize-handle:focus-visible {
-  background: var(--ctp-blue);
+  background: var(--color-accent);
   outline: none;
 }
 
@@ -135,7 +135,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 /* ── Source cards ────────────────────────────────────────────────────────── */
@@ -144,7 +144,7 @@
   position: relative;
   margin: 4px 8px;
   padding: 10px;
-  background: var(--ctp-surface0);
+  background: var(--color-surface);
   border-radius: 6px;
   border: 1px solid transparent;
   cursor: pointer;
@@ -232,11 +232,11 @@
 }
 
 .dashboard-source-card:hover {
-  background: var(--ctp-surface1);
+  background: var(--color-surface-hover);
 }
 
 .dashboard-source-card.selected {
-  border-color: var(--ctp-blue);
+  border-color: var(--color-accent);
 }
 
 .dashboard-source-card-header {
@@ -249,7 +249,7 @@
 .dashboard-source-card-name {
   font-size: 13px;
   font-weight: 700;
-  color: var(--ctp-text);
+  color: var(--color-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -258,8 +258,8 @@
 }
 
 .dashboard-source-card-badge {
-  background: var(--ctp-surface1);
-  color: var(--ctp-subtext1);
+  background: var(--color-surface-hover);
+  color: var(--color-text-muted);
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
@@ -274,7 +274,7 @@
   width: 16px;
   height: 16px;
   flex-shrink: 0;
-  color: var(--ctp-subtext1);
+  color: var(--color-text-muted);
   opacity: 0.75;
 }
 
@@ -283,7 +283,7 @@
   align-items: center;
   gap: 5px;
   font-size: 11px;
-  color: var(--ctp-subtext1);
+  color: var(--color-text-muted);
   margin-top: 5px;
 }
 
@@ -292,23 +292,23 @@
   height: 6px;
   border-radius: 50%;
   flex-shrink: 0;
-  background: var(--ctp-surface2);
+  background: var(--color-surface-active);
 }
 
 .dashboard-status-dot.connected {
-  background: var(--ctp-green);
+  background: var(--color-success);
 }
 
 .dashboard-status-dot.connecting {
-  background: var(--ctp-yellow);
+  background: var(--color-warning);
 }
 
 .dashboard-status-dot.disconnected {
-  background: var(--ctp-surface2);
+  background: var(--color-surface-active);
 }
 
 .dashboard-status-dot.disabled {
-  background: var(--ctp-surface2);
+  background: var(--color-surface-active);
 }
 
 .dashboard-activity-badge {
@@ -318,24 +318,24 @@
   font-size: 10px;
   font-weight: 600;
   line-height: 1.4;
-  background: var(--ctp-surface1);
-  color: var(--ctp-subtext0);
+  background: var(--color-surface-hover);
+  color: var(--color-text-subtle);
   white-space: nowrap;
 }
 
 .dashboard-activity-badge.dashboard-activity-live {
-  background: color-mix(in srgb, var(--ctp-green) 20%, transparent);
-  color: var(--ctp-green);
+  background: color-mix(in srgb, var(--color-success) 20%, transparent);
+  color: var(--color-success);
 }
 
 .dashboard-activity-badge.dashboard-activity-partial {
-  background: color-mix(in srgb, var(--ctp-yellow) 22%, transparent);
-  color: var(--ctp-yellow);
+  background: color-mix(in srgb, var(--color-warning) 22%, transparent);
+  color: var(--color-warning);
 }
 
 .dashboard-activity-badge.dashboard-activity-idle {
-  background: color-mix(in srgb, var(--ctp-red) 18%, transparent);
-  color: var(--ctp-red);
+  background: color-mix(in srgb, var(--color-error) 18%, transparent);
+  color: var(--color-error);
 }
 
 .dashboard-permission-badge {
@@ -345,8 +345,8 @@
   font-size: 10px;
   font-weight: 600;
   line-height: 1.4;
-  background: color-mix(in srgb, var(--ctp-yellow) 22%, transparent);
-  color: var(--ctp-yellow);
+  background: color-mix(in srgb, var(--color-warning) 22%, transparent);
+  color: var(--color-warning);
   cursor: help;
   white-space: nowrap;
 }
@@ -362,15 +362,15 @@
   font-size: 10px;
   font-weight: 600;
   line-height: 1.4;
-  background: color-mix(in srgb, var(--ctp-blue) 20%, transparent);
-  color: var(--ctp-blue);
+  background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+  color: var(--color-accent);
   cursor: help;
   white-space: nowrap;
 }
 
 .dashboard-publisher-badge.dashboard-publisher-partial {
-  background: color-mix(in srgb, var(--ctp-yellow) 22%, transparent);
-  color: var(--ctp-yellow);
+  background: color-mix(in srgb, var(--color-warning) 22%, transparent);
+  color: var(--color-warning);
 }
 
 .dashboard-source-card-actions {
@@ -387,8 +387,8 @@
 .dashboard-open-btn {
   flex: 0 0 auto;
   width: 80px;
-  background: var(--ctp-blue);
-  color: var(--ctp-base);
+  background: var(--color-accent);
+  color: var(--color-bg);
   border: none;
   border-radius: 4px;
   padding: 5px 0;
@@ -403,20 +403,20 @@
 }
 
 .dashboard-open-btn:disabled {
-  background: var(--ctp-surface1);
-  color: var(--ctp-overlay0);
+  background: var(--color-surface-hover);
+  color: var(--color-text-faint);
   opacity: 0.6;
   cursor: not-allowed;
 }
 
 .dashboard-node-count {
   font-size: 11px;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .dashboard-lock-icon {
   font-size: 11px;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 /* ── Kebab menu ──────────────────────────────────────────────────────────── */
@@ -424,7 +424,7 @@
 .dashboard-kebab-btn {
   background: transparent;
   border: none;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 16px;
   cursor: pointer;
   padding: 2px 4px;
@@ -435,16 +435,16 @@
 }
 
 .dashboard-kebab-btn:hover {
-  background: var(--ctp-surface1);
-  color: var(--ctp-text);
+  background: var(--color-surface-hover);
+  color: var(--color-text);
 }
 
 .dashboard-kebab-menu {
   position: absolute;
   right: 0;
   top: 100%;
-  background: var(--ctp-crust);
-  border: 1px solid var(--ctp-surface1);
+  background: var(--color-bg-sunken);
+  border: 1px solid var(--color-surface-hover);
   border-radius: 6px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
   min-width: 120px;
@@ -460,17 +460,17 @@
   border: none;
   text-align: left;
   font-size: 12px;
-  color: var(--ctp-text);
+  color: var(--color-text);
   cursor: pointer;
   transition: background 0.12s;
 }
 
 .dashboard-kebab-item:hover {
-  background: var(--ctp-surface0);
+  background: var(--color-surface);
 }
 
 .dashboard-kebab-item.danger {
-  color: var(--ctp-red);
+  color: var(--color-error);
 }
 
 /* ── Sidebar links ───────────────────────────────────────────────────────── */
@@ -478,7 +478,7 @@
 .dashboard-sidebar-links {
   margin-top: auto;
   padding: 10px 12px;
-  border-top: 1px solid var(--ctp-surface0);
+  border-top: 1px solid var(--color-surface);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -486,7 +486,7 @@
 
 .dashboard-sidebar-link {
   font-size: 12px;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   opacity: 0.5;
   cursor: default;
   text-decoration: none;
@@ -498,13 +498,13 @@
 
 .dashboard-sidebar-link--active {
   opacity: 1;
-  color: var(--ctp-blue);
+  color: var(--color-accent);
   cursor: pointer;
   transition: color 0.15s;
 }
 
 .dashboard-sidebar-link--active:hover {
-  color: var(--ctp-sapphire);
+  color: var(--color-accent-hover);
 }
 
 /* Sidebar footer styles moved to src/components/SidebarFooter.module.css
@@ -536,11 +536,11 @@
 }
 
 .dashboard-map-empty-content {
-  background: var(--ctp-mantle);
+  background: var(--color-bg-raised);
   border-radius: 10px;
   padding: 32px 40px;
   text-align: center;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   pointer-events: auto;
 }
 
@@ -561,12 +561,12 @@
   bottom: 12px;
   left: 12px;
   z-index: 1000;
-  background: var(--ctp-mantle);
-  border: 1px solid var(--ctp-surface0);
+  background: var(--color-bg-raised);
+  border: 1px solid var(--color-surface);
   border-radius: 8px;
   padding: 8px 10px;
   font-size: 12px;
-  color: var(--ctp-text);
+  color: var(--color-text);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   pointer-events: none;
   max-width: 220px;
@@ -575,7 +575,7 @@
 .dashboard-polar-grid-legend__title {
   font-weight: 600;
   margin-bottom: 4px;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .dashboard-polar-grid-legend__row {
@@ -605,8 +605,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--ctp-blue);
-  color: var(--ctp-base);
+  background: var(--color-accent);
+  color: var(--color-bg);
   border: none;
   border-radius: var(--radius-lg, 8px);
   padding: 8px 16px;
@@ -617,14 +617,14 @@
 }
 
 .dashboard-signin-btn:hover {
-  background: var(--ctp-sapphire);
+  background: var(--color-accent-hover);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(137, 180, 250, 0.3);
 }
 
 .dashboard-add-source-btn {
-  background: var(--ctp-blue);
-  color: var(--ctp-base);
+  background: var(--color-accent);
+  color: var(--color-bg);
   border: none;
   border-radius: 4px;
   padding: 6px 14px;
@@ -651,13 +651,13 @@
 }
 
 .dashboard-confirm-dialog {
-  background: var(--ctp-mantle);
-  border: 1px solid var(--ctp-surface1);
+  background: var(--color-bg-raised);
+  border: 1px solid var(--color-surface-hover);
   border-radius: 8px;
   padding: 24px;
   max-width: 360px;
   width: calc(100vw - 48px);
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 .dashboard-confirm-dialog h3 {
@@ -669,7 +669,7 @@
 .dashboard-confirm-dialog p {
   margin: 0 0 20px;
   font-size: 13px;
-  color: var(--ctp-subtext1);
+  color: var(--color-text-muted);
   line-height: 1.5;
 }
 
@@ -691,17 +691,17 @@
 
 .dashboard-confirm-actions button:first-child {
   background: transparent;
-  border: 1px solid var(--ctp-surface1);
-  color: var(--ctp-subtext0);
+  border: 1px solid var(--color-surface-hover);
+  color: var(--color-text-subtle);
 }
 
 .dashboard-confirm-actions button:first-child:hover {
-  background: var(--ctp-surface0);
+  background: var(--color-surface);
 }
 
 .dashboard-confirm-actions button:last-child {
-  background: var(--ctp-red);
-  color: var(--ctp-base);
+  background: var(--color-error);
+  color: var(--color-bg);
 }
 
 .dashboard-confirm-actions button:last-child:hover {
@@ -719,7 +719,7 @@
   display: block;
   font-size: 12px;
   font-weight: 600;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   margin-bottom: 4px;
 }
 
@@ -728,20 +728,20 @@
   box-sizing: border-box;
   padding: 8px 10px;
   font-size: 13px;
-  background: var(--ctp-surface0);
-  border: 1px solid var(--ctp-surface1);
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-hover);
   border-radius: 4px;
-  color: var(--ctp-text);
+  color: var(--color-text);
   outline: none;
   transition: border-color 0.15s;
 }
 
 .dashboard-form-input:focus {
-  border-color: var(--ctp-blue);
+  border-color: var(--color-accent);
 }
 
 .dashboard-form-input::placeholder {
-  color: var(--ctp-overlay0);
+  color: var(--color-text-faint);
 }
 
 /* ── Mobile: collapsible sidebar ─────────────────────────────────────────── */
