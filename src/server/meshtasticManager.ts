@@ -10185,11 +10185,19 @@ class MeshtasticManager implements ISourceManager {
       // (e.g. `.` or `.*`) to ack everything, where every reaction on the
       // channel drew a reply.
       //
-      // `emoji` is normalized upstream to `undefined` when absent or zero (see
-      // the TEXT_MESSAGE_APP decode), so presence alone is the tapback marker.
+      // Deliberately a truthiness test, not `!= null`. Meshtastic's `emoji` is
+      // a flag whose ZERO value means "not a reaction" — the decode upstream
+      // happens to normalize `0` to `undefined` today
+      // (`decodedEmoji > 0 ? decodedEmoji : undefined`), so both spellings
+      // behave identically on the live path. But `!= null` would treat a
+      // literal `emoji: 0` as a tapback and silently stop acking ordinary
+      // messages if that normalization ever moved or a new ingestion path
+      // skipped it. Keying on the flag's own semantics removes that coupling.
+      // (Ported from #4571, which had this right; see its discussion.)
+      //
       // Checked before the dedup guard below so a tapback's packetId never
       // consumes a slot in the bounded `autoAckProcessedPackets` set.
-      if (message?.emoji != null) {
+      if (message?.emoji) {
         logger.debug(`⏭️ Skipping auto-acknowledge for packet ${packetId}: message is a tapback/reaction`);
         return;
       }
