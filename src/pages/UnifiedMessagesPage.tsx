@@ -34,6 +34,7 @@ import LinkPreview from '../components/LinkPreview';
 import '../styles/unified.css';
 import { UiIcon } from '../components/icons';
 import { resolveReplyPreview } from '../utils/replyPreview';
+import { SOURCE_COLORS } from '../utils/sourceColors';
 
 type TFn = (key: string, options?: Record<string, unknown>) => string;
 
@@ -91,16 +92,6 @@ interface ChannelCollisionRow {
 const PAGE_SIZE = 100;
 const POLL_INTERVAL_MS = 10_000;
 
-const SOURCE_COLORS = [
-  'var(--color-accent)',
-  'var(--color-accent-alt)',
-  'var(--color-success)',
-  'var(--color-caution)',
-  'var(--color-warning)',
-  'var(--ctp-teal)',
-  'var(--ctp-pink)',
-  'var(--color-accent-hover)',
-];
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 

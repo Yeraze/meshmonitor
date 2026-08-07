@@ -130,3 +130,77 @@ describe('semantic color tokens (#4567)', () => {
     expect(themeValidation).not.toMatch(/--color-|'color-(success|error|accent)'/);
   });
 });
+
+/**
+ * Categorical scale (`--chart-N`).
+ *
+ * Roles and categories answer different questions. A role says what a color
+ * MEANS ("this is an error"); a categorical slot only has to be TELLABLE APART
+ * from its neighbours. Roles are chosen for meaning and may legitimately
+ * collide in hue — which is exactly why category encoding must not borrow
+ * them. `SOURCE_COLORS` used to read `[accent, accent-alt, success, caution,
+ * …]`, so a theme with a greenish accent rendered sources #1 and #3
+ * indistinguishable, and slot 3 implied a source was "succeeding".
+ */
+describe('categorical scale (--chart-N)', () => {
+  /** Chart slots and the palette var each points at, from the :root block. */
+  function chartDefinitions(): Map<string, string> {
+    const out = new Map<string, string>();
+    for (const m of appCss.matchAll(/(--chart-\d+)\s*:\s*var\((--ctp-[a-z0-9-]+)\)/g)) {
+      out.set(m[1], m[2]);
+    }
+    return out;
+  }
+
+  const chart = chartDefinitions();
+
+  it('defines a contiguous scale', () => {
+    expect(chart.size).toBe(8);
+    for (let i = 1; i <= 8; i++) {
+      expect(chart.has(`--chart-${i}`), `--chart-${i} missing`).toBe(true);
+    }
+  });
+
+  it('points every slot at a palette var that exists in every theme', () => {
+    for (const { theme, vars } of paletteVarsInThemeBlocks()) {
+      for (const [slot, paletteVar] of chart) {
+        expect(vars.has(paletteVar), `${slot} -> ${paletteVar} undefined in theme '${theme}'`).toBe(true);
+      }
+    }
+  });
+
+  it('gives every slot a distinct hue', () => {
+    // Two slots resolving to the same swatch would make two categories
+    // indistinguishable, which is the one thing this scale exists to prevent.
+    const used = [...chart.values()];
+    expect(new Set(used).size).toBe(used.length);
+  });
+
+  it('borrows no role token — the scale is independent of meaning', () => {
+    const chartBlock = appCss.match(/--chart-1\s*:[\s\S]*?--chart-8\s*:[^;]+;/)?.[0] ?? '';
+    expect(chartBlock).not.toBe('');
+    expect(chartBlock).not.toMatch(/var\(--color-/);
+  });
+
+  it('is what SOURCE_COLORS draws on, with no role tokens or raw palette vars', () => {
+    const src = readFileSync(resolve('src/utils/sourceColors.ts'), 'utf8');
+    const arr = src.match(/export const SOURCE_COLORS = \[([\s\S]*?)\]/)?.[1] ?? '';
+    expect(arr).toMatch(/--chart-1/);
+    expect(arr).not.toMatch(/--color-/);
+    expect(arr).not.toMatch(/--ctp-/);
+  });
+
+  it('has exactly one SOURCE_COLORS definition in the tree', () => {
+    // UnifiedMessagesPage and UnifiedTelemetryPage each carried a private copy
+    // and they had already drifted apart — Telemetry listed six entries and
+    // used `error` in slot four where the others used `caution`, so one source
+    // showed up in different colors on different pages and wrapped early past
+    // six sources. One definition, or it happens again.
+    const defs = walk(resolve('src')).filter((f) =>
+      /(export )?const SOURCE_COLORS\s*=/.test(readFileSync(f, 'utf8')),
+    );
+    expect(defs.map((f) => f.replace(resolve('.') + '/', ''))).toEqual([
+      'src/utils/sourceColors.ts',
+    ]);
+  });
+});

@@ -102,6 +102,37 @@
      the overlay0 swatch today but mean different things, and a theme that wants
      lighter chrome without lightening faint text needs them separable. */
   --color-surface-inactive: var(--ctp-overlay0);
+
+  /* ---- Categorical scale ------------------------------------------------
+
+     Eight visually distinguishable hues for CATEGORY encoding: tagging which
+     source a row came from, series in a multi-series chart. Deliberately a
+     separate namespace from the roles above, because they answer different
+     questions. A role says what a color MEANS ("this is an error"); a
+     categorical slot only has to be TELLABLE APART from its neighbours.
+
+     Conflating the two is a real bug, not a style preference. `SOURCE_COLORS`
+     previously read `[accent, accent-alt, success, caution, warning, ...]`,
+     which claimed source #3 was "succeeding" at something, and — worse — let
+     a theme that picks a greenish accent make sources #1 and #3
+     indistinguishable. Role tokens are chosen for meaning and may legitimately
+     collide in hue; categorical slots must not.
+
+     Order is chosen to maximise separation between ADJACENT slots, since a
+     view with three sources uses 1-2-3 and those are the ones that must not
+     look alike. The defaults reproduce the sequence `SOURCE_COLORS` already
+     used, so no existing source changes colour.
+
+     Themes may override these (Phase 3 exposes them in the theme schema);
+     until then they track the palette like every other token here. */
+  --chart-1: var(--ctp-blue);
+  --chart-2: var(--ctp-mauve);
+  --chart-3: var(--ctp-green);
+  --chart-4: var(--ctp-peach);
+  --chart-5: var(--ctp-yellow);
+  --chart-6: var(--ctp-teal);
+  --chart-7: var(--ctp-pink);
+  --chart-8: var(--ctp-sapphire);
 }
 
 /* ==============================
