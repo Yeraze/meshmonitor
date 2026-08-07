@@ -18,6 +18,7 @@ import { logger } from '../utils/logger.js';
 import { transportColumnForPacket } from '../utils/nodeTransport.js';
 import { getEnvironmentConfig } from './config/environment.js';
 import { notificationService } from './services/notificationService.js';
+import { sendMessagePushNotification } from './services/messagePushNotifier.js';
 import { getMaxNodeAgeHours } from './services/nodeDisplaySettings.js';
 import { deadDropService, nodeIdHex } from './services/deadDropService.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
@@ -10079,94 +10080,28 @@ class MeshtasticManager implements ISourceManager {
    * Send notifications for new message (Web Push + Apprise)
    */
   private async sendMessagePushNotification(message: any, messageText: string, isDirectMessage: boolean): Promise<void> {
-    try {
-      // Skip if no notification services are available
-      const serviceStatus = notificationService.getServiceStatus();
-      if (!serviceStatus.anyAvailable) {
-        return;
-      }
-
-      // Skip non-chat messages (telemetry, traceroutes, etc.). ATAK GeoChat
-      // (PortNum.ATAK_PLUGIN, and its V2 form on PortNum.ATAK_PLUGIN_V2) is a
-      // real chat message too — see processTakPacket / processTakV2Packet —
-      // and gets a push notification the same as a text message (spec §7.3).
-      if (message.portnum !== PortNum.TEXT_MESSAGE_APP && message.portnum !== PortNum.ATAK_PLUGIN && message.portnum !== PortNum.ATAK_PLUGIN_V2) {
-        return;
-      }
-
-      // Skip messages from our own locally connected node
-      const localNodeNum = this.localNodeInfo?.nodeNum?.toString() ?? await databaseService.settings.getSetting(this.localNodeSettingKey('localNodeNum'));
-      if (localNodeNum && parseInt(localNodeNum) === message.fromNodeNum) {
-        logger.debug('⏭️  Skipping push notification for message from local node');
-        return;
-      }
-
-      // Get sender info
-      const fromNode = await databaseService.nodes.getNode(message.fromNodeNum);
-      const senderName = fromNode?.longName || fromNode?.shortName || `Node ${message.fromNodeNum}`;
-
-      // Determine notification title and body
-      let title: string;
-      let body: string;
-
-      if (isDirectMessage) {
-        title = `Direct Message from ${senderName}`;
-        body = messageText.length > 100 ? messageText.substring(0, 97) + '...' : messageText;
-      } else {
-        // Get channel name
-        const channel = await databaseService.channels.getChannelById(message.channel, this.sourceId);
-        const channelName = channel?.name || `Channel ${message.channel}`;
-        title = `${senderName} in ${channelName}`;
-        body = messageText.length > 100 ? messageText.substring(0, 97) + '...' : messageText;
-      }
-
-      // Build navigation data for push notification click handling.
-      // `sourceId` is required for the cold-launch deep link: the service
-      // worker builds a `/source/<sourceId>/<tab>` route from it, because the
-      // app root renders DashboardPage and never reads navigation data (#4463).
-      const navigationData = isDirectMessage
-        ? {
-            type: 'dm' as const,
-            sourceId: this.sourceId,
-            messageId: message.id,
-            senderNodeId: fromNode?.nodeId || message.fromNodeId,
-          }
-        : {
-            type: 'channel' as const,
-            sourceId: this.sourceId,
-            channelId: message.channel,
-            messageId: message.id,
-          };
-
-      // Phase B: resolve source name for prefixing
-      const source = await databaseService.sources.getSource(this.sourceId);
-      const sourceName = source?.name || this.sourceId;
-
-      // Send notifications (Web Push + Apprise) with filtering to all subscribed users
-      const result = await notificationService.broadcast({
-        title,
-        body,
-        data: navigationData,
-        sourceId: this.sourceId,
-        sourceName,
-      }, {
-        messageText,
-        channelId: message.channel,
-        isDirectMessage,
-        viaMqtt: message.viaMqtt === true,
-        sourceId: this.sourceId,
-        sourceName,
-      });
-
-      logger.debug(
-        `📤 Sent notifications: ${result.total.sent} delivered, ${result.total.failed} failed, ${result.total.filtered} filtered ` +
-        `(Push: ${result.webPush.sent}/${result.webPush.failed}/${result.webPush.filtered}, ` +
-        `Apprise: ${result.apprise.sent}/${result.apprise.failed}/${result.apprise.filtered})`
-      );
-    } catch (error) {
-      logger.error('❌ Error sending message push notification:', error);
-      // Don't throw - push notification failures shouldn't break message processing
-    }
+    // Body extracted to services/messagePushNotifier.ts (#4593) so MQTT-sourced
+    // messages can raise the same alerts. This wrapper only resolves THIS
+    // source's local node number (live info first, persisted setting as the
+    // fallback for a not-yet-connected source).
+    //
+    // The "no notification service configured" bail is repeated here (the
+    // notifier checks it too) so the settings read below stays off the hot path
+    // for the common case, exactly as it did before the extraction.
+    // Optional-called: a partially-stubbed notificationService (several unit
+    // suites) must degrade to "no notification", never throw into the caller.
+    if (!notificationService.getServiceStatus?.()?.anyAvailable) return;
+    const localNodeNumRaw =
+      this.localNodeInfo?.nodeNum?.toString() ??
+      await databaseService.settings.getSetting(this.localNodeSettingKey('localNodeNum'));
+    const localNodeNum = localNodeNumRaw ? parseInt(localNodeNumRaw) : null;
+    await sendMessagePushNotification({
+      message,
+      messageText,
+      isDirectMessage,
+      sourceId: this.sourceId,
+      localNodeNum: Number.isFinite(localNodeNum as number) ? localNodeNum : null,
+    });
   }
 
   private async checkAutoAcknowledge(message: any, messageText: string, channelIndex: number, isDirectMessage: boolean, fromNum: number, packetId?: number, rxSnr?: number, rxRssi?: number): Promise<void> {
