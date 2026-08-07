@@ -441,6 +441,52 @@ describe('executeAction', () => {
     expect(calls).toHaveLength(0);
   });
 
+  // ── emojiMode + MQTT-source glyph (#4594) ───────────────────────────────
+  it("tapback: emojiMode 'hopCount' prefers the context's pre-resolved hopEmoji over recomputing from hops", async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.tapback', { emojiMode: 'hopCount' }),
+      // What buildMessageContext produces for an MQTT-sourced message: the hop
+      // count is still carried, but the glyph reflects the transport.
+      ctx({ from: 5, channel: 3, packetId: 99, isDM: false, hops: 2, hopEmoji: '#️⃣', viaMqttSource: true }),
+      deps,
+    );
+    expect(calls[0].args).toMatchObject({ emoji: '#️⃣' });
+  });
+
+  it("tapback: emojiMode 'hopCount' sends #️⃣ for an MQTT-sourced message with no hop count (no skip)", async () => {
+    const { calls, deps } = recorder();
+    const result = await executeAction(
+      node('action.tapback', { emojiMode: 'hopCount' }),
+      ctx({ from: 5, channel: 3, packetId: 99, isDM: false, hopEmoji: '#️⃣', viaMqttSource: true }),
+      deps,
+    );
+    expect(result).not.toMatchObject({ skipped: true });
+    expect(calls[0].args).toMatchObject({ emoji: '#️⃣' });
+  });
+
+  it("tapback: emojiMode 'hopCount' falls back to hops when the context carries no hopEmoji (non-message triggers)", async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.tapback', { emojiMode: 'hopCount' }),
+      ctx({ from: 5, channel: 3, packetId: 99, isDM: false, hops: 4 }),
+      deps,
+    );
+    expect(calls[0].args).toMatchObject({ emoji: '4️⃣' });
+  });
+
+  it("tapback: emojiMode 'hopCount' ignores a non-string/empty hopEmoji and falls back to hops", async () => {
+    for (const bad of [undefined, null, '', 42]) {
+      const { calls, deps } = recorder();
+      await executeAction(
+        node('action.tapback', { emojiMode: 'hopCount' }),
+        ctx({ from: 5, channel: 3, packetId: 99, isDM: false, hops: 1, hopEmoji: bad }),
+        deps,
+      );
+      expect(calls[0].args).toMatchObject({ emoji: '1️⃣' });
+    }
+  });
+
   it("tapback: emojiMode 'hopCount' sends the same derived emoji to every selected source", async () => {
     const { calls, deps } = recorder();
     await executeAction(

@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { fieldVisible, ACTIONS, CONDITIONS, TRIGGERS, numericFields, stringFields, STRING_OP_OPTIONS, type FieldDef } from './catalog';
-import { HOP_COUNT_EMOJIS } from '../../utils/hopEmoji';
+import { HOP_COUNT_EMOJIS, MQTT_SOURCE_EMOJI } from '../../utils/hopEmoji';
 
 describe('fieldVisible', () => {
   it('is visible when the field has no showIf', () => {
@@ -119,9 +119,15 @@ describe('action.tapback catalog entry', () => {
     const here = fileURLToPath(import.meta.url);
     const catalogPath = here.replace(/catalog\.showIf\.test\.ts$/, 'catalog.ts');
     const source = readFileSync(catalogPath, 'utf8');
-    for (const glyph of HOP_COUNT_EMOJIS) {
+    // #4594 folded the MQTT-source glyph into the same rule.
+    for (const glyph of [...HOP_COUNT_EMOJIS, MQTT_SOURCE_EMOJI]) {
       expect(source.includes(glyph)).toBe(false);
     }
+  });
+
+  it('emojiMode help documents the MQTT-source glyph, interpolated (#4594)', () => {
+    const field = tapback?.fields.find((f) => f.name === 'emojiMode');
+    expect(field?.help).toContain(MQTT_SOURCE_EMOJI);
   });
 });
 
@@ -181,6 +187,8 @@ describe('Auto-Ack parity catalog additions (#4340 Phase 3)', () => {
     const values = flatten(numericFields('trigger.message')).map((o) => o.value);
     expect(values).toContain('isDM');
     expect(values).toContain('viaMqtt');
+    // #4594 — transport, distinct from the packet's own relay flag above.
+    expect(values).toContain('viaMqttSource');
   });
 
   it('NODE_STRING includes node.completeness', () => {

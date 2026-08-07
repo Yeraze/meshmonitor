@@ -10,7 +10,7 @@ import type { DbMessage } from '../../../services/database.js';
 import type { MeshCoreMessage } from '../../meshcoreManager.js';
 import type { TriggerType } from '../../../types/automation.js';
 import { compileUserRegex } from '../../../utils/safeRegex.js';
-import { hopCountEmoji } from '../../../utils/hopEmoji.js';
+import { hopCountEmoji, hopOrMqttEmoji } from '../../../utils/hopEmoji.js';
 import { autoAckIsZeroHop } from '../../utils/autoAckDecision.js';
 
 /** Meshtastic broadcast address (0xFFFFFFFF); also defined inline in the manager. */
@@ -67,6 +67,13 @@ export interface MessageContextLabels {
   fromName?: string | null;
   /** The message's channel slot name for its source. Ignored for DMs. */
   channelName?: string | null;
+  /**
+   * True when the message was ingested through an MQTT source (`mqtt_broker` /
+   * `mqtt_bridge`) rather than over our own RF link (#4594). Resolved by the
+   * engine from `NodeDataProvider.getSourceType`, since the pure builder has no
+   * DB access. Absent/false → today's hop-count behaviour.
+   */
+  viaMqttSource?: boolean;
 }
 
 /** Build the trigger context for a `message:new` event. */
@@ -109,7 +116,20 @@ export function buildMessageContext(
     // hopLimit packet) value — deliberately NOT aligned. Changing deriveHops to
     // guard against this would silently alter every existing condition.numeric
     // on field `hops`, so the divergence is documented here instead.
-    hopEmoji: hopCountEmoji(hops),
+    // #4594: an MQTT source overrides the hop glyph entirely with #️⃣ — the
+    // message never crossed our RF link, so its hop count describes the bridging
+    // node's path, not ours. Keyed on the SOURCE TYPE, never on `msg.viaMqtt`:
+    // the per-packet flag is routinely true on an ordinary meshtastic_tcp source
+    // (an MQTT gateway node rebroadcast the packet onto RF, and we did receive it
+    // over RF), so keying on it would silently change the glyph existing
+    // automations already emit. Keyed this way, the new glyph is unreachable for
+    // every source type that can fire an automation today.
+    hopEmoji: hopOrMqttEmoji(hops, labels?.viaMqttSource),
+    /**
+     * True when the message arrived through an MQTT source. Exposed as its own
+     * token so a rule can branch on transport without string-matching hopEmoji.
+     */
+    viaMqttSource: labels?.viaMqttSource === true,
     hopStart: msg.hopStart,
     hopLimit: msg.hopLimit,
     // #4340 Phase 4. AutoAck floors a missing/malformed hop count to 0 and treats it
@@ -201,7 +221,11 @@ export function buildMeshCoreMessageContext(
     hops,
     // #4340: same shared table as the Meshtastic context; MeshCore has no
     // tapback concept, but the token is usable in action.sendMessage bodies.
+    // #4594: MeshCore sources are never `mqtt_broker`/`mqtt_bridge`, so the MQTT
+    // glyph is unreachable here — `hopCountEmoji` directly, and the companion
+    // token is a constant false so it is never undefined on a message trigger.
     hopEmoji: hopCountEmoji(hops),
+    viaMqttSource: false,
     // #4340 Phase 4: same derivation as buildMessageContext. MeshCore messages
     // carry no viaMqtt concept — `undefined` reads as not-MQTT, never NaN.
     zeroHop: autoAckIsZeroHop(typeof hops === 'number' && hops > 0 ? hops : 0, undefined) ? 1 : 0,

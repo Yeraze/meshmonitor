@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { MeshMessage } from '../../types/message';
 import './EmojiPickerModal.css';
 import { UiIcon } from '../icons';
-import { HOP_COUNT_EMOJIS, HOP_EMOJI_MAX } from '../../utils/hopEmoji';
+import { HOP_COUNT_EMOJIS, HOP_EMOJI_MAX, MQTT_SOURCE_EMOJI } from '../../utils/hopEmoji';
 
 /**
  * Tapback emoji type
@@ -36,6 +36,9 @@ export const DEFAULT_TAPBACK_EMOJIS: TapbackEmoji[] = [
     emoji,
     title: hops === 0 ? 'Direct (0 hops)' : hops === HOP_EMOJI_MAX ? '7+ hops' : `${hops} hop${hops === 1 ? '' : 's'}`,
   })),
+  // #4594: the transport counterpart to the hop keycaps — appended here rather
+  // than added to HOP_COUNT_EMOJIS, which is indexed BY hop count above.
+  { emoji: MQTT_SOURCE_EMOJI, title: 'Received via MQTT' },
   // Fun emojis (OLED compatible)
   { emoji: '💩', title: 'Poop' },
   { emoji: '👋', title: 'Wave' },

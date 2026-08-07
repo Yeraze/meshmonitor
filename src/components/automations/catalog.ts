@@ -5,7 +5,7 @@
  * metadata only; the engine validates the resulting graph server-side. Field
  * `kind` maps to an input renderer in AutomationBuilder.
  */
-import { HOP_COUNT_EMOJIS, HOP_EMOJI_MAX } from '../../utils/hopEmoji';
+import { HOP_COUNT_EMOJIS, HOP_EMOJI_MAX, MQTT_SOURCE_EMOJI } from '../../utils/hopEmoji';
 
 export type FieldKind = 'text' | 'number' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti' | 'sendSourceMulti' | 'channelMulti' | 'geofence' | 'scriptselect' | 'regionSelect';
 
@@ -204,6 +204,11 @@ const EVENT_NUMERIC: Record<string, FieldOpt[]> = {
     // its own floored hop count, so a hopless packet (no hopStart) reads 1, not
     // NaN. See triggerContext.ts buildMessageContext for the derivation.
     { value: 'zeroHop', label: 'Direct RF, 0 hops (1 = yes; 0 = relayed or via MQTT)' },
+    // #4594: the TRANSPORT the message reached MeshMonitor by — whether its
+    // source is an MQTT Bridge / MQTT Broker rather than a radio. Distinct from
+    // `viaMqtt` above, which is the packet's own upstream relay flag and is
+    // routinely 1 on messages our radio did receive over RF.
+    { value: 'viaMqttSource', label: 'Came in via an MQTT source (1 = yes, 0 = over RF)' },
   ],
   'trigger.telemetry': [{ value: 'value', label: 'Reading value' }, { value: 'nodeNum', label: 'Node #' }],
   'trigger.nodeUpdated': [{ value: 'nodeNum', label: 'Node #' }],
@@ -424,7 +429,7 @@ export const ACTIONS: BlockDef[] = [
           { value: 'fixed', label: 'A fixed emoji' },
           { value: 'hopCount', label: `The message's hop count (${HOP_COUNT_EMOJIS[0]} direct, ${HOP_COUNT_EMOJIS[1]}–${HOP_COUNT_EMOJIS[HOP_EMOJI_MAX]})` },
         ],
-        help: `Hop count reacts with ${HOP_COUNT_EMOJIS[0]} for a direct (0-hop) message and ${HOP_COUNT_EMOJIS[1]}–${HOP_COUNT_EMOJIS[HOP_EMOJI_MAX]} above, clamping at ${HOP_COUNT_EMOJIS[HOP_EMOJI_MAX]} — the same table Auto-Acknowledge uses. Triggers with no hop information (Schedule, System) record a skipped no-op.`,
+        help: `Hop count reacts with ${HOP_COUNT_EMOJIS[0]} for a direct (0-hop) message and ${HOP_COUNT_EMOJIS[1]}–${HOP_COUNT_EMOJIS[HOP_EMOJI_MAX]} above, clamping at ${HOP_COUNT_EMOJIS[HOP_EMOJI_MAX]} — the same table Auto-Acknowledge uses. A message that came in through an MQTT source (bridge or broker) reacts with ${MQTT_SOURCE_EMOJI} instead, whatever its hop count, because it never crossed this radio's RF link. Triggers with no hop information (Schedule, System) record a skipped no-op.`,
       },
       { name: 'emoji', label: 'Emoji', kind: 'emoji', placeholder: '👍', showIf: { field: 'emojiMode', notEquals: 'hopCount' } },
       { name: 'sourceIds', label: 'Send via sources', kind: 'sendSourceMulti', help: 'Which radios send the reaction (MeshCore sources are skipped — tapbacks are Meshtastic-only). Leave none to use the source that triggered the automation — but a source IS required for source-less triggers like System events and Schedules.' },
