@@ -1,6 +1,7 @@
 /**
  * Styles for the Analysis & Reports workspace.
- * Uses --ctp-* CSS custom properties so the page respects the active theme.
+ * Uses the semantic --color-* role tokens (defined in App.css over the
+ * Catppuccin palette) so the page respects the active theme — see #4567.
  */
 
 /* ── Page shell ──────────────────────────────────────────────────────────── */

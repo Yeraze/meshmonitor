@@ -1,6 +1,7 @@
 /**
  * Styles for Unified Messages and Unified Telemetry pages.
- * Uses --ctp-* CSS custom properties so the pages respect the active theme.
+ * Uses the semantic --color-* role tokens (defined in App.css over the
+ * Catppuccin palette) so the pages respect the active theme — see #4567.
  */
 
 /* ── Page shell ──────────────────────────────────────────────────────────── */
