@@ -13,12 +13,17 @@
  * itself via `sourceManagerRegistry` + `isMeshCoreManager` (never
  * `instanceof`, per CLAUDE.md).
  *
- * Phase 1 scope only: key status / import / manual paste / clear. No
- * publisher, no MQTT connection — see MESHCORE_OBSERVER_PHASE1_SPEC.md §6.3, §7.
+ * Phase 1 scope: key status / import / manual paste / clear. No publisher, no
+ * MQTT connection — see MESHCORE_OBSERVER_PHASE1_SPEC.md §6.3, §7.
  *
- * Secrets hygiene: no handler ever returns the private key or a minted token.
- * `ObserverKeyStatus` (from `meshcoreObserverKeyStore.ts`) is the only shape
- * returned, and it never carries `storedKid` either (fingerprinting risk).
+ * Issue #4595 adds a parallel `/credentials` trio for the static-credential
+ * auth mode (brokers that don't verify the signed token). Same shape, same
+ * secrets rules, a separate encrypted store.
+ *
+ * Secrets hygiene: no handler ever returns the private key, a minted token,
+ * or the broker password. `ObserverKeyStatus` / `ObserverCredentialStatus`
+ * are the only shapes returned, and neither carries `storedKid` (fingerprinting
+ * risk).
  */
 import { Router, Request, Response } from 'express';
 import databaseService from '../../services/database.js';
@@ -30,6 +35,11 @@ import { ok, fail } from '../utils/apiResponse.js';
 import { meshcoreDeviceLimiter } from '../middleware/rateLimiters.js';
 import { auditMeshcoreEvent } from './meshcoreRouteShared.js';
 import { getMeshCoreObserverKeyStore } from '../services/meshcoreObserverKeyStore.js';
+import {
+  getMeshCoreObserverCredentialStore,
+  OBSERVER_PASSWORD_MAX_LENGTH,
+  OBSERVER_USERNAME_MAX_LENGTH,
+} from '../services/meshcoreObserverCredentialStore.js';
 import { deriveObserverPublicKey, isValidObserverPrivateKey } from '../services/meshcoreObserverToken.js';
 import type { Source } from '../../db/repositories/sources.js';
 
@@ -233,6 +243,118 @@ router.delete(
     } catch (error) {
       logger.error(`[API] Observer key clear error for ${req.params.id}:`, error);
       fail(res, 500, 'INTERNAL_ERROR', 'Failed to clear Analyzer Observer signing key');
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Static MQTT credentials (#4595) — for Analyzer brokers that authenticate
+// with a plain username/password instead of the Ed25519-signed token.
+//
+// Secrets hygiene, same contract as the key routes above: NO handler ever
+// returns the password. `ObserverCredentialStatus` is the only shape returned,
+// and it carries `username` (not secret, needed by the UI) plus booleans.
+// ---------------------------------------------------------------------------
+
+// GET /api/sources/:id/observer/credentials — status only, never the password.
+router.get(
+  '/credentials',
+  requirePermission('configuration', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const source = await resolveMeshCoreSource(req, res);
+      if (!source) return;
+      const status = await getMeshCoreObserverCredentialStore().status(source.id);
+      ok(res, status);
+    } catch (error) {
+      logger.error(`[API] Observer credential status error for ${req.params.id}:`, error);
+      fail(res, 500, 'INTERNAL_ERROR', 'Failed to get Analyzer Observer credential status');
+    }
+  },
+);
+
+// PUT /api/sources/:id/observer/credentials — body { username, password }.
+router.put(
+  '/credentials',
+  requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const source = await resolveMeshCoreSource(req, res);
+      if (!source) return;
+
+      const store = getMeshCoreObserverCredentialStore();
+      if (!store.capability.canStore) {
+        fail(
+          res,
+          400,
+          'CREDENTIAL_PERSISTENCE_DISABLED',
+          store.capability.reason ?? 'Cannot persist Analyzer Observer broker password',
+        );
+        return;
+      }
+
+      const rawUsername = req.body?.username;
+      const rawPassword = req.body?.password;
+      if (typeof rawUsername !== 'string' || typeof rawPassword !== 'string') {
+        fail(res, 400, 'INVALID_PARAMETER_TYPE', 'username and password must be strings');
+        return;
+      }
+      // Only the username is trimmed — a password's leading/trailing
+      // whitespace is part of the secret and trimming it would silently
+      // authenticate as something the operator did not type.
+      const username = rawUsername.trim();
+      if (!username || username.length > OBSERVER_USERNAME_MAX_LENGTH) {
+        fail(
+          res,
+          400,
+          'INVALID_PARAMETER',
+          `username must be a non-empty string of at most ${OBSERVER_USERNAME_MAX_LENGTH} characters`,
+        );
+        return;
+      }
+      if (!rawPassword || rawPassword.length > OBSERVER_PASSWORD_MAX_LENGTH) {
+        fail(
+          res,
+          400,
+          'INVALID_PARAMETER',
+          `password must be a non-empty string of at most ${OBSERVER_PASSWORD_MAX_LENGTH} characters`,
+        );
+        return;
+      }
+
+      await store.store(source.id, username, rawPassword);
+      // Audit records THAT credentials changed, never the values.
+      auditMeshcoreEvent(req, 'meshcore_observer_credentials_set', 'configuration', { sourceId: source.id });
+      await refreshObserverPublisher(source);
+      const status = await store.status(source.id);
+      ok(res, status);
+    } catch (error) {
+      logger.error(`[API] Observer credential set error for ${req.params.id}:`, error);
+      fail(res, 500, 'INTERNAL_ERROR', 'Failed to set Analyzer Observer broker credentials');
+    }
+  },
+);
+
+// DELETE /api/sources/:id/observer/credentials — forget them. Idempotent.
+// Deliberately NOT gated on `capability.canStore`, for the same reason as the
+// key DELETE above: forgetting an unrecoverable secret must always be possible.
+router.delete(
+  '/credentials',
+  requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const source = await resolveMeshCoreSource(req, res);
+      if (!source) return;
+
+      const store = getMeshCoreObserverCredentialStore();
+      await store.clear(source.id);
+      auditMeshcoreEvent(req, 'meshcore_observer_credentials_clear', 'configuration', { sourceId: source.id });
+      await refreshObserverPublisher(source);
+      const status = await store.status(source.id);
+      ok(res, status);
+    } catch (error) {
+      logger.error(`[API] Observer credential clear error for ${req.params.id}:`, error);
+      fail(res, 500, 'INTERNAL_ERROR', 'Failed to clear Analyzer Observer broker credentials');
     }
   },
 );

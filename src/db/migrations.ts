@@ -150,6 +150,7 @@ import { migration as fanOutSettingsPermissionsMigration, runMigration132Postgre
 import { migration as addMeshCoreObserverKeysMigration, runMigration133Postgres, runMigration133Mysql } from '../server/migrations/133_add_meshcore_observer_keys.js';
 import { migration as clearNullIslandEstimatesMigration, runMigration134Postgres, runMigration134Mysql } from '../server/migrations/134_clear_null_island_estimates.js';
 import { migration as backfillMeshcoreNodesViewOnMapMigration, runMigration135Postgres, runMigration135Mysql } from '../server/migrations/135_backfill_meshcore_nodes_viewonmap.js';
+import { migration as addMeshCoreObserverCredentialsMigration, runMigration136Postgres, runMigration136Mysql } from '../server/migrations/136_add_meshcore_observer_credentials.js';
 
 // ============================================================================
 // Registry
@@ -2146,4 +2147,20 @@ registry.register({
   sqlite: (db) => backfillMeshcoreNodesViewOnMapMigration.up(db),
   postgres: (client) => runMigration135Postgres(client),
   mysql: (pool) => runMigration135Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 136: create `meshcore_observer_credentials` (issue #4595).
+// One row per MeshCore source holding the STATIC MQTT username/password used
+// by Analyzer brokers that do not verify the Ed25519-signed token. The
+// password is stored encrypted at rest (AES-256-GCM envelope), never plain.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 136,
+  name: 'add_meshcore_observer_credentials',
+  settingsKey: 'migration_136_add_meshcore_observer_credentials',
+  sqlite: (db) => addMeshCoreObserverCredentialsMigration.up(db),
+  postgres: (client) => runMigration136Postgres(client),
+  mysql: (pool) => runMigration136Mysql(pool),
 });

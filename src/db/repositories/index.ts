@@ -83,6 +83,8 @@ export { SourcePkiKeysRepository } from './sourcePkiKeys.js';
 export type { DbSourcePkiKey } from './sourcePkiKeys.js';
 export { MeshCoreObserverKeysRepository } from './meshcoreObserverKeys.js';
 export type { DbMeshCoreObserverKey } from './meshcoreObserverKeys.js';
+export { MeshCoreObserverCredentialsRepository } from './meshcoreObserverCredentials.js';
+export type { DbMeshCoreObserverCredential } from './meshcoreObserverCredentials.js';
 export { DeadDropRepository } from './deadDrop.js';
 export type { DeadDropMessageInput } from './deadDrop.js';
 export { MqttPacketLogRepository } from './mqttPacketLog.js';

@@ -20,10 +20,10 @@ Because it only ever publishes outbound to a broker over the network, the Analyz
 
 ## Requirements
 
-- A **Companion** source (not a Repeater, not a Room Server) — the Analyzer Observer needs the device's signing key, and only Companions can export one.
-- The source connected at least once, so MeshMonitor can fetch the key from the device (or you can paste one by hand — see [Step 2](#step-2-provide-the-signing-key)).
-- A fixed `SESSION_SECRET`. MeshMonitor encrypts the stored signing key with a key derived from `SESSION_SECRET`. If yours is auto-generated, key storage is disabled and the UI tells you so. See [Credential store](/features/meshcore#credential-store) for the same requirement on the remote-admin password store, and set `SESSION_SECRET=$(openssl rand -hex 32)` in your environment to enable it.
-- A **broker URL**, **region code**, and **token audience** from your region's analyzer operator (for example, FL Mesh or LetsMesh).
+- A **Companion** source (not a Repeater, not a Room Server) — only the Companion backend reports the packets this feature relays.
+- The source connected at least once, so MeshMonitor knows the node's public key (and, in signed-token mode, can fetch the signing key from the device — or you can paste one by hand, see [Step 2](#step-2-provide-broker-credentials)).
+- A fixed `SESSION_SECRET`. MeshMonitor encrypts the stored signing key **and** the stored broker password with keys derived from `SESSION_SECRET`. If yours is auto-generated, credential storage is disabled and the UI tells you so. See [Credential store](/features/meshcore#credential-store) for the same requirement on the remote-admin password store, and set `SESSION_SECRET=$(openssl rand -hex 32)` in your environment to enable it.
+- A **broker URL** and **region code** from your region's analyzer operator, plus either a **token audience** (signed-token brokers) or a **username and password** (static-credential brokers).
 
 ## Step 1 — Enable and configure
 
@@ -31,21 +31,37 @@ Open the Dashboard, edit the MeshCore source, and expand the **Analyzer Observer
 
 | Field | Example | Notes |
 |---|---|---|
+| Broker authentication | Signed token | How the broker checks who you are. See below. |
 | Broker URL | `wss://mqtt-us-v1.letsmesh.net:443` | Accepts `ws://`, `wss://`, `mqtt://`, `mqtts://`, or a bare `host:port` (defaults to `mqtt://`). |
 | Region (IATA) | `MCO` | A 3-letter IATA code for your region, or `test` for a local broker. Case-insensitive — MeshMonitor uppercases it on save. |
-| Token audience | `meshcore-mqtt` | Must match the broker's expected audience exactly, or the broker rejects your login. Ask your region's operator. |
+| Token audience | `meshcore-mqtt` | **Signed-token mode only.** Must match the broker's expected audience exactly, or the broker rejects your login. Ask your region's operator. Hidden in username/password mode. |
 
-Check the enable box, fill in the three fields, and save. Saving an Analyzer Observer change hot-swaps the publisher — it starts, stops, or reconfigures without bouncing the radio link, so your MeshCore connection stays up the whole time.
+Check the enable box, fill in the fields, and save. Saving an Analyzer Observer change hot-swaps the publisher — it starts, stops, or reconfigures without bouncing the radio link, so your MeshCore connection stays up the whole time.
 
-::: warning Companion only
-Repeaters cannot export a signing key, so the enable checkbox is disabled with an explanation when the source's device type is Repeater.
+### Which authentication mode?
+
+::: tip Added in 4.15 (#4595)
+The **Username / password** mode exists for regional brokers that don't verify a signature.
 :::
 
-## Step 2 — Provide the signing key
+| Mode | Use it when | MQTT login |
+|---|---|---|
+| **Signed token (FL Mesh / LetsMesh)** | The broker verifies an Ed25519 token signed by your node — the FL Mesh / LetsMesh backbone convention. The default. | Username `v1_{PUBLIC_KEY}`, password a short-lived token MeshMonitor mints and renews. |
+| **Username / password** | The broker takes a fixed MQTT login instead — for example [meshcoretel.ru](https://meshcoretel.ru), which uses `meshcore`/`meshcore` across its regions. | Exactly the username and password you store. Nothing expires, nothing renews. |
+
+Either way, the topics stay the same: `meshcore/{REGION}/{YOUR_NODE_PUBLIC_KEY}/packets` and `.../status`. In username/password mode MeshMonitor takes that public key straight from the node (it's broadcast in every advert), so no signing key is needed at all.
+
+::: warning Companion only
+Both modes are Companion-only. The repeater/serial backend never reports the over-the-air packets this feature relays, so an observer on a Repeater would sit idle. The enable checkbox is disabled with an explanation when the source's device type is Repeater.
+:::
+
+## Step 2 — Provide broker credentials
+
+Go to the source's **MeshCore → Configuration** page and open **Analyzer Observer**. What you see there follows the mode you picked in Step 1.
+
+### Signed token — the signing key
 
 The broker authenticates you as your node: it verifies a short-lived Ed25519 token signed with the node's own private key, and your broker username is `v1_{PUBLIC_KEY}`. MeshMonitor needs that key to sign tokens on your behalf.
-
-Go to the source's **MeshCore → Configuration** page and open **Analyzer Observer**.
 
 - **Fetch from device** (preferred) — reads the 64-byte private key straight from the connected Companion. Requires the source to be connected.
 - **Enter key manually** — paste a 128-character hex private key if you already have one. Use this when the source can't connect right now, or the key comes from elsewhere.
@@ -56,13 +72,32 @@ Either way, MeshMonitor stores the key **encrypted**, and no API ever returns it
 The signing key is the same key that proves your node's identity on the mesh. Treat a manually pasted key the same way you'd treat a password — anyone with it can publish to the broker as you.
 :::
 
-If `SESSION_SECRET` changes after a key is stored, the key can no longer be decrypted. The Configuration page shows a **key rotated** warning in that case — re-import from the device or re-paste the key to recover. The public key stays correct and visible throughout.
+### Username / password — the broker login
+
+Enter the **broker username** and **broker password** your region's operator publishes, then save.
+
+The password gets the same treatment as the signing key: it is encrypted at rest with a key derived from `SESSION_SECRET`, it is never written into the source's config, and **no API ever returns it**. Only the username comes back (it isn't a secret — a non-TLS broker sees it in the clear anyway), so the page can show which account is configured. A password sent inside a source's config block is rejected outright.
+
+Where the secret lives, precisely:
+
+- On disk: one row per source in `meshcore_observer_credentials`, password as an AES-256-GCM envelope, username in the clear.
+- In the process: decrypted only when the publisher builds its MQTT CONNECT packet. No route reads it.
+- Who can write it: anyone with `configuration:write` **on that source**. Who can read it back: nobody, including admins.
+
+::: warning Most of these brokers are plaintext MQTT
+A static-credential broker on `mqtt://…:1883` has no TLS, so your username and password cross the network in the clear. Use a password you don't use anywhere else — with these shared regional logins (`meshcore`/`meshcore`), assume it's public.
+:::
+
+### If SESSION_SECRET changes
+
+If `SESSION_SECRET` changes after a credential is stored, that credential can no longer be decrypted. The Configuration page shows a **rotated** warning in that case — re-import/re-paste the signing key, or re-enter the broker password, to recover. In signed-token mode the public key stays correct and visible throughout.
 
 ## Step 3 — Verify
 
 Back on the Configuration page, the **Analyzer Observer** status block shows:
 
 - **Connected** — the publisher has an open, authenticated connection to the broker.
+- **Auth token expires** — signed-token mode only; static credentials never expire, so the row is hidden.
 - **Packets published** — a running count since the publisher last started. Climbing means packets are flowing.
 - **Last publish** — a relative timestamp; should stay recent while the mesh is active.
 
@@ -72,12 +107,15 @@ Once connected, check your region's analyzer site — your node should appear in
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| "No signing key stored" | You haven't fetched or pasted a key yet | Click **Fetch from device**, or paste one |
-| "Key rotated" warning | `SESSION_SECRET` changed since the key was stored | Re-import from the device, or re-paste it |
+| "No signing key stored" | Signed-token mode with no key yet | Click **Fetch from device**, or paste one |
+| "No broker username/password stored" | Username/password mode with no credentials yet | Enter them on the Configuration page |
+| "Key rotated" / "rotated" warning | `SESSION_SECRET` changed since the credential was stored | Re-import the key, or re-enter the password |
 | Not connected, error mentions the token | `tokenAudience` doesn't match the broker's expected value | Match it exactly — check with your region's operator |
+| "Broker rejected the observer username/password" | Wrong static credentials, or the broker actually wants a signed token | Re-check the login with your region's operator; if they publish a token audience instead, switch the mode back |
 | Not connected, no error shown | Broker unreachable | Check the broker URL, scheme, and port |
+| "The node has not reported its public key yet" | Username/password mode on a source that hasn't finished connecting | Connect the source — the topic path needs the node's public key |
 | Dropped-packet count climbing | The broker socket was down when packets arrived | Expected during a broker outage — nothing is lost on the mesh, only unpublished |
-| "Requires a Companion device" on save | The source's device type is Repeater | The Analyzer Observer works with Companions only |
+| "Requires a Companion device" on save | The source's device type is Repeater | The Analyzer Observer works with Companions only, in both modes |
 
 Published/dropped counters are cumulative since the publisher last started, and reset when the source reconnects or you change the observer config.
 

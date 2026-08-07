@@ -25,6 +25,7 @@ import { formatRelativeTime } from '../../utils/datetime';
 import { UiIcon } from '../icons';
 import { CollapsibleSection } from './CollapsibleSection';
 import { useObserverKey, type ObserverKeyError, type ObserverKeyAction } from './hooks/useObserverKey';
+import { useObserverCredentials } from './hooks/useObserverCredentials';
 import styles from './MeshCoreObserverSection.module.css';
 
 interface MeshCoreObserverSectionProps {
@@ -46,6 +47,8 @@ interface MeshCoreObserverSectionProps {
 interface ObserverSourceStatusSlice {
   observer?: {
     configured: boolean;
+    /** #4595. Absent on a pre-4595 server — treated as unknown, not 'token'. */
+    authMode?: 'token' | 'password';
     keyStored: boolean;
     connected: boolean;
     publishes: number;
@@ -169,11 +172,28 @@ export const MeshCoreObserverSection: React.FC<MeshCoreObserverSectionProps> = (
   const statuses = useSourceStatuses([sourceId]);
   const observer = (statuses.get(sourceId) as ObserverSourceStatusSlice | null | undefined)?.observer;
 
+  const creds = useObserverCredentials(sourceId, { enabled: canRead });
+
   const [manualOpen, setManualOpen] = useState(false);
   const [manualDraft, setManualDraft] = useState('');
   const [manualError, setManualError] = useState<string | null>(null);
   const [importedFlash, setImportedFlash] = useState(false);
   const [lastAction, setLastAction] = useState<ObserverKeyAction | null>(null);
+  const [credUser, setCredUser] = useState('');
+  const [credPass, setCredPass] = useState('');
+  const [credFlash, setCredFlash] = useState(false);
+
+  /**
+   * Which auth mode's credential UI to show (#4595). The running publisher is
+   * authoritative; with no publisher (source disconnected / observer off) a
+   * stored username/password is the next best signal. When neither says
+   * anything we show BOTH blocks rather than guessing — an operator setting up
+   * password mode on a disconnected source must still be able to enter it.
+   */
+  const observerAuthMode: 'token' | 'password' | null =
+    observer?.authMode ?? (creds.status?.stored ? 'password' : null);
+  const showKeyBlock = observerAuthMode !== 'password';
+  const showCredentialsBlock = observerAuthMode !== 'token';
 
   // Companion-only + sourceId presence is already enforced by the mount site;
   // this is the component's own permission gate (§6.2).
@@ -229,6 +249,28 @@ export const MeshCoreObserverSection: React.FC<MeshCoreObserverSectionProps> = (
     await clearKey();
   };
 
+  const handleCredentialsSave = async () => {
+    const ok = await creds.saveCredentials(credUser, credPass);
+    if (ok) {
+      // Never keep the password in component state after it is stored.
+      setCredPass('');
+      setCredFlash(true);
+      setTimeout(() => setCredFlash(false), 2500);
+    }
+  };
+
+  const handleCredentialsClear = async () => {
+    if (!creds.status?.stored) return;
+    const msg = t(
+      'meshcore.observer.credentials_clear_confirm',
+      'Forget the stored broker username and password? The observer will stop publishing until you enter them again.',
+    );
+    if (typeof window !== 'undefined' && !window.confirm(msg)) return;
+    await creds.clearCredentials();
+    setCredUser('');
+    setCredPass('');
+  };
+
   const handleCopyPublicKey = async (pk: string) => {
     try {
       await navigator.clipboard.writeText(pk);
@@ -246,7 +288,7 @@ export const MeshCoreObserverSection: React.FC<MeshCoreObserverSectionProps> = (
       <p className="hint">
         {t(
           'meshcore.observer.intro',
-          "Publishes every packet this node hears to a MeshCore Analyzer MQTT broker. Configure the broker on the source's edit form; manage the signing key here.",
+          "Publishes every packet this node hears to a MeshCore Analyzer MQTT broker. Configure the broker and its authentication mode on the source's edit form; manage the credentials here.",
         )}
       </p>
 
@@ -281,10 +323,15 @@ export const MeshCoreObserverSection: React.FC<MeshCoreObserverSectionProps> = (
               role="alert"
               style={{ gridColumn: '1 / -1' }}
             >
-              {t(
-                'meshcore.observer.no_key_running',
-                'No usable signing key — the publisher will not connect. Import or paste one below.',
-              )}
+              {observer.authMode === 'password'
+                ? t(
+                    'meshcore.observer.no_credentials_running',
+                    'No usable broker username/password — the publisher will not connect. Enter them below.',
+                  )
+                : t(
+                    'meshcore.observer.no_key_running',
+                    'No usable signing key — the publisher will not connect. Import or paste one below.',
+                  )}
             </div>
           )}
 
@@ -307,15 +354,21 @@ export const MeshCoreObserverSection: React.FC<MeshCoreObserverSectionProps> = (
             {observer.lastPublishAt ? formatRelativeTime(observer.lastPublishAt) : t('common.never', 'Never')}
           </div>
 
-          <div className={styles.statusLabel}>{t('meshcore.observer.token_expires', 'Auth token expires')}</div>
-          <div className={styles.statusValue}>
-            {/* tokenExpiresAt is unix SECONDS — ×1000 here only; lastPublishAt
-                above is already milliseconds and must NOT be converted.
-                Rendered as an absolute local time: formatRelativeTime clamps
-                FUTURE timestamps to "just now", which reads wrong for a +24h
-                expiry (caught in Phase 3 browser validation). */}
-            {observer.tokenExpiresAt ? new Date(observer.tokenExpiresAt * 1000).toLocaleString() : '—'}
-          </div>
+          {/* Static credentials never expire, so the row is meaningless in
+              password mode (#4595) — hidden rather than shown as a dash. */}
+          {observer.authMode !== 'password' && (
+            <>
+              <div className={styles.statusLabel}>{t('meshcore.observer.token_expires', 'Auth token expires')}</div>
+              <div className={styles.statusValue}>
+                {/* tokenExpiresAt is unix SECONDS — ×1000 here only; lastPublishAt
+                    above is already milliseconds and must NOT be converted.
+                    Rendered as an absolute local time: formatRelativeTime clamps
+                    FUTURE timestamps to "just now", which reads wrong for a +24h
+                    expiry (caught in Phase 3 browser validation). */}
+                {observer.tokenExpiresAt ? new Date(observer.tokenExpiresAt * 1000).toLocaleString() : '—'}
+              </div>
+            </>
+          )}
 
           {observer.lastError && (
             <div className={`${styles.statusValue} ${styles.error}`} role="alert" style={{ gridColumn: '1 / -1' }}>
@@ -325,7 +378,8 @@ export const MeshCoreObserverSection: React.FC<MeshCoreObserverSectionProps> = (
         </div>
       )}
 
-      {/* [B] Key status */}
+      {/* [B] Key status — token mode (or unknown mode) only. */}
+      {showKeyBlock && (
       <div className={styles.section}>
         <h4>{t('meshcore.observer.key_heading', 'Signing key')}</h4>
 
@@ -401,9 +455,10 @@ export const MeshCoreObserverSection: React.FC<MeshCoreObserverSectionProps> = (
           </div>
         )}
       </div>
+      )}
 
       {/* [C] Key actions — configuration:write only */}
-      {canWrite && (
+      {showKeyBlock && canWrite && (
         <div className={styles.actions}>
           <button
             type="button"
@@ -494,6 +549,133 @@ export const MeshCoreObserverSection: React.FC<MeshCoreObserverSectionProps> = (
           {actionError && (
             <div role="alert" className={styles.error}>
               {describeObserverError(t, actionError, lastAction)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* [D] Static broker credentials (#4595) — password mode (or unknown
+          mode) only. The password is write-only: it is never returned by the
+          API and is dropped from component state the moment it is saved. */}
+      {showCredentialsBlock && (
+        <div className={styles.section}>
+          <h4>{t('meshcore.observer.credentials_heading', 'Broker username / password')}</h4>
+          <p className={styles.hint}>
+            {t(
+              'meshcore.observer.credentials_intro',
+              "For Analyzer brokers that use a fixed MQTT login instead of a signed token (e.g. meshcoretel.ru). Set the source's broker authentication to \"Username / password\" on its edit form to use these.",
+            )}
+          </p>
+
+          {creds.loading && <p>{t('meshcore.observer.key_loading', 'Checking…')}</p>}
+
+          {!creds.loading && creds.loadError && (
+            <div className={styles.error} role="alert">
+              {describeObserverError(t, creds.loadError, null)}
+            </div>
+          )}
+
+          {!creds.loading && !creds.loadError && creds.status?.canStore === false && (
+            <div className={styles.warning} role="alert">
+              <p>
+                {t('meshcore.observer.credentials_cannot_store', 'MeshMonitor cannot store the broker password: {{reason}}', {
+                  reason: creds.status.reason ?? '',
+                })}
+              </p>
+            </div>
+          )}
+
+          {!creds.loading && !creds.loadError && creds.status?.stored === true && (
+            <>
+              <p className={styles.hint}>
+                {t('meshcore.observer.credentials_stored', 'Stored for user {{username}}', {
+                  username: creds.status.username ?? '',
+                })}
+                {' · '}
+                {creds.status.updatedAt ? formatRelativeTime(creds.status.updatedAt) : ''}
+              </p>
+              {creds.status.keyRotated && (
+                <div className={styles.warning} role="alert">
+                  {t(
+                    'meshcore.observer.credentials_rotated',
+                    'The stored broker password can no longer be decrypted — SESSION_SECRET changed since it was saved. Re-enter it below.',
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {!creds.loading && !creds.loadError && creds.status?.stored === false && (
+            <p>
+              {t(
+                'meshcore.observer.credentials_none',
+                'No broker username/password stored. The observer cannot authenticate in this mode until you add them.',
+              )}
+            </p>
+          )}
+
+          {canWrite && (
+            <div className={styles.actions}>
+              <label>
+                {t('meshcore.observer.credentials_username', 'Broker username')}
+                <input
+                  type="text"
+                  autoComplete="off"
+                  value={credUser}
+                  onChange={(e) => setCredUser(e.target.value)}
+                  placeholder={creds.status?.username ?? 'meshcore'}
+                  disabled={creds.busy !== null || creds.status?.canStore === false}
+                />
+              </label>
+              <label>
+                {t('meshcore.observer.credentials_password', 'Broker password')}
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={credPass}
+                  onChange={(e) => setCredPass(e.target.value)}
+                  placeholder={t('meshcore.observer.credentials_password_placeholder', 'Broker password')}
+                  disabled={creds.busy !== null || creds.status?.canStore === false}
+                />
+              </label>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => void handleCredentialsSave()}
+                disabled={
+                  creds.busy !== null ||
+                  creds.status?.canStore === false ||
+                  credUser.trim().length === 0 ||
+                  credPass.length === 0
+                }
+              >
+                {creds.busy === 'save'
+                  ? t('meshcore.observer.manual_saving', 'Saving…')
+                  : t('meshcore.observer.credentials_save', 'Save credentials')}
+              </button>
+              {credFlash && (
+                <span style={{ color: 'var(--color-success)' }}>
+                  <UiIcon name="check" size={14} /> {t('meshcore.observer.credentials_saved', 'Credentials saved')}
+                </span>
+              )}
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ color: 'var(--color-error)' }}
+                onClick={() => void handleCredentialsClear()}
+                disabled={creds.busy !== null || !creds.status?.stored}
+              >
+                <UiIcon name="delete" size={14} />{' '}
+                {creds.busy === 'clear'
+                  ? t('meshcore.observer.clearing', 'Clearing…')
+                  : t('meshcore.observer.credentials_clear', 'Clear stored credentials')}
+              </button>
+
+              {creds.actionError && (
+                <div role="alert" className={styles.error}>
+                  {describeObserverError(t, creds.actionError, null)}
+                </div>
+              )}
             </div>
           )}
         </div>

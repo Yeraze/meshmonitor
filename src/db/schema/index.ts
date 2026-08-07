@@ -64,6 +64,7 @@ export * from './sourcePkiKeys.js';
 
 // Per-source MeshCore Analyzer Observer signing keys (epic #4457)
 export * from './meshcoreObserverKeys.js';
+export * from './meshcoreObserverCredentials.js';
 
 // Dead Drop / Mailbox — async per-source message store
 export * from './deadDrop.js';

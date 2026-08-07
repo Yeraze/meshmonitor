@@ -10,6 +10,17 @@
  * invariant (see `docs/internal/dev-notes/MESHCORE_OBSERVER_PHASE2_SPEC.md`
  * §2.2, §9 WP4, §10).
  *
+ * Two auth modes (#4595):
+ * - `token` (default): the original scheme — mint an Ed25519-signed token
+ *   from the companion's signing key, username `v1_{PUBLIC_KEY}`, renewed on
+ *   a timer.
+ * - `password`: a STATIC MQTT username/password loaded from the encrypted
+ *   credential store, for regional brokers (e.g. meshcoretel.ru) that verify
+ *   no signature. Nothing expires, so there is NO renewal timer, and the
+ *   topic public key comes from the node's own `get_self_info` rather than
+ *   from a signing key. The password is decrypted HERE and nowhere else —
+ *   it is never returned by a route and never written to `sources.config`.
+ *
  * Design notes (see the spec §3.2/§6 for the full derivation):
  * - Token minting happens at `start()` and again on a renewal timer — never
  *   per-packet. Minting is a WASM Ed25519 signature and is unaffordable at
@@ -51,6 +62,14 @@ import {
   type ObserverToken,
   type ObserverTokenResult,
 } from './meshcoreObserverToken.js';
+// NOTE: value-imported deliberately — the credential store pulls in
+// `services/database.js` only, NOT `meshcoreManager`, so there is no import
+// cycle here (unlike `meshcoreConfig.js`, which meshcoreManager has to reach
+// via a dynamic import for exactly that reason).
+import {
+  getMeshCoreObserverCredentialStore,
+  type ObserverCredentialLoadResult,
+} from './meshcoreObserverCredentialStore.js';
 
 // createRequire interop for package.json, same pattern as newsService.ts.
 const require = createRequire(import.meta.url);
@@ -90,12 +109,28 @@ const LAST_ERROR = {
     'Stored observer signing key cannot be decrypted (SESSION_SECRET changed). Re-import the key.',
   mintFailed: 'Failed to mint observer auth token.',
   authRejected: 'Broker rejected the observer auth token (check tokenAudience and the stored key).',
+  // Static-credential (#4595) variants.
+  noCredentials: 'No broker username/password stored for this source.',
+  credentialsRotated:
+    'Stored broker password cannot be decrypted (SESSION_SECRET changed). Re-enter the password.',
+  noPublicKey:
+    'The node has not reported its public key yet, so the observer topic cannot be built. Reconnect the source.',
+  authRejectedStatic: 'Broker rejected the observer username/password.',
 } as const;
 
 export interface MeshCoreObserverStatus {
-  /** `observer.enabled` AND all three config fields present. */
+  /** `observer.enabled` AND every config field this auth mode requires. */
   configured: boolean;
-  /** A signing key row exists AND is decryptable under the current SESSION_SECRET. */
+  /**
+   * Auth mode in force for this publisher (#4595). `token` = Ed25519-signed
+   * token; `password` = static MQTT username/password.
+   */
+  authMode: 'token' | 'password';
+  /**
+   * The credential this mode needs exists AND is decryptable under the
+   * current SESSION_SECRET — a signing key in `token` mode, a stored
+   * username/password in `password` mode.
+   */
   keyStored: boolean;
   connected: boolean;
   publishes: number;
@@ -116,6 +151,13 @@ export interface MeshCoreObserverPublisherOptions {
     model?: string;
     firmwareVersion?: string;
     radio?: string;
+    /**
+     * The node's own 32-byte public key hex, from `get_self_info` (#4595).
+     * NOT secret. Only consulted in `password` auth mode, where there is no
+     * signing key to derive it from but the topic path and `origin_id` still
+     * need it. In `token` mode the minted token's public key wins.
+     */
+    publicKey?: string;
   };
   /**
    * Live battery / uptime / noise-floor stats read off the attached companion
@@ -127,6 +169,11 @@ export interface MeshCoreObserverPublisherOptions {
   stats?: () => Promise<ObserverStatsInput | null>;
   /** Injection seam for tests. Defaults to `mintObserverTokenForSourceDetailed`. */
   mintToken?: (sourceId: string) => Promise<ObserverTokenResult>;
+  /**
+   * Injection seam for tests (#4595). Defaults to the encrypted credential
+   * store's `load()`. Only called in `password` auth mode.
+   */
+  loadCredentials?: (sourceId: string) => Promise<ObserverCredentialLoadResult>;
   /** Injection seam for tests. Defaults to `(opts) => new MqttBrokerClient(opts)`. */
   createClient?: (opts: MqttBrokerClientOptions) => MqttBrokerClient;
 }
@@ -141,8 +188,12 @@ interface PermissionDeniedReason {
 export class MeshCoreObserverPublisher {
   private readonly options: MeshCoreObserverPublisherOptions;
   private readonly mintTokenFn: (sourceId: string) => Promise<ObserverTokenResult>;
+  private readonly loadCredentialsFn: (sourceId: string) => Promise<ObserverCredentialLoadResult>;
   private readonly createClientFn: (opts: MqttBrokerClientOptions) => MqttBrokerClient;
   private readonly configured: boolean;
+  /** `token` (default) or `password` (#4595). Fixed for the publisher's life —
+   *  a mode change goes through reconfigureObserver, which builds a new one. */
+  private readonly authMode: 'token' | 'password';
 
   private client: MqttBrokerClient | null = null;
   private topics: { region: string; packets: string; status: string } | null = null;
@@ -166,12 +217,20 @@ export class MeshCoreObserverPublisher {
   constructor(options: MeshCoreObserverPublisherOptions) {
     this.options = options;
     this.mintTokenFn = options.mintToken ?? mintObserverTokenForSourceDetailed;
+    this.loadCredentialsFn =
+      options.loadCredentials ?? ((sourceId) => getMeshCoreObserverCredentialStore().load(sourceId));
     this.createClientFn = options.createClient ?? ((opts) => new MqttBrokerClient(opts));
+    // Inlined rather than importing `observerAuthMode` from meshcoreConfig.js:
+    // that module imports meshcoreManager, which imports this file.
+    this.authMode = options.config.authMode === 'password' ? 'password' : 'token';
     this.configured = !!(
       options.config.enabled &&
       options.config.brokerUrl &&
       options.config.iataCode &&
-      options.config.tokenAudience
+      // A static-credential broker verifies no signature, so it has no
+      // audience to match — requiring one would report a correctly
+      // configured password-mode source as incomplete (#4595).
+      (this.authMode === 'password' || options.config.tokenAudience)
     );
   }
 
@@ -186,6 +245,30 @@ export class MeshCoreObserverPublisher {
     // fuse (review #4468 obs. 4).
     this.authStopping = false;
     this.authFailures = 0;
+
+    if (this.authMode === 'password') {
+      // Static-credential brokers (#4595). No signing, no expiry, therefore
+      // no renewal timer — the credentials are valid until the operator
+      // changes them.
+      const creds = await this.loadCredentialsFn(this.options.sourceId);
+      if (creds.kind !== 'ok') {
+        this.keyStored = false;
+        this.lastError =
+          creds.kind === 'none' ? LAST_ERROR.noCredentials : LAST_ERROR.credentialsRotated;
+        return;
+      }
+      const publicKey = this.options.device().publicKey;
+      if (!publicKey) {
+        this.keyStored = true;
+        this.lastError = LAST_ERROR.noPublicKey;
+        return;
+      }
+      await this.connectWithCredentials(creds.username, creds.password, publicKey);
+      this.armStatusRefreshTimer();
+      this.running = true;
+      return;
+    }
+
     const result = await this.mintTokenFn(this.options.sourceId);
     if (result.kind !== 'ok') {
       this.keyStored = false;
@@ -267,6 +350,7 @@ export class MeshCoreObserverPublisher {
   getStatus(): MeshCoreObserverStatus {
     return {
       configured: this.configured,
+      authMode: this.authMode,
       keyStored: this.keyStored,
       connected: this.client?.isConnected() ?? false,
       publishes: this.publishes,
@@ -305,12 +389,12 @@ export class MeshCoreObserverPublisher {
   }
 
   private buildClientOptions(
-    token: ObserverToken,
+    credentials: { username: string; password: string; publicKey: string },
     topics: { status: string },
   ): MqttBrokerClientOptions {
     const identity: ObserverPacketIdentity = {
       origin: this.options.device().origin,
-      originId: token.publicKey,
+      originId: credentials.publicKey,
     };
     const lwt = buildObserverStatusPayload('offline', identity);
     return {
@@ -320,8 +404,8 @@ export class MeshCoreObserverPublisher {
       // non-undefined) — non-null assert rather than threading a narrower
       // type through every read.
       url: this.options.config.brokerUrl!,
-      username: `v1_${token.publicKey}`,
-      password: token.token,
+      username: credentials.username,
+      password: credentials.password,
       clientIdPrefix: 'meshmonitor-observer',
       keepalive: 60,
       will: {
@@ -352,7 +436,8 @@ export class MeshCoreObserverPublisher {
     client.on('permission-denied', (reason: PermissionDeniedReason) => {
       if (reason.kind !== 'auth') return;
       this.authFailures++;
-      this.lastError = LAST_ERROR.authRejected;
+      this.lastError =
+        this.authMode === 'password' ? LAST_ERROR.authRejectedStatic : LAST_ERROR.authRejected;
       if (this.authFailures >= MAX_AUTH_FAILURES) {
         void this.hardStopOnAuthFailure();
       }
@@ -417,12 +502,34 @@ export class MeshCoreObserverPublisher {
   }
 
   private async connectWithToken(token: ObserverToken): Promise<void> {
-    this.tokenPublicKey = token.publicKey;
     this.tokenExpiresAt = token.expiresAt;
-    this.keyStored = true;
-    this.topics = observerTopics(this.options.config.iataCode!, token.publicKey);
+    await this.openSocket(`v1_${token.publicKey}`, token.token, token.publicKey);
+  }
 
-    const opts = this.buildClientOptions(token, this.topics);
+  /**
+   * Static-credential connect (#4595). Identical to the token path except
+   * that the MQTT username/password come from the encrypted credential store
+   * and the topic public key comes from the node itself (`get_self_info`)
+   * rather than from a signing key — a password-mode broker never sees a
+   * signature, so there is no key to derive it from. `tokenExpiresAt` stays
+   * null: nothing expires, so nothing renews.
+   */
+  private async connectWithCredentials(
+    username: string,
+    password: string,
+    publicKey: string,
+  ): Promise<void> {
+    this.tokenExpiresAt = null;
+    await this.openSocket(username, password, publicKey);
+  }
+
+  /** Shared connect tail for both auth modes. */
+  private async openSocket(username: string, password: string, publicKey: string): Promise<void> {
+    this.tokenPublicKey = publicKey;
+    this.keyStored = true;
+    this.topics = observerTopics(this.options.config.iataCode!, publicKey);
+
+    const opts = this.buildClientOptions({ username, password, publicKey }, this.topics);
     const client = this.createClientFn(opts);
     this.wireClientListeners(client);
     this.client = client;
