@@ -145,6 +145,15 @@ jobs:
           echo "Checking server build..."
           ls -la dist/server/
 
+      # Node ESM resolves relative specifiers exactly — the extension is
+      # required. tsc accepts an extensionless one and Vite resolves it, so a
+      # backend file importing a frontend module written that way builds clean
+      # and throws ERR_MODULE_NOT_FOUND only at runtime, inside a container or
+      # a packaged desktop build. That is the shape of #4591. This walks the
+      # graph the server actually loads and fails here instead of there.
+      - name: Check runtime import resolution
+        run: npm run check:imports
+
   docs-build:
     name: Documentation Build
     runs-on: ubuntu-latest

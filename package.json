@@ -11,6 +11,7 @@
     "dev:full": "concurrently \"npm run dev\" \"npm run dev:server\"",
     "build": "tsc && vite build",
     "build:server": "tsc --project tsconfig.server.json && mkdir -p dist/server/routes/v1 && cp src/server/routes/v1/openapi.yaml dist/server/routes/v1/",
+    "check:imports": "node scripts/check-runtime-imports.mjs",
     "start": "node dist/server/server.js",
     "preview": "vite preview",
     "lint": "eslint .",
