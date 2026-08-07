@@ -4,4 +4,4 @@
  * there directly in new code. This file is kept as a transparent re-export
  * shim so existing importers (EmbedMap, MapLegend, etc.) are unaffected.
  */
-export * from '../components/map/markerIcons';
+export * from '../components/map/markerIcons.js';
