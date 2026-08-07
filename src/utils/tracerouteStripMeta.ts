@@ -14,7 +14,7 @@ import type { TracerouteStripNodeMeta } from '../components/traceroute/Tracerout
 import { getEffectiveHops } from './nodeHops';
 import { getNodeTypeCategory } from './nodeTypeCategory';
 import { getRoleName } from './nodeHelpers';
-import { toNodeCardModel } from '../components/map/popups/nodeCardModel';
+import { toNodeCardModel } from '../components/map/popups/nodeCardModel.js';
 
 /** Structural subset of a traceroute row — the same shape `getEffectiveHops`
  *  needs for its `'traceroute'` calculation mode. */

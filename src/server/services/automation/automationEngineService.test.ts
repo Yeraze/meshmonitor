@@ -244,6 +244,32 @@ describe('AutomationEngineService', () => {
     expect(await engine.onMessage(message({ fromNodeNum: 222, text: 'ping' }), 'default')).toBe(1);
   });
 
+  it('self-origin (#4593): ignores our own node on a source with no local identity (MQTT bridge)', async () => {
+    const { calls, deps } = recorder();
+    await createEnabled('ping', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: { textContains: 'ping' } },
+        { id: 's', type: 'action.sendMessage', params: { text: 'pong' } },
+      ],
+      edges: [{ from: 't', to: 's' }],
+    });
+    // A bridge has no local node → getLocalNodeNum resolves null; the
+    // cross-source owned-node set is the only thing that can recognise us.
+    const selfData = {
+      ...data,
+      getLocalNodeNum: async () => null,
+      isOwnNodeNum: async (n: number) => n === 111,
+    };
+    const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data: selfData, now: () => clock });
+    await engine.load();
+    // Our own message, relayed back to us by a third-party gateway → dropped.
+    expect(await engine.onMessage(message({ fromNodeNum: 111, text: 'ping' }), 'bridge-1')).toBe(0);
+    expect(calls).toHaveLength(0);
+    // Anyone else on the bridge still fires.
+    expect(await engine.onMessage(message({ fromNodeNum: 222, text: 'ping' }), 'bridge-1')).toBe(1);
+  });
+
   it('self-origin (#3914): ignores a MeshCore message from our own public key (case-insensitive)', async () => {
     const { calls, deps } = recorder();
     await createEnabled('mc-ping', {
