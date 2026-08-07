@@ -14,7 +14,7 @@
 import { logger } from '../../../utils/logger.js';
 import type { DbMessage } from '../../../services/database.js';
 import type { AutomationsRepository } from '../../../db/repositories/automations.js';
-import { isMqttSourceType, type Source } from '../../../db/repositories/sources.js';
+import { isMqttSourceType } from '../../../db/repositories/sources.js';
 import {
   validateAutomationGraph,
   categoryOf,
@@ -566,9 +566,7 @@ export class AutomationEngineService {
       const node = await this.data.getNode(sourceId, Number(msg.fromNodeNum));
       fromName = node?.longName || node?.shortName || undefined;
       if (this.data.getSourceType) {
-        viaMqttSource = isMqttSourceType(
-          (await this.data.getSourceType(sourceId)) as Source['type'] | null,
-        );
+        viaMqttSource = isMqttSourceType(await this.data.getSourceType(sourceId));
       }
     }
     const ctx = buildMessageContext(msg, sourceId, this.now(), { channelName, fromName, viaMqttSource });

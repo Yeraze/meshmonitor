@@ -30,7 +30,7 @@ export interface Source {
  * a caller can pass a lookup that missed without a separate guard; an unknown
  * type is not MQTT.
  */
-export function isMqttSourceType(type: Source['type'] | undefined | null): boolean {
+export function isMqttSourceType(type: Source['type'] | string | undefined | null): boolean {
   return type === 'mqtt_broker' || type === 'mqtt_bridge';
 }
 
