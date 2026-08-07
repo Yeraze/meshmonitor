@@ -64,6 +64,16 @@ export function createMeshNodeDataProvider(): NodeDataProvider {
       }
     },
 
+    async getSourceType(sourceId) {
+      try {
+        if (!sourceId) return null;
+        const s = await databaseService.sources.getSource(sourceId);
+        return s?.type ?? null;
+      } catch {
+        return null;
+      }
+    },
+
     // Self-identity accessors (#3914) — read the live manager for the source so
     // the engine can drop self-originated events. A miss (source not connected)
     // returns null → no drop.

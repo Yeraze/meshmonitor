@@ -265,6 +265,15 @@ Reacts to the triggering message with an emoji. Minimal by design — it carries
   field existed) or *The message's hop count*.
 - Hop-count mode reacts with `*️⃣` for a direct (0-hop) message and `1️⃣`–`7️⃣` above, clamping at
   `7️⃣` — the same table Auto-Acknowledge uses, so the two features never drift apart.
+- A message that came in through an **MQTT source** (an MQTT Bridge or MQTT Broker source) reacts
+  with `#️⃣` instead, whatever hop count it reports. Such a message never crossed your own radio's
+  RF link, so its hop count describes the bridging node's path rather than yours, and reacting
+  `2️⃣` to it would tell a range-tester something untrue. `#️⃣` is sent even when the hop count is
+  unknown — unlike a hop count, "arrived over MQTT" is never in doubt.
+- This is keyed on the **source's configured type**, not on a packet's `via_mqtt` flag. A packet
+  that was relayed through MQTT somewhere upstream can still reach your radio over RF, and its hop
+  count is real, so it keeps its numeric keycap. Nothing an existing automation on a Meshtastic TCP
+  source emits today changes.
 - Triggers with no hop information (a Schedule or System trigger wired to a tapback, or a message
   whose hop data is missing) record a **skipped no-op**, not a run failure.
 - The **Emoji** field is hidden while hop-count mode is selected; your fixed emoji is remembered if
@@ -622,7 +631,8 @@ values, the set-variable value) accept **double-brace tokens**:
 | Token | Resolves to |
 | --- | --- |
 | `{{ trigger.* }}` | A field from the current trigger (e.g. `{{ trigger.text }}`, `{{ trigger.fromId }}`, `{{ trigger.hops }}`, `{{ trigger.value }}`, `{{ trigger.latestVersion }}`). The available fields depend on the trigger type |
-| `{{ trigger.hopEmoji }}` | The message trigger's hop count as an emoji — `*️⃣` direct, `1️⃣`–`7️⃣` (`7️⃣` = 7 or more). Same mapping as the tapback's hop-count mode above. Blank when the hop count is unknown |
+| `{{ trigger.hopEmoji }}` | The message trigger's hop count as an emoji — `*️⃣` direct, `1️⃣`–`7️⃣` (`7️⃣` = 7 or more), or `#️⃣` when the message came in through an MQTT source. Same mapping as the tapback's hop-count mode above. Blank when the hop count is unknown |
+| `{{ trigger.viaMqttSource }}` | `true` when the message came in through an MQTT Bridge / MQTT Broker source rather than over RF — the `#️⃣` case. Distinct from `viaMqtt`, which is the packet's own relay flag |
 | `{{ trigger.sourceId }}` / `{{ trigger.timestamp }}` | Available for every trigger; `timestamp` renders as a local date/time |
 | `{{ var.name }}` | A user-defined variable; `{{ var.name.field }}` for nested `json` access |
 | `{{ NOW }}` | The current time, rendered as a local `YYYY-MM-DD HH:mm:ss` |

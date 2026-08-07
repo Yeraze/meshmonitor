@@ -130,6 +130,55 @@ describe('buildMessageContext', () => {
     expect(ctx.fields.hops).toBe(-2);
     expect(ctx.fields.hopEmoji).toBe('*️⃣');
   });
+
+  // MQTT-source glyph (#4594)
+  describe('viaMqttSource / MQTT hopEmoji override (#4594)', () => {
+    it('omitting the label leaves hopEmoji on the hop table (back-compat)', () => {
+      const ctx = buildMessageContext(msg({ hopStart: 3, hopLimit: 1 }), 'default', 1);
+      expect(ctx.fields.hopEmoji).toBe('2️⃣');
+      expect(ctx.fields.viaMqttSource).toBe(false);
+    });
+
+    it('an explicit false label leaves hopEmoji on the hop table', () => {
+      const ctx = buildMessageContext(msg({ hopStart: 3, hopLimit: 1 }), 'default', 1, { viaMqttSource: false });
+      expect(ctx.fields.hopEmoji).toBe('2️⃣');
+      expect(ctx.fields.viaMqttSource).toBe(false);
+    });
+
+    it('an MQTT source replaces the hop glyph with #️⃣ whatever the hop count', () => {
+      for (const [hopStart, hopLimit] of [[3, 3], [3, 1], [7, 0], [1, 3]]) {
+        const ctx = buildMessageContext(msg({ hopStart, hopLimit }), 'default', 1, { viaMqttSource: true });
+        expect(ctx.fields.hopEmoji).toBe('#️⃣');
+      }
+    });
+
+    it('an MQTT source yields #️⃣ even when the hop count is unknown', () => {
+      const ctx = buildMessageContext(
+        msg({ hopStart: undefined, hopLimit: undefined }), 'default', 1, { viaMqttSource: true },
+      );
+      expect(ctx.fields.hops).toBeUndefined();
+      expect(ctx.fields.hopEmoji).toBe('#️⃣');
+    });
+
+    it('leaves `hops`, `zeroHop` and `viaMqtt` untouched — only the glyph changes', () => {
+      const base = msg({ hopStart: 3, hopLimit: 1, viaMqtt: true });
+      const off = buildMessageContext(base, 'default', 1);
+      const on = buildMessageContext(base, 'default', 1, { viaMqttSource: true });
+      expect(on.fields.hops).toBe(off.fields.hops);
+      expect(on.fields.zeroHop).toBe(off.fields.zeroHop);
+      expect(on.fields.viaMqtt).toBe(off.fields.viaMqtt);
+      expect(on.fields.hopEmoji).not.toBe(off.fields.hopEmoji);
+    });
+
+    it('the per-packet viaMqtt flag alone does NOT trigger the glyph (#4594 back-compat)', () => {
+      // A via_mqtt packet can still have reached our own radio over RF. Keying the
+      // glyph on it would change what existing automations already emit.
+      const ctx = buildMessageContext(msg({ hopStart: 3, hopLimit: 1, viaMqtt: true }), 'default', 1);
+      expect(ctx.fields.viaMqtt).toBe(true);
+      expect(ctx.fields.hopEmoji).toBe('2️⃣');
+      expect(ctx.fields.viaMqttSource).toBe(false);
+    });
+  });
 });
 
 describe('other trigger contexts', () => {
@@ -392,6 +441,12 @@ describe('buildMeshCoreMessageContext (#3833)', () => {
     const ctx = buildMeshCoreMessageContext(mcMsg({ fromPublicKey: 'aabbcc' }), 'default', 1);
     expect(ctx.fields.hops).toBeUndefined();
     expect(ctx.fields.hopEmoji).toBeUndefined();
+  });
+
+  it('viaMqttSource is a constant false — MeshCore sources are never MQTT (#4594)', () => {
+    const ctx = buildMeshCoreMessageContext(mcMsg({ fromPublicKey: 'aabbcc', hopCount: 2 }), 'default', 1);
+    expect(ctx.fields.viaMqttSource).toBe(false);
+    expect(ctx.fields.hopEmoji).toBe('2️⃣');
   });
 
   it('maps a DM: recipient pubkey present, no channel, isDM', () => {

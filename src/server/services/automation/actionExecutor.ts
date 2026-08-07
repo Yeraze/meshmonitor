@@ -337,7 +337,16 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
       const hopMode = p.emojiMode === 'hopCount';
       let emoji: string;
       if (hopMode) {
-        const derived = hopCountEmoji(ctx.trigger.fields.hops as number | null | undefined);
+        // Prefer the glyph the trigger context already resolved (#4594). A message
+        // context computes it from hop count AND transport — an MQTT-sourced
+        // message yields #️⃣ regardless of hops — so recomputing from `hops` alone
+        // here would silently drop the transport dimension. The `hopCountEmoji`
+        // fallback covers contexts that expose `hops` without `hopEmoji`; for
+        // every message trigger the two agree by construction.
+        const preresolved = ctx.trigger.fields.hopEmoji;
+        const derived = typeof preresolved === 'string' && preresolved.length > 0
+          ? preresolved
+          : hopCountEmoji(ctx.trigger.fields.hops as number | null | undefined);
         if (derived === undefined) {
           // No hop information: a schedule/system trigger wired to a tapback, or a
           // message whose hopStart/hopLimit were absent. Record a no-op skip in the

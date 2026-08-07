@@ -14,6 +14,7 @@
 import { logger } from '../../../utils/logger.js';
 import type { DbMessage } from '../../../services/database.js';
 import type { AutomationsRepository } from '../../../db/repositories/automations.js';
+import { isMqttSourceType } from '../../../db/repositories/sources.js';
 import {
   validateAutomationGraph,
   categoryOf,
@@ -550,6 +551,12 @@ export class AutomationEngineService {
     const hasMessageAutomations = (this.index.get('trigger.message') ?? []).length > 0;
     let channelName: string | null | undefined;
     let fromName: string | undefined;
+    // #4594: whether this message came in through an MQTT source, which swaps the
+    // hop glyph for #️⃣. Resolved on the same "a message automation is loaded"
+    // gate as the labels above so the DB-free hot path is preserved; a provider
+    // without the accessor (older/unit-test providers) yields false = today's
+    // behaviour.
+    let viaMqttSource = false;
     if (hasMessageAutomations) {
       if (this.data.getChannelName) {
         channelName = await this.data.getChannelName(sourceId, Number(msg.channel));
@@ -558,8 +565,11 @@ export class AutomationEngineService {
       // the builder falls back to the node id when the node is unknown.
       const node = await this.data.getNode(sourceId, Number(msg.fromNodeNum));
       fromName = node?.longName || node?.shortName || undefined;
+      if (this.data.getSourceType) {
+        viaMqttSource = isMqttSourceType(await this.data.getSourceType(sourceId));
+      }
     }
-    const ctx = buildMessageContext(msg, sourceId, this.now(), { channelName, fromName });
+    const ctx = buildMessageContext(msg, sourceId, this.now(), { channelName, fromName, viaMqttSource });
     return this.runTrigger(
       ctx,
       (a) => messageMatchesFilter(msg, a.triggerNode.params ?? {}, channelName),
