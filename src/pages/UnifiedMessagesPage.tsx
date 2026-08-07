@@ -34,6 +34,7 @@ import LinkPreview from '../components/LinkPreview';
 import '../styles/unified.css';
 import { UiIcon } from '../components/icons';
 import { resolveReplyPreview } from '../utils/replyPreview';
+import { getSourceColor } from '../utils/sourceColors';
 
 type TFn = (key: string, options?: Record<string, unknown>) => string;
 
@@ -91,16 +92,6 @@ interface ChannelCollisionRow {
 const PAGE_SIZE = 100;
 const POLL_INTERVAL_MS = 10_000;
 
-const SOURCE_COLORS = [
-  'var(--color-accent)',
-  'var(--color-accent-alt)',
-  'var(--color-success)',
-  'var(--color-caution)',
-  'var(--color-warning)',
-  'var(--ctp-teal)',
-  'var(--ctp-pink)',
-  'var(--color-accent-hover)',
-];
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -304,11 +295,12 @@ export default function UnifiedMessagesPage() {
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [allMessages]);
 
+  // Uses the shared lookup rather than re-deriving the index here, so the
+  // "one SOURCE_COLORS" invariant holds at the implementation level and not
+  // just the definition level — a private copy of the modulo/fallback logic is
+  // how the three palettes drifted apart in the first place.
   const sourceColor = useCallback(
-    (sourceId: string) => {
-      const idx = sourcesInView.findIndex((s) => s.id === sourceId);
-      return SOURCE_COLORS[(idx < 0 ? 0 : idx) % SOURCE_COLORS.length];
-    },
+    (sourceId: string) => getSourceColor(sourceId, sourcesInView.map((s) => s.id)),
     [sourcesInView]
   );
 
