@@ -78,6 +78,7 @@ describe('observerConfigFromSource', () => {
     });
     expect(observer).toEqual({
       enabled: true,
+      authMode: 'token',
       brokerUrl: 'mqtts://host:8883',
       iataCode: 'MCO',
       tokenAudience: 'my-aud',
@@ -128,6 +129,7 @@ describe('meshcoreConfigFromSource — observer plumbing', () => {
     expect(cfg?.connectionType).toBe(ConnectionType.SERIAL);
     expect(cfg?.observer).toEqual({
       enabled: true,
+      authMode: 'token',
       brokerUrl: 'mqtts://host:8883',
       iataCode: 'MCO',
       tokenAudience: 'aud',
@@ -148,6 +150,7 @@ describe('meshcoreConfigFromSource — observer plumbing', () => {
     expect(cfg?.connectionType).toBe(ConnectionType.TCP);
     expect(cfg?.observer).toEqual({
       enabled: true,
+      authMode: 'token',
       brokerUrl: 'mqtts://host:8883',
       iataCode: 'MCO',
       tokenAudience: 'aud',

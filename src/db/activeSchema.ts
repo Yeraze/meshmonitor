@@ -156,6 +156,9 @@ import {
   meshcoreObserverKeysSqlite, meshcoreObserverKeysPostgres, meshcoreObserverKeysMysql,
 } from './schema/meshcoreObserverKeys.js';
 import {
+  meshcoreObserverCredentialsSqlite, meshcoreObserverCredentialsPostgres, meshcoreObserverCredentialsMysql,
+} from './schema/meshcoreObserverCredentials.js';
+import {
   deadDropMessagesSqlite, deadDropMessagesPostgres, deadDropMessagesMysql,
 } from './schema/deadDrop.js';
 
@@ -268,6 +271,10 @@ export interface ActiveSchema {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4457 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   meshcoreObserverKeys: any;
 
+  // Per-source MeshCore Analyzer Observer static MQTT credentials (issue #4595)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4595 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
+  meshcoreObserverCredentials: any;
+
   // Dead Drop / Mailbox — async per-source message store
   deadDropMessages: any;
 
@@ -340,6 +347,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     autoFavoriteAssignments: autoFavoriteAssignmentsSqlite,
     sourcePkiKeys: sourcePkiKeysSqlite,
     meshcoreObserverKeys: meshcoreObserverKeysSqlite,
+    meshcoreObserverCredentials: meshcoreObserverCredentialsSqlite,
     deadDropMessages: deadDropMessagesSqlite,
     atakContacts: atakContactsSqlite,
   },
@@ -400,6 +408,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     autoFavoriteAssignments: autoFavoriteAssignmentsPostgres,
     sourcePkiKeys: sourcePkiKeysPostgres,
     meshcoreObserverKeys: meshcoreObserverKeysPostgres,
+    meshcoreObserverCredentials: meshcoreObserverCredentialsPostgres,
     deadDropMessages: deadDropMessagesPostgres,
     atakContacts: atakContactsPostgres,
   },
@@ -460,6 +469,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     autoFavoriteAssignments: autoFavoriteAssignmentsMysql,
     sourcePkiKeys: sourcePkiKeysMysql,
     meshcoreObserverKeys: meshcoreObserverKeysMysql,
+    meshcoreObserverCredentials: meshcoreObserverCredentialsMysql,
     deadDropMessages: deadDropMessagesMysql,
     atakContacts: atakContactsMysql,
   },

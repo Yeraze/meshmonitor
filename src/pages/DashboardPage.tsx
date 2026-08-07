@@ -53,8 +53,10 @@ import { UiIcon } from '../components/icons';
 // pull from src/server.
 const MAX_HOP_LIMIT = 7;
 
-// MeshCore Analyzer Observer (#4457) fieldset — the three text fields share
+// MeshCore Analyzer Observer (#4457) fieldset — the text fields share
 // identical markup, so they're rendered via .map() instead of copy-pasted.
+// `tokenAudience` is filtered out in `password` auth mode (#4595): a
+// static-credential broker verifies no signature, so there is no audience.
 const OBSERVER_FIELDS: Array<{
   key: 'brokerUrl' | 'iataCode' | 'tokenAudience';
   labelKey: string; labelFallback: string; placeholder: string;
@@ -636,7 +638,9 @@ function DashboardInner() {
       // server's validateObserverConfig remains the authority.
       const observerResult = buildObserverConfig(formObserver);
       if (observerResult.error) { setFormError(t(observerResult.error.key, observerResult.error.fallback)); return; }
-      cfg.observer = observerResult.config ?? { enabled: false, brokerUrl: '', iataCode: '', tokenAudience: '' };
+      // The disabled fallback keeps the operator's chosen auth mode so a
+      // disable/re-enable round-trip doesn't silently revert to token mode.
+      cfg.observer = observerResult.config ?? { enabled: false, authMode: formObserver.authMode, brokerUrl: '', iataCode: '', tokenAudience: '' };
     } else {
       if (!formHost.trim()) { setFormError(t('source.form.error_host_required')); return; }
       const port = parseInt(formPort, 10);
@@ -1619,7 +1623,27 @@ function DashboardInner() {
                     <p role="alert" style={{ fontSize: 11, color: 'var(--color-warning)', margin: '4px 0 0' }}>{t('meshcore.form.observer_repeater_note', 'The Analyzer Observer requires a Companion device — a repeater cannot export the signing key it needs.')}</p>
                   ) : formObserver.enabled && (
                     <>
-                      {OBSERVER_FIELDS.map((f) => (
+                      <label className="dashboard-form-field" style={{ marginTop: 8 }}>
+                        <span className="dashboard-form-label">{t('meshcore.form.observer_auth_mode', 'Broker authentication')}</span>
+                        <select
+                          className="dashboard-form-input"
+                          // Explicit: the wrapping <label> also contains the
+                          // help <p>, so the implicit accessible name would be
+                          // label + help text concatenated.
+                          aria-label={t('meshcore.form.observer_auth_mode', 'Broker authentication')}
+                          value={formObserver.authMode}
+                          onChange={(e) => setFormObserver({ ...formObserver, authMode: e.target.value === 'password' ? 'password' : 'token' })}
+                        >
+                          <option value="token">{t('meshcore.form.observer_auth_mode_token', 'Signed token (FL Mesh / LetsMesh)')}</option>
+                          <option value="password">{t('meshcore.form.observer_auth_mode_password', 'Username / password')}</option>
+                        </select>
+                        <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
+                          {formObserver.authMode === 'password'
+                            ? t('meshcore.form.observer_auth_mode_password_help', 'For regional brokers that use a fixed MQTT login (e.g. meshcoretel.ru). Set the username and password on this source\'s MeshCore → Configuration page — they are stored encrypted, never in the source config.')
+                            : t('meshcore.form.observer_auth_mode_token_help', 'MeshMonitor signs a token with the node\'s own key and connects as v1_{PUBLIC_KEY}. The default, and what FL Mesh / LetsMesh brokers expect.')}
+                        </p>
+                      </label>
+                      {OBSERVER_FIELDS.filter((f) => f.key !== 'tokenAudience' || formObserver.authMode === 'token').map((f) => (
                         <label key={f.key} className="dashboard-form-field" style={{ marginTop: 8 }}>
                           <span className="dashboard-form-label">{t(f.labelKey, f.labelFallback)}</span>
                           <input className="dashboard-form-input" type="text" value={formObserver[f.key]} onChange={(e) => setFormObserver({ ...formObserver, [f.key]: e.target.value })} placeholder={f.placeholder} />
@@ -1627,7 +1651,11 @@ function DashboardInner() {
                         </label>
                       ))}
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 8 }}>
-                        <span style={{ fontSize: 11, color: 'var(--color-text-subtle)', flex: 1 }}>{t('meshcore.form.observer_key_hint', "The signing key and live publish status are on this source's MeshCore → Configuration page.")}</span>
+                        <span style={{ fontSize: 11, color: 'var(--color-text-subtle)', flex: 1 }}>
+                          {formObserver.authMode === 'password'
+                            ? t('meshcore.form.observer_credentials_hint', "The broker username/password and live publish status are on this source's MeshCore → Configuration page.")
+                            : t('meshcore.form.observer_key_hint', "The signing key and live publish status are on this source's MeshCore → Configuration page.")}
+                        </span>
                         {editingSourceId && (
                           <button
                             type="button"

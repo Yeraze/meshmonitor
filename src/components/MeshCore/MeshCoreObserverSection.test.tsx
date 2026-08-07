@@ -84,6 +84,30 @@ vi.mock('./hooks/useObserverKey', () => ({
   },
 }));
 
+// --- useObserverCredentials (#4595) -----------------------------------------
+// The section now also mounts the static-credential block. These tests are
+// about the SIGNING-KEY blocks, so the credential hook is stubbed to "nothing
+// stored" — which also keeps the mode heuristic on the token/unknown branch so
+// the key blocks stay rendered. Stubbing it (rather than wrapping the tree in a
+// CsrfProvider) keeps this file's existing no-provider render() calls working.
+const mockCredentialStatus: ObserverCredentialStatus | null = null;
+const mockSaveCredentials = vi.fn(async () => true);
+const mockClearCredentials = vi.fn(async () => true);
+vi.mock('./hooks/useObserverCredentials', () => ({
+  useObserverCredentials: () => ({
+    status: mockCredentialStatus,
+    loading: false,
+    loadError: null,
+    busy: null,
+    actionError: null,
+    refresh: vi.fn(),
+    saveCredentials: mockSaveCredentials,
+    clearCredentials: mockClearCredentials,
+    clearActionError: vi.fn(),
+  }),
+}));
+
+import type { ObserverCredentialStatus } from './hooks/useObserverCredentials';
 import { MeshCoreObserverSection } from './MeshCoreObserverSection';
 
 const SOURCE_ID = 's1';

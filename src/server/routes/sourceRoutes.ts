@@ -72,7 +72,18 @@ export async function validateVirtualNodeConfig(
 // Best-effort blocklist, not a comprehensive one — the real guard is that the
 // key lives in its own table and nothing ever reads key material out of
 // `sources.config`. This check just gives a clear error for the obvious names.
-const OBSERVER_KEY_MATERIAL_FIELDS = ['privateKey', 'privateKeyHex', 'signingKey', 'key', 'secret'] as const;
+// `password` is on the list for the same reason (#4595): the static-credential
+// auth mode's password belongs in `meshcore_observer_credentials`, never in
+// `sources.config` where it would round-trip through the source-edit form and
+// sit in the clear in the DB.
+const OBSERVER_KEY_MATERIAL_FIELDS = [
+  'privateKey',
+  'privateKeyHex',
+  'signingKey',
+  'key',
+  'secret',
+  'password',
+] as const;
 
 function observerConfigContainsKeyMaterial(observer: Record<string, unknown>): boolean {
   return OBSERVER_KEY_MATERIAL_FIELDS.some((f) => Object.prototype.hasOwnProperty.call(observer, f));
@@ -100,14 +111,31 @@ export function validateObserverConfig(
   if (observerConfigContainsKeyMaterial(observerObj)) {
     return {
       status: 400,
-      error: 'observer config must not contain key material; use POST /api/sources/:id/observer/key',
+      error:
+        'observer config must not contain key material or a broker password; use ' +
+        'PUT /api/sources/:id/observer/key or PUT /api/sources/:id/observer/credentials',
       code: 'OBSERVER_KEY_IN_CONFIG',
     };
   }
   if (type !== 'meshcore') {
     return { status: 400, error: 'observer config is only supported on meshcore sources', code: 'INVALID_PARAMETER' };
   }
+  // Auth mode (#4595). Absent === 'token', preserving every pre-4595 config.
+  const authModeRaw = observerObj.authMode;
+  if (authModeRaw !== undefined && authModeRaw !== 'token' && authModeRaw !== 'password') {
+    return {
+      status: 400,
+      error: "observer.authMode must be 'token' or 'password'",
+      code: 'INVALID_OBSERVER_AUTH_MODE',
+    };
+  }
+  const authMode: 'token' | 'password' = authModeRaw === 'password' ? 'password' : 'token';
   if (observerObj.enabled !== true) return null;
+  // Companion-only in BOTH modes. In password mode the reason is no longer
+  // "a repeater can't export a signing key" but the harder one: the
+  // repeater/serial backend never emits `ota_packet`, so a publisher there
+  // would sit idle forever (see MeshCoreManager.startObserver's nativeBackend
+  // guard). Lifting this needs an OTA feed for repeaters first (#4595).
   if (config?.deviceType === 'repeater') {
     return {
       status: 400,
@@ -153,6 +181,15 @@ export function validateObserverConfig(
     };
   }
   const tokenAudience = observerObj.tokenAudience;
+  // Password mode signs nothing, so the broker has no audience to match.
+  // An empty/absent audience is fine there; a present one is still shape-
+  // checked so a later switch back to token mode can't inherit garbage.
+  if (
+    authMode === 'password' &&
+    (tokenAudience === undefined || tokenAudience === null || tokenAudience === '')
+  ) {
+    return null;
+  }
   const isValidAudience =
     typeof tokenAudience === 'string' &&
     tokenAudience.length > 0 &&
@@ -366,12 +403,14 @@ function preserveSourceCredentials(
 function stripObserverKeyMaterial<T extends Record<string, unknown>>(cfg: T): T {
   const obs = cfg?.observer;
   if (!obs || typeof obs !== 'object' || Array.isArray(obs)) return cfg;
-  const { privateKey, privateKeyHex, signingKey, key, secret, ...safeObserver } = obs as Record<string, unknown>;
+  const { privateKey, privateKeyHex, signingKey, key, secret, password, ...safeObserver } =
+    obs as Record<string, unknown>;
   void privateKey;
   void privateKeyHex;
   void signingKey;
   void key;
   void secret;
+  void password; // #4595 static-credential password — same rule as key material.
   return { ...cfg, observer: safeObserver } as T;
 }
 

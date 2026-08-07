@@ -60,12 +60,32 @@ export interface MeshCoreSourceConfig {
  */
 export interface MeshCoreObserverConfig {
   enabled?: boolean;
+  /**
+   * How MeshMonitor authenticates to the broker (issue #4595).
+   * - `token` (default, and the value assumed when absent): mint an
+   *   Ed25519-signed token with the companion's own signing key; username is
+   *   `v1_{PUBLIC_KEY}`. FL Mesh / LetsMesh-backbone brokers.
+   * - `password`: send a STATIC MQTT username/password. Used by regional
+   *   brokers (e.g. meshcoretel.ru) that don't verify the signature. The
+   *   password is NEVER in this block — it lives encrypted in
+   *   `meshcore_observer_credentials` (see meshcoreObserverCredentialStore).
+   */
+  authMode?: 'token' | 'password';
   /** Broker URL. ws/wss/mqtt/mqtts; bare host:port is normalized by normalizeBrokerUrl. */
   brokerUrl?: string;
   /** 3-letter IATA region code, or the literal 'test' for local validation. */
   iataCode?: string;
-  /** Must equal the broker's AUTH_EXPECTED_AUDIENCE, or auth is rejected. */
+  /**
+   * Must equal the broker's AUTH_EXPECTED_AUDIENCE, or auth is rejected.
+   * Only meaningful in `token` mode — a static-credential broker signs
+   * nothing, so there is no audience to match.
+   */
   tokenAudience?: string;
+}
+
+/** Normalize the (optional, back-compatible) observer auth mode. */
+export function observerAuthMode(o: MeshCoreObserverConfig | undefined | null): 'token' | 'password' {
+  return o?.authMode === 'password' ? 'password' : 'token';
 }
 
 /** Default TCP port the Virtual Node server listens on when none is given. */
@@ -89,13 +109,20 @@ export function virtualNodeConfigFromSource(cfg: MeshCoreSourceConfig): MeshCore
 
 /**
  * Build the runtime Analyzer Observer config from a source's saved config, or
- * undefined when disabled/absent or missing any of the three required fields
- * (brokerUrl, iataCode, tokenAudience).
+ * undefined when disabled/absent or missing a required field.
+ *
+ * Required fields depend on the auth mode (#4595): `token` mode needs
+ * brokerUrl + iataCode + tokenAudience; `password` mode needs only brokerUrl
+ * + iataCode, because the broker verifies no signature and therefore has no
+ * audience. The username/password themselves are NOT config — they live
+ * encrypted in `meshcore_observer_credentials`.
  */
 export function observerConfigFromSource(cfg: MeshCoreSourceConfig): MeshCoreConfig['observer'] {
   const o = cfg.observer;
   if (!o?.enabled) return undefined;
-  if (!o.brokerUrl || !o.iataCode || !o.tokenAudience) return undefined;
+  const authMode = observerAuthMode(o);
+  if (!o.brokerUrl || !o.iataCode) return undefined;
+  if (authMode === 'token' && !o.tokenAudience) return undefined;
   // The stored URL was validated at write time, but normalize can still throw
   // on a row written by an older version or edited out-of-band. Silently
   // returning undefined here would disable the observer with no trace — warn
@@ -109,9 +136,12 @@ export function observerConfigFromSource(cfg: MeshCoreSourceConfig): MeshCoreCon
   }
   return {
     enabled: true,
+    authMode,
     brokerUrl,
     iataCode: o.iataCode.trim().toUpperCase(),
-    tokenAudience: o.tokenAudience.trim(),
+    // Carried through in password mode only when the operator happened to
+    // leave a value behind; the publisher ignores it in that mode.
+    tokenAudience: o.tokenAudience?.trim(),
   };
 }
 

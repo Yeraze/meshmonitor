@@ -1413,6 +1413,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
             ? `${this.localNode.ver.startsWith('v') ? '' : 'v'}${this.localNode.ver}${this.localNode.firmwareBuild ? ` (Build: ${this.localNode.firmwareBuild})` : ''}`
             : undefined,
           radio: formatRadioInfo(this.localNode),
+          // #4595: the node's own public key from `get_self_info`. Not
+          // secret. Only used in `password` auth mode, where there is no
+          // signing key to derive the topic public key from.
+          publicKey: this.localNode?.publicKey || undefined,
         }),
         // Battery / uptime / noise floor for the analyzer's observer detail
         // (#4556). These read the ATTACHED companion over the local link —

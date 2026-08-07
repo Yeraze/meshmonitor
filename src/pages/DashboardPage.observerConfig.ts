@@ -12,9 +12,19 @@
  * feedback — the server remains the authority and re-checks everything.
  */
 
+/**
+ * How MeshMonitor authenticates to the broker (#4595).
+ * - `token`: Ed25519-signed token, username `v1_{PUBLIC_KEY}`.
+ * - `password`: static MQTT username/password. The password is NOT part of
+ *   this form — it is stored through PUT /api/sources/:id/observer/credentials
+ *   so it never rides along in `sources.config`.
+ */
+export type ObserverAuthMode = 'token' | 'password';
+
 /** The observer block as it is persisted inside `sources.config`. */
 export interface ObserverConfigWire {
   enabled: boolean;
+  authMode: ObserverAuthMode;
   brokerUrl: string;
   iataCode: string;
   tokenAudience: string;
@@ -23,13 +33,14 @@ export interface ObserverConfigWire {
 /** Modal form state — all strings, because inputs are all strings. */
 export interface ObserverForm {
   enabled: boolean;
+  authMode: ObserverAuthMode;
   brokerUrl: string;
   iataCode: string;
   tokenAudience: string;
 }
 
 export function emptyObserverForm(): ObserverForm {
-  return { enabled: false, brokerUrl: '', iataCode: '', tokenAudience: '' };
+  return { enabled: false, authMode: 'token', brokerUrl: '', iataCode: '', tokenAudience: '' };
 }
 
 /**
@@ -43,6 +54,8 @@ export function observerFormFromConfig(config: unknown): ObserverForm {
   const c = config as Record<string, unknown>;
   return {
     enabled: c.enabled === true,
+    // Absent === 'token', so every pre-#4595 source seeds unchanged.
+    authMode: c.authMode === 'password' ? 'password' : 'token',
     brokerUrl: typeof c.brokerUrl === 'string' ? c.brokerUrl : '',
     iataCode: typeof c.iataCode === 'string' ? c.iataCode : '',
     tokenAudience: typeof c.tokenAudience === 'string' ? c.tokenAudience : '',
@@ -124,7 +137,21 @@ export function buildObserverConfig(
   }
 
   // Check 5: token audience — non-empty, <=255 chars, no whitespace.
+  // Skipped entirely in password mode (#4595): a static-credential broker
+  // verifies no signature, so it has no audience to match. Any stale value is
+  // dropped rather than carried, matching the server's optional-audience rule.
   const rawAudience = form.tokenAudience.trim();
+  if (form.authMode === 'password') {
+    return {
+      config: {
+        enabled: true,
+        authMode: 'password',
+        brokerUrl: rawBrokerUrl,
+        iataCode: rawIata.toUpperCase(),
+        tokenAudience: '',
+      },
+    };
+  }
   if (!rawAudience || rawAudience.length > 255 || /\s/.test(rawAudience)) {
     return {
       error: {
@@ -137,6 +164,7 @@ export function buildObserverConfig(
   return {
     config: {
       enabled: true,
+      authMode: 'token',
       brokerUrl: rawBrokerUrl,
       iataCode: rawIata.toUpperCase(),
       tokenAudience: rawAudience,
@@ -149,6 +177,7 @@ const ERROR_CODE_KEY_MAP: Record<string, string> = {
   INVALID_IATA_CODE: 'meshcore.form.observer_error_iata',
   OBSERVER_REQUIRES_COMPANION: 'meshcore.form.observer_error_requires_companion',
   OBSERVER_KEY_IN_CONFIG: 'meshcore.form.observer_error_key_in_config',
+  INVALID_OBSERVER_AUTH_MODE: 'meshcore.form.observer_error_auth_mode',
 };
 
 /**

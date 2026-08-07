@@ -58,7 +58,9 @@ describe('validateObserverConfig', () => {
 
   // ── Row 3: key-material rejection, and its ordering guarantee ────────────
   describe('key-material rejection (ordering)', () => {
-    const keyFields = ['privateKey', 'privateKeyHex', 'signingKey', 'key', 'secret'] as const;
+    // `password` joined the list in #4595 — the static-credential broker
+    // password belongs in `meshcore_observer_credentials`, not the config blob.
+    const keyFields = ['privateKey', 'privateKeyHex', 'signingKey', 'key', 'secret', 'password'] as const;
 
     it.each(keyFields)('rejects observer.%s when observer is otherwise valid and enabled', (field) => {
       const err = validateObserverConfig('meshcore', {
@@ -66,7 +68,9 @@ describe('validateObserverConfig', () => {
       });
       expect(err).toEqual({
         status: 400,
-        error: 'observer config must not contain key material; use POST /api/sources/:id/observer/key',
+        error:
+          'observer config must not contain key material or a broker password; use ' +
+          'PUT /api/sources/:id/observer/key or PUT /api/sources/:id/observer/credentials',
         code: 'OBSERVER_KEY_IN_CONFIG',
       });
     });
@@ -353,6 +357,106 @@ describe('validateObserverConfig', () => {
         observer: { ...VALID_OBSERVER, tokenAudience: 123 as unknown as string },
       });
       expect(err?.code).toBe('INVALID_PARAMETER');
+    });
+  });
+
+  // ── authMode / static credentials (#4595) ─────────────────────────────────
+  describe('authMode (#4595)', () => {
+    it('accepts an absent authMode (back-compat: means token)', () => {
+      expect(validateObserverConfig('meshcore', { observer: VALID_OBSERVER })).toBeNull();
+    });
+
+    it("accepts authMode 'token' and 'password'", () => {
+      expect(
+        validateObserverConfig('meshcore', { observer: { ...VALID_OBSERVER, authMode: 'token' } }),
+      ).toBeNull();
+      expect(
+        validateObserverConfig('meshcore', { observer: { ...VALID_OBSERVER, authMode: 'password' } }),
+      ).toBeNull();
+    });
+
+    it('rejects any other authMode', () => {
+      const err = validateObserverConfig('meshcore', {
+        observer: { ...VALID_OBSERVER, authMode: 'oauth' },
+      });
+      expect(err?.status).toBe(400);
+      expect(err?.code).toBe('INVALID_OBSERVER_AUTH_MODE');
+    });
+
+    it('rejects a bad authMode even on a DISABLED block (fail early, not on enable)', () => {
+      const err = validateObserverConfig('meshcore', {
+        observer: { ...VALID_OBSERVER, enabled: false, authMode: 'nope' },
+      });
+      expect(err?.code).toBe('INVALID_OBSERVER_AUTH_MODE');
+    });
+
+    it('password mode does not require a tokenAudience', () => {
+      expect(
+        validateObserverConfig('meshcore', {
+          observer: { enabled: true, authMode: 'password', brokerUrl: 'mqtt://host:1883', iataCode: 'ALA' },
+        }),
+      ).toBeNull();
+      expect(
+        validateObserverConfig('meshcore', {
+          observer: {
+            enabled: true,
+            authMode: 'password',
+            brokerUrl: 'mqtt://host:1883',
+            iataCode: 'ALA',
+            tokenAudience: '',
+          },
+        }),
+      ).toBeNull();
+    });
+
+    it('password mode still shape-checks a tokenAudience when one IS present', () => {
+      const err = validateObserverConfig('meshcore', {
+        observer: { ...VALID_OBSERVER, authMode: 'password', tokenAudience: 'has space' },
+      });
+      expect(err?.code).toBe('INVALID_PARAMETER');
+    });
+
+    it('password mode still requires brokerUrl and iataCode', () => {
+      expect(
+        validateObserverConfig('meshcore', {
+          observer: { enabled: true, authMode: 'password', iataCode: 'ALA' },
+        })?.code,
+      ).toBe('INVALID_PARAMETER');
+      expect(
+        validateObserverConfig('meshcore', {
+          observer: { enabled: true, authMode: 'password', brokerUrl: 'mqtt://host:1883', iataCode: 'XX' },
+        })?.code,
+      ).toBe('INVALID_IATA_CODE');
+    });
+
+    it('token mode still requires a tokenAudience', () => {
+      const err = validateObserverConfig('meshcore', {
+        observer: { enabled: true, authMode: 'token', brokerUrl: 'mqtt://host:1883', iataCode: 'MCO' },
+      });
+      expect(err?.code).toBe('INVALID_PARAMETER');
+    });
+
+    it('rejects a broker password smuggled into the config block', () => {
+      const err = validateObserverConfig('meshcore', {
+        observer: { ...VALID_OBSERVER, authMode: 'password', password: 'meshcore' },
+      });
+      expect(err?.status).toBe(400);
+      expect(err?.code).toBe('OBSERVER_KEY_IN_CONFIG');
+    });
+
+    it('rejects a password in the config even on a non-meshcore, disabled block', () => {
+      const err = validateObserverConfig('mqtt_broker', {
+        observer: { enabled: false, password: 'meshcore' },
+      });
+      expect(err?.code).toBe('OBSERVER_KEY_IN_CONFIG');
+    });
+
+    it('password mode is still Companion-only (the repeater backend emits no OTA packets)', () => {
+      const err = validateObserverConfig('meshcore', {
+        deviceType: 'repeater',
+        observer: { ...VALID_OBSERVER, authMode: 'password' },
+      });
+      expect(err?.code).toBe('OBSERVER_REQUIRES_COMPANION');
     });
   });
 
