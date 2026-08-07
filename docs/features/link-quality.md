@@ -99,9 +99,11 @@ Controls how much historical data is displayed in the graphs.
 
 Controls how the hop count is determined for the node list display, map marker colors, and Messages node details (separate from Smart Hops):
 
-- **NodeInfo packet (default)**: Uses the `hopsAway` value from the node's most recent NodeInfo broadcast. This is the standard Meshtastic behavior and provides a stable, consistent hop count.
+- **NodeInfo packet (default)**: Uses the `hopsAway` value the radio reports for the node in its own node database. MeshMonitor reads this when it syncs the NodeDB — on connect, on reconnect, and on a manual refresh — **not** on every NodeInfo broadcast it overhears. It is therefore a snapshot rather than a live value: stable and consistent, but it can be arbitrarily out of date for a node that has since moved or gone quiet, and it is never cleared.
 - **Traceroute length**: Uses the shortest path found in traceroute results between your node and the target. Falls back to NodeInfo if no traceroute data is available.
 - **All messages**: Uses the hop count from the most recent packet received from the node — **any packet type**, not just text messages. This includes telemetry, position, NodeInfo, text messages, traceroute responses, and all other packet types. The hop count is derived from the packet's `hopStart - hopLimit` fields, which indicate how many relay hops the packet actually traversed. Falls back to NodeInfo if no message hop data is available.
+
+  Note that `hopStart` is a proto3 scalar, so an unset value decodes as `0` and is indistinguishable from a genuine zero. MeshMonitor therefore only records a hop count when `hopStart > 0`. Packets from older firmware, and some bridged transports that strip the LoRa header, produce no value at all — so this field can be absent for a node you are actively hearing. Like `hopsAway`, it is never cleared, so pair it with `lastHeard` if you need to know whether it is still current.
 
 ::: tip
 Smart Hops always uses actual message hop counts regardless of this setting. The Node Hops Calculation setting only affects the hop count shown in the node list, map markers, and message node details.
