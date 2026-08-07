@@ -90,7 +90,7 @@ vi.mock('./hooks/useObserverKey', () => ({
 // stored" — which also keeps the mode heuristic on the token/unknown branch so
 // the key blocks stay rendered. Stubbing it (rather than wrapping the tree in a
 // CsrfProvider) keeps this file's existing no-provider render() calls working.
-let mockCredentialStatus: ObserverCredentialStatus | null = null;
+const mockCredentialStatus: ObserverCredentialStatus | null = null;
 const mockSaveCredentials = vi.fn(async () => true);
 const mockClearCredentials = vi.fn(async () => true);
 vi.mock('./hooks/useObserverCredentials', () => ({
