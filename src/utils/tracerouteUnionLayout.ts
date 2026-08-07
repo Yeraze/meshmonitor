@@ -81,7 +81,7 @@ import type {
   StripEdge,
   StripPoint,
   TracerouteStripGraph,
-} from './tracerouteStrip';
+} from './tracerouteStrip.js';
 import {
   DEFAULT_LAYOUT_OPTIONS,
   EDGE_RIM_MARGIN,
@@ -94,9 +94,9 @@ import {
   labelClearRadius,
   routeAroundGlyphs,
   pickLabelX,
-} from './tracerouteStrip';
-import type { AggregateTracerouteRow, StatNode, TracerouteUnionGraph } from './tracerouteAggregate';
-import { statOpacity, buildTracerouteUnion } from './tracerouteAggregate';
+} from './tracerouteStrip.js';
+import type { AggregateTracerouteRow, StatNode, TracerouteUnionGraph } from './tracerouteAggregate.js';
+import { statOpacity, buildTracerouteUnion } from './tracerouteAggregate.js';
 
 // ---------------------------------------------------------------------------
 // Public types (D10)

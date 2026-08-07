@@ -6,6 +6,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 import globals from 'globals';
 import { noHardcodedUiGlyph } from './scripts/eslint-rules/no-hardcoded-ui-glyph.mjs';
+import { requireRelativeImportExtension } from './scripts/eslint-rules/require-relative-import-extension.mjs';
 
 export default [
   {
@@ -49,6 +50,7 @@ export default [
       'meshmonitor-ui': {
         rules: {
           'no-hardcoded-ui-glyph': noHardcodedUiGlyph,
+          'require-relative-import-extension': requireRelativeImportExtension,
         },
       },
     },
@@ -194,6 +196,31 @@ export default [
     ],
     rules: {
       'meshmonitor-ui/no-hardcoded-ui-glyph': 'error',
+    },
+  },
+  {
+    // #4596: Node ESM does no extension inference, so an extensionless relative
+    // specifier that `tsc` compiles into dist/ throws ERR_MODULE_NOT_FOUND at
+    // runtime even when the target file is right beside it. tsx/Vite/Vitest all
+    // resolve it, so dev and the test suite never see the failure.
+    //
+    // Scope mirrors tsconfig.server.json's `include` (the code compiled into
+    // dist/), minus its `exclude`d test files. The two src/components entries are
+    // not in that include list but are dragged into dist/ by src/utils/mapIcons.ts
+    // and src/utils/tracerouteStripMeta.ts, so they share the constraint.
+    files: [
+      'src/server/**/*.{ts,tsx}',
+      'src/services/**/*.{ts,tsx}',
+      'src/utils/**/*.{ts,tsx}',
+      'src/types/**/*.{ts,tsx}',
+      'src/cli/**/*.{ts,tsx}',
+      'src/db/**/*.{ts,tsx}',
+      'src/components/map/markerIcons.ts',
+      'src/components/map/popups/nodeCardModel.ts',
+    ],
+    ignores: ['**/*.test.ts', '**/*.test.tsx', '**/*.spec.ts', '**/*.spec.tsx'],
+    rules: {
+      'meshmonitor-ui/require-relative-import-extension': 'error',
     },
   },
   {

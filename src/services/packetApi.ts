@@ -1,4 +1,4 @@
-import api from './api';
+import api from './api.js';
 import {
   PacketLog,
   PacketLogResponse,
@@ -9,7 +9,7 @@ import {
   UnifiedPacketFilters,
   UnifiedPacketsResponse,
   UnifiedPacketDistribution,
-} from '../types/packet';
+} from '../types/packet.js';
 
 /**
  * Fetch packet logs with optional filters

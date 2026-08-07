@@ -5,7 +5,7 @@
  * Leaflet into a non-map bundle/test. Do not add a Leaflet import here.
  */
 
-import { categoryGlyphFamily, type NodeTypeCategory } from './nodeTypeCategory';
+import { categoryGlyphFamily, type NodeTypeCategory } from './nodeTypeCategory.js';
 
 /**
  * Inner SVG markup for a node-type role glyph, drawn inside the 48×48 viewBox

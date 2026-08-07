@@ -1,4 +1,4 @@
-import { DeviceInfo } from '../types/device';
+import { DeviceInfo } from '../types/device.js';
 import { ROLE_NAMES, HARDWARE_MODELS } from '../constants/index.js';
 import { shouldDiscardPosition } from './nullIsland.js';
 import { getDiscardInvalidPositions } from './positionDisplayConfig.js';

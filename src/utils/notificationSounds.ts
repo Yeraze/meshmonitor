@@ -19,7 +19,7 @@
  * no server round-trip, no database migration).
  */
 
-import { logger } from './logger';
+import { logger } from './logger.js';
 
 /** A single scheduled oscillator within a sound. */
 export interface ToneStep {

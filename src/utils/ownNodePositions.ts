@@ -14,7 +14,7 @@
  * they naturally yield no entry here and the grid is disabled for them —
  * matching the issue's "disabled when the source has no own-node position".
  */
-import { isBogusPosition } from './nullIsland';
+import { isBogusPosition } from './nullIsland.js';
 
 export interface OwnNodePosition {
   sourceId: string;

@@ -1,4 +1,4 @@
-import type { MeshCoreMapNode } from '../contexts/MapContext';
+import type { MeshCoreMapNode } from '../contexts/MapContext.js';
 
 // Small offset to prevent exact overlap on map when local node is at same location as contacts
 export const LOCAL_NODE_OFFSET = 0.0005; // ~55m

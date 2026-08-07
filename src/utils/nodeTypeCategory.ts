@@ -24,7 +24,7 @@
  * currently present is simply inert (default visible).
  */
 
-import { DEVICE_ROLES } from './deviceRole';
+import { DEVICE_ROLES } from './deviceRole.js';
 
 /** MeshCore advert-type categories (issue #3546). */
 export type MeshCoreCategory =

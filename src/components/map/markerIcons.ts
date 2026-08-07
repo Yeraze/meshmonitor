@@ -1,12 +1,12 @@
 import L from 'leaflet';
-import { isEmoji } from '../../utils/text';
-import type { NodeTypeCategory } from '../../utils/nodeTypeCategory';
+import { isEmoji } from '../../utils/text.js';
+import type { NodeTypeCategory } from '../../utils/nodeTypeCategory.js';
 import {
   roleGlyphInnerSvg,
   roleGlyphMarkerSvg,
   getHopColor,
   unmessageableBadgeSvg,
-} from '../../utils/roleGlyphSvg';
+} from '../../utils/roleGlyphSvg.js';
 
 // Relocated to `src/utils/roleGlyphSvg.ts` (Leaflet-free) so off-map surfaces
 // (the Node Details traceroute strip) can import the glyph builders without

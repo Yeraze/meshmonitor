@@ -1,5 +1,5 @@
-import type { DeviceInfo } from '../types/device';
-import type { NodeHopsCalculation } from '../contexts/SettingsContext';
+import type { DeviceInfo } from '../types/device.js';
+import type { NodeHopsCalculation } from '../contexts/SettingsContext.js';
 
 interface TracerouteData {
   fromNodeNum: number;

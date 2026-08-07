@@ -1,15 +1,15 @@
 import React from 'react';
 import L from 'leaflet';
 import { Marker, Tooltip, Popup, CircleMarker } from 'react-leaflet';
-import { PositionHistoryItem } from '../contexts/MapContext';
-import { convertSpeed } from './speedConversion';
+import { PositionHistoryItem } from '../contexts/MapContext.js';
+import { convertSpeed } from './speedConversion.js';
 export { convertSpeed };
 
 // #2931 — the unknown-hop SNR sentinel lives in the pure, leaflet-free
 // `tracerouteSegments.ts` (so useTracerouteAnalysis.ts and its tests don't
 // have to pull in this file's `leaflet`/`react-leaflet` imports). Re-exported
 // here for backward compatibility with existing importers.
-import { isUnknownSnr, averageNonSentinelSnr, type TracerouteRenderSegment } from './tracerouteSegments';
+import { isUnknownSnr, averageNonSentinelSnr, type TracerouteRenderSegment } from './tracerouteSegments.js';
 export { isUnknownSnr, averageNonSentinelSnr };
 
 /**

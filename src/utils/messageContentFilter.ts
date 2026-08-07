@@ -1,4 +1,4 @@
-import type { MeshMessage } from '../types/message';
+import type { MeshMessage } from '../types/message.js';
 
 /**
  * Build the set of node IDs whose direct-message history contains a given

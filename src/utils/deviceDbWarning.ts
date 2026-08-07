@@ -1,4 +1,4 @@
-import type { DeviceInfo } from '../types/device';
+import type { DeviceInfo } from '../types/device.js';
 
 /**
  * Decides whether the DM-view "not in device DB" warning is *mitigatable*

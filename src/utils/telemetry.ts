@@ -1,4 +1,4 @@
-import type { TelemetryData } from '../hooks/useTelemetry';
+import type { TelemetryData } from '../hooks/useTelemetry.js';
 
 /**
  * Returns the most recent telemetry data point from an array.

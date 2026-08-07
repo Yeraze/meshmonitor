@@ -16,8 +16,8 @@
  * source there is nothing to mirror.
  */
 
-import type { NodeDisplaySettingKey } from '../constants/nodeDisplayDefaults';
-import { NODE_DISPLAY_SETTING_KEYS } from '../constants/nodeDisplayDefaults';
+import type { NodeDisplaySettingKey } from '../constants/nodeDisplayDefaults.js';
+import { NODE_DISPLAY_SETTING_KEYS } from '../constants/nodeDisplayDefaults.js';
 
 function storageKey(sourceId: string, key: NodeDisplaySettingKey): string {
   return `nodeDisplay:${sourceId}:${key}`;

@@ -12,7 +12,7 @@
  * keep using `msg.timestamp` so users still see the radio's claimed time and
  * can spot misconfigured nodes.
  */
-import { MeshMessage } from '../types/message';
+import { MeshMessage } from '../types/message.js';
 
 /**
  * Returns the millisecond timestamp to use for sorting/comparison of a

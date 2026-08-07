@@ -7,14 +7,14 @@
  * `DeviceInfo`-free per its own module banner). See
  * docs/internal/dev-notes/TRACEROUTE_VISUAL_STRIP_SPEC.md §5.1.
  */
-import type { DeviceInfo } from '../types/device';
-import type { NodeHopsCalculation } from '../contexts/SettingsContext';
-import { paddedHexId, type TracerouteStripGraph } from './tracerouteStrip';
-import type { TracerouteStripNodeMeta } from '../components/traceroute/TracerouteStrip';
-import { getEffectiveHops } from './nodeHops';
-import { getNodeTypeCategory } from './nodeTypeCategory';
-import { getRoleName } from './nodeHelpers';
-import { toNodeCardModel } from '../components/map/popups/nodeCardModel';
+import type { DeviceInfo } from '../types/device.js';
+import type { NodeHopsCalculation } from '../contexts/SettingsContext.js';
+import { paddedHexId, type TracerouteStripGraph } from './tracerouteStrip.js';
+import type { TracerouteStripNodeMeta } from '../components/traceroute/TracerouteStrip.js';
+import { getEffectiveHops } from './nodeHops.js';
+import { getNodeTypeCategory } from './nodeTypeCategory.js';
+import { getRoleName } from './nodeHelpers.js';
+import { toNodeCardModel } from '../components/map/popups/nodeCardModel.js';
 
 /** Structural subset of a traceroute row — the same shape `getEffectiveHops`
  *  needs for its `'traceroute'` calculation mode. */
