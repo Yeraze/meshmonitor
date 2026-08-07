@@ -34,7 +34,7 @@ import LinkPreview from '../components/LinkPreview';
 import '../styles/unified.css';
 import { UiIcon } from '../components/icons';
 import { resolveReplyPreview } from '../utils/replyPreview';
-import { SOURCE_COLORS } from '../utils/sourceColors';
+import { getSourceColor } from '../utils/sourceColors';
 
 type TFn = (key: string, options?: Record<string, unknown>) => string;
 
@@ -295,11 +295,12 @@ export default function UnifiedMessagesPage() {
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [allMessages]);
 
+  // Uses the shared lookup rather than re-deriving the index here, so the
+  // "one SOURCE_COLORS" invariant holds at the implementation level and not
+  // just the definition level — a private copy of the modulo/fallback logic is
+  // how the three palettes drifted apart in the first place.
   const sourceColor = useCallback(
-    (sourceId: string) => {
-      const idx = sourcesInView.findIndex((s) => s.id === sourceId);
-      return SOURCE_COLORS[(idx < 0 ? 0 : idx) % SOURCE_COLORS.length];
-    },
+    (sourceId: string) => getSourceColor(sourceId, sourcesInView.map((s) => s.id)),
     [sourcesInView]
   );
 

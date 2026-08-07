@@ -10,7 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import apiService, { ApiError } from '../services/api';
 import { type TemperatureUnit, formatTemperature, getTemperatureUnit, isTemperatureType } from '../utils/temperature';
-import { getSourceColor as sharedGetSourceColor } from '../utils/sourceColors';
+import { getSourceColor } from '../utils/sourceColors';
 import { unitScale, formatDuration, isUptimeType } from '../utils/telemetryFormat';
 import '../styles/unified.css';
 
@@ -27,10 +27,6 @@ interface TelemetryEntry {
   sourceName: string;
   nodeLongName?: string | null;
   nodeShortName?: string | null;
-}
-
-function getSourceColor(sourceId: string, sourceIds: string[]): string {
-  return sharedGetSourceColor(sourceId, sourceIds);
 }
 
 // Compact labels for the card view. Keys must match the telemetryType values

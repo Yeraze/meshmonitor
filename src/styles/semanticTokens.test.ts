@@ -20,11 +20,26 @@ import { join, resolve } from 'node:path';
 
 const appCss = readFileSync(resolve('src/App.css'), 'utf8');
 
+/**
+ * The bare `:root { … }` block — where the role and categorical layers are
+ * defined. Explicitly NOT the `:root[data-theme='x']` blocks, which define the
+ * palette and deliberately never redeclare these tokens.
+ *
+ * Scoped rather than matched across the whole file so a token accidentally
+ * declared inside a theme block reads as MISSING from the layer (which it
+ * effectively is — it would only apply under that one theme) instead of being
+ * silently counted as a definition.
+ */
+function rootBlock(): string {
+  const m = appCss.match(/:root\s*\{([\s\S]*?)\n\}/);
+  return m?.[1] ?? '';
+}
+
 /** Semantic tokens and the palette var each points at, from the :root block. */
 function semanticDefinitions(): Map<string, string> {
   const out = new Map<string, string>();
   const re = /(--color-[a-z0-9-]+)\s*:\s*var\((--ctp-[a-z0-9-]+)\)/g;
-  for (const m of appCss.matchAll(re)) out.set(m[1], m[2]);
+  for (const m of rootBlock().matchAll(re)) out.set(m[1], m[2]);
   return out;
 }
 
@@ -146,7 +161,7 @@ describe('categorical scale (--chart-N)', () => {
   /** Chart slots and the palette var each points at, from the :root block. */
   function chartDefinitions(): Map<string, string> {
     const out = new Map<string, string>();
-    for (const m of appCss.matchAll(/(--chart-\d+)\s*:\s*var\((--ctp-[a-z0-9-]+)\)/g)) {
+    for (const m of rootBlock().matchAll(/(--chart-\d+)\s*:\s*var\((--ctp-[a-z0-9-]+)\)/g)) {
       out.set(m[1], m[2]);
     }
     return out;
@@ -177,9 +192,17 @@ describe('categorical scale (--chart-N)', () => {
   });
 
   it('borrows no role token — the scale is independent of meaning', () => {
-    const chartBlock = appCss.match(/--chart-1\s*:[\s\S]*?--chart-8\s*:[^;]+;/)?.[0] ?? '';
-    expect(chartBlock).not.toBe('');
-    expect(chartBlock).not.toMatch(/var\(--color-/);
+    // Checked per DECLARATION rather than over a `--chart-1 … --chart-8` span.
+    // A span regex depends on the two staying adjacent with nothing in
+    // between; reorder the block or drop a `}` into a comment and it matches
+    // nothing, at which point `not.toMatch` passes vacuously and only a
+    // separate emptiness guard stands between that and a silently dead test.
+    // Reading each declaration removes the failure mode instead of guarding it.
+    const decls = [...rootBlock().matchAll(/--chart-\d+\s*:\s*([^;]+);/g)].map((m) => m[1].trim());
+    expect(decls).toHaveLength(8);
+    for (const value of decls) {
+      expect(value, `${value} borrows a role token`).not.toMatch(/var\(--color-/);
+    }
   });
 
   it('is what SOURCE_COLORS draws on, with no role tokens or raw palette vars', () => {
