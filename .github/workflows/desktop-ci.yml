@@ -70,25 +70,8 @@ jobs:
           mkdir desktop\resources
           mkdir desktop\resources\dist
           mkdir desktop\resources\binaries
-          xcopy /E /I /Y dist\server desktop\resources\dist\server
-          xcopy /E /I /Y dist\services desktop\resources\dist\services
-          xcopy /E /I /Y dist\utils desktop\resources\dist\utils
-          xcopy /E /I /Y dist\types desktop\resources\dist\types
-          xcopy /E /I /Y dist\config desktop\resources\dist\config
-          xcopy /E /I /Y dist\constants desktop\resources\dist\constants
-          xcopy /E /I /Y dist\contexts desktop\resources\dist\contexts
-          xcopy /E /I /Y dist\assets desktop\resources\dist\assets
-          xcopy /E /I /Y dist\locales desktop\resources\dist\locales
-          xcopy /E /I /Y dist\pmtiles desktop\resources\dist\pmtiles
+          xcopy /E /I /Y dist desktop\resources\dist
           xcopy /E /I /Y protobufs desktop\resources\dist\protobufs
-          copy dist\index.html desktop\resources\dist\index.html
-          copy dist\logo.png desktop\resources\dist\logo.png
-          copy dist\logo-original.png desktop\resources\dist\logo-original.png
-          copy dist\favicon.ico desktop\resources\dist\favicon.ico
-          copy dist\favicon-16x16.png desktop\resources\dist\favicon-16x16.png
-          copy dist\favicon-32x32.png desktop\resources\dist\favicon-32x32.png
-          copy dist\cors-detection.js desktop\resources\dist\cors-detection.js
-          copy dist\cors-error.html desktop\resources\dist\cors-error.html
           copy package.json desktop\resources\package.json
           copy package.json desktop\resources\dist\package.json
           copy package-lock.json desktop\resources\dist\package-lock.json
@@ -184,31 +167,14 @@ jobs:
         run: |
           mkdir -p desktop/resources/dist
           mkdir -p desktop/resources/binaries
-          # Copy server-side compiled code
-          cp -r dist/server desktop/resources/dist/
-          cp -r dist/services desktop/resources/dist/
-          cp -r dist/utils desktop/resources/dist/
-          cp -r dist/types desktop/resources/dist/
-          cp -r dist/config desktop/resources/dist/
-          cp -r dist/constants desktop/resources/dist/
-          cp -r dist/contexts desktop/resources/dist/
-          # Copy frontend assets
-          cp -r dist/assets desktop/resources/dist/
-          cp -r dist/locales desktop/resources/dist/
-          # Copy pmtiles if it exists (may be in public or dist)
-          [ -d dist/pmtiles ] && cp -r dist/pmtiles desktop/resources/dist/ || true
+          # Copy the full compiled/bundled output (server + frontend) wholesale,
+          # matching the Docker image, so a new top-level dist/ dir never needs
+          # an allowlist update here (see #4591).
+          cp -r dist/. desktop/resources/dist/
+          # Copy pmtiles if it exists in public but wasn't already part of dist/
           [ -d public/pmtiles ] && cp -r public/pmtiles desktop/resources/dist/ || true
           # Copy protobufs
           cp -r protobufs desktop/resources/dist/
-          # Copy individual files
-          cp dist/index.html desktop/resources/dist/
-          cp dist/logo.png desktop/resources/dist/
-          cp dist/logo-original.png desktop/resources/dist/
-          cp dist/favicon.ico desktop/resources/dist/
-          cp dist/favicon-16x16.png desktop/resources/dist/
-          cp dist/favicon-32x32.png desktop/resources/dist/
-          cp dist/cors-detection.js desktop/resources/dist/
-          cp dist/cors-error.html desktop/resources/dist/
           cp package.json desktop/resources/
           cp package.json desktop/resources/dist/
           cp package-lock.json desktop/resources/dist/
@@ -300,31 +266,14 @@ jobs:
         run: |
           mkdir -p desktop/resources/dist
           mkdir -p desktop/resources/binaries
-          # Copy server-side compiled code
-          cp -r dist/server desktop/resources/dist/
-          cp -r dist/services desktop/resources/dist/
-          cp -r dist/utils desktop/resources/dist/
-          cp -r dist/types desktop/resources/dist/
-          cp -r dist/config desktop/resources/dist/
-          cp -r dist/constants desktop/resources/dist/
-          cp -r dist/contexts desktop/resources/dist/
-          # Copy frontend assets
-          cp -r dist/assets desktop/resources/dist/
-          cp -r dist/locales desktop/resources/dist/
-          # Copy pmtiles if it exists (may be in public or dist)
-          [ -d dist/pmtiles ] && cp -r dist/pmtiles desktop/resources/dist/ || true
+          # Copy the full compiled/bundled output (server + frontend) wholesale,
+          # matching the Docker image, so a new top-level dist/ dir never needs
+          # an allowlist update here (see #4591).
+          cp -r dist/. desktop/resources/dist/
+          # Copy pmtiles if it exists in public but wasn't already part of dist/
           [ -d public/pmtiles ] && cp -r public/pmtiles desktop/resources/dist/ || true
           # Copy protobufs
           cp -r protobufs desktop/resources/dist/
-          # Copy individual files
-          cp dist/index.html desktop/resources/dist/
-          cp dist/logo.png desktop/resources/dist/
-          cp dist/logo-original.png desktop/resources/dist/
-          cp dist/favicon.ico desktop/resources/dist/
-          cp dist/favicon-16x16.png desktop/resources/dist/
-          cp dist/favicon-32x32.png desktop/resources/dist/
-          cp dist/cors-detection.js desktop/resources/dist/
-          cp dist/cors-error.html desktop/resources/dist/
           cp package.json desktop/resources/
           cp package.json desktop/resources/dist/
           cp package-lock.json desktop/resources/dist/
