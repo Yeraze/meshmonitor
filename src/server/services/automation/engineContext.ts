@@ -64,6 +64,15 @@ export interface NodeDataProvider {
    */
   getLocalNodeNum?(sourceId: string | null): Promise<number | null>;
   /**
+   * True when a node number belongs to ANY source MeshMonitor owns. The
+   * per-source `getLocalNodeNum` is null for a source with no local identity —
+   * an `mqtt_bridge` — yet our own messages still arrive there, relayed to the
+   * broker by third-party gateways. Without this the #3914 self-origin guard is
+   * a no-op on bridges and an automation can answer its own reply forever
+   * (#4593). Optional; absent → no extra drop.
+   */
+  isOwnNodeNum?(nodeNum: number): Promise<boolean>;
+  /**
    * Own/local node public key for a MeshCore source — the self signal for MeshCore
    * received messages (#3914). Optional; absent → no drop.
    */

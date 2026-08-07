@@ -9,6 +9,7 @@ import type { NodeDataProvider, NodeFacts } from './engineContext.js';
 import { sourceProtocol } from './channelUnify.js';
 import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
 import { isMeshCoreManager } from '../../sourceManagerTypes.js';
+import { isOwnNodeNum as isOwnedByAnySource } from '../../utils/ownNodes.js';
 
 function nodeIdOf(nodeNum: number): string {
   return `!${(nodeNum >>> 0).toString(16).padStart(8, '0')}`;
@@ -73,6 +74,17 @@ export function createMeshNodeDataProvider(): NodeDataProvider {
         return nodeNum != null ? Number(nodeNum) : null;
       } catch {
         return null;
+      }
+    },
+
+    // Cross-source owned-node check (#4593) — the fallback the engine uses when
+    // the event's own source has no local identity (an MQTT bridge). Reads the
+    // registry live; an empty registry means "nothing is ours" → no drop.
+    async isOwnNodeNum(nodeNum) {
+      try {
+        return isOwnedByAnySource(nodeNum);
+      } catch {
+        return false;
       }
     },
 
