@@ -59,7 +59,7 @@ import {
   isValidRouteNode,
   isUnknownSnr,
   BROADCAST_ADDR,
-} from './tracerouteSegments';
+} from './tracerouteSegments.js';
 
 export { BROADCAST_ADDR };
 

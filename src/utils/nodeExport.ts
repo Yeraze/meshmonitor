@@ -1,7 +1,7 @@
-import type { DeviceInfo } from '../types/device';
-import type { NodeHopsCalculation } from '../contexts/SettingsContext';
-import { getRoleName, getHardwareModelName, getEffectivePosition } from './nodeHelpers';
-import { getEffectiveHops } from './nodeHops';
+import type { DeviceInfo } from '../types/device.js';
+import type { NodeHopsCalculation } from '../contexts/SettingsContext.js';
+import { getRoleName, getHardwareModelName, getEffectivePosition } from './nodeHelpers.js';
+import { getEffectiveHops } from './nodeHops.js';
 
 /**
  * Node List Export (Issue #3499)

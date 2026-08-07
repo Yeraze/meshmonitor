@@ -1,4 +1,4 @@
-import type { MeshCoreContact } from './meshcoreHelpers';
+import type { MeshCoreContact } from './meshcoreHelpers.js';
 import { calculateDistance } from './distance.js';
 
 /**

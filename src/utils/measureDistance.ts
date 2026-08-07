@@ -4,7 +4,7 @@
  * isolation; the interactive UI lives in
  * `src/components/MeasureDistanceController.tsx`.
  */
-import { calculateDistance, formatDistance } from './distance';
+import { calculateDistance, formatDistance } from './distance.js';
 
 /**
  * A candidate endpoint for a measurement. Each map builds these from its own

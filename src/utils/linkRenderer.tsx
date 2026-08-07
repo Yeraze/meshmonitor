@@ -1,5 +1,5 @@
 import React from 'react';
-import api from '../services/api';
+import api from '../services/api.js';
 
 // URL detection regex - matches http://, https://, and www. URLs
 const URL_REGEX = /(https?:\/\/[^\s]+)|(www\.[^\s]+)/gi;

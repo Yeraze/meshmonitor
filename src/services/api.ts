@@ -1,13 +1,13 @@
-import { DeviceInfo, Channel } from '../types/device';
-import { MeshMessage } from '../types/message';
-import type { ElevationProfile, ElevationTestResult } from '../types/elevation';
+import { DeviceInfo, Channel } from '../types/device.js';
+import { MeshMessage } from '../types/message.js';
+import type { ElevationProfile, ElevationTestResult } from '../types/elevation.js';
 import {
   sanitizeTextInput,
   validateChannel,
   validateNodeId,
   validateHours,
   validateIntervalMinutes
-} from '../utils/validation';
+} from '../utils/validation.js';
 import { logger } from '../utils/logger.js';
 
 export type SignalTrend = 'improving' | 'stable' | 'degrading' | 'insufficient';

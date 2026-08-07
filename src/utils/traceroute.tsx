@@ -1,7 +1,7 @@
 import React from 'react';
-import { DeviceInfo } from '../types/device';
-import { calculateDistance, formatDistance } from './distance';
-import { isUnknownSnr } from './tracerouteSegments';
+import { DeviceInfo } from '../types/device.js';
+import { calculateDistance, formatDistance } from './distance.js';
+import { isUnknownSnr } from './tracerouteSegments.js';
 
 /**
  * INT8_MIN (-128) is the firmware sentinel for an unknown-SNR hop.

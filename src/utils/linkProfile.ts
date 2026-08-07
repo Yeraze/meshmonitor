@@ -9,14 +9,14 @@
  * design rationale (terrain + AGL baseline, not node GPS altitude) and the
  * locked math walkthrough this file implements.
  */
-import type { MeasurePoint } from './measureDistance';
-import type { ElevationSample } from '../types/elevation';
+import type { MeasurePoint } from './measureDistance.js';
+import type { ElevationSample } from '../types/elevation.js';
 import {
   fresnelRadiusMeters,
   earthBulgeMeters,
   DEFAULT_K_FACTOR,
   EARTH_RADIUS_M,
-} from './linkBudget';
+} from './linkBudget.js';
 
 /** A picked endpoint for the Link Profile tool. `isNode=false` = arbitrary map point. */
 export interface LinkEndpoint extends MeasurePoint {
