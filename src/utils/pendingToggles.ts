@@ -27,7 +27,7 @@
  * contents, which is the point.
  */
 
-import type { DeviceInfo } from '../types/device';
+import type { DeviceInfo } from '../types/device.js';
 
 /** Generous relative to the ~10s poll: a healthy round-trip reconciles well
  *  before this, so expiry only ever fires on the stuck paths described above. */

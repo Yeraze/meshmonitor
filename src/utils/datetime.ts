@@ -1,4 +1,4 @@
-import { TimeFormat, DateFormat } from '../contexts/SettingsContext';
+import { TimeFormat, DateFormat } from '../contexts/SettingsContext.js';
 
 /**
  * Formats a time according to the user's preferred time format

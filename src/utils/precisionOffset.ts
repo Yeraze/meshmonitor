@@ -13,7 +13,7 @@
  * map (`DashboardMap.tsx`) and `formatPrecisionAccuracy` (`utils/distance.ts`),
  * so an offset marker always lands inside the drawn rectangle.
  */
-import { djb2Hash } from './loraFrequency';
+import { djb2Hash } from './loraFrequency.js';
 
 /** Meters per degree of latitude (matches DashboardMap / distance.ts). */
 const METERS_PER_DEGREE = 111_111;

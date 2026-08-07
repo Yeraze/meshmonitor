@@ -1,4 +1,4 @@
-import { VALID_TABS, type TabType } from '../types/ui';
+import { VALID_TABS, type TabType } from '../types/ui.js';
 
 /**
  * Hash->path redirect shim (#3962 Phase 5.4 PR1, kept >= 1 release for

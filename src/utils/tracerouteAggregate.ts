@@ -54,8 +54,8 @@
  * sorted, and the output arrays are id-sorted — nothing carries row order.
  */
 
-import { parseHopArray, hasRouteData, hasReturnPath } from './tracerouteSegments';
-import { filterHops, type RawHop, type InternalLegHop } from './tracerouteStrip';
+import { parseHopArray, hasRouteData, hasReturnPath } from './tracerouteSegments.js';
+import { filterHops, type RawHop, type InternalLegHop } from './tracerouteStrip.js';
 
 // ---------------------------------------------------------------------------
 // Constants

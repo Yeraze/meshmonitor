@@ -17,8 +17,8 @@
  * `Node ${nodeNum}` behavior) simply omit it and get the same plain string.
  */
 import { useMemo } from 'react';
-import type { DbTraceroute } from '../../../services/database';
-import { getHardwareModelName, getRoleName, parseNodeId, TRACEROUTE_DISPLAY_HOURS } from '../../../utils/nodeHelpers';
+import type { DbTraceroute } from '../../../services/database.js';
+import { getHardwareModelName, getRoleName, parseNodeId, TRACEROUTE_DISPLAY_HOURS } from '../../../utils/nodeHelpers.js';
 
 /** A single source that reported this node, attached by mergeUnifiedSourceData. */
 export interface NodeSourceRef {
