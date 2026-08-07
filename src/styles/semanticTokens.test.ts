@@ -55,6 +55,19 @@ function paletteVarsInThemeBlocks(): { theme: string; vars: Set<string> }[] {
   return blocks;
 }
 
+/** Palette var -> literal value, per `:root[data-theme='x']` block. */
+function paletteValuesInThemeBlocks(): { theme: string; values: Map<string, string> }[] {
+  const blocks: { theme: string; values: Map<string, string> }[] = [];
+  for (const m of appCss.matchAll(/:root\[data-theme='([^']+)'\]\s*\{([^}]*)\}/g)) {
+    const values = new Map<string, string>();
+    for (const v of m[2].matchAll(/(--ctp-[a-z0-9-]+)\s*:\s*([^;]+);/g)) {
+      values.set(v[1], v[2].trim().toLowerCase());
+    }
+    blocks.push({ theme: m[1], values });
+  }
+  return blocks;
+}
+
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
@@ -184,11 +197,51 @@ describe('categorical scale (--chart-N)', () => {
     }
   });
 
-  it('gives every slot a distinct hue', () => {
-    // Two slots resolving to the same swatch would make two categories
-    // indistinguishable, which is the one thing this scale exists to prevent.
+  it('gives every slot a distinct palette var', () => {
     const used = [...chart.values()];
     expect(new Set(used).size).toBe(used.length);
+  });
+
+  it('resolves slots 1-7 to distinct COLORS in every theme', () => {
+    // Distinct palette NAMES is not the property that matters — distinct
+    // rendered colors is. The non-Catppuccin themes alias several names onto
+    // one value (Nord has no separate teal and sapphire), so an earlier
+    // ordering passed the name check above while rendering only six colors in
+    // Nord and Gruvbox, with sources 6 and 8 identical. Browser-confirmed.
+    //
+    // Seven is the most this palette can guarantee; slot 8 is asserted
+    // separately below with the collision it is allowed to have.
+    const failures: string[] = [];
+    for (const { theme, values } of paletteValuesInThemeBlocks()) {
+      const seen = new Map<string, number>();
+      for (let i = 1; i <= 7; i++) {
+        const paletteVar = chart.get(`--chart-${i}`)!;
+        const hex = values.get(paletteVar);
+        if (!hex) continue; // covered by the "exists in every theme" test
+        if (seen.has(hex)) failures.push(`${theme}: --chart-${seen.get(hex)} and --chart-${i} are both ${hex}`);
+        else seen.set(hex, i);
+      }
+    }
+    expect(failures).toEqual([]);
+  });
+
+  it('keeps slot 8 to at most one aliased slot, in a minority of themes', () => {
+    // Slot 8 cannot be collision-free — see the App.css comment. Pin how bad
+    // it is allowed to get, so a future reshuffle that regresses it (teal
+    // aliased in 7 themes; sky in 10) fails rather than passing quietly.
+    const themes = paletteValuesInThemeBlocks();
+    const eighth = chart.get('--chart-8')!;
+    const clashes: string[] = [];
+    for (const { theme, values } of themes) {
+      const hex = values.get(eighth);
+      if (!hex) continue;
+      for (let i = 1; i <= 7; i++) {
+        if (values.get(chart.get(`--chart-${i}`)!) === hex) clashes.push(`${theme}:${i}`);
+      }
+    }
+    // At most a quarter of themes, and never more than one slot within a theme.
+    expect(clashes.length).toBeLessThanOrEqual(Math.floor(themes.length / 4));
+    expect(new Set(clashes.map((c) => c.split(':')[0])).size).toBe(clashes.length);
   });
 
   it('borrows no role token — the scale is independent of meaning', () => {
