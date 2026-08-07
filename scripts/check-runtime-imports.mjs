@@ -13,7 +13,7 @@
  * so `import x from '../foo'` compiles cleanly, works in the browser, and
  * throws ERR_MODULE_NOT_FOUND the moment the server loads it.
  *
- * The build currently emits ~90 such specifiers, all in frontend modules that
+ * The build emits ~90 such specifiers, all in frontend modules that
  * `tsc -p tsconfig.server.json` compiles because they are transitively
  * type-referenced. None are reachable from the server today, so none break
  * anything. The hazard is that they are one ordinary-looking import away from
@@ -24,83 +24,59 @@
  * This walks the graph the server actually loads and fails CI at the moment
  * such a module becomes reachable, instead of a user finding it.
  *
+ * Parsing is delegated to `es-module-lexer` — the same lexer Vite and Rollup
+ * use to find imports. A hand-rolled regex over source text cannot be made
+ * correct here: it matches inside comments (`src/db/index.ts` documents its
+ * own usage with an `import` line in a JSDoc block) and inside ordinary string
+ * literals (an error message quoting an import). Both produce phantom
+ * failures, which in a required CI check is worse than the bug being guarded
+ * against.
+ *
  * Static analysis only — it never executes the modules, so it is safe to point
  * at `server.js`, which would otherwise open sockets and a database.
  *
- * Limitations, stated plainly:
- *   - Only STATIC specifiers. A fully dynamic `import(someVariable)` is
- *     invisible to it, by construction.
- *   - Bare specifiers (`node:fs`, npm packages) are skipped — those are
- *     `node_modules` resolution, a different problem with different tooling.
+ * Limitation, stated plainly: only STATIC specifiers. `import(someVariable)`
+ * is invisible to it by construction — the lexer reports the site but has no
+ * literal to resolve, and those are skipped.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import { init, parse } from 'es-module-lexer';
 
 const DEFAULT_ENTRY = 'dist/server/server.js';
-
-/**
- * Strip comments and template/quoted strings before scanning for specifiers.
- *
- * Load-bearing: `src/db/index.ts` carries a JSDoc block containing
- * `import { createDatabase } from './db/index.js';` as usage documentation. An
- * earlier version of this check matched inside that comment and reported a
- * phantom unresolved import. Anything that scans source text for imports has
- * to do this or it reports on prose.
- */
-function stripNonCode(src) {
-  let out = '';
-  let i = 0;
-  const n = src.length;
-  while (i < n) {
-    const c = src[i];
-    const next = src[i + 1];
-    if (c === '/' && next === '*') {
-      const end = src.indexOf('*/', i + 2);
-      i = end === -1 ? n : end + 2;
-      out += ' ';
-    } else if (c === '/' && next === '/') {
-      const end = src.indexOf('\n', i);
-      i = end === -1 ? n : end;
-      out += ' ';
-    } else if (c === '`') {
-      // Template literal: skip to the unescaped closing backtick. Nested
-      // `${}` expressions could contain imports in theory; in emitted output
-      // they do not, and skipping whole templates never yields a FALSE
-      // failure — only a missed check.
-      i++;
-      while (i < n && !(src[i] === '`' && src[i - 1] !== '\\')) i++;
-      i++;
-      out += '``';
-    } else {
-      out += c;
-      i++;
-    }
-  }
-  return out;
-}
-
-const SPEC_RE = /(?:\bfrom\s*|(?:^|[;{}\s])import\s*|\bimport\s*\(\s*)['"]([^'"]+)['"]/gm;
-
-function specifiersIn(src) {
-  const found = [];
-  for (const m of stripNonCode(src).matchAll(SPEC_RE)) found.push(m[1]);
-  return found;
-}
 
 function isFile(p) {
   try { return fs.statSync(p).isFile(); } catch { return false; }
 }
 
-function main() {
-  const entry = path.resolve(process.argv[2] ?? DEFAULT_ENTRY);
-  const root = path.resolve(process.argv[3] ?? path.dirname(path.dirname(entry)));
+/** Relative specifiers this module imports, re-exports, or dynamically imports. */
+function relativeSpecifiers(src) {
+  const [imports] = parse(src);
+  return imports
+    // `n` is undefined for a dynamic import whose argument is not a string
+    // literal — nothing to resolve, so nothing to check.
+    .map((i) => i.n)
+    .filter((n) => typeof n === 'string' && n.startsWith('.'));
+}
 
+async function main() {
+  await init;
+
+  const entry = path.resolve(process.argv[2] ?? DEFAULT_ENTRY);
   if (!isFile(entry)) {
     console.error(`check-runtime-imports: entry not found: ${entry}`);
     console.error('Build first (npm run build:server), or pass an explicit entry path.');
     process.exit(2);
   }
+
+  // Report paths relative to the build root when the entry sits under one
+  // (dist/server/server.js -> dist/), else relative to cwd. Either way the
+  // output stays readable rather than dumping absolute paths.
+  const guessedRoot = path.dirname(path.dirname(entry));
+  const root = process.argv[3]
+    ? path.resolve(process.argv[3])
+    : (entry.startsWith(guessedRoot + path.sep) ? guessedRoot : process.cwd());
 
   const visited = new Set();
   const problems = [];
@@ -112,13 +88,22 @@ function main() {
     let src;
     try { src = fs.readFileSync(file, 'utf8'); } catch { return; }
 
-    for (const spec of specifiersIn(src)) {
-      if (!spec.startsWith('.')) continue;
+    let specs;
+    try {
+      specs = relativeSpecifiers(src);
+    } catch (err) {
+      // A parse failure is itself worth surfacing — it means we cannot vouch
+      // for this file, and silently skipping would make the check a no-op.
+      problems.push({ importer: file, spec: null, parseError: String(err?.message ?? err) });
+      return;
+    }
+
+    for (const spec of specs) {
       const target = path.resolve(path.dirname(file), spec);
       if (isFile(target)) { walk(target); continue; }
 
       // Distinguish "missing extension" from "target genuinely absent" — the
-      // former is the common case and the fix is obvious, so say which it is.
+      // former is the common case and the fix is mechanical, so say which.
       const near = [`${target}.js`, path.join(target, 'index.js')].find(isFile);
       problems.push({ importer: file, spec, near: near ?? null });
     }
@@ -134,13 +119,17 @@ function main() {
     return;
   }
 
-  console.error(`\nFAIL — ${problems.length} unresolvable specifier(s) reachable from the server entry point:\n`);
+  console.error(`\nFAIL — ${problems.length} problem(s) reachable from the server entry point:\n`);
   for (const p of problems) {
     console.error(`  ${rel(p.importer)}`);
-    console.error(`      → '${p.spec}'`);
-    console.error(p.near
-      ? `      ${path.basename(p.near)} exists — the specifier is missing its extension. Write '${p.spec}.js'.`
-      : `      target does not exist.`);
+    if (p.parseError) {
+      console.error(`      could not be parsed: ${p.parseError}`);
+    } else {
+      console.error(`      → '${p.spec}'`);
+      console.error(p.near
+        ? `      ${path.basename(p.near)} exists — the specifier is missing its extension. Write '${p.spec}.js'.`
+        : `      target does not exist.`);
+    }
     console.error('');
   }
   console.error('Node ESM resolves relative specifiers exactly: the extension is required.');
@@ -148,4 +137,8 @@ function main() {
   process.exit(1);
 }
 
-main();
+main().catch((err) => {
+  console.error('check-runtime-imports: unexpected failure');
+  console.error(err);
+  process.exit(2);
+});
