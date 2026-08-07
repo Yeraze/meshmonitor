@@ -88,6 +88,10 @@ export const TABLE_ORDER = [
   // above (one row per source, no FK, sourceId is the PK) — placed right
   // after it for the same reason.
   'meshcore_observer_keys',
+  // 4595: per-source encrypted STATIC MQTT username/password for Analyzer
+  // brokers that don't verify the signed token. Same one-row-per-source shape
+  // as meshcore_observer_keys above.
+  'meshcore_observer_credentials',
   // per-source async message store (Dead Drop / Mailbox)
   'dead_drop_messages',
   // 3653: global Automation Engine tables. No sourceId / no FK to users; the

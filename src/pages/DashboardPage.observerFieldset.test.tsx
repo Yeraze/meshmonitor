@@ -257,6 +257,7 @@ describe('MeshCore Analyzer Observer fieldset (#4457 Phase 3)', () => {
     const body = JSON.parse(findPutCall()![1].body as string);
     expect(body.config.observer).toEqual({
       enabled: true,
+      authMode: 'token',
       brokerUrl: 'wss://mqtt-us-v1.letsmesh.net:443',
       iataCode: 'MCO',
       tokenAudience: 'meshcore-mqtt',
@@ -309,11 +310,75 @@ describe('MeshCore Analyzer Observer fieldset (#4457 Phase 3)', () => {
     const body = JSON.parse(findPutCall()![1].body as string);
     expect(body.config.observer).toEqual({
       enabled: false,
+      authMode: 'token',
       brokerUrl: '',
       iataCode: '',
       tokenAudience: '',
     });
     expect(body.config.virtualNode).toBeUndefined();
+  });
+
+  // ── password auth mode (#4595) ─────────────────────────────────────────────
+  it('hides the Token audience field and saves authMode:password when the mode is switched', async () => {
+    currentSource = makeSource({
+      ...baseConfig,
+      observer: {
+        enabled: true,
+        brokerUrl: 'mqtt://meshcoretel.ru:1883',
+        iataCode: 'ALA',
+        tokenAudience: 'meshcore-mqtt',
+      },
+    });
+    mockFetchOk();
+    renderPage();
+    openEditModal();
+
+    // Token mode: the audience field is present.
+    expect(await screen.findByPlaceholderText('meshcore-mqtt')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('meshcore.form.observer_auth_mode'), {
+      target: { value: 'password' },
+    });
+
+    // Password mode: audience gone, broker/region still there.
+    await waitFor(() => expect(screen.queryByPlaceholderText('meshcore-mqtt')).toBeNull());
+    expect(screen.getByPlaceholderText('MCO')).toBeInTheDocument();
+
+    saveModal();
+
+    await waitFor(() => expect(findPutCall()).toBeTruthy());
+    const body = JSON.parse(findPutCall()![1].body as string);
+    expect(body.config.observer).toEqual({
+      enabled: true,
+      authMode: 'password',
+      brokerUrl: 'mqtt://meshcoretel.ru:1883',
+      iataCode: 'ALA',
+      // Dropped — a static-credential broker has no audience to match.
+      tokenAudience: '',
+    });
+    // The password itself must never ride along in the config blob — only the
+    // `authMode` discriminator may mention the word.
+    expect(body.config.observer).not.toHaveProperty('password');
+    expect(body.config.observer).not.toHaveProperty('username');
+  });
+
+  it('seeds the selector from a stored password-mode block', async () => {
+    currentSource = makeSource({
+      ...baseConfig,
+      observer: {
+        enabled: true,
+        authMode: 'password',
+        brokerUrl: 'mqtt://meshcoretel.ru:1883',
+        iataCode: 'ALA',
+      },
+    });
+    mockFetchOk();
+    renderPage();
+    openEditModal();
+
+    const select = await screen.findByLabelText('meshcore.form.observer_auth_mode');
+    expect((select as HTMLSelectElement).value).toBe('password');
+    expect(screen.queryByPlaceholderText('meshcore-mqtt')).toBeNull();
   });
 
   it('rejects an invalid IATA code client-side without issuing a fetch', async () => {

@@ -15,6 +15,7 @@ import {
 function form(overrides: Partial<ObserverForm> = {}): ObserverForm {
   return {
     enabled: true,
+    authMode: 'token',
     brokerUrl: 'wss://mqtt-us-v1.letsmesh.net:443',
     iataCode: 'MCO',
     tokenAudience: 'meshcore-mqtt',
@@ -26,6 +27,7 @@ describe('emptyObserverForm', () => {
   it('returns all-empty disabled form', () => {
     expect(emptyObserverForm()).toEqual({
       enabled: false,
+      authMode: 'token',
       brokerUrl: '',
       iataCode: '',
       tokenAudience: '',
@@ -115,6 +117,7 @@ describe('buildObserverConfig — output normalization', () => {
     expect(result.error).toBeUndefined();
     expect(result.config).toEqual({
       enabled: true,
+      authMode: 'token',
       brokerUrl: 'wss://mqtt-us-v1.letsmesh.net:443',
       iataCode: 'MCO',
       tokenAudience: 'meshcore-mqtt',
@@ -145,6 +148,7 @@ describe('observerFormFromConfig', () => {
   it('round-trips a full block', () => {
     const cfg = {
       enabled: true,
+      authMode: 'token' as const,
       brokerUrl: 'wss://mqtt-us-v1.letsmesh.net:443',
       iataCode: 'MCO',
       tokenAudience: 'meshcore-mqtt',
@@ -155,10 +159,60 @@ describe('observerFormFromConfig', () => {
   it('fills missing individual fields with empty strings', () => {
     expect(observerFormFromConfig({ enabled: true, brokerUrl: 'wss://h' })).toEqual({
       enabled: true,
+      authMode: 'token',
       brokerUrl: 'wss://h',
       iataCode: '',
       tokenAudience: '',
     });
+  });
+
+  // ── authMode seeding (#4595) ───────────────────────────────────────────────
+  it('seeds authMode:token when the stored block predates #4595', () => {
+    expect(observerFormFromConfig({ enabled: true, brokerUrl: 'wss://h' }).authMode).toBe('token');
+  });
+
+  it('seeds authMode:password from a stored password-mode block', () => {
+    expect(observerFormFromConfig({ enabled: true, authMode: 'password' }).authMode).toBe('password');
+  });
+
+  it('falls back to token for an unrecognized stored authMode', () => {
+    expect(observerFormFromConfig({ enabled: true, authMode: 'oauth' }).authMode).toBe('token');
+  });
+});
+
+describe('buildObserverConfig — password auth mode (#4595)', () => {
+  it('builds without a tokenAudience and drops any stale one', () => {
+    const result = buildObserverConfig(
+      form({ authMode: 'password', tokenAudience: 'stale-audience' }),
+    );
+    expect(result.error).toBeUndefined();
+    expect(result.config).toEqual({
+      enabled: true,
+      authMode: 'password',
+      brokerUrl: 'wss://mqtt-us-v1.letsmesh.net:443',
+      iataCode: 'MCO',
+      tokenAudience: '',
+    });
+  });
+
+  it('does not reject an empty or whitespace-containing audience', () => {
+    expect(buildObserverConfig(form({ authMode: 'password', tokenAudience: '' })).error).toBeUndefined();
+    expect(buildObserverConfig(form({ authMode: 'password', tokenAudience: 'a b' })).error).toBeUndefined();
+  });
+
+  it('still validates brokerUrl and iataCode', () => {
+    expect(buildObserverConfig(form({ authMode: 'password', brokerUrl: '' })).error?.key).toBe(
+      'meshcore.form.observer_error_broker_required',
+    );
+    expect(buildObserverConfig(form({ authMode: 'password', iataCode: 'garbage' })).error?.key).toBe(
+      'meshcore.form.observer_error_iata',
+    );
+  });
+
+  it('token mode still requires an audience', () => {
+    expect(buildObserverConfig(form({ authMode: 'token', tokenAudience: '' })).error?.key).toBe(
+      'meshcore.form.observer_error_audience',
+    );
   });
 });
 
