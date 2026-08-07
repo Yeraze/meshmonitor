@@ -507,11 +507,26 @@ export class AutomationEngineService {
   // source via optional data-provider accessors; when they're absent (e.g. a
   // unit test that doesn't wire them) nothing is dropped — existing behavior.
 
-  /** True if `fromNodeNum` is this Meshtastic source's own local node. */
+  /**
+   * True if `fromNodeNum` is one of MeshMonitor's own nodes.
+   *
+   * Checks the event's own source first (the #3914 behaviour), then falls back
+   * to the cross-source owned-node set. The fallback exists for sources that
+   * have no local node of their own — an `mqtt_bridge` re-delivers a message we
+   * sent on a Meshtastic source once some third-party gateway uplinks it to the
+   * broker, and without the fallback the guard never fires there, so an
+   * auto-reply automation re-triggers on its own reply (#4593).
+   */
   private async isSelfMeshtastic(sourceId: string | null, fromNodeNum: number | null | undefined): Promise<boolean> {
-    if (!this.data.getLocalNodeNum || fromNodeNum == null) return false;
-    const local = await this.data.getLocalNodeNum(sourceId);
-    return local != null && Number(local) === Number(fromNodeNum);
+    if (fromNodeNum == null) return false;
+    if (this.data.getLocalNodeNum) {
+      const local = await this.data.getLocalNodeNum(sourceId);
+      if (local != null && Number(local) === Number(fromNodeNum)) return true;
+    }
+    if (this.data.isOwnNodeNum) {
+      return await this.data.isOwnNodeNum(Number(fromNodeNum));
+    }
+    return false;
   }
 
   /** True if `fromPublicKey` is this MeshCore source's own local node key. */

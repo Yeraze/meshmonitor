@@ -13,6 +13,8 @@
 
 import meshtasticProtobufService from './meshtasticProtobufService.js';
 import { channelDecryptionService } from './services/channelDecryptionService.js';
+import { dataEventEmitter } from './services/dataEventEmitter.js';
+import { sendMessagePushNotification } from './services/messagePushNotifier.js';
 import mqttPacketLogService from './services/mqttPacketLogService.js';
 import { autoDeleteByDistanceService } from './services/autoDeleteByDistanceService.js';
 import databaseService from '../services/database.js';
@@ -157,6 +159,60 @@ export interface MqttIngestionResult {
   ingested: boolean;
   reason?: 'no-packet' | 'no-decoded' | 'encrypted' | 'unsupported-portnum' | 'ignored' | 'geo-ignored' | 'distance' | 'decode-error';
   portnum?: number;
+}
+
+/**
+ * Insert an MQTT-sourced text message and run the same post-insert hooks every
+ * other ingestion path runs (#4593). Before this existed, `mqttIngestion`
+ * inserted the row fire-and-forget and stopped there, so for `mqtt_bridge` /
+ * `mqtt_broker` sources:
+ *   - the Automation Engine never woke up (it only listens on
+ *     `dataEventEmitter`'s `data` event), and
+ *   - no push/Apprise message alert was ever raised.
+ *
+ * Mirrors `meshtasticManager.processTextMessageProtobuf`: hooks fire ONLY when
+ * the insert actually created a row. `insertMessage` is INSERT-OR-IGNORE keyed
+ * on the `${sourceId}_${fromNum}_${packetId}` row id, so a packet redelivered
+ * by a second gateway (or a Store & Forward replay of a message we already
+ * hold) is a no-op — that dedup is what keeps a duplicate MQTT reception from
+ * re-triggering an automation.
+ *
+ * Self-origin: the emit is NOT suppressed for our own nodes, so the live UI
+ * still updates. The loop guard lives where #3914 put it — the Automation
+ * Engine drops events whose sender is one of our own nodes, which now also
+ * covers identity-less MQTT bridge sources (see utils/ownNodes.ts). The push
+ * notifier applies the same check itself.
+ */
+async function insertAndAnnounceMessage(
+  msg: DbMessage,
+  sourceId: string,
+  text: string,
+  isDirectMessage: boolean,
+): Promise<boolean> {
+  let inserted: boolean;
+  try {
+    inserted = await databaseService.messages.insertMessage(msg, sourceId);
+  } catch (err) {
+    logger.error('Failed to insert MQTT message:', err);
+    return false;
+  }
+  if (!inserted) return false;
+
+  try {
+    dataEventEmitter.emitNewMessage(msg, sourceId);
+  } catch (err) {
+    logger.error('Failed to emit MQTT message event:', err);
+  }
+  void sendMessagePushNotification({
+    message: msg,
+    messageText: text,
+    isDirectMessage,
+    sourceId,
+    // MQTT sources have no local node of their own; the notifier's
+    // cross-source `isOwnNodeNum` check covers self-origin instead.
+    localNodeNum: null,
+  });
+  return true;
 }
 
 /**
@@ -491,7 +547,9 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
       // Use the repo's per-source insert — the `databaseService.insertMessage`
       // facade drops the sourceId, leaving rows orphaned (`sourceId=NULL`)
       // and invisible to source-scoped queries like /api/unified/messages.
-      databaseService.messages.insertMessage(msg, sourceId).catch(err => logger.error('Failed to insert MQTT message:', err));
+      // Awaited (was fire-and-forget) so the post-insert hooks below only run
+      // for a row that was actually created — see insertAndAnnounceMessage.
+      await insertAndAnnounceMessage(msg, sourceId, text, isDirectMessage);
       // Refresh lastHeard for the sender.
       void databaseService.upsertNodeAsync({
         nodeNum: fromNum,
@@ -1043,8 +1101,18 @@ async function ingestStoreForward(
     (msg as any).sourceId = sourceId;
     (msg as any).viaStoreForward = true;
     // Same per-source insert path as the TEXT_MESSAGE_APP case above —
-    // the facade drops sourceId; the repo accepts it.
-    databaseService.messages.insertMessage(msg, sourceId).catch(err => logger.error('Failed to insert MQTT message:', err));
+    // the facade drops sourceId; the repo accepts it. Shares the same
+    // post-insert hooks (event bus + push alert), so a Store & Forward replay
+    // that IS new to us triggers automations exactly like a live message; a
+    // replay of a message we already hold is deduped by the row id and fires
+    // nothing (the explicit getMessage check above already covers most of it).
+    await insertAndAnnounceMessage(
+      msg,
+      sourceId,
+      text,
+      // ROUTER_TEXT_DIRECT replays a DM; ROUTER_TEXT_BROADCAST a channel message.
+      rr === StoreForwardRequestResponse.ROUTER_TEXT_DIRECT,
+    );
     return true;
   }
 
