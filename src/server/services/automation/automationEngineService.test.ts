@@ -1131,3 +1131,69 @@ describe('AutomationEngineService', () => {
     expect(got).toHaveLength(0);
   });
 });
+
+// ── MQTT-source tapback glyph (#4594) ─────────────────────────────────────
+//
+// The engine resolves the source's configured TYPE and hands it to
+// buildMessageContext, which swaps the hop keycap for #️⃣. Keyed on source type
+// rather than the per-packet via_mqtt flag precisely so no existing automation
+// on a meshtastic_tcp source changes what it emits.
+describe('#4594 MQTT-source hop glyph', () => {
+  const hopTapback: AutomationGraph = {
+    version: 1,
+    nodes: [
+      { id: 't', type: 'trigger.message', params: { textContains: 'ping' } },
+      { id: 'tap', type: 'action.tapback', params: { emojiMode: 'hopCount' } },
+    ],
+    edges: [{ from: 't', to: 'tap' }],
+  };
+
+  /** Run a ping through an engine whose provider reports `sourceType`. */
+  async function tapbackEmojiFor(sourceType: string | null, over: Partial<DbMessage> = {}) {
+    const t = createTestDb();
+    try {
+      const repo = new AutomationsRepository(t.db, 'sqlite');
+      const vres = new VariableResolver(new AutomationVariablesRepository(t.db, 'sqlite'));
+      const { calls, deps } = recorder();
+      const provider: any = { getNode: async () => null, getTelemetry: async () => null };
+      // `null` models a provider that predates the accessor entirely.
+      if (sourceType !== null) provider.getSourceType = async () => sourceType;
+      await repo.createAutomation({ name: 'ping', enabled: true, config: JSON.stringify(hopTapback) });
+      const engine = new AutomationEngineService({
+        automationsRepo: repo, varResolver: vres, deps, data: provider, now: () => 1_000_000,
+      });
+      await engine.load();
+      // hopStart 3 / hopLimit 1 ⇒ 2 hops ⇒ 2️⃣ under the plain hop table.
+      await engine.onMessage(message({ text: 'ping', hopStart: 3, hopLimit: 1, ...over }), 'default');
+      return calls.find((c) => c.fn === 'sendTapback')?.args.emoji;
+    } finally {
+      t.sqlite.close();
+    }
+  }
+
+  it('reacts #️⃣ for an mqtt_bridge source', async () => {
+    expect(await tapbackEmojiFor('mqtt_bridge')).toBe('#️⃣');
+  });
+
+  it('reacts #️⃣ for an mqtt_broker source (same "never touched our RF" semantics)', async () => {
+    expect(await tapbackEmojiFor('mqtt_broker')).toBe('#️⃣');
+  });
+
+  it('reacts with the unchanged hop keycap for a meshtastic_tcp source', async () => {
+    expect(await tapbackEmojiFor('meshtastic_tcp')).toBe('2️⃣');
+  });
+
+  it('reacts with the unchanged hop keycap for a meshcore source', async () => {
+    expect(await tapbackEmojiFor('meshcore')).toBe('2️⃣');
+  });
+
+  it('a provider without getSourceType keeps the pre-#4594 behaviour', async () => {
+    expect(await tapbackEmojiFor(null)).toBe('2️⃣');
+  });
+
+  it('a per-packet viaMqtt flag on a meshtastic_tcp source does NOT change the glyph', async () => {
+    // The critical back-compat case: this packet WAS relayed via MQTT at some
+    // point, but our radio still received it over RF, so its hop count stands.
+    expect(await tapbackEmojiFor('meshtastic_tcp', { viaMqtt: true } as Partial<DbMessage>)).toBe('2️⃣');
+  });
+});

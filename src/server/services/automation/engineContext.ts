@@ -58,6 +58,14 @@ export interface NodeDataProvider {
    */
   getSourceProtocol?(sourceId: string | null): Promise<string | null>;
   /**
+   * Exact configured type of a source (`meshtastic_tcp` | `mqtt_broker` |
+   * `mqtt_bridge` | `meshcore`), where `getSourceProtocol` only exposes the
+   * coarse protocol family. Used to tell "arrived through an MQTT source" from
+   * "arrived over our own RF link" when picking the hop/MQTT emoji (#4594).
+   * Optional; absent → treated as not-MQTT, i.e. today's behaviour.
+   */
+  getSourceType?(sourceId: string | null): Promise<string | null>;
+  /**
    * Own/local node number for a Meshtastic source — used to drop self-originated
    * events (messages/telemetry/node updates our own node produced) so automations
    * never fire on MeshMonitor's own traffic (#3914). Optional; absent → no drop.
