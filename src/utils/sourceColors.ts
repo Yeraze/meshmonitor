@@ -1,20 +1,32 @@
 /**
  * Stable color palette for tagging entries by source in cross-source ("Unified")
- * views. The palette mirrors the inline ones in UnifiedMessagesPage /
- * UnifiedTelemetryPage so source colors stay visually consistent across pages.
+ * views.
  *
  * Colors are assigned by the source's index within a stable, sorted source list
  * so a given source keeps the same color across filter/sort changes.
+ *
+ * This is CATEGORY encoding, so it draws on the categorical scale
+ * (`--chart-N`, defined in App.css) rather than on role tokens. It previously
+ * read `[accent, accent-alt, success, caution, warning, …]`, which tied source
+ * identity to meanings those sources do not have, and let a theme with a
+ * greenish accent render sources #1 and #3 indistinguishable. Roles are picked
+ * for meaning and may legitimately collide in hue; categorical slots must not.
+ *
+ * This module is the single definition. `UnifiedMessagesPage` and
+ * `UnifiedTelemetryPage` each carried their own copy, and they had already
+ * drifted — Telemetry listed six entries and used `error` in slot four where
+ * the others used `caution`, so one source showed up in different colors on
+ * different pages and wrapped early past six sources. Both now import this.
  */
 export const SOURCE_COLORS = [
-  'var(--color-accent)',
-  'var(--color-accent-alt)',
-  'var(--color-success)',
-  'var(--color-caution)',
-  'var(--color-warning)',
-  'var(--ctp-teal)',
-  'var(--ctp-pink)',
-  'var(--color-accent-hover)',
+  'var(--chart-1)',
+  'var(--chart-2)',
+  'var(--chart-3)',
+  'var(--chart-4)',
+  'var(--chart-5)',
+  'var(--chart-6)',
+  'var(--chart-7)',
+  'var(--chart-8)',
 ];
 
 /**
