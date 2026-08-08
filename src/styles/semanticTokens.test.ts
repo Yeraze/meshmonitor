@@ -294,3 +294,72 @@ describe('categorical scale (--chart-N)', () => {
     ]);
   });
 });
+
+/**
+ * Sequential scale (`--seq-N`).
+ *
+ * Magnitude encoding — how far, how many, how dense. Distinct from both roles
+ * (what a color MEANS) and categories (merely tellable apart): a sequential
+ * step has to READ AS ORDERED. Built with color-mix from the accent so the
+ * steps are monotonic by construction and cannot collide the way two palette
+ * picks can.
+ */
+describe('sequential scale (--seq-N)', () => {
+  const decls = new Map<string, string>();
+  for (const m of rootBlock().matchAll(/(--seq-\d+)\s*:\s*([^;]+);/g)) {
+    decls.set(m[1], m[2].trim());
+  }
+
+  it('defines a contiguous scale', () => {
+    expect(decls.size).toBe(5);
+    for (let i = 1; i <= 5; i++) expect(decls.has(`--seq-${i}`), `--seq-${i} missing`).toBe(true);
+  });
+
+  it('derives every step from the accent, so a theme change carries through', () => {
+    for (const [name, value] of decls) {
+      expect(value, `${name} does not reference the accent`).toMatch(/var\(--color-accent\)/);
+    }
+  });
+
+  it('increases monotonically, which is the whole point of a sequential scale', () => {
+    // Steps 1-4 are color-mix percentages; step 5 is the undiluted accent.
+    // Reading the percentages proves ordering without needing to render.
+    const pct: number[] = [];
+    for (let i = 1; i <= 4; i++) {
+      const m = decls.get(`--seq-${i}`)!.match(/var\(--color-accent\)\s+(\d+)%/);
+      expect(m, `--seq-${i} is not a color-mix percentage`).not.toBeNull();
+      pct.push(Number(m![1]));
+    }
+    expect(pct).toEqual([...pct].sort((a, b) => a - b));
+    expect(new Set(pct).size).toBe(pct.length);
+    expect(Math.max(...pct)).toBeLessThan(100);
+    expect(decls.get('--seq-5')).toBe('var(--color-accent)');
+  });
+
+  it('borrows no categorical slot — magnitude and category stay separate', () => {
+    for (const [name, value] of decls) {
+      expect(value, `${name} borrows a --chart-N slot`).not.toMatch(/var\(--chart-/);
+    }
+  });
+
+  it('is what the magnitude widgets draw on, with no raw palette vars', () => {
+    // These three encoded magnitude with categorical hues and reached past the
+    // role layer for the ones no role provided. Pin that they don't again.
+    for (const f of [
+      'src/components/DistanceDistributionWidget.tsx',
+      'src/components/HopDistanceHeatmapWidget.tsx',
+    ]) {
+      const text = readFileSync(resolve(f), 'utf8');
+      expect(text, `${f} still reads a raw palette var`).not.toMatch(/var\(--ctp-/);
+      expect(text, `${f} does not use the sequential scale`).toMatch(/var\(--seq-/);
+    }
+  });
+
+  it('routes the hop histogram through the shared hop scale, not a private list', () => {
+    // It IS hops, so it must agree with the map and honour the user's
+    // configured gradient rather than hardcoding its own.
+    const text = readFileSync(resolve('src/components/HopDistributionWidget.tsx'), 'utf8');
+    expect(text).toMatch(/getHopColor\(hop, overlayColors\.hopColors\)/);
+    expect(text).not.toMatch(/var\(--ctp-/);
+  });
+});

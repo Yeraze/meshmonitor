@@ -124,20 +124,15 @@ const DistanceDistributionWidget: React.FC<DistanceDistributionWidgetProps> = ({
     setShowSettings(false);
   }, [onBucketSizeChange]);
 
-  // Color gradient based on distance
+  // Bucket position is a MAGNITUDE (nearer -> further), so it uses the ordered
+  // sequential scale. The previous list walked green -> teal -> blue -> lavender
+  // -> mauve -> pink -> red: seven distinguishable hues, but nothing about them
+  // says "further", and two reached past the role layer into raw --ctp-*.
+  const SEQ_STEPS = 5;
   const getBarColor = (index: number, total: number): string => {
-    const colors = [
-      'var(--color-success)',
-      'var(--ctp-teal)',
-      'var(--color-accent)',
-      'var(--color-accent-muted)',
-      'var(--color-accent-alt)',
-      'var(--ctp-pink)',
-      'var(--color-error)',
-    ];
-    if (total <= 1) return colors[0];
-    const colorIndex = Math.round((index / (total - 1)) * (colors.length - 1));
-    return colors[colorIndex];
+    if (total <= 1) return 'var(--seq-1)';
+    const step = Math.round((index / (total - 1)) * (SEQ_STEPS - 1)) + 1;
+    return `var(--seq-${step})`;
   };
 
   const hasHomePosition = homeNode?.position?.latitude != null && homeNode?.position?.longitude != null;
