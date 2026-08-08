@@ -240,8 +240,20 @@ describe('categorical scale (--chart-N)', () => {
       }
     }
     // At most a quarter of themes, and never more than one slot within a theme.
-    expect(clashes.length).toBeLessThanOrEqual(Math.floor(themes.length / 4));
-    expect(new Set(clashes.map((c) => c.split(':')[0])).size).toBe(clashes.length);
+    //
+    // This bound is TIGHT, not loose: rosewater aliases in exactly 3 of 15
+    // today, and floor(15/4) is 3. A new theme that also aliases it fails
+    // here. That is deliberate — it means "the 8th slot got worse, pick a
+    // different hue or accept the regression knowingly" — so the message
+    // names the offenders rather than just reporting a count, which is all
+    // `toBeLessThanOrEqual` would otherwise print.
+    const limit = Math.floor(themes.length / 4);
+    expect(clashes, `slot 8 aliases in ${clashes.length} theme(s) (limit ${limit}): ${clashes.join(', ')}`)
+      .toHaveLength(Math.min(clashes.length, limit));
+    expect(
+      new Set(clashes.map((c) => c.split(':')[0])).size,
+      `slot 8 aliases more than one slot within a theme: ${clashes.join(', ')}`,
+    ).toBe(clashes.length);
   });
 
   it('borrows no role token — the scale is independent of meaning', () => {
