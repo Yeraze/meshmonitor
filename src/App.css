@@ -118,10 +118,23 @@
      indistinguishable. Role tokens are chosen for meaning and may legitimately
      collide in hue; categorical slots must not.
 
-     Order is chosen to maximise separation between ADJACENT slots, since a
-     view with three sources uses 1-2-3 and those are the ones that must not
-     look alike. The defaults reproduce the sequence `SOURCE_COLORS` already
-     used, so no existing source changes colour.
+     Slot choice is constrained by something easy to miss: the non-Catppuccin
+     themes (Nord, Dracula, Solarized, Gruvbox, high-contrast) carry fewer real
+     hues than the 26 palette NAMES suggest, and alias several names onto one
+     value. Only SEVEN hues — blue, mauve, green, peach, yellow, sapphire,
+     maroon — are mutually distinct across all 15 themes, so a collision-free
+     8-slot scale is not achievable from this palette.
+
+     Slots 1-7 are those seven, so any view with up to seven categories is
+     fully distinguishable in every theme. Slot 8 is `rosewater`, the candidate
+     that aliases the fewest: it matches `peach` (slot 4) in 3 themes, where
+     the alternatives cost 7 (teal, lavender) or 10 (sky).
+
+     Found by rendering, not by inspection. The first ordering here put teal at
+     slot 6 and sapphire at 8 — eight distinct palette NAMES that resolved to
+     six colours in Nord and Gruvbox, with sources 6 and 8 identical. Checking
+     names rather than values is exactly the mistake that hid it, so
+     `semanticTokens.test.ts` now compares RESOLVED values per theme.
 
      Themes may override these (Phase 3 exposes them in the theme schema);
      until then they track the palette like every other token here. */
@@ -130,9 +143,9 @@
   --chart-3: var(--ctp-green);
   --chart-4: var(--ctp-peach);
   --chart-5: var(--ctp-yellow);
-  --chart-6: var(--ctp-teal);
-  --chart-7: var(--ctp-pink);
-  --chart-8: var(--ctp-sapphire);
+  --chart-6: var(--ctp-sapphire);
+  --chart-7: var(--ctp-maroon);
+  --chart-8: var(--ctp-rosewater);
 }
 
 /* ==============================
