@@ -59,9 +59,35 @@ const viewports = [
 // ignored, and `path: ''` lands on the sources dashboard rather than a node
 // list — both silently produced the wrong screenshots. `:sourceId` is filled in
 // at runtime from /api/sources.
+//
+// `unified-messages` is deliberately in this list even though it is not a
+// per-source tab. It is the only captured page that renders the CATEGORICAL
+// scale (`--chart-N`, via SOURCE_COLORS) — every row is tagged with its
+// source's color. Without it the screenshots cannot show a source-color
+// regression at all.
+//
+// That gap was not hypothetical: an eight-slot scale shipped where two slots
+// resolved to the SAME color in 7 of 15 themes (Nord and Gruvbox have no
+// separate teal/sapphire or mauve/pink), so two sources were painted
+// identically. A full screenshot refresh across every theme went green,
+// because neither captured page draws source colors. It was caught by reading
+// the computed values out of the browser instead.
+//
+// Be clear about how much this buys, so nobody over-trusts it: colors are
+// assigned per source PRESENT IN THE CURRENT VIEW, so the shot exercises only
+// as many slots as there are sources in the selected channel. On the reference
+// instance that is 3 of 7, using slots 1-3 — which means it would NOT have
+// caught the bug described above (slots 6+8 and 2+7). It catches a regression
+// in the low slots and proves the scale renders at all; the guarantee for the
+// rest lives in semanticTokens.test.ts, which compares resolved values per
+// theme. This is a supplement to that test, not a replacement for it.
+//
+// Note `:sourceId` replacement below is a no-op for paths that do not contain
+// it, so unified routes need no special handling.
 const pages = [
   { name: 'nodes', path: 'source/:sourceId/nodes' },
-  { name: 'channels', path: 'source/:sourceId/channels' }
+  { name: 'channels', path: 'source/:sourceId/channels' },
+  { name: 'unified-messages', path: 'unified/messages' }
 ];
 
 /** Light themes must also flip appearanceMode, or the map keeps the dark tileset. */
