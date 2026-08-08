@@ -248,8 +248,10 @@ describe('categorical scale (--chart-N)', () => {
     // names the offenders rather than just reporting a count, which is all
     // `toBeLessThanOrEqual` would otherwise print.
     const limit = Math.floor(themes.length / 4);
-    expect(clashes, `slot 8 aliases in ${clashes.length} theme(s) (limit ${limit}): ${clashes.join(', ')}`)
-      .toHaveLength(Math.min(clashes.length, limit));
+    expect(
+      clashes.length,
+      `slot 8 aliases in ${clashes.length} theme(s) (limit ${limit}): ${clashes.join(', ')}`,
+    ).toBeLessThanOrEqual(limit);
     expect(
       new Set(clashes.map((c) => c.split(':')[0])).size,
       `slot 8 aliases more than one slot within a theme: ${clashes.join(', ')}`,
