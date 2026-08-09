@@ -309,7 +309,7 @@
 }
 
 .settings-button-primary:hover:not(:disabled) {
-  background: var(--ctp-teal);
+  background: color-mix(in srgb, var(--color-success) 85%, var(--color-text));
 }
 
 .save-button {
@@ -330,7 +330,7 @@
 }
 
 .save-button:hover:not(:disabled) {
-  background: var(--ctp-teal);
+  background: color-mix(in srgb, var(--color-success) 85%, var(--color-text));
   transform: translateY(-1px);
 }
 

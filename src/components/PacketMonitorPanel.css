@@ -365,7 +365,7 @@
 }
 
 .packet-table .transport-7 { /* API */
-  color: var(--ctp-teal, #94e2d5);
+  color: var(--color-info);
 }
 
 .packet-table .transport-unknown {

@@ -100,7 +100,7 @@
 }
 
 .meshcore-tab button:hover {
-  background: var(--ctp-pink);
+  background: color-mix(in srgb, var(--color-accent-alt) 85%, var(--color-text));
 }
 
 .meshcore-tab button:disabled {
