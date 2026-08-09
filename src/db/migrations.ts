@@ -151,6 +151,7 @@ import { migration as addMeshCoreObserverKeysMigration, runMigration133Postgres,
 import { migration as clearNullIslandEstimatesMigration, runMigration134Postgres, runMigration134Mysql } from '../server/migrations/134_clear_null_island_estimates.js';
 import { migration as backfillMeshcoreNodesViewOnMapMigration, runMigration135Postgres, runMigration135Mysql } from '../server/migrations/135_backfill_meshcore_nodes_viewonmap.js';
 import { migration as addMeshCoreObserverCredentialsMigration, runMigration136Postgres, runMigration136Mysql } from '../server/migrations/136_add_meshcore_observer_credentials.js';
+import { migration as estimatedPositionAnchorsMigration, runMigration137Postgres, runMigration137Mysql } from '../server/migrations/137_estimated_position_anchors.js';
 
 // ============================================================================
 // Registry
@@ -2163,4 +2164,22 @@ registry.register({
   sqlite: (db) => addMeshCoreObserverCredentialsMigration.up(db),
   postgres: (client) => runMigration136Postgres(client),
   mysql: (pool) => runMigration136Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 137: create `estimated_position_anchors` + estimate rationale
+// columns (issue #4609). The position estimator discarded its observation set
+// after solving, so there was no way to explain why an estimated pin sits where
+// it does. Anchors are now recorded at solve time (capped per node), and the
+// parent estimate records how its radius was derived. GLOBAL — no sourceId,
+// matching estimated_positions (#3271).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 137,
+  name: 'estimated_position_anchors',
+  settingsKey: 'migration_137_estimated_position_anchors',
+  sqlite: (db) => estimatedPositionAnchorsMigration.up(db),
+  postgres: (client) => runMigration137Postgres(client),
+  mysql: (pool) => runMigration137Mysql(pool),
 });
