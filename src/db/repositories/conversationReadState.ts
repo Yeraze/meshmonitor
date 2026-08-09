@@ -98,7 +98,16 @@ export class ConversationReadStateRepository extends BaseRepository {
     sourceId: string,
     kind: ConversationKind,
     conversationKey: string,
-    lastReadAt: number
+    lastReadAt: number,
+    /**
+     * Internal. The insert below re-resolves once when a concurrent request
+     * wins the race and the UNIQUE index rejects our row. Bounded rather than
+     * open-ended: the catch cannot tell a constraint violation from a
+     * persistent failure (NOT NULL, disk, driver) without sniffing
+     * backend-specific error codes across three engines, and an unbounded
+     * retry on a persistent error recurses forever.
+     */
+    retriesLeft: number = 1
   ): Promise<number> {
     if (!sourceId || !conversationKey || !Number.isFinite(lastReadAt)) return 0;
 
@@ -142,8 +151,15 @@ export class ConversationReadStateRepository extends BaseRepository {
           lastReadAt: ts,
         });
         return ts;
-      } catch {
-        return this.setLastReadAsync(userId, sourceId, kind, conversationKey, ts);
+      } catch (insertError) {
+        if (retriesLeft > 0) {
+          return this.setLastReadAsync(
+            userId, sourceId, kind, conversationKey, ts, retriesLeft - 1
+          );
+        }
+        // Out of retries: this is not a lost race, it is a real failure.
+        logger.error('Conversation read state insert failed after retry:', insertError);
+        return 0;
       }
     } catch (error) {
       logger.error('Error writing conversation read state:', error);

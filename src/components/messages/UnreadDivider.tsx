@@ -26,9 +26,14 @@ const UnreadDivider: React.FC = () => {
       role="separator"
       aria-label={t('messages.unread_divider', 'New messages')}
     >
-      <span className={styles.rule} />
-      <span className={styles.label}>{t('messages.unread_divider', 'New messages')}</span>
-      <span className={styles.rule} />
+      {/* The separator already carries the accessible name via aria-label;
+          the visible copy is decorative, so hide it from AT rather than
+          announcing "New messages" twice. */}
+      <span className={styles.rule} aria-hidden="true" />
+      <span className={styles.label} aria-hidden="true">
+        {t('messages.unread_divider', 'New messages')}
+      </span>
+      <span className={styles.rule} aria-hidden="true" />
     </div>
   );
 };
