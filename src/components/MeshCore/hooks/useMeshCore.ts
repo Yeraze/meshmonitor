@@ -1322,6 +1322,20 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         setError(data.error || 'Failed to set path');
         return false;
       }
+      // #4625: the device applying the write but not acknowledging it is a
+      // SUCCESS with a caveat, not a failure — a busy device often misses the
+      // ack window. Surfacing it through setError() would put it back in
+      // the error channel, which is the bug we just fixed, so it goes out as
+      // an informational toast instead.
+      if (data.ackConfirmed === false) {
+        showToast(
+          t(
+            'meshcore.out_path.applied_unconfirmed',
+            'Path applied, but the device did not confirm it in time. This is common on a busy device.',
+          ),
+          'warning',
+        );
+      }
       // Optimistic local update so the UI shows the new hops without a
       // round trip. The server has already mirrored the new bytes to
       // meshcore_nodes; refreshContacts() will happen on the next
@@ -1340,7 +1354,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       setError('Failed to set path');
       return false;
     }
-  }, [mcPrefix, csrfFetch]);
+  }, [mcPrefix, csrfFetch, showToast, t]);
 
   const traceContactPath = useCallback(async (publicKey: string): Promise<TracePathResult | null> => {
     try {

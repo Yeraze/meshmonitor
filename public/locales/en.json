@@ -84,7 +84,6 @@
   "nav.unpin_sidebar": "Unpin sidebar",
   "nav.search": "Search",
   "nav.packet_monitor": "Packet Monitor",
-
   "search.title": "Search Messages",
   "search.placeholder": "Search for text in messages...",
   "search.button": "Search",
@@ -108,7 +107,6 @@
   "search.meshcore_label": "MeshCore",
   "search.error": "Search failed. Please try again.",
   "search.min_length": "Enter at least 2 characters to search.",
-
   "banners.default_password_warning": "Security Warning: The admin account is using the default password. Please change it immediately in the Users tab.",
   "banners.tx_disabled": "Transmit Disabled: Your device cannot send messages. TX is currently disabled in the LoRa configuration. Enable it via the Meshtastic app or re-import your configuration.",
   "banners.tx_disabled_udp_relay": "Radio Transmit Disabled: This device does not transmit over LoRa itself. UDP Broadcast is on, so sends go out over the local network and another node there relays them to the mesh.",
@@ -125,12 +123,10 @@
   "banners.update_kubernetes": "Update your Helm chart or container image tag to the new version.",
   "banners.update_manual": "See the update guide for instructions specific to your deployment.",
   "banners.update_guide_link": "Update guide",
-
   "tx_disabled.control_tooltip": "Transmit is disabled on this node's radio. Re-enable TX in the LoRa configuration to use this.",
   "tx_disabled.send_blocked_toast": "Transmit is disabled on this source — nothing was sent.",
   "tx_disabled.remote_admin_notice": "Remote-node admin is unavailable while Transmit is disabled on this source. Local-node admin still works — you can re-enable TX in the LoRa Config below.",
   "tx_disabled.automation_source_warning": "Transmit is disabled on this source — messages sent through it will be skipped.",
-
   "purgeModal.title": "Purge Data for {{nodeName}}",
   "purgeModal.warning": "These actions cannot be undone. All data for this node will be permanently deleted.",
   "purgeModal.purgeMessages": "Purge All Messages",
@@ -141,7 +137,6 @@
   "purgeModal.deleteNodeDescription": "Choose how to delete the node - from local database only, or from both the device and database.",
   "purgeModal.deleteLocal": "Delete Node (Local Database Only)",
   "purgeModal.deleteDevice": "Purge from Device AND Database",
-
   "header.connectedTo": "Connected to: {{address}}",
   "header.clickForStatus": "Click for system status",
   "header.clickForNodeInfo": "Click for node information",
@@ -156,7 +151,6 @@
   "header.login": "Login",
   "header.updateMethod": "Updates",
   "header.polling": "Polling",
-
   "common.save": "Save",
   "common.cancel": "Cancel",
   "common.default": "Default",
@@ -253,11 +247,9 @@
   "common.minutes_ago": "{{count}}m ago",
   "common.hours_ago": "{{count}}h ago",
   "common.days_ago": "{{count}}d ago",
-
   "savebar.save_changes_to": "Save changes to {{section}}",
   "savebar.save_all_changes": "Save unsaved changes in {{count}} sections",
   "savebar.save_all": "Save All",
-
   "auth.login": "Login",
   "auth.username": "Username",
   "auth.password": "Password",
@@ -284,7 +276,6 @@
   "auth.logging_in": "Logging in...",
   "auth.oidc_failed": "Failed to initiate OIDC login",
   "auth.local_disabled_no_oidc": "Local authentication is disabled and OIDC is not configured. Please contact your administrator.",
-
   "nodes.title": "Nodes",
   "nodes.map": "Map View",
   "nodes.list": "Node List",
@@ -375,7 +366,6 @@
   "nodes.copy_nodeinfo_success": "Copied {{count}} field(s) to this node.",
   "nodes.copy_nodeinfo_pushed": "NodeInfo request sent to device.",
   "nodes.copy_nodeinfo_error": "Failed to copy NodeInfo.",
-
   "messages.title": "Messages",
   "messages.send_direct_message": "Send Direct Message",
   "messages.reply_to_message": "Reply to this message",
@@ -532,7 +522,6 @@
   "messages.switch_to_title": "Switch to {{name}}",
   "messages.select_from_list": "Select a conversation from the list to view messages",
   "messages.packet_type_distribution": "Packet Type Distribution (24h)",
-
   "channels.title": "Channels",
   "channels.title_with_count": "Channels ({{count}})",
   "channels.select_channel": "Select Channel",
@@ -598,7 +587,6 @@
   "channels.location_auto_position": "Active (auto-position updates)",
   "channels.location_enabled": "Enabled (location shared)",
   "channels.location_disabled": "Disabled",
-
   "dashboard.add_widget": "Add Widget",
   "dashboard.remove_widget": "Remove widget",
   "dashboard.remove_from_dashboard": "Remove from dashboard",
@@ -611,7 +599,6 @@
   "dashboard.widget_type": "Widget Type",
   "dashboard.select_node": "Select Node",
   "dashboard.select_metric": "Select Metric",
-
   "settings.title": "Settings",
   "settings.language": "Language",
   "settings.languageDescription": "Choose your preferred language",
@@ -655,7 +642,6 @@
   "settings.reset_ui_positions_description": "Reset the positions of draggable UI elements (Node List, Map Features, Hop Legend, Tile Selector) to their default locations.",
   "settings.reset_ui_positions_button": "Reset Positions",
   "settings.reset_ui_positions_success": "UI positions have been reset. Refresh the page to see the changes.",
-
   "configuration.title": "Device Configuration",
   "configuration.node_identity": "Node Identity",
   "configuration.long_name": "Long Name",
@@ -694,7 +680,6 @@
   "configuration.node_info_broadcast_min": "Node Info Broadcast Interval adjusted to minimum value of 3600 seconds (1 hour)",
   "configuration.position_broadcast_min": "Position Broadcast Interval adjusted to minimum value of 32 seconds",
   "configuration.neighbor_info_min": "NeighborInfo interval adjusted to minimum value of 14400 seconds (4 hours)",
-
   "notifications.enable_web_push": "Enable Web Push Notifications",
   "notifications.enable_apprise": "Enable Apprise Notifications",
   "notifications.enabled_channels": "Enabled Channels",
@@ -724,7 +709,6 @@
   "notifications.alert_subscribe_failed": "Failed to subscribe to push notifications: {{error}}",
   "notifications.alert_unsubscribe_failed": "Failed to unsubscribe from push notifications",
   "notifications.alert_update_email_failed": "Failed to update contact email",
-
   "users.username": "Username",
   "users.password": "Password",
   "users.is_admin": "Is Admin",
@@ -735,7 +719,6 @@
   "users.password_mismatch": "Passwords do not match",
   "users.password_set_success": "Password set successfully",
   "users.insufficient_deactivate": "Insufficient permissions to deactivate user",
-
   "audit.title": "Audit Log",
   "audit.loading": "Loading audit logs...",
   "audit.no_permission": "You do not have permission to view audit logs.",
@@ -778,7 +761,6 @@
   "audit.all_sources": "All Sources",
   "audit.ui_only": "UI Only",
   "audit.api_only": "API Token Only",
-
   "security.title": "Security Scanner",
   "security.description": "Monitor encryption key security issues including low-entropy and duplicate keys",
   "security.loading": "Loading security data...",
@@ -879,7 +861,6 @@
   "security.key_mismatch_status_purged": "Purged",
   "security.key_mismatch_status_fixed": "Fixed",
   "security.key_mismatch_status_exhausted": "Exhausted",
-
   "errors.generic": "An error occurred",
   "errors.failed_operation": "Operation failed",
   "errors.invalid_input": "Invalid input",
@@ -896,7 +877,6 @@
   "errors.failed_save": "Failed to save",
   "errors.failed_delete": "Failed to delete",
   "errors.failed_update": "Failed to update",
-
   "toast.api_token_generated": "API token generated successfully",
   "toast.api_token_revoked": "API token revoked successfully",
   "toast.api_token_copied": "Token copied to clipboard",
@@ -955,7 +935,6 @@
   "toast.failed_update_ignored": "Failed to update ignored status. Please try again.",
   "toast.insufficient_permissions_hide_from_map": "Insufficient permissions to change map visibility",
   "toast.failed_update_hide_from_map": "Failed to update map visibility. Please try again.",
-
   "roles.client": "Client",
   "roles.client_mute": "Client Mute",
   "roles.router": "Router",
@@ -969,7 +948,6 @@
   "roles.tak_tracker": "TAK Tracker",
   "roles.router_late": "Router Late",
   "roles.client_base": "Client Base",
-
   "hardware.unset": "UNSET",
   "hardware.tlora_v2": "TLORA V2",
   "hardware.tlora_v1": "TLORA V1",
@@ -1087,7 +1065,6 @@
   "hardware.t_watch_ultra": "T-Watch Ultra",
   "hardware.thinknode_m3": "ThinkNode M3",
   "hardware.private_hw": "Private Hardware",
-
   "automation.title": "Automation",
   "automation.auto_acknowledge": "Auto Acknowledge",
   "automation.auto_announce": "Auto Announce",
@@ -1104,7 +1081,6 @@
   "automation.edit_rule": "Edit Rule",
   "automation.delete_rule": "Delete Rule",
   "automation.test_rule": "Test Rule",
-
   "filters.node_incomplete": "Show Incomplete Nodes",
   "filters.node_mobile": "Mobile Nodes",
   "filters.node_with_telemetry": "With Telemetry",
@@ -1112,7 +1088,6 @@
   "filters.node_with_pkc": "With PKC",
   "filters.favorites_only": "Favorites Only",
   "filters.online_only": "Online Only",
-
   "modals.add_widget": "Add Widget",
   "modals.confirm_delete": "Confirm Delete",
   "modals.confirm_title": "Are you sure?",
@@ -1131,7 +1106,6 @@
   "modals.change_password": "Change Password",
   "modals.reboot_device": "Reboot Device",
   "modals.confirm_reboot": "Are you sure you want to reboot the device?",
-
   "telemetry.battery_level": "Battery Level",
   "telemetry.voltage": "Voltage",
   "telemetry.channel_utilization": "Channel Utilization",
@@ -1172,7 +1146,6 @@
   "telemetry.radiation": "Radiation",
   "telemetry.distance": "Distance (Water Level)",
   "telemetry.weight": "Weight",
-
   "map.satellite": "Satellite",
   "map.terrain": "Terrain",
   "map.street": "Street",
@@ -1197,14 +1170,13 @@
   "map.legend.otherLines": "Other Lines",
   "map.legend.mqtt": "IP",
   "map.legend.traceroute": "Traceroute",
-  "map.legend.tracerouteForward": "Traceroute \u2192",
-  "map.legend.tracerouteReturn": "Traceroute \u2190",
+  "map.legend.tracerouteForward": "Traceroute →",
+  "map.legend.tracerouteReturn": "Traceroute ←",
   "map.legend.snrQuality": "SNR Quality",
   "map.legend.snrGood": "Good (> 10 dB)",
-  "map.legend.snrMedium": "Medium (0\u201310 dB)",
+  "map.legend.snrMedium": "Medium (0–10 dB)",
   "map.legend.snrPoor": "Poor (< 0 dB)",
   "map.legend.snrNoData": "No data",
-
   "traceroute_history.title": "Traceroute History",
   "traceroute_history.from": "From",
   "traceroute_history.to": "To",
@@ -1217,7 +1189,6 @@
   "traceroute_history.failed_hidden": "({{count}} failed hidden)",
   "traceroute_history.forward": "Forward",
   "traceroute_history.return": "Return",
-
   "node_filter.title": "Filter Nodes",
   "node_filter.security_status": "Security Status",
   "node_filter.all_nodes": "All Nodes",
@@ -1234,7 +1205,6 @@
   "node_filter.remote_admin_only": "Remote Admin available only",
   "node_filter.remote_admin_help": "Show only nodes with verified Remote Admin capability.",
   "node_filter.remote_admin": "Remote Admin",
-
   "relay_modal.title_ack": "Message Acknowledgment",
   "relay_modal.title_relay": "Message Relay Information",
   "relay_modal.acknowledged": "Acknowledged",
@@ -1255,7 +1225,6 @@
   "relay_modal.estimated_relays": "Estimated Relay Nodes (by RSSI)",
   "relay_modal.no_direct_neighbors": "No direct neighbors found. We haven't received any zero-hop packets recently to identify potential relays.",
   "relay_modal.rssi_estimate_note": "Note: Sorted by RSSI proximity. Nodes with similar RSSI to this message are more likely to be the relay.",
-
   "node_popup.node_fallback": "Node {{nodeNum}}",
   "node_popup.id": "ID",
   "node_popup.role": "Role",
@@ -1281,12 +1250,10 @@
   "node_popup.sources_seen_by_one": "Seen by {{count}} source",
   "node_popup.sources_seen_by_other": "Seen by {{count}} sources",
   "node_popup.meshcore_device": "MeshCore Device",
-
   "route_segment.title": "Traceroutes Using Segment",
   "route_segment.segment": "Segment",
   "route_segment.no_traceroutes": "No traceroutes found using this segment.",
   "route_segment.showing_count": "Showing {{count}} traceroute(s) using this segment",
-
   "reboot.title": "Device Reboot",
   "reboot.rebooting": "Device rebooting...",
   "reboot.rebooting_please_wait": "Device rebooting... Please wait",
@@ -1299,7 +1266,6 @@
   "reboot.error_reload": "Error during reboot verification. Please reload page.",
   "reboot.elapsed": "Elapsed: {{seconds}}s",
   "reboot.do_not_close": "Please do not close this window or refresh the page.",
-
   "packet_monitor.title": "Mesh Traffic Monitor",
   "packet_monitor.no_permission": "You need both channels:read and messages:read permissions to view packet logs.",
   "packet_monitor.count": "{{shown}} shown / {{total}} total",
@@ -1377,13 +1343,11 @@
   "packet_monitor.settings.note": "Note",
   "packet_monitor.settings.cleanup_note": "Automatic cleanup runs every 15 minutes to enforce these limits.",
   "packet_monitor.settings.no_permission": "You need settings:write permission to modify packet monitor settings.",
-
   "info.about": "About",
   "info.connected_node": "Connected Node",
   "info.has_wifi": "Has WiFi",
   "info.has_bluetooth": "Has Bluetooth",
   "info.num_bands": "Number of Bands",
-
   "time.seconds_ago": "{{count}} second ago",
   "time.seconds_ago_plural": "{{count}} seconds ago",
   "time.minutes_ago": "{{count}} minute ago",
@@ -1394,7 +1358,6 @@
   "time.days_ago_plural": "{{count}} days ago",
   "time.just_now": "Just now",
   "time.never": "Never",
-
   "user_menu.logged_in_as": "Logged in as {{name}}",
   "user_menu.administrator": "Administrator",
   "user_menu.oidc_account": "OIDC account",
@@ -1405,7 +1368,6 @@
   "user_menu.logging_out": "Logging out...",
   "user_menu.logout": "Logout",
   "user_menu.mfa": "Two-Factor Auth",
-
   "mfa.title": "Two-Factor Authentication",
   "mfa.description": "Add an extra layer of security to your account with a time-based one-time password (TOTP) authenticator app.",
   "mfa.enable": "Enable Two-Factor Authentication",
@@ -1441,9 +1403,7 @@
   "mfa.code_label": "Authenticator Code",
   "mfa.verifying": "Verifying...",
   "mfa.back_to_login": "Back to login",
-
   "common.copied": "Copied",
-
   "change_password.title": "Change Password",
   "change_password.current_password": "Current Password",
   "change_password.new_password": "New Password",
@@ -1456,7 +1416,6 @@
   "change_password.failed": "Failed to change password",
   "change_password.success": "Password changed successfully!",
   "change_password.changing": "Changing...",
-
   "api_token.title": "API Token",
   "api_token.description": "Generate an API token to access the MeshMonitor REST API v1.",
   "api_token.view_docs": "View API documentation",
@@ -1484,7 +1443,6 @@
   "api_token.usage_title": "Using Your API Token",
   "api_token.usage_instruction": "Include the token in the Authorization header:",
   "api_token.view_api_docs": "View API Documentation",
-
   "settings.units_and_formats": "Units & Formats",
   "settings.sorting": "Sorting",
   "settings.appearance": "Appearance",
@@ -1633,7 +1591,7 @@
   "settings.channel_sound_group_fun": "Fun",
   "settings.channel_sound_preview": "Preview",
   "settings.homoglyph_enabled": "Homoglyph Message Optimization",
-  "settings.homoglyph_description": "Replace visually identical non-Latin characters (e.g. Cyrillic A\u2192A, C\u2192C) with Latin equivalents to reduce message size by ~20%. Does not affect message appearance.",
+  "settings.homoglyph_description": "Replace visually identical non-Latin characters (e.g. Cyrillic A→A, C→C) with Latin equivalents to reduce message size by ~20%. Does not affect message appearance.",
   "settings.hide_incomplete_nodes": "Hide Incomplete Nodes",
   "settings.hide_incomplete_description": "Hide nodes missing name or hardware info. On secure channels (custom PSK), incomplete nodes haven't been verified as being on your channel.",
   "settings.node_dimming_enabled": "Dim Inactive Nodes on Map",
@@ -1695,7 +1653,6 @@
   "settings.save_failed": "Failed to save settings. Please try again.",
   "settings.reset_success": "Settings reset to defaults!",
   "settings.reset_failed": "Failed to reset settings. Please try again.",
-
   "settings.confirm_reset_title": "Are you sure you want to reset all settings to defaults?",
   "settings.confirm_reset_defaults": "Default values:",
   "settings.confirm_reset_max_age": "Max Node Age: 24 hours",
@@ -1711,39 +1668,32 @@
   "settings.confirm_reset_max_packets": "Max Packets: 1000",
   "settings.confirm_reset_packet_age": "Packet Age: 24 hours",
   "settings.confirm_reset_affects": "This will affect all browsers accessing this system.",
-
   "settings.confirm_purge_nodes_title": "Are you sure you want to erase all nodes and traceroute history?",
   "settings.confirm_purge_nodes_impact": "Impact:",
   "settings.confirm_purge_nodes_item1": "All node information will be deleted",
   "settings.confirm_purge_nodes_item2": "All traceroute history will be deleted",
   "settings.confirm_purge_nodes_item3": "A node refresh will be triggered to repopulate the list",
   "settings.confirm_cannot_undo": "This action cannot be undone!",
-
   "settings.confirm_purge_telemetry_title": "Are you sure you want to purge all telemetry data?",
   "settings.confirm_purge_telemetry_item1": "All historical telemetry records will be deleted",
   "settings.confirm_purge_telemetry_item2": "Telemetry graphs will show no historical data",
   "settings.confirm_purge_telemetry_item3": "Current node states (battery, voltage) will be preserved",
   "settings.confirm_purge_telemetry_item4": "New telemetry will continue to be collected",
-
   "settings.confirm_purge_messages_title": "Are you sure you want to purge all messages?",
   "settings.confirm_purge_messages_item1": "All channel messages will be deleted",
   "settings.confirm_purge_messages_item2": "All direct messages will be deleted",
   "settings.confirm_purge_messages_item3": "New messages will continue to be received",
-
   "settings.confirm_purge_traceroutes_title": "Are you sure you want to reset all traceroutes?",
   "settings.confirm_purge_traceroutes_item1": "All saved traceroutes will be deleted",
   "settings.confirm_purge_traceroutes_item2": "All traceroute history will be deleted",
   "settings.confirm_purge_traceroutes_item3": "All route segments (including record holders) will be deleted",
   "settings.confirm_purge_traceroutes_item4": "New traceroutes will continue to be collected",
-
   "settings.confirm_restart_title": "Are you sure you want to {{action}} MeshMonitor?",
   "settings.confirm_restart_docker": "The container will restart automatically and be unavailable for approximately 10-30 seconds.",
   "settings.confirm_restart_manual": "MeshMonitor will shut down and will need to be manually restarted.",
-
   "settings.restart_action": "restart",
   "settings.shutdown_action": "shut down",
   "settings.restart_failed": "Failed to {{action}}. Please try again.",
-
   "settings.apprise_server_section": "Apprise API Server",
   "settings.apprise_server_description": "MeshMonitor delivers Apprise notifications through an Apprise API server, which fans out to the per-user notification service URLs (Discord, email, etc.) configured elsewhere. Override the server location below if you are running it outside the bundled container.",
   "settings.apprise_server_url_label": "Apprise API Server URL",
@@ -1754,14 +1704,12 @@
   "settings.apprise_server_testing": "Testing…",
   "settings.apprise_server_test_success": "Connected successfully ({{latency}}ms)",
   "settings.apprise_server_test_failure": "Connection failed: {{error}}",
-
   "settings.atak_cot_section": "ATAK / CoT Feed",
   "settings.atak_cot_section_description": "Streams mesh node positions and ATAK contacts to ATAK/WinTAK clients over a plaintext TCP Cursor-on-Target feed (add MeshMonitor as a network input in ATAK).",
   "settings.atak_cot_enabled_label": "Enable CoT feed",
   "settings.atak_cot_enabled_description": "No encryption or authentication — use only on a trusted network.",
   "settings.atak_cot_port_label": "Feed port",
   "settings.atak_cot_port_description": "TCP port ATAK/WinTAK clients connect to. Default 8088.",
-
   "settings.analytics": "Analytics",
   "settings.analytics_provider_label": "Analytics Provider",
   "settings.analytics_provider_description": "Select an analytics service to track visitor traffic on your instance.",
@@ -1796,7 +1744,6 @@
   "settings.analytics_custom_csp_label": "CSP Allowed Domains",
   "settings.analytics_custom_csp_description": "Space or comma-separated list of domains to allow in Content Security Policy (e.g. https://analytics.example.com)",
   "settings.analytics_warning": "Enabling analytics will send visitor data to the selected service. Only enable this if you control this instance and comply with applicable privacy regulations (GDPR, CCPA, etc.).",
-
   "dashboard.loading": "Loading dashboard...",
   "dashboard.error": "Error: {{error}}",
   "dashboard.title": "Telemetry Dashboard",
@@ -1824,14 +1771,12 @@
   "dashboard.chart_count_plural": "{{shown}} of {{total}} charts",
   "dashboard.empty_title": "No Widgets or Favorites Yet",
   "dashboard.empty_description": "Click \"+ Add Widget\" above or star telemetry charts in the Nodes tab",
-
   "dashboard.widget.node_status.title": "Node Status",
   "dashboard.widget.node_status.description": "Monitor status and connectivity of selected nodes",
   "dashboard.widget.node_status.search_placeholder": "Search to add a node...",
   "dashboard.widget.node_status.remove_node": "Remove node",
   "dashboard.widget.node_status.empty": "No nodes configured.",
   "dashboard.widget.node_status.empty_editable": "Search above to add nodes to monitor.",
-
   "dashboard.widget.traceroute.title": "Traceroute",
   "dashboard.widget.traceroute.description": "View the last traceroute to and from a selected node",
   "dashboard.widget.traceroute.select_node": "Select a node...",
@@ -1888,7 +1833,6 @@
   "dashboard.telemetry_help.back": "Back",
   "dashboard.show_solar": "Show solar overlay",
   "dashboard.hide_solar": "Hide solar overlay",
-
   "info.title": "Device Information & Configuration",
   "info.connection_status": "Connection Status",
   "info.node_address": "Node Address:",
@@ -1900,7 +1844,6 @@
   "info.uses_tls": "Uses TLS:",
   "info.reboot_count": "Reboot Count:",
   "info.not_available": "Not available",
-
   "info.lora_config": "LoRa Radio Configuration",
   "info.device_role": "Device Role:",
   "info.region": "Region:",
@@ -1912,7 +1855,6 @@
   "info.tx_enabled": "TX Enabled:",
   "info.boosted_rx_gain": "Boosted RX Gain:",
   "info.unknown": "Unknown",
-
   "info.mqtt_config": "MQTT Configuration",
   "info.mqtt_enabled": "Enabled:",
   "info.mqtt_server": "Server:",
@@ -1923,12 +1865,10 @@
   "info.mqtt_root_topic": "Root Topic:",
   "info.not_configured": "Not configured",
   "info.not_set": "Not set",
-
   "info.app_info": "Application Information",
   "info.version": "Version:",
   "info.timezone": "Timezone:",
   "info.timezone_default": "(default)",
-
   "info.virtual_node": "Virtual Node Server",
   "info.virtual_node_status": "Status:",
   "info.server_running": "Server Running:",
@@ -1944,7 +1884,6 @@
   "info.virtual_node_admin_allowed": "Allowed",
   "info.virtual_node_admin_blocked": "Blocked",
   "info.virtual_node_unavailable": "Virtual Node status unavailable",
-
   "info.network_stats": "Network Statistics",
   "info.total_nodes": "Total Nodes:",
   "info.total_channels": "Total Channels:",
@@ -1969,7 +1908,6 @@
   "info.tx_canceled_short": "Canceled",
   "info.packet_stats_unavailable": "Packet statistics not available. This device is sending HostMetrics (Linux-based device) instead of LocalStats.",
   "info.na": "N/A",
-
   "info.host_metrics": "Host System Metrics",
   "info.host_metrics_description": "Linux-based device telemetry",
   "info.host_uptime": "Host Uptime:",
@@ -1978,18 +1916,15 @@
   "info.disk_free_2": "Disk Free (2):",
   "info.disk_free_3": "Disk Free (3):",
   "info.load_average": "Load Average:",
-
   "info.recent_activity": "Recent Activity",
   "info.last_message": "Last Message:",
   "info.most_active_node": "Most Recently Heard:",
-
   "info.longest_route": "Longest Active Route Segment",
   "info.distance": "Distance:",
   "info.from": "From:",
   "info.to": "To:",
   "info.last_seen": "Last seen:",
   "info.no_active_routes": "No active route segments found",
-
   "info.record_holder": "Record Holder Route Segment",
   "info.achieved": "Achieved:",
   "info.no_record_holder": "No record holder set yet",
@@ -1999,21 +1934,17 @@
   "info.record_cleared": "Record holder cleared successfully",
   "info.record_clear_permission": "Insufficient permissions to clear record holder",
   "info.record_clear_failed": "Failed to clear record holder. Please try again.",
-
   "info.device_config_unavailable": "Device configuration not available. Ensure connection is established.",
   "info.local_telemetry": "Local Node Telemetry",
-
   "info.node_count_chart": "Node Count Over Time",
   "info.node_count_chart_description": "Compares MeshMonitor's active node count (based on maxNodeAgeHours setting) with the device's reported online nodes (from LocalStats).",
   "info.active_nodes_meshmonitor": "Active Nodes (MeshMonitor)",
   "info.online_nodes_device": "Online Nodes (Device)",
-
   "info.packet_rate_graphs": "Packet Rate Trends (per minute)",
   "info.rx_rates": "RX Rates (packets/min)",
   "info.tx_rates": "TX Rates (packets/min)",
   "info.no_rate_data": "Insufficient data for rate calculation. Need at least 2 data points.",
   "info.rate_error": "Error loading packet rate data.",
-
   "info.smart_hops_graph": "Smart Hops Analysis",
   "info.smart_hops_title": "Hop Count Trends",
   "info.smart_hops_min": "Min Hops",
@@ -2021,7 +1952,6 @@
   "info.smart_hops_avg": "Avg Hops",
   "info.smart_hops_no_data": "No hop count data available. Data is collected from incoming messages and traceroutes.",
   "info.smart_hops_error": "Error loading smart hops data.",
-
   "info.link_quality_graph": "Link Quality Analysis",
   "info.link_quality_title": "Link Quality",
   "info.link_quality_label": "Quality",
@@ -2032,12 +1962,10 @@
   "info.link_quality_moderate": "Moderate",
   "info.link_quality_good": "Good",
   "info.link_quality_excellent": "Excellent",
-
   "info.secrets": "Secrets",
   "info.public_key": "Public Key:",
   "info.private_key": "Private Key:",
   "info.secrets_unavailable": "Security keys not available",
-
   "info.packet_distribution": "Packet Distribution",
   "info.total_packets": "Total: {{count}} packets",
   "info.packets_by_device": "Packets by Device",
@@ -2053,7 +1981,6 @@
   "info.no_packets_for_type": "No packets found for this type in the selected time range",
   "info.hw_model_distribution": "Hardware Models",
   "info.hw_model_breakdown": "Nodes by hardware model",
-
   "config.loading": "Loading configuration...",
   "config.warning_title": "WARNING",
   "config.warning_text": "Modifying these settings can break your Meshtastic node configuration.",
@@ -2064,7 +1991,6 @@
   "config.import_export_description": "Import or export channel configurations and device settings in Meshtastic URL format. These URLs are compatible with the official Meshtastic apps.",
   "config.import_config": "Import Configuration",
   "config.export_config": "Export Configuration",
-
   "config.reboot_confirm": "Are you sure you want to reboot the device?\n\nThe device will restart and be unavailable for approximately 30-60 seconds.",
   "config.rebooting": "Rebooting device... This may take up to 60 seconds.",
   "config.rebooting_toast": "Rebooting device...",
@@ -2075,44 +2001,35 @@
   "config.reboot_sent": "Reboot command sent! Device will restart in 5 seconds.",
   "config.reboot_sent_toast": "Reboot command sent!",
   "config.reboot_failed": "Failed to reboot device",
-
   "config.purge_confirm": "Are you sure you want to purge the node database?\n\nThis will PERMANENTLY DELETE all stored node information from BOTH the device AND the local MeshMonitor database.\nThis action CANNOT be undone!\n\nThe device will automatically rebuild the database as it hears from nodes on the mesh.",
   "config.purge_success": "Node database purged successfully!",
   "config.purge_failed": "Failed to purge node database",
-
   "config.node_info_adjusted": "Node Info Broadcast Interval adjusted to minimum value of 3600 seconds (1 hour)",
   "config.device_config_saved": "Device configuration saved successfully! Device will reboot...",
   "config.device_config_saved_toast": "Device configuration saved! Device will reboot...",
   "config.device_config_failed": "Failed to save device configuration",
-
   "config.node_names_saved": "Node names saved successfully! Device will reboot...",
   "config.node_names_saved_toast": "Node names saved! Device will reboot...",
   "config.node_names_failed": "Failed to save node names",
-
   "config.hop_limit_adjusted": "Hop Limit adjusted to valid range (1-7)",
   "config.lora_saved": "LoRa configuration saved successfully! Device will reboot...",
   "config.lora_saved_toast": "LoRa configuration saved! Device will reboot...",
   "config.lora_failed": "Failed to save LoRa configuration",
-
   "config.position_interval_adjusted": "Position Broadcast Interval adjusted to minimum value of 32 seconds",
   "config.latitude_range_error": "Latitude must be between -90 and 90",
   "config.longitude_range_error": "Longitude must be between -180 and 180",
   "config.position_saved": "Position configuration saved successfully! Device will reboot...",
   "config.position_saved_toast": "Position configuration saved! Device will reboot...",
   "config.position_failed": "Failed to save position configuration",
-
   "config.mqtt_saved": "MQTT configuration saved successfully! Device will reboot...",
   "config.mqtt_saved_toast": "MQTT configuration saved! Device will reboot...",
   "config.mqtt_failed": "Failed to save MQTT configuration",
-
   "config.neighbor_interval_adjusted": "NeighborInfo interval adjusted to minimum value of 14400 seconds (4 hours)",
   "config.neighbor_saved": "NeighborInfo configuration saved successfully! Device will reboot...",
   "config.neighbor_saved_toast": "NeighborInfo configuration saved! Device will reboot...",
   "config.neighbor_failed": "Failed to save NeighborInfo configuration",
-
   "config.import_success": "Configuration imported successfully",
   "config.load_warning": "Warning: Could not load current configuration. Default values shown.",
-
   "notifications.title": "Notifications",
   "notifications.services_title": "Notification Services",
   "notifications.services_description": "Enable or disable notification services. Both services use the same filtering preferences below.",
@@ -2161,7 +2078,6 @@
   "notifications.saving": "Saving...",
   "notifications.save_preferences": "Save Preferences",
   "notifications.save_failed": "Failed to save notification preferences",
-
   "notifications.webpush_config_title": "Web Push Configuration",
   "notifications.https_required_title": "HTTPS Required",
   "notifications.https_required_text": "Push notifications are not available over HTTP.",
@@ -2173,7 +2089,6 @@
   "notifications.current_connection": "Current connection:",
   "notifications.https_help_title": "Need help setting up HTTPS?",
   "notifications.https_help_link": "beginner-friendly guide to setting up free HTTPS with DuckDNS",
-
   "notifications.browser_support": "Browser Support",
   "notifications.notifications_api": "Notifications API:",
   "notifications.service_workers": "Service Workers:",
@@ -2190,7 +2105,6 @@
   "notifications.not_subscribed": "Not Subscribed",
   "notifications.supported": "Supported",
   "notifications.not_supported": "Not Supported",
-
   "notifications.ios_title": "iOS Users: Installation Required",
   "notifications.ios_text": "On iOS (iPhone/iPad), push notifications require HTTPS and PWA installation:",
   "notifications.ios_step1": "HTTPS Required:",
@@ -2200,7 +2114,6 @@
   "notifications.ios_step4": "Scroll down and tap \"Add to Home Screen\"",
   "notifications.ios_step5": "Open MeshMonitor from your home screen",
   "notifications.ios_step6": "Return here to enable notifications",
-
   "notifications.setup_title": "Setup Notifications",
   "notifications.setup_description": "Follow these steps to enable push notifications:",
   "notifications.step1_title": "Step 1: Enable Notifications",
@@ -2212,7 +2125,6 @@
   "notifications.permission_chrome_desc": "Click the lock icon in the address bar → Site settings → Notifications",
   "notifications.permission_safari": "Safari:",
   "notifications.permission_safari_desc": "Safari → Settings → Websites → Notifications",
-
   "notifications.step2_title": "Step 2: Subscribe to Notifications",
   "notifications.step2_description": "Subscribe to receive push notifications for new messages.",
   "notifications.subscribing": "Subscribing...",
@@ -2222,14 +2134,12 @@
   "notifications.unsubscribe": "Unsubscribe",
   "notifications.unsubscribe_failed": "Failed to unsubscribe from push notifications",
   "notifications.subscription_debug": "Debug:",
-
   "notifications.test_title": "Test Notifications",
   "notifications.test_description": "Send a test notification to verify everything is working.",
   "notifications.send_test": "Send Test Notification",
   "notifications.test_sending": "Sending...",
   "notifications.test_sent": "Sent: {{sent}}, Failed: {{failed}}",
   "notifications.test_failed": "Failed to send test notification",
-
   "notifications.vapid_title": "VAPID Configuration (Admin)",
   "notifications.vapid_status": "Status:",
   "notifications.vapid_configured": "Configured",
@@ -2241,7 +2151,6 @@
   "notifications.updating": "Updating...",
   "notifications.update_contact_email": "Update Contact Email",
   "notifications.update_failed": "Failed to update contact email",
-
   "notifications.apprise_config_title": "Apprise Configuration",
   "notifications.apprise_config_description": "Configure Apprise to send notifications to external services like Discord, Slack, Email, SMS, and more. Apprise works over HTTP, so <strong>no HTTPS required</strong>!",
   "notifications.apprise_about": "About Apprise:",
@@ -2259,7 +2168,6 @@
   "notifications.config_save_failed": "Failed to save configuration",
   "notifications.connection_test_failed": "Connection test failed",
   "notifications.test_notification_sending": "Sending test notification...",
-
   "notifications.push_not_supported": "Push notifications are not supported in your browser",
   "notifications.permission_request_failed": "Failed to request notification permission. Please try again.",
   "notifications.grant_permission_first": "Please grant notification permission first",
@@ -2299,7 +2207,6 @@
   "notifications.see_docs": "See",
   "notifications.full_list": "for full list of supported services",
   "notifications.save_config": "Save Configuration",
-
   "users.title": "Users",
   "users.add_user": "Add User",
   "users.user_details": "User Details",
@@ -2384,14 +2291,12 @@
   "users.auth_provider": "Auth Provider",
   "users.password_locked_yes": "Yes (Password changes disabled)",
   "users.full_name": "Full name",
-
   "automation.save_changes": "Save Changes",
   "automation.saving": "Saving...",
   "automation.settings_saved": "Settings saved successfully!",
   "automation.settings_save_failed": "Failed to save settings. Please try again.",
   "automation.insufficient_permissions": "Insufficient permissions to save settings",
   "automation.view_docs": "View Documentation",
-
   "automation.auto_ack.title": "Auto Acknowledge",
   "automation.auto_ack.description": "When enabled, automatically reply to any message matching the RegEx pattern with a customizable template.",
   "automation.auto_ack.tokens_info": "Use tokens like {NODE_ID}, {NUMBER_HOPS}, {DATE}, {TIME}, {SNR}, and {RSSI} for dynamic content.",
@@ -2450,7 +2355,6 @@
   "automation.auto_ack.matrix_tapback": "Tapback",
   "automation.auto_ack.matrix_respond_via_dm": "Respond via DM",
   "automation.auto_ack.direct_reply_always_dm": "Direct replies are always sent as DMs",
-
   "automation.auto_welcome.title": "Auto Welcome",
   "automation.auto_welcome.description": "When enabled, automatically send a welcome message when a new node joins the mesh network.",
   "automation.auto_welcome.tokens_info": "Use tokens to personalize messages: {LONG_NAME}, {SHORT_NAME}, {VERSION}, {DURATION}, {FEATURES}, {NODECOUNT}, {DIRECTCOUNT}",
@@ -2472,7 +2376,6 @@
   "automation.auto_welcome.marking": "Marking...",
   "automation.auto_welcome.marked_all_welcomed": "Marked {{count}} nodes as welcomed",
   "automation.auto_welcome.mark_welcomed_failed": "Failed to mark nodes as welcomed",
-
   "automation.auto_announce.title": "Auto Announce",
   "automation.auto_announce.description": "When enabled, automatically broadcast an announcement message to a selected channel at the configured interval. Use tokens like {VERSION}, {DURATION}, {FEATURES}, {NODECOUNT}, and {DIRECTCOUNT} for dynamic content.",
   "automation.auto_announce.channel": "Channel",
@@ -2524,7 +2427,6 @@
   "automation.auto_announce.nodeinfo_delay": "Delay Between Channels",
   "automation.auto_announce.nodeinfo_delay_description": "Time to wait between sending NodeInfo to each channel (10-300 seconds). Helps avoid flooding the mesh.",
   "automation.auto_announce.seconds": "seconds",
-
   "automation.auto_traceroute.title": "Auto Traceroute",
   "automation.auto_traceroute.description": "When enabled, automatically send traceroute requests to all active nodes at the configured interval. This helps maintain up-to-date network topology information. Requires container restart to take effect.",
   "automation.auto_traceroute.schedule": "Schedule",
@@ -2605,7 +2507,6 @@
   "automation.auto_traceroute.filter_by_hops": "Hop Range",
   "automation.auto_traceroute.min_hops": "Min:",
   "automation.auto_traceroute.max_hops": "Max:",
-
   "automation.remote_admin_scanner.title": "Remote Admin Scanner",
   "automation.remote_admin_scanner.description": "Automatically scan mesh nodes to discover which ones have remote admin access enabled. Nodes with admin access can be remotely configured and monitored. The scanner sends DeviceMetadata requests and stores firmware information for successful responses.",
   "automation.remote_admin_scanner.interval": "Scan Interval (minutes)",
@@ -2626,10 +2527,8 @@
   "automation.remote_admin_scanner.no_log_entries": "No scan results yet. Entries will appear here as nodes are scanned.",
   "automation.remote_admin_scanner.schedule_window": "Restrict to Time Window",
   "automation.remote_admin_scanner.schedule_window_description": "Only run remote admin scans during the specified time window. Uses server-local time.",
-
   "automation.schedule.starting_at": "Starting At",
   "automation.schedule.ending_at": "Ending At",
-
   "automation.time_sync.title": "Auto Time Sync",
   "automation.time_sync.description": "Push the MeshMonitor server's time to your nodes (the server is the time authority). Targets nodes that have remote admin access — useful for nodes without NTP or GPS time sync. Each interval syncs one eligible node.",
   "automation.time_sync.interval": "Sync Interval (minutes)",
@@ -2645,7 +2544,6 @@
   "automation.time_sync.eligible_nodes": "Eligible Nodes",
   "automation.time_sync.nodes_with_remote_admin": "nodes with remote admin",
   "automation.time_sync.settings_saved": "Auto Time Sync settings saved successfully",
-
   "automation.auto_key_management.title": "Auto Key Management",
   "automation.auto_key_management.description": "Automatically attempt to repair PKI key mismatches by exchanging node info and optionally purging stale keys from the device database.",
   "automation.auto_key_management.interval_minutes": "Interval Between Attempts (minutes)",
@@ -2669,7 +2567,6 @@
   "automation.auto_key_management.immediate_purge_description": "When a node broadcasts a different key than what your device has cached, immediately remove it from the device database to trigger re-discovery. If disabled, the standard exchange-then-purge cycle is used.",
   "automation.auto_key_management.log_old_key": "Old Key",
   "automation.auto_key_management.log_new_key": "New Key",
-
   "automation.timer_triggers.section_title": "Timed Events",
   "automation.timer_triggers.description": "Schedule scripts or text messages to run automatically using cron expressions",
   "automation.timer_triggers.view_docs": "View documentation",
@@ -2706,7 +2603,6 @@
   "automation.timer_triggers.saved": "Timer triggers saved",
   "automation.timer_triggers.save_failed": "Failed to save timer triggers",
   "automation.timer_triggers.never_run": "Never",
-
   "automation.geofence_triggers.title": "Geofence Triggers",
   "automation.geofence_triggers.section_title": "Geofence Triggers",
   "automation.geofence_triggers.description": "Trigger actions when nodes enter, exit, or remain inside geographic areas",
@@ -2765,7 +2661,6 @@
   "automation.geofence_triggers.cooldown": "Cooldown (minutes):",
   "automation.geofence_triggers.cooldown_help": "Minimum time between triggers for each node. 0 = no cooldown.",
   "automation.geofence_triggers.cooldown_display": "Cooldown: {{minutes}}min",
-
   "script_test.title": "Test Script",
   "script_test.mock_context": "Test Context",
   "script_test.run_test": "Run Test",
@@ -2787,7 +2682,6 @@
   "script_test.mock.event_type": "Geofence Event",
   "script_test.mock.node_lat": "Node Latitude",
   "script_test.mock.node_lon": "Node Longitude",
-
   "theme_management.title": "Custom Themes",
   "theme_management.description": "Create and manage custom color themes for the application",
   "theme_management.create_new": "Create New Theme",
@@ -2805,7 +2699,6 @@
   "theme_management.assigned_dark": "Dark",
   "theme_management.assigned_light": "Light",
   "theme_management.clone": "Clone",
-
   "theme_editor.edit_title": "Edit Theme",
   "theme_editor.create_title": "Create Custom Theme",
   "theme_editor.import": "Import",
@@ -2827,7 +2720,6 @@
   "theme_editor.save_failed": "Failed to save theme: {{error}}",
   "theme_editor.invalid_file": "Invalid theme file:\n{{errors}}",
   "theme_editor.import_failed": "Failed to import theme: {{error}}",
-
   "theme_gallery.title": "Theme Gallery",
   "theme_gallery.description": "Choose from {{count}} carefully crafted themes including accessibility-focused options. Click on any theme card to preview it instantly!",
   "theme_gallery.category_all": "All Themes",
@@ -2851,14 +2743,12 @@
   "theme_gallery.tritanopia_desc": "For blue color blindness (rare, affects ~0.001%)",
   "theme_gallery.persistence_title": "Theme Persistence",
   "theme_gallery.persistence_desc": "Your theme choice is saved automatically and will persist across sessions. All themes work seamlessly across all pages and components.",
-
   "tileset.map_style": "Map Style",
   "tileset.tileset_light": "Tileset (Light mode)",
   "tileset.tileset_dark": "Tileset (Dark mode)",
   "tileset.custom": "Custom",
   "tileset.collapse": "Collapse tileset selector",
   "tileset.expand": "Expand tileset selector",
-
   "tileset_manager.title": "Custom Tile Servers",
   "tileset_manager.description": "Add custom tile servers for offline maps or custom styling.",
   "tileset_manager.setup_guide": "View setup guide",
@@ -2911,7 +2801,6 @@
   "tileset_manager.use_this_url": "Use",
   "tileset_manager.reload_required": "Page reload required for new tile server to work due to browser security restrictions.",
   "tileset_manager.reload_now": "Reload Page",
-
   "map_style_manager.title": "Map Styles",
   "map_style_manager.description": "Upload and manage MapLibre GL style JSON files for vector tile layers.",
   "map_style_manager.loading": "Loading map styles...",
@@ -2940,7 +2829,6 @@
   "map_style_manager.generate_failed": "Generation failed: {{message}}",
   "map_style_manager.generate_failed_hint": "This field expects a raw TileJSON endpoint (e.g. /data/v3.json), not a style.json file. To import a style.json directly, use the \"Style URL\" field above instead.",
   "map_style_manager.delete_failed": "Delete failed: {{message}}",
-
   "telemetry.loading": "Loading telemetry data...",
   "telemetry.load_failed": "Failed to load telemetry data",
   "telemetry.no_data": "No telemetry data available for this node",
@@ -2960,7 +2848,6 @@
   "telemetry.purge_data": "Purge Data",
   "telemetry.show_solar": "Show solar overlay",
   "telemetry.hide_solar": "Hide solar overlay",
-
   "node_details.title": "Node Details",
   "node_details.expand": "Expand node details",
   "node_details.collapse": "Collapse node details",
@@ -3020,22 +2907,18 @@
   "node_details.contact_share.error": "Failed to generate contact URL",
   "node_details.contact_share.copy_error": "Failed to copy contact URL",
   "node_details.contact_share.qr_error": "Failed to generate QR code",
-
   "messages.hops_one": "{{count}}/{{hopStart}} hop",
   "messages.hops_other": "{{count}}/{{hopStart}} hops",
   "messages.signal_info": "Signal strength (SNR/RSSI) - Direct message",
   "messages.click_for_relay": "Click to see potential relay nodes",
   "messages.via_mqtt": "Received via MQTT",
-
   "link_preview.loading": "Loading preview...",
   "link_preview.image_alt": "Link preview",
-
   "message_status.failed": "Failed to send - routing error or max retries exceeded",
   "message_status.confirmed": "Received by target node",
   "message_status.delivered": "Transmitted to mesh",
   "message_status.pending": "Sending...",
   "message_status.timeout": "No acknowledgment received (timeout)",
-
   "auto_responder.title": "Auto Responder",
   "auto_responder.view_docs": "View Auto Responder documentation",
   "auto_responder.description": "Automatically respond to messages matching your trigger patterns. Supports text responses, HTTP webhooks, and custom script execution. Scripts must be placed in /data/scripts/ (production) and can be Node.js (.js, .mjs), Python (.py), or Shell (.sh). Responses are truncated to 200 characters.",
@@ -3098,7 +2981,6 @@
   "auto_responder.cooldown_description": "After this trigger responds to a node, ignore further matches from that node for this duration.",
   "auto_responder.cooldown_help": "seconds per node (0 = disabled)",
   "auto_responder.cooldown_badge": "cooldown",
-
   "device_config.title": "Device Configuration",
   "device_config.view_docs": "View Device Configuration Documentation",
   "device_config.router_warning": "Are you sure?\n\nSetting the device role to ROUTER is generally not recommended for most users. ROUTER mode will cause your device to relay all packets, significantly increasing power consumption and airtime usage.\n\nClick OK to confirm this change, or Cancel to keep your current setting.",
@@ -3130,9 +3012,7 @@
   "device_config.buzzer_gpio": "Buzzer GPIO",
   "device_config.buzzer_gpio_description": "GPIO pin for the buzzer output. 0 = use default.",
   "device_config.save_button": "Save Device Config",
-
   "common.more_info": "For more information",
-
   "node_identity.title": "Node Identity",
   "node_identity.view_docs": "View Node Identity Documentation",
   "node_identity.long_name": "Long Name",
@@ -3146,7 +3026,6 @@
   "node_identity.is_licensed": "Licensed (HAM)",
   "node_identity.is_licensed_description": "Mark this node as a licensed amateur radio (HAM) operator. Long name should be set to your license number.",
   "node_identity.save_button": "Save Node Names",
-
   "neighbor_info.title": "Neighbor Info Module",
   "neighbor_info.view_docs": "View Neighbor Info Documentation",
   "neighbor_info.enable": "Enable Neighbor Info",
@@ -3156,7 +3035,6 @@
   "neighbor_info.transmit_over_lora": "Transmit over LoRa",
   "neighbor_info.transmit_over_lora_description": "Broadcast neighbor info over LoRa in addition to MQTT and Phone API. Not available on channels with default key/name.",
   "neighbor_info.save_button": "Save NeighborInfo Config",
-
   "network_config.title": "Network Configuration",
   "network_config.view_docs": "View Network Configuration Documentation",
   "network_config.wifi_enabled": "WiFi Enabled",
@@ -3183,15 +3061,12 @@
   "network_config.udp_broadcast": "UDP Broadcast",
   "network_config.udp_broadcast_description": "Broadcast node info and telemetry over UDP on the local network, so other software (e.g. Meshtastic clients on the same LAN) can discover this node without a direct connection.",
   "network_config.save_button": "Save Network Config",
-
   "config.network_saved": "Network configuration saved",
   "config.network_saved_toast": "Network configuration saved! Device will reboot to apply changes.",
   "config.network_failed": "Failed to save network configuration",
-
   "config.power_saved": "Power configuration saved",
   "config.power_saved_toast": "Power configuration saved! Device will reboot to apply changes.",
   "config.power_failed": "Failed to save power configuration",
-
   "power_config.title": "Power Configuration",
   "power_config.view_docs": "View Power Configuration Documentation",
   "power_config.power_saving": "Power Saving Mode",
@@ -3213,12 +3088,10 @@
   "power_config.ina_address_description": "I2C address for INA battery sensor. 0 = disabled. Range: 0-127",
   "power_config.save_button": "Save Power Config",
   "power_config.disabled": "Disabled",
-
   "common.seconds": "seconds",
   "common.minutes": "minutes",
   "common.hours": "hours",
   "common.days": "days",
-
   "display_config.title": "Display Configuration",
   "display_config.view_docs": "View Display Configuration Documentation",
   "display_config.screen_on_secs": "Screen Timeout (seconds)",
@@ -3242,59 +3115,45 @@
   "display_config.compass_orientation_description": "Compass display orientation and inversion",
   "display_config.save_button": "Save Display Config",
   "display_config.always_on": "Always On",
-
   "config.display_saved": "Display configuration saved",
   "config.display_saved_toast": "Display configuration saved! Device will reboot to apply changes.",
   "config.display_failed": "Failed to save display configuration",
-
   "config.telemetry_saved": "Telemetry configuration saved",
   "config.telemetry_saved_toast": "Telemetry configuration saved! Device will reboot to apply changes.",
   "config.telemetry_failed": "Failed to save telemetry configuration",
-
   "config.extnotif_saved": "External Notification configuration saved",
   "config.extnotif_saved_toast": "External Notification configuration saved!",
   "config.extnotif_failed": "Failed to save External Notification configuration",
-
   "config.storeforward_saved": "Store & Forward configuration saved",
   "config.storeforward_saved_toast": "Store & Forward configuration saved!",
   "config.storeforward_failed": "Failed to save Store & Forward configuration",
-
   "config.rangetest_saved": "Range Test configuration saved",
   "config.rangetest_saved_toast": "Range Test configuration saved!",
   "config.rangetest_failed": "Failed to save Range Test configuration",
-
   "config.cannedmsg_saved": "Canned Message configuration saved",
   "config.cannedmsg_saved_toast": "Canned Message configuration saved!",
   "config.cannedmsg_failed": "Failed to save Canned Message configuration",
-
   "config.audio_saved": "Audio configuration saved",
   "config.audio_saved_toast": "Audio configuration saved!",
   "config.audio_failed": "Failed to save Audio configuration",
-
   "config.remotehardware_saved": "Remote Hardware configuration saved",
   "config.remotehardware_saved_toast": "Remote Hardware configuration saved!",
   "config.remotehardware_failed": "Failed to save Remote Hardware configuration",
-
   "config.detectionsensor_saved": "Detection Sensor configuration saved",
   "config.detectionsensor_saved_toast": "Detection Sensor configuration saved!",
   "config.detectionsensor_failed": "Failed to save Detection Sensor configuration",
-
   "config.paxcounter_saved": "Paxcounter configuration saved",
   "config.paxcounter_saved_toast": "Paxcounter configuration saved!",
   "config.paxcounter_failed": "Failed to save Paxcounter configuration",
-
   "config.serial_saved": "Serial configuration saved",
   "config.serial_saved_toast": "Serial configuration saved!",
   "config.serial_failed": "Failed to save Serial configuration",
-
   "config.ambientlighting_saved": "Ambient Lighting configuration saved",
   "config.ambientlighting_saved_toast": "Ambient Lighting configuration saved!",
   "config.ambientlighting_failed": "Failed to save Ambient Lighting configuration",
-
   "config.security_saved": "Security configuration saved",
   "config.security_saved_toast": "Security configuration saved!",
   "config.security_failed": "Failed to save Security configuration",
-
   "config.reload_config": "Reload Config",
   "config.reloading": "Reloading...",
   "config.reload_changes_detected": "Configuration reloaded. {{count}} change(s) detected.",
@@ -3304,7 +3163,6 @@
   "config.field": "Field",
   "config.old_value": "Previous",
   "config.new_value": "Current",
-
   "telemetry_config.title": "Telemetry Configuration",
   "telemetry_config.view_docs": "View Telemetry Configuration Documentation",
   "telemetry_config.device_section": "Device Telemetry",
@@ -3343,7 +3201,6 @@
   "telemetry_config.health_screen_description": "Display health metrics on the device screen",
   "telemetry_config.save_button": "Save Telemetry Config",
   "telemetry_config.disabled": "Disabled",
-
   "lora_config.title": "LoRa Radio Configuration",
   "lora_config.view_docs": "View LoRa Configuration Documentation",
   "lora_config.use_preset": "Use Preset",
@@ -3386,7 +3243,6 @@
   "lora_config.pa_fan_disabled": "PA Fan Disabled",
   "lora_config.pa_fan_disabled_description": "Disable the Power Amplifier cooling fan on supported devices.",
   "lora_config.save_button": "Save LoRa Config",
-
   "channels_config.title": "Channels Configuration",
   "channels_config.view_docs": "View Meshtastic Channels Documentation",
   "channels_config.description": "Meshtastic devices support up to 8 channels (0-7). Channel 0 is typically the Primary channel. You can configure each channel's name, encryption key (PSK), and uplink/downlink settings.",
@@ -3442,7 +3298,6 @@
   "channels_config.toast_key_generated": "Generated new AES256 key",
   "channels_config.location_auto_broadcast": "Location: Auto-broadcast",
   "channels_config.location_enabled": "Location: Enabled",
-
   "mqtt_config.title": "MQTT Module",
   "mqtt_config.view_docs": "View MQTT Configuration Documentation",
   "mqtt_config.enable": "Enable MQTT",
@@ -3472,7 +3327,6 @@
   "mqtt_config.map_position_precision": "Map Position Precision",
   "mqtt_config.map_position_precision_description": "Position precision for map reporting (10-19, higher = more precise)",
   "mqtt_config.save_button": "Save MQTT Config",
-
   "position_config.title": "Position Broadcast",
   "position_config.view_docs": "View Position Configuration Documentation",
   "position_config.broadcast_interval": "Position Broadcast Interval (seconds)",
@@ -3506,7 +3360,6 @@
   "position_config.gps_en_gpio": "GPS Enable GPIO",
   "position_config.gps_en_gpio_description": "GPIO pin to enable/disable GPS module. 0 = use default.",
   "position_config.save_button": "Save Position Config",
-
   "export_config.title": "Export Meshtastic Configuration",
   "export_config.description": "Select the channels and settings you want to include in the exported URL. The URL will be compatible with the official Meshtastic apps.",
   "export_config.select_channels": "Select Channels",
@@ -3534,7 +3387,6 @@
   "export_config.qr_code": "QR Code",
   "export_config.scan_qr_description": "Scan with the Meshtastic mobile app to import configuration",
   "export_config.close": "Close",
-
   "import_config.title": "Import Meshtastic Configuration",
   "import_config.url_label": "Meshtastic Configuration URL",
   "import_config.url_placeholder": "https://meshtastic.org/e/#...",
@@ -3570,7 +3422,6 @@
   "import_config.cancel": "Cancel",
   "import_config.importing": "Importing...",
   "import_config.import_selected": "Import Selected",
-
   "backup_management.title": "Device Backup Management",
   "backup_management.about_title": "About Device Backups",
   "backup_management.about_description": "Device backups export your complete Meshtastic configuration in YAML format, compatible with the Meshtastic CLI --export-config command. Backups include all device settings, module configurations, and channel settings. Use these backups to restore your device configuration after a firmware update or to clone settings to another device.",
@@ -3609,7 +3460,6 @@
   "backup_management.toast_download_failed": "Failed to download backup: {{error}}",
   "backup_management.toast_deleted": "Backup deleted successfully",
   "backup_management.toast_delete_failed": "Failed to delete backup: {{error}}",
-
   "system_backup.title": "System Backup Management",
   "system_backup.about_title": "About System Backups",
   "system_backup.about_description": "System backups export your complete MeshMonitor database including message history, node information, telemetry data, user accounts, and system settings. Each backup is a collection of JSON files with integrity checksums and version metadata. Use system backups for disaster recovery, server migration, or database rollback.",
@@ -3648,7 +3498,6 @@
   "system_backup.toast_deleted": "System backup deleted successfully",
   "system_backup.toast_delete_failed": "Failed to delete backup: {{error}}",
   "system_backup.confirm_delete": "Are you sure you want to delete the system backup \"{{dirname}}\"?",
-
   "maintenance.title": "Database Maintenance",
   "maintenance.about_title": "About Database Maintenance",
   "maintenance.about_description": "Database maintenance automatically cleans up old data to prevent unbounded database growth. This includes messages, traceroutes, route segments, and neighbor info older than the configured retention periods. After cleanup, the database is vacuumed to reclaim disk space.",
@@ -3677,7 +3526,6 @@
   "maintenance.toast_running": "Running database maintenance...",
   "maintenance.toast_complete": "Maintenance complete: {{count}} records deleted, {{saved}} space freed",
   "maintenance.toast_failed": "Maintenance failed: {{error}}",
-
   "admin_commands.title": "Admin Commands",
   "admin_commands.loading_nodes": "Loading nodes...",
   "admin_commands.target_node": "Target Node",
@@ -3692,7 +3540,6 @@
   "admin_commands.remote_node_passkey": "Remote node - session passkey will be requested automatically",
   "admin_commands.remote_node_passkey_acquired": "Remote node - session passkey acquired ({{seconds}}s remaining)",
   "admin_commands.please_select_node": "Please select a node",
-
   "admin_commands.set_owner": "Set Owner",
   "admin_commands.long_name": "Long Name",
   "admin_commands.long_name_description": "The long name for the device owner.",
@@ -3705,7 +3552,6 @@
   "admin_commands.mark_licensed": "Licensed (HAM)",
   "admin_commands.mark_licensed_description": "Mark as a licensed amateur radio operator. Long name should be the license number.",
   "admin_commands.set_owner_button": "Set Owner",
-
   "admin_commands.radio_configuration": "Radio Configuration",
   "admin_commands.device_configuration": "Device Configuration",
   "admin_commands.module_configuration": "Module Configuration",
@@ -3750,7 +3596,6 @@
   "admin_commands.node_info_broadcast": "Node Info Broadcast Interval (seconds)",
   "admin_commands.node_info_broadcast_description": "How often the device broadcasts node information. Minimum: 3600 seconds (1 hour).",
   "admin_commands.save_device_config": "Save Device Config",
-
   "admin_commands.lora_configuration": "LoRa Radio Configuration",
   "admin_commands.use_modem_preset": "Use Modem Preset",
   "admin_commands.use_modem_preset_description": "Use a predefined modem preset instead of manual settings",
@@ -3777,7 +3622,6 @@
   "admin_commands.pa_fan_disabled": "PA Fan Disabled",
   "admin_commands.pa_fan_disabled_description": "Disable the power amplifier cooling fan (for devices with PA fans)",
   "admin_commands.save_lora_config": "Save LoRa Config",
-
   "admin_commands.position_configuration": "Position Configuration",
   "admin_commands.position_broadcast_interval": "Position Broadcast Interval (seconds)",
   "admin_commands.position_broadcast_interval_description": "How often the device broadcasts its position. Minimum: 32 seconds.",
@@ -3820,7 +3664,6 @@
   "admin_commands.gps_tx_gpio": "GPS TX GPIO",
   "admin_commands.gps_en_gpio": "GPS Enable GPIO",
   "admin_commands.optional": "Optional",
-
   "admin_commands.mqtt_configuration": "MQTT Configuration",
   "admin_commands.enable_mqtt": "Enable MQTT",
   "admin_commands.enable_mqtt_description": "Enable MQTT broker connection",
@@ -3837,7 +3680,6 @@
   "admin_commands.json_enabled": "JSON Enabled",
   "admin_commands.json_enabled_description": "Send messages in JSON format",
   "admin_commands.save_mqtt_config": "Save MQTT Config",
-
   "admin_commands.security_configuration": "Security Configuration",
   "admin_commands.admin_keys": "Admin Keys",
   "admin_commands.admin_keys_description": "Public keys authorized to send admin messages to this node. Up to 3 keys can be configured. Use base64 or hex format.",
@@ -3854,11 +3696,9 @@
   "admin_commands.security_save_disabled": "Saving security config is temporarily disabled due to a firmware compatibility issue",
   "admin_commands.security_config_loaded": "Security config loaded successfully",
   "admin_commands.failed_load_security_config": "Failed to load security config",
-
   "admin_commands.channel_configuration": "Channel Configuration",
   "admin_commands.load_channels": "Load Channels",
   "admin_commands.loading_channels": "Loading channels...",
-
   "admin_commands.device_config_loaded": "Device config loaded successfully",
   "admin_commands.failed_load_device_config": "Failed to load device config",
   "admin_commands.lora_config_loaded": "LoRa config loaded successfully",
@@ -3879,7 +3719,6 @@
   "admin_commands.failed_execute_command": "Failed to execute command",
   "admin_commands.owner_info_loaded": "Owner info loaded successfully",
   "admin_commands.no_owner_info": "No owner information available",
-
   "admin_commands.channel_config_description": "Configure channels for the selected node. Each channel slot can be configured independently.",
   "admin_commands.channel_slot": "Channel {{index}}",
   "admin_commands.unnamed": "Unnamed",
@@ -3892,7 +3731,6 @@
   "admin_commands.uplink": "Uplink",
   "admin_commands.downlink": "Downlink",
   "admin_commands.no_bridge": "No bridge",
-
   "admin_commands.config_import_export": "Configuration Import/Export",
   "admin_commands.config_import_export_description": "Import or export channel configurations and device settings in Meshtastic URL format. These URLs are compatible with the official Meshtastic apps.",
   "admin_commands.import_configuration": "Import Configuration",
@@ -3902,7 +3740,6 @@
   "admin_commands.config_loaded_success": "Configuration loaded successfully",
   "admin_commands.config_load_failed": "Failed to load {{configType}} configuration",
   "admin_commands.failed_load_config": "Failed to load configuration",
-
   "admin_commands.node_favorites_ignored": "Node Favorites & Ignored",
   "admin_commands.node_favorites_ignored_description": "Manage favorite and ignored nodes on the target device. Favorites are prioritized in the node list, while ignored nodes are hidden from normal operations.",
   "admin_commands.select_node_to_manage": "Select Node",
@@ -3924,7 +3761,6 @@
   "admin_commands.remote_status_from_session": "(from this session's commands, not a readback)",
   "admin_commands.remote_status_readback_note": "Remote target: the admin protocol has no query that returns a node's favorite or ignored list, so MeshMonitor can set and clear these flags but cannot read the device's current state. Any status shown above comes from commands sent in this session.",
   "admin_commands.firmware_requirement_note": "Note: These commands require firmware version 2.7.0 or higher. The target device must be selected in the \"Target Node\" section above.",
-
   "admin_commands.failed_load_owner_info": "Failed to load owner info",
   "admin_commands.long_short_name_required": "Long name and short name are required",
   "admin_commands.please_select_node_to_favorite": "Please select a node to favorite",
@@ -3967,9 +3803,8 @@
   "admin_commands.please_select_file_and_slot": "Please select a file and a channel slot",
   "admin_commands.invalid_import_format": "Invalid import format. Expected channel object",
   "admin_commands.configuration_imported_success": "Configuration imported successfully",
-  "admin_commands.warning_message":"Modifying these settings can break your Meshtastic node configuration.",
-  "admin_commands.warning_description":"These settings directly modify the configuration of your target Meshtastic device. Incorrect settings may cause communication issues, network problems, or require a factory reset. Only modify these settings if you understand what you are doing.",
-
+  "admin_commands.warning_message": "Modifying these settings can break your Meshtastic node configuration.",
+  "admin_commands.warning_description": "These settings directly modify the configuration of your target Meshtastic device. Incorrect settings may cause communication issues, network problems, or require a factory reset. Only modify these settings if you understand what you are doing.",
   "common.load": "Load",
   "admin_commands.load_all_configs": "Load All Config",
   "admin_commands.all_configs_loaded": "All {{count}} configs loaded successfully",
@@ -4007,12 +3842,10 @@
   "admin_commands.load_button": "Load",
   "admin_commands.section_loaded": "Section loaded successfully",
   "admin_commands.section_load_failed": "Failed to load section",
-
   "messages.override_position": "Override Position",
   "messages.override_position_title": "Set a custom position for this node",
   "messages.hide_from_map": "Hide from Map",
   "messages.unhide_from_map": "Show on Map",
-
   "position_override.title": "Position Override: {{nodeName}}",
   "position_override.description": "Override this node's position on the map. When enabled, this custom position will be used instead of the GPS or estimated position for map display and distance calculations.",
   "position_override.use_position": "Use this custom position",
@@ -4029,7 +3862,6 @@
   "position_override.save_error": "Failed to save position override",
   "position_override.private": "Private Position",
   "position_override.private_description": "Only visible to logged in users of this MeshMonitor instance. Anonymous users will see the original node position.",
-
   "node_info.title": "Node Information",
   "node_info.node_name": "Node Name",
   "node_info.short_name": "Short Name",
@@ -4052,7 +3884,6 @@
   "node_info.error_empty_ip": "Please enter an IP address or hostname",
   "node_info.error_invalid_ip": "Please enter a valid IP address or hostname (with optional port)",
   "node_info.error_failed": "Failed to change address",
-
   "extnotif_config.title": "External Notification",
   "extnotif_config.view_docs": "View External Notification Documentation",
   "extnotif_config.enabled": "Enable External Notification",
@@ -4089,7 +3920,6 @@
   "extnotif_config.output_buzzer_gpio": "Buzzer GPIO",
   "extnotif_config.output_buzzer_gpio_description": "GPIO pin number for active buzzer",
   "extnotif_config.save_button": "Save External Notification Config",
-
   "storeforward_config.title": "Store & Forward",
   "storeforward_config.view_docs": "View Store & Forward Documentation",
   "storeforward_config.enabled": "Enable Store & Forward",
@@ -4105,7 +3935,6 @@
   "storeforward_config.history_return_window": "History Window (seconds)",
   "storeforward_config.history_return_window_description": "Time window for message history (0 = default)",
   "storeforward_config.save_button": "Save Store & Forward Config",
-
   "rangetest_config.title": "Range Test",
   "rangetest_config.view_docs": "View Range Test Documentation",
   "rangetest_config.enabled": "Enable Range Test",
@@ -4115,7 +3944,6 @@
   "rangetest_config.save": "Save Results to File",
   "rangetest_config.save_description": "Save range test results to RangeTest.csv (ESP32 only)",
   "rangetest_config.save_button": "Save Range Test Config",
-
   "cannedmsg_config.title": "Canned Messages",
   "cannedmsg_config.view_docs": "View Canned Messages Documentation",
   "cannedmsg_config.enabled": "Enable Canned Messages",
@@ -4144,7 +3972,6 @@
   "cannedmsg_config.event_press": "Press Event",
   "cannedmsg_config.event_press_description": "Action to trigger on button press",
   "cannedmsg_config.save_button": "Save Canned Messages Config",
-
   "audio_config.title": "Audio (Codec2)",
   "audio_config.view_docs": "View Audio Configuration Documentation",
   "audio_config.codec2_enabled": "Enable Codec2 Audio",
@@ -4164,7 +3991,6 @@
   "audio_config.i2s_sck": "I2S SCK Pin",
   "audio_config.i2s_sck_description": "I2S Serial Clock (BCLK) GPIO pin",
   "audio_config.save_button": "Save Audio Config",
-
   "remotehw_config.title": "Remote Hardware",
   "remotehw_config.view_docs": "View Remote Hardware Documentation",
   "remotehw_config.enabled": "Enable Remote Hardware",
@@ -4173,7 +3999,6 @@
   "remotehw_config.allow_undefined_description": "Allow reading/writing to pins not explicitly defined in available_pins",
   "remotehw_config.pins_note": "Note: Available pins configuration is managed through the Meshtastic app or CLI",
   "remotehw_config.save_button": "Save Remote Hardware Config",
-
   "detectionsensor_config.title": "Detection Sensor",
   "detectionsensor_config.view_docs": "View Detection Sensor Documentation",
   "detectionsensor_config.enabled": "Enable Detection Sensor",
@@ -4194,7 +4019,6 @@
   "detectionsensor_config.state_broadcast_secs": "State Broadcast Interval (seconds)",
   "detectionsensor_config.state_broadcast_secs_description": "Periodic heartbeat interval for current state (0 = disabled)",
   "detectionsensor_config.save_button": "Save Detection Sensor Config",
-
   "paxcounter_config.title": "Paxcounter",
   "paxcounter_config.view_docs": "View Paxcounter Documentation",
   "paxcounter_config.enabled": "Enable Paxcounter",
@@ -4206,7 +4030,6 @@
   "paxcounter_config.ble_threshold": "BLE RSSI Threshold (dBm)",
   "paxcounter_config.ble_threshold_description": "Minimum BLE signal strength to count (default: -80)",
   "paxcounter_config.save_button": "Save Paxcounter Config",
-
   "serial_config.title": "Serial Module",
   "serial_config.view_docs": "View Serial Module Documentation",
   "serial_config.enabled": "Enable Serial Module",
@@ -4227,7 +4050,6 @@
   "serial_config.override_console": "Override Console Port",
   "serial_config.override_console_description": "Use platform's default serial port instead of configured pins",
   "serial_config.save_button": "Save Serial Config",
-
   "ambientlighting_config.title": "Ambient Lighting",
   "ambientlighting_config.view_docs": "View Ambient Lighting Documentation",
   "ambientlighting_config.led_state": "Enable LED",
@@ -4240,7 +4062,6 @@
   "ambientlighting_config.green": "Green",
   "ambientlighting_config.blue": "Blue",
   "ambientlighting_config.save_button": "Save Ambient Lighting Config",
-
   "security_config.title": "Security",
   "security_config.view_docs": "View Security Documentation",
   "security_config.public_key": "Local Public Key",
@@ -4265,7 +4086,6 @@
   "security_config.copy_private_key_confirm": "Are you sure you want to copy your private key to the clipboard? Never share this key with anyone!",
   "security_config.invalid_base64": "Invalid format. Please enter a valid base64-encoded key.",
   "security_config.fix_invalid_keys": "Please fix invalid admin keys before saving",
-
   "gpio_summary.title": "GPIO Pin Usage",
   "gpio_summary.description": "Pins currently configured across all sections",
   "gpio_summary.no_pins": "No GPIO pins are currently configured",
@@ -4291,10 +4111,8 @@
   "gpio_summary.monitor_pin": "Monitor Pin",
   "gpio_summary.serial_rx": "Serial RX",
   "gpio_summary.serial_tx": "Serial TX",
- 
   "nodes_private": "Private Positions",
   "nodes_private_description": "Allows viewing private position overrides on the map, history, and telemetry.",
-
   "channel_database.title": "Channel Database",
   "channel_database.description": "Store additional channel configurations for server-side decryption. These channels allow MeshMonitor to decrypt encrypted packets without configuring them on the device. This is read-only - you cannot transmit on these channels.",
   "channel_database.view_docs": "View Meshtastic Encryption Documentation",
@@ -4386,11 +4204,9 @@
   "channel_database.drag_to_reorder": "Drag to reorder",
   "channel_database.reorder_success": "Channel order updated",
   "channel_database.reorder_error": "Failed to update channel order",
-
   "common.never": "Never",
   "common.importing": "Importing...",
   "common.deleting": "Deleting...",
-
   "news.title": "News",
   "news.view_news": "View News",
   "news.do_not_show_again": "Don't show these again",
@@ -4403,13 +4219,11 @@
   "news.category.security": "Security",
   "news.category.feature": "Feature",
   "news.category.maintenance": "Maintenance",
-
   "mqtt_bridge_config.geo_status.title": "Geo filter status",
   "mqtt_bridge_config.geo_status.dropped_summary": "Out-of-bbox positions dropped — downlink: {{downlink}} · uplink: {{uplink}}",
   "mqtt_bridge_config.geo_status.dropped_note": "Counts plaintext positions only — encrypted positions are evaluated after decryption and are not counted here.",
   "mqtt_bridge_config.geo_status.last_sweep": "Last sweep {{time}}: scanned {{scanned}} · ignored {{ignored}} · purged {{purged}} · lifted {{lifted}} ({{duration}} ms)",
   "mqtt_bridge_config.geo_status.no_sweep": "No sweep has run yet.",
-
   "automation.ignored_nodes.title": "Ignored Nodes",
   "automation.ignored_nodes.description": "Nodes on this list stay ignored permanently. MeshMonitor re-applies the ignored flag automatically whenever a listed node reappears without it — for example after inactive-node cleanup, or when the device's node database fills up and clears the ignore on its own.",
   "automation.ignored_nodes.total_ignored": "Ignored Nodes",
@@ -4426,7 +4240,6 @@
   "automation.ignored_nodes.unignore": "Un-ignore",
   "automation.ignored_nodes.removed": "{{name}} has been un-ignored.",
   "automation.ignored_nodes.remove_failed": "Failed to un-ignore node. Please try again.",
-
   "automation.distance_delete.title": "Auto Delete by Distance",
   "automation.distance_delete.description": "Automatically delete nodes beyond a specified distance from a home coordinate. Useful for cleaning up distant nodes injected by airplane relays.",
   "automation.distance_delete.enabled": "Enable Auto Delete by Distance",
@@ -4447,7 +4260,6 @@
   "automation.distance_delete.timestamp": "Time",
   "automation.distance_delete.no_home_coordinate": "Set a home coordinate to enable distance-based deletion",
   "automation.distance_delete.protected_note": "Favorited nodes and the local node are always protected",
-
   "meshcore.title": "MeshCore Monitor",
   "meshcore.connection": "Connection",
   "meshcore.connection_type": "Connection Type",
@@ -4604,10 +4416,8 @@
   "mqtt.packets.okToMqttUnknown": "unknown",
   "mqtt.packets.okToMqttUnknownTitle": "The ok_to_mqtt bit could not be read for this reception — the payload was not decryptable, or the packet was captured before violation detection was added.",
   "mqtt.packets.violationsStillRecorded": "ok_to_mqtt violation detection keeps running while capture is off — turning capture on only makes the per-packet violation badge visible here. Confirmed violations are always listed in Analysis & Reports → ok_to_mqtt violations.",
-
   "analysis.mqtt_violations.title": "ok_to_mqtt Violations",
   "analysis.mqtt_violations.description": "Find MQTT gateways that uplinked other nodes' packets even though the sender did not opt in to MQTT (ok_to_mqtt = 0).",
-
   "analysis.mqtt_violations.window": "Window",
   "analysis.mqtt_violations.lookback_1d": "24 h",
   "analysis.mqtt_violations.lookback_7d": "7 days",
@@ -4618,31 +4428,25 @@
   "analysis.mqtt_violations.clear_range": "Clear dates",
   "analysis.mqtt_violations.range_error": "The start date must be on or before the end date.",
   "analysis.mqtt_violations.horizon_hint": "Confirmed violations are kept for about 90 days. Suspected rows come from the MQTT packet monitor and only reach back {{window}}.",
-
   "analysis.mqtt_violations.include_unknown": "Include unproven (unreadable bit)",
   "analysis.mqtt_violations.include_unknown_help": "Also count receptions where the ok_to_mqtt bit could not be read. These are not proven violations and come from a much shorter retention window.",
-
   "analysis.mqtt_violations.run": "Run report",
   "analysis.mqtt_violations.rerun": "Re-run report",
   "analysis.mqtt_violations.running": "Scanning…",
   "analysis.mqtt_violations.prerun": "This report scans every MQTT source you can read for gateways that relayed another node's packet despite ok_to_mqtt = 0. Choose a window and press Run report — nothing is queried until you do.",
   "analysis.mqtt_violations.loading": "Scanning MQTT violation history…",
-
   "analysis.mqtt_violations.empty": "No ok_to_mqtt violations in the selected window.",
   "analysis.mqtt_violations.empty_good_news": "On a healthy network that is the expected result — it means every MQTT gateway that relayed another node's packet respected the sender's opt-out.",
   "analysis.mqtt_violations.empty_forward_only": "Detection is forward-only: packets captured before this feature shipped cannot be classified, so a freshly upgraded install starts empty and fills as new MQTT traffic arrives.",
   "analysis.mqtt_violations.no_sources": "No sources available to you.",
   "analysis.mqtt_violations.no_sources_hint": "This report reads the MQTT sources you have packet-monitor read access to. If you are signed out or have no source permissions, sign in or ask an administrator. If this install has no sources configured yet, there is nothing to scan.",
-
   "analysis.mqtt_violations.error_invalid_range": "The selected date range is invalid.",
   "analysis.mqtt_violations.error_invalid_sort": "That column cannot be sorted.",
   "analysis.mqtt_violations.error_fetch_failed": "Failed to read ok_to_mqtt violation history.",
-
   "analysis.mqtt_violations.stat_gateways": "Gateways",
   "analysis.mqtt_violations.stat_confirmed": "Confirmed violations",
   "analysis.mqtt_violations.stat_suspected": "Suspected",
   "analysis.mqtt_violations.stat_originators": "Originators affected",
-
   "analysis.mqtt_violations.col_gateway": "Gateway",
   "analysis.mqtt_violations.col_confirmed": "Confirmed",
   "analysis.mqtt_violations.col_confirmed_title": "Receptions where the sender's ok_to_mqtt bit was explicitly 0 and a different node published the packet to MQTT. Proven.",
@@ -4655,27 +4459,22 @@
   "analysis.mqtt_violations.col_last_seen": "Last seen",
   "analysis.mqtt_violations.sort_by": "Sort by {{column}}",
   "analysis.mqtt_violations.suspected_only_title": "No confirmed violations from this gateway in this window — only unproven ones.",
-
   "analysis.mqtt_violations.suspected_caveat": "Suspected rows are not proven violations — the ok_to_mqtt bit could not be read. They come from the MQTT packet monitor's log and only reach back {{window}}, while confirmed violations reach back about 90 days.",
   "analysis.mqtt_violations.suspected_unavailable": "Suspected rows need the MQTT packet monitor's capture enabled. The confirmed violations shown here are unaffected.",
   "analysis.mqtt_violations.window_hours": "{{hours}} h",
   "analysis.mqtt_violations.window_days": "{{days}} days",
-
   "analysis.mqtt_violations.cap_warning": "Showing the first {{cap}} rows. The API caps a single scan at {{cap}} rows, so the total and any later pages are incomplete — narrow the window or select fewer sources.",
   "analysis.mqtt_violations.cap_warning_asc": "Sorting ascending inside a capped scan orders only those {{cap}} rows, not the whole window.",
-
   "analysis.mqtt_violations.export_csv": "Export CSV",
   "analysis.mqtt_violations.export_done": "Exported {{count}} rows",
   "analysis.mqtt_violations.export_capped": "Exported {{exported}} of {{total}} matching rows — the API caps a single scan at {{cap}} rows. Narrow the window to export the rest.",
   "analysis.mqtt_violations.export_failed": "Export failed",
-
   "analysis.mqtt_violations.total_rows": "{{total}} gateways",
   "analysis.mqtt_violations.total_rows_capped": "{{cap}}+ gateways",
   "analysis.mqtt_violations.page": "Page {{page}} of {{pages}}",
   "analysis.mqtt_violations.prev": "Previous",
   "analysis.mqtt_violations.next": "Next",
   "analysis.mqtt_violations.page_size": "Rows per page",
-
   "analysis.mqtt_violations.expand": "Show violating packets",
   "analysis.mqtt_violations.collapse": "Hide violating packets",
   "analysis.mqtt_violations.drill_title": "Violating packets published by {{gateway}}",
@@ -4692,7 +4491,6 @@
   "analysis.mqtt_violations.dcol_bitfield": "Bitfield",
   "analysis.mqtt_violations.dcol_topic": "Topic",
   "analysis.mqtt_violations.dcol_rx_time": "RX time",
-
   "meshcore.rooms.login_title": "Login to Room Server",
   "meshcore.rooms.password_placeholder": "Password (empty for guest)",
   "meshcore.rooms.login_button": "Login",
@@ -4813,7 +4611,6 @@
   "firmware.recovery_not_online": "Node is not online and accepting connections yet. Recover it via USB and wait for it to reconnect before clearing the flag.",
   "firmware.recovery_clear_retry": "I've Recovered via USB — Clear Flag & Retry",
   "firmware.recovery_cleared": "Recovery flag cleared",
-
   "direct_links.neighbor_connection": "Neighbor Connection",
   "direct_links.bidirectional": "Bidirectional",
   "direct_links.distance": "Distance",
@@ -4852,7 +4649,6 @@
     "showPolarGrid": "Show Polar Grid",
     "polarGridDisabledTooltip": "Requires own node position"
   },
-
   "source.header": "Sources",
   "source.add_short": "+ Add",
   "source.edit_mode": "Edit",
@@ -5020,7 +4816,6 @@
   "source.sidebar.map_analysis": "Map Analysis",
   "source.topbar.sign_in": "Sign In",
   "source.topbar.logo_alt": "MeshMonitor Logo",
-
   "unified.back_to_sources": "Sources",
   "unified.packets.title": "Unified Packet Monitor",
   "unified.packets.subtitle": "Live packet stream across all sources",
@@ -5034,7 +4829,6 @@
   "unified.packets.column_source": "Source",
   "unified.close": "Close",
   "unified.no_text": "(no text)",
-
   "unified.messages.title": "Unified Messages",
   "unified.messages.subtitle_channel": "#{{channel}} · across all accessible sources",
   "unified.messages.subtitle_none": "Select a channel",
@@ -5063,7 +4857,6 @@
   "unified.messages.hop_count_other": "{{count}} hops",
   "unified.messages.hop_start_only": "start {{value}}",
   "unified.messages.hop_limit_only": "limit {{value}}",
-
   "unified.messages.modal.title": "Reception details",
   "unified.messages.modal.request_id": "Request ID",
   "unified.messages.modal.channel": "Channel",
@@ -5072,7 +4865,6 @@
   "unified.messages.modal.col_snr": "SNR",
   "unified.messages.modal.col_rssi": "RSSI",
   "unified.messages.modal.col_heard": "Heard",
-
   "unified.telemetry.title": "Unified Telemetry",
   "unified.telemetry.subtitle": "Latest readings · all sources",
   "unified.telemetry.search_placeholder": "Search nodes…",
@@ -5098,9 +4890,7 @@
   "unified.telemetry.age_hours": "{{count}}h ago",
   "unified.telemetry.age_days": "{{count}}d ago",
   "unified.telemetry.jump_to_source": "Jump to {{name}}",
-
   "admin.back_to_dashboard": "Back to Dashboard",
-
   "automation.airtime_cutoff.title": "Cutoff Airtime Utilization Threshold",
   "automation.airtime_cutoff.description": "Pauses all automations (auto-traceroute, auto-announce, timers, etc.) whenever the connected node's Channel Utilization rises above this threshold, so bots stop adding traffic while the mesh is busy with real activity. Automations resume automatically once utilization drops back below the threshold. Set to 0 to disable.",
   "automation.airtime_cutoff.threshold_label": "Cutoff Airtime Utilization Threshold (%)",
@@ -5129,7 +4919,6 @@
   "automation.auto_heap.heap_status": "Current heap: {{kb}} KB free",
   "automation.auto_heap.threshold_label": "Heap free threshold (KB)",
   "automation.auto_heap.threshold_hint": "Trigger a purge when the node reports less than this amount of free heap memory.",
-
   "automation.auto_ping.title": "Auto Ping",
   "automation.auto_ping.description": "When enabled, mesh users can send a DM with \"ping N\" to start N automated pings back to them, or \"ping stop\" to cancel an active session.",
   "automation.auto_ping.settings_saved": "Auto-ping settings saved",
@@ -5150,7 +4939,6 @@
   "automation.auto_ping.successful": "Successful",
   "automation.auto_ping.failed": "Failed",
   "automation.auto_ping.elapsed": "Elapsed",
-
   "automation.distance_delete.action": "Action for nodes beyond threshold",
   "automation.distance_delete.action_delete": "Delete node",
   "automation.distance_delete.action_ignore": "Ignore node",
@@ -5184,7 +4972,6 @@
   "meshcore.automation.pathfinding.filter.no_match": "No contacts match the current filters",
   "meshcore.automation.autoack.node_ignore_list": "Sender Ignore List",
   "meshcore.automation.autoack.node_ignore_list_description": "Never auto-acknowledge these senders — use it to break a bot echo loop. One entry per line, or comma-separated. An entry is either a public key (full key or any leading prefix, with or without a leading \"!\") or a contact/sender name. Names are matched ignoring case and extra spaces, and are the only way to exclude a channel sender, because MeshCore channel packets carry no sender key.",
-
   "meshcore.receive_only.title": "Receive-only mode",
   "meshcore.receive_only.toggle_label": "Strict receive-only (never transmit)",
   "meshcore.receive_only.description": "Block every transmission from this MeshCore node. Messages, adverts, path discovery, remote CLI, logins, telemetry requests and all automations are held. Receiving, the packet log, the Analyzer Observer, contact and telemetry updates, and local serial configuration keep working.",
@@ -5198,5 +4985,6 @@
   "meshcore.receive_only.saved_off": "Receive-only mode disabled — this node can transmit again",
   "meshcore.receive_only.save_failed": "Failed to change receive-only mode",
   "meshcore.receive_only.console_placeholder": "Local serial commands still work; commands that transmit are blocked.",
-  "messages.unread_divider": "New messages"
+  "messages.unread_divider": "New messages",
+  "meshcore.out_path.applied_unconfirmed": "Path applied, but the device did not confirm it in time. This is common on a busy device."
 }

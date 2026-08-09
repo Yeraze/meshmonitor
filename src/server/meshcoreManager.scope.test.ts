@@ -110,7 +110,7 @@ function makeManager(opts: {
   // discoverRegions installs a zero-hop direct out_path before each
   // request_regions (#3743) so the ANON_REQ routes direct. Stub the device
   // round-trip + DB mirror; these tests assert selection/ordering, not routing.
-  vi.spyOn(m as any, 'setContactOutPath').mockResolvedValue(true);
+  vi.spyOn(m as any, 'setContactOutPath').mockResolvedValue({ applied: true, ackConfirmed: true });
 
   return { manager: m, bridgeCalls, scopeUpdates };
 }

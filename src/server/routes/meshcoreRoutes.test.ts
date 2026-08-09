@@ -64,7 +64,7 @@ const meshcoreManager = {
   getRespondToDiscovery: vi.fn().mockResolvedValue(false),
   setRespondToDiscovery: vi.fn().mockResolvedValue(undefined),
   shareContact: vi.fn().mockResolvedValue({ ok: true }),
-  setContactOutPath: vi.fn().mockResolvedValue(true),
+  setContactOutPath: vi.fn().mockResolvedValue({ applied: true, ackConfirmed: true }),
   setNodeFavorite: vi.fn().mockResolvedValue(undefined),
   loginToNode: vi.fn().mockResolvedValue(true),
   requestNodeStatus: vi.fn().mockResolvedValue({ batteryMv: 4200, uptimeSecs: 3600 }),
@@ -2157,7 +2157,7 @@ describe('MeshCore Routes', () => {
 
     beforeEach(() => {
       meshcoreManager.setContactOutPath.mockReset();
-      meshcoreManager.setContactOutPath.mockResolvedValue(true);
+      meshcoreManager.setContactOutPath.mockResolvedValue({ applied: true, ackConfirmed: true });
     });
 
     it('requires authentication', async () => {
@@ -2244,12 +2244,42 @@ describe('MeshCore Routes', () => {
       expect(Array.from(bytes)).toEqual([]);
     });
 
-    it('returns 409 when the manager rejects', async () => {
-      meshcoreManager.setContactOutPath.mockResolvedValueOnce(false);
+    it('returns 409 when the device genuinely rejects the write', async () => {
+      meshcoreManager.setContactOutPath.mockResolvedValueOnce({ applied: false, ackConfirmed: false });
       const response = await authenticatedAgent
         .put(`/api/sources/test-source/meshcore/contacts/${VALID_PUBKEY}/out-path`)
         .send({ outPath: 'a3' });
       expect(response.status).toBe(409);
+    });
+
+    // #4625: meshcore.js resolves CMD_ADD_UPDATE_CONTACT on an Ok ack that is
+    // routinely lost in radio traffic while the device applies the write anyway.
+    // This used to 409 with "the device did not respond in time" for a path that
+    // WAS installed, so the user saw a failure and an unchanged path, and
+    // retrying looked broken too.
+    it('reports success — not 409 — when the write landed but the ack was lost', async () => {
+      meshcoreManager.setContactOutPath.mockResolvedValueOnce({ applied: true, ackConfirmed: false });
+      const response = await authenticatedAgent
+        .put(`/api/sources/test-source/meshcore/contacts/${VALID_PUBKEY}/out-path`)
+        .send({ outPath: 'a3' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.ackConfirmed).toBe(false);
+      // The caveat must reach the user; silently claiming a clean success would
+      // be the opposite failure.
+      expect(response.body.warning).toMatch(/did not confirm/i);
+    });
+
+    it('omits the caveat when the device did acknowledge', async () => {
+      meshcoreManager.setContactOutPath.mockResolvedValueOnce({ applied: true, ackConfirmed: true });
+      const response = await authenticatedAgent
+        .put(`/api/sources/test-source/meshcore/contacts/${VALID_PUBKEY}/out-path`)
+        .send({ outPath: 'a3' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.ackConfirmed).toBe(true);
+      expect(response.body.warning).toBeUndefined();
     });
   });
 
