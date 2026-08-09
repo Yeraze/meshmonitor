@@ -473,6 +473,27 @@ describe('raw palette references outside App.css', () => {
     expect(Array.from(new Set(raw))).toEqual([]);
   });
 
+  it('has no script reading a palette var back out of the computed style', () => {
+    // A fourth spelling, and the only one that survives in JS rather than CSS:
+    // `getComputedStyle(root).getPropertyValue('--ctp-base')`. Charts used it to
+    // pass colors to Recharts and Leaflet, which cannot take a `var()`.
+    //
+    // It is the most dangerous spelling of the lot. Every call site guarded on
+    // truthiness — `if (base && surface0 && text) setChartColors(...)` — so once
+    // the palette layer goes away the read returns '', the guard fails, and the
+    // component keeps its hardcoded Mocha fallback forever. No error, no blank
+    // chart, just colors frozen to one theme.
+    const offenders: string[] = [];
+    for (const file of walk(resolve('src'))) {
+      if (!/\.(ts|tsx)$/.test(file)) continue;
+      const text = stripComments(readFileSync(file, 'utf8'));
+      for (const m of text.matchAll(/getPropertyValue\(\s*['"](--ctp-[A-Za-z0-9-]+)/g)) {
+        offenders.push(`${m[1]} (${file.replace(resolve('.') + '/', '')})`);
+      }
+    }
+    expect(Array.from(new Set(offenders))).toEqual([]);
+  });
+
   it('references no --ctp-* var that nothing defines', () => {
     // The sharper guard, and the one that would have caught both shipped bugs:
     // `--ctp-red-rgb` (#4617) and `--ctp-yellow-soft` were never defined

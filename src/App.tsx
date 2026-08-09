@@ -402,22 +402,23 @@ function App() {
 
   // Get computed CSS color values for Leaflet Polyline components (which don't support CSS variables)
   const [themeColors, setThemeColors] = useState({
-    mauve: '#cba6f7', // Default to Mocha theme colors
-    red: '#f38ba8',
-    blue: '#89b4fa', // For forward traceroute path
-    overlay0: '#6c7086', // For MQTT segments (muted gray)
+    // Fallbacks only, replaced on mount by the effect below.
+    accentAlt: '#cba6f7',
+    error: '#f38ba8',
+    accent: '#89b4fa', // forward traceroute path
+    faint: '#6c7086', // MQTT segments
   });
 
   // Update theme colors when theme changes
   useEffect(() => {
     const rootStyle = getComputedStyle(document.documentElement);
-    const mauve = rootStyle.getPropertyValue('--ctp-mauve').trim();
-    const red = rootStyle.getPropertyValue('--ctp-red').trim();
-    const blue = rootStyle.getPropertyValue('--ctp-blue').trim();
-    const overlay0 = rootStyle.getPropertyValue('--ctp-overlay0').trim();
+    const accentAlt = rootStyle.getPropertyValue('--color-accent-alt').trim();
+    const error = rootStyle.getPropertyValue('--color-error').trim();
+    const accent = rootStyle.getPropertyValue('--color-accent').trim();
+    const faint = rootStyle.getPropertyValue('--color-text-faint').trim();
 
-    if (mauve && red && blue && overlay0) {
-      setThemeColors({ mauve, red, blue, overlay0 });
+    if (accentAlt && error && accent && faint) {
+      setThemeColors({ accentAlt, error, accent, faint });
     }
   }, [theme]);
 

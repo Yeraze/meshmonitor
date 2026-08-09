@@ -172,10 +172,10 @@ export interface TracerouteDigest {
  * Theme colors for path rendering
  */
 export interface ThemeColors {
-  mauve: string;
-  red: string;
-  blue: string;
-  overlay0: string;
+  accentAlt: string;
+  error: string;
+  accent: string;
+  faint: string;
   // Overlay scheme colors (override theme CSS colors when set)
   tracerouteForward?: string;
   tracerouteReturn?: string;
@@ -717,7 +717,7 @@ export function useTraceroutePaths({
         segments={renderSegments}
         snrColors={themeColors.snrColors ?? FALLBACK_SNR_COLORS}
         colorMode="snr"
-        mqttColor={themeColors.mqttSegment ?? themeColors.overlay0}
+        mqttColor={themeColors.mqttSegment ?? themeColors.faint}
         curvature={0}
         weight={seg => weightByUsage(seg.usageCount ?? 1)}
         opacity={seg => getSegmentSnrOpacity(seg.snrSamples, seg.isMqtt)}
@@ -727,7 +727,7 @@ export function useTraceroutePaths({
         segmentClassName={baseSegmentClassName}
       />,
     ];
-  }, [showPaths, traceroutesDigest, nodesPositionDigest, distanceUnit, maxNodeAgeHours, themeColors.snrColors, themeColors.mqttSegment, themeColors.overlay0, callbacks, visibleNodeNums, mapZoom, liveNodePositions]);
+  }, [showPaths, traceroutesDigest, nodesPositionDigest, distanceUnit, maxNodeAgeHours, themeColors.snrColors, themeColors.mqttSegment, themeColors.faint, callbacks, visibleNodeNums, mapZoom, liveNodePositions]);
 
   // Separate memoization for selected node traceroute (showRoute)
   // This can change independently without re-rendering the base map markers
@@ -849,8 +849,8 @@ export function useTraceroutePaths({
           snrColors={themeColors.snrColors ?? FALLBACK_SNR_COLORS}
           colorMode="fixed-leg"
           legColors={{
-            forward: themeColors.tracerouteForward ?? themeColors.blue,
-            return: themeColors.tracerouteReturn ?? themeColors.red,
+            forward: themeColors.tracerouteForward ?? themeColors.accent,
+            return: themeColors.tracerouteReturn ?? themeColors.error,
           }}
           curvature={0.2}
           weight={tracerouteSegmentWeight}
@@ -864,7 +864,7 @@ export function useTraceroutePaths({
       logger.error('Error rendering selected node traceroute:', error);
       return null;
     }
-  }, [showRoute, selectedNodeId, traceroutesDigest, nodesPositionDigest, currentNodeId, distanceUnit, themeColors.red, themeColors.blue, themeColors.tracerouteForward, themeColors.tracerouteReturn, themeColors.snrColors, liveNodePositions]);
+  }, [showRoute, selectedNodeId, traceroutesDigest, nodesPositionDigest, currentNodeId, distanceUnit, themeColors.error, themeColors.accent, themeColors.tracerouteForward, themeColors.tracerouteReturn, themeColors.snrColors, liveNodePositions]);
 
   // Compute the set of node numbers involved in the selected traceroute.
   // Used for filtering map markers to only show nodes in the active
