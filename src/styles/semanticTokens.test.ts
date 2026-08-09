@@ -414,6 +414,16 @@ describe('raw palette references outside App.css', () => {
       .replace(/^\s*\/\/.*$/gm, ' ');
   }
 
+  // SCOPE — what this guard does NOT catch: a hardcoded `rgba(166, 227, 161,
+  // 0.3)` is the same theme-blind defect as `--ctp-yellow-soft`, spelled so it
+  // isn't a custom-property reference at all. A sweep found 82 such swatch
+  // approximations across 22 files, several sitting right next to a role token
+  // (`background: rgba(<mocha green>)` beside `color: var(--color-success)`),
+  // so on Nord or Gruvbox the two halves disagree. Fixing them needs per-site
+  // judgement — shadow vs fill vs border, and the right opacity — so it is its
+  // own pass, tracked separately, and the detector lands with the fixes rather
+  // than red against 82 pre-existing sites. Until then: passing this file does
+  // not mean a component is theme-clean.
   function referencedPaletteVars(): { name: string; file: string }[] {
     const hits: { name: string; file: string }[] = [];
     for (const file of walk(resolve('src'))) {
