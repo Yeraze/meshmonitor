@@ -504,7 +504,7 @@ router.put(
         success: true,
         ackConfirmed: result.ackConfirmed,
         ...(result.ackConfirmed ? {} : {
-          warning: 'Path applied, but the device did not acknowledge it. This is common — the acknowledgement is often lost in radio traffic. Refresh the contact to confirm.',
+          warning: 'Path applied, but the device did not confirm it in time. This is common on a busy device. Refresh the contact to verify.',
         }),
       });
     } catch (error) {

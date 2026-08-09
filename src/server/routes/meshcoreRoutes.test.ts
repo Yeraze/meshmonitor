@@ -2268,7 +2268,7 @@ describe('MeshCore Routes', () => {
       expect(response.body.ackConfirmed).toBe(false);
       // The caveat must reach the user; silently claiming a clean success would
       // be the opposite failure.
-      expect(response.body.warning).toMatch(/did not acknowledge/i);
+      expect(response.body.warning).toMatch(/did not confirm/i);
     });
 
     it('omits the caveat when the device did acknowledge', async () => {

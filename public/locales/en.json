@@ -4986,5 +4986,5 @@
   "meshcore.receive_only.save_failed": "Failed to change receive-only mode",
   "meshcore.receive_only.console_placeholder": "Local serial commands still work; commands that transmit are blocked.",
   "messages.unread_divider": "New messages",
-  "meshcore.out_path.applied_unconfirmed": "Path applied, but the device did not acknowledge it. This is common — the acknowledgement is often lost in radio traffic."
+  "meshcore.out_path.applied_unconfirmed": "Path applied, but the device did not confirm it in time. This is common on a busy device."
 }

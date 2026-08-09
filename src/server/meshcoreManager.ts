@@ -4509,7 +4509,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * the device had actually applied:
    *
    *   { applied: false, ackConfirmed: false }  rejected / not a connected Companion
-   *   { applied: true,  ackConfirmed: false }  write landed, ack lost in radio chatter
+   *   { applied: true,  ackConfirmed: false }  write landed, ack not seen in time
    *   { applied: true,  ackConfirmed: true  }  acknowledged
    */
   async setContactOutPath(
@@ -4549,9 +4549,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         return SET_OUT_PATH_REJECTED;
       }
       if (ackTimedOut) {
-        // meshcore.js resolves CMD_ADD_UPDATE_CONTACT on its Ok ack, which is
-        // frequently lost in unrelated radio chatter even though the device
-        // applied the write (#3743). Fall THROUGH to the mirroring below rather
+        // meshcore.js resolves CMD_ADD_UPDATE_CONTACT on its Ok ack. That ack
+        // comes back over the companion link (set_out_path is a SERIAL_ONLY
+        // command — it puts nothing on the radio), but a busy device does not
+        // always return it inside the 12 s window even though it applied the
+        // write (#3743). Fall THROUGH to the mirroring below rather
         // than returning early: returning here left the in-memory contact, the
         // meshcore_nodes row and the UI showing the old path for a write that
         // had landed, so the user saw "failed" and no change (#4625).

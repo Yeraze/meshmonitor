@@ -1323,15 +1323,15 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         return false;
       }
       // #4625: the device applying the write but not acknowledging it is a
-      // SUCCESS with a caveat, not a failure — the ack is routinely lost in
-      // radio traffic. Surfacing it through setError() would put it back in
+      // SUCCESS with a caveat, not a failure — a busy device often misses the
+      // ack window. Surfacing it through setError() would put it back in
       // the error channel, which is the bug we just fixed, so it goes out as
       // an informational toast instead.
       if (data.ackConfirmed === false) {
         showToast(
           t(
             'meshcore.out_path.applied_unconfirmed',
-            'Path applied, but the device did not acknowledge it. This is common — the acknowledgement is often lost in radio traffic.',
+            'Path applied, but the device did not confirm it in time. This is common on a busy device.',
           ),
           'warning',
         );
