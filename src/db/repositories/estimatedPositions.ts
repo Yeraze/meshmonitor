@@ -173,6 +173,19 @@ export class EstimatedPositionsRepository extends BaseRepository {
    *
    * `nodeNums` is passed separately from `anchors` on purpose: a node can solve
    * with zero retained anchors, and its stale rows must still be cleared.
+   *
+   * **Contract when `nodeNums` is empty (#4614).** An empty `nodeNums` with a
+   * non-empty `anchors` is legal and means "replace exactly the nodes these
+   * anchors belong to" — the target set is derived from `anchors`. It does NOT
+   * mean "clear everything"; use `deleteAll()` for that. Both empty is a no-op.
+   *
+   * **Atomic (#4614).** The delete and the inserts run in one transaction, so a
+   * concurrent reader never observes the window between them. Without it a read
+   * landing mid-write sees zero anchors for a node whose estimate still exists,
+   * and the API reports "no rationale" for a pin that has one. Per-backend
+   * branch rather than `this.db.transaction`, matching
+   * `meshcorePathfindingTargets.setTargets` — better-sqlite3's transaction
+   * callback is synchronous while the PG and MySQL drivers are async.
    */
   async replaceAnchors(nodeNums: number[], anchors: EstimatedPositionAnchorInput[]): Promise<void> {
     if (nodeNums.length === 0 && anchors.length === 0) return;
@@ -180,14 +193,44 @@ export class EstimatedPositionsRepository extends BaseRepository {
     const targets = nodeNums.length > 0
       ? nodeNums
       : [...new Set(anchors.map((a) => a.nodeNum))];
-    await this.deleteAnchorsByNodeNums(targets);
-
-    if (anchors.length === 0) return;
 
     const { estimatedPositionAnchors } = this.tables;
+    const batches: EstimatedPositionAnchorInput[][] = [];
     for (let i = 0; i < anchors.length; i += ANCHOR_INSERT_BATCH) {
-      const batch = anchors.slice(i, i + ANCHOR_INSERT_BATCH);
-      await this.db.insert(estimatedPositionAnchors).values(batch);
+      batches.push(anchors.slice(i, i + ANCHOR_INSERT_BATCH));
+    }
+
+    if (this.isSQLite()) {
+      this.getSqliteDb().transaction((tx) => {
+        if (targets.length > 0) {
+          tx.delete(estimatedPositionAnchors)
+            .where(inArray(estimatedPositionAnchors.nodeNum, targets))
+            .run();
+        }
+        for (const batch of batches) {
+          tx.insert(estimatedPositionAnchors).values(batch).run();
+        }
+      });
+    } else if (this.isPostgres()) {
+      await this.getPostgresDb().transaction(async (tx) => {
+        if (targets.length > 0) {
+          await tx.delete(estimatedPositionAnchors)
+            .where(inArray(estimatedPositionAnchors.nodeNum, targets));
+        }
+        for (const batch of batches) {
+          await tx.insert(estimatedPositionAnchors).values(batch);
+        }
+      });
+    } else {
+      await this.getMysqlDb().transaction(async (tx) => {
+        if (targets.length > 0) {
+          await tx.delete(estimatedPositionAnchors)
+            .where(inArray(estimatedPositionAnchors.nodeNum, targets));
+        }
+        for (const batch of batches) {
+          await tx.insert(estimatedPositionAnchors).values(batch);
+        }
+      });
     }
   }
 
