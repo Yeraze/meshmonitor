@@ -81,7 +81,7 @@
   font-size: 0.85rem;
 }
 
-.meshcore-status-bar button:hover { background: var(--ctp-pink); }
+.meshcore-status-bar button:hover { background: color-mix(in srgb, var(--color-accent-alt) 85%, var(--color-text)); }
 .meshcore-status-bar button:disabled {
   background: var(--color-surface-active);
   color: var(--color-text-faint);
@@ -831,7 +831,7 @@
   font-weight: 500;
 }
 
-.meshcore-send-bar button:hover { background: var(--ctp-pink); }
+.meshcore-send-bar button:hover { background: color-mix(in srgb, var(--color-accent-alt) 85%, var(--color-text)); }
 .meshcore-send-bar button:disabled {
   background: var(--color-surface-active);
   color: var(--color-text-faint);
@@ -983,7 +983,7 @@
   margin-top: 0.5rem;
 }
 
-.meshcore-form-view button:hover { background: var(--ctp-pink); }
+.meshcore-form-view button:hover { background: color-mix(in srgb, var(--color-accent-alt) 85%, var(--color-text)); }
 .meshcore-form-view button:disabled {
   background: var(--color-surface-active);
   color: var(--color-text-faint);
@@ -1403,7 +1403,7 @@
 }
 
 .mc-message-from-link:hover {
-  color: var(--ctp-pink);
+  color: var(--color-accent-alt);
   text-decoration-style: solid;
 }
 

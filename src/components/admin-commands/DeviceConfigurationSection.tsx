@@ -367,7 +367,7 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
               style={{
                 marginTop: '0.75rem',
                 padding: '0.75rem 1rem',
-                background: 'var(--ctp-yellow-soft, rgba(249, 226, 175, 0.15))',
+                background: 'color-mix(in srgb, var(--color-warning) 15%, transparent)',
                 border: '1px solid var(--color-warning)',
                 borderLeft: '4px solid var(--color-warning)',
                 borderRadius: '6px',

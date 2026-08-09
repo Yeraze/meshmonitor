@@ -35,10 +35,13 @@
 .returnEdge,
 .statEdge {
   fill: none;
-  /* Raw palette on purpose (#4579): this is a diagram series color, not a
-     role. Routing data-viz strokes through a semantic token would make the
-     role vocabulary meaningless. */
-  stroke: var(--ctp-pink);
+  /* A diagram series color, not a role — the earlier note (#4579) kept this on
+     the raw palette because the only alternative was a role token, and routing
+     data-viz through one would have made the role vocabulary meaningless. The
+     categorical scale now covers exactly this case: --chart-N slots are picked
+     to stay mutually distinct in every theme, which is the only property a
+     series color needs. */
+  stroke: var(--chart-2);
   stroke-width: 2;
 }
 
@@ -55,7 +58,7 @@
 }
 
 .arrowHead {
-  fill: var(--ctp-pink);
+  fill: var(--chart-2);
 }
 
 .node {

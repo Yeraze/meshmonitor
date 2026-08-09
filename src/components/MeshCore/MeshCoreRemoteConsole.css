@@ -52,7 +52,7 @@
 /* Saved-password-available (not yet logged in): teal, distinct from the
    green "session active" so it doesn't read as an active session. */
 .mrc-status-saved {
-  background: var(--ctp-teal);
+  background: var(--color-info);
   color: var(--color-bg-sunken);
 }
 
@@ -124,7 +124,7 @@
 }
 
 .mrc-btn-primary:hover:not(:disabled) {
-  background: var(--ctp-pink);
+  background: color-mix(in srgb, var(--color-accent-alt) 85%, var(--color-text));
 }
 
 .mrc-btn-primary:disabled {

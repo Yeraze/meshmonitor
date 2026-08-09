@@ -703,7 +703,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                   <span style={{
                     fontSize: '0.7rem',
                     padding: '0.15rem 0.4rem',
-                    background: 'var(--ctp-teal)',
+                    background: 'var(--color-info)',
                     color: 'var(--color-bg)',
                     borderRadius: '3px',
                     fontWeight: 'bold'
@@ -726,7 +726,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                 <span style={{
                   fontSize: '0.7rem',
                   padding: '0.15rem 0.4rem',
-                  background: trigger.responseType === 'text' ? 'var(--color-success)' : trigger.responseType === 'script' ? 'var(--color-warning)' : trigger.responseType === 'traceroute' ? 'var(--color-accent-hover)' : trigger.responseType === 'mailbox' ? 'var(--ctp-pink)' : 'var(--color-accent-alt)',
+                  background: trigger.responseType === 'text' ? 'var(--chart-3)' : trigger.responseType === 'script' ? 'var(--chart-5)' : trigger.responseType === 'traceroute' ? 'var(--chart-1)' : trigger.responseType === 'mailbox' ? 'var(--chart-7)' : 'var(--chart-2)',
                   color: 'var(--color-bg)',
                   borderRadius: '3px',
                   fontWeight: 'bold'
@@ -766,7 +766,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                   style={{
                     padding: '0.25rem 0.5rem',
                     fontSize: '12px',
-                    background: 'var(--ctp-teal)',
+                    background: 'var(--color-info)',
                     color: 'var(--color-bg)',
                     border: 'none',
                     borderRadius: '4px',

@@ -387,3 +387,78 @@ describe('sequential scale (--seq-N)', () => {
     expect(text).not.toMatch(/var\(--ctp-/);
   });
 });
+
+describe('raw palette references outside App.css', () => {
+  // The four optional chat-bubble keys are a different mechanism: they are
+  // user-supplied overrides (OPTIONAL_THEME_COLORS), undefined until someone
+  // sets them, which is exactly why they carry a role token as their fallback.
+  // They keep the --ctp- prefix only because the stored theme schema still uses
+  // it; Phase 3 renames the prefix along with the rest of the schema.
+  const optionalKeys = new Set(
+    (readFileSync(resolve('src/utils/themeValidation.ts'), 'utf8')
+      .match(/OPTIONAL_THEME_COLORS\s*=\s*\[([\s\S]*?)\]/)?.[1] ?? '')
+      .split(',')
+      .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
+      .filter(Boolean)
+      .map((k) => `--ctp-${k}`),
+  );
+
+  // Comments must go before scanning. A file that *documents* a retired
+  // palette var — as CustomTilesetManager.css does, naming `--ctp-red-rgb` in
+  // the header comment explaining the bug that removal fixed — is not a file
+  // that references it. Only full-line `//` comments are stripped, never a
+  // trailing one, so a `//` inside a string can't swallow real code after it.
+  function stripComments(text: string): string {
+    return text
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .replace(/^\s*\/\/.*$/gm, ' ');
+  }
+
+  function referencedPaletteVars(): { name: string; file: string }[] {
+    const hits: { name: string; file: string }[] = [];
+    for (const file of walk(resolve('src'))) {
+      if (file.endsWith('/App.css')) continue;
+      const text = stripComments(readFileSync(file, 'utf8'));
+      for (const m of text.matchAll(/var\((--ctp-[A-Za-z0-9-]+)/g)) {
+        hits.push({ name: m[1], file: file.replace(resolve('.') + '/', '') });
+      }
+    }
+    return hits;
+  }
+
+  it('sanity-checks that the optional-key list was actually parsed', () => {
+    // Without this, a rename in themeValidation.ts would empty the allowlist
+    // and the tests below would still pass — for the wrong reason.
+    expect(optionalKeys.has('--ctp-chatBubbleSentBg')).toBe(true);
+    expect(optionalKeys.size).toBe(4);
+  });
+
+  it('has no component reaching past the role layer to a raw palette var', () => {
+    // Phase 2b: every remaining `var(--ctp-blue)`-style reference in a
+    // component was either a role in disguise (a hover shade, a status color)
+    // or a categorical series color. Both now have a home, so a new raw
+    // reference means someone skipped the vocabulary rather than extended it.
+    const raw = referencedPaletteVars()
+      .filter((h) => !optionalKeys.has(h.name))
+      .map((h) => `${h.name} (${h.file})`);
+    expect(Array.from(new Set(raw))).toEqual([]);
+  });
+
+  it('references no --ctp-* var that nothing defines', () => {
+    // The sharper guard, and the one that would have caught both shipped bugs:
+    // `--ctp-red-rgb` (#4617) and `--ctp-yellow-soft` were never defined
+    // anywhere, so their inline fallbacks — hardcoded Catppuccin Mocha — were
+    // what every theme actually rendered. A fallback makes this invisible at
+    // runtime: nothing breaks, the color is just silently wrong.
+    const defined = new Set<string>();
+    for (const m of appCss.matchAll(/(--ctp-[A-Za-z0-9-]+)\s*:/g)) defined.add(m[1]);
+    expect(defined.size).toBeGreaterThan(10);
+
+    const dangling = referencedPaletteVars().filter(
+      (h) => !defined.has(h.name) && !optionalKeys.has(h.name),
+    );
+    expect(
+      Array.from(new Set(dangling.map((h) => `${h.name} (${h.file})`))),
+    ).toEqual([]);
+  });
+});
