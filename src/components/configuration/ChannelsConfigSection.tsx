@@ -534,7 +534,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                       backgroundColor: channel ? 'var(--color-surface)' : 'var(--color-bg-raised)',
                       opacity: channel?.role === 0 ? 0.5 : 1,
                       boxShadow: (hasReorderChanges ? displaySlot === 0 : channel?.role === 1)
-                        ? '0 0 10px rgba(137, 180, 250, 0.3)' : 'none'
+                        ? '0 0 10px color-mix(in srgb, var(--color-accent) 30%, transparent)' : 'none'
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>

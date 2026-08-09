@@ -801,7 +801,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
                       alignItems: 'center',
                       padding: '0.25rem 0.5rem',
                       marginBottom: '0.15rem',
-                      backgroundColor: matches ? 'rgba(166, 227, 161, 0.1)' : 'rgba(243, 139, 168, 0.1)',
+                      backgroundColor: matches ? 'color-mix(in srgb, var(--color-success) 10%, transparent)' : 'color-mix(in srgb, var(--color-error) 10%, transparent)',
                       border: `1px solid ${matches ? 'var(--color-success)' : 'var(--color-error)'}`,
                       borderRadius: '4px',
                       fontFamily: 'monospace',

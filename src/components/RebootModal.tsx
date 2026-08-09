@@ -221,7 +221,7 @@ export const RebootModal: React.FC<RebootModalProps> = ({ isOpen, onClose }) => 
           borderRadius: '8px',
           padding: '2rem',
           border: '2px solid var(--color-accent)',
-          boxShadow: '0 0 20px rgba(137, 180, 250, 0.5)'
+          boxShadow: '0 0 20px color-mix(in srgb, var(--color-accent) 50%, transparent)'
         }}
       >
         <div style={{ textAlign: 'center' }}>

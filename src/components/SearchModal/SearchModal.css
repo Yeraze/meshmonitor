@@ -84,7 +84,7 @@
 .search-input-row input[type="text"]:focus {
   outline: none;
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 2px rgba(137, 180, 250, 0.2);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
 }
 
 .search-submit-btn {
@@ -145,7 +145,7 @@
 .search-filter-group input[type="date"]:focus {
   outline: none;
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 2px rgba(137, 180, 250, 0.2);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
 }
 
 .search-case-toggle {
@@ -311,8 +311,8 @@
 
 /* Highlight animation for scroll-to-message from search */
 @keyframes search-highlight-pulse {
-  0% { background-color: rgba(249, 226, 175, 0.3); }
-  50% { background-color: rgba(249, 226, 175, 0.15); }
+  0% { background-color: color-mix(in srgb, var(--color-warning) 30%, transparent); }
+  50% { background-color: color-mix(in srgb, var(--color-warning) 15%, transparent); }
   100% { background-color: transparent; }
 }
 

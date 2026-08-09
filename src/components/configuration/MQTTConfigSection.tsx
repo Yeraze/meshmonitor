@@ -305,7 +305,7 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
             margin: '8px 0',
             padding: '10px 12px',
             borderRadius: 6,
-            background: 'rgba(137, 180, 250, 0.10)', // ctp-blue @ low alpha
+            background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
             border: '1px solid var(--color-accent)',
             color: 'var(--color-text)',
             fontSize: 13,
@@ -331,7 +331,7 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
             margin: '8px 0',
             padding: '10px 12px',
             borderRadius: 6,
-            background: 'rgba(243, 139, 168, 0.10)', // ctp-red @ low alpha
+            background: 'color-mix(in srgb, var(--color-error) 10%, transparent)',
             border: '1px solid var(--color-error)',
             color: 'var(--color-text)',
             fontSize: 13,
@@ -354,7 +354,7 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
             margin: '8px 0',
             padding: '10px 12px',
             borderRadius: 6,
-            background: 'rgba(249, 226, 175, 0.10)', // ctp-yellow @ low alpha
+            background: 'color-mix(in srgb, var(--color-warning) 10%, transparent)',
             border: '1px solid var(--color-warning)',
             color: 'var(--color-text)',
             fontSize: 13,

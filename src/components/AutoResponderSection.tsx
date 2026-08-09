@@ -946,7 +946,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                   <span
                                     key={groupIdx}
                                     style={{
-                                      backgroundColor: segment.type === 'parameter' ? 'rgba(166, 227, 161, 0.4)' : 'rgba(137, 180, 250, 0.4)',
+                                      backgroundColor: segment.type === 'parameter' ? 'color-mix(in srgb, var(--color-success) 40%, transparent)' : 'color-mix(in srgb, var(--color-accent) 40%, transparent)',
                                       padding: '2px 4px',
                                       borderRadius: '2px',
                                       fontWeight: segment.type === 'parameter' ? 'bold' : 'normal',
@@ -966,7 +966,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                       alignItems: 'center',
                                       borderRadius: '2px',
                                       overflow: 'hidden',
-                                      border: '1px solid rgba(166, 227, 161, 0.5)'
+                                      border: '1px solid color-mix(in srgb, var(--color-success) 50%, transparent)'
                                     }}
                                     title={group.map(s => s.type === 'parameter' ? `{${s.paramName}}` : s.text).join('')}
                                   >
@@ -974,7 +974,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                       <React.Fragment key={segIdx}>
                                         <span
                                           style={{
-                                            backgroundColor: segment.type === 'parameter' ? 'rgba(166, 227, 161, 0.4)' : 'rgba(137, 180, 250, 0.4)',
+                                            backgroundColor: segment.type === 'parameter' ? 'color-mix(in srgb, var(--color-success) 40%, transparent)' : 'color-mix(in srgb, var(--color-accent) 40%, transparent)',
                                             padding: '2px 4px',
                                             fontWeight: segment.type === 'parameter' ? 'bold' : 'normal',
                                             color: 'var(--color-text)'
@@ -986,7 +986,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                           <span style={{
                                             width: '1px',
                                             height: '100%',
-                                            backgroundColor: 'rgba(205, 214, 244, 0.3)',
+                                            backgroundColor: 'color-mix(in srgb, var(--color-text) 30%, transparent)',
                                             margin: '0'
                                           }} />
                                         )}
@@ -1005,11 +1005,11 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                     </div>
                     <div style={{ marginTop: '0.5rem', fontSize: '0.7rem', color: 'var(--color-text-subtle)', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                        <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: 'rgba(137, 180, 250, 0.4)', borderRadius: '2px' }}></span>
+                        <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: 'color-mix(in srgb, var(--color-accent) 40%, transparent)', borderRadius: '2px' }}></span>
                         Literal text
                       </span>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                        <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: 'rgba(166, 227, 161, 0.4)', borderRadius: '2px' }}></span>
+                        <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: 'color-mix(in srgb, var(--color-success) 40%, transparent)', borderRadius: '2px' }}></span>
                         Parameter
                       </span>
                     </div>
@@ -1171,7 +1171,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                         {testMatch ? (
                           <div style={{ 
                             padding: '0.75rem', 
-                            background: 'rgba(166, 227, 161, 0.1)', 
+                            background: 'color-mix(in srgb, var(--color-success) 10%, transparent)', 
                             border: '1px solid var(--color-success)', 
                             borderRadius: '4px' 
                           }}>
@@ -1200,7 +1200,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                       <span
                                         key={pos}
                                         style={{
-                                          backgroundColor: posInfo ? (posInfo.type === 'parameter' ? 'rgba(166, 227, 161, 0.4)' : 'rgba(137, 180, 250, 0.4)') : 'transparent',
+                                          backgroundColor: posInfo ? (posInfo.type === 'parameter' ? 'color-mix(in srgb, var(--color-success) 40%, transparent)' : 'color-mix(in srgb, var(--color-accent) 40%, transparent)') : 'transparent',
                                           padding: '2px',
                                           borderRadius: posInfo ? '2px' : '0',
                                           fontWeight: posInfo?.type === 'parameter' ? 'bold' : 'normal'
@@ -1302,7 +1302,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                 {newTriggerLiveTestResult.error ? (
                                   <div style={{ 
                                     padding: '0.5rem', 
-                                    background: 'rgba(243, 139, 168, 0.1)', 
+                                    background: 'color-mix(in srgb, var(--color-error) 10%, transparent)', 
                                     border: '1px solid var(--color-error)', 
                                     borderRadius: '4px',
                                     color: 'var(--color-error)',
@@ -1353,7 +1353,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                         ) : (
                           <div style={{ 
                             padding: '0.75rem', 
-                            background: 'rgba(243, 139, 168, 0.1)', 
+                            background: 'color-mix(in srgb, var(--color-error) 10%, transparent)', 
                             border: '1px solid var(--color-error)', 
                             borderRadius: '4px',
                             color: 'var(--color-error)',
@@ -1522,8 +1522,8 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                     display: 'inline-block',
                     width: '12px', 
                     height: '12px', 
-                    backgroundColor: 'rgba(137, 180, 250, 0.3)', 
-                    border: '1px solid rgba(137, 180, 250, 0.5)',
+                    backgroundColor: 'color-mix(in srgb, var(--color-accent) 30%, transparent)', 
+                    border: '1px solid color-mix(in srgb, var(--color-accent) 50%, transparent)',
                     borderRadius: '2px' 
                   }}></span>
                   <span style={{ color: 'var(--color-text)' }}>{t('auto_responder.literal')}</span>
@@ -1537,8 +1537,8 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                     display: 'inline-block',
                     width: '12px',
                     height: '12px',
-                    backgroundColor: 'rgba(166, 227, 161, 0.3)',
-                    border: '1px solid rgba(166, 227, 161, 0.5)',
+                    backgroundColor: 'color-mix(in srgb, var(--color-success) 30%, transparent)',
+                    border: '1px solid color-mix(in srgb, var(--color-success) 50%, transparent)',
                     borderRadius: '2px'
                   }}></span>
                   <span style={{ color: 'var(--color-text)' }}>{t('auto_responder.parameter')}</span>
@@ -1738,7 +1738,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   <div style={{
                     marginTop: '0.5rem',
                     padding: '0.5rem',
-                    background: realtimeMatch ? 'rgba(166, 227, 161, 0.1)' : 'rgba(243, 139, 168, 0.1)',
+                    background: realtimeMatch ? 'color-mix(in srgb, var(--color-success) 10%, transparent)' : 'color-mix(in srgb, var(--color-error) 10%, transparent)',
                     border: `1px solid ${realtimeMatch ? 'var(--color-success)' : 'var(--color-error)'}`,
                     borderRadius: '4px',
                     fontSize: '0.85rem'
@@ -1810,14 +1810,14 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                   <span
                                     key={groupIdx}
                                     style={{
-                                      backgroundColor: segment.type === 'parameter' ? 'rgba(166, 227, 161, 0.3)' : 'rgba(137, 180, 250, 0.2)',
+                                      backgroundColor: segment.type === 'parameter' ? 'color-mix(in srgb, var(--color-success) 30%, transparent)' : 'color-mix(in srgb, var(--color-accent) 20%, transparent)',
                                       padding: '0.2rem 0.4rem',
                                       borderRadius: '4px',
                                       fontWeight: segment.type === 'parameter' ? 'bold' : 'normal',
                                       color: segment.type === 'parameter' ? 'var(--color-success)' : 'var(--color-accent)',
                                       fontFamily: 'monospace',
                                       fontSize: '0.85rem',
-                                      border: segment.type === 'parameter' ? '1px solid rgba(166, 227, 161, 0.5)' : '1px solid rgba(137, 180, 250, 0.3)'
+                                      border: segment.type === 'parameter' ? '1px solid color-mix(in srgb, var(--color-success) 50%, transparent)' : '1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)'
                                     }}
                                   >
                                     {segment.type === 'literal' ? segment.text.trim() : segment.text}
@@ -1832,7 +1832,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                       alignItems: 'center',
                                       borderRadius: '4px',
                                       overflow: 'hidden',
-                                      border: '1px solid rgba(166, 227, 161, 0.5)',
+                                      border: '1px solid color-mix(in srgb, var(--color-success) 50%, transparent)',
                                       fontFamily: 'monospace',
                                       fontSize: '0.85rem'
                                     }}
@@ -1841,7 +1841,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                       <React.Fragment key={segIdx}>
                                         <span
                                           style={{
-                                            backgroundColor: segment.type === 'parameter' ? 'rgba(166, 227, 161, 0.3)' : 'rgba(137, 180, 250, 0.2)',
+                                            backgroundColor: segment.type === 'parameter' ? 'color-mix(in srgb, var(--color-success) 30%, transparent)' : 'color-mix(in srgb, var(--color-accent) 20%, transparent)',
                                             padding: '0.2rem 0.4rem',
                                             fontWeight: segment.type === 'parameter' ? 'bold' : 'normal',
                                             color: segment.type === 'parameter' ? 'var(--color-success)' : 'var(--color-accent)'
@@ -1853,7 +1853,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                           <span style={{
                                             width: '1px',
                                             height: '100%',
-                                            backgroundColor: 'rgba(205, 214, 244, 0.3)',
+                                            backgroundColor: 'color-mix(in srgb, var(--color-text) 30%, transparent)',
                                             margin: '0'
                                           }} />
                                         )}
@@ -1937,7 +1937,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                             {quickTestResult.error ? (
                               <div style={{
                                 padding: '0.5rem',
-                                background: 'rgba(243, 139, 168, 0.1)',
+                                background: 'color-mix(in srgb, var(--color-error) 10%, transparent)',
                                 border: '1px solid var(--color-error)',
                                 borderRadius: '4px',
                                 color: 'var(--color-error)',
@@ -2020,7 +2020,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                       style={{
                         padding: '0.5rem',
                         marginBottom: '0.5rem',
-                        backgroundColor: match ? 'rgba(166, 227, 161, 0.1)' : 'rgba(243, 139, 168, 0.1)',
+                        backgroundColor: match ? 'color-mix(in srgb, var(--color-success) 10%, transparent)' : 'color-mix(in srgb, var(--color-error) 10%, transparent)',
                         border: `1px solid ${match ? (hasConflict ? 'var(--color-caution)' : 'var(--color-success)') : 'var(--color-error)'}`,
                         borderRadius: '4px',
                         fontFamily: 'monospace',
@@ -2081,7 +2081,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                           marginLeft: '1.25rem', 
                           marginBottom: '0.25rem',
                           padding: '0.25rem',
-                          background: 'rgba(250, 179, 135, 0.2)',
+                          background: 'color-mix(in srgb, var(--color-caution) 20%, transparent)',
                           borderRadius: '3px',
                           fontSize: '0.75rem',
                           color: 'var(--color-caution)'
@@ -2288,7 +2288,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                         <span
                                           key={pos}
                                           style={{
-                                            backgroundColor: posInfo ? (posInfo.type === 'parameter' ? 'rgba(166, 227, 161, 0.4)' : 'rgba(137, 180, 250, 0.4)') : 'transparent',
+                                            backgroundColor: posInfo ? (posInfo.type === 'parameter' ? 'color-mix(in srgb, var(--color-success) 40%, transparent)' : 'color-mix(in srgb, var(--color-accent) 40%, transparent)') : 'transparent',
                                             padding: '2px',
                                             borderRadius: posInfo ? '2px' : '0',
                                             fontWeight: posInfo?.type === 'parameter' ? 'bold' : 'normal'
@@ -2302,11 +2302,11 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                   </div>
                                   <div style={{ marginTop: '0.5rem', fontSize: '0.7rem', color: 'var(--color-text-subtle)', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                                      <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: 'rgba(137, 180, 250, 0.4)', borderRadius: '2px' }}></span>
+                                      <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: 'color-mix(in srgb, var(--color-accent) 40%, transparent)', borderRadius: '2px' }}></span>
                                       Literal text
                                     </span>
                                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                                      <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: 'rgba(166, 227, 161, 0.4)', borderRadius: '2px' }}></span>
+                                      <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: 'color-mix(in srgb, var(--color-success) 40%, transparent)', borderRadius: '2px' }}></span>
                                       Parameter match
                                     </span>
                                   </div>

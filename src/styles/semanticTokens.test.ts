@@ -41,22 +41,50 @@ function rootBlock(): string {
   // inside prose counts as a closing brace to any scanner that does not strip
   // them. Verified by dropping a lone `}` into a comment above --chart-1 —
   // brace-counting alone still truncated there.
-  const css = appCss.replace(/\/\*[\s\S]*?\*\//g, (m) => ' '.repeat(m.length));
-  const start = css.search(/:root\s*\{/);
+  const start = blankedCss.search(/:root\s*\{/);
   if (start === -1) return '';
-  const open = css.indexOf('{', start);
+  return balancedBody(blankedCss.indexOf('{', start));
+}
+
+/**
+ * `appCss` with every comment replaced by an equal-length run of spaces, so
+ * byte offsets still line up with the original text.
+ */
+const blankedCss = appCss.replace(/\/\*[\s\S]*?\*\//g, (m) => ' '.repeat(m.length));
+
+/**
+ * Body of the block whose opening `{` is at `open`, brace-balanced.
+ *
+ * Scans the comment-blanked copy but slices the ORIGINAL, so declarations come
+ * back verbatim while a `}` in prose can't end the block early.
+ */
+function balancedBody(open: number): string {
   let depth = 0;
-  for (let i = open; i < css.length; i++) {
-    if (css[i] === '{') depth++;
-    else if (css[i] === '}') {
+  for (let i = open; i < blankedCss.length; i++) {
+    if (blankedCss[i] === '{') depth++;
+    else if (blankedCss[i] === '}') {
       depth--;
-      // Slice from the ORIGINAL text so declarations are returned verbatim;
-      // only the brace scan runs on the blanked copy. Lengths match because
-      // comments are replaced with equal-length spaces, so offsets are stable.
       if (depth === 0) return appCss.slice(open + 1, i);
     }
   }
   return '';
+}
+
+/**
+ * Every `:root[data-theme='x']` block, body extracted brace-balanced.
+ *
+ * The theme extractors used to match the body with `([^}]*)`, which stops at
+ * the first `}` from any source — a nested rule, or a comment containing one.
+ * That is the same trap `rootBlock` above documents, and it is worse here: a
+ * truncated theme block silently drops palette vars, so the "defined in every
+ * theme" checks would pass by simply not seeing them.
+ */
+function themeBlockBodies(): { theme: string; body: string }[] {
+  const out: { theme: string; body: string }[] = [];
+  for (const m of blankedCss.matchAll(/:root\[data-theme='([^']+)'\]\s*\{/g)) {
+    out.push({ theme: m[1], body: balancedBody(m.index! + m[0].length - 1) });
+  }
+  return out;
 }
 
 /** Semantic tokens and the palette var each points at, from the :root block. */
@@ -69,27 +97,22 @@ function semanticDefinitions(): Map<string, string> {
 
 /** Palette vars defined inside a given `:root[data-theme='x']` block. */
 function paletteVarsInThemeBlocks(): { theme: string; vars: Set<string> }[] {
-  const blocks: { theme: string; vars: Set<string> }[] = [];
-  const re = /:root\[data-theme='([^']+)'\]\s*\{([^}]*)\}/g;
-  for (const m of appCss.matchAll(re)) {
+  return themeBlockBodies().map(({ theme, body }) => {
     const vars = new Set<string>();
-    for (const v of m[2].matchAll(/(--ctp-[a-z0-9-]+)\s*:/g)) vars.add(v[1]);
-    blocks.push({ theme: m[1], vars });
-  }
-  return blocks;
+    for (const v of body.matchAll(/(--ctp-[a-z0-9-]+)\s*:/g)) vars.add(v[1]);
+    return { theme, vars };
+  });
 }
 
 /** Palette var -> literal value, per `:root[data-theme='x']` block. */
 function paletteValuesInThemeBlocks(): { theme: string; values: Map<string, string> }[] {
-  const blocks: { theme: string; values: Map<string, string> }[] = [];
-  for (const m of appCss.matchAll(/:root\[data-theme='([^']+)'\]\s*\{([^}]*)\}/g)) {
+  return themeBlockBodies().map(({ theme, body }) => {
     const values = new Map<string, string>();
-    for (const v of m[2].matchAll(/(--ctp-[a-z0-9-]+)\s*:\s*([^;]+);/g)) {
+    for (const v of body.matchAll(/(--ctp-[a-z0-9-]+)\s*:\s*([^;]+);/g)) {
       values.set(v[1], v[2].trim().toLowerCase());
     }
-    blocks.push({ theme: m[1], values });
-  }
-  return blocks;
+    return { theme, values };
+  });
 }
 
 function walk(dir: string, out: string[] = []): string[] {
@@ -127,8 +150,10 @@ describe('semantic color tokens (#4567)', () => {
     // per-theme override slip through with the test still green — assert the
     // property that actually has to hold: it is defined exactly once, on the
     // base :root.
-    const baseRoot = appCss.match(/:root\s*\{([\s\S]*?)\}/)?.[1] ?? '';
-    expect(baseRoot).toMatch(/--ctp-accent-text\s*:/);
+    // rootBlock() rather than a lazy `[\s\S]*?` match: the two disagree the
+    // moment a comment in that block contains a `}`, and a truncated body here
+    // would turn this presence check into a false failure.
+    expect(rootBlock()).toMatch(/--ctp-accent-text\s*:/);
     const themeBlocksDefiningIt = paletteVarsInThemeBlocks().filter((t) =>
       t.vars.has('--ctp-accent-text'),
     );
@@ -414,16 +439,10 @@ describe('raw palette references outside App.css', () => {
       .replace(/^\s*\/\/.*$/gm, ' ');
   }
 
-  // SCOPE — what this guard does NOT catch: a hardcoded `rgba(166, 227, 161,
-  // 0.3)` is the same theme-blind defect as `--ctp-yellow-soft`, spelled so it
-  // isn't a custom-property reference at all. A sweep found 82 such swatch
-  // approximations across 22 files, several sitting right next to a role token
-  // (`background: rgba(<mocha green>)` beside `color: var(--color-success)`),
-  // so on Nord or Gruvbox the two halves disagree. Fixing them needs per-site
-  // judgement — shadow vs fill vs border, and the right opacity — so it is its
-  // own pass, tracked separately, and the detector lands with the fixes rather
-  // than red against 82 pre-existing sites. Until then: passing this file does
-  // not mean a component is theme-clean.
+  // This guard covers the `var(--ctp-*)` spelling. The other spelling of the
+  // same defect — a hardcoded `rgba(166, 227, 161, 0.3)`, the Mocha green
+  // swatch written so it is not a custom-property reference at all — is covered
+  // by the swatch-literal suite at the bottom of this file.
   function referencedPaletteVars(): { name: string; file: string }[] {
     const hits: { name: string; file: string }[] = [];
     for (const file of walk(resolve('src'))) {
@@ -470,5 +489,72 @@ describe('raw palette references outside App.css', () => {
     expect(
       Array.from(new Set(dangling.map((h) => `${h.name} (${h.file})`))),
     ).toEqual([]);
+  });
+});
+
+describe('hardcoded palette swatch literals', () => {
+  // The third spelling of one defect. `--ctp-red-rgb` (#4617) and
+  // `--ctp-yellow-soft` were undefined vars whose hardcoded fallbacks rendered
+  // Mocha in all 15 themes; this is the same wrong color written directly as
+  // `rgba(243, 139, 168, 0.1)`, with no var involved for a scanner to notice.
+  //
+  // The worst shape of it put `background: rgba(<mocha green>)` on the same
+  // element as `color: var(--color-success)` — so on Nord or Gruvbox the two
+  // halves of one badge disagreed with each other.
+
+  // Swatches are read out of App.css rather than hardcoded here, so this
+  // catches every theme's palette, not just Mocha, and cannot drift as themes
+  // are edited.
+  function swatchTriples(): Map<string, string[]> {
+    const byTriple = new Map<string, string[]>();
+    for (const m of appCss.matchAll(/(--ctp-[A-Za-z0-9-]+)\s*:\s*#([0-9a-fA-F]{6})\b/g)) {
+      const hex = m[2];
+      const triple = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(',');
+      const names = byTriple.get(triple) ?? [];
+      if (!names.includes(m[1])) names.push(m[1]);
+      byTriple.set(triple, names);
+    }
+    return byTriple;
+  }
+
+  it('reads a real palette out of App.css', () => {
+    // Without this, a change to how App.css spells colors (say, to `hsl()`)
+    // would empty the swatch set and the check below would pass vacuously.
+    const swatches = swatchTriples();
+    expect(swatches.size).toBeGreaterThan(20);
+    expect(swatches.has('166,227,161')).toBe(true); // Mocha green
+  });
+
+  it('has no component writing a palette swatch as a raw rgb/rgba literal', () => {
+    const swatches = swatchTriples();
+    const offenders: string[] = [];
+    for (const file of walk(resolve('src'))) {
+      if (file.endsWith('/App.css')) continue; // where the palette is *defined*
+      const text = readFileSync(file, 'utf8');
+      const lines = text.split('\n');
+      lines.forEach((line, i) => {
+        for (const m of line.matchAll(
+          /rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/g,
+        )) {
+          const [r, g, b] = m.slice(1, 4).map(Number);
+          // Achromatic values are exempt. A drop shadow is black and a scrim is
+          // white in every theme — that is a deliberate, theme-independent
+          // idiom, not a palette pick. They would otherwise all match, because
+          // some themes do define a pure-black --ctp-base and a pure-white
+          // --ctp-text, which drowns the real hits ~75:1.
+          if (r === g && g === b) continue;
+          const triple = [r, g, b].join(',');
+          const names = swatches.get(triple);
+          if (!names) continue;
+          offenders.push(
+            `${file.replace(resolve('.') + '/', '')}:${i + 1} rgb(${triple}) = ${names.join('/')}`,
+          );
+        }
+      });
+    }
+    // Use color-mix(in srgb, var(--color-ROLE) N%, transparent): it follows the
+    // theme, and premultiplies exactly the way an rgba alpha does, so it is a
+    // faithful replacement for a fill, a border and a shadow alike.
+    expect(offenders).toEqual([]);
   });
 });

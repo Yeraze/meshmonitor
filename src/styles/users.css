@@ -71,7 +71,7 @@
 .user-item.selected {
   background: var(--color-surface-hover);
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 2px rgba(137, 180, 250, 0.2);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
 }
 
 .user-item-info {
@@ -94,7 +94,7 @@
 
 .inactive-badge {
   padding: 2px 8px;
-  background: rgba(243, 139, 168, 0.2);
+  background: color-mix(in srgb, var(--color-error) 20%, transparent);
   border: 1px solid var(--color-error);
   border-radius: var(--radius-sm);
   font-size: 0.75em;
