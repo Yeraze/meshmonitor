@@ -156,7 +156,7 @@ interface TelemetryGraphWidgetProps {
   openMenu: string | null;
   menuPosition: { x: number; y: number } | null;
   handlePurgeData: (type: string) => void;
-  chartColors: { base: string; surface0: string; text: string };
+  chartColors: { bg: string; surface: string; text: string };
   getTelemetryLabel: (type: string) => string;
   getColor: (type: string) => string;
   prepareChartData: (data: TelemetryData[], isTemperature?: boolean, globalMinTime?: number) => ChartData[];
@@ -386,8 +386,8 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
             />
             <Tooltip
               contentStyle={{
-                backgroundColor: chartColors.base,
-                border: `1px solid ${chartColors.surface0}`,
+                backgroundColor: chartColors.bg,
+                border: `1px solid ${chartColors.surface}`,
                 borderRadius: '4px',
                 color: chartColors.text,
               }}
@@ -582,8 +582,8 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
 
     // Get computed CSS color values for chart styling (Recharts doesn't support CSS variables in inline styles)
     const [chartColors, setChartColors] = useState({
-      base: '#1e1e2e',
-      surface0: '#45475a',
+      bg: '#1e1e2e',
+      surface: '#45475a',
       text: '#cdd6f4',
     });
 
@@ -591,12 +591,12 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
     useEffect(() => {
       const updateColors = () => {
         const rootStyle = getComputedStyle(document.documentElement);
-        const base = rootStyle.getPropertyValue('--ctp-base').trim();
-        const surface0 = rootStyle.getPropertyValue('--ctp-surface0').trim();
-        const text = rootStyle.getPropertyValue('--ctp-text').trim();
+        const bg = rootStyle.getPropertyValue('--color-bg').trim();
+        const surface = rootStyle.getPropertyValue('--color-surface').trim();
+        const text = rootStyle.getPropertyValue('--color-text').trim();
 
-        if (base && surface0 && text) {
-          setChartColors({ base, surface0, text });
+        if (bg && surface && text) {
+          setChartColors({ bg, surface, text });
         }
       };
 
