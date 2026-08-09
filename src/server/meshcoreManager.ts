@@ -4520,6 +4520,27 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         out_path: outPathBytes,
         hash_bytes: hashBytes,
       }, timeoutMs);
+      // Group the flat byte buffer into hashBytes-wide hop tokens so the
+      // mirrored outPath string carries the per-hop width (e.g. "a3f2,7f01"
+      // for a 2-byte path) and pathLen reflects hop COUNT, not byte count.
+      // formatOutPath() (meshcoreNativeBackend.ts) drops all-zero hop tokens
+      // when it decodes a device-reported path, so mirror that here too —
+      // otherwise the verification compare below can false-negative on a
+      // (vanishingly unlikely but possible) all-zero hop hash.
+      const hopCount = outPathBytes.length / hashBytes;
+      const hopTokens: string[] = [];
+      for (let i = 0; i + hashBytes <= outPathBytes.length; i += hashBytes) {
+        let allZero = true;
+        let tok = '';
+        for (let j = 0; j < hashBytes; j++) {
+          const b = outPathBytes[i + j];
+          if (b !== 0) allZero = false;
+          tok += b.toString(16).padStart(2, '0');
+        }
+        if (allZero) continue;
+        hopTokens.push(tok);
+      }
+      const hex = hopTokens.join(',');
       if (!response.success) {
         // NOTE: matches on meshcore.js's timeout error text — fragile if the
         // library changes its wording; revisit if a structured error code lands.
@@ -4527,28 +4548,30 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         if (isTimeout) {
           // meshcore.js resolves CMD_ADD_UPDATE_CONTACT on its Ok ack, which is
           // frequently lost in unrelated radio chatter even though the device
-          // applied the write. Treat a timeout as a non-fatal "ack not seen" —
-          // not a connectivity error — so it doesn't spam warnings on a path
-          // that did install (e.g. region discovery, #3743).
-          logger.debug(`[MeshCore] set_out_path ack not seen for ${publicKey} (write likely applied)`);
+          // applied the write. A lost ack used to be reported to the caller as
+          // an outright failure (409 "device did not respond in time", #4625)
+          // even when the write had actually landed — verify by re-reading the
+          // contact from the device instead of guessing.
+          logger.debug(`[MeshCore] set_out_path ack not seen for ${publicKey}; verifying via get_contacts`);
+          try {
+            await this.refreshContacts();
+          } catch (refreshError) {
+            logger.debug(`[MeshCore] set_out_path verification refresh failed for ${publicKey}: ${(refreshError as Error).message}`);
+          }
+          const verified = this.contacts.get(publicKey);
+          if (!verified || verified.outPath !== hex) {
+            logger.warn(`[MeshCore] set_out_path could not be verified for ${publicKey} after a lost ack; the write may not have applied`);
+            return false;
+          }
+          logger.debug(`[MeshCore] set_out_path verified applied for ${publicKey} despite lost ack`);
+          // Falls through to the shared success path below — refreshContacts()
+          // already mirrored the verified contact, but re-run it so lastSeen/
+          // events stay consistent with the non-timeout success path.
         } else {
           logger.warn(`[MeshCore] set_out_path rejected for ${publicKey}: ${response.error}`);
+          return false;
         }
-        return false;
       }
-      // Group the flat byte buffer into hashBytes-wide hop tokens so the
-      // mirrored outPath string carries the per-hop width (e.g. "a3f2,7f01"
-      // for a 2-byte path) and pathLen reflects hop COUNT, not byte count.
-      const hopCount = outPathBytes.length / hashBytes;
-      const hopTokens: string[] = [];
-      for (let i = 0; i + hashBytes <= outPathBytes.length; i += hashBytes) {
-        let tok = '';
-        for (let j = 0; j < hashBytes; j++) {
-          tok += outPathBytes[i + j].toString(16).padStart(2, '0');
-        }
-        hopTokens.push(tok);
-      }
-      const hex = hopTokens.join(',');
       const existing = this.contacts.get(publicKey);
       if (existing) {
         const updated: MeshCoreContact = {
