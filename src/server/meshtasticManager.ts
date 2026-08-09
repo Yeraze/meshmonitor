@@ -7170,7 +7170,12 @@ class MeshtasticManager implements ISourceManager {
         shortName: user.shortName,
         hwModel: user.hwModel,
         role: user.role,
-        hopsAway: meshPacket.hopsAway,
+        // NOTE (#4604): deliberately NO hopsAway here. `MeshPacket` has no
+        // `hops_away` field — it exists only on `NodeInfo` (mesh.proto) — so
+        // reading it off the packet was always `undefined` and wrote nothing.
+        // hopsAway stays what the docs describe: a snapshot of the radio's own
+        // NodeDB, refreshed by processNodeInfoProtobuf on connect/resync.
+        // The per-packet measurement lives in lastMessageHops.
         // Use server time for lastHeard — rxTime from the device clock is unreliable.
         // Replay guard (see replayGuard.ts): omit lastHeard for replayed/retained
         // frames so a stale NodeInfo can't resurrect an offline node.
@@ -7357,7 +7362,7 @@ class MeshtasticManager implements ISourceManager {
         }
       }
 
-      logger.debug(`🔍 Saving node with role=${user.role}, hopsAway=${meshPacket.hopsAway}`);
+      logger.debug(`🔍 Saving node with role=${user.role}`);
       await databaseService.upsertNodeAsync(nodeData, this.sourceId);
       logger.debug(`👤 Updated user info: ${user.longName || nodeId}`);
 

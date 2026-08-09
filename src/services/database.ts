@@ -71,7 +71,13 @@ import {
   ThemesRepository,
   ALL_SOURCES,
 } from '../db/repositories/index.js';
-import type { EstimatedPosition, EstimatedPositionInput, SourceScope } from '../db/repositories/index.js';
+import type {
+  EstimatedPosition,
+  EstimatedPositionInput,
+  EstimatedPositionAnchor,
+  EstimatedPositionAnchorInput,
+  SourceScope,
+} from '../db/repositories/index.js';
 import type { ConversationReadStateMap } from '../db/repositories/index.js';
 import type { ConversationKind } from '../db/schema/conversationReadState.js';
 import type { DatabaseType, DbPacketLog as DbTypesPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../db/types.js';
@@ -1909,9 +1915,31 @@ class DatabaseService {
     return this.estimatedPositions.upsertManyEstimates(inputs);
   }
 
-  /** Delete global estimates for the given node numbers. */
+  /** Delete global estimates (and their anchors) for the given node numbers. */
   async deleteEstimatedPositionsByNodeNumsAsync(nodeNums: number[]): Promise<number> {
     return this.estimatedPositions.deleteByNodeNums(nodeNums);
+  }
+
+  /** Get one node's global estimated position, or null (issue #4609). */
+  async getEstimatedPositionByNodeNumAsync(nodeNum: number): Promise<EstimatedPosition | null> {
+    return this.estimatedPositions.getByNodeNum(nodeNum);
+  }
+
+  /**
+   * Replace the recorded anchors for the given nodes (issue #4609).
+   * `nodeNums` is separate from `anchors` so nodes that solved with no retained
+   * anchor still get their stale rows cleared.
+   */
+  async replaceEstimatedPositionAnchorsAsync(
+    nodeNums: number[],
+    anchors: EstimatedPositionAnchorInput[],
+  ): Promise<void> {
+    return this.estimatedPositions.replaceAnchors(nodeNums, anchors);
+  }
+
+  /** Get one node's recorded anchors, strongest contribution first (#4609). */
+  async getEstimatedPositionAnchorsAsync(nodeNum: number, limit?: number): Promise<EstimatedPositionAnchor[]> {
+    return this.estimatedPositions.getAnchorsByNodeNum(nodeNum, limit);
   }
 
 

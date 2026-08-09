@@ -8,9 +8,20 @@
  *
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, desc } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
+
+/**
+ * How an estimate's uncertainty radius was derived (issue #4609). Mirrors the
+ * branch taken in `solveNodePosition`:
+ *  - `single_anchor`  — one anchor (or weights so lopsided they behave as one):
+ *                       the flat radio-range default, no triangulation.
+ *  - `blended`        — partial convergence; the default blended toward the
+ *                       statistical radius.
+ *  - `convergence`    — a balanced multi-anchor solve; purely statistical.
+ */
+export type RadiusMethod = 'single_anchor' | 'blended' | 'convergence';
 
 /** A single estimated position row. */
 export interface EstimatedPosition {
@@ -21,6 +32,10 @@ export interface EstimatedPosition {
   uncertaintyKm: number | null;
   observationCount: number;
   updatedAt: number;
+  /** Kish effective sample size of the solve. Null on pre-#4609 rows. */
+  nEff: number | null;
+  /** How `uncertaintyKm` was derived. Null on pre-#4609 rows. */
+  radiusMethod: RadiusMethod | null;
 }
 
 /** Input for upserting an estimate (updatedAt is stamped by the caller). */
@@ -32,7 +47,34 @@ export interface EstimatedPositionInput {
   uncertaintyKm?: number | null;
   observationCount?: number;
   updatedAt: number;
+  nEff?: number | null;
+  radiusMethod?: RadiusMethod | null;
 }
+
+/** A stored anchor that contributed to one node's estimate (issue #4609). */
+export interface EstimatedPositionAnchor {
+  id: number;
+  nodeNum: number;
+  anchorNodeNum: number;
+  anchorNodeId: string;
+  anchorLat: number;
+  anchorLon: number;
+  kind: 'traceroute' | 'neighbor';
+  snrDb: number | null;
+  observedAt: number;
+  weight: number;
+  createdAt: number;
+}
+
+/** Input for recording one contributing anchor. */
+export type EstimatedPositionAnchorInput = Omit<EstimatedPositionAnchor, 'id'>;
+
+/**
+ * Rows written per `insert()` round trip when replacing anchors. Keeps the
+ * statement well under SQLite's default 999-variable bind limit (11 columns per
+ * row => 1,100 variables at 100 rows would exceed it, so 50 is the safe step).
+ */
+const ANCHOR_INSERT_BATCH = 50;
 
 export class EstimatedPositionsRepository extends BaseRepository {
   constructor(db: DrizzleDatabase, dbType: DatabaseType) {
@@ -50,6 +92,8 @@ export class EstimatedPositionsRepository extends BaseRepository {
       uncertaintyKm: input.uncertaintyKm ?? null,
       observationCount: input.observationCount ?? 0,
       updatedAt: input.updatedAt,
+      nEff: input.nEff ?? null,
+      radiusMethod: input.radiusMethod ?? null,
     };
     await this.upsert(estimatedPositions, values, estimatedPositions.nodeNum, {
       nodeId: values.nodeId,
@@ -58,6 +102,8 @@ export class EstimatedPositionsRepository extends BaseRepository {
       uncertaintyKm: values.uncertaintyKm,
       observationCount: values.observationCount,
       updatedAt: values.updatedAt,
+      nEff: values.nEff,
+      radiusMethod: values.radiusMethod,
     });
   }
 
@@ -87,20 +133,87 @@ export class EstimatedPositionsRepository extends BaseRepository {
     return this.normalizeBigInts(rows) as EstimatedPosition[];
   }
 
-  /** Delete estimates for the given node numbers. No-op on empty input. */
+  /**
+   * Delete estimates for the given node numbers. No-op on empty input.
+   *
+   * Also drops those nodes' anchor rows: there is no database-level FK (the
+   * table is intentionally FK-free, like its parent), so the cascade is done
+   * here. Leaving anchors behind would let a node that regained a real GPS fix
+   * still serve rationale for an estimate that no longer exists.
+   */
   async deleteByNodeNums(nodeNums: number[]): Promise<number> {
     if (nodeNums.length === 0) return 0;
     const { estimatedPositions } = this.tables;
+    await this.deleteAnchorsByNodeNums(nodeNums);
     const result = await this.db
       .delete(estimatedPositions)
       .where(inArray(estimatedPositions.nodeNum, nodeNums));
     return this.getAffectedRows(result);
   }
 
-  /** Delete every estimate. Returns the number of rows removed. */
+  /** Delete every estimate (and every anchor). Returns estimates removed. */
   async deleteAll(): Promise<number> {
-    const { estimatedPositions } = this.tables;
+    const { estimatedPositions, estimatedPositionAnchors } = this.tables;
+    await this.db.delete(estimatedPositionAnchors);
     const result = await this.db.delete(estimatedPositions);
+    return this.getAffectedRows(result);
+  }
+
+  // ------------------------------------------------------------------
+  // Anchor rationale (issue #4609)
+  // ------------------------------------------------------------------
+
+  /**
+   * Replace the stored anchors for the given nodes.
+   *
+   * Delete-then-insert, scoped to `nodeNums` — the estimator recomputes a
+   * node's whole observation set each run, so partial updates would leave
+   * anchors from a previous run mixed with the current one and misrepresent the
+   * estimate. Nodes absent from `nodeNums` are untouched.
+   *
+   * `nodeNums` is passed separately from `anchors` on purpose: a node can solve
+   * with zero retained anchors, and its stale rows must still be cleared.
+   */
+  async replaceAnchors(nodeNums: number[], anchors: EstimatedPositionAnchorInput[]): Promise<void> {
+    if (nodeNums.length === 0 && anchors.length === 0) return;
+
+    const targets = nodeNums.length > 0
+      ? nodeNums
+      : [...new Set(anchors.map((a) => a.nodeNum))];
+    await this.deleteAnchorsByNodeNums(targets);
+
+    if (anchors.length === 0) return;
+
+    const { estimatedPositionAnchors } = this.tables;
+    for (let i = 0; i < anchors.length; i += ANCHOR_INSERT_BATCH) {
+      const batch = anchors.slice(i, i + ANCHOR_INSERT_BATCH);
+      await this.db.insert(estimatedPositionAnchors).values(batch);
+    }
+  }
+
+  /**
+   * Anchors for one node, strongest contribution first. `limit` caps the reply
+   * independently of what is stored.
+   */
+  async getAnchorsByNodeNum(nodeNum: number, limit?: number): Promise<EstimatedPositionAnchor[]> {
+    const { estimatedPositionAnchors } = this.tables;
+    let query = this.db
+      .select()
+      .from(estimatedPositionAnchors)
+      .where(eq(estimatedPositionAnchors.nodeNum, nodeNum))
+      .orderBy(desc(estimatedPositionAnchors.weight));
+    if (limit != null && limit > 0) query = query.limit(limit);
+    const rows = await query;
+    return this.normalizeBigInts(rows) as EstimatedPositionAnchor[];
+  }
+
+  /** Delete anchors for the given node numbers. No-op on empty input. */
+  async deleteAnchorsByNodeNums(nodeNums: number[]): Promise<number> {
+    if (nodeNums.length === 0) return 0;
+    const { estimatedPositionAnchors } = this.tables;
+    const result = await this.db
+      .delete(estimatedPositionAnchors)
+      .where(inArray(estimatedPositionAnchors.nodeNum, nodeNums));
     return this.getAffectedRows(result);
   }
 }

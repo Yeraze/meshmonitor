@@ -33,12 +33,32 @@ import { optionalAuth, requirePermission, hasPermission } from '../auth/authMidd
 import { logger } from '../../utils/logger.js';
 import { isValidNodeNum, MAX_NODE_NUM } from '../constants/meshtastic.js';
 import { fail, ok } from '../utils/apiResponse.js';
+import { calculateDistance } from '../../utils/distance.js';
+import {
+  DEFAULT_SINGLE_ANCHOR_KM,
+  MAX_STORED_ANCHORS_PER_NODE,
+} from '../services/positionEstimationService.js';
 import {
   encodeSharedContactUrl,
   SharedContactValidationError,
 } from '../services/sharedContactService.js';
 
 const router = express.Router();
+
+/**
+ * Parse a `:nodeNum` path param as either a decimal node number or a `!hex`
+ * node id. Callers hold one or the other depending on which list they came
+ * from, and getting it wrong should not be a silent NaN lookup.
+ *
+ * @returns the node number, or null when the value is not a valid one.
+ */
+function parseNodeNumParam(raw: string | undefined): number | null {
+  if (!raw) return null;
+  const parsed = raw.startsWith('!')
+    ? parseInt(raw.slice(1), 16)
+    : (/^\d+$/.test(raw) ? Number(raw) : NaN);
+  return isValidNodeNum(parsed) ? parsed : null;
+}
 
 // API Routes
 /**
@@ -234,6 +254,77 @@ router.get('/nodes/:nodeNum/copy-candidates', requirePermission('nodes', 'read')
   } catch (error) {
     logger.error('Error getting copy candidates:', error);
     res.status(500).json({ error: 'Failed to retrieve copy candidates' });
+  }
+});
+
+/**
+ * GET /api/nodes/:nodeNum/position-estimate
+ *
+ * The rationale behind an ESTIMATED position (issue #4609): which anchors fed
+ * it, of what type, from which nodes, with what SNR and timestamps, and how the
+ * uncertainty radius was derived.
+ *
+ * Estimated positions only, by construction: the reply is built from the global
+ * `estimated_positions` row, and the estimator deletes that row the moment a
+ * node reports a real fix. A node with GPS therefore 404s rather than being
+ * handed a rationale for a position it did not infer.
+ *
+ * GLOBAL — no `sourceId`. Estimates pool observations from every Meshtastic
+ * source into one row per physical nodeNum (#3271), so there is nothing to
+ * scope. The `nodes:read` gate still applies.
+ *
+ * Anchors are capped at storage time (MAX_STORED_ANCHORS_PER_NODE); `anchors`
+ * carries what was kept and `observationCount` the true total, so a consumer
+ * can say "showing N of M" instead of implying the list is complete.
+ */
+router.get('/nodes/:nodeNum/position-estimate', requirePermission('nodes', 'read'), async (req, res) => {
+  try {
+    const nodeNum = parseNodeNumParam(req.params.nodeNum);
+    if (nodeNum === null) {
+      return fail(res, 400, 'INVALID_NODE_NUM', 'nodeNum must be a decimal node number or a !hex node id');
+    }
+
+    const estimate = await databaseService.getEstimatedPositionByNodeNumAsync(nodeNum);
+    if (!estimate) {
+      return fail(res, 404, 'NO_ESTIMATED_POSITION', 'This node has no estimated position');
+    }
+
+    const stored = await databaseService.getEstimatedPositionAnchorsAsync(nodeNum);
+    const anchors = stored.map((a) => ({
+      anchorNodeNum: a.anchorNodeNum,
+      anchorNodeId: a.anchorNodeId,
+      anchorLat: a.anchorLat,
+      anchorLon: a.anchorLon,
+      kind: a.kind,
+      snrDb: a.snrDb,
+      observedAt: a.observedAt,
+      weight: a.weight,
+      // Derived, not stored: how far this anchor sits from the solved point.
+      distanceKm: calculateDistance(estimate.latitude, estimate.longitude, a.anchorLat, a.anchorLon),
+    }));
+
+    return ok(res, {
+      nodeNum: estimate.nodeNum,
+      nodeId: estimate.nodeId,
+      latitude: estimate.latitude,
+      longitude: estimate.longitude,
+      uncertaintyKm: estimate.uncertaintyKm,
+      // True total observations behind the estimate — may exceed anchors.length.
+      observationCount: estimate.observationCount,
+      updatedAt: estimate.updatedAt,
+      // Null on estimates written before #4609; the UI must say "unknown"
+      // rather than guess a method.
+      nEff: estimate.nEff,
+      radiusMethod: estimate.radiusMethod,
+      singleAnchorDefaultKm: DEFAULT_SINGLE_ANCHOR_KM,
+      anchors,
+      anchorsStored: anchors.length,
+      anchorsTruncated: estimate.observationCount > anchors.length,
+      maxStoredAnchors: MAX_STORED_ANCHORS_PER_NODE,
+    });
+  } catch (error) {
+    logger.error('Error getting position estimate rationale:', error);
+    return fail(res, 500, 'POSITION_ESTIMATE_FAILED', 'Failed to retrieve position estimate rationale');
   }
 });
 

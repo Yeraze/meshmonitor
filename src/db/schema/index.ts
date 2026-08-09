@@ -59,6 +59,9 @@ export * from './waypoints.js';
 // Estimated positions table (global — no sourceId)
 export * from './estimatedPositions.js';
 
+// Per-estimate anchor rationale (global — no sourceId, issue #4609)
+export * from './estimatedPositionAnchors.js';
+
 // Automated Remote Favorites Management (issue #2608)
 export * from './autoFavoriteTargets.js';
 

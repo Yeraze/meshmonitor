@@ -149,6 +149,11 @@ import {
   estimatedPositionsSqlite, estimatedPositionsPostgres, estimatedPositionsMysql,
 } from './schema/estimatedPositions.js';
 
+// Per-estimate anchor rationale (global — no sourceId, issue #4609)
+import {
+  estimatedPositionAnchorsSqlite, estimatedPositionAnchorsPostgres, estimatedPositionAnchorsMysql,
+} from './schema/estimatedPositionAnchors.js';
+
 // Automated Remote Favorites Management (issue #2608)
 import {
   autoFavoriteTargetsSqlite, autoFavoriteTargetsPostgres, autoFavoriteTargetsMysql,
@@ -269,6 +274,10 @@ export interface ActiveSchema {
   // Estimated positions (global — no sourceId)
   estimatedPositions: any;
 
+  // Per-estimate anchor rationale (global — no sourceId, issue #4609)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4609 every entry in this map is `any` by design (see the interface doc: the three dialect table types are incompatible at compile time, identical at runtime)
+  estimatedPositionAnchors: any;
+
   // Automated Remote Favorites Management (issue #2608)
   autoFavoriteTargets: any;
   autoFavoriteAssignments: any;
@@ -353,6 +362,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     waypoints: waypointsSqlite,
     sources: sourcesSqlite,
     estimatedPositions: estimatedPositionsSqlite,
+    estimatedPositionAnchors: estimatedPositionAnchorsSqlite,
     autoFavoriteTargets: autoFavoriteTargetsSqlite,
     autoFavoriteAssignments: autoFavoriteAssignmentsSqlite,
     sourcePkiKeys: sourcePkiKeysSqlite,
@@ -415,6 +425,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     waypoints: waypointsPostgres,
     sources: sourcesPostgres,
     estimatedPositions: estimatedPositionsPostgres,
+    estimatedPositionAnchors: estimatedPositionAnchorsPostgres,
     autoFavoriteTargets: autoFavoriteTargetsPostgres,
     autoFavoriteAssignments: autoFavoriteAssignmentsPostgres,
     sourcePkiKeys: sourcePkiKeysPostgres,
@@ -477,6 +488,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     waypoints: waypointsMysql,
     sources: sourcesMysql,
     estimatedPositions: estimatedPositionsMysql,
+    estimatedPositionAnchors: estimatedPositionAnchorsMysql,
     autoFavoriteTargets: autoFavoriteTargetsMysql,
     autoFavoriteAssignments: autoFavoriteAssignmentsMysql,
     sourcePkiKeys: sourcePkiKeysMysql,

@@ -81,6 +81,9 @@ export const TABLE_ORDER = [
   'system_backup_history',
   // 3271: global estimated positions (no sourceId, no FK — one row per nodeNum)
   'estimated_positions',
+  // 4609: the anchors behind each estimate. Global like its parent, and copied
+  // after it so the rationale never lands without the estimate it explains.
+  'estimated_position_anchors',
   // 2608: per-source automated remote favorites management config + ledger
   'auto_favorite_targets',
   'auto_favorite_assignments',

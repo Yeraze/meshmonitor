@@ -1,8 +1,8 @@
 import Database from 'better-sqlite3';
 import { describe, expect, it, vi } from 'vitest';
-import { migration, runMigration137Postgres, runMigration137Mysql } from './137_add_conversation_read_state.js';
+import { migration, runMigration138Postgres, runMigration138Mysql } from './138_add_conversation_read_state.js';
 
-describe('Migration 137 — conversation_read_state table (#4607)', () => {
+describe('Migration 138 — conversation_read_state table (#4607)', () => {
   describe('SQLite', () => {
     it('creates the table and is idempotent (second up() does not throw)', () => {
       const db = new Database(':memory:');
@@ -73,7 +73,7 @@ describe('Migration 137 — conversation_read_state table (#4607)', () => {
     it('creates the table and unique index with quoted camelCase columns', async () => {
       const client = { query: vi.fn().mockResolvedValue({ rows: [] }) } as any;
 
-      await runMigration137Postgres(client);
+      await runMigration138Postgres(client);
 
       expect(client.query).toHaveBeenCalledTimes(2);
       const ddl = client.query.mock.calls[0][0];
@@ -91,8 +91,8 @@ describe('Migration 137 — conversation_read_state table (#4607)', () => {
 
     it('is idempotent (running twice does not throw)', async () => {
       const client = { query: vi.fn().mockResolvedValue({ rows: [] }) } as any;
-      await runMigration137Postgres(client);
-      await expect(runMigration137Postgres(client)).resolves.not.toThrow();
+      await runMigration138Postgres(client);
+      await expect(runMigration138Postgres(client)).resolves.not.toThrow();
     });
   });
 
@@ -108,7 +108,7 @@ describe('Migration 137 — conversation_read_state table (#4607)', () => {
       const absentConn = makeConn([]);
       const absentPool = { getConnection: vi.fn().mockResolvedValue(absentConn) };
 
-      await runMigration137Mysql(absentPool as any);
+      await runMigration138Mysql(absentPool as any);
 
       expect(absentConn.query).toHaveBeenCalledTimes(2);
       const ddl = absentConn.query.mock.calls[1][0];
@@ -121,7 +121,7 @@ describe('Migration 137 — conversation_read_state table (#4607)', () => {
       const presentConn = makeConn([{ TABLE_NAME: 'conversation_read_state' }]);
       const presentPool = { getConnection: vi.fn().mockResolvedValue(presentConn) };
 
-      await runMigration137Mysql(presentPool as any);
+      await runMigration138Mysql(presentPool as any);
 
       expect(presentConn.query).toHaveBeenCalledTimes(1); // existence check only
       expect(presentConn.release).toHaveBeenCalledTimes(1);

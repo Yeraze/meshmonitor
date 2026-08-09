@@ -13,6 +13,7 @@ const mockDb = vi.hoisted(() => ({
   neighbors: { getAllNeighborInfo: vi.fn() },
   upsertEstimatedPositionsAsync: vi.fn(),
   deleteEstimatedPositionsByNodeNumsAsync: vi.fn(),
+  replaceEstimatedPositionAnchorsAsync: vi.fn(),
 }));
 vi.mock('../../services/database.js', () => ({ default: mockDb }));
 
@@ -21,6 +22,8 @@ import {
   buildObservations,
   observationWeight,
   positionEstimationService,
+  DEFAULT_SINGLE_ANCHOR_KM,
+  MAX_STORED_ANCHORS_PER_NODE,
   type PositionObservation,
   type TracerouteForEstimation,
   type NeighborForEstimation,
@@ -32,6 +35,7 @@ const NOW = 1_700_000_000_000;
 function obs(partial: Partial<PositionObservation>): PositionObservation {
   return {
     nodeNum: 1,
+    anchorNodeNum: 999,
     anchorLat: 0,
     anchorLon: 0,
     timestamp: NOW,
@@ -304,6 +308,7 @@ describe('positionEstimationService.recomputeAll', () => {
     mockDb.neighbors.getAllNeighborInfo.mockResolvedValue([]);
     mockDb.upsertEstimatedPositionsAsync.mockResolvedValue(undefined);
     mockDb.deleteEstimatedPositionsByNodeNumsAsync.mockResolvedValue(0);
+    mockDb.replaceEstimatedPositionAnchorsAsync.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -450,6 +455,222 @@ describe('positionEstimationService.recomputeAll', () => {
       });
       expect(result.estimatedNodeCount).toBe(1);
       expect(result.rejectedNodeCount).toBe(0);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Issue #4609 — the rationale behind an estimated position.
+//
+// Before this, the estimator solved a position and discarded every observation
+// that produced it, leaving no way to explain a pin. These tests pin down the
+// three things that make an explanation possible: observations carry the
+// identity of the node that anchored them, the solve reports which branch of
+// the uncertainty math produced its radius, and the writer persists a capped,
+// strongest-first anchor set.
+// ---------------------------------------------------------------------------
+describe('estimate rationale (#4609)', () => {
+  describe('anchor identity', () => {
+    it('records which node anchored each traceroute hop, on both sides', () => {
+      const anchors = new Map<number, { lat: number; lon: number }>([
+        [100, { lat: 10, lon: 20 }],
+        [200, { lat: 12, lon: 20 }],
+      ]);
+      const traceroutes: TracerouteForEstimation[] = [{
+        fromNodeNum: 100, toNodeNum: 200, route: JSON.stringify([5]),
+        routeBack: null, snrTowards: JSON.stringify([20, 20]), snrBack: null, timestamp: NOW,
+      }];
+
+      const observations = buildObservations(traceroutes, [], anchors).get(5)!;
+
+      expect(observations).toHaveLength(2);
+      // Without anchorNodeNum the API could only say "some node at 10,20".
+      expect(observations.map((o) => o.anchorNodeNum).sort()).toEqual([100, 200]);
+      expect(observations.every((o) => o.kind === 'traceroute')).toBe(true);
+    });
+
+    it('records the anchoring node for a NeighborInfo pair, whichever side is positioned', () => {
+      const anchors = new Map<number, { lat: number; lon: number }>([
+        [100, { lat: 35.1, lon: -80.6 }],
+      ]);
+      const neighbors: NeighborForEstimation[] = [
+        // Unpositioned node 1 reports positioned 100 as a neighbour.
+        { nodeNum: 1, neighborNodeNum: 100, snr: 5, timestamp: NOW },
+        // Positioned 100 reports unpositioned 2 as a neighbour — reverse direction.
+        { nodeNum: 100, neighborNodeNum: 2, snr: -3, timestamp: NOW },
+      ];
+
+      const out = buildObservations([], neighbors, anchors);
+
+      expect(out.get(1)![0].anchorNodeNum).toBe(100);
+      expect(out.get(1)![0].kind).toBe('neighbor');
+      expect(out.get(2)![0].anchorNodeNum).toBe(100);
+      expect(out.get(2)![0].kind).toBe('neighbor');
+    });
+  });
+
+  describe('radius derivation', () => {
+    it('reports single_anchor for a lone observation (the flat 5 km heuristic)', () => {
+      const solved = solveNodePosition([obs({ anchorLat: 35, anchorLon: -80 })], NOW)!;
+      expect(solved.radiusMethod).toBe('single_anchor');
+      expect(solved.nEff).toBeCloseTo(1, 6);
+      expect(solved.uncertaintyKm).toBeCloseTo(DEFAULT_SINGLE_ANCHOR_KM, 6);
+    });
+
+    it('does not claim convergence when one strong anchor dominates the weights (#3616)', () => {
+      // Two observations, but nEff barely exceeds 1 — the weak anchor
+      // contributes almost nothing. The blend must stay pinned near the
+      // radio-range default, so the reported radius does not imply a solve that
+      // did not happen.
+      const solved = solveNodePosition([
+        obs({ anchorLat: 35.0, anchorLon: -80.0, snrDb: 20 }),
+        obs({ anchorLat: 35.2, anchorLon: -80.0, snrDb: -20 }),
+      ], NOW)!;
+      expect(solved.nEff).toBeLessThan(1.1);
+      expect(solved.radiusMethod).not.toBe('convergence');
+      expect(solved.uncertaintyKm).toBeCloseTo(DEFAULT_SINGLE_ANCHOR_KM, 1);
+    });
+
+    it('reports convergence for a balanced multi-anchor solve', () => {
+      // A tight, evenly weighted ring: nEff = 4 and the statistical radius is
+      // well inside the lone-anchor default.
+      const solved = solveNodePosition([
+        obs({ anchorLat: 35.01, anchorLon: -80.0, snrDb: 0 }),
+        obs({ anchorLat: 34.99, anchorLon: -80.0, snrDb: 0 }),
+        obs({ anchorLat: 35.0, anchorLon: -80.01, snrDb: 0 }),
+        obs({ anchorLat: 35.0, anchorLon: -79.99, snrDb: 0 }),
+      ], NOW)!;
+      expect(solved.nEff).toBeGreaterThanOrEqual(2);
+      expect(solved.radiusMethod).toBe('convergence');
+      expect(solved.uncertaintyKm).toBeLessThan(DEFAULT_SINGLE_ANCHOR_KM);
+    });
+
+    it('reports blended when confidence sits strictly between the two branches', () => {
+      // Two equal-weight anchors give nEff = 2 exactly; unequal SNR lands nEff
+      // in (1, 2) — the partial-convergence region.
+      const solved = solveNodePosition([
+        obs({ anchorLat: 35.0, anchorLon: -80.0, snrDb: 6 }),
+        obs({ anchorLat: 35.1, anchorLon: -80.0, snrDb: 0 }),
+      ], NOW)!;
+      expect(solved.nEff).toBeGreaterThan(1);
+      expect(solved.nEff).toBeLessThan(2);
+      expect(solved.radiusMethod).toBe('blended');
+      expect(solved.uncertaintyKm).toBeLessThan(DEFAULT_SINGLE_ANCHOR_KM);
+    });
+
+    it('returns used observations sorted strongest-contribution first', () => {
+      const solved = solveNodePosition([
+        obs({ anchorNodeNum: 1, anchorLat: 35.0, anchorLon: -80.0, snrDb: -10 }),
+        obs({ anchorNodeNum: 2, anchorLat: 35.1, anchorLon: -80.0, snrDb: 10 }),
+        obs({ anchorNodeNum: 3, anchorLat: 35.05, anchorLon: -80.0, snrDb: 0 }),
+      ], NOW)!;
+
+      expect(solved.usedObservations.map((u) => u.observation.anchorNodeNum)).toEqual([2, 3, 1]);
+      expect(solved.usedObservations[0].weight).toBeGreaterThan(solved.usedObservations[2].weight);
+    });
+  });
+
+  describe('persistence', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      vi.useFakeTimers();
+      vi.setSystemTime(NOW);
+      mockDb.traceroutes.getAllTraceroutes.mockResolvedValue([]);
+      mockDb.neighbors.getAllNeighborInfo.mockResolvedValue([]);
+      mockDb.upsertEstimatedPositionsAsync.mockResolvedValue(undefined);
+      mockDb.deleteEstimatedPositionsByNodeNumsAsync.mockResolvedValue(0);
+      mockDb.replaceEstimatedPositionAnchorsAsync.mockResolvedValue(undefined);
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('persists the anchors behind each estimate, with the derivation on the estimate row', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([{ id: 'src-a', type: 'meshtastic_tcp' }]);
+      mockDb.nodes.getAllNodes.mockResolvedValue([
+        { nodeNum: 100, latitude: 10, longitude: 20 },
+        { nodeNum: 200, latitude: 12, longitude: 20 },
+      ]);
+      mockDb.traceroutes.getAllTraceroutes.mockResolvedValue([{
+        fromNodeNum: 100, toNodeNum: 200, route: JSON.stringify([5]),
+        routeBack: null, snrTowards: JSON.stringify([20, 20]), snrBack: null, timestamp: NOW,
+      }]);
+
+      await positionEstimationService.recomputeAll({ lookbackMs: 7 * 24 * 60 * 60 * 1000 });
+
+      const estimate = mockDb.upsertEstimatedPositionsAsync.mock.calls[0][0][0];
+      expect(estimate.nodeNum).toBe(5);
+      expect(estimate.nEff).toBeGreaterThan(0);
+      expect(estimate.radiusMethod).toBeTruthy();
+
+      const [nodeNums, anchorRows] = mockDb.replaceEstimatedPositionAnchorsAsync.mock.calls[0];
+      expect(nodeNums).toEqual([5]);
+      expect(anchorRows).toHaveLength(2);
+      expect(anchorRows.map((a: any) => a.anchorNodeNum).sort()).toEqual([100, 200]);
+      // nodeId is derived for display; the raw number stays authoritative.
+      expect(anchorRows.map((a: any) => a.anchorNodeId).sort()).toEqual(['!00000064', '!000000c8']);
+      expect(anchorRows.every((a: any) => a.kind === 'traceroute')).toBe(true);
+      expect(anchorRows.every((a: any) => a.snrDb === 5)).toBe(true); // raw 20 / 4
+      expect(anchorRows.every((a: any) => a.createdAt === NOW)).toBe(true);
+    });
+
+    it('caps stored anchors per node while leaving the true total on the estimate', async () => {
+      const anchorCount = MAX_STORED_ANCHORS_PER_NODE + 7;
+      mockDb.sources.getAllSources.mockResolvedValue([{ id: 'src-a', type: 'meshtastic_tcp' }]);
+      mockDb.nodes.getAllNodes.mockResolvedValue(
+        Array.from({ length: anchorCount }, (_, i) => ({
+          nodeNum: 1000 + i,
+          latitude: 35 + i * 0.001,
+          longitude: -80,
+        })),
+      );
+      // Every positioned node reports unpositioned node 7 as a neighbour, with
+      // ascending SNR so the strongest anchors are identifiable.
+      mockDb.neighbors.getAllNeighborInfo.mockResolvedValue(
+        Array.from({ length: anchorCount }, (_, i) => ({
+          nodeNum: 1000 + i, neighborNodeNum: 7, snr: i, timestamp: NOW,
+        })),
+      );
+
+      await positionEstimationService.recomputeAll({ lookbackMs: 7 * 24 * 60 * 60 * 1000 });
+
+      const estimate = mockDb.upsertEstimatedPositionsAsync.mock.calls[0][0][0];
+      const [, anchorRows] = mockDb.replaceEstimatedPositionAnchorsAsync.mock.calls[0];
+
+      expect(anchorRows).toHaveLength(MAX_STORED_ANCHORS_PER_NODE);
+      // The count on the estimate stays the honest total, so a consumer can say
+      // "showing 20 of 27" rather than implying the list is complete.
+      expect(estimate.observationCount).toBe(anchorCount);
+      // The kept anchors are the strongest, not an arbitrary prefix: SNR ascends
+      // with the index, so the weakest survivor is the cap-th from the top.
+      const keptSnrs = anchorRows.map((a: any) => a.snrDb).sort((x: number, y: number) => x - y);
+      expect(keptSnrs[0]).toBe(anchorCount - MAX_STORED_ANCHORS_PER_NODE);
+    });
+
+    it('clears anchors for a node whose estimate is rejected as too uncertain', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([{ id: 'src-a', type: 'meshtastic_tcp' }]);
+      mockDb.nodes.getAllNodes.mockResolvedValue([{ nodeNum: 100, latitude: 10, longitude: 20 }]);
+      mockDb.neighbors.getAllNeighborInfo.mockResolvedValue([
+        { nodeNum: 100, neighborNodeNum: 9, snr: 5, timestamp: NOW },
+      ]);
+
+      // A lone anchor always resolves to the 5 km default, so a 1 km ceiling
+      // rejects it.
+      const result = await positionEstimationService.recomputeAll({
+        lookbackMs: 7 * 24 * 60 * 60 * 1000,
+        maxUncertaintyKm: 1,
+      });
+
+      expect(result.rejectedNodeCount).toBe(1);
+      // Nothing is written for node 9...
+      const [nodeNums, anchorRows] = mockDb.replaceEstimatedPositionAnchorsAsync.mock.calls[0];
+      expect(nodeNums).toEqual([]);
+      expect(anchorRows).toEqual([]);
+      // ...and the delete (which cascades anchors in the repository) covers it.
+      expect(mockDb.deleteEstimatedPositionsByNodeNumsAsync).toHaveBeenCalledWith(
+        expect.arrayContaining([9]),
+      );
     });
   });
 });

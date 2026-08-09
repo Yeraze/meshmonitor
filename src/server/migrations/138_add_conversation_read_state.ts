@@ -1,5 +1,5 @@
 /**
- * Migration 137: Create `conversation_read_state` (issue #4607).
+ * Migration 138: Create `conversation_read_state` (issue #4607).
  *
  * A durable, per-user "last read" watermark per (source, conversation). It is
  * what the unread divider and the jump-to-first-unread entry scroll anchor on
@@ -18,7 +18,7 @@ import type { Database } from 'better-sqlite3';
 import { logger } from '../../utils/logger.js';
 import { createTableIfMissingMysql } from './helpers.js';
 
-const LABEL = 'Migration 137';
+const LABEL = 'Migration 138';
 const TABLE = 'conversation_read_state';
 const UNIQUE_INDEX = 'idx_conversation_read_state_unique';
 
@@ -53,7 +53,7 @@ export const migration = {
 // ============ PostgreSQL ============
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- matches the 136 migration-file convention (pg Client)
-export async function runMigration137Postgres(client: any): Promise<void> {
+export async function runMigration138Postgres(client: any): Promise<void> {
   logger.info(`${LABEL} (PostgreSQL): creating ${TABLE}...`);
   await client.query(`
     CREATE TABLE IF NOT EXISTS ${TABLE} (
@@ -74,7 +74,7 @@ export async function runMigration137Postgres(client: any): Promise<void> {
 // ============ MySQL ============
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- matches the 136 migration-file convention (mysql2 Pool)
-export async function runMigration137Mysql(pool: any): Promise<void> {
+export async function runMigration138Mysql(pool: any): Promise<void> {
   logger.info(`${LABEL} (MySQL): creating ${TABLE}...`);
   // MySQL has no CREATE INDEX IF NOT EXISTS, so the unique key is declared
   // inline in the CREATE TABLE (per the helpers.ts guidance).
