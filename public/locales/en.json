@@ -1673,6 +1673,7 @@
   "settings.confirm_purge_nodes_item1": "All node information will be deleted",
   "settings.confirm_purge_nodes_item2": "All traceroute history will be deleted",
   "settings.confirm_purge_nodes_item3": "A node refresh will be triggered to repopulate the list",
+  "settings.confirm_purge_nodes_item4": "Auto-Traceroute and Auto-Time-Sync node selections will be cleared",
   "settings.confirm_cannot_undo": "This action cannot be undone!",
   "settings.confirm_purge_telemetry_title": "Are you sure you want to purge all telemetry data?",
   "settings.confirm_purge_telemetry_item1": "All historical telemetry records will be deleted",

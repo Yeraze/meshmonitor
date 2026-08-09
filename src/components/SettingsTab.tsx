@@ -1263,7 +1263,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       t('settings.confirm_purge_nodes_impact') + '\n' +
       '• ' + t('settings.confirm_purge_nodes_item1') + '\n' +
       '• ' + t('settings.confirm_purge_nodes_item2') + '\n' +
-      '• ' + t('settings.confirm_purge_nodes_item3') + '\n\n' +
+      '• ' + t('settings.confirm_purge_nodes_item3') + '\n' +
+      // #4629: the purge now also clears the Auto-Traceroute / Auto-Time-Sync
+      // node allowlists. That is a curated selection the user built by hand, so
+      // it has to be named in the impact list rather than vanishing silently.
+      '• ' + t('settings.confirm_purge_nodes_item4') + '\n\n' +
       t('settings.confirm_cannot_undo')
     );
 
