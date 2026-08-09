@@ -22,11 +22,20 @@ import { logger } from '../../utils/logger.js';
 import { calculateDistance } from '../../utils/distance.js';
 import { isBogusPosition } from '../../utils/nullIsland.js';
 import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
-import type { EstimatedPositionInput } from '../../db/repositories/index.js';
+import type {
+  EstimatedPositionInput,
+  EstimatedPositionAnchorInput,
+  RadiusMethod,
+} from '../../db/repositories/index.js';
 
 /** A single geometric constraint: node `nodeNum` is near positioned `anchor`. */
 export interface PositionObservation {
   nodeNum: number;
+  /**
+   * The positioned node acting as the anchor. Carried so the estimate's
+   * rationale can name it (#4609) — the solve itself only needs the lat/lon.
+   */
+  anchorNodeNum: number;
   anchorLat: number;
   anchorLon: number;
   /** Link SNR in dB (already converted). Higher → closer → higher weight. */
@@ -36,11 +45,30 @@ export interface PositionObservation {
   kind: 'traceroute' | 'neighbor';
 }
 
+/** An observation plus the weight it received in the solve (#4609). */
+export interface WeightedObservation {
+  observation: PositionObservation;
+  weight: number;
+}
+
 export interface SolvedPosition {
   latitude: number;
   longitude: number;
   uncertaintyKm: number;
   observationCount: number;
+  /**
+   * Kish effective sample size. 1 means a lone anchor — or several so lopsided
+   * in weight that they behave as one. Recorded so the UI can explain the
+   * radius instead of just showing it (#4609).
+   */
+  nEff: number;
+  /** Which branch of the uncertainty math produced `uncertaintyKm` (#4609). */
+  radiusMethod: RadiusMethod;
+  /**
+   * Positive-weight observations with the weight each received, strongest
+   * first. These are the anchors that actually moved the centroid.
+   */
+  usedObservations: WeightedObservation[];
 }
 
 export interface RecomputeResult {
@@ -58,12 +86,26 @@ const HALF_LIFE_MS = 24 * 60 * 60 * 1000;
 const DECAY_CONSTANT = Math.LN2 / HALF_LIFE_MS;
 
 // A single anchor can't triangulate — only tells us "within radio range".
-const DEFAULT_SINGLE_ANCHOR_KM = 5;
+// Exported so the rationale API can state the heuristic it came from (#4609)
+// rather than hardcoding "5 km" a second time.
+export const DEFAULT_SINGLE_ANCHOR_KM = 5;
 // Floor so multi-anchor estimates never report absurd over-confidence.
 const MIN_UNCERTAINTY_KM = 0.05;
 
 // Upper bound on traceroutes pulled per source (defensive — lookback also caps).
 const MAX_TRACEROUTES_PER_SOURCE = 100000;
+
+/**
+ * Cap on anchors persisted per node for the rationale view (#4609).
+ *
+ * A well-connected node in a busy mesh can accumulate thousands of observations
+ * over the 7-day lookback; storing them all would grow the anchor table far
+ * beyond the value it provides. We keep the highest-weighted anchors — the ones
+ * that actually determined where the pin landed — and leave the true total on
+ * `estimated_positions.observationCount`, so a consumer can always say
+ * "showing N of M".
+ */
+export const MAX_STORED_ANCHORS_PER_NODE = 20;
 
 function nodeNumToId(nodeNum: number): string {
   return `!${nodeNum.toString(16).padStart(8, '0')}`;
@@ -161,12 +203,35 @@ export function solveNodePosition(observations: PositionObservation[], now: numb
   // strong anchor that dominates the weights (nEff barely above 1) no longer
   // skips the radio-range default and report a spuriously tight radius.
   const confidence = Math.min(1, Math.max(0, nEff - 1));
+  // Both terms are already >= MIN_UNCERTAINTY_KM (statisticalKm is floored and
+  // DEFAULT_SINGLE_ANCHOR_KM is far above it), so the outer Math.max is a
+  // belt-and-braces guard rather than a branch the radius can actually take.
   const uncertaintyKm = Math.max(
     MIN_UNCERTAINTY_KM,
     DEFAULT_SINGLE_ANCHOR_KM * (1 - confidence) + statisticalKm * confidence,
   );
 
-  return { latitude, longitude, uncertaintyKm, observationCount: observations.length };
+  // Name the branch that produced the radius (#4609), so the UI can say
+  // "lone anchor, 5 km default" rather than presenting a guess and a solve as
+  // if they were the same kind of answer.
+  const radiusMethod: RadiusMethod =
+    confidence <= 0 ? 'single_anchor'
+      : confidence >= 1 ? 'convergence'
+        : 'blended';
+
+  const usedObservations: WeightedObservation[] = used
+    .map(({ obs, w }) => ({ observation: obs, weight: w }))
+    .sort((a, b) => b.weight - a.weight);
+
+  return {
+    latitude,
+    longitude,
+    uncertaintyKm,
+    observationCount: observations.length,
+    nEff,
+    radiusMethod,
+    usedObservations,
+  };
 }
 
 /** Safely JSON-parse an array of numbers; returns [] on any problem. */
@@ -225,6 +290,7 @@ function addPathObservations(
     if (prev) {
       list.push({
         nodeNum,
+        anchorNodeNum: path[i - 1],
         anchorLat: prev.lat,
         anchorLon: prev.lon,
         snrDb: typeof snrPrevRaw === 'number' ? snrPrevRaw / 4 : undefined,
@@ -235,6 +301,7 @@ function addPathObservations(
     if (next) {
       list.push({
         nodeNum,
+        anchorNodeNum: path[i + 1],
         anchorLat: next.lat,
         anchorLon: next.lon,
         snrDb: typeof snrNextRaw === 'number' ? snrNextRaw / 4 : undefined,
@@ -290,6 +357,7 @@ export function buildObservations(
       const list = out.get(nb.nodeNum) ?? [];
       list.push({
         nodeNum: nb.nodeNum,
+        anchorNodeNum: nb.neighborNodeNum,
         anchorLat: neighborAnchor.lat,
         anchorLon: neighborAnchor.lon,
         snrDb,
@@ -302,6 +370,7 @@ export function buildObservations(
       const list = out.get(nb.neighborNodeNum) ?? [];
       list.push({
         nodeNum: nb.neighborNodeNum,
+        anchorNodeNum: nb.nodeNum,
         anchorLat: nodeAnchor.lat,
         anchorLon: nodeAnchor.lon,
         snrDb,
@@ -383,6 +452,8 @@ class PositionEstimationService {
 
     let observationCount = 0;
     const inputs: EstimatedPositionInput[] = [];
+    // Anchors backing the estimates written this run (#4609), capped per node.
+    const anchorInputs: EstimatedPositionAnchorInput[] = [];
     // Nodes solved but rejected for exceeding maxUncertaintyKm. Their existing
     // estimates (if any) are deleted below so a now-too-uncertain node doesn't
     // keep a stale, oversized circle on the map.
@@ -403,14 +474,40 @@ class PositionEstimationService {
         uncertaintyKm: solved.uncertaintyKm,
         observationCount: solved.observationCount,
         updatedAt: now,
+        nEff: solved.nEff,
+        radiusMethod: solved.radiusMethod,
       });
+
+      // usedObservations is already sorted strongest-first, so slicing keeps the
+      // anchors that actually determined the pin.
+      for (const { observation, weight } of solved.usedObservations.slice(0, MAX_STORED_ANCHORS_PER_NODE)) {
+        anchorInputs.push({
+          nodeNum,
+          anchorNodeNum: observation.anchorNodeNum,
+          anchorNodeId: nodeNumToId(observation.anchorNodeNum),
+          anchorLat: observation.anchorLat,
+          anchorLon: observation.anchorLon,
+          kind: observation.kind,
+          snrDb: observation.snrDb ?? null,
+          observedAt: observation.timestamp,
+          weight,
+          createdAt: now,
+        });
+      }
     }
 
     await databaseService.upsertEstimatedPositionsAsync(inputs);
+    // Replace anchors for exactly the nodes we just wrote. Passing the node list
+    // separately clears stale rows for a node that solved with no usable anchor.
+    await databaseService.replaceEstimatedPositionAnchorsAsync(
+      inputs.map((i) => i.nodeNum),
+      anchorInputs,
+    );
 
     // Clear estimates that are no longer valid: a node that gained a real
     // position (now an anchor), or one whose fresh estimate is too uncertain
-    // to keep under the configured maximum.
+    // to keep under the configured maximum. The repository cascades the
+    // matching anchor rows.
     const anchorNodeNums = [...anchors.keys()];
     await databaseService.deleteEstimatedPositionsByNodeNumsAsync([...anchorNodeNums, ...rejectedNodeNums]);
 

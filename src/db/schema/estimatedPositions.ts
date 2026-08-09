@@ -29,6 +29,12 @@ export const estimatedPositionsSqlite = sqliteTable('estimated_positions', {
   // Number of observations that fed this estimate.
   observationCount: integer('observationCount').notNull().default(0),
   updatedAt: integer('updatedAt').notNull(),
+  // Kish effective sample size of the weighted solve (issue #4609). 1.0 means
+  // one anchor — or several so lopsided in weight that they behave as one.
+  nEff: real('nEff'),
+  // How uncertaintyKm was derived: 'single_anchor' | 'blended' | 'convergence'.
+  // Null on rows written before #4609 / by an older build.
+  radiusMethod: text('radiusMethod'),
 });
 
 // PostgreSQL schema
@@ -41,6 +47,8 @@ export const estimatedPositionsPostgres = pgTable('estimated_positions', {
   uncertaintyKm: pgDoublePrecision('uncertaintyKm'),
   observationCount: pgBigint('observationCount', { mode: 'number' }).notNull().default(0),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
+  nEff: pgDoublePrecision('nEff'),
+  radiusMethod: pgText('radiusMethod'),
 });
 
 // MySQL schema
@@ -52,6 +60,8 @@ export const estimatedPositionsMysql = mysqlTable('estimated_positions', {
   uncertaintyKm: myDouble('uncertaintyKm'),
   observationCount: myInt('observationCount').notNull().default(0),
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),
+  nEff: myDouble('nEff'),
+  radiusMethod: myVarchar('radiusMethod', { length: 24 }),
 });
 
 // Type inference
