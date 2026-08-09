@@ -105,6 +105,63 @@ describe('DatabaseService.purgeAllNodesAsync — packet_log integration (#2637)'
   });
 });
 
+describe('DatabaseService.purgeAllNodesAsync — auto-traceroute/time-sync allowlists (#4629)', () => {
+  beforeAll(async () => {
+    await databaseService.waitForReady();
+    for (let i = 0; i < 50 && !databaseService.autoTracerouteRepo; i++) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    // Assert rather than fall through: purgeAllNodesAsync guards both clears
+    // behind `if (this.<repo>)`, so an uninitialised repo would make the fix a
+    // silent no-op and the failure would surface later as a confusing error
+    // instead of "the repo never came up".
+    expect(databaseService.autoTracerouteRepo).toBeTruthy();
+    expect(databaseService.timeSyncRepo).toBeTruthy();
+  });
+
+  it('clears the auto-traceroute and auto-time-sync node allowlists so purged nodes do not linger as orphaned selections', async () => {
+    // Seed two real nodes and explicitly select them for auto-traceroute + auto-time-sync
+    await databaseService.upsertNodeAsync({ nodeNum: 5001, nodeId: '!00001389', longName: 'Gamma', shortName: 'G' });
+    await databaseService.upsertNodeAsync({ nodeNum: 5002, nodeId: '!0000138a', longName: 'Delta', shortName: 'D' });
+
+    await databaseService.autoTraceroute.setAutoTracerouteNodes([5001, 5002]);
+    await databaseService.timeSync.setAutoTimeSyncNodes([5001, 5002]);
+
+    expect(await databaseService.autoTraceroute.getAutoTracerouteNodes()).toEqual([5001, 5002]);
+    expect(await databaseService.timeSync.getAutoTimeSyncNodes()).toEqual([5001, 5002]);
+
+    // Exercise the actual code path under test
+    await databaseService.purgeAllNodesAsync();
+
+    // The explicit allowlists must be empty — this is the #4629 regression assertion.
+    // Without the fix these survive the purge (and a container restart) because
+    // they're stored in their own tables, decoupled from `nodes`.
+    expect(await databaseService.autoTraceroute.getAutoTracerouteNodes()).toEqual([]);
+    expect(await databaseService.timeSync.getAutoTimeSyncNodes()).toEqual([]);
+  });
+
+  // The test above purges globally, but EVERY production caller passes a
+  // sourceId (purgeRoutes.ts, sourceRoutes.ts, deviceRoutes.ts), so the scoped
+  // branch is the one users actually hit. It takes a different path through the
+  // repos — `delete ... where sourceId = ?` instead of an unfiltered delete —
+  // and getting it wrong in the other direction (wiping every source's
+  // selection when one source is purged) would be a worse bug than #4629.
+  it('scoped to one source, clears only that source and leaves other sources selected', async () => {
+    await databaseService.autoTraceroute.setAutoTracerouteNodes([7001], 'srcA');
+    await databaseService.autoTraceroute.setAutoTracerouteNodes([7002], 'srcB');
+    await databaseService.timeSync.setAutoTimeSyncNodes([7001], 'srcA');
+    await databaseService.timeSync.setAutoTimeSyncNodes([7002], 'srcB');
+
+    await databaseService.purgeAllNodesAsync('srcA');
+
+    expect(await databaseService.autoTraceroute.getAutoTracerouteNodes('srcA')).toEqual([]);
+    expect(await databaseService.timeSync.getAutoTimeSyncNodes('srcA')).toEqual([]);
+    // Cross-source isolation — purging A must not disturb B's selection.
+    expect(await databaseService.autoTraceroute.getAutoTracerouteNodes('srcB')).toEqual([7002]);
+    expect(await databaseService.timeSync.getAutoTimeSyncNodes('srcB')).toEqual([7002]);
+  });
+});
+
 describe('DatabaseService.deleteNodeAsync — packet_log integration (#2637)', () => {
   beforeAll(async () => {
     await databaseService.waitForReady();

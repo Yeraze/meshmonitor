@@ -3435,6 +3435,25 @@ class DatabaseService {
           logger.error('Failed to purge ATAK contacts during purge:', err);
         }
       }
+      // Clear the auto-traceroute and auto-time-sync explicit node allowlists so
+      // purged nodes don't linger as orphaned selections (issue #4629) — these
+      // are separate persisted tables, not derived from the `nodes` table, so
+      // they survive a node purge (and a container restart) unless cleared here.
+      if (this.autoTracerouteRepo) {
+        try {
+          await this.autoTracerouteRepo.setAutoTracerouteNodes([], sourceId);
+        } catch (err) {
+          logger.error('Failed to clear auto-traceroute node list during purge:', err);
+        }
+      }
+      if (this.timeSyncRepo) {
+        try {
+          await this.timeSyncRepo.setAutoTimeSyncNodes([], sourceId);
+        } catch (err) {
+          logger.error('Failed to clear auto-time-sync node list during purge:', err);
+        }
+      }
+
       // Finally delete the nodes themselves
       if (this.nodesRepo) {
         await this.nodesRepo.deleteAllNodes(sourceId);
