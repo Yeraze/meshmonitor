@@ -46,7 +46,7 @@ export const darkOverlayColors: OverlayColors = {
     good: '#eab308',      // Vivid yellow — SNR 0 to <5dB
     fair: '#f97316',      // Vivid orange — SNR -5 to <0dB
     poor: '#ef4444',      // Vivid red — SNR < -5dB
-    noData: '#6c7086',    // Catppuccin Mocha overlay0 (--ctp-overlay0)
+    noData: '#6c7086',    // Neutral grey, matching Mocha's --color-text-faint
   },
   polarGrid: {
     rings: 'rgba(0, 200, 255, 0.3)',

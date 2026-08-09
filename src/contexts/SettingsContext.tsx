@@ -4,7 +4,11 @@ import { type TemperatureUnit } from '../utils/temperature';
 import { type SortField, type SortDirection } from '../types/ui';
 import { type SortOption as DashboardSortOption } from '../components/Dashboard/types';
 import { logger } from '../utils/logger';
-import { OPTIONAL_THEME_COLORS } from '../utils/themeValidation';
+import {
+  OPTIONAL_THEME_COLORS,
+  themeColorKeyToCssVar,
+  migrateLegacyThemeDefinition,
+} from '../utils/themeValidation';
 import { useCsrf } from './CsrfContext';
 import { DEFAULT_TILESET_ID, type TilesetId, type CustomTileset } from '../config/tilesets';
 import { type OverlayScheme, getSchemeForTileset, getOverlayColors, type OverlayColors } from '../config/overlayColors';
@@ -905,7 +909,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     });
 
     try {
-      const definition = JSON.parse(customTheme.definition);
+      // Definitions stored before #4567 use Catppuccin swatch keys; translate
+      // on read so old themes keep working without rewriting stored rows.
+      const definition = migrateLegacyThemeDefinition(JSON.parse(customTheme.definition));
       logger.debug(`📦 Parsed definition:`, definition);
 
       const root = document.documentElement;
@@ -913,21 +919,21 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
 
       // Clear optional chat bubble vars so stale values from a previous custom theme don't persist
       for (const optColor of OPTIONAL_THEME_COLORS) {
-        root.style.removeProperty(`--ctp-${optColor}`);
+        root.style.removeProperty(themeColorKeyToCssVar(optColor));
       }
 
-      // Apply each color variable to the root element with ctp- prefix
+      // Apply each color as the role token it names
       Object.entries(definition).forEach(([key, value]) => {
-        const cssVarName = `--ctp-${key}`;
+        const cssVarName = themeColorKeyToCssVar(key);
         logger.debug(`  Setting ${cssVarName} = ${value}`);
         root.style.setProperty(cssVarName, value as string);
       });
 
       logger.debug(`✅ Applied custom theme: ${customTheme.name} (${themeSlug})`);
       logger.debug(`🔍 Verification - checking a few variables:`);
-      logger.debug(`  --base: ${root.style.getPropertyValue('--base')}`);
-      logger.debug(`  --text: ${root.style.getPropertyValue('--text')}`);
-      logger.debug(`  --blue: ${root.style.getPropertyValue('--blue')}`);
+      logger.debug(`  --color-bg: ${root.style.getPropertyValue('--color-bg')}`);
+      logger.debug(`  --color-text: ${root.style.getPropertyValue('--color-text')}`);
+      logger.debug(`  --color-accent: ${root.style.getPropertyValue('--color-accent')}`);
     } catch (error) {
       logger.error(`Failed to apply custom theme ${themeSlug}:`, error);
     }
@@ -947,7 +953,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
       document.documentElement.setAttribute('data-theme', newTheme);
       // Remove optional chat bubble vars from any previous custom theme
       for (const optColor of OPTIONAL_THEME_COLORS) {
-        document.documentElement.style.removeProperty(`--ctp-${optColor}`);
+        document.documentElement.style.removeProperty(themeColorKeyToCssVar(optColor));
       }
       logger.debug(`✅ Applied built-in theme: ${newTheme}`);
     } else {
