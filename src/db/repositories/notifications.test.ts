@@ -957,6 +957,133 @@ function runNotificationsTests(getBackend: () => TestBackend) {
     });
   });
 
+  // ============ getFirstUnreadTimestampsAsync (#4607) ============
+
+  describe('getFirstUnreadTimestampsAsync — unread divider anchor (#4607)', () => {
+    it('returns the OLDEST unread timestamp per channel, not the newest', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      await backend.exec(insertUserSql(backend, 1, 'testuser'));
+      await backend.exec(insertMessageSql(backend, 'a1', 0, 1, 3000));
+      await backend.exec(insertMessageSql(backend, 'a2', 0, 1, 1000));
+      await backend.exec(insertMessageSql(backend, 'a3', 0, 1, 2000));
+      await backend.exec(insertMessageSql(backend, 'b1', 1, 1, 7000));
+
+      const first = await repo.getFirstUnreadTimestampsAsync(1, undefined, ALL_SOURCES, false);
+      // The divider goes ABOVE the first thing you haven't seen, so this must
+      // be the minimum — a max would bury every unread message but the last.
+      expect(first.channels[0]).toBe(1000);
+      expect(first.channels[1]).toBe(7000);
+    });
+
+    it('advances the anchor past messages the user has already read', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      await backend.exec(insertUserSql(backend, 1, 'testuser'));
+      await backend.exec(insertMessageSql(backend, 'a1', 0, 1, 1000));
+      await backend.exec(insertMessageSql(backend, 'a2', 0, 1, 2000));
+      await backend.exec(insertMessageSql(backend, 'a3', 0, 1, 3000));
+
+      await repo.markMessagesAsReadByIds(['a1', 'a2'], 1);
+
+      const first = await repo.getFirstUnreadTimestampsAsync(1, undefined, ALL_SOURCES, false);
+      expect(first.channels[0]).toBe(3000);
+    });
+
+    it('omits a channel entirely once everything in it is read', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      await backend.exec(insertUserSql(backend, 1, 'testuser'));
+      await backend.exec(insertMessageSql(backend, 'a1', 0, 1, 1000));
+      await repo.markMessagesAsReadByIds(['a1'], 1);
+
+      const first = await repo.getFirstUnreadTimestampsAsync(1, undefined, ALL_SOURCES, false);
+      expect(first.channels[0]).toBeUndefined();
+    });
+
+    it('keeps read state per user — one user reading does not move another\'s anchor', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      await backend.exec(insertUserSql(backend, 1, 'userone'));
+      await backend.exec(insertUserSql(backend, 2, 'usertwo'));
+      await backend.exec(insertMessageSql(backend, 'a1', 0, 1, 1000));
+      await backend.exec(insertMessageSql(backend, 'a2', 0, 1, 2000));
+
+      await repo.markMessagesAsReadByIds(['a1'], 1);
+
+      const one = await repo.getFirstUnreadTimestampsAsync(1, undefined, ALL_SOURCES, false);
+      const two = await repo.getFirstUnreadTimestampsAsync(2, undefined, ALL_SOURCES, false);
+      expect(one.channels[0]).toBe(2000);
+      expect(two.channels[0]).toBe(1000);
+    });
+
+    it('mirrors the excludeMqtt filter used by the badge counts', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      await backend.exec(insertUserSql(backend, 1, 'testuser'));
+      // The oldest unread message on the channel is MQTT-bridged.
+      await backend.exec(insertMqttMessageSql(backend, 'mqtt1', 0, 1000));
+      await backend.exec(insertMessageSql(backend, 'rf1', 0, 1, 2000));
+
+      const withMqtt = await repo.getFirstUnreadTimestampsAsync(1, undefined, ALL_SOURCES, false);
+      expect(withMqtt.channels[0]).toBe(1000);
+
+      // With MQTT hidden the divider must not point at a row the view will
+      // never render — otherwise the line lands above nothing.
+      const rfOnly = await repo.getFirstUnreadTimestampsAsync(1, undefined, ALL_SOURCES, true);
+      expect(rfOnly.channels[0]).toBe(2000);
+    });
+
+    it('excludes our own outgoing messages when localNodeId is known', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      await backend.exec(insertUserSql(backend, 1, 'testuser'));
+      await backend.exec(insertMessageSql(backend, 'mine', 0, 1, 1000, '!me', '!node2'));
+      await backend.exec(insertMessageSql(backend, 'theirs', 0, 1, 2000, '!them', '!me'));
+
+      const first = await repo.getFirstUnreadTimestampsAsync(1, '!me', ALL_SOURCES, false);
+      expect(first.channels[0]).toBe(2000);
+    });
+
+    it('returns DM anchors keyed by sender, and nothing when localNodeId is unknown', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      await backend.exec(insertUserSql(backend, 1, 'testuser'));
+      // channel -1 == DM
+      await backend.exec(insertMessageSql(backend, 'dm1', -1, 1, 5000, '!peer', '!me'));
+      await backend.exec(insertMessageSql(backend, 'dm2', -1, 1, 3000, '!peer', '!me'));
+      await backend.exec(insertMessageSql(backend, 'dm3', -1, 1, 4000, '!other', '!me'));
+
+      const known = await repo.getFirstUnreadTimestampsAsync(1, '!me', ALL_SOURCES, false);
+      expect(known.directMessages['!peer']).toBe(3000);
+      expect(known.directMessages['!other']).toBe(4000);
+      // DMs are meaningless without knowing which node is "us".
+      const unknown = await repo.getFirstUnreadTimestampsAsync(1, undefined, ALL_SOURCES, false);
+      expect(unknown.directMessages).toEqual({});
+    });
+
+    it('scopes to a single source when one is given', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      await backend.exec(insertUserSql(backend, 1, 'testuser'));
+      await backend.exec(insertMessageWithSourceSql(backend, 's1', 0, 1, 1000, 'src-a'));
+      await backend.exec(insertMessageWithSourceSql(backend, 's2', 0, 1, 2000, 'src-b'));
+
+      const a = await repo.getFirstUnreadTimestampsAsync(1, undefined, 'src-a', false);
+      const b = await repo.getFirstUnreadTimestampsAsync(1, undefined, 'src-b', false);
+      expect(a.channels[0]).toBe(1000);
+      expect(b.channels[0]).toBe(2000);
+    });
+  });
+
   describe('markChannelMessagesAsRead', () => {
     it('marks channel messages as read for a user', async () => {
       const backend = getBackend();

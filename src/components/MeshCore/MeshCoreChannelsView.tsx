@@ -500,6 +500,22 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
     return Array.from(byId.values()).sort(compareMeshCoreMessages);
   }, [history, messages, activeFilter]);
 
+  // Unread-divider anchor (#4607): the last-read marker frozen at the moment
+  // this channel was opened. The effect below marks the channel read within a
+  // tick of entry, so reading `lastRead[active.id]` live would always say
+  // "nothing unread" by the time the stream rendered. Pinned per channel, and
+  // re-pinned when the channel or source changes.
+  //
+  // `undefined` means "not pinned yet"; the stream treats null/undefined as
+  // "no divider", which is also the correct answer for a channel opened before
+  // its backlog arrives.
+  const [entryLastRead, setEntryLastRead] = useState<number | null>(null);
+  useEffect(() => {
+    // Read through the ref, not `lastRead`: depending on the state value would
+    // re-pin on every mark-read and erase the line while you are reading it.
+    setEntryLastRead(lastReadRef.current[active.id] ?? 0);
+  }, [active.id, sourceId]);
+
   // Mark the active channel read up to its newest visible message. Runs whenever
   // the active channel's content changes (channel switch, backlog load, or a
   // live message arriving while it's open), so an open channel never shows as
@@ -770,6 +786,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
           onNodeNameClick={onNodeNameClick}
           onReply={handleReply}
           conversationKey={`channel-${active.id}`}
+          unreadAnchorMs={entryLastRead}
           onLoadOlder={loadOlderHistory}
           hasMoreOlder={hasMoreHistory}
           loadingOlder={loadingOlderHistory}

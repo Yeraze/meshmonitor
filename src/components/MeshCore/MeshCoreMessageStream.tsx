@@ -7,6 +7,8 @@ import { getUtf8ByteLength, formatByteCount } from '../../utils/text';
 import LinkPreview from '../LinkPreview';
 import MeshCoreMessageRouteModal from './MeshCoreMessageRouteModal';
 import { UiIcon } from '../icons';
+import UnreadDivider from '../messages/UnreadDivider';
+import { resolveUnreadAnchorId, shouldSuppressDivider } from '../../utils/unreadAnchor';
 
 interface MeshCoreMessageStreamProps {
   messages: MeshCoreMessage[];
@@ -45,6 +47,14 @@ interface MeshCoreMessageStreamProps {
    *  and to know when it's safe to restore scroll position after older
    *  messages are prepended. */
   loadingOlder?: boolean;
+  /** Last-read watermark (ms) PINNED when this conversation was opened (#4607).
+   *  The stream draws the unread divider above the first message newer than it
+   *  and lands the entry scroll there instead of at the bottom.
+   *
+   *  The parent must pin it: the views mark a conversation read on entry, so a
+   *  live value would evaporate before the line could be drawn. `null` /
+   *  omitted means "no divider" (nothing unread, or unknown). */
+  unreadAnchorMs?: number | null;
 }
 
 /** Scroll-to-top distance (px) that triggers a load-older request. */
@@ -101,6 +111,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   onLoadOlder,
   hasMoreOlder,
   loadingOlder,
+  unreadAnchorMs,
 }) => {
   const { t } = useTranslation();
   const [draft, setDraft] = useState('');
@@ -161,7 +172,37 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
     };
   }, [contacts]);
 
-  // Entry scroll: on conversation entry, land at the BOTTOM (newest messages).
+  // Unread divider anchor (#4607): the id of the first message newer than the
+  // pinned last-read watermark. Own outgoing messages can't be "unread", so
+  // they never take the anchor — otherwise replying and coming back would put
+  // the line above something you typed yourself.
+  const unreadAnchorId = useMemo(() => {
+    const ownIds = new Set(
+      selfPublicKey
+        ? messages.filter(m => m.fromPublicKey === selfPublicKey).map(m => m.id)
+        : []
+    );
+    const anchorId = resolveUnreadAnchorId({
+      messages: messages.map(m => ({ id: m.id, sortTime: m.timestamp })),
+      watermarkMs: unreadAnchorMs,
+      mode: 'lastRead',
+      ownMessageIds: ownIds,
+    });
+    return shouldSuppressDivider({
+      anchorId,
+      messages: messages.map(m => ({ id: m.id, sortTime: m.timestamp })),
+      hasMoreOlder,
+    }) ? null : anchorId;
+  }, [messages, selfPublicKey, unreadAnchorMs, hasMoreOlder]);
+
+  // Read through a ref inside the entry scroll: the anchor is derived from
+  // `messages`, and putting it in that effect's deps would re-arm the one-shot
+  // scroll on every incoming message.
+  const unreadAnchorIdRef = useRef<string | null>(unreadAnchorId);
+  unreadAnchorIdRef.current = unreadAnchorId;
+
+  // Entry scroll: on conversation entry, land on the unread divider when there
+  // is one, otherwise at the BOTTOM (newest messages).
   // A channel's backlog is fetched ASYNCHRONOUSLY, so `messages` is often empty
   // when `conversationKey` first flips — scrolling then would fire against empty
   // content and leave the viewport stranded. So we defer until messages are
@@ -190,6 +231,15 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
    */
   const runEntryScroll = useCallback((container: HTMLDivElement): boolean => {
     if (container.scrollHeight === 0) return false;
+    // Jump to the oldest unseen message when there is one (#4607), so switching
+    // between threads drops you where you stopped reading rather than at the
+    // end. `scrollIntoView` on the divider itself keeps the line visible above
+    // the first unread row.
+    const divider = container.querySelector('[data-unread-divider]');
+    if (unreadAnchorIdRef.current && divider) {
+      divider.scrollIntoView({ block: 'start' });
+      return true;
+    }
     container.scrollTop = container.scrollHeight;
     return true;
   }, []);
@@ -448,6 +498,10 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                   </span>
                 </div>
               )}
+              {/* Unread divider goes AFTER the date separator so the date still
+                  heads its own day and the red line sits directly above the
+                  first unseen message (#4607). */}
+              {unreadAnchorId === m.id && <UnreadDivider />}
               <div className={`mc-message-row ${outgoing ? 'outgoing' : ''}`} data-message-id={m.id}>
               <div className="mc-message-header">
                 {canClick ? (

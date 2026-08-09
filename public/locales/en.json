@@ -5197,5 +5197,6 @@
   "meshcore.receive_only.saved_on": "Receive-only mode enabled — this node will not transmit",
   "meshcore.receive_only.saved_off": "Receive-only mode disabled — this node can transmit again",
   "meshcore.receive_only.save_failed": "Failed to change receive-only mode",
-  "meshcore.receive_only.console_placeholder": "Local serial commands still work; commands that transmit are blocked."
+  "meshcore.receive_only.console_placeholder": "Local serial commands still work; commands that transmit are blocked.",
+  "messages.unread_divider": "New messages"
 }

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, ReactNode } from 'react';
 import { MeshMessage } from '../types/message';
 import { useUnreadCounts, useMarkAsRead } from '../hooks/useUnreadCounts';
+import { useFirstUnread } from '../hooks/useFirstUnread';
 import { useAuth } from './AuthContext';
 import { useSource } from './SourceContext';
 import { useUI } from './UIContext';
@@ -46,6 +47,17 @@ interface MessagingContextType {
   markMessagesAsRead: (messageIds?: string[], channelId?: number, nodeId?: string, allDMs?: boolean) => Promise<void>;
   fetchUnreadCounts: () => Promise<UnreadCounts | null>;
   unreadCountsData: UnreadCounts | null;
+  /**
+   * Oldest-unread timestamp (ms) for the OPEN channel, frozen at the moment it
+   * was opened (#4607). `null` when nothing was unread.
+   *
+   * Pinned rather than live because the read-marking effects
+   * (useMessagingView GATED EFFECTS #6/#7) mark a conversation read within a
+   * tick of entry — a live value would be gone before the divider rendered.
+   */
+  pinnedFirstUnreadChannel: number | null;
+  /** Same, for the open DM conversation. */
+  pinnedFirstUnreadDM: number | null;
 }
 
 const MessagingContext = createContext<MessagingContextType | undefined>(undefined);
@@ -129,6 +141,41 @@ export const MessagingProvider: React.FC<MessagingProviderProps> = ({ children, 
   });
   const { mutateAsync: markAsReadMutation } = useMarkAsRead({ baseUrl });
 
+  // Unread-divider anchors (#4607). Polled on the same cadence as the badge
+  // counts, then PINNED per conversation: the read-marking effects clear the
+  // unread set within a tick of entry, so the value has to be captured at the
+  // transition rather than read live.
+  const { data: firstUnreadData } = useFirstUnread({
+    baseUrl,
+    enabled: isAuthenticated,
+    sourceId,
+    excludeMqtt: !showMqttMessages,
+  });
+  const firstUnreadRef = useRef(firstUnreadData);
+  firstUnreadRef.current = firstUnreadData;
+
+  const [pinnedFirstUnreadChannel, setPinnedFirstUnreadChannel] = useState<number | null>(null);
+  const [pinnedFirstUnreadDM, setPinnedFirstUnreadDM] = useState<number | null>(null);
+
+  // Read through the ref so the pin fires ONLY on a conversation change. With
+  // `firstUnreadData` in the deps the 10s poll would re-pin mid-read and the
+  // line would jump (or vanish) while the operator was still scrolled to it.
+  useEffect(() => {
+    if (selectedChannel < 0) {
+      setPinnedFirstUnreadChannel(null);
+      return;
+    }
+    setPinnedFirstUnreadChannel(firstUnreadRef.current?.channels?.[selectedChannel] ?? null);
+  }, [selectedChannel, sourceId]);
+
+  useEffect(() => {
+    if (!selectedDMNode) {
+      setPinnedFirstUnreadDM(null);
+      return;
+    }
+    setPinnedFirstUnreadDM(firstUnreadRef.current?.directMessages?.[selectedDMNode] ?? null);
+  }, [selectedDMNode, sourceId]);
+
   // Wrapper for backward compatibility - returns the data from the query
   const fetchUnreadCounts = useCallback(async (): Promise<UnreadCounts | null> => {
     const result = await refetchUnreadCounts();
@@ -179,6 +226,8 @@ export const MessagingProvider: React.FC<MessagingProviderProps> = ({ children, 
     markMessagesAsRead,
     fetchUnreadCounts,
     unreadCountsData: unreadCountsData || null,
+    pinnedFirstUnreadChannel,
+    pinnedFirstUnreadDM,
   }), [
     selectedDMNode, setSelectedDMNode,
     selectedChannel, setSelectedChannel,
@@ -193,6 +242,8 @@ export const MessagingProvider: React.FC<MessagingProviderProps> = ({ children, 
     markMessagesAsRead,
     fetchUnreadCounts,
     unreadCountsData,
+    pinnedFirstUnreadChannel,
+    pinnedFirstUnreadDM,
   ]);
 
   return (
@@ -208,4 +259,21 @@ export const useMessaging = () => {
     throw new Error('useMessaging must be used within a MessagingProvider');
   }
   return context;
+};
+
+/**
+ * Unread-divider anchors, safe to call outside a MessagingProvider (#4607).
+ *
+ * ChannelsTab and MessagesTab are rendered bare by a number of focused unit
+ * tests that have no provider. The divider is presentational — "no anchors" is
+ * a perfectly good answer — so it must degrade rather than throw, the same way
+ * `useSource()` returns a null sourceId outside a SourceProvider.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- #4607 this file already exports the useMessaging hook alongside the provider; a second read-only hook follows the same established shape
+export const useUnreadDividerAnchors = (): { channel: number | null; dm: number | null } => {
+  const context = useContext(MessagingContext);
+  return {
+    channel: context?.pinnedFirstUnreadChannel ?? null,
+    dm: context?.pinnedFirstUnreadDM ?? null,
+  };
 };

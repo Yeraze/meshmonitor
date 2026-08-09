@@ -1,0 +1,42 @@
+/**
+ * Unread divider (#4607) — the line between what the operator has already seen
+ * and what arrived since. Shared by the Meshtastic channel/DM views and the
+ * MeshCore message stream so all three read identically.
+ *
+ * Scoped CSS module rather than an addition to the frozen global sheets
+ * (src/styles/messages.css), per the CSS containment rule.
+ *
+ * Colors come from the semantic role layer only. `--color-error` is the app's
+ * red; a raw `--ctp-*` palette name, or a semantic token given a hardcoded
+ * fallback value, would fail src/styles/semanticTokens.test.ts.
+ */
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.75rem 0 0.25rem;
+  /* Never let the divider absorb a click meant for a message underneath. */
+  pointer-events: none;
+  /* Scroll-margin so scrollIntoView leaves the line clear of a sticky header
+     instead of jamming it against the very top of the viewport. */
+  scroll-margin-top: 1rem;
+}
+
+.rule {
+  flex: 1;
+  height: 1px;
+  background: var(--color-error);
+  /* The rule is decorative; the label carries the meaning. */
+  opacity: 0.8;
+}
+
+.label {
+  flex: 0 0 auto;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-error);
+  white-space: nowrap;
+}

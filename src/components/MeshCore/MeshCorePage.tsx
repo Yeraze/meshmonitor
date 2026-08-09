@@ -17,6 +17,7 @@ import { useTranslation } from 'react-i18next';
 import { useTxStatus } from '../../hooks/useTxStatus';
 import { useMeshCore, ConnectionStatus } from './hooks/useMeshCore';
 import { useMeshCoreUnread } from './hooks/useMeshCoreUnread';
+import { useReadStateSync } from './hooks/useReadStateSync';
 import { MeshCoreStatusBar } from './MeshCoreStatusBar';
 import { MeshCoreSubToolbar, MeshCoreView } from './MeshCoreSubToolbar';
 import { MeshCoreNodesView } from './MeshCoreNodesView';
@@ -77,6 +78,12 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
   const [view, setView] = useState<MeshCoreView>('nodes');
   const [toolbarExpanded, setToolbarExpanded] = useState(false);
   const [pendingDmContact, setPendingDmContact] = useState<string | null>(null);
+
+  // Wire the durable per-user read-state transport once per mounted source
+  // (#4607). The store is deliberately fetch-free so it can stay a plain
+  // module; this is the single place that gives it a CSRF-aware fetcher and
+  // pulls the server snapshot into its synchronous cache.
+  useReadStateSync({ sourceId });
 
   // Unread red-dots for the Channels + Node Details (DMs) sidebar icons (#3891).
   const unread = useMeshCoreUnread({

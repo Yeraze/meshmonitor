@@ -20,7 +20,7 @@ import {
 import { parseDestinationNum } from '../utils/parseDestination.js';
 import { transformDbMessageToMeshMessage } from '../utils/transformDbMessage.js';
 import { filterNodesByChannelPermission } from '../utils/nodeEnhancer.js';
-import { fail } from '../utils/apiResponse.js';
+import { ok, fail } from '../utils/apiResponse.js';
 import { isTxDisabledError } from '../errors/txDisabledError.js';
 
 const router = express.Router();
@@ -1215,6 +1215,85 @@ router.get('/unread-counts', optionalAuth(), async (req, res) => {
   } catch (error) {
     logger.error('Error fetching unread counts:', error);
     res.status(500).json({ error: 'Failed to fetch unread counts' });
+  }
+});
+
+/**
+ * GET /api/messages/first-unread
+ *
+ * Timestamp (ms) of the OLDEST still-unread message in each conversation, for
+ * the unread divider and the jump-to-first-unread entry scroll (issue #4607).
+ * Shaped and permission-filtered exactly like `/unread-counts` above — same
+ * gates, same per-channel/per-node visibility filtering, same mute handling —
+ * so the line can never appear in a conversation whose badge the caller is not
+ * allowed to see.
+ *
+ * The client reads this ONCE per conversation entry and pins the value: the
+ * views mark a conversation read the moment you open it, so a live value would
+ * evaporate before it could be drawn.
+ */
+router.get('/first-unread', optionalAuth(), async (req, res) => {
+  try {
+    const isAdmin = req.user?.isAdmin === true;
+    const hasChannelsRead = isAdmin || (req.user ? await hasPermission(req.user, 'channel_0', 'read') : false);
+    const hasMessagesRead = isAdmin || (req.user ? await hasPermission(req.user, 'messages', 'read') : false);
+    const readableVirtual = await getUserReadableVirtualChannelIds(req.user, isAdmin);
+    const hasVirtualRead = hasAnyReadableVirtualChannel(readableVirtual);
+
+    if (!hasChannelsRead && !hasMessagesRead && !hasVirtualRead) {
+      return fail(res, 403, 'FORBIDDEN', 'Insufficient permissions');
+    }
+
+    const userId = req.user?.id ?? null;
+    const scopedSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
+      ? req.query.sourceId
+      : undefined;
+    const excludeMqtt = req.query.excludeMqtt === 'true';
+    const manager = resolveSourceManager(scopedSourceId);
+    const localNodeInfo = manager.getLocalNodeInfo();
+
+    const raw = await databaseService.getFirstUnreadTimestampsAsync(
+      userId,
+      localNodeInfo?.nodeId,
+      scopedSourceId ?? ALL_SOURCES, // intentional cross-source when sourceId omitted
+      excludeMqtt
+    );
+
+    const result: {
+      channels: { [channelId: number]: number };
+      directMessages: { [nodeId: string]: number };
+    } = { channels: {}, directMessages: {} };
+
+    if (hasChannelsRead || hasVirtualRead) {
+      for (const [channelIdStr, ts] of Object.entries(raw.channels)) {
+        const channelId = Number(channelIdStr);
+        if (isVirtualChannelNumber(channelId)) {
+          if (!isAdmin && !canReadVirtualChannelNumber(channelId, readableVirtual)) continue;
+        } else if (!hasChannelsRead) {
+          continue;
+        } else if (!isAdmin && req.user) {
+          const channelResource = `channel_${channelId}` as import('../../types/permission.js').ResourceType;
+          if (!(await hasPermission(req.user, channelResource, 'read'))) continue;
+        } else if (!req.user && !isAdmin) {
+          continue;
+        }
+        result.channels[channelId] = ts as number;
+      }
+    }
+
+    if (hasMessagesRead && localNodeInfo) {
+      const allNodes = await manager.getAllNodesAsync(scopedSourceId);
+      const visibleNodes = await filterNodesByChannelPermission(allNodes, req.user, scopedSourceId);
+      const visibleNodeIds = new Set(visibleNodes.map(n => n.user?.id).filter(Boolean));
+      for (const [nodeId, ts] of Object.entries(raw.directMessages)) {
+        if (visibleNodeIds.has(nodeId)) result.directMessages[nodeId] = ts as number;
+      }
+    }
+
+    return ok(res, result);
+  } catch (error) {
+    logger.error('Error fetching first-unread timestamps:', error);
+    return fail(res, 500, 'FIRST_UNREAD_FAILED', 'Failed to fetch first-unread timestamps');
   }
 });
 
