@@ -723,23 +723,32 @@ describe('formatContrastRatio', () => {
 describe('edge cases and integration', () => {
   it('handles complete workflow from hex to accessibility report', () => {
     const theme = {
-      base: '#ffffff',
+      bg: '#ffffff',
+      bgRaised: '#fafafa',
+      bgSunken: '#f5f5f5',
+      surface: '#f0f0f0',
+      surfaceHover: '#eeeeee',
+      surfaceActive: '#dddddd',
+      surfaceInactive: '#bbbbbb',
       text: '#000000',
-      surface0: '#f0f0f0',
-      subtext0: '#333333',
-      blue: '#0000ff',
-      green: '#00ff00',
-      yellow: '#ffff00',
-      red: '#ff0000',
-      // Fill in remaining required colors
-      mantle: '#fafafa', crust: '#f5f5f5',
-      subtext1: '#666666',
-      overlay2: '#999999', overlay1: '#aaaaaa', overlay0: '#bbbbbb',
-      surface2: '#dddddd', surface1: '#eeeeee',
-      lavender: '#9999ff', sapphire: '#0099ff', sky: '#00aaff',
-      teal: '#00ffaa', peach: '#ffaa00', maroon: '#aa0066',
-      mauve: '#aa00ff', pink: '#ff00aa', flamingo: '#ff6699',
-      rosewater: '#ffaacc'
+      textMuted: '#666666',
+      textSubtle: '#333333',
+      textDisabled: '#aaaaaa',
+      textFaint: '#bbbbbb',
+      border: '#eeeeee',
+      borderStrong: '#dddddd',
+      borderSubtle: '#bbbbbb',
+      accent: '#0000ff',
+      accentHover: '#0099ff',
+      accentAlt: '#aa00ff',
+      accentMuted: '#9999ff',
+      accentText: '#000000',
+      success: '#00ff00',
+      error: '#ff0000',
+      warning: '#ffff00',
+      caution: '#ffaa00',
+      info: '#00aaff',
+      danger: '#aa0066'
     };
 
     const report = validateThemeAccessibility(theme as any);
@@ -749,19 +758,32 @@ describe('edge cases and integration', () => {
 
   it('handles themes with mixed 3-digit and 6-digit colors', () => {
     const theme = {
-      base: '#000',
+      bg: '#000',
+      bgRaised: '#0a0a0a',
+      bgSunken: '#050505',
+      surface: '#111',
+      surfaceHover: '#333',
+      surfaceActive: '#444',
+      surfaceInactive: '#777',
       text: '#ffffff',
-      surface0: '#111',
-      subtext0: '#ccc',
-      // Fill in remaining required colors
-      mantle: '#0a0a0a', crust: '#050505',
-      subtext1: '#e0e0e0',
-      overlay2: '#999', overlay1: '#888', overlay0: '#777',
-      surface2: '#444', surface1: '#333',
-      lavender: '#99f', blue: '#00f', sapphire: '#0cf', sky: '#0df',
-      teal: '#0fc', green: '#0f0', yellow: '#ff0', peach: '#fa0',
-      maroon: '#a06', red: '#f00', mauve: '#c0f', pink: '#f0c',
-      flamingo: '#f69', rosewater: '#fcd'
+      textMuted: '#e0e0e0',
+      textSubtle: '#ccc',
+      textDisabled: '#888',
+      textFaint: '#777',
+      border: '#333',
+      borderStrong: '#444',
+      borderSubtle: '#777',
+      accent: '#00f',
+      accentHover: '#0cf',
+      accentAlt: '#c0f',
+      accentMuted: '#99f',
+      accentText: '#000000',
+      success: '#0f0',
+      error: '#f00',
+      warning: '#ff0',
+      caution: '#fa0',
+      info: '#0df',
+      danger: '#a06'
     };
 
     const report = validateThemeAccessibility(theme as any);

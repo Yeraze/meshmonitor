@@ -193,10 +193,10 @@ describe('themeValidation utilities', () => {
 
     it('should report invalid hex colors', () => {
       const invalidTheme = createValidThemeDefinition();
-      invalidTheme.base = 'not-a-color';
+      invalidTheme.bg = 'not-a-color';
       const result = validateThemeDefinition(invalidTheme);
       expect(result.isValid).toBe(false);
-      expect(result.errors.some(e => e.includes("Invalid hex color for 'base'"))).toBe(true);
+      expect(result.errors.some(e => e.includes("Invalid hex color for 'bg'"))).toBe(true);
     });
 
     it('should report unexpected properties', () => {
@@ -273,11 +273,11 @@ describe('themeValidation utilities', () => {
   describe('normalizeThemeDefinition', () => {
     it('should normalize all colors in a theme definition', () => {
       const theme = createValidThemeDefinition();
-      theme.base = '#abc';
+      theme.bg = '#abc';
       theme.text = '#def';
 
       const normalized = normalizeThemeDefinition(theme as any);
-      expect(normalized.base).toBe('#AABBCC');
+      expect(normalized.bg).toBe('#AABBCC');
       expect(normalized.text).toBe('#DDEEFF');
     });
   });
@@ -288,11 +288,11 @@ describe('themeValidation utilities', () => {
     });
 
     it('should include key color categories', () => {
-      expect(REQUIRED_THEME_COLORS).toContain('base');
+      expect(REQUIRED_THEME_COLORS).toContain('bg');
       expect(REQUIRED_THEME_COLORS).toContain('text');
-      expect(REQUIRED_THEME_COLORS).toContain('blue');
-      expect(REQUIRED_THEME_COLORS).toContain('red');
-      expect(REQUIRED_THEME_COLORS).toContain('green');
+      expect(REQUIRED_THEME_COLORS).toContain('accent');
+      expect(REQUIRED_THEME_COLORS).toContain('error');
+      expect(REQUIRED_THEME_COLORS).toContain('success');
     });
   });
 });

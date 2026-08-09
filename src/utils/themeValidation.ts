@@ -205,9 +205,10 @@ const LEGACY_ONLY_KEYS = ['base', 'crust', 'mantle', 'subtext0', 'subtext1',
                           'surface0', 'overlay0', 'overlay1'] as const;
 
 /** True when a stored definition uses the old swatch keys. */
-export function isLegacyThemeDefinition(definition: any): boolean {
+export function isLegacyThemeDefinition(definition: unknown): boolean {
   if (!definition || typeof definition !== 'object') return false;
-  return LEGACY_ONLY_KEYS.some((key) => typeof definition[key] === 'string');
+  const record = definition as Record<string, unknown>;
+  return LEGACY_ONLY_KEYS.some((key) => typeof record[key] === 'string');
 }
 
 /**
@@ -218,24 +219,25 @@ export function isLegacyThemeDefinition(definition: any): boolean {
  * a single global value, black, painted on bright fills — so it defaults to
  * that rather than being guessed from the palette.
  */
-export function migrateLegacyThemeDefinition(definition: any): any {
+export function migrateLegacyThemeDefinition<T>(definition: T): T | Record<string, string> {
   if (!isLegacyThemeDefinition(definition)) return definition;
 
+  const legacy = definition as Record<string, unknown>;
   const out: Record<string, string> = {};
   for (const [swatch, roles] of Object.entries(LEGACY_SWATCH_TO_ROLES)) {
-    const value = definition[swatch];
+    const value = legacy[swatch];
     if (typeof value !== 'string') continue;
     for (const role of roles) out[role] = value;
   }
   for (const [swatch, slot] of Object.entries(LEGACY_SWATCH_TO_CHART)) {
-    if (typeof definition[swatch] === 'string') out[slot] = definition[swatch];
+    if (typeof legacy[swatch] === 'string') out[slot] = legacy[swatch] as string;
   }
   out.accentText = '#000000';
 
   // Chat bubble overrides were already role-ish; carry them through as-is.
   for (const key of ['chatBubbleSentBg', 'chatBubbleSentText',
                      'chatBubbleReceivedBg', 'chatBubbleReceivedText']) {
-    if (typeof definition[key] === 'string') out[key] = definition[key];
+    if (typeof legacy[key] === 'string') out[key] = legacy[key] as string;
   }
   return out;
 }

@@ -87,28 +87,28 @@ function themeBlockBodies(): { theme: string; body: string }[] {
   return out;
 }
 
-/** Semantic tokens and the palette var each points at, from the :root block. */
-function semanticDefinitions(): Map<string, string> {
-  const out = new Map<string, string>();
-  const re = /(--color-[a-z0-9-]+)\s*:\s*var\((--ctp-[a-z0-9-]+)\)/g;
-  for (const m of rootBlock().matchAll(re)) out.set(m[1], m[2]);
+/**
+ * Every token name that App.css defines anywhere — base :root or a theme block.
+ *
+ * Roles used to be declared once on :root as `--color-x: var(--ctp-y)`. Since
+ * #4567 they are declared per theme with literal values and there is no palette
+ * layer, so "is this token defined" is a union across blocks, not a lookup in
+ * one.
+ */
+function definedTokens(): Set<string> {
+  const out = new Set<string>();
+  for (const m of rootBlock().matchAll(/(--[a-z0-9-]+)\s*:/g)) out.add(m[1]);
+  for (const { body } of themeBlockBodies()) {
+    for (const m of body.matchAll(/(--[a-z0-9-]+)\s*:/g)) out.add(m[1]);
+  }
   return out;
 }
 
-/** Palette vars defined inside a given `:root[data-theme='x']` block. */
-function paletteVarsInThemeBlocks(): { theme: string; vars: Set<string> }[] {
-  return themeBlockBodies().map(({ theme, body }) => {
-    const vars = new Set<string>();
-    for (const v of body.matchAll(/(--ctp-[a-z0-9-]+)\s*:/g)) vars.add(v[1]);
-    return { theme, vars };
-  });
-}
-
-/** Palette var -> literal value, per `:root[data-theme='x']` block. */
-function paletteValuesInThemeBlocks(): { theme: string; values: Map<string, string> }[] {
+/** Token -> literal value, per `:root[data-theme='x']` block. */
+function tokenValuesInThemeBlocks(): { theme: string; values: Map<string, string> }[] {
   return themeBlockBodies().map(({ theme, body }) => {
     const values = new Map<string, string>();
-    for (const v of body.matchAll(/(--ctp-[a-z0-9-]+)\s*:\s*([^;]+);/g)) {
+    for (const v of body.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/g)) {
       values.set(v[1], v[2].trim().toLowerCase());
     }
     return { theme, values };
@@ -129,41 +129,39 @@ function walk(dir: string, out: string[] = []): string[] {
 }
 
 describe('semantic color tokens (#4567)', () => {
-  const defs = semanticDefinitions();
+  const defined = definedTokens();
+  const ROLE_COUNT = 26;
 
   it('defines a role layer at all', () => {
-    expect(defs.size).toBeGreaterThan(10);
+    const roles = [...defined].filter((t) => t.startsWith('--color-'));
+    expect(roles.length).toBe(ROLE_COUNT);
     // The two roles the issue called out as referenced-but-undefined.
-    expect(defs.has('--color-success')).toBe(true);
-    expect(defs.has('--color-error')).toBe(true);
+    expect(defined.has('--color-success')).toBe(true);
+    expect(defined.has('--color-error')).toBe(true);
   });
 
-  it('points every token at a palette var that exists in every theme', () => {
-    const themes = paletteVarsInThemeBlocks();
+  it('declares every role in every theme', () => {
+    // With the palette layer gone a role is no longer inherited through one
+    // `var()` hop — each theme states it outright. A theme that forgets one
+    // falls back to whatever :root happens to say, which is a different theme's
+    // color, so this has to be exhaustive rather than a spot check.
+    const themes = tokenValuesInThemeBlocks();
     expect(themes.length).toBeGreaterThan(5);
 
-    // `--ctp-accent-text` is deliberately theme-independent: it is the text
-    // color painted ON a bright accent button, fixed at black so the contrast
-    // holds whatever the accent becomes. It lives on the base :root and no
-    // theme block overrides it, so the per-theme check below cannot apply to
-    // it. Rather than skip it silently — which would let a half-finished
-    // per-theme override slip through with the test still green — assert the
-    // property that actually has to hold: it is defined exactly once, on the
-    // base :root.
-    // rootBlock() rather than a lazy `[\s\S]*?` match: the two disagree the
-    // moment a comment in that block contains a `}`, and a truncated body here
-    // would turn this presence check into a false failure.
-    expect(rootBlock()).toMatch(/--ctp-accent-text\s*:/);
-    const themeBlocksDefiningIt = paletteVarsInThemeBlocks().filter((t) =>
-      t.vars.has('--ctp-accent-text'),
-    );
-    expect(themeBlocksDefiningIt.map((t) => t.theme)).toEqual([]);
+    // `--color-accent-text` is deliberately theme-independent: it is the text
+    // painted ON a bright accent fill, fixed black so contrast holds whatever
+    // the accent becomes. It lives on the base :root alone.
+    expect(rootBlock()).toMatch(/--color-accent-text\s*:/);
+    const overriding = themes.filter((t) => t.values.has('--color-accent-text'));
+    expect(overriding.map((t) => t.theme)).toEqual([]);
 
+    const roles = [...defined].filter(
+      (t) => t.startsWith('--color-') && t !== '--color-accent-text',
+    );
     const missing: string[] = [];
-    for (const [token, palette] of defs) {
-      if (palette === '--ctp-accent-text') continue; // asserted above instead
-      for (const { theme, vars } of themes) {
-        if (!vars.has(palette)) missing.push(`${token} -> ${palette} (missing in ${theme})`);
+    for (const { theme, values } of themes) {
+      for (const role of roles) {
+        if (!values.has(role)) missing.push(`${role} missing in '${theme}'`);
       }
     }
     expect(missing).toEqual([]);
@@ -176,7 +174,10 @@ describe('semantic color tokens (#4567)', () => {
     for (const file of walk(resolve('src'))) {
       const text = readFileSync(file, 'utf8');
       for (const m of text.matchAll(/var\((--color-[a-z0-9-]+)/g)) {
-        if (!defs.has(m[1])) dangling.add(`${m[1]} (${file.replace(resolve('.') + '/', '')})`);
+        // Chat-bubble overrides are optional user keys: undefined until
+        // someone sets one, which is why every use carries a role fallback.
+        if (m[1].startsWith('--color-chat-bubble-')) continue;
+        if (!defined.has(m[1])) dangling.add(`${m[1]} (${file.replace(resolve('.') + '/', '')})`);
       }
     }
     expect(Array.from(dangling)).toEqual([]);
@@ -189,22 +190,51 @@ describe('semantic color tokens (#4567)', () => {
     // `var(--color-accent, #2a2a2a)`, a dark grey standing in for the blue
     // accent, and PacketMonitorPanel had `#4a9eff` for the same token. If one
     // ever DID apply, the theme would silently break. Ban the shape outright.
+    //
+    // The chat-bubble overrides are the exception and are excluded: they are
+    // optional user keys that are genuinely undefined until someone sets one,
+    // which is exactly what a fallback is for.
     const offenders: string[] = [];
     for (const file of walk(resolve('src'))) {
       const text = readFileSync(file, 'utf8');
       for (const m of text.matchAll(/var\(\s*(--color-[a-z0-9-]+)\s*,/g)) {
+        if (m[1].startsWith('--color-chat-bubble-')) continue;
         offenders.push(`${m[1]} in ${file.replace(resolve('.') + '/', '')}`);
       }
     }
     expect(offenders).toEqual([]);
   });
 
-  it('keeps the user-facing theme schema unchanged', () => {
-    // The whole point of the indirection: users still author the 26 palette
-    // keys they always have. If a semantic token ever needs to be authored
-    // directly, that is a schema change and a migration — not a silent edit.
-    const themeValidation = readFileSync(resolve('src/utils/themeValidation.ts'), 'utf8');
-    expect(themeValidation).not.toMatch(/--color-|'color-(success|error|accent)'/);
+  it('makes the theme schema role-keyed, matching the tokens', () => {
+    // The inverse of what this test asserted before #4567 landed: the schema
+    // used to be 26 swatch names and the roles were an internal indirection.
+    // Now the two are the same vocabulary, so they must not drift — a role
+    // added to App.css with no schema key is unauthorable, and a schema key
+    // with no token silently does nothing.
+    const src = readFileSync(resolve('src/utils/themeValidation.ts'), 'utf8');
+    // Quoted entries only — the list is grouped with `//` comments between,
+    // and splitting on commas would drag those words in as fake keys.
+    const listed = [
+      ...(src.match(/REQUIRED_THEME_COLORS = \[([\s\S]*?)\] as const/)?.[1] ?? '')
+        .matchAll(/'([a-zA-Z][a-zA-Z0-9]*)'/g),
+    ].map((m) => m[1]);
+    expect(listed.length).toBe(ROLE_COUNT);
+
+    const toToken = (k: string) => `--color-${k.replace(/([A-Z])/g, '-$1').toLowerCase()}`;
+    const unauthorable = [...defined]
+      .filter((t) => t.startsWith('--color-') && !t.startsWith('--color-chat-bubble-'))
+      .filter((t) => !listed.map(toToken).includes(t));
+    expect(unauthorable, 'role tokens with no schema key').toEqual([]);
+
+    const inert = listed.map(toToken).filter((t) => !defined.has(t));
+    expect(inert, 'schema keys with no role token').toEqual([]);
+  });
+
+  it('no longer defines a swatch-named palette layer', () => {
+    // The layer whose names leaked into the schema. Its absence is the fix, so
+    // assert it rather than trusting that nobody reintroduces `--ctp-blue`.
+    const swatchTokens = [...defined].filter((t) => /^--ctp-/.test(t));
+    expect(swatchTokens).toEqual([]);
   });
 });
 
@@ -220,35 +250,27 @@ describe('semantic color tokens (#4567)', () => {
  * indistinguishable, and slot 3 implied a source was "succeeding".
  */
 describe('categorical scale (--chart-N)', () => {
-  /** Chart slots and the palette var each points at, from the :root block. */
-  function chartDefinitions(): Map<string, string> {
-    const out = new Map<string, string>();
-    for (const m of rootBlock().matchAll(/(--chart-\d+)\s*:\s*var\((--ctp-[a-z0-9-]+)\)/g)) {
-      out.set(m[1], m[2]);
-    }
-    return out;
-  }
+  const SLOTS = Array.from({ length: 8 }, (_, i) => `--chart-${i + 1}`);
 
-  const chart = chartDefinitions();
-
-  it('defines a contiguous scale', () => {
-    expect(chart.size).toBe(8);
-    for (let i = 1; i <= 8; i++) {
-      expect(chart.has(`--chart-${i}`), `--chart-${i} missing`).toBe(true);
+  it('defines a contiguous scale on the base :root', () => {
+    // The defaults, used by a custom theme that authors the roles but leaves
+    // the categorical scale unset.
+    const root = rootBlock();
+    for (const slot of SLOTS) {
+      expect(root, `${slot} missing from :root defaults`).toMatch(
+        new RegExp(`${slot}\\s*:`),
+      );
     }
   });
 
-  it('points every slot at a palette var that exists in every theme', () => {
-    for (const { theme, vars } of paletteVarsInThemeBlocks()) {
-      for (const [slot, paletteVar] of chart) {
-        expect(vars.has(paletteVar), `${slot} -> ${paletteVar} undefined in theme '${theme}'`).toBe(true);
+  it('declares all eight slots in every theme', () => {
+    const missing: string[] = [];
+    for (const { theme, values } of tokenValuesInThemeBlocks()) {
+      for (const slot of SLOTS) {
+        if (!values.has(slot)) missing.push(`${slot} missing in '${theme}'`);
       }
     }
-  });
-
-  it('gives every slot a distinct palette var', () => {
-    const used = [...chart.values()];
-    expect(new Set(used).size).toBe(used.length);
+    expect(missing).toEqual([]);
   });
 
   it('resolves slots 1-7 to distinct COLORS in every theme', () => {
@@ -261,12 +283,11 @@ describe('categorical scale (--chart-N)', () => {
     // Seven is the most this palette can guarantee; slot 8 is asserted
     // separately below with the collision it is allowed to have.
     const failures: string[] = [];
-    for (const { theme, values } of paletteValuesInThemeBlocks()) {
+    for (const { theme, values } of tokenValuesInThemeBlocks()) {
       const seen = new Map<string, number>();
       for (let i = 1; i <= 7; i++) {
-        const paletteVar = chart.get(`--chart-${i}`)!;
-        const hex = values.get(paletteVar);
-        if (!hex) continue; // covered by the "exists in every theme" test
+        const hex = values.get(`--chart-${i}`);
+        if (!hex) continue; // covered by the "declares all eight slots" test
         if (seen.has(hex)) failures.push(`${theme}: --chart-${seen.get(hex)} and --chart-${i} are both ${hex}`);
         else seen.set(hex, i);
       }
@@ -278,14 +299,13 @@ describe('categorical scale (--chart-N)', () => {
     // Slot 8 cannot be collision-free — see the App.css comment. Pin how bad
     // it is allowed to get, so a future reshuffle that regresses it (teal
     // aliased in 7 themes; sky in 10) fails rather than passing quietly.
-    const themes = paletteValuesInThemeBlocks();
-    const eighth = chart.get('--chart-8')!;
+    const themes = tokenValuesInThemeBlocks();
     const clashes: string[] = [];
     for (const { theme, values } of themes) {
-      const hex = values.get(eighth);
+      const hex = values.get('--chart-8');
       if (!hex) continue;
       for (let i = 1; i <= 7; i++) {
-        if (values.get(chart.get(`--chart-${i}`)!) === hex) clashes.push(`${theme}:${i}`);
+        if (values.get(`--chart-${i}`) === hex) clashes.push(`${theme}:${i}`);
       }
     }
     // At most a quarter of themes, and never more than one slot within a theme.
@@ -314,10 +334,13 @@ describe('categorical scale (--chart-N)', () => {
     // nothing, at which point `not.toMatch` passes vacuously and only a
     // separate emptiness guard stands between that and a silently dead test.
     // Reading each declaration removes the failure mode instead of guarding it.
-    const decls = [...rootBlock().matchAll(/--chart-\d+\s*:\s*([^;]+);/g)].map((m) => m[1].trim());
-    expect(decls).toHaveLength(8);
-    for (const value of decls) {
-      expect(value, `${value} borrows a role token`).not.toMatch(/var\(--color-/);
+    const blocks = [{ theme: ':root', body: rootBlock() }, ...themeBlockBodies()];
+    for (const { theme, body } of blocks) {
+      const decls = [...body.matchAll(/--chart-\d+\s*:\s*([^;]+);/g)].map((m) => m[1].trim());
+      expect(decls, `${theme} declares ${decls.length} chart slots`).toHaveLength(8);
+      for (const value of decls) {
+        expect(value, `${theme}: ${value} borrows a role token`).not.toMatch(/var\(--color-/);
+      }
     }
   });
 
@@ -459,7 +482,31 @@ describe('raw palette references outside App.css', () => {
     // Without this, a rename in themeValidation.ts would empty the allowlist
     // and the tests below would still pass — for the wrong reason.
     expect(optionalKeys.has('--ctp-chatBubbleSentBg')).toBe(true);
-    expect(optionalKeys.size).toBe(4);
+    expect(optionalKeys.size).toBe(12);
+  });
+
+  it('mentions the retired palette namespace nowhere in source', () => {
+    // The strongest form of this guard, and only possible now that the layer
+    // is gone entirely (#4567). Every earlier version keyed off a particular
+    // SPELLING and something always slipped past:
+    //   `var(--ctp-blue)`                    CSS  — caught from Phase 2b
+    //   `rgba(137, 180, 250, .3)`            CSS  — the swatch written out
+    //   `getPropertyValue('--ctp-base')`     JS   — read back at runtime
+    //   `{ var: '--ctp-base', label: … }`    JS   — the same read, one level
+    //                                               of indirection away, which
+    //                                               no pattern for the call
+    //                                               site can see
+    // The last one lived in ThemeDocumentation and would have rendered eight
+    // empty swatches. Matching the bare namespace catches all of them, and
+    // anything else nobody has thought of.
+    const offenders: string[] = [];
+    for (const file of walk(resolve('src'))) {
+      const text = stripComments(readFileSync(file, 'utf8'));
+      if (text.includes('--ctp-')) {
+        offenders.push(file.replace(resolve('.') + '/', ''));
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 
   it('has no component reaching past the role layer to a raw palette var', () => {
@@ -494,23 +541,6 @@ describe('raw palette references outside App.css', () => {
     expect(Array.from(new Set(offenders))).toEqual([]);
   });
 
-  it('references no --ctp-* var that nothing defines', () => {
-    // The sharper guard, and the one that would have caught both shipped bugs:
-    // `--ctp-red-rgb` (#4617) and `--ctp-yellow-soft` were never defined
-    // anywhere, so their inline fallbacks — hardcoded Catppuccin Mocha — were
-    // what every theme actually rendered. A fallback makes this invisible at
-    // runtime: nothing breaks, the color is just silently wrong.
-    const defined = new Set<string>();
-    for (const m of appCss.matchAll(/(--ctp-[A-Za-z0-9-]+)\s*:/g)) defined.add(m[1]);
-    expect(defined.size).toBeGreaterThan(10);
-
-    const dangling = referencedPaletteVars().filter(
-      (h) => !defined.has(h.name) && !optionalKeys.has(h.name),
-    );
-    expect(
-      Array.from(new Set(dangling.map((h) => `${h.name} (${h.file})`))),
-    ).toEqual([]);
-  });
 });
 
 describe('hardcoded palette swatch literals', () => {
@@ -528,7 +558,7 @@ describe('hardcoded palette swatch literals', () => {
   // are edited.
   function swatchTriples(): Map<string, string[]> {
     const byTriple = new Map<string, string[]>();
-    for (const m of appCss.matchAll(/(--ctp-[A-Za-z0-9-]+)\s*:\s*#([0-9a-fA-F]{6})\b/g)) {
+    for (const m of appCss.matchAll(/(--(?:color|chart)-[A-Za-z0-9-]+)\s*:\s*#([0-9a-fA-F]{6})\b/g)) {
       const hex = m[2];
       const triple = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(',');
       const names = byTriple.get(triple) ?? [];
@@ -543,7 +573,7 @@ describe('hardcoded palette swatch literals', () => {
     // would empty the swatch set and the check below would pass vacuously.
     const swatches = swatchTriples();
     expect(swatches.size).toBeGreaterThan(20);
-    expect(swatches.has('166,227,161')).toBe(true); // Mocha green
+    expect(swatches.has('166,227,161')).toBe(true); // Mocha green, = --color-success
   });
 
   it('has no component writing a palette swatch as a raw rgb/rgba literal', () => {
