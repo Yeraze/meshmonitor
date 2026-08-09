@@ -105,6 +105,36 @@ describe('DatabaseService.purgeAllNodesAsync — packet_log integration (#2637)'
   });
 });
 
+describe('DatabaseService.purgeAllNodesAsync — auto-traceroute/time-sync allowlists (#4629)', () => {
+  beforeAll(async () => {
+    await databaseService.waitForReady();
+    for (let i = 0; i < 50 && !databaseService.autoTracerouteRepo; i++) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+  });
+
+  it('clears the auto-traceroute and auto-time-sync node allowlists so purged nodes do not linger as orphaned selections', async () => {
+    // Seed two real nodes and explicitly select them for auto-traceroute + auto-time-sync
+    await databaseService.upsertNodeAsync({ nodeNum: 5001, nodeId: '!00001389', longName: 'Gamma', shortName: 'G' });
+    await databaseService.upsertNodeAsync({ nodeNum: 5002, nodeId: '!0000138a', longName: 'Delta', shortName: 'D' });
+
+    await databaseService.autoTraceroute.setAutoTracerouteNodes([5001, 5002]);
+    await databaseService.timeSync.setAutoTimeSyncNodes([5001, 5002]);
+
+    expect(await databaseService.autoTraceroute.getAutoTracerouteNodes()).toEqual([5001, 5002]);
+    expect(await databaseService.timeSync.getAutoTimeSyncNodes()).toEqual([5001, 5002]);
+
+    // Exercise the actual code path under test
+    await databaseService.purgeAllNodesAsync();
+
+    // The explicit allowlists must be empty — this is the #4629 regression assertion.
+    // Without the fix these survive the purge (and a container restart) because
+    // they're stored in their own tables, decoupled from `nodes`.
+    expect(await databaseService.autoTraceroute.getAutoTracerouteNodes()).toEqual([]);
+    expect(await databaseService.timeSync.getAutoTimeSyncNodes()).toEqual([]);
+  });
+});
+
 describe('DatabaseService.deleteNodeAsync — packet_log integration (#2637)', () => {
   beforeAll(async () => {
     await databaseService.waitForReady();
