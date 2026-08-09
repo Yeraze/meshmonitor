@@ -31,8 +31,32 @@ const appCss = readFileSync(resolve('src/App.css'), 'utf8');
  * silently counted as a definition.
  */
 function rootBlock(): string {
-  const m = appCss.match(/:root\s*\{([\s\S]*?)\n\}/);
-  return m?.[1] ?? '';
+  // Brace-balanced rather than a lazy `[\s\S]*?` up to the first `\n}`.
+  // The lazy form stops at the first line that is just `}`, so a nested rule
+  // or a comment containing one would truncate the block and hide every token
+  // after it. The count assertions below would catch a big truncation, but a
+  // small one could pass while quietly narrowing what the other tests see —
+  // and this block has grown twice already (chart, then seq).
+  // Comments are blanked first: this block is heavily commented, and a `}`
+  // inside prose counts as a closing brace to any scanner that does not strip
+  // them. Verified by dropping a lone `}` into a comment above --chart-1 —
+  // brace-counting alone still truncated there.
+  const css = appCss.replace(/\/\*[\s\S]*?\*\//g, (m) => ' '.repeat(m.length));
+  const start = css.search(/:root\s*\{/);
+  if (start === -1) return '';
+  const open = css.indexOf('{', start);
+  let depth = 0;
+  for (let i = open; i < css.length; i++) {
+    if (css[i] === '{') depth++;
+    else if (css[i] === '}') {
+      depth--;
+      // Slice from the ORIGINAL text so declarations are returned verbatim;
+      // only the brace scan runs on the blanked copy. Lengths match because
+      // comments are replaced with equal-length spaces, so offsets are stable.
+      if (depth === 0) return appCss.slice(open + 1, i);
+    }
+  }
+  return '';
 }
 
 /** Semantic tokens and the palette var each points at, from the :root block. */
