@@ -601,8 +601,8 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                                     key={groupIdx}
                                     style={{
                                       backgroundColor: segment.type === 'parameter'
-                                        ? 'rgba(166, 227, 161, 0.3)'
-                                        : 'rgba(137, 180, 250, 0.2)',
+                                        ? 'color-mix(in srgb, var(--color-success) 30%, transparent)'
+                                        : 'color-mix(in srgb, var(--color-accent) 20%, transparent)',
                                       padding: '0.2rem 0.4rem',
                                       borderRadius: '4px',
                                       fontWeight: segment.type === 'parameter' ? 'bold' : 'normal',
@@ -610,8 +610,8 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                                       fontFamily: 'monospace',
                                       fontSize: '0.85rem',
                                       border: segment.type === 'parameter'
-                                        ? '1px solid rgba(166, 227, 161, 0.5)'
-                                        : '1px solid rgba(137, 180, 250, 0.3)'
+                                        ? '1px solid color-mix(in srgb, var(--color-success) 50%, transparent)'
+                                        : '1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)'
                                     }}
                                     title={segment.type === 'parameter' ? `Parameter: ${segment.paramName}` : 'Literal text'}
                                   >
@@ -628,7 +628,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                                       alignItems: 'center',
                                       borderRadius: '4px',
                                       overflow: 'hidden',
-                                      border: '1px solid rgba(166, 227, 161, 0.5)',
+                                      border: '1px solid color-mix(in srgb, var(--color-success) 50%, transparent)',
                                       fontFamily: 'monospace',
                                       fontSize: '0.85rem'
                                     }}
@@ -639,8 +639,8 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                                         <span
                                           style={{
                                             backgroundColor: segment.type === 'parameter'
-                                              ? 'rgba(166, 227, 161, 0.3)'
-                                              : 'rgba(137, 180, 250, 0.2)',
+                                              ? 'color-mix(in srgb, var(--color-success) 30%, transparent)'
+                                              : 'color-mix(in srgb, var(--color-accent) 20%, transparent)',
                                             padding: '0.2rem 0.4rem',
                                             fontWeight: segment.type === 'parameter' ? 'bold' : 'normal',
                                             color: segment.type === 'parameter' ? 'var(--color-success)' : 'var(--color-accent)'
@@ -652,7 +652,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                                           <span style={{
                                             width: '1px',
                                             height: '100%',
-                                            backgroundColor: 'rgba(205, 214, 244, 0.3)',
+                                            backgroundColor: 'color-mix(in srgb, var(--color-text) 30%, transparent)',
                                             margin: '0'
                                           }} />
                                         )}

@@ -414,16 +414,10 @@ describe('raw palette references outside App.css', () => {
       .replace(/^\s*\/\/.*$/gm, ' ');
   }
 
-  // SCOPE — what this guard does NOT catch: a hardcoded `rgba(166, 227, 161,
-  // 0.3)` is the same theme-blind defect as `--ctp-yellow-soft`, spelled so it
-  // isn't a custom-property reference at all. A sweep found 82 such swatch
-  // approximations across 22 files, several sitting right next to a role token
-  // (`background: rgba(<mocha green>)` beside `color: var(--color-success)`),
-  // so on Nord or Gruvbox the two halves disagree. Fixing them needs per-site
-  // judgement — shadow vs fill vs border, and the right opacity — so it is its
-  // own pass, tracked separately, and the detector lands with the fixes rather
-  // than red against 82 pre-existing sites. Until then: passing this file does
-  // not mean a component is theme-clean.
+  // This guard covers the `var(--ctp-*)` spelling. The other spelling of the
+  // same defect — a hardcoded `rgba(166, 227, 161, 0.3)`, the Mocha green
+  // swatch written so it is not a custom-property reference at all — is covered
+  // by the swatch-literal suite at the bottom of this file.
   function referencedPaletteVars(): { name: string; file: string }[] {
     const hits: { name: string; file: string }[] = [];
     for (const file of walk(resolve('src'))) {
@@ -470,5 +464,72 @@ describe('raw palette references outside App.css', () => {
     expect(
       Array.from(new Set(dangling.map((h) => `${h.name} (${h.file})`))),
     ).toEqual([]);
+  });
+});
+
+describe('hardcoded palette swatch literals', () => {
+  // The third spelling of one defect. `--ctp-red-rgb` (#4617) and
+  // `--ctp-yellow-soft` were undefined vars whose hardcoded fallbacks rendered
+  // Mocha in all 15 themes; this is the same wrong color written directly as
+  // `rgba(243, 139, 168, 0.1)`, with no var involved for a scanner to notice.
+  //
+  // The worst shape of it put `background: rgba(<mocha green>)` on the same
+  // element as `color: var(--color-success)` — so on Nord or Gruvbox the two
+  // halves of one badge disagreed with each other.
+
+  // Swatches are read out of App.css rather than hardcoded here, so this
+  // catches every theme's palette, not just Mocha, and cannot drift as themes
+  // are edited.
+  function swatchTriples(): Map<string, string[]> {
+    const byTriple = new Map<string, string[]>();
+    for (const m of appCss.matchAll(/(--ctp-[A-Za-z0-9-]+)\s*:\s*#([0-9a-fA-F]{6})\b/g)) {
+      const hex = m[2];
+      const triple = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(',');
+      const names = byTriple.get(triple) ?? [];
+      if (!names.includes(m[1])) names.push(m[1]);
+      byTriple.set(triple, names);
+    }
+    return byTriple;
+  }
+
+  it('reads a real palette out of App.css', () => {
+    // Without this, a change to how App.css spells colors (say, to `hsl()`)
+    // would empty the swatch set and the check below would pass vacuously.
+    const swatches = swatchTriples();
+    expect(swatches.size).toBeGreaterThan(20);
+    expect(swatches.has('166,227,161')).toBe(true); // Mocha green
+  });
+
+  it('has no component writing a palette swatch as a raw rgb/rgba literal', () => {
+    const swatches = swatchTriples();
+    const offenders: string[] = [];
+    for (const file of walk(resolve('src'))) {
+      if (file.endsWith('/App.css')) continue; // where the palette is *defined*
+      const text = readFileSync(file, 'utf8');
+      const lines = text.split('\n');
+      lines.forEach((line, i) => {
+        for (const m of line.matchAll(
+          /rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/g,
+        )) {
+          const [r, g, b] = m.slice(1, 4).map(Number);
+          // Achromatic values are exempt. A drop shadow is black and a scrim is
+          // white in every theme — that is a deliberate, theme-independent
+          // idiom, not a palette pick. They would otherwise all match, because
+          // some themes do define a pure-black --ctp-base and a pure-white
+          // --ctp-text, which drowns the real hits ~75:1.
+          if (r === g && g === b) continue;
+          const triple = [r, g, b].join(',');
+          const names = swatches.get(triple);
+          if (!names) continue;
+          offenders.push(
+            `${file.replace(resolve('.') + '/', '')}:${i + 1} rgb(${triple}) = ${names.join('/')}`,
+          );
+        }
+      });
+    }
+    // Use color-mix(in srgb, var(--color-ROLE) N%, transparent): it follows the
+    // theme, and premultiplies exactly the way an rgba alpha does, so it is a
+    // faithful replacement for a fill, a border and a shadow alike.
+    expect(offenders).toEqual([]);
   });
 });

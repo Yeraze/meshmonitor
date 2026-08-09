@@ -1070,7 +1070,7 @@
 }
 
 .overlay-content {
-  background: rgba(30, 30, 46, 0.95);
+  background: color-mix(in srgb, var(--color-bg) 95%, transparent);
   border: 2px solid var(--color-surface-active);
   border-radius: var(--radius-xl);
   padding: 2rem;
@@ -1111,7 +1111,7 @@
   flex-direction: column;
   align-items: center;
   gap: 0.75rem;
-  background: rgba(30, 30, 46, 0.95);
+  background: color-mix(in srgb, var(--color-bg) 95%, transparent);
   border: 2px solid var(--color-surface-active);
   border-radius: var(--radius-xl);
   padding: 2rem;
@@ -1500,7 +1500,7 @@
 .sender-dot.clickable:hover {
   background-color: var(--color-accent);
   transform: scale(1.1);
-  box-shadow: 0 2px 8px rgba(137, 180, 250, 0.3);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-accent) 30%, transparent);
 }
 
 /* Node Popup Styles */
@@ -2660,8 +2660,8 @@
 }
 
 @keyframes node-highlight-pulse {
-  0%, 100% { filter: drop-shadow(0 0 4px rgba(137, 180, 250, 0.6)); }
-  50% { filter: drop-shadow(0 0 12px rgba(137, 180, 250, 1)); }
+  0%, 100% { filter: drop-shadow(0 0 4px color-mix(in srgb, var(--color-accent) 60%, transparent)); }
+  50% { filter: drop-shadow(0 0 12px var(--color-accent)); }
 }
 
 /* Smooth transition for hover-to-isolate on route/neighbor polylines */

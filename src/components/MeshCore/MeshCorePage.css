@@ -462,14 +462,14 @@
   background: var(--color-surface-hover);
   border-color: var(--color-accent);
   transform: translateY(-2px);
-  box-shadow: 0 8px 25px -5px rgba(137, 180, 250, 0.3);
+  box-shadow: 0 8px 25px -5px color-mix(in srgb, var(--color-accent) 30%, transparent);
 }
 
 .mc-channel-row.selected {
   background: var(--color-accent);
   border-color: var(--color-accent);
   color: var(--color-accent-text);
-  box-shadow: 0 8px 25px -5px rgba(137, 180, 250, 0.5);
+  box-shadow: 0 8px 25px -5px color-mix(in srgb, var(--color-accent) 50%, transparent);
 }
 
 .mc-channel-row-name {

@@ -235,7 +235,7 @@ export const RadioConfigurationSection: React.FC<RadioConfigurationSectionProps>
                 padding: '0.6rem 0.75rem',
                 border: '1px solid var(--color-warning)',
                 borderRadius: '4px',
-                backgroundColor: 'rgba(249, 226, 175, 0.12)',
+                backgroundColor: 'color-mix(in srgb, var(--color-warning) 12%, transparent)',
                 color: 'var(--color-warning)',
                 lineHeight: '1.4'
               }}
@@ -490,7 +490,7 @@ export const RadioConfigurationSection: React.FC<RadioConfigurationSectionProps>
                   padding: '1rem',
                   backgroundColor: channel ? 'var(--color-surface)' : 'var(--color-bg-raised)',
                   opacity: channel?.role === 0 ? 0.5 : 1,
-                  boxShadow: channel?.role === 1 ? '0 0 10px rgba(137, 180, 250, 0.3)' : 'none'
+                  boxShadow: channel?.role === 1 ? '0 0 10px color-mix(in srgb, var(--color-accent) 30%, transparent)' : 'none'
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>

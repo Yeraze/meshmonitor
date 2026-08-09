@@ -70,7 +70,7 @@
 
 /* Warning Banner */
 .node-info-warning {
-  background-color: rgba(250, 179, 135, 0.15);
+  background-color: color-mix(in srgb, var(--color-caution) 15%, transparent);
   border: 1px solid var(--color-caution);
   border-radius: var(--radius-md);
   padding: 0.75rem 1rem;
@@ -100,7 +100,7 @@
 
 /* Success Message */
 .node-info-success {
-  background-color: rgba(166, 227, 161, 0.15);
+  background-color: color-mix(in srgb, var(--color-success) 15%, transparent);
   border: 1px solid var(--color-success);
   color: var(--color-success);
   padding: 0.75rem;
@@ -162,7 +162,7 @@
 .node-info-field input:focus {
   outline: none;
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 2px rgba(137, 180, 250, 0.2);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
 }
 
 .node-info-field input.input-error {
@@ -170,7 +170,7 @@
 }
 
 .node-info-field input.input-error:focus {
-  box-shadow: 0 0 0 2px rgba(243, 139, 168, 0.2);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-error) 20%, transparent);
 }
 
 .node-info-field .error-message {

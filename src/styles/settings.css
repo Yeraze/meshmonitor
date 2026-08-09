@@ -192,7 +192,7 @@
   border: 2px solid var(--color-error);
   border-radius: var(--radius-lg);
   padding: 1.5rem;
-  background: rgba(243, 139, 168, 0.05);
+  background: color-mix(in srgb, var(--color-error) 5%, transparent);
   margin-top: 2rem;
   position: relative;
   z-index: 1; /* Keep below modals and popups */
