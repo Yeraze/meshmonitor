@@ -4564,9 +4564,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
             return false;
           }
           logger.debug(`[MeshCore] set_out_path verified applied for ${publicKey} despite lost ack`);
-          // Falls through to the shared success path below — refreshContacts()
-          // already mirrored the verified contact, but re-run it so lastSeen/
-          // events stay consistent with the non-timeout success path.
+          // Falls through to the shared success path below. refreshContacts()
+          // already wrote the device-reported outPath onto the contact (which
+          // is what we just compared against `hex`), but the fall-through still
+          // matters: it's what fires `contacts_updated`/emitMeshCoreContactUpdated
+          // and stamps lastSeen with Date.now() instead of the device's
+          // (possibly stale) last-advert epoch.
         } else {
           logger.warn(`[MeshCore] set_out_path rejected for ${publicKey}: ${response.error}`);
           return false;

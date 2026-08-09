@@ -86,6 +86,19 @@ describe('MeshCoreManager.setContactOutPath — lost-ack verification (#4625)', 
     expect(ok).toBe(false);
   });
 
+  it('returns false (not an uncaught throw) when verification itself fails to reach the device', async () => {
+    const m = makeManager();
+    (m as any).sendBridgeCommand = vi.fn(async (cmd: string) => {
+      if (cmd === 'set_out_path') return { id: '1', success: false, error: TIMEOUT_ERROR };
+      if (cmd === 'get_contacts') throw new Error('bridge command channel closed');
+      return { id: '1', success: true, data: {} };
+    });
+
+    const ok = await m.setContactOutPath(TARGET_KEY, Uint8Array.from([0xa3, 0x7f, 0x02]), 1);
+
+    expect(ok).toBe(false);
+  });
+
   it('returns false without calling get_contacts when the device explicitly rejects (non-timeout)', async () => {
     const m = makeManager();
     const calls: string[] = [];
