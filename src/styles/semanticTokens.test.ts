@@ -130,9 +130,15 @@ function walk(dir: string, out: string[] = []): string[] {
 
 describe('semantic color tokens (#4567)', () => {
   const defined = definedTokens();
-  const ROLE_COUNT = 26;
+  /** Read from the schema, so the two cannot drift apart silently. */
+  const ROLE_COUNT = [
+    ...(readFileSync(resolve('src/utils/themeValidation.ts'), 'utf8')
+      .match(/REQUIRED_THEME_COLORS = \[([\s\S]*?)\] as const/)?.[1] ?? '')
+      .matchAll(/'([a-zA-Z][a-zA-Z0-9]*)'/g),
+  ].length;
 
   it('defines a role layer at all', () => {
+    expect(ROLE_COUNT, 'schema parse produced no keys').toBeGreaterThan(20);
     const roles = [...defined].filter((t) => t.startsWith('--color-'));
     expect(roles.length).toBe(ROLE_COUNT);
     // The two roles the issue called out as referenced-but-undefined.

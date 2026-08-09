@@ -187,7 +187,13 @@ const LEGACY_SWATCH_TO_ROLES: Record<string, string[]> = {
   peach: ['caution'], sky: ['info'], maroon: ['danger']
 };
 
-/** Swatch that fed each categorical slot before the flip. */
+/**
+ * Swatch that fed each categorical slot before the flip.
+ *
+ * `rosewater` appears here but NOT in the role map above, so a legacy theme
+ * that used it keeps it as chart slot 8 and nowhere else. That is the whole of
+ * its old reach — no role ever resolved to rosewater.
+ */
 const LEGACY_SWATCH_TO_CHART: Record<string, string> = {
   blue: 'chart1', mauve: 'chart2', green: 'chart3', peach: 'chart4',
   yellow: 'chart5', sapphire: 'chart6', maroon: 'chart7', rosewater: 'chart8'
@@ -232,7 +238,12 @@ export function migrateLegacyThemeDefinition<T>(definition: T): T | Record<strin
   for (const [swatch, slot] of Object.entries(LEGACY_SWATCH_TO_CHART)) {
     if (typeof legacy[swatch] === 'string') out[slot] = legacy[swatch] as string;
   }
-  out.accentText = '#000000';
+  // Black unless the definition already says otherwise. There was no swatch to
+  // migrate from — accent-text was a single global value painted on bright
+  // fills — but a hand-edited hybrid may already carry one, and silently
+  // replacing it would lose the author's choice.
+  if (typeof legacy.accentText === 'string') out.accentText = legacy.accentText;
+  else out.accentText = '#000000';
 
   // Chat bubble overrides were already role-ish; carry them through as-is.
   for (const key of ['chatBubbleSentBg', 'chatBubbleSentText',

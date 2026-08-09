@@ -237,9 +237,13 @@ const ThemeCard: React.FC<ThemeCardProps> = ({ themeInfo, isDarkTheme, isLightTh
 
     setColors(newColors);
 
-    // Restore original theme
+    // Restore original theme. The else branch matters: with no data-theme set
+    // — a fresh load before one has been written — the early return used to
+    // leave the LAST inspected theme applied to the whole document.
     if (originalTheme) {
       document.documentElement.setAttribute('data-theme', originalTheme);
+    } else {
+      document.documentElement.removeAttribute('data-theme');
     }
   }, [themeInfo.id]);
 

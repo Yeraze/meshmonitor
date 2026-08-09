@@ -929,3 +929,24 @@ describe('normalizeThemeDefinition', () => {
     expect((normalized as any).chatBubbleSentText).toBe('#AABBCC');
   });
 });
+
+describe('migrateLegacyThemeDefinition — accentText', () => {
+  const swatchOnly = {
+    base: '#1e1e2e', crust: '#11111b', mantle: '#181825',
+    subtext0: '#a6adc8', subtext1: '#bac2de', surface0: '#313244',
+    overlay0: '#6c7086', overlay1: '#7f849c'
+  };
+
+  it('defaults to black when the legacy definition has none', () => {
+    // There was no swatch to migrate from: accent-text was one global value,
+    // fixed black, painted on bright fills.
+    expect(migrateLegacyThemeDefinition(swatchOnly).accentText).toBe('#000000');
+  });
+
+  it('keeps a value the definition already carries', () => {
+    // A hand-edited hybrid can have one, and clobbering it would lose the
+    // author's choice for no reason.
+    const hybrid = { ...swatchOnly, accentText: '#ffffff' };
+    expect(migrateLegacyThemeDefinition(hybrid).accentText).toBe('#ffffff');
+  });
+});
