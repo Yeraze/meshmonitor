@@ -63,6 +63,40 @@ Push the branch using an **explicit branch ref** (this checkout may be shared wi
 git push -u origin <branch-name>
 ```
 
+## Step 3b: Refresh the Claude review token — do this on EVERY PR
+
+```bash
+bash ~/Development/homelab/tools/gh-secret.sh
+```
+
+Run it **every time you open a PR**, before `gh pr create`. It re-pushes the
+current local Claude credential into the repo's `CLAUDE_CODE_OAUTH_TOKEN`
+secret, which the `claude-review` workflow authenticates with.
+
+That token gets revoked often — three times in a single working session at one
+point. When it is stale, `claude-review` fails with:
+
+```
+API Error: 401 {"type":"error","error":{"type":"authentication_error",
+"message":"OAuth access token has been revoked."}}
+```
+
+which reads as a red CI check on a PR whose code is fine. Refreshing up front
+costs a second and removes the most common source of spurious failures here.
+
+**Do not confuse it with the other `claude-review` failure.** If the log instead
+says:
+
+```
+##[error]Service Unavailable
+##[error]Failed to resolve action download info.
+```
+
+that is GitHub failing to serve the action itself — a platform incident, not
+auth. Refreshing the secret does nothing; check
+[githubstatus.com](https://www.githubstatus.com/) and re-run once Actions
+recovers. Always read the failure before reaching for the script.
+
 ## Step 4: Create the Pull Request
 
 Use `gh pr create` with a detailed description following this structure:

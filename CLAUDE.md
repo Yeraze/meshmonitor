@@ -192,6 +192,36 @@ For the full "adding a migration" recipe see [Migration recipe](#migration-recip
 - When sending test messages, use the `gauntlet` channel — never the Primary channel.
 - Tileserver runs on port 8082. Only shut it down (and the dev container) when you are running `tests/system-tests.sh` locally to debug a system-test failure — CI runs system tests on every PR, so you should not be invoking that script as part of normal feature/bugfix work.
 
+## Agent worktrees (`isolation: "worktree"`)
+
+A worktree created by the Agent tool is **not** set up by the `/worktree` slash
+command — none of that command's setup steps run. The tree is a bare checkout:
+submodules are uninitialised and `node_modules` is absent or partial. Every
+agent that has run in one has hit the same two failures, and both look like
+bugs in the agent's own diff until you check.
+
+Do these two things **before** trusting any test run inside an agent worktree:
+
+```bash
+git submodule update --init --recursive        # else ~9 protobuf suites fail "encode failed"
+ln -s ../../../node_modules node_modules       # or symlink individual packages
+```
+
+- **Uninitialised submodules** — the `protobufs/` submodule is empty, so protobuf
+  encode/decode suites fail with `encode failed`. Nothing to do with your change.
+- **Unresolvable `ts-overlapping-marker-spiderfier-leaflet`** — 6 map/hook suites
+  fail to *collect* (0 assertions run, `success: false` with 0 failed tests).
+  The package is present in the parent checkout but has **no `dist/`**, which
+  affects the main checkout too. Symlinking the parent's `node_modules` is the
+  quickest unblock; it is gitignored and changes no lockfile.
+
+**Read the whole result, not the headline.** A run can report thousands passing
+and still be `success: false` purely from suite-level *collection* errors like
+these. Before concluding your change broke something, stash it and re-run: if
+the identical failures persist, they are environmental. Say so explicitly in the
+PR rather than quoting a clean-looking number you do not trust — and let CI,
+which installs fresh, be the authority.
+
 ## Workflow
 
 - System tests (`tests/system-tests.sh`) are run by CI on every PR. Do not run them locally as part of normal feature or bugfix work — only run them locally when you are specifically debugging a system-test failure.
