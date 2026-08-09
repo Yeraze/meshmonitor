@@ -37,6 +37,8 @@ import {
   TraceroutesRepository,
   NeighborsRepository,
   NotificationsRepository,
+  ConversationReadStateRepository,
+  emptyReadStateMap,
   PacketLogRepository,
   KeyRepairRepository,
   ChannelDatabaseRepository,
@@ -70,6 +72,8 @@ import {
   ALL_SOURCES,
 } from '../db/repositories/index.js';
 import type { EstimatedPosition, EstimatedPositionInput, SourceScope } from '../db/repositories/index.js';
+import type { ConversationReadStateMap } from '../db/repositories/index.js';
+import type { ConversationKind } from '../db/schema/conversationReadState.js';
 import type { DatabaseType, DbPacketLog as DbTypesPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../db/types.js';
 import { updateNodeMobility } from '../server/services/nodeMobilityService.js';
 import { selectNodeNeedingTraceroute } from '../server/services/autoTracerouteSelectionService.js';
@@ -477,6 +481,7 @@ class DatabaseService {
   public traceroutesRepo: TraceroutesRepository | null = null;
   public neighborsRepo: NeighborsRepository | null = null;
   public notificationsRepo: NotificationsRepository | null = null;
+  public conversationReadStateRepo: ConversationReadStateRepository | null = null;
   public packetLogRepo: PacketLogRepository | null = null;
   public keyRepairRepo: KeyRepairRepository | null = null;
   public channelDatabaseRepo: ChannelDatabaseRepository | null = null;
@@ -640,6 +645,11 @@ class DatabaseService {
   get notifications(): NotificationsRepository {
     if (!this.notificationsRepo) throw new Error('Database not initialized');
     return this.notificationsRepo;
+  }
+
+  get conversationReadState(): ConversationReadStateRepository {
+    if (!this.conversationReadStateRepo) throw new Error('Database not initialized');
+    return this.conversationReadStateRepo;
   }
 
   get packetLog(): PacketLogRepository {
@@ -932,6 +942,7 @@ class DatabaseService {
       this.traceroutesRepo = new TraceroutesRepository(drizzleDb, this.drizzleDbType);
       this.neighborsRepo = new NeighborsRepository(drizzleDb, this.drizzleDbType);
       this.notificationsRepo = new NotificationsRepository(drizzleDb, this.drizzleDbType);
+      this.conversationReadStateRepo = new ConversationReadStateRepository(drizzleDb, this.drizzleDbType);
       this.packetLogRepo = new PacketLogRepository(drizzleDb, this.drizzleDbType);
       this.keyRepairRepo = new KeyRepairRepository(drizzleDb, this.drizzleDbType);
       this.channelDatabaseRepo = new ChannelDatabaseRepository(drizzleDb, this.drizzleDbType);
@@ -4087,6 +4098,47 @@ class DatabaseService {
     }
     if (!this.notificationsRepo) return {};
     return this.notificationsRepo.getBatchUnreadDMCountsAsync(localNodeId, userId, sourceId);
+  }
+
+  /**
+   * Oldest still-unread message timestamp per Meshtastic conversation, for the
+   * unread divider / jump-to-first-unread entry scroll (issue #4607).
+   * Drizzle on every backend — no raw-SQL sync twin.
+   */
+  async getFirstUnreadTimestampsAsync(
+    userId: number | null,
+    localNodeId?: string,
+    sourceId?: SourceScope,
+    excludeMqtt?: boolean
+  ): Promise<{ channels: { [channelId: number]: number }; directMessages: { [fromNodeId: string]: number } }> {
+    if (!this.notificationsRepo) return { channels: {}, directMessages: {} };
+    return this.notificationsRepo.getFirstUnreadTimestampsAsync(userId, localNodeId, sourceId, excludeMqtt);
+  }
+
+  /**
+   * All of this user's MeshCore last-read watermarks on one source (#4607).
+   */
+  async getConversationReadStateAsync(
+    userId: number | null,
+    sourceId: string
+  ): Promise<ConversationReadStateMap> {
+    if (!this.conversationReadStateRepo) return emptyReadStateMap();
+    return this.conversationReadStateRepo.getForSourceAsync(userId, sourceId);
+  }
+
+  /**
+   * Move one MeshCore conversation's watermark forward (#4607). Monotonic —
+   * returns the effective watermark after the write.
+   */
+  async setConversationReadStateAsync(
+    userId: number | null,
+    sourceId: string,
+    kind: ConversationKind,
+    conversationKey: string,
+    lastReadAt: number
+  ): Promise<number> {
+    if (!this.conversationReadStateRepo) return 0;
+    return this.conversationReadStateRepo.setLastReadAsync(userId, sourceId, kind, conversationKey, lastReadAt);
   }
 
   cleanupOldReadMessages(days: number): number {

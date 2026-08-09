@@ -151,6 +151,7 @@ import { migration as addMeshCoreObserverKeysMigration, runMigration133Postgres,
 import { migration as clearNullIslandEstimatesMigration, runMigration134Postgres, runMigration134Mysql } from '../server/migrations/134_clear_null_island_estimates.js';
 import { migration as backfillMeshcoreNodesViewOnMapMigration, runMigration135Postgres, runMigration135Mysql } from '../server/migrations/135_backfill_meshcore_nodes_viewonmap.js';
 import { migration as addMeshCoreObserverCredentialsMigration, runMigration136Postgres, runMigration136Mysql } from '../server/migrations/136_add_meshcore_observer_credentials.js';
+import { migration as addConversationReadStateMigration, runMigration137Postgres, runMigration137Mysql } from '../server/migrations/137_add_conversation_read_state.js';
 
 // ============================================================================
 // Registry
@@ -2163,4 +2164,22 @@ registry.register({
   sqlite: (db) => addMeshCoreObserverCredentialsMigration.up(db),
   postgres: (client) => runMigration136Postgres(client),
   mysql: (pool) => runMigration136Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 137: create `conversation_read_state` (issue #4607).
+// Durable PER-USER last-read watermark per (source, conversation), used to
+// anchor the unread divider and the jump-to-first-unread entry scroll. Covers
+// MeshCore, whose read markers previously lived only in browser localStorage
+// (per-browser, not per-user). Meshtastic keeps deriving its anchor from
+// `read_messages` so there is exactly one source of truth per protocol.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 137,
+  name: 'add_conversation_read_state',
+  settingsKey: 'migration_137_add_conversation_read_state',
+  sqlite: (db) => addConversationReadStateMigration.up(db),
+  postgres: (client) => runMigration137Postgres(client),
+  mysql: (pool) => runMigration137Mysql(pool),
 });

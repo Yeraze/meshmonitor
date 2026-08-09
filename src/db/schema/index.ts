@@ -18,6 +18,9 @@ export * from './auth.js';
 // Notification tables
 export * from './notifications.js';
 
+// Per-user conversation read watermarks (issue #4607)
+export * from './conversationReadState.js';
+
 // Packet logging
 export * from './packets.js';
 export * from './mqttPacketLog.js';

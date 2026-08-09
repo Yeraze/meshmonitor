@@ -50,6 +50,11 @@ import {
   readMessagesSqlite, readMessagesPostgres, readMessagesMysql,
 } from './schema/notifications.js';
 
+// Per-user conversation read watermarks (issue #4607)
+import {
+  conversationReadStateSqlite, conversationReadStatePostgres, conversationReadStateMysql,
+} from './schema/conversationReadState.js';
+
 // Packet logging
 import {
   packetLogSqlite, packetLogPostgres, packetLogMysql,
@@ -197,6 +202,10 @@ export interface ActiveSchema {
   userNotificationPreferences: any;
   readMessages: any;
 
+  // Per-user conversation read watermarks (issue #4607)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4607 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
+  conversationReadState: any;
+
   // Packet logging
   packetLog: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4124 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
@@ -307,6 +316,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     pushSubscriptions: pushSubscriptionsSqlite,
     userNotificationPreferences: userNotificationPreferencesSqlite,
     readMessages: readMessagesSqlite,
+    conversationReadState: conversationReadStateSqlite,
     packetLog: packetLogSqlite,
     mqttPacketLog: mqttPacketLogSqlite,
     mqttOkToMqttViolations: mqttOkToMqttViolationsSqlite,
@@ -368,6 +378,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     pushSubscriptions: pushSubscriptionsPostgres,
     userNotificationPreferences: userNotificationPreferencesPostgres,
     readMessages: readMessagesPostgres,
+    conversationReadState: conversationReadStatePostgres,
     packetLog: packetLogPostgres,
     mqttPacketLog: mqttPacketLogPostgres,
     mqttOkToMqttViolations: mqttOkToMqttViolationsPostgres,
@@ -429,6 +440,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     pushSubscriptions: pushSubscriptionsMysql,
     userNotificationPreferences: userNotificationPreferencesMysql,
     readMessages: readMessagesMysql,
+    conversationReadState: conversationReadStateMysql,
     packetLog: packetLogMysql,
     mqttPacketLog: mqttPacketLogMysql,
     mqttOkToMqttViolations: mqttOkToMqttViolationsMysql,

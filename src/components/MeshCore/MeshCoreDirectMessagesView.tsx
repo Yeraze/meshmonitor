@@ -281,6 +281,24 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   const [unreadTick, setUnreadTick] = useState(0);
   useEffect(() => subscribeUnreadChanged(() => setUnreadTick((n) => n + 1)), []);
 
+  // Unread-divider anchor (#4607): the peer's last-read marker frozen at the
+  // moment the conversation was opened. The mark-read effect below fires within
+  // a tick of selection, so a live read would always report "nothing unread".
+  // Deliberately re-pinned only on peer/source change — NOT on `filtered`,
+  // which changes with every incoming message.
+  const [entryLastRead, setEntryLastRead] = useState<number | null>(null);
+  useEffect(() => {
+    if (!sourceId || !selected) {
+      setEntryLastRead(null);
+      return;
+    }
+    const peer = canonicalizePeerKey(selected, contacts);
+    setEntryLastRead(loadDmLastRead(sourceId)[peer] ?? 0);
+    // `contacts` is intentionally omitted: it re-resolves on every contact
+    // refresh, which would re-pin mid-conversation and erase the line.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- #4607 pin-once-per-conversation is the point
+  }, [sourceId, selected]);
+
   // Mark the open conversation read up to its newest message. Re-runs when a
   // new message arrives for the selected peer (filtered changes), so a
   // conversation you're actively viewing never lingers as unread. markDmRead is
@@ -525,6 +543,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                   onSend={text => actions.sendMessage(text, selected)}
                   onDeleteMessage={canSend ? handleDeleteMessage : undefined}
                   conversationKey={`dm-${selected}`}
+                  unreadAnchorMs={entryLastRead}
                   maxBytes={150}
                 />
               </>
