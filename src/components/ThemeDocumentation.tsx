@@ -114,15 +114,17 @@ const themes: ThemeInfo[] = [
   }
 ];
 
+// Read through getPropertyValue at render time, so these must be tokens that
+// actually exist. They named palette swatches until #4567 removed that layer.
 const colorSwatchProps = [
-  { var: '--ctp-base', label: 'Base' },
-  { var: '--ctp-mantle', label: 'Mantle' },
-  { var: '--ctp-text', label: 'Text' },
-  { var: '--ctp-blue', label: 'Blue' },
-  { var: '--ctp-green', label: 'Green' },
-  { var: '--ctp-yellow', label: 'Yellow' },
-  { var: '--ctp-red', label: 'Red' },
-  { var: '--ctp-mauve', label: 'Mauve' }
+  { var: '--color-bg', label: 'Background' },
+  { var: '--color-bg-raised', label: 'Raised background' },
+  { var: '--color-text', label: 'Text' },
+  { var: '--color-accent', label: 'Accent' },
+  { var: '--color-success', label: 'Success' },
+  { var: '--color-warning', label: 'Warning' },
+  { var: '--color-error', label: 'Error' },
+  { var: '--color-accent-alt', label: 'Alternate accent' }
 ];
 
 export const ThemeDocumentation: React.FC = () => {
@@ -235,9 +237,13 @@ const ThemeCard: React.FC<ThemeCardProps> = ({ themeInfo, isDarkTheme, isLightTh
 
     setColors(newColors);
 
-    // Restore original theme
+    // Restore original theme. The else branch matters: with no data-theme set
+    // — a fresh load before one has been written — the early return used to
+    // leave the LAST inspected theme applied to the whole document.
     if (originalTheme) {
       document.documentElement.setAttribute('data-theme', originalTheme);
+    } else {
+      document.documentElement.removeAttribute('data-theme');
     }
   }, [themeInfo.id]);
 

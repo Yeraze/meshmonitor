@@ -32,76 +32,54 @@
   --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, 'Courier New', monospace;
 
   /* Accent text (for text on bright accent-colored buttons) */
-  --ctp-accent-text: #000000;
+  --color-accent-text: #000000;
 
   /* ==============================
      Semantic color tokens (issue #4567)
      ==============================
 
-     Role-based indirection over the Catppuccin palette. Components should
-     consume THESE, not `--ctp-*` directly: a role says what a color means
-     ("this is an error") rather than which swatch it happens to be today.
+     Colors are named by ROLE — what they mean — and nothing else. A role says
+     "this is an error"; it does not say which swatch that happens to be.
 
-     Why this works for custom themes with no schema change: a custom theme
-     sets `--ctp-*` inline on :root (see SettingsContext), and `var()` resolves
-     at USE time — so redefining `red` in a theme automatically restyles every
-     error surface that consumes `--color-error`. The user-facing theme schema
-     (REQUIRED_THEME_COLORS, 26 palette keys) is untouched, so existing custom
-     themes keep working with no migration.
+     There used to be a `--ctp-*` palette layer underneath, named for Catppuccin
+     swatches (`blue`, `mauve`, `peach`), with each role pointing at one of them.
+     That layer is gone. It leaked into the authoring schema: a theme was 26
+     swatch names, so getting a red accent meant setting `blue: #ff0000` — the
+     name actively lied about what the value did. Every theme block below now
+     declares the roles directly.
 
-     Deliberately NOT redeclared per theme block below: each token points at a
-     palette var, and every theme redefines those. One definition is enough.
+     Removing the indirection also un-collapsed roles that shared a swatch and
+     therefore could not be themed apart. `--color-text-faint`,
+     `--color-border-subtle` and `--color-surface-inactive` were all `overlay0`;
+     `--color-border` and `--color-surface-hover` were both `surface1`. They
+     still share a VALUE in the built-in themes, so nothing looks different, but
+     a theme can now move one without dragging the others along.
 
-     Migration is incremental — most of the app still reads `--ctp-*`
-     directly. See the tracking issue linked from #4567. */
+     Custom themes set `--color-*` inline on :root (see SettingsContext).
+     Definitions stored in the old swatch-keyed format are translated on read —
+     see `migrateLegacyThemeDefinition` in themeValidation.ts. */
 
   /* Status / feedback */
-  --color-success: var(--ctp-green);
-  --color-error: var(--ctp-red);
-  --color-warning: var(--ctp-yellow);
   /* A step below `warning`. The palette distinguishes the two (yellow=warning,
      peach=caution) and so do consumers — AutoAckConvertDialog renders red,
      yellow and peach as three severity tiers. */
-  --color-caution: var(--ctp-peach);
-  --color-info: var(--ctp-sky);
-  --color-danger: var(--ctp-maroon);
 
   /* Accents */
-  --color-accent: var(--ctp-blue);
   /* Hover shade of the accent, not a separate accent. */
-  --color-accent-hover: var(--ctp-sapphire);
-  --color-accent-alt: var(--ctp-mauve);
-  --color-accent-muted: var(--ctp-lavender);
-  --color-accent-text: var(--ctp-accent-text);
 
   /* Surfaces, from furthest back to furthest forward */
-  --color-bg: var(--ctp-base);
-  --color-bg-raised: var(--ctp-mantle);
-  --color-bg-sunken: var(--ctp-crust);
-  --color-surface: var(--ctp-surface0);
-  --color-surface-hover: var(--ctp-surface1);
-  --color-surface-active: var(--ctp-surface2);
 
   /* Text, from highest to lowest emphasis */
-  --color-text: var(--ctp-text);
-  --color-text-muted: var(--ctp-subtext1);
-  --color-text-subtle: var(--ctp-subtext0);
-  --color-text-disabled: var(--ctp-overlay1);
   /* Fainter than `subtle` — timestamps, placeholders, de-emphasised metadata. */
-  --color-text-faint: var(--ctp-overlay0);
 
   /* Lines */
-  --color-border: var(--ctp-surface1);
-  --color-border-strong: var(--ctp-surface2);
   /* A hairline that should barely register, e.g. dividers inside a dense list. */
-  --color-border-subtle: var(--ctp-overlay0);
 
   /* The neutral "nothing is happening here" fill: scrollbar thumbs, inactive
      status dots, empty progress tracks. Distinct from `--color-surface`, which
      is a raised panel, and from the text/border roles above — these three share
      the overlay0 swatch today but mean different things, and a theme that wants
      lighter chrome without lightening faint text needs them separable. */
-  --color-surface-inactive: var(--ctp-overlay0);
 
   /* ---- Categorical scale ------------------------------------------------
 
@@ -138,14 +116,6 @@
 
      Themes may override these (Phase 3 exposes them in the theme schema);
      until then they track the palette like every other token here. */
-  --chart-1: var(--ctp-blue);
-  --chart-2: var(--ctp-mauve);
-  --chart-3: var(--ctp-green);
-  --chart-4: var(--ctp-peach);
-  --chart-5: var(--ctp-yellow);
-  --chart-6: var(--ctp-sapphire);
-  --chart-7: var(--ctp-maroon);
-  --chart-8: var(--ctp-rosewater);
 
   /* ---- Sequential scale --------------------------------------------------
 
@@ -158,9 +128,9 @@
      Categorical hues cannot do that job. `DistanceDistributionWidget` indexed
      a 7-hue list by histogram position, and `HopDistanceHeatmapWidget` walked
      surface -> blue -> sapphire -> teal for rising density, so neither ramp
-     read as ordered — and both reached past the role layer into raw `--ctp-*`
-     for hues no role provided. Pointing them at `--chart-N` would have been
-     the same category error in a new place.
+     read as ordered — and both reached past the role layer into the raw
+     palette for hues no role provided. Pointing them at `--chart-N` would have
+     been the same category error in a new place.
 
      Built with color-mix from the accent rather than picked from the palette,
      which buys three things the palette cannot: the steps are monotonic BY
@@ -175,6 +145,18 @@
   --seq-3: color-mix(in srgb, var(--color-accent) 60%, var(--color-surface));
   --seq-4: color-mix(in srgb, var(--color-accent) 80%, var(--color-surface));
   --seq-5: var(--color-accent);
+
+  /* Categorical defaults. Every built-in theme overrides all eight;
+     these exist for a custom theme that defines the roles but leaves the
+     categorical scale unset, so charts still get eight distinct hues. */
+  --chart-1: #89b4fa;
+  --chart-2: #cba6f7;
+  --chart-3: #a6e3a1;
+  --chart-4: #fab387;
+  --chart-5: #f9e2af;
+  --chart-6: #74c7ec;
+  --chart-7: #eba0ac;
+  --chart-8: #f5e0dc;
 }
 
 /* ==============================
@@ -183,453 +165,573 @@
 
 /* Catppuccin Latte (Light) */
 :root[data-theme='latte'] {
-  --ctp-base: #eff1f5;
-  --ctp-mantle: #e6e9ef;
-  --ctp-crust: #dce0e8;
-  --ctp-text: #4c4f69;
-  --ctp-subtext1: #5c5f77;
-  --ctp-subtext0: #6c6f85;
-  --ctp-overlay2: #7c7f93;
-  --ctp-overlay1: #8c8fa1;
-  --ctp-overlay0: #9ca0b0;
-  --ctp-surface2: #acb0be;
-  --ctp-surface1: #bcc0cc;
-  --ctp-surface0: #ccd0da;
-  --ctp-lavender: #7287fd;
-  --ctp-blue: #1e66f5;
-  --ctp-sapphire: #209fb5;
-  --ctp-sky: #04a5e5;
-  --ctp-teal: #179299;
-  --ctp-green: #40a02b;
-  --ctp-yellow: #df8e1d;
-  --ctp-peach: #fe640b;
-  --ctp-maroon: #e64553;
-  --ctp-red: #d20f39;
-  --ctp-mauve: #8839ef;
-  --ctp-pink: #ea76cb;
-  --ctp-flamingo: #dd7878;
-  --ctp-rosewater: #dc8a78;
+  --color-success: #40a02b;
+  --color-error: #d20f39;
+  --color-warning: #df8e1d;
+  --color-caution: #fe640b;
+  --color-info: #04a5e5;
+  --color-danger: #e64553;
+  --color-accent: #1e66f5;
+  --color-accent-hover: #209fb5;
+  --color-accent-alt: #8839ef;
+  --color-accent-muted: #7287fd;
+  --color-bg: #eff1f5;
+  --color-bg-raised: #e6e9ef;
+  --color-bg-sunken: #dce0e8;
+  --color-surface: #ccd0da;
+  --color-surface-hover: #bcc0cc;
+  --color-surface-active: #acb0be;
+  --color-text: #4c4f69;
+  --color-text-muted: #5c5f77;
+  --color-text-subtle: #6c6f85;
+  --color-text-disabled: #8c8fa1;
+  --color-text-faint: #9ca0b0;
+  --color-border: #bcc0cc;
+  --color-border-strong: #acb0be;
+  --color-border-subtle: #9ca0b0;
+  --color-surface-inactive: #9ca0b0;
+
+  --chart-1: #1e66f5;
+  --chart-2: #8839ef;
+  --chart-3: #40a02b;
+  --chart-4: #fe640b;
+  --chart-5: #df8e1d;
+  --chart-6: #209fb5;
+  --chart-7: #e64553;
+  --chart-8: #dc8a78;
 }
 
 /* Catppuccin Frappé (Medium) */
 :root[data-theme='frappe'] {
-  --ctp-base: #303446;
-  --ctp-mantle: #292c3c;
-  --ctp-crust: #232634;
-  --ctp-text: #c6d0f5;
-  --ctp-subtext1: #b5bfe2;
-  --ctp-subtext0: #a5adce;
-  --ctp-overlay2: #949cbb;
-  --ctp-overlay1: #838ba7;
-  --ctp-overlay0: #737994;
-  --ctp-surface2: #626880;
-  --ctp-surface1: #51576d;
-  --ctp-surface0: #414559;
-  --ctp-lavender: #babbf1;
-  --ctp-blue: #8caaee;
-  --ctp-sapphire: #85c1dc;
-  --ctp-sky: #99d1db;
-  --ctp-teal: #81c8be;
-  --ctp-green: #a6d189;
-  --ctp-yellow: #e5c890;
-  --ctp-peach: #ef9f76;
-  --ctp-maroon: #ea999c;
-  --ctp-red: #e78284;
-  --ctp-mauve: #ca9ee6;
-  --ctp-pink: #f4b8e4;
-  --ctp-flamingo: #eebebe;
-  --ctp-rosewater: #f2d5cf;
+  --color-success: #a6d189;
+  --color-error: #e78284;
+  --color-warning: #e5c890;
+  --color-caution: #ef9f76;
+  --color-info: #99d1db;
+  --color-danger: #ea999c;
+  --color-accent: #8caaee;
+  --color-accent-hover: #85c1dc;
+  --color-accent-alt: #ca9ee6;
+  --color-accent-muted: #babbf1;
+  --color-bg: #303446;
+  --color-bg-raised: #292c3c;
+  --color-bg-sunken: #232634;
+  --color-surface: #414559;
+  --color-surface-hover: #51576d;
+  --color-surface-active: #626880;
+  --color-text: #c6d0f5;
+  --color-text-muted: #b5bfe2;
+  --color-text-subtle: #a5adce;
+  --color-text-disabled: #838ba7;
+  --color-text-faint: #737994;
+  --color-border: #51576d;
+  --color-border-strong: #626880;
+  --color-border-subtle: #737994;
+  --color-surface-inactive: #737994;
+
+  --chart-1: #8caaee;
+  --chart-2: #ca9ee6;
+  --chart-3: #a6d189;
+  --chart-4: #ef9f76;
+  --chart-5: #e5c890;
+  --chart-6: #85c1dc;
+  --chart-7: #ea999c;
+  --chart-8: #f2d5cf;
 }
 
 /* Catppuccin Macchiato (Medium-Dark) */
 :root[data-theme='macchiato'] {
-  --ctp-base: #24273a;
-  --ctp-mantle: #1e2030;
-  --ctp-crust: #181926;
-  --ctp-text: #cad3f5;
-  --ctp-subtext1: #b8c0e0;
-  --ctp-subtext0: #a5adcb;
-  --ctp-overlay2: #939ab7;
-  --ctp-overlay1: #8087a2;
-  --ctp-overlay0: #6e738d;
-  --ctp-surface2: #5b6078;
-  --ctp-surface1: #494d64;
-  --ctp-surface0: #363a4f;
-  --ctp-lavender: #b7bdf8;
-  --ctp-blue: #8aadf4;
-  --ctp-sapphire: #7dc4e4;
-  --ctp-sky: #91d7e3;
-  --ctp-teal: #8bd5ca;
-  --ctp-green: #a6da95;
-  --ctp-yellow: #eed49f;
-  --ctp-peach: #f5a97f;
-  --ctp-maroon: #ee99a0;
-  --ctp-red: #ed8796;
-  --ctp-mauve: #c6a0f6;
-  --ctp-pink: #f5bde6;
-  --ctp-flamingo: #f0c6c6;
-  --ctp-rosewater: #f4dbd6;
+  --color-success: #a6da95;
+  --color-error: #ed8796;
+  --color-warning: #eed49f;
+  --color-caution: #f5a97f;
+  --color-info: #91d7e3;
+  --color-danger: #ee99a0;
+  --color-accent: #8aadf4;
+  --color-accent-hover: #7dc4e4;
+  --color-accent-alt: #c6a0f6;
+  --color-accent-muted: #b7bdf8;
+  --color-bg: #24273a;
+  --color-bg-raised: #1e2030;
+  --color-bg-sunken: #181926;
+  --color-surface: #363a4f;
+  --color-surface-hover: #494d64;
+  --color-surface-active: #5b6078;
+  --color-text: #cad3f5;
+  --color-text-muted: #b8c0e0;
+  --color-text-subtle: #a5adcb;
+  --color-text-disabled: #8087a2;
+  --color-text-faint: #6e738d;
+  --color-border: #494d64;
+  --color-border-strong: #5b6078;
+  --color-border-subtle: #6e738d;
+  --color-surface-inactive: #6e738d;
+
+  --chart-1: #8aadf4;
+  --chart-2: #c6a0f6;
+  --chart-3: #a6da95;
+  --chart-4: #f5a97f;
+  --chart-5: #eed49f;
+  --chart-6: #7dc4e4;
+  --chart-7: #ee99a0;
+  --chart-8: #f4dbd6;
 }
 
 /* Catppuccin Mocha (Dark) - Default */
 :root,
 :root[data-theme='mocha'] {
-  --ctp-base: #1e1e2e;
-  --ctp-mantle: #181825;
-  --ctp-crust: #11111b;
-  --ctp-text: #cdd6f4;
-  --ctp-subtext1: #bac2de;
-  --ctp-subtext0: #a6adc8;
-  --ctp-overlay2: #9399b2;
-  --ctp-overlay1: #7f849c;
-  --ctp-overlay0: #6c7086;
-  --ctp-surface2: #585b70;
-  --ctp-surface1: #45475a;
-  --ctp-surface0: #313244;
-  --ctp-lavender: #b4befe;
-  --ctp-blue: #89b4fa;
-  --ctp-sapphire: #74c7ec;
-  --ctp-sky: #89dceb;
-  --ctp-teal: #94e2d5;
-  --ctp-green: #a6e3a1;
-  --ctp-yellow: #f9e2af;
-  --ctp-peach: #fab387;
-  --ctp-maroon: #eba0ac;
-  --ctp-red: #f38ba8;
-  --ctp-mauve: #cba6f7;
-  --ctp-pink: #f5c2e7;
-  --ctp-flamingo: #f2cdcd;
-  --ctp-rosewater: #f5e0dc;
+  --color-success: #a6e3a1;
+  --color-error: #f38ba8;
+  --color-warning: #f9e2af;
+  --color-caution: #fab387;
+  --color-info: #89dceb;
+  --color-danger: #eba0ac;
+  --color-accent: #89b4fa;
+  --color-accent-hover: #74c7ec;
+  --color-accent-alt: #cba6f7;
+  --color-accent-muted: #b4befe;
+  --color-bg: #1e1e2e;
+  --color-bg-raised: #181825;
+  --color-bg-sunken: #11111b;
+  --color-surface: #313244;
+  --color-surface-hover: #45475a;
+  --color-surface-active: #585b70;
+  --color-text: #cdd6f4;
+  --color-text-muted: #bac2de;
+  --color-text-subtle: #a6adc8;
+  --color-text-disabled: #7f849c;
+  --color-text-faint: #6c7086;
+  --color-border: #45475a;
+  --color-border-strong: #585b70;
+  --color-border-subtle: #6c7086;
+  --color-surface-inactive: #6c7086;
+
+  --chart-1: #89b4fa;
+  --chart-2: #cba6f7;
+  --chart-3: #a6e3a1;
+  --chart-4: #fab387;
+  --chart-5: #f9e2af;
+  --chart-6: #74c7ec;
+  --chart-7: #eba0ac;
+  --chart-8: #f5e0dc;
 }
 
 /* Nord - Cool blue-gray theme */
 :root[data-theme='nord'] {
-  --ctp-base: #2e3440;
-  --ctp-mantle: #3b4252;
-  --ctp-crust: #434c5e;
-  --ctp-text: #eceff4;
-  --ctp-subtext1: #e5e9f0;
-  --ctp-subtext0: #d8dee9;
-  --ctp-overlay2: #4c566a;
-  --ctp-overlay1: #434c5e;
-  --ctp-overlay0: #3b4252;
-  --ctp-surface2: #434c5e;
-  --ctp-surface1: #3b4252;
-  --ctp-surface0: #2e3440;
-  --ctp-lavender: #b48ead;
-  --ctp-blue: #81a1c1;
-  --ctp-sapphire: #88c0d0;
-  --ctp-sky: #8fbcbb;
-  --ctp-teal: #88c0d0;
-  --ctp-green: #a3be8c;
-  --ctp-yellow: #ebcb8b;
-  --ctp-peach: #d08770;
-  --ctp-maroon: #bf616a;
-  --ctp-red: #bf616a;
-  --ctp-mauve: #b48ead;
-  --ctp-pink: #b48ead;
-  --ctp-flamingo: #d08770;
-  --ctp-rosewater: #d08770;
+  --color-success: #a3be8c;
+  --color-error: #bf616a;
+  --color-warning: #ebcb8b;
+  --color-caution: #d08770;
+  --color-info: #8fbcbb;
+  --color-danger: #bf616a;
+  --color-accent: #81a1c1;
+  --color-accent-hover: #88c0d0;
+  --color-accent-alt: #b48ead;
+  --color-accent-muted: #b48ead;
+  --color-bg: #2e3440;
+  --color-bg-raised: #3b4252;
+  --color-bg-sunken: #434c5e;
+  --color-surface: #2e3440;
+  --color-surface-hover: #3b4252;
+  --color-surface-active: #434c5e;
+  --color-text: #eceff4;
+  --color-text-muted: #e5e9f0;
+  --color-text-subtle: #d8dee9;
+  --color-text-disabled: #434c5e;
+  --color-text-faint: #3b4252;
+  --color-border: #3b4252;
+  --color-border-strong: #434c5e;
+  --color-border-subtle: #3b4252;
+  --color-surface-inactive: #3b4252;
+
+  --chart-1: #81a1c1;
+  --chart-2: #b48ead;
+  --chart-3: #a3be8c;
+  --chart-4: #d08770;
+  --chart-5: #ebcb8b;
+  --chart-6: #88c0d0;
+  --chart-7: #bf616a;
+  --chart-8: #d08770;
 }
 
 /* Dracula - Popular purple/pink dark theme */
 :root[data-theme='dracula'] {
-  --ctp-base: #282a36;
-  --ctp-mantle: #21222c;
-  --ctp-crust: #191a21;
-  --ctp-text: #f8f8f2;
-  --ctp-subtext1: #e6e6e6;
-  --ctp-subtext0: #d4d4d4;
-  --ctp-overlay2: #6272a4;
-  --ctp-overlay1: #44475a;
-  --ctp-overlay0: #44475a;
-  --ctp-surface2: #44475a;
-  --ctp-surface1: #44475a;
-  --ctp-surface0: #44475a;
-  --ctp-lavender: #bd93f9;
-  --ctp-blue: #6272a4;
-  --ctp-sapphire: #8be9fd;
-  --ctp-sky: #8be9fd;
-  --ctp-teal: #8be9fd;
-  --ctp-green: #50fa7b;
-  --ctp-yellow: #f1fa8c;
-  --ctp-peach: #ffb86c;
-  --ctp-maroon: #ff5555;
-  --ctp-red: #ff5555;
-  --ctp-mauve: #bd93f9;
-  --ctp-pink: #ff79c6;
-  --ctp-flamingo: #ff79c6;
-  --ctp-rosewater: #ff79c6;
+  --color-success: #50fa7b;
+  --color-error: #ff5555;
+  --color-warning: #f1fa8c;
+  --color-caution: #ffb86c;
+  --color-info: #8be9fd;
+  --color-danger: #ff5555;
+  --color-accent: #6272a4;
+  --color-accent-hover: #8be9fd;
+  --color-accent-alt: #bd93f9;
+  --color-accent-muted: #bd93f9;
+  --color-bg: #282a36;
+  --color-bg-raised: #21222c;
+  --color-bg-sunken: #191a21;
+  --color-surface: #44475a;
+  --color-surface-hover: #44475a;
+  --color-surface-active: #44475a;
+  --color-text: #f8f8f2;
+  --color-text-muted: #e6e6e6;
+  --color-text-subtle: #d4d4d4;
+  --color-text-disabled: #44475a;
+  --color-text-faint: #44475a;
+  --color-border: #44475a;
+  --color-border-strong: #44475a;
+  --color-border-subtle: #44475a;
+  --color-surface-inactive: #44475a;
+
+  --chart-1: #6272a4;
+  --chart-2: #bd93f9;
+  --chart-3: #50fa7b;
+  --chart-4: #ffb86c;
+  --chart-5: #f1fa8c;
+  --chart-6: #8be9fd;
+  --chart-7: #ff5555;
+  --chart-8: #ff79c6;
 }
 
 /* Solarized Dark - Classic professional dark theme */
 :root[data-theme='solarized-dark'] {
-  --ctp-base: #002b36;
-  --ctp-mantle: #073642;
-  --ctp-crust: #073642;
-  --ctp-text: #839496;
-  --ctp-subtext1: #93a1a1;
-  --ctp-subtext0: #586e75;
-  --ctp-overlay2: #657b83;
-  --ctp-overlay1: #586e75;
-  --ctp-overlay0: #073642;
-  --ctp-surface2: #073642;
-  --ctp-surface1: #073642;
-  --ctp-surface0: #002b36;
-  --ctp-lavender: #6c71c4;
-  --ctp-blue: #268bd2;
-  --ctp-sapphire: #2aa198;
-  --ctp-sky: #2aa198;
-  --ctp-teal: #2aa198;
-  --ctp-green: #859900;
-  --ctp-yellow: #b58900;
-  --ctp-peach: #cb4b16;
-  --ctp-maroon: #d33682;
-  --ctp-red: #dc322f;
-  --ctp-mauve: #6c71c4;
-  --ctp-pink: #d33682;
-  --ctp-flamingo: #dc322f;
-  --ctp-rosewater: #dc322f;
+  --color-success: #859900;
+  --color-error: #dc322f;
+  --color-warning: #b58900;
+  --color-caution: #cb4b16;
+  --color-info: #2aa198;
+  --color-danger: #d33682;
+  --color-accent: #268bd2;
+  --color-accent-hover: #2aa198;
+  --color-accent-alt: #6c71c4;
+  --color-accent-muted: #6c71c4;
+  --color-bg: #002b36;
+  --color-bg-raised: #073642;
+  --color-bg-sunken: #073642;
+  --color-surface: #002b36;
+  --color-surface-hover: #073642;
+  --color-surface-active: #073642;
+  --color-text: #839496;
+  --color-text-muted: #93a1a1;
+  --color-text-subtle: #586e75;
+  --color-text-disabled: #586e75;
+  --color-text-faint: #073642;
+  --color-border: #073642;
+  --color-border-strong: #073642;
+  --color-border-subtle: #073642;
+  --color-surface-inactive: #073642;
+
+  --chart-1: #268bd2;
+  --chart-2: #6c71c4;
+  --chart-3: #859900;
+  --chart-4: #cb4b16;
+  --chart-5: #b58900;
+  --chart-6: #2aa198;
+  --chart-7: #d33682;
+  --chart-8: #dc322f;
 }
 
 /* Solarized Light - Classic professional light theme */
 :root[data-theme='solarized-light'] {
-  --ctp-base: #fdf6e3;
-  --ctp-mantle: #eee8d5;
-  --ctp-crust: #eee8d5;
-  --ctp-text: #657b83;
-  --ctp-subtext1: #586e75;
-  --ctp-subtext0: #93a1a1;
-  --ctp-overlay2: #93a1a1;
-  --ctp-overlay1: #839496;
-  --ctp-overlay0: #eee8d5;
-  --ctp-surface2: #eee8d5;
-  --ctp-surface1: #fdf6e3;
-  --ctp-surface0: #fdf6e3;
-  --ctp-lavender: #6c71c4;
-  --ctp-blue: #268bd2;
-  --ctp-sapphire: #2aa198;
-  --ctp-sky: #2aa198;
-  --ctp-teal: #2aa198;
-  --ctp-green: #859900;
-  --ctp-yellow: #b58900;
-  --ctp-peach: #cb4b16;
-  --ctp-maroon: #d33682;
-  --ctp-red: #dc322f;
-  --ctp-mauve: #6c71c4;
-  --ctp-pink: #d33682;
-  --ctp-flamingo: #dc322f;
-  --ctp-rosewater: #dc322f;
+  --color-success: #859900;
+  --color-error: #dc322f;
+  --color-warning: #b58900;
+  --color-caution: #cb4b16;
+  --color-info: #2aa198;
+  --color-danger: #d33682;
+  --color-accent: #268bd2;
+  --color-accent-hover: #2aa198;
+  --color-accent-alt: #6c71c4;
+  --color-accent-muted: #6c71c4;
+  --color-bg: #fdf6e3;
+  --color-bg-raised: #eee8d5;
+  --color-bg-sunken: #eee8d5;
+  --color-surface: #fdf6e3;
+  --color-surface-hover: #fdf6e3;
+  --color-surface-active: #eee8d5;
+  --color-text: #657b83;
+  --color-text-muted: #586e75;
+  --color-text-subtle: #93a1a1;
+  --color-text-disabled: #839496;
+  --color-text-faint: #eee8d5;
+  --color-border: #fdf6e3;
+  --color-border-strong: #eee8d5;
+  --color-border-subtle: #eee8d5;
+  --color-surface-inactive: #eee8d5;
+
+  --chart-1: #268bd2;
+  --chart-2: #6c71c4;
+  --chart-3: #859900;
+  --chart-4: #cb4b16;
+  --chart-5: #b58900;
+  --chart-6: #2aa198;
+  --chart-7: #d33682;
+  --chart-8: #dc322f;
 }
 
 /* Gruvbox Dark - Warm retro dark theme */
 :root[data-theme='gruvbox-dark'] {
-  --ctp-base: #282828;
-  --ctp-mantle: #1d2021;
-  --ctp-crust: #1d2021;
-  --ctp-text: #ebdbb2;
-  --ctp-subtext1: #d5c4a1;
-  --ctp-subtext0: #bdae93;
-  --ctp-overlay2: #a89984;
-  --ctp-overlay1: #7c6f64;
-  --ctp-overlay0: #665c54;
-  --ctp-surface2: #504945;
-  --ctp-surface1: #3c3836;
-  --ctp-surface0: #32302f;
-  --ctp-lavender: #d3869b;
-  --ctp-blue: #83a598;
-  --ctp-sapphire: #8ec07c;
-  --ctp-sky: #8ec07c;
-  --ctp-teal: #8ec07c;
-  --ctp-green: #b8bb26;
-  --ctp-yellow: #fabd2f;
-  --ctp-peach: #fe8019;
-  --ctp-maroon: #fb4934;
-  --ctp-red: #fb4934;
-  --ctp-mauve: #d3869b;
-  --ctp-pink: #d3869b;
-  --ctp-flamingo: #fe8019;
-  --ctp-rosewater: #fe8019;
+  --color-success: #b8bb26;
+  --color-error: #fb4934;
+  --color-warning: #fabd2f;
+  --color-caution: #fe8019;
+  --color-info: #8ec07c;
+  --color-danger: #fb4934;
+  --color-accent: #83a598;
+  --color-accent-hover: #8ec07c;
+  --color-accent-alt: #d3869b;
+  --color-accent-muted: #d3869b;
+  --color-bg: #282828;
+  --color-bg-raised: #1d2021;
+  --color-bg-sunken: #1d2021;
+  --color-surface: #32302f;
+  --color-surface-hover: #3c3836;
+  --color-surface-active: #504945;
+  --color-text: #ebdbb2;
+  --color-text-muted: #d5c4a1;
+  --color-text-subtle: #bdae93;
+  --color-text-disabled: #7c6f64;
+  --color-text-faint: #665c54;
+  --color-border: #3c3836;
+  --color-border-strong: #504945;
+  --color-border-subtle: #665c54;
+  --color-surface-inactive: #665c54;
+
+  --chart-1: #83a598;
+  --chart-2: #d3869b;
+  --chart-3: #b8bb26;
+  --chart-4: #fe8019;
+  --chart-5: #fabd2f;
+  --chart-6: #8ec07c;
+  --chart-7: #fb4934;
+  --chart-8: #fe8019;
 }
 
 /* Gruvbox Light - Warm retro light theme */
 :root[data-theme='gruvbox-light'] {
-  --ctp-base: #fbf1c7;
-  --ctp-mantle: #f9f5d7;
-  --ctp-crust: #f2e5bc;
-  --ctp-text: #3c3836;
-  --ctp-subtext1: #504945;
-  --ctp-subtext0: #665c54;
-  --ctp-overlay2: #7c6f64;
-  --ctp-overlay1: #928374;
-  --ctp-overlay0: #a89984;
-  --ctp-surface2: #d5c4a1;
-  --ctp-surface1: #ebdbb2;
-  --ctp-surface0: #f2e5bc;
-  --ctp-lavender: #b16286;
-  --ctp-blue: #076678;
-  --ctp-sapphire: #427b58;
-  --ctp-sky: #427b58;
-  --ctp-teal: #427b58;
-  --ctp-green: #79740e;
-  --ctp-yellow: #b57614;
-  --ctp-peach: #af3a03;
-  --ctp-maroon: #9d0006;
-  --ctp-red: #cc241d;
-  --ctp-mauve: #8f3f71;
-  --ctp-pink: #8f3f71;
-  --ctp-flamingo: #af3a03;
-  --ctp-rosewater: #af3a03;
+  --color-success: #79740e;
+  --color-error: #cc241d;
+  --color-warning: #b57614;
+  --color-caution: #af3a03;
+  --color-info: #427b58;
+  --color-danger: #9d0006;
+  --color-accent: #076678;
+  --color-accent-hover: #427b58;
+  --color-accent-alt: #8f3f71;
+  --color-accent-muted: #b16286;
+  --color-bg: #fbf1c7;
+  --color-bg-raised: #f9f5d7;
+  --color-bg-sunken: #f2e5bc;
+  --color-surface: #f2e5bc;
+  --color-surface-hover: #ebdbb2;
+  --color-surface-active: #d5c4a1;
+  --color-text: #3c3836;
+  --color-text-muted: #504945;
+  --color-text-subtle: #665c54;
+  --color-text-disabled: #928374;
+  --color-text-faint: #a89984;
+  --color-border: #ebdbb2;
+  --color-border-strong: #d5c4a1;
+  --color-border-subtle: #a89984;
+  --color-surface-inactive: #a89984;
+
+  --chart-1: #076678;
+  --chart-2: #8f3f71;
+  --chart-3: #79740e;
+  --chart-4: #af3a03;
+  --chart-5: #b57614;
+  --chart-6: #427b58;
+  --chart-7: #9d0006;
+  --chart-8: #af3a03;
 }
 
 /* High Contrast Dark - Maximum contrast for dark mode */
 :root[data-theme='high-contrast-dark'] {
-  --ctp-base: #000000;
-  --ctp-mantle: #0a0a0a;
-  --ctp-crust: #0f0f0f;
-  --ctp-text: #ffffff;
-  --ctp-subtext1: #f0f0f0;
-  --ctp-subtext0: #e0e0e0;
-  --ctp-overlay2: #808080;
-  --ctp-overlay1: #606060;
-  --ctp-overlay0: #404040;
-  --ctp-surface2: #303030;
-  --ctp-surface1: #202020;
-  --ctp-surface0: #181818;
-  --ctp-lavender: #c080ff;
-  --ctp-blue: #4da6ff;
-  --ctp-sapphire: #00d9ff;
-  --ctp-sky: #00d9ff;
-  --ctp-teal: #00d9ff;
-  --ctp-green: #00ff00;
-  --ctp-yellow: #ffff00;
-  --ctp-peach: #ff9933;
-  --ctp-maroon: #ff3366;
-  --ctp-red: #ff0000;
-  --ctp-mauve: #c080ff;
-  --ctp-pink: #ff66cc;
-  --ctp-flamingo: #ff9999;
-  --ctp-rosewater: #ffcccc;
+  --color-success: #00ff00;
+  --color-error: #ff0000;
+  --color-warning: #ffff00;
+  --color-caution: #ff9933;
+  --color-info: #00d9ff;
+  --color-danger: #ff3366;
+  --color-accent: #4da6ff;
+  --color-accent-hover: #00d9ff;
+  --color-accent-alt: #c080ff;
+  --color-accent-muted: #c080ff;
+  --color-bg: #000000;
+  --color-bg-raised: #0a0a0a;
+  --color-bg-sunken: #0f0f0f;
+  --color-surface: #181818;
+  --color-surface-hover: #202020;
+  --color-surface-active: #303030;
+  --color-text: #ffffff;
+  --color-text-muted: #f0f0f0;
+  --color-text-subtle: #e0e0e0;
+  --color-text-disabled: #606060;
+  --color-text-faint: #404040;
+  --color-border: #202020;
+  --color-border-strong: #303030;
+  --color-border-subtle: #404040;
+  --color-surface-inactive: #404040;
+
+  --chart-1: #4da6ff;
+  --chart-2: #c080ff;
+  --chart-3: #00ff00;
+  --chart-4: #ff9933;
+  --chart-5: #ffff00;
+  --chart-6: #00d9ff;
+  --chart-7: #ff3366;
+  --chart-8: #ffcccc;
 }
 
 /* High Contrast Light - Maximum contrast for light mode */
 :root[data-theme='high-contrast-light'] {
-  --ctp-base: #ffffff;
-  --ctp-mantle: #f5f5f5;
-  --ctp-crust: #e8e8e8;
-  --ctp-text: #000000;
-  --ctp-subtext1: #1a1a1a;
-  --ctp-subtext0: #2a2a2a;
-  --ctp-overlay2: #707070;
-  --ctp-overlay1: #909090;
-  --ctp-overlay0: #b0b0b0;
-  --ctp-surface2: #c0c0c0;
-  --ctp-surface1: #d8d8d8;
-  --ctp-surface0: #e8e8e8;
-  --ctp-lavender: #6600cc;
-  --ctp-blue: #0052cc;
-  --ctp-sapphire: #0080a8;
-  --ctp-sky: #0080a8;
-  --ctp-teal: #008080;
-  --ctp-green: #008000;
-  --ctp-yellow: #a86400;
-  --ctp-peach: #cc5200;
-  --ctp-maroon: #990033;
-  --ctp-red: #cc0000;
-  --ctp-mauve: #6600cc;
-  --ctp-pink: #cc0080;
-  --ctp-flamingo: #cc4444;
-  --ctp-rosewater: #aa6666;
+  --color-success: #008000;
+  --color-error: #cc0000;
+  --color-warning: #a86400;
+  --color-caution: #cc5200;
+  --color-info: #0080a8;
+  --color-danger: #990033;
+  --color-accent: #0052cc;
+  --color-accent-hover: #0080a8;
+  --color-accent-alt: #6600cc;
+  --color-accent-muted: #6600cc;
+  --color-bg: #ffffff;
+  --color-bg-raised: #f5f5f5;
+  --color-bg-sunken: #e8e8e8;
+  --color-surface: #e8e8e8;
+  --color-surface-hover: #d8d8d8;
+  --color-surface-active: #c0c0c0;
+  --color-text: #000000;
+  --color-text-muted: #1a1a1a;
+  --color-text-subtle: #2a2a2a;
+  --color-text-disabled: #909090;
+  --color-text-faint: #b0b0b0;
+  --color-border: #d8d8d8;
+  --color-border-strong: #c0c0c0;
+  --color-border-subtle: #b0b0b0;
+  --color-surface-inactive: #b0b0b0;
+
+  --chart-1: #0052cc;
+  --chart-2: #6600cc;
+  --chart-3: #008000;
+  --chart-4: #cc5200;
+  --chart-5: #a86400;
+  --chart-6: #0080a8;
+  --chart-7: #990033;
+  --chart-8: #aa6666;
 }
 
 /* Protanopia - Red-blind friendly (blue/yellow contrast) */
 :root[data-theme='protanopia'] {
-  --ctp-base: #1a1d23;
-  --ctp-mantle: #151820;
-  --ctp-crust: #0f1116;
-  --ctp-text: #d4d4d8;
-  --ctp-subtext1: #b8b8bd;
-  --ctp-subtext0: #9c9ca1;
-  --ctp-overlay2: #808086;
-  --ctp-overlay1: #64646a;
-  --ctp-overlay0: #48484e;
-  --ctp-surface2: #38383e;
-  --ctp-surface1: #28282e;
-  --ctp-surface0: #1e1e24;
-  --ctp-lavender: #7c9cd6;
-  --ctp-blue: #4a90d9;
-  --ctp-sapphire: #3aa0d9;
-  --ctp-sky: #3aa0d9;
-  --ctp-teal: #2aa0c0;
-  --ctp-green: #3bb3d0;
-  --ctp-yellow: #f5ca4d;
-  --ctp-peach: #edb54b;
-  --ctp-maroon: #c9a554;
-  --ctp-red: #f5ca4d;
-  --ctp-mauve: #6a8cd6;
-  --ctp-pink: #5a7cc6;
-  --ctp-flamingo: #4a6cb6;
-  --ctp-rosewater: #7a9cd6;
+  --color-success: #3bb3d0;
+  --color-error: #f5ca4d;
+  --color-warning: #f5ca4d;
+  --color-caution: #edb54b;
+  --color-info: #3aa0d9;
+  --color-danger: #c9a554;
+  --color-accent: #4a90d9;
+  --color-accent-hover: #3aa0d9;
+  --color-accent-alt: #6a8cd6;
+  --color-accent-muted: #7c9cd6;
+  --color-bg: #1a1d23;
+  --color-bg-raised: #151820;
+  --color-bg-sunken: #0f1116;
+  --color-surface: #1e1e24;
+  --color-surface-hover: #28282e;
+  --color-surface-active: #38383e;
+  --color-text: #d4d4d8;
+  --color-text-muted: #b8b8bd;
+  --color-text-subtle: #9c9ca1;
+  --color-text-disabled: #64646a;
+  --color-text-faint: #48484e;
+  --color-border: #28282e;
+  --color-border-strong: #38383e;
+  --color-border-subtle: #48484e;
+  --color-surface-inactive: #48484e;
+
+  --chart-1: #4a90d9;
+  --chart-2: #6a8cd6;
+  --chart-3: #3bb3d0;
+  --chart-4: #edb54b;
+  --chart-5: #f5ca4d;
+  --chart-6: #3aa0d9;
+  --chart-7: #c9a554;
+  --chart-8: #7a9cd6;
 }
 
 /* Deuteranopia - Green-blind friendly (blue/yellow contrast) */
 :root[data-theme='deuteranopia'] {
-  --ctp-base: #1a1d23;
-  --ctp-mantle: #151820;
-  --ctp-crust: #0f1116;
-  --ctp-text: #d4d4d8;
-  --ctp-subtext1: #b8b8bd;
-  --ctp-subtext0: #9c9ca1;
-  --ctp-overlay2: #808086;
-  --ctp-overlay1: #64646a;
-  --ctp-overlay0: #48484e;
-  --ctp-surface2: #38383e;
-  --ctp-surface1: #28282e;
-  --ctp-surface0: #1e1e24;
-  --ctp-lavender: #7c9cd6;
-  --ctp-blue: #4a90d9;
-  --ctp-sapphire: #3aa0d9;
-  --ctp-sky: #3aa0d9;
-  --ctp-teal: #2aa0c0;
-  --ctp-green: #3bb3d0;
-  --ctp-yellow: #f5ca4d;
-  --ctp-peach: #edb54b;
-  --ctp-maroon: #c9a554;
-  --ctp-red: #f5ca4d;
-  --ctp-mauve: #6a8cd6;
-  --ctp-pink: #5a7cc6;
-  --ctp-flamingo: #4a6cb6;
-  --ctp-rosewater: #7a9cd6;
+  --color-success: #3bb3d0;
+  --color-error: #f5ca4d;
+  --color-warning: #f5ca4d;
+  --color-caution: #edb54b;
+  --color-info: #3aa0d9;
+  --color-danger: #c9a554;
+  --color-accent: #4a90d9;
+  --color-accent-hover: #3aa0d9;
+  --color-accent-alt: #6a8cd6;
+  --color-accent-muted: #7c9cd6;
+  --color-bg: #1a1d23;
+  --color-bg-raised: #151820;
+  --color-bg-sunken: #0f1116;
+  --color-surface: #1e1e24;
+  --color-surface-hover: #28282e;
+  --color-surface-active: #38383e;
+  --color-text: #d4d4d8;
+  --color-text-muted: #b8b8bd;
+  --color-text-subtle: #9c9ca1;
+  --color-text-disabled: #64646a;
+  --color-text-faint: #48484e;
+  --color-border: #28282e;
+  --color-border-strong: #38383e;
+  --color-border-subtle: #48484e;
+  --color-surface-inactive: #48484e;
+
+  --chart-1: #4a90d9;
+  --chart-2: #6a8cd6;
+  --chart-3: #3bb3d0;
+  --chart-4: #edb54b;
+  --chart-5: #f5ca4d;
+  --chart-6: #3aa0d9;
+  --chart-7: #c9a554;
+  --chart-8: #7a9cd6;
 }
 
 /* Tritanopia - Blue-blind friendly (red/cyan contrast) */
 :root[data-theme='tritanopia'] {
-  --ctp-base: #1a1d23;
-  --ctp-mantle: #151820;
-  --ctp-crust: #0f1116;
-  --ctp-text: #d4d4d8;
-  --ctp-subtext1: #b8b8bd;
-  --ctp-subtext0: #9c9ca1;
-  --ctp-overlay2: #808086;
-  --ctp-overlay1: #64646a;
-  --ctp-overlay0: #48484e;
-  --ctp-surface2: #38383e;
-  --ctp-surface1: #28282e;
-  --ctp-surface0: #1e1e24;
-  --ctp-lavender: #d97c9c;
-  --ctp-blue: #d94a90;
-  --ctp-sapphire: #00d9d9;
-  --ctp-sky: #00d9d9;
-  --ctp-teal: #00c0c0;
-  --ctp-green: #00d9b3;
-  --ctp-yellow: #4dc0f5;
-  --ctp-peach: #d95a7c;
-  --ctp-maroon: #d94a6c;
-  --ctp-red: #ff4a6c;
-  --ctp-mauve: #c96a8c;
-  --ctp-pink: #d97c9c;
-  --ctp-flamingo: #d98c9c;
-  --ctp-rosewater: #d99cac;
+  --color-success: #00d9b3;
+  --color-error: #ff4a6c;
+  --color-warning: #4dc0f5;
+  --color-caution: #d95a7c;
+  --color-info: #00d9d9;
+  --color-danger: #d94a6c;
+  --color-accent: #d94a90;
+  --color-accent-hover: #00d9d9;
+  --color-accent-alt: #c96a8c;
+  --color-accent-muted: #d97c9c;
+  --color-bg: #1a1d23;
+  --color-bg-raised: #151820;
+  --color-bg-sunken: #0f1116;
+  --color-surface: #1e1e24;
+  --color-surface-hover: #28282e;
+  --color-surface-active: #38383e;
+  --color-text: #d4d4d8;
+  --color-text-muted: #b8b8bd;
+  --color-text-subtle: #9c9ca1;
+  --color-text-disabled: #64646a;
+  --color-text-faint: #48484e;
+  --color-border: #28282e;
+  --color-border-strong: #38383e;
+  --color-border-subtle: #48484e;
+  --color-surface-inactive: #48484e;
+
+  --chart-1: #d94a90;
+  --chart-2: #c96a8c;
+  --chart-3: #00d9b3;
+  --chart-4: #d95a7c;
+  --chart-5: #4dc0f5;
+  --chart-6: #00d9d9;
+  --chart-7: #d94a6c;
+  --chart-8: #d99cac;
 }
 
 * {
@@ -1231,7 +1333,7 @@ body {
 
 .info-item .label {
   font-size: 0.85rem;
-  color: var(--ctp-overlay2);
+  color: var(--color-text-faint);
   font-weight: 600;
 }
 
@@ -1338,7 +1440,7 @@ body {
 }
 
 .message-time {
-  color: var(--ctp-overlay2);
+  color: var(--color-text-faint);
   font-size: 0.9rem;
   margin-left: auto;
   font-family: var(--font-mono);

@@ -18,6 +18,8 @@ import {
   generateThemeSlug,
   validateThemeDefinition,
   isThemeDefinition,
+  isLegacyThemeDefinition,
+  migrateLegacyThemeDefinition,
   normalizeHexColor,
   normalizeThemeDefinition,
   REQUIRED_THEME_COLORS,
@@ -288,51 +290,74 @@ describe('REQUIRED_THEME_COLORS', () => {
     expect(REQUIRED_THEME_COLORS).toHaveLength(26);
   });
 
-  it('includes all base colors', () => {
-    expect(REQUIRED_THEME_COLORS).toContain('base');
-    expect(REQUIRED_THEME_COLORS).toContain('mantle');
-    expect(REQUIRED_THEME_COLORS).toContain('crust');
+  it('names every key by role, never by swatch', () => {
+    // The point of #4567. A key named for a hue makes the author write
+    // `blue: '#ff0000'` to get a red accent, and makes every later reader work
+    // out that `blue` meant "accent". No swatch name may come back.
+    const swatchNames = [
+      'base', 'mantle', 'crust', 'subtext1', 'subtext0',
+      'overlay2', 'overlay1', 'overlay0', 'surface0', 'surface1', 'surface2',
+      'lavender', 'blue', 'sapphire', 'sky', 'teal', 'green',
+      'yellow', 'peach', 'maroon', 'red', 'mauve', 'pink',
+      'flamingo', 'rosewater'
+    ];
+    const leaked = swatchNames.filter(
+      (n) => (REQUIRED_THEME_COLORS as readonly string[]).includes(n)
+    );
+    expect(leaked).toEqual([]);
   });
 
-  it('includes all text colors', () => {
-    expect(REQUIRED_THEME_COLORS).toContain('text');
-    expect(REQUIRED_THEME_COLORS).toContain('subtext1');
-    expect(REQUIRED_THEME_COLORS).toContain('subtext0');
+  it('includes all background and surface roles', () => {
+    for (const key of ['bg', 'bgRaised', 'bgSunken', 'surface',
+                       'surfaceHover', 'surfaceActive', 'surfaceInactive']) {
+      expect(REQUIRED_THEME_COLORS).toContain(key);
+    }
   });
 
-  it('includes all overlay colors', () => {
-    expect(REQUIRED_THEME_COLORS).toContain('overlay2');
-    expect(REQUIRED_THEME_COLORS).toContain('overlay1');
-    expect(REQUIRED_THEME_COLORS).toContain('overlay0');
+  it('includes all text roles', () => {
+    for (const key of ['text', 'textMuted', 'textSubtle', 'textDisabled', 'textFaint']) {
+      expect(REQUIRED_THEME_COLORS).toContain(key);
+    }
   });
 
-  it('includes all surface colors', () => {
-    expect(REQUIRED_THEME_COLORS).toContain('surface2');
-    expect(REQUIRED_THEME_COLORS).toContain('surface1');
-    expect(REQUIRED_THEME_COLORS).toContain('surface0');
+  it('includes all line roles', () => {
+    for (const key of ['border', 'borderStrong', 'borderSubtle']) {
+      expect(REQUIRED_THEME_COLORS).toContain(key);
+    }
   });
 
-  it('includes all accent colors', () => {
-    expect(REQUIRED_THEME_COLORS).toContain('lavender');
-    expect(REQUIRED_THEME_COLORS).toContain('blue');
-    expect(REQUIRED_THEME_COLORS).toContain('sapphire');
-    expect(REQUIRED_THEME_COLORS).toContain('sky');
-    expect(REQUIRED_THEME_COLORS).toContain('teal');
-    expect(REQUIRED_THEME_COLORS).toContain('green');
-    expect(REQUIRED_THEME_COLORS).toContain('yellow');
-    expect(REQUIRED_THEME_COLORS).toContain('peach');
-    expect(REQUIRED_THEME_COLORS).toContain('maroon');
-    expect(REQUIRED_THEME_COLORS).toContain('red');
-    expect(REQUIRED_THEME_COLORS).toContain('mauve');
-    expect(REQUIRED_THEME_COLORS).toContain('pink');
-    expect(REQUIRED_THEME_COLORS).toContain('flamingo');
-    expect(REQUIRED_THEME_COLORS).toContain('rosewater');
+  it('includes all accent roles', () => {
+    for (const key of ['accent', 'accentHover', 'accentAlt', 'accentMuted', 'accentText']) {
+      expect(REQUIRED_THEME_COLORS).toContain(key);
+    }
+  });
+
+  it('includes all status roles', () => {
+    for (const key of ['success', 'error', 'warning', 'caution', 'info', 'danger']) {
+      expect(REQUIRED_THEME_COLORS).toContain(key);
+    }
+  });
+
+  it('separates the roles that used to share one swatch', () => {
+    // These collapsed onto `overlay0` and `surface1`, so a theme could not
+    // lighten its chrome without also lightening faint text. They still share
+    // a VALUE in the built-ins; what changed is that they can be moved apart.
+    for (const key of ['textFaint', 'borderSubtle', 'surfaceInactive',
+                       'border', 'surfaceHover']) {
+      expect(REQUIRED_THEME_COLORS).toContain(key);
+    }
   });
 });
 
 describe('OPTIONAL_THEME_COLORS', () => {
-  it('exports exactly 4 optional colors', () => {
-    expect(OPTIONAL_THEME_COLORS).toHaveLength(4);
+  it('exports the categorical scale plus the chat bubble overrides', () => {
+    expect(OPTIONAL_THEME_COLORS).toHaveLength(12);
+  });
+
+  it('includes all eight categorical slots', () => {
+    for (let i = 1; i <= 8; i++) {
+      expect(OPTIONAL_THEME_COLORS).toContain(`chart${i}`);
+    }
   });
 
   it('includes all chat bubble color variables', () => {
@@ -343,34 +368,104 @@ describe('OPTIONAL_THEME_COLORS', () => {
   });
 });
 
+describe('legacy swatch-keyed definitions', () => {
+  const legacy = {
+    base: '#1e1e2e', mantle: '#181825', crust: '#11111b',
+    text: '#cdd6f4', subtext1: '#bac2de', subtext0: '#a6adc8',
+    overlay2: '#9399b2', overlay1: '#7f849c', overlay0: '#6c7086',
+    surface2: '#585b70', surface1: '#45475a', surface0: '#313244',
+    lavender: '#b4befe', blue: '#89b4fa', sapphire: '#74c7ec',
+    sky: '#89dceb', teal: '#94e2d5', green: '#a6e3a1',
+    yellow: '#f9e2af', peach: '#fab387', maroon: '#eba0ac',
+    red: '#f38ba8', mauve: '#cba6f7', pink: '#f5c2e7',
+    flamingo: '#f2cdcd', rosewater: '#f5e0dc'
+  };
+
+  it('recognises a swatch-keyed definition', () => {
+    expect(isLegacyThemeDefinition(legacy)).toBe(true);
+  });
+
+  it('does not treat a role-keyed definition as legacy', () => {
+    // Detection keys off what only the OLD format has. Keying off a MISSING
+    // new key would rewrite a half-written theme into nonsense.
+    expect(isLegacyThemeDefinition({ accent: '#ff0000', bg: '#000000' })).toBe(false);
+    expect(isLegacyThemeDefinition({ accent: '#ff0000' })).toBe(false);
+    expect(isLegacyThemeDefinition({})).toBe(false);
+    expect(isLegacyThemeDefinition(null)).toBe(false);
+  });
+
+  it('translates into a definition that validates', () => {
+    const migrated = migrateLegacyThemeDefinition(legacy);
+    const result = validateThemeDefinition(migrated);
+    expect(result.errors).toEqual([]);
+    expect(result.isValid).toBe(true);
+  });
+
+  it('preserves the swatch each role used to resolve to', () => {
+    const m = migrateLegacyThemeDefinition(legacy);
+    expect(m.accent).toBe(legacy.blue);
+    expect(m.accentAlt).toBe(legacy.mauve);
+    expect(m.error).toBe(legacy.red);
+    expect(m.success).toBe(legacy.green);
+    expect(m.bg).toBe(legacy.base);
+    expect(m.text).toBe(legacy.text);
+  });
+
+  it('fans one swatch out to every role that shared it', () => {
+    const m = migrateLegacyThemeDefinition(legacy);
+    expect([m.textFaint, m.borderSubtle, m.surfaceInactive])
+      .toEqual([legacy.overlay0, legacy.overlay0, legacy.overlay0]);
+    expect([m.surfaceHover, m.border]).toEqual([legacy.surface1, legacy.surface1]);
+  });
+
+  it("carries the author's categorical choices forward", () => {
+    const m = migrateLegacyThemeDefinition(legacy);
+    expect(m.chart1).toBe(legacy.blue);
+    expect(m.chart8).toBe(legacy.rosewater);
+  });
+
+  it('is a no-op on an already-migrated definition', () => {
+    const once = migrateLegacyThemeDefinition(legacy);
+    expect(migrateLegacyThemeDefinition(once)).toEqual(once);
+  });
+});
+
 describe('validateThemeDefinition', () => {
   const validTheme = {
-    base: '#1e1e2e',
-    mantle: '#181825',
-    crust: '#11111b',
+    bg: '#1e1e2e',
+    bgRaised: '#181825',
+    bgSunken: '#11111b',
+    surface: '#313244',
+    surfaceHover: '#45475a',
+    surfaceActive: '#585b70',
+    surfaceInactive: '#6c7086',
     text: '#cdd6f4',
-    subtext1: '#bac2de',
-    subtext0: '#a6adc8',
-    overlay2: '#9399b2',
-    overlay1: '#7f849c',
-    overlay0: '#6c7086',
-    surface2: '#585b70',
-    surface1: '#45475a',
-    surface0: '#313244',
-    lavender: '#b4befe',
-    blue: '#89b4fa',
-    sapphire: '#74c7ec',
-    sky: '#89dceb',
-    teal: '#94e2d5',
-    green: '#a6e3a1',
-    yellow: '#f9e2af',
-    peach: '#fab387',
-    maroon: '#eba0ac',
-    red: '#f38ba8',
-    mauve: '#cba6f7',
-    pink: '#f5c2e7',
-    flamingo: '#f2cdcd',
-    rosewater: '#f5e0dc'
+    textMuted: '#bac2de',
+    textSubtle: '#a6adc8',
+    textDisabled: '#7f849c',
+    textFaint: '#6c7086',
+    border: '#45475a',
+    borderStrong: '#585b70',
+    borderSubtle: '#6c7086',
+    accent: '#89b4fa',
+    accentHover: '#74c7ec',
+    accentAlt: '#cba6f7',
+    accentMuted: '#b4befe',
+    accentText: '#000000',
+    success: '#a6e3a1',
+    error: '#f38ba8',
+    warning: '#f9e2af',
+    caution: '#fab387',
+    info: '#89dceb',
+    danger: '#eba0ac',
+    chart1: '#89b4fa',
+    chart2: '#cba6f7',
+    chart3: '#a6e3a1',
+    chart4: '#fab387',
+    chart5: '#f9e2af',
+    chart6: '#74c7ec',
+    chart7: '#eba0ac',
+    chart8: '#f5e0dc'
   };
 
   describe('valid themes', () => {
@@ -381,21 +476,21 @@ describe('validateThemeDefinition', () => {
     });
 
     it('accepts theme with 3-digit hex colors', () => {
-      const themeWith3Digit = { ...validTheme, base: '#fff', text: '#000' };
+      const themeWith3Digit = { ...validTheme, bg: '#fff', text: '#000' };
       const result = validateThemeDefinition(themeWith3Digit);
       expect(result.isValid).toBe(true);
       expect(result.errors).toHaveLength(0);
     });
 
     it('accepts theme with 8-digit hex colors (with alpha)', () => {
-      const themeWithAlpha = { ...validTheme, base: '#1e1e2eff' };
+      const themeWithAlpha = { ...validTheme, bg: '#1e1e2eff' };
       const result = validateThemeDefinition(themeWithAlpha);
       expect(result.isValid).toBe(true);
       expect(result.errors).toHaveLength(0);
     });
 
     it('accepts theme with mixed case hex colors', () => {
-      const mixedCase = { ...validTheme, base: '#FF0000', text: '#AbCdEf' };
+      const mixedCase = { ...validTheme, bg: '#FF0000', text: '#AbCdEf' };
       const result = validateThemeDefinition(mixedCase);
       expect(result.isValid).toBe(true);
       expect(result.errors).toHaveLength(0);
@@ -404,20 +499,20 @@ describe('validateThemeDefinition', () => {
 
   describe('invalid themes - missing colors', () => {
     it('rejects theme missing single color', () => {
-      const { base, ...incomplete } = validTheme;
+      const { bg, ...incomplete } = validTheme;
       const result = validateThemeDefinition(incomplete);
       expect(result.isValid).toBe(false);
-      expect(result.errors).toContain('Missing required colors: base');
+      expect(result.errors).toContain('Missing required colors: bg');
     });
 
     it('rejects theme missing multiple colors', () => {
-      const { base, text, blue, ...incomplete } = validTheme;
+      const { bg, text, accent, ...incomplete } = validTheme;
       const result = validateThemeDefinition(incomplete);
       expect(result.isValid).toBe(false);
       expect(result.errors.some(e => e.includes('Missing required colors:'))).toBe(true);
-      expect(result.errors.some(e => e.includes('base'))).toBe(true);
+      expect(result.errors.some(e => e.includes('bg'))).toBe(true);
       expect(result.errors.some(e => e.includes('text'))).toBe(true);
-      expect(result.errors.some(e => e.includes('blue'))).toBe(true);
+      expect(result.errors.some(e => e.includes('accent'))).toBe(true);
     });
 
     it('rejects completely empty object', () => {
@@ -429,29 +524,29 @@ describe('validateThemeDefinition', () => {
 
   describe('invalid themes - invalid colors', () => {
     it('rejects theme with single invalid hex color', () => {
-      const invalidColor = { ...validTheme, base: 'not-a-color' };
+      const invalidColor = { ...validTheme, bg: 'not-a-color' };
       const result = validateThemeDefinition(invalidColor);
       expect(result.isValid).toBe(false);
-      expect(result.errors.some(e => e.includes("Invalid hex color for 'base'"))).toBe(true);
+      expect(result.errors.some(e => e.includes("Invalid hex color for 'bg'"))).toBe(true);
     });
 
     it('rejects theme with multiple invalid colors', () => {
       const invalidColors = {
         ...validTheme,
-        base: 'invalid1',
+        bg: 'invalid1',
         text: 'invalid2',
-        blue: '#gg0000'
+        accent: '#gg0000'
       };
       const result = validateThemeDefinition(invalidColors);
       expect(result.isValid).toBe(false);
       expect(result.errors.length).toBeGreaterThanOrEqual(3);
-      expect(result.errors.some(e => e.includes("base"))).toBe(true);
+      expect(result.errors.some(e => e.includes("bg"))).toBe(true);
       expect(result.errors.some(e => e.includes("text"))).toBe(true);
-      expect(result.errors.some(e => e.includes("blue"))).toBe(true);
+      expect(result.errors.some(e => e.includes("accent"))).toBe(true);
     });
 
     it('rejects colors missing # prefix', () => {
-      const missingHash = { ...validTheme, base: 'ff0000' };
+      const missingHash = { ...validTheme, bg: 'ff0000' };
       const result = validateThemeDefinition(missingHash);
       expect(result.isValid).toBe(false);
     });
@@ -511,7 +606,7 @@ describe('validateThemeDefinition', () => {
   describe('combined errors', () => {
     it('reports missing colors, invalid colors, and extra properties', () => {
       const problematic = {
-        base: 'invalid',
+        bg: 'invalid',
         text: '#ffffff',
         // missing 24 other colors
         extraProperty: '#000000'
@@ -572,15 +667,32 @@ describe('validateThemeDefinition', () => {
 
 describe('isThemeDefinition', () => {
   const validTheme = {
-    base: '#1e1e2e', mantle: '#181825', crust: '#11111b',
-    text: '#cdd6f4', subtext1: '#bac2de', subtext0: '#a6adc8',
-    overlay2: '#9399b2', overlay1: '#7f849c', overlay0: '#6c7086',
-    surface2: '#585b70', surface1: '#45475a', surface0: '#313244',
-    lavender: '#b4befe', blue: '#89b4fa', sapphire: '#74c7ec',
-    sky: '#89dceb', teal: '#94e2d5', green: '#a6e3a1',
-    yellow: '#f9e2af', peach: '#fab387', maroon: '#eba0ac',
-    red: '#f38ba8', mauve: '#cba6f7', pink: '#f5c2e7',
-    flamingo: '#f2cdcd', rosewater: '#f5e0dc'
+    bg: '#1e1e2e',
+    bgRaised: '#181825',
+    bgSunken: '#11111b',
+    surface: '#313244',
+    surfaceHover: '#45475a',
+    surfaceActive: '#585b70',
+    surfaceInactive: '#6c7086',
+    text: '#cdd6f4',
+    textMuted: '#bac2de',
+    textSubtle: '#a6adc8',
+    textDisabled: '#7f849c',
+    textFaint: '#6c7086',
+    border: '#45475a',
+    borderStrong: '#585b70',
+    borderSubtle: '#6c7086',
+    accent: '#89b4fa',
+    accentHover: '#74c7ec',
+    accentAlt: '#cba6f7',
+    accentMuted: '#b4befe',
+    accentText: '#000000',
+    success: '#a6e3a1',
+    error: '#f38ba8',
+    warning: '#f9e2af',
+    caution: '#fab387',
+    info: '#89dceb',
+    danger: '#eba0ac'
   };
 
   it('returns true for valid theme definition', () => {
@@ -588,7 +700,7 @@ describe('isThemeDefinition', () => {
   });
 
   it('returns false for invalid theme definition', () => {
-    const { base, ...invalid } = validTheme;
+    const { bg, ...invalid } = validTheme;
     expect(isThemeDefinition(invalid)).toBe(false);
   });
 
@@ -603,7 +715,7 @@ describe('isThemeDefinition', () => {
     const maybeTheme: any = validTheme;
     if (isThemeDefinition(maybeTheme)) {
       // TypeScript should recognize this as ThemeDefinition
-      expect(maybeTheme.base).toBeDefined();
+      expect(maybeTheme.bg).toBeDefined();
       expect(maybeTheme.text).toBeDefined();
     }
   });
@@ -667,57 +779,108 @@ describe('normalizeHexColor', () => {
 describe('normalizeThemeDefinition', () => {
   it('normalizes all colors in a theme', () => {
     const theme = {
-      base: '#fff', mantle: '#ff0000', crust: '#ABC',
-      text: '#000', subtext1: '#123456', subtext0: '#AbCdEf',
-      overlay2: '#999', overlay1: '#888', overlay0: '#777',
-      surface2: '#666', surface1: '#555', surface0: '#444',
-      lavender: '#abc', blue: '#def', sapphire: '#123',
-      sky: '#456', teal: '#789', green: '#0a0',
-      yellow: '#ff0', peach: '#f80', maroon: '#a00',
-      red: '#f00', mauve: '#a0f', pink: '#f0a',
-      flamingo: '#faa', rosewater: '#fcc'
+      bg: '#fff',
+      bgRaised: '#ff0000',
+      bgSunken: '#ABC',
+      surface: '#444',
+      surfaceHover: '#555',
+      surfaceActive: '#666',
+      surfaceInactive: '#777',
+      text: '#000',
+      textMuted: '#123456',
+      textSubtle: '#AbCdEf',
+      textDisabled: '#888',
+      textFaint: '#777',
+      border: '#555',
+      borderStrong: '#666',
+      borderSubtle: '#777',
+      accent: '#def',
+      accentHover: '#123',
+      accentAlt: '#a0f',
+      accentMuted: '#abc',
+      accentText: '#000000',
+      success: '#0a0',
+      error: '#f00',
+      warning: '#ff0',
+      caution: '#f80',
+      info: '#456',
+      danger: '#a00'
     };
 
     const normalized = normalizeThemeDefinition(theme as any);
 
-    expect(normalized.base).toBe('#FFFFFF');
-    expect(normalized.mantle).toBe('#FF0000');
-    expect(normalized.crust).toBe('#AABBCC');
+    expect(normalized.bg).toBe('#FFFFFF');
+    expect(normalized.bgRaised).toBe('#FF0000');
+    expect(normalized.bgSunken).toBe('#AABBCC');
     expect(normalized.text).toBe('#000000');
-    expect(normalized.subtext1).toBe('#123456');
-    expect(normalized.subtext0).toBe('#ABCDEF');
+    expect(normalized.textMuted).toBe('#123456');
+    expect(normalized.textSubtle).toBe('#ABCDEF');
   });
 
   it('handles already normalized theme', () => {
     const theme = {
-      base: '#FFFFFF', mantle: '#000000', crust: '#AABBCC',
-      text: '#112233', subtext1: '#445566', subtext0: '#778899',
-      overlay2: '#AABBCC', overlay1: '#DDEEFF', overlay0: '#123456',
-      surface2: '#789ABC', surface1: '#DEF012', surface0: '#345678',
-      lavender: '#9ABCDE', blue: '#F01234', sapphire: '#567890',
-      sky: '#ABCDEF', teal: '#123456', green: '#789ABC',
-      yellow: '#DEF012', peach: '#345678', maroon: '#9ABCDE',
-      red: '#F01234', mauve: '#567890', pink: '#ABCDEF',
-      flamingo: '#123456', rosewater: '#789ABC'
+      bg: '#FFFFFF',
+      bgRaised: '#000000',
+      bgSunken: '#AABBCC',
+      surface: '#345678',
+      surfaceHover: '#DEF012',
+      surfaceActive: '#789ABC',
+      surfaceInactive: '#123456',
+      text: '#112233',
+      textMuted: '#445566',
+      textSubtle: '#778899',
+      textDisabled: '#DDEEFF',
+      textFaint: '#123456',
+      border: '#DEF012',
+      borderStrong: '#789ABC',
+      borderSubtle: '#123456',
+      accent: '#F01234',
+      accentHover: '#567890',
+      accentAlt: '#567890',
+      accentMuted: '#9ABCDE',
+      accentText: '#000000',
+      success: '#789ABC',
+      error: '#F01234',
+      warning: '#DEF012',
+      caution: '#345678',
+      info: '#ABCDEF',
+      danger: '#9ABCDE'
     };
 
     const normalized = normalizeThemeDefinition(theme as any);
 
-    expect(normalized.base).toBe('#FFFFFF');
+    expect(normalized.bg).toBe('#FFFFFF');
     expect(normalized.text).toBe('#112233');
   });
 
   it('only normalizes the 26 required colors when no optional present', () => {
     const theme = {
-      base: '#fff', mantle: '#000', crust: '#abc',
-      text: '#123', subtext1: '#456', subtext0: '#789',
-      overlay2: '#aaa', overlay1: '#bbb', overlay0: '#ccc',
-      surface2: '#ddd', surface1: '#eee', surface0: '#fff',
-      lavender: '#111', blue: '#222', sapphire: '#333',
-      sky: '#444', teal: '#555', green: '#666',
-      yellow: '#777', peach: '#888', maroon: '#999',
-      red: '#aaa', mauve: '#bbb', pink: '#ccc',
-      flamingo: '#ddd', rosewater: '#eee'
+      bg: '#fff',
+      bgRaised: '#000',
+      bgSunken: '#abc',
+      surface: '#fff',
+      surfaceHover: '#eee',
+      surfaceActive: '#ddd',
+      surfaceInactive: '#ccc',
+      text: '#123',
+      textMuted: '#456',
+      textSubtle: '#789',
+      textDisabled: '#bbb',
+      textFaint: '#ccc',
+      border: '#eee',
+      borderStrong: '#ddd',
+      borderSubtle: '#ccc',
+      accent: '#222',
+      accentHover: '#333',
+      accentAlt: '#bbb',
+      accentMuted: '#111',
+      accentText: '#000000',
+      success: '#666',
+      error: '#aaa',
+      warning: '#777',
+      caution: '#888',
+      info: '#444',
+      danger: '#999'
     };
 
     const normalized = normalizeThemeDefinition(theme as any);
@@ -728,16 +891,33 @@ describe('normalizeThemeDefinition', () => {
 
   it('preserves and normalizes optional colors when present', () => {
     const theme = {
-      base: '#fff', mantle: '#000', crust: '#abc',
-      text: '#123', subtext1: '#456', subtext0: '#789',
-      overlay2: '#aaa', overlay1: '#bbb', overlay0: '#ccc',
-      surface2: '#ddd', surface1: '#eee', surface0: '#fff',
-      lavender: '#111', blue: '#222', sapphire: '#333',
-      sky: '#444', teal: '#555', green: '#666',
-      yellow: '#777', peach: '#888', maroon: '#999',
-      red: '#aaa', mauve: '#bbb', pink: '#ccc',
-      flamingo: '#ddd', rosewater: '#eee',
-      chatBubbleSentBg: '#ff0000',
+      bg: '#fff',
+      bgRaised: '#000',
+      bgSunken: '#abc',
+      surface: '#fff',
+      surfaceHover: '#eee',
+      surfaceActive: '#ddd',
+      surfaceInactive: '#ccc',
+      text: '#123',
+      textMuted: '#456',
+      textSubtle: '#789',
+      textDisabled: '#bbb',
+      textFaint: '#ccc',
+      border: '#eee',
+      borderStrong: '#ddd',
+      borderSubtle: '#ccc',
+      accent: '#222',
+      accentHover: '#333',
+      accentAlt: '#bbb',
+      accentMuted: '#111',
+      accentText: '#000000',
+      success: '#666',
+      error: '#aaa',
+      warning: '#777',
+      caution: '#888',
+      info: '#444',
+      danger: '#999',
+      chatBubbleSentBg: '#f00',
       chatBubbleSentText: '#abc'
     };
 
@@ -747,5 +927,26 @@ describe('normalizeThemeDefinition', () => {
     expect(Object.keys(normalized)).toHaveLength(28);
     expect((normalized as any).chatBubbleSentBg).toBe('#FF0000');
     expect((normalized as any).chatBubbleSentText).toBe('#AABBCC');
+  });
+});
+
+describe('migrateLegacyThemeDefinition — accentText', () => {
+  const swatchOnly = {
+    base: '#1e1e2e', crust: '#11111b', mantle: '#181825',
+    subtext0: '#a6adc8', subtext1: '#bac2de', surface0: '#313244',
+    overlay0: '#6c7086', overlay1: '#7f849c'
+  };
+
+  it('defaults to black when the legacy definition has none', () => {
+    // There was no swatch to migrate from: accent-text was one global value,
+    // fixed black, painted on bright fills.
+    expect(migrateLegacyThemeDefinition(swatchOnly).accentText).toBe('#000000');
+  });
+
+  it('keeps a value the definition already carries', () => {
+    // A hand-edited hybrid can have one, and clobbering it would lose the
+    // author's choice for no reason.
+    const hybrid = { ...swatchOnly, accentText: '#ffffff' };
+    expect(migrateLegacyThemeDefinition(hybrid).accentText).toBe('#ffffff');
   });
 });

@@ -17,45 +17,59 @@ type EditorMode = 'visual' | 'json';
 
 const COLOR_GROUPS = [
   {
-    name: 'Base Colors',
-    colors: ['base', 'mantle', 'crust'] as const,
-    description: 'Background and surface colors'
+    name: 'Backgrounds',
+    colors: ['bg', 'bgRaised', 'bgSunken'] as const,
+    description: 'Page background, and the layers behind and beneath it'
   },
   {
-    name: 'Text Colors',
-    colors: ['text', 'subtext1', 'subtext0'] as const,
-    description: 'Text and secondary text colors'
+    name: 'Surfaces',
+    colors: ['surface', 'surfaceHover', 'surfaceActive', 'surfaceInactive'] as const,
+    description: 'Cards and panels; the last is the neutral "nothing happening" fill'
   },
   {
-    name: 'Overlay Colors',
-    colors: ['overlay2', 'overlay1', 'overlay0'] as const,
-    description: 'UI element overlays and borders'
+    name: 'Text',
+    colors: ['text', 'textMuted', 'textSubtle', 'textDisabled', 'textFaint'] as const,
+    description: 'Highest to lowest emphasis'
   },
   {
-    name: 'Surface Colors',
-    colors: ['surface2', 'surface1', 'surface0'] as const,
-    description: 'Card and panel backgrounds'
+    name: 'Lines',
+    colors: ['border', 'borderStrong', 'borderSubtle'] as const,
+    description: 'Dividers and outlines'
   },
   {
-    name: 'Accent Colors',
-    colors: ['lavender', 'blue', 'sapphire', 'sky', 'teal', 'green'] as const,
-    description: 'Primary accent colors'
+    name: 'Accent',
+    colors: ['accent', 'accentHover', 'accentAlt', 'accentMuted', 'accentText'] as const,
+    description: 'Primary interactive color; the last is text painted ON an accent fill'
   },
   {
-    name: 'Semantic Colors',
-    colors: ['yellow', 'peach', 'maroon', 'red', 'mauve', 'pink', 'flamingo', 'rosewater'] as const,
-    description: 'Warning, error, and decorative colors'
+    name: 'Status',
+    colors: ['success', 'error', 'warning', 'caution', 'info', 'danger'] as const,
+    description: 'Feedback colors. Caution is one step below warning'
   }
 ];
+
+/** Human labels — the keys are roles, but "bgRaised" is not a caption. */
+const COLOR_LABELS: Record<string, string> = {
+  bg: 'Background', bgRaised: 'Raised background', bgSunken: 'Sunken background',
+  surface: 'Surface', surfaceHover: 'Surface (hover)',
+  surfaceActive: 'Surface (active)', surfaceInactive: 'Surface (inactive)',
+  text: 'Text', textMuted: 'Muted text', textSubtle: 'Subtle text',
+  textDisabled: 'Disabled text', textFaint: 'Faint text',
+  border: 'Border', borderStrong: 'Strong border', borderSubtle: 'Subtle border',
+  accent: 'Accent', accentHover: 'Accent (hover)', accentAlt: 'Alternate accent',
+  accentMuted: 'Muted accent', accentText: 'Text on accent',
+  success: 'Success', error: 'Error', warning: 'Warning',
+  caution: 'Caution', info: 'Info', danger: 'Danger'
+};
 
 const OPTIONAL_COLOR_GROUPS = [
   {
     name: 'Chat Bubble Colors',
     description: 'Override chat bubble colors independently from accent colors',
     colors: [
-      { key: 'chatBubbleSentBg', label: 'Sent Background', fallback: 'blue' },
-      { key: 'chatBubbleSentText', label: 'Sent Text', fallback: 'base' },
-      { key: 'chatBubbleReceivedBg', label: 'Received Background', fallback: 'surface1' },
+      { key: 'chatBubbleSentBg', label: 'Sent Background', fallback: 'accent' },
+      { key: 'chatBubbleSentText', label: 'Sent Text', fallback: 'accentText' },
+      { key: 'chatBubbleReceivedBg', label: 'Received Background', fallback: 'surfaceHover' },
       { key: 'chatBubbleReceivedText', label: 'Received Text', fallback: 'text' }
     ]
   }
@@ -279,7 +293,7 @@ export const ThemeEditor: React.FC<ThemeEditorProps> = ({
               <div className="color-grid">
                 {group.colors.map((colorKey) => (
                   <div key={colorKey} className="color-picker-item">
-                    <label htmlFor={`color-${colorKey}`}>{colorKey}</label>
+                    <label htmlFor={`color-${colorKey}`}>{COLOR_LABELS[colorKey] ?? colorKey}</label>
                     <div className="color-input-wrapper">
                       <input
                         id={`color-${colorKey}`}

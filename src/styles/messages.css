@@ -76,24 +76,24 @@
 }
 
 .message-bubble.mine {
-  background: var(--ctp-chatBubbleSentBg, var(--color-accent));
-  color: var(--ctp-chatBubbleSentText, var(--color-accent-text));
+  background: var(--color-chat-bubble-sent-bg, var(--color-accent));
+  color: var(--color-chat-bubble-sent-text, var(--color-accent-text));
   border-bottom-right-radius: 6px;
 }
 
 .message-bubble.mine,
 .message-bubble.mine * {
-  color: var(--ctp-chatBubbleSentText, var(--color-accent-text));
+  color: var(--color-chat-bubble-sent-text, var(--color-accent-text));
 }
 
 .message-bubble.mine a.message-link {
-  color: var(--ctp-chatBubbleSentText, var(--color-accent-text));
+  color: var(--color-chat-bubble-sent-text, var(--color-accent-text));
   text-decoration: underline;
 }
 
 .message-bubble.theirs {
-  background: var(--ctp-chatBubbleReceivedBg, var(--color-surface-hover));
-  color: var(--ctp-chatBubbleReceivedText, var(--color-text));
+  background: var(--color-chat-bubble-received-bg, var(--color-surface-hover));
+  color: var(--color-chat-bubble-received-text, var(--color-text));
   border-bottom-left-radius: 6px;
 }
 
@@ -255,7 +255,7 @@
 }
 
 .message-bubble.mine .message-time {
-  color: var(--ctp-chatBubbleSentText, var(--color-accent-text));
+  color: var(--color-chat-bubble-sent-text, var(--color-accent-text));
   opacity: 0.85;
 }
 
