@@ -37,6 +37,24 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
+// The widget now reads `overlayColors.hopColors` so its bars use the same hop
+// scale as the map. Mock the hook rather than widening the react-i18next mock:
+// loading the real SettingsContext drags in `initReactI18next`, which this
+// file's partial i18n mock does not provide, and this test has no interest in
+// settings beyond the gradient.
+vi.mock('../contexts/SettingsContext', () => ({
+  useSettings: () => ({
+    overlayColors: {
+      hopColors: {
+        local: '#22c55e',
+        noData: '#9ca3af',
+        max: '#FF0000',
+        gradient: ['#0000FF', '#3300CC', '#660099', '#990066', '#CC0033', '#FF0000'],
+      },
+    },
+  }),
+}));
+
 import HopDistributionWidget from './HopDistributionWidget';
 
 type NodeInfo = {

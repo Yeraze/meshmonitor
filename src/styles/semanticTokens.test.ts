@@ -31,8 +31,32 @@ const appCss = readFileSync(resolve('src/App.css'), 'utf8');
  * silently counted as a definition.
  */
 function rootBlock(): string {
-  const m = appCss.match(/:root\s*\{([\s\S]*?)\n\}/);
-  return m?.[1] ?? '';
+  // Brace-balanced rather than a lazy `[\s\S]*?` up to the first `\n}`.
+  // The lazy form stops at the first line that is just `}`, so a nested rule
+  // or a comment containing one would truncate the block and hide every token
+  // after it. The count assertions below would catch a big truncation, but a
+  // small one could pass while quietly narrowing what the other tests see —
+  // and this block has grown twice already (chart, then seq).
+  // Comments are blanked first: this block is heavily commented, and a `}`
+  // inside prose counts as a closing brace to any scanner that does not strip
+  // them. Verified by dropping a lone `}` into a comment above --chart-1 —
+  // brace-counting alone still truncated there.
+  const css = appCss.replace(/\/\*[\s\S]*?\*\//g, (m) => ' '.repeat(m.length));
+  const start = css.search(/:root\s*\{/);
+  if (start === -1) return '';
+  const open = css.indexOf('{', start);
+  let depth = 0;
+  for (let i = open; i < css.length; i++) {
+    if (css[i] === '{') depth++;
+    else if (css[i] === '}') {
+      depth--;
+      // Slice from the ORIGINAL text so declarations are returned verbatim;
+      // only the brace scan runs on the blanked copy. Lengths match because
+      // comments are replaced with equal-length spaces, so offsets are stable.
+      if (depth === 0) return appCss.slice(open + 1, i);
+    }
+  }
+  return '';
 }
 
 /** Semantic tokens and the palette var each points at, from the :root block. */
@@ -292,5 +316,74 @@ describe('categorical scale (--chart-N)', () => {
     expect(defs.map((f) => f.replace(resolve('.') + '/', ''))).toEqual([
       'src/utils/sourceColors.ts',
     ]);
+  });
+});
+
+/**
+ * Sequential scale (`--seq-N`).
+ *
+ * Magnitude encoding — how far, how many, how dense. Distinct from both roles
+ * (what a color MEANS) and categories (merely tellable apart): a sequential
+ * step has to READ AS ORDERED. Built with color-mix from the accent so the
+ * steps are monotonic by construction and cannot collide the way two palette
+ * picks can.
+ */
+describe('sequential scale (--seq-N)', () => {
+  const decls = new Map<string, string>();
+  for (const m of rootBlock().matchAll(/(--seq-\d+)\s*:\s*([^;]+);/g)) {
+    decls.set(m[1], m[2].trim());
+  }
+
+  it('defines a contiguous scale', () => {
+    expect(decls.size).toBe(5);
+    for (let i = 1; i <= 5; i++) expect(decls.has(`--seq-${i}`), `--seq-${i} missing`).toBe(true);
+  });
+
+  it('derives every step from the accent, so a theme change carries through', () => {
+    for (const [name, value] of decls) {
+      expect(value, `${name} does not reference the accent`).toMatch(/var\(--color-accent\)/);
+    }
+  });
+
+  it('increases monotonically, which is the whole point of a sequential scale', () => {
+    // Steps 1-4 are color-mix percentages; step 5 is the undiluted accent.
+    // Reading the percentages proves ordering without needing to render.
+    const pct: number[] = [];
+    for (let i = 1; i <= 4; i++) {
+      const m = decls.get(`--seq-${i}`)!.match(/var\(--color-accent\)\s+(\d+)%/);
+      expect(m, `--seq-${i} is not a color-mix percentage`).not.toBeNull();
+      pct.push(Number(m![1]));
+    }
+    expect(pct).toEqual([...pct].sort((a, b) => a - b));
+    expect(new Set(pct).size).toBe(pct.length);
+    expect(Math.max(...pct)).toBeLessThan(100);
+    expect(decls.get('--seq-5')).toBe('var(--color-accent)');
+  });
+
+  it('borrows no categorical slot — magnitude and category stay separate', () => {
+    for (const [name, value] of decls) {
+      expect(value, `${name} borrows a --chart-N slot`).not.toMatch(/var\(--chart-/);
+    }
+  });
+
+  it('is what the magnitude widgets draw on, with no raw palette vars', () => {
+    // These three encoded magnitude with categorical hues and reached past the
+    // role layer for the ones no role provided. Pin that they don't again.
+    for (const f of [
+      'src/components/DistanceDistributionWidget.tsx',
+      'src/components/HopDistanceHeatmapWidget.tsx',
+    ]) {
+      const text = readFileSync(resolve(f), 'utf8');
+      expect(text, `${f} still reads a raw palette var`).not.toMatch(/var\(--ctp-/);
+      expect(text, `${f} does not use the sequential scale`).toMatch(/var\(--seq-/);
+    }
+  });
+
+  it('routes the hop histogram through the shared hop scale, not a private list', () => {
+    // It IS hops, so it must agree with the map and honour the user's
+    // configured gradient rather than hardcoding its own.
+    const text = readFileSync(resolve('src/components/HopDistributionWidget.tsx'), 'utf8');
+    expect(text).toMatch(/getHopColor\(hop, overlayColors\.hopColors\)/);
+    expect(text).not.toMatch(/var\(--ctp-/);
   });
 });
