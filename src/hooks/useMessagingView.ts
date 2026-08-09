@@ -56,6 +56,41 @@ import { logger } from '../utils/logger';
 import { playSound, playChannelSound, DEFAULT_SOUND_ID } from '../utils/notificationSounds';
 import type { PollData, RawMessage } from './usePoll';
 
+/**
+ * Land the one-time entry scroll on the unread divider when the conversation
+ * has one, otherwise at the bottom (#4607).
+ *
+ * The divider is located by querying the container for `[data-unread-divider]`
+ * rather than by threading the anchor id through this hook. The tabs own the
+ * anchor and already render the element; a DOM lookup keeps this scroll logic
+ * decoupled from how either tab computes it, and it is only run once per
+ * conversation entry, so it costs nothing on the hot path.
+ *
+ * Deliberately confined to the ENTRY scroll. The load-older restore and the
+ * near-bottom auto-scroll are untouched, so prepending older history still
+ * cannot yank the view (#4476).
+ */
+/** True when the conversation currently renders an unread divider (#4607). */
+function hasUnreadDivider(container: HTMLDivElement): boolean {
+  return typeof container.querySelector === 'function'
+    && !!container.querySelector('[data-unread-divider]');
+}
+
+function scrollToUnreadOrBottom(container: HTMLDivElement): void {
+  // Several unit tests drive these effects with a plain `{ scrollTop,
+  // scrollHeight }` stand-in rather than a real element, so treat a missing
+  // querySelector as "no divider" instead of throwing.
+  const divider = typeof container.querySelector === 'function'
+    ? container.querySelector('[data-unread-divider]')
+    : null;
+  if (divider) {
+    divider.scrollIntoView({ block: 'start' });
+    return;
+  }
+  container.scrollTop = container.scrollHeight;
+}
+
+
 export function useMessagingView() {
   const { t } = useTranslation();
   const { showToast } = useToast();
@@ -385,8 +420,9 @@ export function useMessagingView() {
         // Use setTimeout to ensure messages are rendered before scrolling
         setTimeout(() => {
           if (channelMessagesContainerRef.current) {
-            channelMessagesContainerRef.current.scrollTop = channelMessagesContainerRef.current.scrollHeight;
-            setIsChannelScrolledToBottom(true);
+            // #4607: land on the oldest unseen message when there is one.
+            scrollToUnreadOrBottom(channelMessagesContainerRef.current);
+            setIsChannelScrolledToBottom(!hasUnreadDivider(channelMessagesContainerRef.current));
           }
         }, 100);
       }
@@ -505,8 +541,9 @@ export function useMessagingView() {
         pendingDMScrollRef.current = false;
         setTimeout(() => {
           if (dmMessagesContainerRef.current) {
-            dmMessagesContainerRef.current.scrollTop = dmMessagesContainerRef.current.scrollHeight;
-            setIsDMScrolledToBottom(true);
+            // #4607: land on the oldest unseen message when there is one.
+            scrollToUnreadOrBottom(dmMessagesContainerRef.current);
+            setIsDMScrolledToBottom(!hasUnreadDivider(dmMessagesContainerRef.current));
           }
         }, 150);
       }

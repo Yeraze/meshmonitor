@@ -29,6 +29,9 @@ import { logger } from '../utils/logger';
 import { MessageStatusIndicator } from './MessageStatusIndicator';
 import { useNodes } from '../hooks/useServerData';
 import { UiIcon } from './icons';
+import UnreadDivider from './messages/UnreadDivider';
+import { resolveUnreadAnchorId, shouldSuppressDivider } from '../utils/unreadAnchor';
+import { useUnreadDividerAnchors } from '../contexts/MessagingContext';
 
 // Default PSK value (publicly known key - not truly secure)
 const DEFAULT_PUBLIC_PSK = 'AQ==';
@@ -224,6 +227,9 @@ export default function ChannelsTab({
   const { nodes } = useNodes();
   const { distanceUnit } = useSettings();
   const { isChannelMuted, muteChannel, unmuteChannel } = useNotificationMuteSettings();
+  // Oldest-unread timestamp for the open channel, pinned at entry (#4607).
+  // Drives the red "New messages" divider below.
+  const { channel: pinnedFirstUnreadChannel } = useUnreadDividerAnchors();
 
   const [showMuteMenu, setShowMuteMenu] = useState<number | null>(null);
   // Mobile overflow ("⋯") menu — collapses info / notifications / mark-all-read
@@ -1013,6 +1019,33 @@ export default function ChannelsTab({
                         (a, b) => getMessageSortTime(a) - getMessageSortTime(b)
                       );
 
+                      // Unread divider anchor (#4607). `pinnedFirstUnreadChannel`
+                      // is the oldest-unread timestamp captured when this channel
+                      // was opened — the read-marking effect clears the unread set
+                      // a tick later, so it has to come from the pin, not a live
+                      // lookup. Resolved against the SAME filtered+sorted list the
+                      // rows are rendered from, so the line can never point at a
+                      // row this view hides (MQTT off, traceroutes on Primary).
+                      const unreadAnchorId = (() => {
+                        const rows = messagesForChannel.map(m => ({ id: m.id, sortTime: getMessageSortTime(m) }));
+                        const ownIds = new Set(messagesForChannel.filter(isMyMessage).map(m => m.id));
+                        const anchor = resolveUnreadAnchorId({
+                          messages: rows,
+                          watermarkMs: pinnedFirstUnreadChannel,
+                          mode: 'firstUnread',
+                          ownMessageIds: ownIds,
+                        });
+                        // `hasMoreOlder: true` because this view renders a WINDOW
+                        // (latest ~100 rows) and pages older history in on scroll
+                        // — an anchor at the top of the window does not mean the
+                        // start of the conversation, so the line stays.
+                        return shouldSuppressDivider({
+                          anchorId: anchor,
+                          messages: rows,
+                          hasMoreOlder: true,
+                        }) ? null : anchor;
+                      })();
+
                       return messagesForChannel && messagesForChannel.length > 0 ? (
                         messagesForChannel.map((msg, index) => {
                           const isMine = isMyMessage(msg);
@@ -1045,7 +1078,10 @@ export default function ChannelsTab({
                                   </span>
                                 </div>
                               )}
-                              <div 
+                              {/* Red "New messages" line, directly above the
+                                  oldest message unseen at entry (#4607). */}
+                              {unreadAnchorId === msg.id && <UnreadDivider />}
+                              <div
                                 className={`message-bubble-container ${isMine ? 'mine' : 'theirs'}`}
                                 data-message-id={msg.id}
                               >

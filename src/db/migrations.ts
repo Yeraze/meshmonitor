@@ -152,6 +152,7 @@ import { migration as clearNullIslandEstimatesMigration, runMigration134Postgres
 import { migration as backfillMeshcoreNodesViewOnMapMigration, runMigration135Postgres, runMigration135Mysql } from '../server/migrations/135_backfill_meshcore_nodes_viewonmap.js';
 import { migration as addMeshCoreObserverCredentialsMigration, runMigration136Postgres, runMigration136Mysql } from '../server/migrations/136_add_meshcore_observer_credentials.js';
 import { migration as estimatedPositionAnchorsMigration, runMigration137Postgres, runMigration137Mysql } from '../server/migrations/137_estimated_position_anchors.js';
+import { migration as addConversationReadStateMigration, runMigration138Postgres, runMigration138Mysql } from '../server/migrations/138_add_conversation_read_state.js';
 
 // ============================================================================
 // Registry
@@ -2182,4 +2183,24 @@ registry.register({
   sqlite: (db) => estimatedPositionAnchorsMigration.up(db),
   postgres: (client) => runMigration137Postgres(client),
   mysql: (pool) => runMigration137Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 138: create `conversation_read_state` (issue #4607).
+// Durable PER-USER last-read watermark per (source, conversation), used to
+// anchor the unread divider and the jump-to-first-unread entry scroll. Covers
+// MeshCore, whose read markers previously lived only in browser localStorage
+// (per-browser, not per-user). Meshtastic keeps deriving its anchor from
+// `read_messages` so there is exactly one source of truth per protocol.
+//
+// Renumbered from 137 during review: #4609 claimed 137 on main first.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 138,
+  name: 'add_conversation_read_state',
+  settingsKey: 'migration_138_add_conversation_read_state',
+  sqlite: (db) => addConversationReadStateMigration.up(db),
+  postgres: (client) => runMigration138Postgres(client),
+  mysql: (pool) => runMigration138Mysql(pool),
 });

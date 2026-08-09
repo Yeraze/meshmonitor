@@ -1,20 +1,35 @@
 /**
- * Shared client-side unread-marker store for MeshCore (#3891).
+ * Shared client-side unread-marker store for MeshCore (#3891, #4607).
  *
  * MeshCore messages are NOT covered by the Meshtastic server-side read-tracking
- * (`read_messages` joins the Meshtastic `messages` table only), so we track the
- * operator's last-read markers client-side in localStorage, scoped by sourceId:
+ * (`read_messages` joins the Meshtastic `messages` table only). Originally the
+ * operator's last-read markers therefore lived only in localStorage, scoped by
+ * sourceId:
  *
  *   - channels: `meshmonitor-meshcore-channel-lastread-<sourceId>` → { idx: ms }
  *               (pre-existing key from #3703 — kept as-is for backward compat)
  *   - DMs:      `meshmonitor-meshcore-dm-lastread-<sourceId>`      → { peerKey: ms }
  *
- * Both the views that own a conversation (MeshCoreChannelsView /
- * MeshCoreDirectMessagesView) and the page-level unread hook that drives the
- * sidebar red-dots read/write through here, so a single source of truth keeps
- * the in-view badges and the sidebar dots consistent. Writes dispatch a
- * same-tab `CustomEvent` so listeners update immediately (the native `storage`
- * event only fires in OTHER tabs).
+ * That is per-BROWSER, which is the wrong shape for an app with real
+ * multi-user auth: two operators sharing a machine shared one set of markers,
+ * and the same operator on a second device started from zero. #4607 moved the
+ * durable copy server-side into `conversation_read_state` (per user, per
+ * source, per conversation) and left localStorage in place as (a) a synchronous
+ * cache so the first paint is not blank while the server round-trip is in
+ * flight, and (b) the fallback when there is no server read-state at all.
+ *
+ * The synchronous read API is unchanged on purpose — every caller
+ * (MeshCoreChannelsView / MeshCoreDirectMessagesView / useMeshCoreUnread)
+ * reads markers during render. Reads merge localStorage with the hydrated
+ * server snapshot by taking the MAX per key, so whichever side is ahead wins
+ * and a marker can never appear to rewind. Writes update localStorage
+ * immediately (so the UI reacts at once) and are mirrored to the server
+ * through the injected transport.
+ *
+ * The transport is INJECTED rather than imported so this module stays free of
+ * React and fetch: `MeshCorePage` wires it once with a CSRF-aware fetcher. With
+ * no transport configured the module behaves exactly as it did before #4607,
+ * which is also what keeps the pre-existing unit tests meaningful.
  */
 
 const CHANGE_EVENT = 'meshcore-unread-changed';
@@ -23,6 +38,79 @@ export const channelLastReadKey = (sourceId: string) =>
   `meshmonitor-meshcore-channel-lastread-${sourceId}`;
 export const dmLastReadKey = (sourceId: string) =>
   `meshmonitor-meshcore-dm-lastread-${sourceId}`;
+
+/** Conversation families as named by the server's `conversation_read_state`. */
+export type MeshCoreReadKind = 'meshcore_channel' | 'meshcore_dm';
+
+/** Server-side read-state transport, injected by the page (see module header). */
+export interface ReadStateTransport {
+  /** Fetch every watermark this user holds on `sourceId`. */
+  load(sourceId: string): Promise<Record<MeshCoreReadKind, Record<string, number>> | null>;
+  /** Persist one watermark. Failures are swallowed — markers are best-effort. */
+  save(sourceId: string, kind: MeshCoreReadKind, conversationKey: string, lastReadAt: number): Promise<void>;
+}
+
+let transport: ReadStateTransport | null = null;
+
+/**
+ * Hydrated server snapshots, per sourceId. Populated by {@link hydrateReadState}
+ * and merged into every synchronous read.
+ */
+const serverState = new Map<string, { channels: Record<string, number>; dms: Record<string, number> }>();
+
+/** Sources whose hydration has already been kicked off (once per session). */
+const hydrated = new Set<string>();
+
+/**
+ * Install the server transport. Call once per app; passing `null` restores the
+ * localStorage-only behaviour (used by tests and by builds with no session).
+ */
+export function configureReadStateTransport(next: ReadStateTransport | null): void {
+  transport = next;
+  // A new (or removed) transport means a new session/fetcher, so the cached
+  // snapshot no longer belongs to whoever is now signed in. Dropping it here
+  // stops one user's markers surviving a logout into the next user's view.
+  serverState.clear();
+  hydrated.clear();
+}
+
+/** Test seam: forget every hydrated snapshot and re-arm hydration. */
+export function resetReadStateCache(): void {
+  serverState.clear();
+  hydrated.clear();
+}
+
+/**
+ * Pull this user's server-side watermarks for `sourceId` into the cache.
+ * Idempotent per source unless `force` is set. Safe to call unconditionally:
+ * with no transport, or on a 403 (anonymous / unpermitted), it resolves
+ * quietly and the store keeps using localStorage alone.
+ */
+export async function hydrateReadState(sourceId: string, force = false): Promise<void> {
+  if (!sourceId || !transport) return;
+  if (hydrated.has(sourceId) && !force) return;
+  hydrated.add(sourceId);
+  try {
+    const data = await transport.load(sourceId);
+    if (!data) return;
+    serverState.set(sourceId, {
+      channels: { ...(data.meshcore_channel ?? {}) },
+      dms: { ...(data.meshcore_dm ?? {}) },
+    });
+    notifyChanged();
+  } catch {
+    // Best-effort: an unreachable server must not break the unread UI.
+    hydrated.delete(sourceId);
+  }
+}
+
+function notifyChanged(): void {
+  try {
+    window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
+  } catch {
+    /* non-DOM env (tests) — safe to ignore */
+  }
+}
 
 function loadMap<K extends string | number>(storageKey: string): Record<K, number> {
   try {
@@ -35,16 +123,37 @@ function loadMap<K extends string | number>(storageKey: string): Record<K, numbe
   }
 }
 
+/**
+ * Merge a server snapshot into a local map, keeping the LATER marker per key.
+ * Max rather than "server wins": a marker written in this tab is already in
+ * localStorage but may not have round-tripped yet, and letting an older server
+ * value overwrite it would make the unread dot flicker back on.
+ */
+function mergeLatest(
+  local: Record<string, number>,
+  remote: Record<string, number> | undefined
+): Record<string, number> {
+  if (!remote) return local;
+  const out: Record<string, number> = { ...local };
+  for (const [key, ts] of Object.entries(remote)) {
+    if (!Number.isFinite(ts)) continue;
+    if ((out[key] ?? 0) < ts) out[key] = ts;
+  }
+  return out;
+}
+
 /** Read the per-channel last-read map (channel idx → ms) for a source. */
 export function loadChannelLastRead(sourceId: string): Record<number, number> {
   if (!sourceId) return {};
-  return loadMap<number>(channelLastReadKey(sourceId));
+  const local = loadMap<number>(channelLastReadKey(sourceId)) as Record<string, number>;
+  return mergeLatest(local, serverState.get(sourceId)?.channels) as Record<number, number>;
 }
 
 /** Read the per-peer DM last-read map (canonical peer key → ms) for a source. */
 export function loadDmLastRead(sourceId: string): Record<string, number> {
   if (!sourceId) return {};
-  return loadMap<string>(dmLastReadKey(sourceId));
+  const local = loadMap<string>(dmLastReadKey(sourceId));
+  return mergeLatest(local, serverState.get(sourceId)?.dms);
 }
 
 function persist(storageKey: string, map: Record<string | number, number>): void {
@@ -54,11 +163,28 @@ function persist(storageKey: string, map: Record<string | number, number>): void
     /* storage full / disabled — unread state is best-effort */
   }
   // Notify same-tab listeners (storage event only fires cross-tab).
-  try {
-    window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
-  } catch {
-    /* non-DOM env (tests) — safe to ignore */
-  }
+  notifyChanged();
+}
+
+/**
+ * Mirror a marker to the server and into the local snapshot. Never throws.
+ *
+ * With no transport this is a complete no-op — in particular it must NOT seed
+ * `serverState`. That map is a cache OF the server; populating it without one
+ * would make markers outlive a `localStorage.clear()` and reappear in a
+ * session that never wrote them.
+ */
+function pushToServer(sourceId: string, kind: MeshCoreReadKind, key: string, ts: number): void {
+  if (!transport) return;
+
+  const snapshot = serverState.get(sourceId) ?? { channels: {}, dms: {} };
+  const bucket = kind === 'meshcore_channel' ? snapshot.channels : snapshot.dms;
+  if ((bucket[key] ?? 0) < ts) bucket[key] = ts;
+  serverState.set(sourceId, snapshot);
+
+  void transport.save(sourceId, kind, key, ts).catch(() => {
+    /* best-effort — localStorage already reflects the marker */
+  });
 }
 
 /**
@@ -71,6 +197,7 @@ export function markChannelRead(sourceId: string, idx: number, ts: number = Date
   if ((map[idx] ?? 0) >= ts) return;
   map[idx] = ts;
   persist(channelLastReadKey(sourceId), map);
+  pushToServer(sourceId, 'meshcore_channel', String(idx), ts);
 }
 
 /**
@@ -84,6 +211,7 @@ export function markDmRead(sourceId: string, peerKey: string, ts: number = Date.
   if ((map[peerKey] ?? 0) >= ts) return;
   map[peerKey] = ts;
   persist(dmLastReadKey(sourceId), map);
+  pushToServer(sourceId, 'meshcore_dm', peerKey, ts);
 }
 
 /**

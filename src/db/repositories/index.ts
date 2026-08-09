@@ -27,6 +27,8 @@ export type {
   NotificationPreferences,
   PushSubscriptionInput,
 } from './notifications.js';
+export { ConversationReadStateRepository, emptyReadStateMap, isConversationKind, readStateUserId } from './conversationReadState.js';
+export type { ConversationReadStateMap } from './conversationReadState.js';
 export { PacketLogRepository } from './packetLog.js';
 export type { PacketLogFilterOptions } from './packetLog.js';
 export { KeyRepairRepository } from './keyRepair.js';

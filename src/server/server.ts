@@ -581,6 +581,7 @@ import securityRoutes from './routes/securityRoutes.js';
 import packetRoutes from './routes/packetRoutes.js';
 import solarRoutes from './routes/solarRoutes.js';
 import messageRoutes from './routes/messageRoutes.js';
+import readStateRoutes from './routes/readStateRoutes.js';
 import linkPreviewRoutes from './routes/linkPreviewRoutes.js';
 import scriptContentRoutes from './routes/scriptContentRoutes.js';
 import apiTokenRoutes from './routes/apiTokenRoutes.js';
@@ -702,6 +703,10 @@ apiRouter.use('/news', newsRoutes);
 
 // Message routes (requires appropriate write permissions)
 apiRouter.use('/messages', optionalAuth(), messageRoutes);
+
+// Per-user conversation read watermarks (#4607) — the durable anchor for the
+// unread divider and the jump-to-first-unread entry scroll on MeshCore.
+apiRouter.use('/read-state', readStateRoutes);
 
 // MeshCore routes — nested under `/api/sources/:id/meshcore/*` so each
 // request resolves the manager bound to a specific source. The legacy

@@ -64,6 +64,9 @@ import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useSource } from '../contexts/SourceContext';
 import { computeMessagesReadOnlyState } from './messagesReadOnlyState';
 import { UiIcon } from './icons';
+import UnreadDivider from './messages/UnreadDivider';
+import { resolveUnreadAnchorId, shouldSuppressDivider } from '../utils/unreadAnchor';
+import { useUnreadDividerAnchors } from '../contexts/MessagingContext';
 
 // Types for node with message metadata
 interface NodeWithMessages extends DeviceInfo {
@@ -508,6 +511,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   const { showToast } = useToast();
   const csrfFetch = useCsrfFetch();
   const { sourceId } = useSource();
+  // Oldest-unread timestamp for the open DM, pinned at entry (#4607) — drives
+  // the red "New messages" divider below.
+  const { dm: pinnedFirstUnreadDM } = useUnreadDividerAnchors();
   const queryClient = useQueryClient();
 
   // Purge neighbors state
@@ -1041,6 +1047,31 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   const selectedDMMessages = selectedDMNode
     ? getDMMessages(selectedDMNode).sort((a, b) => getMessageSortTime(a) - getMessageSortTime(b))
     : [];
+
+  // Unread divider anchor (#4607). `pinnedFirstUnreadDM` is the oldest-unread
+  // timestamp captured when this conversation was opened — read-marking clears
+  // the unread set a tick later, so a live lookup would always come back empty.
+  // Resolved against the same sorted list the rows render from.
+  //
+  // `hasMoreOlder: true` because the DM view renders a window and pages older
+  // history in on scroll, so a top-of-window anchor is not the start of the
+  // conversation.
+  //
+  // Computed inline rather than with useMemo: this point in the component is
+  // BELOW the `messages:read` early return above, so a hook here would be
+  // conditional and React would fault on the render where permission flips.
+  const unreadAnchorId = (() => {
+    const rows = selectedDMMessages.map(m => ({ id: m.id, sortTime: getMessageSortTime(m) }));
+    const anchor = resolveUnreadAnchorId({
+      messages: rows,
+      watermarkMs: pinnedFirstUnreadDM,
+      mode: 'firstUnread',
+      ownMessageIds: new Set(selectedDMMessages.filter(isMyMessage).map(m => m.id)),
+    });
+    return shouldSuppressDivider({ anchorId: anchor, messages: rows, hasMoreOlder: true })
+      ? null
+      : anchor;
+  })();
 
   const selectedNode = selectedDMNode ? nodes.find(n => n.user?.id === selectedDMNode) : null;
 
@@ -1837,6 +1868,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             </span>
                           </div>
                         )}
+                        {unreadAnchorId === msg.id && <UnreadDivider />}
                         <div className="message-item traceroute">
                           <div className="message-header">
                             <span className="message-from">{getSenderLabel(msg.from)}</span>
@@ -1872,6 +1904,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                           </span>
                         </div>
                       )}
+                      {/* Red "New messages" line, directly above the oldest
+                          message unseen at entry (#4607). */}
+                      {unreadAnchorId === msg.id && <UnreadDivider />}
                       <div 
                         className={`message-bubble-container ${isMine ? 'mine' : 'theirs'}`}
                         data-message-id={msg.id}

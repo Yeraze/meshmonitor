@@ -52,6 +52,9 @@ export const TABLE_ORDER = [
   'user_notification_preferences',
   // Misc tables
   'read_messages',
+  // 4607: per-user MeshCore last-read watermarks. No FKs (userId is a plain
+  // int with 0 for anonymous), so ordering here is only for readability.
+  'conversation_read_state',
   'news_cache',
   // user_news_status FKs to users (already migrated above)
   'user_news_status',

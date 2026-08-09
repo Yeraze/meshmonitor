@@ -1114,6 +1114,95 @@ export class NotificationsRepository extends BaseRepository {
     }
   }
 
+  /**
+   * Timestamp of the OLDEST still-unread message in each conversation, for the
+   * unread divider and the jump-to-first-unread entry scroll (issue #4607).
+   *
+   * Deliberately mirrors the filters of `getUnreadCountsByChannelAsync` /
+   * `getBatchUnreadDMCountsAsync` — same join, same portnum/channel/source/MQTT
+   * predicates — so the line always lands where the badge said there was
+   * something to read. If the two ever diverged, a channel could show a "3
+   * unread" badge and no divider, or a divider with nothing above it.
+   *
+   * Returns `{ channels: { [channelId]: ms }, directMessages: { [fromNodeId]: ms } }`.
+   * Conversations with nothing unread are simply absent.
+   */
+  async getFirstUnreadTimestampsAsync(
+    userId: number | null,
+    localNodeId?: string,
+    sourceId?: SourceScope,
+    excludeMqtt?: boolean
+  ): Promise<{ channels: { [channelId: number]: number }; directMessages: { [fromNodeId: string]: number } }> {
+    const messages = this.tables.messages;
+    const readMessages = this.tables.readMessages;
+    const out = {
+      channels: {} as { [channelId: number]: number },
+      directMessages: {} as { [fromNodeId: string]: number },
+    };
+
+    try {
+      const channelConditions: (SQL | undefined)[] = [
+        isNull(readMessages.messageId),
+        ne(messages.channel, -1),
+        eq(messages.portnum, 1),
+        this.withSourceScope(messages, sourceId),
+      ];
+      if (localNodeId) channelConditions.push(ne(messages.fromNodeId, localNodeId));
+      if (excludeMqtt) {
+        // `this.tables` is dialect-erased, so `messages.viaMqtt` is already
+        // untyped — no cast needed here.
+        channelConditions.push(or(isNull(messages.viaMqtt), eq(messages.viaMqtt, false)));
+      }
+
+      const channelRows: Array<{ channel: number; firstUnread: number | null }> = await this.db
+        .select({
+          channel: messages.channel,
+          firstUnread: sql<number>`MIN(${messages.timestamp})`,
+        })
+        .from(messages)
+        .leftJoin(readMessages, this.unreadJoinOn(userId)!)
+        .where(and(...channelConditions))
+        .groupBy(messages.channel);
+
+      for (const row of channelRows) {
+        if (row.firstUnread == null) continue;
+        out.channels[Number(row.channel)] = Number(row.firstUnread);
+      }
+
+      // DMs are only meaningful once we know which node is "us" — without it
+      // there is no `toNodeId` to filter on, so skip rather than guess.
+      if (localNodeId) {
+        const dmRows: Array<{ fromNodeId: string; firstUnread: number | null }> = await this.db
+          .select({
+            fromNodeId: messages.fromNodeId,
+            firstUnread: sql<number>`MIN(${messages.timestamp})`,
+          })
+          .from(messages)
+          .leftJoin(readMessages, this.unreadJoinOn(userId)!)
+          .where(
+            and(
+              isNull(readMessages.messageId),
+              eq(messages.portnum, 1),
+              eq(messages.channel, -1),
+              eq(messages.toNodeId, localNodeId),
+              this.withSourceScope(messages, sourceId)
+            )
+          )
+          .groupBy(messages.fromNodeId);
+
+        for (const row of dmRows) {
+          if (row.firstUnread == null) continue;
+          out.directMessages[row.fromNodeId] = Number(row.firstUnread);
+        }
+      }
+
+      return out;
+    } catch (error) {
+      logger.error('Error getting first-unread timestamps:', error);
+      return out;
+    }
+  }
+
   // ============ PRIVATE HELPERS ============
 
   /**
