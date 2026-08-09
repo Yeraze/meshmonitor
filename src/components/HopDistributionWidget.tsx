@@ -10,6 +10,8 @@ import { useTranslation } from 'react-i18next';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { type NodeInfo } from './TelemetryChart';
+import { getHopColor } from '../utils/mapIcons';
+import { useSettings } from '../contexts/SettingsContext';
 
 interface HopDistributionWidgetProps {
   id: string;
@@ -33,6 +35,7 @@ const HopDistributionWidget: React.FC<HopDistributionWidgetProps> = ({
   canEdit = true,
 }) => {
   const { t } = useTranslation();
+  const { overlayColors } = useSettings();
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
 
@@ -82,20 +85,15 @@ const HopDistributionWidget: React.FC<HopDistributionWidgetProps> = ({
 
   const maxCount = Math.max(...buckets.map(b => b.count), 1);
 
-  // Color gradient from green (close) to yellow to red (far)
-  const getBarColor = (hop: number | string): string => {
-    if (typeof hop === 'string') return 'var(--color-text-disabled)';
-    const colors = [
-      'var(--color-success)',
-      'var(--ctp-teal)',
-      'var(--color-accent)',
-      'var(--color-accent-muted)',
-      'var(--color-accent-alt)',
-      'var(--ctp-pink)',
-      'var(--color-error)',
-    ];
-    return colors[Math.min(hop, colors.length - 1)];
-  };
+  // These bars ARE hop counts, so they use the same hop scale the map does
+  // (`getHopColor` + `overlayColors.hopColors`) rather than a private list.
+  // The private list disagreed with the map — 2 hops was blue there and teal
+  // here — and silently ignored the user's configured gradient, which is the
+  // whole point of `hopColors` being configurable.
+  const getBarColor = (hop: number | string): string =>
+    typeof hop === 'string'
+      ? 'var(--color-text-disabled)'
+      : getHopColor(hop, overlayColors.hopColors);
 
   return (
     <div ref={setNodeRef} style={style} className="dashboard-chart-container hop-distribution-widget">

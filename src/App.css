@@ -146,6 +146,35 @@
   --chart-6: var(--ctp-sapphire);
   --chart-7: var(--ctp-maroon);
   --chart-8: var(--ctp-rosewater);
+
+  /* ---- Sequential scale --------------------------------------------------
+
+     Five ordered steps for MAGNITUDE encoding: how far, how many, how dense.
+     The third kind of color in this file, and the distinction is the same one
+     that separates roles from categories. A role says what a color MEANS; a
+     categorical slot only has to differ from its neighbours; a sequential step
+     has to READ AS ORDERED — step 4 must look like "more" than step 2.
+
+     Categorical hues cannot do that job. `DistanceDistributionWidget` indexed
+     a 7-hue list by histogram position, and `HopDistanceHeatmapWidget` walked
+     surface -> blue -> sapphire -> teal for rising density, so neither ramp
+     read as ordered — and both reached past the role layer into raw `--ctp-*`
+     for hues no role provided. Pointing them at `--chart-N` would have been
+     the same category error in a new place.
+
+     Built with color-mix from the accent rather than picked from the palette,
+     which buys three things the palette cannot: the steps are monotonic BY
+     CONSTRUCTION; they can never collide (the failure that made --chart-6 and
+     --chart-8 render identically in Nord); and they track whatever accent a
+     theme sets without adding five more entries to every theme block.
+
+     Mixed toward `--color-surface` rather than `transparent` so the low steps
+     stay legible on any background instead of dissolving into it. */
+  --seq-1: color-mix(in srgb, var(--color-accent) 20%, var(--color-surface));
+  --seq-2: color-mix(in srgb, var(--color-accent) 40%, var(--color-surface));
+  --seq-3: color-mix(in srgb, var(--color-accent) 60%, var(--color-surface));
+  --seq-4: color-mix(in srgb, var(--color-accent) 80%, var(--color-surface));
+  --seq-5: var(--color-accent);
 }
 
 /* ==============================

@@ -152,10 +152,17 @@ const HopDistanceHeatmapWidget: React.FC<HopDistanceHeatmapWidgetProps> = ({
   const getCellStyle = (count: number): { backgroundColor: string; color: string; opacity: number } => {
     if (count === 0) return { backgroundColor: 'transparent', color: 'var(--color-text)', opacity: 0 };
     const intensity = count / maxCount;
-    if (intensity <= 0.25) return { backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text)', opacity: 1 };
-    if (intensity <= 0.5) return { backgroundColor: 'var(--color-accent)', color: 'var(--color-bg-sunken)', opacity: 1 };
-    if (intensity <= 0.75) return { backgroundColor: 'var(--color-accent-hover)', color: 'var(--color-bg-sunken)', opacity: 1 };
-    return { backgroundColor: 'var(--ctp-teal)', color: 'var(--color-bg-sunken)', opacity: 1 };
+    // Density is a MAGNITUDE, so the cells walk the ordered sequential scale.
+    // The previous steps were surface-hover -> accent -> accent-hover -> teal:
+    // the last two are near-neighbours in some themes and identical in others
+    // (Nord has no separate sapphire and teal), so the top two density bands
+    // were not reliably tellable apart — and teal reached past the role layer.
+    // Text flips to the sunken background from --seq-3 up, where the fill is
+    // saturated enough that light-on-color stops reading.
+    if (intensity <= 0.25) return { backgroundColor: 'var(--seq-1)', color: 'var(--color-text)', opacity: 1 };
+    if (intensity <= 0.5) return { backgroundColor: 'var(--seq-2)', color: 'var(--color-text)', opacity: 1 };
+    if (intensity <= 0.75) return { backgroundColor: 'var(--seq-3)', color: 'var(--color-bg-sunken)', opacity: 1 };
+    return { backgroundColor: 'var(--seq-5)', color: 'var(--color-bg-sunken)', opacity: 1 };
   };
 
   const hasHomePosition = homeNode?.position?.latitude != null && homeNode?.position?.longitude != null;
@@ -266,10 +273,12 @@ const HopDistanceHeatmapWidget: React.FC<HopDistanceHeatmapWidgetProps> = ({
             <div className="heatmap-legend">
               <span className="heatmap-legend-label">{t('dashboard.widget.hop_distance_heatmap.fewer')}</span>
               <div className="heatmap-legend-bar">
-                <span className="heatmap-legend-cell" style={{ backgroundColor: 'var(--color-surface-hover)' }} />
-                <span className="heatmap-legend-cell" style={{ backgroundColor: 'var(--color-accent)' }} />
-                <span className="heatmap-legend-cell" style={{ backgroundColor: 'var(--color-accent-hover)' }} />
-                <span className="heatmap-legend-cell" style={{ backgroundColor: 'var(--ctp-teal)' }} />
+                {/* Must match getCellStyle's bands exactly, or the legend
+                    describes a scale the cells do not use. */}
+                <span className="heatmap-legend-cell" style={{ backgroundColor: 'var(--seq-1)' }} />
+                <span className="heatmap-legend-cell" style={{ backgroundColor: 'var(--seq-2)' }} />
+                <span className="heatmap-legend-cell" style={{ backgroundColor: 'var(--seq-3)' }} />
+                <span className="heatmap-legend-cell" style={{ backgroundColor: 'var(--seq-5)' }} />
               </div>
               <span className="heatmap-legend-label">{t('dashboard.widget.hop_distance_heatmap.more')}</span>
             </div>
