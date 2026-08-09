@@ -321,33 +321,54 @@ export interface DbCustomTheme {
   updated_at: number;
 }
 
+/**
+ * A theme, keyed by ROLE (#4567). Keys say what a color is for, not which
+ * swatch it is: `accent`, not `blue`. Definitions stored in the older
+ * swatch-keyed format are translated on read by
+ * `migrateLegacyThemeDefinition` in utils/themeValidation.
+ */
 export interface ThemeDefinition {
-  base: string;
-  mantle: string;
-  crust: string;
+  // Backgrounds, furthest back to furthest forward
+  bg: string;
+  bgRaised: string;
+  bgSunken: string;
+  surface: string;
+  surfaceHover: string;
+  surfaceActive: string;
+  surfaceInactive: string;
+  // Text, highest to lowest emphasis
   text: string;
-  subtext1: string;
-  subtext0: string;
-  overlay2: string;
-  overlay1: string;
-  overlay0: string;
-  surface2: string;
-  surface1: string;
-  surface0: string;
-  lavender: string;
-  blue: string;
-  sapphire: string;
-  sky: string;
-  teal: string;
-  green: string;
-  yellow: string;
-  peach: string;
-  maroon: string;
-  red: string;
-  mauve: string;
-  pink: string;
-  flamingo: string;
-  rosewater: string;
+  textMuted: string;
+  textSubtle: string;
+  textDisabled: string;
+  textFaint: string;
+  // Lines
+  border: string;
+  borderStrong: string;
+  borderSubtle: string;
+  // Accents
+  accent: string;
+  accentHover: string;
+  accentAlt: string;
+  accentMuted: string;
+  accentText: string;
+  // Status / feedback
+  success: string;
+  error: string;
+  warning: string;
+  caution: string;
+  info: string;
+  danger: string;
+  // Optional categorical scale — hues that only need to differ from each
+  // other. Omitted themes fall back to the eight defaults on :root.
+  chart1?: string;
+  chart2?: string;
+  chart3?: string;
+  chart4?: string;
+  chart5?: string;
+  chart6?: string;
+  chart7?: string;
+  chart8?: string;
   // Optional chat bubble color overrides
   chatBubbleSentBg?: string;
   chatBubbleSentText?: string;

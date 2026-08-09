@@ -181,7 +181,7 @@ export function validateThemeAccessibility(
   const recommendations: string[] = [];
 
   // Check text on base background
-  const textOnBase = checkColorContrast(theme.text, theme.base);
+  const textOnBase = checkColorContrast(theme.text, theme.bg);
 
   if (!textOnBase.passesAA) {
     criticalIssues.push(
@@ -196,7 +196,7 @@ export function validateThemeAccessibility(
   }
 
   // Check text on surface0 (commonly used for cards/panels)
-  const textOnSurface = checkColorContrast(theme.text, theme.surface0);
+  const textOnSurface = checkColorContrast(theme.text, theme.surface);
 
   if (!textOnSurface.passesAA) {
     criticalIssues.push(
@@ -211,7 +211,7 @@ export function validateThemeAccessibility(
   }
 
   // Check subtext on base (secondary text)
-  const subtextOnBase = checkColorContrast(theme.subtext0, theme.base);
+  const subtextOnBase = checkColorContrast(theme.textSubtle, theme.bg);
 
   if (!subtextOnBase.passesAA) {
     warnings.push(
@@ -220,15 +220,17 @@ export function validateThemeAccessibility(
     );
   }
 
-  // Check accent colors on base for interactive elements
-  const accentColors = ['blue', 'green', 'yellow', 'red'] as const;
+  // Colors that carry meaning on their own have to stay legible against the
+  // page. Checking by role rather than by hue also fixes a gap: the old list
+  // was blue/green/yellow/red, which missed `caution` and `info` entirely.
+  const signalColors = ['accent', 'success', 'warning', 'caution', 'error', 'info'] as const;
 
-  for (const color of accentColors) {
-    const contrast = checkColorContrast(theme[color], theme.base);
+  for (const color of signalColors) {
+    const contrast = checkColorContrast(theme[color], theme.bg);
 
     if (!contrast.passesAALarge) {
       warnings.push(
-        `Accent color '${color}' may be hard to see on base background ` +
+        `Color '${color}' may be hard to see on the background ` +
         `(${contrast.ratio.toFixed(2)}:1). Consider adjusting brightness.`
       );
     }

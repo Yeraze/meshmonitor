@@ -108,30 +108,137 @@ export function generateThemeSlug(name: string): string {
 }
 
 /**
- * All required color keys for a theme definition
+ * All required color keys for a theme definition.
+ *
+ * Keys name a ROLE — what the color is for — not a swatch. This is the whole
+ * point of the format: the old schema was 26 Catppuccin swatch names, so an
+ * author who wanted a red accent had to write `blue: '#ff0000'`, and every
+ * reader of that theme then had to know `blue` meant "accent". Issue #4567.
+ *
+ * Each key maps to `--color-<kebab-case>`; see `themeColorKeyToCssVar`.
  */
 export const REQUIRED_THEME_COLORS = [
-  'base', 'mantle', 'crust',
-  'text', 'subtext1', 'subtext0',
-  'overlay2', 'overlay1', 'overlay0',
-  'surface2', 'surface1', 'surface0',
-  'lavender', 'blue', 'sapphire',
-  'sky', 'teal', 'green',
-  'yellow', 'peach', 'maroon',
-  'red', 'mauve', 'pink',
-  'flamingo', 'rosewater'
+  // Backgrounds, furthest back to furthest forward
+  'bg', 'bgRaised', 'bgSunken',
+  'surface', 'surfaceHover', 'surfaceActive', 'surfaceInactive',
+  // Text, highest to lowest emphasis
+  'text', 'textMuted', 'textSubtle', 'textDisabled', 'textFaint',
+  // Lines
+  'border', 'borderStrong', 'borderSubtle',
+  // Accents
+  'accent', 'accentHover', 'accentAlt', 'accentMuted', 'accentText',
+  // Status / feedback
+  'success', 'error', 'warning', 'caution', 'info', 'danger'
 ] as const;
 
 /**
- * Optional color keys for a theme definition
- * These allow independent customization of chat bubble colors
+ * Optional color keys.
+ *
+ * `chart1..8` are the CATEGORICAL scale — hues that only need to be tellable
+ * apart, for encoding which source a row came from or which series a line is.
+ * Optional because a theme that leaves them out still gets a usable eight-hue
+ * scale from the defaults on `:root`; categorical colors do not have to match
+ * the theme, they have to differ from each other.
+ *
+ * The `chatBubble*` keys override message bubble colors independently.
  */
 export const OPTIONAL_THEME_COLORS = [
+  'chart1', 'chart2', 'chart3', 'chart4',
+  'chart5', 'chart6', 'chart7', 'chart8',
   'chatBubbleSentBg',
   'chatBubbleSentText',
   'chatBubbleReceivedBg',
   'chatBubbleReceivedText'
 ] as const;
+
+/**
+ * Theme definition key -> the CSS custom property it sets.
+ *
+ * `accentAlt` -> `--color-accent-alt`, `chart1` -> `--chart-1`.
+ */
+export function themeColorKeyToCssVar(key: string): string {
+  if (/^chart[1-8]$/.test(key)) return `--chart-${key.slice(5)}`;
+  return `--color-${key.replace(/([A-Z])/g, '-$1').toLowerCase()}`;
+}
+
+/**
+ * Swatch-keyed (pre-#4567) definition key -> the role key(s) it becomes.
+ *
+ * One-to-many, because several roles shared a swatch and so could not be
+ * themed apart: `overlay0` was faint text AND subtle borders AND the inactive
+ * fill. Translating forward duplicates the value into each, which reproduces
+ * the old appearance exactly while letting the author separate them later.
+ *
+ * Not listed, and dropped on purpose: `overlay2`, `teal`, `pink` and
+ * `flamingo`. After #4619/#4620/#4622 no role, chart slot or component reads
+ * them, so carrying them forward would preserve values nothing renders.
+ */
+const LEGACY_SWATCH_TO_ROLES: Record<string, string[]> = {
+  base: ['bg'], mantle: ['bgRaised'], crust: ['bgSunken'],
+  surface0: ['surface'],
+  surface1: ['surfaceHover', 'border'],
+  surface2: ['surfaceActive', 'borderStrong'],
+  overlay0: ['textFaint', 'borderSubtle', 'surfaceInactive'],
+  overlay1: ['textDisabled'],
+  text: ['text'], subtext1: ['textMuted'], subtext0: ['textSubtle'],
+  blue: ['accent'], sapphire: ['accentHover'],
+  mauve: ['accentAlt'], lavender: ['accentMuted'],
+  green: ['success'], red: ['error'], yellow: ['warning'],
+  peach: ['caution'], sky: ['info'], maroon: ['danger']
+};
+
+/** Swatch that fed each categorical slot before the flip. */
+const LEGACY_SWATCH_TO_CHART: Record<string, string> = {
+  blue: 'chart1', mauve: 'chart2', green: 'chart3', peach: 'chart4',
+  yellow: 'chart5', sapphire: 'chart6', maroon: 'chart7', rosewater: 'chart8'
+};
+
+/**
+ * Keys that exist ONLY in the swatch format, so their presence identifies it.
+ *
+ * `text` is deliberately absent: it is a key in both formats, so it proves
+ * nothing. Detection keys off what only the old format has, never off a new
+ * key being missing — a half-written role definition must not be mistaken for
+ * a legacy theme and silently rewritten.
+ */
+const LEGACY_ONLY_KEYS = ['base', 'crust', 'mantle', 'subtext0', 'subtext1',
+                          'surface0', 'overlay0', 'overlay1'] as const;
+
+/** True when a stored definition uses the old swatch keys. */
+export function isLegacyThemeDefinition(definition: any): boolean {
+  if (!definition || typeof definition !== 'object') return false;
+  return LEGACY_ONLY_KEYS.some((key) => typeof definition[key] === 'string');
+}
+
+/**
+ * Translate a swatch-keyed definition into role keys.
+ *
+ * Returns the input unchanged if it is already in the role format, so this is
+ * safe to call on every read. `accentText` has no swatch to come from — it was
+ * a single global value, black, painted on bright fills — so it defaults to
+ * that rather than being guessed from the palette.
+ */
+export function migrateLegacyThemeDefinition(definition: any): any {
+  if (!isLegacyThemeDefinition(definition)) return definition;
+
+  const out: Record<string, string> = {};
+  for (const [swatch, roles] of Object.entries(LEGACY_SWATCH_TO_ROLES)) {
+    const value = definition[swatch];
+    if (typeof value !== 'string') continue;
+    for (const role of roles) out[role] = value;
+  }
+  for (const [swatch, slot] of Object.entries(LEGACY_SWATCH_TO_CHART)) {
+    if (typeof definition[swatch] === 'string') out[slot] = definition[swatch];
+  }
+  out.accentText = '#000000';
+
+  // Chat bubble overrides were already role-ish; carry them through as-is.
+  for (const key of ['chatBubbleSentBg', 'chatBubbleSentText',
+                     'chatBubbleReceivedBg', 'chatBubbleReceivedText']) {
+    if (typeof definition[key] === 'string') out[key] = definition[key];
+  }
+  return out;
+}
 
 /**
  * Validates a complete theme definition
