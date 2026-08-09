@@ -826,7 +826,7 @@ const GeofenceTriggerItem: React.FC<GeofenceTriggerItemProps> = ({
             style={{
               padding: '0.25rem 0.5rem',
               fontSize: '12px',
-              background: 'var(--ctp-teal)',
+              background: 'var(--color-info)',
               color: 'var(--color-bg)',
               border: 'none',
               borderRadius: '4px',

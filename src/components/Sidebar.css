@@ -115,8 +115,8 @@
 }
 
 .sidebar-pin.pinned:hover {
-  background: var(--ctp-teal);
-  border-color: var(--ctp-teal);
+  background: color-mix(in srgb, var(--color-success) 85%, var(--color-text));
+  border-color: color-mix(in srgb, var(--color-success) 85%, var(--color-text));
   color: var(--color-bg-sunken);
 }
 

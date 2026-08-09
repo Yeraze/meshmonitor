@@ -245,7 +245,7 @@
 
 .theme-accessibility-report.success {
   background: var(--color-success);
-  border-color: var(--ctp-teal);
+  border-color: color-mix(in srgb, var(--color-success) 70%, var(--color-text));
 }
 
 .theme-accessibility-report.warning {

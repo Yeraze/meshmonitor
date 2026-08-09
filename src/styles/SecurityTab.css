@@ -467,7 +467,7 @@
 }
 
 .digest-send-btn:hover:not(:disabled) {
-  background: var(--ctp-teal);
+  background: color-mix(in srgb, var(--color-success) 85%, var(--color-text));
 }
 
 .digest-save-btn:disabled,

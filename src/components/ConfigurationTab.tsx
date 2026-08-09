@@ -1933,8 +1933,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             onClick={handleReloadConfig}
             disabled={isReloading}
             style={{
-              backgroundColor: 'var(--ctp-teal)',
-              color: '#fff',
+              backgroundColor: 'var(--color-info)',
+              color: 'var(--color-bg)',
               padding: '0.75rem 1.5rem',
               border: 'none',
               borderRadius: '4px',

@@ -442,7 +442,7 @@
 }
 
 .status-received-node {
-  color: var(--ctp-teal);
+  color: var(--color-info);
   font-size: 0.8rem;
 }
 
