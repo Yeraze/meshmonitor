@@ -217,6 +217,21 @@ export interface MeshCoreDiscoveredNode {
 }
 
 /** Result of a share-contact request, carrying an actionable reason on failure. */
+/**
+ * Outcome of a `set_out_path` write (#4625).
+ *
+ * `applied` is what callers branch on for success/failure. `ackConfirmed`
+ * distinguishes "the device said Ok" from "the Ok was lost in radio chatter but
+ * the write almost certainly landed" — the latter must NOT be reported to a
+ * user as a failure, because the path IS installed.
+ */
+export interface SetOutPathResult {
+  applied: boolean;
+  ackConfirmed: boolean;
+}
+
+const SET_OUT_PATH_REJECTED: SetOutPathResult = { applied: false, ackConfirmed: false };
+
 export interface ShareContactResult {
   ok: boolean;
   error?: string;
@@ -3970,7 +3985,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // of flooding into the void (firmware drops flooded OWNER reqs). Best-effort
       // and quick; the real success signal is the request_owner reply below.
       const routed = await this.setContactOutPath(publicKey, new Uint8Array(0), 1, 3000);
-      if (!routed) {
+      if (!routed.ackConfirmed) {
         logger.debug(`[MeshCore:${this.sourceId}] set_out_path ack not seen for ${publicKey.substring(0, 12)}… (route likely applied); proceeding`);
       }
       const resp = await this.sendBridgeCommand('request_owner', { public_key: publicKey }, 15_000);
@@ -4205,7 +4220,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         // is in fact installed). The real success signal is the request_regions
         // reply below, so use a short window and don't alarm on a missed ack.
         const routed = await this.setContactOutPath(r.publicKey, new Uint8Array(0), 1, 3000);
-        if (!routed) {
+        if (!routed.ackConfirmed) {
           logger.debug(`[MeshCore:${this.sourceId}] set_out_path ack not seen for ${r.publicKey.substring(0, 12)}… (route still likely applied); proceeding`);
         }
         const resp = await this.sendBridgeCommand('request_regions', { public_key: r.publicKey }, 20_000);
@@ -4488,29 +4503,35 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * so the UI reflects the new state without waiting for a PathUpdated
    * push.
    *
-   * Returns `true` on success, `false` if the device rejected the
-   * request or this isn't a connected Companion.
+   * Returns a tri-state rather than a boolean (#4625). A lost `Ok` ack and a
+   * genuine rejection are NOT the same outcome, and collapsing them made the
+   * manual "define forwarding path" action report a hard failure for a write
+   * the device had actually applied:
+   *
+   *   { applied: false, ackConfirmed: false }  rejected / not a connected Companion
+   *   { applied: true,  ackConfirmed: false }  write landed, ack not seen in time
+   *   { applied: true,  ackConfirmed: true  }  acknowledged
    */
   async setContactOutPath(
     publicKey: string,
     outPathBytes: Uint8Array,
     hashBytes: 1 | 2 | 3 = 1,
     timeoutMs: number = 12000,
-  ): Promise<boolean> {
+  ): Promise<SetOutPathResult> {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       logger.warn('[MeshCore] Set-out-path requires Companion firmware');
-      return false;
+      return SET_OUT_PATH_REJECTED;
     }
     if (!this.connected) {
-      return false;
+      return SET_OUT_PATH_REJECTED;
     }
     if (outPathBytes.length > 64) {
       logger.warn(`[MeshCore] Set-out-path rejected: ${outPathBytes.length} > 64 bytes`);
-      return false;
+      return SET_OUT_PATH_REJECTED;
     }
     if (outPathBytes.length % hashBytes !== 0) {
       logger.warn(`[MeshCore] Set-out-path rejected: ${outPathBytes.length} bytes not a multiple of hashBytes ${hashBytes}`);
-      return false;
+      return SET_OUT_PATH_REJECTED;
     }
     try {
       // 12 s is generous for a single serial write; fail fast so the UI
@@ -4520,21 +4541,23 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         out_path: outPathBytes,
         hash_bytes: hashBytes,
       }, timeoutMs);
-      if (!response.success) {
-        // NOTE: matches on meshcore.js's timeout error text — fragile if the
-        // library changes its wording; revisit if a structured error code lands.
-        const isTimeout = response.error?.includes('timeout');
-        if (isTimeout) {
-          // meshcore.js resolves CMD_ADD_UPDATE_CONTACT on its Ok ack, which is
-          // frequently lost in unrelated radio chatter even though the device
-          // applied the write. Treat a timeout as a non-fatal "ack not seen" —
-          // not a connectivity error — so it doesn't spam warnings on a path
-          // that did install (e.g. region discovery, #3743).
-          logger.debug(`[MeshCore] set_out_path ack not seen for ${publicKey} (write likely applied)`);
-        } else {
-          logger.warn(`[MeshCore] set_out_path rejected for ${publicKey}: ${response.error}`);
-        }
-        return false;
+      // NOTE: matches on meshcore.js's timeout error text — fragile if the
+      // library changes its wording; revisit if a structured error code lands.
+      const ackTimedOut = !response.success && !!response.error?.includes('timeout');
+      if (!response.success && !ackTimedOut) {
+        logger.warn(`[MeshCore] set_out_path rejected for ${publicKey}: ${response.error}`);
+        return SET_OUT_PATH_REJECTED;
+      }
+      if (ackTimedOut) {
+        // meshcore.js resolves CMD_ADD_UPDATE_CONTACT on its Ok ack. That ack
+        // comes back over the companion link (set_out_path is a SERIAL_ONLY
+        // command — it puts nothing on the radio), but a busy device does not
+        // always return it inside the 12 s window even though it applied the
+        // write (#3743). Fall THROUGH to the mirroring below rather
+        // than returning early: returning here left the in-memory contact, the
+        // meshcore_nodes row and the UI showing the old path for a write that
+        // had landed, so the user saw "failed" and no change (#4625).
+        logger.debug(`[MeshCore] set_out_path ack not seen for ${publicKey} (write likely applied; mirroring optimistically)`);
       }
       // Group the flat byte buffer into hashBytes-wide hop tokens so the
       // mirrored outPath string carries the per-hop width (e.g. "a3f2,7f01"
@@ -4563,10 +4586,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
       }
       logger.debug(`[MeshCore] Set out_path (${hopCount} hops, ${hashBytes}-byte) for ${publicKey.substring(0, 16)}…`);
-      return true;
+      return { applied: true, ackConfirmed: !ackTimedOut };
     } catch (error) {
       logger.error('[MeshCore] setContactOutPath threw:', error);
-      return false;
+      return SET_OUT_PATH_REJECTED;
     }
   }
 

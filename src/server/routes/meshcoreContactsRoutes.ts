@@ -487,14 +487,26 @@ router.put(
           error: `outPath too long: ${hopCount} hops (max 63)`,
         });
       }
-      const ok = await managerFor(req, res).setContactOutPath(publicKey, parsed, hashBytes);
-      if (!ok) {
+      const result = await managerFor(req, res).setContactOutPath(publicKey, parsed, hashBytes);
+      if (!result.applied) {
         return res.status(409).json({
           success: false,
-          error: 'Set out_path failed — the device did not respond in time. Verify the device is connected and try again.',
+          error: 'Set out_path failed — the device rejected the request. Verify the device is connected and try again.',
         });
       }
-      res.json({ success: true });
+      // #4625: a lost Ok ack is NOT a failure. meshcore.js resolves
+      // CMD_ADD_UPDATE_CONTACT on that ack, which is routinely lost in unrelated
+      // radio chatter while the device applies the write anyway (#3743). This
+      // used to 409, so the user was told "the device did not respond in time"
+      // for a path that was in fact installed — and retrying looked broken too.
+      // Report success, but say the acknowledgement was not seen.
+      res.json({
+        success: true,
+        ackConfirmed: result.ackConfirmed,
+        ...(result.ackConfirmed ? {} : {
+          warning: 'Path applied, but the device did not confirm it in time. This is common on a busy device. Refresh the contact to verify.',
+        }),
+      });
     } catch (error) {
       logger.error('[API] Error setting contact out_path:', error);
       res.status(500).json({ success: false, error: 'Failed to set out_path' });

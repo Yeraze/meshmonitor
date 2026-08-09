@@ -77,7 +77,7 @@ function makeStubManager(sourceId: string) {
     getContact: (_pk: string) => null,
 
     // ---- serial-only contacts ----
-    setContactOutPath: async (..._args: unknown[]) => true,
+    setContactOutPath: async (..._args: unknown[]) => ({ applied: true, ackConfirmed: true }),
     removeContact: async (..._args: unknown[]) => true,
     forgetLocalContact: async (..._args: unknown[]) => true,
     exportContact: async (..._args: unknown[]) => [1, 2, 3],
