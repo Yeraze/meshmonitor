@@ -164,7 +164,7 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
             margin: '8px 0',
             padding: '10px 12px',
             borderRadius: 6,
-            background: 'rgba(137, 180, 250, 0.10)', // ctp-blue @ low alpha
+            background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
             border: '1px solid var(--color-accent)',
             color: 'var(--color-text)',
             fontSize: 13,

@@ -164,13 +164,13 @@
 
 @keyframes pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(166, 227, 161, 0.7);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-success) 70%, transparent);
   }
   70% {
-    box-shadow: 0 0 0 10px rgba(166, 227, 161, 0);
+    box-shadow: 0 0 0 10px transparent;
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(166, 227, 161, 0);
+    box-shadow: 0 0 0 0 transparent;
   }
 }
 
@@ -239,7 +239,7 @@
 .login-button:hover {
   background: var(--color-accent-hover);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(137, 180, 250, 0.3);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--color-accent) 30%, transparent);
 }
 
 /* Mobile responsive */

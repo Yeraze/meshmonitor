@@ -422,7 +422,7 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
               padding: '0.6rem 0.75rem',
               border: '1px solid var(--color-warning)',
               borderRadius: '4px',
-              backgroundColor: 'rgba(249, 226, 175, 0.12)',
+              backgroundColor: 'color-mix(in srgb, var(--color-warning) 12%, transparent)',
               color: 'var(--color-warning)',
               lineHeight: '1.4'
             }}

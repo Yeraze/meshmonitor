@@ -387,7 +387,7 @@ const ScriptTestModal: React.FC<ScriptTestModalProps> = ({
                   padding: '0.75rem',
                   marginBottom: '1rem',
                   borderRadius: '6px',
-                  background: testResult.success ? 'rgba(166, 227, 161, 0.15)' : 'rgba(243, 139, 168, 0.15)',
+                  background: testResult.success ? 'color-mix(in srgb, var(--color-success) 15%, transparent)' : 'color-mix(in srgb, var(--color-error) 15%, transparent)',
                   border: `1px solid ${testResult.success ? 'var(--color-success)' : 'var(--color-error)'}`,
                 }}
               >
