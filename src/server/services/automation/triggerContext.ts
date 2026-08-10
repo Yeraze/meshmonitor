@@ -319,6 +319,64 @@ export function buildGeofenceContext(
   };
 }
 
+/** Build the trigger context when a watched node flips stationary → mobile. */
+export function buildBecameMobileContext(
+  nodeNum: number,
+  latitude: number | undefined,
+  longitude: number | undefined,
+  previousMobile: number,
+  mobile: number,
+  sourceId: string | null,
+  timestamp: number,
+): TriggerContext {
+  return {
+    triggerType: 'trigger.becameMobile',
+    sourceId,
+    subjectNodeNum: Number(nodeNum),
+    timestamp,
+    fields: {
+      nodeNum: Number(nodeNum),
+      latitude,
+      longitude,
+      previousMobile,
+      mobile,
+      sourceId,
+      timestamp,
+    },
+  };
+}
+
+/** Build the trigger context when a watched node exceeds its home-distance threshold. */
+export function buildLeftHomeContext(
+  nodeNum: number,
+  latitude: number,
+  longitude: number,
+  homeLat: number,
+  homeLon: number,
+  distanceMeters: number,
+  thresholdMeters: number,
+  sourceId: string | null,
+  timestamp: number,
+): TriggerContext {
+  return {
+    triggerType: 'trigger.leftHome',
+    sourceId,
+    subjectNodeNum: Number(nodeNum),
+    timestamp,
+    fields: {
+      nodeNum: Number(nodeNum),
+      latitude,
+      longitude,
+      homeLat,
+      homeLon,
+      distanceMeters,
+      thresholdMeters,
+      sourceId,
+      timestamp,
+    },
+  };
+}
+
 /** System events the engine can raise (param `event` on a `trigger.system` block). */
 export type SystemEvent = 'bootup' | 'source-connected' | 'source-disconnected' | 'upgrade-available';
 

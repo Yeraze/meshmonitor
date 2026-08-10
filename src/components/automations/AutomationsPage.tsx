@@ -10,7 +10,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { isValidCron } from 'cron-validator';
 import apiService from '../../services/api';
-import AutomationBuilder, { type VariableOption, type SourceOption, type UnifiedChannelOption, type ScriptOption } from './AutomationBuilder';
+import AutomationBuilder, { type VariableOption, type SourceOption, type UnifiedChannelOption, type ScriptOption, type NodeMultiOption } from './AutomationBuilder';
 import AutomationTester from './AutomationTester';
 import LiveTracePanel from './LiveTracePanel';
 import { UiIcon } from '../icons';
@@ -47,6 +47,18 @@ function validateForm(form: WorkflowForm): string[] {
     const shape = form.trigger.params.shape as { type?: string; vertices?: unknown[] } | undefined;
     if (!shape || (shape.type === 'polygon' && (shape.vertices?.length ?? 0) < 3)) {
       errs.push('Draw a geofence region (circle or polygon) on the map.');
+    }
+  }
+  if (form.trigger.type === 'trigger.becameMobile' || form.trigger.type === 'trigger.leftHome') {
+    const nums = form.trigger.params.nodeNums;
+    if (!Array.isArray(nums) || nums.length === 0) {
+      errs.push('Select at least one node to watch.');
+    }
+  }
+  if (form.trigger.type === 'trigger.leftHome') {
+    const thr = form.trigger.params.thresholdMeters;
+    if (thr != null && thr !== '' && !(Number(thr) > 0)) {
+      errs.push('Home-distance threshold must be greater than 0 metres.');
     }
   }
   if (form.trigger.type === 'trigger.schedule') {
@@ -168,6 +180,7 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
   const [channels, setChannels] = useState<UnifiedChannelOption[]>([]);
   const [scripts, setScripts] = useState<ScriptOption[]>([]);
   const [regions, setRegions] = useState<string[]>([]);
+  const [nodes, setNodes] = useState<NodeMultiOption[]>([]);
 
   // Decide builder vs JSON from the existing config.
   const parsedInitial = (() => { try { return initial ? decompile(JSON.parse(initial.config)) : DEFAULT_FORM; } catch { return null; } })();
@@ -177,6 +190,8 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
   const [errors, setErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [showTest, setShowTest] = useState(false);
+  const [resettingHomes, setResettingHomes] = useState(false);
+  const [resetHomesMsg, setResetHomesMsg] = useState<string | null>(null);
 
   /** Compile the current editor state → graph config for the Test panel. */
   const getTestConfig = () => {
@@ -215,6 +230,37 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
     apiService.get<{ regions: Array<{ name: string }> }>('/api/automations/regions')
       .then((r) => setRegions((r.regions ?? []).map((x) => x.name)))
       .catch(() => setRegions([]));
+    apiService.get<Array<{
+      nodeNum: number;
+      longName?: string;
+      shortName?: string;
+      nodeId?: string;
+      mobile?: number;
+      isMobile?: boolean;
+      user?: { id?: string; longName?: string; shortName?: string };
+    }>>('/api/nodes')
+      .then((list) => {
+        const rows = Array.isArray(list) ? list : [];
+        setNodes(rows
+          .filter((n) => {
+            const num = Number(n.nodeNum);
+            // Drop broadcast / unset MeshCore stubs from the hand-picker.
+            return Number.isFinite(num) && num > 0 && num !== 0xffffffff;
+          })
+          .map((n) => {
+            const nodeNum = Number(n.nodeNum);
+            const nodeId = n.nodeId || n.user?.id || `!${(nodeNum >>> 0).toString(16).padStart(8, '0')}`;
+            return {
+              nodeNum,
+              longName: n.longName || n.user?.longName,
+              shortName: n.shortName || n.user?.shortName,
+              nodeId,
+              mobile: n.mobile,
+              isMobile: n.isMobile,
+            };
+          }));
+      })
+      .catch(() => setNodes([]));
   }, []);
 
   const switchToJson = () => { setJsonText(JSON.stringify(compile(form), null, 2)); setMode('json'); };
@@ -247,6 +293,45 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
     } finally { setSaving(false); }
   };
 
+  const resetHomes = async () => {
+    if (isNew || !initial?.id) return;
+    if (form.trigger.type !== 'trigger.leftHome' && mode === 'builder') {
+      setResetHomesMsg('Switch the WHEN trigger to “Left home” (and save) before resetting homes.');
+      return;
+    }
+    setResettingHomes(true);
+    setResetHomesMsg(null);
+    try {
+      // Persist current builder config first so watched nodes / threshold match the reset.
+      if (mode === 'builder') {
+        const formErrors = validateForm(form);
+        if (formErrors.length > 0) { setErrors(formErrors); setResettingHomes(false); return; }
+        await apiService.put(`/api/automations/${initial.id}`, {
+          name, description, enabled, config: compile(form),
+        });
+      }
+      const res = await apiService.post<{
+        reset: number; seeded: number;
+        results: Array<{ nodeNum: number; seeded: boolean; sampleCount?: number; inlierCount?: number }>;
+      }>(`/api/automations/${initial.id}/reset-homes`, {});
+      const pending = (res.results ?? []).filter((r) => !r.seeded).map((r) => r.nodeNum);
+      setResetHomesMsg(
+        pending.length === 0
+          ? `Reset ${res.reset} home(s); seeded ${res.seeded} from position history.`
+          : `Reset ${res.reset} home(s); seeded ${res.seeded} from history. No history yet for node #(s) ${pending.join(', ')} — next live fix will set those.`,
+      );
+    } catch (e) {
+      setResetHomesMsg(e instanceof Error ? e.message : 'Failed to reset homes');
+    } finally {
+      setResettingHomes(false);
+    }
+  };
+
+  const showResetHomes = !isNew && (
+    (mode === 'builder' && form.trigger.type === 'trigger.leftHome')
+    || (mode === 'json' && jsonText.includes('trigger.leftHome'))
+  );
+
   return (
     <div>
       <div className="ae-btn-row" style={{ marginBottom: '0.75rem' }}>
@@ -269,7 +354,7 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
       </div>
 
       {mode === 'builder'
-        ? <AutomationBuilder form={form} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} onChange={setForm} />
+        ? <AutomationBuilder form={form} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} nodes={nodes} onChange={setForm} />
         : (
           <div className="ae-field">
             <label className="ae-field-label">Workflow graph (JSON)</label>
@@ -281,7 +366,18 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
       <div className="ae-btn-row" style={{ marginTop: '0.75rem' }}>
         <button className="ae-btn ae-btn--primary" disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save automation'}</button>
         <button className="ae-btn" onClick={() => setShowTest((s) => !s)}>{!showTest && <UiIcon name="play" size={15} />} {showTest ? 'Hide test' : 'Test'}</button>
+        {showResetHomes && (
+          <button
+            className="ae-btn"
+            disabled={resettingHomes}
+            onClick={resetHomes}
+            title="Delete stored home anchors and re-seed each watched node from its position-history cluster (outliers dropped)"
+          >
+            {resettingHomes ? 'Resetting homes…' : 'Reset homes from history'}
+          </button>
+        )}
       </div>
+      {resetHomesMsg && <div className="ae-muted" style={{ marginTop: '0.4rem' }}>{resetHomesMsg}</div>}
 
       {showTest && <AutomationTester getConfig={getTestConfig} variables={variables} sources={sources} />}
     </div>

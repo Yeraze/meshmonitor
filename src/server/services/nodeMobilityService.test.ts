@@ -23,16 +23,18 @@ const positionRows = (latSpanDeg: number) => [
 describe('nodeMobilityService.updateNodeMobility', () => {
   let deps: NodeMobilityDeps;
   let getPositionTelemetryByNode: ReturnType<typeof vi.fn>;
+  let getNodeByNodeId: ReturnType<typeof vi.fn>;
   let updateNodeMobilityRepo: ReturnType<typeof vi.fn>;
   let patchCache: ReturnType<typeof vi.fn<(nodeId: string, mobile: number) => void>>;
 
   beforeEach(() => {
     getPositionTelemetryByNode = vi.fn().mockResolvedValue([]);
+    getNodeByNodeId = vi.fn().mockResolvedValue({ nodeId: NODE_ID, mobile: 0 });
     updateNodeMobilityRepo = vi.fn().mockResolvedValue(undefined);
     patchCache = vi.fn<(nodeId: string, mobile: number) => void>();
     deps = {
       telemetryRepo: { getPositionTelemetryByNode } as any,
-      nodesRepo: { updateNodeMobility: updateNodeMobilityRepo } as any,
+      nodesRepo: { updateNodeMobility: updateNodeMobilityRepo, getNodeByNodeId } as any,
       patchCache,
     };
   });
@@ -42,7 +44,7 @@ describe('nodeMobilityService.updateNodeMobility', () => {
 
     const result = await updateNodeMobility(NODE_ID, deps);
 
-    expect(result).toBe(1);
+    expect(result).toEqual({ previous: 0, current: 1 });
     expect(updateNodeMobilityRepo).toHaveBeenCalledWith(NODE_ID, 1);
     expect(patchCache).toHaveBeenCalledWith(NODE_ID, 1);
   });
@@ -52,12 +54,21 @@ describe('nodeMobilityService.updateNodeMobility', () => {
 
     const result = await updateNodeMobility(NODE_ID, deps);
 
-    expect(result).toBe(0);
+    expect(result).toEqual({ previous: 0, current: 0 });
     expect(updateNodeMobilityRepo).toHaveBeenCalledWith(NODE_ID, 0);
     expect(patchCache).toHaveBeenCalledWith(NODE_ID, 0);
   });
 
-  it('returns 0 (and still persists) with fewer than 2 position pairs', async () => {
+  it('reports previous=1 when the node was already mobile', async () => {
+    getNodeByNodeId.mockResolvedValue({ nodeId: NODE_ID, mobile: 1 });
+    getPositionTelemetryByNode.mockResolvedValue(positionRows(0.002));
+
+    const result = await updateNodeMobility(NODE_ID, deps);
+
+    expect(result).toEqual({ previous: 1, current: 1 });
+  });
+
+  it('returns stationary (and still persists) with fewer than 2 position pairs', async () => {
     getPositionTelemetryByNode.mockResolvedValue([
       { telemetryType: 'latitude', value: 30.0, timestamp: 1 },
       { telemetryType: 'longitude', value: -90.0, timestamp: 1 },
@@ -65,7 +76,7 @@ describe('nodeMobilityService.updateNodeMobility', () => {
 
     const result = await updateNodeMobility(NODE_ID, deps);
 
-    expect(result).toBe(0);
+    expect(result).toEqual({ previous: 0, current: 0 });
     expect(updateNodeMobilityRepo).toHaveBeenCalledWith(NODE_ID, 0);
   });
 
@@ -79,7 +90,7 @@ describe('nodeMobilityService.updateNodeMobility', () => {
 
     const result = await updateNodeMobility(NODE_ID, deps);
 
-    expect(result).toBe(0);
+    expect(result).toEqual({ previous: 0, current: 0 });
     expect(patchCache).not.toHaveBeenCalled();
   });
 });

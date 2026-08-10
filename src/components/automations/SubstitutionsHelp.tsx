@@ -7,6 +7,7 @@
  */
 import { UiIcon } from '../icons';
 import { HOP_COUNT_EMOJIS, HOP_EMOJI_MAX, MQTT_SOURCE_EMOJI } from '../../utils/hopEmoji';
+import { NODE_TOKENS, SUBJECT_NODE_TRIGGER_TYPES } from './substitutionNodeTokens';
 
 // All `{{ trigger.* }}` tokens, by trigger type. `sourceId`/`timestamp` are added to every group.
 export const TRIGGER_TOKENS: Record<string, Array<[string, string]>> = {
@@ -41,12 +42,16 @@ export const TRIGGER_TOKENS: Record<string, Array<[string, string]>> = {
   'trigger.nodeDiscovered': [['nodeNum', 'Node number'], ['changed', 'Changed field names (list)']],
   'trigger.system': [['event', 'System event'], ['nodeNum', 'Node number (if any)'], ['reason', 'Detail / reason'], ['latestVersion', 'Latest version (upgrade-available)'], ['currentVersion', 'Current version (upgrade-available)']],
   'trigger.geofence': [['event', 'enter / exit / dwell'], ['nodeNum', 'Node number'], ['latitude', 'Node latitude'], ['longitude', 'Node longitude'], ['distanceKm', 'Distance from the region centre (km)']],
+  'trigger.becameMobile': [['nodeNum', 'Node number'], ['previousMobile', 'Previous mobile flag (0)'], ['mobile', 'New mobile flag (1)'], ['latitude', 'Node latitude'], ['longitude', 'Node longitude']],
+  'trigger.leftHome': [['nodeNum', 'Node number'], ['latitude', 'Node latitude'], ['longitude', 'Node longitude'], ['homeLat', 'Home latitude'], ['homeLon', 'Home longitude'], ['distanceMeters', 'Distance from home (m)'], ['thresholdMeters', 'Configured threshold (m)']],
   'trigger.schedule': [],
 };
+
 export const UNIVERSAL_TOKENS: Array<[string, string]> = [['sourceId', 'The source the event came from'], ['timestamp', 'Event time (rendered as a local date/time)']];
 const TRIGGER_LABEL: Record<string, string> = {
   'trigger.message': 'Message', 'trigger.telemetry': 'Telemetry', 'trigger.nodeUpdated': 'Node updated',
-  'trigger.nodeDiscovered': 'Node discovered', 'trigger.system': 'System event', 'trigger.geofence': 'Geofence', 'trigger.schedule': 'Schedule',
+  'trigger.nodeDiscovered': 'Node discovered', 'trigger.system': 'System event', 'trigger.geofence': 'Geofence',
+  'trigger.becameMobile': 'Became mobile', 'trigger.leftHome': 'Left home', 'trigger.schedule': 'Schedule',
 };
 
 /** Drawer listing every available substitution token (current trigger first). */
@@ -68,6 +73,19 @@ export default function SubstitutionsHelpDrawer({ triggerType, variables, onClos
         <dt>{'{{ var.NAME.a.b }}'}</dt><dd>Index into a <strong>json</strong> variable (e.g. a “Run a script” result) — dotted path into the stored object/array. A whole object renders as JSON.</dd>
         <dt>{'{{ NOW }}'}</dt><dd>Current time (rendered as a local date/time).</dd>
       </dl>
+
+      {(SUBJECT_NODE_TRIGGER_TYPES as readonly string[]).includes(triggerType) && (
+        <div>
+          <h3>Subject node — current trigger</h3>
+          <p className="ae-muted">Hydrated from the node DB row at fire time. Use these for names on Became mobile / Left home / Node updated / …</p>
+          <dl>
+            {NODE_TOKENS.flatMap(([k, d]) => [
+              <dt key={`${k}-t`}>{`{{ node.${k} }}`}</dt>,
+              <dd key={`${k}-d`}>{d}</dd>,
+            ])}
+          </dl>
+        </div>
+      )}
 
       {order.filter((t) => TRIGGER_TOKENS[t]).map((t) => (
         <div key={t}>

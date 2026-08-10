@@ -10,6 +10,14 @@
 import { useState, type ReactNode } from 'react';
 import apiService from '../../services/api';
 import type { VariableOption, SourceOption } from './AutomationBuilder';
+import {
+  type EventState,
+  type FactState,
+  numOrUndef,
+  leftHomeThresholdFromConfig,
+  leftHomeInputMode,
+  leftHomeModeHint,
+} from './automationTesterHelpers';
 import SubstitutionsHelpDrawer from './SubstitutionsHelp';
 import { OUTCOME_META } from './outcomeMeta';
 import { UiIcon } from '../icons';
@@ -39,22 +47,16 @@ const KIND_BY_TRIGGER: Record<string, string> = {
   'trigger.nodeDiscovered': 'nodeDiscovered',
   'trigger.system': 'system',
   'trigger.geofence': 'geofence',
+  'trigger.becameMobile': 'becameMobile',
+  'trigger.leftHome': 'leftHome',
   'trigger.schedule': 'schedule',
 };
-
-type EventState = Record<string, string>;
-type FactState = Record<string, string>;
-
-function numOrUndef(v: string | undefined): number | undefined {
-  if (v === undefined || v === '') return undefined;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : undefined;
-}
 
 export default function AutomationTester({ getConfig, variables, sources }: Props) {
   const cfg = getConfig();
   const triggerType = cfg.triggerType ?? '';
   const kind = KIND_BY_TRIGGER[triggerType] ?? 'message';
+  const automationThreshold = kind === 'leftHome' ? leftHomeThresholdFromConfig(cfg.config) : 300;
 
   const [ev, setEv] = useState<EventState>({});
   const [facts, setFacts] = useState<FactState>({});
@@ -85,6 +87,22 @@ export default function AutomationTester({ getConfig, variables, sources }: Prop
         return { ...base, event: ev.event || undefined, latestVersion: ev.latestVersion || undefined, currentVersion: ev.currentVersion || undefined, reason: ev.reason || undefined };
       case 'geofence':
         return { ...base, nodeNum: numOrUndef(ev.nodeNum) };
+      case 'becameMobile':
+        return { ...base, nodeNum: numOrUndef(ev.nodeNum), previousMobile: 0, mobile: 1 };
+      case 'leftHome': {
+        // Never send thresholdMeters — the simulator always uses the automation's value.
+        // Distance is omitted when coordinates are complete (coords take precedence).
+        const out: Record<string, unknown> = { ...base, nodeNum: numOrUndef(ev.nodeNum) };
+        const homeLat = numOrUndef(ev.homeLat);
+        const homeLon = numOrUndef(ev.homeLon);
+        if (homeLat != null) out.homeLat = homeLat;
+        if (homeLon != null) out.homeLon = homeLon;
+        if (leftHomeInputMode(ev, facts) === 'distance') {
+          const dist = numOrUndef(ev.distanceMeters);
+          if (dist != null) out.distanceMeters = dist;
+        }
+        return out;
+      }
       default:
         return base; // schedule
     }
@@ -149,7 +167,12 @@ export default function AutomationTester({ getConfig, variables, sources }: Prop
             </select>
           </div>
         )}
-        {renderEventInputs(kind, ev, setEvField)}
+        {renderEventInputs(kind, ev, setEvField, {
+          facts,
+          setFact,
+          automationThreshold,
+          leftHomeHint: kind === 'leftHome' ? leftHomeModeHint(ev, facts, automationThreshold) : undefined,
+        })}
       </div>
 
       <button className="ae-btn ae-btn--ghost" style={{ marginTop: '0.4rem' }} onClick={() => setShowAdvanced((s) => !s)}>
@@ -221,7 +244,17 @@ const TELEMETRY_METRIC_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'airUtilTx', label: 'Air util TX' },
 ];
 
-function renderEventInputs(kind: string, ev: EventState, set: (k: string, v: string) => void) {
+function renderEventInputs(
+  kind: string,
+  ev: EventState,
+  set: (k: string, v: string) => void,
+  opts?: {
+    facts?: FactState;
+    setFact?: (k: string, v: string) => void;
+    automationThreshold?: number;
+    leftHomeHint?: string;
+  },
+) {
   const f = (label: string, key: string, type?: string) => (
     <Field label={label} value={ev[key]} onChange={(v) => set(key, v)} type={type} key={key} />
   );
@@ -255,6 +288,37 @@ function renderEventInputs(kind: string, ev: EventState, set: (k: string, v: str
       return <>{sel('Event', 'event', SYSTEM_EVENT_OPTIONS, 'bootup')}{f('Latest version', 'latestVersion')}{f('Current version', 'currentVersion')}</>;
     case 'geofence':
       return <>{f('Node #', 'nodeNum', 'number')}<div className="ae-muted" style={{ alignSelf: 'end' }}>Set the node’s position under “Subject-node facts”.</div></>;
+    case 'becameMobile':
+      return <>{f('Node #', 'nodeNum', 'number')}<div className="ae-muted" style={{ alignSelf: 'end' }}>Simulates a stationary → mobile flip.</div></>;
+    case 'leftHome': {
+      const facts = opts?.facts ?? {};
+      const setFact = opts?.setFact ?? (() => {});
+      const mode = leftHomeInputMode(ev, facts);
+      const thr = opts?.automationThreshold ?? 300;
+      return <>
+        {f('Node #', 'nodeNum', 'number')}
+        <Field label="Home lat" value={ev.homeLat} onChange={(v) => set('homeLat', v)} type="number" />
+        <Field label="Home lon" value={ev.homeLon} onChange={(v) => set('homeLon', v)} type="number" />
+        <Field label="Current lat" value={facts.latitude} onChange={(v) => setFact('latitude', v)} type="number" />
+        <Field label="Current lon" value={facts.longitude} onChange={(v) => setFact('longitude', v)} type="number" />
+        <Field
+          label={mode === 'coordinates' ? 'Distance from home (m) — ignored (coords set)' : 'Distance from home (m)'}
+          value={ev.distanceMeters}
+          onChange={(v) => set('distanceMeters', v)}
+          type="number"
+        />
+        <div className="ae-field">
+          <label className="ae-field-label">Threshold (m)</label>
+          <input className="ae-input" type="number" value={thr} disabled readOnly title="From the automation trigger" />
+        </div>
+        <div className="ae-muted" style={{ gridColumn: '1 / -1' }}>
+          {opts?.leftHomeHint}
+          {mode === 'coordinates' && <div>Active input: <strong>coordinates</strong></div>}
+          {mode === 'distance' && <div>Active input: <strong>distance field</strong></div>}
+          {mode === 'none' && <div>Active input: <strong>none</strong> (treated as 0 m / still at home)</div>}
+        </div>
+      </>;
+    }
     default:
       return <div className="ae-muted">No event input needed — this trigger has no payload.</div>;
   }
@@ -324,6 +388,18 @@ function TestResult({ result }: { result: SimResult }) {
           ? <span className={`ae-test-badge ae-test-badge--${statusCls}`}>Trigger matched · {result.status}</span>
           : <span className="ae-test-badge ae-test-badge--no">Trigger filtered out — would not fire</span>}
       </div>
+
+      {result.fields?.distanceSource != null && (
+        <div className="ae-muted" style={{ marginTop: '0.35rem' }}>
+          Left-home inputs:{' '}
+          {result.fields.distanceSource === 'coordinates' && 'distance computed from home + current coordinates'}
+          {result.fields.distanceSource === 'distance' && 'distance taken from the distance field'}
+          {result.fields.distanceSource === 'none' && 'no distance/coords supplied (0 m)'}
+          {' · '}
+          {String(result.fields.distanceMeters ?? '?')} m vs threshold {String(result.fields.thresholdMeters ?? '?')} m
+          {' '}(automation)
+        </div>
+      )}
 
       {result.matched && (
         <>

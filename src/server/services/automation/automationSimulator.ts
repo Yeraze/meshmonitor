@@ -33,6 +33,8 @@ import {
   buildTelemetryContext,
   buildSystemContext,
   buildGeofenceContext,
+  buildBecameMobileContext,
+  buildLeftHomeContext,
   messageMatchesFilter,
   BROADCAST_ADDR,
   type TriggerContext,
@@ -48,7 +50,7 @@ import {
 } from './engineContext.js';
 
 export type SimEventKind =
-  | 'message' | 'nodeUpdated' | 'nodeDiscovered' | 'telemetry' | 'system' | 'geofence' | 'schedule';
+  | 'message' | 'nodeUpdated' | 'nodeDiscovered' | 'telemetry' | 'system' | 'geofence' | 'becameMobile' | 'leftHome' | 'schedule';
 
 /** Synthetic trigger event the caller fills in (Test form / system test). */
 export interface SimEventInput {
@@ -79,6 +81,13 @@ export interface SimEventInput {
   reason?: string;
   latestVersion?: string;
   currentVersion?: string;
+  // becameMobile / leftHome
+  previousMobile?: number;
+  mobile?: number;
+  distanceMeters?: number;
+  thresholdMeters?: number;
+  homeLat?: number;
+  homeLon?: number;
 }
 
 export interface SimResult {
@@ -265,6 +274,84 @@ function buildContext(graph: AutomationGraph, ev: SimEventInput, node: Partial<N
       // Preview: assume the configured crossing occurred; conditions still run
       // against the supplied position. matched=true so the trace is informative.
       return { ctx: buildGeofenceContext(Number(ev.nodeNum ?? 0), mode, lat, lon, distanceKm, sourceId, now), matched: true };
+    }
+    case 'becameMobile': {
+      const nodeNum = Number(ev.nodeNum ?? 0);
+      // Mirror live checkBecameMobile: empty/missing nodeNums never matches.
+      const want = Array.isArray(params.nodeNums) ? (params.nodeNums as unknown[]).map(Number) : [];
+      const matched = want.length > 0 && want.includes(nodeNum);
+      return {
+        ctx: buildBecameMobileContext(
+          nodeNum,
+          node?.latitude,
+          node?.longitude,
+          Number(ev.previousMobile ?? 0),
+          Number(ev.mobile ?? 1),
+          sourceId,
+          now,
+        ),
+        matched,
+      };
+    }
+    case 'leftHome': {
+      const nodeNum = Number(ev.nodeNum ?? 0);
+      // Mirror live checkLeftHome: must be on the watch list AND beyond the
+      // automation's threshold. Test events never override thresholdMeters —
+      // that always comes from the trigger params (default 300).
+      const want = Array.isArray(params.nodeNums) ? (params.nodeNums as unknown[]).map(Number) : [];
+      const thresholdMeters = Number(params.thresholdMeters ?? 300);
+      const thrOk = Number.isFinite(thresholdMeters) && thresholdMeters > 0;
+
+      const curLat = node?.latitude;
+      const curLon = node?.longitude;
+      const homeLatRaw = ev.homeLat;
+      const homeLonRaw = ev.homeLon;
+      const hasCoordinates =
+        curLat != null && Number.isFinite(Number(curLat)) &&
+        curLon != null && Number.isFinite(Number(curLon)) &&
+        homeLatRaw != null && Number.isFinite(Number(homeLatRaw)) &&
+        homeLonRaw != null && Number.isFinite(Number(homeLonRaw));
+
+      let latitude: number;
+      let longitude: number;
+      let homeLat: number;
+      let homeLon: number;
+      let distanceMeters: number;
+      let distanceSource: 'coordinates' | 'distance' | 'none';
+
+      if (hasCoordinates) {
+        // Coordinates win over a typed distance (home + current position).
+        latitude = Number(curLat);
+        longitude = Number(curLon);
+        homeLat = Number(homeLatRaw);
+        homeLon = Number(homeLonRaw);
+        distanceMeters = haversineKm(latitude, longitude, homeLat, homeLon) * 1000;
+        distanceSource = 'coordinates';
+      } else if (ev.distanceMeters != null && Number.isFinite(Number(ev.distanceMeters))) {
+        distanceMeters = Number(ev.distanceMeters);
+        latitude = Number(curLat ?? 0);
+        longitude = Number(curLon ?? 0);
+        homeLat = Number(homeLatRaw ?? latitude);
+        homeLon = Number(homeLonRaw ?? longitude);
+        distanceSource = 'distance';
+      } else {
+        // Nothing usable → treat as still at home.
+        latitude = Number(curLat ?? 0);
+        longitude = Number(curLon ?? 0);
+        homeLat = Number(homeLatRaw ?? latitude);
+        homeLon = Number(homeLonRaw ?? longitude);
+        distanceMeters = 0;
+        distanceSource = 'none';
+      }
+
+      const onList = want.length > 0 && want.includes(nodeNum);
+      const beyond = thrOk && distanceMeters > thresholdMeters;
+      const ctx = buildLeftHomeContext(
+        nodeNum, latitude, longitude, homeLat, homeLon, distanceMeters, thresholdMeters, sourceId, now,
+      );
+      // Surface which input path won so the Test panel / result can explain it.
+      ctx.fields.distanceSource = distanceSource;
+      return { ctx, matched: onList && beyond };
     }
     case 'schedule':
       // No mesh payload — a cron tick. Assume it fires so the downstream
