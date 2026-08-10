@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { fieldVisible, ACTIONS, CONDITIONS, TRIGGERS, numericFields, stringFields, STRING_OP_OPTIONS, type FieldDef } from './catalog';
+import { fieldVisible, fieldPlaceholder, ACTIONS, CONDITIONS, TRIGGERS, numericFields, stringFields, STRING_OP_OPTIONS, type FieldDef } from './catalog';
 import { HOP_COUNT_EMOJIS, MQTT_SOURCE_EMOJI } from '../../utils/hopEmoji';
 
 describe('fieldVisible', () => {
@@ -282,5 +282,24 @@ describe("trigger.message regex case-sensitivity hint (#4507 follow-up)", () => 
     // Pins the contrast the new copy draws. If this ever becomes
     // case-sensitive, the regex field's help becomes a lie.
     expect(field('textContains')?.help).toMatch(/case-insensitive/i);
+  });
+});
+
+describe('movement trigger message hints', () => {
+  it('sendMessage and notify use Tolkien placeholders for leftHome / becameMobile', () => {
+    const send = ACTIONS.find((a) => a.type === 'action.sendMessage')?.fields.find((f) => f.name === 'text');
+    const notify = ACTIONS.find((a) => a.type === 'action.notify')?.fields.find((f) => f.name === 'body');
+    expect(send).toBeTruthy();
+    expect(notify).toBeTruthy();
+    expect(fieldPlaceholder(send!, 'trigger.leftHome')).toBe(
+      'A quiet little node {{ node.longName }} has left the Shire and gone off on an unexpected adventure.',
+    );
+    expect(fieldPlaceholder(send!, 'trigger.becameMobile')).toBe(
+      'A wild stationary node {{ node.longName }} just uprooted itself and headed towards Isengard!',
+    );
+    expect(fieldPlaceholder(notify!, 'trigger.leftHome')).toBe(fieldPlaceholder(send!, 'trigger.leftHome'));
+    expect(fieldPlaceholder(notify!, 'trigger.becameMobile')).toBe(fieldPlaceholder(send!, 'trigger.becameMobile'));
+    // Other triggers keep the generic default.
+    expect(fieldPlaceholder(send!, 'trigger.message')).toBe('Hello {{ trigger.senderLabel }}!');
   });
 });

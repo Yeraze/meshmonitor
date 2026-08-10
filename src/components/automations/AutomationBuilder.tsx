@@ -7,7 +7,7 @@
  */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { TRIGGERS, CONDITIONS, ACTIONS, BLOCK_BY_TYPE, fieldsFor, fieldVisible, type BlockDef, type FieldDef } from './catalog';
+import { TRIGGERS, CONDITIONS, ACTIONS, BLOCK_BY_TYPE, fieldsFor, fieldVisible, fieldPlaceholder, type BlockDef, type FieldDef } from './catalog';
 import type { WorkflowForm, FormBlock, Rule } from './compile';
 import SubstitutionsHelpDrawer from './SubstitutionsHelp';
 import GeofenceFieldInput from './GeofenceFieldInput';
@@ -80,16 +80,17 @@ function FieldInput({ field, value, onChange, variables, sources, channels, scri
   const { t } = useTranslation();
   let control;
   const varNames = variables.map((v) => v.name);
+  const placeholder = fieldPlaceholder(field, triggerType);
   switch (field.kind) {
     case 'number':
-      control = <input className="ae-input" type="number" value={(value ?? '') as string} placeholder={field.placeholder}
+      control = <input className="ae-input" type="number" value={(value ?? '') as string} placeholder={placeholder}
         onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))} />;
       break;
     case 'textarea':
       control = field.tokens
-        ? <TokenTextField multiline value={(value ?? '') as string} placeholder={field.placeholder}
+        ? <TokenTextField multiline value={(value ?? '') as string} placeholder={placeholder}
             triggerType={triggerType} variableNames={varNames} onChange={onChange} />
-        : <textarea className="ae-textarea" value={(value ?? '') as string} placeholder={field.placeholder} onChange={(e) => onChange(e.target.value)} />;
+        : <textarea className="ae-textarea" value={(value ?? '') as string} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />;
       break;
     case 'select':
       control = (
@@ -157,7 +158,7 @@ function FieldInput({ field, value, onChange, variables, sources, channels, scri
       control = (
         <>
           <input className="ae-input" list="ae-regions" value={(value ?? '') as string}
-            placeholder={field.placeholder} onChange={(e) => onChange(e.target.value)} />
+            placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
           <datalist id="ae-regions">
             {regions.map((r) => <option key={r} value={r} />)}
           </datalist>
@@ -222,9 +223,9 @@ function FieldInput({ field, value, onChange, variables, sources, channels, scri
     }
     default:
       control = field.tokens
-        ? <TokenTextField value={(value ?? '') as string} placeholder={field.placeholder}
+        ? <TokenTextField value={(value ?? '') as string} placeholder={placeholder}
             triggerType={triggerType} variableNames={varNames} onChange={onChange} />
-        : <input className="ae-input" value={(value ?? '') as string} placeholder={field.placeholder} onChange={(e) => onChange(e.target.value)} />;
+        : <input className="ae-input" value={(value ?? '') as string} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />;
   }
   return (
     <div className="ae-field">
