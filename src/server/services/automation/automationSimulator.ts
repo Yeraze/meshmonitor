@@ -33,6 +33,8 @@ import {
   buildTelemetryContext,
   buildSystemContext,
   buildGeofenceContext,
+  buildBecameMobileContext,
+  buildLeftHomeContext,
   messageMatchesFilter,
   BROADCAST_ADDR,
   type TriggerContext,
@@ -48,7 +50,7 @@ import {
 } from './engineContext.js';
 
 export type SimEventKind =
-  | 'message' | 'nodeUpdated' | 'nodeDiscovered' | 'telemetry' | 'system' | 'geofence' | 'schedule';
+  | 'message' | 'nodeUpdated' | 'nodeDiscovered' | 'telemetry' | 'system' | 'geofence' | 'becameMobile' | 'leftHome' | 'schedule';
 
 /** Synthetic trigger event the caller fills in (Test form / system test). */
 export interface SimEventInput {
@@ -79,6 +81,13 @@ export interface SimEventInput {
   reason?: string;
   latestVersion?: string;
   currentVersion?: string;
+  // becameMobile / leftHome
+  previousMobile?: number;
+  mobile?: number;
+  distanceMeters?: number;
+  thresholdMeters?: number;
+  homeLat?: number;
+  homeLon?: number;
 }
 
 export interface SimResult {
@@ -265,6 +274,38 @@ function buildContext(graph: AutomationGraph, ev: SimEventInput, node: Partial<N
       // Preview: assume the configured crossing occurred; conditions still run
       // against the supplied position. matched=true so the trace is informative.
       return { ctx: buildGeofenceContext(Number(ev.nodeNum ?? 0), mode, lat, lon, distanceKm, sourceId, now), matched: true };
+    }
+    case 'becameMobile': {
+      const nodeNum = Number(ev.nodeNum ?? 0);
+      const want = Array.isArray(params.nodeNums) ? (params.nodeNums as unknown[]).map(Number) : [];
+      const matched = want.length === 0 || want.includes(nodeNum);
+      return {
+        ctx: buildBecameMobileContext(
+          nodeNum,
+          node?.latitude,
+          node?.longitude,
+          Number(ev.previousMobile ?? 0),
+          Number(ev.mobile ?? 1),
+          sourceId,
+          now,
+        ),
+        matched,
+      };
+    }
+    case 'leftHome': {
+      const nodeNum = Number(ev.nodeNum ?? 0);
+      const want = Array.isArray(params.nodeNums) ? (params.nodeNums as unknown[]).map(Number) : [];
+      const matched = want.length === 0 || want.includes(nodeNum);
+      const lat = Number(node?.latitude ?? 0);
+      const lon = Number(node?.longitude ?? 0);
+      const homeLat = Number(ev.homeLat ?? lat);
+      const homeLon = Number(ev.homeLon ?? lon);
+      const thresholdMeters = Number(ev.thresholdMeters ?? params.thresholdMeters ?? 100);
+      const distanceMeters = Number(ev.distanceMeters ?? (haversineKm(lat, lon, homeLat, homeLon) * 1000));
+      return {
+        ctx: buildLeftHomeContext(nodeNum, lat, lon, homeLat, homeLon, distanceMeters, thresholdMeters, sourceId, now),
+        matched,
+      };
     }
     case 'schedule':
       // No mesh payload — a cron tick. Assume it fires so the downstream

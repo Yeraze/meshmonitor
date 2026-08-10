@@ -39,6 +39,8 @@ const KIND_BY_TRIGGER: Record<string, string> = {
   'trigger.nodeDiscovered': 'nodeDiscovered',
   'trigger.system': 'system',
   'trigger.geofence': 'geofence',
+  'trigger.becameMobile': 'becameMobile',
+  'trigger.leftHome': 'leftHome',
   'trigger.schedule': 'schedule',
 };
 
@@ -85,6 +87,17 @@ export default function AutomationTester({ getConfig, variables, sources }: Prop
         return { ...base, event: ev.event || undefined, latestVersion: ev.latestVersion || undefined, currentVersion: ev.currentVersion || undefined, reason: ev.reason || undefined };
       case 'geofence':
         return { ...base, nodeNum: numOrUndef(ev.nodeNum) };
+      case 'becameMobile':
+        return { ...base, nodeNum: numOrUndef(ev.nodeNum), previousMobile: 0, mobile: 1 };
+      case 'leftHome':
+        return {
+          ...base,
+          nodeNum: numOrUndef(ev.nodeNum),
+          distanceMeters: numOrUndef(ev.distanceMeters) ?? 250,
+          thresholdMeters: numOrUndef(ev.thresholdMeters) ?? 100,
+          homeLat: numOrUndef(ev.homeLat),
+          homeLon: numOrUndef(ev.homeLon),
+        };
       default:
         return base; // schedule
     }
@@ -255,6 +268,17 @@ function renderEventInputs(kind: string, ev: EventState, set: (k: string, v: str
       return <>{sel('Event', 'event', SYSTEM_EVENT_OPTIONS, 'bootup')}{f('Latest version', 'latestVersion')}{f('Current version', 'currentVersion')}</>;
     case 'geofence':
       return <>{f('Node #', 'nodeNum', 'number')}<div className="ae-muted" style={{ alignSelf: 'end' }}>Set the node’s position under “Subject-node facts”.</div></>;
+    case 'becameMobile':
+      return <>{f('Node #', 'nodeNum', 'number')}<div className="ae-muted" style={{ alignSelf: 'end' }}>Simulates a stationary → mobile flip.</div></>;
+    case 'leftHome':
+      return <>
+        {f('Node #', 'nodeNum', 'number')}
+        {f('Distance from home (m)', 'distanceMeters', 'number')}
+        {f('Threshold (m)', 'thresholdMeters', 'number')}
+        {f('Home lat', 'homeLat', 'number')}
+        {f('Home lon', 'homeLon', 'number')}
+        <div className="ae-muted" style={{ alignSelf: 'end' }}>Also set the node’s current position under “Subject-node facts”.</div>
+      </>;
     default:
       return <div className="ae-muted">No event input needed — this trigger has no payload.</div>;
   }

@@ -10,7 +10,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { isValidCron } from 'cron-validator';
 import apiService from '../../services/api';
-import AutomationBuilder, { type VariableOption, type SourceOption, type UnifiedChannelOption, type ScriptOption } from './AutomationBuilder';
+import AutomationBuilder, { type VariableOption, type SourceOption, type UnifiedChannelOption, type ScriptOption, type NodeMultiOption } from './AutomationBuilder';
 import AutomationTester from './AutomationTester';
 import LiveTracePanel from './LiveTracePanel';
 import { UiIcon } from '../icons';
@@ -47,6 +47,18 @@ function validateForm(form: WorkflowForm): string[] {
     const shape = form.trigger.params.shape as { type?: string; vertices?: unknown[] } | undefined;
     if (!shape || (shape.type === 'polygon' && (shape.vertices?.length ?? 0) < 3)) {
       errs.push('Draw a geofence region (circle or polygon) on the map.');
+    }
+  }
+  if (form.trigger.type === 'trigger.becameMobile' || form.trigger.type === 'trigger.leftHome') {
+    const nums = form.trigger.params.nodeNums;
+    if (!Array.isArray(nums) || nums.length === 0) {
+      errs.push('Select at least one node to watch.');
+    }
+  }
+  if (form.trigger.type === 'trigger.leftHome') {
+    const thr = form.trigger.params.thresholdMeters;
+    if (thr != null && thr !== '' && !(Number(thr) > 0)) {
+      errs.push('Home-distance threshold must be greater than 0 metres.');
     }
   }
   if (form.trigger.type === 'trigger.schedule') {
@@ -168,6 +180,7 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
   const [channels, setChannels] = useState<UnifiedChannelOption[]>([]);
   const [scripts, setScripts] = useState<ScriptOption[]>([]);
   const [regions, setRegions] = useState<string[]>([]);
+  const [nodes, setNodes] = useState<NodeMultiOption[]>([]);
 
   // Decide builder vs JSON from the existing config.
   const parsedInitial = (() => { try { return initial ? decompile(JSON.parse(initial.config)) : DEFAULT_FORM; } catch { return null; } })();
@@ -215,6 +228,19 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
     apiService.get<{ regions: Array<{ name: string }> }>('/api/automations/regions')
       .then((r) => setRegions((r.regions ?? []).map((x) => x.name)))
       .catch(() => setRegions([]));
+    apiService.get<Array<{
+      nodeNum: number; longName?: string; shortName?: string; nodeId?: string;
+      mobile?: number; isMobile?: boolean;
+    }>>('/api/nodes')
+      .then((list) => setNodes((list ?? []).map((n) => ({
+        nodeNum: Number(n.nodeNum),
+        longName: n.longName,
+        shortName: n.shortName,
+        nodeId: n.nodeId,
+        mobile: n.mobile,
+        isMobile: n.isMobile,
+      }))))
+      .catch(() => setNodes([]));
   }, []);
 
   const switchToJson = () => { setJsonText(JSON.stringify(compile(form), null, 2)); setMode('json'); };
@@ -269,7 +295,7 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
       </div>
 
       {mode === 'builder'
-        ? <AutomationBuilder form={form} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} onChange={setForm} />
+        ? <AutomationBuilder form={form} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} nodes={nodes} onChange={setForm} />
         : (
           <div className="ae-field">
             <label className="ae-field-label">Workflow graph (JSON)</label>

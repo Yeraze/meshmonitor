@@ -7097,8 +7097,14 @@ class MeshtasticManager implements ISourceManager {
             dataEventEmitter.emitNodeUpdate(fromNum, nodeData, this.sourceId);
           }
 
-          // Update mobility detection for this node (fire and forget)
-          databaseService.updateNodeMobilityAsync(nodeId).catch(err =>
+          // Update mobility detection for this node; emit 0→1 transitions for
+          // trigger.becameMobile automations.
+          databaseService.updateNodeMobilityAsync(nodeId).then((mob) => {
+            if (typeof mob !== 'object' || mob == null) return;
+            if (mob.previous === 0 && mob.current === 1) {
+              dataEventEmitter.emitNodeMobility(fromNum, mob.previous, mob.current, this.sourceId);
+            }
+          }).catch(err =>
             logger.error(`Failed to update mobility for ${nodeId}:`, err)
           );
 
@@ -9130,9 +9136,15 @@ class MeshtasticManager implements ISourceManager {
         await databaseService.telemetry.insertTelemetryBatch(telemetryBatch, this.sourceId);
       }
 
-      // Update mobility detection once position was persisted (fire and forget)
+      // Update mobility detection once position was persisted; emit 0→1 for
+      // trigger.becameMobile automations.
       if (positionTelemetryData) {
-        databaseService.updateNodeMobilityAsync(nodeId).catch(err =>
+        databaseService.updateNodeMobilityAsync(nodeId).then((mob) => {
+          if (typeof mob !== 'object' || mob == null) return;
+          if (mob.previous === 0 && mob.current === 1) {
+            dataEventEmitter.emitNodeMobility(nodeNumForTelemetry, mob.previous, mob.current, this.sourceId);
+          }
+        }).catch(err =>
           logger.error(`Failed to update mobility for ${nodeId}:`, err)
         );
       }

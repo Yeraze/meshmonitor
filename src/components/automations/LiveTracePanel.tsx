@@ -48,6 +48,11 @@ function summarizeEvent(triggerType: string, event: Record<string, unknown>): st
     bits.push(`${event.telemetryType ?? '?'} = ${event.value ?? '?'}`);
   } else if (triggerType === 'trigger.geofence') {
     bits.push(`${event.event ?? '?'} · node ${event.nodeNum ?? '?'}`);
+  } else if (triggerType === 'trigger.becameMobile') {
+    bits.push(`became mobile · node ${event.nodeNum ?? '?'}`);
+  } else if (triggerType === 'trigger.leftHome') {
+    const dist = typeof event.distanceMeters === 'number' ? `${Math.round(event.distanceMeters)}m` : '?';
+    bits.push(`left home ${dist} · node ${event.nodeNum ?? '?'}`);
   } else if (triggerType === 'trigger.system') {
     bits.push(String(event.event ?? ''));
   } else if (event.nodeNum != null) {

@@ -14,6 +14,7 @@ import { logger } from '../../utils/logger.js';
 
 export type DataEventType =
   | 'node:updated'
+  | 'node:mobility'
   | 'message:new'
   | 'channel:updated'
   | 'telemetry:batch'
@@ -113,6 +114,25 @@ class DataEventEmitter extends EventEmitter {
     };
     this.emit('data', event);
     logger.debug(`[DataEventEmitter] Node updated: ${nodeNum}`);
+  }
+
+  /**
+   * Emit a mobility flag transition (used by trigger.becameMobile).
+   */
+  emitNodeMobility(
+    nodeNum: number,
+    previous: number,
+    current: number,
+    sourceId?: string,
+  ): void {
+    const event: DataEvent = {
+      type: 'node:mobility',
+      data: { nodeNum, previous, current },
+      timestamp: Date.now(),
+      sourceId,
+    };
+    this.emit('data', event);
+    logger.debug(`[DataEventEmitter] Node mobility: ${nodeNum} ${previous}→${current}`);
   }
 
   /**

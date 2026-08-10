@@ -135,7 +135,7 @@ describe('action.tapback catalog entry', () => {
 // five trigger blocks that already carry cooldownSeconds (SUBJECT_NODE_TRIGGERS
 // in catalog.ts, verified as the same five in §1 finding #8).
 describe('trigger.* cooldownScope catalog entries (#4340 Phase 2)', () => {
-  const COOLDOWN_BEARING_TYPES = ['trigger.message', 'trigger.nodeDiscovered', 'trigger.nodeUpdated', 'trigger.telemetry', 'trigger.geofence'];
+  const COOLDOWN_BEARING_TYPES = ['trigger.message', 'trigger.nodeDiscovered', 'trigger.nodeUpdated', 'trigger.telemetry', 'trigger.geofence', 'trigger.becameMobile', 'trigger.leftHome'];
   const NO_COOLDOWN_TYPES = ['trigger.schedule', 'trigger.system'];
 
   it.each(COOLDOWN_BEARING_TYPES)('%s lists cooldownScope immediately after cooldownSeconds', (type) => {

@@ -1223,3 +1223,126 @@ describe('#4594 MQTT-source hop glyph', () => {
     expect(await tapbackEmojiFor('meshtastic_tcp', { viaMqtt: true } as Partial<DbMessage>)).toBe('2️⃣');
   });
 });
+
+describe('AutomationEngineService — becameMobile / leftHome', () => {
+  let db: ReturnType<typeof createTestDb>['sqlite'];
+  let drizzleDb: BetterSQLite3Database<typeof schema>;
+  let autos: AutomationsRepository;
+  let varsRepo: AutomationVariablesRepository;
+  let resolver: VariableResolver;
+  let clock: number;
+  let homeAnchors: import('../../../db/repositories/automationHomeAnchors.js').AutomationHomeAnchorsRepository;
+
+  beforeEach(async () => {
+    const t = createTestDb();
+    db = t.sqlite;
+    drizzleDb = t.db;
+    autos = new AutomationsRepository(drizzleDb, 'sqlite');
+    varsRepo = new AutomationVariablesRepository(drizzleDb, 'sqlite');
+    resolver = new VariableResolver(varsRepo);
+    const { AutomationHomeAnchorsRepository } = await import('../../../db/repositories/automationHomeAnchors.js');
+    homeAnchors = new AutomationHomeAnchorsRepository(drizzleDb, 'sqlite');
+    clock = 1_000_000;
+  });
+  afterEach(() => { db.close(); automationTraceBus.reset(); automationTraceBus.setSink(null); });
+
+  async function createEnabled(name: string, graph: AutomationGraph) {
+    return autos.createAutomation({ name, enabled: true, config: JSON.stringify(graph) });
+  }
+
+  it('becameMobile: fires only on 0→1 for a watched node', async () => {
+    const { calls, deps } = recorder();
+    await createEnabled('mob', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.becameMobile', params: { nodeNums: [42] } },
+        { id: 'a', type: 'action.notify', params: { body: 'moved {{ trigger.nodeNum }}' } },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    });
+    const data = {
+      getNode: async () => ({ nodeNum: 42, latitude: 1, longitude: 2, longName: 'Site A' }),
+      getTelemetry: async () => null,
+    };
+    const engine = new AutomationEngineService({
+      automationsRepo: autos, varResolver: resolver, deps, data, homeAnchorsRepo: homeAnchors, now: () => clock,
+    });
+    await engine.load();
+
+    expect(await engine.checkBecameMobile(42, 0, 0, 'default')).toBe(0);
+    expect(await engine.checkBecameMobile(42, 1, 1, 'default')).toBe(0);
+    expect(await engine.checkBecameMobile(99, 0, 1, 'default')).toBe(0); // not watched
+    expect(await engine.checkBecameMobile(42, 0, 1, 'default')).toBe(1);
+    expect(calls.filter((c) => c.fn === 'notify')).toHaveLength(1);
+    expect(calls[0].args.body).toBe('moved 42');
+  });
+
+  it('leftHome: establishes home without firing, then fires on exceed and re-arms on return', async () => {
+    const { calls, deps } = recorder();
+    const created = await createEnabled('home', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.leftHome', params: { nodeNums: [7], thresholdMeters: 100 } },
+        { id: 'a', type: 'action.notify', params: { body: 'away {{ trigger.distanceMeters }}' } },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    });
+    const pos = { lat: 30.0, lon: -90.0 };
+    const data = {
+      getNode: async () => ({ nodeNum: 7, latitude: pos.lat, longitude: pos.lon }),
+      getTelemetry: async () => null,
+    };
+    const engine = new AutomationEngineService({
+      automationsRepo: autos, varResolver: resolver, deps, data, homeAnchorsRepo: homeAnchors, now: () => clock,
+    });
+    await engine.load();
+
+    expect(await engine.checkLeftHome(7, 'default')).toBe(0); // establish home
+    const anchor = await homeAnchors.getAnchor(created.id, 7);
+    expect(anchor?.latitude).toBe(30.0);
+
+    // ~222 m north → beyond 100 m
+    pos.lat = 30.002;
+    expect(await engine.checkLeftHome(7, 'default')).toBe(1);
+    expect(await engine.checkLeftHome(7, 'default')).toBe(0); // still alarmed
+    expect(calls.filter((c) => c.fn === 'notify')).toHaveLength(1);
+
+    // Return home → re-arm
+    pos.lat = 30.0;
+    expect(await engine.checkLeftHome(7, 'default')).toBe(0);
+    pos.lat = 30.002;
+    expect(await engine.checkLeftHome(7, 'default')).toBe(1);
+    expect(calls.filter((c) => c.fn === 'notify')).toHaveLength(2);
+  });
+
+  it('leftHome: persists home across engine reload', async () => {
+    const { calls, deps } = recorder();
+    await createEnabled('persist-home', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.leftHome', params: { nodeNums: [3], thresholdMeters: 100 } },
+        { id: 'a', type: 'action.notify', params: { body: 'stolen' } },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    });
+    const pos = { lat: 10.0, lon: 20.0 };
+    const data = {
+      getNode: async () => ({ nodeNum: 3, latitude: pos.lat, longitude: pos.lon }),
+      getTelemetry: async () => null,
+    };
+    const engine1 = new AutomationEngineService({
+      automationsRepo: autos, varResolver: resolver, deps, data, homeAnchorsRepo: homeAnchors, now: () => clock,
+    });
+    await engine1.load();
+    expect(await engine1.checkLeftHome(3, 'default')).toBe(0); // home set
+
+    // New engine instance (simulates restart) — must NOT re-home at stolen coords
+    pos.lat = 10.002;
+    const engine2 = new AutomationEngineService({
+      automationsRepo: autos, varResolver: resolver, deps, data, homeAnchorsRepo: homeAnchors, now: () => clock,
+    });
+    await engine2.load();
+    expect(await engine2.checkLeftHome(3, 'default')).toBe(1);
+    expect(calls.filter((c) => c.fn === 'notify')).toHaveLength(1);
+  });
+});

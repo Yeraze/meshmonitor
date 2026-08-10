@@ -153,6 +153,7 @@ import { migration as backfillMeshcoreNodesViewOnMapMigration, runMigration135Po
 import { migration as addMeshCoreObserverCredentialsMigration, runMigration136Postgres, runMigration136Mysql } from '../server/migrations/136_add_meshcore_observer_credentials.js';
 import { migration as estimatedPositionAnchorsMigration, runMigration137Postgres, runMigration137Mysql } from '../server/migrations/137_estimated_position_anchors.js';
 import { migration as addConversationReadStateMigration, runMigration138Postgres, runMigration138Mysql } from '../server/migrations/138_add_conversation_read_state.js';
+import { migration as automationHomeAnchorsMigration, runMigration139Postgres, runMigration139Mysql } from '../server/migrations/139_automation_home_anchors.js';
 
 // ============================================================================
 // Registry
@@ -2203,4 +2204,19 @@ registry.register({
   sqlite: (db) => addConversationReadStateMigration.up(db),
   postgres: (client) => runMigration138Postgres(client),
   mysql: (pool) => runMigration138Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 139: create `automation_home_anchors` for trigger.leftHome.
+// Persists per-(automation, node) home coordinates so left-home automations
+// survive restarts without silently re-homing a stolen node. GLOBAL.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 139,
+  name: 'automation_home_anchors',
+  settingsKey: 'migration_139_automation_home_anchors',
+  sqlite: (db) => automationHomeAnchorsMigration.up(db),
+  postgres: (client) => runMigration139Postgres(client),
+  mysql: (pool) => runMigration139Mysql(pool),
 });

@@ -35,6 +35,8 @@ export interface NodeFacts {
   airUtilTx?: number;
   snr?: number;
   isFavorite?: boolean;
+  /** MeshMonitor-computed mobility: 0 = stationary, 1 = mobile (>100 m history span). */
+  mobile?: number;
 }
 
 /** Hydrates the subject node + latest telemetry during evaluation. Injected for testability. */

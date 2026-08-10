@@ -21,7 +21,9 @@ export type TriggerType =
   | 'trigger.telemetry'
   | 'trigger.schedule'
   | 'trigger.system'
-  | 'trigger.geofence';
+  | 'trigger.geofence'
+  | 'trigger.becameMobile'
+  | 'trigger.leftHome';
 
 export type ConditionType =
   | 'condition.always'
@@ -65,6 +67,8 @@ export const TRIGGER_TYPES: readonly TriggerType[] = [
   'trigger.schedule',
   'trigger.system',
   'trigger.geofence',
+  'trigger.becameMobile',
+  'trigger.leftHome',
 ];
 
 export const CONDITION_TYPES: readonly ConditionType[] = [
@@ -463,6 +467,23 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
             }
           }
           break;
+        case 'trigger.becameMobile':
+        case 'trigger.leftHome': {
+          // Hand-selected node list is required for v1 (no "all nodes" mode).
+          const nums = Array.isArray(p.nodeNums) ? p.nodeNums : null;
+          if (!nums || nums.length === 0) {
+            errors.push(`${n.type} "${n.id}" requires params.nodeNums (non-empty array of node numbers)`);
+          } else if (!nums.every((x) => Number.isInteger(Number(x)))) {
+            errors.push(`${n.type} "${n.id}" requires params.nodeNums to be an array of integers`);
+          }
+          if (n.type === 'trigger.leftHome') {
+            const thr = p.thresholdMeters == null || p.thresholdMeters === '' ? 100 : Number(p.thresholdMeters);
+            if (!Number.isFinite(thr) || thr <= 0) {
+              errors.push(`trigger.leftHome "${n.id}" requires params.thresholdMeters > 0`);
+            }
+          }
+          break;
+        }
         case 'action.delay': {
           const secs = Number(p.seconds);
           if (!Number.isFinite(secs) || secs < 0 || secs > AUTOMATION_DELAY_MAX_SECONDS) {

@@ -41,12 +41,15 @@ export const TRIGGER_TOKENS: Record<string, Array<[string, string]>> = {
   'trigger.nodeDiscovered': [['nodeNum', 'Node number'], ['changed', 'Changed field names (list)']],
   'trigger.system': [['event', 'System event'], ['nodeNum', 'Node number (if any)'], ['reason', 'Detail / reason'], ['latestVersion', 'Latest version (upgrade-available)'], ['currentVersion', 'Current version (upgrade-available)']],
   'trigger.geofence': [['event', 'enter / exit / dwell'], ['nodeNum', 'Node number'], ['latitude', 'Node latitude'], ['longitude', 'Node longitude'], ['distanceKm', 'Distance from the region centre (km)']],
+  'trigger.becameMobile': [['nodeNum', 'Node number'], ['previousMobile', 'Previous mobile flag (0)'], ['mobile', 'New mobile flag (1)'], ['latitude', 'Node latitude'], ['longitude', 'Node longitude']],
+  'trigger.leftHome': [['nodeNum', 'Node number'], ['latitude', 'Node latitude'], ['longitude', 'Node longitude'], ['homeLat', 'Home latitude'], ['homeLon', 'Home longitude'], ['distanceMeters', 'Distance from home (m)'], ['thresholdMeters', 'Configured threshold (m)']],
   'trigger.schedule': [],
 };
 export const UNIVERSAL_TOKENS: Array<[string, string]> = [['sourceId', 'The source the event came from'], ['timestamp', 'Event time (rendered as a local date/time)']];
 const TRIGGER_LABEL: Record<string, string> = {
   'trigger.message': 'Message', 'trigger.telemetry': 'Telemetry', 'trigger.nodeUpdated': 'Node updated',
-  'trigger.nodeDiscovered': 'Node discovered', 'trigger.system': 'System event', 'trigger.geofence': 'Geofence', 'trigger.schedule': 'Schedule',
+  'trigger.nodeDiscovered': 'Node discovered', 'trigger.system': 'System event', 'trigger.geofence': 'Geofence',
+  'trigger.becameMobile': 'Became mobile', 'trigger.leftHome': 'Left home', 'trigger.schedule': 'Schedule',
 };
 
 /** Drawer listing every available substitution token (current trigger first). */

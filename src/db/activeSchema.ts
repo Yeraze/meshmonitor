@@ -128,6 +128,9 @@ import {
   automationVariablesSqlite, automationVariablesPostgres, automationVariablesMysql,
   automationVariableValuesSqlite, automationVariableValuesPostgres, automationVariableValuesMysql,
 } from './schema/automationVariables.js';
+import {
+  automationHomeAnchorsSqlite, automationHomeAnchorsPostgres, automationHomeAnchorsMysql,
+} from './schema/automationHomeAnchors.js';
 
 // MeshCore saved-regions catalog (global — no sourceId) (#3770)
 import {
@@ -261,6 +264,8 @@ export interface ActiveSchema {
   automationRuns: any;
   automationVariables: any;
   automationVariableValues: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- matches ActiveSchema per-dialect table pattern
+  automationHomeAnchors: any;
 
   // MeshCore saved-regions catalog (global — no sourceId) (#3770)
   meshcoreSavedRegions: any;
@@ -358,6 +363,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     automationRuns: automationRunsSqlite,
     automationVariables: automationVariablesSqlite,
     automationVariableValues: automationVariableValuesSqlite,
+    automationHomeAnchors: automationHomeAnchorsSqlite,
     meshcoreSavedRegions: meshcoreSavedRegionsSqlite,
     waypoints: waypointsSqlite,
     sources: sourcesSqlite,
@@ -421,6 +427,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     automationRuns: automationRunsPostgres,
     automationVariables: automationVariablesPostgres,
     automationVariableValues: automationVariableValuesPostgres,
+    automationHomeAnchors: automationHomeAnchorsPostgres,
     meshcoreSavedRegions: meshcoreSavedRegionsPostgres,
     waypoints: waypointsPostgres,
     sources: sourcesPostgres,
@@ -484,6 +491,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     automationRuns: automationRunsMysql,
     automationVariables: automationVariablesMysql,
     automationVariableValues: automationVariableValuesMysql,
+    automationHomeAnchors: automationHomeAnchorsMysql,
     meshcoreSavedRegions: meshcoreSavedRegionsMysql,
     waypoints: waypointsMysql,
     sources: sourcesMysql,

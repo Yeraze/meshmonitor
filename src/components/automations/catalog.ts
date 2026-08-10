@@ -7,7 +7,7 @@
  */
 import { HOP_COUNT_EMOJIS, HOP_EMOJI_MAX, MQTT_SOURCE_EMOJI } from '../../utils/hopEmoji';
 
-export type FieldKind = 'text' | 'number' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti' | 'sendSourceMulti' | 'channelMulti' | 'geofence' | 'scriptselect' | 'regionSelect';
+export type FieldKind = 'text' | 'number' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti' | 'sendSourceMulti' | 'channelMulti' | 'geofence' | 'scriptselect' | 'regionSelect' | 'nodeMulti';
 
 export interface FieldOpt { value: string; label: string; }
 export interface FieldGroup { label: string; options: FieldOpt[]; }
@@ -183,11 +183,32 @@ export const TRIGGERS: BlockDef[] = [
       COOLDOWN_SCOPE,
     ],
   },
+  {
+    type: 'trigger.becameMobile',
+    label: 'A watched node becomes mobile',
+    description: 'Fires when a hand-selected node flips from stationary to mobile (MeshMonitor’s >100 m position-history heuristic). Useful for tamper / theft alerts on fixed sites.',
+    fields: [
+      { name: 'nodeNums', label: 'Watch nodes', kind: 'nodeMulti', help: 'Pick the nodes to watch. Stationary nodes (mobile = 0) are listed first with a Stationary badge.' },
+      COOLDOWN,
+      COOLDOWN_SCOPE,
+    ],
+  },
+  {
+    type: 'trigger.leftHome',
+    label: 'A watched node leaves its home position',
+    description: 'Fires when a hand-selected node moves farther than a threshold from its home/anchor position. Home is captured on the first position after you add the node (and survives restarts).',
+    fields: [
+      { name: 'nodeNums', label: 'Watch nodes', kind: 'nodeMulti', help: 'Pick the nodes to watch. Stationary nodes (mobile = 0) are listed first with a Stationary badge.' },
+      { name: 'thresholdMeters', label: 'Threshold (meters)', kind: 'number', placeholder: '100', help: 'Alert when the node is farther than this many metres from its home position. Default 100.' },
+      COOLDOWN,
+      COOLDOWN_SCOPE,
+    ],
+  },
 ];
 
 // ─── Comparison field registry (event / node / latest-telemetry) ─────────────
 
-const SUBJECT_NODE_TRIGGERS = ['trigger.message', 'trigger.nodeDiscovered', 'trigger.nodeUpdated', 'trigger.telemetry', 'trigger.geofence'];
+const SUBJECT_NODE_TRIGGERS = ['trigger.message', 'trigger.nodeDiscovered', 'trigger.nodeUpdated', 'trigger.telemetry', 'trigger.geofence', 'trigger.becameMobile', 'trigger.leftHome'];
 const hasSubjectNode = (t: string) => SUBJECT_NODE_TRIGGERS.includes(t);
 
 const EVENT_NUMERIC: Record<string, FieldOpt[]> = {
@@ -213,6 +234,16 @@ const EVENT_NUMERIC: Record<string, FieldOpt[]> = {
   'trigger.telemetry': [{ value: 'value', label: 'Reading value' }, { value: 'nodeNum', label: 'Node #' }],
   'trigger.nodeUpdated': [{ value: 'nodeNum', label: 'Node #' }],
   'trigger.nodeDiscovered': [{ value: 'nodeNum', label: 'Node #' }],
+  'trigger.becameMobile': [{ value: 'nodeNum', label: 'Node #' }, { value: 'mobile', label: 'Mobile flag (1)' }, { value: 'previousMobile', label: 'Previous mobile flag' }],
+  'trigger.leftHome': [
+    { value: 'nodeNum', label: 'Node #' },
+    { value: 'distanceMeters', label: 'Distance from home (m)' },
+    { value: 'thresholdMeters', label: 'Threshold (m)' },
+    { value: 'latitude', label: 'Latitude' },
+    { value: 'longitude', label: 'Longitude' },
+    { value: 'homeLat', label: 'Home latitude' },
+    { value: 'homeLon', label: 'Home longitude' },
+  ],
 };
 const EVENT_STRING: Record<string, FieldOpt[]> = {
   'trigger.message': [
@@ -236,6 +267,7 @@ const NODE_NUMERIC: FieldOpt[] = [
   { value: 'node.channelUtilization', label: 'Channel utilization' }, { value: 'node.airUtilTx', label: 'Air util TX' },
   { value: 'node.snr', label: 'Last SNR' },
   { value: 'node.latitude', label: 'Latitude' }, { value: 'node.longitude', label: 'Longitude' }, { value: 'node.altitude', label: 'Altitude' },
+  { value: 'node.mobile', label: 'Mobile flag (1 = mobile, 0 = stationary)' },
 ];
 const NODE_STRING: FieldOpt[] = [
   { value: 'node.longName', label: 'Long name' }, { value: 'node.shortName', label: 'Short name' },

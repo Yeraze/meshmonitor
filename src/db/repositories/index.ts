@@ -69,6 +69,8 @@ export type {
   UpdateVariableInput,
   AutomationVariableValueRecord,
 } from './automationVariables.js';
+export { AutomationHomeAnchorsRepository } from './automationHomeAnchors.js';
+export type { AutomationHomeAnchor } from './automationHomeAnchors.js';
 export { SavedRegionsRepository, normalizeRegionName } from './savedRegions.js';
 export type { SavedRegion } from './savedRegions.js';
 export { SourcesRepository } from './sources.js';

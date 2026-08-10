@@ -59,6 +59,7 @@ import {
   DeadDropRepository,
   AutomationsRepository,
   AutomationVariablesRepository,
+  AutomationHomeAnchorsRepository,
   SavedRegionsRepository,
   SolarEstimatesRepository,
   NewsCacheRepository,
@@ -529,6 +530,7 @@ class DatabaseService {
   public deadDropRepo: DeadDropRepository | null = null;
   public automationsRepo: AutomationsRepository | null = null;
   public automationVariablesRepo: AutomationVariablesRepository | null = null;
+  public automationHomeAnchorsRepo: AutomationHomeAnchorsRepository | null = null;
   public savedRegionsRepo: SavedRegionsRepository | null = null;
   public solarEstimatesRepo: SolarEstimatesRepository | null = null;
   public newsCacheRepo: NewsCacheRepository | null = null;
@@ -612,6 +614,11 @@ class DatabaseService {
   get automationVariables(): AutomationVariablesRepository {
     if (!this.automationVariablesRepo) throw new Error('Database not initialized');
     return this.automationVariablesRepo;
+  }
+
+  get automationHomeAnchors(): AutomationHomeAnchorsRepository {
+    if (!this.automationHomeAnchorsRepo) throw new Error('Database not initialized');
+    return this.automationHomeAnchorsRepo;
   }
 
   get savedRegions(): SavedRegionsRepository {
@@ -990,6 +997,7 @@ class DatabaseService {
       this.deadDropRepo = new DeadDropRepository(drizzleDb, this.drizzleDbType);
       this.automationsRepo = new AutomationsRepository(drizzleDb, this.drizzleDbType);
       this.automationVariablesRepo = new AutomationVariablesRepository(drizzleDb, this.drizzleDbType);
+      this.automationHomeAnchorsRepo = new AutomationHomeAnchorsRepository(drizzleDb, this.drizzleDbType);
       this.savedRegionsRepo = new SavedRegionsRepository(drizzleDb, this.drizzleDbType);
       this.solarEstimatesRepo = new SolarEstimatesRepository(drizzleDb, this.drizzleDbType);
       this.newsCacheRepo = new NewsCacheRepository(drizzleDb, this.drizzleDbType);
@@ -1730,9 +1738,9 @@ class DatabaseService {
    * Async version of updateNodeMobility - works for all database backends
    * Detects if a node has moved more than 100 meters based on position history
    * @param nodeId The node ID to check
-   * @returns The updated mobility status (0 = stationary, 1 = mobile)
+   * @returns Previous and current mobility status (0 = stationary, 1 = mobile)
    */
-  async updateNodeMobilityAsync(nodeId: string): Promise<number> {
+  async updateNodeMobilityAsync(nodeId: string): Promise<{ previous: number; current: number }> {
     // Delegates the movement heuristic to NodeMobilityService; the cache patch
     // stays here so the service has no direct dependency on the facade's cache.
     return updateNodeMobility(nodeId, {
