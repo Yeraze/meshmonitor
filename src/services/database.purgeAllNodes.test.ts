@@ -9,6 +9,7 @@
  * @vitest-environment node
  */
 import { describe, it, expect, beforeAll, vi } from 'vitest';
+import type { AutoFavoriteTargetInput } from '../db/repositories/autoFavoriteTargets.js';
 
 // ─── Mock environment to point at in-memory SQLite ────────────────────────────
 
@@ -159,6 +160,66 @@ describe('DatabaseService.purgeAllNodesAsync — auto-traceroute/time-sync allow
     // Cross-source isolation — purging A must not disturb B's selection.
     expect(await databaseService.autoTraceroute.getAutoTracerouteNodes('srcB')).toEqual([7002]);
     expect(await databaseService.timeSync.getAutoTimeSyncNodes('srcB')).toEqual([7002]);
+  });
+});
+
+describe('DatabaseService.purgeAllNodesAsync — auto-favorite targets + ledger (#4633)', () => {
+  const target = (sourceId: string, targetNodeNum: number): AutoFavoriteTargetInput => ({
+    sourceId,
+    targetNodeNum,
+    enabled: true,
+    useNeighborInfo: true,
+    useTraceroutes: false,
+    intervalHours: 6,
+    maxNewPerCycle: 3,
+    maxRefavoritePerCycle: 1,
+    maxNeighborAgeHours: 48,
+    eligibleRoles: 'CLIENT',
+  });
+
+  beforeAll(async () => {
+    await databaseService.waitForReady();
+    for (let i = 0; i < 50 && !databaseService.autoFavoriteTargetsRepo; i++) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    // Same reasoning as the #4629 block above: the purge clear is guarded by
+    // `if (this.autoFavoriteTargetsRepo)`, so an uninitialised repo would make
+    // the fix a silent no-op. Fail here instead.
+    expect(databaseService.autoFavoriteTargetsRepo).toBeTruthy();
+  });
+
+  it('clears the target config AND the assignment ledger so a purge does not resume favoriting reappearing nodes', async () => {
+    const repo = databaseService.autoFavoriteTargets;
+    await repo.upsertTarget(target('default', 6001));
+    // A recorded assignment on that target — the stale ledger that otherwise
+    // keeps claiming a neighbour is "already favorited" on a purged node.
+    await repo.recordAssignment('default', 6001, 6002, 'neighbor', Date.now());
+
+    expect((await repo.getTargetsForSource('default')).map((t) => Number(t.targetNodeNum))).toEqual([6001]);
+    expect((await repo.getAssignments('default', 6001)).length).toBe(1);
+
+    await databaseService.purgeAllNodesAsync();
+
+    // Both tables empty — the #4633 regression assertion. targetNodeNum is not
+    // `nodeNum`, so these tables never showed up in a node-keyed purge scan.
+    expect(await repo.getTargetsForSource('default')).toEqual([]);
+    expect(await repo.getAssignments('default', 6001)).toEqual([]);
+  });
+
+  it('scoped to one source, clears only that source and leaves other sources configured', async () => {
+    const repo = databaseService.autoFavoriteTargets;
+    await repo.upsertTarget(target('srcA', 8001));
+    await repo.upsertTarget(target('srcB', 8002));
+    await repo.recordAssignment('srcA', 8001, 8010, 'neighbor', Date.now());
+    await repo.recordAssignment('srcB', 8002, 8020, 'neighbor', Date.now());
+
+    await databaseService.purgeAllNodesAsync('srcA');
+
+    expect(await repo.getTargetsForSource('srcA')).toEqual([]);
+    expect(await repo.getAssignments('srcA', 8001)).toEqual([]);
+    // Cross-source isolation — purging A must not disturb B's tuned config or ledger.
+    expect((await repo.getTargetsForSource('srcB')).map((t) => Number(t.targetNodeNum))).toEqual([8002]);
+    expect((await repo.getAssignments('srcB', 8002)).length).toBe(1);
   });
 });
 
