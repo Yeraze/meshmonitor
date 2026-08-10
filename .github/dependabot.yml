@@ -54,6 +54,17 @@ updates:
     labels:
       - "dependencies"
       - "github-actions"
+    groups:
+      # github/codeql-action ships init/autobuild/analyze/upload-sarif as
+      # sibling actions in one repo, and they MUST run at the same version —
+      # init loads a config file that autobuild refuses to accept from a
+      # different release. Without this group Dependabot opens one PR per
+      # sibling, each broken in isolation; every one has to be closed and
+      # replaced by a single hand-batched bump (see #4519/#4521/#4531 and
+      # the batch that closed #4635/#4637/#4644).
+      codeql-action:
+        patterns:
+          - "github/codeql-action*"
 
   # Enable security updates for Docker
   - package-ecosystem: "docker"
