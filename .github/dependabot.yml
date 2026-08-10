@@ -20,6 +20,14 @@ updates:
       # until the tooling ecosystem ships TS7-native support.
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
+      # maplibre-gl 6 is ESM-only (default import removed) and reorganises
+      # Map/Camera/events. Harder blocker: @maplibre/maplibre-gl-leaflet, which
+      # backs VectorTileLayer, has no v6-compatible release (peer range stops
+      # at ^5.0.0, last publish a year ago). Hold major bumps until that
+      # adapter ships v6 support or VectorTileLayer is rewritten. See #4650
+      # for the concrete unblock plan; closed #4646 shows the CI failure.
+      - dependency-name: "maplibre-gl"
+        update-types: ["version-update:semver-major"]
     groups:
       development-dependencies:
         patterns:
@@ -54,6 +62,17 @@ updates:
     labels:
       - "dependencies"
       - "github-actions"
+    groups:
+      # github/codeql-action ships init/autobuild/analyze/upload-sarif as
+      # sibling actions in one repo, and they MUST run at the same version —
+      # init loads a config file that autobuild refuses to accept from a
+      # different release. Without this group Dependabot opens one PR per
+      # sibling, each broken in isolation; every one has to be closed and
+      # replaced by a single hand-batched bump (see #4519/#4521/#4531 and
+      # the batch that closed #4635/#4637/#4644).
+      codeql-action:
+        patterns:
+          - "github/codeql-action*"
 
   # Enable security updates for Docker
   - package-ecosystem: "docker"
