@@ -109,6 +109,33 @@ export class AutoFavoriteTargetsRepository extends BaseRepository {
       .where(and(eq(autoFavoriteTargets.sourceId, sourceId), eq(autoFavoriteTargets.targetNodeNum, targetNodeNum)));
   }
 
+  /**
+   * Remove every target config and its assignment ledger, scoped to one source
+   * or (when `sourceId` is omitted) across all sources.
+   *
+   * Called from the node purge (#4633). The targets are keyed by
+   * `targetNodeNum` and the ledger by assigned `nodeNum` — neither derived from
+   * the `nodes` table — so both survive a purge unless cleared here, and once
+   * the same physical nodes reappear the automation silently resumes on them.
+   * Assignments are deleted first so the ledger never outlives its target row.
+   * The scoped/unscoped split matches the sibling allowlists (#4630): every
+   * production caller passes a sourceId, but a global purge clears every one.
+   */
+  async clearAllForSource(sourceId?: string): Promise<void> {
+    const { autoFavoriteTargets, autoFavoriteAssignments } = this.tables;
+    if (sourceId) {
+      await this.db
+        .delete(autoFavoriteAssignments)
+        .where(eq(autoFavoriteAssignments.sourceId, sourceId));
+      await this.db
+        .delete(autoFavoriteTargets)
+        .where(eq(autoFavoriteTargets.sourceId, sourceId));
+    } else {
+      await this.db.delete(autoFavoriteAssignments);
+      await this.db.delete(autoFavoriteTargets);
+    }
+  }
+
   /** Record that a cycle ran for a target (lastRunAt). */
   async touchLastRun(sourceId: string, targetNodeNum: number, ts: number): Promise<void> {
     const { autoFavoriteTargets } = this.tables;

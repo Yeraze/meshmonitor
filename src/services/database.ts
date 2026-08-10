@@ -3453,6 +3453,18 @@ class DatabaseService {
           logger.error('Failed to clear auto-time-sync node list during purge:', err);
         }
       }
+      // Clear the Automated Remote Favorites config and its assignment ledger
+      // for the same reason (issue #4633). Unlike the two allowlists above these
+      // rows carry tuned settings, not just a node selection — clearing them on
+      // purge is the deliberate choice for #4633, matching #4630's "a purge is a
+      // clean slate" behavior rather than silently resuming on reappearing nodes.
+      if (this.autoFavoriteTargetsRepo) {
+        try {
+          await this.autoFavoriteTargetsRepo.clearAllForSource(sourceId);
+        } catch (err) {
+          logger.error('Failed to clear auto-favorite targets during purge:', err);
+        }
+      }
 
       // Finally delete the nodes themselves
       if (this.nodesRepo) {
