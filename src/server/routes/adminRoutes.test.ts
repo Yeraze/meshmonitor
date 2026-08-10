@@ -455,3 +455,138 @@ describe('adminRoutes — TX-disabled mapping + txEnabled preservation (#4294)',
     });
   });
 });
+
+describe('adminRoutes — setSecurityConfig private key (#4632)', () => {
+  let harness: RouteTestHarness;
+  // A real X25519 pair, so the derived public key can be asserted exactly.
+  let pair: { priv: string; pub: string };
+
+  function makeManager(overrides: Record<string, unknown>): ISourceManager {
+    return {
+      sourceId: harness.sourceA,
+      sourceType: 'meshtastic_tcp',
+      start: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn().mockResolvedValue(undefined),
+      getStatus: vi.fn().mockReturnValue({ sourceId: harness.sourceA, sourceName: 'A', sourceType: 'meshtastic_tcp', connected: true }),
+      getLocalNodeInfo: vi.fn().mockReturnValue({ nodeNum: 1, nodeId: '!00000001', longName: 'Local', shortName: 'LOC' }),
+      getSecurityKeys: vi.fn().mockReturnValue({ publicKey: 'OLDPUBLICKEYbase64AAAAAAAAAAAAAAAAAAAAAAAAA=', privateKey: 'OLDPRIVATEKEYbase64AAAAAAAAAAAAAAAAAAAAAAAA=' }),
+      getSessionPasskey: vi.fn().mockReturnValue(new Uint8Array([1, 2, 3, 4])),
+      getSessionPasskeyStatus: vi.fn().mockReturnValue({ hasPasskey: true }),
+      sendAdminCommand: vi.fn().mockResolvedValue(undefined),
+      sendAdminCommandAwaitAck: vi.fn().mockResolvedValue({ acked: true, timedOut: false }),
+      updateCachedDeviceConfig: vi.fn(),
+      startDistanceDeleteScheduler: vi.fn().mockResolvedValue(undefined),
+      stopDistanceDeleteScheduler: vi.fn(),
+      isTxEnabled: vi.fn().mockReturnValue(true),
+      ...overrides,
+    } as unknown as ISourceManager;
+  }
+
+  beforeEach(async () => {
+    const { generateKeyPairSync } = await import('node:crypto');
+    const kp = generateKeyPairSync('x25519');
+    pair = {
+      priv: kp.privateKey.export({ format: 'der', type: 'pkcs8' }).subarray(-32).toString('base64'),
+      pub: kp.publicKey.export({ format: 'der', type: 'spki' }).subarray(-32).toString('base64'),
+    };
+    harness = await createRouteTestApp({ mount: (app) => app.use('/', adminRoutes) });
+    vi.spyOn(protobufService, 'createSetSecurityConfigMessage').mockReturnValue(new Uint8Array([0]));
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await sourceManagerRegistry.removeManager(harness.sourceA);
+    await harness.cleanup();
+  });
+
+  it('rejects an invalid private key with 400, before touching the device', async () => {
+    const sendAdminCommand = vi.fn().mockResolvedValue(undefined);
+    await sourceManagerRegistry.addManager(makeManager({ sendAdminCommand }));
+    const agent = await harness.loginAs(harness.admin);
+
+    const res = await agent.post('/commands').send({
+      command: 'setSecurityConfig',
+      sourceId: harness.sourceA,
+      nodeNum: 1,
+      config: { isManaged: false, serialEnabled: true, debugLogApiEnabled: false, adminChannelEnabled: false, privateKey: 'not-a-valid-key' },
+    });
+
+    expect(res.status).toBe(400);
+    expect(sendAdminCommand).not.toHaveBeenCalled();
+    expect(protobufService.createSetSecurityConfigMessage).not.toHaveBeenCalled();
+  });
+
+  it('refuses a private key aimed at a remote node with 400', async () => {
+    await sourceManagerRegistry.addManager(makeManager({}));
+    const agent = await harness.loginAs(harness.admin);
+
+    const res = await agent.post('/commands').send({
+      command: 'setSecurityConfig',
+      sourceId: harness.sourceA,
+      nodeNum: 999, // not the local node (1)
+      config: { isManaged: false, serialEnabled: true, debugLogApiEnabled: false, adminChannelEnabled: false, privateKey: pair.priv },
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/local node/i);
+  });
+
+  it('sends the new private key with its DERIVED public key, not the stale one', async () => {
+    await sourceManagerRegistry.addManager(makeManager({}));
+    const agent = await harness.loginAs(harness.admin);
+
+    const res = await agent.post('/commands').send({
+      command: 'setSecurityConfig',
+      sourceId: harness.sourceA,
+      nodeNum: 1, // local node
+      config: { isManaged: false, serialEnabled: true, debugLogApiEnabled: false, adminChannelEnabled: false, privateKey: pair.priv },
+    });
+
+    expect(res.status).toBe(200);
+    const sentConfig = (protobufService.createSetSecurityConfigMessage as unknown as import('vitest').Mock).mock.calls[0][0];
+    expect(sentConfig.privateKey).toBe(pair.priv);
+    // The matching public key, derived — never the stored OLD one.
+    expect(sentConfig.publicKey).toBe(pair.pub);
+    expect(sentConfig.publicKey).not.toMatch(/^OLDPUBLIC/);
+  });
+
+  it('treats re-submitting the current key (even base64:-prefixed) as unchanged', async () => {
+    // getSecurityKeys reports a bare key; the client hands back the same one
+    // with a base64: prefix. Normalized comparison must see them as equal and
+    // preserve the identity rather than deriving a "new" public key.
+    await sourceManagerRegistry.addManager(makeManager({
+      getSecurityKeys: vi.fn().mockReturnValue({ publicKey: pair.pub, privateKey: pair.priv }),
+    }));
+    const agent = await harness.loginAs(harness.admin);
+
+    const res = await agent.post('/commands').send({
+      command: 'setSecurityConfig',
+      sourceId: harness.sourceA,
+      nodeNum: 1,
+      config: { isManaged: false, serialEnabled: true, debugLogApiEnabled: false, adminChannelEnabled: false, privateKey: `base64:${pair.priv}` },
+    });
+
+    expect(res.status).toBe(200);
+    const sentConfig = (protobufService.createSetSecurityConfigMessage as unknown as import('vitest').Mock).mock.calls[0][0];
+    // Preserved from the existing pair, not re-derived from a "changed" key.
+    expect(sentConfig.publicKey).toBe(pair.pub);
+    expect(sentConfig.privateKey).toBe(pair.priv);
+  });
+
+  it('preserves both keys unchanged when no private key is supplied', async () => {
+    await sourceManagerRegistry.addManager(makeManager({}));
+    const agent = await harness.loginAs(harness.admin);
+
+    const res = await agent.post('/commands').send({
+      command: 'setSecurityConfig',
+      sourceId: harness.sourceA,
+      nodeNum: 1,
+      config: { isManaged: true, serialEnabled: true, debugLogApiEnabled: false, adminChannelEnabled: false },
+    });
+
+    expect(res.status).toBe(200);
+    const sentConfig = (protobufService.createSetSecurityConfigMessage as unknown as import('vitest').Mock).mock.calls[0][0];
+    expect(sentConfig.publicKey).toMatch(/^OLDPUBLIC/);
+    expect(sentConfig.privateKey).toMatch(/^OLDPRIVATE/);
+  });
+});
