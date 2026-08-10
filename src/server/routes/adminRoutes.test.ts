@@ -550,6 +550,29 @@ describe('adminRoutes — setSecurityConfig private key (#4632)', () => {
     expect(sentConfig.publicKey).not.toMatch(/^OLDPUBLIC/);
   });
 
+  it('treats re-submitting the current key (even base64:-prefixed) as unchanged', async () => {
+    // getSecurityKeys reports a bare key; the client hands back the same one
+    // with a base64: prefix. Normalized comparison must see them as equal and
+    // preserve the identity rather than deriving a "new" public key.
+    await sourceManagerRegistry.addManager(makeManager({
+      getSecurityKeys: vi.fn().mockReturnValue({ publicKey: pair.pub, privateKey: pair.priv }),
+    }));
+    const agent = await harness.loginAs(harness.admin);
+
+    const res = await agent.post('/commands').send({
+      command: 'setSecurityConfig',
+      sourceId: harness.sourceA,
+      nodeNum: 1,
+      config: { isManaged: false, serialEnabled: true, debugLogApiEnabled: false, adminChannelEnabled: false, privateKey: `base64:${pair.priv}` },
+    });
+
+    expect(res.status).toBe(200);
+    const sentConfig = (protobufService.createSetSecurityConfigMessage as unknown as import('vitest').Mock).mock.calls[0][0];
+    // Preserved from the existing pair, not re-derived from a "changed" key.
+    expect(sentConfig.publicKey).toBe(pair.pub);
+    expect(sentConfig.privateKey).toBe(pair.priv);
+  });
+
   it('preserves both keys unchanged when no private key is supplied', async () => {
     await sourceManagerRegistry.addManager(makeManager({}));
     const agent = await harness.loginAs(harness.admin);

@@ -29,7 +29,7 @@ import {
   type AdminOperationStatus,
   type AdminOperationResult,
 } from '../services/adminOperationService.js';
-import { isValidMeshtasticKey, derivePublicKey } from '../utils/meshtasticKeys.js';
+import { isValidMeshtasticKey, derivePublicKey, normalizeMeshtasticKey } from '../utils/meshtasticKeys.js';
 
 const router = express.Router();
 
@@ -1869,8 +1869,12 @@ router.post('/commands', requireAdmin(), async (req, res) => {
               const providedPrivate = typeof params.config.privateKey === 'string'
                 ? params.config.privateKey.trim()
                 : '';
+              // Compare normalized (strip any base64: prefix) so re-submitting
+              // the SAME key the firmware reported — possibly with a prefix — is
+              // correctly seen as unchanged and preserves the identity.
               const isNewPrivateKey = providedPrivate.length > 0
-                && providedPrivate !== existingKeys.privateKey;
+                && normalizeMeshtasticKey(providedPrivate)
+                   !== normalizeMeshtasticKey(existingKeys.privateKey ?? '');
               if (isNewPrivateKey) {
                 // Validity is already enforced above (400); this is the trusted
                 // path that derives the matching public key.
@@ -1884,9 +1888,17 @@ router.post('/commands', requireAdmin(), async (req, res) => {
               logger.debug('Preserving existing public/private keys for local node security config update');
               return {
                 ...params.config,
-                // Include existing keys if not explicitly provided
-                publicKey: params.config.publicKey || existingKeys.publicKey,
-                privateKey: params.config.privateKey || existingKeys.privateKey
+                // Include existing keys if not explicitly provided. Normalize a
+                // provided key (strip any base64: prefix) before it reaches the
+                // protobuf encoder — re-submitting the current key with a prefix
+                // must not send `base64:…`, which is not valid base64 and would
+                // corrupt the identity.
+                publicKey: params.config.publicKey
+                  ? normalizeMeshtasticKey(params.config.publicKey)
+                  : existingKeys.publicKey,
+                privateKey: params.config.privateKey
+                  ? normalizeMeshtasticKey(params.config.privateKey)
+                  : existingKeys.privateKey
               };
             }
             // For remote nodes, explicitly exclude publicKey/privateKey to let firmware preserve them

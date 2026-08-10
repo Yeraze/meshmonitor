@@ -2,21 +2,9 @@ import React, { useCallback, useRef, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
-
-/**
- * True when `value` is base64 that decodes to exactly 32 bytes — the shape of a
- * Meshtastic private key (#4632). Mirrors the server-side `isValidMeshtasticKey`
- * so the client rejects a bad paste before it ever reaches the admin channel.
- */
-const isValidMeshtasticKey = (value: string): boolean => {
-  const trimmed = value.trim().replace(/^base64:/, '');
-  if (!/^[A-Za-z0-9+/]{43}=$/.test(trimmed)) return false;
-  try {
-    return atob(trimmed).length === 32;
-  } catch {
-    return false;
-  }
-};
+// Shared with the server so the client's save gate can't drift from what the
+// backend accepts (#4632).
+import { isValidMeshtasticKey } from '../../utils/meshtasticKeyFormat';
 
 /**
  * Validates if a string is valid base64 format
@@ -88,7 +76,12 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
   const [isEditingPrivateKey, setIsEditingPrivateKey] = useState(false);
   const canSetPrivateKey = typeof setPrivateKey === 'function';
 
-  // Track initial values for change detection
+  // Track initial values for change detection. This snapshot is taken once at
+  // mount and is only correct because the whole Configuration tab is gated
+  // behind `isLoading` (ConfigurationTab.tsx) — it renders this section only
+  // AFTER getSecurityKeys() has resolved, so `privateKey` is already the loaded
+  // value here, not the empty initial state. If that gate is ever removed this
+  // baseline would capture '' and the loaded key would read as a change.
   const initialValuesRef = useRef({
     adminKeys: [...adminKeys],
     isManaged,

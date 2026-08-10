@@ -14,34 +14,19 @@
  */
 
 import { createPrivateKey, createPublicKey } from 'node:crypto';
+import {
+  MESHTASTIC_KEY_BYTES,
+  isValidMeshtasticKey,
+  normalizeMeshtasticKey,
+} from '../../utils/meshtasticKeyFormat.js';
 
-/** Raw key length for X25519, in bytes. */
-export const MESHTASTIC_KEY_BYTES = 32;
-
-/**
- * True when `value` is base64 that decodes to exactly 32 bytes — the shape of a
- * Meshtastic private (or public) key. Rejects hex, wrong-length, and non-base64
- * input. A `base64:` prefix (as admin keys allow) is accepted and stripped.
- */
-export function isValidMeshtasticKey(value: string): boolean {
-  return decodeKey(value) !== null;
-}
+// Format validation is shared with the client so the two can't drift.
+export { MESHTASTIC_KEY_BYTES, isValidMeshtasticKey, normalizeMeshtasticKey };
 
 /** Decode a base64 key to its 32 raw bytes, or null if it is not a valid key. */
 export function decodeKey(value: string): Buffer | null {
-  if (typeof value !== 'string') return null;
-  const trimmed = value.trim().replace(/^base64:/, '');
-  if (trimmed.length === 0) return null;
-  // Base64 for 32 bytes is 44 chars incl. one '=' pad. Reject anything else up
-  // front so a shorter/longer string can't slip through Buffer's lenient decode.
-  if (!/^[A-Za-z0-9+/]{43}=$/.test(trimmed)) return null;
-  let buf: Buffer;
-  try {
-    buf = Buffer.from(trimmed, 'base64');
-  } catch {
-    return null;
-  }
-  return buf.length === MESHTASTIC_KEY_BYTES ? buf : null;
+  if (!isValidMeshtasticKey(value)) return null;
+  return Buffer.from(normalizeMeshtasticKey(value), 'base64');
 }
 
 /**

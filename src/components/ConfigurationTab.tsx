@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { UiIcon } from './icons';
 import { useTranslation } from 'react-i18next';
 import apiService from '../services/api';
+import { normalizeMeshtasticKey } from '../utils/meshtasticKeyFormat';
 import { useToast } from './ToastContainer';
 import { useSource } from '../contexts/SourceContext';
 import type { DeviceInfo, Channel } from '../types/device';
@@ -1468,7 +1469,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
       // local-node-only.
       const newPrivateKey = securityPrivateKey.trim();
       const privateKeyChanged =
-        newPrivateKey.length > 0 && newPrivateKey !== loadedSecurityPrivateKeyRef.current.trim();
+        newPrivateKey.length > 0 &&
+        normalizeMeshtasticKey(newPrivateKey) !== normalizeMeshtasticKey(loadedSecurityPrivateKeyRef.current);
 
       await apiService.setSecurityConfig({
         adminKeys: validAdminKeys,
