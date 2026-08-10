@@ -137,7 +137,7 @@
     "eslint": "^10.8.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.3",
-    "globals": "^17.8.0",
+    "globals": "^17.9.0",
     "gray-matter": "^4.0.3",
     "jsdom": "^30.0.1",
     "prismjs": "^1.30.0",
