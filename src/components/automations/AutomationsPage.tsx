@@ -229,17 +229,35 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
       .then((r) => setRegions((r.regions ?? []).map((x) => x.name)))
       .catch(() => setRegions([]));
     apiService.get<Array<{
-      nodeNum: number; longName?: string; shortName?: string; nodeId?: string;
-      mobile?: number; isMobile?: boolean;
+      nodeNum: number;
+      longName?: string;
+      shortName?: string;
+      nodeId?: string;
+      mobile?: number;
+      isMobile?: boolean;
+      user?: { id?: string; longName?: string; shortName?: string };
     }>>('/api/nodes')
-      .then((list) => setNodes((list ?? []).map((n) => ({
-        nodeNum: Number(n.nodeNum),
-        longName: n.longName,
-        shortName: n.shortName,
-        nodeId: n.nodeId,
-        mobile: n.mobile,
-        isMobile: n.isMobile,
-      }))))
+      .then((list) => {
+        const rows = Array.isArray(list) ? list : [];
+        setNodes(rows
+          .filter((n) => {
+            const num = Number(n.nodeNum);
+            // Drop broadcast / unset MeshCore stubs from the hand-picker.
+            return Number.isFinite(num) && num > 0 && num !== 0xffffffff;
+          })
+          .map((n) => {
+            const nodeNum = Number(n.nodeNum);
+            const nodeId = n.nodeId || n.user?.id || `!${(nodeNum >>> 0).toString(16).padStart(8, '0')}`;
+            return {
+              nodeNum,
+              longName: n.longName || n.user?.longName,
+              shortName: n.shortName || n.user?.shortName,
+              nodeId,
+              mobile: n.mobile,
+              isMobile: n.isMobile,
+            };
+          }));
+      })
       .catch(() => setNodes([]));
   }, []);
 

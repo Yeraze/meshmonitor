@@ -472,7 +472,7 @@ export const ACTIONS: BlockDef[] = [
     label: 'Send a message',
     description: 'Send text to a channel or as a DM.',
     fields: [
-      { name: 'text', label: 'Message', kind: 'textarea', tokens: true, placeholder: 'Hello {{ trigger.senderLabel }}!', help: 'Use {{ trigger.field }} or {{ var.name }} to insert values. {{ trigger.senderLabel }} is the universal "who sent this" label (works on Meshtastic and MeshCore).' },
+      { name: 'text', label: 'Message', kind: 'textarea', tokens: true, placeholder: 'Hello {{ trigger.senderLabel }}!', help: 'Use {{ trigger.field }}, {{ node.longName }}, or {{ var.name }} to insert values. On Became mobile / Left home, prefer {{ node.longName }} (or {{ node.nodeId }}) — those triggers have no senderLabel.' },
       { name: 'sourceIds', label: 'Send via sources', kind: 'sendSourceMulti', help: 'Which radios to send through (MQTT sources are receive-only and excluded). Leave none to use the source that triggered the automation — but a source IS required for source-less triggers like System events and Schedules.' },
       { name: 'channels', label: 'On channels', kind: 'channelMulti', help: 'Channels to post to, unified by name + key across your sources (the correct local slot is resolved per source). Leave none to use the triggering channel.' },
       { name: 'to', label: 'DM to node #', kind: 'text', tokens: true, placeholder: 'blank = channel; {{ trigger.from }} replies to sender', advanced: true },

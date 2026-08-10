@@ -45,6 +45,39 @@ export const TRIGGER_TOKENS: Record<string, Array<[string, string]>> = {
   'trigger.leftHome': [['nodeNum', 'Node number'], ['latitude', 'Node latitude'], ['longitude', 'Node longitude'], ['homeLat', 'Home latitude'], ['homeLon', 'Home longitude'], ['distanceMeters', 'Distance from home (m)'], ['thresholdMeters', 'Configured threshold (m)']],
   'trigger.schedule': [],
 };
+
+/**
+ * Hydrated subject-node tokens (`{{ node.longName }}`, …). Available on every
+ * trigger that has a subject node — same paths conditions use in fieldselect.
+ * Not under `trigger.*`: they hydrate from the DB node row at evaluation time.
+ */
+export const NODE_TOKENS: Array<[string, string]> = [
+  ['longName', 'Node long name'],
+  ['shortName', 'Node short name'],
+  ['nodeId', 'Node id (!hex)'],
+  ['roleName', 'Role name (e.g. ROUTER)'],
+  ['batteryLevel', 'Battery level (%)'],
+  ['voltage', 'Voltage'],
+  ['hopsAway', 'Hops away'],
+  ['latitude', 'Latitude'],
+  ['longitude', 'Longitude'],
+  ['altitude', 'Altitude'],
+  ['mobile', 'Mobile flag (1 = mobile, 0 = stationary)'],
+  ['ageMinutes', 'Minutes since last heard'],
+  ['completeness', 'Node info completeness (complete / incomplete / unknown)'],
+];
+
+/** Triggers whose event carries a subject node (so `{{ node.* }}` can hydrate). */
+export const SUBJECT_NODE_TRIGGER_TYPES = [
+  'trigger.message',
+  'trigger.nodeDiscovered',
+  'trigger.nodeUpdated',
+  'trigger.telemetry',
+  'trigger.geofence',
+  'trigger.becameMobile',
+  'trigger.leftHome',
+] as const;
+
 export const UNIVERSAL_TOKENS: Array<[string, string]> = [['sourceId', 'The source the event came from'], ['timestamp', 'Event time (rendered as a local date/time)']];
 const TRIGGER_LABEL: Record<string, string> = {
   'trigger.message': 'Message', 'trigger.telemetry': 'Telemetry', 'trigger.nodeUpdated': 'Node updated',
@@ -71,6 +104,19 @@ export default function SubstitutionsHelpDrawer({ triggerType, variables, onClos
         <dt>{'{{ var.NAME.a.b }}'}</dt><dd>Index into a <strong>json</strong> variable (e.g. a “Run a script” result) — dotted path into the stored object/array. A whole object renders as JSON.</dd>
         <dt>{'{{ NOW }}'}</dt><dd>Current time (rendered as a local date/time).</dd>
       </dl>
+
+      {(SUBJECT_NODE_TRIGGER_TYPES as readonly string[]).includes(triggerType) && (
+        <div>
+          <h3>Subject node — current trigger</h3>
+          <p className="ae-muted">Hydrated from the node DB row at fire time. Use these for names on Became mobile / Left home / Node updated / …</p>
+          <dl>
+            {NODE_TOKENS.flatMap(([k, d]) => [
+              <dt key={`${k}-t`}>{`{{ node.${k} }}`}</dt>,
+              <dd key={`${k}-d`}>{d}</dd>,
+            ])}
+          </dl>
+        </div>
+      )}
 
       {order.filter((t) => TRIGGER_TOKENS[t]).map((t) => (
         <div key={t}>

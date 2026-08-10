@@ -212,6 +212,13 @@ export async function resolvePath(ctx: EngineEvalContext, path: string): Promise
     // Render objects/arrays as JSON so {{ var.obj }} shows the blob; scalars pass through.
     return typeof v === 'object' ? JSON.stringify(v) : (v as InterpolationValue);
   }
+  // Same namespaces conditions use (`node.*` / `telemetry.*`) so message templates
+  // can say {{ node.longName }} on becameMobile / leftHome / nodeUpdated / …
+  if (path.startsWith('node.') || path.startsWith('telemetry.')) {
+    const v = await resolveFieldValue(ctx, path);
+    if (v == null) return undefined;
+    return typeof v === 'object' ? JSON.stringify(v) : (v as InterpolationValue);
+  }
   return resolveTriggerPath(ctx.trigger, path, ctx.now);
 }
 

@@ -4,6 +4,7 @@ import {
   varContextFromTrigger,
   resolveFieldValue,
   getSubjectNode,
+  interpolateAsync,
   NODE_COMPLETENESS,
   type CooldownKeyResolution,
   type EngineEvalContext,
@@ -228,5 +229,61 @@ describe('resolveFieldValue: node.* (#4340 Phase 3)', () => {
     await resolveFieldValue(c, 'node.batteryLevel');
     await getSubjectNode(c);
     expect(spy.calls).toBe(1);
+  });
+});
+
+describe('interpolateAsync: node.* in message templates', () => {
+  const FAKE_VARS = { getValue: async () => null } as unknown as VariableResolver;
+
+  function evalCtx(opts: {
+    node?: NodeFacts | null;
+    subjectNodeNum?: number | null;
+    fields?: Record<string, unknown>;
+    triggerType?: string;
+  } = {}): EngineEvalContext {
+    const trigger: TriggerContext = {
+      triggerType: opts.triggerType ?? 'trigger.becameMobile',
+      sourceId: 'src-1',
+      subjectNodeNum: opts.subjectNodeNum === undefined ? 42 : opts.subjectNodeNum,
+      timestamp: 1_700_000_000_000,
+      fields: { nodeNum: 42, ...(opts.fields ?? {}) },
+    };
+    return {
+      trigger,
+      vars: FAKE_VARS,
+      data: {
+        getNode: async () => opts.node ?? null,
+        getTelemetry: async () => null,
+      },
+      varCtx: { sourceId: trigger.sourceId, nodeNum: trigger.subjectNodeNum },
+      now: 1_700_000_000_000,
+    };
+  }
+
+  it('substitutes {{ node.longName }} / {{ node.nodeId }} from the hydrated subject node', async () => {
+    const c = evalCtx({
+      node: { nodeNum: 42, longName: 'Roof Site', shortName: 'ROOF', nodeId: '!0000002a' },
+    });
+    expect(await interpolateAsync(
+      'A wild stationary node {{ node.longName }} ({{ node.nodeId }}) just uprooted itself!',
+      c,
+    )).toBe('A wild stationary node Roof Site (!0000002a) just uprooted itself!');
+  });
+
+  it('renders blank when the node row is missing', async () => {
+    const c = evalCtx({ node: null });
+    expect(await interpolateAsync('name=[{{ node.longName }}]', c)).toBe('name=[]');
+  });
+
+  it('still resolves trigger.* alongside node.*', async () => {
+    const c = evalCtx({
+      node: { nodeNum: 42, longName: 'Tower' },
+      fields: { distanceMeters: 250, thresholdMeters: 100 },
+      triggerType: 'trigger.leftHome',
+    });
+    expect(await interpolateAsync(
+      '{{ node.longName }} is {{ trigger.distanceMeters }}m from home (limit {{ trigger.thresholdMeters }}m)',
+      c,
+    )).toBe('Tower is 250m from home (limit 100m)');
   });
 });

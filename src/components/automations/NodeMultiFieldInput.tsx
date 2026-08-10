@@ -2,6 +2,8 @@
  * NodeMultiFieldInput — searchable multi-select of mesh nodes for automation
  * triggers (becameMobile / leftHome). Stationary nodes (mobile === 0 / !isMobile)
  * are listed first with a Stationary badge.
+ *
+ * @vitest-environment jsdom
  */
 import { useMemo, useState } from 'react';
 
@@ -28,8 +30,23 @@ function isStationary(n: NodeMultiOption): boolean {
   return true; // unknown / 0 / false → treat as stationary candidate
 }
 
-function labelOf(n: NodeMultiOption): string {
-  return n.longName || n.shortName || n.nodeId || String(n.nodeNum);
+/** Primary human label: long name → short name → node id → decimal nodeNum. */
+export function labelOf(n: NodeMultiOption): string {
+  const long = (n.longName || '').trim();
+  const short = (n.shortName || '').trim();
+  if (long) return long;
+  if (short) return short;
+  if (n.nodeId) return n.nodeId;
+  return `!${(Number(n.nodeNum) >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+/** Secondary identity chip — prefer short name when long name is shown, else node id. */
+function secondaryOf(n: NodeMultiOption): string | null {
+  const long = (n.longName || '').trim();
+  const short = (n.shortName || '').trim();
+  if (long && short && short !== long) return short;
+  if (n.nodeId && labelOf(n) !== n.nodeId) return n.nodeId;
+  return null;
 }
 
 export default function NodeMultiFieldInput({ value, onChange, nodes }: Props) {
@@ -44,14 +61,18 @@ export default function NodeMultiFieldInput({ value, onChange, nodes }: Props) {
     const filtered = !term
       ? nodes
       : nodes.filter((n) => {
-          const hay = `${labelOf(n)} ${n.nodeId ?? ''} ${n.nodeNum}`.toLowerCase();
+          const hay = `${labelOf(n)} ${n.shortName ?? ''} ${n.nodeId ?? ''} ${n.nodeNum}`.toLowerCase();
           return hay.includes(term);
         });
     return [...filtered].sort((a, b) => {
       const sa = isStationary(a) ? 0 : 1;
       const sb = isStationary(b) ? 0 : 1;
       if (sa !== sb) return sa - sb;
-      return labelOf(a).localeCompare(labelOf(b));
+      // Named nodes before id-only fallbacks within the same mobility group.
+      const na = (a.longName || a.shortName) ? 0 : 1;
+      const nb = (b.longName || b.shortName) ? 0 : 1;
+      if (na !== nb) return na - nb;
+      return labelOf(a).localeCompare(labelOf(b), undefined, { sensitivity: 'base' });
     });
   }, [nodes, search]);
 
@@ -71,7 +92,7 @@ export default function NodeMultiFieldInput({ value, onChange, nodes }: Props) {
         <input
           className="ae-input"
           value={search}
-          placeholder="Search nodes…"
+          placeholder="Search by name or node id…"
           onChange={(e) => setSearch(e.target.value)}
           style={{ flex: 1, minWidth: '10rem' }}
         />
@@ -88,16 +109,16 @@ export default function NodeMultiFieldInput({ value, onChange, nodes }: Props) {
       <div style={{ maxHeight: '14rem', overflowY: 'auto', border: '1px solid var(--border-color, #444)', borderRadius: 4, padding: '0.35rem 0.5rem' }}>
         {sorted.map((n) => {
           const stationary = isStationary(n);
+          const secondary = secondaryOf(n);
           return (
-            <label key={n.nodeNum} className="ae-switch" style={{ display: 'block', marginBottom: '0.2rem' }}>
+            <label key={n.nodeNum} className="ae-switch" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
               <input
                 type="checkbox"
                 checked={selected.includes(n.nodeNum)}
                 onChange={(e) => toggle(n.nodeNum, e.target.checked)}
               />
-              {' '}
-              {labelOf(n)}
-              <span className="ae-chip">#{n.nodeNum}</span>
+              <span style={{ fontWeight: 600 }}>{labelOf(n)}</span>
+              {secondary ? <span className="ae-chip">{secondary}</span> : null}
               {stationary
                 ? <span className="ae-chip" title="MeshMonitor marks this node stationary (mobile = 0)">Stationary</span>
                 : <span className="ae-chip" title="MeshMonitor marks this node mobile">Mobile</span>}
