@@ -5,7 +5,8 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import NodeMultiFieldInput, { labelOf } from './NodeMultiFieldInput';
+import NodeMultiFieldInput from './NodeMultiFieldInput';
+import { labelOf } from './nodeLabel';
 
 const nodes = [
   { nodeNum: 1, longName: 'Mobile Rover', shortName: 'ROVR', nodeId: '!00000001', isMobile: true },

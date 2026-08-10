@@ -92,8 +92,8 @@ export async function estimateHomeFromNodeHistory(
       pivoted.map((p) => ({ latitude: p.latitude, longitude: p.longitude })),
       refineRadius,
     );
-  } catch (e: any) {
-    logger.warn(`[leftHome] history estimate failed for ${nodeId}: ${e?.message}`);
+  } catch (e) {
+    logger.warn(`[leftHome] history estimate failed for ${nodeId}: ${e instanceof Error ? e.message : String(e)}`);
     return null;
   }
 }

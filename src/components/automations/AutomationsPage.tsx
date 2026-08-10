@@ -320,8 +320,8 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
           ? `Reset ${res.reset} home(s); seeded ${res.seeded} from position history.`
           : `Reset ${res.reset} home(s); seeded ${res.seeded} from history. No history yet for node #(s) ${pending.join(', ')} — next live fix will set those.`,
       );
-    } catch (e: any) {
-      setResetHomesMsg(e?.message ?? 'Failed to reset homes');
+    } catch (e) {
+      setResetHomesMsg(e instanceof Error ? e.message : 'Failed to reset homes');
     } finally {
       setResettingHomes(false);
     }

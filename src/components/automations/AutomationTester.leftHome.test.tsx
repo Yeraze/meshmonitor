@@ -8,7 +8,7 @@ import {
   leftHomeInputMode,
   leftHomeModeHint,
   leftHomeThresholdFromConfig,
-} from './AutomationTester';
+} from './automationTesterHelpers';
 
 describe('leftHome test input helpers', () => {
   it('reads threshold from the automation config (default 300)', () => {

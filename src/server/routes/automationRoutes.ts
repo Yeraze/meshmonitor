@@ -427,8 +427,8 @@ router.delete('/:id', canWrite, async (req: Request, res: Response) => {
     // Drop any left-home anchors owned by this automation.
     try {
       await databaseService.automationHomeAnchorsRepo?.deleteByAutomation(req.params.id);
-    } catch (e: any) {
-      logger.warn(`Failed to clean home anchors for automation ${req.params.id}: ${e?.message}`);
+    } catch (e) {
+      logger.warn(`Failed to clean home anchors for automation ${req.params.id}: ${e instanceof Error ? e.message : String(e)}`);
     }
     await reloadAutomations();
     res.json({ success: true });

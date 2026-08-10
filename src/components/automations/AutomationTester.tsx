@@ -10,6 +10,14 @@
 import { useState, type ReactNode } from 'react';
 import apiService from '../../services/api';
 import type { VariableOption, SourceOption } from './AutomationBuilder';
+import {
+  type EventState,
+  type FactState,
+  numOrUndef,
+  leftHomeThresholdFromConfig,
+  leftHomeInputMode,
+  leftHomeModeHint,
+} from './automationTesterHelpers';
 import SubstitutionsHelpDrawer from './SubstitutionsHelp';
 import { OUTCOME_META } from './outcomeMeta';
 import { UiIcon } from '../icons';
@@ -43,47 +51,6 @@ const KIND_BY_TRIGGER: Record<string, string> = {
   'trigger.leftHome': 'leftHome',
   'trigger.schedule': 'schedule',
 };
-
-type EventState = Record<string, string>;
-type FactState = Record<string, string>;
-
-function numOrUndef(v: string | undefined): number | undefined {
-  if (v === undefined || v === '') return undefined;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : undefined;
-}
-
-/** Read thresholdMeters from the compiled leftHome trigger (default 300). */
-export function leftHomeThresholdFromConfig(config: unknown): number {
-  const nodes = (config as { nodes?: Array<{ type?: string; params?: Record<string, unknown> }> } | null)?.nodes;
-  const trigger = nodes?.find((n) => n.type === 'trigger.leftHome');
-  const thr = Number(trigger?.params?.thresholdMeters ?? 300);
-  return Number.isFinite(thr) && thr > 0 ? thr : 300;
-}
-
-/** Which leftHome dry-run input path is active given the Test panel fields. */
-export function leftHomeInputMode(ev: EventState, facts: FactState): 'coordinates' | 'distance' | 'none' {
-  const hasCoords =
-    numOrUndef(facts.latitude) != null &&
-    numOrUndef(facts.longitude) != null &&
-    numOrUndef(ev.homeLat) != null &&
-    numOrUndef(ev.homeLon) != null;
-  if (hasCoords) return 'coordinates';
-  if (numOrUndef(ev.distanceMeters) != null) return 'distance';
-  return 'none';
-}
-
-export function leftHomeModeHint(ev: EventState, facts: FactState, automationThreshold: number): string {
-  const mode = leftHomeInputMode(ev, facts);
-  const thr = `Threshold: ${automationThreshold} m (from the automation — not editable here).`;
-  if (mode === 'coordinates') {
-    return `${thr} Using home + current coordinates to compute distance. The distance field is ignored while all four coords are set.`;
-  }
-  if (mode === 'distance') {
-    return `${thr} Using the distance field (${ev.distanceMeters} m). Fill home lat/lon and current lat/lon to compute distance from coordinates instead (coordinates take precedence).`;
-  }
-  return `${thr} Set either (1) home lat/lon + current lat/lon, or (2) a distance in metres. Dry-run fires only when the node is on the watch list and distance > threshold.`;
-}
 
 export default function AutomationTester({ getConfig, variables, sources }: Props) {
   const cfg = getConfig();

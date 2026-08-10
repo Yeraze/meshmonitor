@@ -26,7 +26,7 @@ export class AutomationHomeAnchorsRepository extends BaseRepository {
     return this.tables.automationHomeAnchors;
   }
 
-  private rowToRecord(row: any): AutomationHomeAnchor {
+  private rowToRecord(row: Record<string, unknown>): AutomationHomeAnchor {
     return {
       id: Number(row.id),
       automationId: String(row.automationId),

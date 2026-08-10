@@ -11,9 +11,8 @@
 import {
   TRIGGER_TOKENS,
   UNIVERSAL_TOKENS,
-  NODE_TOKENS,
-  SUBJECT_NODE_TRIGGER_TYPES,
 } from './SubstitutionsHelp';
+import { NODE_TOKENS, SUBJECT_NODE_TRIGGER_TYPES } from './substitutionNodeTokens';
 
 // Mirrors the engine's interpolate TOKEN regex.
 const TOKEN_RE = /\{\{\s*([^}]+?)\s*\}\}/g;

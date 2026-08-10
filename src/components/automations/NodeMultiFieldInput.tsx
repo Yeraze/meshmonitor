@@ -6,6 +6,7 @@
  * @vitest-environment jsdom
  */
 import { useMemo, useState } from 'react';
+import { labelOf } from './nodeLabel';
 
 export interface NodeMultiOption {
   nodeNum: number;
@@ -28,16 +29,6 @@ function isStationary(n: NodeMultiOption): boolean {
   if (n.isMobile === false) return true;
   if (n.mobile === 1 || n.mobile === true) return false;
   return true; // unknown / 0 / false → treat as stationary candidate
-}
-
-/** Primary human label: long name → short name → node id → decimal nodeNum. */
-export function labelOf(n: NodeMultiOption): string {
-  const long = (n.longName || '').trim();
-  const short = (n.shortName || '').trim();
-  if (long) return long;
-  if (short) return short;
-  if (n.nodeId) return n.nodeId;
-  return `!${(Number(n.nodeNum) >>> 0).toString(16).padStart(8, '0')}`;
 }
 
 /** Secondary identity chip — prefer short name when long name is shown, else node id. */

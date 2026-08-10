@@ -799,7 +799,7 @@ export class AutomationEngineService {
       if (!Number.isFinite(thresholdMeters) || thresholdMeters <= 0) continue;
       const refineRadius = thresholdMeters / 2;
 
-      let home = this.homeAnchorsRepo
+      const home = this.homeAnchorsRepo
         ? await this.homeAnchorsRepo.getAnchor(a.id, nodeNum)
         : null;
 
@@ -817,8 +817,8 @@ export class AutomationEngineService {
               homeLon = est.longitude;
               fromHistory = true;
             }
-          } catch (e: any) {
-            logger.warn(`[AutomationEngine] leftHome history seed failed for node ${nodeNum}: ${e?.message}`);
+          } catch (e) {
+            logger.warn(`[AutomationEngine] leftHome history seed failed for node ${nodeNum}: ${e instanceof Error ? e.message : String(e)}`);
           }
         }
         if (this.homeAnchorsRepo) {
@@ -852,7 +852,7 @@ export class AutomationEngineService {
       if (!beyond) {
         // Back within threshold → re-arm.
         if (alarmed) {
-          let inner = this.leftHomeAlarmed.get(a.id);
+          const inner = this.leftHomeAlarmed.get(a.id);
           if (inner) inner.set(nodeNum, false);
         }
         // Soft-refine home while the fix is in the inner half-radius so a
