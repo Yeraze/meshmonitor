@@ -1747,6 +1747,9 @@ class ApiService {
     serialEnabled: boolean;
     debugLogApiEnabled: boolean;
     adminChannelEnabled: boolean;
+    // Optional: set a new private key on the LOCAL node (#4632). Omitted for
+    // every other security change so the firmware keeps the existing identity.
+    privateKey?: string;
   }, sourceId?: string | null): Promise<{ success: boolean }> {
     return this.post('/api/admin/commands', {
       command: 'setSecurityConfig',

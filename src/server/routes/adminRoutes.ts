@@ -29,6 +29,7 @@ import {
   type AdminOperationStatus,
   type AdminOperationResult,
 } from '../services/adminOperationService.js';
+import { isValidMeshtasticKey, derivePublicKey } from '../utils/meshtasticKeys.js';
 
 const router = express.Router();
 
@@ -1837,6 +1838,17 @@ router.post('/commands', requireAdmin(), async (req, res) => {
         if (!params.config) {
           return res.status(400).json({ error: 'config is required for setSecurityConfig' });
         }
+        // A pasted private key (#4632) is only honored for the local node, and
+        // must be a valid 32-byte key — reject bad input as 400 up front rather
+        // than letting it surface as a 500 from the builder below.
+        if (typeof params.config.privateKey === 'string' && params.config.privateKey.trim().length > 0) {
+          if (!isLocalNode) {
+            return res.status(400).json({ error: 'A private key can only be set on the local node' });
+          }
+          if (!isValidMeshtasticKey(params.config.privateKey)) {
+            return res.status(400).json({ error: 'Invalid private key: expected base64 of 32 bytes' });
+          }
+        }
         // IMPORTANT: Preserve existing public/private keys when updating security config
         // If we don't include them, the firmware may reset them to empty/random values
         // Only do this for LOCAL node - for remote nodes we don't have their private key
@@ -1846,6 +1858,29 @@ router.post('/commands', requireAdmin(), async (req, res) => {
           const configToSend = (() => {
             if (isLocalNode) {
               const existingKeys = acManager.getSecurityKeys();
+              // A caller-supplied private key that differs from the stored one
+              // is a deliberate identity change (#4632). The firmware stores the
+              // pair verbatim rather than re-deriving, so we must send the
+              // PUBLIC key that matches the NEW private key — preserving the old
+              // public key here would leave the node advertising a key that no
+              // longer matches its secret and break PKI DMs to it. For every
+              // other security setting the private key is absent and both keys
+              // are preserved unchanged, exactly as before.
+              const providedPrivate = typeof params.config.privateKey === 'string'
+                ? params.config.privateKey.trim()
+                : '';
+              const isNewPrivateKey = providedPrivate.length > 0
+                && providedPrivate !== existingKeys.privateKey;
+              if (isNewPrivateKey) {
+                // Validity is already enforced above (400); this is the trusted
+                // path that derives the matching public key.
+                logger.info('Setting a new private key for the local node; deriving the matching public key');
+                return {
+                  ...params.config,
+                  privateKey: providedPrivate,
+                  publicKey: derivePublicKey(providedPrivate),
+                };
+              }
               logger.debug('Preserving existing public/private keys for local node security config update');
               return {
                 ...params.config,

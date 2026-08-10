@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { UiIcon } from './icons';
 import { useTranslation } from 'react-i18next';
@@ -296,6 +296,9 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   // Security Config State
   const [securityPublicKey, setSecurityPublicKey] = useState('');
   const [securityPrivateKey, setSecurityPrivateKey] = useState('');
+  // The private key as loaded from the device, so a save can tell whether the
+  // user actually pasted a new one (#4632) vs. left the existing identity.
+  const loadedSecurityPrivateKeyRef = useRef('');
   const [securityAdminKeys, setSecurityAdminKeys] = useState<string[]>(['']);
   const [securityIsManaged, setSecurityIsManaged] = useState(false);
   const [securitySerialEnabled, setSecuritySerialEnabled] = useState(true);
@@ -752,6 +755,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           }
           if (securityKeys.privateKey) {
             setSecurityPrivateKey(securityKeys.privateKey);
+            loadedSecurityPrivateKeyRef.current = securityKeys.privateKey;
           }
         } catch (keyError) {
           logger.warn('Could not fetch security keys:', keyError);
@@ -1458,13 +1462,25 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
       // Filter out empty admin keys
       const validAdminKeys = securityAdminKeys.filter(key => key && key.trim().length > 0);
 
+      // Send the private key only when the user actually pasted a new one — an
+      // unchanged key is left off so the firmware keeps the current identity
+      // (#4632). The server derives the matching public key and enforces
+      // local-node-only.
+      const newPrivateKey = securityPrivateKey.trim();
+      const privateKeyChanged =
+        newPrivateKey.length > 0 && newPrivateKey !== loadedSecurityPrivateKeyRef.current.trim();
+
       await apiService.setSecurityConfig({
         adminKeys: validAdminKeys,
         isManaged: securityIsManaged,
         serialEnabled: securitySerialEnabled,
         debugLogApiEnabled: securityDebugLogApiEnabled,
-        adminChannelEnabled: securityAdminChannelEnabled
+        adminChannelEnabled: securityAdminChannelEnabled,
+        ...(privateKeyChanged ? { privateKey: newPrivateKey } : {})
       }, sourceId);
+      if (privateKeyChanged) {
+        loadedSecurityPrivateKeyRef.current = newPrivateKey;
+      }
       setStatusMessage(t('config.security_saved'));
       showToast(t('config.security_saved_toast'), 'success');
       // Security config changes may require reboot for some settings
@@ -2601,6 +2617,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           <SecurityConfigSection
             publicKey={securityPublicKey}
             privateKey={securityPrivateKey}
+            setPrivateKey={setSecurityPrivateKey}
             adminKeys={securityAdminKeys}
             isManaged={securityIsManaged}
             serialEnabled={securitySerialEnabled}

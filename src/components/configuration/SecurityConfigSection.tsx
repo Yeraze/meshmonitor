@@ -1,7 +1,22 @@
-import React, { useCallback, useRef, useMemo } from 'react';
+import React, { useCallback, useRef, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
+
+/**
+ * True when `value` is base64 that decodes to exactly 32 bytes — the shape of a
+ * Meshtastic private key (#4632). Mirrors the server-side `isValidMeshtasticKey`
+ * so the client rejects a bad paste before it ever reaches the admin channel.
+ */
+const isValidMeshtasticKey = (value: string): boolean => {
+  const trimmed = value.trim().replace(/^base64:/, '');
+  if (!/^[A-Za-z0-9+/]{43}=$/.test(trimmed)) return false;
+  try {
+    return atob(trimmed).length === 32;
+  } catch {
+    return false;
+  }
+};
 
 /**
  * Validates if a string is valid base64 format
@@ -28,6 +43,9 @@ interface SecurityConfigSectionProps {
   // Keys (read-only display)
   publicKey: string;
   privateKey: string;
+  // Setting a new private key is local-node only (#4632). When this setter is
+  // absent the key stays copy-only, exactly as it was before.
+  setPrivateKey?: (value: string) => void;
   // Admin keys (editable array)
   adminKeys: string[];
   // Settings
@@ -49,6 +67,7 @@ interface SecurityConfigSectionProps {
 const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
   publicKey,
   privateKey,
+  setPrivateKey,
   adminKeys,
   isManaged,
   serialEnabled,
@@ -64,14 +83,28 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
 }) => {
   const { t } = useTranslation();
 
+  // Private-key editing (#4632). Off until the user opts in; the input is
+  // cleared for paste rather than pre-filled with the existing secret.
+  const [isEditingPrivateKey, setIsEditingPrivateKey] = useState(false);
+  const canSetPrivateKey = typeof setPrivateKey === 'function';
+
   // Track initial values for change detection
   const initialValuesRef = useRef({
     adminKeys: [...adminKeys],
     isManaged,
     serialEnabled,
     debugLogApiEnabled,
-    adminChannelEnabled
+    adminChannelEnabled,
+    privateKey
   });
+
+  // A private key counts as changed only once it is non-empty AND differs from
+  // the loaded one — an empty box (edit opened, nothing pasted) is not a change
+  // to save, and must never be sent as a key.
+  const trimmedPrivateKey = privateKey.trim();
+  const privateKeyChanged =
+    trimmedPrivateKey.length > 0 && trimmedPrivateKey !== initialValuesRef.current.privateKey.trim();
+  const privateKeyValid = !privateKeyChanged || isValidMeshtasticKey(trimmedPrivateKey);
 
   // Calculate if there are unsaved changes
   const hasChanges = useMemo(() => {
@@ -85,9 +118,10 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
       isManaged !== initial.isManaged ||
       serialEnabled !== initial.serialEnabled ||
       debugLogApiEnabled !== initial.debugLogApiEnabled ||
-      adminChannelEnabled !== initial.adminChannelEnabled
+      adminChannelEnabled !== initial.adminChannelEnabled ||
+      privateKeyChanged
     );
-  }, [adminKeys, isManaged, serialEnabled, debugLogApiEnabled, adminChannelEnabled]);
+  }, [adminKeys, isManaged, serialEnabled, debugLogApiEnabled, adminChannelEnabled, privateKeyChanged]);
 
   // Reset to initial values (for SaveBar dismiss)
   const resetChanges = useCallback(() => {
@@ -97,7 +131,9 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
     setSerialEnabled(initial.serialEnabled);
     setDebugLogApiEnabled(initial.debugLogApiEnabled);
     setAdminChannelEnabled(initial.adminChannelEnabled);
-  }, [setAdminKeys, setIsManaged, setSerialEnabled, setDebugLogApiEnabled, setAdminChannelEnabled]);
+    setPrivateKey?.(initial.privateKey);
+    setIsEditingPrivateKey(false);
+  }, [setAdminKeys, setIsManaged, setSerialEnabled, setDebugLogApiEnabled, setAdminChannelEnabled, setPrivateKey]);
 
   // Check if any admin keys have invalid format
   const hasInvalidKeys = adminKeys.some(key => key.trim() && !isValidBase64(key));
@@ -109,15 +145,28 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
       alert(t('security_config.fix_invalid_keys'));
       return;
     }
+    // A private-key change rewrites the node's mesh identity — validate it and
+    // make the user confirm the consequences before it goes out (#4632).
+    if (privateKeyChanged) {
+      if (!privateKeyValid) {
+        alert(t('security_config.private_key_invalid'));
+        return;
+      }
+      if (!window.confirm(t('security_config.set_private_key_confirm'))) {
+        return;
+      }
+    }
     await onSave();
     initialValuesRef.current = {
       adminKeys: [...adminKeys],
       isManaged,
       serialEnabled,
       debugLogApiEnabled,
-      adminChannelEnabled
+      adminChannelEnabled,
+      privateKey
     };
-  }, [onSave, adminKeys, isManaged, serialEnabled, debugLogApiEnabled, adminChannelEnabled, hasInvalidKeys, t]);
+    setIsEditingPrivateKey(false);
+  }, [onSave, adminKeys, isManaged, serialEnabled, debugLogApiEnabled, adminChannelEnabled, privateKey, privateKeyChanged, privateKeyValid, hasInvalidKeys, t]);
 
   // Register with SaveBar
   useSaveBar({
@@ -225,19 +274,24 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           <input
             id="privateKey"
-            type="password"
-            value={privateKey || t('common.na')}
-            readOnly
+            type={isEditingPrivateKey ? 'text' : 'password'}
+            value={isEditingPrivateKey ? privateKey : (privateKey ? privateKey : t('common.na'))}
+            readOnly={!isEditingPrivateKey}
+            onChange={isEditingPrivateKey ? (e) => setPrivateKey?.(e.target.value) : undefined}
+            placeholder={isEditingPrivateKey ? t('security_config.private_key_paste_placeholder') : undefined}
+            spellCheck={false}
+            autoComplete="off"
             className="setting-input"
             style={{
               flex: 1,
               backgroundColor: 'var(--color-surface)',
-              color: 'var(--color-text-subtle)',
+              color: isEditingPrivateKey ? 'var(--color-text)' : 'var(--color-text-subtle)',
               fontFamily: 'monospace',
-              fontSize: '0.85rem'
+              fontSize: '0.85rem',
+              borderColor: privateKeyChanged && !privateKeyValid ? 'var(--color-error)' : undefined
             }}
           />
-          {privateKey && (
+          {!isEditingPrivateKey && privateKey && (
             <button
               type="button"
               onClick={handleCopyPrivateKey}
@@ -254,9 +308,49 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
               <UiIcon name="copy" />
             </button>
           )}
+          {canSetPrivateKey && !isEditingPrivateKey && (
+            <button
+              type="button"
+              onClick={() => { setPrivateKey?.(''); setIsEditingPrivateKey(true); }}
+              style={{
+                padding: '0.5rem 0.75rem',
+                backgroundColor: 'var(--color-surface-hover)',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                color: 'var(--color-text)',
+                whiteSpace: 'nowrap'
+              }}
+              title={t('security_config.set_private_key')}
+            >
+              <UiIcon name="edit" /> {t('security_config.set_private_key')}
+            </button>
+          )}
+          {isEditingPrivateKey && (
+            <button
+              type="button"
+              onClick={() => { setPrivateKey?.(initialValuesRef.current.privateKey); setIsEditingPrivateKey(false); }}
+              style={{
+                padding: '0.5rem 0.75rem',
+                backgroundColor: 'var(--color-surface-hover)',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                color: 'var(--color-text)',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              {t('common.cancel')}
+            </button>
+          )}
         </div>
+        {isEditingPrivateKey && privateKeyChanged && !privateKeyValid && (
+          <span className="setting-description" style={{ display: 'block', marginTop: '0.25rem', color: 'var(--color-error)' }}>
+            <UiIcon name="alert" /> {t('security_config.private_key_invalid')}
+          </span>
+        )}
         <span className="setting-description" style={{ display: 'block', marginTop: '0.25rem', color: 'var(--color-warning)' }}>
-          <UiIcon name="alert" /> {t('security_config.private_key_warning')}
+          <UiIcon name="alert" /> {isEditingPrivateKey ? t('security_config.set_private_key_warning') : t('security_config.private_key_warning')}
         </span>
       </div>
 
