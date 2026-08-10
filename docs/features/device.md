@@ -1389,6 +1389,26 @@ Configure the store-and-forward module to cache and replay messages for nodes th
 
 - [Meshtastic Store and Forward Module](https://meshtastic.org/docs/configuration/module/store-and-forward/)
 
+## Security Configuration
+
+The **Security** section of Device Configuration shows the local node's public key and its private key (masked). The public key is what other nodes use to send you PKI-encrypted direct messages.
+
+### Set Private Key
+
+::: tip Added in 4.14.1 (#4632)
+The private key is copy-only until you click **Set private key**, which clears the field for a paste.
+:::
+
+Setting the private key lets you **restore a node's identity from a backup** or **migrate it onto replacement hardware**, matching the official Meshtastic apps. When you save a changed key, MeshMonitor derives the matching public key from it and writes both together, so the node can never be left advertising a public key that no longer matches its secret (which would silently break PKI DMs to it).
+
+- **Local device only.** The private key can only be set on the directly-connected node, never through remote admin.
+- **Validated before it reaches the device.** The key must be base64 of a 32-byte X25519 scalar; anything else is rejected on both the client and the server.
+- **Confirmation required.** Saving a changed key requires acknowledging a dialog that spells out the identity change and the impersonation / duplicate-key risk. **Cancel** restores the loaded key.
+
+::: warning
+Whoever holds a node's private key can impersonate it. Only paste a private key you own, on a trusted machine, and never share it.
+:::
+
 ## Applying Changes
 
 All configuration changes require clicking the "Save" button in each section. Most changes also require a device reboot to take effect. MeshMonitor will notify you when a reboot is required.
