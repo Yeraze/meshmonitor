@@ -6,6 +6,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.14.1-rc3] - 2026-08-10
+
+### Added
+- **Movement automation triggers for stationary fleets** — two Automation Engine triggers aimed at tamper / theft watch on fixed GPS nodes. **Became mobile** fires when a hand-selected node's mobility flag flips stationary → mobile (MeshMonitor's >100 m position-history heuristic). **Left home** fires when a watched node moves farther than a configurable threshold (default 300 m) from a per-(automation, node) home anchor; the home is seeded from position-history inliers when available (else the first live fix), gently averaged while the node stays within half the threshold, and persisted (migration 139) so a restart never silently re-homes a moved node. Saved automations gain a **Reset homes from history** action, the node picker lists stationary nodes first, and message/notify templates can use `{{ node.longName }}` / `{{ node.nodeId }}`. (#4648)
+- **Set a node's private key from Device Configuration** — the Security section can now write the **local** node's X25519 private key (previously copy-only), for restoring a node's identity from a backup or migrating it onto replacement hardware. On a genuine key change the handler derives the matching public key and sends both, so the node can't be left advertising a key that no longer matches its secret. Local device only — never remote admin — and saving a changed key requires confirming a dialog spelling out the impersonation / duplicate-key risk. (#4632, #4654)
+
+### Fixed
+- **Node purge now clears its automation bookkeeping** — purging a node also clears its auto-favorite targets and assignments (#4633), and its auto-traceroute and auto-time-sync allowlist entries (#4630), so a re-added node no longer inherits stale automation state.
+- **MeshCore: a lost `out_path` acknowledgement is treated as success, not failure** — route establishment no longer reports a spurious failure when the ack is dropped in flight. (#4625)
+
+## [4.14.1-rc2] - 2026-08-09
+
+### Added
+- **Unread divider and jump-to-first-unread** in the message view, for both Meshtastic and MeshCore conversations. (#4607)
+- **Position-estimation anchors** — the estimator now records and exposes the traceroute/neighbor observations behind each estimated position, so Node Details can show *why* a position was inferred. (#4609)
+- **MeshCore Analyzer Observer: static MQTT username/password auth** — an alternative to the signed Ed25519 token for brokers that don't verify it, stored encrypted per source. (#4595)
+- **Theme color scales** — a **sequential** scale for magnitude ramps and a **categorical** scale for chart series, both distinct from the role-color tokens and consistent across every theme. (#4611, #4605)
+- **Automations: a distinct reaction emoji for MQTT-sourced pings**, so a ping that arrived over MQTT is visually separable from an RF one. (#4594)
+
+### Changed
+- **Theme colors are named by role, not by swatch** — the palette moved to semantic role tokens (read from a script rather than raw palette vars), and the whole stylesheet set — CSS modules, global sheets, `nodes.css`, and inline component styles — was migrated onto those tokens. No behavior change beyond consistent, theme-following colors everywhere; the theme gallery was refreshed to match. (#4579, #4622, #4623)
+
+### Fixed
+- **Themes: tinted backgrounds ignored the active theme** and reverted to hardcoded palette swatches; both are fixed and now follow the selected theme. (#4617, #4620)
+- **Themes: chart slots now stay visually distinct in every theme** instead of collapsing to similar colors in some. (#4606)
+- **ESM: explicit `.js` extensions added to relative specifiers in server-compiled code**, and the build now fails on unresolvable runtime imports so a missing extension can't reach a `dist/`-only deployment again. (#4596, #4598)
+- **MQTT: message events and alerts now fire for MQTT-sourced messages** that previously arrived silently. (#4593)
+- **MeshtasticManager: stopped auto-acknowledging tapbacks** — a reaction is not a message that needs an ack — and the auto-ack tapback guard now keys on the emoji flag rather than its mere presence. (#4569, #4589)
+- **Unified views no longer drop nodes with a non-numeric `nodeNum`.** (#4573)
+- **Map: pending-traceroute nodes are no longer shaded as 0-hop/local** while their route is still being resolved. (#4570)
+- **UI: surfaces why a Neighbor Info request was rejected** instead of failing opaquely. (#4575)
+- **Position estimation: `replaceAnchors` is now atomic**, with its empty-`nodeNums` contract documented. (#4614)
+- **Removed a dead `hopsAway` write** in `processNodeInfoMessageProtobuf`. (#4604)
+- **Desktop: `dist/components` is now bundled into the packaged app.** (#4592)
+- **Analysis: the hop-counts scan is bounded**, and telemetry-request failures are surfaced in the UI. (#4580)
+
+### Docs
+- **Link quality: corrected where `hopsAway` comes from.** (#4590)
+
 ## [4.14.1-rc1] - 2026-08-05
 
 ### Added

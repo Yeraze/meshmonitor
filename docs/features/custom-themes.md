@@ -207,6 +207,15 @@ To create a variation of an existing theme:
 - `flamingo`: Decorative elements
 - `rosewater`: Decorative elements
 
+### Chart & Data Colors
+
+::: tip Added in 4.14.1 (#4605, #4611)
+Charts draw from two dedicated scales, separate from the role/accent tokens above, so data colors stay meaningful and distinct in every theme.
+:::
+
+- **Categorical scale** — `chart1`…`chart8` (CSS `--chart-1`…`--chart-8`): eight hues for unordered series (e.g. per-node or per-channel lines) that only need to be tellable apart. They do not have to match the accent palette.
+- **Sequential scale** — `--seq-1`…`--seq-5`: a five-step magnitude ramp for ordered/quantitative data (heatmaps, distance distributions), from low to high.
+
 ## Accessibility Validation
 
 The theme editor includes real-time accessibility checking based on WCAG 2.1 guidelines:
