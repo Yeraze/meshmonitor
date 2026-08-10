@@ -1,25 +1,34 @@
 /**
  * `{{ }}` token hinting for builder text fields (#3653 follow-up).
  *
- * Classifies each `{{ trigger.* }}` / `{{ var.* }}` / `{{ NOW }}` token so the
- * editor can highlight it and catch typos:
+ * Classifies each `{{ trigger.* }}` / `{{ node.* }}` / `{{ var.* }}` / `{{ NOW }}`
+ * token so the editor can highlight it and catch typos:
  *   - 'ok'      valid for the CURRENT trigger (or a known var / NOW)
  *   - 'foreign' a real token, but it belongs to a DIFFERENT trigger (it'll
  *               render blank here) — not a typo, just not available
  *   - 'bad'     unrecognized everywhere → likely a typo
  */
-import { TRIGGER_TOKENS, UNIVERSAL_TOKENS } from './SubstitutionsHelp';
+import {
+  TRIGGER_TOKENS,
+  UNIVERSAL_TOKENS,
+} from './SubstitutionsHelp';
+import { NODE_TOKENS, SUBJECT_NODE_TRIGGER_TYPES } from './substitutionNodeTokens';
 
 // Mirrors the engine's interpolate TOKEN regex.
 const TOKEN_RE = /\{\{\s*([^}]+?)\s*\}\}/g;
 
 export type TokenStatus = 'ok' | 'foreign' | 'bad';
 
+const SUBJECT_NODE_SET = new Set<string>(SUBJECT_NODE_TRIGGER_TYPES);
+
 /** Valid token paths for a trigger type + the defined variables (the 'ok' set). */
 export function validTokenSet(triggerType: string, variableNames: string[]): Set<string> {
   const set = new Set<string>(['NOW']);
   for (const [k] of TRIGGER_TOKENS[triggerType] ?? []) set.add(`trigger.${k}`);
   for (const [k] of UNIVERSAL_TOKENS) set.add(`trigger.${k}`);
+  if (SUBJECT_NODE_SET.has(triggerType)) {
+    for (const [k] of NODE_TOKENS) set.add(`node.${k}`);
+  }
   for (const name of variableNames) set.add(`var.${name}`);
   return set;
 }
@@ -35,10 +44,19 @@ export function anyTriggerTokenSet(): Set<string> {
   return set;
 }
 
+/** Every known `node.*` path — valid on subject-node triggers, foreign elsewhere. */
+let anyNodeCache: Set<string> | null = null;
+export function anyNodeTokenSet(): Set<string> {
+  if (anyNodeCache) return anyNodeCache;
+  anyNodeCache = new Set(NODE_TOKENS.map(([k]) => `node.${k}`));
+  return anyNodeCache;
+}
+
 /** Classify a single token path against the current-trigger valid set. */
 export function classifyToken(path: string, valid: Set<string>): TokenStatus {
   if (path.length === 0 || valid.has(path)) return 'ok';
   if (path.startsWith('trigger.') && anyTriggerTokenSet().has(path)) return 'foreign';
+  if (path.startsWith('node.') && anyNodeTokenSet().has(path)) return 'foreign';
   return 'bad';
 }
 
@@ -68,7 +86,9 @@ export interface TokenDiag { token: string; severity: TokenSeverity; detail: str
  *   - `{{ var.x }}` with no such variable   → error "does not exist"
  *   - `{{ trigger.x }}` of another trigger   → warn  "is undefined for this trigger"
  *   - `{{ trigger.x }}` of no trigger        → error "is not a recognized trigger field"
- *   - anything else (no var./trigger. prefix)→ error "is not a recognized token"
+ *   - `{{ node.x }}` with no subject node    → warn  "needs a subject-node trigger"
+ *   - `{{ node.x }}` unknown prop            → error "is not a recognized node field"
+ *   - anything else                          → error "is not a recognized token"
  */
 export function diagnoseTokens(text: string, valid: Set<string>): TokenDiag[] {
   const seen = new Set<string>();
@@ -83,6 +103,10 @@ export function diagnoseTokens(text: string, valid: Set<string>): TokenDiag[] {
       out.push(anyTriggerTokenSet().has(path)
         ? { token: path, severity: 'warn', detail: 'is undefined for this trigger' }
         : { token: path, severity: 'error', detail: 'is not a recognized trigger field' });
+    } else if (path.startsWith('node.')) {
+      out.push(anyNodeTokenSet().has(path)
+        ? { token: path, severity: 'warn', detail: 'needs a subject-node trigger' }
+        : { token: path, severity: 'error', detail: 'is not a recognized node field' });
     } else {
       out.push({ token: path, severity: 'error', detail: 'is not a recognized token' });
     }

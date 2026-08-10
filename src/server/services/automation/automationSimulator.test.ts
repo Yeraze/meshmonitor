@@ -277,4 +277,118 @@ describe('simulateAutomation', () => {
     expect(r.actions[0].type).toBe('action.runScript');
     expect((r.actions[0].resolvedParams as any).scriptPath).toBe('foo.sh');
   });
+
+  it('leftHome: dry-run matches only when watched node is beyond threshold', async () => {
+    const graph: AutomationGraph = {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.leftHome', params: { nodeNums: [7], thresholdMeters: 100 } },
+        { id: 'a', type: 'action.notify', params: { body: '{{ node.longName }} {{ trigger.distanceMeters }}' } },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    };
+
+    const beyond = await simulateAutomation({
+      graph, varsRepo,
+      event: { kind: 'leftHome', nodeNum: 7, distanceMeters: 250 },
+      node: { longName: 'Roof' },
+    });
+    expect(beyond.matched).toBe(true);
+    expect(beyond.actions).toHaveLength(1);
+    expect(beyond.fields.distanceMeters).toBe(250);
+    expect(beyond.fields.thresholdMeters).toBe(100);
+    expect(beyond.fields.distanceSource).toBe('distance');
+
+    const within = await simulateAutomation({
+      graph, varsRepo,
+      event: { kind: 'leftHome', nodeNum: 7, distanceMeters: 50 },
+    });
+    expect(within.matched).toBe(false);
+    expect(within.actions).toHaveLength(0);
+
+    const wrongNode = await simulateAutomation({
+      graph, varsRepo,
+      event: { kind: 'leftHome', nodeNum: 99, distanceMeters: 999 },
+    });
+    expect(wrongNode.matched).toBe(false);
+
+    // No distance and incomplete coords → 0 m / still at home.
+    const atHome = await simulateAutomation({
+      graph, varsRepo,
+      event: { kind: 'leftHome', nodeNum: 7 },
+      node: { latitude: 1, longitude: 2 },
+    });
+    expect(atHome.matched).toBe(false);
+    expect(atHome.fields.distanceMeters).toBe(0);
+    expect(atHome.fields.distanceSource).toBe('none');
+  });
+
+  it('leftHome: always uses automation threshold; coordinates beat distance', async () => {
+    const graph: AutomationGraph = {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.leftHome', params: { nodeNums: [7], thresholdMeters: 500 } },
+        { id: 'a', type: 'action.notify', params: { body: 'x' } },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    };
+
+    // Event thresholdMeters must be ignored — automation says 500.
+    const ignoreEvThr = await simulateAutomation({
+      graph, varsRepo,
+      event: { kind: 'leftHome', nodeNum: 7, distanceMeters: 250, thresholdMeters: 10 },
+    });
+    expect(ignoreEvThr.matched).toBe(false);
+    expect(ignoreEvThr.fields.thresholdMeters).toBe(500);
+
+    // Same home/current → ~0 m even if distanceMeters claims 9999.
+    const coordsWin = await simulateAutomation({
+      graph, varsRepo,
+      event: { kind: 'leftHome', nodeNum: 7, distanceMeters: 9999, homeLat: 48.0, homeLon: 16.0 },
+      node: { latitude: 48.0, longitude: 16.0 },
+    });
+    expect(coordsWin.matched).toBe(false);
+    expect(coordsWin.fields.distanceSource).toBe('coordinates');
+    expect(Number(coordsWin.fields.distanceMeters)).toBeLessThan(1);
+
+    // Far coordinates → fire against automation threshold 500.
+    const far = await simulateAutomation({
+      graph, varsRepo,
+      event: { kind: 'leftHome', nodeNum: 7, distanceMeters: 1, homeLat: 48.0, homeLon: 16.0 },
+      node: { latitude: 48.1, longitude: 16.0 }, // ~11 km north
+    });
+    expect(far.matched).toBe(true);
+    expect(far.fields.distanceSource).toBe('coordinates');
+    expect(Number(far.fields.distanceMeters)).toBeGreaterThan(500);
+  });
+
+  it('becameMobile: empty watch list does not match (same as live)', async () => {
+    const empty: AutomationGraph = {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.becameMobile', params: { nodeNums: [] } },
+        { id: 'a', type: 'action.notify', params: { body: 'x' } },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    };
+    const miss = await simulateAutomation({
+      graph: empty, varsRepo,
+      event: { kind: 'becameMobile', nodeNum: 1 },
+    });
+    expect(miss.matched).toBe(false);
+
+    const watched: AutomationGraph = {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.becameMobile', params: { nodeNums: [1] } },
+        { id: 'a', type: 'action.notify', params: { body: 'x' } },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    };
+    const hit = await simulateAutomation({
+      graph: watched, varsRepo,
+      event: { kind: 'becameMobile', nodeNum: 1 },
+    });
+    expect(hit.matched).toBe(true);
+  });
 });

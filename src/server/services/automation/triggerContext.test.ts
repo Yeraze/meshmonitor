@@ -7,6 +7,8 @@ import {
   buildSystemContext,
   buildScheduleContext,
   buildGeofenceContext,
+  buildBecameMobileContext,
+  buildLeftHomeContext,
   deriveHops,
   messageMatchesFilter,
   meshCoreMessageMatchesFilter,
@@ -216,6 +218,20 @@ describe('other trigger contexts', () => {
     expect(buildSystemContext('bootup', null, null, undefined, 5).subjectNodeKey).toBeUndefined();
     expect(buildScheduleContext(null, 1234).subjectNodeKey).toBeUndefined();
     expect(buildGeofenceContext(5, 'enter', 0, 0, 1, 'default', 5).subjectNodeKey).toBeUndefined();
+  });
+
+  it('buildBecameMobileContext / buildLeftHomeContext set subject and fields', () => {
+    const mob = buildBecameMobileContext(9, 1.5, 2.5, 0, 1, 'src', 10);
+    expect(mob.triggerType).toBe('trigger.becameMobile');
+    expect(mob.subjectNodeNum).toBe(9);
+    expect(mob.fields.previousMobile).toBe(0);
+    expect(mob.fields.mobile).toBe(1);
+
+    const left = buildLeftHomeContext(9, 1.5, 2.5, 1.0, 2.0, 250, 100, 'src', 10);
+    expect(left.triggerType).toBe('trigger.leftHome');
+    expect(left.fields.distanceMeters).toBe(250);
+    expect(left.fields.thresholdMeters).toBe(100);
+    expect(left.fields.homeLat).toBe(1.0);
   });
 });
 

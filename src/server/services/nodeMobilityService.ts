@@ -22,14 +22,30 @@ export interface NodeMobilityDeps {
   patchCache: (nodeId: string, mobile: number) => void;
 }
 
+export interface MobilityUpdateResult {
+  /** Flag before this update (0/1). Defaults to 0 when the node was unknown. */
+  previous: number;
+  /** Flag after this update (0 = stationary, 1 = mobile). */
+  current: number;
+}
+
 /**
  * Detect whether a node has moved more than 100 meters based on its last 500
  * position telemetry records, update the persisted mobile flag, patch the
- * in-memory cache, and return the resulting mobility status (0 = stationary,
- * 1 = mobile). Errors are swallowed and reported as non-mobile (0).
+ * in-memory cache, and return previous+current mobility status. Errors are
+ * swallowed and reported as non-mobile (current=0) with previous preserved
+ * when readable.
  */
-export async function updateNodeMobility(nodeId: string, deps: NodeMobilityDeps): Promise<number> {
+export async function updateNodeMobility(nodeId: string, deps: NodeMobilityDeps): Promise<MobilityUpdateResult> {
+  let previous = 0;
   try {
+    // Read the current flag so callers (automation engine) can detect 0→1 flips.
+    // Cross-source: mobility is a property of the physical nodeId.
+    const existing = await deps.nodesRepo.getNodeByNodeId(nodeId);
+    if (existing && existing.mobile != null) {
+      previous = Number(existing.mobile) ? 1 : 0;
+    }
+
     // Get last 500 position telemetry records for this node. Using a larger
     // limit ensures we capture movement over a longer time period (50 was too
     // small — nodes parked for a while would show only recent stationary
@@ -84,9 +100,9 @@ export async function updateNodeMobility(nodeId: string, deps: NodeMobilityDeps)
     // Patch the in-memory cache so getAllNodes() returns the updated value
     deps.patchCache(nodeId, isMobile);
 
-    return isMobile;
+    return { previous, current: isMobile };
   } catch (error) {
     logger.error(`Failed to update mobility for node ${nodeId}:`, error);
-    return 0; // Default to non-mobile on error
+    return { previous, current: 0 }; // Default to non-mobile on error
   }
 }

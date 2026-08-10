@@ -64,6 +64,18 @@ Every automation has exactly one trigger (the **WHEN**). Each trigger exposes a 
 | **On a schedule** | A cron expression fires | 5-field cron expression |
 | **A system event** | An engine/source lifecycle event | `System start`, `Source came online`, `Source went offline`, `Upgrade available` |
 | **A node enters/leaves a region** | A node crosses a geofence | `Enters` / `Leaves` / `Moves while inside (dwell)`, plus a map region editor |
+| **A watched node becomes mobile** | A hand-selected node flips from stationary → mobile | Multi-select of nodes (stationary candidates highlighted); MeshMonitor’s >100 m position-history heuristic |
+| **A watched node leaves its home position** | A hand-selected node moves farther than a threshold from its home/anchor | Multi-select of nodes, threshold in metres (default 300). Home is seeded from position-history inliers when available (else first live fix); while within half the threshold, home is gently averaged. Saved automations can **Reset homes from history** |
+
+### Became mobile & left home (tamper / theft monitoring)
+
+These two triggers are designed for fleets of **stationary** GPS nodes (rooftops, towers, gateways).
+
+- **Watch nodes** — hand-select the nodes to monitor. The picker lists MeshMonitor’s stationary nodes (`mobile = 0`) first with a **Stationary** badge, and offers **Select all stationary**. Mobile nodes remain selectable.
+- **Became mobile** — fires when MeshMonitor’s mobility flag flips from `0` → `1` (the bounding box of recent GPS history spans more than 100 m). Good for “this site started moving”.
+- **Left home** — on the first position after you add a node to the rule, MeshMonitor stores that fix as the node’s **home** for this automation. Later fixes farther than **Threshold (metres)** fire the automation. Returning within the threshold re-arms it. Homes are stored in the database so a MeshMonitor restart does not silently re-home a stolen node.
+- Prefer **Cooldown applies to = node** so one stolen site does not suppress alerts for the rest of the fleet.
+- Pair with **Send a message** (channel) and/or **Send a notification** (Apprise) actions.
 
 ### Message trigger & channel-name matching
 

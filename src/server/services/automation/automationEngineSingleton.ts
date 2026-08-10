@@ -15,6 +15,7 @@ import { AutomationEngineService } from './automationEngineService.js';
 import { VariableResolver } from './variableResolver.js';
 import { createMeshActionDeps } from './meshActionDeps.js';
 import { createMeshNodeDataProvider } from './meshNodeData.js';
+import { estimateHomeFromNodeHistory } from './leftHomeFromHistory.js';
 
 let engine: AutomationEngineService | null = null;
 let subscribed = false;
@@ -73,6 +74,11 @@ export async function startAutomationEngine(): Promise<void> {
     varResolver,
     deps: createMeshActionDeps(),
     data: createMeshNodeDataProvider(),
+    homeAnchorsRepo: databaseService.automationHomeAnchorsRepo,
+    estimateHomeFromHistory: async (nodeNum, thresholdMeters) => {
+      const est = await estimateHomeFromNodeHistory(nodeNum, thresholdMeters);
+      return est ? { latitude: est.latitude, longitude: est.longitude } : null;
+    },
   });
   await engine.load();
   subscribe();
@@ -112,10 +118,21 @@ async function handleEvent(event: DataEvent): Promise<void> {
       // Discovered vs updated detection (isNew) is deferred to a later phase; fire
       // as nodeUpdated with the changed field keys.
       await e.onNode('trigger.nodeUpdated', nodeNum, changed, sourceId);
-      // Geofence checks only matter when position changed.
+      // Geofence + left-home checks only matter when position changed.
       if (changed.includes('latitude') || changed.includes('longitude')) {
         await e.checkGeofences(nodeNum, sourceId);
+        await e.checkLeftHome(nodeNum, sourceId);
       }
+      break;
+    }
+
+    case 'node:mobility': {
+      const data = event.data as {
+        nodeNum: number;
+        previous: number;
+        current: number;
+      };
+      await e.checkBecameMobile(data.nodeNum, data.previous, data.current, sourceId);
       break;
     }
 

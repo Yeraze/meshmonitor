@@ -163,6 +163,23 @@ describe('validateAutomationGraph', () => {
     expect(bad.errors.join(' ')).toMatch(/trigger\.telemetry .* requires params\.cooldownScope ∈ \{automation,node,sourceNode\}/);
   });
 
+  it('trigger.becameMobile / trigger.leftHome require a non-empty nodeNums list', () => {
+    const graph = (type: string, params: Record<string, unknown>): AutomationGraph => ({
+      version: 1,
+      nodes: [
+        { id: 't', type: type as any, params },
+        { id: 'a', type: 'action.notify', params: { body: 'x' } },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    });
+    expect(validateAutomationGraph(graph('trigger.becameMobile', {})).valid).toBe(false);
+    expect(validateAutomationGraph(graph('trigger.becameMobile', { nodeNums: [] })).valid).toBe(false);
+    expect(validateAutomationGraph(graph('trigger.becameMobile', { nodeNums: [1, 2] })).valid).toBe(true);
+    expect(validateAutomationGraph(graph('trigger.leftHome', { nodeNums: [1], thresholdMeters: 0 })).valid).toBe(false);
+    expect(validateAutomationGraph(graph('trigger.leftHome', { nodeNums: [1], thresholdMeters: 100 })).valid).toBe(true);
+    expect(validateAutomationGraph(graph('trigger.leftHome', { nodeNums: [1] })).valid).toBe(true); // default threshold
+  });
+
   // ── action.sendMessage maxAttempts (#4340 Phase 3) ──────────────────────
   it('action.sendMessage: maxAttempts validates when present, and absence still validates', () => {
     const withSendMessage = (params: Record<string, unknown>): AutomationGraph => ({
