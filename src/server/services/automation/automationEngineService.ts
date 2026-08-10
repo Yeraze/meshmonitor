@@ -160,6 +160,15 @@ export interface EngineServiceOptions {
   data: NodeDataProvider;
   /** Persists left-home anchors. Optional in unit tests that don't cover leftHome. */
   homeAnchorsRepo?: AutomationHomeAnchorsRepository | null;
+  /**
+   * Optional: estimate a home lat/lon from stored position history (median +
+   * inlier mean). Used on first establish / reset so a glitched first packet
+   * does not become the anchor when history exists. Injected for testability.
+   */
+  estimateHomeFromHistory?: (
+    nodeNum: number,
+    thresholdMeters: number,
+  ) => Promise<{ latitude: number; longitude: number } | null>;
   /** Injectable clock (cooldown + flag TTL). Defaults to Date.now. */
   now?: () => number;
   /** Per-run action cap (loop/spam guard). Default 50. */
@@ -174,6 +183,7 @@ export class AutomationEngineService {
   private readonly deps: ActionDeps;
   private readonly data: NodeDataProvider;
   private readonly homeAnchorsRepo: AutomationHomeAnchorsRepository | null;
+  private readonly estimateHomeFromHistory: EngineServiceOptions['estimateHomeFromHistory'];
   private readonly now: () => number;
   private readonly maxActions: number;
   private readonly cron: CronScheduler;
@@ -195,6 +205,7 @@ export class AutomationEngineService {
     this.deps = opts.deps;
     this.data = opts.data;
     this.homeAnchorsRepo = opts.homeAnchorsRepo ?? null;
+    this.estimateHomeFromHistory = opts.estimateHomeFromHistory;
     this.now = opts.now ?? (() => Date.now());
     this.maxActions = opts.maxActions ?? 50;
     this.cron = opts.cron ?? REAL_CRON_SCHEDULER;
@@ -765,6 +776,11 @@ export class AutomationEngineService {
    * Fire `trigger.leftHome` automations when a watched node exceeds its home
    * distance. First sighting establishes (and persists) home without firing;
    * returning within threshold re-arms after an alert.
+   *
+   * While the node stays within threshold/2 of home, the anchor is refined with
+   * an exponential moving average so a glitched first fix can drift toward the
+   * true site without waiting for multi-packet confirmation (sparse ~3h beacons).
+   * Fixes beyond threshold/2 never pull home (and beyond threshold may fire).
    */
   async checkLeftHome(nodeNum: number, sourceId: string | null): Promise<number> {
     const entries = this.index.get('trigger.leftHome');
@@ -779,24 +795,46 @@ export class AutomationEngineService {
       const p = (a.triggerNode.params ?? {}) as Record<string, unknown>;
       if (!nodeNumsInclude(p.nodeNums, nodeNum)) continue;
 
-      const thresholdMeters = Number(p.thresholdMeters ?? 100);
+      const thresholdMeters = Number(p.thresholdMeters ?? 300);
       if (!Number.isFinite(thresholdMeters) || thresholdMeters <= 0) continue;
+      const refineRadius = thresholdMeters / 2;
 
       let home = this.homeAnchorsRepo
         ? await this.homeAnchorsRepo.getAnchor(a.id, nodeNum)
         : null;
 
       if (!home) {
-        // First sighting: establish home, do not fire.
+        // First sighting: prefer a history-derived cluster home when available
+        // (drops spider-line outliers), else the live fix.
+        let homeLat = node.latitude;
+        let homeLon = node.longitude;
+        let fromHistory = false;
+        if (this.estimateHomeFromHistory) {
+          try {
+            const est = await this.estimateHomeFromHistory(nodeNum, thresholdMeters);
+            if (est) {
+              homeLat = est.latitude;
+              homeLon = est.longitude;
+              fromHistory = true;
+            }
+          } catch (e: any) {
+            logger.warn(`[AutomationEngine] leftHome history seed failed for node ${nodeNum}: ${e?.message}`);
+          }
+        }
         if (this.homeAnchorsRepo) {
-          await this.homeAnchorsRepo.upsertAnchor(a.id, nodeNum, node.latitude, node.longitude, now);
+          await this.homeAnchorsRepo.upsertAnchor(a.id, nodeNum, homeLat, homeLon, now);
         }
         const ctx = buildLeftHomeContext(
           nodeNum, node.latitude, node.longitude,
-          node.latitude, node.longitude, 0, thresholdMeters, sourceId, now,
+          homeLat, homeLon, 0, thresholdMeters, sourceId, now,
         );
         const traced = automationTraceBus.activeCount() > 0 && automationTraceBus.isTracing(a.id, now);
-        if (traced) this.emitTrace(a, ctx, now, { outcome: 'prefiltered', reason: 'first sighting — home established' });
+        if (traced) {
+          this.emitTrace(a, ctx, now, {
+            outcome: 'prefiltered',
+            reason: fromHistory ? 'first sighting — home seeded from position history' : 'first sighting — home established',
+          });
+        }
         continue;
       }
 
@@ -817,7 +855,23 @@ export class AutomationEngineService {
           let inner = this.leftHomeAlarmed.get(a.id);
           if (inner) inner.set(nodeNum, false);
         }
-        if (traced) this.emitTrace(a, ctx, now, { outcome: 'prefiltered', reason: 'within home threshold' });
+        // Soft-refine home while the fix is in the inner half-radius so a
+        // glitched first anchor can crawl toward the real cluster. Outside
+        // refineRadius we leave home alone (noise / partial move).
+        if (distanceMeters <= refineRadius && this.homeAnchorsRepo) {
+          const alpha = LEFT_HOME_REFINE_ALPHA;
+          const newLat = home.latitude * (1 - alpha) + node.latitude * alpha;
+          const newLon = home.longitude * (1 - alpha) + node.longitude * alpha;
+          await this.homeAnchorsRepo.upsertAnchor(a.id, nodeNum, newLat, newLon, now);
+          if (traced) {
+            this.emitTrace(a, ctx, now, {
+              outcome: 'prefiltered',
+              reason: `within home refine radius — anchor averaged (α=${alpha})`,
+            });
+          }
+        } else if (traced) {
+          this.emitTrace(a, ctx, now, { outcome: 'prefiltered', reason: 'within home threshold' });
+        }
         continue;
       }
 
@@ -843,7 +897,18 @@ export class AutomationEngineService {
     }
     return fired;
   }
+
+  /**
+   * Drop in-memory left-home alarmed flags for one automation (e.g. after a
+   * homes reset). Persisted anchors are managed by the caller / repository.
+   */
+  clearLeftHomeRuntimeState(automationId: string): void {
+    this.leftHomeAlarmed.delete(automationId);
+  }
 }
+
+/** EMA weight for leftHome anchor refinement (new fix vs existing home). */
+const LEFT_HOME_REFINE_ALPHA = 0.25;
 
 /** True when `nodeNums` (trigger param) includes `nodeNum`. Empty/missing → no match (v1 requires hand-select). */
 function nodeNumsInclude(raw: unknown, nodeNum: number): boolean {

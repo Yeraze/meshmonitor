@@ -1345,4 +1345,104 @@ describe('AutomationEngineService — becameMobile / leftHome', () => {
     expect(await engine2.checkLeftHome(3, 'default')).toBe(1);
     expect(calls.filter((c) => c.fn === 'notify')).toHaveLength(1);
   });
+
+  it('leftHome: averages home while within threshold/2; does not pull home toward a far glitch', async () => {
+    const { deps } = recorder();
+    const created = await createEnabled('refine-home', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.leftHome', params: { nodeNums: [5], thresholdMeters: 200 } },
+        { id: 'a', type: 'action.notify', params: { body: 'away' } },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    });
+    // Start with a slightly-off "glitch" home, then walk toward the true site
+    // with fixes well inside threshold/2 (100 m) so EMA can pull the anchor.
+    const pos = { lat: 40.0, lon: -70.0 };
+    const data = {
+      getNode: async () => ({ nodeNum: 5, latitude: pos.lat, longitude: pos.lon }),
+      getTelemetry: async () => null,
+    };
+    const engine = new AutomationEngineService({
+      automationsRepo: autos, varResolver: resolver, deps, data, homeAnchorsRepo: homeAnchors, now: () => clock,
+    });
+    await engine.load();
+    expect(await engine.checkLeftHome(5, 'default')).toBe(0);
+    const home0 = await homeAnchors.getAnchor(created.id, 5);
+    expect(home0?.latitude).toBe(40.0);
+
+    // ~55 m north (≈ 0.0005°) — inside refine radius 100 m → average toward it.
+    pos.lat = 40.0005;
+    expect(await engine.checkLeftHome(5, 'default')).toBe(0);
+    const home1 = await homeAnchors.getAnchor(created.id, 5);
+    expect(home1).toBeTruthy();
+    expect(home1!.latitude).toBeGreaterThan(40.0);
+    expect(home1!.latitude).toBeLessThan(40.0005);
+
+    // Far glitch (~1.1 km) — beyond threshold → would fire, must NOT average into home.
+    const latBeforeGlitch = home1!.latitude;
+    pos.lat = 40.01;
+    expect(await engine.checkLeftHome(5, 'default')).toBe(1);
+    const homeAfterGlitch = await homeAnchors.getAnchor(created.id, 5);
+    expect(homeAfterGlitch!.latitude).toBe(latBeforeGlitch);
+  });
+
+  it('leftHome: seeds home from estimateHomeFromHistory when provided', async () => {
+    const { deps } = recorder();
+    const created = await createEnabled('hist-home', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.leftHome', params: { nodeNums: [8], thresholdMeters: 300 } },
+        { id: 'a', type: 'action.notify', params: { body: 'away' } },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    });
+    const data = {
+      getNode: async () => ({ nodeNum: 8, latitude: 1.0, longitude: 2.0 }), // live glitch
+      getTelemetry: async () => null,
+    };
+    const engine = new AutomationEngineService({
+      automationsRepo: autos,
+      varResolver: resolver,
+      deps,
+      data,
+      homeAnchorsRepo: homeAnchors,
+      now: () => clock,
+      estimateHomeFromHistory: async () => ({ latitude: 46.05, longitude: 14.5 }),
+    });
+    await engine.load();
+    expect(await engine.checkLeftHome(8, 'default')).toBe(0);
+    const anchor = await homeAnchors.getAnchor(created.id, 8);
+    expect(anchor?.latitude).toBe(46.05);
+    expect(anchor?.longitude).toBe(14.5);
+  });
+
+  it('clearLeftHomeRuntimeState drops alarmed so a beyond fix can fire again', async () => {
+    const { calls, deps } = recorder();
+    const created = await createEnabled('rearm-clear', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.leftHome', params: { nodeNums: [9], thresholdMeters: 100 } },
+        { id: 'a', type: 'action.notify', params: { body: 'away' } },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    });
+    const pos = { lat: 20.0, lon: 30.0 };
+    const data = {
+      getNode: async () => ({ nodeNum: 9, latitude: pos.lat, longitude: pos.lon }),
+      getTelemetry: async () => null,
+    };
+    const engine = new AutomationEngineService({
+      automationsRepo: autos, varResolver: resolver, deps, data, homeAnchorsRepo: homeAnchors, now: () => clock,
+    });
+    await engine.load();
+    expect(await engine.checkLeftHome(9, 'default')).toBe(0);
+    pos.lat = 20.002;
+    expect(await engine.checkLeftHome(9, 'default')).toBe(1);
+    expect(await engine.checkLeftHome(9, 'default')).toBe(0); // alarmed
+
+    engine.clearLeftHomeRuntimeState(created.id);
+    expect(await engine.checkLeftHome(9, 'default')).toBe(1);
+    expect(calls.filter((c) => c.fn === 'notify')).toHaveLength(2);
+  });
 });

@@ -190,6 +190,8 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
   const [errors, setErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [showTest, setShowTest] = useState(false);
+  const [resettingHomes, setResettingHomes] = useState(false);
+  const [resetHomesMsg, setResetHomesMsg] = useState<string | null>(null);
 
   /** Compile the current editor state → graph config for the Test panel. */
   const getTestConfig = () => {
@@ -291,6 +293,45 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
     } finally { setSaving(false); }
   };
 
+  const resetHomes = async () => {
+    if (isNew || !initial?.id) return;
+    if (form.trigger.type !== 'trigger.leftHome' && mode === 'builder') {
+      setResetHomesMsg('Switch the WHEN trigger to “Left home” (and save) before resetting homes.');
+      return;
+    }
+    setResettingHomes(true);
+    setResetHomesMsg(null);
+    try {
+      // Persist current builder config first so watched nodes / threshold match the reset.
+      if (mode === 'builder') {
+        const formErrors = validateForm(form);
+        if (formErrors.length > 0) { setErrors(formErrors); setResettingHomes(false); return; }
+        await apiService.put(`/api/automations/${initial.id}`, {
+          name, description, enabled, config: compile(form),
+        });
+      }
+      const res = await apiService.post<{
+        reset: number; seeded: number;
+        results: Array<{ nodeNum: number; seeded: boolean; sampleCount?: number; inlierCount?: number }>;
+      }>(`/api/automations/${initial.id}/reset-homes`, {});
+      const pending = (res.results ?? []).filter((r) => !r.seeded).map((r) => r.nodeNum);
+      setResetHomesMsg(
+        pending.length === 0
+          ? `Reset ${res.reset} home(s); seeded ${res.seeded} from position history.`
+          : `Reset ${res.reset} home(s); seeded ${res.seeded} from history. No history yet for node #(s) ${pending.join(', ')} — next live fix will set those.`,
+      );
+    } catch (e: any) {
+      setResetHomesMsg(e?.message ?? 'Failed to reset homes');
+    } finally {
+      setResettingHomes(false);
+    }
+  };
+
+  const showResetHomes = !isNew && (
+    (mode === 'builder' && form.trigger.type === 'trigger.leftHome')
+    || (mode === 'json' && jsonText.includes('trigger.leftHome'))
+  );
+
   return (
     <div>
       <div className="ae-btn-row" style={{ marginBottom: '0.75rem' }}>
@@ -325,7 +366,18 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
       <div className="ae-btn-row" style={{ marginTop: '0.75rem' }}>
         <button className="ae-btn ae-btn--primary" disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save automation'}</button>
         <button className="ae-btn" onClick={() => setShowTest((s) => !s)}>{!showTest && <UiIcon name="play" size={15} />} {showTest ? 'Hide test' : 'Test'}</button>
+        {showResetHomes && (
+          <button
+            className="ae-btn"
+            disabled={resettingHomes}
+            onClick={resetHomes}
+            title="Delete stored home anchors and re-seed each watched node from its position-history cluster (outliers dropped)"
+          >
+            {resettingHomes ? 'Resetting homes…' : 'Reset homes from history'}
+          </button>
+        )}
       </div>
+      {resetHomesMsg && <div className="ae-muted" style={{ marginTop: '0.4rem' }}>{resetHomesMsg}</div>}
 
       {showTest && <AutomationTester getConfig={getTestConfig} variables={variables} sources={sources} />}
     </div>

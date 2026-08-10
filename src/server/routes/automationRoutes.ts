@@ -21,10 +21,11 @@ import {
   COLLAPSE_MODES,
   NUMERIC_OPS,
 } from '../../types/automation.js';
-import { reloadAutomations } from '../services/automation/automationEngineSingleton.js';
+import { reloadAutomations, getAutomationEngine } from '../services/automation/automationEngineSingleton.js';
 import { simulateAutomation, type SimEventInput } from '../services/automation/automationSimulator.js';
 import { createMeshNodeDataProvider } from '../services/automation/meshNodeData.js';
 import { unifyChannels, sourceProtocol } from '../services/automation/channelUnify.js';
+import { estimateHomeFromNodeHistory } from '../services/automation/leftHomeFromHistory.js';
 
 const router = Router();
 
@@ -334,6 +335,88 @@ router.post('/:id/disable', canWrite, async (req: Request, res: Response) => {
   } catch (error) {
     logger.error('Error disabling automation:', error);
     res.status(500).json({ error: 'Failed to disable automation' });
+  }
+});
+
+/**
+ * Reset left-home anchors for a `trigger.leftHome` automation: delete stored
+ * homes and re-seed each watched node from position-history inliers (median
+ * cluster). Clears in-memory alarmed state so the rule can fire again.
+ */
+router.post('/:id/reset-homes', canWrite, async (req: Request, res: Response) => {
+  try {
+    const auto = await databaseService.automations.getAutomation(req.params.id);
+    if (!auto) return res.status(404).json({ error: 'automation not found' });
+
+    let graph: ReturnType<typeof validateAutomationGraph>['graph'];
+    try {
+      const parsed = JSON.parse(auto.config);
+      const v = validateAutomationGraph(parsed);
+      if (!v.valid || !v.graph) {
+        return res.status(400).json({ error: 'invalid automation config', details: v.errors });
+      }
+      graph = v.graph;
+    } catch {
+      return res.status(400).json({ error: 'automation config is not valid JSON' });
+    }
+
+    const trigger = graph!.nodes.find((n) => n.type === 'trigger.leftHome');
+    if (!trigger) {
+      return res.status(400).json({ error: 'automation is not a left-home trigger' });
+    }
+    const params = (trigger.params ?? {}) as Record<string, unknown>;
+    const nodeNums = Array.isArray(params.nodeNums)
+      ? (params.nodeNums as unknown[]).map(Number).filter((n) => Number.isInteger(n) && n > 0)
+      : [];
+    if (nodeNums.length === 0) {
+      return res.status(400).json({ error: 'no watched nodes configured' });
+    }
+    const thresholdMeters = Number(params.thresholdMeters ?? 300);
+    const thr = Number.isFinite(thresholdMeters) && thresholdMeters > 0 ? thresholdMeters : 300;
+
+    const repo = databaseService.automationHomeAnchorsRepo;
+    if (!repo) return res.status(503).json({ error: 'home anchors store not available' });
+
+    const results: Array<{
+      nodeNum: number;
+      seeded: boolean;
+      latitude?: number;
+      longitude?: number;
+      sampleCount?: number;
+      inlierCount?: number;
+    }> = [];
+
+    for (const nodeNum of nodeNums) {
+      await repo.deleteAnchor(auto.id, nodeNum);
+      const est = await estimateHomeFromNodeHistory(nodeNum, thr);
+      if (est) {
+        await repo.upsertAnchor(auto.id, nodeNum, est.latitude, est.longitude, Date.now());
+        results.push({
+          nodeNum,
+          seeded: true,
+          latitude: est.latitude,
+          longitude: est.longitude,
+          sampleCount: est.sampleCount,
+          inlierCount: est.inlierCount,
+        });
+      } else {
+        results.push({ nodeNum, seeded: false });
+      }
+    }
+
+    getAutomationEngine()?.clearLeftHomeRuntimeState(auto.id);
+    await reloadAutomations();
+
+    res.json({
+      success: true,
+      thresholdMeters: thr,
+      reset: nodeNums.length,
+      seeded: results.filter((r) => r.seeded).length,
+      results,
+    });
+  } catch (error) {
+    logger.error('Error resetting left-home anchors:', error);
+    res.status(500).json({ error: 'Failed to reset homes' });
   }
 });
 

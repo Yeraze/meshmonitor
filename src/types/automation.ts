@@ -477,7 +477,7 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
             errors.push(`${n.type} "${n.id}" requires params.nodeNums to be an array of integers`);
           }
           if (n.type === 'trigger.leftHome') {
-            const thr = p.thresholdMeters == null || p.thresholdMeters === '' ? 100 : Number(p.thresholdMeters);
+            const thr = p.thresholdMeters == null || p.thresholdMeters === '' ? 300 : Number(p.thresholdMeters);
             if (!Number.isFinite(thr) || thr <= 0) {
               errors.push(`trigger.leftHome "${n.id}" requires params.thresholdMeters > 0`);
             }

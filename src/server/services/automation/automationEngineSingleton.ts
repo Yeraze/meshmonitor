@@ -15,6 +15,7 @@ import { AutomationEngineService } from './automationEngineService.js';
 import { VariableResolver } from './variableResolver.js';
 import { createMeshActionDeps } from './meshActionDeps.js';
 import { createMeshNodeDataProvider } from './meshNodeData.js';
+import { estimateHomeFromNodeHistory } from './leftHomeFromHistory.js';
 
 let engine: AutomationEngineService | null = null;
 let subscribed = false;
@@ -74,6 +75,10 @@ export async function startAutomationEngine(): Promise<void> {
     deps: createMeshActionDeps(),
     data: createMeshNodeDataProvider(),
     homeAnchorsRepo: databaseService.automationHomeAnchorsRepo,
+    estimateHomeFromHistory: async (nodeNum, thresholdMeters) => {
+      const est = await estimateHomeFromNodeHistory(nodeNum, thresholdMeters);
+      return est ? { latitude: est.latitude, longitude: est.longitude } : null;
+    },
   });
   await engine.load();
   subscribe();

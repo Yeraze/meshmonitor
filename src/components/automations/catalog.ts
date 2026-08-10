@@ -206,10 +206,10 @@ export const TRIGGERS: BlockDef[] = [
   {
     type: 'trigger.leftHome',
     label: 'A watched node leaves its home position',
-    description: 'Fires when a hand-selected node moves farther than a threshold from its home/anchor position. Home is captured on the first position after you add the node (and survives restarts).',
+    description: 'Fires when a hand-selected node moves farther than a threshold from its home/anchor position. Home is seeded from position-history inliers when available (else the first live fix), then gently averaged while within half the threshold. Use “Reset homes from history” on a saved automation to clear and re-seed. Default threshold is 300 m.',
     fields: [
       { name: 'nodeNums', label: 'Watch nodes', kind: 'nodeMulti', help: 'Pick the nodes to watch. Stationary nodes (mobile = 0) are listed first with a Stationary badge.' },
-      { name: 'thresholdMeters', label: 'Threshold (meters)', kind: 'number', placeholder: '100', help: 'Alert when the node is farther than this many metres from its home position. Default 100.' },
+      { name: 'thresholdMeters', label: 'Threshold (meters)', kind: 'number', placeholder: '300', help: 'Alert when the node is farther than this many metres from its home position. Default 300. History seeding and live refine both use half this distance as the inlier / average radius.' },
       COOLDOWN,
       COOLDOWN_SCOPE,
     ],
