@@ -40,7 +40,7 @@ Check the enable box, fill in the fields, and save. Saving an Analyzer Observer 
 
 ### Which authentication mode?
 
-::: tip Added in 4.15 (#4595)
+::: tip Added in 4.14.1 (#4595)
 The **Username / password** mode exists for regional brokers that don't verify a signature.
 :::
 

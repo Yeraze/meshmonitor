@@ -74,6 +74,13 @@ on, so a circle never appears without its marker. The circle radius is the
 node's computed `uncertaintyKm` — a small circle means a confident,
 multi-anchor estimate; a large one means the node could only be placed loosely.
 
+::: tip Added in 4.14.1 (#4609)
+Each estimate now records the **anchors** behind it — the traceroute and
+neighbor observations that placed the node — along with the **radius method**
+used (`single_anchor`, `blended`, or `convergence`). This exposes *why* a node
+was placed where it was, rather than just the result.
+:::
+
 ## Permissions & API
 
 The estimator's status and controls map to the global `settings` resource:
