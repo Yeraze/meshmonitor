@@ -20,6 +20,14 @@ updates:
       # until the tooling ecosystem ships TS7-native support.
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
+      # maplibre-gl 6 is ESM-only (default import removed) and reorganises
+      # Map/Camera/events. Harder blocker: @maplibre/maplibre-gl-leaflet, which
+      # backs VectorTileLayer, has no v6-compatible release (peer range stops
+      # at ^5.0.0, last publish a year ago). Hold major bumps until that
+      # adapter ships v6 support or VectorTileLayer is rewritten. See #4650
+      # for the concrete unblock plan; closed #4646 shows the CI failure.
+      - dependency-name: "maplibre-gl"
+        update-types: ["version-update:semver-major"]
     groups:
       development-dependencies:
         patterns:
