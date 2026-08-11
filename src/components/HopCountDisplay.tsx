@@ -7,6 +7,11 @@ interface HopCountDisplayProps {
   hopLimit?: number;
   rxSnr?: number;
   rxRssi?: number;
+  /**
+   * Last byte of the relaying node. No longer gates clickability (#4657) — the
+   * hop count is clickable whenever `onClick` is wired — but callers still pass
+   * it through to the packet-detail modal, so it stays part of the prop shape.
+   */
   relayNode?: number;
   viaMqtt?: boolean;
   viaStoreForward?: boolean;
@@ -25,7 +30,6 @@ const HopCountDisplay: React.FC<HopCountDisplayProps> = ({
   hopLimit,
   rxSnr,
   rxRssi,
-  relayNode,
   viaMqtt,
   viaStoreForward,
   onClick,
@@ -68,9 +72,12 @@ const HopCountDisplay: React.FC<HopCountDisplayProps> = ({
     return <>{StoreForwardIndicator}{MqttIndicator}</>;
   }
 
-  // Check if this hop count is clickable (has relay node info)
-  // relayNode is undefined/null when not set by the firmware, 0 is a valid relay byte (node ending in 0x00)
-  const isClickable = relayNode !== undefined && relayNode !== null && onClick !== undefined;
+  // The hop count opens a packet-detail view for the message (#4657), so it is
+  // clickable whenever an onClick handler is wired — regardless of whether the
+  // firmware set a relay byte. relayNode still drives the relay-candidate list
+  // inside that view, but MQTT and direct-reception messages are worth
+  // inspecting too, so the click is no longer gated on relayNode being present.
+  const isClickable = onClick !== undefined;
 
   const clickableStyle: React.CSSProperties = isClickable
     ? {
@@ -92,7 +99,11 @@ const HopCountDisplay: React.FC<HopCountDisplayProps> = ({
     }
     return (
       <>
-        <span style={{ fontSize: '0.75em', marginLeft: '4px', opacity: 0.85 }} title={t('messages.signal_info')}>
+        <span
+          style={{ fontSize: '0.75em', marginLeft: '4px', opacity: isClickable ? 1 : 0.85, ...clickableStyle }}
+          onClick={isClickable ? onClick : undefined}
+          title={isClickable ? t('messages.click_for_details') : t('messages.signal_info')}
+        >
           ({parts.join(' / ')})
         </span>
         {StoreForwardIndicator}
@@ -106,7 +117,7 @@ const HopCountDisplay: React.FC<HopCountDisplayProps> = ({
       <span
         style={{ fontSize: '0.75em', marginLeft: '4px', opacity: isClickable ? 1 : 0.85, ...clickableStyle }}
         onClick={isClickable ? onClick : undefined}
-        title={isClickable ? t('messages.click_for_relay') : undefined}
+        title={isClickable ? t('messages.click_for_details') : undefined}
       >
         ({t('messages.hops', { count: hopCount, hopStart: hopStart })})
       </span>

@@ -264,6 +264,7 @@ export default function ChannelsTab({
   const [selectedRelayNode, setSelectedRelayNode] = useState<number | null>(null);
   const [selectedRxTime, setSelectedRxTime] = useState<Date | undefined>(undefined);
   const [selectedMessageRssi, setSelectedMessageRssi] = useState<number | undefined>(undefined);
+  const [selectedMessage, setSelectedMessage] = useState<MeshMessage | null>(null);
   const [directNeighborStats, setDirectNeighborStats] = useState<Record<number, { avgRssi: number; packetCount: number; lastHeard: number }>>({});
   const [homoglyphEnabled, setHomoglyphEnabled] = useState(false);
 
@@ -312,21 +313,24 @@ export default function ChannelsTab({
   // Handle relay node click - opens modal to show potential relay nodes
   const handleRelayClick = useCallback(
     async (msg: MeshMessage) => {
-      if (msg.relayNode !== undefined && msg.relayNode !== null) {
-        setSelectedRelayNode(msg.relayNode);
-        setSelectedRxTime(msg.timestamp);
-        setSelectedMessageRssi(msg.rxRssi ?? undefined);
+      // Opens the packet-detail view for this message (#4657). The relay byte is
+      // optional now — MQTT and direct-reception messages have no relay node but
+      // still carry packet detail worth inspecting.
+      setSelectedMessage(msg);
+      setSelectedRelayNode(msg.relayNode ?? null);
+      setSelectedRxTime(msg.timestamp);
+      setSelectedMessageRssi(msg.rxRssi ?? undefined);
 
-        // Fetch direct neighbor stats
+      if (msg.relayNode !== undefined && msg.relayNode !== null) {
         try {
           const stats = await apiService.getDirectNeighborStats(24);
           setDirectNeighborStats(stats);
         } catch (error) {
           console.error('Failed to fetch direct neighbor stats:', error);
         }
-
-        setRelayModalOpen(true);
       }
+
+      setRelayModalOpen(true);
     },
     []
   );
@@ -1616,21 +1620,24 @@ export default function ChannelsTab({
         </div>
       )}
 
-      {/* Relay node modal */}
-      {relayModalOpen && selectedRelayNode !== null && (
+      {/* Relay node / packet detail modal */}
+      {relayModalOpen && selectedMessage && (
         <RelayNodeModal
           isOpen={relayModalOpen}
           onClose={() => {
             setRelayModalOpen(false);
             setSelectedRelayNode(null);
+            setSelectedMessage(null);
           }}
-          relayNode={selectedRelayNode}
+          relayNode={selectedRelayNode ?? undefined}
           rxTime={selectedRxTime}
           nodes={mappedNodes}
           messageRssi={selectedMessageRssi}
+          message={selectedMessage}
           onNodeClick={(nodeId) => {
             setRelayModalOpen(false);
             setSelectedRelayNode(null);
+            setSelectedMessage(null);
             handleSenderClick(nodeId, { stopPropagation: () => {} } as React.MouseEvent);
           }}
         />
