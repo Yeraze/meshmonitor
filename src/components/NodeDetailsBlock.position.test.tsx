@@ -233,3 +233,36 @@ describe('NodeDetailsBlock position accuracy "Exact" (#4498)', () => {
     expect(screen.getByText(/±/)).toBeInTheDocument();
   });
 });
+
+/**
+ * Issue #4662 — the Position card surfaces a rx-time timestamp separate from
+ * the generic "Last Heard" so users can tell a stale fix apart from a stale
+ * node. `t()` in this test returns the default string verbatim (interpolation
+ * skipped), so the assertion targets the stable tooltip via `title=`.
+ */
+describe('NodeDetailsBlock position timestamp (#4662)', () => {
+  const positioned = { latitude: 35.1, longitude: -80.6 };
+  const tooltip = 'When this node last reported its position (server receive time)';
+
+  it('renders the "Updated…" line with the position tooltip when positionTimestamp is set', () => {
+    render(
+      <NodeDetailsBlock
+        node={{ ...baseNode, position: positioned, positionTimestamp: Date.now() - 3600_000 }}
+      />,
+    );
+    const el = screen.getByTitle(tooltip);
+    expect(el).toBeInTheDocument();
+    expect(el.textContent).toMatch(/Updated/);
+  });
+
+  it('omits the "Updated…" line when positionTimestamp is absent', () => {
+    render(<NodeDetailsBlock node={{ ...baseNode, position: positioned }} />);
+    expect(screen.queryByTitle(tooltip)).toBeNull();
+  });
+
+  it('does not render the "Updated…" line without a position, even if positionTimestamp is set', () => {
+    render(<NodeDetailsBlock node={{ ...baseNode, positionTimestamp: Date.now() }} />);
+    expect(screen.queryByText('Position')).toBeNull();
+    expect(screen.queryByTitle(tooltip)).toBeNull();
+  });
+});
