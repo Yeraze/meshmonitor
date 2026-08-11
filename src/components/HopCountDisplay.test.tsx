@@ -1,8 +1,8 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 import HopCountDisplay from './HopCountDisplay';
 
 describe('HopCountDisplay', () => {
@@ -77,6 +77,34 @@ describe('HopCountDisplay', () => {
     it('renders empty when no props provided', () => {
       const { container } = render(<HopCountDisplay />);
       expect(container.textContent).toBe('');
+    });
+  });
+
+  describe('clickability (#4657)', () => {
+    it('multi-hop count is clickable even without a relay node', () => {
+      const onClick = vi.fn();
+      render(<HopCountDisplay hopStart={7} hopLimit={5} onClick={onClick} />);
+      const span = screen.getByText(/hops/i);
+      expect(span).toHaveStyle({ cursor: 'pointer' });
+      fireEvent.click(span);
+      expect(onClick).toHaveBeenCalledTimes(1);
+    });
+
+    it('is not clickable when no onClick handler is provided', () => {
+      render(<HopCountDisplay hopStart={7} hopLimit={5} relayNode={0x42} />);
+      const span = screen.getByText(/hops/i);
+      expect(span).not.toHaveStyle({ cursor: 'pointer' });
+    });
+
+    it('0-hop signal display is clickable when onClick is provided', () => {
+      const onClick = vi.fn();
+      render(
+        <HopCountDisplay hopStart={7} hopLimit={7} rxSnr={9.5} rxRssi={-52} onClick={onClick} />
+      );
+      const span = screen.getByText(/9\.5 dB/);
+      expect(span).toHaveStyle({ cursor: 'pointer' });
+      fireEvent.click(span);
+      expect(onClick).toHaveBeenCalledTimes(1);
     });
   });
 });
