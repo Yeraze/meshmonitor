@@ -269,7 +269,17 @@ export default defineConfig({
 
     socialLinks: [
       { icon: 'discord', link: 'https://discord.gg/JVR3VBETQE' },
-      { icon: 'github', link: 'https://github.com/yeraze/meshmonitor' }
+      { icon: 'github', link: 'https://github.com/yeraze/meshmonitor' },
+      // Ko-fi donation link — same handle as .github/FUNDING.yml and the
+      // in-app Settings Support button. Heart glyph matches the app's UiIcon
+      // "heart" affordance; aria-label spells out the destination.
+      {
+        icon: {
+          svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21s-7-4.35-9.5-8.5C.75 9.5 2.5 5.5 6 5.5c2 0 3.5 1.25 4.5 3 1-1.75 2.5-3 4.5-3 3.5 0 5.25 4 3.5 7C19 16.65 12 21 12 21z"/></svg>'
+        },
+        link: 'https://ko-fi.com/yeraze',
+        ariaLabel: 'Support MeshMonitor on Ko-fi'
+      }
     ],
 
     footer: {
