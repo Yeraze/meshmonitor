@@ -370,6 +370,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   const [selectedRelayNode, setSelectedRelayNode] = useState<number | null>(null);
   const [selectedRxTime, setSelectedRxTime] = useState<Date | undefined>(undefined);
   const [selectedMessageRssi, setSelectedMessageRssi] = useState<number | undefined>(undefined);
+  const [selectedMessage, setSelectedMessage] = useState<MeshMessage | null>(null);
   const [directNeighborStats, setDirectNeighborStats] = useState<Record<number, { avgRssi: number; packetCount: number; lastHeard: number }>>({});
   const [homoglyphEnabled, setHomoglyphEnabled] = useState(false);
 
@@ -689,21 +690,26 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   // Handle relay node click - opens modal to show potential relay nodes
   const handleRelayClick = useCallback(
     async (msg: MeshMessage) => {
-      if (msg.relayNode !== undefined && msg.relayNode !== null) {
-        setSelectedRelayNode(msg.relayNode);
-        setSelectedRxTime(msg.timestamp);
-        setSelectedMessageRssi(msg.rxRssi ?? undefined);
+      // Opens the packet-detail view for this message (#4657). The relay byte is
+      // optional now — MQTT and direct-reception messages have no relay node but
+      // still carry packet detail worth inspecting.
+      setSelectedMessage(msg);
+      setSelectedRelayNode(msg.relayNode ?? null);
+      setSelectedRxTime(msg.timestamp);
+      setSelectedMessageRssi(msg.rxRssi ?? undefined);
 
-        // Fetch direct neighbor stats
+      // Fetch direct neighbor stats (only relevant when a relay byte is present,
+      // but harmless to fetch and keeps the modal populated for the relay list).
+      if (msg.relayNode !== undefined && msg.relayNode !== null) {
         try {
           const stats = await apiService.getDirectNeighborStats(24);
           setDirectNeighborStats(stats);
         } catch (error) {
           console.error('Failed to fetch direct neighbor stats:', error);
         }
-
-        setRelayModalOpen(true);
       }
+
+      setRelayModalOpen(true);
     },
     []
   );
@@ -2788,21 +2794,24 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
         )}
       </div>
 
-      {/* Relay node modal */}
-      {relayModalOpen && selectedRelayNode !== null && (
+      {/* Relay node / packet detail modal */}
+      {relayModalOpen && selectedMessage && (
         <RelayNodeModal
           isOpen={relayModalOpen}
           onClose={() => {
             setRelayModalOpen(false);
             setSelectedRelayNode(null);
+            setSelectedMessage(null);
           }}
-          relayNode={selectedRelayNode}
+          relayNode={selectedRelayNode ?? undefined}
           rxTime={selectedRxTime}
           nodes={mappedNodes}
           messageRssi={selectedMessageRssi}
+          message={selectedMessage}
           onNodeClick={(nodeId) => {
             setRelayModalOpen(false);
             setSelectedRelayNode(null);
+            setSelectedMessage(null);
             handleSenderClick(nodeId, { stopPropagation: () => {} } as React.MouseEvent);
           }}
         />

@@ -30,6 +30,60 @@ export const getTransportMechanismName = (
   return TRANSPORT_MECHANISM_NAMES[mechanism] || { short: '?', full: `Unknown (${mechanism})` };
 };
 
+// Friendly PortNum names, mirroring the meshtastic.PortNum enum
+// (src/server/constants/meshtastic.ts). Kept as a plain frontend map so the
+// message detail view can name a portnum without importing server code — the
+// backend Packet Monitor supplies `portnum_name` over the wire, but chat
+// messages only carry the numeric `portnum`.
+export const PORTNUM_NAMES: Record<number, string> = {
+  0: 'UNKNOWN',
+  1: 'TEXT_MESSAGE',
+  2: 'REMOTE_HARDWARE',
+  3: 'POSITION',
+  4: 'NODEINFO',
+  5: 'ROUTING',
+  6: 'ADMIN',
+  7: 'TEXT_MESSAGE_COMPRESSED',
+  8: 'WAYPOINT',
+  9: 'AUDIO',
+  10: 'DETECTION_SENSOR',
+  11: 'ALERT',
+  12: 'KEY_VERIFICATION',
+  13: 'REMOTE_SHELL',
+  32: 'REPLY',
+  33: 'IP_TUNNEL',
+  34: 'PAXCOUNTER',
+  35: 'STORE_FORWARD_PLUSPLUS',
+  36: 'NODE_STATUS',
+  37: 'MESH_BEACON',
+  64: 'SERIAL',
+  65: 'STORE_FORWARD',
+  66: 'RANGE_TEST',
+  67: 'TELEMETRY',
+  68: 'ZPS',
+  69: 'SIMULATOR',
+  70: 'TRACEROUTE',
+  71: 'NEIGHBORINFO',
+  72: 'ATAK_PLUGIN',
+  73: 'MAP_REPORT',
+  74: 'POWERSTRESS',
+  75: 'LORAWAN_BRIDGE',
+  76: 'RETICULUM_TUNNEL',
+  77: 'CAYENNE',
+  78: 'ATAK_PLUGIN_V2',
+  79: 'LORA_OTA',
+  112: 'GROUPALARM',
+  256: 'PRIVATE',
+  257: 'ATAK_FORWARDER',
+  511: 'MAX',
+};
+
+/** Human-readable name for a PortNum (e.g. 1 -> "TEXT_MESSAGE"). */
+export const getPortnumName = (portnum: number | undefined | null): string => {
+  if (portnum === undefined || portnum === null) return 'UNKNOWN';
+  return PORTNUM_NAMES[portnum] ?? `PORT_${portnum}`;
+};
+
 /** Color for a PortNum, used to tint the Type column. */
 export const getPortnumColor = (portnum: number): string => {
   switch (portnum) {
