@@ -11,6 +11,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import SidebarFooter, {
   MESHMONITOR_DISCORD_URL,
   MESHMONITOR_GITHUB_URL,
+  MESHMONITOR_KOFI_URL,
   MESHMONITOR_WEBSITE_URL,
 } from './SidebarFooter';
 import packageJson from '../../package.json';
@@ -28,13 +29,14 @@ beforeEach(() => {
 });
 
 describe('SidebarFooter', () => {
-  it('renders the full link set: Users, Settings, News, GitHub, Discord, Website', () => {
+  it('renders the full link set: Users, Settings, News, GitHub, Discord, Support, Website', () => {
     render(<SidebarFooter {...baseProps} />);
     expect(screen.getByTitle('source.sidebar.users')).toBeInTheDocument();
     expect(screen.getByTitle('source.sidebar.settings')).toBeInTheDocument();
     expect(screen.getByTitle('source.sidebar.news')).toBeInTheDocument();
     expect(screen.getByTitle('source.sidebar.github')).toBeInTheDocument();
     expect(screen.getByTitle('source.sidebar.discord')).toBeInTheDocument();
+    expect(screen.getByTitle('source.sidebar.support')).toBeInTheDocument();
     expect(screen.getByTitle('source.sidebar.website')).toBeInTheDocument();
   });
 
@@ -57,7 +59,7 @@ describe('SidebarFooter', () => {
     expect(discord).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
-  it('links GitHub and Website externally in new tabs', () => {
+  it('links GitHub, Website, and Support externally in new tabs', () => {
     render(<SidebarFooter {...baseProps} />);
     const github = screen.getByTitle('source.sidebar.github');
     expect(github).toHaveAttribute('href', MESHMONITOR_GITHUB_URL);
@@ -65,6 +67,11 @@ describe('SidebarFooter', () => {
     const website = screen.getByTitle('source.sidebar.website');
     expect(website).toHaveAttribute('href', MESHMONITOR_WEBSITE_URL);
     expect(website).toHaveAttribute('target', '_blank');
+    const support = screen.getByTitle('source.sidebar.support');
+    expect(support).toHaveAttribute('href', MESHMONITOR_KOFI_URL);
+    expect(MESHMONITOR_KOFI_URL).toBe('https://ko-fi.com/yeraze');
+    expect(support).toHaveAttribute('target', '_blank');
+    expect(support).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
   it('hides Users when the viewer is not an admin', () => {

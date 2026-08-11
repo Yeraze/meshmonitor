@@ -17,6 +17,7 @@ import styles from './SidebarFooter.module.css';
 export const MESHMONITOR_GITHUB_URL = 'https://github.com/Yeraze/meshmonitor';
 export const MESHMONITOR_DISCORD_URL = 'https://discord.gg/JVR3VBETQE';
 export const MESHMONITOR_WEBSITE_URL = 'https://meshmonitor.org';
+export const MESHMONITOR_KOFI_URL = 'https://ko-fi.com/yeraze';
 
 export interface SidebarFooterProps {
   /** Shows the Users link. */
@@ -112,6 +113,15 @@ const SidebarFooter: React.FC<SidebarFooterProps> = ({
           title={t('source.sidebar.discord', 'Discord')}
         >
           <BrandIcon brand="discord" size={18} />
+        </a>
+        <a
+          className={styles.btn}
+          href={MESHMONITOR_KOFI_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={t('source.sidebar.support', 'Support on Ko-fi')}
+        >
+          <UiIcon name="heart" size={18} />
         </a>
         <a
           className={styles.btn}
