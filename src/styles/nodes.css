@@ -1950,6 +1950,15 @@
   grid-column: 1 / -1;
 }
 
+/* Position-specific rx timestamp on the popup lat/lng line (#4662). Muted so
+   it reads as provenance beside the coordinates rather than a second value. */
+.node-popup-position-updated {
+  color: var(--color-text-subtle);
+  font-size: 0.8rem;
+  margin-left: 0.15rem;
+  cursor: help;
+}
+
 .node-popup-item {
   display: flex;
   align-items: center;

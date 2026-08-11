@@ -73,6 +73,14 @@ export interface DeviceInfo {
   // Position precision fields
   positionPrecisionBits?: number; // Position precision (0-32 bits, higher = more precise)
   positionGpsAccuracy?: number; // GPS accuracy in meters
+  /**
+   * Server rx time of the last position update, in **milliseconds** (#4662).
+   * Distinct from `lastHeard` (which reflects any packet type from this node,
+   * in seconds) — this lets the UI show "position updated 3h ago" even when
+   * the node is still chatty on telemetry or text. Absent when no position
+   * has been received or when the caller lacks channel access to it.
+   */
+  positionTimestamp?: number;
   // Meshtastic Position.location_source (LocSource): 0=UNSET, 1=MANUAL,
   // 2=INTERNAL GPS, 3=EXTERNAL GPS (#4176)
   positionLocationSource?: number;
