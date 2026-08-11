@@ -188,17 +188,42 @@ export const SignalItems: React.FC<SignalItemsProps> = ({
 
 export interface PositionItemProps {
   position: { lat: number; lng: number };
+  /** Server rx time of the last position update, in **ms** (#4662). When set,
+   *  a small "Updated {relative}" line is appended so a stale fix on an
+   *  otherwise-chatty node reads at a glance. */
+  positionTimestamp?: number | null;
+  timeFormat?: TimeFormat;
+  dateFormat?: DateFormat;
 }
 
 /** Full-width lat/lng (5-dp), Dashboard/MapAnalysis only. */
-export const PositionItem: React.FC<PositionItemProps> = ({ position }) => (
-  <div className="node-popup-item node-popup-item-full">
-    <span className="node-popup-icon"><UiIcon name="location" /></span>
-    <span className="node-popup-value">
-      {position.lat.toFixed(5)}, {position.lng.toFixed(5)}
-    </span>
-  </div>
-);
+export const PositionItem: React.FC<PositionItemProps> = ({
+  position,
+  positionTimestamp,
+  timeFormat = '24',
+  dateFormat = 'MM/DD/YYYY',
+}) => {
+  const { t } = useTranslation();
+  return (
+    <div className="node-popup-item node-popup-item-full">
+      <span className="node-popup-icon"><UiIcon name="location" /></span>
+      <span className="node-popup-value">
+        {position.lat.toFixed(5)}, {position.lng.toFixed(5)}
+        {positionTimestamp != null && (
+          <span
+            className="node-popup-position-updated"
+            title={t('node_popup.position_updated_tooltip', 'When this node last reported its position (server receive time)')}
+          >
+            {' · '}
+            {t('node_popup.position_updated', 'Updated {{when}}', {
+              when: formatRelativeTime(positionTimestamp, timeFormat, dateFormat, false),
+            })}
+          </span>
+        )}
+      </span>
+    </div>
+  );
+};
 
 /* ------------------------------------------------------------------ */
 /* Last heard footer                                                   */

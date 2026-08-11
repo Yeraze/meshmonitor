@@ -96,6 +96,13 @@
   white-space: nowrap;
 }
 
+/* Position-specific rx timestamp (#4662) — subtle, wraps to its own line on
+   narrow cards so the coords + pill + accuracy stay readable. */
+.node-detail-position-updated {
+  white-space: nowrap;
+  cursor: help;
+}
+
 .position-source-pill {
   display: inline-block;
   padding: 0.1rem 0.45rem;

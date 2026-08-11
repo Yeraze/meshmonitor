@@ -58,6 +58,11 @@ export interface NodeCardModel {
   /** Meshtastic `Position.location_source` (LocSource enum): 0=UNSET, 1=MANUAL,
    *  2=INTERNAL GPS, 3=EXTERNAL GPS. 0/null hidden. (#4176) */
   positionLocationSource?: number | null;
+  /** Server rx time of the last position update, in **milliseconds** (#4662).
+   *  Distinct from `lastHeard` — the popup surfaces it beneath the coords so
+   *  a stale fix on an otherwise-chatty node is readable at a glance. Null
+   *  when no position update has been received. */
+  positionTimestamp?: number | null;
   position?: { lat: number; lng: number };
   /** Epoch SECONDS, normalized across variants (MeshCore's `lastSeen` is raw
    *  epoch-ms and is divided down when building this field). */
@@ -136,6 +141,7 @@ function toMeshtasticModel(raw: unknown, opts?: ToNodeCardModelOptions): NodeCar
   // server's mapDbNodeToDeviceInfo / dbNodeMapper). Display-only (#4176).
   const positionPrecisionBits = typeof node.positionPrecisionBits === 'number' ? node.positionPrecisionBits : null;
   const positionLocationSource = typeof node.positionLocationSource === 'number' ? node.positionLocationSource : null;
+  const positionTimestamp = typeof node.positionTimestamp === 'number' ? node.positionTimestamp : null;
 
   const sources = Array.isArray(node.sources) ? (node.sources as NodeSourceRef[]) : undefined;
 
@@ -152,6 +158,7 @@ function toMeshtasticModel(raw: unknown, opts?: ToNodeCardModelOptions): NodeCar
     altitude,
     positionPrecisionBits,
     positionLocationSource,
+    positionTimestamp,
     position: opts?.pos,
     lastHeard,
     sources,

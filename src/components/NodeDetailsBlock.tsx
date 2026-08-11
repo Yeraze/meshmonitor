@@ -516,7 +516,9 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
 
         {/* Position (#4130) — lat/lon as plain text so a bad fix (e.g. 0,0) is
             visible without opening a map. The source pill and ± radius (#4432)
-            keep a trilaterated estimate from reading as a real GPS fix. */}
+            keep a trilaterated estimate from reading as a real GPS fix.
+            "Updated {relative}" (#4662) surfaces the position-specific rx
+            time so users can tell a stale fix apart from a stale node. */}
         {node.position?.latitude != null && node.position?.longitude != null && (
           <div className="node-detail-card">
             <div className="node-detail-label">{t('node_details.position', 'Position')}</div>
@@ -539,6 +541,16 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
                   {t('node_details.position_accuracy_exact', 'Exact')}
                 </span>
               ) : null}
+              {node.positionTimestamp != null && (
+                <span
+                  className="node-detail-secondary node-detail-position-updated"
+                  title={t('node_details.position_updated_tooltip', 'When this node last reported its position (server receive time)')}
+                >
+                  {t('node_details.position_updated', 'Updated {{when}}', {
+                    when: formatRelativeTime(node.positionTimestamp, timeFormat, dateFormat, false),
+                  })}
+                </span>
+              )}
             </div>
           </div>
         )}

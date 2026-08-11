@@ -150,6 +150,10 @@ export function mapDbNodeToDeviceInfo(node: any, uptimeSeconds?: number, noiseFl
   if (node.positionPrecisionBits !== null && node.positionPrecisionBits !== undefined) {
     deviceInfo.positionPrecisionBits = node.positionPrecisionBits;
   }
+  // Server rx time of the last position update, in ms (#4662).
+  if (node.positionTimestamp !== null && node.positionTimestamp !== undefined) {
+    deviceInfo.positionTimestamp = node.positionTimestamp;
+  }
   if (node.positionGpsAccuracy !== null && node.positionGpsAccuracy !== undefined) {
     deviceInfo.positionGpsAccuracy = node.positionGpsAccuracy;
   }

@@ -90,6 +90,13 @@ export function mapDbNodeToDeviceInfo(node: any, uptimeSeconds?: number, noiseFl
   if (node.positionPrecisionBits !== null && node.positionPrecisionBits !== undefined) {
     deviceInfo.positionPrecisionBits = node.positionPrecisionBits;
   }
+  // Server-side rx time of the most recent position update, in ms (#4662). Set
+  // alongside lat/lon at both POSITION_APP and NodeInfo ingest sites; distinct
+  // from the generic `lastHeard` so the UI can show "position updated 3h ago"
+  // even when the node is still chatty on telemetry/text.
+  if (node.positionTimestamp !== null && node.positionTimestamp !== undefined) {
+    deviceInfo.positionTimestamp = node.positionTimestamp;
+  }
   if (node.positionGpsAccuracy !== null && node.positionGpsAccuracy !== undefined) {
     deviceInfo.positionGpsAccuracy = node.positionGpsAccuracy;
   }
