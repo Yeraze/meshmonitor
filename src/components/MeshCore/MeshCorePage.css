@@ -726,7 +726,7 @@
 }
 .meshcore-purge-all-btn:hover:not(:disabled) { filter: brightness(1.1); }
 .meshcore-purge-all-btn:disabled { opacity: 0.6; cursor: default; }
-.mc-message-text { color: var(--color-text); font-size: 0.9rem; word-wrap: break-word; }
+.mc-message-text { color: var(--color-text); font-size: 0.9rem; word-wrap: break-word; white-space: pre-line; }
 /* Hop count + relay route for received messages (#3742). */
 .mc-message-route { color: var(--color-text-subtle); font-size: 0.75rem; margin-top: 0.15rem; font-family: var(--font-mono, monospace); }
 /* Signal quality on a directly-received message (#4504). Same muted treatment
