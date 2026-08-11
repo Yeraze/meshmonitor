@@ -29,7 +29,10 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 6px;
+  /* Tight enough that the full seven-icon set (Users, Settings, News, GitHub,
+     Discord, Ko-fi, Website) stays on one line at the 240px default sidebar
+     width. flex-wrap remains as a fallback if the sidebar is resized narrower. */
+  gap: 4px;
 }
 
 /* Narrow rail (the 60px collapsed per-source sidebar): a two-column grid keeps
@@ -51,7 +54,7 @@
 .btn {
   background: none;
   border: none;
-  padding: 4px 6px;
+  padding: 4px 4px;
   font-size: 14px;
   cursor: pointer;
   border-radius: 4px;
