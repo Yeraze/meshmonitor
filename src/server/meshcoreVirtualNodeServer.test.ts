@@ -204,6 +204,16 @@ class TestClient {
   private socket = new Socket();
   private buffer = Buffer.alloc(0);
   private waiters: Array<(payload: Buffer) => void> = [];
+  /**
+   * Frames that arrived before anything asked for them. Without this queue a
+   * frame decoded while no waiter was registered was DROPPED, so any test whose
+   * waiter lost the race to an unsolicited push (MsgWaiting/LogRxData, which the
+   * server emits whenever it likes) waited forever and failed on the 10s
+   * timeout. That made this file intermittently red regardless of the code under
+   * test. Buffering preserves arrival order and makes frame delivery
+   * order-independent rather than scheduling-dependent.
+   */
+  private queued: Buffer[] = [];
 
   async connect(port: number): Promise<void> {
     await new Promise<void>((resolve, reject) => {
@@ -224,20 +234,29 @@ class TestClient {
       if (this.buffer.length < 3 + len) break;
       const payload = Buffer.from(this.buffer.subarray(3, 3 + len));
       this.buffer = this.buffer.subarray(3 + len);
-      this.waiters.shift()?.(payload);
+      const waiter = this.waiters.shift();
+      if (waiter) waiter(payload);
+      else this.queued.push(payload);
     }
+  }
+
+  /** Next frame in arrival order — already-buffered one first, else the next to arrive. */
+  next(): Promise<Buffer> {
+    const alreadyHere = this.queued.shift();
+    if (alreadyHere) return Promise.resolve(alreadyHere);
+    return new Promise<Buffer>((resolve) => this.waiters.push(resolve));
   }
 
   /** Send a command and await the next response payload. */
   request(payload: number[]): Promise<Buffer> {
-    const p = new Promise<Buffer>((resolve) => this.waiters.push(resolve));
+    const p = this.next();
     this.socket.write(frameCommand(payload));
     return p;
   }
 
   /** Await the next N response payloads (for commands that reply with several frames). */
   expectFrames(n: number): Promise<Buffer[]> {
-    return Promise.all(Array.from({ length: n }, () => new Promise<Buffer>((resolve) => this.waiters.push(resolve))));
+    return Promise.all(Array.from({ length: n }, () => this.next()));
   }
 
   send(payload: number[]): void {
@@ -246,6 +265,26 @@ class TestClient {
 
   close(): void {
     this.socket.destroy();
+  }
+}
+
+/**
+ * Wait until the SERVER has registered `n` clients.
+ *
+ * `TestClient.connect()` resolves on the client side of the handshake, which can
+ * land a tick before the server's own `connection` handler adds the socket to
+ * its client map. A test that emitted straight after connecting could therefore
+ * fan out to zero clients, and its `await push` then sat there until the 10s
+ * timeout — the file's long-standing intermittent failures. Waiting on the
+ * server's own count removes the guesswork.
+ */
+async function waitForClients(server: MeshCoreVirtualNodeServer, n: number): Promise<void> {
+  const deadline = Date.now() + 2000;
+  while (server.getClientCount() < n) {
+    if (Date.now() >= deadline) {
+      throw new Error(`server registered ${server.getClientCount()} of ${n} clients within 2s`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
   }
 }
 
@@ -260,6 +299,7 @@ describe('MeshCoreVirtualNodeServer — Phase 0 handshake', () => {
     await server.start();
     client = new TestClient();
     await client.connect(server.getListeningPort()!);
+    await waitForClients(server, 1);
   });
 
   afterEach(async () => {
@@ -365,7 +405,7 @@ describe('MeshCoreVirtualNodeServer — Phase 0 handshake', () => {
   });
 
   it('pushes MsgWaiting on a live incoming message and delivers it via SyncNextMessage', async () => {
-    const push = new Promise<Buffer>((resolve) => (client as any).waiters.push(resolve));
+    const push = client.next();
     manager.emitMessage({
       id: 'm1',
       fromPublicKey: 'b1'.repeat(32),
@@ -382,7 +422,7 @@ describe('MeshCoreVirtualNodeServer — Phase 0 handshake', () => {
   });
 
   it('delivers an incoming CHANNEL message as ChannelMsgRecv (marker in fromPublicKey)', async () => {
-    const push = new Promise<Buffer>((resolve) => (client as any).waiters.push(resolve));
+    const push = client.next();
     // Incoming channel messages carry the channel marker in fromPublicKey, with
     // toPublicKey unset, and the sender name in fromName.
     manager.emitMessage({
@@ -544,6 +584,7 @@ describe('MeshCoreVirtualNodeServer — local node not ready', () => {
     await server.start();
     const client = new TestClient();
     await client.connect(server.getListeningPort()!);
+    await waitForClients(server, 1);
 
     const payload = await client.request([CommandCodes.AppStart, 1, 0, 0, 0, 0, 0, 0]);
     expect(payload[0]).toBe(ResponseCodes.Err);
@@ -601,6 +642,7 @@ describe('MeshCoreVirtualNodeServer — config-command forwarding (#3904)', () =
     await server.start();
     client = new TestClient();
     await client.connect(server.getListeningPort()!);
+    await waitForClients(server, 1);
   }
 
   afterEach(async () => {
@@ -711,6 +753,7 @@ describe('MeshCoreVirtualNodeServer — SendSelfAdvert forwarding (#3904)', () =
     await server.start();
     client = new TestClient();
     await client.connect(server.getListeningPort()!);
+    await waitForClients(server, 1);
   }
 
   afterEach(async () => {
@@ -773,6 +816,7 @@ describe('MeshCoreVirtualNodeServer — SendLogin relay (#3904)', () => {
     await server.start();
     client = new TestClient();
     await client.connect(server.getListeningPort()!);
+    await waitForClients(server, 1);
   }
 
   afterEach(async () => {
@@ -887,6 +931,7 @@ describe('MeshCoreVirtualNodeServer — SendTracePath relay (#3904)', () => {
     await server.start();
     client = new TestClient();
     await client.connect(server.getListeningPort()!);
+    await waitForClients(server, 1);
   }
   afterEach(async () => { client?.close(); await server?.stop(); });
 
@@ -954,6 +999,7 @@ describe('MeshCoreVirtualNodeServer — SendTelemetryReq relay (#3904)', () => {
     await server.start();
     client = new TestClient();
     await client.connect(server.getListeningPort()!);
+    await waitForClients(server, 1);
   }
   afterEach(async () => { client?.close(); await server?.stop(); });
 
@@ -1014,6 +1060,7 @@ describe('MeshCoreVirtualNodeServer — SendStatusReq relay (#3904)', () => {
     await server.start();
     client = new TestClient();
     await client.connect(server.getListeningPort()!);
+    await waitForClients(server, 1);
   }
   afterEach(async () => { client?.close(); await server?.stop(); });
 
@@ -1115,6 +1162,7 @@ describe('MeshCoreVirtualNodeServer — SendBinaryReq/GetNeighbours relay (#3904
     await server.start();
     client = new TestClient();
     await client.connect(server.getListeningPort()!);
+    await waitForClients(server, 1);
   }
   afterEach(async () => { client?.close(); await server?.stop(); });
 
@@ -1279,6 +1327,7 @@ describe('MeshCoreVirtualNodeServer — SendTxtMsg CLI relay (#4106)', () => {
     await server.start();
     client = new TestClient();
     await client.connect(server.getListeningPort()!);
+    await waitForClients(server, 1);
   }
   afterEach(async () => { client?.close(); await server?.stop(); });
 
@@ -1413,6 +1462,7 @@ describe('MeshCoreVirtualNodeServer — ExportPrivateKey (allowPkiExport gate)',
     await server.start();
     client = new TestClient();
     await client.connect(server.getListeningPort()!);
+    await waitForClients(server, 1);
   }
 
   afterEach(async () => {
@@ -1514,6 +1564,7 @@ describe('MeshCoreVirtualNodeServer — getClientDetails (status endpoint contra
 
     client = new TestClient();
     await client.connect(server.getListeningPort()!);
+    await waitForClients(server, 1);
     await vi.waitFor(() => expect(server.getClientCount()).toBe(1));
 
     const details = server.getClientDetails();
@@ -1570,6 +1621,7 @@ describe('MeshCoreVirtualNodeServer — receive-only mode (#4547)', () => {
     await server.start();
     client = new TestClient();
     await client.connect(server.getListeningPort()!);
+    await waitForClients(server, 1);
   }
 
   afterEach(async () => {
@@ -1776,7 +1828,7 @@ describe('MeshCoreVirtualNodeServer — receive-only mode (#4547)', () => {
   it('keeps the live OTA packet feed and MsgWaiting push flowing while receive-only is ON', async () => {
     await startReceiveOnly();
 
-    const msgPush = new Promise<Buffer>((resolve) => (client as unknown as { waiters: Array<(p: Buffer) => void> }).waiters.push(resolve));
+    const msgPush = client.next();
     manager.emitMessage({
       id: 'ro-1',
       fromPublicKey: 'b1'.repeat(32),
@@ -1848,6 +1900,7 @@ describe('MeshCoreVirtualNodeServer — receive-only mode (#4547)', () => {
     await server.start();
     client = new TestClient();
     await client.connect(server.getListeningPort()!);
+    await waitForClients(server, 1);
 
     manager.receiveOnlyMock.mockReturnValue(true);
     const refused = await client.request(advertFrame);
@@ -1872,6 +1925,7 @@ describe('MeshCoreVirtualNodeServer — receive-only mode (#4547)', () => {
     await server.start();
     client = new TestClient();
     await client.connect(server.getListeningPort()!);
+    await waitForClients(server, 1);
 
     const payload = await client.request(advertFrame);
     expect(payload[0]).toBe(ResponseCodes.Err);
@@ -1892,6 +1946,7 @@ describe('MeshCoreVirtualNodeServer — receive-only mode (#4547)', () => {
     await server.start();
     client = new TestClient();
     await client.connect(server.getListeningPort()!);
+    await waitForClients(server, 1);
 
     manager.sendMessageMock.mockResolvedValueOnce(false);
     const channelRes = await client.request(channelFrame('nope'));
@@ -1907,5 +1962,322 @@ describe('MeshCoreVirtualNodeServer — receive-only mode (#4547)', () => {
     const advertRes = await client.request(advertFrame);
     expect(advertRes[0]).toBe(ResponseCodes.Err);
     expect(advertRes[1]).toBe(ErrorCodes.BadState);
+  });
+});
+
+// ── Per-client message attribution (#4535) ──
+//
+// The manager stamps every outbound message with our own identity, so before
+// this the server dropped ALL self-originated messages and nothing MeshMonitor
+// sent ever reached a connected app. Delivery is now per-client: everyone gets
+// the message except whichever client asked us to transmit it.
+//
+// Two clients throughout, because the interesting failures (one client's send
+// hiding a message from another, one client's sync draining another's queue)
+// are invisible with a single connection.
+describe('MeshCoreVirtualNodeServer — per-client message delivery (#4535)', () => {
+  let server: MeshCoreVirtualNodeServer;
+  let manager: FakeManager;
+  let clientA: TestClient;
+  let clientB: TestClient;
+
+  const CHANNEL_IDX = 1;
+  const REMOTE_KEY = 'b1'.repeat(32); // matches SAMPLE_CONTACTS
+
+  const channelFrame = (text: string, channelIdx = CHANNEL_IDX): number[] => [
+    CommandCodes.SendChannelTxtMsg, 0, channelIdx, 0, 0, 0, 0, ...Buffer.from(text, 'utf8'),
+  ];
+
+  /** Resolve on the next frame this client receives (push or response). */
+  const nextFrame = (c: TestClient): Promise<Buffer> => c.next();
+
+  /** A message as the manager emits it when MeshMonitor transmits on a channel. */
+  const selfChannelMessage = (
+    text: string,
+    id = `ui-${text}`,
+    channelIdx = CHANNEL_IDX,
+  ): MeshCoreMessage => ({
+    id,
+    fromPublicKey: LOCAL_NODE.publicKey,
+    fromName: LOCAL_NODE.name,
+    toPublicKey: `channel-${channelIdx}`,
+    text,
+    timestamp: 1_750_000_000_000,
+  });
+
+  /** Drain one message for a client, asserting something actually arrived. */
+  async function syncOne(c: TestClient): Promise<Buffer> {
+    const frame = await c.request([CommandCodes.SyncNextMessage]);
+    expect(frame[0]).not.toBe(ResponseCodes.NoMoreMessages);
+    return frame;
+  }
+
+  /** Assert this client's queue is empty (nothing was pushed to it). */
+  async function expectEmpty(c: TestClient): Promise<void> {
+    const frame = await c.request([CommandCodes.SyncNextMessage]);
+    expect(frame[0]).toBe(ResponseCodes.NoMoreMessages);
+  }
+
+  /** Wait until the server has observed a socket close and is down to `n` clients. */
+  async function settleTo(n: number): Promise<void> {
+    const deadline = Date.now() + 2000;
+    while (server.getClientCount() > n) {
+      if (Date.now() >= deadline) {
+        throw new Error(`server still has ${server.getClientCount()} clients, expected ${n}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  }
+
+  beforeEach(async () => {
+    manager = new FakeManager();
+    server = new MeshCoreVirtualNodeServer({ port: 0, manager, databaseService: CHANNELS_DB });
+    await server.start();
+    clientA = new TestClient();
+    clientB = new TestClient();
+    await clientA.connect(server.getListeningPort()!);
+    await clientB.connect(server.getListeningPort()!);
+    await waitForClients(server, 2);
+  });
+
+  afterEach(async () => {
+    clientA.close();
+    clientB.close();
+    await server.stop();
+  });
+
+  it('delivers an incoming RF DM to BOTH connected clients', async () => {
+    const pushA = nextFrame(clientA);
+    const pushB = nextFrame(clientB);
+    manager.emitMessage({
+      id: 'rf-dm',
+      fromPublicKey: REMOTE_KEY,
+      text: 'rf direct message',
+      timestamp: 1_750_000_000_000,
+    });
+    expect((await pushA)[0]).toBe(PushCodes.MsgWaiting);
+    expect((await pushB)[0]).toBe(PushCodes.MsgWaiting);
+
+    for (const c of [clientA, clientB]) {
+      const recv = await syncOne(c);
+      expect(recv[0]).toBe(ResponseCodes.ContactMsgRecv);
+      expect(recv.subarray(-'rf direct message'.length).toString('utf8')).toBe('rf direct message');
+    }
+  });
+
+  it('delivers an incoming RF channel message to BOTH connected clients', async () => {
+    const pushA = nextFrame(clientA);
+    const pushB = nextFrame(clientB);
+    manager.emitMessage({
+      id: 'rf-ch',
+      fromPublicKey: `channel-${CHANNEL_IDX}`,
+      fromName: 'Distant Node',
+      text: 'rf channel message',
+      timestamp: 1_750_000_000_000,
+    });
+    expect((await pushA)[0]).toBe(PushCodes.MsgWaiting);
+    expect((await pushB)[0]).toBe(PushCodes.MsgWaiting);
+
+    for (const c of [clientA, clientB]) {
+      const recv = await syncOne(c);
+      expect(recv[0]).toBe(ResponseCodes.ChannelMsgRecv);
+      expect(recv.subarray(8).toString('utf8')).toBe('Distant Node: rf channel message');
+    }
+  });
+
+  // The headline bug: MeshMonitor's own web-UI send reached nobody.
+  it('delivers a channel message MeshMonitor originated to every connected client', async () => {
+    const pushA = nextFrame(clientA);
+    const pushB = nextFrame(clientB);
+    manager.emitMessage(selfChannelMessage('from the web UI'));
+    expect((await pushA)[0]).toBe(PushCodes.MsgWaiting);
+    expect((await pushB)[0]).toBe(PushCodes.MsgWaiting);
+
+    for (const c of [clientA, clientB]) {
+      const recv = await syncOne(c);
+      expect(recv[0]).toBe(ResponseCodes.ChannelMsgRecv);
+      expect(recv.readInt8(1)).toBe(CHANNEL_IDX);
+      // Rendered exactly as a peer node would have heard it over the air.
+      expect(recv.subarray(8).toString('utf8')).toBe(`${LOCAL_NODE.name}: from the web UI`);
+    }
+  });
+
+  it('relays one client channel send to the OTHER client, but not back to the sender', async () => {
+    const ack = await clientA.request(channelFrame('hello from A'));
+    expect(ack[0]).toBe(ResponseCodes.Ok);
+
+    const pushB = nextFrame(clientB);
+    manager.emitMessage(selfChannelMessage('hello from A', 'a-1'));
+    expect((await pushB)[0]).toBe(PushCodes.MsgWaiting);
+
+    const recv = await syncOne(clientB);
+    expect(recv[0]).toBe(ResponseCodes.ChannelMsgRecv);
+    expect(recv.subarray(8).toString('utf8')).toBe(`${LOCAL_NODE.name}: hello from A`);
+
+    // A already rendered it optimistically — a copy back would double it.
+    await expectEmpty(clientA);
+  });
+
+  it('relays a client B send to client A symmetrically', async () => {
+    await clientB.request(channelFrame('hello from B'));
+
+    const pushA = nextFrame(clientA);
+    manager.emitMessage(selfChannelMessage('hello from B', 'b-1'));
+    expect((await pushA)[0]).toBe(PushCodes.MsgWaiting);
+
+    expect((await syncOne(clientA))[0]).toBe(ResponseCodes.ChannelMsgRecv);
+    await expectEmpty(clientB);
+  });
+
+  // The companion protocol has no outbound-DM frame (ContactMsgRecv means
+  // "received FROM"), so a self-sent DM stays undeliverable by design.
+  it('does not deliver a DM MeshMonitor sent (no representable companion frame)', async () => {
+    manager.emitMessage({
+      id: 'ui-dm',
+      fromPublicKey: LOCAL_NODE.publicKey,
+      fromName: LOCAL_NODE.name,
+      toPublicKey: REMOTE_KEY,
+      text: 'outbound dm',
+      timestamp: 1_750_000_000_000,
+    });
+    await expectEmpty(clientA);
+    await expectEmpty(clientB);
+  });
+
+  it('still suppresses our own channel transmission heard back over the air, for every client', async () => {
+    manager.emitMessage({
+      id: 'ota-echo',
+      fromPublicKey: `channel-${CHANNEL_IDX}`, // received-side marker
+      fromName: LOCAL_NODE.name,
+      text: 'heard my own flood',
+      timestamp: 1_750_000_000_000,
+    });
+    await expectEmpty(clientA);
+    await expectEmpty(clientB);
+  });
+
+  it('preserves ordering across a burst and keeps each queue independent', async () => {
+    // Waiters registered up front: a frame that arrives with none pending is
+    // dropped by TestClient, and an unconsumed push would otherwise be handed
+    // to the next SyncNextMessage in place of its response.
+    const pushesA = clientA.expectFrames(3);
+    const pushesB = clientB.expectFrames(3);
+    for (const text of ['first', 'second', 'third']) {
+      manager.emitMessage({
+        id: `ord-${text}`,
+        fromPublicKey: REMOTE_KEY,
+        text,
+        timestamp: 1_750_000_000_000,
+      });
+    }
+    for (const frame of [...(await pushesA), ...(await pushesB)]) {
+      expect(frame[0]).toBe(PushCodes.MsgWaiting);
+    }
+
+    // Client A draining its queue must not consume client B's copies.
+    for (const expected of ['first', 'second', 'third']) {
+      const recv = await syncOne(clientA);
+      expect(recv.subarray(-expected.length).toString('utf8')).toBe(expected);
+    }
+    await expectEmpty(clientA);
+
+    for (const expected of ['first', 'second', 'third']) {
+      const recv = await syncOne(clientB);
+      expect(recv.subarray(-expected.length).toString('utf8')).toBe(expected);
+    }
+    await expectEmpty(clientB);
+  });
+
+  it('attributes only ONE message per send, so an identical later message still reaches the sender', async () => {
+    await clientA.request(channelFrame('duplicate text'));
+
+    // The echo of A's own send: suppressed for A, delivered to B.
+    const pushB1 = nextFrame(clientB);
+    manager.emitMessage(selfChannelMessage('duplicate text', 'dup-1'));
+    expect((await pushB1)[0]).toBe(PushCodes.MsgWaiting);
+    expect((await syncOne(clientB))[0]).toBe(ResponseCodes.ChannelMsgRecv);
+    await expectEmpty(clientA);
+
+    // A second, unrelated message with the same text (e.g. typed in the web UI)
+    // has no attribution left to claim, so A must receive it.
+    const pushA2 = nextFrame(clientA);
+    const pushB2 = nextFrame(clientB);
+    manager.emitMessage(selfChannelMessage('duplicate text', 'dup-2'));
+    expect((await pushA2)[0]).toBe(PushCodes.MsgWaiting);
+    expect((await pushB2)[0]).toBe(PushCodes.MsgWaiting);
+    expect((await syncOne(clientA))[0]).toBe(ResponseCodes.ChannelMsgRecv);
+    expect((await syncOne(clientB))[0]).toBe(ResponseCodes.ChannelMsgRecv);
+  });
+
+  it('does not suppress anything when the forwarded send failed at the node', async () => {
+    manager.sendMessageMock.mockResolvedValueOnce(false);
+    const res = await clientA.request(channelFrame('never left the radio'));
+    expect(res[0]).toBe(ResponseCodes.Err);
+
+    // Nothing was transmitted, so a later identical message is unrelated and
+    // must still reach A rather than matching the dead attribution.
+    const pushA = nextFrame(clientA);
+    manager.emitMessage(selfChannelMessage('never left the radio', 'retry-1'));
+    expect((await pushA)[0]).toBe(PushCodes.MsgWaiting);
+    expect((await syncOne(clientA))[0]).toBe(ResponseCodes.ChannelMsgRecv);
+  });
+
+  it('keeps delivering to the remaining client while the other is disconnected', async () => {
+    clientB.close();
+    await settleTo(1);
+
+    const pushA = nextFrame(clientA);
+    manager.emitMessage({
+      id: 'while-b-away',
+      fromPublicKey: REMOTE_KEY,
+      text: 'B is offline',
+      timestamp: 1_750_000_000_000,
+    });
+    expect((await pushA)[0]).toBe(PushCodes.MsgWaiting);
+    expect((await syncOne(clientA))[0]).toBe(ResponseCodes.ContactMsgRecv);
+    expect(server.getClientCount()).toBe(1);
+  });
+
+  // Documents CURRENT reconnect semantics: a reconnecting client starts from an
+  // empty mailbox (the server seeds `pendingMessages` empty so the app's own
+  // local history isn't re-delivered on every reconnect). Real firmware queues
+  // while the app is away, so this is a known parity gap tracked separately —
+  // deliberately NOT changed here.
+  it('gives a reconnecting client an empty mailbox even after the other client saw a message', async () => {
+    clientB.close();
+    await settleTo(1);
+
+    const pushA = nextFrame(clientA);
+    manager.emitMessage({
+      id: 'missed-by-b',
+      fromPublicKey: REMOTE_KEY,
+      text: 'B missed this',
+      timestamp: 1_750_000_000_000,
+    });
+    // A, still connected, receives it — B's absence consumed nothing.
+    expect((await pushA)[0]).toBe(PushCodes.MsgWaiting);
+    expect((await syncOne(clientA))[0]).toBe(ResponseCodes.ContactMsgRecv);
+
+    const reconnected = new TestClient();
+    await reconnected.connect(server.getListeningPort()!);
+    await waitForClients(server, 2); // clientA plus the reconnected one
+    try {
+      await expectEmpty(reconnected);
+    } finally {
+      reconnected.close();
+    }
+  });
+
+  it('drops a departed client pending attribution instead of leaking it', async () => {
+    await clientA.request(channelFrame('A sent then left'));
+    clientA.close();
+    await settleTo(1);
+
+    // With A gone its attribution is discarded, so the message is simply
+    // delivered to everyone still connected.
+    const pushB = nextFrame(clientB);
+    manager.emitMessage(selfChannelMessage('A sent then left', 'gone-1'));
+    expect((await pushB)[0]).toBe(PushCodes.MsgWaiting);
+    expect((await syncOne(clientB))[0]).toBe(ResponseCodes.ChannelMsgRecv);
   });
 });

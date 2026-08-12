@@ -455,6 +455,16 @@ MeshCore App 3 ┘
 - **Contacts** — served from the durable per-source contact list (so the app sees the full set even when the live companion read is flaky).
 - **Channels & battery** — channel info (including PSK) and the local node's battery level.
 - **Messaging** — incoming channel and direct messages are pushed to the app; outgoing **direct** and **channel** text messages are forwarded to the real node, unless the source is in [receive-only mode](#safety-receive-only-mode).
+- **Channel messages MeshMonitor sends are mirrored to every connected app.** A channel message you send from the MeshMonitor web UI — or that another connected client sends — is pushed to all the *other* connected clients, so each one shows the same conversation. The client that actually sent the message is skipped, because its app already displayed it locally when you hit send.
+
+::: info Direct messages you send are not mirrored
+This mirroring covers **channel** messages only. The companion protocol has no
+frame for "a DM this node sent" — `CONTACT_MSG_RECV` means *received from* a
+contact — so a DM sent from the web UI (or from another connected client) cannot
+be represented to the app without either attributing it to yourself, which no
+real companion ever does, or fabricating a reply from its recipient. Those DMs
+stay visible in MeshMonitor's own message history.
+:::
 
 ### Enabling MeshCore Virtual Node on a Source
 
