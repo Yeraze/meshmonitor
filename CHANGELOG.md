@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Fixed
+- **Map node popups render one card, not a card inside a card** — Leaflet's popup wrapper and the app's own node card both drew a background, border, radius and shadow, so a popup showed a double border with an uneven inset. The wrapper is now the only shell. Long popups also scroll their body under a pinned header instead of clipping the card, and are capped by the viewport on phones. (#4677)
+
 ## [4.14.1-rc3] - 2026-08-10
 
 ### Added
