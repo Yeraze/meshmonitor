@@ -149,6 +149,7 @@ export function buildMessageContext(
     viaMqtt: msg.viaMqtt,
     decryptedBy: msg.decryptedBy,
     protocol: 'meshtastic',
+    protocolShort: 'MT',
     sourceId,
     timestamp,
   };
@@ -238,6 +239,7 @@ export function buildMeshCoreMessageContext(
     scopeName: msg.scopeName ?? undefined,
     scoped: scopeCode != null && scopeCode !== 0,
     protocol: 'meshcore',
+    protocolShort: 'MC',
     sourceId,
     timestamp,
   };
