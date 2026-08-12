@@ -72,7 +72,7 @@
 }
 
 .outcomeOk {
-  color: var(--color-success, #2e7d32);
+  color: var(--color-success);
   font-size: 0.85rem;
 }
 
