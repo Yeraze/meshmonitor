@@ -86,7 +86,7 @@ Each phase ships as its own merged PR and leaves `main` green.
   *Exit:* multi-MC-source self-send is dropped; rate limit caps runaway sends; suite green.
   *Deps:* none (independent of Phase 1).
 
-- [ ] **Phase 3 — In-app Automation Template Gallery (infra + Auto-Ack template).**
+- [x] **Phase 3 — In-app Automation Template Gallery (infra + Auto-Ack template).** ✅ SHIPPED (PR pending merge)
   New gallery UI in the Automations area; a template catalog mechanism (static TS
   catalog of `{ id, name, description, icon, tags, build(params) → AutomationGraph }`);
   a "Use template" flow that (optionally via a small wizard) fills parameters and
@@ -121,6 +121,23 @@ Each phase ships as its own merged PR and leaves `main` green.
 
 - 2026-08-12: Epic created. Surveyed automation engine, script gallery, position flow.
   Interview complete (2 rounds). Plan drafted.
+- 2026-08-12: **Phase 3 implemented** (4 WPs). In-app Template Gallery:
+  - New `src/components/automations/templates/` dir: `types.ts` (`AutomationTemplate` with
+    `build() → BuiltAutomation | BuiltAutomation[]` — the array form is Phase 4's pair hook),
+    `index.ts` (`TEMPLATES` registry), `autoAck.ts` (seed template).
+  - `TemplateGallery.tsx` + `.module.css` — card grid + param wizard reusing the exported
+    `FieldInput` from `AutomationBuilder.tsx` (source/channel pickers), installing each built
+    automation via `POST /api/automations/import` (lands **disabled**), with per-automation
+    partial-failure reporting. Wired into `AutomationsPage` via a "Browse templates" button.
+  - **Key implementation decision:** Auto-Ack builds its graph via the project's `compile()`
+    emitter (NOT hand-rolled `port:'true'` edges) so the installed automation round-trips
+    through `decompile()` and stays editable in the visual builder. `graphEvaluator.portSatisfied`
+    treats an unported condition-outgoing edge as the `true` branch (verified `graphEvaluator.ts`),
+    so `zeroHop==1 → tapback` fires ONLY on direct/0-hop messages — no flood.
+  - Gate: typecheck clean, vitest `success: true` (741 passed / 0 failed / 0 failed suites),
+    lint clean. **Browser-validated** on the live dev instance: gallery card → wizard (real
+    source/channel pickers, MT/MC badges) → Install → disabled automation that decompiles into
+    the builder; no console errors; validation automation cleaned up afterward.
 - 2026-08-12: **Phase 1 shipped** — PR #4675 merged (`{{ trigger.protocolShort }}` → MT/MC).
 - 2026-08-12: **Phase 2 implemented** (2 commits). Two deliverables:
   - `isSelfMeshCore` cross-source fallback via new `getOwnPublicKeys()`/`isOwnPublicKey()`
