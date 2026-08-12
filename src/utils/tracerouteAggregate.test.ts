@@ -7,9 +7,12 @@ import { describe, it, expect } from 'vitest';
 import {
   buildTracerouteUnion,
   statOpacity,
+  statEdgeWeight,
   REAL_NODE_ID_PREFIX,
   UNKNOWN_HOP_ID_PREFIX,
   MIN_STAT_OPACITY,
+  MIN_STAT_EDGE_WEIGHT,
+  MAX_STAT_EDGE_WEIGHT,
   type AggregateTracerouteRow,
 } from './tracerouteAggregate';
 import { BROADCAST_ADDR } from './tracerouteSegments';
@@ -470,5 +473,26 @@ describe('tracerouteAggregate — statOpacity', () => {
   it('44. out-of-range input (-1, 2) clamps to MIN_STAT_OPACITY / 1', () => {
     expect(statOpacity(-1)).toBe(MIN_STAT_OPACITY);
     expect(statOpacity(2)).toBe(1);
+  });
+});
+
+describe('tracerouteAggregate — statEdgeWeight (#4566)', () => {
+  it('45. statEdgeWeight(0) === MIN_STAT_EDGE_WEIGHT and statEdgeWeight(1) === MAX_STAT_EDGE_WEIGHT', () => {
+    expect(statEdgeWeight(0)).toBe(MIN_STAT_EDGE_WEIGHT);
+    expect(statEdgeWeight(1)).toBe(MAX_STAT_EDGE_WEIGHT);
+  });
+
+  it('46. statEdgeWeight is monotone non-decreasing across a swept range', () => {
+    let prev = -Infinity;
+    for (let i = 0; i <= 20; i++) {
+      const w = statEdgeWeight(i / 20);
+      expect(w).toBeGreaterThanOrEqual(prev);
+      prev = w;
+    }
+  });
+
+  it('47. out-of-range input (-1, 2) clamps to MIN / MAX weight', () => {
+    expect(statEdgeWeight(-1)).toBe(MIN_STAT_EDGE_WEIGHT);
+    expect(statEdgeWeight(2)).toBe(MAX_STAT_EDGE_WEIGHT);
   });
 });
