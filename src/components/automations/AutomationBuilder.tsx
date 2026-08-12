@@ -74,9 +74,11 @@ function defaultParams(type: string, triggerType: string): Record<string, unknow
   return params;
 }
 
-function FieldInput({ field, value, onChange, variables, sources, channels, scripts, regions, nodes, triggerType }: {
+export interface FieldInputProps {
   field: FieldDef; value: unknown; onChange: (v: unknown) => void; variables: VariableOption[]; sources: SourceOption[]; channels: UnifiedChannelOption[]; scripts: ScriptOption[]; regions: string[]; nodes: NodeMultiOption[]; triggerType: string;
-}) {
+}
+
+export function FieldInput({ field, value, onChange, variables, sources, channels, scripts, regions, nodes, triggerType }: FieldInputProps) {
   const { t } = useTranslation();
   let control;
   const varNames = variables.map((v) => v.name);
