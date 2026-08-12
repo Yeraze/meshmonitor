@@ -916,7 +916,12 @@ export default function ChannelsTab({
                         </div>
                       </div>
                       <div className="channel-button-right">
-                        {unreadCounts[channelId] > 0 && <span className="unread-badge">{unreadCounts[channelId]}</span>}
+                        {unreadCounts[channelId] > 0 && (
+                          <span className="unread-badge" title={t('channels.unread_badge_tooltip', 'Unread messages')}>
+                            <UiIcon name="notifications" size={12} />
+                            {unreadCounts[channelId]}
+                          </span>
+                        )}
                         <div className="channel-button-status">
                           <span
                             className={`arrow-icon uplink ${channelConfig?.uplinkEnabled ? 'enabled' : 'disabled'}`}

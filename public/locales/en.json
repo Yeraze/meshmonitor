@@ -527,6 +527,7 @@
   "channels.select_channel": "Select Channel",
   "channels.show_channel_info": "Show channel info",
   "channels.info_link": "info",
+  "channels.unread_badge_tooltip": "Unread messages",
   "channels.show_mqtt_messages": "Show MQTT/Bridge Messages",
   "channels.encrypted_secure": "Encrypted with unique key",
   "channels.encrypted_default": "Encrypted with default key (not secure)",
