@@ -13,6 +13,32 @@ import { extractProxyUser, isAdminUser, isNormalProxyUserAllowed } from './proxy
 import { getEnvironmentConfig } from '../config/environment.js';
 
 /**
+ * Bind a proxy-auth-authenticated user to a fresh session ID, mirroring the
+ * pattern in `authRoutes.ts` for local/MFA/OIDC login. Regenerating the
+ * session on identity binding is what defends against session fixation: an
+ * attacker who planted a cookie on the victim's browser cannot ride the
+ * post-authentication session, because that cookie's session ID is discarded
+ * before the user's identity is written.
+ *
+ * Preserves the CSRF token across regeneration so the frontend's cached token
+ * remains valid — same reasoning as `authRoutes.regenerateSession`.
+ */
+function regenerateProxyAuthSession(req: Request, user: User): Promise<void> {
+  const csrfToken = req.session.csrfToken;
+  return new Promise((resolve, reject) => {
+    req.session.regenerate((err) => {
+      if (err) return reject(err);
+      req.session.userId = user.id;
+      req.session.username = user.username;
+      req.session.authProvider = 'proxy';
+      req.session.isAdmin = user.isAdmin;
+      if (csrfToken) req.session.csrfToken = csrfToken;
+      resolve();
+    });
+  });
+}
+
+/**
  * Attach user to request if authenticated (optional auth)
  * If not authenticated, attaches anonymous user for permission checks
  *
@@ -163,11 +189,36 @@ export function optionalAuth() {
           if (user && user.isActive) {
             req.user = user;
 
-            // Update session to match (creates session if not exists)
-            req.session.userId = user.id;
-            req.session.username = user.username;
-            req.session.authProvider = 'proxy';
-            req.session.isAdmin = user.isAdmin;
+            // Bind user to the session, defending against session fixation.
+            //
+            // The naive form here — writing userId/username/isAdmin directly
+            // into whatever session came in with the request — let an
+            // attacker who planted a `meshmonitor.sid` cookie on the victim's
+            // browser ride the post-authentication session, because the
+            // reverse-proxy's X-Forwarded-User headers are added on top of
+            // the client's cookie. Regenerating the session ID at the moment
+            // of identity binding discards the attacker's cookie. This
+            // parallels the pattern in authRoutes.ts for local/MFA/OIDC login.
+            //
+            // Only regenerate when this session isn't already bound to this
+            // user — proxy-auth runs on every request that carries the
+            // headers, and rotating the SID each hop would thrash cookies
+            // and (worse) create a regeneration storm under concurrent hits.
+            if (req.session.userId !== user.id) {
+              try {
+                await regenerateProxyAuthSession(req, user);
+              } catch (err) {
+                logger.error('Proxy-auth session regeneration failed:', err);
+                return _res.status(500).json({ error: 'Internal server error' });
+              }
+            } else {
+              // Already bound to this identity — keep the metadata current
+              // (username/isAdmin can change between requests) but do not
+              // rotate the SID.
+              req.session.username = user.username;
+              req.session.authProvider = 'proxy';
+              req.session.isAdmin = user.isAdmin;
+            }
 
             // Audit log successful auth (if enabled)
             if (config.proxyAuthAuditLogging) {
