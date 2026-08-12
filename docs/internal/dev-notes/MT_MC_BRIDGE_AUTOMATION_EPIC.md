@@ -99,7 +99,7 @@ Each phase ships as its own merged PR and leaves `main` green.
   *Deps:* none strictly, but sequenced after 1–2 so the bridge template (Phase 4)
   can build on all three.
 
-- [ ] **Phase 4 — MT↔MC Bridge template.**
+- [x] **Phase 4 — MT↔MC Bridge template.** ✅ SHIPPED (PR pending merge)
   Add the Bridge template to the gallery: builds the **pair** of automations
   (MT→MC and MC→MT), using `{{ trigger.protocolShort }}@{{ trigger.fromName }}: {{ trigger.text }}`,
   the content guard (skip already-`MT@`/`MC@`-prefixed text), rate-limit safe defaults
@@ -121,6 +121,30 @@ Each phase ships as its own merged PR and leaves `main` green.
 
 - 2026-08-12: Epic created. Surveyed automation engine, script gallery, position flow.
   Interview complete (2 rounds). Plan drafted.
+- 2026-08-12: **Phase 4 implemented** — the MT↔MC Bridge template (`templates/bridge.ts`,
+  registered in `index.ts`). `build()` returns the **pair** `[MT_to_MC_Bridge, MC_to_MT_Bridge]`
+  via `compile()` (editable in the visual builder). Each direction:
+  `trigger.message` (rateLimit 20/60, origin channel filter) → `condition.sourceFilter` (origin
+  source) → `condition.numeric isDM==0` (channel-broadcast only, no DMs) → **two
+  `condition.string notContains` guards ('MT@' and 'MC@')** → `action.sendMessage` to the OTHER
+  source/channel with text `{{ trigger.protocolShort }}@{{ trigger.fromName }}: {{ trigger.text }}`.
+  - **Content-guard mechanism = `condition.string notContains`, NOT a regex negative-lookahead.**
+    The engine compiles filter regexes with RE2 (`src/utils/safeRegex.ts`), which THROWS on
+    lookaround, and the trigger prefilter swallows the throw as a silent non-match — a
+    lookahead guard would make the bridge never fire. `notContains` is case-insensitive and
+    decompile-friendly. This is defense-in-depth beyond the Phase-2 self-guard: the self-guard
+    only drops MeshMonitor's OWN sends; the content guard also stops a remote node echoing a
+    bridged `MT@…`/`MC@…` message back into an amplifying loop.
+  - Wizard: MT source/channel + MC source/channel (reuse `sourceMulti`/`channelMulti`, take
+    first) + optional rate-limit override.
+  - Loop-safety proof: `bridge.loopSafety.test.ts` feeds a relayed `MT@…` message back through
+    the opposite automation and asserts 0 actions (the `notContains` guard fails) — cycle broken.
+    The MeshCore half runs the real `buildMeshCoreMessageContext`/`evaluateGraph` path because
+    the simulator's message events are Meshtastic-shaped (hardcode `protocolShort:'MT'`).
+  - Gate: typecheck clean, **full** vitest `success: true` (14196 passed / 0 failed / 0 failed
+    suites), lint clean. Live-validated: both automations POSTed to the running build's real
+    `/import` landed **disabled**; deleted afterward. (Bridge card/wizard live-render deferred —
+    chrome-devtools MCP outage; structurally identical to the Phase-3-validated Auto-Ack card.)
 - 2026-08-12: **Phase 3 implemented** (4 WPs). In-app Template Gallery:
   - New `src/components/automations/templates/` dir: `types.ts` (`AutomationTemplate` with
     `build() → BuiltAutomation | BuiltAutomation[]` — the array form is Phase 4's pair hook),
