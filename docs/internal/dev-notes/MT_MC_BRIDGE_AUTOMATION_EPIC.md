@@ -110,7 +110,7 @@ Each phase ships as its own merged PR and leaves `main` green.
   browser-validated.
   *Deps:* Phases 1, 2, 3.
 
-- [ ] **Phase 5 — Documentation & recipe.**
+- [x] **Phase 5, Documentation & recipe.** ✅ SHIPPED (PR pending merge)
   User-facing bridge recipe (in-app gallery walkthrough + manual construction),
   the new token, and prominent flood-safety guidance (OverMesh caution). Update
   `SubstitutionsHelp`/dev-notes as needed; refresh this plan's decisions.
@@ -119,6 +119,12 @@ Each phase ships as its own merged PR and leaves `main` green.
 
 ## Status log
 
+- 2026-08-12: **EPIC COMPLETE.** All 5 phases shipped. Phase 5 documented the whole feature in
+  `docs/features/automation-engine.md`: the `{{ trigger.protocolShort }}` token (Universal message
+  tokens table), the per-automation Rate limit (flood ceiling) section, a Template Gallery section,
+  and a full "Recipe, Meshtastic ↔ MeshCore bridge" (one-click + manual construction) with a
+  prominent `::: warning` flood-safety callout covering the three safeguards (content guard, rate
+  limit, channel scoping + DM exclusion) and the OverMesh caution. `npm run docs:build` clean.
 - 2026-08-12: Epic created. Surveyed automation engine, script gallery, position flow.
   Interview complete (2 rounds). Plan drafted.
 - 2026-08-12: **Phase 4 implemented** — the MT↔MC Bridge template (`templates/bridge.ts`,

@@ -171,6 +171,31 @@ automation* — rather than never firing or never cooling down. This applies to:
 The live trace names which fallback applied, e.g. `cooldown active — 12s remaining (automation-wide
 (this event has no subject node))`.
 
+### Rate limit (flood ceiling)
+
+Every trigger type also accepts a **rate limit**, distinct from Cooldown above: `params.rateLimit =
+{ maxActions, windowSeconds }` on the trigger node. Where Cooldown debounces **one subject** (a node,
+a source+node pair, or the whole automation, per [Cooldown applies to](#cooldown-applies-to) above),
+the rate limit caps how many times the **whole automation** may fire, full stop, inside a rolling
+window — keyed only by the automation's own id, regardless of who or what triggered it:
+
+- **Cooldown** — "don't ack the *same* range-tester again for 60 seconds."
+- **Rate limit** — "never let *this automation* fire more than 20 times a minute, no matter how many
+  different senders trigger it."
+
+The two compose rather than replace one another, and are checked in a fixed order: **cooldown first**,
+so a debounced event spends no rate-limit budget, and a rate-limited event does not advance the
+cooldown timer either. Leaving `rateLimit` unset means **no limit** — the behavior every automation
+had before this field existed. `maxActions` is clamped to 1000. The live trace and run log record a
+rate-limited fire as its own outcome (distinct from `cooldown`), e.g. `rate limit reached — 20/60s
+(flood guard)`.
+
+There's no dedicated field for this in the visual builder yet — set it via the automation's raw JSON
+(the builder's "advanced" JSON fallback, or JSON import/export). The [MT↔MC Bridge
+template](#template-gallery) sets a safe default (20 actions / 60 seconds) for you, exposed as a
+**Max relays per minute** field in its install wizard — see [Recipe — Meshtastic ↔ MeshCore
+bridge](#recipe-—-meshtastic-↔-meshcore-bridge).
+
 ## Conditions
 
 Conditions form the **IF** of each rule. Each condition is a *router*: matched events follow its
@@ -419,6 +444,29 @@ to let a repeater finish transmitting before replying. The pause only lasts for 
 durable across a restart; the dry-run [simulator](#testing-dry-run) resolves it instantly instead of
 actually waiting.
 
+## Template Gallery
+
+Building a graph from scratch is one path into the engine; the **Template Gallery** is the other —
+a **Browse templates** button next to **+ New automation** on the Automations page opens a card grid
+of prebuilt automations. Pick one, fill in a small wizard (which sources/channels it should use), and
+it installs — **disabled**, for review, the same as any imported automation — ready to open in the
+visual builder, check over, and enable.
+
+The gallery ships with two templates today:
+
+- **Auto-Ack** — acknowledges direct, zero-hop text messages with a tapback or a reply, reproducing
+  the common "answer range testers who hit me directly" pattern as an editable automation instead of
+  a fixed feature toggle.
+- **MT↔MC Bridge** — relays channel text both ways between a Meshtastic channel and a MeshCore
+  channel, tagged with its protocol of origin. See [Recipe — Meshtastic ↔ MeshCore
+  bridge](#recipe-—-meshtastic-↔-meshcore-bridge) below for the full walkthrough, including the
+  flood-safety guidance you should read before enabling it.
+
+Every template installs through the same [JSON import](#overview) path as a hand-exported automation
+(`POST /api/automations/import`), so it lands disabled, and a template that installs a **pair** of
+automations (like the Bridge) reports each one's install result separately — a partial failure on one
+automation doesn't silently swallow the other.
+
 ## Recipe — per-channel range-test acks (issue #4340)
 
 A common base-station setup runs a busy **primary** community channel plus a quieter secondary
@@ -511,6 +559,85 @@ adding a second configuration axis to it, by moving the per-channel branching in
 Engine feature built for exactly that. Two short automations — one per channel — replace the
 would-be per-channel Auto-Acknowledge field, and the hop-count tapback carries the "how many hops
 did that take" signal for free, in its own packet, regardless of which text (if any) accompanies it.
+
+## Recipe — Meshtastic ↔ MeshCore bridge
+
+MeshMonitor can bridge **text messages** between a Meshtastic channel and a MeshCore channel — a
+message posted on one side is relayed to the other, tagged with where it came from. This is built
+entirely on the Automation Engine (a matched **pair** of automations, one per direction), not a
+native protocol bridge, so it's fully visible and editable like any other automation.
+
+**Text only.** Positions and telemetry are not bridged — neither manager has a "relay this position"
+primitive today.
+
+### One-click: the Template Gallery
+
+1. Automations tab → **Browse templates** → **MT↔MC Bridge**.
+2. In the wizard, pick a **Meshtastic source + channel** and a **MeshCore source + channel** (and,
+   optionally, override **Max relays per minute** — see [flood safety](#flood-safety) below).
+3. Install. This creates **two** automations — `MT_to_MC_Bridge` and `MC_to_MT_Bridge` — both
+   **disabled**.
+4. Open each in the builder, review the trigger/condition/action wiring below, then enable both.
+
+### Manual construction
+
+If you'd rather build it yourself (or want to see exactly what the template installs), it's a pair
+of near-identical automations:
+
+**Automation A — "MT → MC Bridge"**
+
+**WHEN** *A message is received*
+- **On channels:** your Meshtastic channel (e.g. `Bridge`).
+- **Source filter** (condition): the Meshtastic source.
+- **Rate limit:** `20` actions / `60` seconds — see [flood safety](#flood-safety). Set via the
+  automation's JSON today (no dedicated builder field yet — see [Rate limit](#rate-limit-flood-ceiling)).
+
+**RULE** (all conditions must match — this is the AND chain)
+1. **Number comparison:** `isDM == 0` — channel broadcasts only; a DM was never meant for the other
+   mesh.
+2. **Text comparison:** Message text **doesn't contain** `MT@`.
+3. **Text comparison:** Message text **doesn't contain** `MC@`.
+
+**THEN**
+- `Send a message` → **Send via sources:** the MeshCore source. **On channels:** your MeshCore
+  channel. Body:
+
+  ```
+  {{ trigger.protocolShort }}@{{ trigger.fromName }}: {{ trigger.text }}
+  ```
+
+**Automation B — "MC → MT Bridge"** is the mirror image: trigger on the **MeshCore** source/channel,
+same two `notContains` guards, and the `Send a message` action targets the **Meshtastic**
+source/channel instead.
+
+### Flood safety {#flood-safety}
+
+::: warning Read this before you enable a bridge
+A bridge relays traffic from one mesh straight onto another. A poorly configured one can flood the
+destination mesh with unwanted traffic — this exact failure mode has actually happened in the
+MeshCore community. The recipe above layers three independent safeguards; understand all three
+before you flip either automation on.
+:::
+
+1. **Content guard** (the two `notContains` conditions). Without it, a message relayed MT→MC would
+   land back in front of the MC→MT automation looking like any other MeshCore channel post, get
+   relayed straight back to Meshtastic, and bounce forever — an amplifying loop, not a one-time
+   relay. Tagging every relayed message with its origin (`MT@…` / `MC@…`) and refusing to *re-relay*
+   anything already carrying **either** tag breaks the cycle: it also protects against a remote node
+   on the far side simply echoing a bridged message back at you, not just against MeshMonitor's own
+   sends.
+2. **Rate limit** — a flood ceiling on each direction (default 20 relays / 60 seconds), independent
+   of how many different senders are triggering it. Keep this conservative; it's your last line of
+   defense if something upstream ever does start looping.
+3. **Channel scoping + DM exclusion** — bridge one specific, low-traffic channel, never a busy
+   community/primary channel, and never DMs (the `isDM == 0` guard enforces the DM exclusion; the
+   channel filter on each trigger enforces the scoping). A busy channel bridged both ways is exactly
+   the OverMesh scenario this recipe exists to avoid.
+
+**Start small.** Install both automations **disabled**, review them, enable them against one quiet
+test channel first, and watch the destination mesh for a few minutes before trusting it. Widen scope
+(a busier channel, a second channel pair) only deliberately, one step at a time — not by pointing an
+existing bridge pair at a wider channel filter and hoping.
 
 ## Converting Auto-Acknowledge to an automation
 
@@ -661,6 +788,19 @@ to mean the same thing on each — use them and your automation is portable:
 | `{{ trigger.channelName }}` | Channel name (empty on a DM) | Channel name (empty on a DM / room post) |
 | `{{ trigger.isDM }}` / `{{ trigger.isChannel }}` | Direct message / channel broadcast | Direct message / channel post |
 | `{{ trigger.protocol }}` | `meshtastic` | `meshcore` |
+| `{{ trigger.protocolShort }}` | `MT` | `MC` |
+
+`{{ trigger.protocolShort }}` is the compact form of `{{ trigger.protocol }}` — sized for a short
+tag prefix rather than a full sentence. Compose it with `{{ trigger.fromName }}` for a "who, and
+which mesh" tag on a relayed message:
+
+```
+{{ trigger.protocolShort }}@{{ trigger.fromName }}: {{ trigger.text }}
+```
+
+renders as `MT@Alice: hello`. This is exactly the pattern the [MT↔MC Bridge
+template](#template-gallery) uses — see [Recipe — Meshtastic ↔ MeshCore
+bridge](#recipe-—-meshtastic-↔-meshcore-bridge).
 
 `{{ trigger.senderLabel }}` is the **"just works" label for addressing a reply** — it always resolves
 to something usable. Prefer it (or `{{ trigger.fromName }}`) over the **raw identity** tokens:
