@@ -96,7 +96,7 @@ import {
   pickLabelX,
 } from './tracerouteStrip.js';
 import type { AggregateTracerouteRow, StatNode, TracerouteUnionGraph } from './tracerouteAggregate.js';
-import { statOpacity, buildTracerouteUnion } from './tracerouteAggregate.js';
+import { statOpacity, statEdgeWeight, buildTracerouteUnion } from './tracerouteAggregate.js';
 
 // ---------------------------------------------------------------------------
 // Public types (D10)
@@ -120,6 +120,9 @@ export interface UnionStripEdge extends StripEdge {
   count: number;
   share: number;
   opacity: number;
+  /** `statEdgeWeight(share)` — stroke-width in px. Repeated adjacencies read
+   *  heavier; the counting model owns this scalar (issue #4566). */
+  weight: number;
 }
 
 export interface UnionStripGraph extends TracerouteStripGraph {
@@ -259,6 +262,7 @@ export function buildUnionStripGraph(union: TracerouteUnionGraph): UnionStripGra
       count: e.count,
       share: e.share,
       opacity: statOpacity(e.share),
+      weight: statEdgeWeight(e.share),
     }),
   );
 

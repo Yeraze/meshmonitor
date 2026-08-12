@@ -9,7 +9,12 @@ import {
   layoutTracerouteUnion,
   buildStatisticalStrip,
 } from './tracerouteUnionLayout';
-import { buildTracerouteUnion, statOpacity, type AggregateTracerouteRow } from './tracerouteAggregate';
+import {
+  buildTracerouteUnion,
+  statOpacity,
+  statEdgeWeight,
+  type AggregateTracerouteRow,
+} from './tracerouteAggregate';
 import {
   DEFAULT_LAYOUT_OPTIONS,
   minBand,
@@ -400,6 +405,19 @@ describe('tracerouteUnionLayout — graph shape', () => {
     const graph = buildGraph(rows);
     for (const nd of graph.nodes) expect(nd.opacity).toBe(statOpacity(nd.share));
     for (const e of graph.edges) expect(e.opacity).toBe(statOpacity(e.share));
+  });
+
+  it('24a. weight === statEdgeWeight(share) on every edge (#4566)', () => {
+    const rows = [
+      row({ route: JSON.stringify([300, 400]) }),
+      row({ route: JSON.stringify([300, 400]) }),
+      row({ route: JSON.stringify([300]) }),
+    ];
+    const graph = buildGraph(rows);
+    for (const e of graph.edges) expect(e.weight).toBe(statEdgeWeight(e.share));
+    // A more-repeated edge (higher share) reads visually heavier than a rare one.
+    const weights = graph.edges.map((e) => e.weight);
+    expect(Math.max(...weights)).toBeGreaterThan(Math.min(...weights));
   });
 
   it('25. node ids are carried over verbatim from the aggregate', () => {

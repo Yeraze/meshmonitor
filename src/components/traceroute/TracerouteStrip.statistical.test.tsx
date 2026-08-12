@@ -302,6 +302,26 @@ describe('TracerouteStrip — statistical mode (SR_PHASE2_SPEC.md §4.2)', () =>
       hits.forEach((h) => expect((h as HTMLElement).style.getPropertyValue('--stat-opacity')).toBe(''));
     });
 
+    it('every visible edge carries --stat-weight equal to `${UnionStripEdge.weight}px` (#4566)', () => {
+      const { graph } = buildFixture5();
+      const { container } = render(<TracerouteStrip graph={graph} meta={META} {...FMT} />);
+
+      const visible = Array.from(container.querySelectorAll(`polyline.${styles.statEdge}`)) as HTMLElement[];
+      expect(visible).toHaveLength(graph.edges.length);
+      const weights = new Set(graph.edges.map((e) => `${e.weight}px`));
+      visible.forEach((p) => {
+        expect(weights.has(p.style.getPropertyValue('--stat-weight'))).toBe(true);
+      });
+    });
+
+    it('.edgeHit targets carry no --stat-weight (hit-target width stays constant)', () => {
+      const { graph } = buildFixture5();
+      const { container } = render(<TracerouteStrip graph={graph} meta={META} {...FMT} />);
+
+      const hits = container.querySelectorAll(`.${styles.edgeHit}`);
+      hits.forEach((h) => expect((h as HTMLElement).style.getPropertyValue('--stat-weight')).toBe(''));
+    });
+
     it('a single-route render carries no .statNode class and no --stat-opacity', () => {
       const input: TracerouteStripInput = { fromNodeNum: LOCAL, toNodeNum: PEER, route: '[]', routeBack: null };
       const graph = buildTracerouteStripGraph(input);
