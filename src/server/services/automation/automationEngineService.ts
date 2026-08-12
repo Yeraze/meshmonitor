@@ -20,6 +20,7 @@ import {
   validateAutomationGraph,
   categoryOf,
   parseCooldownScope,
+  parseRateLimit,
   type AutomationGraph,
   type AutomationNode,
   type TriggerType,
@@ -67,6 +68,8 @@ interface LoadedAutomation {
   triggerType: TriggerType;
   cooldownSeconds: number;
   cooldownScope: CooldownScope;
+  /** Per-automation flood ceiling (#4577 Phase 2, RATE-LIMIT). Absent = no cap. */
+  rateLimit?: { maxActions: number; windowSeconds: number };
 }
 
 /**
@@ -192,6 +195,8 @@ export class AutomationEngineService {
   private index = new Map<TriggerType, LoadedAutomation[]>();
   /** automationId → cooldown key → last fired ms. Inner key shape: cooldownKeyFor(). */
   private lastFired = new Map<string, Map<string, number>>();
+  /** automationId → fire timestamps (ms) within the current rate-limit window (#4577 Phase 2). */
+  private rateLimitEvents = new Map<string, number[]>();
   /** automationId → nodeNum → { inside: was the node in the geofence at last check; ts: when last checked (eviction, #4399) }. */
   private geofenceState = new Map<string, Map<number, { inside: boolean; ts: number }>>();
   /** automationId → nodeNum → alarmed (beyond threshold) for left-home re-arm. */
@@ -235,8 +240,11 @@ export class AutomationEngineService {
       // No `as any` needed: params is Record<string, unknown> and parseCooldownScope
       // takes unknown. (The cooldownSeconds line above predates the lint ratchet.)
       const cooldownScope = parseCooldownScope(triggerNode.params?.cooldownScope);
+      // No `as any` needed: params is Record<string, unknown> and parseRateLimit
+      // takes unknown (same reasoning as the parseCooldownScope line above).
+      const rateLimit = parseRateLimit(triggerNode.params?.rateLimit);
       const entry: LoadedAutomation = {
-        id: row.id, name: row.name, graph: result.graph, triggerNode, triggerType, cooldownSeconds, cooldownScope,
+        id: row.id, name: row.name, graph: result.graph, triggerNode, triggerType, cooldownSeconds, cooldownScope, rateLimit,
       };
       if (!index.has(triggerType)) index.set(triggerType, []);
       index.get(triggerType)!.push(entry);
@@ -253,6 +261,10 @@ export class AutomationEngineService {
     const liveIds = new Set<string>();
     for (const list of index.values()) for (const a of list) liveIds.add(a.id);
     for (const id of this.lastFired.keys()) if (!liveIds.has(id)) this.lastFired.delete(id);
+    // Same prune for rate-limit event history (#4577 Phase 2): unreachable once
+    // out of the index, so dropping it is unobservable — identical reasoning to
+    // the lastFired prune immediately above.
+    for (const id of this.rateLimitEvents.keys()) if (!liveIds.has(id)) this.rateLimitEvents.delete(id);
     // Same prune for geofence baselines (#4399): a deleted/disabled automation's
     // entries are unreachable (checkGeofences only iterates `this.index`), so
     // dropping them is unobservable — unlike evicting a *live* automation's
@@ -305,7 +317,13 @@ export class AutomationEngineService {
       if (traced) this.emitTrace(a, ctx, now, { outcome: 'cooldown', reason: gate.reason });
       return 0;
     }
+    const rateGate = this.rateLimitGate(a, now);
+    if (!rateGate.ok) {
+      if (traced) this.emitTrace(a, ctx, now, { outcome: 'ratelimited', reason: rateGate.reason });
+      return 0;
+    }
     this.markFired(a, gate.key, now);
+    this.markRateLimited(a, now);
     const fr = await this.fireAutomation(a, ctx, now);
     if (traced) this.emitTrace(a, ctx, now, { outcome: 'fired', status: fr.status, conditionResults: fr.conditionResults, actions: fr.actions, steps: fr.steps });
     return 1;
@@ -391,6 +409,36 @@ export class AutomationEngineService {
     logger.debug(`[AutomationEngine] "${a.name}" cooldown keys trimmed to ${inner.size} (scope=${a.cooldownScope})`);
   }
 
+  /**
+   * Rate-limit verdict for one automation (#4577 Phase 2, RATE-LIMIT). Distinct
+   * from {@link cooldownGate}: keyed by automation id ONLY (never per-subject),
+   * so it bounds total fires of the whole rule inside a rolling window rather
+   * than debouncing a single subject. No `a.rateLimit` ⇒ always ok (pre-Phase-2
+   * behaviour). Precedence with cooldownGate is enforced by call order at each
+   * dispatch site: cooldown is checked first, and a cooldown-suppressed event
+   * never reaches this gate, so it never consumes rate budget.
+   */
+  private rateLimitGate(a: LoadedAutomation, now: number): { ok: true } | { ok: false; reason: string } {
+    if (!a.rateLimit) return { ok: true };
+    const { maxActions, windowSeconds } = a.rateLimit;
+    const windowMs = windowSeconds * 1000;
+    const prior = this.rateLimitEvents.get(a.id) ?? [];
+    const events = prior.filter((ts) => now - ts < windowMs);
+    this.rateLimitEvents.set(a.id, events);
+    if (events.length >= maxActions) {
+      return { ok: false, reason: `rate limit reached — ${maxActions}/${windowSeconds}s (flood guard)` };
+    }
+    return { ok: true };
+  }
+
+  /** Stamp a fire against its rate-limit window (#4577 Phase 2). No-op if the automation has no rateLimit. */
+  private markRateLimited(a: LoadedAutomation, now: number): void {
+    if (!a.rateLimit) return;
+    const events = this.rateLimitEvents.get(a.id) ?? [];
+    events.push(now);
+    this.rateLimitEvents.set(a.id, events);
+  }
+
   /** Prior inside/outside geofence state for (automation, node), or undefined on first sighting. */
   private getGeofenceBaseline(a: LoadedAutomation, nodeNum: number): boolean | undefined {
     return this.geofenceState.get(a.id)?.get(nodeNum)?.inside;
@@ -451,7 +499,13 @@ export class AutomationEngineService {
         if (traced) this.emitTrace(a, ctx, now, { outcome: 'cooldown', reason: gate.reason });
         continue;
       }
+      const rateGate = this.rateLimitGate(a, now);
+      if (!rateGate.ok) {
+        if (traced) this.emitTrace(a, ctx, now, { outcome: 'ratelimited', reason: rateGate.reason });
+        continue;
+      }
       this.markFired(a, gate.key, now);
+      this.markRateLimited(a, now);
       fired++;
       const fr = await this.fireAutomation(a, ctx, now);
       if (traced) this.emitTrace(a, ctx, now, { outcome: 'fired', status: fr.status, conditionResults: fr.conditionResults, actions: fr.actions, steps: fr.steps });
@@ -733,7 +787,13 @@ export class AutomationEngineService {
         if (traced) this.emitTrace(a, geoCtx, now, { outcome: 'cooldown', reason: gate.reason });
         continue;
       }
+      const rateGate = this.rateLimitGate(a, now);
+      if (!rateGate.ok) {
+        if (traced) this.emitTrace(a, geoCtx, now, { outcome: 'ratelimited', reason: rateGate.reason });
+        continue;
+      }
       this.markFired(a, gate.key, now);
+      this.markRateLimited(a, now);
       fired++;
       const fr = await this.fireAutomation(a, geoCtx, now);
       if (traced) this.emitTrace(a, geoCtx, now, { outcome: 'fired', status: fr.status, conditionResults: fr.conditionResults, actions: fr.actions, steps: fr.steps });
@@ -778,7 +838,13 @@ export class AutomationEngineService {
         if (traced) this.emitTrace(a, ctx, now, { outcome: 'cooldown', reason: gate.reason });
         continue;
       }
+      const rateGate = this.rateLimitGate(a, now);
+      if (!rateGate.ok) {
+        if (traced) this.emitTrace(a, ctx, now, { outcome: 'ratelimited', reason: rateGate.reason });
+        continue;
+      }
       this.markFired(a, gate.key, now);
+      this.markRateLimited(a, now);
       fired++;
       const fr = await this.fireAutomation(a, ctx, now);
       if (traced) this.emitTrace(a, ctx, now, { outcome: 'fired', status: fr.status, conditionResults: fr.conditionResults, actions: fr.actions, steps: fr.steps });
@@ -899,12 +965,18 @@ export class AutomationEngineService {
         if (traced) this.emitTrace(a, ctx, now, { outcome: 'cooldown', reason: gate.reason });
         continue;
       }
+      const rateGate = this.rateLimitGate(a, now);
+      if (!rateGate.ok) {
+        if (traced) this.emitTrace(a, ctx, now, { outcome: 'ratelimited', reason: rateGate.reason });
+        continue;
+      }
 
       let inner = this.leftHomeAlarmed.get(a.id);
       if (!inner) { inner = new Map(); this.leftHomeAlarmed.set(a.id, inner); }
       inner.set(nodeNum, true);
 
       this.markFired(a, gate.key, now);
+      this.markRateLimited(a, now);
       fired++;
       const fr = await this.fireAutomation(a, ctx, now);
       if (traced) this.emitTrace(a, ctx, now, { outcome: 'fired', status: fr.status, conditionResults: fr.conditionResults, actions: fr.actions, steps: fr.steps });

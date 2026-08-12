@@ -182,6 +182,36 @@ export function parseSendMaxAttempts(raw: unknown): number | undefined {
 }
 
 /**
+ * Per-automation flood ceiling (#4577 Phase 2, work package RATE-LIMIT).
+ *
+ * Distinct from the per-subject `cooldownGate` debounce above: this bounds
+ * how many times a SINGLE automation may FIRE inside a rolling window, keyed
+ * by automation id ONLY (never per-subject) — a flood guard, not a debounce.
+ * It composes with cooldownScope: cooldown decides IF/WHEN a given subject
+ * may re-fire; rate limit decides how many fires the whole automation may
+ * spend across ALL subjects in the window.
+ */
+export const RATE_LIMIT_MAX_ACTIONS_MIN = 1;
+export const RATE_LIMIT_MAX_ACTIONS_MAX = 1000;
+
+/**
+ * Coerce a stored `params.rateLimit` to `{ maxActions, windowSeconds }`, or
+ * `undefined` for absent / blank / malformed input — `undefined` means "no
+ * rate limit", the pre-Phase-2 behaviour every stored automation depends on.
+ * Lenient at RUNTIME (graphs written before this existed must still run)
+ * while validateAutomationGraph rejects a malformed value at SAVE time — the
+ * same split used above for cooldownScope and maxAttempts.
+ */
+export function parseRateLimit(raw: unknown): { maxActions: number; windowSeconds: number } | undefined {
+  if (!isPlainObject(raw)) return undefined;
+  const maxActions = Number(raw.maxActions);
+  const windowSeconds = Number(raw.windowSeconds);
+  if (!Number.isInteger(maxActions) || maxActions < RATE_LIMIT_MAX_ACTIONS_MIN) return undefined;
+  if (!Number.isInteger(windowSeconds) || windowSeconds < 1) return undefined;
+  return { maxActions: Math.min(RATE_LIMIT_MAX_ACTIONS_MAX, maxActions), windowSeconds };
+}
+
+/**
  * Match modes for `condition.meshcoreScope` (#3914). A MeshCore text message
  * carries a region "scope" (`scopeCode` 0 = unscoped, >0 = a region; `scopeName`
  * = the resolved region). This condition matches:
@@ -400,6 +430,22 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
           && p.cooldownScope != null
           && !COOLDOWN_SCOPES.includes(p.cooldownScope as CooldownScope)) {
         errors.push(`${n.type} "${n.id}" requires params.cooldownScope ∈ {automation,node,sourceNode}`);
+      }
+      // Rate limit (#4577 Phase 2, RATE-LIMIT) is likewise a trigger-level param
+      // shared by every trigger type, checked once here for the same reason.
+      // Optional: absent/null = no rate limit, the pre-Phase-2 behaviour every
+      // stored automation depends on. Save-time strict; runtime lenient via
+      // parseRateLimit (same split as cooldownScope above).
+      if (categoryOf(n.type) === 'trigger' && p.rateLimit != null) {
+        const rl = p.rateLimit;
+        const maxActions = isPlainObject(rl) ? Number((rl as Record<string, unknown>).maxActions) : NaN;
+        const windowSeconds = isPlainObject(rl) ? Number((rl as Record<string, unknown>).windowSeconds) : NaN;
+        const validShape = isPlainObject(rl)
+          && Number.isInteger(maxActions) && maxActions >= RATE_LIMIT_MAX_ACTIONS_MIN && maxActions <= RATE_LIMIT_MAX_ACTIONS_MAX
+          && Number.isInteger(windowSeconds) && windowSeconds >= 1;
+        if (!validShape) {
+          errors.push(`${n.type} "${n.id}" requires params.rateLimit = { maxActions >= 1, windowSeconds >= 1 }`);
+        }
       }
       switch (n.type) {
         case 'flow.collapse':

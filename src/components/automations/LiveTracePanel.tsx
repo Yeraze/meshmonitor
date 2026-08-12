@@ -21,7 +21,7 @@ interface TraceEntry {
   triggerType: string;
   sourceId: string | null;
   event: Record<string, unknown>;
-  outcome: 'fired' | 'prefiltered' | 'cooldown';
+  outcome: 'fired' | 'prefiltered' | 'cooldown' | 'ratelimited';
   reason?: string;
   status?: 'completed' | 'failed';
   conditionResults?: Record<string, boolean>;
@@ -64,6 +64,7 @@ function summarizeEvent(triggerType: string, event: Record<string, unknown>): st
 const OUTCOME_BADGE: Record<string, { label: string; cls: string }> = {
   prefiltered: { label: 'filtered out', cls: 'no' },
   cooldown: { label: 'cooldown', cls: 'muted' },
+  ratelimited: { label: 'rate limited', cls: 'muted' },
 };
 
 export default function LiveTracePanel({ automationId, automationName, enabled, onClose }: LiveTracePanelProps) {
