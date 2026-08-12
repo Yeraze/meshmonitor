@@ -110,6 +110,7 @@ describe('buildMessageContext', () => {
     // No name → senderLabel is the id (fromName already degraded to the id).
     expect(buildMessageContext(msg(), 'default', 1).fields.senderLabel).toBe('!0000006f');
     expect(buildMessageContext(msg(), 'default', 1).fields.protocol).toBe('meshtastic');
+    expect(buildMessageContext(msg(), 'default', 1).fields.protocolShort).toBe('MT');
   });
 
   // hopEmoji (#4340)
@@ -446,6 +447,7 @@ describe('buildMeshCoreMessageContext (#3833)', () => {
     expect(ctx.fields.isDM).toBe(false);
     expect(ctx.fields.fromName).toBe('Alice');
     expect(ctx.fields.protocol).toBe('meshcore');
+    expect(ctx.fields.protocolShort).toBe('MC');
     expect(ctx.fields.scopeCode).toBe(7);
     expect(ctx.fields.scopeName).toBe('paris');
     expect(ctx.fields.scoped).toBe(true);
@@ -534,6 +536,15 @@ describe('buildMeshCoreMessageContext (#3833)', () => {
     expect(ctx.fields.channelName).toBeUndefined();
     expect(ctx.fields.isChannel).toBe(false);
     expect(ctx.fields.senderLabel).toBe('aabbcc');
+  });
+});
+
+describe('protocolShort token (#4577)', () => {
+  it('{{ trigger.protocolShort }} resolves to MT/MC per protocol', () => {
+    const mt = buildMessageContext(msg(), 'default', 1);
+    expect(resolveTriggerPath(mt, 'trigger.protocolShort', 1)).toBe('MT');
+    const mc = buildMeshCoreMessageContext(mcMsg({ fromPublicKey: 'channel-1' }), 'default', 1);
+    expect(resolveTriggerPath(mc, 'trigger.protocolShort', 1)).toBe('MC');
   });
 });
 
