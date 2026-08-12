@@ -87,6 +87,9 @@ export interface NodeDataProvider {
    * received messages (#3914). Optional; absent → no drop.
    */
   getSelfPublicKey?(sourceId: string | null): Promise<string | null>;
+  /** True when a MeshCore public key belongs to ANY MeshCore source MeshMonitor owns —
+   *  cross-source fallback for the self-guard on multi-MC-source / bridge setups (#4577 P2). */
+  isOwnPublicKey?(pubkey: string): Promise<boolean>;
 }
 
 export interface EngineEvalContext {

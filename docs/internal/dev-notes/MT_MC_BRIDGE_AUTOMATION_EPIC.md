@@ -76,7 +76,7 @@ Each phase ships as its own merged PR and leaves `main` green.
   *Exit:* token resolves to `MT`/`MC` on each protocol; documented; tests green.
   *Deps:* none.
 
-- [ ] **Phase 2 — Loop & flood safety hardening.**
+- [x] **Phase 2 — Loop & flood safety hardening.** ✅ SHIPPED (PR pending merge)
   (a) Give `isSelfMeshCore` a cross-source fallback (mirror `isOwnNodeNum`/#4593 for
   MeshCore self public keys across all MeshCore sources).
   (b) Add a per-automation rate limit primitive (config + enforcement), distinct from
@@ -121,6 +121,23 @@ Each phase ships as its own merged PR and leaves `main` green.
 
 - 2026-08-12: Epic created. Surveyed automation engine, script gallery, position flow.
   Interview complete (2 rounds). Plan drafted.
+- 2026-08-12: **Phase 1 shipped** — PR #4675 merged (`{{ trigger.protocolShort }}` → MT/MC).
+- 2026-08-12: **Phase 2 implemented** (2 commits). Two deliverables:
+  - `isSelfMeshCore` cross-source fallback via new `getOwnPublicKeys()`/`isOwnPublicKey()`
+    in `src/server/utils/ownNodes.ts` + `NodeDataProvider.isOwnPublicKey?` — mirrors the
+    Meshtastic `isOwnNodeNum`/#4593 path so a self-sent MeshCore message re-entering via a
+    different MC source is recognized as self and dropped.
+  - Per-automation **rate-limit primitive**, keyed by automation id only (flood ceiling,
+    NOT per-subject). Config surface: **`params.rateLimit = { maxActions, windowSeconds }`
+    on the trigger node** (absent = no limit; `maxActions` clamped to 1000). Parsed by
+    `parseRateLimit()` (`src/types/automation.ts`, runtime-lenient / save-strict like
+    `cooldownScope`), enforced at all 5 engine dispatch sites via `rateLimitGate()` using the
+    injectable clock. Precedence: cooldown checked first (a debounced event spends no rate
+    budget); a rate-limited event does not advance cooldown. New trace outcome `'ratelimited'`.
+  - **This is the shape Phase 4's bridge template writes for its safe defaults**, and what
+    Phase 5 documents for users.
+  - Gate: typecheck clean, vitest `success: true` (1234 passed / 0 failed / 0 failed suites),
+    lint clean. No UI beyond the trace-badge enum (typecheck-covered) → no browser pass.
 
 ## Key file references (from survey)
 
