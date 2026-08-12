@@ -13,6 +13,7 @@ import apiService from '../../services/api';
 import AutomationBuilder, { type VariableOption, type SourceOption, type UnifiedChannelOption, type ScriptOption, type NodeMultiOption } from './AutomationBuilder';
 import AutomationTester from './AutomationTester';
 import LiveTracePanel from './LiveTracePanel';
+import TemplateGallery, { type InstalledAutomationRow } from './TemplateGallery';
 import { UiIcon } from '../icons';
 import { compile, decompile, type WorkflowForm } from './compile';
 import './AutomationsPage.css';
@@ -106,6 +107,7 @@ export default function AutomationsPage() {
 function AutomationsList() {
   const [items, setItems] = useState<Automation[]>([]);
   const [editing, setEditing] = useState<Automation | 'new' | null>(null);
+  const [browsing, setBrowsing] = useState(false);
   const [runsFor, setRunsFor] = useState<Automation | null>(null);
   const [traceFor, setTraceFor] = useState<Automation | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -125,6 +127,31 @@ function AutomationsList() {
   };
 
   if (editing) return <AutomationEditor automation={editing} onClose={() => { setEditing(null); void load(); }} />;
+  if (browsing) return (
+    <TemplateGallery
+      onClose={() => setBrowsing(false)}
+      onInstalled={(rows: InstalledAutomationRow[]) => {
+        setBrowsing(false);
+        void load();
+        // Installed automations always land disabled (see TemplateGallery) — open
+        // the first one so the user reviews it before flipping it on. `createdAt`/
+        // `updatedAt` aren't part of the /import response shape; the editor doesn't
+        // read them, so a Date.now() placeholder is fine.
+        if (rows.length > 0) {
+          const row = rows[0];
+          setEditing({
+            id: row.id,
+            name: row.name,
+            description: row.description,
+            enabled: row.enabled,
+            config: row.config,
+            createdAt: row.createdAt ?? Date.now(),
+            updatedAt: row.updatedAt ?? Date.now(),
+          });
+        }
+      }}
+    />
+  );
   if (runsFor) return <RunLog automation={runsFor} onClose={() => setRunsFor(null)} />;
   if (traceFor) return (
     <div>
@@ -137,6 +164,7 @@ function AutomationsList() {
     <div>
       <div className="ae-btn-row" style={{ marginBottom: '1rem' }}>
         <button className="ae-btn ae-btn--primary" onClick={() => setEditing('new')}>+ New automation</button>
+        <button className="ae-btn" onClick={() => setBrowsing(true)}>Browse templates</button>
       </div>
       {error && <div className="ae-error-list">{error}</div>}
       {items.length === 0 && <div className="ae-empty">No automations yet. Create one to get started.</div>}
