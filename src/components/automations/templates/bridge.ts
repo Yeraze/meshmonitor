@@ -59,19 +59,19 @@ const DEFAULT_RATE_LIMIT_MAX_ACTIONS = 20;
 
 const PARAMS: ParamSpec[] = [
   {
-    name: 'mtSource', label: 'Meshtastic source', kind: 'sourceMulti',
+    name: 'mtSource', label: 'Meshtastic source', kind: 'sourceMulti', protocolFilter: 'meshtastic',
     help: 'The Meshtastic connection to bridge. Leave none selected to relay from/to any Meshtastic source.',
   },
   {
-    name: 'mtChannel', label: 'Meshtastic channel', kind: 'channelMulti',
+    name: 'mtChannel', label: 'Meshtastic channel', kind: 'channelMulti', protocolFilter: 'meshtastic',
     help: 'The Meshtastic channel to bridge. Leave none selected to relay on any channel.',
   },
   {
-    name: 'mcSource', label: 'MeshCore source', kind: 'sourceMulti',
+    name: 'mcSource', label: 'MeshCore source', kind: 'sourceMulti', protocolFilter: 'meshcore',
     help: 'The MeshCore connection to bridge. Leave none selected to relay from/to any MeshCore source.',
   },
   {
-    name: 'mcChannel', label: 'MeshCore channel', kind: 'channelMulti',
+    name: 'mcChannel', label: 'MeshCore channel', kind: 'channelMulti', protocolFilter: 'meshcore',
     help: 'The MeshCore channel to bridge. Leave none selected to relay on any channel.',
   },
   {

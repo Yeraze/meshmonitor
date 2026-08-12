@@ -30,6 +30,15 @@ export interface FieldDef {
   /** This `text`/`textarea` field accepts `{{ }}` tokens → highlight + typo-check. */
   tokens?: boolean;
   /**
+   * Restrict a source/channel picker (`sourceMulti` / `sendSourceMulti` /
+   * `channelMulti`) to one protocol's options. `'meshcore'` shows only MeshCore
+   * sources/channels; `'meshtastic'` shows everything that is NOT MeshCore
+   * (native Meshtastic + MQTT bridge/broker, which are Meshtastic-protocol).
+   * Omitted = show all. Used by the MT↔MC Bridge template so the "Meshtastic"
+   * pickers don't list MeshCore options and vice-versa.
+   */
+  protocolFilter?: 'meshtastic' | 'meshcore';
+  /**
    * Render this field only when a sibling param matches. Omitted = always shown.
    * Declarative (not a predicate function) so the catalog stays serialisable data.
    */

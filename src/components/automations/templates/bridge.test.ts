@@ -41,6 +41,15 @@ describe('bridgeTemplate', () => {
     ]);
   });
 
+  it('scopes each side’s source/channel pickers to its own protocol', () => {
+    const byName = Object.fromEntries(bridgeTemplate.params.map((p) => [p.name, p]));
+    // The Meshtastic pickers must not offer MeshCore options, and vice-versa.
+    expect(byName.mtSource.protocolFilter).toBe('meshtastic');
+    expect(byName.mtChannel.protocolFilter).toBe('meshtastic');
+    expect(byName.mcSource.protocolFilter).toBe('meshcore');
+    expect(byName.mcChannel.protocolFilter).toBe('meshcore');
+  });
+
   it('build({}) does not throw and produces a valid pair with no filters', () => {
     const [mtToMc, mcToMt] = buildPair({});
     for (const a of [mtToMc, mcToMt]) {
