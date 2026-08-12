@@ -64,6 +64,20 @@
  * `graph.mode === 'statistical'` to suppress arrowheads/SNR labels, never
  * read `leg` as a direction claim here.
  *
+ * EDGE-TO-EDGE LANE NUDGE (#4566). D8 rules out the forward/return
+ * LANE_OFFSET, but distinct edges in the union can still lay out with
+ * paths through the same screen region — dense unions collapse into a
+ * single visual line under D8 alone. After routing, edges whose sampled
+ * paths coincide within EDGE_OVERLAP_THRESHOLD_PX at ≥ MIN_MATCHES points
+ * are grouped by connected component and translated perpendicular to each
+ * edge's own overall chord by ±EDGE_OVERLAP_OFFSET_PX. Deterministic
+ * (edges ordered by id, every constant fixed), and singletons — the
+ * common case — are left untouched. The max nudge is clamped to the
+ * LANE_OFFSET slack the router already reserved on top of the glyph rim,
+ * so no nudged edge crosses into a nearby glyph — the very reason the
+ * post-routing clearance was inflated in the first place is what makes
+ * this legal.
+ *
  * DETERMINISM (D11). `depthKey` is an index into a sorted array. Group
  * order is sorted distinct integers, walked column-by-column (not via `Map`
  * iteration order) so nothing depends on insertion order. Within-group
@@ -378,7 +392,192 @@ export function layoutTracerouteUnion(
     labelAnchors.set(e.id, { x: anchorX, y: anchorY });
   }
 
+  // Issue #4566: distinct edges (different endpoints) whose independently-
+  // routed paths pass through the same screen region are pushed apart along
+  // their own perpendicular by a small lateral step, so a dense union no
+  // longer collapses into a single visual line. Pure, bounded, deterministic
+  // — see `nudgeOverlappingEdgePaths` for the algorithm. The max nudge is
+  // the "spare" clearance the router already reserved on top of the glyph
+  // rim (edgeClearance = glyph half + rim + LANE_OFFSET; the statistical
+  // union doesn't use LANE_OFFSET per D8, so it's free for #4566 to spend
+  // without violating glyph safety).
+  const maxNudgePx = clearance - (o.glyphSize / 2 + EDGE_RIM_MARGIN);
+  nudgeOverlappingEdgePaths(edgePaths, maxNudgePx);
+
   return { width, height, centers, edgePaths, labelAnchors };
+}
+
+// ---------------------------------------------------------------------------
+// Edge-to-edge overlap nudge (#4566)
+// ---------------------------------------------------------------------------
+
+/** Perpendicular lateral step (px) applied to each edge in an overlap group.
+ *  Edges in a group of size N get signed offsets `[0, +1, -1, +2, -2, …] × δ`.
+ *  Kept small — roughly one rim margin — so a nudged edge still visually
+ *  connects to its endpoint glyph rather than looking detached. Must be
+ *  strictly greater than `EDGE_OVERLAP_THRESHOLD_PX` so a nudged pair is
+ *  no longer flagged as overlapping on a subsequent pass — idempotence. */
+export const EDGE_OVERLAP_OFFSET_PX = 4;
+
+/** Sample count per polyline for overlap detection. Even spacing along
+ *  arc length; higher counts catch shorter shared spans at O(edges² × count). */
+const EDGE_OVERLAP_SAMPLE_COUNT = 8;
+
+/** Distance (px) at which two samples on distinct edges count as coincident.
+ *  Must sit BELOW `EDGE_OVERLAP_OFFSET_PX` (idempotence) but above the
+ *  default 2-px stroke width so parallel-but-adjacent strokes still
+ *  register as overlapping. */
+const EDGE_OVERLAP_THRESHOLD_PX = 3;
+
+/** Min sample matches to call two edges "overlapping." One crossing hits a
+ *  single sample by chance; requiring two means a shared span, not a crossing. */
+const EDGE_OVERLAP_MIN_MATCHES = 2;
+
+/** Arc length of a polyline as a running sum of segment distances. */
+function pathLength(path: readonly StripPoint[]): number {
+  let total = 0;
+  for (let i = 1; i < path.length; i++) {
+    total += Math.hypot(path[i].x - path[i - 1].x, path[i].y - path[i - 1].y);
+  }
+  return total;
+}
+
+/** Point at arc distance `s` along `path`, clamped to the polyline's extent. */
+function pointAtArc(path: readonly StripPoint[], s: number): StripPoint {
+  if (s <= 0) return path[0];
+  let remaining = s;
+  for (let i = 1; i < path.length; i++) {
+    const dx = path[i].x - path[i - 1].x;
+    const dy = path[i].y - path[i - 1].y;
+    const segLen = Math.hypot(dx, dy);
+    if (segLen === 0) continue;
+    if (remaining <= segLen) {
+      const t = remaining / segLen;
+      return { x: path[i - 1].x + dx * t, y: path[i - 1].y + dy * t };
+    }
+    remaining -= segLen;
+  }
+  return path[path.length - 1];
+}
+
+/** N evenly-spaced samples along a polyline's arc length, at segment midpoints. */
+function samplePath(path: readonly StripPoint[], count: number): StripPoint[] {
+  const total = pathLength(path);
+  if (total === 0) return Array.from({ length: count }, () => path[0]);
+  const samples: StripPoint[] = [];
+  for (let i = 0; i < count; i++) {
+    samples.push(pointAtArc(path, ((i + 0.5) / count) * total));
+  }
+  return samples;
+}
+
+/** Count how many of `a[i]` land within `threshold` of `b[i]` (same index —
+ *  arc-length-aligned samples, not nearest-neighbor). A shared parallel span
+ *  produces contiguous matches; a single crossing produces at most one. */
+function coincidentSampleCount(a: readonly StripPoint[], b: readonly StripPoint[], threshold: number): number {
+  let matches = 0;
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) {
+    if (Math.hypot(a[i].x - b[i].x, a[i].y - b[i].y) <= threshold) matches++;
+  }
+  return matches;
+}
+
+/** Signed offset for a member's index within a sorted overlap group:
+ *  `0, +1, -1, +2, -2, …`. Same shape as `offsetForIndex` (D6) but expressed
+ *  as a unit multiplier for `EDGE_OVERLAP_OFFSET_PX`. */
+function laneOffsetForIndex(i: number): number {
+  if (i === 0) return 0;
+  return i % 2 === 1 ? (i + 1) / 2 : -(i / 2);
+}
+
+/**
+ * In-place: detect distinct-endpoint edges whose paths pass through the same
+ * screen region and translate each entire polyline by a small perpendicular
+ * offset so they read as separate lines. Deterministic — edges are ordered by
+ * id, and every constant is fixed above.
+ *
+ * Two-pass: sample all paths once, pairwise overlap into an adjacency map,
+ * BFS the connected components, then translate. Edges with no overlap are
+ * left untouched. Same-endpoint edges cannot exist in a union graph (the
+ * counting model merges them, D3), so "distinct endpoints" is guaranteed by
+ * the input shape rather than checked here.
+ *
+ * `maxNudgePx` caps the largest offset a member of a big overlap group may
+ * receive so no nudged edge crosses into a nearby glyph — see the caller.
+ *
+ * @internal exported for tracerouteUnionLayout.test.ts.
+ */
+export function nudgeOverlappingEdgePaths(
+  edgePaths: Map<string, StripPoint[]>,
+  maxNudgePx: number = EDGE_OVERLAP_OFFSET_PX,
+): void {
+  const ids = [...edgePaths.keys()].sort();
+  if (ids.length < 2) return;
+
+  const paths = ids.map((id) => edgePaths.get(id)!);
+  const samples = paths.map((p) => samplePath(p, EDGE_OVERLAP_SAMPLE_COUNT));
+
+  // Adjacency: which edges overlap which. O(n²) sample compares; n is the
+  // number of union edges (bounded by unique adjacencies), always modest.
+  const neighbors: number[][] = ids.map(() => []);
+  for (let i = 0; i < ids.length; i++) {
+    for (let j = i + 1; j < ids.length; j++) {
+      if (coincidentSampleCount(samples[i], samples[j], EDGE_OVERLAP_THRESHOLD_PX) >= EDGE_OVERLAP_MIN_MATCHES) {
+        neighbors[i].push(j);
+        neighbors[j].push(i);
+      }
+    }
+  }
+
+  // Connected components via BFS. `component[k] === -1` means "no overlaps,
+  // no offset needed."
+  const component = new Array<number>(ids.length).fill(-1);
+  let nextComp = 0;
+  for (let i = 0; i < ids.length; i++) {
+    if (component[i] !== -1 || neighbors[i].length === 0) continue;
+    const queue: number[] = [i];
+    component[i] = nextComp;
+    while (queue.length > 0) {
+      const k = queue.shift()!;
+      for (const nb of neighbors[k]) {
+        if (component[nb] === -1) {
+          component[nb] = nextComp;
+          queue.push(nb);
+        }
+      }
+    }
+    nextComp++;
+  }
+
+  // Bucket members per component. `ids` is already sorted, so `members` is
+  // sorted by edge id — offset assignment is deterministic.
+  const componentMembers: number[][] = Array.from({ length: nextComp }, () => []);
+  for (let i = 0; i < ids.length; i++) {
+    if (component[i] >= 0) componentMembers[component[i]].push(i);
+  }
+
+  for (const members of componentMembers) {
+    if (members.length < 2) continue; // singleton components shouldn't exist here, but be safe.
+    members.forEach((idx, order) => {
+      const rawOffset = laneOffsetForIndex(order) * EDGE_OVERLAP_OFFSET_PX;
+      // Clamp to maxNudgePx so a big overlap group's outermost members can
+      // never push into a nearby glyph. Two lanes may end up at the same
+      // clamped offset (large N); the residual is a small on-the-rim overlap,
+      // strictly better than the pre-nudge single-line collapse.
+      const nudge = Math.max(-maxNudgePx, Math.min(maxNudgePx, rawOffset));
+      if (nudge === 0) return;
+      const path = paths[idx];
+      // Perpendicular of the OVERALL start->end chord; canonicalized so a
+      // path traversed either way picks the same "up" side (this module
+      // already relies on canonicalPerpendicular for glyph-routing tie-break).
+      const perp = canonicalPerpendicular(path[0], path[path.length - 1]);
+      const dx = perp.x * nudge;
+      const dy = perp.y * nudge;
+      const translated = path.map((p) => ({ x: p.x + dx, y: p.y + dy }));
+      edgePaths.set(ids[idx], translated);
+    });
+  }
 }
 
 /** One-shot seam for Phase 2: rows -> counting model -> cells -> pixels. */
