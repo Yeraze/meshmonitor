@@ -290,6 +290,32 @@ describe('AutomationEngineService', () => {
     expect(await engine.onMeshCoreMessage(mcMessage({ fromPublicKey: 'channel-0', text: 'ping' }), 'default')).toBe(1);
   });
 
+  it('self-origin (#4577 P2): ignores our own key on a MeshCore source with no self key yet (cross-source fallback)', async () => {
+    const { calls, deps } = recorder();
+    await createEnabled('mc-ping', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: { textContains: 'ping' } },
+        { id: 's', type: 'action.sendMessage', params: { text: 'pong' } },
+      ],
+      edges: [{ from: 't', to: 's' }],
+    });
+    // This source's own key hasn't resolved (getSelfPublicKey → null); only the
+    // cross-source owned-pubkey set (another MeshCore source) can recognise us.
+    const selfData = {
+      ...data,
+      getSelfPublicKey: async () => null,
+      isOwnPublicKey: async (k: string) => k.toLowerCase() === 'abcd',
+    };
+    const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data: selfData, now: () => clock });
+    await engine.load();
+    // Our own key, relayed back via a different MeshCore source → dropped.
+    expect(await engine.onMeshCoreMessage(mcMessage({ fromPublicKey: 'ABCD', text: 'ping' }), 'default')).toBe(0);
+    expect(calls).toHaveLength(0);
+    // A different sender → fires.
+    expect(await engine.onMeshCoreMessage(mcMessage({ fromPublicKey: 'channel-0', text: 'ping' }), 'default')).toBe(1);
+  });
+
   it('self-origin (#3914): ignores our own node telemetry', async () => {
     const { deps } = recorder();
     await createEnabled('batt', {
@@ -1155,6 +1181,93 @@ describe('AutomationEngineService', () => {
     await engine.onMessage(message({ text: 'ping' }), 'default');
     await engine.onMessage(message({ text: 'hello' }), 'default');
     expect(got).toHaveLength(0);
+  });
+
+  // ── rate limit (#4577 Phase 2, RATE-LIMIT) ─────────────────────────────────
+  //
+  // Distinct from cooldownScope above: rateLimit is keyed by automation id
+  // ONLY, so it bounds total fires across every subject, not one subject's
+  // debounce window.
+  describe('rate limit (#4577 Phase 2, RATE-LIMIT)', () => {
+    it('caps total fires across ALL subjects within the window, then replenishes once it elapses', async () => {
+      const { calls, deps } = recorder();
+      await createEnabled('ping', {
+        version: 1,
+        nodes: [
+          { id: 't', type: 'trigger.message', params: { textContains: 'ping', rateLimit: { maxActions: 2, windowSeconds: 60 } } },
+          { id: 'tap', type: 'action.tapback', params: { emoji: '👍' } },
+        ],
+        edges: [{ from: 't', to: 'tap' }],
+      });
+      const engine = engineWith(deps);
+      await engine.load();
+
+      // Three DISTINCT senders inside the same 60s window — only the first two
+      // may fire; the rate ceiling is per-automation, not per-sender.
+      expect(await engine.onMessage(message({ fromNodeNum: 111 }), 'default')).toBe(1);
+      clock += 1_000;
+      expect(await engine.onMessage(message({ fromNodeNum: 222 }), 'default')).toBe(1);
+      clock += 1_000;
+      expect(await engine.onMessage(message({ fromNodeNum: 333 }), 'default')).toBe(0); // budget spent
+      expect(calls).toHaveLength(2);
+
+      // Advance the injected clock past the window: the two prior fires age
+      // out and the budget replenishes.
+      clock += 60_000;
+      expect(await engine.onMessage(message({ fromNodeNum: 444 }), 'default')).toBe(1);
+      expect(calls).toHaveLength(3);
+    });
+
+    it('trace: emits outcome "ratelimited" with the max/window in the reason', async () => {
+      const got: any[] = [];
+      automationTraceBus.setSink((_id, payload) => got.push(payload));
+      const a = await createEnabled('ping', {
+        version: 1,
+        nodes: [
+          { id: 't', type: 'trigger.message', params: { textContains: 'ping', rateLimit: { maxActions: 1, windowSeconds: 60 } } },
+          { id: 'tap', type: 'action.tapback', params: { emoji: '👍' } },
+        ],
+        edges: [{ from: 't', to: 'tap' }],
+      });
+      const engine = engineWith(recorder().deps);
+      await engine.load();
+      automationTraceBus.arm(a.id, 'sock1', FAR_FUTURE);
+
+      await engine.onMessage(message({ fromNodeNum: 111 }), 'default'); // fires, spends the one slot
+      await engine.onMessage(message({ fromNodeNum: 222 }), 'default'); // rate-limited
+      const rlEvent = got.find((g) => g.outcome === 'ratelimited');
+      expect(rlEvent).toBeDefined();
+      expect(rlEvent.reason).toMatch(/rate limit reached — 1\/60s/);
+    });
+
+    it('a cooldown-suppressed event does not consume rate budget (precedence: cooldown before rate limit)', async () => {
+      const { calls, deps } = recorder();
+      await createEnabled('ping', {
+        version: 1,
+        nodes: [
+          {
+            id: 't',
+            type: 'trigger.message',
+            params: { textContains: 'ping', cooldownSeconds: 60, cooldownScope: 'node', rateLimit: { maxActions: 2, windowSeconds: 60 } },
+          },
+          { id: 'tap', type: 'action.tapback', params: { emoji: '👍' } },
+        ],
+        edges: [{ from: 't', to: 'tap' }],
+      });
+      const engine = engineWith(deps);
+      await engine.load();
+
+      expect(await engine.onMessage(message({ fromNodeNum: 111 }), 'default')).toBe(1); // fires — rate budget 1/2
+      clock += 1_000;
+      // Same node, still inside its own node-scoped cooldown → suppressed by
+      // cooldownGate BEFORE the rate gate is ever consulted. If this wrongly
+      // consumed budget, the ceiling would already read 2/2 and the distinct
+      // sender below would be dropped too.
+      expect(await engine.onMessage(message({ fromNodeNum: 111 }), 'default')).toBe(0);
+      clock += 1_000;
+      expect(await engine.onMessage(message({ fromNodeNum: 222 }), 'default')).toBe(1); // budget still available
+      expect(calls).toHaveLength(2);
+    });
   });
 });
 

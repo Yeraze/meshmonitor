@@ -4,10 +4,15 @@
  * self-origin guard (#3914) cannot recognise our own traffic arriving there.
  */
 import { describe, it, expect, afterEach } from 'vitest';
-import { getOwnNodeNums, isOwnNodeNum } from './ownNodes.js';
+import { getOwnNodeNums, isOwnNodeNum, getOwnPublicKeys, isOwnPublicKey } from './ownNodes.js';
 import { sourceManagerRegistry, type ISourceManager } from '../sourceManagerRegistry.js';
 
-function fakeManager(sourceId: string, sourceType: any, nodeNum: number | null): ISourceManager {
+function fakeManager(
+  sourceId: string,
+  sourceType: any,
+  nodeNum: number | null,
+  publicKey: string | null = null,
+): ISourceManager {
   return {
     sourceId,
     sourceType,
@@ -16,6 +21,7 @@ function fakeManager(sourceId: string, sourceType: any, nodeNum: number | null):
     getStatus: () => ({ sourceId, sourceName: sourceId, sourceType, connected: true }),
     getLocalNodeInfo: () =>
       nodeNum == null ? null : { nodeNum, nodeId: `!${nodeNum.toString(16)}`, longName: 'n', shortName: 'n' },
+    getLocalNode: () => (publicKey == null ? null : { publicKey, name: 'n', advType: 1 }),
     startDistanceDeleteScheduler: async () => undefined,
     stopDistanceDeleteScheduler: () => undefined,
   } as ISourceManager;
@@ -71,5 +77,65 @@ describe('ownNodes', () => {
     expect(isOwnNodeNum(null)).toBe(false);
     expect(isOwnNodeNum(undefined)).toBe(false);
     expect(isOwnNodeNum(Number.NaN)).toBe(false);
+  });
+
+  describe('MeshCore public keys (#4577 P2)', () => {
+    it('is empty (and drops nothing) when no source is registered', () => {
+      expect(getOwnPublicKeys()).toEqual([]);
+      expect(isOwnPublicKey('abcd')).toBe(false);
+    });
+
+    it('collects the local public key of every MeshCore source that has one', async () => {
+      await add(fakeManager('mc-a', 'meshcore', null, 'AABBCC'));
+      await add(fakeManager('mc-b', 'meshcore', null, 'DDEEFF'));
+
+      expect(getOwnPublicKeys().sort()).toEqual(['aabbcc', 'ddeeff'].sort());
+      expect(isOwnPublicKey('AABBCC')).toBe(true);
+      expect(isOwnPublicKey('ddeeff')).toBe(true);
+      expect(isOwnPublicKey('112233')).toBe(false);
+    });
+
+    it('ignores non-MeshCore sources (meshtastic/mqtt contribute nothing)', async () => {
+      await add(fakeManager('tcp-a', 'meshtastic_tcp', 0x11223344));
+      await add(fakeManager('bridge-1', 'mqtt_bridge', null));
+      expect(getOwnPublicKeys()).toEqual([]);
+      expect(isOwnPublicKey('anything')).toBe(false);
+    });
+
+    it('matches case-insensitively', async () => {
+      await add(fakeManager('mc-a', 'meshcore', null, 'AaBbCc'));
+      expect(isOwnPublicKey('aabbcc')).toBe(true);
+      expect(isOwnPublicKey('AABBCC')).toBe(true);
+    });
+
+    it('recognises a key owned by ANY MeshCore source, not just the one asking', async () => {
+      await add(fakeManager('mc-a', 'meshcore', null, 'AABBCC'));
+      await add(fakeManager('mc-b', 'meshcore', null, 'DDEEFF'));
+
+      // A message that arrived via mc-b but carries mc-a's own key is still ours.
+      expect(isOwnPublicKey('aabbcc')).toBe(true);
+    });
+
+    it('dedupes when two sources report the same key', async () => {
+      await add(fakeManager('mc-a', 'meshcore', null, 'AABBCC'));
+      await add(fakeManager('mc-b', 'meshcore', null, 'aabbcc'));
+      expect(getOwnPublicKeys()).toEqual(['aabbcc']);
+    });
+
+    it('survives a manager that throws while reporting its local node', async () => {
+      const broken = fakeManager('broken', 'meshcore', null, 'AABBCC');
+      (broken as any).getLocalNode = () => { throw new Error('mid-connect'); };
+      await add(broken);
+      await add(fakeManager('mc-a', 'meshcore', null, 'DDEEFF'));
+
+      expect(getOwnPublicKeys()).toEqual(['ddeeff']);
+    });
+
+    it('treats null/undefined/empty pubkeys as not ours', async () => {
+      await add(fakeManager('mc-a', 'meshcore', null, 'AABBCC'));
+      expect(isOwnPublicKey(null)).toBe(false);
+      expect(isOwnPublicKey(undefined)).toBe(false);
+      expect(isOwnPublicKey('')).toBe(false);
+    });
   });
 });

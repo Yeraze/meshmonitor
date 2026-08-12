@@ -4,8 +4,10 @@ import {
   categoryOf,
   parseCooldownScope,
   parseSendMaxAttempts,
+  parseRateLimit,
   SEND_MAX_ATTEMPTS_MIN,
   SEND_MAX_ATTEMPTS_MAX,
+  RATE_LIMIT_MAX_ACTIONS_MAX,
   AUTOMATION_CONFIG_VERSION,
   type AutomationGraph,
 } from './automation.js';
@@ -161,6 +163,35 @@ describe('validateAutomationGraph', () => {
     const bad = validateAutomationGraph(withTelemetryTrigger({ cooldownScope: 'bogus' }));
     expect(bad.valid).toBe(false);
     expect(bad.errors.join(' ')).toMatch(/trigger\.telemetry .* requires params\.cooldownScope ∈ \{automation,node,sourceNode\}/);
+  });
+
+  // ── trigger.* rateLimit (#4577 Phase 2, RATE-LIMIT) ─────────────────────
+  it('trigger.message: rateLimit validates when present, and absence still validates', () => {
+    const withTrigger = (params: Record<string, unknown>): AutomationGraph => ({
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params },
+        { id: 'a', type: 'action.tapback', params: { emoji: '👍' } },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    });
+    // absent → valid (pre-Phase-2 stored automations keep validating unchanged)
+    expect(validateAutomationGraph(withTrigger({})).valid).toBe(true);
+    expect(validateAutomationGraph(withTrigger({ textContains: 'ping' })).valid).toBe(true);
+    // valid rateLimit
+    expect(validateAutomationGraph(withTrigger({ rateLimit: { maxActions: 5, windowSeconds: 60 } })).valid).toBe(true);
+    expect(validateAutomationGraph(withTrigger({ rateLimit: { maxActions: 1, windowSeconds: 1 } })).valid).toBe(true);
+    // maxActions 0 → error
+    const zeroMax = validateAutomationGraph(withTrigger({ rateLimit: { maxActions: 0, windowSeconds: 60 } }));
+    expect(zeroMax.valid).toBe(false);
+    expect(zeroMax.errors.join(' ')).toMatch(/requires params\.rateLimit = \{ maxActions >= 1, windowSeconds >= 1 \}/);
+    // non-integer maxActions → error
+    expect(validateAutomationGraph(withTrigger({ rateLimit: { maxActions: 2.5, windowSeconds: 60 } })).valid).toBe(false);
+    // windowSeconds 0 → error
+    expect(validateAutomationGraph(withTrigger({ rateLimit: { maxActions: 5, windowSeconds: 0 } })).valid).toBe(false);
+    // non-object rateLimit → error
+    expect(validateAutomationGraph(withTrigger({ rateLimit: 'often' })).valid).toBe(false);
+    expect(validateAutomationGraph(withTrigger({ rateLimit: [5, 60] })).valid).toBe(false);
   });
 
   it('trigger.becameMobile / trigger.leftHome require a non-empty nodeNums list', () => {
@@ -382,5 +413,31 @@ describe('parseSendMaxAttempts', () => {
   it('clamps out-of-range values instead of rejecting them (lenient at runtime)', () => {
     expect(parseSendMaxAttempts(0)).toBe(1);
     expect(parseSendMaxAttempts(9)).toBe(3);
+  });
+});
+
+describe('parseRateLimit', () => {
+  it('round-trips a valid shape', () => {
+    expect(parseRateLimit({ maxActions: 5, windowSeconds: 60 })).toEqual({ maxActions: 5, windowSeconds: 60 });
+    expect(parseRateLimit({ maxActions: 1, windowSeconds: 1 })).toEqual({ maxActions: 1, windowSeconds: 1 });
+  });
+
+  it('returns undefined for absent/blank/garbage values', () => {
+    expect(parseRateLimit(undefined)).toBeUndefined();
+    expect(parseRateLimit(null)).toBeUndefined();
+    expect(parseRateLimit('')).toBeUndefined();
+    expect(parseRateLimit('bogus')).toBeUndefined();
+    expect(parseRateLimit(42)).toBeUndefined();
+    expect(parseRateLimit([5, 60])).toBeUndefined();
+    expect(parseRateLimit({})).toBeUndefined();
+    expect(parseRateLimit({ maxActions: 0, windowSeconds: 60 })).toBeUndefined();
+    expect(parseRateLimit({ maxActions: 2.5, windowSeconds: 60 })).toBeUndefined();
+    expect(parseRateLimit({ maxActions: 5, windowSeconds: 0 })).toBeUndefined();
+    expect(parseRateLimit({ maxActions: 5 })).toBeUndefined();
+  });
+
+  it('clamps maxActions above RATE_LIMIT_MAX_ACTIONS_MAX instead of rejecting it (lenient at runtime)', () => {
+    expect(parseRateLimit({ maxActions: RATE_LIMIT_MAX_ACTIONS_MAX + 500, windowSeconds: 60 }))
+      .toEqual({ maxActions: RATE_LIMIT_MAX_ACTIONS_MAX, windowSeconds: 60 });
   });
 });
