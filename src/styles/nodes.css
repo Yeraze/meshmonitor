@@ -1139,6 +1139,30 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
+/* A popup holding a `.node-popup` card (#4677). The wrapper is the ONE card
+   shell: the card inside drops its own background/border/radius/shadow (see
+   the scoped rule near "Node popup INSIDE a Leaflet popup" below), or the two
+   chromes stack into a visible card-inside-a-card.
+
+   `padding: 0` here + `margin: 0` on the content hand the inset to the card's
+   own padding, so it is even on all four sides instead of Leaflet's default
+   13/24/13/20 stacked with the card's 12px. `overflow: hidden` clips the card
+   to this radius — Leaflet's close button is a child of `.leaflet-popup`, not
+   of this wrapper, so it is not clipped by it.
+
+   Scoped with `:has()` rather than applied to every popup: `.route-popup`
+   (NodesTab position segments / neighbor links) has no padding of its own and
+   still needs Leaflet's content margin as its inset. */
+.leaflet-popup-content-wrapper:has(.node-popup) {
+  border: 1px solid var(--color-surface-active);
+  padding: 0;
+  overflow: hidden;
+}
+
+.leaflet-popup-content:has(> .node-popup) {
+  margin: 0;
+}
+
 .leaflet-popup-tip {
   background: var(--color-surface);
 }
@@ -1916,6 +1940,87 @@
 
 .node-popup::-webkit-scrollbar-thumb:hover {
   background: var(--color-surface-inactive);
+}
+
+/* Node popup INSIDE a Leaflet popup (#4677).
+
+   `.node-popup` carries its own card chrome because several consumers render
+   it with no shell of their own — TracerouteStrip's portalled `.hoverPopup`
+   is a bare positioned div, and DashboardNeighborPopup renders it inline.
+   Map-anchored cards are the opposite case: `.leaflet-popup-content-wrapper`
+   already IS the card, so here the inner chrome is stripped and only the
+   padding is kept as the (now even) inset.
+
+   Specificity 0,2,0 beats every unconditional `.node-popup` rule above AND
+   the mobile @media block, so this is order-independent — but it is still
+   declared last, per this file's cascade-order convention (#3532).
+
+   Scrolling: `min()` keeps a tall card off the phone viewport, and
+   `overscroll-behavior` stops a scroll that runs past the end of the list
+   from panning the map underneath. */
+.leaflet-popup-content .node-popup {
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  max-height: min(400px, 60vh);
+  overscroll-behavior: contain;
+}
+
+/* Move the scroll box from the whole card down to the body, so the header
+   (and tab bar) stay put instead of scrolling away — and so the scrolled
+   region reads as a bounded list rather than a card cut off at the bottom.
+   `:has()` guards the consumers that render `.node-popup` with no
+   `.node-popup-content` child (WaypointsLayer): those keep scrolling the
+   root, as before. `min-height: 0` is what lets the flex child actually
+   shrink below its content height. */
+.leaflet-popup-content .node-popup:has(> .node-popup-content) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.leaflet-popup-content .node-popup > .node-popup-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+/* The `.node-popup::-webkit-scrollbar` block above styled the card, which is
+   no longer the scroll box inside a Leaflet popup — without these the body
+   would fall back to the platform scrollbar. Giving `::-webkit-scrollbar` an
+   explicit width is also what opts Chromium out of OVERLAY scrollbars, so the
+   thumb is on screen the whole time instead of fading in on touch. That fade
+   is why the reported screenshot's clipped last row looked like a layout bug
+   rather than a scroll region (#4677); platforms with overlay-only scrollbars
+   (iOS) still show nothing until the list is dragged. */
+.leaflet-popup-content .node-popup > .node-popup-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.leaflet-popup-content .node-popup > .node-popup-content::-webkit-scrollbar-track {
+  background: var(--color-surface);
+  border-radius: var(--radius-xs);
+}
+
+.leaflet-popup-content .node-popup > .node-popup-content::-webkit-scrollbar-thumb {
+  background: var(--color-surface-active);
+  border-radius: var(--radius-xs);
+}
+
+.leaflet-popup-content .node-popup > .node-popup-content::-webkit-scrollbar-thumb:hover {
+  background: var(--color-surface-inactive);
+}
+
+/* Leaflet's close button is absolutely positioned over the wrapper's
+   top-right corner. Zeroing `.leaflet-popup-content`'s margin removed the
+   gap it used to sit in, so the header row reserves it explicitly — the one
+   place the inset is deliberately uneven. */
+.leaflet-popup-content .node-popup > .node-popup-header,
+.leaflet-popup-content .node-popup > .popup-header {
+  padding-right: 18px;
 }
 
 .node-popup-header {
