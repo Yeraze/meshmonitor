@@ -46,6 +46,26 @@ const protoBadge = (proto?: string): 'MC' | 'MT' | null => {
   return null;
 };
 
+/**
+ * Does a source match a field's `protocolFilter`? MeshCore is the explicit side
+ * (`type === 'meshcore'`); everything else — native Meshtastic AND MQTT
+ * bridge/broker sources — is Meshtastic-protocol. So `'meshtastic'` means "not
+ * MeshCore" rather than a `startsWith('meshtastic')` check, which would wrongly
+ * drop MQTT sources.
+ */
+const sourceMatchesProtocol = (s: SourceOption, filter?: 'meshtastic' | 'meshcore'): boolean => {
+  if (!filter) return true;
+  const isMeshCore = String(s.type ?? '') === 'meshcore';
+  return filter === 'meshcore' ? isMeshCore : !isMeshCore;
+};
+
+/** Channel counterpart of {@link sourceMatchesProtocol}, keyed off `UnifiedChannelOption.protocol`. */
+const channelMatchesProtocol = (c: UnifiedChannelOption, filter?: 'meshtastic' | 'meshcore'): boolean => {
+  if (!filter) return true;
+  const isMeshCore = String(c.protocol ?? '') === 'meshcore';
+  return filter === 'meshcore' ? isMeshCore : !isMeshCore;
+};
+
 interface Props {
   form: WorkflowForm;
   variables: VariableOption[];
@@ -114,10 +134,11 @@ export function FieldInput({ field, value, onChange, variables, sources, channel
       break;
     case 'sourceMulti': {
       const sel = Array.isArray(value) ? (value as string[]) : [];
+      const visible = sources.filter((s) => sourceMatchesProtocol(s, field.protocolFilter));
       control = (
         <div>
-          {sources.length === 0 && <div className="ae-muted">No sources available.</div>}
-          {sources.map((s) => (
+          {visible.length === 0 && <div className="ae-muted">No sources available.</div>}
+          {visible.map((s) => (
             <label key={s.id} className="ae-switch" style={{ display: 'block', marginBottom: '0.2rem' }}>
               <input type="checkbox" checked={sel.includes(s.id)} onChange={(e) =>
                 onChange(e.target.checked ? [...sel, s.id] : sel.filter((x) => x !== s.id))} /> {s.name}
@@ -169,7 +190,9 @@ export function FieldInput({ field, value, onChange, variables, sources, channel
       break;
     case 'sendSourceMulti': {
       const sel = Array.isArray(value) ? (value as string[]) : [];
-      const sendable = sources.filter(isSendableSource);
+      const sendable = sources
+        .filter(isSendableSource)
+        .filter((s) => sourceMatchesProtocol(s, field.protocolFilter));
       control = (
         <div>
           {sendable.length === 0 && <div className="ae-muted">No sendable (non-MQTT) sources.</div>}
@@ -204,10 +227,11 @@ export function FieldInput({ field, value, onChange, variables, sources, channel
       const same = (a: { name: string; protocol?: string }, c: UnifiedChannelOption) =>
         a.name === c.name && (a.protocol ?? '') === (c.protocol ?? '');
       const isSel = (c: UnifiedChannelOption) => sel.some((x) => same(x, c));
+      const visible = channels.filter((c) => channelMatchesProtocol(c, field.protocolFilter));
       control = (
         <div>
-          {channels.length === 0 && <div className="ae-muted">No channels found on sendable sources.</div>}
-          {channels.map((c) => (
+          {visible.length === 0 && <div className="ae-muted">No channels found on sendable sources.</div>}
+          {visible.map((c) => (
             <label key={`${c.protocol}/${c.name}`} className="ae-switch" style={{ display: 'block', marginBottom: '0.2rem' }}>
               <input type="checkbox" checked={isSel(c)} onChange={(e) =>
                 onChange(e.target.checked
