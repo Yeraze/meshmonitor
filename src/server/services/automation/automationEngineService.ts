@@ -551,11 +551,25 @@ export class AutomationEngineService {
     return false;
   }
 
-  /** True if `fromPublicKey` is this MeshCore source's own local node key. */
+  /**
+   * True if `fromPublicKey` is one of MeshMonitor's own MeshCore nodes.
+   *
+   * Checks the event's own source first (the #3914 behaviour), then falls back
+   * to the cross-source owned-pubkey set. The fallback exists for multi-MeshCore
+   * -source / bridge setups where the event's source hasn't resolved its own
+   * key yet (or the key belongs to a different MeshCore source we also own),
+   * mirroring the Meshtastic `isOwnNodeNum` fallback above (#4577 P2).
+   */
   private async isSelfMeshCore(sourceId: string | null, fromPublicKey: string | null | undefined): Promise<boolean> {
-    if (!this.data.getSelfPublicKey || !fromPublicKey) return false;
-    const key = await this.data.getSelfPublicKey(sourceId);
-    return key != null && key.toLowerCase() === fromPublicKey.toLowerCase();
+    if (!fromPublicKey) return false;
+    if (this.data.getSelfPublicKey) {
+      const key = await this.data.getSelfPublicKey(sourceId);
+      if (key != null && key.toLowerCase() === fromPublicKey.toLowerCase()) return true;
+    }
+    if (this.data.isOwnPublicKey) {
+      return await this.data.isOwnPublicKey(fromPublicKey);
+    }
+    return false;
   }
 
   // ─── event entry points ─────────────────────────────────────────────────

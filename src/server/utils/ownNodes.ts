@@ -22,6 +22,7 @@
  */
 
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { isMeshCoreManager } from '../sourceManagerTypes.js';
 
 /**
  * Every local node number MeshMonitor currently owns, across all registered
@@ -49,4 +50,33 @@ export function isOwnNodeNum(nodeNum: number | null | undefined): boolean {
   const n = Number(nodeNum);
   if (!Number.isFinite(n)) return false;
   return getOwnNodeNums().includes(n);
+}
+
+/**
+ * Every local MeshCore public key MeshMonitor currently owns, across all
+ * registered MeshCore sources. Meshtastic/MQTT managers contribute nothing.
+ * Keys are lowercased for case-insensitive comparison, matching the #3914
+ * per-source `getSelfPublicKey` convention.
+ */
+export function getOwnPublicKeys(): string[] {
+  const keys: string[] = [];
+  for (const manager of sourceManagerRegistry.getAllManagers()) {
+    if (!isMeshCoreManager(manager)) continue;
+    let k: unknown;
+    try {
+      k = manager.getLocalNode()?.publicKey;
+    } catch {
+      continue; // a manager mid-connect must never break the caller
+    }
+    if (typeof k !== 'string' || !k) continue;
+    const lower = k.toLowerCase();
+    if (!keys.includes(lower)) keys.push(lower);
+  }
+  return keys;
+}
+
+/** True when `pubkey` is the local node public key of ANY registered MeshCore source. */
+export function isOwnPublicKey(pubkey: string | null | undefined): boolean {
+  if (!pubkey) return false;
+  return getOwnPublicKeys().includes(pubkey.toLowerCase());
 }

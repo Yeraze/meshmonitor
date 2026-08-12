@@ -290,6 +290,32 @@ describe('AutomationEngineService', () => {
     expect(await engine.onMeshCoreMessage(mcMessage({ fromPublicKey: 'channel-0', text: 'ping' }), 'default')).toBe(1);
   });
 
+  it('self-origin (#4577 P2): ignores our own key on a MeshCore source with no self key yet (cross-source fallback)', async () => {
+    const { calls, deps } = recorder();
+    await createEnabled('mc-ping', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: { textContains: 'ping' } },
+        { id: 's', type: 'action.sendMessage', params: { text: 'pong' } },
+      ],
+      edges: [{ from: 't', to: 's' }],
+    });
+    // This source's own key hasn't resolved (getSelfPublicKey → null); only the
+    // cross-source owned-pubkey set (another MeshCore source) can recognise us.
+    const selfData = {
+      ...data,
+      getSelfPublicKey: async () => null,
+      isOwnPublicKey: async (k: string) => k.toLowerCase() === 'abcd',
+    };
+    const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data: selfData, now: () => clock });
+    await engine.load();
+    // Our own key, relayed back via a different MeshCore source → dropped.
+    expect(await engine.onMeshCoreMessage(mcMessage({ fromPublicKey: 'ABCD', text: 'ping' }), 'default')).toBe(0);
+    expect(calls).toHaveLength(0);
+    // A different sender → fires.
+    expect(await engine.onMeshCoreMessage(mcMessage({ fromPublicKey: 'channel-0', text: 'ping' }), 'default')).toBe(1);
+  });
+
   it('self-origin (#3914): ignores our own node telemetry', async () => {
     const { deps } = recorder();
     await createEnabled('batt', {

@@ -9,7 +9,7 @@ import type { NodeDataProvider, NodeFacts } from './engineContext.js';
 import { sourceProtocol } from './channelUnify.js';
 import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
 import { isMeshCoreManager } from '../../sourceManagerTypes.js';
-import { isOwnNodeNum as isOwnedByAnySource } from '../../utils/ownNodes.js';
+import { isOwnNodeNum as isOwnedByAnySource, isOwnPublicKey as isOwnedPubkeyByAnySource } from '../../utils/ownNodes.js';
 
 function nodeIdOf(nodeNum: number): string {
   return `!${(nodeNum >>> 0).toString(16).padStart(8, '0')}`;
@@ -105,6 +105,19 @@ export function createMeshNodeDataProvider(): NodeDataProvider {
         return (m && isMeshCoreManager(m) ? m.getLocalNode()?.publicKey : null) ?? null;
       } catch {
         return null;
+      }
+    },
+
+    // Cross-source owned-pubkey check (#4577 P2) — the fallback the engine uses
+    // when the event's own MeshCore source has no self key (not yet connected)
+    // or a different MeshCore source owns the key (multi-MC-source bridge
+    // safety). Reads the registry live; an empty registry means "nothing is
+    // ours" → no drop.
+    async isOwnPublicKey(pubkey) {
+      try {
+        return isOwnedPubkeyByAnySource(pubkey);
+      } catch {
+        return false;
       }
     },
   };
