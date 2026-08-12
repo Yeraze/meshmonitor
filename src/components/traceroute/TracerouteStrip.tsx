@@ -140,6 +140,12 @@ function statStyle(opacity: number, base: CSSProperties): CSSProperties {
   return { ...base, '--stat-opacity': opacity } as CSSProperties;
 }
 
+/** Edge variant of `statStyle` — sets `--stat-opacity` AND `--stat-weight` in
+ *  one shot so a UnionStripEdge only ever needs one style object. */
+function statEdgeStyle(opacity: number, weight: number): CSSProperties {
+  return { '--stat-opacity': opacity, '--stat-weight': `${weight}px` } as CSSProperties;
+}
+
 /** Maps a StripNode's semantic band to its CSS lane hook (spec §4.3/§4.4).
  * Deliberately empty rules today — an assertable class name and a home for
  * any future visual differentiation, not a styling switch. Do not branch
@@ -692,7 +698,7 @@ export function TracerouteStrip({
                   // D8: no arrowhead in statistical mode — the edge makes no
                   // direction claim.
                   markerEnd={stat ? undefined : `url(#${arrowId})`}
-                  style={stat ? statStyle(stat.opacity, {}) : undefined}
+                  style={stat ? statEdgeStyle(stat.opacity, stat.weight) : undefined}
                 />
               );
             })}

@@ -74,6 +74,16 @@ export const UNKNOWN_HOP_ID_PREFIX = 'u';
  *  constant serves both nodes and edges so the two floors cannot drift apart. */
 export const MIN_STAT_OPACITY = 0.28;
 
+/** Baseline stroke-width (px) an edge with `share -> 0` renders at. Matches the
+ *  non-statistical `.forwardEdge`/`.returnEdge` weight so a single-route union
+ *  reads identical to the classic strip. */
+export const MIN_STAT_EDGE_WEIGHT = 2;
+
+/** Peak stroke-width (px) an edge with `share === 1` renders at. Kept modest
+ *  so a highly-repeated edge stays legible next to node glyphs (glyphSize/2 is
+ *  16px by default). */
+export const MAX_STAT_EDGE_WEIGHT = 5;
+
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
@@ -401,4 +411,22 @@ function round3(x: number): number {
 export function statOpacity(share: number): number {
   const clamped = Math.min(1, Math.max(0, share));
   return round3(MIN_STAT_OPACITY + (1 - MIN_STAT_OPACITY) * clamped);
+}
+
+/**
+ * Linear ramp from `MIN_STAT_EDGE_WEIGHT` at `share -> 0` to `MAX_STAT_EDGE_WEIGHT`
+ * at `share === 1`, rounded to two decimals. Clamps out-of-range input.
+ *
+ * This is what tells the reader "this A-B adjacency showed up in most of the
+ * routes I stored" — a merged StatEdge with share=1 renders as the thickest
+ * stroke, share≈1/N as the thinnest. Kept in this module (not the layout
+ * module) so the counting model owns every scalar mapping off `share`.
+ */
+export function statEdgeWeight(share: number): number {
+  const clamped = Math.min(1, Math.max(0, share));
+  return round2(MIN_STAT_EDGE_WEIGHT + (MAX_STAT_EDGE_WEIGHT - MIN_STAT_EDGE_WEIGHT) * clamped);
+}
+
+function round2(x: number): number {
+  return Math.round(x * 100) / 100;
 }

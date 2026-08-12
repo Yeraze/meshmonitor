@@ -51,10 +51,13 @@
 }
 
 /* Statistical mode (SR_PHASE2_SPEC.md D16): one neutral lane — solid, no dash,
- * no arrowhead. Occurrence share arrives as `--stat-opacity`, already floored at
- * MIN_STAT_OPACITY by `statOpacity()`; this file never computes it. */
+ * no arrowhead. Occurrence share arrives as `--stat-opacity`, already floored
+ * at MIN_STAT_OPACITY by `statOpacity()`; this file never computes it. Stroke
+ * width comes from `--stat-weight` (issue #4566), a linear ramp precomputed
+ * by `statEdgeWeight()` — again this file maps nothing. */
 .statEdge {
   stroke-opacity: var(--stat-opacity, 1);
+  stroke-width: var(--stat-weight, 2);
 }
 
 .arrowHead {

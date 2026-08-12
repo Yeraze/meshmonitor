@@ -8,14 +8,22 @@ import {
   buildUnionStripGraph,
   layoutTracerouteUnion,
   buildStatisticalStrip,
+  nudgeOverlappingEdgePaths,
+  EDGE_OVERLAP_OFFSET_PX,
 } from './tracerouteUnionLayout';
-import { buildTracerouteUnion, statOpacity, type AggregateTracerouteRow } from './tracerouteAggregate';
+import {
+  buildTracerouteUnion,
+  statOpacity,
+  statEdgeWeight,
+  type AggregateTracerouteRow,
+} from './tracerouteAggregate';
 import {
   DEFAULT_LAYOUT_OPTIONS,
   minBand,
   minRowHeight,
   labelOffset,
   edgeClearance,
+  EDGE_RIM_MARGIN,
   GEOM_EPS,
   type StripPoint,
 } from './tracerouteStrip';
@@ -402,6 +410,19 @@ describe('tracerouteUnionLayout — graph shape', () => {
     for (const e of graph.edges) expect(e.opacity).toBe(statOpacity(e.share));
   });
 
+  it('24a. weight === statEdgeWeight(share) on every edge (#4566)', () => {
+    const rows = [
+      row({ route: JSON.stringify([300, 400]) }),
+      row({ route: JSON.stringify([300, 400]) }),
+      row({ route: JSON.stringify([300]) }),
+    ];
+    const graph = buildGraph(rows);
+    for (const e of graph.edges) expect(e.weight).toBe(statEdgeWeight(e.share));
+    // A more-repeated edge (higher share) reads visually heavier than a rare one.
+    const weights = graph.edges.map((e) => e.weight);
+    expect(Math.max(...weights)).toBeGreaterThan(Math.min(...weights));
+  });
+
   it('25. node ids are carried over verbatim from the aggregate', () => {
     const rows = [row({ route: JSON.stringify([300, BROADCAST_ADDR]) })];
     const union = buildTracerouteUnion(rows, LOCAL, PEER);
@@ -510,14 +531,106 @@ describe('tracerouteUnionLayout — integration with fixtures', () => {
     expect(layout.width).toBe(graph.columns * o.colWidth);
 
     // Every clearance assertion: no path (of any edge) passes closer than
-    // edgeClearance(o) - GEOM_EPS to any node it doesn't terminate at.
-    const clearance = edgeClearance(o);
+    // the glyph rim (glyphSize/2 + EDGE_RIM_MARGIN) to any node it doesn't
+    // terminate at. The router itself gives edges the fuller `edgeClearance`
+    // (glyph rim + LANE_OFFSET), but #4566 spends up to LANE_OFFSET of that
+    // slack on lateral nudging, so the invariant that actually still holds
+    // post-nudge is the rim distance, not the full clearance.
+    const glyphRim = o.glyphSize / 2 + EDGE_RIM_MARGIN;
     for (const e of graph.edges) {
       const path = layout.edgePaths.get(e.id)!;
       const obstacles = graph.nodes
         .filter((nd) => nd.id !== e.fromId && nd.id !== e.toId)
         .map((nd) => layout.centers.get(nd.id)!);
-      expect(minDistanceToObstacles(path, obstacles)).toBeGreaterThanOrEqual(clearance - GEOM_EPS);
+      expect(minDistanceToObstacles(path, obstacles)).toBeGreaterThanOrEqual(glyphRim - GEOM_EPS);
     }
+  });
+});
+
+describe('tracerouteUnionLayout — edge-to-edge overlap nudge (#4566)', () => {
+  /** Deep-copy a Map<string, StripPoint[]> so the two calls under test see
+   *  independent inputs. */
+  function clonePaths(m: Map<string, StripPoint[]>): Map<string, StripPoint[]> {
+    return new Map([...m.entries()].map(([k, v]) => [k, v.map((p) => ({ ...p }))]));
+  }
+
+  it('31. two collinear paths get pushed apart by EDGE_OVERLAP_OFFSET_PX along their perpendicular', () => {
+    // A and B are exactly the same horizontal chord, so every sample coincides.
+    const paths = new Map<string, StripPoint[]>([
+      ['a', [{ x: 0, y: 50 }, { x: 100, y: 50 }]],
+      ['b', [{ x: 0, y: 50 }, { x: 100, y: 50 }]],
+    ]);
+    // maxNudgePx defaults to EDGE_OVERLAP_OFFSET_PX, so the +δ member stays uncapped.
+    nudgeOverlappingEdgePaths(paths);
+
+    const a = paths.get('a')!;
+    const b = paths.get('b')!;
+    // The first edge (id 'a') keeps its position; the second is nudged by +δ.
+    expect(a).toEqual([{ x: 0, y: 50 }, { x: 100, y: 50 }]);
+    // Perpendicular of a horizontal chord (dx>0) is (0, -1) — canonical "up".
+    expect(b[0].x).toBeCloseTo(0);
+    expect(b[0].y).toBeCloseTo(50 - EDGE_OVERLAP_OFFSET_PX);
+    expect(b[1].x).toBeCloseTo(100);
+    expect(b[1].y).toBeCloseTo(50 - EDGE_OVERLAP_OFFSET_PX);
+  });
+
+  it('32. non-overlapping paths are left byte-identical', () => {
+    const paths = new Map<string, StripPoint[]>([
+      ['a', [{ x: 0, y: 0 }, { x: 100, y: 0 }]],
+      ['b', [{ x: 0, y: 200 }, { x: 100, y: 200 }]], // 200px apart -> never coincident
+    ]);
+    const before = clonePaths(paths);
+    nudgeOverlappingEdgePaths(paths);
+    expect([...paths.entries()]).toEqual([...before.entries()]);
+  });
+
+  it('33. a single path is left untouched (no possible overlap)', () => {
+    const paths = new Map<string, StripPoint[]>([
+      ['solo', [{ x: 0, y: 0 }, { x: 100, y: 100 }]],
+    ]);
+    const before = clonePaths(paths);
+    nudgeOverlappingEdgePaths(paths);
+    expect([...paths.entries()]).toEqual([...before.entries()]);
+  });
+
+  it('34. three collinear paths -> offsets [0, +δ, -δ] (deterministic by id)', () => {
+    const chord: StripPoint[] = [{ x: 0, y: 100 }, { x: 200, y: 100 }];
+    // Key order: 'a' < 'b' < 'c' (already sorted); the algorithm sorts by id.
+    const paths = new Map<string, StripPoint[]>([
+      ['a', chord.map((p) => ({ ...p }))],
+      ['b', chord.map((p) => ({ ...p }))],
+      ['c', chord.map((p) => ({ ...p }))],
+    ]);
+    nudgeOverlappingEdgePaths(paths);
+    expect(paths.get('a')![0].y).toBeCloseTo(100);
+    expect(paths.get('b')![0].y).toBeCloseTo(100 - EDGE_OVERLAP_OFFSET_PX);
+    expect(paths.get('c')![0].y).toBeCloseTo(100 + EDGE_OVERLAP_OFFSET_PX);
+  });
+
+  it('35. nudge is capped so no member exceeds maxNudgePx', () => {
+    // Six collinear paths at δ=4 -> raw offsets [0, +4, -4, +8, -8, +12].
+    // With maxNudgePx=5, the +8/-8/+12 members clamp to ±5.
+    const chord: StripPoint[] = [{ x: 0, y: 100 }, { x: 200, y: 100 }];
+    const paths = new Map<string, StripPoint[]>();
+    for (const id of ['a', 'b', 'c', 'd', 'e', 'f']) {
+      paths.set(id, chord.map((p) => ({ ...p })));
+    }
+    nudgeOverlappingEdgePaths(paths, 5);
+    for (const [, path] of paths) {
+      for (const p of path) {
+        expect(Math.abs(p.y - 100)).toBeLessThanOrEqual(5 + GEOM_EPS);
+      }
+    }
+  });
+
+  it('36. running the nudge twice on the same map is idempotent (the second call finds no overlap)', () => {
+    const paths = new Map<string, StripPoint[]>([
+      ['a', [{ x: 0, y: 50 }, { x: 100, y: 50 }]],
+      ['b', [{ x: 0, y: 50 }, { x: 100, y: 50 }]],
+    ]);
+    nudgeOverlappingEdgePaths(paths);
+    const afterFirst = clonePaths(paths);
+    nudgeOverlappingEdgePaths(paths);
+    expect([...paths.entries()]).toEqual([...afterFirst.entries()]);
   });
 });
