@@ -18,7 +18,14 @@
     "src/utils/**/*",
     "src/types/**/*",
     "src/cli/**/*",
-    "src/db/**/*"
+    "src/db/**/*",
+    // Shared pure-logic module that lives in the frontend tree but is imported at
+    // runtime by the server (autoAckConverter.ts). It is NOT under any glob above,
+    // so before this entry it reached dist/ only via tsc's "emit reachable files"
+    // behaviour — which varies by tsc version and vanishes if the sole value import
+    // ever becomes type-only. Listing it explicitly guarantees the emit and stops
+    // the desktop server from crashing with ERR_MODULE_NOT_FOUND (#4655).
+    "src/components/automations/compile.ts"
   ],
   "exclude": [
     "src/**/*.test.ts",
