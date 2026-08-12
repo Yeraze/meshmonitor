@@ -1,0 +1,82 @@
+/* TemplateGallery (#4577 Phase 3 WP3) — card grid + param wizard layout.
+ * CSS module per CLAUDE.md's CSS containment rule; buttons/cards/chips/fields
+ * reuse the existing `ae-*` classes from AutomationsPage.css for visual
+ * consistency with the rest of the Automation Engine UI.
+ */
+
+.gallery {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 0.85rem;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cardName {
+  font-weight: 600;
+}
+
+.cardDescription {
+  margin: 0;
+  color: var(--color-text-subtle);
+  font-size: 0.85rem;
+  flex-grow: 1;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.wizard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 640px;
+}
+
+.outcomes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0.5rem 0;
+}
+
+.outcomeOk {
+  color: var(--color-success);
+  font-size: 0.85rem;
+}
+
+.outcomeFail {
+  color: var(--color-error);
+  font-size: 0.85rem;
+}
