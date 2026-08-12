@@ -305,6 +305,39 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
    */
   private readonly pendingAcks = new Map<number, string>();
 
+  /**
+   * Channel sends this server forwarded on behalf of a specific client, so the
+   * manager's resulting self-originated `message` event can be attributed back
+   * to its originator (#4535).
+   *
+   * The manager stamps EVERY outbound message with our own identity, whether it
+   * came from MeshMonitor's web UI or was relayed here from a companion. That
+   * makes "the app's own send, echoed back" and "a message the app has never
+   * seen" byte-identical at the event boundary — which is why the old blanket
+   * self-origin skip silently dropped UI-originated messages.
+   *
+   * Correlation is by content rather than message id because the manager mints
+   * the id internally and emits DURING the `sendMessage()` call, so the id does
+   * not exist on our side until after the event has already fired. An entry is
+   * registered immediately BEFORE that call and consumed by the first matching
+   * event; unmatched entries expire so a send that never round-trips (node
+   * offline, message dropped) cannot suppress an unrelated later message.
+   */
+  private readonly recentClientChannelSends: Array<{
+    key: string;
+    clientId: string;
+    expiresAt: number;
+  }> = [];
+
+  /**
+   * How long a forwarded channel send stays attributable to its originating
+   * client. The manager emits synchronously inside `sendMessage()`, so this only
+   * needs to cover that round-trip; it is generous purely so a slow serial write
+   * cannot mis-attribute. Kept short so a repeat of the same text in the same
+   * channel gets its own attribution rather than matching a stale entry.
+   */
+  private readonly SEND_ATTRIBUTION_TTL_MS = 30000;
+
   private readonly MAX_FRAME_BYTES = 4096;
   private readonly CLIENT_TIMEOUT_MS = 300000; // 5 min inactivity
   private readonly CLEANUP_INTERVAL_MS = 60000;
@@ -364,6 +397,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     this.options.manager.off('send_confirmed', this.onManagerSendConfirmed);
     this.options.manager.off('ota_packet', this.onManagerOtaPacket);
     this.pendingAcks.clear();
+    this.recentClientChannelSends.length = 0;
 
     for (const client of this.clients.values()) {
       client.socket.destroy();
@@ -464,6 +498,14 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     // leak entries for acks that will never be claimed (#3869).
     for (const [crc, owner] of this.pendingAcks) {
       if (owner === clientId) this.pendingAcks.delete(crc);
+    }
+    // Same for its in-flight send attributions (#4535). Leaving them would only
+    // cost memory until they expire — the id is never reused — but a departing
+    // client should take all of its state with it.
+    for (let i = this.recentClientChannelSends.length - 1; i >= 0; i--) {
+      if (this.recentClientChannelSends[i].clientId === clientId) {
+        this.recentClientChannelSends.splice(i, 1);
+      }
     }
     logger.info(`📱 [MeshCore VN ${this.sourceId}] client disconnected: ${clientId} (${this.clients.size} remaining)`);
 
@@ -1205,6 +1247,10 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     const text = cmd.text ?? '';
     const channelIdx = cmd.channelIdx ?? 0;
     try {
+      // Registered BEFORE the send: the manager emits its self-originated
+      // `message` event from inside this call, and the attribution has to exist
+      // by then or this client sees its own message echoed back (#4535).
+      this.rememberClientChannelSend(clientId, channelIdx, text);
       const ok = await this.options.manager.sendMessage(text, undefined, channelIdx);
       if (ok) {
         logger.debug(`[MeshCore VN ${this.sourceId}] ▶ forwarded channel ${channelIdx} msg from ${clientId} (${text.length} chars)`);
@@ -1214,10 +1260,12 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
         // promise pending forever (the message never shows as sent).
         this.send(clientId, encodeOk());
       } else {
+        this.forgetClientChannelSend(clientId, channelIdx, text);
         logger.warn(`[MeshCore VN ${this.sourceId}] channel send from ${clientId} failed at the node`);
         this.send(clientId, encodeErr(ErrorCodes.BadState));
       }
     } catch (err) {
+      this.forgetClientChannelSend(clientId, channelIdx, text);
       logger.error(`[MeshCore VN ${this.sourceId}] channel send from ${clientId} threw: ${(err as Error).message}`);
       this.send(clientId, encodeErr(ErrorCodes.BadState));
     }
@@ -1401,27 +1449,126 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     return this.options.manager.getContacts().find((c) => c.publicKey?.toLowerCase().startsWith(lc))?.publicKey;
   }
 
+  /** Attribution key for a channel send — the fields the manager echoes back. */
+  private channelSendKey(channelIdx: number, text: string): string {
+    return `${channelIdx} ${text}`;
+  }
+
   /**
-   * Fan a newly-arrived incoming mesh message out to every connected app
-   * client: enqueue it and nudge the app with a MsgWaiting push so it drains
-   * via SyncNextMessage. Messages our own node originated are skipped so the
-   * app doesn't see its/our own sends echoed back.
+   * Remember that `clientId` asked us to transmit `text` on `channelIdx`, so the
+   * self-originated event it produces can be suppressed for that client only
+   * (#4535). Called before the manager send so the entry is in place when the
+   * event fires.
+   */
+  private rememberClientChannelSend(clientId: string, channelIdx: number, text: string): void {
+    this.pruneSendAttributions();
+    this.recentClientChannelSends.push({
+      key: this.channelSendKey(channelIdx, text),
+      clientId,
+      expiresAt: Date.now() + this.SEND_ATTRIBUTION_TTL_MS,
+    });
+  }
+
+  /**
+   * Drop an attribution whose send never happened (node refused, or the write
+   * threw). The manager emits nothing in that case, so leaving the entry would
+   * let it match an unrelated later message with the same text on the same
+   * channel and wrongly hide it from this client.
+   */
+  private forgetClientChannelSend(clientId: string, channelIdx: number, text: string): void {
+    const key = this.channelSendKey(channelIdx, text);
+    const idx = this.recentClientChannelSends.findIndex((e) => e.key === key && e.clientId === clientId);
+    if (idx !== -1) this.recentClientChannelSends.splice(idx, 1);
+  }
+
+  /** Drop attribution entries that have aged out (see SEND_ATTRIBUTION_TTL_MS). */
+  private pruneSendAttributions(now = Date.now()): void {
+    for (let i = this.recentClientChannelSends.length - 1; i >= 0; i--) {
+      if (this.recentClientChannelSends[i].expiresAt <= now) {
+        this.recentClientChannelSends.splice(i, 1);
+      }
+    }
+  }
+
+  /**
+   * Consume the attribution for a self-originated channel message and return the
+   * originating client id, or undefined when MeshMonitor itself originated it
+   * (web UI, automation, auto-responder — nothing on the VN port sent it).
+   *
+   * Consuming on match keeps repeats honest: sending the same text twice
+   * registers two entries, and each event claims exactly one.
+   */
+  private claimChannelSendOrigin(channelIdx: number, text: string): string | undefined {
+    this.pruneSendAttributions();
+    const key = this.channelSendKey(channelIdx, text);
+    const idx = this.recentClientChannelSends.findIndex((e) => e.key === key);
+    if (idx === -1) return undefined;
+    return this.recentClientChannelSends.splice(idx, 1)[0].clientId;
+  }
+
+  /**
+   * Fan a newly-arrived mesh message out to connected app clients: enqueue it
+   * and nudge the app with a MsgWaiting push so it drains via SyncNextMessage.
+   *
+   * "Newly-arrived" covers both directions. A message MeshMonitor sent is just
+   * as new to a companion that didn't send it as one that arrived over RF — the
+   * app has no other way to learn about it, since the physical node's companion
+   * slot is held by MeshMonitor. Delivery is therefore per-client: everyone gets
+   * it except the one client that asked us to transmit it (which already shows
+   * it optimistically and would otherwise render it twice) — issue #4535.
+   *
+   * Direct messages we sent are the one case that stays undeliverable. The
+   * companion protocol has no outbound-message frame: ContactMsgRecv(7) means
+   * "received FROM this contact", so a self-sent DM could only be encoded as
+   * either from ourselves (which no real node ever emits) or from its recipient
+   * (which would fabricate a reply they never sent). Neither is honest, so we
+   * keep skipping those and document the gap rather than push a misleading
+   * frame. Channel messages have no such problem — ChannelMsgRecv(8) carries the
+   * originator inline in the body, exactly as a peer node would have heard it.
    */
   private handleIncomingMessage(msg: MeshCoreMessage): void {
     const local = this.options.manager.getLocalNode();
     const selfKey = local?.publicKey?.toLowerCase();
-    // Skip DMs our own node originated (echoed back through the manager).
-    if (selfKey && msg.fromPublicKey?.toLowerCase() === selfKey) return;
-    // Skip our own channel transmissions heard back over the air: channel
-    // packets carry no sender key (fromPublicKey is the synthetic `channel-N`),
-    // so identify them by the name prefix. The app already shows these
-    // optimistically on send — re-delivering would duplicate them.
-    if (this.isChannelMessage(msg) && local?.name && msg.fromName === local.name) return;
+    const selfOriginated = !!selfKey && msg.fromPublicKey?.toLowerCase() === selfKey;
+    // Our own channel transmission heard back over the air. A received channel
+    // packet carries the synthetic `channel-N` marker in fromPublicKey (not our
+    // key), so it is identified by name — and it is a genuine duplicate of
+    // something every client has already been given, so it is dropped outright.
+    if (this.isChannelMessage(msg) && !selfOriginated && local?.name && msg.fromName === local.name) return;
 
+    let skipClientId: string | undefined;
+    if (selfOriginated) {
+      const channelIdx = this.sentChannelIndex(msg);
+      // A self-sent DM (no channel marker) has no representable frame — see above.
+      if (channelIdx === undefined) return;
+      skipClientId = this.claimChannelSendOrigin(channelIdx, msg.text);
+    }
+
+    let delivered = 0;
     for (const [clientId, client] of this.clients.entries()) {
+      if (clientId === skipClientId) continue;
       client.pendingMessages.push(msg);
       this.send(clientId, encodeMsgWaitingPush());
+      delivered++;
     }
+    if (selfOriginated) {
+      // Says who originated it and who it reached — the two facts you need to
+      // tell "correctly suppressed for the sender" from "wrongly dropped".
+      logger.debug(
+        `[MeshCore VN ${this.sourceId}] ◀ self-originated channel msg → ${delivered} client(s)` +
+          `${skipClientId ? `, skipped originator ${skipClientId}` : ' (originated in MeshMonitor)'}`,
+      );
+    }
+  }
+
+  /**
+   * Channel index of a message WE sent, or undefined when it isn't one. Outgoing
+   * channel messages carry the `channel-N` marker in toPublicKey (incoming ones
+   * carry it in fromPublicKey) — the same split `encodeIncomingMessage` relies on.
+   */
+  private sentChannelIndex(msg: MeshCoreMessage): number | undefined {
+    const match = /^channel-(\d+)$/.exec(msg.toPublicKey ?? '');
+    return match ? Number(match[1]) : undefined;
   }
 
   /** True when the message belongs to a channel (marker in either key field). */
