@@ -23,7 +23,7 @@ import type { NodeInfo } from './types';
  */
 export interface DashboardDataSource {
   /** Identifier for testing / debug logs. */
-  readonly kind: 'meshtastic' | 'meshcore';
+  readonly kind: 'meshtastic' | 'meshcore' | 'reticulum';
 
   /** Fetch the source's nodes and return them as `NodeInfo`s. */
   fetchNodes: (sourceId: string | null) => Promise<NodeInfo[]>;
@@ -173,4 +173,76 @@ export const meshcoreDashboardSource: DashboardDataSource = {
   // hopDistribution / distanceDistribution custom widgets.
   showCustomWidgets: false,
   showRoleFilter: true,
+};
+
+// ---------------------------------------------------------------------------
+// Reticulum data source (#3960 Phase 1b WP1)
+// ---------------------------------------------------------------------------
+
+/**
+ * Raw shape returned by `GET /api/sources/:id/reticulum/interfaces` (mirrors
+ * the server's `ReticulumInterfaceRow`, `src/db/repositories/reticulum.ts`).
+ * Kept as a local type — like `RawMeshCoreNode` above, this module
+ * deliberately doesn't import server types so it stays frontend-only.
+ */
+interface RawReticulumInterface {
+  interfaceName: string;
+  interfaceType: string | null;
+  mode: string | null;
+  status: string;
+  online: boolean;
+  bitrate: number | null;
+  txBytes: number;
+  rxBytes: number;
+  lastSeenAt: number;
+}
+
+/**
+ * Synthetic node-id for a Reticulum interface's throughput-history telemetry
+ * rows. MUST equal `reticulumInterfaceNodeId()` in
+ * `src/server/services/reticulumTelemetry.ts` — the server-side function
+ * that actually derives the `telemetry.nodeId` these history rows are keyed
+ * on (§3e of the Phase 1b build spec). Re-declared rather than imported to
+ * keep this module frontend-only, matching the MeshCore adapter's
+ * convention above.
+ */
+function reticulumInterfaceNodeId(interfaceName: string): string {
+  return `rns:iface:${interfaceName}`;
+}
+
+export const reticulumDashboardSource: DashboardDataSource = {
+  kind: 'reticulum',
+  fetchNodes: async (sourceId) => {
+    if (!sourceId) return [];
+    // Reticulum interfaces are served per-source, not globally.
+    const response = await api.get<{ data?: RawReticulumInterface[] } | RawReticulumInterface[]>(
+      `/api/sources/${encodeURIComponent(sourceId)}/reticulum/interfaces`,
+    );
+    const raw: RawReticulumInterface[] = Array.isArray(response)
+      ? response
+      : (response?.data ?? []);
+    return raw.map((iface): NodeInfo => ({
+      // Reticulum interfaces have no integer nodeNum — leave 0, matching the
+      // MeshCore adapter's convention; the Dashboard's nodeNum-dependent
+      // custom-widget machinery is hidden via showCustomWidgets below.
+      nodeNum: 0,
+      user: {
+        id: reticulumInterfaceNodeId(iface.interfaceName),
+        longName: iface.interfaceName,
+        shortName: iface.interfaceName?.slice(0, 4),
+      },
+      lastHeard: iface.lastSeenAt,
+    }));
+  },
+  nodeKey: (node) => node.user?.id,
+  getDisplayName: (node, fallbackId) =>
+    node?.user?.longName || node?.user?.shortName || fallbackId,
+  // R3 (Phase 1b build spec §0): nodeTypeCategory / role concept is a no-op
+  // this phase — Reticulum interfaces have no analogous role field.
+  getRoleName: () => null,
+  // R1 (Phase 1b build spec §0): interface gauges besides bitrate/tx/rx are
+  // descoped, and none of the persisted fields warrant a solar overlay.
+  solarDefaultTypes: new Set<string>(),
+  showCustomWidgets: false,
+  showRoleFilter: false,
 };
