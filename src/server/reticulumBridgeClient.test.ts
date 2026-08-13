@@ -253,6 +253,39 @@ describe('ReticulumBridgeClient handshake', () => {
     });
   });
 
+  // PR review finding 3: requestIdCounter used to be a module-level `let`,
+  // so a second client (parallel test workers, or two real sources) would
+  // continue the first client's sequence instead of starting its own.
+  it('mints request ids from a per-instance counter, not a shared module counter', async () => {
+    const capturedIds: string[] = [];
+    const bridge = trackBridge(
+      await startMockBridge((ws, send) => {
+        ws.on('message', (data) => {
+          const env = parseIncoming(data);
+          if (env.type === 'hello') {
+            send({ v: 1, type: 'welcome', ts: Date.now(), protocolVersion: 1, bridgeVersion: '0.1.0', rnsVersion: '1.4.2' });
+          } else if (env.type === 'configure') {
+            capturedIds.push(env.id as string);
+            send({ v: 1, type: 'ready', id: env.id, ts: Date.now() });
+          }
+        });
+      }),
+    );
+
+    const clientA = trackClient(new ReticulumBridgeClient({ bridgeUrl: bridge.url, token: 'change-me' }));
+    await clientA.connect({ mode: 'attach', configDir: '/rns' });
+
+    const clientB = trackClient(new ReticulumBridgeClient({ bridgeUrl: bridge.url, token: 'change-me' }));
+    await clientB.connect({ mode: 'attach', configDir: '/rns' });
+
+    expect(capturedIds).toHaveLength(2);
+    // Each client's FIRST request (its initial `configure`) carries counter
+    // suffix "1". If the counter were still module-level, client B's first
+    // request would carry suffix "2" — continuing client A's sequence.
+    expect(capturedIds[0]).toMatch(/^req-\d+-1$/);
+    expect(capturedIds[1]).toMatch(/^req-\d+-1$/);
+  });
+
   it('rejects with AUTH_FAILED when the bridge refuses the token', async () => {
     const bridge = trackBridge(
       await startMockBridge((ws, send) => {

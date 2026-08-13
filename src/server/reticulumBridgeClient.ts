@@ -195,12 +195,6 @@ interface HandshakeWaiter {
   reject: (err: Error) => void;
 }
 
-let requestIdCounter = 0;
-function nextRequestId(): string {
-  requestIdCounter += 1;
-  return `req-${Date.now()}-${requestIdCounter}`;
-}
-
 /**
  * Emits: 'welcome' (WelcomeMessage), 'ready' (ReadyMessage), 'announce'
  * (AnnounceMessage), 'interface_stats' (InterfaceStatsMessage), 'path_table'
@@ -228,9 +222,25 @@ export class ReticulumBridgeClient extends EventEmitter {
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
+  /**
+   * Per-instance request-id counter (moved off a module-level `let` —
+   * PR review finding: a module-level counter lets parallel test workers /
+   * multiple concurrently-running clients cross-correlate request ids,
+   * which is both a test-isolation hazard and, in principle, a cross-client
+   * id collision surface). Each client now mints its own monotonically
+   * increasing sequence.
+   */
+  private requestIdCounter = 0;
+
   constructor(options: ReticulumBridgeClientOptions) {
     super();
     this.options = options;
+  }
+
+  /** Mint a request id scoped to this client instance (see `requestIdCounter`). */
+  private nextRequestId(): string {
+    this.requestIdCounter += 1;
+    return `req-${Date.now()}-${this.requestIdCounter}`;
   }
 
   getState(): ReticulumBridgeClientState {
@@ -284,7 +294,7 @@ export class ReticulumBridgeClient extends EventEmitter {
     if (!this.ws || this.state !== 'ready') {
       throw new ReticulumBridgeError(undefined, 'client is not connected');
     }
-    const id = nextRequestId();
+    const id = this.nextRequestId();
     return new Promise<StatusMessage>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pendingRequests.delete(id);
@@ -404,7 +414,7 @@ export class ReticulumBridgeClient extends EventEmitter {
   }
 
   private performConfigure(params: ReticulumConnectParams): Promise<ReadyMessage> {
-    const id = nextRequestId();
+    const id = this.nextRequestId();
     return new Promise<ReadyMessage>((resolve, reject) => {
       const timeoutMs = this.options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
       const timer = setTimeout(() => {
