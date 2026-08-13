@@ -23,7 +23,7 @@
 import type { Source } from '../db/repositories/sources.js';
 import { logger } from '../utils/logger.js';
 import { PROTOCOL_VERSION, type ReticulumMode, type TcpPeerConfig } from './reticulumProtocol.js';
-import type { ReticulumConnectParams } from './reticulumBridgeClient.js';
+import { validateBridgeUrl, type ReticulumConnectParams } from './reticulumBridgeClient.js';
 import { sourceManagerRegistry } from './sourceManagerRegistry.js';
 import { isReticulumManager } from './sourceManagerTypes.js';
 import { ReticulumManager } from './reticulumManager.js';
@@ -64,12 +64,30 @@ export interface ReticulumConfig extends ReticulumConnectParams {
  * `hello` handshake fails with `AUTH_FAILED`, which surfaces through
  * `ReticulumBridgeClient`/`ReticulumManager` status rather than silently
  * skipping auto-connect the way a missing `configDir`/`peers` does).
+ *
+ * `bridgeUrl` IS validated here (fail-fast at source-create/update time, not
+ * just at connect time): a malformed URL, non-`ws(s):` scheme, or non-
+ * loopback host outside `RETICULUM_BRIDGE_ALLOWED_HOSTS` returns `null` (with
+ * a warning logged), mirroring how `observerConfigFromSource` in
+ * `meshcoreConfig.ts` handles a `brokerUrl` that fails to normalize. See
+ * `validateBridgeUrl()` in `reticulumBridgeClient.ts` for the full rule set —
+ * `ReticulumBridgeClient.connect()` re-validates independently, so this is a
+ * belt-and-suspenders early check, not the only enforcement point.
  */
 export function reticulumConfigFromSource(source: Source): ReticulumConfig | null {
   const cfg = (source.config ?? {}) as unknown as ReticulumSourceConfig;
   const mode: ReticulumMode = cfg.mode === 'tcp_peer' ? 'tcp_peer' : 'attach';
   const bridgeUrl = cfg.bridgeUrl?.trim() || `ws://${DEFAULT_BRIDGE_HOST}:${DEFAULT_BRIDGE_PORT}`;
   const token = cfg.token?.trim() ?? '';
+
+  try {
+    validateBridgeUrl(bridgeUrl);
+  } catch (e) {
+    logger.warn(
+      `[ReticulumConfig] Rejecting source config: ${e instanceof Error ? e.message : String(e)}`,
+    );
+    return null;
+  }
 
   if (mode === 'attach') {
     const configDir = cfg.configDir?.trim();

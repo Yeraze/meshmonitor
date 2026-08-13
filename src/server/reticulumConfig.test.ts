@@ -60,17 +60,31 @@ describe('reticulumConfigFromSource', () => {
       expect(cfg?.configDir).toBe('/rns');
     });
 
-    it('honors an explicit bridgeUrl override', () => {
+    it('honors an explicit bridgeUrl override (loopback, non-default port)', () => {
       const cfg = reticulumConfigFromSource(
-        fakeSource({ mode: 'attach', configDir: '/rns', token: 'secret', bridgeUrl: 'ws://bridge.internal:9000' }),
+        fakeSource({ mode: 'attach', configDir: '/rns', token: 'secret', bridgeUrl: 'ws://127.0.0.1:9000' }),
       );
-      expect(cfg?.bridgeUrl).toBe('ws://bridge.internal:9000');
+      expect(cfg?.bridgeUrl).toBe('ws://127.0.0.1:9000');
     });
 
     it('does not require a token — an absent token yields empty string, not null', () => {
       const cfg = reticulumConfigFromSource(fakeSource({ mode: 'attach', configDir: '/rns' }));
       expect(cfg).not.toBeNull();
       expect(cfg?.token).toBe('');
+    });
+
+    it('returns null (fail-fast) when bridgeUrl is a non-loopback host not on the allowlist', () => {
+      const cfg = reticulumConfigFromSource(
+        fakeSource({ mode: 'attach', configDir: '/rns', token: 'secret', bridgeUrl: 'ws://evil.example.com:1/' }),
+      );
+      expect(cfg).toBeNull();
+    });
+
+    it('returns null (fail-fast) when bridgeUrl uses a non-ws scheme', () => {
+      const cfg = reticulumConfigFromSource(
+        fakeSource({ mode: 'attach', configDir: '/rns', token: 'secret', bridgeUrl: 'http://127.0.0.1:8765' }),
+      );
+      expect(cfg).toBeNull();
     });
   });
 

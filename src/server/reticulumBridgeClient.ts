@@ -58,6 +58,76 @@ const DEFAULT_RECONNECT_MAX_DELAY_MS = 60_000;
 /** 0 = unbounded, mirrors MeshCoreManager's reconnectMaxAttempts default. */
 const DEFAULT_RECONNECT_MAX_ATTEMPTS = 0;
 
+/** Env var for an operator-controlled allowlist of non-loopback bridge hosts (comma-separated hostnames/IPs). */
+export const RETICULUM_BRIDGE_ALLOWED_HOSTS_ENV = 'RETICULUM_BRIDGE_ALLOWED_HOSTS';
+
+/**
+ * Loopback hostnames as `URL.hostname` renders them — note IPv6 `::1` comes
+ * back bracketed (`[::1]`) from the WHATWG URL parser, unlike a bare IPv4
+ * address or hostname.
+ */
+const LOOPBACK_HOSTNAMES = new Set(['127.0.0.1', '[::1]', 'localhost']);
+
+function parseAllowedHosts(raw: string | undefined): Set<string> {
+  if (!raw) return new Set();
+  return new Set(
+    raw
+      .split(',')
+      .map((h) => h.trim().toLowerCase())
+      .filter((h) => h.length > 0),
+  );
+}
+
+/**
+ * Validate a bridge WebSocket URL *before* it is ever handed to
+ * `new WebSocket()`. `bridgeUrl` originates from admin-set source config, so
+ * CodeQL's `js/request-forgery` (SSRF) query flags the config -> network-
+ * request path even though the bridge is a loopback-only sidecar by design
+ * (build spec: `bridgeUrl` defaults to `ws://127.0.0.1:<BRIDGE_PORT>`). This
+ * guard is the barrier: it enforces
+ *  - the string parses as a URL at all,
+ *  - the scheme is exactly `ws:` or `wss:` (rejects `http:`, `file:`, etc.),
+ *  - the hostname is loopback (127.0.0.1 / ::1 / localhost) OR present in the
+ *    operator's `RETICULUM_BRIDGE_ALLOWED_HOSTS` allowlist (comma-separated
+ *    hostnames/IPs — for a bridge deliberately run on a different host or
+ *    container, e.g. its own pod in a Helm deployment).
+ *
+ * Callers MUST construct the `WebSocket` from the returned `URL` (e.g.
+ * `.href`), not from the original raw string — CodeQL only recognizes this
+ * as breaking the taint flow when the *validated* value reaches the sink.
+ */
+export function validateBridgeUrl(raw: string, env: NodeJS.ProcessEnv = process.env): URL {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new ReticulumBridgeError(undefined, `invalid bridge URL: ${raw}`);
+  }
+
+  if (url.protocol !== 'ws:' && url.protocol !== 'wss:') {
+    throw new ReticulumBridgeError(
+      undefined,
+      `bridge URL must use ws:// or wss://, got '${url.protocol}' (${raw})`,
+    );
+  }
+
+  const hostname = url.hostname.toLowerCase();
+  if (LOOPBACK_HOSTNAMES.has(hostname)) {
+    return url;
+  }
+
+  const allowlist = parseAllowedHosts(env[RETICULUM_BRIDGE_ALLOWED_HOSTS_ENV]);
+  if (allowlist.has(hostname)) {
+    return url;
+  }
+
+  throw new ReticulumBridgeError(
+    undefined,
+    `bridge URL host '${hostname}' is not loopback and is not listed in ${RETICULUM_BRIDGE_ALLOWED_HOSTS_ENV} ` +
+      `(add it to that comma-separated env var to allow a non-loopback bridge host)`,
+  );
+}
+
 export interface ReticulumBridgeClientOptions {
   /** e.g. `ws://127.0.0.1:8765` */
   bridgeUrl: string;
@@ -222,7 +292,11 @@ export class ReticulumBridgeClient extends EventEmitter {
 
   private async connectOnce(params: ReticulumConnectParams): Promise<void> {
     this.state = 'connecting';
-    const ws = new WebSocket(this.options.bridgeUrl);
+    // Validate once per connection attempt and build the socket from the
+    // validated URL object (not the raw option string) — see
+    // validateBridgeUrl()'s doc comment for why this matters to CodeQL.
+    const validatedUrl = validateBridgeUrl(this.options.bridgeUrl);
+    const ws = new WebSocket(validatedUrl.href);
     this.ws = ws;
 
     await new Promise<void>((resolve, reject) => {

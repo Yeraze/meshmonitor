@@ -2,11 +2,11 @@
  * Tests for reticulumBridgeClient.ts (#3960 Phase 1a WP3).
  *
  * Uses a real in-process WebSocket server (the `ws` package's
- * `WebSocketServer`, already present transitively via socket.io) bound to an
- * ephemeral loopback port to stand in for the Python bridge — no Python
- * needed, per the build spec's test plan (§5). The client under test uses
- * the platform-global `WebSocket`, so this exercises the real wire protocol
- * end to end, not a mocked transport.
+ * `WebSocketServer`, a devDependency) bound to an ephemeral loopback port to
+ * stand in for the Python bridge — no Python needed, per the build spec's
+ * test plan (§5). The client under test uses the platform-global
+ * `WebSocket`, so this exercises the real wire protocol end to end, not a
+ * mocked transport.
  *
  * The fixture-contract suite at the bottom loads every golden JSON fixture
  * WP2 committed under `bridge/tests/fixtures/` and asserts this module's
@@ -14,13 +14,23 @@
  * client dispatch path — accepts them exactly. That is the cross-language
  * contract guard: if `protocol.py` and this file ever drift, this suite is
  * where it should be caught.
+ *
+ * The `validateBridgeUrl` suite covers the SSRF guard added in response to
+ * CodeQL's `js/request-forgery` finding on the config-supplied `bridgeUrl`
+ * flowing into `new WebSocket()` — see that function's doc comment in
+ * reticulumBridgeClient.ts for the full rationale.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it, expect, afterEach } from 'vitest';
 import { WebSocketServer, type WebSocket as WSSocket } from 'ws';
-import { ReticulumBridgeClient, ReticulumBridgeError } from './reticulumBridgeClient.js';
+import {
+  ReticulumBridgeClient,
+  ReticulumBridgeError,
+  validateBridgeUrl,
+  RETICULUM_BRIDGE_ALLOWED_HOSTS_ENV,
+} from './reticulumBridgeClient.js';
 import { decodeEnvelope, PROTOCOL_VERSION, type AnnounceMessage, type InterfaceStatsMessage } from './reticulumProtocol.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -78,6 +88,73 @@ function trackBridge(bridge: MockBridge): MockBridge {
   return bridge;
 }
 
+describe('validateBridgeUrl', () => {
+  it('accepts the default loopback URL (ws://127.0.0.1:8765)', () => {
+    const url = validateBridgeUrl('ws://127.0.0.1:8765');
+    expect(url.href).toBe('ws://127.0.0.1:8765/');
+  });
+
+  it('accepts localhost', () => {
+    const url = validateBridgeUrl('ws://localhost:8765');
+    expect(url.hostname).toBe('localhost');
+  });
+
+  it('accepts IPv6 loopback ([::1])', () => {
+    const url = validateBridgeUrl('ws://[::1]:8765');
+    expect(url.hostname).toBe('[::1]');
+  });
+
+  it('accepts wss:// on a loopback host', () => {
+    const url = validateBridgeUrl('wss://127.0.0.1:8765');
+    expect(url.protocol).toBe('wss:');
+  });
+
+  it('rejects a non-ws scheme (http:)', () => {
+    expect(() => validateBridgeUrl('http://127.0.0.1:8765')).toThrow(ReticulumBridgeError);
+  });
+
+  it('rejects a non-ws scheme (file:)', () => {
+    expect(() => validateBridgeUrl('file:///etc/passwd')).toThrow(ReticulumBridgeError);
+  });
+
+  it('rejects an unparseable URL', () => {
+    expect(() => validateBridgeUrl('not a url')).toThrow(ReticulumBridgeError);
+  });
+
+  it('rejects the cloud-metadata SSRF host (169.254.169.254) with no allowlist set', () => {
+    expect(() => validateBridgeUrl('ws://169.254.169.254/', {})).toThrow(ReticulumBridgeError);
+    try {
+      validateBridgeUrl('ws://169.254.169.254/', {});
+      expect.unreachable();
+    } catch (e) {
+      expect(e).toBeInstanceOf(ReticulumBridgeError);
+      expect((e as ReticulumBridgeError).message).toContain('169.254.169.254');
+      expect((e as ReticulumBridgeError).message).toContain(RETICULUM_BRIDGE_ALLOWED_HOSTS_ENV);
+    }
+  });
+
+  it('rejects an arbitrary external host (evil.example.com) with no allowlist set', () => {
+    expect(() => validateBridgeUrl('ws://evil.example.com/', {})).toThrow(ReticulumBridgeError);
+  });
+
+  it('accepts a non-loopback host when it is present in RETICULUM_BRIDGE_ALLOWED_HOSTS', () => {
+    const env = { [RETICULUM_BRIDGE_ALLOWED_HOSTS_ENV]: 'reticulum-bridge.internal, other.example.com' };
+    const url = validateBridgeUrl('ws://reticulum-bridge.internal:8765', env);
+    expect(url.hostname).toBe('reticulum-bridge.internal');
+  });
+
+  it('still rejects a host absent from a non-empty allowlist', () => {
+    const env = { [RETICULUM_BRIDGE_ALLOWED_HOSTS_ENV]: 'reticulum-bridge.internal' };
+    expect(() => validateBridgeUrl('ws://evil.example.com/', env)).toThrow(ReticulumBridgeError);
+  });
+
+  it('defaults to process.env when no env override is passed', () => {
+    // No assertion on outcome (depends on the ambient test environment) —
+    // this only proves the default parameter doesn't throw on access.
+    expect(() => validateBridgeUrl('ws://127.0.0.1:8765')).not.toThrow();
+  });
+});
+
 describe('ReticulumBridgeClient handshake', () => {
   it('completes hello/welcome then configure/ready and reaches the ready state', async () => {
     const bridge = trackBridge(
@@ -105,6 +182,27 @@ describe('ReticulumBridgeClient handshake', () => {
     expect(client.getState()).toBe('ready');
     expect(welcomeEvents).toHaveLength(1);
     expect(readyEvents).toHaveLength(1);
+  });
+
+  it('connect() rejects a non-loopback bridgeUrl before ever opening a socket (SSRF guard at the sink)', async () => {
+    const client = trackClient(
+      new ReticulumBridgeClient({ bridgeUrl: 'ws://evil.example.com:1/', token: 'change-me', requestTimeoutMs: 500 }),
+    );
+    client.on('error', () => {});
+
+    let caught: unknown;
+    try {
+      await client.connect({ mode: 'attach', configDir: '/rns' });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(ReticulumBridgeError);
+    // Distinguishes "validateBridgeUrl rejected it" from a network-level
+    // BRIDGE_UNREACHABLE failure — the guard must fire before any socket is
+    // opened, so the error names the allowlist env var, not a connection code.
+    expect((caught as ReticulumBridgeError).message).toContain(RETICULUM_BRIDGE_ALLOWED_HOSTS_ENV);
+    expect((caught as ReticulumBridgeError).code).toBeUndefined();
+    expect(client.getState()).not.toBe('ready');
   });
 
   it('sends configure with the tcp_peer mode and peers', async () => {
