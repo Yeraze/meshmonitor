@@ -305,6 +305,30 @@ service:
   port: 80
 ```
 
+### Reticulum Bridge Sidecar
+
+To attach MeshMonitor to a [Reticulum Network Stack](https://reticulum.network/) deployment,
+enable the `reticulum` block (disabled by default; a default install renders identically
+whether this section is set):
+
+```yaml
+reticulum:
+  enabled: true
+  image: "ghcr.io/yeraze/meshmonitor-rns-bridge:latest"
+  mode: "attach"                  # attach | tcp_peer
+  configDir: "/root/.reticulum"   # host path to the RNS config dir (attach mode)
+  token: "changeme"               # REQUIRED when enabled — shared secret (BRIDGE_TOKEN)
+  bind: "127.0.0.1:8765"          # bridge's own WebSocket listen address
+```
+
+This adds a second container (`meshmonitor-rns-bridge`, its own image, kept separate from
+the main image because RNS/LXMF carry the non-OSI Reticulum License) to the pod. In `attach`
+mode the chart sets `hostNetwork: true` on the whole pod (the shared-instance RPC socket the
+bridge attaches to only listens on `127.0.0.1`) and hostPath-mounts `configDir` read-only
+pin the pod to the node that path exists on with `nodeSelector`/`affinity` if your cluster has
+more than one node. See the [Reticulum Bridge deployment guide](https://meshmonitor.org/deployment/RETICULUM_BRIDGE_GUIDE)
+for the full walkthrough, the `tcp_peer` alternative, and `rpc_key` troubleshooting.
+
 ## Upgrading
 
 To upgrade an existing release:

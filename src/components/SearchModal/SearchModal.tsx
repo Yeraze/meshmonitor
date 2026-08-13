@@ -3,6 +3,13 @@ import { useTranslation } from 'react-i18next';
 import apiService from '../../services/api.js';
 import './SearchModal.css';
 
+// Note (#3960 Phase 1b WP6): `source` below is a message-protocol
+// discriminator ('standard' Meshtastic vs 'meshcore'), not the `sources.type`
+// enum used elsewhere in the dashboard (see `DashboardPage.tsx` `formType`).
+// There is no per-`sources.type` icon/label map in this file to extend.
+// Reticulum has no messaging surface in Phase 1b (messaging is Phase 2/3
+// scope per the build spec), so no 'reticulum' branch is added here — doing
+// so would imply a search backend that doesn't exist yet.
 interface SearchResult {
   id: string;
   text: string;

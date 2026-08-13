@@ -12,6 +12,7 @@ MeshMonitor supports several deployment options:
 - **☸️ Kubernetes/Helm** - Production-grade orchestration ([separate guide](HELM_GUIDE.md))
 - **📦 Proxmox LXC** - Lightweight containers for Proxmox VE ([separate guide](PROXMOX_LXC_GUIDE.md))
 - **🔧 Bare Metal (Node.js)** - Direct deployment without containers
+- **📡 Reticulum Bridge** (optional sidecar) - Attach MeshMonitor to a Reticulum Network Stack deployment ([separate guide](RETICULUM_BRIDGE_GUIDE.md))
 
 ## Prerequisites
 

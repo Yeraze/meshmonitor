@@ -18,6 +18,17 @@ spec:
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- /*
+      Reticulum attach mode needs the whole pod on host networking -- the
+      shared-instance RPC socket the bridge attaches to binds to 127.0.0.1, so
+      only a pod sharing the host's network namespace can reach it. This is a
+      Kubernetes pod-level setting (there is no per-container equivalent), so
+      it applies to the main meshmonitor container too when enabled. tcp_peer
+      mode dials out instead of attaching locally, so it does not need this.
+      */}}
+      {{- if and .Values.reticulum.enabled (eq .Values.reticulum.mode "attach") }}
+      hostNetwork: true
+      {{- end }}
       containers:
       - name: {{ .Chart.Name }}
         {{- with .Values.securityContext }}
@@ -69,6 +80,30 @@ spec:
         resources:
           {{- toYaml . | nindent 10 }}
         {{- end }}
+      {{- if .Values.reticulum.enabled }}
+      - name: reticulum-bridge
+        image: {{ .Values.reticulum.image }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        env:
+        - name: RNS_MODE
+          value: {{ .Values.reticulum.mode | quote }}
+        - name: BRIDGE_HOST
+          value: {{ splitList ":" .Values.reticulum.bind | first | quote }}
+        - name: BRIDGE_PORT
+          value: {{ splitList ":" .Values.reticulum.bind | last | quote }}
+        - name: BRIDGE_TOKEN
+          value: {{ .Values.reticulum.token | quote }}
+        {{- if eq .Values.reticulum.mode "attach" }}
+        - name: RNS_CONFIG_DIR
+          value: "/rns"
+        {{- end }}
+        {{- if eq .Values.reticulum.mode "attach" }}
+        volumeMounts:
+        - name: rns-config
+          mountPath: /rns
+          readOnly: true
+        {{- end }}
+      {{- end }}
       volumes:
       - name: data
         {{- if .Values.persistence.enabled }}
@@ -77,6 +112,12 @@ spec:
         {{- else }}
         emptyDir: {}
         {{- end }}
+      {{- if and .Values.reticulum.enabled (eq .Values.reticulum.mode "attach") }}
+      - name: rns-config
+        hostPath:
+          path: {{ .Values.reticulum.configDir }}
+          type: Directory
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

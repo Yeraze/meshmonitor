@@ -570,13 +570,18 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
         const isMeshCore = source.type === 'meshcore';
         const isMqttBroker = source.type === 'mqtt_broker';
         const isMqttBridge = source.type === 'mqtt_bridge';
+        // Reticulum (#3960 Phase 1b): no brand-asset watermark ships yet
+        // (that's a later phase), so this class is a no-op until one lands —
+        // added now so the branching stays consistent with the other types.
+        const isReticulum = source.type === 'reticulum';
         const cardClassName =
           'dashboard-source-card' +
           (isSelected ? ' selected' : '') +
           (isMeshtastic ? ' has-meshtastic-watermark' : '') +
           (isMeshCore ? ' has-meshcore-watermark' : '') +
           (isMqttBroker ? ' has-mqtt-broker-watermark' : '') +
-          (isMqttBridge ? ' has-mqtt-bridge-watermark' : '');
+          (isMqttBridge ? ' has-mqtt-bridge-watermark' : '') +
+          (isReticulum ? ' has-reticulum-watermark' : '');
 
         const card = (
           <div
@@ -596,7 +601,8 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
               {!isUnified &&
                 source.type !== 'meshtastic_tcp' &&
                 source.type !== 'meshtastic_mqtt' &&
-                source.type !== 'meshcore' && (
+                source.type !== 'meshcore' &&
+                source.type !== 'reticulum' && (
                   <span className="dashboard-source-card-badge">{source.type}</span>
                 )}
               {!isUnified && (() => {

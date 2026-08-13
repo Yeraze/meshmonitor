@@ -151,7 +151,7 @@ function DashboardInner() {
   const [showSourceModal, setShowSourceModal] = useState(false);
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
   const [formType, setFormType] = useState<
-    'meshtastic_tcp' | 'meshcore' | 'mqtt_broker' | 'mqtt_bridge'
+    'meshtastic_tcp' | 'meshcore' | 'mqtt_broker' | 'mqtt_bridge' | 'reticulum'
   >('meshtastic_tcp');
   const [formName, setFormName] = useState('');
   const [formHost, setFormHost] = useState('');
@@ -218,6 +218,17 @@ function DashboardInner() {
   // Meshtastic source ↔ embedded MQTT broker proxy link (issue #3003
   // follow-up). Empty string = unset / no proxy bridge.
   const [formMtMqttLinkBrokerId, setFormMtMqttLinkBrokerId] = useState('');
+  // Reticulum form state (#3960 Phase 1b WP6). Mirrors `ReticulumSourceConfig`
+  // (src/server/reticulumConfig.ts): 'attach' joins a shared rnsd instance's
+  // RNS config directory via the bridge sidecar; 'tcp_peer' has the bridge's
+  // own RNS instance dial out to a single TCPClientInterface peer.
+  const [formRnsMode, setFormRnsMode] = useState<'attach' | 'tcp_peer'>('attach');
+  const [formRnsConfigDir, setFormRnsConfigDir] = useState('');
+  const [formRnsBridgeUrl, setFormRnsBridgeUrl] = useState('');
+  const [formRnsToken, setFormRnsToken] = useState('');
+  const [formRnsAutoConnect, setFormRnsAutoConnect] = useState(true);
+  const [formRnsPeerHost, setFormRnsPeerHost] = useState('');
+  const [formRnsPeerPort, setFormRnsPeerPort] = useState('4965');
   const [formError, setFormError] = useState('');
   const [formSaving, setFormSaving] = useState(false);
 
@@ -394,6 +405,13 @@ function DashboardInner() {
     setFormMtMqttLinkBrokerId('');
     setFormBrokerBridgeRewrites({});
     setOriginalBrokerBridgeRewrites({});
+    setFormRnsMode('attach');
+    setFormRnsConfigDir('');
+    setFormRnsBridgeUrl('');
+    setFormRnsToken('');
+    setFormRnsAutoConnect(true);
+    setFormRnsPeerHost('');
+    setFormRnsPeerPort('4965');
     setFormError('');
     setShowSourceModal(true);
   };
@@ -403,6 +421,28 @@ function DashboardInner() {
     if (!source) return;
     const cfg = source.config as Record<string, any> | undefined;
     setEditingSourceId(id);
+    if (source.type === 'reticulum') {
+      setFormType('reticulum');
+      setFormName(source.name);
+      const rnsMode: 'attach' | 'tcp_peer' = cfg?.mode === 'tcp_peer' ? 'tcp_peer' : 'attach';
+      setFormRnsMode(rnsMode);
+      setFormRnsConfigDir(cfg?.configDir ?? '');
+      setFormRnsBridgeUrl(cfg?.bridgeUrl ?? '');
+      // Admins receive the full config record (stripSourceSecrets exempts
+      // them, mirroring the mqtt_broker/meshcore round-trip), and there is
+      // no server-side "keep existing on blank" merge for this field, so
+      // hydrating the real value here (rather than blanking it, as the mqtt
+      // broker password field does) is what keeps a re-save from silently
+      // wiping the token.
+      setFormRnsToken(cfg?.token ?? '');
+      setFormRnsAutoConnect(cfg?.autoConnect !== false);
+      const peer = Array.isArray(cfg?.peers) ? cfg.peers[0] : undefined;
+      setFormRnsPeerHost(peer?.host ?? '');
+      setFormRnsPeerPort(peer?.port != null ? String(peer.port) : '4965');
+      setFormError('');
+      setShowSourceModal(true);
+      return;
+    }
     if (source.type === 'mqtt_broker') {
       setFormType('mqtt_broker');
       setFormName(source.name);
@@ -641,6 +681,37 @@ function DashboardInner() {
       // The disabled fallback keeps the operator's chosen auth mode so a
       // disable/re-enable round-trip doesn't silently revert to token mode.
       cfg.observer = observerResult.config ?? { enabled: false, authMode: formObserver.authMode, brokerUrl: '', iataCode: '', tokenAudience: '' };
+    } else if (formType === 'reticulum') {
+      // Reticulum source (#3960 Phase 1b WP6): validation mirrors
+      // reticulumConfigFromSource() server-side (src/server/reticulumConfig.ts)
+      // for fast client-side feedback — 'attach' needs a non-blank configDir,
+      // 'tcp_peer' needs a well-formed {host, port} peer, and an explicit
+      // bridgeUrl (when provided) must be ws:// or wss://.
+      const bridgeUrl = formRnsBridgeUrl.trim();
+      if (bridgeUrl && !/^wss?:\/\//i.test(bridgeUrl)) {
+        setFormError(t('source.form.error_reticulum_bridge_url', 'Bridge URL must start with ws:// or wss://'));
+        return;
+      }
+
+      cfg = { mode: formRnsMode, autoConnect: formRnsAutoConnect };
+      if (bridgeUrl) cfg.bridgeUrl = bridgeUrl;
+      const token = formRnsToken.trim();
+      if (token) cfg.token = token;
+
+      if (formRnsMode === 'attach') {
+        const configDir = formRnsConfigDir.trim();
+        if (!configDir) {
+          setFormError(t('source.form.error_reticulum_config_dir_required', 'Config directory is required'));
+          return;
+        }
+        cfg.configDir = configDir;
+      } else {
+        const host = formRnsPeerHost.trim();
+        if (!host) { setFormError(t('source.form.error_host_required')); return; }
+        const port = parseInt(formRnsPeerPort, 10);
+        if (isNaN(port) || port < 1 || port > 65535) { setFormError(t('source.form.error_port_range')); return; }
+        cfg.peers = [{ host, port }];
+      }
     } else {
       if (!formHost.trim()) { setFormError(t('source.form.error_host_required')); return; }
       const port = parseInt(formPort, 10);
@@ -1141,7 +1212,8 @@ function DashboardInner() {
                         | 'meshtastic_tcp'
                         | 'meshcore'
                         | 'mqtt_broker'
-                        | 'mqtt_bridge',
+                        | 'mqtt_bridge'
+                        | 'reticulum',
                     )
                   }
                 >
@@ -1149,6 +1221,7 @@ function DashboardInner() {
                   <option value="meshcore">{t('source.form.type_meshcore', 'MeshCore')}</option>
                   <option value="mqtt_broker">{t('source.form.type_mqtt_broker', 'Embedded MQTT Broker (devices connect here)')}</option>
                   <option value="mqtt_bridge">{t('source.form.type_mqtt_bridge', 'MQTT Bridge (forward to/from an upstream broker)')}</option>
+                  <option value="reticulum">{t('source.form.type_reticulum', 'Reticulum')}</option>
                 </select>
               </label>
             )}
@@ -1670,6 +1743,112 @@ function DashboardInner() {
                     </>
                   )}
                 </fieldset>
+              </>
+            ) : formType === 'reticulum' ? (
+              <>
+                <label className="dashboard-form-field">
+                  <span className="dashboard-form-label">{t('reticulum.form.mode', 'Mode')}</span>
+                  <select
+                    className="dashboard-form-input"
+                    // Explicit: the wrapping <label> also contains the help
+                    // <p>, so the implicit accessible name would be label +
+                    // help text concatenated.
+                    aria-label={t('reticulum.form.mode', 'Mode')}
+                    value={formRnsMode}
+                    onChange={(e) => setFormRnsMode(e.target.value as 'attach' | 'tcp_peer')}
+                  >
+                    <option value="attach">{t('reticulum.form.mode_attach', 'Attach to shared rnsd')}</option>
+                    <option value="tcp_peer">{t('reticulum.form.mode_tcp_peer', 'TCP peer')}</option>
+                  </select>
+                  <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
+                    {formRnsMode === 'attach'
+                      ? t('reticulum.form.mode_attach_help', 'The bridge sidecar joins a shared rnsd instance by reading its RNS config directory.')
+                      : t('reticulum.form.mode_tcp_peer_help', "The bridge sidecar runs its own RNS instance and dials out to a single TCPClientInterface peer — no local rnsd or config directory needed.")}
+                  </p>
+                </label>
+
+                {formRnsMode === 'attach' ? (
+                  <label className="dashboard-form-field">
+                    <span className="dashboard-form-label">{t('reticulum.form.config_dir', 'Config directory')}</span>
+                    <input
+                      className="dashboard-form-input"
+                      type="text"
+                      value={formRnsConfigDir}
+                      onChange={(e) => setFormRnsConfigDir(e.target.value)}
+                      placeholder="/rns"
+                    />
+                    <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
+                      {t('reticulum.form.config_dir_help', "Directory of the shared rnsd instance's RNS config, as seen by the bridge sidecar's container/host.")}
+                    </p>
+                  </label>
+                ) : (
+                  <>
+                    <label className="dashboard-form-field">
+                      <span className="dashboard-form-label">{t('source.form.host')}</span>
+                      <input
+                        className="dashboard-form-input"
+                        type="text"
+                        value={formRnsPeerHost}
+                        onChange={(e) => setFormRnsPeerHost(e.target.value)}
+                        placeholder="amsterdam.connect.reticulum.network"
+                      />
+                    </label>
+                    <label className="dashboard-form-field">
+                      <span className="dashboard-form-label">{t('source.form.tcp_port')}</span>
+                      <input
+                        className="dashboard-form-input"
+                        type="number"
+                        value={formRnsPeerPort}
+                        onChange={(e) => setFormRnsPeerPort(e.target.value)}
+                        placeholder="4965"
+                      />
+                    </label>
+                  </>
+                )}
+
+                <label className="dashboard-form-field">
+                  <span className="dashboard-form-label">{t('reticulum.form.bridge_url', 'Bridge URL')}</span>
+                  <input
+                    className="dashboard-form-input"
+                    type="text"
+                    value={formRnsBridgeUrl}
+                    onChange={(e) => setFormRnsBridgeUrl(e.target.value)}
+                    placeholder="ws://127.0.0.1:8765"
+                  />
+                  <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
+                    {t('reticulum.form.bridge_url_help', 'WebSocket URL of the meshmonitor-rns-bridge sidecar. Defaults to ws://127.0.0.1:8765 when left blank.')}
+                  </p>
+                </label>
+
+                <label className="dashboard-form-field">
+                  <span className="dashboard-form-label">{t('reticulum.form.token', 'Bridge token')}</span>
+                  <input
+                    className="dashboard-form-input"
+                    type="password"
+                    // Explicit: the wrapping <label> also contains the help
+                    // <p>, so the implicit accessible name would be label +
+                    // help text concatenated.
+                    aria-label={t('reticulum.form.token', 'Bridge token')}
+                    value={formRnsToken}
+                    onChange={(e) => setFormRnsToken(e.target.value)}
+                    placeholder={editingSourceId ? '••••••••' : ''}
+                  />
+                  <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
+                    {t('reticulum.form.token_help', "Shared secret for the bridge's hello handshake — must match the bridge sidecar's BRIDGE_TOKEN.")}
+                  </p>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, margin: '8px 0 4px' }}>
+                  <input
+                    type="checkbox"
+                    checked={formRnsAutoConnect}
+                    onChange={(e) => setFormRnsAutoConnect(e.target.checked)}
+                  />
+                  {t('source.form.auto_connect')}
+                </label>
+                <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '0 0 8px 24px' }}>
+                  {t('source.form.auto_connect_help')}
+                </p>
               </>
             ) : (
             <>

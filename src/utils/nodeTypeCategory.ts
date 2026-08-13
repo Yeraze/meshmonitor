@@ -252,7 +252,15 @@ export function categoriesForProtocols(opts: {
   return out;
 }
 
-/** Classify a source `type` string into its protocol family. */
+/**
+ * Classify a source `type` string into its protocol family.
+ *
+ * Reticulum (#3960) has no map/nodes surface in Phase 1b — it falls through
+ * to `'meshtastic'` here like every other non-MeshCore type, which is a safe
+ * no-op since a Reticulum source never contributes nodes for this function to
+ * categorize. Real Reticulum node categorization is Phase 3 scope; don't
+ * invent a category for it here ahead of that work.
+ */
 export function sourceTypeProtocol(type: string | undefined | null): 'meshcore' | 'meshtastic' {
   return type === 'meshcore' ? 'meshcore' : 'meshtastic';
 }

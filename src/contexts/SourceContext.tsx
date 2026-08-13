@@ -13,7 +13,7 @@ interface SourceContextType {
   sourceId: string | null;
   /** Display name of the active source, or null */
   sourceName: string | null;
-  /** Source type (e.g. 'meshtastic_tcp', 'mqtt_bridge', 'meshcore'), or null */
+  /** Source type (e.g. 'meshtastic_tcp', 'mqtt_bridge', 'meshcore', 'reticulum'), or null */
   sourceType: string | null;
 }
 
