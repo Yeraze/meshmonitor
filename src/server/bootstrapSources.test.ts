@@ -54,6 +54,17 @@ vi.mock('./meshcoreConfig.js', () => ({
   }),
 }));
 
+vi.mock('./reticulumConfig.js', () => ({
+  ensureReticulumManagerStarted: vi.fn().mockResolvedValue(undefined),
+  reticulumConfigFromSource: vi.fn().mockReturnValue({
+    mode: 'attach',
+    bridgeUrl: 'ws://127.0.0.1:8765',
+    token: 'test-token',
+    protocolVersion: 1,
+    configDir: '/data/rns',
+  }),
+}));
+
 vi.mock('./applyManagerSettings.js', () => ({
   applyManagerSettings: vi.fn().mockResolvedValue(undefined),
 }));
@@ -91,6 +102,15 @@ function makeMeshCoreSource(id: string): SourceRow {
     name: `MeshCore-${id}`,
     type: 'meshcore',
     config: { transport: 'usb', port: '/dev/ttyUSB0' },
+  });
+}
+
+function makeReticulumSource(id: string, extra: Record<string, unknown> = {}): SourceRow {
+  return makeSource({
+    id,
+    name: `Reticulum-${id}`,
+    type: 'reticulum',
+    config: { mode: 'attach', configDir: '/data/rns', ...extra },
   });
 }
 
@@ -232,6 +252,7 @@ function makeDeps(overrides: Partial<BootstrapDeps> & { db: BootstrapDb }): Boot
 // ---------------------------------------------------------------------------
 import { buildMqttManagerForSource } from './routes/sourceRoutes.js';
 import { ensureMeshCoreManagerStarted } from './meshcoreConfig.js';
+import { ensureReticulumManagerStarted } from './reticulumConfig.js';
 
 // ---------------------------------------------------------------------------
 // Scenario tests
@@ -739,6 +760,72 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
       expect(callOrder.indexOf('mqtt:broker-1')).toBeLessThan(
         callOrder.indexOf('tcp:tcp-1'),
       );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Scenario 9 — reticulum-only enabled (no tcp) → S4 fallback fires (WP5)
+  // Mirrors Scenario 6 (meshcore-only): pins the env-IP wart for Reticulum
+  // and asserts the autoConnect gate.
+  // -------------------------------------------------------------------------
+  describe('Scenario 9 — reticulum-only enabled → S4 fallback fires (WP5)', () => {
+    it('(B) 0 tcp managers in registry', async () => {
+      const row = makeReticulumSource('rt-1');
+      const db = makeDbStub([row]);
+      await bootstrapSources(makeDeps({
+        db, registry, fallbackManager: fallbackManager as any,
+        makeMeshtastic: meshFactory.factory,
+      }));
+      expect(getPrimaryMeshtasticManager(registry)).toBeUndefined();
+    });
+
+    it('(E) fallbackManager.connect() IS called (S4 — no tcp configured)', async () => {
+      const row = makeReticulumSource('rt-1');
+      const db = makeDbStub([row]);
+      await bootstrapSources(makeDeps({
+        db, registry, fallbackManager: fallbackManager as any,
+        makeMeshtastic: meshFactory.factory,
+      }));
+      expect(fallbackManager.connect).toHaveBeenCalledOnce();
+    });
+
+    it('ensureReticulumManagerStarted is called for the reticulum source', async () => {
+      const row = makeReticulumSource('rt-1');
+      const db = makeDbStub([row]);
+      await bootstrapSources(makeDeps({
+        db, registry, fallbackManager: fallbackManager as any,
+        makeMeshtastic: meshFactory.factory,
+      }));
+      expect(ensureReticulumManagerStarted).toHaveBeenCalledOnce();
+    });
+
+    it('skips auto-connect (does not call ensureReticulumManagerStarted) when autoConnect is false', async () => {
+      const row = makeReticulumSource('rt-1', { autoConnect: false });
+      const db = makeDbStub([row]);
+      await bootstrapSources(makeDeps({
+        db, registry, fallbackManager: fallbackManager as any,
+        makeMeshtastic: meshFactory.factory,
+      }));
+      expect(ensureReticulumManagerStarted).not.toHaveBeenCalled();
+      // Still falls back to S4 since no tcp source ever configured.
+      expect(fallbackManager.connect).toHaveBeenCalledOnce();
+    });
+
+    // Mirrors the #4020 regression pin for MeshCore: bootstrapSources must
+    // swallow an S4 fallback-connect rejection so schedulers started AFTER
+    // it in server.ts still run on a Reticulum-only install.
+    it('resolves (does NOT throw) when the S4 fallback connect rejects', async () => {
+      const row = makeReticulumSource('rt-1');
+      const db = makeDbStub([row]);
+      fallbackManager.connect.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+      await expect(
+        bootstrapSources(makeDeps({
+          db, registry, fallbackManager: fallbackManager as any,
+          makeMeshtastic: meshFactory.factory,
+        })),
+      ).resolves.toBeUndefined();
+      expect(ensureReticulumManagerStarted).toHaveBeenCalledOnce();
+      expect(fallbackManager.connect).toHaveBeenCalledOnce();
     });
   });
 

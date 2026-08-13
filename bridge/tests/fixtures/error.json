@@ -1,0 +1,8 @@
+{
+  "code": "RPC_AUTH_FAILED",
+  "id": "c1",
+  "message": "rpc_key mismatch: digest sent was rejected by the shared instance",
+  "ts": 1755000000000,
+  "type": "error",
+  "v": 1
+}

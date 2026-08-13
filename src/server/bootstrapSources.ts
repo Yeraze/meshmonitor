@@ -20,7 +20,7 @@
  *    always created on a fresh install even when no explicit IP was configured
  *    — this "always-truthy quirk" is pinned by test scenario #2.
  *  - When source rows exist, env is ignored for source creation.
- *  - Sources are sorted: mqtt_broker(0) < meshtastic_tcp/meshcore(1) < mqtt_bridge(2).
+ *  - Sources are sorted: mqtt_broker(0) < meshtastic_tcp/meshcore/reticulum(1) < mqtt_bridge(2).
  *  - ALL meshtastic_tcp sources: constructed via makeMeshtastic() uniformly.
  *  - First tcp source is designated primary via registry.setPrimaryMeshtasticSource().
  *  - autoConnect===false → skip that source for auto-connect.
@@ -31,6 +31,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../utils/logger.js';
 import { applyManagerSettings } from './applyManagerSettings.js';
 import { meshcoreConfigFromSource, ensureMeshCoreManagerStarted } from './meshcoreConfig.js';
+import { reticulumConfigFromSource, ensureReticulumManagerStarted } from './reticulumConfig.js';
 import { buildMqttManagerForSource } from './routes/sourceRoutes.js';
 import type { SourceManagerRegistry } from './sourceManagerRegistry.js';
 import type { MeshtasticManager, MeshtasticMqttLink } from './meshtasticManager.js';
@@ -152,6 +153,8 @@ export async function bootstrapSources(deps: BootstrapDeps): Promise<void> {
   // later via the deferred 'manager-started' event, starting in order keeps
   // the happy path race-free.
   const enabledSourcesRaw = await deps.db.sources.getEnabledSources();
+  // mqtt_broker starts first (0), mqtt_bridge last (2); everything else —
+  // meshtastic_tcp, meshcore, reticulum — shares tier 1 (the default below).
   const typeStartOrder = (t: string) =>
     t === 'mqtt_broker' ? 0 : t === 'mqtt_bridge' ? 2 : 1;
   const enabledSources = [...enabledSourcesRaw].sort(
@@ -196,6 +199,29 @@ export async function bootstrapSources(deps: BootstrapDeps): Promise<void> {
         await ensureMeshCoreManagerStarted(source, mcConfig);
       } catch (err) {
         logger.error(`Failed to start MeshCore source ${source.id} (${source.name}); continuing with other sources:`, err);
+      }
+      continue;
+    }
+
+    if (source.type === 'reticulum') {
+      // Mirrors the meshcore branch above: per-source manager via the shared
+      // create-or-reconnect recipe. Reticulum managers register themselves in
+      // the unified sourceManagerRegistry inside ensureReticulumManagerStarted.
+      const cfg = source.config as { autoConnect?: boolean };
+      if (cfg?.autoConnect === false) {
+        logger.info(`Skipping auto-connect for Reticulum source ${source.id} (${source.name}) — autoConnect disabled`);
+        continue;
+      }
+
+      try {
+        const rtConfig = reticulumConfigFromSource(source);
+        if (!rtConfig) {
+          logger.warn(`Reticulum source ${source.id} (${source.name}) has incomplete config; skipping auto-connect`);
+          continue;
+        }
+        await ensureReticulumManagerStarted(source, rtConfig);
+      } catch (err) {
+        logger.error(`Failed to start Reticulum source ${source.id} (${source.name}); continuing with other sources:`, err);
       }
       continue;
     }

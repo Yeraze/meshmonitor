@@ -115,3 +115,12 @@ export type {
 } from './mqttOkToMqttViolations.js';
 export { AtakContactsRepository } from './atakContacts.js';
 export type { AtakContactRow } from './atakContacts.js';
+
+export { ReticulumRepository, DEFAULT_RETICULUM_DESTINATIONS_MAX } from './reticulum.js';
+export type {
+  ReticulumDestinationRow,
+  UpsertDestinationInput,
+  ListDestinationsOptions,
+  ReticulumInterfaceRow,
+  UpsertInterfaceInput,
+} from './reticulum.js';

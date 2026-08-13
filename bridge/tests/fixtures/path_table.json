@@ -1,0 +1,14 @@
+{
+  "paths": [
+    {
+      "destinationHash": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+      "expires": 1755001800.0,
+      "hops": 1,
+      "interface": "TCP Server Interface",
+      "via": "a1b2c3d4e5f60718293a4b5c6d7e8f90"
+    }
+  ],
+  "ts": 1755000000000,
+  "type": "path_table",
+  "v": 1
+}

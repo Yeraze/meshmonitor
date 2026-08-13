@@ -9,6 +9,7 @@ import request from 'supertest';
 import sourceRoutes from './sourceRoutes.js';
 import databaseService from '../../services/database.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { ensureReticulumManagerStarted } from '../reticulumConfig.js';
 vi.mock('../../services/database.js', () => ({
   default: {
     sources: {
@@ -77,6 +78,17 @@ vi.mock('../meshcoreManager.js', () => {
   }
   return { MeshCoreManager };
 });
+
+vi.mock('../reticulumConfig.js', () => ({
+  reticulumConfigFromSource: vi.fn().mockReturnValue({
+    mode: 'attach',
+    bridgeUrl: 'ws://127.0.0.1:8765',
+    token: 'test-token',
+    protocolVersion: 1,
+    configDir: '/data/rns',
+  }),
+  ensureReticulumManagerStarted: vi.fn().mockResolvedValue(undefined),
+}));
 
 const mockDb = databaseService as any;
 const mockRegistry = sourceManagerRegistry as any;
@@ -160,6 +172,56 @@ describe('sourceRoutes — autoConnect flag on create', () => {
     expect(res.status).toBe(201);
     expect(mockRegistry.addManager).toHaveBeenCalledTimes(1);
   });
+
+  it('starts a Reticulum manager via ensureReticulumManagerStarted when autoConnect is true (default)', async () => {
+    const app = createApp();
+    mockDb.sources.createSource.mockResolvedValue({
+      id: 'rt-new-id',
+      name: 'RT Test',
+      type: 'reticulum',
+      enabled: true,
+      config: { mode: 'attach', configDir: '/data/rns', autoConnect: true },
+      createdAt: 0,
+      updatedAt: 0,
+      createdBy: 1,
+    });
+
+    const res = await request(app)
+      .post('/')
+      .send({
+        name: 'RT Test',
+        type: 'reticulum',
+        config: { mode: 'attach', configDir: '/data/rns', autoConnect: true },
+      });
+
+    expect(res.status).toBe(201);
+    expect(ensureReticulumManagerStarted).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not start a Reticulum manager when autoConnect is false', async () => {
+    const app = createApp();
+    mockDb.sources.createSource.mockResolvedValue({
+      id: 'rt-new-id',
+      name: 'RT Test',
+      type: 'reticulum',
+      enabled: true,
+      config: { mode: 'attach', configDir: '/data/rns', autoConnect: false },
+      createdAt: 0,
+      updatedAt: 0,
+      createdBy: 1,
+    });
+
+    const res = await request(app)
+      .post('/')
+      .send({
+        name: 'RT Test',
+        type: 'reticulum',
+        config: { mode: 'attach', configDir: '/data/rns', autoConnect: false },
+      });
+
+    expect(res.status).toBe(201);
+    expect(ensureReticulumManagerStarted).not.toHaveBeenCalled();
+  });
 });
 
 describe('sourceRoutes — POST /:id/connect (manual connect)', () => {
@@ -230,6 +292,52 @@ describe('sourceRoutes — POST /:id/connect (manual connect)', () => {
     const res = await request(app).post('/missing/connect');
 
     expect(res.status).toBe(404);
+  });
+
+  it('starts a Reticulum manager via ensureReticulumManagerStarted when no manager exists', async () => {
+    const app = createApp();
+    mockDb.sources.getSource.mockResolvedValue({
+      id: 'rt-1',
+      name: 'RT',
+      type: 'reticulum',
+      enabled: true,
+      config: { mode: 'attach', configDir: '/data/rns', autoConnect: false },
+      createdAt: 0,
+      updatedAt: 0,
+      createdBy: 1,
+    });
+    mockRegistry.getManager.mockReturnValue(null);
+
+    const res = await request(app).post('/rt-1/connect');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ success: true });
+    expect(ensureReticulumManagerStarted).toHaveBeenCalledTimes(1);
+  });
+
+  it('is idempotent for Reticulum — reports alreadyRunning when manager already connected', async () => {
+    const app = createApp();
+    mockDb.sources.getSource.mockResolvedValue({
+      id: 'rt-1',
+      name: 'RT',
+      type: 'reticulum',
+      enabled: true,
+      config: { mode: 'attach', configDir: '/data/rns', autoConnect: false },
+      createdAt: 0,
+      updatedAt: 0,
+      createdBy: 1,
+    });
+    mockRegistry.getManager.mockReturnValue({
+      sourceId: 'rt-1',
+      sourceType: 'reticulum',
+      isConnected: () => true,
+    });
+
+    const res = await request(app).post('/rt-1/connect');
+
+    expect(res.status).toBe(200);
+    expect(res.body.alreadyRunning).toBe(true);
+    expect(ensureReticulumManagerStarted).not.toHaveBeenCalled();
   });
 });
 
@@ -327,6 +435,53 @@ describe('sourceRoutes — POST /:id/disconnect', () => {
     expect(disconnect).not.toHaveBeenCalled();
     expect(mockRegistry.removeManager).not.toHaveBeenCalled();
   });
+
+  it('disconnects a Reticulum source by REMOVING its manager from the registry (unlike MeshCore)', async () => {
+    const app = createApp();
+    mockDb.sources.getSource.mockResolvedValue({
+      id: 'rt-1',
+      name: 'RT',
+      type: 'reticulum',
+      enabled: true,
+      config: { mode: 'attach', configDir: '/data/rns' },
+      createdAt: 0,
+      updatedAt: 0,
+      createdBy: 1,
+    });
+    // A manager is registered for this source.
+    mockRegistry.getManager.mockReturnValue({ sourceId: 'rt-1', sourceType: 'reticulum', isConnected: () => true });
+
+    const res = await request(app).post('/rt-1/disconnect');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ success: true });
+    // Reticulum removes the manager on disconnect (build spec §3.6/§7 risk 2)
+    // — the opposite of MeshCore's keep-registered behavior asserted above.
+    // A read against /reticulum/* after this would fall through to the DB,
+    // per the WP6 guard contract; here we assert only the registry side.
+    expect(mockRegistry.removeManager).toHaveBeenCalledWith('rt-1');
+  });
+
+  it('reports alreadyStopped for a Reticulum source with no registered manager', async () => {
+    const app = createApp();
+    mockDb.sources.getSource.mockResolvedValue({
+      id: 'rt-1',
+      name: 'RT',
+      type: 'reticulum',
+      enabled: true,
+      config: { mode: 'attach', configDir: '/data/rns' },
+      createdAt: 0,
+      updatedAt: 0,
+      createdBy: 1,
+    });
+    mockRegistry.getManager.mockReturnValue(null);
+
+    const res = await request(app).post('/rt-1/disconnect');
+
+    expect(res.status).toBe(200);
+    expect(res.body.alreadyStopped).toBe(true);
+    expect(mockRegistry.removeManager).not.toHaveBeenCalled();
+  });
 });
 
 describe('sourceRoutes — autoConnect transitions on PUT', () => {
@@ -392,6 +547,71 @@ describe('sourceRoutes — autoConnect transitions on PUT', () => {
 
     expect(res.status).toBe(200);
     expect(mockRegistry.addManager).toHaveBeenCalledTimes(1);
+    expect(mockRegistry.removeManager).not.toHaveBeenCalled();
+  });
+
+  it('removes the Reticulum manager when autoConnect flips from true to false', async () => {
+    const app = createApp();
+    mockDb.sources.getSource.mockResolvedValue({
+      id: 'rt-1',
+      name: 'RT',
+      type: 'reticulum',
+      enabled: true,
+      config: { mode: 'attach', configDir: '/data/rns', autoConnect: true },
+      createdAt: 0,
+      updatedAt: 0,
+      createdBy: 1,
+    });
+    mockDb.sources.updateSource.mockResolvedValue({
+      id: 'rt-1',
+      name: 'RT',
+      type: 'reticulum',
+      enabled: true,
+      config: { mode: 'attach', configDir: '/data/rns', autoConnect: false },
+      createdAt: 0,
+      updatedAt: 0,
+      createdBy: 1,
+    });
+
+    const res = await request(app)
+      .put('/rt-1')
+      .send({ config: { mode: 'attach', configDir: '/data/rns', autoConnect: false } });
+
+    expect(res.status).toBe(200);
+    expect(mockRegistry.removeManager).toHaveBeenCalledWith('rt-1');
+    expect(ensureReticulumManagerStarted).not.toHaveBeenCalled();
+  });
+
+  it('starts the Reticulum manager via ensureReticulumManagerStarted when autoConnect flips from false to true', async () => {
+    const app = createApp();
+    mockDb.sources.getSource.mockResolvedValue({
+      id: 'rt-1',
+      name: 'RT',
+      type: 'reticulum',
+      enabled: true,
+      config: { mode: 'attach', configDir: '/data/rns', autoConnect: false },
+      createdAt: 0,
+      updatedAt: 0,
+      createdBy: 1,
+    });
+    mockDb.sources.updateSource.mockResolvedValue({
+      id: 'rt-1',
+      name: 'RT',
+      type: 'reticulum',
+      enabled: true,
+      config: { mode: 'attach', configDir: '/data/rns', autoConnect: true },
+      createdAt: 0,
+      updatedAt: 0,
+      createdBy: 1,
+    });
+    mockRegistry.getManager.mockReturnValue(null);
+
+    const res = await request(app)
+      .put('/rt-1')
+      .send({ config: { mode: 'attach', configDir: '/data/rns', autoConnect: true } });
+
+    expect(res.status).toBe(200);
+    expect(ensureReticulumManagerStarted).toHaveBeenCalledTimes(1);
     expect(mockRegistry.removeManager).not.toHaveBeenCalled();
   });
 });

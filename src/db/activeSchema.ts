@@ -180,6 +180,12 @@ import {
   atakContactsSqlite, atakContactsPostgres, atakContactsMysql,
 } from './schema/atakContacts.js';
 
+// Reticulum tables (epic #3960, Phase 1a)
+import {
+  reticulumDestinationsSqlite, reticulumDestinationsPostgres, reticulumDestinationsMysql,
+  reticulumInterfacesSqlite, reticulumInterfacesPostgres, reticulumInterfacesMysql,
+} from './schema/reticulum.js';
+
 /**
  * Runtime table map interface.
  *
@@ -305,6 +311,12 @@ export interface ActiveSchema {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3691 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   atakContacts: any;
 
+  // Reticulum tables (epic #3960, Phase 1a)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3960 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
+  reticulumDestinations: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3960 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
+  reticulumInterfaces: any;
+
   // Allow dynamic access for flexibility
   [key: string]: any;
 }
@@ -376,6 +388,8 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreObserverCredentials: meshcoreObserverCredentialsSqlite,
     deadDropMessages: deadDropMessagesSqlite,
     atakContacts: atakContactsSqlite,
+    reticulumDestinations: reticulumDestinationsSqlite,
+    reticulumInterfaces: reticulumInterfacesSqlite,
   },
   postgres: {
     nodes: nodesPostgres,
@@ -440,6 +454,8 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreObserverCredentials: meshcoreObserverCredentialsPostgres,
     deadDropMessages: deadDropMessagesPostgres,
     atakContacts: atakContactsPostgres,
+    reticulumDestinations: reticulumDestinationsPostgres,
+    reticulumInterfaces: reticulumInterfacesPostgres,
   },
   mysql: {
     nodes: nodesMysql,
@@ -504,6 +520,8 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreObserverCredentials: meshcoreObserverCredentialsMysql,
     deadDropMessages: deadDropMessagesMysql,
     atakContacts: atakContactsMysql,
+    reticulumDestinations: reticulumDestinationsMysql,
+    reticulumInterfaces: reticulumInterfacesMysql,
   },
 };
 

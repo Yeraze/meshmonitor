@@ -79,3 +79,7 @@ export * from './deadDrop.js';
 // ATAK contacts table (ATAK/CoT Phase 2, issue #3691) — per-source, one row
 // per distinct ATAK EUD, built from the PLI variant of TAKPacket.
 export * from './atakContacts.js';
+
+// Reticulum tables (epic #3960, Phase 1a) — per-source destinations +
+// interfaces snapshot.
+export * from './reticulum.js';

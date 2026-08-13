@@ -51,6 +51,7 @@ import {
   MqttPacketLogRepository,
   MqttOkToMqttViolationsRepository,
   AtakContactsRepository,
+  ReticulumRepository,
   EstimatedPositionsRepository,
   AutoFavoriteTargetsRepository,
   SourcePkiKeysRepository,
@@ -524,6 +525,7 @@ class DatabaseService {
   public mqttPacketLogRepo: MqttPacketLogRepository | null = null;
   public mqttOkToMqttViolationsRepo: MqttOkToMqttViolationsRepository | null = null;
   public atakContactsRepo: AtakContactsRepository | null = null;
+  public reticulumRepo: ReticulumRepository | null = null;
   public estimatedPositionsRepo: EstimatedPositionsRepository | null = null;
   public autoFavoriteTargetsRepo: AutoFavoriteTargetsRepository | null = null;
   public sourcePkiKeysRepo: SourcePkiKeysRepository | null = null;
@@ -746,6 +748,11 @@ class DatabaseService {
   get atakContacts(): AtakContactsRepository {
     if (!this.atakContactsRepo) throw new Error('Database not initialized');
     return this.atakContactsRepo;
+  }
+
+  get reticulum(): ReticulumRepository {
+    if (!this.reticulumRepo) throw new Error('Database not initialized');
+    return this.reticulumRepo;
   }
 
   get estimatedPositions(): EstimatedPositionsRepository {
@@ -991,6 +998,7 @@ class DatabaseService {
       this.mqttPacketLogRepo = new MqttPacketLogRepository(drizzleDb, this.drizzleDbType);
       this.mqttOkToMqttViolationsRepo = new MqttOkToMqttViolationsRepository(drizzleDb, this.drizzleDbType);
       this.atakContactsRepo = new AtakContactsRepository(drizzleDb, this.drizzleDbType);
+      this.reticulumRepo = new ReticulumRepository(drizzleDb, this.drizzleDbType);
       this.estimatedPositionsRepo = new EstimatedPositionsRepository(drizzleDb, this.drizzleDbType);
       this.autoFavoriteTargetsRepo = new AutoFavoriteTargetsRepository(drizzleDb, this.drizzleDbType);
       this.sourcePkiKeysRepo = new SourcePkiKeysRepository(drizzleDb, this.drizzleDbType);
