@@ -76,6 +76,11 @@ export interface ReticulumConfig extends ReticulumConnectParams {
  */
 export function reticulumConfigFromSource(source: Source): ReticulumConfig | null {
   const cfg = (source.config ?? {}) as unknown as ReticulumSourceConfig;
+  if (cfg.mode !== undefined && cfg.mode !== 'attach' && cfg.mode !== 'tcp_peer') {
+    logger.warn(
+      `[ReticulumConfig] Unrecognized mode '${String(cfg.mode)}' in source ${source.id} config — defaulting to 'attach'`,
+    );
+  }
   const mode: ReticulumMode = cfg.mode === 'tcp_peer' ? 'tcp_peer' : 'attach';
   const bridgeUrl = cfg.bridgeUrl?.trim() || `ws://${DEFAULT_BRIDGE_HOST}:${DEFAULT_BRIDGE_PORT}`;
   const token = cfg.token?.trim() ?? '';

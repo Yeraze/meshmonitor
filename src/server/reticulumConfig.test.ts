@@ -11,6 +11,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { reticulumConfigFromSource, ensureReticulumManagerStarted, type ReticulumSourceConfig } from './reticulumConfig.js';
 import { PROTOCOL_VERSION } from './reticulumProtocol.js';
 import type { Source } from '../db/repositories/sources.js';
+import { logger } from '../utils/logger.js';
 
 function fakeSource(config: ReticulumSourceConfig, overrides: Partial<Source> = {}): Source {
   return {
@@ -139,7 +140,7 @@ describe('reticulumConfigFromSource', () => {
     });
   });
 
-  it('defaults to attach mode when mode is missing/invalid', () => {
+  it('defaults to attach mode when mode is missing', () => {
     const cfg = reticulumConfigFromSource(
       fakeSource({ mode: undefined as unknown as 'attach', configDir: '/rns', token: 'secret' }),
     );
@@ -149,6 +150,49 @@ describe('reticulumConfigFromSource', () => {
   it('returns null for an empty config object regardless of mode default (attach needs configDir)', () => {
     const cfg = reticulumConfigFromSource(fakeSource({} as ReticulumSourceConfig));
     expect(cfg).toBeNull();
+  });
+
+  // PR review finding 7: an unrecognized stored `mode` was silently coerced
+  // to 'attach' with no diagnostic — a bad DB/API value was invisible.
+  describe('unrecognized mode diagnostic', () => {
+    let warnSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      warnSpy.mockRestore();
+    });
+
+    it('logs a warning and still defaults to attach when mode is an unrecognized string', () => {
+      const cfg = reticulumConfigFromSource(
+        fakeSource({ mode: 'bogus' as unknown as 'attach', configDir: '/rns', token: 'secret' }),
+      );
+      expect(cfg?.mode).toBe('attach');
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0][0]).toContain('bogus');
+    });
+
+    it('does NOT warn when mode is genuinely missing (undefined is a legitimate default, not a bad value)', () => {
+      const cfg = reticulumConfigFromSource(
+        fakeSource({ mode: undefined as unknown as 'attach', configDir: '/rns', token: 'secret' }),
+      );
+      expect(cfg?.mode).toBe('attach');
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it('does NOT warn for a recognized mode (attach)', () => {
+      reticulumConfigFromSource(fakeSource({ mode: 'attach', configDir: '/rns', token: 'secret' }));
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it('does NOT warn for a recognized mode (tcp_peer)', () => {
+      reticulumConfigFromSource(
+        fakeSource({ mode: 'tcp_peer', token: 'secret', peers: [{ host: '10.0.0.5', port: 4242 }] }),
+      );
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
   });
 });
 
