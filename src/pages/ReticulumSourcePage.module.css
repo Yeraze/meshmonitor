@@ -1,0 +1,17 @@
+/*
+ * ReticulumSourcePage — no-source / no-permission states.
+ * Mirrors src/components/MeshCore/MeshCoreTab.css's `.meshcore-tab` block,
+ * scoped as a CSS module per CLAUDE.md (new components use CSS modules,
+ * not the frozen global sheets).
+ */
+.gate {
+  padding: 1.5rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.gate h2 {
+  color: var(--color-text);
+  margin-bottom: 1.5rem;
+  font-size: 1.5rem;
+}
