@@ -1,0 +1,199 @@
+/*
+ * ReticulumDestinationsView — destinations table. Scoped as a CSS module
+ * (CLAUDE.md — new components style with CSS modules, not the frozen global
+ * sheets). Loosely mirrors the MeshCore node-list toolbar/search styling
+ * (src/styles/nodes.css .meshcore-search-bar / .sort-controls) but built as
+ * its own module rather than reused classes, since those are global-sheet
+ * scoped.
+ */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-surface-hover);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.searchBar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 12rem;
+}
+
+.searchInput {
+  width: 100%;
+  padding: 0.4rem 2rem 0.4rem 0.6rem;
+  border: 1px solid var(--color-surface-hover);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.85rem;
+}
+
+.searchClear {
+  position: absolute;
+  right: 0.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--color-text-subtle);
+  cursor: pointer;
+  padding: 0.1rem;
+}
+
+.sortControls {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.sortDropdown {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--color-surface-hover);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.85rem;
+}
+
+.sortDirectionBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-hover);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  cursor: pointer;
+  padding: 0.35rem;
+}
+
+.sortDirectionBtn:hover {
+  background: var(--color-surface-hover);
+}
+
+.count {
+  color: var(--color-text-subtle);
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.tableWrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--color-surface);
+  color: var(--color-text-subtle);
+  text-align: left;
+  font-weight: 600;
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--color-surface-hover);
+  white-space: nowrap;
+}
+
+.table tbody td {
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid var(--color-surface-hover);
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.table tbody tr:hover {
+  background: var(--color-surface-hover);
+}
+
+.favoriteRow {
+  background: color-mix(in srgb, var(--color-accent-alt) 8%, transparent);
+}
+
+.favoriteCol {
+  width: 2rem;
+}
+
+.favoriteBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--color-text-faint);
+  cursor: pointer;
+  padding: 0.2rem;
+}
+
+.favoriteBtn.isFavorite,
+.favoriteBtn.isFavorite:hover {
+  color: var(--color-warning, #e0a020);
+}
+
+.favoriteBtn:hover {
+  color: var(--color-text-subtle);
+}
+
+.hashBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  position: relative;
+  background: transparent;
+  border: none;
+  color: var(--color-text);
+  font-family: var(--font-mono, monospace);
+  cursor: pointer;
+  padding: 0.15rem 0.3rem;
+  border-radius: var(--radius-sm);
+}
+
+.hashBtn:hover {
+  background: var(--color-surface-active);
+}
+
+.hashText {
+  white-space: nowrap;
+}
+
+.copiedBadge {
+  position: absolute;
+  left: 100%;
+  margin-left: 0.4rem;
+  background: var(--color-success);
+  color: var(--color-accent-text);
+  border-radius: var(--radius-sm);
+  padding: 0.05rem 0.4rem;
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.emptyState {
+  text-align: center;
+  color: var(--color-text-subtle);
+  padding: 1.5rem;
+  white-space: normal;
+}
