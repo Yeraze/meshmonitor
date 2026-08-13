@@ -593,6 +593,7 @@ import v1Router from './routes/v1/index.js';
 import meshcoreRoutes from './routes/meshcoreRoutes.js';
 import mqttPacketRoutes from './routes/mqttPacketRoutes.js';
 import atakRoutes from './routes/atakRoutes.js';
+import reticulumRoutes from './routes/reticulumRoutes.js';
 // meshcoreConfigFromSource / ensureMeshCoreManagerStarted moved to bootstrapSources.ts
 import { isMeshtasticManager, isMeshCoreManager } from './sourceManagerTypes.js';
 import { MeshCoreTelemetryPoller, setMeshCoreTelemetryPoller } from './services/meshcoreTelemetryPoller.js';
@@ -728,6 +729,14 @@ apiRouter.use('/sources/:id/mqtt/packets', mqttPacketRoutes);
 // disconnected source simply has no rows. See
 // docs/internal/dev-notes/ATAK_COT_PHASE2_SPEC.md §2g.
 apiRouter.use('/sources/:id/atak', atakRoutes);
+
+// Reticulum routes — nested under `/api/sources/:id/reticulum` so each
+// request resolves the destinations/interfaces bound to a specific source.
+// Unlike meshcore, the manager is REMOVED from the registry on disconnect
+// (build spec §3.6/§7 risk 2), so the route guard tolerates an absent
+// manager and read endpoints keep serving persisted rows. See
+// docs/internal/dev-notes/RETICULUM_PHASE1A_BUILD_SPEC.md §3.7.
+apiRouter.use('/sources/:id/reticulum', reticulumRoutes);
 
 // Link preview routes
 apiRouter.use('/', linkPreviewRoutes);

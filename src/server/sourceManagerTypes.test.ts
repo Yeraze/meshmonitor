@@ -9,9 +9,17 @@
  *  - Fallback scan covers the interim window between remove and re-designation.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { isMeshCoreManager, isMeshtasticManager, getPrimaryMeshtasticManager } from './sourceManagerTypes.js';
+import { isMeshCoreManager, isMeshtasticManager, isReticulumManager, getPrimaryMeshtasticManager } from './sourceManagerTypes.js';
 import { SourceManagerRegistry } from './sourceManagerRegistry.js';
 import type { ISourceManager } from './sourceManagerRegistry.js';
+
+/**
+ * `Source['type']` doesn't include `'reticulum'` yet — widening it is WP5's
+ * job (build spec §3.3). This cast is the same documented workaround used in
+ * `reticulumManager.ts`/`sourceManagerTypes.ts`; WP5 can drop it once the
+ * union is widened.
+ */
+const RETICULUM = 'reticulum' as unknown as ISourceManager['sourceType'];
 
 /**
  * Minimal stub of an ISourceManager for testing guard predicates.
@@ -72,24 +80,60 @@ describe('isMeshtasticManager', () => {
 });
 
 describe('guard partitioning', () => {
-  it('isMeshCoreManager and isMeshtasticManager are mutually exclusive', () => {
-    const types: ISourceManager['sourceType'][] = ['meshcore', 'meshtastic_tcp', 'mqtt_broker', 'mqtt_bridge'];
+  it('isMeshCoreManager, isMeshtasticManager, and isReticulumManager are pairwise mutually exclusive', () => {
+    const types: ISourceManager['sourceType'][] = ['meshcore', 'meshtastic_tcp', 'mqtt_broker', 'mqtt_bridge', RETICULUM];
     for (const t of types) {
       const stub = makeStub(t);
       const isMC = isMeshCoreManager(stub);
       const isMT = isMeshtasticManager(stub);
-      expect(isMC && isMT).toBe(false);
+      const isRT = isReticulumManager(stub);
+      expect([isMC, isMT, isRT].filter(Boolean).length).toBeLessThanOrEqual(1);
     }
   });
 
-  it('exactly one of meshcore/meshtastic types is identified by its guard', () => {
-    expect(isMeshCoreManager(makeStub('meshcore')) || isMeshtasticManager(makeStub('meshcore'))).toBe(true);
-    expect(isMeshCoreManager(makeStub('meshtastic_tcp')) || isMeshtasticManager(makeStub('meshtastic_tcp'))).toBe(true);
+  it('exactly one of meshcore/meshtastic/reticulum types is identified by its guard', () => {
+    expect(
+      isMeshCoreManager(makeStub('meshcore')) || isMeshtasticManager(makeStub('meshcore')) || isReticulumManager(makeStub('meshcore')),
+    ).toBe(true);
+    expect(
+      isMeshCoreManager(makeStub('meshtastic_tcp')) ||
+        isMeshtasticManager(makeStub('meshtastic_tcp')) ||
+        isReticulumManager(makeStub('meshtastic_tcp')),
+    ).toBe(true);
+    expect(
+      isMeshCoreManager(makeStub(RETICULUM)) || isMeshtasticManager(makeStub(RETICULUM)) || isReticulumManager(makeStub(RETICULUM)),
+    ).toBe(true);
   });
 
-  it('mqtt types are not identified by either guard', () => {
-    expect(isMeshCoreManager(makeStub('mqtt_broker')) || isMeshtasticManager(makeStub('mqtt_broker'))).toBe(false);
-    expect(isMeshCoreManager(makeStub('mqtt_bridge')) || isMeshtasticManager(makeStub('mqtt_bridge'))).toBe(false);
+  it('mqtt types are not identified by any of the three guards', () => {
+    expect(
+      isMeshCoreManager(makeStub('mqtt_broker')) || isMeshtasticManager(makeStub('mqtt_broker')) || isReticulumManager(makeStub('mqtt_broker')),
+    ).toBe(false);
+    expect(
+      isMeshCoreManager(makeStub('mqtt_bridge')) || isMeshtasticManager(makeStub('mqtt_bridge')) || isReticulumManager(makeStub('mqtt_bridge')),
+    ).toBe(false);
+  });
+});
+
+describe('isReticulumManager', () => {
+  it('returns true for sourceType === reticulum', () => {
+    expect(isReticulumManager(makeStub(RETICULUM))).toBe(true);
+  });
+
+  it('returns false for sourceType === meshcore', () => {
+    expect(isReticulumManager(makeStub('meshcore'))).toBe(false);
+  });
+
+  it('returns false for sourceType === meshtastic_tcp', () => {
+    expect(isReticulumManager(makeStub('meshtastic_tcp'))).toBe(false);
+  });
+
+  it('returns false for sourceType === mqtt_broker', () => {
+    expect(isReticulumManager(makeStub('mqtt_broker'))).toBe(false);
+  });
+
+  it('returns false for sourceType === mqtt_bridge', () => {
+    expect(isReticulumManager(makeStub('mqtt_bridge'))).toBe(false);
   });
 });
 

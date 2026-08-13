@@ -24,6 +24,7 @@
 import type { ISourceManager, SourceManagerRegistry } from './sourceManagerRegistry.js';
 import type { MeshCoreManager } from './meshcoreManager.js';
 import type { MeshtasticManager } from './meshtasticManager.js';
+import type { ReticulumManager } from './reticulumManager.js';
 
 /**
  * Narrows an ISourceManager to MeshCoreManager.
@@ -39,6 +40,14 @@ export function isMeshCoreManager(m: ISourceManager): m is MeshCoreManager {
  */
 export function isMeshtasticManager(m: ISourceManager): m is MeshtasticManager {
   return m.sourceType === 'meshtastic_tcp';
+}
+
+/**
+ * Narrows an ISourceManager to ReticulumManager.
+ * Predicate is based on the sourceType discriminant — no instanceof, no import cycles.
+ */
+export function isReticulumManager(m: ISourceManager): m is ReticulumManager {
+  return m.sourceType === 'reticulum';
 }
 
 /**

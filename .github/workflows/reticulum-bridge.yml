@@ -1,0 +1,93 @@
+name: Reticulum Bridge
+
+# The bridge/ sidecar (Python, RNS/Reticulum) is entirely separate from the
+# main Node/TS test matrix in ci.yml -- different runtime, different
+# dependency chain, and RNS carries a non-OSI license that must never touch
+# the main image (see bridge/NOTICE). It gets its own workflow rather than a
+# job bolted onto ci.yml so the two can evolve independently and this job
+# only runs when bridge/ actually changed.
+#
+# Path-filtered like dockerfile-image-check.yml (a self-contained subtree
+# with its own toolchain), but also runs on push to the default branches like
+# ci.yml's main job, so a change that lands via a non-PR path (e.g. a direct
+# push to main) is still covered.
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'bridge/**'
+      - '.github/workflows/reticulum-bridge.yml'
+  pull_request:
+    paths:
+      - 'bridge/**'
+      - '.github/workflows/reticulum-bridge.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bridge-tests:
+    name: Bridge Tests (pytest)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: |
+            bridge/requirements.txt
+            bridge/requirements-test.txt
+
+      # requirements.txt pins rns==1.4.2 (WP0 spike evidence: matches the
+      # version the design docs were written/verified against, no drift).
+      # `rnsd` ships as part of the `rns` package -- installing
+      # requirements.txt is what puts it on PATH, there is no separate
+      # install step for it.
+      - name: Install bridge + test dependencies
+        working-directory: bridge
+        run: pip install --no-cache-dir -r requirements.txt -r requirements-test.txt
+
+      - name: Confirm rnsd is on PATH
+        # test_dual_rnsd.py *skips* (not fails) if rnsd is missing, which
+        # would silently drop the integration coverage this job exists for.
+        # Fail loudly here instead of discovering 11 fewer tests ran.
+        run: |
+          set -euo pipefail
+          command -v rnsd
+          rnsd --version || true
+
+      # bridge/tests/integration/test_dual_rnsd.py spawns two real rnsd
+      # subprocesses over loopback TCPServerInterface -- no radio, no
+      # network access beyond 127.0.0.1 (build spec §5 / WP0 spike
+      # evidence). Runs alongside the protocol.py unit tests in the same
+      # `pytest bridge/tests` invocation used in bridge/README.md.
+      - name: Run pytest bridge/tests
+        run: python -m pytest bridge/tests -v --timeout=120
+
+      # Contract-drift guard: bridge/tests/fixtures/*.json is the golden,
+      # cross-language wire contract that src/server/reticulumBridgeClient
+      # .test.ts (Node/WP3) parses independently. test_protocol.py's
+      # test_fixture_matches_live_builder_output already asserts the
+      # checked-in fixtures match protocol.py's live builders (so the step
+      # above would already fail on drift) -- this step is the
+      # belt-and-suspenders human-facing check: regenerate the fixtures for
+      # real and fail if that produces a git diff, so a hand-edited fixture
+      # that happens to satisfy the pytest equality check some other way
+      # still can't slip in silently.
+      - name: Regenerate fixtures and check for drift
+        run: |
+          set -euo pipefail
+          python bridge/tests/generate_fixtures.py
+          if ! git diff --quiet -- bridge/tests/fixtures; then
+            echo "::error::bridge/tests/fixtures/*.json is stale relative to protocol.py." \
+              "Run 'python bridge/tests/generate_fixtures.py' locally and commit the diff:"
+            git diff -- bridge/tests/fixtures
+            exit 1
+          fi
+          echo "Fixtures are up to date with protocol.py."

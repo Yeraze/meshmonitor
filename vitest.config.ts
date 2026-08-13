@@ -44,6 +44,19 @@ const SHARED_DB_TESTS = [
   // auth.test.ts's DROP TABLE ordering intermittently raises
   // ER_FK_CANNOT_DROP_PARENT on MySQL.
   'src/server/migrations/132_fan_out_settings_permissions.pgmysql.test.ts',
+  // Reticulum epic #3960, Phase 1a WP1: `reticulum.test.ts` and migrations
+  // 140/141's container halves all DROP/CREATE `reticulum_destinations` /
+  // `reticulum_interfaces` against the shared PG/MySQL test DB — confirmed
+  // empirically (intermittent "table doesn't exist" mid-test on MySQL when
+  // run concurrently with the migration pgmysql tests).
+  'src/server/migrations/140_create_reticulum_destinations.pgmysql.test.ts',
+  'src/server/migrations/141_create_reticulum_interfaces.pgmysql.test.ts',
+  'src/db/repositories/reticulum.test.ts',
+  // reticulumTelemetry.test.ts's regression guard DROPs/CREATEs the shared
+  // `telemetry` table against the same PG/MySQL test DB as
+  // telemetry.multidb.test.ts — both must join the serial group together.
+  'src/server/services/reticulumTelemetry.test.ts',
+  'src/db/repositories/telemetry.multidb.test.ts',
 ];
 
 const COMMON_EXCLUDE = [

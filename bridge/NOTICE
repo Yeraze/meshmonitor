@@ -1,0 +1,40 @@
+meshmonitor-rns-bridge -- third-party license notice
+======================================================
+
+This directory (`bridge/`) is a standalone sidecar image, built and distributed
+separately from the main MeshMonitor application. Its own source code is BSD-3
+licensed, same as the rest of MeshMonitor (see the repository root LICENSE file).
+
+However, this sidecar's Python dependencies include:
+
+  rns (Reticulum Network Stack)  -- https://github.com/markqvist/Reticulum
+  websockets                      -- MIT license (no special notice required)
+
+`rns` is distributed under the "Reticulum License", a source-available license that
+is NOT an OSI-approved open source license. Key terms (read the full text at the URL
+above; this is a summary, not a substitute):
+
+  - The software may not be used in any system whose function includes purposefully
+    doing harm to human beings.
+  - The software may not be used, directly or indirectly, in the creation of an
+    artificial intelligence, machine learning, or language model training dataset,
+    including any use that contributes to training or developing such a model.
+  - The copyright notice and permission notice must be included in all copies or
+    substantial portions of the software.
+  - Certain additional conditions apply to network services and derivative works --
+    see the upstream LICENSE for the complete terms.
+
+Because these terms are incompatible with distributing `rns`/`lxmf` inside a BSD-3
+codebase's normal dependency tree, MeshMonitor's hard rule (see the top-level
+CLAUDE.md, "License posture") is:
+
+  RNS/LXMF ship ONLY in this `bridge/` sidecar image. They are never added to
+  `package.json`, never imported from `src/**`, and never bundled into the main
+  `node:24` MeshMonitor image. The bridge and the main application communicate over
+  a local WebSocket (see this directory's README.md); no RNS/LXMF code or license
+  obligation crosses that boundary into the main image.
+
+If you redistribute the `meshmonitor-rns-bridge` image, you must continue to honor
+the Reticulum License's terms for the `rns` (and, from Phase 2 onward, `lxmf`)
+dependency. This NOTICE file must be preserved in any redistribution of this image
+or its source.

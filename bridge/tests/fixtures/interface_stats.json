@@ -1,0 +1,29 @@
+{
+  "interfaces": [
+    {
+      "bitrate": null,
+      "hash": "9f8e7d6c5b4a39281706f5e4d3c2b1a0",
+      "mode": "full",
+      "name": "TCP Server Interface",
+      "online": true,
+      "rxBytes": 362,
+      "status": "up",
+      "txBytes": 603,
+      "type": "TCPServerInterface"
+    },
+    {
+      "bitrate": null,
+      "hash": null,
+      "mode": "full",
+      "name": "tcp_peer_127.0.0.1_4242",
+      "online": false,
+      "rxBytes": 0,
+      "status": "down",
+      "txBytes": 0,
+      "type": "TCPClientInterface"
+    }
+  ],
+  "ts": 1755000000000,
+  "type": "interface_stats",
+  "v": 1
+}

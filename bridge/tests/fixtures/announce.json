@@ -1,0 +1,19 @@
+{
+  "appDataB64": "k6VBbGljZaA=",
+  "appName": "lxmf",
+  "aspects": [
+    "delivery"
+  ],
+  "destinationHash": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+  "displayName": "Alice",
+  "hops": 2,
+  "identityHash": "0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+  "isPathResponse": false,
+  "nextHopInterface": "TCP Server Interface",
+  "q": 48,
+  "rssi": -97,
+  "snr": 6.5,
+  "ts": 1755000000000,
+  "type": "announce",
+  "v": 1
+}

@@ -1,0 +1,17 @@
+{
+  "appDataB64": null,
+  "appName": null,
+  "aspects": null,
+  "destinationHash": "112233445566778899aabbccddeeff0",
+  "displayName": null,
+  "hops": null,
+  "identityHash": null,
+  "isPathResponse": true,
+  "nextHopInterface": null,
+  "q": null,
+  "rssi": null,
+  "snr": null,
+  "ts": 1755000000000,
+  "type": "announce",
+  "v": 1
+}

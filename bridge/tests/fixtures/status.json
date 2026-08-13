@@ -1,0 +1,10 @@
+{
+  "connected": true,
+  "id": "c2",
+  "interfaceCount": 2,
+  "mode": "attach",
+  "rnsVersion": "1.4.2",
+  "ts": 1755000000000,
+  "type": "status",
+  "v": 1
+}
