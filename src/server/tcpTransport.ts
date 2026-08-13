@@ -358,32 +358,70 @@ export class TcpTransport extends EventEmitter implements ITransport {
 
     const packet = Buffer.concat([header, Buffer.from(data)]);
 
+    const socket = this.socket;
     return new Promise((resolve, reject) => {
-      if (!this.socket) {
+      if (!socket) {
         reject(new Error('Socket is null'));
         return;
       }
 
-      // Handle TCP backpressure: if the kernel buffer is full, socket.write()
-      // returns false and we must wait for 'drain' before sending more data.
-      // Without this, rapid writes overwhelm WiFi-connected devices (#2474).
-      const canContinue = this.socket.write(packet, (error) => {
-        if (error) {
-          logger.error('❌ Failed to send data:', error.message);
-          reject(error);
-        }
-      });
+      // A true return from socket.write() only means that the writable buffer
+      // remains below its high-water mark. It does NOT mean that the write
+      // completed successfully. Resolving on that boolean caused an async
+      // EPIPE from the write callback to be ignored because the Promise had
+      // already fulfilled, so the manager could report a restarted
+      // meshtasticd as connected after its first protocol write had failed.
+      //
+      // Completion requires both the write callback and, when backpressure is
+      // reported, the drain event. Capturing the socket also prevents a later
+      // reconnect from moving the drain listener onto a different generation.
+      let settled = false;
+      let writeReturned = false;
+      let writeCompleted = false;
+      let drainCompleted = false;
+      let waitingForDrain = false;
 
-      if (canContinue) {
+      const cleanup = () => {
+        if (waitingForDrain) socket.off('drain', onDrain);
+      };
+
+      const maybeResolve = () => {
+        if (settled || !writeReturned || !writeCompleted || !drainCompleted) return;
+        settled = true;
+        cleanup();
         logger.debug(`📤 Sent ${data.length} bytes`);
         resolve();
-      } else {
-        logger.debug(`📤 Sent ${data.length} bytes (waiting for drain)`);
-        this.socket.once('drain', () => {
-          logger.debug('📤 TCP drain — write buffer cleared');
-          resolve();
-        });
+      };
+
+      const onDrain = () => {
+        drainCompleted = true;
+        logger.debug('📤 TCP drain — write buffer cleared');
+        maybeResolve();
+      };
+
+      const canContinue = socket.write(packet, (error) => {
+        if (error) {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          logger.error('❌ Failed to send data:', error.message);
+          reject(error);
+          return;
+        }
+        writeCompleted = true;
+        maybeResolve();
+      });
+
+      writeReturned = true;
+      if (settled) return;
+
+      drainCompleted = canContinue;
+      if (!canContinue) {
+        waitingForDrain = true;
+        logger.debug(`📤 Queued ${data.length} bytes (waiting for drain)`);
+        socket.once('drain', onDrain);
       }
+      maybeResolve();
     });
   }
 
