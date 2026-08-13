@@ -715,7 +715,7 @@
     "icon": "🛂",
     "description": "Reports live wait times for U.S. land ports of entry on the Mexico and Canada borders, using CBP's public Border Wait Time RSS feed. Config-driven — register any number of crossings and query a specific one by name, or get a short default report for your nearest port(s).",
     "language": "Python",
-    "tags": ["border", "cbp", "wait-times", "travel", "mexico", "canada", "api"],
+    "tags": ["Border", "CBP", "Wait Times", "Travel", "Mexico", "Canada", "API"],
     "githubPath": "KF7R/meshmonitor-nogales-bwt/border_wait.py",
     "exampleTrigger": "border, crossing, line, garita, bwt",
     "requirements": [
