@@ -27,6 +27,8 @@ export const messagesSqlite = sqliteTable('messages', {
   emoji: integer('emoji'),
   viaMqtt: integer('viaMqtt', { mode: 'boolean' }),
   viaStoreForward: integer('viaStoreForward', { mode: 'boolean' }),
+  // XEdDSA packet signing (firmware 2.8+): broadcast had a verified signature.
+  xeddsaSigned: integer('xeddsaSigned', { mode: 'boolean' }),
   rxSnr: real('rxSnr'),
   rxRssi: real('rxRssi'),
   // Delivery tracking
@@ -68,6 +70,7 @@ export const messagesPostgres = pgTable('messages', {
   emoji: pgInteger('emoji'),
   viaMqtt: pgBoolean('viaMqtt'),
   viaStoreForward: pgBoolean('viaStoreForward'),
+  xeddsaSigned: pgBoolean('xeddsaSigned'),
   rxSnr: pgReal('rxSnr'),
   rxRssi: pgReal('rxRssi'),
   // Delivery tracking
@@ -107,6 +110,7 @@ export const messagesMysql = mysqlTable('messages', {
   emoji: myInt('emoji'),
   viaMqtt: myBoolean('viaMqtt'),
   viaStoreForward: myBoolean('viaStoreForward'),
+  xeddsaSigned: myBoolean('xeddsaSigned'),
   rxSnr: myDouble('rxSnr'),
   rxRssi: myDouble('rxRssi'),
   // Delivery tracking
