@@ -27,6 +27,7 @@ vi.mock('../../services/database.js', () => ({
     meshcore: {
       getRecentMessages: vi.fn().mockResolvedValue([]),
       getChannelMessages: vi.fn().mockResolvedValue([]),
+      getNodesBySource: vi.fn().mockResolvedValue([]),
     },
     nodes: {
       getAllNodes: vi.fn(),
@@ -95,6 +96,7 @@ const createApp = (user: any = null): Express => {
 
 const SOURCE_A = { id: 'src-a', name: 'Source A', type: 'meshtastic_tcp', enabled: true };
 const SOURCE_B = { id: 'src-b', name: 'Source B', type: 'meshtastic_tcp', enabled: true };
+const SOURCE_MC = { id: 'src-mc', name: 'Source MC', type: 'meshcore', enabled: true };
 
 // Channel list fixtures — same name "Primary" lives at slot 0 on both sources.
 const CHANNELS_A = [
@@ -1082,6 +1084,44 @@ describe('Unified Routes', () => {
       expect(res.body).toHaveLength(1);
       expect(res.body[0].nodeLongName).toBe('Node Two');
       expect(mockDb.telemetry.getLatestTelemetryByNode).toHaveBeenCalledTimes(2);
+    });
+
+    it('gates on the nodes:read permission, not a nonexistent telemetry resource (#4700)', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A]);
+      mockDb.nodes.getAllNodes.mockResolvedValue([
+        { nodeId: '!aabbccdd', nodeNum: 0xaabbccdd, longName: 'Node One', shortName: 'N1' },
+      ]);
+      mockDb.telemetry.getLatestTelemetryByNode.mockResolvedValue([
+        { nodeId: '!aabbccdd', nodeNum: 0xaabbccdd, telemetryType: 'battery_level', value: 85, timestamp: recentTs },
+      ]);
+
+      const app = createApp(regularUser);
+      const res = await request(app).get('/telemetry');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+      expect(mockDb.checkPermissionAsync).toHaveBeenCalledWith(regularUser.id, 'nodes', 'read', 'src-a');
+    });
+
+    it('enumerates MeshCore nodes by publicKey rather than the Meshtastic nodes table (#4700)', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([SOURCE_MC]);
+      const publicKey = 'a'.repeat(64);
+      mockDb.meshcore.getNodesBySource.mockResolvedValue([
+        { publicKey, name: 'MC Node One', sourceId: 'src-mc' },
+      ]);
+      mockDb.telemetry.getLatestTelemetryByNode.mockResolvedValue([
+        { nodeId: publicKey, telemetryType: 'battery_level', value: 77, timestamp: recentTs },
+      ]);
+
+      const app = createApp(adminUser);
+      const res = await request(app).get('/telemetry');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].nodeLongName).toBe('MC Node One');
+      expect(mockDb.telemetry.getLatestTelemetryByNode).toHaveBeenCalledWith(publicKey, 'src-mc');
+      // Meshtastic node table must not be consulted for a MeshCore source.
+      expect(mockDb.nodes.getAllNodes).not.toHaveBeenCalledWith('src-mc');
     });
   });
 
