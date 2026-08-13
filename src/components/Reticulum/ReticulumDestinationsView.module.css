@@ -150,7 +150,7 @@
 
 .favoriteBtn.isFavorite,
 .favoriteBtn.isFavorite:hover {
-  color: var(--color-warning, #e0a020);
+  color: var(--color-warning);
 }
 
 .favoriteBtn:hover {
