@@ -106,16 +106,16 @@ router.get('/status', optionalAuth(), async (req: Request, res: Response) => {
       }`);
     }
 
-    const [destinations, interfaces] = await Promise.all([
-      databaseService.reticulum.listDestinations(sourceId),
-      databaseService.reticulum.listInterfaces(sourceId),
+    const [destinationCount, interfaceCount] = await Promise.all([
+      databaseService.reticulum.countDestinations(sourceId),
+      databaseService.reticulum.countInterfaces(sourceId),
     ]);
 
     return ok(res, {
       connected,
       mode,
-      interfaceCount: interfaces.length,
-      destinationCount: destinations.length,
+      interfaceCount,
+      destinationCount,
     });
   } catch (err) {
     logger.error(`[Reticulum:${sourceId}] Error building status: ${err instanceof Error ? err.message : String(err)}`);
