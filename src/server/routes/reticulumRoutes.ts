@@ -85,6 +85,10 @@ router.use(reticulumRouteGuard);
  * Connectivity + inventory snapshot. `connected:false` (and no `mode`) when
  * no manager is registered for this source — a disconnected Reticulum
  * source still answers this route, it just reports itself as disconnected.
+ * `rnsVersion`/`bridgeVersion` (#3960 Phase 1b WP-B) come from the manager's
+ * cached `welcome`/`status` handshake fields: omitted when no manager is
+ * registered, `null` when a manager is registered but hasn't completed its
+ * handshake yet.
  */
 router.get('/status', optionalAuth(), async (req: Request, res: Response) => {
   const sourceId = (req.params as { id: string }).id;
@@ -111,11 +115,19 @@ router.get('/status', optionalAuth(), async (req: Request, res: Response) => {
       databaseService.reticulum.countInterfaces(sourceId),
     ]);
 
+    // WP-B: bridge/RNS versions cached by the manager from the welcome/status
+    // handshake. undefined (dropped from the JSON body) when no manager is
+    // registered; null when a manager is registered but hasn't connected yet.
+    const rnsVersion = manager ? manager.getRnsVersion() : undefined;
+    const bridgeVersion = manager ? manager.getBridgeVersion() : undefined;
+
     return ok(res, {
       connected,
       mode,
       interfaceCount,
       destinationCount,
+      rnsVersion,
+      bridgeVersion,
     });
   } catch (err) {
     logger.error(`[Reticulum:${sourceId}] Error building status: ${err instanceof Error ? err.message : String(err)}`);

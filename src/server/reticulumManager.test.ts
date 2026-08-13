@@ -16,7 +16,14 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { WebSocketServer, type WebSocket as WSSocket } from 'ws';
-import type { AnnounceMessage, InterfaceStatsEntry, InterfaceStatsMessage } from './reticulumProtocol.js';
+import type {
+  AnnounceMessage,
+  FailureCode,
+  InterfaceStatsEntry,
+  InterfaceStatsMessage,
+  StatusMessage,
+  WelcomeMessage,
+} from './reticulumProtocol.js';
 
 const upsertDestination = vi.fn().mockResolvedValue(undefined);
 const upsertInterface = vi.fn().mockResolvedValue(undefined);
@@ -214,6 +221,96 @@ describe('ReticulumManager DB persistence', () => {
       // @ts-expect-error - exercising the private handler directly
       manager.handleInterfaceStats(makeInterfaceStats([{ ...IFACE_A, txBytes: 1100, rxBytes: 550 }], 1_700_000_010_000)),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe('ReticulumManager bridge/RNS version caching (#3960 Phase 1b WP-B)', () => {
+  function makeWelcome(overrides: Partial<WelcomeMessage> = {}): WelcomeMessage {
+    return {
+      v: 1,
+      type: 'welcome',
+      ts: 1_700_000_000_000,
+      protocolVersion: 1,
+      bridgeVersion: '0.1.0',
+      rnsVersion: '1.4.2',
+      ...overrides,
+    };
+  }
+
+  function makeStatus(overrides: Partial<StatusMessage> = {}): StatusMessage {
+    return {
+      v: 1,
+      type: 'status',
+      ts: 1_700_000_000_000,
+      connected: true,
+      ...overrides,
+    };
+  }
+
+  it('getBridgeVersion()/getRnsVersion() are null before any welcome/status is seen', () => {
+    const manager = new ReticulumManager('src-a');
+    expect(manager.getBridgeVersion()).toBeNull();
+    expect(manager.getRnsVersion()).toBeNull();
+  });
+
+  it('welcome caches both bridgeVersion and rnsVersion', () => {
+    const manager = new ReticulumManager('src-a');
+    // @ts-expect-error - exercising the private handler directly
+    manager.handleWelcome(makeWelcome());
+    expect(manager.getBridgeVersion()).toBe('0.1.0');
+    expect(manager.getRnsVersion()).toBe('1.4.2');
+  });
+
+  it('a status push with rnsVersion refreshes the cached RNS version without touching bridgeVersion', () => {
+    const manager = new ReticulumManager('src-a');
+    // @ts-expect-error - exercising the private handler directly
+    manager.handleWelcome(makeWelcome({ bridgeVersion: '0.1.0', rnsVersion: '1.4.2' }));
+    // @ts-expect-error - exercising the private handler directly
+    manager.handleStatus(makeStatus({ rnsVersion: '1.5.0' }));
+    expect(manager.getBridgeVersion()).toBe('0.1.0');
+    expect(manager.getRnsVersion()).toBe('1.5.0');
+  });
+
+  it('a status push with no rnsVersion (e.g. the health-monitor failure broadcast) leaves the cached value untouched', () => {
+    const manager = new ReticulumManager('src-a');
+    // @ts-expect-error - exercising the private handler directly
+    manager.handleWelcome(makeWelcome({ rnsVersion: '1.4.2' }));
+    // @ts-expect-error - exercising the private handler directly
+    manager.handleStatus(makeStatus({ rnsVersion: undefined, code: 'BRIDGE_UNREACHABLE' as FailureCode }));
+    expect(manager.getRnsVersion()).toBe('1.4.2');
+  });
+
+  it('end-to-end: connect() over a real welcome handshake populates both getters', async () => {
+    const wss = new WebSocketServer({ port: 0, host: '127.0.0.1' });
+    try {
+      const { url } = await new Promise<{ url: string }>((resolve) => {
+        wss.on('listening', () => {
+          const addr = wss.address();
+          const port = addr && typeof addr === 'object' ? addr.port : 0;
+          resolve({ url: `ws://127.0.0.1:${port}` });
+        });
+      });
+      wss.on('connection', (ws) => {
+        ws.on('message', (data) => {
+          const env = JSON.parse(String(data)) as Record<string, unknown>;
+          if (env.type === 'hello') {
+            ws.send(
+              JSON.stringify({ v: 1, type: 'welcome', ts: Date.now(), protocolVersion: 1, bridgeVersion: '0.2.1', rnsVersion: '1.6.0' }),
+            );
+          } else if (env.type === 'configure') {
+            ws.send(JSON.stringify({ v: 1, type: 'ready', id: env.id, ts: Date.now() }));
+          }
+        });
+      });
+
+      const manager = new ReticulumManager('src-a');
+      await manager.connect({ mode: 'attach', bridgeUrl: url, token: 't', protocolVersion: 1, configDir: '/rns' });
+      expect(manager.getBridgeVersion()).toBe('0.2.1');
+      expect(manager.getRnsVersion()).toBe('1.6.0');
+      await manager.disconnect();
+    } finally {
+      await new Promise<void>((res) => wss.close(() => res()));
+    }
   });
 });
 
