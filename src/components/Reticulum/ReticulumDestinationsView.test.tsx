@@ -188,6 +188,20 @@ describe('ReticulumDestinationsView', () => {
     expect(computeAnnounceRatePerSecond(row)).toBe(2);
   });
 
+  it('renders "—" instead of a fake rate for a destination seen exactly once', () => {
+    // announceCount === 1 && firstSeen === lastSeen: the max(1, …) clamp in
+    // computeAnnounceRatePerSecond would otherwise report "1.0/hr", implying
+    // active traffic for a single sighting (review finding).
+    const row = makeRow({ announceCount: 1, firstSeen: NOW, lastSeen: NOW });
+    expect(formatAnnounceRate(row)).toBe('—');
+
+    // A row with the SAME single-announce shape but a genuinely elapsed
+    // window (firstSeen !== lastSeen) is a distinct, real destination that
+    // was announced once a while ago — the guard must not swallow that case.
+    const elapsedOnce = makeRow({ announceCount: 1, firstSeen: NOW - HOUR_MS, lastSeen: NOW });
+    expect(formatAnnounceRate(elapsedOnce)).not.toBe('—');
+  });
+
   it('renders "—" for null RSSI/SNR/quality/hops instead of 0 or blank', () => {
     const row = makeRow({
       destinationHash: 'd'.repeat(32),

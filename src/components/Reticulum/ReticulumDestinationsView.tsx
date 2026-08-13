@@ -19,7 +19,12 @@ import styles from './ReticulumDestinationsView.module.css';
 
 export interface ReticulumDestinationsViewProps {
   destinations: ReticulumDestinationRow[];
-  onToggleFavorite: (hash: string, favorite: boolean) => void;
+  /**
+   * Callers wiring this to `useReticulum().toggleFavorite` pass an async
+   * function that resolves `Promise<boolean>`; a plain sync `void` callback
+   * (e.g. in tests) also fits. The return value is never awaited/used here.
+   */
+  onToggleFavorite: (hash: string, favorite: boolean) => void | Promise<void> | Promise<boolean>;
   loading?: boolean;
 }
 
@@ -49,6 +54,13 @@ export function computeAnnounceRatePerSecond(
 export function formatAnnounceRate(
   row: Pick<ReticulumDestinationRow, 'announceCount' | 'firstSeen' | 'lastSeen'>,
 ): string {
+  // A destination seen exactly once has no elapsed window to derive a rate
+  // from — the max(1, …) clamp in computeAnnounceRatePerSecond would
+  // otherwise report a misleading "1.0/hr", implying active traffic for a
+  // single sighting (review finding, #3960 Phase 1b WP3).
+  if (row.announceCount === 1 && row.firstSeen === row.lastSeen) {
+    return '—';
+  }
   const perHour = computeAnnounceRatePerSecond(row) * 3600;
   if (perHour >= 1) return `${perHour.toFixed(1)}/hr`;
   const perDay = perHour * 24;
