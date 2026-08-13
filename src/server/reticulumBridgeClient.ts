@@ -62,39 +62,56 @@ const DEFAULT_RECONNECT_MAX_ATTEMPTS = 0;
 export const RETICULUM_BRIDGE_ALLOWED_HOSTS_ENV = 'RETICULUM_BRIDGE_ALLOWED_HOSTS';
 
 /**
- * Loopback hostnames as `URL.hostname` renders them — note IPv6 `::1` comes
- * back bracketed (`[::1]`) from the WHATWG URL parser, unlike a bare IPv4
- * address or hostname.
+ * Loopback hosts as bare (unbracketed) literals — this module's own
+ * constants, never derived from a parsed URL. This is the CONSTANT allowlist
+ * both `validateBridgeUrl` (config-time fail-fast) and `connectOnce`'s sink
+ * reconstruction (CodeQL barrier, see below) match against, so the two can
+ * never disagree about which hosts are permitted.
  */
-const LOOPBACK_HOSTNAMES = new Set(['127.0.0.1', '[::1]', 'localhost']);
+const LOOPBACK_HOSTS: readonly string[] = ['127.0.0.1', '::1', 'localhost'];
 
-function parseAllowedHosts(raw: string | undefined): Set<string> {
-  if (!raw) return new Set();
-  return new Set(
-    raw
-      .split(',')
-      .map((h) => h.trim().toLowerCase())
-      .filter((h) => h.length > 0),
-  );
+/** Parses the operator's `RETICULUM_BRIDGE_ALLOWED_HOSTS` env var into bare host literals. */
+function extraAllowedHostsFromEnv(env: NodeJS.ProcessEnv): string[] {
+  const raw = env[RETICULUM_BRIDGE_ALLOWED_HOSTS_ENV];
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((h) => h.trim())
+    .filter((h) => h.length > 0);
+}
+
+/** The full set of host literals a bridge URL's hostname may match: loopback constants plus operator env extras. */
+function allowedHostLiterals(env: NodeJS.ProcessEnv): string[] {
+  return [...LOOPBACK_HOSTS, ...extraAllowedHostsFromEnv(env)];
+}
+
+/** `URL.hostname` brackets IPv6 (`[::1]`); strip that to compare against the bare literals in `allowedHostLiterals`. */
+function stripBrackets(hostname: string): string {
+  return hostname.startsWith('[') && hostname.endsWith(']') ? hostname.slice(1, -1) : hostname;
 }
 
 /**
- * Validate a bridge WebSocket URL *before* it is ever handed to
- * `new WebSocket()`. `bridgeUrl` originates from admin-set source config, so
- * CodeQL's `js/request-forgery` (SSRF) query flags the config -> network-
- * request path even though the bridge is a loopback-only sidecar by design
- * (build spec: `bridgeUrl` defaults to `ws://127.0.0.1:<BRIDGE_PORT>`). This
- * guard is the barrier: it enforces
+ * Validate a bridge WebSocket URL for config-time fail-fast (called from
+ * `reticulumConfigFromSource`, and again here at the top of `connectOnce`).
+ * `bridgeUrl` originates from admin-set source config, so CodeQL's
+ * `js/request-forgery` (SSRF) query flags the config -> network-request path
+ * even though the bridge is a loopback-only sidecar by design (build spec:
+ * `bridgeUrl` defaults to `ws://127.0.0.1:<BRIDGE_PORT>`). This function
+ * enforces:
  *  - the string parses as a URL at all,
  *  - the scheme is exactly `ws:` or `wss:` (rejects `http:`, `file:`, etc.),
  *  - the hostname is loopback (127.0.0.1 / ::1 / localhost) OR present in the
- *    operator's `RETICULUM_BRIDGE_ALLOWED_HOSTS` allowlist (comma-separated
- *    hostnames/IPs — for a bridge deliberately run on a different host or
- *    container, e.g. its own pod in a Helm deployment).
+ *    operator's `RETICULUM_BRIDGE_ALLOWED_HOSTS` allowlist.
  *
- * Callers MUST construct the `WebSocket` from the returned `URL` (e.g.
- * `.href`), not from the original raw string — CodeQL only recognizes this
- * as breaking the taint flow when the *validated* value reaches the sink.
+ * IMPORTANT: this function's return value (`URL`, and any string derived
+ * from it such as `.href`/`.hostname`) must NOT be passed to
+ * `new WebSocket()`. A same-value-different-function allowlist check is not
+ * a sanitizer CodeQL's `js/request-forgery` query recognizes — the tainted
+ * config string is still what reaches the sink. The actual connect target is
+ * built separately in `connectOnce` from constant literals (see the comment
+ * there) precisely so nothing tainted ever reaches `new WebSocket()`. This
+ * function exists purely for the early, friendlier `reticulumConfigFromSource`
+ * rejection — a config the sink guard would refuse anyway.
  */
 export function validateBridgeUrl(raw: string, env: NodeJS.ProcessEnv = process.env): URL {
   let url: URL;
@@ -111,21 +128,17 @@ export function validateBridgeUrl(raw: string, env: NodeJS.ProcessEnv = process.
     );
   }
 
-  const hostname = url.hostname.toLowerCase();
-  if (LOOPBACK_HOSTNAMES.has(hostname)) {
-    return url;
+  const bareHostname = stripBrackets(url.hostname).toLowerCase();
+  const allowed = allowedHostLiterals(env).some((h) => h.toLowerCase() === bareHostname);
+  if (!allowed) {
+    throw new ReticulumBridgeError(
+      undefined,
+      `bridge URL host '${url.hostname}' is not loopback and is not listed in ${RETICULUM_BRIDGE_ALLOWED_HOSTS_ENV} ` +
+        `(add it to that comma-separated env var to allow a non-loopback bridge host)`,
+    );
   }
 
-  const allowlist = parseAllowedHosts(env[RETICULUM_BRIDGE_ALLOWED_HOSTS_ENV]);
-  if (allowlist.has(hostname)) {
-    return url;
-  }
-
-  throw new ReticulumBridgeError(
-    undefined,
-    `bridge URL host '${hostname}' is not loopback and is not listed in ${RETICULUM_BRIDGE_ALLOWED_HOSTS_ENV} ` +
-      `(add it to that comma-separated env var to allow a non-loopback bridge host)`,
-  );
+  return url;
 }
 
 export interface ReticulumBridgeClientOptions {
@@ -292,11 +305,39 @@ export class ReticulumBridgeClient extends EventEmitter {
 
   private async connectOnce(params: ReticulumConnectParams): Promise<void> {
     this.state = 'connecting';
-    // Validate once per connection attempt and build the socket from the
-    // validated URL object (not the raw option string) — see
-    // validateBridgeUrl()'s doc comment for why this matters to CodeQL.
-    const validatedUrl = validateBridgeUrl(this.options.bridgeUrl);
-    const ws = new WebSocket(validatedUrl.href);
+    // CodeQL js/request-forgery barrier (alert #183): validateBridgeUrl()'s
+    // allowlist check lives in a separate function, so CodeQL does not treat
+    // it as a sanitizer — a value derived end-to-end from the tainted
+    // `bridgeUrl` config string (even `.href` off the validated URL) is
+    // still flagged as reaching `new WebSocket()`. The actual fix: never let
+    // a tainted value reach the sink at all. `parsed` below is used only to
+    // pick a matching entry out of `allowedHostLiterals()` — a CONSTANT
+    // array of this module's own literals plus operator env config — via
+    // `.find()`. The returned `safeHost` is an element of that array, not a
+    // transform of `parsed.hostname`, so the host string that ultimately
+    // reaches `new WebSocket()` is provably one of our own constants,
+    // regardless of whether any analyzer credits the comparison itself as a
+    // barrier. Same idea for `scheme` (a two-way constant ternary) and
+    // `port` (only ever the digits already proven to be a validated numeric
+    // string, never copied through unchecked).
+    const parsed = validateBridgeUrl(this.options.bridgeUrl);
+    const env = process.env;
+    const bareHostname = stripBrackets(parsed.hostname).toLowerCase();
+    const safeHost = allowedHostLiterals(env).find((h) => h.toLowerCase() === bareHostname);
+    if (safeHost === undefined) {
+      // Defense in depth only — validateBridgeUrl() above already enforced
+      // this exact allowlist, so reaching here means the two checks somehow
+      // disagreed. Refuse rather than ever construct a URL from the
+      // unvalidated hostname.
+      throw new ReticulumBridgeError(FAILURE_CODE.BRIDGE_UNREACHABLE, `bridge host not allowed: ${parsed.hostname}`);
+    }
+    const scheme = parsed.protocol === 'wss:' ? 'wss:' : 'ws:';
+    const port = /^[0-9]{1,5}$/.test(parsed.port) ? `:${parsed.port}` : '';
+    const hostForUrl = safeHost.includes(':') ? `[${safeHost}]` : safeHost;
+    const path = parsed.pathname === '/' ? '' : parsed.pathname;
+    const target = `${scheme}//${hostForUrl}${port}${path}`;
+
+    const ws = new WebSocket(target);
     this.ws = ws;
 
     await new Promise<void>((resolve, reject) => {

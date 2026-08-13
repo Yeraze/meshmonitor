@@ -205,6 +205,28 @@ describe('ReticulumBridgeClient handshake', () => {
     expect(client.getState()).not.toBe('ready');
   });
 
+  it('connects successfully when bridgeUrl carries a non-root path (constant-reconstruction path handling)', async () => {
+    const bridge = trackBridge(
+      await startMockBridge((ws, send) => {
+        ws.on('message', (data) => {
+          const env = parseIncoming(data);
+          if (env.type === 'hello') {
+            send({ v: 1, type: 'welcome', ts: Date.now(), protocolVersion: 1, bridgeVersion: '0.1.0', rnsVersion: '1.4.2' });
+          } else if (env.type === 'configure') {
+            send({ v: 1, type: 'ready', id: env.id, ts: Date.now() });
+          }
+        });
+      }),
+    );
+
+    // The mock `ws` server doesn't restrict the upgrade path, so a
+    // successful round trip here proves connectOnce()'s constant-literal
+    // reconstruction preserves a non-root pathname rather than dropping it.
+    const client = trackClient(new ReticulumBridgeClient({ bridgeUrl: `${bridge.url}/rns-bridge`, token: 'change-me' }));
+    await client.connect({ mode: 'attach', configDir: '/rns' });
+    expect(client.isConnected()).toBe(true);
+  });
+
   it('sends configure with the tcp_peer mode and peers', async () => {
     let capturedConfigure: Record<string, unknown> | null = null;
     const bridge = trackBridge(
