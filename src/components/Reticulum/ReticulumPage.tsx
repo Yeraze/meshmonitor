@@ -23,6 +23,8 @@ import { ReticulumDestinationsView } from './ReticulumDestinationsView';
 import { ReticulumInterfacesView } from './ReticulumInterfacesView';
 import { ReticulumInfoView } from './ReticulumInfoView';
 import { ReticulumSettingsView } from './ReticulumSettingsView';
+import { SaveBarProvider, SaveBarGroup } from '../../contexts/SaveBarContext';
+import { SaveBar } from '../SaveBar';
 import type { ReticulumStatus, ReticulumView } from '../../types/reticulum';
 import { UiIcon } from '../icons';
 import styles from './ReticulumPage.module.css';
@@ -116,7 +118,12 @@ export const ReticulumPage: React.FC<ReticulumPageProps> = ({ baseUrl, sourceId,
             <ReticulumInfoView status={status} loading={loading} />
           )}
           {view === 'settings' && (
-            <ReticulumSettingsView sourceId={sourceId} />
+            <SaveBarProvider>
+              <SaveBarGroup id="reticulum-settings">
+                <ReticulumSettingsView sourceId={sourceId} />
+              </SaveBarGroup>
+              <SaveBar />
+            </SaveBarProvider>
           )}
         </div>
       </div>

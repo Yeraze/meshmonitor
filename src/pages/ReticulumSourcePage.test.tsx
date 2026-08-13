@@ -8,7 +8,7 @@
  * reflects `useReticulum`'s status.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -201,5 +201,17 @@ describe('ReticulumSourcePage', () => {
     await waitFor(() => {
       expect(screen.getByLabelText('Search destinations…')).toBeInTheDocument();
     });
+  });
+
+  it('renders the Settings view without a SaveBarProvider crash', async () => {
+    // Regression for #3960: ReticulumSettingsView calls useSaveBar, so the
+    // page must wrap the settings slot in a SaveBarProvider — otherwise
+    // switching to Settings threw "useSaveBarContext must be used within a
+    // SaveBarProvider" and blanked the view (caught in browser validation).
+    authValue.hasPermission = () => true;
+    renderPage();
+    const settingsTab = await screen.findByRole('button', { name: 'Settings' });
+    fireEvent.click(settingsTab);
+    expect(await screen.findByText('Destination retention cap')).toBeInTheDocument();
   });
 });
