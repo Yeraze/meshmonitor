@@ -10,9 +10,9 @@
  * Route profile:
  *   Mounted at /api/sources/:id/reticulum via a parent sourceRouter
  *   (mergeParams so requirePermission can read :id).
- *   GET /status uses optionalAuth() only (mirrors the generic
- *   /api/sources/:id/status route) — no permission grant required.
- *   Every other endpoint uses requirePermission('sources', 'read'|'write',
+ *   GET /status uses optionalAuth() only (mirrors MeshCore's status
+ *   endpoint) — no permission grant required.
+ *   Every other endpoint uses requirePermission('nodes', 'read'|'write',
  *   { sourceIdFrom: 'params.id' }).
  *
  * Disconnected-source semantics (build spec §3.7, the key behavioral
@@ -20,28 +20,18 @@
  * `GET /status` reports connected:false; every read endpoint keeps serving
  * persisted rows regardless of manager presence.
  *
- * **Permission-scoping caveat (found while writing these tests).** The build
- * spec calls for `requirePermission('sources', ..., { sourceIdFrom:
- * 'params.id' })`, mirroring `sourceRoutes.ts`'s own `'sources'`-resource
- * checks. But `'sources'` is a GLOBAL resource — absent from
- * `SOURCEY_RESOURCES` in `src/types/permission.ts` — unlike the sourcey
- * resources used by the other new per-source route families (`nodes` in
- * atakRoutes.ts, `packetmonitor` in mqttPacketRoutes.ts). For a global
+ * **Resource choice (post-review correction).** The build spec originally
+ * called for the `'sources'` resource, which is a GLOBAL resource (absent
+ * from `SOURCEY_RESOURCES` in `src/types/permission.ts`) — for a global
  * resource, `databaseService.checkPermissionAsync` ignores the resolved
- * `scopedSourceId` for matching and just checks "does this user have ANY row
- * for this resource" — so a `sources:read` grant on sourceA also authorizes
- * sourceB. `sourceIdFrom` is consequently a no-op for `'sources'`
- * authorization (consistent with `sourceRoutes.ts`'s own connect/disconnect/
- * reorder endpoints, which use `requirePermission('sources','write')`
- * without `sourceIdFrom` at all). True per-source access-control isolation
- * for Reticulum destinations/interfaces would need a dedicated sourcey
- * resource (new `ResourceType` + `SOURCEY_RESOURCES` entry + a migration to
- * fan it out, per the doc comment on `SOURCEY_RESOURCES`) — out of scope for
- * WP6 (route files only). Flagged for the Phase 1a consolidated review.
- * DATA isolation (a source's queries never return another source's rows) is
- * still fully enforced at the repository layer and is what these tests
- * actually verify; the "no grant at all" cases below are what `'sources'`
- * can actually deny.
+ * `sourceId` for matching, so a grant on one source would have authorized
+ * every source, a real per-source access-control gap under CLAUDE.md's
+ * "Permissions are per-source" rule. `'nodes'` IS a sourcey resource and is
+ * the same one `atakRoutes.ts` uses for its per-source contact/node-list
+ * reads — the direct analog to Reticulum's per-source destination list — so
+ * these tests grant/deny `nodes:read`/`nodes:write` and assert genuine
+ * cross-source 403s (a `nodes:read` grant on sourceA does NOT authorize
+ * sourceB), not just data-layer isolation.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -90,7 +80,7 @@ describe('Reticulum routes', () => {
       },
     });
 
-    await harness.grant(harness.limited.id, 'sources', 'read', harness.sourceA);
+    await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceA);
     // No grants at all for sourceB — proves per-source isolation.
 
     mockGetManager.mockReset();
@@ -170,29 +160,21 @@ describe('Reticulum routes', () => {
       expect(hashes).not.toContain('b1'.repeat(16));
     });
 
-    it('403s when the user holds no `sources:read` grant at all', async () => {
-      // `sources` is a GLOBAL resource (absent from SOURCEY_RESOURCES in
-      // src/types/permission.ts) — unlike `nodes`/`packetmonitor` on the other
-      // per-source route families (atakRoutes.ts, mqttPacketRoutes.ts), a grant
-      // on one source authorizes every source for this resource (matches
-      // sourceRoutes.ts's own `requirePermission('sources','write')` calls,
-      // which don't even pass `sourceIdFrom`). So the only reachable 403 here
-      // is "no grant at all", not "grant on a different source" — see the
-      // route-level doc comment in reticulumRoutes.ts for the same note.
+    it('403s when the user holds no `nodes:read` grant at all', async () => {
       await harness.revokeAll(harness.limited.id);
       const agent = await harness.loginAs(harness.limited);
       const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/destinations`);
       expect(res.status).toBe(403);
     });
 
-    it('a `sources:read` grant on sourceA also authorizes sourceB reads (documents the global-resource behavior)', async () => {
+    it('403s for a source the user has no grant on (real per-source access control — `nodes` is sourcey)', async () => {
+      // limited holds nodes:read on sourceA ONLY (outer beforeEach). Unlike
+      // the pre-review `'sources'` resource, `'nodes'` IS in SOURCEY_RESOURCES,
+      // so checkPermissionAsync does an exact (resource, sourceId) match — a
+      // grant on sourceA must NOT authorize sourceB.
       const agent = await harness.loginAs(harness.limited);
       const res = await agent.get(`/api/sources/${harness.sourceB}/reticulum/destinations`);
-      expect(res.status).toBe(200);
-      // Still never returns sourceA's row — DB query itself stays source-scoped.
-      const hashes = res.body.data.map((d: { destinationHash: string }) => d.destinationHash);
-      expect(hashes).toContain('b1'.repeat(16));
-      expect(hashes).not.toContain('a1'.repeat(16));
+      expect(res.status).toBe(403);
     });
 
     it('admin sees both sources independently (no cross-source leak)', async () => {
@@ -270,7 +252,17 @@ describe('Reticulum routes', () => {
     });
 
     it('403s on read-only grant (write required)', async () => {
-      // limited has 'sources':read only on sourceA — no write grant.
+      // limited has nodes:read only on sourceA (outer beforeEach) — no write grant.
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent
+        .post(`/api/sources/${harness.sourceA}/reticulum/destinations/${hash}/favorite`)
+        .send({ favorite: true });
+      expect(res.status).toBe(403);
+    });
+
+    it('403s on a write grant for a different source (real per-source access control)', async () => {
+      // nodes:write on sourceB does not authorize a write against sourceA.
+      await harness.grant(harness.limited.id, 'nodes', 'write', harness.sourceB);
       const agent = await harness.loginAs(harness.limited);
       const res = await agent
         .post(`/api/sources/${harness.sourceA}/reticulum/destinations/${hash}/favorite`)
@@ -324,9 +316,15 @@ describe('Reticulum routes', () => {
       expect(names).not.toContain('tcp-b');
     });
 
-    it('403s when the user holds no `sources:read` grant at all', async () => {
-      // See the equivalent note under GET /destinations — `sources` is a
-      // global resource, so per-source denial isn't reachable here.
+    it('403s for a source the user has no grant on (real per-source access control)', async () => {
+      // limited holds nodes:read on sourceA ONLY — nodes is sourcey, so this
+      // must be denied for sourceB rather than falling back to any grant.
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.get(`/api/sources/${harness.sourceB}/reticulum/interfaces`);
+      expect(res.status).toBe(403);
+    });
+
+    it('403s when the user holds no `nodes:read` grant at all', async () => {
       await harness.revokeAll(harness.limited.id);
       const agent = await harness.loginAs(harness.limited);
       const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/interfaces`);
@@ -377,17 +375,25 @@ describe('Reticulum routes', () => {
       expect(res.body.code).toBe('INTERFACE_NOT_FOUND');
     });
 
-    it('404s (not leaked) when the interface exists only on the other source', async () => {
-      // `sources:read` on sourceA also authorizes sourceB (global resource —
-      // see the GET /destinations note), so this reaches the handler; the
-      // interface itself is still correctly source-scoped and absent there.
-      const agent = await harness.loginAs(harness.limited);
+    it('404s (not leaked) when the interface exists only on the other source (admin, real data-layer check)', async () => {
+      // Admin bypasses requirePermission, so this exercises the DB query
+      // itself: the interface was only upserted under sourceA, so sourceB's
+      // scoped getInterface() lookup finds nothing.
+      const agent = await harness.loginAs(harness.admin);
       const res = await agent.get(`/api/sources/${harness.sourceB}/reticulum/interfaces/${ifaceName}/history`);
       expect(res.status).toBe(404);
       expect(res.body.code).toBe('INTERFACE_NOT_FOUND');
     });
 
-    it('403s when the user holds no `sources:read` grant at all', async () => {
+    it('403s for a source the user has no grant on (real per-source access control)', async () => {
+      // limited holds nodes:read on sourceA ONLY — denied for sourceB before
+      // the handler (and thus the DB) is ever reached.
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.get(`/api/sources/${harness.sourceB}/reticulum/interfaces/${ifaceName}/history`);
+      expect(res.status).toBe(403);
+    });
+
+    it('403s when the user holds no `nodes:read` grant at all', async () => {
       await harness.revokeAll(harness.limited.id);
       const agent = await harness.loginAs(harness.limited);
       const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/interfaces/${ifaceName}/history`);

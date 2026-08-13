@@ -17,26 +17,26 @@
  * `databaseService.telemetry`, so persisted rows keep serving indefinitely
  * after a disconnect.
  *
- * Authentication: `GET /status` uses `optionalAuth()` only (mirrors the
- * generic `/api/sources/:id/status` route — a public connectivity probe).
- * Every other endpoint uses `requirePermission('sources', 'read'|'write',
- * { sourceIdFrom: 'params.id' })` per the build spec (§3.7), mirroring
- * `sourceRoutes.ts`'s own `'sources'`-resource checks.
+ * Authentication: `GET /status` uses `optionalAuth()` only (mirrors
+ * MeshCore's status endpoint — low-sensitivity connection state, and the
+ * generic `/api/sources/:id/status` route follows the same pattern). Every
+ * other endpoint uses `requirePermission('nodes', 'read'|'write',
+ * { sourceIdFrom: 'params.id' })`.
  *
- * **Known caveat:** `'sources'` is a GLOBAL resource (not in
- * `SOURCEY_RESOURCES`, `src/types/permission.ts`), unlike the sourcey
- * resources the other new per-source route families use (`nodes` in
- * atakRoutes.ts, `packetmonitor` in mqttPacketRoutes.ts). So a `sources:read`
- * grant on one source authorizes every source for these endpoints —
- * `sourceIdFrom` does not achieve per-source ACCESS-CONTROL isolation here
- * (it is a no-op for a global resource's authorization decision, same as
- * `sourceRoutes.ts`'s own `'sources'`-gated endpoints). DATA isolation is
- * unaffected: every handler still queries `databaseService.reticulum`/
- * `databaseService.telemetry` scoped to the `:id` in the URL, so a source's
- * response can never contain another source's rows. See
- * `reticulumRoutes.test.ts`'s module comment for the full analysis; a
- * dedicated sourcey resource (new `ResourceType` + migration) would close
- * this gap but is out of scope for a routes-only WP.
+ * **Resource choice (post-review correction).** The build spec (§3.7)
+ * originally called for the `'sources'` resource, but that is a GLOBAL
+ * resource (absent from `SOURCEY_RESOURCES`, `src/types/permission.ts`) —
+ * `checkPermissionAsync` ignores the resolved `sourceId` for a global
+ * resource's authorization decision, so a grant on one source would have
+ * authorized every source (a real per-source access-control gap, since
+ * CLAUDE.md's multi-source rules require permissions to be per-source).
+ * `'nodes'` IS a sourcey resource, matching the precedent set by the other
+ * new per-source route families: `atakRoutes.ts` uses `'nodes'` for its
+ * per-source contact/node-list reads, and Reticulum destinations are the
+ * direct analog (a per-source list of discovered network entities) — so
+ * `'nodes'` is reused here rather than introducing a dedicated resource.
+ * `sourceIdFrom: 'params.id'` now genuinely scopes access: a `nodes:read`
+ * grant on source A does NOT authorize source B.
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
@@ -130,7 +130,7 @@ router.get('/status', optionalAuth(), async (req: Request, res: Response) => {
  */
 router.get(
   '/destinations',
-  requirePermission('sources', 'read', { sourceIdFrom: 'params.id' }),
+  requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }),
   async (req: Request, res: Response) => {
     const sourceId = (req.params as { id: string }).id;
     try {
@@ -157,7 +157,7 @@ router.get(
  */
 router.get(
   '/destinations/:hash',
-  requirePermission('sources', 'read', { sourceIdFrom: 'params.id' }),
+  requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }),
   async (req: Request, res: Response) => {
     const sourceId = (req.params as { id: string }).id;
     const hash = req.params.hash;
@@ -180,7 +180,7 @@ router.get(
  */
 router.post(
   '/destinations/:hash/favorite',
-  requirePermission('sources', 'write', { sourceIdFrom: 'params.id' }),
+  requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
   async (req: Request, res: Response) => {
     const sourceId = (req.params as { id: string }).id;
     const hash = req.params.hash;
@@ -207,7 +207,7 @@ router.post(
  */
 router.get(
   '/interfaces',
-  requirePermission('sources', 'read', { sourceIdFrom: 'params.id' }),
+  requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }),
   async (req: Request, res: Response) => {
     const sourceId = (req.params as { id: string }).id;
     try {
@@ -229,7 +229,7 @@ router.get(
  */
 router.get(
   '/interfaces/:name/history',
-  requirePermission('sources', 'read', { sourceIdFrom: 'params.id' }),
+  requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }),
   async (req: Request, res: Response) => {
     const sourceId = (req.params as { id: string }).id;
     const name = req.params.name;
