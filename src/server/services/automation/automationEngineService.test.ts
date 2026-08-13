@@ -345,6 +345,23 @@ describe('AutomationEngineService', () => {
     expect(await engine.onMessage(message({ fromNodeNum: 111, text: 'ping' }), 'default')).toBe(1); // only the includeSelf one fires
   });
 
+  it('self-origin opt-out (#4694): includeSelf:false behaves identically to includeSelf absent (still dropped)', async () => {
+    const { calls, deps } = recorder();
+    await createEnabled('explicit-false', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: { textContains: 'ping', includeSelf: false } },
+        { id: 'tap', type: 'action.tapback', params: { emoji: '👍' } },
+      ],
+      edges: [{ from: 't', to: 'tap' }],
+    });
+    const selfData = { ...data, getLocalNodeNum: async () => 111 };
+    const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data: selfData, now: () => clock });
+    await engine.load();
+    expect(await engine.onMessage(message({ fromNodeNum: 111, text: 'ping' }), 'default')).toBe(0);
+    expect(calls).toHaveLength(0);
+  });
+
   it('self-origin opt-out (#4694): a trigger.message automation with includeSelf:true still fires on our own MeshCore key', async () => {
     const { calls, deps } = recorder();
     await createEnabled('bridge-like', {
