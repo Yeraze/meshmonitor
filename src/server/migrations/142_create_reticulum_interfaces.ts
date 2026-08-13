@@ -1,5 +1,5 @@
 /**
- * Migration 141: create `reticulum_interfaces` (Reticulum epic #3960, Phase 1a WP1).
+ * Migration 142: create `reticulum_interfaces` (Reticulum epic #3960, Phase 1a WP1).
  *
  * Row per RNS interface reported by the bridge (current snapshot / inventory —
  * the `rnstatus` view; see
@@ -15,7 +15,7 @@ import type { Database } from 'better-sqlite3';
 import { logger } from '../../utils/logger.js';
 import { createTableIfMissingMysql } from './helpers.js';
 
-const LABEL = 'Migration 141';
+const LABEL = 'Migration 142';
 const TABLE = 'reticulum_interfaces';
 
 // ============ SQLite ============
@@ -58,7 +58,7 @@ export const migration = {
 
 // ============ PostgreSQL ============
 
-export async function runMigration141Postgres(client: import('pg').PoolClient): Promise<void> {
+export async function runMigration142Postgres(client: import('pg').PoolClient): Promise<void> {
   logger.info(`${LABEL} (PostgreSQL): creating ${TABLE}...`);
 
   await client.query(`
@@ -89,7 +89,7 @@ export async function runMigration141Postgres(client: import('pg').PoolClient): 
 
 // ============ MySQL ============
 
-export async function runMigration141Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
+export async function runMigration142Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
   logger.info(`${LABEL} (MySQL): creating ${TABLE}...`);
 
   await createTableIfMissingMysql(pool, TABLE, `

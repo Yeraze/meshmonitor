@@ -1,5 +1,5 @@
 /**
- * Migration 140: create `reticulum_destinations` (Reticulum epic #3960, Phase 1a WP1).
+ * Migration 141: create `reticulum_destinations` (Reticulum epic #3960, Phase 1a WP1).
  *
  * Row per announced Reticulum destination hash observed by the bridge (see
  * `docs/internal/dev-notes/RETICULUM_PHASE1A_BUILD_SPEC.md` §3.1). Phase 1a
@@ -16,7 +16,7 @@ import type { Database } from 'better-sqlite3';
 import { logger } from '../../utils/logger.js';
 import { createTableIfMissingMysql, createIndexIfMissingMysql } from './helpers.js';
 
-const LABEL = 'Migration 140';
+const LABEL = 'Migration 141';
 const TABLE = 'reticulum_destinations';
 
 // ============ SQLite ============
@@ -69,7 +69,7 @@ export const migration = {
 
 // ============ PostgreSQL ============
 
-export async function runMigration140Postgres(client: import('pg').PoolClient): Promise<void> {
+export async function runMigration141Postgres(client: import('pg').PoolClient): Promise<void> {
   logger.info(`${LABEL} (PostgreSQL): creating ${TABLE}...`);
 
   await client.query(`
@@ -110,7 +110,7 @@ export async function runMigration140Postgres(client: import('pg').PoolClient): 
 
 // ============ MySQL ============
 
-export async function runMigration140Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
+export async function runMigration141Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
   logger.info(`${LABEL} (MySQL): creating ${TABLE}...`);
 
   await createTableIfMissingMysql(pool, TABLE, `

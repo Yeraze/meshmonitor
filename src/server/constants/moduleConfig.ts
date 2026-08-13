@@ -28,6 +28,7 @@ export const VALID_MODULE_CONFIG_TYPES = [
   'ambientlighting',
   'statusmessage',
   'trafficmanagement',
+  'meshbeacon',
 ] as const;
 
 export type ModuleConfigType = (typeof VALID_MODULE_CONFIG_TYPES)[number];

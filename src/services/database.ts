@@ -181,6 +181,8 @@ export interface DbMessage {
   replyId?: number;
   emoji?: number;
   viaMqtt?: boolean;
+  /** Broadcast carried a verified XEdDSA signature (firmware 2.8+). */
+  xeddsaSigned?: boolean;
   rxSnr?: number;
   rxRssi?: number;
   createdAt: number;
@@ -1701,6 +1703,7 @@ class DatabaseService {
       replyId: msg.replyId ?? undefined,
       emoji: msg.emoji ?? undefined,
       viaMqtt: msg.viaMqtt ?? undefined,
+      xeddsaSigned: msg.xeddsaSigned ?? undefined,
       rxSnr: msg.rxSnr ?? undefined,
       rxRssi: msg.rxRssi ?? undefined,
       ackFailed: msg.ackFailed ?? undefined,
@@ -4698,6 +4701,7 @@ class DatabaseService {
         replyId: result.replyId ?? undefined,
         emoji: result.emoji ?? undefined,
         viaMqtt: result.viaMqtt ?? undefined,
+        xeddsaSigned: result.xeddsaSigned ?? undefined,
         rxSnr: result.rxSnr ?? undefined,
         rxRssi: result.rxRssi ?? undefined,
         ackFailed: result.ackFailed ?? undefined,

@@ -31,6 +31,7 @@ import {
   buildMessageContext,
   buildNodeContext,
   buildTelemetryContext,
+  buildMeshBeaconContext,
   buildSystemContext,
   buildGeofenceContext,
   buildBecameMobileContext,
@@ -50,7 +51,7 @@ import {
 } from './engineContext.js';
 
 export type SimEventKind =
-  | 'message' | 'nodeUpdated' | 'nodeDiscovered' | 'telemetry' | 'system' | 'geofence' | 'becameMobile' | 'leftHome' | 'schedule';
+  | 'message' | 'nodeUpdated' | 'nodeDiscovered' | 'telemetry' | 'system' | 'geofence' | 'becameMobile' | 'leftHome' | 'schedule' | 'meshBeacon';
 
 /** Synthetic trigger event the caller fills in (Test form / system test). */
 export interface SimEventInput {
@@ -76,6 +77,11 @@ export interface SimEventInput {
   telemetryType?: string;
   value?: number;
   unit?: string;
+  // meshBeacon (#3854)
+  message?: string;
+  offerChannelName?: string;
+  offerRegion?: number;
+  offerPreset?: number;
   // system
   event?: string;
   reason?: string;
@@ -256,6 +262,20 @@ function buildContext(graph: AutomationGraph, ev: SimEventInput, node: Partial<N
       const want = params.telemetryType;
       const matched = want == null || want === '' || want === type;
       return { ctx: buildTelemetryContext(Number(ev.nodeNum ?? 0), type, Number(ev.value ?? 0), ev.unit, sourceId, now), matched };
+    }
+    case 'meshBeacon': {
+      const message = String(ev.message ?? '');
+      const offer = {
+        channelName: ev.offerChannelName ? String(ev.offerChannelName) : undefined,
+        region: ev.offerRegion != null ? Number(ev.offerRegion) : undefined,
+        preset: ev.offerPreset != null ? Number(ev.offerPreset) : undefined,
+      };
+      const hasOffer = Boolean(offer.channelName || offer.region || offer.preset !== undefined);
+      // Mirror the live filter in AutomationEngineService.onMeshBeacon.
+      const want = params.messageContains;
+      const matched = (!params.requireOffer || hasOffer)
+        && (want == null || want === '' || message.toLowerCase().includes(String(want).toLowerCase()));
+      return { ctx: buildMeshBeaconContext(Number(ev.nodeNum ?? 0), message, offer, sourceId, now), matched };
     }
     case 'system': {
       const event = String(ev.event ?? 'bootup') as SystemEvent;

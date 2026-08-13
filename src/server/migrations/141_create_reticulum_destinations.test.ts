@@ -1,11 +1,11 @@
 /**
- * Migration 140 tests — reticulum_destinations table creation.
+ * Migration 141 tests — reticulum_destinations table creation.
  */
 import Database from 'better-sqlite3';
 import { describe, expect, it, vi } from 'vitest';
-import { migration, runMigration140Postgres, runMigration140Mysql } from './140_create_reticulum_destinations.js';
+import { migration, runMigration141Postgres, runMigration141Mysql } from './141_create_reticulum_destinations.js';
 
-describe('Migration 140 — reticulum_destinations', () => {
+describe('Migration 141 — reticulum_destinations', () => {
   describe('SQLite', () => {
     it('creates the table and indexes, and is idempotent', () => {
       const db = new Database(':memory:');
@@ -64,7 +64,7 @@ describe('Migration 140 — reticulum_destinations', () => {
   describe('PostgreSQL', () => {
     it('creates the table with expected columns and indexes', async () => {
       const client = { query: vi.fn().mockResolvedValue(undefined) };
-      await runMigration140Postgres(client as any);
+      await runMigration141Postgres(client as any);
       const sql = client.query.mock.calls.map((c: any[]) => String(c[0])).join('\n');
       expect(sql).toMatch(/reticulum_destinations/);
       expect(sql).toMatch(/reticulum_destinations_source_hash_idx/);
@@ -87,7 +87,7 @@ describe('Migration 140 — reticulum_destinations', () => {
       const absentConn = makeConn([]);
       const absentPool = { getConnection: vi.fn().mockResolvedValue(absentConn) };
 
-      await runMigration140Mysql(absentPool as any);
+      await runMigration141Mysql(absentPool as any);
 
       expect(absentConn.query).toHaveBeenCalled();
       const ddl = absentConn.query.mock.calls.map((c: any[]) => String(c[0])).join('\n');
@@ -100,7 +100,7 @@ describe('Migration 140 — reticulum_destinations', () => {
       const presentConn = makeConn([{ TABLE_NAME: 'reticulum_destinations' }]);
       const presentPool = { getConnection: vi.fn().mockResolvedValue(presentConn) };
 
-      await runMigration140Mysql(presentPool as any);
+      await runMigration141Mysql(presentPool as any);
 
       expect(presentConn.release).toHaveBeenCalled();
     });

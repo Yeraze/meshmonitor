@@ -122,6 +122,30 @@ export const NetworkProtocolFlags = {
 export type NetworkProtocolFlagsType = typeof NetworkProtocolFlags[keyof typeof NetworkProtocolFlags];
 
 /**
+ * Flags for `ModuleConfig.MeshBeaconConfig.flags` (a bit field).
+ * From meshtastic.ModuleConfig.MeshBeaconConfig.Flags in module_config.proto
+ * (firmware 2.8+, #3854).
+ */
+export const MeshBeaconFlags = {
+  /** No options enabled. */
+  NONE: 0,
+  /** Receive MESH_BEACON_APP packets from other nodes. */
+  LISTEN_ENABLED: 1,
+  /** Periodically broadcast MESH_BEACON_APP packets from this node. */
+  BROADCAST_ENABLED: 2,
+  /** Split text and offer into separate MESH_BEACON_APP + TEXT_MESSAGE_APP packets. */
+  LEGACY_SPLIT: 4,
+} as const;
+
+export type MeshBeaconFlagsType = typeof MeshBeaconFlags[keyof typeof MeshBeaconFlags];
+
+/**
+ * Maximum size of `MeshBeacon.message` / `MeshBeaconConfig.broadcast_message`.
+ * Enforced by firmware on send; documented in mesh_beacon.proto.
+ */
+export const MESH_BEACON_MESSAGE_MAX_BYTES = 100;
+
+/**
  * True when a device's `network.enabledProtocols` bit field has UDP_BROADCAST set.
  *
  * Firmware `Router::send()` calls `udpHandler->onSend(p)` gated ONLY on this

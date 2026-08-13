@@ -161,6 +161,23 @@ export const TRIGGERS: BlockDef[] = [
     ],
   },
   {
+    type: 'trigger.meshBeacon',
+    label: 'A MeshBeacon is received',
+    description: 'Fires on a MeshBeacon broadcast from another node (firmware 2.8+).',
+    fields: [
+      {
+        name: 'messageContains', label: 'Text contains', kind: 'text',
+        help: 'Only fire when the beacon text contains this (case-insensitive). Leave blank for any beacon.',
+      },
+      {
+        name: 'requireOffer', label: 'Only beacons offering a network', kind: 'checkbox',
+        help: 'Ignore text-only beacons — fire only when the beacon advertises a channel, region, or preset.',
+      },
+      COOLDOWN,
+      COOLDOWN_SCOPE,
+    ],
+  },
+  {
     type: 'trigger.schedule',
     label: 'On a schedule',
     description: 'Fires on a cron schedule (no mesh event).',
@@ -227,7 +244,7 @@ export const TRIGGERS: BlockDef[] = [
 
 // ─── Comparison field registry (event / node / latest-telemetry) ─────────────
 
-const SUBJECT_NODE_TRIGGERS = ['trigger.message', 'trigger.nodeDiscovered', 'trigger.nodeUpdated', 'trigger.telemetry', 'trigger.geofence', 'trigger.becameMobile', 'trigger.leftHome'];
+const SUBJECT_NODE_TRIGGERS = ['trigger.message', 'trigger.nodeDiscovered', 'trigger.nodeUpdated', 'trigger.telemetry', 'trigger.geofence', 'trigger.becameMobile', 'trigger.leftHome', 'trigger.meshBeacon'];
 const hasSubjectNode = (t: string) => SUBJECT_NODE_TRIGGERS.includes(t);
 
 const EVENT_NUMERIC: Record<string, FieldOpt[]> = {
@@ -251,6 +268,12 @@ const EVENT_NUMERIC: Record<string, FieldOpt[]> = {
     { value: 'viaMqttSource', label: 'Came in via an MQTT source (1 = yes, 0 = over RF)' },
   ],
   'trigger.telemetry': [{ value: 'value', label: 'Reading value' }, { value: 'nodeNum', label: 'Node #' }],
+  'trigger.meshBeacon': [
+    { value: 'nodeNum', label: 'Node #' },
+    { value: 'hasOffer', label: 'Advertises a network (1 = yes, 0 = text only)' },
+    { value: 'offerRegion', label: 'Offered region code' },
+    { value: 'offerPreset', label: 'Offered modem preset' },
+  ],
   'trigger.nodeUpdated': [{ value: 'nodeNum', label: 'Node #' }],
   'trigger.nodeDiscovered': [{ value: 'nodeNum', label: 'Node #' }],
   'trigger.becameMobile': [{ value: 'nodeNum', label: 'Node #' }, { value: 'mobile', label: 'Mobile flag (1)' }, { value: 'previousMobile', label: 'Previous mobile flag' }],
@@ -270,6 +293,10 @@ const EVENT_STRING: Record<string, FieldOpt[]> = {
     { value: 'scopeName', label: 'MeshCore scope/region' },
   ],
   'trigger.telemetry': [{ value: 'telemetryType', label: 'Metric name' }],
+  'trigger.meshBeacon': [
+    { value: 'message', label: 'Beacon text' },
+    { value: 'offerChannelName', label: 'Offered channel name' },
+  ],
   'trigger.system': [
     { value: 'event', label: 'System event' },
     { value: 'latestVersion', label: 'Latest version (upgrade event)' },

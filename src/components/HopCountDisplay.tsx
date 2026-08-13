@@ -15,6 +15,7 @@ interface HopCountDisplayProps {
   relayNode?: number;
   viaMqtt?: boolean;
   viaStoreForward?: boolean;
+  xeddsaSigned?: boolean;
   onClick?: () => void;
 }
 
@@ -32,9 +33,24 @@ const HopCountDisplay: React.FC<HopCountDisplayProps> = ({
   rxRssi,
   viaMqtt,
   viaStoreForward,
+  xeddsaSigned,
   onClick,
 }) => {
   const { t } = useTranslation();
+
+  // XEdDSA signing indicator (firmware 2.8+): green shield shown when the
+  // receiving node cryptographically verified the broadcast's signature,
+  // matching the official mobile clients' verified-signature indicator.
+  const SignedIndicator = xeddsaSigned ? (
+    <span
+      style={{ marginLeft: '4px', opacity: 0.9, color: 'var(--success-color, #16a34a)' }}
+      title={t('messages.xeddsa_signed', 'Cryptographically signed (XEdDSA)')}
+      aria-label={t('messages.xeddsa_signed', 'Cryptographically signed (XEdDSA)')}
+      role="img"
+    >
+      <UiIcon name="securityCheck" size={14} />
+    </span>
+  ) : null;
 
   // Store & Forward indicator component
   const StoreForwardIndicator = viaStoreForward ? (
@@ -62,14 +78,14 @@ const HopCountDisplay: React.FC<HopCountDisplayProps> = ({
 
   // Return null if either hop value is missing (but show indicators if present)
   if (hopStart === undefined || hopLimit === undefined) {
-    return <>{StoreForwardIndicator}{MqttIndicator}</>;
+    return <>{SignedIndicator}{StoreForwardIndicator}{MqttIndicator}</>;
   }
 
   const hopCount = hopStart - hopLimit;
 
   // Guard against malformed data (negative hop counts)
   if (hopCount < 0) {
-    return <>{StoreForwardIndicator}{MqttIndicator}</>;
+    return <>{SignedIndicator}{StoreForwardIndicator}{MqttIndicator}</>;
   }
 
   // The hop count opens a packet-detail view for the message (#4657), so it is
@@ -106,6 +122,7 @@ const HopCountDisplay: React.FC<HopCountDisplayProps> = ({
         >
           ({parts.join(' / ')})
         </span>
+        {SignedIndicator}
         {StoreForwardIndicator}
         {MqttIndicator}
       </>
@@ -121,6 +138,7 @@ const HopCountDisplay: React.FC<HopCountDisplayProps> = ({
       >
         ({t('messages.hops', { count: hopCount, hopStart: hopStart })})
       </span>
+      {SignedIndicator}
       {StoreForwardIndicator}
       {MqttIndicator}
     </>

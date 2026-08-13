@@ -1,5 +1,5 @@
 /**
- * Migration 140 — PostgreSQL / MySQL container behaviour.
+ * Migration 141 — PostgreSQL / MySQL container behaviour.
  *
  * `describe.skipIf(!postgresAvailable/!mysqlAvailable)` — runs the real
  * migration functions against the live test containers (localhost:5433 /
@@ -11,7 +11,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import pg from 'pg';
 import mysql from 'mysql2/promise';
-import { runMigration140Postgres, runMigration140Mysql } from './140_create_reticulum_destinations.js';
+import { runMigration141Postgres, runMigration141Mysql } from './141_create_reticulum_destinations.js';
 import { postgresAvailable, mysqlAvailable } from '../../db/repositories/test-utils.js';
 
 const { Pool: PgPool } = pg;
@@ -37,8 +37,8 @@ describe.skipIf(!postgresAvailable)('migration 140 — PostgreSQL (container)', 
   it('creates the table + indexes, is idempotent, and enforces the unique constraint', async () => {
     const client1 = await pool.connect();
     try {
-      await runMigration140Postgres(client1);
-      await expect(runMigration140Postgres(client1)).resolves.toBeUndefined();
+      await runMigration141Postgres(client1);
+      await expect(runMigration141Postgres(client1)).resolves.toBeUndefined();
     } finally {
       client1.release();
     }
@@ -90,8 +90,8 @@ describe.skipIf(!mysqlAvailable)('migration 140 — MySQL (container)', () => {
   });
 
   it('creates the table + unique key, is idempotent, and enforces the unique constraint', async () => {
-    await runMigration140Mysql(pool);
-    await expect(runMigration140Mysql(pool)).resolves.toBeUndefined();
+    await runMigration141Mysql(pool);
+    await expect(runMigration141Mysql(pool)).resolves.toBeUndefined();
 
     const now = Date.now();
     await pool.query(

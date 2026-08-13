@@ -61,6 +61,7 @@ Every automation has exactly one trigger (the **WHEN**). Each trigger exposes a 
 | **A new node is discovered** | A node is seen for the first time | — |
 | **A node is updated** | A node record changes (name, role, position, …) | — |
 | **Telemetry is received** | A telemetry reading arrives | `Metric` filter (battery, voltage, temperature, channel utilization, air util TX, …) |
+| **A MeshBeacon is received** | A node broadcasts a MeshBeacon (firmware 2.8+) | `Text contains` (case-insensitive substring), `Only beacons offering a network` (ignore text-only beacons). Beacons are not stored as messages, so this trigger is the only way an automation sees one |
 | **On a schedule** | A cron expression fires | 5-field cron expression |
 | **A system event** | An engine/source lifecycle event | `System start`, `Source came online`, `Source went offline`, `Upgrade available` |
 | **A node enters/leaves a region** | A node crosses a geofence | `Enters` / `Leaves` / `Moves while inside (dwell)`, plus a map region editor |
