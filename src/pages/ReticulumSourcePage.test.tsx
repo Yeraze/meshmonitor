@@ -193,11 +193,13 @@ describe('ReticulumSourcePage', () => {
     });
   });
 
-  it('mounts ReticulumPage content (destinations placeholder) by default', async () => {
+  it('mounts ReticulumPage content (destinations view) by default', async () => {
     authValue.hasPermission = () => true;
     renderPage();
+    // The destinations view is the default; assert its search box renders
+    // (the real ReticulumDestinationsView, not the old placeholder).
     await waitFor(() => {
-      expect(screen.getByText('0 destinations')).toBeInTheDocument();
+      expect(screen.getByLabelText('Search destinations…')).toBeInTheDocument();
     });
   });
 });

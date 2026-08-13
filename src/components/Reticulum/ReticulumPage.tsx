@@ -19,6 +19,10 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useReticulum } from './hooks/useReticulum';
 import { ReticulumSubToolbar } from './ReticulumSubToolbar';
+import { ReticulumDestinationsView } from './ReticulumDestinationsView';
+import { ReticulumInterfacesView } from './ReticulumInterfacesView';
+import { ReticulumInfoView } from './ReticulumInfoView';
+import { ReticulumSettingsView } from './ReticulumSettingsView';
 import type { ReticulumStatus, ReticulumView } from '../../types/reticulum';
 import { UiIcon } from '../icons';
 import styles from './ReticulumPage.module.css';
@@ -34,9 +38,9 @@ interface ReticulumPageProps {
   onStatusChange?: (status: ReticulumStatus | null) => void;
 }
 
-export const ReticulumPage: React.FC<ReticulumPageProps> = ({ baseUrl: _baseUrl, sourceId, enabled, onStatusChange }) => {
+export const ReticulumPage: React.FC<ReticulumPageProps> = ({ baseUrl, sourceId, enabled, onStatusChange }) => {
   const { t } = useTranslation();
-  const { status, destinations, interfaces, loading, error, refresh } = useReticulum({ sourceId, enabled });
+  const { status, destinations, interfaces, loading, error, refresh, toggleFavorite } = useReticulum({ sourceId, enabled });
 
   const [view, setView] = useState<ReticulumView>('destinations');
   const [toolbarExpanded, setToolbarExpanded] = useState(false);
@@ -94,33 +98,25 @@ export const ReticulumPage: React.FC<ReticulumPageProps> = ({ baseUrl: _baseUrl,
         />
         <div className={styles.content}>
           {view === 'destinations' && (
-            /* WP3: ReticulumDestinationsView */
-            <div className={styles.placeholder}>
-              {t('reticulum.destinations.placeholder', '{{count}} destinations', { count: destinations.length })}
-            </div>
+            <ReticulumDestinationsView
+              destinations={destinations}
+              onToggleFavorite={toggleFavorite}
+              loading={loading}
+            />
           )}
           {view === 'interfaces' && (
-            /* WP4: ReticulumInterfacesView */
-            <div className={styles.placeholder}>
-              {t('reticulum.interfaces.placeholder', '{{count}} interfaces', { count: interfaces.length })}
-            </div>
+            <ReticulumInterfacesView
+              interfaces={interfaces}
+              baseUrl={baseUrl}
+              sourceId={sourceId}
+              loading={loading}
+            />
           )}
           {view === 'info' && (
-            /* WP5: ReticulumInfoView */
-            <div className={styles.placeholder}>
-              {status
-                ? t('reticulum.info.placeholder', 'connected={{connected}} mode={{mode}}', {
-                    connected: status.connected,
-                    mode: status.mode ?? 'unknown',
-                  })
-                : t('reticulum.info.loading', 'Loading status…')}
-            </div>
+            <ReticulumInfoView status={status} loading={loading} />
           )}
           {view === 'settings' && (
-            /* WP5: ReticulumSettingsView */
-            <div className={styles.placeholder}>
-              {t('reticulum.settings.placeholder', 'Settings')}
-            </div>
+            <ReticulumSettingsView sourceId={sourceId} />
           )}
         </div>
       </div>
