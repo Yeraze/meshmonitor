@@ -24,6 +24,9 @@ import type { Source } from '../db/repositories/sources.js';
 import { logger } from '../utils/logger.js';
 import { PROTOCOL_VERSION, type ReticulumMode, type TcpPeerConfig } from './reticulumProtocol.js';
 import type { ReticulumConnectParams } from './reticulumBridgeClient.js';
+import { sourceManagerRegistry } from './sourceManagerRegistry.js';
+import { isReticulumManager } from './sourceManagerTypes.js';
+import { ReticulumManager } from './reticulumManager.js';
 
 /** Default bridge sidecar bind address (mirrors `bridge/meshmonitor_rns_bridge/config.py` DEFAULT_HOST/DEFAULT_PORT). */
 const DEFAULT_BRIDGE_HOST = '127.0.0.1';
@@ -106,33 +109,28 @@ function normalizeTcpPeers(raw: ReticulumSourceConfig['peers']): TcpPeerConfig[]
 }
 
 /**
- * Ensure a Reticulum manager is started for the given source.
+ * Ensure a Reticulum manager is started for the given source (create-or-
+ * reconnect recipe, mirrors `ensureMeshCoreManagerStarted` in
+ * `meshcoreConfig.ts`). Called by both `bootstrapSources.ts` and
+ * `sourceRoutes.ts` (WP5) — this same function name/signature is the shared
+ * seam, so neither call site changes across WP boundaries.
  *
- * **WP4 STUB.** `ReticulumManager` (the `ISourceManager` implementation)
- * does not exist in this WP — it is WP4's deliverable. Once it lands, WP4
- * replaces the body of this function with the same create-or-reconnect
- * recipe `ensureMeshCoreManagerStarted` (meshcoreConfig.ts) uses:
- *
- * ```ts
- * const existing = sourceManagerRegistry.getManager(source.id);
- * if (!existing) {
- *   const rm = new ReticulumManager(source.id, source.name);
- *   rm.configure(cfg);
- *   await sourceManagerRegistry.addManager(rm); // auto-calls start() -> connect()
- * } else if (isReticulumManager(existing) && !existing.isConnected()) {
- *   await existing.connect(cfg);
- * } else {
- *   logger.debug(`[Reticulum:${source.id}] Manager already registered and connected — skipping auto-connect`);
- * }
- * ```
- *
- * `isReticulumManager` is WP4's addition to `sourceManagerTypes.ts`
- * (discriminant `sourceType === 'reticulum'`), mirroring `isMeshCoreManager`.
- * `bootstrapSources.ts` and `sourceRoutes.ts` (WP5) call this same function
- * name, so no call site changes when WP4 fills in the body.
+ * - No manager registered yet: create one, stage `cfg` via `configure()`,
+ *   then register it — `addManager()` calls `start()` automatically, which
+ *   drives the actual `connect()`.
+ * - A Reticulum manager is already registered but not connected: reconnect
+ *   it in place with the (possibly updated) `cfg`.
+ * - Already registered and connected: no-op (logged at debug).
  */
 export async function ensureReticulumManagerStarted(source: Source, cfg: ReticulumConfig): Promise<void> {
-  logger.debug(
-    `[ReticulumConfig] ensureReticulumManagerStarted stub called for source ${source.id} (mode=${cfg.mode}, bridgeUrl=${cfg.bridgeUrl}) — ReticulumManager not wired yet (#3960 Phase 1a WP4)`,
-  );
+  const existing = sourceManagerRegistry.getManager(source.id);
+  if (!existing) {
+    const rm = new ReticulumManager(source.id, source.name);
+    rm.configure(cfg);
+    await sourceManagerRegistry.addManager(rm);
+  } else if (isReticulumManager(existing) && !existing.isConnected()) {
+    await existing.connect(cfg);
+  } else {
+    logger.debug(`[Reticulum:${source.id}] Manager already registered and connected — skipping auto-connect`);
+  }
 }

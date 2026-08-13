@@ -17,7 +17,12 @@ function fakeSource(config: ReticulumSourceConfig, overrides: Partial<Source> = 
     id: 'src-a',
     name: 'A',
     type: 'meshcore',
-    config,
+    // ReticulumSourceConfig has no index signature, so it isn't directly
+    // assignable to Source['config'] (Record<string, unknown>) once this
+    // return type is unioned with Partial<Source>'s optional `config` via the
+    // `...overrides` spread below. Spreading into a fresh object literal
+    // erases the named-interface shape TS otherwise insists on preserving.
+    config: { ...config },
     enabled: true,
     displayOrder: 0,
     createdAt: 1,

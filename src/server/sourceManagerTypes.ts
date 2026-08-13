@@ -24,6 +24,7 @@
 import type { ISourceManager, SourceManagerRegistry } from './sourceManagerRegistry.js';
 import type { MeshCoreManager } from './meshcoreManager.js';
 import type { MeshtasticManager } from './meshtasticManager.js';
+import type { ReticulumManager } from './reticulumManager.js';
 
 /**
  * Narrows an ISourceManager to MeshCoreManager.
@@ -39,6 +40,21 @@ export function isMeshCoreManager(m: ISourceManager): m is MeshCoreManager {
  */
 export function isMeshtasticManager(m: ISourceManager): m is MeshtasticManager {
   return m.sourceType === 'meshtastic_tcp';
+}
+
+/**
+ * Narrows an ISourceManager to ReticulumManager.
+ * Predicate is based on the sourceType discriminant — no instanceof, no import cycles.
+ *
+ * `Source['type']` does not include `'reticulum'` yet (union widening is
+ * WP5's job, build spec §3.3 — `src/db/repositories/sources.ts` is
+ * off-limits for WP4). Comparing `m.sourceType` directly against the string
+ * literal `'reticulum'` would fail TS2367 ("no overlap") until that widening
+ * lands, so the comparison goes through `string` here; WP5 can drop the cast
+ * once the union includes `'reticulum'`.
+ */
+export function isReticulumManager(m: ISourceManager): m is ReticulumManager {
+  return (m.sourceType as string) === 'reticulum';
 }
 
 /**
