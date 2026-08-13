@@ -1148,6 +1148,7 @@ export default function ChannelsTab({
                                             relayNode={msg.relayNode}
                                             viaMqtt={msg.viaMqtt}
                                             viaStoreForward={msg.viaStoreForward}
+                                            xeddsaSigned={msg.xeddsaSigned}
                                             onClick={() => handleRelayClick(msg)}
                                           />
                                         </span>

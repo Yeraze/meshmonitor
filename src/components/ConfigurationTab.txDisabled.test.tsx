@@ -71,6 +71,7 @@ vi.mock('./configuration/DetectionSensorConfigSection', () => ({ default: () => 
 vi.mock('./configuration/PaxcounterConfigSection', () => ({ default: () => null }));
 vi.mock('./configuration/StatusMessageConfigSection', () => ({ default: () => null }));
 vi.mock('./configuration/TrafficManagementConfigSection', () => ({ default: () => null }));
+vi.mock('./configuration/MeshBeaconConfigSection', () => ({ default: () => null }));
 vi.mock('./configuration/SerialConfigSection', () => ({ default: () => null }));
 vi.mock('./configuration/AmbientLightingConfigSection', () => ({ default: () => null }));
 vi.mock('./configuration/SecurityConfigSection', () => ({ default: () => null }));

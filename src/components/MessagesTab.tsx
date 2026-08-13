@@ -1888,6 +1888,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                 relayNode={msg.relayNode}
                                 viaMqtt={msg.viaMqtt}
                                 viaStoreForward={msg.viaStoreForward}
+                                xeddsaSigned={msg.xeddsaSigned}
                                 onClick={() => handleRelayClick(msg)}
                               />
                             </span>
@@ -2004,6 +2005,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                     relayNode={msg.relayNode}
                                     viaMqtt={msg.viaMqtt}
                                     viaStoreForward={msg.viaStoreForward}
+                                    xeddsaSigned={msg.xeddsaSigned}
                                     onClick={() => handleRelayClick(msg)}
                                   />
                                 </span>

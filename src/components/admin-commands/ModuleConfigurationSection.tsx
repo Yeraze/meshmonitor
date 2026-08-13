@@ -1,5 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import { MODEM_PRESET_OPTIONS, REGION_OPTIONS } from '../configuration/constants';
 
 interface ModuleConfigurationSectionProps {
   // CollapsibleSection component (passed from parent)
@@ -74,6 +75,22 @@ interface ModuleConfigurationSectionProps {
   onSaveTrafficManagementConfig: () => Promise<void>;
   trafficManagementIsDisabled: boolean;
 
+  // MeshBeacon Config (firmware 2.8+, #3854)
+  meshBeaconListenEnabled: boolean;
+  meshBeaconBroadcastEnabled: boolean;
+  meshBeaconLegacySplit: boolean;
+  meshBeaconBroadcastMessage: string;
+  meshBeaconBroadcastSendAsNode: number;
+  meshBeaconBroadcastOfferChannelName: string;
+  meshBeaconBroadcastOfferChannelPsk: string;
+  meshBeaconBroadcastOfferRegion: number;
+  meshBeaconBroadcastOfferPreset: number | null;
+  // Narrower than the sibling module handlers' `value: any` — every MeshBeacon
+  // field is one of these, and `null` is meaningful (offer-no-preset).
+  onMeshBeaconConfigChange: (field: string, value: string | number | boolean | null) => void;
+  onSaveMeshBeaconConfig: () => Promise<void>;
+  meshBeaconIsDisabled: boolean;
+
   // Common
   isExecuting: boolean;
   selectedNodeNum: number | null;
@@ -84,6 +101,7 @@ interface ModuleConfigurationSectionProps {
   telemetryHeaderActions?: React.ReactNode;
   statusMessageHeaderActions?: React.ReactNode;
   trafficManagementHeaderActions?: React.ReactNode;
+  meshBeaconHeaderActions?: React.ReactNode;
 }
 
 export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProps> = ({
@@ -139,6 +157,18 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
   onTrafficManagementConfigChange,
   onSaveTrafficManagementConfig,
   trafficManagementIsDisabled,
+  meshBeaconListenEnabled,
+  meshBeaconBroadcastEnabled,
+  meshBeaconLegacySplit,
+  meshBeaconBroadcastMessage,
+  meshBeaconBroadcastSendAsNode,
+  meshBeaconBroadcastOfferChannelName,
+  meshBeaconBroadcastOfferChannelPsk,
+  meshBeaconBroadcastOfferRegion,
+  meshBeaconBroadcastOfferPreset,
+  onMeshBeaconConfigChange,
+  onSaveMeshBeaconConfig,
+  meshBeaconIsDisabled,
   isExecuting,
   selectedNodeNum,
   mqttHeaderActions,
@@ -146,6 +176,7 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
   telemetryHeaderActions,
   statusMessageHeaderActions,
   trafficManagementHeaderActions,
+  meshBeaconHeaderActions,
 }) => {
   const { t } = useTranslation();
 
@@ -865,6 +896,192 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
             }}
           >
             {isExecuting ? t('common.saving') : t('trafficmanagement_config.save_button', 'Save Traffic Management Config')}
+          </button>
+        </div>
+      </CollapsibleSection>
+
+      {/* MeshBeacon Config Section (firmware 2.8+, #3854) */}
+      <CollapsibleSection
+        id="admin-meshbeacon-config"
+        title={t('meshbeacon_config.title', 'MeshBeacon')}
+        nested={true}
+        headerActions={meshBeaconHeaderActions}
+      >
+        {meshBeaconIsDisabled && (
+          <div style={{
+            padding: '1rem',
+            backgroundColor: 'var(--color-surface)',
+            borderRadius: '0.5rem',
+            color: 'var(--color-text-subtle)',
+            fontStyle: 'italic',
+            marginBottom: '1rem'
+          }}>
+            {t('meshbeacon_config.unsupported', 'Unsupported by device firmware — requires 2.8 or newer (not yet in any stable release)')}
+          </div>
+        )}
+        <div style={meshBeaconIsDisabled ? { opacity: 0.4, pointerEvents: 'none' } : undefined}>
+          <div className="setting-item">
+            <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+              <input
+                type="checkbox"
+                checked={meshBeaconListenEnabled}
+                onChange={(e) => onMeshBeaconConfigChange('listenEnabled', e.target.checked)}
+                disabled={isExecuting || meshBeaconIsDisabled}
+                style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+              />
+              <div style={{ flex: 1 }}>
+                <div>{t('meshbeacon_config.listen_enabled', 'Listen for beacons')}</div>
+                <span className="setting-description">{t('meshbeacon_config.listen_enabled_description', 'Receive MESH_BEACON_APP packets from other nodes. The text is delivered to the local inbox; any offered channel or preset is stored for you to act on — firmware never applies it automatically.')}</span>
+              </div>
+            </label>
+          </div>
+
+          <div className="setting-item">
+            <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+              <input
+                type="checkbox"
+                checked={meshBeaconBroadcastEnabled}
+                onChange={(e) => onMeshBeaconConfigChange('broadcastEnabled', e.target.checked)}
+                disabled={isExecuting || meshBeaconIsDisabled}
+                style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+              />
+              <div style={{ flex: 1 }}>
+                <div>{t('meshbeacon_config.broadcast_enabled', 'Broadcast beacons')}</div>
+                <span className="setting-description">{t('meshbeacon_config.broadcast_enabled_description', 'Periodically broadcast this node\'s beacon to the mesh.')}</span>
+              </div>
+            </label>
+          </div>
+
+          {(meshBeaconBroadcastEnabled || meshBeaconIsDisabled) && (
+            <div style={{ marginLeft: '1rem', paddingLeft: '1rem', borderLeft: '2px solid var(--color-surface-hover)', marginBottom: '0.5rem' }}>
+              <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--color-text)', marginBottom: '0.5rem' }}>{t('meshbeacon_config.broadcast_section', 'Broadcast Content')}</div>
+
+              <div className="setting-item">
+                <label>{t('meshbeacon_config.broadcast_message', 'Beacon Message')}</label>
+                <input
+                  type="text"
+                  value={meshBeaconBroadcastMessage}
+                  onChange={(e) => onMeshBeaconConfigChange('broadcastMessage', e.target.value)}
+                  disabled={isExecuting || meshBeaconIsDisabled}
+                  className="setting-input"
+                  placeholder={t('meshbeacon_config.broadcast_message_placeholder', 'e.g. Welcome to the local mesh')}
+                />
+                <span className="setting-description">
+                  {t('meshbeacon_config.broadcast_message_desc', 'Human-readable text sent with each beacon. Firmware caps this at 100 bytes.')}
+                  {' '}
+                  {t('meshbeacon_config.broadcast_message_count', '{{used}}/100 bytes used', {
+                    used: new TextEncoder().encode(meshBeaconBroadcastMessage).length
+                  })}
+                </span>
+              </div>
+
+              <div className="setting-item">
+                <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+                  <input
+                    type="checkbox"
+                    checked={meshBeaconLegacySplit}
+                    onChange={(e) => onMeshBeaconConfigChange('legacySplit', e.target.checked)}
+                    disabled={isExecuting || meshBeaconIsDisabled}
+                    style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div>{t('meshbeacon_config.legacy_split', 'Legacy split')}</div>
+                    <span className="setting-description">{t('meshbeacon_config.legacy_split_desc', 'Send the text and the offer as two packets, so nodes that only decode text messages still see the text. Costs one extra transmission per beacon.')}</span>
+                  </div>
+                </label>
+              </div>
+
+              <div className="setting-item">
+                <label>{t('meshbeacon_config.send_as_node', 'Send As Node')}</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={meshBeaconBroadcastSendAsNode}
+                  onChange={(e) => onMeshBeaconConfigChange('broadcastSendAsNode', parseInt(e.target.value) || 0)}
+                  disabled={isExecuting || meshBeaconIsDisabled}
+                  className="setting-input"
+                />
+                <span className="setting-description">{t('meshbeacon_config.send_as_node_desc', 'Node number to send beacons as. 0 sends them as this node. A remote admin may only set this to their own node ID.')}</span>
+              </div>
+
+              <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--color-text)', margin: '0.75rem 0 0.5rem' }}>{t('meshbeacon_config.offer_section', 'Offered Network (optional)')}</div>
+
+              <div className="setting-item">
+                <label>{t('meshbeacon_config.offer_channel_name', 'Offer Channel Name')}</label>
+                <input
+                  type="text"
+                  value={meshBeaconBroadcastOfferChannelName}
+                  onChange={(e) => onMeshBeaconConfigChange('broadcastOfferChannelName', e.target.value)}
+                  disabled={isExecuting || meshBeaconIsDisabled}
+                  className="setting-input"
+                />
+                <span className="setting-description">{t('meshbeacon_config.offer_channel_name_desc', 'Channel advertised to listeners. Leave blank to advertise no channel.')}</span>
+              </div>
+
+              {meshBeaconBroadcastOfferChannelName.trim().length > 0 && (
+                <div className="setting-item">
+                  <label>{t('meshbeacon_config.offer_channel_psk', 'Offer Channel PSK')}</label>
+                  <input
+                    type="text"
+                    value={meshBeaconBroadcastOfferChannelPsk}
+                    onChange={(e) => onMeshBeaconConfigChange('broadcastOfferChannelPsk', e.target.value)}
+                    disabled={isExecuting || meshBeaconIsDisabled}
+                    className="setting-input"
+                    placeholder={t('meshbeacon_config.offer_channel_psk_placeholder', 'base64, e.g. AQ==')}
+                  />
+                  <span className="setting-description">{t('meshbeacon_config.offer_channel_psk_desc', 'Base64 pre-shared key for the advertised channel. Anyone receiving the beacon can read this key.')}</span>
+                </div>
+              )}
+
+              <div className="setting-item">
+                <label>{t('meshbeacon_config.offer_region', 'Offer Region')}</label>
+                <select
+                  value={meshBeaconBroadcastOfferRegion}
+                  onChange={(e) => onMeshBeaconConfigChange('broadcastOfferRegion', parseInt(e.target.value) || 0)}
+                  disabled={isExecuting || meshBeaconIsDisabled}
+                  className="setting-input"
+                >
+                  {REGION_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+                <span className="setting-description">{t('meshbeacon_config.offer_region_desc', 'Region advertised alongside the preset.')}</span>
+              </div>
+
+              <div className="setting-item">
+                <label>{t('meshbeacon_config.offer_preset', 'Offer Modem Preset')}</label>
+                <select
+                  value={meshBeaconBroadcastOfferPreset === null ? '' : meshBeaconBroadcastOfferPreset}
+                  onChange={(e) => onMeshBeaconConfigChange(
+                    'broadcastOfferPreset',
+                    e.target.value === '' ? null : parseInt(e.target.value)
+                  )}
+                  disabled={isExecuting || meshBeaconIsDisabled}
+                  className="setting-input"
+                >
+                  {/* Distinct from LONG_FAST (0): the proto field is optional, so
+                      "none" and "LONG_FAST" say different things to listeners. */}
+                  <option value="">{t('meshbeacon_config.offer_preset_none', 'None — advertise no preset')}</option>
+                  {MODEM_PRESET_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.name} — {option.description}</option>
+                  ))}
+                </select>
+                <span className="setting-description">{t('meshbeacon_config.offer_preset_desc', 'Modem preset advertised with the region — tells listeners "there is a mesh on this preset".')}</span>
+              </div>
+            </div>
+          )}
+
+          <button
+            className="save-button"
+            onClick={onSaveMeshBeaconConfig}
+            disabled={isExecuting || selectedNodeNum === null || meshBeaconIsDisabled}
+            style={{
+              marginTop: '1rem',
+              opacity: (isExecuting || selectedNodeNum === null || meshBeaconIsDisabled) ? 0.5 : 1,
+              cursor: (isExecuting || selectedNodeNum === null || meshBeaconIsDisabled) ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {isExecuting ? t('common.saving') : t('meshbeacon_config.save_button', 'Save MeshBeacon Config')}
           </button>
         </div>
       </CollapsibleSection>

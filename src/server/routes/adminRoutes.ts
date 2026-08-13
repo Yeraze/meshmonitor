@@ -18,7 +18,7 @@ import { logger } from '../../utils/logger.js';
 import { requireAdmin } from '../auth/authMiddleware.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
-import { getRoutingErrorName } from '../constants/meshtastic.js';
+import { getRoutingErrorName, MESH_BEACON_MESSAGE_MAX_BYTES } from '../constants/meshtastic.js';
 import { CONFIG_TYPE_MAP, MODULE_FIELD_BY_ID, DEVICE_FIELD_BY_ID } from '../constants/configTypes.js';
 import { autoFavoriteManagementScheduler } from '../services/autoFavoriteManagementService.js';
 import protobufService from '../protobufService.js';
@@ -1833,6 +1833,21 @@ router.post('/commands', requireAdmin(), async (req, res) => {
           return res.status(400).json({ error: 'config is required for setTrafficManagementConfig' });
         }
         buildAdminMessage = (passkey) => protobufService.createSetModuleConfigMessageGeneric('trafficmanagement', params.config, passkey);
+        break;
+      case 'setMeshBeaconConfig':
+        if (!params.config) {
+          return res.status(400).json({ error: 'config is required for setMeshBeaconConfig' });
+        }
+        // Firmware enforces a 100-byte cap on the beacon text. Reject over-long
+        // input here rather than letting the device silently truncate it or drop
+        // the whole set-config message (#3854).
+        if (typeof params.config.broadcastMessage === 'string'
+          && Buffer.byteLength(params.config.broadcastMessage, 'utf8') > MESH_BEACON_MESSAGE_MAX_BYTES) {
+          return res.status(400).json({
+            error: `broadcastMessage exceeds ${MESH_BEACON_MESSAGE_MAX_BYTES} bytes (firmware limit)`
+          });
+        }
+        buildAdminMessage = (passkey) => protobufService.createSetModuleConfigMessageGeneric('meshbeacon', params.config, passkey);
         break;
       case 'setSecurityConfig':
         if (!params.config) {

@@ -31,6 +31,7 @@ export function transformDbMessageToMeshMessage(msg: DbMessage): MeshMessage {
     replyId: msg.replyId ?? undefined,
     emoji: msg.emoji ?? undefined,
     viaMqtt: Boolean((msg as any).viaMqtt),
+    xeddsaSigned: msg.xeddsaSigned ? true : undefined,
     rxSnr: msg.rxSnr ?? undefined,
     rxRssi: msg.rxRssi ?? undefined,
     requestId: (msg as any).requestId,

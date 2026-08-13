@@ -45,6 +45,7 @@ export const TRIGGER_TOKENS: Record<string, Array<[string, string]>> = {
   'trigger.geofence': [['event', 'enter / exit / dwell'], ['nodeNum', 'Node number'], ['latitude', 'Node latitude'], ['longitude', 'Node longitude'], ['distanceKm', 'Distance from the region centre (km)']],
   'trigger.becameMobile': [['nodeNum', 'Node number'], ['previousMobile', 'Previous mobile flag (0)'], ['mobile', 'New mobile flag (1)'], ['latitude', 'Node latitude'], ['longitude', 'Node longitude']],
   'trigger.leftHome': [['nodeNum', 'Node number'], ['latitude', 'Node latitude'], ['longitude', 'Node longitude'], ['homeLat', 'Home latitude'], ['homeLon', 'Home longitude'], ['distanceMeters', 'Distance from home (m)'], ['thresholdMeters', 'Configured threshold (m)']],
+  'trigger.meshBeacon': [['nodeNum', 'Node number'], ['message', 'Beacon text'], ['offerChannelName', 'Offered channel name'], ['offerRegion', 'Offered region code'], ['offerPreset', 'Offered modem preset'], ['hasOffer', 'true if the beacon advertises a network']],
   'trigger.schedule': [],
 };
 
@@ -53,6 +54,7 @@ const TRIGGER_LABEL: Record<string, string> = {
   'trigger.message': 'Message', 'trigger.telemetry': 'Telemetry', 'trigger.nodeUpdated': 'Node updated',
   'trigger.nodeDiscovered': 'Node discovered', 'trigger.system': 'System event', 'trigger.geofence': 'Geofence',
   'trigger.becameMobile': 'Became mobile', 'trigger.leftHome': 'Left home', 'trigger.schedule': 'Schedule',
+  'trigger.meshBeacon': 'MeshBeacon',
 };
 
 /** Drawer listing every available substitution token (current trigger first). */
