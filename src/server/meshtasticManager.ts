@@ -6394,9 +6394,9 @@ class MeshtasticManager implements ISourceManager {
           decryptedBy: context?.decryptedBy ?? null, // Track decryption source - 'server' means read-only
           viaStoreForward: context?.viaStoreForward === true ? true : undefined, // Message received via Store & Forward replay
           // XEdDSA signing (firmware 2.8+): the node reports whether it
-          // cryptographically verified this broadcast's signature. Read both
-          // camelCase and snake_case for protobufjs decode-shape safety.
-          xeddsaSigned: ((meshPacket as any).xeddsaSigned === true || (meshPacket as any).xeddsa_signed === true) ? true : undefined,
+          // cryptographically verified this broadcast's signature. Read the same
+          // way the Packet Monitor path does (see metadata.xeddsa_signed above).
+          xeddsaSigned: meshPacket.xeddsaSigned === true ? true : undefined,
           // Inbound radio path — message arrived from a meshtastic node over TCP.
           // MQTT-bridged inbound packets are flagged via viaMqtt above; we still
           // attribute the row's ingress to 'tcp_radio' because it arrived via
@@ -13838,7 +13838,7 @@ class MeshtasticManager implements ISourceManager {
       replyId: msg.replyId ?? undefined,
       emoji: msg.emoji ?? undefined,
       viaMqtt: Boolean(msg.viaMqtt),
-      xeddsaSigned: (msg as any).xeddsaSigned ? true : undefined,
+      xeddsaSigned: msg.xeddsaSigned ? true : undefined,
       rxSnr: msg.rxSnr ?? undefined,
       rxRssi: msg.rxRssi ?? undefined,
       // Include delivery tracking fields

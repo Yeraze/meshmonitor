@@ -63,7 +63,9 @@ describe('HopCountDisplay', () => {
       render(<HopCountDisplay xeddsaSigned={true} />);
       const shield = screen.getByLabelText(/xeddsa_signed/i);
       expect(shield).toBeDefined();
-      expect(shield.textContent).toBe('🛡️');
+      // Rendered via UiIcon (an SVG), not a literal glyph — app-owned interface
+      // icons must not be hardcoded emoji.
+      expect(shield.querySelector('svg')).not.toBeNull();
     });
 
     it('does not show shield when xeddsaSigned is false', () => {

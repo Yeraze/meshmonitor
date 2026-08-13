@@ -678,7 +678,7 @@ export default function UnifiedMessagesPage() {
                             aria-label={t('messages.xeddsa_signed', 'Cryptographically signed (XEdDSA)')}
                             role="img"
                           >
-                            🛡️
+                            <UiIcon name="securityCheck" size={14} />
                           </span>
                         ) : null}
                       </td>

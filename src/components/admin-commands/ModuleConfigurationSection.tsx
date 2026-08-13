@@ -85,7 +85,9 @@ interface ModuleConfigurationSectionProps {
   meshBeaconBroadcastOfferChannelPsk: string;
   meshBeaconBroadcastOfferRegion: number;
   meshBeaconBroadcastOfferPreset: number | null;
-  onMeshBeaconConfigChange: (field: string, value: any) => void;
+  // Narrower than the sibling module handlers' `value: any` — every MeshBeacon
+  // field is one of these, and `null` is meaningful (offer-no-preset).
+  onMeshBeaconConfigChange: (field: string, value: string | number | boolean | null) => void;
   onSaveMeshBeaconConfig: () => Promise<void>;
   meshBeaconIsDisabled: boolean;
 

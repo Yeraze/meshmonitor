@@ -739,7 +739,7 @@ router.get('/messages', async (req: Request, res: Response) => {
             rxRssi: m.rxRssi ?? null,
             rxTime,
             timestamp: m.timestamp,
-            xeddsaSigned: (m as any).xeddsaSigned ?? null,
+            xeddsaSigned: m.xeddsaSigned ?? null,
           };
 
           const existing = merged.get(dedupKey);

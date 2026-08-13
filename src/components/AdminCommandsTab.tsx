@@ -2009,13 +2009,13 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     }
   }, [configState.trafficManagement, executeCommand]);
 
-  const handleMeshBeaconConfigChange = useCallback((field: string, value: any) => {
+  const handleMeshBeaconConfigChange = useCallback((field: string, value: string | number | boolean | null) => {
     setMeshBeaconConfig({ [field]: value });
   }, [setMeshBeaconConfig]);
 
   const handleSetMeshBeaconConfig = useCallback(async () => {
     const beacon = configState.meshBeacon;
-    const config: any = {
+    const config: Record<string, unknown> = {
       // The three checkboxes are one bitfield on the wire.
       flags: packMeshBeaconFlags(beacon),
       broadcastMessage: beacon.broadcastMessage,
