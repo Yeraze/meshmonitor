@@ -41,6 +41,22 @@ docker run --rm \
 binds to `127.0.0.1` by default, and the bridge needs to reach it directly. `tcp_peer` mode does
 not need host networking or the config-dir mount.
 
+`tcp_peer` mode runs the bridge's own standalone RNS instance and joins the network by dialing
+out to one or more `TCPClientInterface` peers -- no local `rnsd`, no config-dir mount, no
+`--network host`:
+
+```bash
+docker run --rm \
+  -p 8765:8765 \
+  -e BRIDGE_TOKEN=change-me \
+  -e RNS_MODE=tcp_peer \
+  -e RNS_TCP_PEERS=amsterdam.connect.reticulum.network:4965,rns.example.org:4242 \
+  meshmonitor-rns-bridge
+```
+
+Whichever mode you start with, the env vars below are just the defaults used before Node's first
+`configure` handshake message arrives -- see "Configuration" next.
+
 ## Configuration (environment variables)
 
 | Var | Default | Meaning |
@@ -122,4 +138,35 @@ pytest bridge/tests
 
 `bridge/tests/integration/test_dual_rnsd.py` needs the `rnsd` binary on `PATH` (installed by
 `rns`, part of `requirements.txt`) and spawns real `rnsd` subprocesses on loopback -- no
-hardware, no network access beyond `127.0.0.1`, required.
+hardware, no network access beyond `127.0.0.1`, required. If `rnsd` isn't on `PATH` the module
+*skips* (not fails) rather than erroring, so a `pytest` run without it installed will report
+fewer tests, not a failure.
+
+CI (`.github/workflows/reticulum-bridge.yml`) runs the full suite -- both `test_protocol.py` and
+the dual-`rnsd` integration tests -- on every PR/push touching `bridge/**`, in a fresh
+`python:3.12` + `rns==1.4.2` environment. It is hardware-free and self-contained: two `rnsd`
+processes talking over `TCPServerInterface` on loopback, no radio, no external network access.
+
+### Contract-drift guard (Python <-> TypeScript)
+
+`bridge/tests/fixtures/*.json` is the golden wire contract: the Node side
+(`src/server/reticulumBridgeClient.test.ts`, WP3) parses these files directly, so Python's
+`protocol.py` and the Node client can never silently disagree on message shape. The fixture
+content is defined once, in `bridge/tests/fixture_builders.py`, and consumed two ways:
+
+- `pytest bridge/tests` (specifically `test_protocol.py::test_fixture_matches_live_builder_output`)
+  asserts the checked-in JSON still matches `protocol.py`'s live builder output.
+- `python bridge/tests/generate_fixtures.py` (re)writes `bridge/tests/fixtures/*.json` from the
+  same builders -- the fix-it counterpart to the pytest assertion above.
+
+After changing a message-builder function in `protocol.py` (or its fixture arguments in
+`fixture_builders.py`), regenerate and commit the diff:
+
+```bash
+python bridge/tests/generate_fixtures.py
+git diff bridge/tests/fixtures
+```
+
+CI runs the same regeneration and fails the build if it produces any diff, i.e. if the
+checked-in fixtures are stale relative to `protocol.py` -- this catches drift even in the (should
+never happen) case where a fixture file is hand-edited without a matching `protocol.py` change.

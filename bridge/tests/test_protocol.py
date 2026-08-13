@@ -1,8 +1,12 @@
 """Unit tests for meshmonitor_rns_bridge.protocol: envelope encode/decode, failure-code
 round trips, and the golden fixtures under tests/fixtures/ that the TS contract test
-(WP3) parses independently. If you change a builder function's output shape, update
-this file's `_build_fixture()` map (or bridge/tests/fixtures/*.json directly) in the
-same commit -- the fixtures are the single source of truth for the wire contract."""
+(WP3) parses independently. The fixture content itself lives in fixture_builders.py
+(shared with generate_fixtures.py, the regeneration script) -- if you change a builder
+function's output shape, update fixture_builders.py and then run
+`python bridge/tests/generate_fixtures.py` to rewrite bridge/tests/fixtures/*.json in
+the same commit. The fixtures are the single source of truth for the wire contract;
+CI (`.github/workflows/reticulum-bridge.yml`) fails the build if regenerating them
+produces a git diff."""
 
 from __future__ import annotations
 
@@ -12,116 +16,8 @@ import pytest
 
 from meshmonitor_rns_bridge import protocol
 
-EXPECTED_FIXTURE_NAMES = {
-    "welcome",
-    "error",
-    "ready",
-    "announce",
-    "announce_no_signal",
-    "interface_stats",
-    "path_table",
-    "status",
-    "hello",
-    "configure",
-    "get_status",
-}
-
-FIXED_TS = 1755000000000
-
-
-def _build_fixture(name: str) -> dict:
-    """Rebuild a fixture's envelope from the live protocol builders, so this test
-    fails loudly if protocol.py drifts from the checked-in golden JSON."""
-    if name == "welcome":
-        return protocol.welcome_message(bridge_version="0.1.0", rns_version="1.4.2")
-    if name == "error":
-        return protocol.error_message(
-            protocol.RPC_AUTH_FAILED,
-            "rpc_key mismatch: digest sent was rejected by the shared instance",
-            id="c1",
-        )
-    if name == "ready":
-        return protocol.ready_message(id="c1")
-    if name == "announce":
-        return protocol.announce_message(
-            destination_hash="a1b2c3d4e5f60718293a4b5c6d7e8f90",
-            identity_hash="0f1e2d3c4b5a69788796a5b4c3d2e1f0",
-            app_name="lxmf",
-            aspects=["delivery"],
-            display_name="Alice",
-            app_data_b64="k6VBbGljZaA=",
-            hops=2,
-            next_hop_interface="TCP Server Interface",
-            rssi=-97,
-            snr=6.5,
-            q=48,
-            is_path_response=False,
-        )
-    if name == "announce_no_signal":
-        return protocol.announce_message(
-            destination_hash="112233445566778899aabbccddeeff0",
-            identity_hash=None,
-            app_name=None,
-            aspects=None,
-            display_name=None,
-            app_data_b64=None,
-            hops=None,
-            next_hop_interface=None,
-            rssi=None,
-            snr=None,
-            q=None,
-            is_path_response=True,
-        )
-    if name == "interface_stats":
-        return protocol.interface_stats_message(
-            [
-                {
-                    "name": "TCP Server Interface",
-                    "type": "TCPServerInterface",
-                    "hash": "9f8e7d6c5b4a39281706f5e4d3c2b1a0",
-                    "mode": "full",
-                    "status": "up",
-                    "online": True,
-                    "bitrate": None,
-                    "txBytes": 603,
-                    "rxBytes": 362,
-                },
-                {
-                    "name": "tcp_peer_127.0.0.1_4242",
-                    "type": "TCPClientInterface",
-                    "hash": None,
-                    "mode": "full",
-                    "status": "down",
-                    "online": False,
-                    "bitrate": None,
-                    "txBytes": 0,
-                    "rxBytes": 0,
-                },
-            ]
-        )
-    if name == "path_table":
-        return protocol.path_table_message(
-            [
-                {
-                    "destinationHash": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
-                    "via": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
-                    "hops": 1,
-                    "expires": 1755001800.0,
-                    "interface": "TCP Server Interface",
-                }
-            ]
-        )
-    if name == "status":
-        return protocol.status_message(
-            id="c2", mode="attach", connected=True, rnsVersion="1.4.2", interfaceCount=2
-        )
-    if name == "hello":
-        return protocol.hello_message(token="change-me")
-    if name == "configure":
-        return protocol.configure_message(mode="attach", id="c0", config_dir="/rns", peers=None)
-    if name == "get_status":
-        return protocol.get_status_message(id="c2")
-    raise ValueError(f"no builder registered for fixture {name!r}")
+from .fixture_builders import EXPECTED_FIXTURE_NAMES, FIXED_TS
+from .fixture_builders import build_fixture as _build_fixture
 
 
 @pytest.fixture
