@@ -316,6 +316,52 @@ describe('AutomationEngineService', () => {
     expect(await engine.onMeshCoreMessage(mcMessage({ fromPublicKey: 'channel-0', text: 'ping' }), 'default')).toBe(1);
   });
 
+  it('self-origin opt-out (#4694): a trigger.message automation with includeSelf:true still fires on our own Meshtastic node', async () => {
+    const { calls, deps } = recorder();
+    await createEnabled('bridge-like', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: { textContains: 'ping', includeSelf: true } },
+        { id: 's', type: 'action.sendMessage', params: { text: 'relayed' } },
+      ],
+      edges: [{ from: 't', to: 's' }],
+    });
+    const selfData = { ...data, getLocalNodeNum: async () => 111 };
+    const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data: selfData, now: () => clock });
+    await engine.load();
+    // Our own message → still fires because this automation opted back in.
+    expect(await engine.onMessage(message({ fromNodeNum: 111, text: 'ping' }), 'default')).toBe(1);
+    expect(calls).toHaveLength(1);
+    // A different automation on the same event WITHOUT includeSelf keeps dropping self-origin.
+    await createEnabled('normal', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: { textContains: 'ping' } },
+        { id: 'tap', type: 'action.tapback', params: { emoji: '👍' } },
+      ],
+      edges: [{ from: 't', to: 'tap' }],
+    });
+    await engine.load();
+    expect(await engine.onMessage(message({ fromNodeNum: 111, text: 'ping' }), 'default')).toBe(1); // only the includeSelf one fires
+  });
+
+  it('self-origin opt-out (#4694): a trigger.message automation with includeSelf:true still fires on our own MeshCore key', async () => {
+    const { calls, deps } = recorder();
+    await createEnabled('bridge-like', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: { textContains: 'ping', includeSelf: true } },
+        { id: 's', type: 'action.sendMessage', params: { text: 'relayed' } },
+      ],
+      edges: [{ from: 't', to: 's' }],
+    });
+    const selfData = { ...data, getSelfPublicKey: async () => 'ABCD' };
+    const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data: selfData, now: () => clock });
+    await engine.load();
+    expect(await engine.onMeshCoreMessage(mcMessage({ fromPublicKey: 'abcd', text: 'ping' }), 'default')).toBe(1);
+    expect(calls).toHaveLength(1);
+  });
+
   it('self-origin (#3914): ignores our own node telemetry', async () => {
     const { deps } = recorder();
     await createEnabled('batt', {

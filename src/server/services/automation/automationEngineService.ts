@@ -627,10 +627,27 @@ export class AutomationEngineService {
     return false;
   }
 
+  /**
+   * True when a loaded `trigger.message` automation explicitly opts back into
+   * self-originated events (#4694). The #3914 self-origin guard above exists
+   * to stop an `action.sendMessage` reply from re-triggering the very rule
+   * that sent it, but that same guard silently made the MT↔MC bridge template
+   * (`bridge.ts`) blind to messages the operator typed on their OWN connected
+   * node — those never crossed to the other protocol at all. The bridge
+   * already has its own independent loop guard (the `notContains 'MT@'/'MC@'`
+   * tag conditions), so it sets `includeSelf: true` on its trigger to skip
+   * this guard rather than needing it disabled globally.
+   */
+  private includesSelfOrigin(a: LoadedAutomation): boolean {
+    return (a.triggerNode.params as Record<string, unknown> | undefined)?.includeSelf === true;
+  }
+
   // ─── event entry points ─────────────────────────────────────────────────
 
   async onMessage(msg: DbMessage, sourceId: string | null): Promise<number> {
-    if (await this.isSelfMeshtastic(sourceId, msg.fromNodeNum)) return 0; // #3914: ignore our own sends
+    // #3914: ignore our own sends, UNLESS the matching automation opted back in
+    // via `includeSelf` (#4694 — see includesSelfOrigin()'s doc comment).
+    const isSelf = await this.isSelfMeshtastic(sourceId, msg.fromNodeNum);
     // Resolve the per-source channel name + sender node name once. We resolve when
     // EITHER a channelName/`channels` filter needs it (#3974) OR the universal
     // channelName/fromName/senderLabel tokens need populating — and since ANY loaded
@@ -662,7 +679,7 @@ export class AutomationEngineService {
     const ctx = buildMessageContext(msg, sourceId, this.now(), { channelName, fromName, viaMqttSource });
     return this.runTrigger(
       ctx,
-      (a) => messageMatchesFilter(msg, a.triggerNode.params ?? {}, channelName),
+      (a) => (!isSelf || this.includesSelfOrigin(a)) && messageMatchesFilter(msg, a.triggerNode.params ?? {}, channelName),
       (a) => describeMessageFilterMiss(msg, a.triggerNode.params ?? {}, channelName),
     );
   }
@@ -674,7 +691,9 @@ export class AutomationEngineService {
    * engine previously ignored entirely).
    */
   async onMeshCoreMessage(msg: MeshCoreMessage, sourceId: string | null): Promise<number> {
-    if (await this.isSelfMeshCore(sourceId, msg.fromPublicKey)) return 0; // #3914: ignore our own sends
+    // #3914: ignore our own sends, UNLESS the matching automation opted back in
+    // via `includeSelf` (#4694 — see includesSelfOrigin()'s doc comment).
+    const isSelf = await this.isSelfMeshCore(sourceId, msg.fromPublicKey);
     // Same reconciliation as onMessage: resolve the channel name when any message
     // automation is loaded (subsumes #3974's channelName/`channels` filter gate),
     // feeding both the universal channelName/senderLabel tokens and the matcher's
@@ -689,7 +708,7 @@ export class AutomationEngineService {
     const ctx = buildMeshCoreMessageContext(msg, sourceId, this.now(), { channelName });
     return this.runTrigger(
       ctx,
-      (a) => meshCoreMessageMatchesFilter(msg, a.triggerNode.params ?? {}, channelName),
+      (a) => (!isSelf || this.includesSelfOrigin(a)) && meshCoreMessageMatchesFilter(msg, a.triggerNode.params ?? {}, channelName),
       (a) => describeMeshCoreFilterMiss(msg, a.triggerNode.params ?? {}, channelName),
     );
   }
