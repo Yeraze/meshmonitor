@@ -128,9 +128,13 @@ export class ReticulumRepository extends BaseRepository {
    * seeds `announceCount = 1` and `firstSeen = lastSeen = lastAnnounceAt =
    * announceAt`. On update, merges — only fields the caller actually passed
    * (not `undefined`) overwrite the stored value — and bumps `announceCount`,
-   * `lastSeen`, `lastAnnounceAt`. After the write, prunes the source's
-   * destination set back under `reticulum_destinations_max` if it just
-   * crossed the cap (see {@link pruneDestinations}).
+   * `lastSeen`, `lastAnnounceAt`. The whole insert-or-update is one atomic
+   * statement (see {@link upsertDestinationAtomic}) — no check-then-act read,
+   * so two concurrent announces for the same destination can't race each
+   * other into a duplicate-insert crash or a lost update (PR review finding
+   * 1). Only a genuine insert can grow the table, so the retention prune
+   * (see {@link pruneDestinations}) runs only on that path, not on every
+   * repeat announce (PR review finding 2).
    */
   async upsertDestination(sourceId: string, dest: UpsertDestinationInput): Promise<void> {
     if (!sourceId) {
@@ -140,58 +144,96 @@ export class ReticulumRepository extends BaseRepository {
     const now = this.now();
     const announceAt = dest.announceAt ?? now;
 
-    const existing = await this.getDestination(sourceId, dest.destinationHash);
+    const insertValues = {
+      sourceId,
+      destinationHash: dest.destinationHash,
+      identityHash: dest.identityHash ?? null,
+      appName: dest.appName ?? null,
+      aspects: dest.aspects ?? null,
+      displayName: dest.displayName ?? null,
+      appDataB64: dest.appDataB64 ?? null,
+      hops: dest.hops ?? null,
+      nextHopInterface: dest.nextHopInterface ?? null,
+      rssi: dest.rssi ?? null,
+      snr: dest.snr ?? null,
+      quality: dest.quality ?? null,
+      announceCount: 1,
+      firstSeen: announceAt,
+      lastSeen: announceAt,
+      lastAnnounceAt: announceAt,
+      isFavorite: false,
+      createdAt: now,
+      updatedAt: now,
+    };
 
-    if (existing) {
-      const updateSet: Record<string, unknown> = {
-        lastSeen: announceAt,
-        lastAnnounceAt: announceAt,
-        announceCount: existing.announceCount + 1,
-        updatedAt: now,
-      };
-      if (dest.identityHash !== undefined) updateSet.identityHash = dest.identityHash;
-      if (dest.appName !== undefined) updateSet.appName = dest.appName;
-      if (dest.aspects !== undefined) updateSet.aspects = dest.aspects;
-      if (dest.displayName !== undefined) updateSet.displayName = dest.displayName;
-      if (dest.appDataB64 !== undefined) updateSet.appDataB64 = dest.appDataB64;
-      if (dest.hops !== undefined) updateSet.hops = dest.hops;
-      if (dest.nextHopInterface !== undefined) updateSet.nextHopInterface = dest.nextHopInterface;
-      if (dest.rssi !== undefined) updateSet.rssi = dest.rssi;
-      if (dest.snr !== undefined) updateSet.snr = dest.snr;
-      if (dest.quality !== undefined) updateSet.quality = dest.quality;
+    // On conflict: only overwrite the optional fields this announce actually
+    // carried (undefined = "not observed" -> preserve the stored value, same
+    // merge semantics as before). announceCount is bumped with a SQL
+    // expression (not read-then-write) so two concurrent announces can't
+    // lose an increment.
+    const updateSet: Record<string, unknown> = {
+      lastSeen: announceAt,
+      lastAnnounceAt: announceAt,
+      announceCount: sql`${reticulumDestinations.announceCount} + 1`,
+      updatedAt: now,
+    };
+    if (dest.identityHash !== undefined) updateSet.identityHash = dest.identityHash;
+    if (dest.appName !== undefined) updateSet.appName = dest.appName;
+    if (dest.aspects !== undefined) updateSet.aspects = dest.aspects;
+    if (dest.displayName !== undefined) updateSet.displayName = dest.displayName;
+    if (dest.appDataB64 !== undefined) updateSet.appDataB64 = dest.appDataB64;
+    if (dest.hops !== undefined) updateSet.hops = dest.hops;
+    if (dest.nextHopInterface !== undefined) updateSet.nextHopInterface = dest.nextHopInterface;
+    if (dest.rssi !== undefined) updateSet.rssi = dest.rssi;
+    if (dest.snr !== undefined) updateSet.snr = dest.snr;
+    if (dest.quality !== undefined) updateSet.quality = dest.quality;
 
-      await this.db
-        .update(reticulumDestinations)
-        .set(updateSet)
-        .where(and(
-          eq(reticulumDestinations.sourceId, sourceId),
-          eq(reticulumDestinations.destinationHash, dest.destinationHash),
-        ));
-    } else {
-      await this.db.insert(reticulumDestinations).values({
-        sourceId,
-        destinationHash: dest.destinationHash,
-        identityHash: dest.identityHash ?? null,
-        appName: dest.appName ?? null,
-        aspects: dest.aspects ?? null,
-        displayName: dest.displayName ?? null,
-        appDataB64: dest.appDataB64 ?? null,
-        hops: dest.hops ?? null,
-        nextHopInterface: dest.nextHopInterface ?? null,
-        rssi: dest.rssi ?? null,
-        snr: dest.snr ?? null,
-        quality: dest.quality ?? null,
-        announceCount: 1,
-        firstSeen: announceAt,
-        lastSeen: announceAt,
-        lastAnnounceAt: announceAt,
-        isFavorite: false,
-        createdAt: now,
-        updatedAt: now,
-      });
+    const inserted = await this.upsertDestinationAtomic(reticulumDestinations, insertValues, updateSet);
+    if (inserted) {
+      await this.pruneDestinations(sourceId);
+    }
+  }
+
+  /**
+   * Atomic insert-or-update for a single destination row, keyed on the
+   * `(sourceId, destinationHash)` unique index (migration 140). Single
+   * statement — `onConflictDoUpdate` (SQLite/PostgreSQL) / `onDuplicateKeyUpdate`
+   * (MySQL) — mirrors the dialect branch already used by `BaseRepository.upsert`
+   * and `notifications.ts`'s onConflictDoUpdate/onDuplicateKeyUpdate split.
+   *
+   * Returns whether this call performed the INSERT (vs. hitting the conflict
+   * path and updating):
+   *  - SQLite/PostgreSQL: `RETURNING announceCount` — a fresh insert always
+   *    seeds `announceCount = 1`; any other value can only come from the
+   *    update path (the row already existed with `announceCount >= 1`). This
+   *    avoids any dialect-specific "was this xmax/insert-id" trickery.
+   *  - MySQL: `INSERT ... ON DUPLICATE KEY UPDATE` reports `affectedRows`
+   *    as `1` for a fresh insert and `2` for an update that changed a column
+   *    (documented MySQL behavior). `updateSet` always changes `updatedAt`/
+   *    `lastSeen`, so a real update here never reports `0`.
+   */
+  private async upsertDestinationAtomic(
+    table: any, // eslint-disable-line @typescript-eslint/no-explicit-any -- ActiveSchema tables are `any` by design (see activeSchema.ts)
+    values: Record<string, unknown>,
+    updateSet: Record<string, unknown>,
+  ): Promise<boolean> {
+    if (this.isMySQL()) {
+      const result = await this.getMysqlDb()
+        .insert(table)
+        .values(values)
+        .onDuplicateKeyUpdate({ set: updateSet });
+      return this.getAffectedRows(result) === 1;
     }
 
-    await this.pruneDestinations(sourceId);
+    const rows = await this.db
+      .insert(table)
+      .values(values)
+      .onConflictDoUpdate({
+        target: [table.sourceId, table.destinationHash],
+        set: updateSet,
+      })
+      .returning({ announceCount: table.announceCount });
+    return rows[0]?.announceCount === 1;
   }
 
   /**
@@ -215,6 +257,20 @@ export class ReticulumRepository extends BaseRepository {
       .orderBy(desc(reticulumDestinations.lastSeen));
     const rows = await (opts.limit ? base.limit(opts.limit) : base);
     return this.normalizeBigInts(rows) as unknown as ReticulumDestinationRow[];
+  }
+
+  /**
+   * Count destination rows for a source (or `ALL_SOURCES`) without loading
+   * full rows — for lightweight status/inventory endpoints (e.g. `GET
+   * /status`) that only need a count, not the row payload.
+   */
+  async countDestinations(sourceId: SourceScope): Promise<number> {
+    const { reticulumDestinations } = this.tables;
+    const rows = await this.db
+      .select({ count: sql<number>`COUNT(*)` })
+      .from(reticulumDestinations)
+      .where(this.withSourceScope(reticulumDestinations, sourceId));
+    return Number(rows[0]?.count ?? 0);
   }
 
   /** Get a single destination row scoped by `(sourceId, destinationHash)`. */
@@ -356,6 +412,19 @@ export class ReticulumRepository extends BaseRepository {
       .where(this.withSourceScope(reticulumInterfaces, sourceId))
       .orderBy(reticulumInterfaces.interfaceName);
     return this.normalizeBigInts(rows) as unknown as ReticulumInterfaceRow[];
+  }
+
+  /**
+   * Count interface rows for a source (or `ALL_SOURCES`) without loading
+   * full rows — see {@link countDestinations}.
+   */
+  async countInterfaces(sourceId: SourceScope): Promise<number> {
+    const { reticulumInterfaces } = this.tables;
+    const rows = await this.db
+      .select({ count: sql<number>`COUNT(*)` })
+      .from(reticulumInterfaces)
+      .where(this.withSourceScope(reticulumInterfaces, sourceId));
+    return Number(rows[0]?.count ?? 0);
   }
 
   /** Get a single interface row scoped by `(sourceId, interfaceName)`. */

@@ -9,7 +9,7 @@
  * PostgreSQL: requires test container on port 5433 (skipped if unavailable)
  * MySQL: requires test container on port 3307 (skipped if unavailable)
  */
-import { describe, it, expect, beforeEach, afterEach, afterAll, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll, beforeAll } from 'vitest';
 import {
   ReticulumRepository,
   DEFAULT_RETICULUM_DESTINATIONS_MAX,
@@ -352,6 +352,58 @@ function runReticulumTests(getBackend: () => TestBackend) {
     expect(await repo.getDestination(SRC_A, '2'.repeat(32))).toBeNull();
     // Favorite survived despite being older than the pruned row.
     expect((await repo.getDestination(SRC_A, '1'.repeat(32)))!.isFavorite).toBe(true);
+  });
+
+  // PR review finding 2: pruning (a COUNT(*) + candidate scan) used to run on
+  // every upsertDestination call, including pure updates that can never grow
+  // the table. Spy on the private pruneDestinations to assert it fires only
+  // on the genuine-insert path, not on repeat announces of the same row.
+  it('upsertDestination - prunes only on a genuine insert, never on a repeat-announce update', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    const pruneSpy = vi.spyOn(repo as unknown as { pruneDestinations: () => Promise<void> }, 'pruneDestinations');
+
+    await repo.upsertDestination(SRC_A, makeDest({ destinationHash: '5'.repeat(32) }));
+    expect(pruneSpy).toHaveBeenCalledTimes(1);
+
+    // Three repeat announces of the SAME destination (pure updates) must not
+    // trigger any additional prune calls.
+    for (let i = 0; i < 3; i++) {
+      await repo.upsertDestination(SRC_A, makeDest({ destinationHash: '5'.repeat(32), rssi: -50 - i }));
+    }
+    expect(pruneSpy).toHaveBeenCalledTimes(1);
+    expect((await repo.getDestination(SRC_A, '5'.repeat(32)))!.announceCount).toBe(4);
+
+    // A second genuine insert (new destinationHash) triggers exactly one more.
+    await repo.upsertDestination(SRC_A, makeDest({ destinationHash: '6'.repeat(32) }));
+    expect(pruneSpy).toHaveBeenCalledTimes(2);
+
+    pruneSpy.mockRestore();
+  });
+
+  it('countDestinations / countInterfaces - match list length without loading full rows', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    expect(await repo.countDestinations(SRC_A)).toBe(0);
+    expect(await repo.countInterfaces(SRC_A)).toBe(0);
+
+    await repo.upsertDestination(SRC_A, makeDest({ destinationHash: '7'.repeat(32) }));
+    await repo.upsertDestination(SRC_A, makeDest({ destinationHash: '8'.repeat(32) }));
+    await repo.upsertDestination(SRC_B, makeDest({ destinationHash: '9'.repeat(32) }));
+    await repo.upsertInterface(SRC_A, makeIface({ interfaceName: 'count-iface-1' }));
+
+    expect(await repo.countDestinations(SRC_A)).toBe(2);
+    expect(await repo.countDestinations(SRC_B)).toBe(1);
+    expect(await repo.countInterfaces(SRC_A)).toBe(1);
+    expect(await repo.countInterfaces(SRC_B)).toBe(0);
   });
 
   it('upsertDestination - defaults to DEFAULT_RETICULUM_DESTINATIONS_MAX when unset', async () => {
