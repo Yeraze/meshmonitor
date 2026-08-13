@@ -28,6 +28,8 @@ import DetectionSensorConfigSection from './configuration/DetectionSensorConfigS
 import PaxcounterConfigSection from './configuration/PaxcounterConfigSection';
 import StatusMessageConfigSection from './configuration/StatusMessageConfigSection';
 import TrafficManagementConfigSection from './configuration/TrafficManagementConfigSection';
+import MeshBeaconConfigSection from './configuration/MeshBeaconConfigSection';
+import { packMeshBeaconFlags, unpackMeshBeaconFlags, pskToBase64 } from './admin-commands/useAdminCommandsState';
 import SerialConfigSection from './configuration/SerialConfigSection';
 import AmbientLightingConfigSection from './configuration/AmbientLightingConfigSection';
 import SecurityConfigSection from './configuration/SecurityConfigSection';
@@ -274,8 +276,21 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   const [trafficManagementExhaustHopPosition, setTrafficManagementExhaustHopPosition] = useState(false);
   const [trafficManagementRouterPreserveHops, setTrafficManagementRouterPreserveHops] = useState(false);
 
+  // MeshBeacon Config State (firmware 2.8+, #3854). The wire `flags` bitfield is
+  // split into three booleans here and repacked on save.
+  const [meshBeaconListenEnabled, setMeshBeaconListenEnabled] = useState(false);
+  const [meshBeaconBroadcastEnabled, setMeshBeaconBroadcastEnabled] = useState(false);
+  const [meshBeaconLegacySplit, setMeshBeaconLegacySplit] = useState(false);
+  const [meshBeaconBroadcastMessage, setMeshBeaconBroadcastMessage] = useState('');
+  const [meshBeaconBroadcastSendAsNode, setMeshBeaconBroadcastSendAsNode] = useState(0);
+  const [meshBeaconBroadcastOfferChannelName, setMeshBeaconBroadcastOfferChannelName] = useState('');
+  const [meshBeaconBroadcastOfferChannelPsk, setMeshBeaconBroadcastOfferChannelPsk] = useState('');
+  const [meshBeaconBroadcastOfferRegion, setMeshBeaconBroadcastOfferRegion] = useState(0);
+  // null = advertise no preset; the proto field is `optional`, so this is not 0.
+  const [meshBeaconBroadcastOfferPreset, setMeshBeaconBroadcastOfferPreset] = useState<number | null>(null);
+
   // Supported modules tracking (for unsupported firmware detection)
-  const [supportedModules, setSupportedModules] = useState<{ statusmessage: boolean; trafficManagement: boolean } | null>(null);
+  const [supportedModules, setSupportedModules] = useState<{ statusmessage: boolean; trafficManagement: boolean; meshBeacon: boolean } | null>(null);
 
   // Serial Config State
   const [serialEnabled, setSerialEnabled] = useState(false);
@@ -683,6 +698,22 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           setTrafficManagementExhaustHopTelemetry(tm.exhaustHopTelemetry || false);
           setTrafficManagementExhaustHopPosition(tm.exhaustHopPosition || false);
           setTrafficManagementRouterPreserveHops(tm.routerPreserveHops || false);
+        }
+
+        // Populate MeshBeacon config (firmware 2.8+, #3854)
+        if (config.moduleConfig?.meshBeacon) {
+          const mb = config.moduleConfig.meshBeacon;
+          const flags = unpackMeshBeaconFlags(mb.flags);
+          setMeshBeaconListenEnabled(flags.listenEnabled);
+          setMeshBeaconBroadcastEnabled(flags.broadcastEnabled);
+          setMeshBeaconLegacySplit(flags.legacySplit);
+          setMeshBeaconBroadcastMessage(mb.broadcastMessage ?? '');
+          setMeshBeaconBroadcastSendAsNode(mb.broadcastSendAsNode ?? 0);
+          setMeshBeaconBroadcastOfferChannelName(mb.broadcastOfferChannel?.name ?? '');
+          setMeshBeaconBroadcastOfferChannelPsk(pskToBase64(mb.broadcastOfferChannel?.psk));
+          setMeshBeaconBroadcastOfferRegion(mb.broadcastOfferRegion ?? 0);
+          // `optional` — absent means "advertise no preset", not LONG_FAST.
+          setMeshBeaconBroadcastOfferPreset(mb.broadcastOfferPreset ?? null);
         }
 
         // Store supported modules info
@@ -1407,6 +1438,51 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
     }
   };
 
+  const handleSaveMeshBeaconConfig = async () => {
+    setIsSaving(true);
+    setStatusMessage('');
+    try {
+      const config: Record<string, unknown> = {
+        // The three checkboxes are one bitfield on the wire.
+        flags: packMeshBeaconFlags({
+          listenEnabled: meshBeaconListenEnabled,
+          broadcastEnabled: meshBeaconBroadcastEnabled,
+          legacySplit: meshBeaconLegacySplit
+        }),
+        broadcastMessage: meshBeaconBroadcastMessage,
+        broadcastSendAsNode: meshBeaconBroadcastSendAsNode,
+        broadcastOfferRegion: meshBeaconBroadcastOfferRegion
+      };
+
+      // offer_channel is a whole ChannelSettings sub-message. Send it only when
+      // a name is present — a blank name means "advertise no channel", whereas
+      // an empty sub-message would advertise a nameless one.
+      if (meshBeaconBroadcastOfferChannelName.trim().length > 0) {
+        config.broadcastOfferChannel = {
+          name: meshBeaconBroadcastOfferChannelName,
+          ...(meshBeaconBroadcastOfferChannelPsk ? { psk: meshBeaconBroadcastOfferChannelPsk } : {})
+        };
+      }
+
+      // `optional` field: omit to advertise no preset. Sending 0 would advertise
+      // LONG_FAST, a different statement.
+      if (meshBeaconBroadcastOfferPreset !== null) {
+        config.broadcastOfferPreset = meshBeaconBroadcastOfferPreset;
+      }
+
+      await apiService.setModuleConfig('meshbeacon', config, sourceId);
+      setStatusMessage(t('config.meshbeacon_saved', 'MeshBeacon config saved'));
+      showToast(t('config.meshbeacon_saved_toast', 'MeshBeacon config saved successfully'), 'success');
+    } catch (error) {
+      logger.error('Error saving MeshBeacon config:', error);
+      const errorMsg = error instanceof Error ? error.message : t('config.meshbeacon_failed', 'Failed to save MeshBeacon config');
+      setStatusMessage(`Error: ${errorMsg}`);
+      showToast(`${t('config.meshbeacon_failed', 'Failed to save MeshBeacon config')}: ${errorMsg}`, 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleSaveSerialConfig = async () => {
     setIsSaving(true);
     setStatusMessage('');
@@ -1892,6 +1968,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         { id: 'config-paxcounter', label: t('paxcounter_config.title', 'Paxcounter') },
         { id: 'config-statusmessage', label: t('statusmessage_config.title', 'Status Message') },
         { id: 'config-trafficmanagement', label: t('trafficmanagement_config.title', 'Traffic Management') },
+        { id: 'config-meshbeacon', label: t('meshbeacon_config.title', 'MeshBeacon') },
         { id: 'config-serial', label: t('serial_config.title', 'Serial') },
         { id: 'config-ambientlighting', label: t('ambientlighting_config.title', 'Ambient Lighting') },
         { id: 'config-security', label: t('security_config.title', 'Security') },
@@ -2572,6 +2649,32 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             isDisabled={!supportedModules?.trafficManagement}
             isSaving={isSaving}
             onSave={handleSaveTrafficManagementConfig}
+          />
+        </div>
+
+        <div id="config-meshbeacon">
+          <MeshBeaconConfigSection
+            listenEnabled={meshBeaconListenEnabled}
+            setListenEnabled={setMeshBeaconListenEnabled}
+            broadcastEnabled={meshBeaconBroadcastEnabled}
+            setBroadcastEnabled={setMeshBeaconBroadcastEnabled}
+            legacySplit={meshBeaconLegacySplit}
+            setLegacySplit={setMeshBeaconLegacySplit}
+            broadcastMessage={meshBeaconBroadcastMessage}
+            setBroadcastMessage={setMeshBeaconBroadcastMessage}
+            broadcastSendAsNode={meshBeaconBroadcastSendAsNode}
+            setBroadcastSendAsNode={setMeshBeaconBroadcastSendAsNode}
+            broadcastOfferChannelName={meshBeaconBroadcastOfferChannelName}
+            setBroadcastOfferChannelName={setMeshBeaconBroadcastOfferChannelName}
+            broadcastOfferChannelPsk={meshBeaconBroadcastOfferChannelPsk}
+            setBroadcastOfferChannelPsk={setMeshBeaconBroadcastOfferChannelPsk}
+            broadcastOfferRegion={meshBeaconBroadcastOfferRegion}
+            setBroadcastOfferRegion={setMeshBeaconBroadcastOfferRegion}
+            broadcastOfferPreset={meshBeaconBroadcastOfferPreset}
+            setBroadcastOfferPreset={setMeshBeaconBroadcastOfferPreset}
+            isDisabled={!supportedModules?.meshBeacon}
+            isSaving={isSaving}
+            onSave={handleSaveMeshBeaconConfig}
           />
         </div>
 

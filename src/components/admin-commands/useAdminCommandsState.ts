@@ -167,6 +167,99 @@ export interface TrafficManagementConfigState {
   routerPreserveHops: boolean;
 }
 
+// MeshBeacon Config State (firmware 2.8+, #3854).
+//
+// The wire message packs listen/broadcast/legacy-split into a single `flags`
+// bitfield (MeshBeaconConfig.Flags). We keep them as three booleans here so the
+// UI can bind a checkbox each, and pack/unpack at the save/load boundary —
+// see MESH_BEACON_FLAGS below.
+export interface MeshBeaconConfigState {
+  listenEnabled: boolean;
+  broadcastEnabled: boolean;
+  legacySplit: boolean;
+  broadcastMessage: string;
+  /** 0 = send as the local node; otherwise the node ID to send beacons as. */
+  broadcastSendAsNode: number;
+  /** Name of the channel advertised in offer_channel; '' = advertise none. */
+  broadcastOfferChannelName: string;
+  /** Base64 PSK for the advertised channel. */
+  broadcastOfferChannelPsk: string;
+  /** Config.LoRaConfig.RegionCode; 0 = UNSET. */
+  broadcastOfferRegion: number;
+  /**
+   * Config.LoRaConfig.ModemPreset, or null to advertise no preset. The proto
+   * field is `optional`, so null and 0 (LONG_FAST) are genuinely different.
+   */
+  broadcastOfferPreset: number | null;
+}
+
+/** MeshBeaconConfig.Flags bit values (module_config.proto). */
+export const MESH_BEACON_FLAGS = {
+  NONE: 0,
+  LISTEN_ENABLED: 1,
+  BROADCAST_ENABLED: 2,
+  LEGACY_SPLIT: 4,
+} as const;
+
+/** Pack the three booleans back into the wire `flags` bitfield. */
+export function packMeshBeaconFlags(
+  state: Pick<MeshBeaconConfigState, 'listenEnabled' | 'broadcastEnabled' | 'legacySplit'>
+): number {
+  return (state.listenEnabled ? MESH_BEACON_FLAGS.LISTEN_ENABLED : 0)
+    | (state.broadcastEnabled ? MESH_BEACON_FLAGS.BROADCAST_ENABLED : 0)
+    | (state.legacySplit ? MESH_BEACON_FLAGS.LEGACY_SPLIT : 0);
+}
+
+/** Unpack a wire `flags` bitfield into the three booleans. */
+export function unpackMeshBeaconFlags(
+  flags: number | undefined
+): Pick<MeshBeaconConfigState, 'listenEnabled' | 'broadcastEnabled' | 'legacySplit'> {
+  const f = flags ?? 0;
+  return {
+    listenEnabled: (f & MESH_BEACON_FLAGS.LISTEN_ENABLED) !== 0,
+    broadcastEnabled: (f & MESH_BEACON_FLAGS.BROADCAST_ENABLED) !== 0,
+    legacySplit: (f & MESH_BEACON_FLAGS.LEGACY_SPLIT) !== 0,
+  };
+}
+
+/**
+ * Normalise a `bytes` PSK from a decoded module config into base64 for display.
+ *
+ * The generic load-config route hands back the decoded protobuf object verbatim
+ * (unlike the channel routes, which base64 it server-side), so the same field
+ * can arrive as an already-base64 string, a JSON-serialised Uint8Array
+ * (`{"0":1,"1":2,…}`), or a JSON-serialised Buffer (`{type:'Buffer',data:[…]}`).
+ * Returns '' for absent/unrecognised input rather than throwing — a malformed
+ * PSK should render as empty, not break the whole config load.
+ */
+export function pskToBase64(psk: unknown): string {
+  if (!psk) return '';
+  if (typeof psk === 'string') return psk;
+
+  let bytes: number[] | null = null;
+  if (Array.isArray(psk)) {
+    bytes = psk as number[];
+  } else if (psk instanceof Uint8Array) {
+    bytes = Array.from(psk);
+  } else if (typeof psk === 'object') {
+    const obj = psk as Record<string, unknown>;
+    if (Array.isArray(obj.data)) {
+      bytes = obj.data as number[]; // {type:'Buffer', data:[…]}
+    } else {
+      // JSON-serialised Uint8Array: numeric keys in index order.
+      const keys = Object.keys(obj);
+      if (keys.length > 0 && keys.every((k) => /^\d+$/.test(k))) {
+        bytes = keys
+          .sort((a, b) => Number(a) - Number(b))
+          .map((k) => Number(obj[k]));
+      }
+    }
+  }
+
+  if (!bytes || bytes.some((b) => !Number.isInteger(b) || b < 0 || b > 255)) return '';
+  return btoa(String.fromCharCode(...bytes));
+}
+
 // Combined Admin Commands State
 export interface AdminCommandsState {
   lora: LoRaConfigState;
@@ -181,6 +274,7 @@ export interface AdminCommandsState {
   telemetry: TelemetryConfigState;
   statusMessage: StatusMessageConfigState;
   trafficManagement: TrafficManagementConfigState;
+  meshBeacon: MeshBeaconConfigState;
 }
 
 // Action types
@@ -198,6 +292,7 @@ type AdminCommandsAction =
   | { type: 'SET_TELEMETRY_CONFIG'; payload: Partial<TelemetryConfigState> }
   | { type: 'SET_STATUSMESSAGE_CONFIG'; payload: Partial<StatusMessageConfigState> }
   | { type: 'SET_TRAFFICMANAGEMENT_CONFIG'; payload: Partial<TrafficManagementConfigState> }
+  | { type: 'SET_MESHBEACON_CONFIG'; payload: Partial<MeshBeaconConfigState> }
   | { type: 'SET_ADMIN_KEY'; payload: { index: number; value: string } }
   | { type: 'ADD_ADMIN_KEY' }
   | { type: 'REMOVE_ADMIN_KEY'; payload: number }
@@ -341,6 +436,17 @@ const initialState: AdminCommandsState = {
     exhaustHopPosition: false,
     routerPreserveHops: false,
   },
+  meshBeacon: {
+    listenEnabled: false,
+    broadcastEnabled: false,
+    legacySplit: false,
+    broadcastMessage: '',
+    broadcastSendAsNode: 0,
+    broadcastOfferChannelName: '',
+    broadcastOfferChannelPsk: '',
+    broadcastOfferRegion: 0,
+    broadcastOfferPreset: null,
+  },
 };
 
 function adminCommandsReducer(state: AdminCommandsState, action: AdminCommandsAction): AdminCommandsState {
@@ -412,6 +518,11 @@ function adminCommandsReducer(state: AdminCommandsState, action: AdminCommandsAc
       return {
         ...state,
         trafficManagement: { ...state.trafficManagement, ...action.payload },
+      };
+    case 'SET_MESHBEACON_CONFIG':
+      return {
+        ...state,
+        meshBeacon: { ...state.meshBeacon, ...action.payload },
       };
     case 'SET_ADMIN_KEY':
       const newKeys = [...state.security.adminKeys];
@@ -550,6 +661,11 @@ export function useAdminCommandsState() {
     dispatch({ type: 'SET_TRAFFICMANAGEMENT_CONFIG', payload: config });
   }, []);
 
+  // MeshBeacon config actions (firmware 2.8+, #3854)
+  const setMeshBeaconConfig = useCallback((config: Partial<MeshBeaconConfigState>) => {
+    dispatch({ type: 'SET_MESHBEACON_CONFIG', payload: config });
+  }, []);
+
   // Reset all configs
   const resetAll = useCallback(() => {
     dispatch({ type: 'RESET_ALL' });
@@ -586,6 +702,8 @@ export function useAdminCommandsState() {
     setStatusMessageConfig,
     // TrafficManagement
     setTrafficManagementConfig,
+    // MeshBeacon
+    setMeshBeaconConfig,
     // Reset
     resetAll,
   };

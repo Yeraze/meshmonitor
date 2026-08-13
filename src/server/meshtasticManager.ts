@@ -4493,6 +4493,34 @@ class MeshtasticManager implements ISourceManager {
             }
           }
 
+          // Apply Proto3 defaults to MeshBeacon config (firmware 2.8+, #3854).
+          // `flags` is a bitfield, so an all-off beacon module arrives with the
+          // field omitted entirely — without this the UI would render every
+          // toggle as indeterminate rather than off.
+          if (parsed.data.meshBeacon) {
+            logger.debug(`📊 Raw MeshBeacon config from device:`, JSON.stringify(parsed.data.meshBeacon, null, 2));
+
+            if (parsed.data.meshBeacon.flags === undefined) {
+              parsed.data.meshBeacon.flags = 0;
+              logger.debug('📊 Set meshBeacon.flags to 0 (was undefined - Proto3 default)');
+            }
+            if (parsed.data.meshBeacon.broadcastSendAsNode === undefined) {
+              parsed.data.meshBeacon.broadcastSendAsNode = 0;
+              logger.debug('📊 Set meshBeacon.broadcastSendAsNode to 0 (was undefined - Proto3 default)');
+            }
+            if (parsed.data.meshBeacon.broadcastMessage === undefined) {
+              parsed.data.meshBeacon.broadcastMessage = '';
+              logger.debug('📊 Set meshBeacon.broadcastMessage to "" (was undefined - Proto3 default)');
+            }
+            if (parsed.data.meshBeacon.broadcastOfferRegion === undefined) {
+              parsed.data.meshBeacon.broadcastOfferRegion = 0;
+              logger.debug('📊 Set meshBeacon.broadcastOfferRegion to 0 (was undefined - Proto3 default)');
+            }
+            // broadcastOfferPreset is `optional` in the proto — absence is
+            // meaningful ("advertise no preset"), so it is deliberately left
+            // undefined rather than defaulted to 0 (LONG_FAST).
+          }
+
           // Merge the actual module configuration (don't overwrite)
           this.actualModuleConfig = { ...this.actualModuleConfig, ...parsed.data };
           logger.debug('📊 Merged actualModuleConfig now has keys:', Object.keys(this.actualModuleConfig));
@@ -5091,7 +5119,7 @@ class MeshtasticManager implements ISourceManager {
   /**
    * Get the current device configuration
    */
-  getCurrentConfig(): { deviceConfig: any; moduleConfig: any; localNodeInfo: any; supportedModules: { statusmessage: boolean; trafficManagement: boolean } } {
+  getCurrentConfig(): { deviceConfig: any; moduleConfig: any; localNodeInfo: any; supportedModules: { statusmessage: boolean; trafficManagement: boolean; meshBeacon: boolean } } {
     logger.debug(`[CONFIG] getCurrentConfig called - hopLimit=${this.actualDeviceConfig?.lora?.hopLimit}`);
 
     // Apply Proto3 defaults to device config if it exists
@@ -5215,6 +5243,27 @@ class MeshtasticManager implements ISourceManager {
       logger.debug(`[CONFIG] Returning NeighborInfo config with enabled=${neighborInfoConfigWithDefaults.enabled}, updateInterval=${neighborInfoConfigWithDefaults.updateInterval}, transmitOverLora=${neighborInfoConfigWithDefaults.transmitOverLora}`);
     }
 
+    // Apply Proto3 defaults to MeshBeacon module config (firmware 2.8+, #3854)
+    if (moduleConfig.meshBeacon) {
+      const meshBeaconConfigWithDefaults = {
+        ...moduleConfig.meshBeacon,
+        // IMPORTANT: Proto3 omits boolean false and numeric 0 values from JSON serialization
+        flags: moduleConfig.meshBeacon.flags !== undefined ? moduleConfig.meshBeacon.flags : 0,
+        broadcastSendAsNode: moduleConfig.meshBeacon.broadcastSendAsNode !== undefined ? moduleConfig.meshBeacon.broadcastSendAsNode : 0,
+        broadcastMessage: moduleConfig.meshBeacon.broadcastMessage !== undefined ? moduleConfig.meshBeacon.broadcastMessage : '',
+        broadcastOfferRegion: moduleConfig.meshBeacon.broadcastOfferRegion !== undefined ? moduleConfig.meshBeacon.broadcastOfferRegion : 0
+        // broadcastOfferPreset is `optional` — absence means "advertise no
+        // preset" and must stay undefined rather than collapsing to LONG_FAST.
+      };
+
+      moduleConfig = {
+        ...moduleConfig,
+        meshBeacon: meshBeaconConfigWithDefaults
+      };
+
+      logger.debug(`[CONFIG] Returning MeshBeacon config with flags=${meshBeaconConfigWithDefaults.flags}, broadcastMessage="${meshBeaconConfigWithDefaults.broadcastMessage}"`);
+    }
+
     // Apply Proto3 defaults to Telemetry module config
     if (moduleConfig.telemetry) {
       const telemetryConfigWithDefaults = {
@@ -5316,7 +5365,8 @@ class MeshtasticManager implements ISourceManager {
         // supported module whose config is untouched (the common case) would
         // otherwise report as unsupported. See firmwareVersionAtLeast().
         statusmessage: this.supportsStatusMessage(),
-        trafficManagement: this.supportsTrafficManagement()
+        trafficManagement: this.supportsTrafficManagement(),
+        meshBeacon: this.supportsMeshBeacon()
       }
     };
   }
@@ -13028,6 +13078,20 @@ class MeshtasticManager implements ISourceManager {
    */
   supportsTrafficManagement(): boolean {
     return this.firmwareVersionAtLeast(2, 7, 26);
+  }
+
+  /**
+   * Check if the local device firmware supports the MeshBeacon module (#3854).
+   *
+   * MeshBeacon (MESH_BEACON_APP portnum 37, MESHBEACON_CONFIG module type 16)
+   * landed on the meshtastic/firmware `develop` branch for 2.8 and is in no
+   * release yet. As with Traffic Management above, firmware that predates it
+   * decodes the set-config admin message but silently drops it, so a save would
+   * appear to succeed without sticking. Gate at 2.8.0 so only 2.8 builds
+   * advertise the module as editable.
+   */
+  supportsMeshBeacon(): boolean {
+    return this.firmwareVersionAtLeast(2, 8, 0);
   }
 
   /**
