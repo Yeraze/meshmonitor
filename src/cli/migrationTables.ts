@@ -68,6 +68,10 @@ export const TABLE_ORDER = [
   'mqtt_ok_to_mqtt_violations',
   // 3691 Phase 2: per-source ATAK contact state (composite PK uid+sourceId, no FKs)
   'atak_contacts',
+  // 3960 Phase 1a WP1: per-source Reticulum destinations + interfaces. Unique
+  // on (sourceId, destinationHash) / (sourceId, interfaceName), no FKs.
+  'reticulum_destinations',
+  'reticulum_interfaces',
   'backup_history',
   'custom_themes',
   'user_map_preferences',
@@ -134,6 +138,8 @@ export const SOURCE_SCOPED_TABLES = new Set([
   'atak_contacts',
   'auto_favorite_targets', 'auto_favorite_assignments',
   'dead_drop_messages',
+  // 3960 Phase 1a WP1: per-source Reticulum destinations + interfaces.
+  'reticulum_destinations', 'reticulum_interfaces',
 ]);
 
 // Tables to skip entirely during migration (incompatible schemas or non-essential)
