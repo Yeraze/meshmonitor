@@ -11,7 +11,7 @@ import { logger } from '../../utils/logger.js';
 export interface Source {
   id: string;
   name: string;
-  type: 'meshtastic_tcp' | 'mqtt_broker' | 'mqtt_bridge' | 'meshcore';
+  type: 'meshtastic_tcp' | 'mqtt_broker' | 'mqtt_bridge' | 'meshcore' | 'reticulum';
   config: Record<string, unknown>;
   enabled: boolean;
   /** User-controlled sort rank for the source list (issue #3338). Lower first. */

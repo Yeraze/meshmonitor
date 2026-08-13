@@ -7,7 +7,8 @@ import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { MeshtasticManager } from '../meshtasticManager.js';
 import { meshcoreConfigFromSource, ensureMeshCoreManagerStarted } from '../meshcoreConfig.js';
 import { MeshCoreManager } from '../meshcoreManager.js';
-import { isMeshCoreManager, isMeshtasticManager } from '../sourceManagerTypes.js';
+import { reticulumConfigFromSource, ensureReticulumManagerStarted } from '../reticulumConfig.js';
+import { isMeshCoreManager, isMeshtasticManager, isReticulumManager } from '../sourceManagerTypes.js';
 import { loRaCenterFrequencyMhz, REGION_SHORT_NAME } from '../../utils/loraFrequency.js';
 import { MqttBrokerManager, MAX_HOP_LIMIT, type MqttBrokerSourceConfig } from '../mqttBrokerManager.js';
 import { MqttBridgeManager, type MqttBridgeSourceConfig } from '../mqttBridgeManager.js';
@@ -606,8 +607,8 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
     if (!name || typeof name !== 'string') {
       return res.status(400).json({ error: 'name is required and must be a string' });
     }
-    if (!['meshtastic_tcp', 'mqtt_broker', 'mqtt_bridge', 'meshcore'].includes(type)) {
-      return res.status(400).json({ error: 'type must be meshtastic_tcp, mqtt_broker, mqtt_bridge, or meshcore' });
+    if (!['meshtastic_tcp', 'mqtt_broker', 'mqtt_bridge', 'meshcore', 'reticulum'].includes(type)) {
+      return res.status(400).json({ error: 'type must be meshtastic_tcp, mqtt_broker, mqtt_bridge, meshcore, or reticulum' });
     }
 
     // mqtt_bridge may optionally attach to a parent mqtt_broker. When
@@ -724,6 +725,17 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
       } catch (err) {
         logger.warn(`Could not start MeshCore manager for new source ${source.id}:`, err);
       }
+    } else if (source.enabled && source.type === 'reticulum' && cfgForStart?.autoConnect !== false) {
+      try {
+        const rtConfig = reticulumConfigFromSource(source);
+        if (rtConfig) {
+          await ensureReticulumManagerStarted(source, rtConfig);
+        } else {
+          logger.warn(`Reticulum source ${source.id} created with incomplete config`);
+        }
+      } catch (err) {
+        logger.warn(`Could not start Reticulum manager for new source ${source.id}:`, err);
+      }
     } else if (source.enabled && (source.type === 'mqtt_broker' || source.type === 'mqtt_bridge')) {
       try {
         const manager = buildMqttManagerForSource(
@@ -830,11 +842,12 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
       return res.status(404).json({ error: 'Source not found' });
     }
 
-    // Propagate name change to the live MeshCore manager so getStatus() stays
-    // fresh without requiring a restart (#3962 WP3b — open question 5).
+    // Propagate name change to the live MeshCore/Reticulum manager so
+    // getStatus() stays fresh without requiring a restart (#3962 WP3b — open
+    // question 5; extended to Reticulum in WP5).
     if (name !== undefined) {
       const liveMgr = sourceManagerRegistry.getManager(source.id);
-      if (liveMgr && isMeshCoreManager(liveMgr)) {
+      if (liveMgr && (isMeshCoreManager(liveMgr) || isReticulumManager(liveMgr))) {
         liveMgr.setSourceName(source.name);
       }
     }
@@ -879,6 +892,19 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
       } catch (err) {
         logger.warn(`Could not start MeshCore manager for source ${source.id}:`, err);
       }
+    } else if (!wasEnabled && isNowEnabled && source.type === 'reticulum' && newAutoConnect) {
+      // Newly enabled Reticulum source with autoConnect on — create-or-connect
+      // via the shared recipe (mirrors the meshcore branch above).
+      try {
+        const rtConfig = reticulumConfigFromSource(source);
+        if (rtConfig) {
+          await ensureReticulumManagerStarted(source, rtConfig);
+        } else {
+          logger.warn(`Reticulum source ${source.id} enabled with incomplete config`);
+        }
+      } catch (err) {
+        logger.warn(`Could not start Reticulum manager for source ${source.id}:`, err);
+      }
     } else if (wasEnabled && !isNowEnabled) {
       // Newly disabled: stop manager in the unified registry (no-op when not registered).
       await sourceManagerRegistry.removeManager(source.id);
@@ -889,6 +915,12 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
     } else if (wasEnabled && isNowEnabled && source.type === 'meshcore' && oldAutoConnect && !newAutoConnect) {
       // MeshCore autoConnect just turned off — remove the manager. The
       // source stays enabled so the user can manually reconnect.
+      await sourceManagerRegistry.removeManager(source.id);
+    } else if (wasEnabled && isNowEnabled && source.type === 'reticulum' && oldAutoConnect && !newAutoConnect) {
+      // Reticulum autoConnect just turned off — remove the manager. Unlike
+      // MeshCore's keep-registered semantics, Reticulum always removes on
+      // disconnect/autoConnect-off (build spec §7 risk 2). The source stays
+      // enabled so the user can manually reconnect.
       await sourceManagerRegistry.removeManager(source.id);
     } else if (wasEnabled && isNowEnabled && source.type === 'meshtastic_tcp' && !oldAutoConnect && newAutoConnect) {
       // autoConnect just turned on — start the manager if not already running.
@@ -920,6 +952,18 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
         }
       } catch (err) {
         logger.warn(`Could not start MeshCore manager for source ${source.id}:`, err);
+      }
+    } else if (wasEnabled && isNowEnabled && source.type === 'reticulum' && !oldAutoConnect && newAutoConnect) {
+      // Reticulum autoConnect just turned on — create-or-connect.
+      try {
+        const rtConfig = reticulumConfigFromSource(source);
+        if (rtConfig) {
+          await ensureReticulumManagerStarted(source, rtConfig);
+        } else {
+          logger.warn(`Reticulum source ${source.id} has incomplete config; not auto-connecting`);
+        }
+      } catch (err) {
+        logger.warn(`Could not start Reticulum manager for source ${source.id}:`, err);
       }
     } else if (wasEnabled && isNowEnabled && source.type === 'meshtastic_tcp' && config !== undefined) {
       // Still enabled, config possibly changed. Detect what changed and act.
@@ -1081,6 +1125,22 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
         } catch (err) {
           logger.warn(`Could not restart MeshCore manager for source ${source.id}:`, err);
         }
+      }
+    } else if (wasEnabled && isNowEnabled && source.type === 'reticulum' && newAutoConnect && config !== undefined) {
+      // Reticulum source config changed while enabled and autoConnect on. No
+      // observer-style hot-swap sub-feature exists in Phase 1a, so always do
+      // a full restart: remove the old manager and create-or-connect a fresh
+      // one with the updated config via the shared recipe.
+      try {
+        const rtConfig = reticulumConfigFromSource(source);
+        if (rtConfig) {
+          await sourceManagerRegistry.removeManager(source.id);
+          await ensureReticulumManagerStarted(source, rtConfig);
+        } else {
+          logger.warn(`Reticulum source ${source.id} updated to incomplete config`);
+        }
+      } catch (err) {
+        logger.warn(`Could not restart Reticulum manager for source ${source.id}:`, err);
       }
     }
 
@@ -1457,8 +1517,8 @@ router.post('/:id/connect', requirePermission('sources', 'write'), async (req: R
     if (!source.enabled) {
       return res.status(409).json({ error: 'Source is disabled; enable it first' });
     }
-    if (source.type !== 'meshtastic_tcp' && source.type !== 'meshcore') {
-      return res.status(400).json({ error: 'Manual connect is only supported for meshtastic_tcp and meshcore sources' });
+    if (source.type !== 'meshtastic_tcp' && source.type !== 'meshcore' && source.type !== 'reticulum') {
+      return res.status(400).json({ error: 'Manual connect is only supported for meshtastic_tcp, meshcore, and reticulum sources' });
     }
     if (source.type === 'meshcore') {
       const existingMgr = sourceManagerRegistry.getManager(source.id);
@@ -1479,6 +1539,22 @@ router.post('/:id/connect', requirePermission('sources', 'write'), async (req: R
         // Manager exists but is disconnected — reconnect with fresh config.
         await existingMc.connect(mcConfig);
       }
+      return res.json({ success: true });
+    }
+    if (source.type === 'reticulum') {
+      const existingMgr = sourceManagerRegistry.getManager(source.id);
+      const existingRt = existingMgr && isReticulumManager(existingMgr) ? existingMgr : undefined;
+      if (existingRt?.isConnected()) {
+        return res.json({ success: true, alreadyRunning: true });
+      }
+      const rtConfig = reticulumConfigFromSource(source);
+      if (!rtConfig) {
+        return res.status(400).json({ error: 'Reticulum source has incomplete config' });
+      }
+      // Shared create-or-reconnect recipe (build spec §3.5): creates+registers
+      // when no manager exists, reconnects in place when disconnected, no-ops
+      // when already connected.
+      await ensureReticulumManagerStarted(source, rtConfig);
       return res.json({ success: true });
     }
     if (sourceManagerRegistry.getManager(source.id)) {
@@ -1522,6 +1598,17 @@ router.post('/:id/disconnect', requirePermission('sources', 'write'), async (req
       // disconnect() stops the link, VN server, heartbeat and schedulers while
       // leaving the manager in place for a clean reconnect via /connect.
       await existingMc.disconnect();
+      return res.json({ success: true });
+    }
+    if (source.type === 'reticulum') {
+      // Unlike MeshCore's keep-registered semantics, a Reticulum source is
+      // REMOVED from the registry on disconnect (build spec §3.6/§7 risk 2):
+      // read routes (`/reticulum/*`) serve from the DB and tolerate an absent
+      // manager, so there is no "unaddressable source" concern here.
+      if (!sourceManagerRegistry.getManager(source.id)) {
+        return res.json({ success: true, alreadyStopped: true });
+      }
+      await sourceManagerRegistry.removeManager(source.id);
       return res.json({ success: true });
     }
     if (!sourceManagerRegistry.getManager(source.id)) {

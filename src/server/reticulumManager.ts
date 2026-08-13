@@ -16,13 +16,9 @@
  * `disconnect()`, `getLocalNodeInfo()` returning `null`, and no-op distance
  * schedulers (Reticulum destinations carry no position data until Phase 3).
  *
- * `sourceType`/`getStatus()` cast: `ISourceManager.sourceType` is typed as
- * `Source['type']`, and that union does not include `'reticulum'` yet —
- * widening it is WP5's job (build spec §3.3) and `src/db/repositories/
- * sources.ts` is off-limits for this WP. The cast below (`as unknown as
- * Source['type']`) is the documented, temporary workaround; WP5 deletes it
- * once the union is widened. `isReticulumManager` (sourceManagerTypes.ts)
- * needs the same treatment for its `===` comparison.
+ * `sourceType`/`getStatus()`: `ISourceManager.sourceType` is typed as
+ * `Source['type']`, which includes `'reticulum'` as of WP5 (build spec §3.3,
+ * `src/db/repositories/sources.ts`) — no cast needed.
  */
 
 import { EventEmitter } from 'events';
@@ -81,8 +77,7 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
 
   /** ISourceManager: source type discriminant — drives type guards in sourceManagerTypes.ts. */
   get sourceType(): Source['type'] {
-    // See the module-level doc comment: cast pending WP5's union widening.
-    return 'reticulum' as unknown as Source['type'];
+    return 'reticulum';
   }
 
   /**

@@ -45,16 +45,9 @@ export function isMeshtasticManager(m: ISourceManager): m is MeshtasticManager {
 /**
  * Narrows an ISourceManager to ReticulumManager.
  * Predicate is based on the sourceType discriminant — no instanceof, no import cycles.
- *
- * `Source['type']` does not include `'reticulum'` yet (union widening is
- * WP5's job, build spec §3.3 — `src/db/repositories/sources.ts` is
- * off-limits for WP4). Comparing `m.sourceType` directly against the string
- * literal `'reticulum'` would fail TS2367 ("no overlap") until that widening
- * lands, so the comparison goes through `string` here; WP5 can drop the cast
- * once the union includes `'reticulum'`.
  */
 export function isReticulumManager(m: ISourceManager): m is ReticulumManager {
-  return (m.sourceType as string) === 'reticulum';
+  return m.sourceType === 'reticulum';
 }
 
 /**
