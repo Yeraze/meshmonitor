@@ -1,0 +1,77 @@
+# Reticulum bridge sidecar overlay (opt-in, issue #3960).
+#
+# Adds `meshmonitor-rns-bridge`: a small Python sidecar that speaks the Reticulum
+# Network Stack (RNS) on one side and a JSON-over-WebSocket protocol to
+# MeshMonitor's Node backend on the other. It ships as its OWN image, separate
+# from the main MeshMonitor image -- RNS/LXMF carry the non-OSI Reticulum License
+# and must never be bundled into the main `node:24` image. See `bridge/NOTICE`
+# and `bridge/README.md` for the full disclosure and reference.
+#
+# Enable with:
+#   docker compose -f docker-compose.yml -f docker-compose.reticulum.yml up -d
+#
+# Then add a Reticulum source in MeshMonitor (Dashboard -> Sources) with its
+# bridge URL set to ws://127.0.0.1:8765 and the same token as BRIDGE_TOKEN below.
+#
+# NOTE ON ENV VAR NAMES: earlier design docs sketched `MM_RNS_*` names for this
+# overlay. The bridge that actually shipped (bridge/meshmonitor_rns_bridge/config.py)
+# reads `BRIDGE_*`/`RNS_*` instead -- this file matches the real implementation.
+# See docs/deployment/RETICULUM_BRIDGE_GUIDE.md and bridge/README.md for the
+# authoritative variable reference and rpc_key troubleshooting.
+#
+# Two connection modes:
+#
+#   attach (default below) -- the bridge attaches to a `rnsd`/shared Reticulum
+#     instance YOU already run, as a client. Needs `network_mode: host` because
+#     the shared-instance RPC socket binds to 127.0.0.1, plus a read-only mount
+#     of your RNS config dir (usually ~/.reticulum). Safe by design: client
+#     instances never open interfaces themselves, so this cannot double-open a
+#     serial port or otherwise disturb your running rnsd.
+#
+#   tcp_peer -- the bridge runs its own standalone RNS instance and dials out to
+#     one or more TCPClientInterface peers. No host networking, no config-dir
+#     mount. To switch:
+#       1. Delete the `network_mode: host` line and the `${HOME}/.reticulum`
+#          volume mount below.
+#       2. Uncomment the `ports` block below (publish 8765 instead of relying
+#          on host networking).
+#       3. Change `RNS_MODE` to `tcp_peer`, remove `RNS_CONFIG_DIR`, and set
+#          `RNS_TCP_PEERS` to a comma-separated `host:port[,host:port...]`
+#          list, e.g. `amsterdam.connect.reticulum.network:4965`.
+#
+# rpc_key troubleshooting (attach mode): if MeshMonitor's Info view shows the
+# bridge attached but interface/destination data never appears, this is almost
+# always an rpc_key mismatch between the bridge and your rnsd. See the
+# "Troubleshooting rpc_key" section of bridge/README.md and
+# docs/deployment/RETICULUM_BRIDGE_GUIDE.md -- sharing this same config dir (as
+# done below) avoids the problem entirely; it only bites when the bridge is
+# pointed at a *separate* config dir from rnsd's.
+
+services:
+  meshmonitor-rns-bridge:
+    image: ghcr.io/yeraze/meshmonitor-rns-bridge:latest
+    container_name: meshmonitor-rns-bridge
+    restart: unless-stopped
+
+    # --- attach mode (default) ---
+    network_mode: host
+    volumes:
+      - ${HOME}/.reticulum:/rns:ro
+    # --- tcp_peer mode: comment out network_mode + volumes above, then
+    #     uncomment this instead ---
+    # ports:
+    #   - "8765:8765"
+
+    environment:
+      RNS_MODE: attach
+      RNS_CONFIG_DIR: /rns
+      BRIDGE_HOST: 127.0.0.1
+      BRIDGE_PORT: "8765"
+      # Required -- the bridge has no default and refuses to start without it.
+      # Set BRIDGE_TOKEN in your shell or .env file; the Reticulum source you
+      # create in MeshMonitor must use the exact same value.
+      BRIDGE_TOKEN: ${BRIDGE_TOKEN:?set a token, e.g. BRIDGE_TOKEN=changeme in your .env file}
+      BRIDGE_LOG_LEVEL: info
+      # tcp_peer mode: delete RNS_CONFIG_DIR above and add instead:
+      #   RNS_MODE: tcp_peer
+      #   RNS_TCP_PEERS: amsterdam.connect.reticulum.network:4965

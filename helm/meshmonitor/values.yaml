@@ -155,3 +155,38 @@ securityContext:
       - ALL
   seccompProfile:
     type: RuntimeDefault
+
+# Reticulum (RNS) bridge sidecar (issue #3960). Opt-in, disabled by default.
+# When enabled, adds a SECOND container to the pod running meshmonitor-rns-bridge
+# -- its own image, entirely separate from the main image, since RNS/LXMF carry
+# the non-OSI Reticulum License and must never ship in the main node:24 image
+# (see bridge/NOTICE). See docs/deployment/RETICULUM_BRIDGE_GUIDE.md for the
+# full walkthrough, both modes, and rpc_key troubleshooting.
+reticulum:
+  enabled: false
+  image: "ghcr.io/yeraze/meshmonitor-rns-bridge:latest"
+
+  # attach | tcp_peer. attach (the only mode this chart wires up hostNetwork/
+  # configDir for) needs hostPath access to your RNS config dir and pod-level
+  # host networking, since the shared-instance RPC socket the bridge attaches
+  # to binds to 127.0.0.1. tcp_peer mode does not use configDir or
+  # hostNetwork -- configure its peers via extraEnv (RNS_TCP_PEERS) on your
+  # own values overlay.
+  mode: "attach"
+
+  # Host path to the RNS config dir (attach mode only), hostPath-mounted
+  # read-only into the bridge container at /rns. Requires the node running the
+  # pod to actually have this path (e.g. a DaemonSet-style single-node
+  # deployment, or a nodeSelector pinning the pod to the host running rnsd).
+  configDir: "/root/.reticulum"
+
+  # REQUIRED when enabled -- shared secret the bridge checks on its hello
+  # handshake (BRIDGE_TOKEN). Set directly here for a quick start, or prefer a
+  # Secret + extraEnv valueFrom in your own values overlay for anything beyond
+  # local testing; this chart does not manage a Secret for it.
+  token: ""
+
+  # The bridge's own WebSocket listen address (host:port), split into
+  # BRIDGE_HOST/BRIDGE_PORT for the container env -- those are the names the
+  # bridge actually reads (bridge/meshmonitor_rns_bridge/config.py).
+  bind: "127.0.0.1:8765"

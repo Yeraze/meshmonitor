@@ -21,6 +21,14 @@ MeshMonitor `package.json` or `node:24` image.
   more `TCPClientInterface` peers you specify. No local `rnsd`/config dir needed, but you lose
   the interface-stats/rssi data that only a shared instance's local interfaces expose.
 
+For deploying this sidecar alongside MeshMonitor with Docker Compose (see
+`docker-compose.reticulum.yml`) or Kubernetes/Helm (see `helm/meshmonitor/values.yaml`'s
+`reticulum` block), see the
+[Reticulum Bridge deployment guide](https://meshmonitor.org/deployment/RETICULUM_BRIDGE_GUIDE)
+(`docs/deployment/RETICULUM_BRIDGE_GUIDE.md`). The rest of this README documents running the
+bridge directly with `docker run`/`docker build`, and is the authoritative reference for its
+environment variables and failure codes that the deployment guide links back to.
+
 ## Running it
 
 Build and run directly with Docker:
