@@ -23,7 +23,8 @@ export type TriggerType =
   | 'trigger.system'
   | 'trigger.geofence'
   | 'trigger.becameMobile'
-  | 'trigger.leftHome';
+  | 'trigger.leftHome'
+  | 'trigger.meshBeacon';
 
 export type ConditionType =
   | 'condition.always'
@@ -69,6 +70,7 @@ export const TRIGGER_TYPES: readonly TriggerType[] = [
   'trigger.geofence',
   'trigger.becameMobile',
   'trigger.leftHome',
+  'trigger.meshBeacon',
 ];
 
 export const CONDITION_TYPES: readonly ConditionType[] = [

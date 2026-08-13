@@ -302,6 +302,38 @@ export function buildTelemetryContext(
   };
 }
 
+/**
+ * Build the trigger context for a received MeshBeacon (firmware 2.8+, #3854).
+ * Subject node = the beaconing node. The offer fields describe a mesh the
+ * beacon advertises; they are absent when the beacon carries text only.
+ */
+export function buildMeshBeaconContext(
+  nodeNum: number,
+  message: string,
+  offer: { channelName?: string; region?: number; preset?: number },
+  sourceId: string | null,
+  timestamp: number,
+): TriggerContext {
+  return {
+    triggerType: 'trigger.meshBeacon',
+    sourceId,
+    subjectNodeNum: Number(nodeNum),
+    timestamp,
+    fields: {
+      nodeNum: Number(nodeNum),
+      message,
+      offerChannelName: offer.channelName,
+      offerRegion: offer.region,
+      offerPreset: offer.preset,
+      // Convenience flag so a rule can select "beacons advertising a network"
+      // without string-comparing an optional field.
+      hasOffer: Boolean(offer.channelName || offer.region || offer.preset !== undefined),
+      sourceId,
+      timestamp,
+    },
+  };
+}
+
 /** Build the trigger context for a geofence crossing. Subject node = the moving node. */
 export function buildGeofenceContext(
   nodeNum: number,

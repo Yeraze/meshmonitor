@@ -34,4 +34,5 @@ export const SUBJECT_NODE_TRIGGER_TYPES = [
   'trigger.geofence',
   'trigger.becameMobile',
   'trigger.leftHome',
+  'trigger.meshBeacon',
 ] as const;

@@ -6051,7 +6051,22 @@ class MeshtasticManager implements ISourceManager {
             // dedicated view/message type is an open design question on #3854,
             // deferred until real-world 2.8 beacon traffic exists to learn from.
             const beacon = processedPayload as MeshBeaconPayload;
-            logger.debug(`📡 MeshBeacon from ${meshPacket.from}: "${typeof beacon?.message === 'string' ? beacon.message : ''}" (offerChannel=${beacon?.offerChannel?.name ?? 'none'})`);
+            const beaconText = typeof beacon?.message === 'string' ? beacon.message : '';
+            const offerChannelName = beacon?.offerChannel?.name ?? beacon?.offer_channel?.name;
+            const offerRegion = beacon?.offerRegion ?? beacon?.offer_region;
+            const offerPreset = beacon?.offerPreset ?? beacon?.offer_preset;
+            logger.debug(`📡 MeshBeacon from ${meshPacket.from}: "${beaconText}" (offerChannel=${offerChannelName ?? 'none'})`);
+
+            // Feed the Automation Engine so `trigger.meshBeacon` rules can fire.
+            // Beacons are not stored as messages, so this event is the only way
+            // a rule can see one.
+            dataEventEmitter.emitMeshBeaconReceived({
+              nodeNum: meshPacket.from ? Number(meshPacket.from) : 0,
+              message: beaconText,
+              offerChannelName,
+              offerRegion,
+              offerPreset,
+            }, this.sourceId);
             break;
           }
           default:

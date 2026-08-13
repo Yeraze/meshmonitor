@@ -46,6 +46,10 @@ function summarizeEvent(triggerType: string, event: Record<string, unknown>): st
     if (typeof event.text === 'string') bits.push(`"${event.text}"`);
   } else if (triggerType === 'trigger.telemetry') {
     bits.push(`${event.telemetryType ?? '?'} = ${event.value ?? '?'}`);
+  } else if (triggerType === 'trigger.meshBeacon') {
+    bits.push(`beacon · node ${event.nodeNum ?? '?'}`);
+    if (typeof event.message === 'string' && event.message) bits.push(`"${event.message}"`);
+    if (event.offerChannelName) bits.push(`offers ${event.offerChannelName}`);
   } else if (triggerType === 'trigger.geofence') {
     bits.push(`${event.event ?? '?'} · node ${event.nodeNum ?? '?'}`);
   } else if (triggerType === 'trigger.becameMobile') {
