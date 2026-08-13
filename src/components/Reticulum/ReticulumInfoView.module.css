@@ -1,0 +1,90 @@
+/*
+ * ReticulumInfoView layout — a small grid of status/health cards.
+ * Mirrors the card/chip/stat conventions used by ReticulumInterfacesView
+ * (same epic, WP4), scoped as a CSS module (CLAUDE.md — new components style
+ * with CSS modules, not the frozen global sheets).
+ */
+
+.view {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.5rem;
+}
+
+.empty {
+  padding: 1.5rem;
+  color: var(--color-text-subtle);
+  font-size: 0.95rem;
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-hover);
+  border-radius: var(--radius-md);
+  padding: 1rem 1.25rem;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.cardTitle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-full);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.chipOnline {
+  background: color-mix(in srgb, var(--color-success) 20%, transparent);
+  color: var(--color-success);
+}
+
+.chipOffline {
+  background: var(--color-surface-active);
+  color: var(--color-text-faint);
+}
+
+.statGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem 1.5rem;
+  margin: 0;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.stat dt {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--color-text-subtle);
+  font-size: 0.8rem;
+}
+
+.stat dd {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 1rem;
+  font-weight: 600;
+}
