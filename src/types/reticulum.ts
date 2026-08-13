@@ -87,3 +87,41 @@ export interface ReticulumInterfaceRow {
 
 /** Sub-toolbar view identifiers for `ReticulumPage`/`ReticulumSubToolbar` (WP2). */
 export type ReticulumView = 'destinations' | 'interfaces' | 'info' | 'settings';
+
+/** LXMF message lifecycle state (Reticulum epic #3960, Phase 2 WP2). */
+export type ReticulumMessageState = 'draft' | 'outbound' | 'sending' | 'sent' | 'delivered' | 'failed';
+
+/** LXMF delivery method (Reticulum epic #3960, Phase 2 WP2). */
+export type ReticulumMessageMethod = 'opportunistic' | 'direct' | 'propagated';
+
+/**
+ * One row from the (Phase 3+) `GET /api/sources/:id/reticulum/messages*`
+ * endpoints (mirrors the server's `ReticulumMessageRow`,
+ * `src/db/repositories/reticulum.ts`). `id` is the composite key
+ * `${sourceId}_${lxmHashHex}` (see the `messages.id` row-id convention).
+ *
+ * Phase 2 scope: UTF-8 text `content`/`title` + attachment **metadata** in
+ * `fields` (name/type/size/ref) — raw blob transfer over the WS is deferred.
+ */
+export interface ReticulumMessageRow {
+  id: string;
+  sourceId: string;
+  fromHash: string;
+  toHash: string;
+  title: string | null;
+  content: string | null;
+  timestamp: number;
+  receivedAt: number | null;
+  createdAt: number;
+  state: ReticulumMessageState;
+  method: ReticulumMessageMethod | null;
+  signatureValidated: boolean;
+  ratcheted: boolean;
+  /** JSON string — replies/reactions/thread markers + attachment metadata. */
+  fields: string | null;
+  replyToHash: string | null;
+  threadHash: string | null;
+  rssi: number | null;
+  snr: number | null;
+  quality: number | null;
+}

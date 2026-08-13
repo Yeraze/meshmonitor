@@ -157,6 +157,7 @@ import { migration as automationHomeAnchorsMigration, runMigration139Postgres, r
 import { migration as xeddsaSignedMessagesMigration, runMigration140Postgres, runMigration140Mysql } from '../server/migrations/140_add_xeddsa_signed_to_messages.js';
 import { migration as createReticulumDestinationsMigration, runMigration141Postgres, runMigration141Mysql } from '../server/migrations/141_create_reticulum_destinations.js';
 import { migration as createReticulumInterfacesMigration, runMigration142Postgres, runMigration142Mysql } from '../server/migrations/142_create_reticulum_interfaces.js';
+import { migration as createReticulumMessagesMigration, runMigration143Postgres, runMigration143Mysql } from '../server/migrations/143_create_reticulum_messages.js';
 
 // ============================================================================
 // Registry
@@ -2268,4 +2269,18 @@ registry.register({
   sqlite: (db) => createReticulumInterfacesMigration.up(db),
   postgres: (client) => runMigration142Postgres(client),
   mysql: (pool) => runMigration142Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 143: create `reticulum_messages` (Reticulum epic #3960,
+// Phase 2 WP2). Row per LXMF message (inbound/outbound). PER-SOURCE.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 143,
+  name: 'create_reticulum_messages',
+  settingsKey: 'migration_143_create_reticulum_messages',
+  sqlite: (db) => createReticulumMessagesMigration.up(db),
+  postgres: (client) => runMigration143Postgres(client),
+  mysql: (pool) => runMigration143Mysql(pool),
 });
