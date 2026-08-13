@@ -118,6 +118,13 @@ this is almost always the cause.
 | `PROTOCOL_VERSION_MISMATCH` | Node and bridge disagree on wire protocol version | Update one side; both must speak the same `PROTOCOL_VERSION` |
 | `AUTH_FAILED` | `hello.token` didn't match `BRIDGE_TOKEN` | Check the token configured on the Node source matches the bridge's env var |
 
+One more code exists in the shared contract (`protocol.py`'s `FAILURE_CODES`) but is **never
+emitted by the bridge itself**: `BRIDGE_UNREACHABLE` is raised Node-side, locally, when the
+WebSocket connection to `bridgeUrl` never opens at all (container not running, wrong host/port,
+firewalled). If you see it, the bridge process/container is the thing to check -- there is
+nothing to look for in the bridge's own logs, because this code means the bridge was never
+reached in the first place.
+
 ## Why the bridge exits on repeated RNS failures
 
 `RNS.Reticulum` is a process-wide singleton with no supported way to detach and reattach within
