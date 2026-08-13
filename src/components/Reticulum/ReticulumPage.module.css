@@ -1,0 +1,131 @@
+/*
+ * ReticulumPage layout — status bar, sub-toolbar (left) + content (right).
+ * Mirrors src/components/MeshCore/MeshCorePage.css, scoped as a CSS module
+ * (CLAUDE.md — new components style with CSS modules, not the frozen
+ * global sheets).
+ */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  /* Fill the parent flex slot, same rationale as .meshcore-page. */
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--color-bg);
+}
+
+/* Status strip under the AppHeader */
+.statusBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-surface-hover);
+  flex-shrink: 0;
+}
+
+.statusBarLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.statusBarRight {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.statusBarRight button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-accent-alt);
+  color: var(--color-accent-text);
+  border: none;
+  padding: 0.4rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.statusBarRight button:hover { background: color-mix(in srgb, var(--color-accent-alt) 85%, var(--color-text)); }
+.statusBarRight button:disabled {
+  background: var(--color-surface-active);
+  color: var(--color-text-faint);
+  cursor: not-allowed;
+}
+
+.statusDot {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-inactive);
+  flex-shrink: 0;
+}
+
+.statusDotConnected {
+  background: var(--color-success);
+  box-shadow: 0 0 8px var(--color-success);
+}
+
+.statusText {
+  color: var(--color-text);
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+
+.statusMeta {
+  color: var(--color-text-subtle);
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Error banner */
+.errorBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+  background: var(--color-error);
+  color: var(--color-accent-text);
+}
+
+.errorBar button {
+  background: transparent;
+  border: 1px solid var(--color-accent-text);
+  color: var(--color-accent-text);
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+/* Body row: sub-toolbar + content */
+.pageBody {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+}
+
+/* WP3/4/5 view stubs render here; real views take over this padding. */
+.placeholder {
+  padding: 1.5rem;
+  color: var(--color-text-subtle);
+  font-size: 0.95rem;
+}

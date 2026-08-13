@@ -14,7 +14,7 @@ vi.mock('../../utils/deviceRole', () => ({
 }));
 
 import api from '../../services/api';
-import { meshcoreDashboardSource, meshtasticDashboardSource } from './dataSources';
+import { meshcoreDashboardSource, meshtasticDashboardSource, reticulumDashboardSource } from './dataSources';
 
 const mockedApiGet = api.get as unknown as ReturnType<typeof vi.fn>;
 
@@ -119,6 +119,95 @@ describe('meshcoreDashboardSource', () => {
     expect(meshcoreDashboardSource.solarDefaultTypes.has('mc_temperature_ch1')).toBe(true);
     expect(meshcoreDashboardSource.solarDefaultTypes.has('mc_humidity_ch2')).toBe(true);
     expect(meshcoreDashboardSource.solarDefaultTypes.has('mc_status_uptime_secs')).toBe(false);
+  });
+});
+
+describe('reticulumDashboardSource', () => {
+  beforeEach(() => {
+    mockedApiGet.mockReset();
+  });
+
+  it('fetches per-source Reticulum interfaces and adapts them into NodeInfo', async () => {
+    mockedApiGet.mockResolvedValueOnce({
+      data: [
+        {
+          interfaceName: 'TCPServer',
+          interfaceType: 'TCPServerInterface',
+          mode: 'full',
+          status: 'online',
+          online: true,
+          bitrate: 115200,
+          txBytes: 1024,
+          rxBytes: 2048,
+          lastSeenAt: 1_700_000_000,
+        },
+      ],
+    });
+
+    const nodes = await reticulumDashboardSource.fetchNodes('src-1');
+
+    expect(mockedApiGet).toHaveBeenCalledWith('/api/sources/src-1/reticulum/interfaces');
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0]).toMatchObject({
+      nodeNum: 0,
+      user: {
+        id: 'rns:iface:TCPServer',
+        longName: 'TCPServer',
+        shortName: 'TCPS',
+      },
+      lastHeard: 1_700_000_000,
+    });
+  });
+
+  it('keys the synthetic node id as rns:iface:<interfaceName> — must match reticulumInterfaceNodeId()', async () => {
+    mockedApiGet.mockResolvedValueOnce({
+      data: [{ interfaceName: 'RNode_1', status: 'online', online: true, txBytes: 0, rxBytes: 0, lastSeenAt: 0 }],
+    });
+    const nodes = await reticulumDashboardSource.fetchNodes('src-1');
+    expect(nodes[0].user?.id).toBe('rns:iface:RNode_1');
+  });
+
+  it('returns an empty array when no sourceId is provided', async () => {
+    const nodes = await reticulumDashboardSource.fetchNodes(null);
+    expect(nodes).toEqual([]);
+    expect(mockedApiGet).not.toHaveBeenCalled();
+  });
+
+  it('tolerates an unwrapped array response (no { data } envelope)', async () => {
+    mockedApiGet.mockResolvedValueOnce([
+      { interfaceName: 'Iface1', status: 'online', online: true, txBytes: 0, rxBytes: 0, lastSeenAt: 0 },
+    ]);
+    const nodes = await reticulumDashboardSource.fetchNodes('src-1');
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].user?.id).toBe('rns:iface:Iface1');
+  });
+
+  it('keys nodes by interface id (via user.id)', () => {
+    const node = { nodeNum: 0, user: { id: 'rns:iface:Foo' } };
+    expect(reticulumDashboardSource.nodeKey(node)).toBe('rns:iface:Foo');
+  });
+
+  it('uses longName for display, falling back to shortName then the fallback id', () => {
+    expect(reticulumDashboardSource.getDisplayName(
+      { nodeNum: 0, user: { id: 'rns:iface:X', longName: 'Full Name', shortName: 'FN' } },
+      'rns:iface:X',
+    )).toBe('Full Name');
+
+    expect(reticulumDashboardSource.getDisplayName(undefined, 'fallback-id')).toBe('fallback-id');
+  });
+
+  it('has no role concept this phase (R3 no-op)', () => {
+    expect(reticulumDashboardSource.getRoleName({ nodeNum: 0, user: { id: 'a' } })).toBeNull();
+    expect(reticulumDashboardSource.getRoleName(undefined)).toBeNull();
+  });
+
+  it('hides custom widgets and the role filter (R1/R3 descope)', () => {
+    expect(reticulumDashboardSource.showCustomWidgets).toBe(false);
+    expect(reticulumDashboardSource.showRoleFilter).toBe(false);
+  });
+
+  it('has no solar-default telemetry types this phase (R1 descope)', () => {
+    expect(reticulumDashboardSource.solarDefaultTypes.size).toBe(0);
   });
 });
 

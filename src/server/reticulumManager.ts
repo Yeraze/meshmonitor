@@ -33,6 +33,8 @@ import type {
   AnnounceMessage,
   InterfaceStatsEntry,
   InterfaceStatsMessage,
+  StatusMessage,
+  WelcomeMessage,
 } from './reticulumProtocol.js';
 import {
   reticulumInterfaceNodeId,
@@ -64,6 +66,16 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
    * against, so it seeds the baseline without writing a row.
    */
   private readonly lastInterfaceSample = new Map<string, InterfaceSample>();
+
+  /**
+   * Last-seen bridge/RNS versions (#3960 Phase 1b WP-B). `bridgeVersion` only
+   * ever arrives on the `welcome` handshake message; `rnsVersion` arrives on
+   * both `welcome` and the bridge's periodic `status` push (the latter wins
+   * on update since it's the fresher read of the same value). Both stay
+   * `null` until the first successful connect.
+   */
+  private bridgeVersion: string | null = null;
+  private rnsVersion: string | null = null;
 
   constructor(sourceId: string, sourceName?: string) {
     super();
@@ -170,6 +182,16 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
     return this.client?.isConnected() ?? false;
   }
 
+  /** Last-seen bridge sidecar version from the `welcome` handshake (WP-B). Null until first connect. */
+  getBridgeVersion(): string | null {
+    return this.bridgeVersion;
+  }
+
+  /** Last-seen RNS library version from `welcome`/`status` (WP-B). Null until first connect. */
+  getRnsVersion(): string | null {
+    return this.rnsVersion;
+  }
+
   /**
    * ISourceManager: status snapshot. `connected` reflects the bridge
    * client's own state (`ready` == connected) rather than a
@@ -212,6 +234,9 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
   // --------------------------------------------------------------------
 
   private wireClientEvents(client: ReticulumBridgeClient): void {
+    client.on('welcome', (msg: WelcomeMessage) => this.handleWelcome(msg));
+    client.on('status', (msg: StatusMessage) => this.handleStatus(msg));
+
     client.on('announce', (msg: AnnounceMessage) => {
       this.handleAnnounce(msg).catch((err: unknown) => {
         logger.warn(
@@ -236,6 +261,31 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
       logger.warn(`[Reticulum:${this.sourceId}] bridge client error: ${err.message}`);
       this.emit('error', err);
     });
+  }
+
+  /**
+   * `welcome` handshake -> cache the bridge sidecar's own version plus the
+   * RNS library version it's running (#3960 Phase 1b WP-B). Always
+   * overwrites both — `welcome` is sent exactly once per connection, right
+   * after the socket opens.
+   */
+  private handleWelcome(msg: WelcomeMessage): void {
+    this.bridgeVersion = msg.bridgeVersion;
+    this.rnsVersion = msg.rnsVersion;
+  }
+
+  /**
+   * `status` push -> refresh the cached RNS version, if present (WP-B).
+   * `StatusMessage.rnsVersion` is optional (absent on the health-monitor's
+   * failure broadcast, `pollers.py on_error` — see reticulumProtocol.ts), so
+   * a status push with no version leaves the last-known value untouched
+   * rather than clobbering it with null/undefined. `bridgeVersion` is not
+   * carried on `status`, only on `welcome`.
+   */
+  private handleStatus(msg: StatusMessage): void {
+    if (msg.rnsVersion) {
+      this.rnsVersion = msg.rnsVersion;
+    }
   }
 
   /** `announce` -> `reticulum_destinations` upsert (build spec §3.5/§4.4). */

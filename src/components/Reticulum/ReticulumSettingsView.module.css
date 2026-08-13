@@ -1,0 +1,58 @@
+/*
+ * ReticulumSettingsView layout — a single settings card.
+ * Scoped as a CSS module (CLAUDE.md — new components style with CSS
+ * modules, not the frozen global sheets).
+ */
+
+.view {
+  padding: 1.5rem;
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-hover);
+  border-radius: var(--radius-md);
+  padding: 1rem 1.25rem;
+  max-width: 480px;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 1rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.field label {
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.description {
+  margin: 0;
+  color: var(--color-text-subtle);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.input {
+  width: 140px;
+  padding: 0.4rem 0.6rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-surface-active);
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
