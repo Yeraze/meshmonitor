@@ -1,0 +1,6 @@
+# Test-only dependencies, layered on top of requirements.txt. Not installed in the
+# runtime Docker image -- CI (WP7) installs both files; the Dockerfile installs only
+# requirements.txt.
+-r requirements.txt
+pytest>=8
+pytest-timeout>=2

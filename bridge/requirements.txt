@@ -1,0 +1,11 @@
+# Pinned per WP0 spike evidence (docs/internal/dev-notes/RETICULUM_WP0_SPIKE_EVIDENCE.md):
+# rns==1.4.2 matches the version the design docs were written against, no drift found.
+# cryptography (rns's only compiled dependency, via cffi) ships musllinux_1_2 wheels for
+# this version, so `pip install -r requirements.txt` on python:3.12-alpine resolves
+# entirely from prebuilt wheels -- no compiler needed at build time (spike §2).
+rns==1.4.2
+
+# websockets.sync.server (threaded, no asyncio) requires >=13.
+websockets>=13
+
+# lxmf is deliberately NOT a dependency yet -- Phase 2 (LXMF messaging) adds it.
