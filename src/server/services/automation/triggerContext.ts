@@ -12,6 +12,7 @@ import type { TriggerType } from '../../../types/automation.js';
 import { compileUserRegex } from '../../../utils/safeRegex.js';
 import { hopCountEmoji, hopOrMqttEmoji } from '../../../utils/hopEmoji.js';
 import { autoAckIsZeroHop } from '../../utils/autoAckDecision.js';
+import { REPLY_CONTEXT_TAPBACK, REPLY_CONTEXT_REPLY } from '../../../utils/replyContext.js';
 
 /** Meshtastic broadcast address (0xFFFFFFFF); also defined inline in the manager. */
 export const BROADCAST_ADDR = 0xffffffff;
@@ -98,6 +99,17 @@ export function buildMessageContext(
   const channelName = isDM ? undefined : (labels?.channelName ?? undefined);
   const senderLabel = fromName || channelName || fromId;
   const hops = deriveHops(msg);
+  // #4697: a tapback (msg.emoji set — text IS the emoji glyph) or a threaded
+  // reply (msg.replyId set, no emoji) reads as an ordinary standalone message
+  // once relayed to a protocol with no reply/thread concept of its own (the
+  // MT→MC bridge template, `bridge.ts`). MeshCore's send API has no reply-id
+  // field to preserve real threading (`meshActionDeps.ts`), so this is the
+  // best available signal: a short text prefix marking the message as a
+  // reaction/reply rather than fresh chat. Empty string (not undefined) so it
+  // always renders, matching the other always-present derived fields below.
+  const isTapback = msg.emoji != null && Number(msg.emoji) > 0;
+  const isReply = !isTapback && msg.replyId != null;
+  const replyContext = isTapback ? REPLY_CONTEXT_TAPBACK : isReply ? REPLY_CONTEXT_REPLY : '';
   const fields: Record<string, unknown> = {
     from: Number(msg.fromNodeNum),
     fromId: msg.fromNodeId,
@@ -144,6 +156,7 @@ export function buildMessageContext(
     wantAck: msg.wantAck,
     replyId: msg.replyId,
     emoji: msg.emoji,
+    replyContext,
     snr: msg.rxSnr,
     rssi: msg.rxRssi,
     viaMqtt: msg.viaMqtt,

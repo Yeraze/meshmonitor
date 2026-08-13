@@ -135,6 +135,17 @@ describe('bridgeTemplate', () => {
     }
   });
 
+  // #4697: a Meshtastic tapback/reply relayed to MeshCore (which has no
+  // reply-id field to preserve real threading) previously showed up as an
+  // indistinguishable standalone message. `replyContext` marks it instead.
+  it('send text includes the replyContext token, ahead of trigger.text', () => {
+    for (const a of buildPair(FULL_PARAMS)) {
+      const sendNode = findByType(a.config, 'action.sendMessage')[0];
+      const text = String((sendNode.params as any).text);
+      expect(text).toContain('{{ trigger.replyContext }}{{ trigger.text }}');
+    }
+  });
+
   it('never emits a portnum trigger param on either direction (would silently go Meshtastic-only)', () => {
     for (const a of buildPair(FULL_PARAMS)) {
       expect(node(a.config, 't').params).not.toHaveProperty('portnum');
