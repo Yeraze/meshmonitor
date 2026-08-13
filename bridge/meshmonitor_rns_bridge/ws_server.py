@@ -10,6 +10,7 @@ announce/poller thread (which calls `manager.broadcast()`) never blocks on socke
 
 from __future__ import annotations
 
+import hmac
 import logging
 import queue
 import threading
@@ -27,6 +28,18 @@ logger = logging.getLogger("meshmonitor_rns_bridge.ws_server")
 
 HELLO_TIMEOUT_S = 10.0
 WRITER_POLL_S = 1.0
+
+
+def _tokens_match(provided: object, expected: str) -> bool:
+    """Constant-time token comparison (security review finding: the bridge binds
+    0.0.0.0 by default, so it's reachable beyond loopback in the container
+    deployment -- a plain `==` on the shared-secret token is vulnerable to a
+    same-network timing attack). `provided` is untrusted client input straight out of
+    a decoded JSON envelope, so it may not even be a string (missing/malformed hello);
+    that case is still rejected, same as the old `!=` behavior."""
+    if not isinstance(provided, str):
+        return False
+    return hmac.compare_digest(provided.encode("utf-8"), expected.encode("utf-8"))
 
 
 def _safe_send(websocket, env: dict) -> bool:
@@ -117,7 +130,7 @@ def _handle_connection(websocket, manager: RNSManager, cfg, bridge_version: str)
         )
         return
 
-    if hello.get("token") != cfg.token:
+    if not _tokens_match(hello.get("token"), cfg.token):
         _safe_send(websocket, protocol.error_message(protocol.AUTH_FAILED, "invalid token"))
         return
 
