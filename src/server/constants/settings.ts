@@ -328,6 +328,11 @@ export const VALID_SETTINGS_KEYS = [
   // Default OFF. When enabled, streams CoT <event> XML on cotFeedPort.
   'cotFeedEnabled',
   'cotFeedPort',
+  // Reticulum epic #3960, Phase 1a WP1: retention cap for `reticulum_destinations`
+  // — a busy mesh can push thousands of announced destinations. Default 2000;
+  // ReticulumRepository.upsertDestination prunes oldest-by-lastSeen beyond the
+  // cap, skipping favorites (attach spec §11 risk 4).
+  'reticulum_destinations_max',
 ] as const;
 
 export type ValidSettingKey = typeof VALID_SETTINGS_KEYS[number];
