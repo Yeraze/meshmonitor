@@ -32,6 +32,7 @@ describe('module config type allow-list', () => {
       'ambientlighting',
       'statusmessage',
       'trafficmanagement',
+      'meshbeacon',
     ];
     for (const t of expected) {
       expect(isValidModuleConfigType(t)).toBe(true);

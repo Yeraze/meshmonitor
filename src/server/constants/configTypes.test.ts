@@ -38,6 +38,7 @@ describe('config type registry', () => {
     paxcounter: { type: 12, isModule: true, field: 'paxcounter' },
     statusmessage: { type: 13, isModule: true, field: 'statusmessage' },
     trafficmanagement: { type: 14, isModule: true, field: 'trafficManagement' },
+    meshbeacon: { type: 16, isModule: true, field: 'meshBeacon' },
   };
 
   it('matches the known admin protocol enum/field table exactly', () => {

@@ -147,6 +147,27 @@ async function handleEvent(event: DataEvent): Promise<void> {
       break;
     }
 
+    case 'meshbeacon:received': {
+      const data = event.data as {
+        nodeNum: number;
+        message: string;
+        offerChannelName?: string;
+        offerRegion?: number;
+        offerPreset?: number;
+      };
+      await e.onMeshBeacon(
+        data.nodeNum,
+        data.message ?? '',
+        {
+          channelName: data.offerChannelName,
+          region: data.offerRegion,
+          preset: data.offerPreset,
+        },
+        sourceId,
+      );
+      break;
+    }
+
     case 'connection:status': {
       const data = event.data as { connected: boolean; nodeNum?: number; reason?: string };
       await e.onSystem(

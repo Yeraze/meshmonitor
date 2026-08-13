@@ -17,7 +17,7 @@ import { getHardwareModelName, getRoleName } from '../utils/nodeHelpers';
 import { DeviceConfigurationSection } from './admin-commands/DeviceConfigurationSection';
 import AutoFavoriteManagementSection from './admin-commands/AutoFavoriteManagementSection';
 import { ModuleConfigurationSection } from './admin-commands/ModuleConfigurationSection';
-import { useAdminCommandsState } from './admin-commands/useAdminCommandsState';
+import { useAdminCommandsState, packMeshBeaconFlags, unpackMeshBeaconFlags, pskToBase64 } from './admin-commands/useAdminCommandsState';
 import { buildNodeOptions, filterNodes, sortNodeOptionsForRemoteAdmin, type NodeOption } from './admin-commands/nodeOptionsUtils';
 import { createEmptyChannelSlot, createChannelFromResponse, isRetryableChannelError, countLoadedChannels } from './admin-commands/channelLoadingUtils';
 import { UiIcon } from './icons';
@@ -62,6 +62,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     setTelemetryConfig,
     setStatusMessageConfig,
     setTrafficManagementConfig,
+    setMeshBeaconConfig,
   } = useAdminCommandsState();
 
   // UI and non-config state (keep as useState for now)
@@ -124,6 +125,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     telemetry: 'idle',
     statusmessage: 'idle',
     trafficmanagement: 'idle',
+    meshbeacon: 'idle',
     owner: 'idle',
     channels: 'idle'
   });
@@ -436,12 +438,13 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       telemetry: 'loading',
       statusmessage: 'loading',
       trafficmanagement: 'loading',
+      meshbeacon: 'loading',
       owner: 'loading',
       channels: 'loading'
     });
     const errors: string[] = [];
     const loaded: string[] = [];
-    const totalConfigs = 13; // device, lora, position, mqtt, security, bluetooth, network, neighborinfo, telemetry, statusmessage, trafficmanagement, owner, channels
+    const totalConfigs = 14; // device, lora, position, mqtt, security, bluetooth, network, neighborinfo, telemetry, statusmessage, trafficmanagement, meshbeacon, owner, channels
 
     try {
       // Load all config types sequentially to avoid conflicts and timeouts
@@ -680,12 +683,28 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       });
       await new Promise(resolve => setTimeout(resolve, 200));
 
+      await loadConfig('meshbeacon', 12, (result) => {
+        const config = result.config;
+        setMeshBeaconConfig({
+          ...unpackMeshBeaconFlags(config.flags),
+          broadcastMessage: config.broadcastMessage ?? '',
+          broadcastSendAsNode: config.broadcastSendAsNode ?? 0,
+          broadcastOfferChannelName: config.broadcastOfferChannel?.name ?? '',
+          broadcastOfferChannelPsk: pskToBase64(config.broadcastOfferChannel?.psk),
+          broadcastOfferRegion: config.broadcastOfferRegion ?? 0,
+          // `optional` in the proto — absent means "advertise no preset", which
+          // must not collapse to 0 (LONG_FAST).
+          broadcastOfferPreset: config.broadcastOfferPreset ?? null
+        });
+      });
+      await new Promise(resolve => setTimeout(resolve, 200));
+
       // Load owner info
-      await loadOwner(12);
+      await loadOwner(13);
       await new Promise(resolve => setTimeout(resolve, 200));
 
       // Load channels (extracted logic to avoid duplicate loading state and toasts)
-      setLoadingProgress({ current: 13, total: totalConfigs, configType: 'channels' });
+      setLoadingProgress({ current: 14, total: totalConfigs, configType: 'channels' });
       try {
         const localNodeNum = nodes.find(n => (n.user?.id || n.nodeId) === currentNodeId)?.nodeNum;
         const isLocalNode = selectedNodeNum === localNodeNum || selectedNodeNum === 0;
@@ -1989,6 +2008,43 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       console.error('Set TrafficManagement config command failed:', error);
     }
   }, [configState.trafficManagement, executeCommand]);
+
+  const handleMeshBeaconConfigChange = useCallback((field: string, value: string | number | boolean | null) => {
+    setMeshBeaconConfig({ [field]: value });
+  }, [setMeshBeaconConfig]);
+
+  const handleSetMeshBeaconConfig = useCallback(async () => {
+    const beacon = configState.meshBeacon;
+    const config: Record<string, unknown> = {
+      // The three checkboxes are one bitfield on the wire.
+      flags: packMeshBeaconFlags(beacon),
+      broadcastMessage: beacon.broadcastMessage,
+      broadcastSendAsNode: beacon.broadcastSendAsNode,
+      broadcastOfferRegion: beacon.broadcastOfferRegion
+    };
+
+    // offer_channel is a whole ChannelSettings sub-message. Send it only when a
+    // channel name is present — an empty name means "advertise no channel", and
+    // sending an empty sub-message would advertise a nameless channel instead.
+    if (beacon.broadcastOfferChannelName.trim().length > 0) {
+      config.broadcastOfferChannel = {
+        name: beacon.broadcastOfferChannelName,
+        ...(beacon.broadcastOfferChannelPsk ? { psk: beacon.broadcastOfferChannelPsk } : {})
+      };
+    }
+
+    // `optional` field: omit entirely to advertise no preset. Sending 0 would
+    // advertise LONG_FAST, which is a different statement.
+    if (beacon.broadcastOfferPreset !== null) {
+      config.broadcastOfferPreset = beacon.broadcastOfferPreset;
+    }
+
+    try {
+      await executeCommand('setMeshBeaconConfig', { config });
+    } catch (error) {
+      console.error('Set MeshBeacon config command failed:', error);
+    }
+  }, [configState.meshBeacon, executeCommand]);
 
   const handleAdminKeyChange = (index: number, value: string) => {
     setAdminKey(index, value);
@@ -3379,6 +3435,18 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         onTrafficManagementConfigChange={handleTrafficManagementConfigChange}
         onSaveTrafficManagementConfig={handleSetTrafficManagementConfig}
         trafficManagementIsDisabled={sectionLoadStatus.trafficmanagement === 'error'}
+        meshBeaconListenEnabled={configState.meshBeacon.listenEnabled}
+        meshBeaconBroadcastEnabled={configState.meshBeacon.broadcastEnabled}
+        meshBeaconLegacySplit={configState.meshBeacon.legacySplit}
+        meshBeaconBroadcastMessage={configState.meshBeacon.broadcastMessage}
+        meshBeaconBroadcastSendAsNode={configState.meshBeacon.broadcastSendAsNode}
+        meshBeaconBroadcastOfferChannelName={configState.meshBeacon.broadcastOfferChannelName}
+        meshBeaconBroadcastOfferChannelPsk={configState.meshBeacon.broadcastOfferChannelPsk}
+        meshBeaconBroadcastOfferRegion={configState.meshBeacon.broadcastOfferRegion}
+        meshBeaconBroadcastOfferPreset={configState.meshBeacon.broadcastOfferPreset}
+        onMeshBeaconConfigChange={handleMeshBeaconConfigChange}
+        onSaveMeshBeaconConfig={handleSetMeshBeaconConfig}
+        meshBeaconIsDisabled={sectionLoadStatus.meshbeacon === 'error'}
         isExecuting={isExecuting}
         selectedNodeNum={selectedNodeNum}
         mqttHeaderActions={renderSectionLoadButton('mqtt')}
@@ -3386,6 +3454,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         telemetryHeaderActions={renderSectionLoadButton('telemetry')}
         statusMessageHeaderActions={renderSectionLoadButton('statusmessage')}
         trafficManagementHeaderActions={renderSectionLoadButton('trafficmanagement')}
+        meshBeaconHeaderActions={renderSectionLoadButton('meshbeacon')}
       />
 
       {/* Import/Export Configuration Section */}

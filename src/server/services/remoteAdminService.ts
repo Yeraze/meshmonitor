@@ -48,7 +48,8 @@ const LOCAL_MODULE_CONFIG_TYPE_KEYS: { [key: number]: string } = {
   5: 'telemetry',
   9: 'neighborInfo',
   13: 'statusmessage',
-  14: 'trafficManagement'
+  14: 'trafficManagement',
+  16: 'meshBeacon'
 };
 
 export class RemoteAdminService {
@@ -736,7 +737,11 @@ export class RemoteAdminService {
       11, // DETECTIONSENSOR_CONFIG
       12, // PAXCOUNTER_CONFIG
       13, // STATUSMESSAGE_CONFIG
-      14  // TRAFFICMANAGEMENT_CONFIG
+      14, // TRAFFICMANAGEMENT_CONFIG
+      // 15 (TAK_CONFIG) is skipped — MeshMonitor surfaces no TAK module UI.
+      16  // MESHBEACON_CONFIG (firmware 2.8+, #3854). Pre-2.8 firmware simply
+          // never answers this request; the send is fire-and-forget, so the only
+          // cost on older devices is one unanswered packet.
     ];
 
     logger.debug('📦 Requesting all module configs for complete backup...');

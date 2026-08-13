@@ -154,6 +154,7 @@ import { migration as addMeshCoreObserverCredentialsMigration, runMigration136Po
 import { migration as estimatedPositionAnchorsMigration, runMigration137Postgres, runMigration137Mysql } from '../server/migrations/137_estimated_position_anchors.js';
 import { migration as addConversationReadStateMigration, runMigration138Postgres, runMigration138Mysql } from '../server/migrations/138_add_conversation_read_state.js';
 import { migration as automationHomeAnchorsMigration, runMigration139Postgres, runMigration139Mysql } from '../server/migrations/139_automation_home_anchors.js';
+import { migration as xeddsaSignedMessagesMigration, runMigration140Postgres, runMigration140Mysql } from '../server/migrations/140_add_xeddsa_signed_to_messages.js';
 
 // ============================================================================
 // Registry
@@ -2219,4 +2220,22 @@ registry.register({
   sqlite: (db) => automationHomeAnchorsMigration.up(db),
   postgres: (client) => runMigration139Postgres(client),
   mysql: (pool) => runMigration139Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 140: `xeddsaSigned` flag on `messages` (#3923)
+// Records whether a received broadcast carried a cryptographically verified
+// XEdDSA signature (Meshtastic firmware 2.8+, MeshPacket field 22). Surfaced
+// as a "signed" shield in the message UI, mirroring the official mobile
+// clients and the Packet Monitor's per-packet flag (migration 125).
+// Nullable; existing rows keep NULL.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 140,
+  name: 'add_xeddsa_signed_to_messages',
+  settingsKey: 'migration_140_add_xeddsa_signed_to_messages',
+  sqlite: (db) => xeddsaSignedMessagesMigration.up(db),
+  postgres: (client) => runMigration140Postgres(client),
+  mysql: (pool) => runMigration140Mysql(pool),
 });

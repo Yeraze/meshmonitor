@@ -310,7 +310,9 @@ describe('RemoteAdminService', () => {
       const mgr = makeFakeManager();
       const svc = new RemoteAdminService(mgr as any);
       await svc.requestAllModuleConfigs();
-      expect(mgr.sendLocalAdminPacket).toHaveBeenCalledTimes(15); // one per ModuleConfigType
+      // One per requested ModuleConfigType: 0-14, plus 16 (MESHBEACON_CONFIG).
+      // 15 (TAK_CONFIG) is deliberately skipped — MeshMonitor has no TAK module UI.
+      expect(mgr.sendLocalAdminPacket).toHaveBeenCalledTimes(16);
     });
 
     it('aborts and propagates when the connection drops mid-fetch', async () => {

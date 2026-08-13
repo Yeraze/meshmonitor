@@ -34,7 +34,8 @@ export type DataEventType =
   | 'meshcore:local-node:updated'
   | 'meshcore:send-confirmed'
   | 'meshcore:channel-heard'
-  | 'meshcore:ota-packet';
+  | 'meshcore:ota-packet'
+  | 'meshbeacon:received';
 
 export interface DataEvent {
   type: DataEventType;
@@ -46,6 +47,19 @@ export interface DataEvent {
 export interface NodeUpdateData {
   nodeNum: number;
   node: Partial<DbNode>;
+}
+
+/**
+ * A decoded MESH_BEACON_APP packet (firmware 2.8+, #3854). The offered channel
+ * / region / preset are what the beacon advertises; firmware never applies them
+ * automatically, so they are informational for automations.
+ */
+export interface MeshBeaconReceivedData {
+  nodeNum: number;
+  message: string;
+  offerChannelName?: string;
+  offerRegion?: number;
+  offerPreset?: number;
 }
 
 export interface ConnectionStatusData {
@@ -239,6 +253,22 @@ class DataEventEmitter extends EventEmitter {
     };
     this.emit('data', event);
     logger.info(`[DataEventEmitter] Client notification (level ${data.level}): ${data.message}`);
+  }
+
+  /**
+   * Emit a received MeshBeacon (firmware 2.8+, #3854). Consumed by the
+   * Automation Engine to fire `trigger.meshBeacon`. Beacons are not stored as
+   * messages, so this event is the only way a rule can see one.
+   */
+  emitMeshBeaconReceived(data: MeshBeaconReceivedData, sourceId?: string): void {
+    const event: DataEvent = {
+      type: 'meshbeacon:received',
+      data,
+      timestamp: Date.now(),
+      sourceId,
+    };
+    this.emit('data', event);
+    logger.debug(`[DataEventEmitter] MeshBeacon from ${data.nodeNum}`);
   }
 
   /**

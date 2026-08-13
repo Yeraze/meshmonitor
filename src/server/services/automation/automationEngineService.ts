@@ -32,6 +32,7 @@ import {
   buildMeshCoreMessageContext,
   buildNodeContext,
   buildTelemetryContext,
+  buildMeshBeaconContext,
   buildSystemContext,
   buildGeofenceContext,
   buildBecameMobileContext,
@@ -721,6 +722,39 @@ export class AutomationEngineService {
       (a) => {
         const want = (a.triggerNode.params as any)?.telemetryType;
         return `telemetry "${telemetryType}" ≠ rule metric "${want}"`;
+      },
+    );
+  }
+
+  /**
+   * A MeshBeacon broadcast was received (firmware 2.8+, #3854).
+   *
+   * `messageContains` filters on the beacon text; `requireOffer` narrows to
+   * beacons that actually advertise a network. A text-only beacon is the common
+   * case, so a rule reacting to network offers has to ask for that explicitly.
+   */
+  async onMeshBeacon(
+    nodeNum: number,
+    message: string,
+    offer: { channelName?: string; region?: number; preset?: number },
+    sourceId: string | null,
+  ): Promise<number> {
+    if (await this.isSelfMeshtastic(sourceId, nodeNum)) return 0; // #3914: ignore our own beacons
+    const ctx = buildMeshBeaconContext(nodeNum, message, offer, sourceId, this.now());
+    const hasOffer = Boolean(ctx.fields.hasOffer);
+    return this.runTrigger(
+      ctx,
+      (a) => {
+        const params = (a.triggerNode.params ?? {}) as { messageContains?: string; requireOffer?: boolean };
+        if (params.requireOffer && !hasOffer) return false;
+        const want = params.messageContains;
+        if (want == null || want === '') return true;
+        return message.toLowerCase().includes(String(want).toLowerCase());
+      },
+      (a) => {
+        const params = (a.triggerNode.params ?? {}) as { messageContains?: string; requireOffer?: boolean };
+        if (params.requireOffer && !hasOffer) return 'beacon carries no network offer';
+        return `beacon text "${message}" does not contain "${params.messageContains}"`;
       },
     );
   }

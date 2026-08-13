@@ -50,6 +50,7 @@ const KIND_BY_TRIGGER: Record<string, string> = {
   'trigger.becameMobile': 'becameMobile',
   'trigger.leftHome': 'leftHome',
   'trigger.schedule': 'schedule',
+  'trigger.meshBeacon': 'meshBeacon',
 };
 
 export default function AutomationTester({ getConfig, variables, sources }: Props) {
@@ -80,6 +81,10 @@ export default function AutomationTester({ getConfig, variables, sources }: Prop
           snr: numOrUndef(ev.snr), rssi: numOrUndef(ev.rssi), viaMqtt: ev.viaMqtt === 'true' ? true : undefined };
       case 'telemetry':
         return { ...base, nodeNum: numOrUndef(ev.nodeNum), telemetryType: ev.telemetryType || 'batteryLevel', value: numOrUndef(ev.value) };
+      case 'meshBeacon':
+        return { ...base, nodeNum: numOrUndef(ev.nodeNum), message: ev.message ?? '',
+          offerChannelName: ev.offerChannelName || undefined,
+          offerRegion: numOrUndef(ev.offerRegion), offerPreset: numOrUndef(ev.offerPreset) };
       case 'nodeUpdated':
       case 'nodeDiscovered':
         return { ...base, nodeNum: numOrUndef(ev.nodeNum), changed: (ev.changed ?? '').split(',').map((s) => s.trim()).filter(Boolean) };
@@ -281,6 +286,14 @@ function renderEventInputs(
       </>;
     case 'telemetry':
       return <>{f('Node #', 'nodeNum', 'number')}{sel('Metric', 'telemetryType', TELEMETRY_METRIC_OPTIONS, 'batteryLevel')}{f('Value', 'value', 'number')}</>;
+    case 'meshBeacon':
+      return <>
+        {f('Node #', 'nodeNum', 'number')}
+        {f('Beacon text', 'message')}
+        {f('Offered channel name', 'offerChannelName')}
+        {f('Offered region code', 'offerRegion', 'number')}
+        {f('Offered modem preset', 'offerPreset', 'number')}
+      </>;
     case 'nodeUpdated':
     case 'nodeDiscovered':
       return <>{f('Node #', 'nodeNum', 'number')}{f('Changed fields (csv)', 'changed')}</>;
