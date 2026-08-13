@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Mapping, Optional
 
 from . import protocol
 
@@ -86,8 +86,17 @@ def _parse_float(raw: Optional[str], name: str, default: float) -> float:
         raise ConfigError(f"{name} must be a number, got {raw!r}") from e
 
 
-def load_config(env: Optional[dict] = None) -> BridgeConfig:
+def load_config(env: Optional[Mapping[str, str]] = None) -> BridgeConfig:
     """Parse BridgeConfig from an environment mapping (defaults to os.environ).
+
+    `env` is typed as `Mapping[str, str]` rather than `dict` -- `os.environ` is an
+    `os._Environ[str]`, not a `dict`, so a `dict | None` annotation here previously
+    made pyright treat every `env.get(...)` call below as reportOptionalMemberAccess
+    (the reassignment to `os.environ` didn't satisfy the declared `dict | None` type,
+    so pyright kept `None` in the narrowed type). `Mapping[str, str]` is satisfied by
+    both `os.environ` and a plain `dict[str, str]` (e.g. from tests), and this
+    function only ever reads via `.get()`, never mutates -- read-only is the correct,
+    narrower contract anyway.
 
     Env vars (build spec §4.1 module-layout comment):
       BRIDGE_HOST, BRIDGE_PORT, BRIDGE_TOKEN, RNS_CONFIG_DIR,
