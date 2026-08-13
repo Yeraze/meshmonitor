@@ -154,6 +154,8 @@ import { migration as addMeshCoreObserverCredentialsMigration, runMigration136Po
 import { migration as estimatedPositionAnchorsMigration, runMigration137Postgres, runMigration137Mysql } from '../server/migrations/137_estimated_position_anchors.js';
 import { migration as addConversationReadStateMigration, runMigration138Postgres, runMigration138Mysql } from '../server/migrations/138_add_conversation_read_state.js';
 import { migration as automationHomeAnchorsMigration, runMigration139Postgres, runMigration139Mysql } from '../server/migrations/139_automation_home_anchors.js';
+import { migration as createReticulumDestinationsMigration, runMigration140Postgres, runMigration140Mysql } from '../server/migrations/140_create_reticulum_destinations.js';
+import { migration as createReticulumInterfacesMigration, runMigration141Postgres, runMigration141Mysql } from '../server/migrations/141_create_reticulum_interfaces.js';
 
 // ============================================================================
 // Registry
@@ -2219,4 +2221,32 @@ registry.register({
   sqlite: (db) => automationHomeAnchorsMigration.up(db),
   postgres: (client) => runMigration139Postgres(client),
   mysql: (pool) => runMigration139Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 140: create `reticulum_destinations` (Reticulum epic #3960,
+// Phase 1a WP1). Row per announced Reticulum destination hash. PER-SOURCE.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 140,
+  name: 'create_reticulum_destinations',
+  settingsKey: 'migration_140_create_reticulum_destinations',
+  sqlite: (db) => createReticulumDestinationsMigration.up(db),
+  postgres: (client) => runMigration140Postgres(client),
+  mysql: (pool) => runMigration140Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 141: create `reticulum_interfaces` (Reticulum epic #3960,
+// Phase 1a WP1). Row per RNS interface snapshot. PER-SOURCE.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 141,
+  name: 'create_reticulum_interfaces',
+  settingsKey: 'migration_141_create_reticulum_interfaces',
+  sqlite: (db) => createReticulumInterfacesMigration.up(db),
+  postgres: (client) => runMigration141Postgres(client),
+  mysql: (pool) => runMigration141Mysql(pool),
 });
