@@ -127,21 +127,33 @@ describe('reticulumDashboardSource', () => {
     mockedApiGet.mockReset();
   });
 
+  // fetchNodes (Phase 3) fans out to BOTH /interfaces and /destinations, so
+  // tests route by URL rather than relying on call order.
+  function mockEndpoints(opts: { interfaces?: unknown; destinations?: unknown } = {}) {
+    mockedApiGet.mockImplementation((url: string) => {
+      if (url.endsWith('/interfaces')) return Promise.resolve(opts.interfaces ?? { data: [] });
+      if (url.endsWith('/destinations')) return Promise.resolve(opts.destinations ?? { data: [] });
+      return Promise.resolve({ data: [] });
+    });
+  }
+
   it('fetches per-source Reticulum interfaces and adapts them into NodeInfo', async () => {
-    mockedApiGet.mockResolvedValueOnce({
-      data: [
-        {
-          interfaceName: 'TCPServer',
-          interfaceType: 'TCPServerInterface',
-          mode: 'full',
-          status: 'online',
-          online: true,
-          bitrate: 115200,
-          txBytes: 1024,
-          rxBytes: 2048,
-          lastSeenAt: 1_700_000_000,
-        },
-      ],
+    mockEndpoints({
+      interfaces: {
+        data: [
+          {
+            interfaceName: 'TCPServer',
+            interfaceType: 'TCPServerInterface',
+            mode: 'full',
+            status: 'online',
+            online: true,
+            bitrate: 115200,
+            txBytes: 1024,
+            rxBytes: 2048,
+            lastSeenAt: 1_700_000_000,
+          },
+        ],
+      },
     });
 
     const nodes = await reticulumDashboardSource.fetchNodes('src-1');
@@ -160,8 +172,10 @@ describe('reticulumDashboardSource', () => {
   });
 
   it('keys the synthetic node id as rns:iface:<interfaceName> — must match reticulumInterfaceNodeId()', async () => {
-    mockedApiGet.mockResolvedValueOnce({
-      data: [{ interfaceName: 'RNode_1', status: 'online', online: true, txBytes: 0, rxBytes: 0, lastSeenAt: 0 }],
+    mockEndpoints({
+      interfaces: {
+        data: [{ interfaceName: 'RNode_1', status: 'online', online: true, txBytes: 0, rxBytes: 0, lastSeenAt: 0 }],
+      },
     });
     const nodes = await reticulumDashboardSource.fetchNodes('src-1');
     expect(nodes[0].user?.id).toBe('rns:iface:RNode_1');
@@ -174,12 +188,62 @@ describe('reticulumDashboardSource', () => {
   });
 
   it('tolerates an unwrapped array response (no { data } envelope)', async () => {
-    mockedApiGet.mockResolvedValueOnce([
-      { interfaceName: 'Iface1', status: 'online', online: true, txBytes: 0, rxBytes: 0, lastSeenAt: 0 },
-    ]);
+    mockEndpoints({
+      interfaces: [
+        { interfaceName: 'Iface1', status: 'online', online: true, txBytes: 0, rxBytes: 0, lastSeenAt: 0 },
+      ],
+    });
     const nodes = await reticulumDashboardSource.fetchNodes('src-1');
     expect(nodes).toHaveLength(1);
     expect(nodes[0].user?.id).toBe('rns:iface:Iface1');
+  });
+
+  it('surfaces destinations that share a position, keyed as rns:dest:<hash>', async () => {
+    mockEndpoints({
+      destinations: {
+        data: [
+          { destinationHash: 'deadbeefcafef00d', displayName: 'Alice', appName: 'sideband', isFavorite: false, lastSeen: 100, positionUpdatedAt: 1_700_000_500 },
+          { destinationHash: 'feedface00000000', displayName: 'NoTelemetry', appName: null, isFavorite: false, lastSeen: 90, positionUpdatedAt: null },
+        ],
+      },
+    });
+    const nodes = await reticulumDashboardSource.fetchNodes('src-1');
+    expect(mockedApiGet).toHaveBeenCalledWith('/api/sources/src-1/reticulum/destinations');
+    // Only the positioned destination surfaces; the announce-only one is dropped.
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0]).toMatchObject({
+      nodeNum: 0,
+      user: { id: 'rns:dest:deadbeefcafef00d', longName: 'Alice', shortName: 'dead' },
+      lastHeard: 1_700_000_500,
+    });
+  });
+
+  it('surfaces favorite destinations even without a position', async () => {
+    mockEndpoints({
+      destinations: {
+        data: [
+          { destinationHash: 'abc123abc123abc1', displayName: null, appName: 'nomadnet', isFavorite: true, lastSeen: 200, positionUpdatedAt: null },
+        ],
+      },
+    });
+    const nodes = await reticulumDashboardSource.fetchNodes('src-1');
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].user?.id).toBe('rns:dest:abc123abc123abc1');
+    // Falls back to appName when displayName is null.
+    expect(nodes[0].user?.longName).toBe('nomadnet');
+    expect(nodes[0].lastHeard).toBe(200);
+  });
+
+  it('tolerates a failed destinations fetch (interfaces still surface)', async () => {
+    mockedApiGet.mockImplementation((url: string) => {
+      if (url.endsWith('/interfaces')) {
+        return Promise.resolve({ data: [{ interfaceName: 'Only', status: 'online', online: true, txBytes: 0, rxBytes: 0, lastSeenAt: 5 }] });
+      }
+      return Promise.reject(new Error('destinations boom'));
+    });
+    const nodes = await reticulumDashboardSource.fetchNodes('src-1');
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].user?.id).toBe('rns:iface:Only');
   });
 
   it('keys nodes by interface id (via user.id)', () => {

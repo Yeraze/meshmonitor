@@ -111,8 +111,8 @@ export interface ReticulumInterfaceRow {
   deviceInfoJson: string | null;
 }
 
-/** Sub-toolbar view identifiers for `ReticulumPage`/`ReticulumSubToolbar` (WP2; 'dms' added Phase 2 WP5). */
-export type ReticulumView = 'destinations' | 'interfaces' | 'dms' | 'info' | 'settings';
+/** Sub-toolbar view identifiers for `ReticulumPage`/`ReticulumSubToolbar` (WP2; 'dms' added Phase 2 WP5; 'map'/'configuration' added Phase 3). */
+export type ReticulumView = 'destinations' | 'interfaces' | 'map' | 'dms' | 'info' | 'configuration' | 'settings';
 
 /**
  * LXMF message lifecycle state (Reticulum epic #3960, Phase 2 WP2/WP3).

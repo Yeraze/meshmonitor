@@ -1,0 +1,115 @@
+.view {
+  padding: 16px;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.section {
+  margin-bottom: 24px;
+  max-width: 640px;
+}
+
+.heading {
+  margin: 0 0 12px;
+  font-size: 1em;
+  color: var(--color-text);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.9em;
+  color: var(--color-text-subtle);
+}
+
+.field input {
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.checkField {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9em;
+  color: var(--color-text);
+}
+
+.actions {
+  margin-top: 12px;
+}
+
+.saveBtn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+  cursor: pointer;
+}
+
+.saveBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.deviceGrid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 0;
+}
+
+.deviceGrid dt {
+  color: var(--color-text-subtle);
+}
+
+.deviceGrid dd {
+  margin: 0;
+  color: var(--color-text);
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border-radius: 4px;
+  background: var(--color-surface-hover);
+  color: var(--color-text-subtle);
+  font-size: 0.9em;
+}
+
+.error {
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border-radius: 4px;
+  background: var(--color-surface);
+  color: var(--color-error);
+  font-size: 0.9em;
+}
+
+.success {
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border-radius: 4px;
+  background: var(--color-surface);
+  color: var(--color-success);
+  font-size: 0.9em;
+}
+
+.muted {
+  color: var(--color-text-subtle);
+  font-size: 0.9em;
+}

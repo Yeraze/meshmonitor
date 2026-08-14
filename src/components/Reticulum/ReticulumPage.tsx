@@ -27,6 +27,8 @@ import { ReticulumInterfacesView } from './ReticulumInterfacesView';
 import { ReticulumDmsView } from './ReticulumDmsView';
 import { ReticulumInfoView } from './ReticulumInfoView';
 import { ReticulumSettingsView } from './ReticulumSettingsView';
+import { ReticulumMap } from './ReticulumMap';
+import { ReticulumConfigurationView } from './ReticulumConfigurationView';
 import { SaveBarProvider, SaveBarGroup } from '../../contexts/SaveBarContext';
 import { SaveBar } from '../SaveBar';
 import type { ReticulumStatus, ReticulumView } from '../../types/reticulum';
@@ -105,6 +107,7 @@ export const ReticulumPage: React.FC<ReticulumPageProps> = ({ baseUrl, sourceId,
           onSelect={setView}
           expanded={toolbarExpanded}
           onToggleExpanded={() => setToolbarExpanded(v => !v)}
+          sourceMode={status?.mode ?? null}
         />
         <div className={styles.content}>
           {view === 'destinations' && (
@@ -137,6 +140,12 @@ export const ReticulumPage: React.FC<ReticulumPageProps> = ({ baseUrl, sourceId,
               sourceId={sourceId}
               loading={loading}
             />
+          )}
+          {view === 'map' && (
+            <ReticulumMap destinations={destinations} loading={loading} />
+          )}
+          {view === 'configuration' && (
+            <ReticulumConfigurationView sourceId={sourceId} />
           )}
           {view === 'info' && (
             <ReticulumInfoView status={status} loading={loading} />
