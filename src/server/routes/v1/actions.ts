@@ -19,6 +19,7 @@ import { logger } from '../../../utils/logger.js';
 import { PortNum } from '../../constants/meshtastic.js';
 import { attachSource, resolvedSourceIdFromPath } from './sourceParam.js';
 import { isTxDisabledError } from '../../errors/txDisabledError.js';
+import { resolveBroadcastChannel, isValidChannelIndex } from '../../utils/resolveDestinationChannel.js';
 
 const router = express.Router({ mergeParams: true });
 
@@ -86,10 +87,14 @@ router.post('/traceroute', attachSource('traceroute', 'write'), async (req: Requ
     }
 
     const manager = resolveSourceManager(sourceId);
-    const node = await databaseService.nodes.getNode(destinationNum, sourceId);
-    const channel = (typeof req.body.channel === 'number' && req.body.channel >= 0 && req.body.channel <= 7)
+    // Traceroutes must traverse a channel every intermediate node can decrypt
+    // and relay, or those nodes can't append to the route and show up as
+    // "Unknown" (issue #3696, #4691). A valid explicit channel wins; otherwise
+    // resolve the well-known channel the whole mesh shares — never the
+    // target's raw stored channel, which may be a private secondary.
+    const channel = isValidChannelIndex(req.body.channel)
       ? req.body.channel
-      : (node?.channel ?? 0);
+      : await resolveBroadcastChannel(manager, databaseService);
 
     await manager.sendTraceroute(destinationNum, channel);
 

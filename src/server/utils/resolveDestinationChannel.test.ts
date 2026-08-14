@@ -83,9 +83,12 @@ describe('resolveDestinationChannel', () => {
 
 /**
  * `resolveBroadcastChannel` picks a channel every node in the mesh can decrypt
- * (the well-known default key "AQ==", or an unencrypted slot). This is what
- * traceroute needs so intermediate nodes can append to the route — and why
- * hardcoding slot 0 was wrong: slot 0 can carry a private key (issue #3696).
+ * AND relay: a mesh-readable PSK (any 1-byte shorthand, or unencrypted) whose
+ * name also matches a firmware ModemPreset display name (issue #4691's "well
+ * known channel" pairing — the on-wire hash is `hash(name) XOR hash(psk)`).
+ * This is what traceroute needs so intermediate nodes can append to the
+ * route — and why hardcoding slot 0 was wrong: slot 0 can carry a private key
+ * (issue #3696).
  */
 describe('resolveBroadcastChannel', () => {
   let getAllChannels: ReturnType<typeof vi.fn>;
@@ -97,49 +100,74 @@ describe('resolveBroadcastChannel', () => {
   });
 
   it('scopes the channel lookup to the manager sourceId', async () => {
-    getAllChannels.mockResolvedValue([{ id: 0, psk: 'AQ==' }]);
+    getAllChannels.mockResolvedValue([{ id: 0, psk: 'AQ==', name: 'LongFast' }]);
     await resolveBroadcastChannel(manager, db);
     expect(getAllChannels).toHaveBeenCalledWith('meshtastic-src');
   });
 
   it('returns the default-keyed channel when it is slot 0', async () => {
     getAllChannels.mockResolvedValue([
-      { id: 0, psk: 'AQ==' },
-      { id: 2, psk: 'cHJpdmF0ZWtleQ==' },
+      { id: 0, psk: 'AQ==', name: 'LongFast' },
+      { id: 2, psk: 'cHJpdmF0ZWtleQ==', name: 'Secret' },
     ]);
     expect(await resolveBroadcastChannel(manager, db)).toBe(0);
   });
 
   it('returns the default-keyed channel even when it is NOT slot 0', async () => {
     getAllChannels.mockResolvedValue([
-      { id: 0, psk: 'cHJpdmF0ZWtleQ==' }, // private primary
-      { id: 3, psk: 'AQ==' },             // default-keyed secondary
+      { id: 0, psk: 'cHJpdmF0ZWtleQ==', name: 'LongFast' }, // private primary
+      { id: 3, psk: 'AQ==', name: 'LongFast' },             // default-keyed secondary
     ]);
     expect(await resolveBroadcastChannel(manager, db)).toBe(3);
   });
 
   it('treats an unencrypted (null/empty PSK) channel as mesh-readable', async () => {
     getAllChannels.mockResolvedValue([
-      { id: 0, psk: 'cHJpdmF0ZWtleQ==' },
-      { id: 1, psk: null },
-      { id: 2, psk: '' },
+      { id: 0, psk: 'cHJpdmF0ZWtleQ==', name: 'LongFast' },
+      { id: 1, psk: null, name: 'LongFast' },
+      { id: 2, psk: '', name: 'LongFast' },
     ]);
     expect(await resolveBroadcastChannel(manager, db)).toBe(1);
   });
 
+  it('accepts any 1-byte shorthand PSK, not just the literal default byte (#4691)', async () => {
+    // Byte 0xD4 (212) base64-encodes to "1A==" — a 1-byte shorthand outside
+    // the literal "AQ==" (0x01) the old check required.
+    getAllChannels.mockResolvedValue([{ id: 0, psk: '1A==', name: 'LongFast' }]);
+    expect(await resolveBroadcastChannel(manager, db)).toBe(0);
+  });
+
+  it('rejects a mesh-readable PSK whose channel name is not a ModemPreset name (#4691)', async () => {
+    // 1-byte PSK, but a custom name — the on-wire hash won't match any other
+    // node's factory-configured channel, so it's not actually relayable.
+    getAllChannels.mockResolvedValue([
+      { id: 0, psk: 'AQ==', name: 'MyPrivateChannel' },
+      { id: 2, psk: 'AQ==', name: 'MediumFast' },
+    ]);
+    expect(await resolveBroadcastChannel(manager, db)).toBe(2);
+  });
+
+  it('rejects the deprecated VeryLongSlow preset name even with a mesh-readable PSK (#4691)', async () => {
+    // Firmware's getModemPresetDisplayName() has no case for index 2 and
+    // always falls through to "Invalid" on-device, so no real channel name
+    // can ever equal "VeryLongSlow" on the wire.
+    getAllChannels.mockResolvedValue([{ id: 0, psk: 'AQ==', name: 'VeryLongSlow' }]);
+    expect(await resolveBroadcastChannel(manager, db)).toBe(0); // falls back, not selected as "readable"
+  });
+
   it('prefers the lowest-numbered mesh-readable channel', async () => {
     getAllChannels.mockResolvedValue([
-      { id: 5, psk: 'AQ==' },
-      { id: 1, psk: 'AQ==' },
-      { id: 3, psk: 'AQ==' },
+      { id: 5, psk: 'AQ==', name: 'LongFast' },
+      { id: 1, psk: 'AQ==', name: 'LongFast' },
+      { id: 3, psk: 'AQ==', name: 'LongFast' },
     ]);
     expect(await resolveBroadcastChannel(manager, db)).toBe(1);
   });
 
   it('falls back to channel 0 when every channel uses a private key', async () => {
     getAllChannels.mockResolvedValue([
-      { id: 0, psk: 'cHJpdmF0ZTA=' },
-      { id: 2, psk: 'cHJpdmF0ZTI=' },
+      { id: 0, psk: 'cHJpdmF0ZTA=', name: 'LongFast' },
+      { id: 2, psk: 'cHJpdmF0ZTI=', name: 'LongFast' },
     ]);
     expect(await resolveBroadcastChannel(manager, db)).toBe(0);
   });
@@ -151,8 +179,8 @@ describe('resolveBroadcastChannel', () => {
 
   it('ignores channels with out-of-range indices', async () => {
     getAllChannels.mockResolvedValue([
-      { id: 101, psk: 'AQ==' }, // bogus MQTT-style index, must be skipped
-      { id: 4, psk: 'AQ==' },
+      { id: 101, psk: 'AQ==', name: 'LongFast' }, // bogus MQTT-style index, must be skipped
+      { id: 4, psk: 'AQ==', name: 'LongFast' },
     ]);
     expect(await resolveBroadcastChannel(manager, db)).toBe(4);
   });
@@ -163,25 +191,25 @@ describe('resolveBroadcastChannel', () => {
     // encoding a traceroute on it NAKs NO_CHANNEL (6). The disabled NULL-psk
     // slots must be skipped and we fall back to the enabled PRIMARY slot 0.
     getAllChannels.mockResolvedValue([
-      { id: 0, psk: 'cHJpdmF0ZWtleQ==', role: 1 }, // PRIMARY, private key
-      { id: 1, psk: null, role: 0 },               // DISABLED
-      { id: 2, psk: null, role: 0 },               // DISABLED
+      { id: 0, psk: 'cHJpdmF0ZWtleQ==', role: 1, name: 'LongFast' }, // PRIMARY, private key
+      { id: 1, psk: null, role: 0, name: 'LongFast' },               // DISABLED
+      { id: 2, psk: null, role: 0, name: 'LongFast' },               // DISABLED
     ]);
     expect(await resolveBroadcastChannel(manager, db)).toBe(0);
   });
 
   it('skips a DISABLED (null-psk) slot in favor of a lower-priority enabled default-keyed one', async () => {
     getAllChannels.mockResolvedValue([
-      { id: 1, psk: null, role: 0 },   // DISABLED (null psk) — must be skipped
-      { id: 2, psk: 'AQ==', role: 2 }, // enabled SECONDARY on the default key
+      { id: 1, psk: null, role: 0, name: 'LongFast' },   // DISABLED (null psk) — must be skipped
+      { id: 2, psk: 'AQ==', role: 2, name: 'LongFast' }, // enabled SECONDARY on the default key
     ]);
     expect(await resolveBroadcastChannel(manager, db)).toBe(2);
   });
 
   it('selects an enabled default-keyed SECONDARY over a private PRIMARY', async () => {
     getAllChannels.mockResolvedValue([
-      { id: 0, psk: 'cHJpdmF0ZQ==', role: 1 }, // PRIMARY, private
-      { id: 3, psk: 'AQ==', role: 2 },         // enabled default-key SECONDARY
+      { id: 0, psk: 'cHJpdmF0ZQ==', role: 1, name: 'LongFast' }, // PRIMARY, private
+      { id: 3, psk: 'AQ==', role: 2, name: 'LongFast' },         // enabled default-key SECONDARY
     ]);
     expect(await resolveBroadcastChannel(manager, db)).toBe(3);
   });

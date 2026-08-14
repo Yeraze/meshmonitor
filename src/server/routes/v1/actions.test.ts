@@ -50,6 +50,9 @@ vi.mock('../../../services/database.js', () => ({
     nodes: {
       getNode: vi.fn(),
     },
+    channels: {
+      getAllChannels: vi.fn(),
+    },
     messages: {
       insertMessage: vi.fn(),
     },
@@ -61,6 +64,7 @@ vi.mock('../../../services/database.js', () => ({
 // ──────────────────────────────────────────────────────────────────────────────
 
 const mockManager = {
+  sourceId:              SOURCE_A,
   sendTraceroute:        vi.fn(),
   sendPositionRequest:   vi.fn(),
   sendNodeInfoRequest:   vi.fn(),
@@ -136,6 +140,8 @@ beforeEach(() => {
   mockDb.sources.getAllSources.mockResolvedValue([]);
   // Default: no node found → channel 0
   mockDb.nodes.getNode.mockResolvedValue(null);
+  // Default: no channels configured → resolveBroadcastChannel falls back to 0
+  mockDb.channels.getAllChannels.mockResolvedValue([]);
   // Default: insertMessage succeeds
   mockDb.messages.insertMessage.mockResolvedValue(true);
   // Default: manager resolves to mockManager for any sourceId
@@ -169,14 +175,21 @@ describe('POST /traceroute', () => {
     expect(mockResolveSourceManager).toHaveBeenCalledWith(SOURCE_A);
   });
 
-  it('uses the node channel from the database', async () => {
+  it('resolves the well-known broadcast channel instead of the target\'s raw stored channel (#4691)', async () => {
+    // A target node last heard on a private secondary (channel 3) must NOT
+    // determine the traceroute channel — the mesh-readable/well-known
+    // channel (id 5 here) is what every intermediate node can decrypt.
     mockDb.nodes.getNode.mockResolvedValue({ channel: 3, hopsAway: 1 });
+    mockDb.channels.getAllChannels.mockResolvedValue([
+      { id: 3, psk: 'cHJpdmF0ZQ==', name: 'Private', role: 1 },
+      { id: 5, psk: 'AQ==', name: 'LongFast', role: 2 },
+    ]);
     const app = buildApp(normalUser);
     const res = await post(app, SOURCE_A, 'traceroute', { destination: `!${DEST_NUM.toString(16)}` });
 
     expect(res.status).toBe(200);
-    expect(mockManager.sendTraceroute).toHaveBeenCalledWith(DEST_NUM, 3);
-    expect(mockDb.nodes.getNode).toHaveBeenCalledWith(DEST_NUM, SOURCE_A);
+    expect(mockManager.sendTraceroute).toHaveBeenCalledWith(DEST_NUM, 5);
+    expect(mockDb.channels.getAllChannels).toHaveBeenCalledWith(SOURCE_A);
   });
 
   it('accepts channel override in request body', async () => {

@@ -1,5 +1,6 @@
 import type databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
+import { MODEM_PRESET_CHANNEL_NAMES } from '../../utils/loraFrequency.js';
 
 /**
  * Meshtastic supports channel indexes 0–7 (PRIMARY plus up to seven
@@ -9,14 +10,24 @@ import { logger } from '../../utils/logger.js';
 export const MAX_MESHTASTIC_CHANNEL_INDEX = 7;
 
 /**
- * The well-known default Meshtastic PSK: a single 0x01 byte, stored base64 as
- * "AQ==". The firmware expands this to the public default channel key that
- * every node ships with, so any node in the mesh can decrypt a channel that
- * uses it. A channel with no PSK at all is unencrypted and likewise readable by
- * everyone. These are the only channels guaranteed traversable by intermediate
- * nodes — which is what traceroute requires (issue #3696).
+ * ModemPreset index 2 ("VeryLongSlow") is deprecated and has no case in
+ * firmware's `getModemPresetDisplayName()` — it always falls through to
+ * "Invalid" on-device, so no real channel name can ever equal it. Excluded
+ * from the well-known-name match below to mirror firmware's
+ * `Channels::isWellKnownChannel()` (issue #4691).
  */
-const DEFAULT_PSK_BASE64 = 'AQ==';
+const NON_MATCHING_PRESET_INDEX = 2;
+
+/**
+ * Channel names that mirror one of firmware's ModemPreset display names
+ * (`Channels::isWellKnownChannel()` matches PSK size against this set of
+ * names, not just the LongFast/primary case).
+ */
+const WELL_KNOWN_CHANNEL_NAMES = new Set(
+  Object.entries(MODEM_PRESET_CHANNEL_NAMES)
+    .filter(([index]) => Number(index) !== NON_MATCHING_PRESET_INDEX)
+    .map(([, name]) => name),
+);
 
 export function isValidChannelIndex(value: unknown): value is number {
   return (
@@ -76,8 +87,12 @@ export async function resolveDestinationChannel(
 }
 
 /**
- * True when a channel's PSK is one that every node in the mesh can decrypt:
- * the well-known default key ("AQ==") or no key at all (unencrypted).
+ * True when a channel's PSK is one every node in the mesh can compute: no key
+ * at all (unencrypted), or any 1-byte shorthand PSK. Firmware's
+ * `channelFileUsesPublicKey()` treats every 1-byte PSK (0x01-0xFF) as part of
+ * the public "defaultpsk" family, not just the literal default byte
+ * (0x01/"AQ=="), so a 1-byte value like "1A==" (0xD4) expands to the same
+ * shared key space (issue #4691).
  *
  * The ingest path stores an unencrypted channel as NULL psk (meshtasticManager
  * only base64-encodes a PSK when `psk.length > 0`, otherwise leaves it
@@ -85,7 +100,24 @@ export async function resolveDestinationChannel(
  * row that slipped in with `''`.
  */
 function isMeshReadablePsk(psk: string | null | undefined): boolean {
-  return psk == null || psk === '' || psk === DEFAULT_PSK_BASE64;
+  if (psk == null || psk === '') return true;
+  try {
+    return Buffer.from(psk, 'base64').length === 1;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * True when a channel's name matches one of firmware's ModemPreset display
+ * names. Combined with {@link isMeshReadablePsk}, this mirrors firmware's
+ * `Channels::isWellKnownChannel()`: the on-wire channel hash is
+ * `hash(name) XOR hash(psk)`, so a mesh-readable PSK under a custom name
+ * still hashes to something no other node's factory-configured channel
+ * matches (issue #4691).
+ */
+function isWellKnownChannelName(name: string | null | undefined): boolean {
+  return name != null && WELL_KNOWN_CHANNEL_NAMES.has(name);
 }
 
 /**
@@ -121,10 +153,18 @@ export async function resolveBroadcastChannel(
   // (issue #4173). Disabled slots are stored with a NULL psk, which would
   // otherwise pass isMeshReadablePsk() below and, if lower-numbered than the
   // primary, get selected (e.g. private-key PRIMARY at 0 + disabled slots 1–7).
-  // Among enabled slots we still prefer a mesh-readable (default-key/unencrypted)
-  // one so every intermediate node can decrypt & append the hop (issue #3696).
+  // Among enabled slots we still prefer a well-known channel — mesh-readable
+  // PSK AND a name matching a ModemPreset display name — so every
+  // intermediate node's factory-configured channel hashes to the same value
+  // and can decrypt & append the hop (issues #3696, #4691).
   const readable = channels
-    .filter((ch) => isValidChannelIndex(ch.id) && ch.role !== 0 && isMeshReadablePsk(ch.psk))
+    .filter(
+      (ch) =>
+        isValidChannelIndex(ch.id) &&
+        ch.role !== 0 && // undefined role (no row/older data) is treated as enabled, not DISABLED
+        isMeshReadablePsk(ch.psk) &&
+        isWellKnownChannelName(ch.name),
+    )
     .sort((a, b) => a.id - b.id);
 
   if (readable.length > 0) {
