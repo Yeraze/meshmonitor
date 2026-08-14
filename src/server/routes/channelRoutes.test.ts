@@ -405,6 +405,22 @@ describe('DELETE /channels/:id', () => {
     // Verify the manager registry was queried for the correct source
     expect(mockSourceRegistry.getManager).toHaveBeenCalledWith('meshcore-1');
   });
+
+  // #4733: unlike Meshtastic, MeshCore channel 0 CAN be deleted — this is the
+  // documented recovery path for a channel that got misconfigured onto slot 0
+  // before writes to it were blocked (deleting it lets syncChannelsFromDevice
+  // re-seed the synthetic Public placeholder on the next sync).
+  it('MeshCore: allows deleting channel 0 (the reserved-slot recovery path)', async () => {
+    mockDb.sources.getSource.mockResolvedValue({ type: 'meshcore' });
+    mockSourceRegistry.getManager.mockReturnValue(mockMeshcoreManager);
+    mockMeshcoreManager.deleteChannel.mockResolvedValue(undefined);
+
+    const res = await request(app).delete('/channels/0').send({ sourceId: 'meshcore-1' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(mockMeshcoreManager.deleteChannel).toHaveBeenCalledWith(0);
+  });
 });
 
 describe('POST /channels/:slotId/import', () => {

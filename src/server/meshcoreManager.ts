@@ -2541,6 +2541,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   /**
    * Delete a channel slot on the device. Re-syncs the DB from the device
    * afterwards so the local mirror reflects the firmware's view.
+   *
+   * Deleting idx 0 is intentionally allowed (see the channelId===0 guard on
+   * `PUT /channels/:id`, which blocks writes but not deletes) — it is the
+   * recovery path for a channel that got misconfigured onto slot 0 before
+   * this reservation existed. The re-sync below will find slot 0 reporting
+   * empty and re-seed the synthetic "Public" placeholder (#4733) — this is
+   * the intended outcome, not a bug: "delete channel 0" always resolves to
+   * "channel 0 is Public again," never to "channel 0 has no DB row."
    */
   async deleteChannel(idx: number): Promise<void> {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {

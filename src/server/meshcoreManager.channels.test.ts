@@ -390,4 +390,26 @@ describe('MeshCoreManager — setChannel / deleteChannel', () => {
     const { manager } = makeManager({ deviceType: MeshCoreDeviceType.REPEATER });
     await expect(manager.deleteChannel(0)).rejects.toThrow(/Companion mode/);
   });
+
+  // Regression for #4733 code review: deleting a misconfigured channel 0 is
+  // the documented recovery path ("delete it to restore Public"). Confirm the
+  // re-sync that deleteChannel() triggers actually re-seeds the synthetic
+  // Public placeholder rather than leaving slot 0 with no DB row at all.
+  it('deleteChannel(0) re-seeds the synthetic Public row once the device reports the slot empty', async () => {
+    const zero = '00'.repeat(16);
+    const { manager, deleteCalls, upsertCalls } = makeManager({
+      preExistingRows: [{ id: 0, name: 'MyMisconfiguredChannel', psk: 'realsecret' }],
+      // Post-delete device state: slot 0 now reads as empty/unconfigured.
+      getChannelsResponse: {
+        success: true,
+        data: [{ channel_idx: 0, name: '', secret_hex: zero }],
+      },
+    });
+    await manager.deleteChannel(0);
+
+    expect(upsertCalls).toHaveLength(1);
+    expect(upsertCalls[0].data).toMatchObject({ id: 0, name: 'Public', psk: null });
+    // Slot 0 is exempt from the reconcile-delete pass — it's re-seeded, not deleted.
+    expect(deleteCalls).toEqual([]);
+  });
 });

@@ -471,7 +471,9 @@ router.put('/:id', requireAuth(), requireSourceId('body'), async (req: Request, 
     // overwriting; the client's "Add channel" flow never proposes slot 0.
     if (sourceType === 'meshcore' && channelId === 0) {
       return fail(res, 400, 'MESHCORE_CHANNEL_ZERO_RESERVED',
-        'Channel 0 is reserved for the MeshCore Public channel and cannot be modified. Delete it to restore Public, then add your channel to a different slot.');
+        'Channel 0 is reserved for the MeshCore Public channel and cannot be written to. ' +
+        'If a channel was previously misconfigured onto slot 0, delete it (DELETE is still allowed ' +
+        'for slot 0) to restore Public, then add your channel to slot 1 or higher.');
     }
 
     // MM-SEC-4: per-channel write gate — caller needs write permission for
