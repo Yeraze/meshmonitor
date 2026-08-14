@@ -53,6 +53,9 @@ import {
   type LxmfMessageEvent,
   type DeliveryStateEvent,
   type LxmfMethod,
+  type TelemetryMessage,
+  type RadioConfigMessage,
+  type DeviceInfoMessage,
 } from './reticulumProtocol.js';
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
@@ -191,6 +194,19 @@ export interface ReticulumConnectParams {
   configDir?: string;
   /** tcp_peer mode */
   peers?: TcpPeerConfig[];
+  /**
+   * own mode (Phase 3 WP1, build spec §2.C): the RNode's serial device path
+   * (e.g. `/dev/ttyUSB0`). Required for own mode; ignored otherwise.
+   */
+  device?: string;
+  /** own mode: initial radio params applied at interface construction — all optional. */
+  frequency?: number;
+  bandwidth?: number;
+  spreadingFactor?: number;
+  codingRate?: number;
+  txPower?: number;
+  stAlock?: number;
+  ltAlock?: number;
 }
 
 export type ReticulumBridgeClientState =
@@ -231,10 +247,15 @@ interface HandshakeWaiter {
  * (LxmfMessageEvent — Phase 2), 'delivery_state' (DeliveryStateEvent —
  * Phase 2, unsolicited transitions AFTER the initial `send_lxmf` reply, which
  * is instead correlated by request id and resolves {@link sendLxmf}'s
- * promise), 'reconnecting' ({attempt, delayMs}), 'close' (no payload),
- * 'error' (Error — transport or wire-level ErrorMessage failures; NOT emitted
- * for a wire ErrorMessage that is correlated to a pending request/handshake,
- * which rejects that request/handshake's promise instead).
+ * promise), 'telemetry' (TelemetryMessage — Phase 3, decoded Sideband
+ * FIELD_TELEMETRY, always unsolicited/pushed), 'reconnecting' ({attempt,
+ * delayMs}), 'close' (no payload), 'error' (Error — transport or wire-level
+ * ErrorMessage failures; NOT emitted for a wire ErrorMessage that is
+ * correlated to a pending request/handshake, which rejects that
+ * request/handshake's promise instead). {@link RadioConfigMessage}/
+ * {@link DeviceInfoMessage} (Phase 3 own mode) are never pushed — they only
+ * ever arrive as id-correlated replies to {@link getRadioConfig}/
+ * {@link setRadioConfig}/{@link getDeviceInfo}.
  */
 export class ReticulumBridgeClient extends EventEmitter {
   private readonly options: Required<
@@ -445,6 +466,58 @@ export class ReticulumBridgeClient extends EventEmitter {
   }
 
   // --------------------------------------------------------------------
+  // Phase 3 (own mode + RNode radio config/device info): id-correlated
+  // commands (build spec §2.B/§2.C/§4, #3960 WP1/WP4). Only meaningful when
+  // the source's mode is 'own' — attach/tcp_peer reject these with a typed
+  // `OWN_MODE_REQUIRED` `ReticulumBridgeError` (mirrors `ws_server.py`'s
+  // `_handle_get_radio_config`/`_handle_set_radio_config`/`_handle_get_device_info`).
+  // --------------------------------------------------------------------
+
+  /** Fetch the own-mode RNode's current radio config (`get_radio_config`). Only valid once `ready`. */
+  async getRadioConfig(): Promise<RadioConfigMessage> {
+    return this.sendIdCorrelatedRequest<RadioConfigMessage>(
+      { type: MESSAGE_TYPE.GET_RADIO_CONFIG },
+      'get_radio_config reply',
+    );
+  }
+
+  /**
+   * Apply a partial radio-config patch to the own-mode RNode
+   * (`set_radio_config`). Omitted fields are left unchanged on the device
+   * (build spec §2.C "partial allowed") — this method only forwards the
+   * keys the caller actually passed.
+   */
+  async setRadioConfig(patch: {
+    frequency?: number;
+    bandwidth?: number;
+    spreadingFactor?: number;
+    codingRate?: number;
+    txPower?: number;
+    stAlock?: number;
+    ltAlock?: number;
+    radioState?: boolean;
+  }): Promise<RadioConfigMessage> {
+    const fields: Record<string, unknown> & { type: string } = { type: MESSAGE_TYPE.SET_RADIO_CONFIG };
+    if (patch.frequency !== undefined) fields.frequency = patch.frequency;
+    if (patch.bandwidth !== undefined) fields.bandwidth = patch.bandwidth;
+    if (patch.spreadingFactor !== undefined) fields.spreadingFactor = patch.spreadingFactor;
+    if (patch.codingRate !== undefined) fields.codingRate = patch.codingRate;
+    if (patch.txPower !== undefined) fields.txPower = patch.txPower;
+    if (patch.stAlock !== undefined) fields.stAlock = patch.stAlock;
+    if (patch.ltAlock !== undefined) fields.ltAlock = patch.ltAlock;
+    if (patch.radioState !== undefined) fields.radioState = patch.radioState;
+    return this.sendIdCorrelatedRequest<RadioConfigMessage>(fields, 'set_radio_config reply');
+  }
+
+  /** Fetch the own-mode RNode's device/firmware info (`get_device_info`). Only valid once `ready`. */
+  async getDeviceInfo(): Promise<DeviceInfoMessage> {
+    return this.sendIdCorrelatedRequest<DeviceInfoMessage>(
+      { type: MESSAGE_TYPE.GET_DEVICE_INFO },
+      'get_device_info reply',
+    );
+  }
+
+  // --------------------------------------------------------------------
   // Connection lifecycle
   // --------------------------------------------------------------------
 
@@ -568,6 +641,15 @@ export class ReticulumBridgeClient extends EventEmitter {
       };
       if (params.configDir !== undefined) fields.configDir = params.configDir;
       if (params.peers !== undefined) fields.peers = params.peers;
+      // own mode (Phase 3 WP1/WP4, build spec §2.C).
+      if (params.device !== undefined) fields.device = params.device;
+      if (params.frequency !== undefined) fields.frequency = params.frequency;
+      if (params.bandwidth !== undefined) fields.bandwidth = params.bandwidth;
+      if (params.spreadingFactor !== undefined) fields.spreadingFactor = params.spreadingFactor;
+      if (params.codingRate !== undefined) fields.codingRate = params.codingRate;
+      if (params.txPower !== undefined) fields.txPower = params.txPower;
+      if (params.stAlock !== undefined) fields.stAlock = params.stAlock;
+      if (params.ltAlock !== undefined) fields.ltAlock = params.ltAlock;
       this.send(fields);
     });
   }
@@ -690,6 +772,14 @@ export class ReticulumBridgeClient extends EventEmitter {
         // instead resolved via the pendingRequests correlation path above
         // (see handleRawMessage), never dispatched as a push event.
         this.emit('delivery_state', env as DeliveryStateEvent);
+        break;
+      case MESSAGE_TYPE.TELEMETRY:
+        // env as unknown as TelemetryMessage: TelemetryMessage.ts is
+        // `number | null` (the bridge overwrites the envelope's own
+        // creation-time ts with the decoded SID_TIME value, see that type's
+        // doc), which is not assignable to/from Envelope.ts's `number` —
+        // the two shapes are structurally incomparable for a direct `as`.
+        this.emit('telemetry', env as unknown as TelemetryMessage);
         break;
       case MESSAGE_TYPE.ERROR: {
         const errMsg = env as ErrorMessage;

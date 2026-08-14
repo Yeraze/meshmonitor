@@ -33,7 +33,7 @@ const DEFAULT_BRIDGE_HOST = '127.0.0.1';
 const DEFAULT_BRIDGE_PORT = 8765;
 
 export interface ReticulumSourceConfig {
-  mode: 'attach' | 'tcp_peer';
+  mode: 'attach' | 'tcp_peer' | 'own';
   /** WebSocket URL of the bridge sidecar. Defaults to ws://127.0.0.1:8765 when omitted. */
   bridgeUrl?: string;
   /** Shared secret for the `hello` handshake (must match the bridge's BRIDGE_TOKEN). */
@@ -43,6 +43,19 @@ export interface ReticulumSourceConfig {
   configDir?: string;
   /** tcp_peer mode: one or more TCPClientInterface peers the bridge's own RNS instance joins. */
   peers?: TcpPeerConfig[];
+  /**
+   * own mode (Phase 3 WP1/WP4, build spec §2.B/§2.C): the RNode's serial
+   * device path (e.g. `/dev/ttyUSB0`). Required for own mode.
+   */
+  device?: string;
+  /** own mode: initial radio params applied at interface construction (build spec §2.C). All optional. */
+  frequency?: number;
+  bandwidth?: number;
+  spreadingFactor?: number;
+  codingRate?: number;
+  txPower?: number;
+  stAlock?: number;
+  ltAlock?: number;
 }
 
 /** Runtime config consumed by `ReticulumBridgeClient.connect()` (a superset used as `ReticulumConnectParams` plus transport fields). */
@@ -76,12 +89,12 @@ export interface ReticulumConfig extends ReticulumConnectParams {
  */
 export function reticulumConfigFromSource(source: Source): ReticulumConfig | null {
   const cfg = (source.config ?? {}) as unknown as ReticulumSourceConfig;
-  if (cfg.mode !== undefined && cfg.mode !== 'attach' && cfg.mode !== 'tcp_peer') {
+  if (cfg.mode !== undefined && cfg.mode !== 'attach' && cfg.mode !== 'tcp_peer' && cfg.mode !== 'own') {
     logger.warn(
       `[ReticulumConfig] Unrecognized mode '${String(cfg.mode)}' in source ${source.id} config — defaulting to 'attach'`,
     );
   }
-  const mode: ReticulumMode = cfg.mode === 'tcp_peer' ? 'tcp_peer' : 'attach';
+  const mode: ReticulumMode = cfg.mode === 'tcp_peer' ? 'tcp_peer' : cfg.mode === 'own' ? 'own' : 'attach';
   const bridgeUrl = cfg.bridgeUrl?.trim() || `ws://${DEFAULT_BRIDGE_HOST}:${DEFAULT_BRIDGE_PORT}`;
   const token = cfg.token?.trim() ?? '';
 
@@ -106,6 +119,25 @@ export function reticulumConfigFromSource(source: Source): ReticulumConfig | nul
     };
   }
 
+  if (mode === 'own') {
+    const device = cfg.device?.trim();
+    if (!device) return null;
+    return {
+      mode,
+      bridgeUrl,
+      token,
+      protocolVersion: PROTOCOL_VERSION,
+      device,
+      frequency: finiteNumberOrUndefined(cfg.frequency),
+      bandwidth: finiteNumberOrUndefined(cfg.bandwidth),
+      spreadingFactor: finiteNumberOrUndefined(cfg.spreadingFactor),
+      codingRate: finiteNumberOrUndefined(cfg.codingRate),
+      txPower: finiteNumberOrUndefined(cfg.txPower),
+      stAlock: finiteNumberOrUndefined(cfg.stAlock),
+      ltAlock: finiteNumberOrUndefined(cfg.ltAlock),
+    };
+  }
+
   // tcp_peer
   const peers = normalizeTcpPeers(cfg.peers);
   if (peers.length === 0) return null;
@@ -116,6 +148,11 @@ export function reticulumConfigFromSource(source: Source): ReticulumConfig | nul
     protocolVersion: PROTOCOL_VERSION,
     peers,
   };
+}
+
+/** Coerce a raw `sources.config` field into a finite number, or `undefined` (own-mode initial radio params are all optional — see build spec §2.C). */
+function finiteNumberOrUndefined(raw: unknown): number | undefined {
+  return typeof raw === 'number' && Number.isFinite(raw) ? raw : undefined;
 }
 
 function normalizeTcpPeers(raw: ReticulumSourceConfig['peers']): TcpPeerConfig[] {

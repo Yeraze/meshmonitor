@@ -140,6 +140,97 @@ describe('reticulumConfigFromSource', () => {
     });
   });
 
+  describe('own mode (#3960 Phase 3 WP1/WP4)', () => {
+    it('maps a valid own config (device only, no radio params)', () => {
+      const cfg = reticulumConfigFromSource(fakeSource({ mode: 'own', device: '/dev/ttyUSB0', token: 'secret' }));
+      expect(cfg).toEqual({
+        mode: 'own',
+        bridgeUrl: 'ws://127.0.0.1:8765',
+        token: 'secret',
+        protocolVersion: PROTOCOL_VERSION,
+        device: '/dev/ttyUSB0',
+        frequency: undefined,
+        bandwidth: undefined,
+        spreadingFactor: undefined,
+        codingRate: undefined,
+        txPower: undefined,
+        stAlock: undefined,
+        ltAlock: undefined,
+      });
+    });
+
+    it('maps a valid own config with initial radio params', () => {
+      const cfg = reticulumConfigFromSource(
+        fakeSource({
+          mode: 'own',
+          device: '/dev/ttyUSB0',
+          token: 'secret',
+          frequency: 914_875_000,
+          bandwidth: 125_000,
+          spreadingFactor: 8,
+          codingRate: 5,
+          txPower: 17,
+          stAlock: 33.3,
+          ltAlock: 66.6,
+        }),
+      );
+      expect(cfg).toMatchObject({
+        mode: 'own',
+        device: '/dev/ttyUSB0',
+        frequency: 914_875_000,
+        bandwidth: 125_000,
+        spreadingFactor: 8,
+        codingRate: 5,
+        txPower: 17,
+        stAlock: 33.3,
+        ltAlock: 66.6,
+      });
+    });
+
+    it('trims device', () => {
+      const cfg = reticulumConfigFromSource(fakeSource({ mode: 'own', device: '  /dev/ttyUSB0  ', token: 'secret' }));
+      expect((cfg as { device?: string })?.device).toBe('/dev/ttyUSB0');
+    });
+
+    it('returns null when device is missing', () => {
+      const cfg = reticulumConfigFromSource(fakeSource({ mode: 'own', token: 'secret' }));
+      expect(cfg).toBeNull();
+    });
+
+    it('returns null when device is blank', () => {
+      const cfg = reticulumConfigFromSource(fakeSource({ mode: 'own', device: '   ', token: 'secret' }));
+      expect(cfg).toBeNull();
+    });
+
+    it('drops a non-numeric/non-finite radio param rather than passing it through (defensive parse of the stored config JSON)', () => {
+      const cfg = reticulumConfigFromSource(
+        fakeSource({
+          mode: 'own',
+          device: '/dev/ttyUSB0',
+          token: 'secret',
+          frequency: 'not-a-number' as unknown as number,
+          txPower: Infinity,
+        }),
+      );
+      expect((cfg as { frequency?: number })?.frequency).toBeUndefined();
+      expect((cfg as { txPower?: number })?.txPower).toBeUndefined();
+    });
+
+    it('honors an explicit bridgeUrl override, same as attach/tcp_peer', () => {
+      const cfg = reticulumConfigFromSource(
+        fakeSource({ mode: 'own', device: '/dev/ttyUSB0', token: 'secret', bridgeUrl: 'ws://127.0.0.1:9000' }),
+      );
+      expect(cfg?.bridgeUrl).toBe('ws://127.0.0.1:9000');
+    });
+
+    it('returns null (fail-fast) when bridgeUrl is a non-loopback host not on the allowlist, same as attach/tcp_peer', () => {
+      const cfg = reticulumConfigFromSource(
+        fakeSource({ mode: 'own', device: '/dev/ttyUSB0', token: 'secret', bridgeUrl: 'ws://evil.example.com:1/' }),
+      );
+      expect(cfg).toBeNull();
+    });
+  });
+
   it('defaults to attach mode when mode is missing', () => {
     const cfg = reticulumConfigFromSource(
       fakeSource({ mode: undefined as unknown as 'attach', configDir: '/rns', token: 'secret' }),
@@ -191,6 +282,11 @@ describe('reticulumConfigFromSource', () => {
       reticulumConfigFromSource(
         fakeSource({ mode: 'tcp_peer', token: 'secret', peers: [{ host: '10.0.0.5', port: 4242 }] }),
       );
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it('does NOT warn for a recognized mode (own)', () => {
+      reticulumConfigFromSource(fakeSource({ mode: 'own', device: '/dev/ttyUSB0', token: 'secret' }));
       expect(warnSpy).not.toHaveBeenCalled();
     });
   });

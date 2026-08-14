@@ -50,6 +50,12 @@ export const MESSAGE_TYPE = {
   // Phase 2 (LXMF messaging, build spec §3.1) -- events (bridge -> Node).
   LXMF_MESSAGE: 'lxmf_message',
   DELIVERY_STATE: 'delivery_state',
+  // Phase 3 (Sideband FIELD_TELEMETRY decode, build spec §2.A/§2.C, #3960
+  // WP2/WP4) -- event (bridge -> Node). A DEDICATED event type (R3) so
+  // telemetry-only Sideband packets never create a chat row on the Node
+  // side (see reticulumManager.ts's handleTelemetry, which never touches
+  // reticulum_messages).
+  TELEMETRY: 'telemetry',
   // Phase 2 -- commands (Node -> bridge).
   SEND_LXMF: 'send_lxmf',
   ANNOUNCE_SELF: 'announce_self',
@@ -513,6 +519,61 @@ export interface DeliveryStateEvent extends Envelope {
 }
 
 // --------------------------------------------------------------------------
+// Phase 3 (Sideband FIELD_TELEMETRY decode, build spec §2.A/§2.C, #3960
+// WP2/WP4): bridge -> client event.
+// --------------------------------------------------------------------------
+
+/**
+ * A decoded Sideband `SID_LOCATION` sample carried on a `telemetry` event
+ * (build spec §2.A/§3). Mirrors `sideband_telemetry.py`'s `_decode_location`
+ * output — always fully populated when present (the bridge drops `location`
+ * entirely rather than half-fill it on a decode error, see that module's
+ * doc), never partially `null`.
+ */
+export interface TelemetryLocation {
+  lat: number;
+  lon: number;
+  altitude: number;
+  speed: number;
+  bearing: number;
+  accuracy: number;
+}
+
+/** One pinned-subset sensor reading inside a `telemetry` event's `sensors` map (build spec §2.A). */
+export interface TelemetrySensorReading {
+  value: number;
+  unit?: string | null;
+}
+
+/**
+ * A decoded Sideband `LXMF.FIELD_TELEMETRY` payload (build spec §2.A/§2.C,
+ * `protocol.py`'s `telemetry_event()`). `sensors` is ALWAYS present (`{}`
+ * when the packet carried no pinned-subset sensor, per `decode_field_telemetry`'s
+ * contract) so consumers never need a null check before iterating it;
+ * `location` is nullable (absent/undecodable `SID_LOCATION`).
+ *
+ * `ts` deliberately does NOT reuse `Envelope.ts`'s epoch-ms convention: the
+ * bridge's `telemetry_event()` builder overwrites the envelope's own
+ * creation-time `ts` with the decoded `SID_TIME` value — a Unix
+ * epoch-**seconds** int from Sideband's `int(time.time())`, or `null` when
+ * `SID_TIME` wasn't present. Callers that need an epoch-ms value (DB
+ * `timestamp`/`positionUpdatedAt` columns) must multiply by 1000 — see
+ * `reticulumManager.ts`'s `handleTelemetry`. Not extending `Envelope`
+ * directly (its `ts: number` is not assignable from `number | null`) —
+ * this type intentionally redeclares every `Envelope` field it needs.
+ */
+export interface TelemetryMessage {
+  v: number;
+  type: typeof MESSAGE_TYPE.TELEMETRY;
+  id?: string;
+  ts: number | null;
+  sourceHash: string;
+  destinationHash: string;
+  sensors: Record<string, TelemetrySensorReading>;
+  location: TelemetryLocation | null;
+}
+
+// --------------------------------------------------------------------------
 // Phase 3 (own mode + RNode radio config/device info): bridge -> client
 // responses (build spec §2.C). Wire-contract stubs only — WP4 flesheshes
 // out the reticulumBridgeClient.ts / DB / route consumers.
@@ -579,5 +640,6 @@ export type BridgeEventMessage =
   | StatusMessage
   | LxmfMessageEvent
   | DeliveryStateEvent
+  | TelemetryMessage
   | RadioConfigMessage
   | DeviceInfoMessage;
