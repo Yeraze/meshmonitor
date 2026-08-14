@@ -58,8 +58,8 @@ beforeEach(() => {
   // is mesh-readable; slot 2 is a private encrypted channel. resolveBroadcastChannel
   // should therefore pick slot 0 for traceroutes.
   (databaseService.channels.getAllChannels as any).mockResolvedValue([
-    { id: 0, psk: 'AQ==' },
-    { id: 2, psk: 'c29tZXByaXZhdGVrZXk=' },
+    { id: 0, psk: 'AQ==', name: 'LongFast' },
+    { id: 2, psk: 'c29tZXByaXZhdGVrZXk=', name: 'Private' },
   ]);
   mockManager.getLocalNodeInfo.mockReturnValue({ nodeNum: 1, nodeId: '!00000001' });
 });
@@ -92,8 +92,8 @@ describe('POST /traceroute', () => {
     // Slot 0 here has a PRIVATE key, slot 3 carries the default key, so a
     // traceroute must go out on slot 3 — not the encrypted slot 0.
     (databaseService.channels.getAllChannels as any).mockResolvedValue([
-      { id: 0, psk: 'cHJpdmF0ZWtleTAwMA==' },
-      { id: 3, psk: 'AQ==' },
+      { id: 0, psk: 'cHJpdmF0ZWtleTAwMA==', name: 'LongFast' },
+      { id: 3, psk: 'AQ==', name: 'LongFast' },
     ]);
     mockManager.sendTraceroute.mockResolvedValue(undefined);
     const res = await request(app).post('/traceroute').send({ destination: '!12345678' });
