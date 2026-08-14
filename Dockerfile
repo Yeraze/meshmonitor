@@ -20,7 +20,23 @@ COPY package*.json ./
 # better-sqlite3 will download pre-built binaries for the target platform
 # Use cache mount to speed up repeated builds
 # --legacy-peer-deps needed for vitest peer dependency conflicts
+#
+# PUPPETEER_SKIP_DOWNLOAD=true: puppeteer's npm postinstall downloads a Chrome
+# binary. This image is built for linux/arm64 under QEMU emulation, where that
+# postinstall crashes with SIGILL ("qemu: uncaught target signal 4") and takes
+# the whole build with it. Puppeteer is a devDependency used only by two ad-hoc
+# screenshot helpers (scripts/capture-*-screenshots.js) — neither the runtime
+# image nor the build needs the browser binary.
+#
+# .npmrc already sets `puppeteer_skip_download=true`, but that is no longer
+# sufficient: npm now reports it as `Unknown project config` and stops
+# forwarding it as `npm_config_puppeteer_skip_download`, so puppeteer never
+# sees it and runs the download anyway. The environment variable is read
+# directly by puppeteer and does not depend on npm's config forwarding.
+# Dockerfile.armv7 has always set it this way — which is why the armv7 leg
+# kept building while this one broke (v4.14.2-rc1).
 RUN --mount=type=cache,target=/root/.npm \
+    PUPPETEER_SKIP_DOWNLOAD=true \
     npm install --legacy-peer-deps
 
 # Verify protobufs are present (fail fast if git submodule wasn't initialized)
