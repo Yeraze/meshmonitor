@@ -8,4 +8,8 @@ rns==1.4.2
 # websockets.sync.server (threaded, no asyncio) requires >=13.
 websockets>=13
 
-# lxmf is deliberately NOT a dependency yet -- Phase 2 (LXMF messaging) adds it.
+# Pinned per WP0 spike evidence for Phase 2 (LXMF messaging):
+# docs/internal/dev-notes/RETICULUM_WP0_PHASE2_SPIKE_EVIDENCE.md -- resolves
+# wheels-only on python:3.12-alpine against rns==1.4.2 WITHOUT forcing an rns
+# upgrade (verified via `pip install --only-binary=:all:`).
+lxmf==1.1.1

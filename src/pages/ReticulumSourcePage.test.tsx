@@ -214,4 +214,27 @@ describe('ReticulumSourcePage', () => {
     fireEvent.click(settingsTab);
     expect(await screen.findByText('Destination retention cap')).toBeInTheDocument();
   });
+
+  it('mounts ReticulumDmsView (Phase 2 WP5) when the Messages nav item is selected', async () => {
+    authValue.hasPermission = () => true;
+    renderPage();
+    const dmsTab = await screen.findByRole('button', { name: 'Messages' });
+    fireEvent.click(dmsTab);
+    // The default-fetch mock resolves every unmatched route (incl.
+    // /reticulum/messages, the conversations list) with an empty array, so
+    // the empty-conversations state is what a real disconnected/no-history
+    // source would show.
+    expect(await screen.findByTestId('reticulum-dms-view')).toBeInTheDocument();
+    expect(await screen.findByTestId('reticulum-dms-empty')).toHaveTextContent('No conversations yet.');
+  });
+
+  it('hits the nested /reticulum/messages route when the Messages nav item is selected', async () => {
+    authValue.hasPermission = () => true;
+    renderPage();
+    const dmsTab = await screen.findByRole('button', { name: 'Messages' });
+    fireEvent.click(dmsTab);
+    await waitFor(() => {
+      expect(fetchUrls.some((u) => u.includes('/api/sources/rns-src-1/reticulum/messages'))).toBe(true);
+    });
+  });
 });

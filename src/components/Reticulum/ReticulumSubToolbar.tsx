@@ -36,6 +36,10 @@ interface Item {
 
 const ITEMS: Item[] = [
   { id: 'destinations', labelKey: 'reticulum.nav.destinations', fallback: 'Destinations', icon: 'identity' },
+  // 'dms' (Phase 2 WP5) sits right after destinations — both are "who's out
+  // there" surfaces — and before the more plumbing-flavored
+  // interfaces/info/settings pages.
+  { id: 'dms', labelKey: 'reticulum.nav.dms', fallback: 'Messages', icon: 'messages' },
   { id: 'interfaces', labelKey: 'reticulum.nav.interfaces', fallback: 'Interfaces', icon: 'network' },
   { id: 'info', labelKey: 'reticulum.nav.info', fallback: 'Info', icon: 'info' },
   { id: 'settings', labelKey: 'reticulum.nav.settings', fallback: 'Settings', icon: 'settings' },

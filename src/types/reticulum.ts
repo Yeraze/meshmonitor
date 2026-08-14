@@ -85,5 +85,83 @@ export interface ReticulumInterfaceRow {
   updatedAt: number;
 }
 
-/** Sub-toolbar view identifiers for `ReticulumPage`/`ReticulumSubToolbar` (WP2). */
-export type ReticulumView = 'destinations' | 'interfaces' | 'info' | 'settings';
+/** Sub-toolbar view identifiers for `ReticulumPage`/`ReticulumSubToolbar` (WP2; 'dms' added Phase 2 WP5). */
+export type ReticulumView = 'destinations' | 'interfaces' | 'dms' | 'info' | 'settings';
+
+/**
+ * LXMF message lifecycle state (Reticulum epic #3960, Phase 2 WP2/WP3).
+ * Canonical definition — `src/db/repositories/reticulum.ts` re-exports this
+ * rather than redeclaring it, so server and frontend can't drift (both
+ * consume the same union; the server/frontend type-boundary convention still
+ * holds for the interface *shapes* like `ReticulumMessageRow`, which remain
+ * independently declared, see the module comment above).
+ */
+export type ReticulumMessageState = 'draft' | 'outbound' | 'sending' | 'sent' | 'delivered' | 'failed';
+
+/**
+ * LXMF delivery method (Reticulum epic #3960, Phase 2 WP2/WP3). Includes
+ * `'paper'` (offline/manual transfer) to match the wire protocol's
+ * `LxmfMethod` (`src/server/reticulumProtocol.ts` — kept as its own type
+ * there since it also carries wire-message fields, but its value set MUST
+ * match this one). Canonical definition — see `ReticulumMessageState` above.
+ */
+export type ReticulumMessageMethod = 'opportunistic' | 'direct' | 'propagated' | 'paper';
+
+/**
+ * One row from the (Phase 3+) `GET /api/sources/:id/reticulum/messages*`
+ * endpoints (mirrors the server's `ReticulumMessageRow`,
+ * `src/db/repositories/reticulum.ts`). `id` is the composite key
+ * `${sourceId}_${lxmHashHex}` (see the `messages.id` row-id convention).
+ *
+ * Phase 2 scope: UTF-8 text `content`/`title` + attachment **metadata** in
+ * `fields` (name/type/size/ref) — raw blob transfer over the WS is deferred.
+ */
+export interface ReticulumMessageRow {
+  id: string;
+  sourceId: string;
+  fromHash: string;
+  toHash: string;
+  title: string | null;
+  content: string | null;
+  timestamp: number;
+  receivedAt: number | null;
+  createdAt: number;
+  state: ReticulumMessageState;
+  method: ReticulumMessageMethod | null;
+  signatureValidated: boolean;
+  ratcheted: boolean;
+  /** JSON string — replies/reactions/thread markers + attachment metadata. */
+  fields: string | null;
+  replyToHash: string | null;
+  threadHash: string | null;
+  rssi: number | null;
+  snr: number | null;
+  quality: number | null;
+}
+
+/**
+ * One entry from `GET /api/sources/:id/reticulum/messages` (conversations
+ * list — mirrors the server's `ReticulumConversationSummary`,
+ * `src/db/repositories/reticulum.ts`). `peerHash` identifies the other
+ * party; a message row belongs to this conversation when its `fromHash` OR
+ * `toHash` equals `peerHash` — LXMF conversations are always exactly two
+ * parties, so that's enough to tell direction within one conversation
+ * without needing to know this source's own destination hash (`fromHash ===
+ * peerHash` is inbound, `toHash === peerHash` is outbound).
+ */
+export interface ReticulumConversation {
+  peerHash: string;
+  lastMessage: ReticulumMessageRow;
+  messageCount: number;
+}
+
+/**
+ * `GET /api/sources/:id/reticulum/identity` payload (mirrors the server's
+ * `get_identity` reply shape, `src/server/reticulumManager.ts`). PUBLIC info
+ * only (R2/R5) — there is deliberately no field for the private key anywhere
+ * on this type; see the R5 backup note surfaced in `ReticulumDmsView`.
+ */
+export interface ReticulumIdentity {
+  destinationHash: string | null;
+  displayName: string | null;
+}

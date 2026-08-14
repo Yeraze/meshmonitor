@@ -43,6 +43,43 @@ class BridgeClient:
         self.ws.send(protocol.encode(protocol.get_status_message(id)))
         return self.recv_until(lambda e: e.get("type") == protocol.TYPE_STATUS and e.get("id") == id)
 
+    # -- Phase 2 (LXMF messaging, #3960 WP1) -------------------------------
+
+    def announce_self(self, id: str = "a0") -> dict:
+        self.ws.send(protocol.encode(protocol.announce_self_message(id=id)))
+        return self.recv_until(lambda e: e.get("id") == id and e.get("type") in (protocol.TYPE_READY, protocol.TYPE_ERROR))
+
+    def send_lxmf(
+        self,
+        to: str,
+        title: str = "",
+        content: str = "",
+        fields: Optional[dict] = None,
+        method: Optional[str] = None,
+        propagation_node: Optional[str] = None,
+        id: str = "s1",
+    ) -> dict:
+        """Sends `send_lxmf` and waits for its response, which is a
+        `delivery_state` envelope (state="sending") carrying the assigned
+        hash, echoing this call's `id` -- or an `error` envelope on failure.
+        See ws_server.py's `_handle_send_lxmf`."""
+        self.ws.send(
+            protocol.encode(
+                protocol.send_lxmf_message(
+                    to=to,
+                    title=title,
+                    content=content,
+                    fields=fields,
+                    method=method,
+                    propagation_node=propagation_node,
+                    id=id,
+                )
+            )
+        )
+        return self.recv_until(
+            lambda e: e.get("id") == id and e.get("type") in (protocol.TYPE_DELIVERY_STATE, protocol.TYPE_ERROR)
+        )
+
     def recv(self, timeout: float = 10.0) -> dict:
         raw = self.ws.recv(timeout=timeout)
         return protocol.decode(raw)

@@ -10,6 +10,11 @@ import { EventEmitter } from 'events';
 import type { DbNode, DbMessage, DbTelemetry, DbChannel, DbTraceroute } from '../../services/database.js';
 import type { MeshCoreMessage, MeshCoreContact, MeshCoreNode } from '../meshcoreManager.js';
 import type { DbMeshCorePacket } from '../../db/repositories/meshcore.js';
+import type {
+  ReticulumMessageRow,
+  ReticulumMessageState,
+  ReticulumMessageMethod,
+} from '../../db/repositories/reticulum.js';
 import { logger } from '../../utils/logger.js';
 
 export type DataEventType =
@@ -35,7 +40,9 @@ export type DataEventType =
   | 'meshcore:send-confirmed'
   | 'meshcore:channel-heard'
   | 'meshcore:ota-packet'
-  | 'meshbeacon:received';
+  | 'meshbeacon:received'
+  | 'reticulum:message'
+  | 'reticulum:delivery-state:updated';
 
 export interface DataEvent {
   type: DataEventType;
@@ -527,6 +534,56 @@ class DataEventEmitter extends EventEmitter {
     };
     this.emit('data', event);
     logger.debug(`[DataEventEmitter] MeshCore local node updated (source: ${sourceId})`);
+  }
+
+  /**
+   * Emit a Reticulum LXMF message event (#3960 Phase 2 WP3). Fired by
+   * `ReticulumManager.handleLxmfMessage` for INBOUND (non-self) messages only
+   * — the manager's cross-source self-origin guard (mirrors `utils/ownNodes.ts`
+   * #3914) skips this call entirely for a row whose `fromHash` is one of
+   * MeshMonitor's own LXMF destinations, so this event doubles as both the UI
+   * update AND the automation `trigger.message` source for genuinely received
+   * messages. Our own outbound sends get their UI update via
+   * `emitReticulumDeliveryStateUpdated` instead (driven by `sendMessage`/
+   * `delivery_state`), never via this event.
+   */
+  emitReticulumMessage(row: ReticulumMessageRow, sourceId: string): void {
+    const event: DataEvent = {
+      type: 'reticulum:message',
+      data: row,
+      timestamp: Date.now(),
+      sourceId,
+    };
+    this.emit('data', event);
+    logger.debug(`[DataEventEmitter] Reticulum message from ${row.fromHash} (source: ${sourceId})`);
+  }
+
+  /**
+   * Emit a Reticulum LXMF delivery-state transition (#3960 Phase 2 WP3) — a
+   * UI-only update (delivery chips: sending/sent/delivered/failed) for a
+   * message we sent. Not consumed as an automation trigger: a state change on
+   * our own outbound message is inherently self-originated, so it never fires
+   * `trigger.message` (the self-origin guard for inbound receipt lives on
+   * {@link emitReticulumMessage} instead).
+   */
+  emitReticulumDeliveryStateUpdated(
+    data: {
+      id: string;
+      hash: string;
+      state: ReticulumMessageState;
+      method?: ReticulumMessageMethod | null;
+      attempts?: number | null;
+    },
+    sourceId: string,
+  ): void {
+    const event: DataEvent = {
+      type: 'reticulum:delivery-state:updated',
+      data: { sourceId, ...data },
+      timestamp: Date.now(),
+      sourceId,
+    };
+    this.emit('data', event);
+    logger.debug(`[DataEventEmitter] Reticulum delivery state: ${data.hash} -> ${data.state} (source: ${sourceId})`);
   }
 
   /**

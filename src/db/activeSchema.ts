@@ -180,10 +180,11 @@ import {
   atakContactsSqlite, atakContactsPostgres, atakContactsMysql,
 } from './schema/atakContacts.js';
 
-// Reticulum tables (epic #3960, Phase 1a)
+// Reticulum tables (epic #3960, Phase 1a + Phase 2)
 import {
   reticulumDestinationsSqlite, reticulumDestinationsPostgres, reticulumDestinationsMysql,
   reticulumInterfacesSqlite, reticulumInterfacesPostgres, reticulumInterfacesMysql,
+  reticulumMessagesSqlite, reticulumMessagesPostgres, reticulumMessagesMysql,
 } from './schema/reticulum.js';
 
 /**
@@ -311,11 +312,13 @@ export interface ActiveSchema {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3691 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   atakContacts: any;
 
-  // Reticulum tables (epic #3960, Phase 1a)
+  // Reticulum tables (epic #3960, Phase 1a + Phase 2)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3960 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   reticulumDestinations: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3960 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   reticulumInterfaces: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3960 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
+  reticulumMessages: any;
 
   // Allow dynamic access for flexibility
   [key: string]: any;
@@ -390,6 +393,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     atakContacts: atakContactsSqlite,
     reticulumDestinations: reticulumDestinationsSqlite,
     reticulumInterfaces: reticulumInterfacesSqlite,
+    reticulumMessages: reticulumMessagesSqlite,
   },
   postgres: {
     nodes: nodesPostgres,
@@ -456,6 +460,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     atakContacts: atakContactsPostgres,
     reticulumDestinations: reticulumDestinationsPostgres,
     reticulumInterfaces: reticulumInterfacesPostgres,
+    reticulumMessages: reticulumMessagesPostgres,
   },
   mysql: {
     nodes: nodesMysql,
@@ -522,6 +527,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     atakContacts: atakContactsMysql,
     reticulumDestinations: reticulumDestinationsMysql,
     reticulumInterfaces: reticulumInterfacesMysql,
+    reticulumMessages: reticulumMessagesMysql,
   },
 };
 

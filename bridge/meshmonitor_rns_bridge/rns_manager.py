@@ -22,13 +22,26 @@ import logging
 import os
 import queue
 import threading
+import time
 from typing import Any, Iterable, Optional
 
+import LXMF
 import RNS
 
 from . import protocol
 
 logger = logging.getLogger("meshmonitor_rns_bridge.rns_manager")
+
+# Phase 2 (LXMF messaging): how long send_lxmf() will wait for an
+# unknown-identity destination's path to resolve before giving up (build
+# spec §3.5). Bounded deliberately short -- per the epic's anti-grind
+# guidance, a send to a destination this bridge has never seen an announce
+# from should fail fast with a clear error rather than hang the WS
+# connection-handler thread. In the WP1 integration test the two identities
+# always exchange an announce first (via `announce_self`), so this path is
+# not expected to be exercised in the happy-path test.
+LXMF_PATH_WAIT_TIMEOUT_S = 5.0
+LXMF_PATH_WAIT_POLL_S = 0.2
 
 # WP0 §6.2: RNS's own shared-instance plumbing interfaces, never real user interfaces.
 EXCLUDED_INTERFACE_TYPES = frozenset({"LocalServerInterface", "LocalClientInterface"})
@@ -58,6 +71,155 @@ INTERFACE_MODE_NAMES = {
     6: "gateway",
     7: "internal",
 }
+
+
+# --------------------------------------------------------------------------
+# Phase 2 (LXMF messaging): numeric-state / method mapping (build spec §3.3
+# "map LXMF numeric states in one place"). Verified against the installed
+# lxmf==1.1.1 source (LXMF/LXMessage.py):
+#   GENERATING=0x00 OUTBOUND=0x01 SENDING=0x02 SENT=0x04 DELIVERED=0x08
+#   REJECTED=0xFD CANCELLED=0xFE FAILED=0xFF
+# GENERATING/OUTBOUND (pre-transmission bookkeeping states) fold into the
+# wire's "sending", same as SENDING itself -- Node has no use for the
+# more granular pre-send states. Any value not listed here (future LXMF
+# version adds a state) maps to "failed" -- fail-closed rather than silently
+# dropping the event or leaving a message stuck in a UI-facing "sending"
+# limbo forever.
+_LXMF_STATE_TO_WIRE = {
+    LXMF.LXMessage.GENERATING: "sending",
+    LXMF.LXMessage.OUTBOUND: "sending",
+    LXMF.LXMessage.SENDING: "sending",
+    LXMF.LXMessage.SENT: "sent",
+    LXMF.LXMessage.DELIVERED: "delivered",
+    LXMF.LXMessage.REJECTED: "failed",
+    LXMF.LXMessage.CANCELLED: "failed",
+    LXMF.LXMessage.FAILED: "failed",
+}
+
+# LXMessage.method (int, set once the router determines it) -> the wire's
+# method string. Matches migration 143's `method` column comment
+# (opportunistic|direct|propagated); UNKNOWN (0, not yet determined -- e.g.
+# read immediately after handle_outbound() returns, before the router's
+# background thread has picked a method) intentionally has no entry, so
+# `.get()` falls through to `None` (nullable on the wire, see
+# reticulumProtocol.ts's AnnounceMessage nullable-field precedent).
+_LXMF_METHOD_TO_WIRE = {
+    LXMF.LXMessage.OPPORTUNISTIC: "opportunistic",
+    LXMF.LXMessage.DIRECT: "direct",
+    LXMF.LXMessage.PROPAGATED: "propagated",
+    LXMF.LXMessage.PAPER: "paper",
+}
+
+# Wire method string (Node's `send_lxmf` command, optional `method` field) ->
+# LXMessage's `desired_method` constructor arg. Absent/unrecognized ->
+# None, meaning "let the router decide" (its normal opportunistic-first
+# behavior), which is also send_lxmf()'s default when the field is omitted.
+_WIRE_METHOD_TO_LXMF = {
+    "opportunistic": LXMF.LXMessage.OPPORTUNISTIC,
+    "direct": LXMF.LXMessage.DIRECT,
+    "propagated": LXMF.LXMessage.PROPAGATED,
+    "paper": LXMF.LXMessage.PAPER,
+}
+
+# LXMF field ids (LXMF.FIELD_*) worth naming on the wire for Phase 2's
+# "replies/reactions/threads from fields" scope (build spec §6). Anything
+# else still round-trips (keyed by its numeric id as a string) rather than
+# being dropped, so a client-side field this bridge doesn't specifically
+# name yet isn't silently lost.
+_FIELD_NAMES = {
+    LXMF.FIELD_THREAD: "thread",
+    LXMF.FIELD_REPLY_TO: "replyTo",
+    LXMF.FIELD_REPLY_QUOTE: "replyQuote",
+    LXMF.FIELD_REACTION: "reaction",
+    LXMF.FIELD_COMMENT: "comment",
+    LXMF.FIELD_RENDERER: "renderer",
+    LXMF.FIELD_FILE_ATTACHMENTS: "fileAttachments",
+    LXMF.FIELD_IMAGE: "image",
+    LXMF.FIELD_AUDIO: "audio",
+}
+
+# Raw `bytes` values longer than this are almost certainly attachment/binary
+# payload content rather than a short id/hash -- R3 forbids ever putting
+# those on the wire, so they collapse to a length-only placeholder instead.
+# Short byte strings (hashes, ids -- e.g. FIELD_REPLY_TO's full LXMessage
+# hash) are still hex-encoded and passed through, consistent with how the
+# rest of this module represents hashes (`_hexlify`).
+_MAX_INLINE_BYTES = 32
+
+
+def _lxmf_state_to_wire(state: Any) -> str:
+    return _LXMF_STATE_TO_WIRE.get(state, "failed")
+
+
+def _lxmf_method_to_wire(method: Any) -> Optional[str]:
+    return _LXMF_METHOD_TO_WIRE.get(method)
+
+
+def _jsonify_field_value(value: Any) -> Any:
+    """Recursively converts an LXMF field value (as produced by msgpack
+    unpacking -- dict/list/bytes/int/str/float/bool/None) into a JSON-safe
+    shape, per R3: attachment/binary content never reaches the wire, only
+    metadata (here, a length placeholder for anything long enough to be
+    payload rather than an id)."""
+    if isinstance(value, (bytes, bytearray)):
+        if len(value) <= _MAX_INLINE_BYTES:
+            return RNS.hexrep(bytes(value), delimit=False)
+        return {"bytesLength": len(value)}
+    if isinstance(value, dict):
+        return {
+            (k.decode("utf-8", "replace") if isinstance(k, (bytes, bytearray)) else str(k)): _jsonify_field_value(v)
+            for k, v in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_jsonify_field_value(v) for v in value]
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
+
+
+def _sanitize_lxmf_fields(fields: Optional[dict]) -> dict:
+    """Build spec §3.3 field sanitation: never inline raw bytes -- attachment
+    metadata only (R3). `fields` is `LXMessage.get_fields()`'s raw dict,
+    keyed by the numeric `LXMF.FIELD_*` ids."""
+    if not fields:
+        return {}
+    out: dict = {}
+    for key, value in fields.items():
+        name = _FIELD_NAMES.get(key, str(key))
+        out[name] = _jsonify_field_value(value)
+    return out
+
+
+def _load_or_create_lxmf_identity(storage_dir: str) -> RNS.Identity:
+    """Build spec §3.4 / R5: the LXMF private key lives ONLY on the bridge
+    filesystem, never in MeshMonitor's DB. First run creates and persists a
+    fresh identity to `<storage_dir>/identity`; every subsequent run loads
+    the same one back, so the source's LXMF address is stable across
+    restarts as long as this directory is a persisted volume (documented in
+    the deployment guide -- a fresh container without that volume regenerates
+    the identity, a new address)."""
+    os.makedirs(storage_dir, mode=0o700, exist_ok=True)
+    try:
+        os.chmod(storage_dir, 0o700)
+    except OSError:
+        # Best-effort on filesystems that don't support Unix perms (rare for
+        # this deployment's alpine/linux target, but must never crash startup).
+        pass
+
+    identity_path = os.path.join(storage_dir, "identity")
+    if os.path.isfile(identity_path):
+        identity = RNS.Identity.from_file(identity_path)
+        if identity is not None:
+            return identity
+        logger.warning("failed to load LXMF identity from %s; generating a new one", identity_path)
+
+    identity = RNS.Identity()
+    identity.to_file(identity_path)
+    try:
+        os.chmod(identity_path, 0o600)
+    except OSError:
+        pass
+    return identity
 
 
 class RNSStartupError(Exception):
@@ -208,6 +370,14 @@ class RNSManager:
         self._started = False
         self._path_table_cache: list = []
         self._path_table_lock = threading.Lock()
+        # Phase 2 (LXMF messaging): one LXMRouter per process (build spec
+        # §3.2), started alongside RNS itself in start(). `delivery_destination`
+        # is the RNS.Destination returned by register_delivery_identity() --
+        # its `.hash` is this source's PUBLIC LXMF address, returned in
+        # ready/status/get_identity.
+        self.lxmf_router: Optional["LXMF.LXMRouter"] = None
+        self.lxmf_identity: Optional[RNS.Identity] = None
+        self.delivery_destination: Optional[RNS.Destination] = None
         # Effective RNS-level settings for the current (or most recent) start(),
         # which may have been overridden by a Node `configure` message rather than
         # coming from process env (build spec §4.4: configure carries mode/configDir/
@@ -283,6 +453,7 @@ class RNSManager:
             else:
                 self._start_tcp_peer(self._effective_configdir, self._effective_peers)
             RNS.Transport.register_announce_handler(_AnnounceHandler(self))
+            self._start_lxmf()
             self._started = True
 
     def request_start(
@@ -420,6 +591,218 @@ class RNSManager:
             raise RNSStartupError(protocol.TCP_PEER_UNREACHABLE, detail)
 
         self.reticulum = reticulum
+
+    # -- LXMF (Phase 2 messaging, build spec §3.2) -----------------------------
+
+    def _start_lxmf(self) -> None:
+        """Called once from start(), after self.reticulum is up (both attach
+        and tcp_peer modes reach this point identically). Idempotent -- a
+        second start() call (already a start() no-op via `_started`) never
+        gets here twice, but this guard also protects request_start() retries.
+
+        Failure here is folded into RNS_INIT_FAILED: LXMF is not optional
+        infrastructure in Phase 2 (unlike, say, a path-table read failing),
+        so a broken LXMF init should fail the whole `configure` the same way
+        a broken RNS.Reticulum() construction does.
+        """
+        if self.lxmf_router is not None:
+            return
+        try:
+            self.lxmf_identity = _load_or_create_lxmf_identity(self.cfg.lxmf_storage_dir)
+            self.lxmf_router = LXMF.LXMRouter(identity=self.lxmf_identity, storagepath=self.cfg.lxmf_storage_dir)
+            self.delivery_destination = self.lxmf_router.register_delivery_identity(
+                self.lxmf_identity, display_name=None
+            )
+            self.lxmf_router.register_delivery_callback(self._on_lxmf_delivery)
+        except Exception as e:
+            self.lxmf_router = None
+            self.delivery_destination = None
+            raise RNSStartupError(protocol.RNS_INIT_FAILED, f"LXMF router failed to start: {e}") from e
+
+    def _require_lxmf(self) -> "LXMF.LXMRouter":
+        if self.lxmf_router is None or self.delivery_destination is None:
+            raise RNSStartupError(protocol.RNS_INIT_FAILED, "LXMF router not started")
+        return self.lxmf_router
+
+    # -- LXMF inbound (build spec §3.3) ----------------------------------------
+
+    def _on_lxmf_delivery(self, message: "LXMF.LXMessage") -> None:
+        """LXMRouter's delivery callback -- fires for every inbound LXM
+        addressed to this source's delivery destination. Broadcasts a
+        `lxmf_message` event; never raises back into LXMRouter (matches the
+        _AnnounceHandler pattern -- an exception here must not take down the
+        router's calling thread)."""
+        try:
+            event = protocol.lxmf_message_event(
+                hash=_hexlify(message.hash),
+                from_hash=_hexlify(message.source_hash),
+                to_hash=_hexlify(message.destination_hash),
+                title=message.title_as_string() if message.title else None,
+                content=message.content_as_string() if message.content else None,
+                fields=_sanitize_lxmf_fields(message.get_fields()),
+                method=_lxmf_method_to_wire(message.method),
+                signature_validated=bool(message.signature_validated),
+                ratcheted=message.ratchet_id is not None,
+                rssi=message.rssi,
+                snr=message.snr,
+                q=message.q,
+            )
+            self.broadcast(event)
+        except Exception:
+            logger.exception("error handling inbound LXMF delivery")
+
+    # -- LXMF outbound (build spec §3.5) ---------------------------------------
+
+    def _on_lxmf_outbound_state(self, message: "LXMF.LXMessage") -> None:
+        """Shared delivery-state AND failed-state callback for an outbound
+        LXMessage (registered on both `register_delivery_callback` and
+        `register_failed_callback` in send_lxmf() below) -- by the time
+        either fires, `message.state` already reflects the terminal/
+        transitional value, so one handler covers both via
+        `_lxmf_state_to_wire`, per build spec's "map LXMF numeric states in
+        one place"."""
+        try:
+            event = protocol.delivery_state_event(
+                hash=_hexlify(message.hash),
+                state=_lxmf_state_to_wire(message.state),
+                method=_lxmf_method_to_wire(message.method),
+                attempts=message.delivery_attempts,
+            )
+            self.broadcast(event)
+        except Exception:
+            logger.exception("error handling outbound LXMF delivery-state callback")
+
+    def send_lxmf(
+        self,
+        to_hash_hex: str,
+        title: str = "",
+        content: str = "",
+        fields: Optional[dict] = None,
+        method: Optional[str] = None,
+        propagation_node_hex: Optional[str] = None,
+    ) -> str:
+        """Build spec §3.5: `send_lxmf` command handler's implementation.
+        Returns the assigned LXM hash (hex) -- ws_server.py replies with it
+        as the command's `delivery_state` response (state="sending").
+
+        Raises ValueError for a caller/input problem (unknown destination,
+        malformed hash) and RNSStartupError if LXMF isn't started -- both are
+        caught by ws_server.py's exception-wrapped command handler and turned
+        into an `error` envelope, never left to propagate into the
+        connection-handler loop.
+        """
+        router = self._require_lxmf()
+
+        try:
+            destination_hash = bytes.fromhex(to_hash_hex)
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"invalid destination hash {to_hash_hex!r}: {e}") from e
+
+        identity = RNS.Identity.recall(destination_hash)
+        if identity is None:
+            RNS.Transport.request_path(destination_hash)
+            deadline = time.monotonic() + LXMF_PATH_WAIT_TIMEOUT_S
+            while identity is None and time.monotonic() < deadline:
+                time.sleep(LXMF_PATH_WAIT_POLL_S)
+                identity = RNS.Identity.recall(destination_hash)
+        if identity is None:
+            raise ValueError(f"no known path/identity for destination {to_hash_hex}")
+
+        destination = RNS.Destination(identity, RNS.Destination.OUT, RNS.Destination.SINGLE, "lxmf", "delivery")
+
+        desired_method = _WIRE_METHOD_TO_LXMF.get(method) if method else None
+        if propagation_node_hex and desired_method == LXMF.LXMessage.PROPAGATED:
+            router.set_outbound_propagation_node(bytes.fromhex(propagation_node_hex))
+
+        message = LXMF.LXMessage(
+            destination,
+            self.delivery_destination,
+            content or "",
+            title or "",
+            fields=fields,
+            desired_method=desired_method,
+        )
+        message.register_delivery_callback(self._on_lxmf_outbound_state)
+        message.register_failed_callback(self._on_lxmf_outbound_state)
+
+        router.handle_outbound(message)
+        # handle_outbound() calls message.pack() synchronously before handing
+        # off to its background processing thread, so .hash is already set
+        # by the time control returns here (verified against lxmf==1.1.1
+        # source -- LXMRouter.handle_outbound()).
+        return _hexlify(message.hash)
+
+    # -- LXMF identity / propagation / display name (build spec §3.5) ---------
+
+    def announce_self(self) -> None:
+        router = self._require_lxmf()
+        router.announce(self.delivery_destination.hash)
+
+    def set_display_name(self, display_name: Optional[str]) -> None:
+        self._require_lxmf()
+        # display_name is a plain mutable attribute on the delivery
+        # Destination (see LXMRouter.get_announce_app_data(), which reads it
+        # live on every announce) -- no re-registration needed.
+        self.delivery_destination.display_name = display_name or None
+
+    def sync_propagation(self) -> None:
+        """Best-effort (build spec §2.4 / R5 doc note): kicks off a
+        propagation-node message sync. Store-and-forward convergence itself
+        is not hard-gated by WP1's acceptance criteria."""
+        router = self._require_lxmf()
+        router.request_messages_from_propagation_node(self.lxmf_identity)
+
+    def set_propagation_node(self, destination_hash_hex: Optional[str]) -> None:
+        router = self._require_lxmf()
+        if not destination_hash_hex:
+            raise ValueError("destinationHash is required")
+        try:
+            destination_hash = bytes.fromhex(destination_hash_hex)
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"invalid destination hash {destination_hash_hex!r}: {e}") from e
+        router.set_outbound_propagation_node(destination_hash)
+
+    def get_identity_info(self) -> dict:
+        """PUBLIC info only (R2/R5): destination hash + identity hash +
+        display name. The private key itself never leaves this process --
+        there is deliberately no accessor here for it; import/export of the
+        raw key stays local to import_identity()/_load_or_create_lxmf_identity()."""
+        self._require_lxmf()
+        return {
+            "destinationHash": _hexlify(self.delivery_destination.hash),
+            "identityHash": _hexlify(self.lxmf_identity.hash),
+            "displayName": self.delivery_destination.display_name,
+        }
+
+    def import_identity(self, private_key_b64: Optional[str]) -> None:
+        """Bridge-internal-only command (R2): the private key travels over
+        this trusted, token-authenticated bridge<->Node WS link, but there is
+        deliberately NO Node HTTP route that exposes or accepts it (WP4 must
+        not add one -- see protocol.py's `import_identity_message` docstring).
+
+        Persists the imported identity to LXMF_STORAGE_DIR so a subsequent
+        restart loads it back via the normal load-or-create path. Does NOT
+        hot-swap the already-running LXMRouter's registered delivery
+        identity in-process -- consistent with RNS.Reticulum's own
+        no-supported-in-process-reattach constraint (see this class's
+        docstring), full effect requires a bridge restart, the same
+        supervisor-restart recovery path used elsewhere in this module.
+        """
+        if not private_key_b64:
+            raise ValueError("privateKeyB64 is required")
+        try:
+            raw = base64.b64decode(private_key_b64, validate=True)
+        except Exception as e:
+            raise ValueError(f"privateKeyB64 is not valid base64: {e}") from e
+        identity = RNS.Identity.from_bytes(raw)
+        if identity is None:
+            raise ValueError("invalid private key: could not reconstruct an RNS.Identity from it")
+        identity.to_file(os.path.join(self.cfg.lxmf_storage_dir, "identity"))
+        try:
+            os.chmod(os.path.join(self.cfg.lxmf_storage_dir, "identity"), 0o600)
+        except OSError:
+            pass
+        self.lxmf_identity = identity
 
     # -- announce enrichment --------------------------------------------------
 
@@ -560,9 +943,14 @@ class RNSManager:
                 interface_count = len(self.get_interface_stats())
             except Exception:
                 interface_count = None
-        return {
+        result: dict = {
             "mode": self._effective_mode,
             "connected": connected,
             "rnsVersion": getattr(RNS, "__version__", None),
             "interfaceCount": interface_count,
         }
+        # Build spec §3.4: surface the source's PUBLIC LXMF destination hash
+        # once the Phase 2 router has started, so Node can persist it.
+        if self.delivery_destination is not None:
+            result["destinationHash"] = _hexlify(self.delivery_destination.hash)
+        return result

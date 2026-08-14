@@ -18,27 +18,54 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { WebSocketServer, type WebSocket as WSSocket } from 'ws';
 import type {
   AnnounceMessage,
+  DeliveryStateEvent,
   FailureCode,
   InterfaceStatsEntry,
   InterfaceStatsMessage,
+  LxmfMessageEvent,
   StatusMessage,
   WelcomeMessage,
 } from './reticulumProtocol.js';
+import type { ReticulumMessageRow } from '../db/repositories/reticulum.js';
 
 const upsertDestination = vi.fn().mockResolvedValue(undefined);
 const upsertInterface = vi.fn().mockResolvedValue(undefined);
 const insertTelemetryBatch = vi.fn().mockResolvedValue(0);
+const upsertMessage = vi.fn().mockResolvedValue(undefined);
+const updateMessageState = vi.fn().mockResolvedValue(undefined);
+const renameMessageId = vi.fn().mockResolvedValue(undefined);
+const getMessage = vi.fn();
 
 vi.mock('../services/database.js', () => ({
   default: {
     reticulum: {
       upsertDestination: (...args: unknown[]) => upsertDestination(...args),
       upsertInterface: (...args: unknown[]) => upsertInterface(...args),
+      upsertMessage: (...args: unknown[]) => upsertMessage(...args),
+      updateMessageState: (...args: unknown[]) => updateMessageState(...args),
+      renameMessageId: (...args: unknown[]) => renameMessageId(...args),
+      getMessage: (...args: unknown[]) => getMessage(...args),
     },
     telemetry: {
       insertTelemetryBatch: (...args: unknown[]) => insertTelemetryBatch(...args),
     },
   },
+}));
+
+const emitReticulumMessage = vi.fn();
+const emitReticulumDeliveryStateUpdated = vi.fn();
+
+vi.mock('./services/dataEventEmitter.js', () => ({
+  dataEventEmitter: {
+    emitReticulumMessage: (...args: unknown[]) => emitReticulumMessage(...args),
+    emitReticulumDeliveryStateUpdated: (...args: unknown[]) => emitReticulumDeliveryStateUpdated(...args),
+  },
+}));
+
+const isOwnReticulumAddress = vi.fn().mockReturnValue(false);
+
+vi.mock('./utils/ownNodes.js', () => ({
+  isOwnReticulumAddress: (...args: unknown[]) => isOwnReticulumAddress(...args),
 }));
 
 import { ReticulumManager } from './reticulumManager.js';
@@ -421,5 +448,268 @@ describe('ReticulumManager connection lifecycle', () => {
       manager.connect({ mode: 'attach', bridgeUrl: 'ws://127.0.0.1:1', token: 't', protocolVersion: 1, configDir: '/rns' }),
     ).rejects.toThrow();
     expect(manager.isConnected()).toBe(false);
+  });
+});
+
+describe('ReticulumManager LXMF messaging (#3960 Phase 2 WP3)', () => {
+  function makeLxmfMessage(overrides: Partial<LxmfMessageEvent> = {}): LxmfMessageEvent {
+    return {
+      v: 2,
+      type: 'lxmf_message',
+      ts: 1_700_000_000_000,
+      hash: 'hash1'.padEnd(32, '0'),
+      from: 'peer'.padEnd(32, '0'),
+      to: 'self'.padEnd(32, '0'),
+      title: 'Hello',
+      content: 'Hello world',
+      fields: {},
+      method: 'opportunistic',
+      signatureValidated: true,
+      ratcheted: false,
+      rssi: -80,
+      snr: 4.5,
+      q: 90,
+      ...overrides,
+    };
+  }
+
+  function makeDeliveryState(overrides: Partial<DeliveryStateEvent> = {}): DeliveryStateEvent {
+    return {
+      v: 2,
+      type: 'delivery_state',
+      ts: 1_700_000_000_000,
+      hash: 'hash1'.padEnd(32, '0'),
+      state: 'delivered',
+      method: 'opportunistic',
+      attempts: 1,
+      ...overrides,
+    };
+  }
+
+  function fakeRow(overrides: Partial<ReticulumMessageRow> = {}): ReticulumMessageRow {
+    return {
+      id: 'src-a_hash1',
+      sourceId: 'src-a',
+      fromHash: 'peer'.padEnd(32, '0'),
+      toHash: 'self'.padEnd(32, '0'),
+      title: 'Hello',
+      content: 'Hello world',
+      timestamp: 1_700_000_000_000,
+      receivedAt: 1_700_000_000_000,
+      createdAt: 1_700_000_000_000,
+      state: 'delivered',
+      method: 'opportunistic',
+      signatureValidated: true,
+      ratcheted: false,
+      fields: null,
+      replyToHash: null,
+      threadHash: null,
+      rssi: -80,
+      snr: 4.5,
+      quality: 90,
+      ...overrides,
+    };
+  }
+
+  beforeEach(() => {
+    upsertMessage.mockClear();
+    updateMessageState.mockClear();
+    renameMessageId.mockClear();
+    getMessage.mockReset();
+    emitReticulumMessage.mockClear();
+    emitReticulumDeliveryStateUpdated.mockClear();
+    isOwnReticulumAddress.mockReset();
+    isOwnReticulumAddress.mockReturnValue(false);
+  });
+
+  describe('handleLxmfMessage (inbound persist + self-origin guard)', () => {
+    it('persists the row and emits dataEventEmitter.emitReticulumMessage for an inbound (non-self) message', async () => {
+      const row = fakeRow();
+      getMessage.mockResolvedValueOnce(row);
+      const manager = new ReticulumManager('src-a');
+
+      // @ts-expect-error - exercising the private handler directly
+      await manager.handleLxmfMessage(makeLxmfMessage());
+
+      expect(upsertMessage).toHaveBeenCalledTimes(1);
+      expect(upsertMessage).toHaveBeenCalledWith('src-a', expect.objectContaining({
+        id: `src-a_${'hash1'.padEnd(32, '0')}`,
+        fromHash: 'peer'.padEnd(32, '0'),
+        toHash: 'self'.padEnd(32, '0'),
+        title: 'Hello',
+        content: 'Hello world',
+        timestamp: 1_700_000_000_000,
+        state: 'delivered',
+        method: 'opportunistic',
+        signatureValidated: true,
+        ratcheted: false,
+        fields: null,
+        replyToHash: null,
+        threadHash: null,
+        rssi: -80,
+        snr: 4.5,
+        quality: 90,
+      }));
+      expect(getMessage).toHaveBeenCalledWith('src-a', `src-a_${'hash1'.padEnd(32, '0')}`);
+      expect(emitReticulumMessage).toHaveBeenCalledTimes(1);
+      expect(emitReticulumMessage).toHaveBeenCalledWith(row, 'src-a');
+    });
+
+    it('self-origin guard: persists the row but does NOT emit for a self-addressed message (own fromHash)', async () => {
+      isOwnReticulumAddress.mockReturnValue(true);
+      const row = fakeRow();
+      getMessage.mockResolvedValueOnce(row);
+      const manager = new ReticulumManager('src-a');
+
+      // @ts-expect-error - exercising the private handler directly
+      await manager.handleLxmfMessage(makeLxmfMessage());
+
+      expect(upsertMessage).toHaveBeenCalledTimes(1); // still persists
+      expect(emitReticulumMessage).not.toHaveBeenCalled(); // does NOT fire the automation trigger
+    });
+
+    it('extracts replyToHash/threadHash from fields.replyTo/fields.thread and serializes fields', async () => {
+      const replyTo = 'reply'.padEnd(32, '0');
+      const thread = 'thread'.padEnd(32, '0');
+      getMessage.mockResolvedValueOnce(fakeRow());
+      const manager = new ReticulumManager('src-a');
+
+      // @ts-expect-error - exercising the private handler directly
+      await manager.handleLxmfMessage(makeLxmfMessage({ fields: { replyTo, thread, renderer: 1 } }));
+
+      expect(upsertMessage).toHaveBeenCalledWith('src-a', expect.objectContaining({
+        replyToHash: replyTo,
+        threadHash: thread,
+        fields: JSON.stringify({ replyTo, thread, renderer: 1 }),
+      }));
+    });
+
+    it('an empty fields bag serializes to null, not "{}"', async () => {
+      getMessage.mockResolvedValueOnce(fakeRow());
+      const manager = new ReticulumManager('src-a');
+
+      // @ts-expect-error - exercising the private handler directly
+      await manager.handleLxmfMessage(makeLxmfMessage({ fields: {} }));
+
+      expect(upsertMessage).toHaveBeenCalledWith('src-a', expect.objectContaining({ fields: null }));
+    });
+  });
+
+  describe('handleDeliveryState (UI-only update, never gated by self-origin)', () => {
+    it('updates state via updateMessageState and emits emitReticulumDeliveryStateUpdated', async () => {
+      const manager = new ReticulumManager('src-a');
+
+      // @ts-expect-error - exercising the private handler directly
+      await manager.handleDeliveryState(makeDeliveryState({ state: 'sent', attempts: 2 }));
+
+      const id = `src-a_${'hash1'.padEnd(32, '0')}`;
+      expect(updateMessageState).toHaveBeenCalledWith('src-a', id, 'sent', { method: 'opportunistic' });
+      expect(emitReticulumDeliveryStateUpdated).toHaveBeenCalledWith(
+        { id, hash: 'hash1'.padEnd(32, '0'), state: 'sent', method: 'opportunistic', attempts: 2 },
+        'src-a',
+      );
+    });
+
+    it('is never gated by isOwnReticulumAddress (delivery state always reflects our own send)', async () => {
+      isOwnReticulumAddress.mockReturnValue(true);
+      const manager = new ReticulumManager('src-a');
+
+      // @ts-expect-error - exercising the private handler directly
+      await manager.handleDeliveryState(makeDeliveryState());
+
+      expect(emitReticulumDeliveryStateUpdated).toHaveBeenCalledTimes(1);
+      expect(isOwnReticulumAddress).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('sendMessage (optimistic persist + hash reconciliation)', () => {
+    const activeManagers: ReticulumManager[] = [];
+    const activeServers: WebSocketServer[] = [];
+
+    afterEach(async () => {
+      for (const m of activeManagers.splice(0)) {
+        await m.disconnect();
+      }
+      for (const wss of activeServers.splice(0)) {
+        await new Promise<void>((res) => wss.close(() => res()));
+      }
+    });
+
+    async function connectedManager(
+      onSendLxmf: (env: Record<string, unknown>, send: (obj: Record<string, unknown>) => void) => void,
+    ): Promise<{ manager: ReticulumManager; url: string }> {
+      const wss = new WebSocketServer({ port: 0, host: '127.0.0.1' });
+      activeServers.push(wss);
+      const url = await new Promise<string>((resolve) => {
+        wss.on('listening', () => {
+          const addr = wss.address();
+          const port = addr && typeof addr === 'object' ? addr.port : 0;
+          resolve(`ws://127.0.0.1:${port}`);
+        });
+      });
+      wss.on('connection', (ws) => {
+        const send = (obj: Record<string, unknown>) => ws.send(JSON.stringify(obj));
+        ws.on('message', (data) => {
+          const env = JSON.parse(String(data)) as Record<string, unknown>;
+          if (env.type === 'hello') {
+            send({ v: 2, type: 'welcome', ts: Date.now(), protocolVersion: 2, bridgeVersion: '0.2.0', rnsVersion: '1.4.2' });
+          } else if (env.type === 'configure') {
+            send({ v: 2, type: 'ready', id: env.id, ts: Date.now(), destinationHash: 'self'.padEnd(32, '0') });
+          } else if (env.type === 'announce_self') {
+            send({ v: 2, type: 'ready', id: env.id, ts: Date.now() });
+          } else if (env.type === 'send_lxmf') {
+            onSendLxmf(env, send);
+          }
+        });
+      });
+
+      const manager = new ReticulumManager('src-a');
+      activeManagers.push(manager);
+      await manager.connect({ mode: 'attach', bridgeUrl: url, token: 't', protocolVersion: 2, configDir: '/rns' });
+      return { manager, url };
+    }
+
+    it('optimistically persists a state:"outbound" row before the send_lxmf round-trip, then reconciles the id/state once the hash is assigned', async () => {
+      const assignedHash = 'assigned'.padEnd(32, '0');
+      getMessage.mockImplementation(async (_srcId: string, id: string) => fakeRow({ id, state: 'sending' }));
+
+      const { manager } = await connectedManager((env, send) => {
+        send({ v: 2, type: 'delivery_state', id: env.id, ts: Date.now(), hash: assignedHash, state: 'sending', method: 'opportunistic', attempts: 0 });
+      });
+
+      const row = await manager.sendMessage({ to: 'peer'.padEnd(32, '0'), content: 'hi', title: 'Hi' });
+
+      // Optimistic persist happened first, under a temporary id, before the reply.
+      expect(upsertMessage).toHaveBeenCalledWith('src-a', expect.objectContaining({
+        state: 'outbound',
+        toHash: 'peer'.padEnd(32, '0'),
+        content: 'hi',
+        title: 'Hi',
+      }));
+      const tempId = (upsertMessage.mock.calls[0][1] as { id: string }).id;
+      expect(tempId).toMatch(/^src-a_pending-/);
+
+      // Reconciled to the authoritative id once the hash arrived.
+      expect(renameMessageId).toHaveBeenCalledWith('src-a', tempId, `src-a_${assignedHash}`);
+      expect(updateMessageState).toHaveBeenCalledWith('src-a', `src-a_${assignedHash}`, 'sending', { method: 'opportunistic' });
+      expect(row.id).toBe(`src-a_${assignedHash}`);
+    });
+
+    it('a send_lxmf failure marks the optimistic row failed and rethrows', async () => {
+      const { manager } = await connectedManager((env, send) => {
+        send({ v: 2, type: 'error', id: env.id, ts: Date.now(), code: 'LXMF_COMMAND_FAILED', message: 'no route' });
+      });
+
+      await expect(manager.sendMessage({ to: 'peer'.padEnd(32, '0'), content: 'hi' })).rejects.toThrow();
+
+      const tempId = (upsertMessage.mock.calls[0][1] as { id: string }).id;
+      expect(updateMessageState).toHaveBeenCalledWith('src-a', tempId, 'failed');
+      expect(renameMessageId).not.toHaveBeenCalled();
+    });
+
+    it('sendMessage throws immediately when not connected', async () => {
+      const manager = new ReticulumManager('src-a');
+      await expect(manager.sendMessage({ to: 'peer'.padEnd(32, '0'), content: 'hi' })).rejects.toThrow(/not connected/);
+    });
   });
 });

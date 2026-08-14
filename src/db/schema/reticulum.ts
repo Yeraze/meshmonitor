@@ -1,7 +1,8 @@
 /**
- * Drizzle schema for the Reticulum source type (epic #3960, Phase 1a WP1).
+ * Drizzle schema for the Reticulum source type (epic #3960, Phase 1a WP1 +
+ * Phase 2 WP2).
  *
- * Two tables, both PER-SOURCE (every row carries a `sourceId`):
+ * Three tables, all PER-SOURCE (every row carries a `sourceId`):
  *
  *  - `reticulum_destinations` — one row per announced destination hash
  *    observed by the bridge. Phase 1a INCLUDES the per-packet signal columns
@@ -11,9 +12,15 @@
  *    `rnstatus` view). Phase 1a EXCLUDES LoRa-parameter columns
  *    (frequency/bandwidth/SF/CR/txPower/airtime — Phase 3 own-mode radio
  *    config).
+ *  - `reticulum_messages` — one row per LXMF message (inbound or outbound).
+ *    `id` is the composite key `${sourceId}_${lxmHashHex}` (see the
+ *    `messages.id` row-id convention). Phase 2 scope: UTF-8 text
+ *    `content`/`title` + attachment metadata in `fields`; raw blob transfer
+ *    is deferred.
  *
- * See `docs/internal/dev-notes/RETICULUM_PHASE1A_BUILD_SPEC.md` §3.1/§3.2 for
- * the exact column list and rationale. Matches migrations 140/141 exactly.
+ * See `docs/internal/dev-notes/RETICULUM_PHASE1A_BUILD_SPEC.md` §3.1/§3.2 and
+ * `docs/internal/dev-notes/RETICULUM_PHASE2_BUILD_SPEC.md` §4 for the exact
+ * column lists and rationale. Matches migrations 141/142/143 exactly.
  */
 import { sqliteTable, text, integer, real, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
 import {
@@ -35,6 +42,7 @@ import {
   boolean as myBoolean,
   bigint as myBigint,
   uniqueIndex as myUniqueIndex,
+  index as myIndex,
 } from 'drizzle-orm/mysql-core';
 
 // ============================================================================
@@ -196,6 +204,98 @@ export const reticulumInterfacesMysql = mysqlTable('reticulum_interfaces', {
   sourceNameIdx: myUniqueIndex('reticulum_interfaces_source_name_idx').on(t.sourceId, t.interfaceName),
 }));
 
+// ============================================================================
+// reticulum_messages
+// ============================================================================
+
+// ============ SQLite Schema ============
+
+export const reticulumMessagesSqlite = sqliteTable('reticulum_messages', {
+  id: text('id').primaryKey(),
+  sourceId: text('sourceId').notNull(),
+  fromHash: text('fromHash').notNull(),
+  toHash: text('toHash').notNull(),
+  title: text('title'),
+  content: text('content'),
+  timestamp: integer('timestamp').notNull(),
+  receivedAt: integer('receivedAt'),
+  createdAt: integer('createdAt').notNull(),
+  /** draft | outbound | sending | sent | delivered | failed */
+  state: text('state').notNull(),
+  /** opportunistic | direct | propagated */
+  method: text('method'),
+  signatureValidated: integer('signatureValidated', { mode: 'boolean' }).notNull().default(false),
+  ratcheted: integer('ratcheted', { mode: 'boolean' }).notNull().default(false),
+  /** JSON text — replies/reactions/thread markers + attachment metadata (name/type/size/ref). */
+  fields: text('fields'),
+  replyToHash: text('replyToHash'),
+  threadHash: text('threadHash'),
+  /** Per-packet RSSI on receipt (attach mode only). */
+  rssi: integer('rssi'),
+  /** Per-packet SNR on receipt (attach mode only). */
+  snr: real('snr'),
+  /** Normalised link quality `q` (attach mode only). */
+  quality: integer('quality'),
+}, (t) => ({
+  sourceToFromTsIdx: index('reticulum_messages_source_to_from_ts_idx').on(t.sourceId, t.toHash, t.fromHash, t.timestamp),
+  sourceThreadIdx: index('reticulum_messages_source_thread_idx').on(t.sourceId, t.threadHash),
+}));
+
+// ============ PostgreSQL Schema ============
+
+export const reticulumMessagesPostgres = pgTable('reticulum_messages', {
+  id: pgText('id').primaryKey(),
+  sourceId: pgText('sourceId').notNull(),
+  fromHash: pgText('fromHash').notNull(),
+  toHash: pgText('toHash').notNull(),
+  title: pgText('title'),
+  content: pgText('content'),
+  // ms-epoch timestamps overflow 32-bit INTEGER; JS Date.now() is ~1.8e12.
+  timestamp: pgBigint('timestamp', { mode: 'number' }).notNull(),
+  receivedAt: pgBigint('receivedAt', { mode: 'number' }),
+  createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
+  state: pgText('state').notNull(),
+  method: pgText('method'),
+  signatureValidated: pgBoolean('signatureValidated').notNull().default(false),
+  ratcheted: pgBoolean('ratcheted').notNull().default(false),
+  fields: pgText('fields'),
+  replyToHash: pgText('replyToHash'),
+  threadHash: pgText('threadHash'),
+  rssi: pgInteger('rssi'),
+  snr: pgDoublePrecision('snr'),
+  quality: pgInteger('quality'),
+}, (t) => ({
+  sourceToFromTsIdx: pgIndex('reticulum_messages_source_to_from_ts_idx').on(t.sourceId, t.toHash, t.fromHash, t.timestamp),
+  sourceThreadIdx: pgIndex('reticulum_messages_source_thread_idx').on(t.sourceId, t.threadHash),
+}));
+
+// ============ MySQL Schema ============
+
+export const reticulumMessagesMysql = mysqlTable('reticulum_messages', {
+  id: myVarchar('id', { length: 191 }).primaryKey(),
+  sourceId: myVarchar('sourceId', { length: 191 }).notNull(),
+  fromHash: myVarchar('fromHash', { length: 64 }).notNull(),
+  toHash: myVarchar('toHash', { length: 64 }).notNull(),
+  title: myText('title'),
+  content: myText('content'),
+  timestamp: myBigint('timestamp', { mode: 'number' }).notNull(),
+  receivedAt: myBigint('receivedAt', { mode: 'number' }),
+  createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
+  state: myVarchar('state', { length: 16 }).notNull(),
+  method: myVarchar('method', { length: 16 }),
+  signatureValidated: myBoolean('signatureValidated').notNull().default(false),
+  ratcheted: myBoolean('ratcheted').notNull().default(false),
+  fields: myText('fields'),
+  replyToHash: myText('replyToHash'),
+  threadHash: myVarchar('threadHash', { length: 64 }),
+  rssi: myInt('rssi'),
+  snr: myDouble('snr'),
+  quality: myInt('quality'),
+}, (t) => ({
+  sourceToFromTsIdx: myIndex('reticulum_messages_source_to_from_ts_idx').on(t.sourceId, t.toHash, t.fromHash, t.timestamp),
+  sourceThreadIdx: myIndex('reticulum_messages_source_thread_idx').on(t.sourceId, t.threadHash),
+}));
+
 // ============ TYPE INFERENCE ============
 
 export type ReticulumDestinationSqlite = typeof reticulumDestinationsSqlite.$inferSelect;
@@ -211,3 +311,10 @@ export type ReticulumInterfacePostgres = typeof reticulumInterfacesPostgres.$inf
 export type NewReticulumInterfacePostgres = typeof reticulumInterfacesPostgres.$inferInsert;
 export type ReticulumInterfaceMysql = typeof reticulumInterfacesMysql.$inferSelect;
 export type NewReticulumInterfaceMysql = typeof reticulumInterfacesMysql.$inferInsert;
+
+export type ReticulumMessageSqlite = typeof reticulumMessagesSqlite.$inferSelect;
+export type NewReticulumMessageSqlite = typeof reticulumMessagesSqlite.$inferInsert;
+export type ReticulumMessagePostgres = typeof reticulumMessagesPostgres.$inferSelect;
+export type NewReticulumMessagePostgres = typeof reticulumMessagesPostgres.$inferInsert;
+export type ReticulumMessageMysql = typeof reticulumMessagesMysql.$inferSelect;
+export type NewReticulumMessageMysql = typeof reticulumMessagesMysql.$inferInsert;

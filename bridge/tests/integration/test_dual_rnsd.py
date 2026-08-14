@@ -363,6 +363,138 @@ def test_rnsd_restart_mid_session_bridge_exits_then_reattaches_after_supervisor_
 # --------------------------------------------------------------------------
 
 
+# --------------------------------------------------------------------------
+# Phase 2 (LXMF messaging, #3960 WP1): send/receive between two identities.
+#
+# Topology mirrors the two already-proven patterns above rather than
+# inventing a third: bridge A attaches to instance_a as a shared-instance
+# client (same as `_start_bridge` throughout this file); bridge B runs its
+# OWN standalone RNS instance and dials instance_a's TCPServerInterface as a
+# tcp_peer (same as `test_tcp_peer_mode_reaches_ready_and_gets_interface_stats`).
+# Both topologies are already proven to relay announces between a shared
+# instance's local clients and its externally-connected TCP peers/clients
+# (see `test_attach_receives_filtered_interface_stats_and_announce`) -- LXMF
+# announces (aspect "lxmf.delivery") ride the exact same Transport mechanism,
+# just classified by the existing KNOWN_ASPECT_FILTERS in rns_manager.py.
+#
+# Per the epic's anti-grind guard: hard-gate ONLY on send->receive working,
+# signature_validated=True, and a terminal (sent|delivered) delivery-proof
+# state -- nothing here waits on propagation/store-and-forward.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.timeout(90)
+def test_lxmf_send_receive_between_two_identities(tmp_path, instance_a):
+    ws_port_a = free_port()
+    ws_port_b = free_port()
+
+    bridge_a = _start_bridge(tmp_path, instance_a.configdir, ws_port_a, LXMF_STORAGE_DIR=str(tmp_path / "lxmf_a"))
+    bridge_b = BridgeProcess(
+        env=_bridge_env(
+            BRIDGE_HOST="127.0.0.1",
+            BRIDGE_PORT=str(ws_port_b),
+            LXMF_STORAGE_DIR=str(tmp_path / "lxmf_b"),
+        )
+    )
+    bridge_b.start(ws_port_b)
+
+    try:
+        with BridgeClient(f"ws://127.0.0.1:{ws_port_a}", TEST_TOKEN) as client_a, BridgeClient(
+            f"ws://127.0.0.1:{ws_port_b}", TEST_TOKEN
+        ) as client_b:
+            client_a.hello()
+            ready_a = client_a.configure(mode="attach")
+            assert ready_a["type"] == protocol.TYPE_READY, ready_a
+            assert HEX32_RE.match(ready_a["destinationHash"]), ready_a
+
+            client_b.hello()
+            ready_b = client_b.configure(
+                mode="tcp_peer",
+                config_dir=str(tmp_path / "bridge_b_own_rns"),
+                peers=[{"host": "127.0.0.1", "port": instance_a.tcp_port}],
+            )
+            assert ready_b["type"] == protocol.TYPE_READY, ready_b
+            assert HEX32_RE.match(ready_b["destinationHash"]), ready_b
+
+            a_hash = ready_a["destinationHash"]
+            b_hash = ready_b["destinationHash"]
+
+            # Both sides announce their LXMF delivery destination. A must see
+            # B's announce (over the already-proven cross-interface announce
+            # relay) before it can validate the signature on B's inbound
+            # message (RNS.Identity.recall() of the source is required for
+            # signature verification -- LXMF messages don't carry the
+            # sender's public key inline); B must see A's before it can
+            # resolve A's identity for the outbound send in the first place.
+            announce_ack_a = client_a.announce_self()
+            assert announce_ack_a["type"] == protocol.TYPE_READY, announce_ack_a
+            announce_ack_b = client_b.announce_self()
+            assert announce_ack_b["type"] == protocol.TYPE_READY, announce_ack_b
+
+            a_announce = client_b.recv_until(
+                lambda e: e.get("type") == protocol.TYPE_ANNOUNCE and e.get("destinationHash") == a_hash,
+                timeout=30,
+            )
+            assert a_announce["appName"] == "lxmf"
+            assert a_announce["aspects"] == ["delivery"]
+
+            b_announce = client_a.recv_until(
+                lambda e: e.get("type") == protocol.TYPE_ANNOUNCE and e.get("destinationHash") == b_hash,
+                timeout=30,
+            )
+            assert b_announce["appName"] == "lxmf"
+            assert b_announce["aspects"] == ["delivery"]
+
+            # B -> A.
+            send_resp = client_b.send_lxmf(to=a_hash, title="Hello", content="Hello from B!")
+            assert send_resp["type"] == protocol.TYPE_DELIVERY_STATE, send_resp
+            assert send_resp["state"] == "sending"
+            lxm_hash = send_resp["hash"]
+            assert HEX32_RE.match(lxm_hash) or len(lxm_hash) > 0, send_resp
+
+            # A receives it.
+            received = client_a.recv_until(lambda e: e.get("type") == protocol.TYPE_LXMF_MESSAGE, timeout=30)
+            assert received["hash"] == lxm_hash
+            assert received["from"] == b_hash
+            assert received["to"] == a_hash
+            assert received["title"] == "Hello"
+            assert received["content"] == "Hello from B!"
+            assert received["signatureValidated"] is True
+
+            # B observes a terminal delivery-proof state for the same hash
+            # (hard-gated: sent or delivered; propagation is not involved in
+            # a direct opportunistic send between two directly-reachable
+            # identities, so FAILED here would be a genuine bug, not flake).
+            terminal = client_b.recv_until(
+                lambda e: (
+                    e.get("type") == protocol.TYPE_DELIVERY_STATE
+                    and e.get("hash") == lxm_hash
+                    and e.get("state") in ("sent", "delivered")
+                ),
+                timeout=30,
+            )
+            assert terminal["state"] in ("sent", "delivered")
+    finally:
+        bridge_a.stop()
+        bridge_b.stop()
+
+
+@pytest.mark.skip(
+    reason=(
+        "Propagation/store-and-forward is explicitly best-effort for WP1 (build spec "
+        "§2.4, WP0 evidence doc §2 point 4, epic anti-grind guard) -- a prior attempt "
+        "hung ~2h on LXMF propagation/rnsd networking. Exercising a real propagation "
+        "node (LXMRouter.enable_propagation()) is a materially larger integration "
+        "surface than send/receive (a third long-lived RNS instance, sync-state "
+        "polling, no bounded terminal event to key off) and is deferred rather than "
+        "risked here; the hard send/receive + delivery-proof gate above is not "
+        "weakened by skipping this."
+    )
+)
+def test_lxmf_propagation_store_and_forward_smoke():
+    pass
+
+
 def test_bridge_restart_reattaches_cleanly_while_rnsd_stays_up(tmp_path, instance_a):
     """Operator-initiated bridge restart, distinct from case 3's rnsd-side failure:
     proves the bridge is stateless beyond its RNS instance and a fresh process can

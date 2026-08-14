@@ -1,0 +1,21 @@
+{
+  "content": "Hello from the WP1 spike!",
+  "fields": {
+    "renderer": 1,
+    "replyTo": "0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+    "thread": "9f8e7d6c5b4a39281706f5e4d3c2b1a0"
+  },
+  "from": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+  "hash": "1a2b3c4d5e6f708192a3b4c5d6e7f809",
+  "method": "opportunistic",
+  "q": 48,
+  "ratcheted": true,
+  "rssi": -97,
+  "signatureValidated": true,
+  "snr": 6.5,
+  "title": "Hello",
+  "to": "112233445566778899aabbccddeeff0",
+  "ts": 1755000000000,
+  "type": "lxmf_message",
+  "v": 2
+}
