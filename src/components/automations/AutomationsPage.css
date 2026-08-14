@@ -191,3 +191,17 @@
 .ae-trace-reason { font-size: 0.8rem; margin-top: 0.2rem; padding-left: 0.4rem; }
 .ae-trace-steps-wrap { margin-top: 0.35rem; }
 .ae-trace-steps-wrap > summary { cursor: pointer; font-size: 0.78rem; }
+
+/* Run log — the captured trigger, front and centre (#4711) */
+.ae-run-meta { display: flex; flex-wrap: wrap; gap: 0.25rem 0.85rem; margin-top: 0.4rem; }
+.ae-run-fact {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  font-size: 0.8rem; color: var(--color-text-muted); min-width: 0; word-break: break-word;
+}
+.ae-run-text {
+  margin-top: 0.4rem; padding: 0.35rem 0.6rem;
+  border-left: 3px solid var(--color-surface-active); border-radius: var(--radius-sm, 6px);
+  background: var(--color-bg); color: var(--color-text);
+  font-size: 0.86rem; white-space: pre-wrap; word-break: break-word;
+}
+.ae-run-raw { overflow-x: auto; margin-bottom: 0; font-size: 0.72rem; }

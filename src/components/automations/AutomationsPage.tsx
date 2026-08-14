@@ -14,6 +14,8 @@ import AutomationBuilder, { type VariableOption, type SourceOption, type Unified
 import AutomationTester from './AutomationTester';
 import LiveTracePanel from './LiveTracePanel';
 import TemplateGallery, { type InstalledAutomationRow } from './TemplateGallery';
+import { StepList, type TraceStep } from './outcomeMeta';
+import { summarizeTriggerEvent, parseJsonColumn } from './eventSummary';
 import { UiIcon } from '../icons';
 import { compile, decompile, type WorkflowForm } from './compile';
 import './AutomationsPage.css';
@@ -27,7 +29,11 @@ interface Variable {
   type: 'string' | 'integer' | 'float' | 'boolean' | 'flag';
   scope: 'global' | 'source' | 'node' | 'sourceNode'; readonly: boolean; config: string;
 }
-interface Run { id: string; status: string; sourceId: string | null; startedAt: number; log: string | null; }
+interface Run {
+  id: string; status: string; sourceId: string | null; startedAt: number; log: string | null;
+  /** JSON `ctx.fields` bag captured when the rule fired — the triggering message (#4711). */
+  triggerEvent: string | null;
+}
 
 const VARIABLE_TYPES = ['string', 'integer', 'float', 'boolean', 'flag', 'json'] as const;
 const VARIABLE_SCOPES: { value: Variable['scope']; label: string }[] = [
@@ -412,6 +418,55 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
   );
 }
 
+/**
+ * One persisted run. Leads with what a human debugging the rule actually needs
+ * (#4711) — when it fired, which node, which channel, and the triggering message
+ * itself — and tucks the step trace and raw payload behind `<details>`.
+ */
+function RunRow({ run }: { run: Run }) {
+  const summary = summarizeTriggerEvent(parseJsonColumn<Record<string, unknown>>(run.triggerEvent));
+  const steps = parseJsonColumn<TraceStep[]>(run.log);
+  const statusColor = run.status === 'completed' ? 'var(--color-success)' : run.status === 'failed' ? 'var(--color-error)' : 'inherit';
+  return (
+    <div className="ae-card">
+      <div className="ae-row">
+        <div className="ae-row-main">
+          <span style={{ fontWeight: 700, color: statusColor }}>{run.status}</span>
+          <span className="ae-chip">{run.sourceId ?? '—'}</span>
+        </div>
+        <span className="ae-muted">{new Date(run.startedAt).toLocaleString()}</span>
+      </div>
+
+      {(summary.node || summary.channel || summary.detail) && (
+        <div className="ae-run-meta">
+          {summary.node && <span className="ae-run-fact"><UiIcon name="user" size={13} /> {summary.node}</span>}
+          {summary.channel && <span className="ae-run-fact"><UiIcon name="channels" size={13} /> {summary.channel}</span>}
+          {summary.detail && <span className="ae-run-fact"><UiIcon name="info" size={13} /> {summary.detail}</span>}
+        </div>
+      )}
+      {summary.text && <div className="ae-run-text">{summary.text}</div>}
+
+      {steps && steps.length > 0 && (
+        <details className="ae-trace-steps-wrap">
+          <summary className="ae-muted">execution trace ({steps.length} steps)</summary>
+          <StepList steps={steps} />
+        </details>
+      )}
+      {/* Unparseable log — show it raw rather than dropping the only diagnostic. */}
+      {!steps && run.log && (
+        <pre className="ae-muted ae-run-raw">{run.log}</pre>
+      )}
+      {run.triggerEvent && (
+        <details className="ae-trace-steps-wrap">
+          <summary className="ae-muted">trigger payload</summary>
+          {/* Stored minified; `pretty` falls back to the raw string if it won't parse. */}
+          <pre className="ae-muted ae-run-raw">{pretty(run.triggerEvent)}</pre>
+        </details>
+      )}
+    </div>
+  );
+}
+
 function RunLog({ automation, onClose }: { automation: Automation; onClose: () => void }) {
   const [runs, setRuns] = useState<Run[]>([]);
   useEffect(() => { apiService.get<Run[]>(`/api/automations/${automation.id}/runs`).then(setRuns).catch(() => setRuns([])); }, [automation.id]);
@@ -420,18 +475,7 @@ function RunLog({ automation, onClose }: { automation: Automation; onClose: () =
       <button className="ae-btn ae-btn--ghost" onClick={onClose} style={{ marginBottom: '0.75rem' }}><UiIcon name="back" size={15} /> Back</button>
       <h2 className="ae-title" style={{ fontSize: '1.25rem' }}>Runs: {automation.name}</h2>
       {runs.length === 0 && <div className="ae-empty">No runs yet.</div>}
-      {runs.map((r) => (
-        <div className="ae-card" key={r.id}>
-          <div className="ae-row">
-            <div className="ae-row-main">
-              <span style={{ fontWeight: 700, color: r.status === 'completed' ? 'var(--color-success)' : r.status === 'failed' ? 'var(--color-error)' : 'inherit' }}>{r.status}</span>
-              <span className="ae-chip">{r.sourceId ?? '—'}</span>
-            </div>
-            <span className="ae-muted">{new Date(r.startedAt).toLocaleString()}</span>
-          </div>
-          {r.log && <pre className="ae-muted" style={{ overflowX: 'auto', marginBottom: 0, fontSize: '0.72rem' }}>{r.log}</pre>}
-        </div>
-      ))}
+      {runs.map((r) => <RunRow run={r} key={r.id} />)}
     </div>
   );
 }

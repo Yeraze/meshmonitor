@@ -10,6 +10,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useWebSocketContext } from '../../contexts/WebSocketContext';
 import { StepList, type TraceStep } from './outcomeMeta';
+import { summarizeTriggerEvent, summaryLine } from './eventSummary';
 import { UiIcon } from '../icons';
 
 const TRACE_DURATION_MS = 5 * 60_000;
@@ -35,34 +36,6 @@ interface LiveTracePanelProps {
   /** Whether the rule is enabled — disabled rules never evaluate, so warn. */
   enabled: boolean;
   onClose: () => void;
-}
-
-/** A compact one-line summary of the triggering event for the entry header. */
-function summarizeEvent(triggerType: string, event: Record<string, unknown>): string {
-  const bits: string[] = [];
-  if (triggerType === 'trigger.message') {
-    if (event.from != null) bits.push(`from ${event.from}`);
-    if (event.channel != null) bits.push(`ch ${event.channel}`);
-    if (typeof event.text === 'string') bits.push(`"${event.text}"`);
-  } else if (triggerType === 'trigger.telemetry') {
-    bits.push(`${event.telemetryType ?? '?'} = ${event.value ?? '?'}`);
-  } else if (triggerType === 'trigger.meshBeacon') {
-    bits.push(`beacon · node ${event.nodeNum ?? '?'}`);
-    if (typeof event.message === 'string' && event.message) bits.push(`"${event.message}"`);
-    if (event.offerChannelName) bits.push(`offers ${event.offerChannelName}`);
-  } else if (triggerType === 'trigger.geofence') {
-    bits.push(`${event.event ?? '?'} · node ${event.nodeNum ?? '?'}`);
-  } else if (triggerType === 'trigger.becameMobile') {
-    bits.push(`became mobile · node ${event.nodeNum ?? '?'}`);
-  } else if (triggerType === 'trigger.leftHome') {
-    const dist = typeof event.distanceMeters === 'number' ? `${Math.round(event.distanceMeters)}m` : '?';
-    bits.push(`left home ${dist} · node ${event.nodeNum ?? '?'}`);
-  } else if (triggerType === 'trigger.system') {
-    bits.push(String(event.event ?? ''));
-  } else if (event.nodeNum != null) {
-    bits.push(`node ${event.nodeNum}`);
-  }
-  return bits.join(' · ') || '(no event payload)';
 }
 
 const OUTCOME_BADGE: Record<string, { label: string; cls: string }> = {
@@ -174,7 +147,7 @@ export default function LiveTracePanel({ automationId, automationName, enabled, 
               <div className="ae-trace-entry-head">
                 <span className={`ae-test-badge ae-test-badge--${badge.cls}`}>{badge.label}</span>
                 <span className="ae-muted">{new Date(e.ts).toLocaleTimeString()}</span>
-                <span className="ae-trace-entry-summary">{summarizeEvent(e.triggerType, e.event)}</span>
+                <span className="ae-trace-entry-summary">{summaryLine(summarizeTriggerEvent(e.event))}</span>
               </div>
               {!fired && e.reason && <div className="ae-muted ae-trace-reason">↳ {e.reason}</div>}
               {fired && e.steps && e.steps.length > 0 && (
