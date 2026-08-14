@@ -128,8 +128,14 @@ function buildDirectionForm(spec: DirectionSpec): WorkflowForm {
   conditions.push({ type: 'condition.string', params: { field: 'text', op: 'notContains', value: 'MT@' } });
   conditions.push({ type: 'condition.string', params: { field: 'text', op: 'notContains', value: 'MC@' } });
 
+  // `replyContext` (triggerContext.ts) marks a Meshtastic tapback/reply with a
+  // "↩️ reacted:"/"↩️ reply:" prefix — MeshCore has no reply-id field to relay
+  // real threading onto (#4697), so without this a threaded MT reply/reaction
+  // shows up on the MC side as an unrelated standalone message. Blank/absent
+  // on every other trigger (plain messages, and the MC→MT direction, since
+  // MeshCore has no tapback/reply concept of its own), so it's harmless there.
   const actionParams: Record<string, unknown> = {
-    text: '{{ trigger.protocolShort }}@{{ trigger.fromName }}: {{ trigger.text }}',
+    text: '{{ trigger.protocolShort }}@{{ trigger.fromName }}: {{ trigger.replyContext }}{{ trigger.text }}',
   };
   if (spec.sendSource) actionParams.sourceIds = [spec.sendSource];
   if (spec.sendChannel) actionParams.channels = [spec.sendChannel];

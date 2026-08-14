@@ -26,6 +26,7 @@ import {
 } from './triggerContext.js';
 import type { DbMessage } from '../../../services/database.js';
 import type { MeshCoreMessage } from '../../meshcoreManager.js';
+import { REPLY_CONTEXT_TAPBACK, REPLY_CONTEXT_REPLY } from '../../../utils/replyContext.js';
 import type { ReticulumMessageRow } from '../../../db/repositories/reticulum.js';
 
 function retMsg(overrides: Partial<ReticulumMessageRow> = {}): ReticulumMessageRow {
@@ -140,6 +141,29 @@ describe('buildMessageContext', () => {
     expect(buildMessageContext(msg(), 'default', 1).fields.senderLabel).toBe('!0000006f');
     expect(buildMessageContext(msg(), 'default', 1).fields.protocol).toBe('meshtastic');
     expect(buildMessageContext(msg(), 'default', 1).fields.protocolShort).toBe('MT');
+  });
+
+  // replyContext (#4697): marks a tapback/reply so a relay to a protocol with
+  // no thread concept (the MT→MC bridge) doesn't read as a standalone message.
+  describe('replyContext', () => {
+    it('is blank for a plain message (no replyId, no emoji)', () => {
+      expect(buildMessageContext(msg(), 'default', 1).fields.replyContext).toBe('');
+    });
+
+    it('marks a tapback (emoji set) even though replyId is also set', () => {
+      const ctx = buildMessageContext(msg({ replyId: 42, emoji: 1, text: '👍' }), 'default', 1);
+      expect(ctx.fields.replyContext).toBe(REPLY_CONTEXT_TAPBACK);
+    });
+
+    it('marks a threaded reply (replyId set, no emoji)', () => {
+      const ctx = buildMessageContext(msg({ replyId: 42, emoji: undefined }), 'default', 1);
+      expect(ctx.fields.replyContext).toBe(REPLY_CONTEXT_REPLY);
+    });
+
+    it('treats emoji <= 0 as not-a-tapback', () => {
+      const ctx = buildMessageContext(msg({ replyId: 42, emoji: 0 }), 'default', 1);
+      expect(ctx.fields.replyContext).toBe(REPLY_CONTEXT_REPLY);
+    });
   });
 
   // hopEmoji (#4340)
