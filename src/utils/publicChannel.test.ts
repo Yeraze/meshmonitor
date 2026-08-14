@@ -40,6 +40,13 @@ describe('exceedsPublicChannelPrecisionClamp', () => {
     expect(exceedsPublicChannelPrecisionClamp('', 16)).toBe(true);
   });
 
+  it('warns for an absent PSK, not just an empty string', () => {
+    // A channel object may carry `psk: null` or omit it entirely; both mean
+    // unencrypted, and both are clamped by the firmware.
+    expect(exceedsPublicChannelPrecisionClamp(null, 32)).toBe(true);
+    expect(exceedsPublicChannelPrecisionClamp(undefined, 32)).toBe(true);
+  });
+
   it('does not warn at or below the clamp', () => {
     expect(exceedsPublicChannelPrecisionClamp(DEFAULT_PUBLIC_PSK, PUBLIC_CHANNEL_PRECISION_MAX_BITS)).toBe(false);
     expect(exceedsPublicChannelPrecisionClamp(DEFAULT_PUBLIC_PSK, 10)).toBe(false);

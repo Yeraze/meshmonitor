@@ -3932,8 +3932,14 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                 bits on known-public channels. Warn rather than cap the input —
                 2.7.x honours higher values, so capping would break the setting
                 for everyone not yet on 2.8.
+
+                Skipped for role 0 (disabled): a disabled channel transmits no
+                position at all, so there is nothing to clamp. This also keeps
+                a freshly-opened, never-configured slot quiet, since the state
+                defaults (precision 32, empty PSK) would otherwise trip the
+                warning before the user has touched anything.
               */}
-              {exceedsPublicChannelPrecisionClamp(channelPsk, channelPositionPrecision) && (
+              {channelRole !== 0 && exceedsPublicChannelPrecisionClamp(channelPsk, channelPositionPrecision) && (
                 <span
                   className="setting-description"
                   role="alert"
