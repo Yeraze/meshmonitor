@@ -16,7 +16,7 @@
  * the full column rationale (rssi/snr/quality included, position/telemetry
  * and LoRa-parameter columns excluded — those are Phase 3).
  */
-import { and, asc, desc, eq, inArray, lt, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, lt, or, sql } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType } from '../types.js';
 import { SettingsRepository } from './settings.js';
@@ -54,6 +54,36 @@ export interface ReticulumDestinationRow {
   isFavorite: boolean;
   createdAt: number;
   updatedAt: number;
+  /** Latest Sideband SID_LOCATION sample (migration 144). Latest-only, no history. */
+  latitude: number | null;
+  longitude: number | null;
+  altitude: number | null;
+  speed: number | null;
+  bearing: number | null;
+  accuracy: number | null;
+  /** ms epoch of the latest position sample; null when never observed. */
+  positionUpdatedAt: number | null;
+}
+
+/**
+ * A position patch for {@link ReticulumRepository.updateDestinationPosition}.
+ * `latitude`/`longitude` are required (a position sample without coordinates
+ * isn't a position); the rest are optional Sideband `Location.pack` fields —
+ * `undefined` means "not carried by this sample" and is stored as `null`
+ * (unlike {@link UpsertDestinationInput}, this is a full overwrite of the
+ * position fields per sample, not a merge — each sample is a fresh GPS fix,
+ * not an incremental update).
+ */
+export interface UpdateDestinationPositionInput {
+  destinationHash: string;
+  latitude: number;
+  longitude: number;
+  altitude?: number | null;
+  speed?: number | null;
+  bearing?: number | null;
+  accuracy?: number | null;
+  /** ms epoch of this sample; defaults to `Date.now()`. */
+  positionUpdatedAt?: number;
 }
 
 /**
@@ -98,6 +128,48 @@ export interface ReticulumInterfaceRow {
   lastSeenAt: number;
   createdAt: number;
   updatedAt: number;
+  /** Own-mode RNode radio config (migration 145). Null for attach/tcp_peer sources. */
+  frequency: number | null;
+  bandwidth: number | null;
+  spreadingFactor: number | null;
+  codingRate: number | null;
+  txPower: number | null;
+  stAlock: number | null;
+  ltAlock: number | null;
+  radioState: boolean | null;
+  /** Loose JSON text — read-only RNode board/firmware info (R2). */
+  deviceInfoJson: string | null;
+}
+
+/** The radio-config + device-info subset of {@link ReticulumInterfaceRow} (migration 145). */
+export interface ReticulumInterfaceRadioConfig {
+  frequency: number | null;
+  bandwidth: number | null;
+  spreadingFactor: number | null;
+  codingRate: number | null;
+  txPower: number | null;
+  stAlock: number | null;
+  ltAlock: number | null;
+  radioState: boolean | null;
+  deviceInfoJson: string | null;
+}
+
+/**
+ * A partial radio-config patch for {@link ReticulumRepository.setInterfaceRadioConfig}.
+ * `undefined` means "leave the stored value alone" (partial update, e.g. the
+ * bridge's `set_radio_config` command only touched a subset of params);
+ * pass `null` explicitly to clear a field.
+ */
+export interface UpdateInterfaceRadioConfigInput {
+  frequency?: number | null;
+  bandwidth?: number | null;
+  spreadingFactor?: number | null;
+  codingRate?: number | null;
+  txPower?: number | null;
+  stAlock?: number | null;
+  ltAlock?: number | null;
+  radioState?: boolean | null;
+  deviceInfoJson?: string | null;
 }
 
 /** Fields the bridge supplies on each `interface_stats` poll (a full snapshot). */
@@ -382,6 +454,64 @@ export class ReticulumRepository extends BaseRepository {
       ));
   }
 
+  /**
+   * Overwrite a destination's position with a fresh Sideband `SID_LOCATION`
+   * sample. UPDATE-only (mirrors {@link setDestinationFavorite}) — a position
+   * sample only ever arrives for a destination this source already knows
+   * about (it rides an LXMF message routed to/from that destination, which
+   * itself requires an announce having been observed first). LATEST-ONLY: no
+   * history is kept, so every call fully overwrites the six position columns
+   * (+ `positionUpdatedAt`) rather than merging (see
+   * {@link UpdateDestinationPositionInput}).
+   */
+  async updateDestinationPosition(sourceId: string, input: UpdateDestinationPositionInput): Promise<void> {
+    if (!sourceId) {
+      throw new Error('ReticulumRepository.updateDestinationPosition requires a sourceId');
+    }
+    const { reticulumDestinations } = this.tables;
+    const positionUpdatedAt = input.positionUpdatedAt ?? this.now();
+
+    await this.db
+      .update(reticulumDestinations)
+      .set({
+        latitude: input.latitude,
+        longitude: input.longitude,
+        altitude: input.altitude ?? null,
+        speed: input.speed ?? null,
+        bearing: input.bearing ?? null,
+        accuracy: input.accuracy ?? null,
+        positionUpdatedAt,
+        updatedAt: this.now(),
+      })
+      .where(and(
+        this.withSourceScope(reticulumDestinations, sourceId),
+        eq(reticulumDestinations.destinationHash, input.destinationHash),
+      ));
+  }
+
+  /**
+   * List destinations for a source (or `ALL_SOURCES`) that currently carry a
+   * position sample (`latitude`/`longitude` both non-null), newest
+   * `positionUpdatedAt` first. Backs the Reticulum map view (WP5) — Reticulum
+   * position is peer-shared per-source and LATEST-ONLY (no history table, no
+   * `estimated_positions` batch job; see build spec §3).
+   */
+  async getDestinationsWithPosition(sourceId: SourceScope): Promise<ReticulumDestinationRow[]> {
+    const { reticulumDestinations } = this.tables;
+    const conditions = [
+      this.withSourceScope(reticulumDestinations, sourceId),
+      isNotNull(reticulumDestinations.latitude),
+      isNotNull(reticulumDestinations.longitude),
+    ].filter((c): c is NonNullable<typeof c> => c !== undefined);
+
+    const rows = await this.db
+      .select()
+      .from(reticulumDestinations)
+      .where(and(...conditions))
+      .orderBy(desc(reticulumDestinations.positionUpdatedAt));
+    return this.normalizeBigInts(rows) as unknown as ReticulumDestinationRow[];
+  }
+
   /** Read `reticulum_destinations_max`, falling back to the default when unset/invalid. */
   private async getDestinationsMax(): Promise<number> {
     const raw = await this.settingsRepo.getSetting(RETICULUM_DESTINATIONS_MAX_SETTING_KEY);
@@ -518,6 +648,76 @@ export class ReticulumRepository extends BaseRepository {
       ))
       .limit(1);
     return rows[0] ? (this.normalizeBigInts(rows[0]) as unknown as ReticulumInterfaceRow) : null;
+  }
+
+  /**
+   * Get the radio-config + device-info subset of an interface row, scoped by
+   * `(sourceId, interfaceName)` (migration 145). Every field is null for an
+   * attach/tcp_peer source — own mode is the only mode that ever writes them
+   * (see {@link setInterfaceRadioConfig}).
+   */
+  async getInterfaceRadioConfig(
+    sourceId: string,
+    interfaceName: string,
+  ): Promise<ReticulumInterfaceRadioConfig | null> {
+    const { reticulumInterfaces } = this.tables;
+    const rows = await this.db
+      .select({
+        frequency: reticulumInterfaces.frequency,
+        bandwidth: reticulumInterfaces.bandwidth,
+        spreadingFactor: reticulumInterfaces.spreadingFactor,
+        codingRate: reticulumInterfaces.codingRate,
+        txPower: reticulumInterfaces.txPower,
+        stAlock: reticulumInterfaces.stAlock,
+        ltAlock: reticulumInterfaces.ltAlock,
+        radioState: reticulumInterfaces.radioState,
+        deviceInfoJson: reticulumInterfaces.deviceInfoJson,
+      })
+      .from(reticulumInterfaces)
+      .where(and(
+        this.withSourceScope(reticulumInterfaces, sourceId),
+        eq(reticulumInterfaces.interfaceName, interfaceName),
+      ))
+      .limit(1);
+    return rows[0] ? (this.normalizeBigInts(rows[0]) as unknown as ReticulumInterfaceRadioConfig) : null;
+  }
+
+  /**
+   * Patch an interface's own-mode radio config / device info, scoped by
+   * `(sourceId, interfaceName)` (migration 145). UPDATE-only (mirrors
+   * {@link setDestinationFavorite}) — a radio-config/device-info write only
+   * ever targets an interface row the poller has already created via
+   * {@link upsertInterface}. Partial: only fields the caller actually passed
+   * (not `undefined`) overwrite the stored value, matching
+   * {@link UpdateInterfaceRadioConfigInput}'s merge semantics.
+   */
+  async setInterfaceRadioConfig(
+    sourceId: string,
+    interfaceName: string,
+    patch: UpdateInterfaceRadioConfigInput,
+  ): Promise<void> {
+    if (!sourceId) {
+      throw new Error('ReticulumRepository.setInterfaceRadioConfig requires a sourceId');
+    }
+    const { reticulumInterfaces } = this.tables;
+    const updateSet: Record<string, unknown> = { updatedAt: this.now() };
+    if (patch.frequency !== undefined) updateSet.frequency = patch.frequency;
+    if (patch.bandwidth !== undefined) updateSet.bandwidth = patch.bandwidth;
+    if (patch.spreadingFactor !== undefined) updateSet.spreadingFactor = patch.spreadingFactor;
+    if (patch.codingRate !== undefined) updateSet.codingRate = patch.codingRate;
+    if (patch.txPower !== undefined) updateSet.txPower = patch.txPower;
+    if (patch.stAlock !== undefined) updateSet.stAlock = patch.stAlock;
+    if (patch.ltAlock !== undefined) updateSet.ltAlock = patch.ltAlock;
+    if (patch.radioState !== undefined) updateSet.radioState = patch.radioState;
+    if (patch.deviceInfoJson !== undefined) updateSet.deviceInfoJson = patch.deviceInfoJson;
+
+    await this.db
+      .update(reticulumInterfaces)
+      .set(updateSet)
+      .where(and(
+        this.withSourceScope(reticulumInterfaces, sourceId),
+        eq(reticulumInterfaces.interfaceName, interfaceName),
+      ));
   }
 
   // ============ Message Operations (Phase 2 WP3) ============

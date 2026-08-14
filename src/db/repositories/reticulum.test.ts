@@ -15,6 +15,8 @@ import {
   DEFAULT_RETICULUM_DESTINATIONS_MAX,
   type UpsertDestinationInput,
   type UpsertInterfaceInput,
+  type UpdateDestinationPositionInput,
+  type UpdateInterfaceRadioConfigInput,
 } from './reticulum.js';
 import {
   TestBackend,
@@ -40,7 +42,9 @@ const SQLITE_CREATE = `
     announceCount INTEGER NOT NULL DEFAULT 0,
     firstSeen INTEGER NOT NULL, lastSeen INTEGER NOT NULL, lastAnnounceAt INTEGER,
     isFavorite INTEGER NOT NULL DEFAULT 0,
-    createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL
+    createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL,
+    latitude REAL, longitude REAL, altitude REAL, speed REAL, bearing REAL, accuracy REAL,
+    positionUpdatedAt INTEGER
   );
   CREATE UNIQUE INDEX reticulum_destinations_source_hash_idx ON reticulum_destinations(sourceId, destinationHash);
   CREATE TABLE reticulum_interfaces (
@@ -51,7 +55,9 @@ const SQLITE_CREATE = `
     status TEXT NOT NULL, online INTEGER NOT NULL DEFAULT 0, bitrate INTEGER,
     txBytes INTEGER NOT NULL DEFAULT 0, rxBytes INTEGER NOT NULL DEFAULT 0,
     lastSeenAt INTEGER NOT NULL,
-    createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL
+    createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL,
+    frequency REAL, bandwidth REAL, spreadingFactor INTEGER, codingRate INTEGER, txPower INTEGER,
+    stAlock REAL, ltAlock REAL, radioState INTEGER, deviceInfoJson TEXT
   );
   CREATE UNIQUE INDEX reticulum_interfaces_source_name_idx ON reticulum_interfaces(sourceId, interfaceName);
   CREATE TABLE settings (
@@ -73,7 +79,10 @@ const POSTGRES_CREATE = `
     "announceCount" INTEGER NOT NULL DEFAULT 0,
     "firstSeen" BIGINT NOT NULL, "lastSeen" BIGINT NOT NULL, "lastAnnounceAt" BIGINT,
     "isFavorite" BOOLEAN NOT NULL DEFAULT false,
-    "createdAt" BIGINT NOT NULL, "updatedAt" BIGINT NOT NULL
+    "createdAt" BIGINT NOT NULL, "updatedAt" BIGINT NOT NULL,
+    latitude DOUBLE PRECISION, longitude DOUBLE PRECISION, altitude DOUBLE PRECISION,
+    speed DOUBLE PRECISION, bearing DOUBLE PRECISION, accuracy DOUBLE PRECISION,
+    "positionUpdatedAt" BIGINT
   );
   CREATE UNIQUE INDEX reticulum_destinations_source_hash_idx ON reticulum_destinations("sourceId", "destinationHash");
   CREATE TABLE reticulum_interfaces (
@@ -83,7 +92,10 @@ const POSTGRES_CREATE = `
     status TEXT NOT NULL, online BOOLEAN NOT NULL DEFAULT false, bitrate INTEGER,
     "txBytes" BIGINT NOT NULL DEFAULT 0, "rxBytes" BIGINT NOT NULL DEFAULT 0,
     "lastSeenAt" BIGINT NOT NULL,
-    "createdAt" BIGINT NOT NULL, "updatedAt" BIGINT NOT NULL
+    "createdAt" BIGINT NOT NULL, "updatedAt" BIGINT NOT NULL,
+    frequency DOUBLE PRECISION, bandwidth DOUBLE PRECISION, "spreadingFactor" INTEGER,
+    "codingRate" INTEGER, "txPower" INTEGER, "stAlock" DOUBLE PRECISION, "ltAlock" DOUBLE PRECISION,
+    "radioState" BOOLEAN, "deviceInfoJson" TEXT
   );
   CREATE UNIQUE INDEX reticulum_interfaces_source_name_idx ON reticulum_interfaces("sourceId", "interfaceName");
   CREATE TABLE settings (
@@ -107,6 +119,8 @@ const MYSQL_CREATE = `
     firstSeen BIGINT NOT NULL, lastSeen BIGINT NOT NULL, lastAnnounceAt BIGINT,
     isFavorite TINYINT(1) NOT NULL DEFAULT 0,
     createdAt BIGINT NOT NULL, updatedAt BIGINT NOT NULL,
+    latitude DOUBLE, longitude DOUBLE, altitude DOUBLE, speed DOUBLE, bearing DOUBLE, accuracy DOUBLE,
+    positionUpdatedAt BIGINT,
     UNIQUE KEY reticulum_destinations_source_hash_idx (sourceId, destinationHash)
   );
   CREATE TABLE reticulum_interfaces (
@@ -117,6 +131,8 @@ const MYSQL_CREATE = `
     txBytes BIGINT NOT NULL DEFAULT 0, rxBytes BIGINT NOT NULL DEFAULT 0,
     lastSeenAt BIGINT NOT NULL,
     createdAt BIGINT NOT NULL, updatedAt BIGINT NOT NULL,
+    frequency DOUBLE, bandwidth DOUBLE, spreadingFactor INT, codingRate INT, txPower INT,
+    stAlock DOUBLE, ltAlock DOUBLE, radioState TINYINT(1), deviceInfoJson TEXT,
     UNIQUE KEY reticulum_interfaces_source_name_idx (sourceId, interfaceName)
   );
   CREATE TABLE settings (
@@ -404,6 +420,198 @@ function runReticulumTests(getBackend: () => TestBackend) {
     expect(await repo.countDestinations(SRC_B)).toBe(1);
     expect(await repo.countInterfaces(SRC_A)).toBe(1);
     expect(await repo.countInterfaces(SRC_B)).toBe(0);
+  });
+
+  // ============ Position (Phase 3 WP3, migration 144) ============
+
+  it('updateDestinationPosition - a fresh sample writes all six position columns + positionUpdatedAt', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.upsertDestination(SRC_A, makeDest({ destinationHash: 'pos-1'.padEnd(32, '0') }));
+    const positionUpdatedAt = Date.now();
+    const patch: UpdateDestinationPositionInput = {
+      destinationHash: 'pos-1'.padEnd(32, '0'),
+      latitude: 40.7128,
+      longitude: -74.006,
+      altitude: 10.5,
+      speed: 1.2,
+      bearing: 90.0,
+      accuracy: 3.5,
+      positionUpdatedAt,
+    };
+    await repo.updateDestinationPosition(SRC_A, patch);
+
+    const row = await repo.getDestination(SRC_A, 'pos-1'.padEnd(32, '0'));
+    expect(row!.latitude).toBeCloseTo(40.7128);
+    expect(row!.longitude).toBeCloseTo(-74.006);
+    expect(row!.altitude).toBeCloseTo(10.5);
+    expect(row!.speed).toBeCloseTo(1.2);
+    expect(row!.bearing).toBeCloseTo(90.0);
+    expect(row!.accuracy).toBeCloseTo(3.5);
+    expect(row!.positionUpdatedAt).toBe(positionUpdatedAt);
+  });
+
+  it('updateDestinationPosition - LATEST-ONLY: a second sample fully overwrites the first, including clearing omitted optional fields', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    const hash = 'pos-2'.padEnd(32, '0');
+    await repo.upsertDestination(SRC_A, makeDest({ destinationHash: hash }));
+
+    await repo.updateDestinationPosition(SRC_A, {
+      destinationHash: hash,
+      latitude: 10,
+      longitude: 20,
+      altitude: 100,
+      speed: 5,
+      bearing: 45,
+      accuracy: 2,
+      positionUpdatedAt: Date.now() - 10_000,
+    });
+
+    // Second sample omits altitude/speed/bearing/accuracy entirely — unlike
+    // upsertDestination's per-field merge, a position sample is a full
+    // overwrite (each sample is a fresh GPS fix), so the omitted optional
+    // fields must be cleared to null, not preserved from the first sample.
+    const t2 = Date.now();
+    await repo.updateDestinationPosition(SRC_A, {
+      destinationHash: hash,
+      latitude: 11,
+      longitude: 21,
+      positionUpdatedAt: t2,
+    });
+
+    const row = await repo.getDestination(SRC_A, hash);
+    expect(row!.latitude).toBeCloseTo(11);
+    expect(row!.longitude).toBeCloseTo(21);
+    expect(row!.altitude).toBeNull();
+    expect(row!.speed).toBeNull();
+    expect(row!.bearing).toBeNull();
+    expect(row!.accuracy).toBeNull();
+    expect(row!.positionUpdatedAt).toBe(t2);
+  });
+
+  it('getDestinationsWithPosition - only returns destinations with a non-null lat/lon, scoped to source, newest position first', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    const withPos1 = 'pos-3'.padEnd(32, '0');
+    const withPos2 = 'pos-4'.padEnd(32, '0');
+    const withoutPos = 'pos-5'.padEnd(32, '0');
+    const otherSourcePos = 'pos-6'.padEnd(32, '0');
+
+    await repo.upsertDestination(SRC_A, makeDest({ destinationHash: withPos1 }));
+    await repo.upsertDestination(SRC_A, makeDest({ destinationHash: withPos2 }));
+    await repo.upsertDestination(SRC_A, makeDest({ destinationHash: withoutPos }));
+    await repo.upsertDestination(SRC_B, makeDest({ destinationHash: otherSourcePos }));
+
+    const t1 = Date.now() - 10_000;
+    const t2 = Date.now();
+    await repo.updateDestinationPosition(SRC_A, { destinationHash: withPos1, latitude: 1, longitude: 1, positionUpdatedAt: t1 });
+    await repo.updateDestinationPosition(SRC_A, { destinationHash: withPos2, latitude: 2, longitude: 2, positionUpdatedAt: t2 });
+    await repo.updateDestinationPosition(SRC_B, { destinationHash: otherSourcePos, latitude: 3, longitude: 3, positionUpdatedAt: t2 });
+
+    const onA = await repo.getDestinationsWithPosition(SRC_A);
+    expect(onA.map((d) => d.destinationHash)).toEqual([withPos2, withPos1]);
+
+    const onB = await repo.getDestinationsWithPosition(SRC_B);
+    expect(onB.map((d) => d.destinationHash)).toEqual([otherSourcePos]);
+  });
+
+  // ============ Interface radio config (Phase 3 WP3, migration 145) ============
+
+  it('getInterfaceRadioConfig - returns all-null for an interface that never had own-mode config written', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.upsertInterface(SRC_A, makeIface({ interfaceName: 'radio-iface-1' }));
+    const config = await repo.getInterfaceRadioConfig(SRC_A, 'radio-iface-1');
+    expect(config).not.toBeNull();
+    expect(config!.frequency).toBeNull();
+    expect(config!.radioState).toBeNull();
+    expect(config!.deviceInfoJson).toBeNull();
+  });
+
+  it('getInterfaceRadioConfig - returns null for a nonexistent interface', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    expect(await repo.getInterfaceRadioConfig(SRC_A, 'does-not-exist')).toBeNull();
+  });
+
+  it('setInterfaceRadioConfig - a full patch round-trips through getInterfaceRadioConfig', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.upsertInterface(SRC_A, makeIface({ interfaceName: 'radio-iface-2' }));
+    const patch: UpdateInterfaceRadioConfigInput = {
+      frequency: 915000000,
+      bandwidth: 125000,
+      spreadingFactor: 8,
+      codingRate: 5,
+      txPower: 17,
+      stAlock: 33.3,
+      ltAlock: 66.6,
+      radioState: true,
+      deviceInfoJson: '{"fw":"1.60","mcu":"1284p"}',
+    };
+    await repo.setInterfaceRadioConfig(SRC_A, 'radio-iface-2', patch);
+
+    const config = await repo.getInterfaceRadioConfig(SRC_A, 'radio-iface-2');
+    expect(config!.frequency).toBeCloseTo(915000000);
+    expect(config!.bandwidth).toBeCloseTo(125000);
+    expect(config!.spreadingFactor).toBe(8);
+    expect(config!.codingRate).toBe(5);
+    expect(config!.txPower).toBe(17);
+    expect(config!.stAlock).toBeCloseTo(33.3);
+    expect(config!.ltAlock).toBeCloseTo(66.6);
+    expect(config!.radioState).toBe(true);
+    expect(config!.deviceInfoJson).toBe('{"fw":"1.60","mcu":"1284p"}');
+  });
+
+  it('setInterfaceRadioConfig - a partial patch only overwrites the fields it carries, preserving the rest', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.upsertInterface(SRC_A, makeIface({ interfaceName: 'radio-iface-3' }));
+    await repo.setInterfaceRadioConfig(SRC_A, 'radio-iface-3', {
+      frequency: 915000000,
+      spreadingFactor: 8,
+      radioState: true,
+    });
+
+    // Second call only touches txPower — frequency/spreadingFactor/radioState
+    // from the first call must survive untouched (partial merge, not a
+    // full-snapshot overwrite like updateDestinationPosition).
+    await repo.setInterfaceRadioConfig(SRC_A, 'radio-iface-3', { txPower: 20 });
+
+    const config = await repo.getInterfaceRadioConfig(SRC_A, 'radio-iface-3');
+    expect(config!.frequency).toBeCloseTo(915000000);
+    expect(config!.spreadingFactor).toBe(8);
+    expect(config!.radioState).toBe(true);
+    expect(config!.txPower).toBe(20);
   });
 
   it('upsertDestination - defaults to DEFAULT_RETICULUM_DESTINATIONS_MAX when unset', async () => {
