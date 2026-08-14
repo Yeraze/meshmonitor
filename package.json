@@ -5,6 +5,9 @@
   "license": "BSD-3-Clause",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "vite",
     "dev:server": "tsx --watch src/server/server.ts",
