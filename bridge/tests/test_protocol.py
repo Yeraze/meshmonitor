@@ -219,13 +219,6 @@ def test_welcome_fixture_declares_protocol_version(load_fixture):
 # --------------------------------------------------------------------------
 
 
-def test_protocol_version_is_3():
-    """Bumped 2->3 for Phase 3 WP1 (own mode) -- pins the exact value so a
-    future accidental revert is caught immediately rather than only via the
-    fixture-drift test."""
-    assert protocol.PROTOCOL_VERSION == 3
-
-
 def test_own_mode_and_rnode_failure_codes_are_declared():
     for code in (protocol.OWN_MODE_REQUIRED, protocol.RNODE_DEVICE_UNAVAILABLE, protocol.RNODE_COMMAND_FAILED):
         assert code in protocol.FAILURE_CODES
@@ -311,3 +304,79 @@ def test_configure_message_without_own_fields_omits_them():
     env = protocol.configure_message(mode="attach", id="c0", config_dir="/rns")
     assert "device" not in env
     assert "frequency" not in env
+
+
+# --------------------------------------------------------------------------
+# Phase 4 (bridge probe + remote status, build spec §2.A, #3960 WP2)
+# --------------------------------------------------------------------------
+
+
+def test_protocol_version_is_4():
+    """Bumped 3->4 for Phase 4 WP2 (probe + remote status) -- pins the exact
+    value so a future accidental revert is caught immediately rather than
+    only via the fixture-drift test."""
+    assert protocol.PROTOCOL_VERSION == 4
+
+
+def test_probe_and_remote_status_failure_codes_are_declared():
+    for code in (protocol.PROBE_FAILED, protocol.REMOTE_STATUS_FAILED, protocol.REMOTE_MANAGEMENT_DENIED):
+        assert code in protocol.FAILURE_CODES
+
+
+def test_probe_and_remote_status_failure_codes_are_not_startup_codes():
+    """Distinguishes command-time failures (only possible after RNS startup
+    already succeeded) from startup failures, same as OWN_MODE_REQUIRED/
+    RNODE_COMMAND_FAILED in Phase 3."""
+    assert protocol.PROBE_FAILED not in protocol.STARTUP_FAILURE_CODES
+    assert protocol.REMOTE_STATUS_FAILED not in protocol.STARTUP_FAILURE_CODES
+    assert protocol.REMOTE_MANAGEMENT_DENIED not in protocol.STARTUP_FAILURE_CODES
+
+
+def test_probe_result_fixture_ok_true_carries_rtt_and_hops(load_fixture):
+    probe_result = load_fixture("probe_result")
+    assert probe_result["ok"] is True
+    assert probe_result["rttMs"] == 842.5
+    assert probe_result["hops"] == 3
+    assert probe_result["error"] is None
+
+
+def test_probe_result_fixture_ok_false_has_null_rtt_and_hops(load_fixture):
+    """A failed/unreachable probe is a NORMAL ok=False response, never the
+    PROBE_FAILED error code -- see rns_manager.py's probe() docstring."""
+    probe_result = load_fixture("probe_result_unreachable")
+    assert probe_result["ok"] is False
+    assert probe_result["rttMs"] is None
+    assert probe_result["hops"] is None
+    assert probe_result["error"]
+
+
+def test_remote_status_fixture_ok_true_carries_status_and_path(load_fixture):
+    remote_status = load_fixture("remote_status")
+    assert remote_status["ok"] is True
+    assert remote_status["status"]["interfaces"]
+    assert remote_status["path"]
+    assert remote_status["error"] is None
+
+
+def test_remote_status_fixture_ok_false_has_null_status_and_path(load_fixture):
+    remote_status = load_fixture("remote_status_denied")
+    assert remote_status["ok"] is False
+    assert remote_status["status"] is None
+    assert remote_status["path"] is None
+    assert remote_status["error"]
+
+
+def test_probe_message_carries_timeout_when_given():
+    env = protocol.probe_message(destination_hash="a1b2c3d4e5f60718293a4b5c6d7e8f90", timeout_s=5.0, id="c1")
+    assert env["timeoutS"] == 5.0
+
+
+def test_probe_message_omits_timeout_when_not_given():
+    env = protocol.probe_message(destination_hash="a1b2c3d4e5f60718293a4b5c6d7e8f90", id="c1")
+    assert "timeoutS" not in env
+
+
+def test_get_remote_status_message_carries_destination_hash():
+    env = protocol.get_remote_status_message(destination_hash="9f8e7d6c5b4a39281706f5e4d3c2b1a0", id="c1")
+    assert env["destinationHash"] == "9f8e7d6c5b4a39281706f5e4d3c2b1a0"
+    assert "timeoutS" not in env

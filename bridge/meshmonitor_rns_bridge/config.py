@@ -19,6 +19,13 @@ DEFAULT_STATS_INTERVAL_S = 5.0
 DEFAULT_PATHS_INTERVAL_S = 15.0
 DEFAULT_LOG_LEVEL = "info"
 DEFAULT_MODE = "attach"
+# Phase 4 (bridge probe + remote status, build spec §2.C, #3960 WP2):
+# reserved for a future scheduled remote-status poller -- R2 (build spec
+# §0) is explicit that Phase 4 itself is on-demand-only, no persistence, no
+# poller consumes this yet. Declared now so the env var / BridgeConfig
+# field exists ahead of that stretch goal, same as `paths_interval_s`
+# governs `path_table_poller` today.
+DEFAULT_REMOTE_STATUS_INTERVAL_S = 60.0
 
 VALID_MODES = ("attach", "tcp_peer", "own")
 
@@ -76,6 +83,17 @@ class BridgeConfig:
     own_txpower: Optional[int] = None
     own_st_alock: Optional[float] = None
     own_lt_alock: Optional[float] = None
+    # Phase 4 (bridge probe + remote status, build spec §2.C, R5, #3960
+    # WP2): the QUERYING side's identity-ACL -- which remote destination
+    # hashes THIS bridge is permitted to `get_remote_status()` against.
+    # Deliberately separate from (and unrelated to) the ANSWERING side's own
+    # `remote_management_allowed` config, which lives entirely in the
+    # remote instance's own RNS config and is invisible to us -- see
+    # rns_manager.py's `get_remote_status()` docstring. Empty tuple means
+    # "no restriction" (R5 leaves enforcement to the caller/route layer;
+    # an empty allowlist here is not itself a deny-all).
+    remote_allowed: tuple = field(default_factory=tuple)
+    remote_status_interval_s: float = DEFAULT_REMOTE_STATUS_INTERVAL_S
 
 
 def _parse_tcp_peers(raw: Optional[str]) -> tuple:
@@ -97,6 +115,16 @@ def _parse_tcp_peers(raw: Optional[str]) -> tuple:
             raise ConfigError(f"invalid port in RNS_TCP_PEERS entry {chunk!r}") from e
         peers.append(TcpPeer(host=host, port=port))
     return tuple(peers)
+
+
+def _parse_remote_allowed(raw: Optional[str]) -> tuple:
+    """Phase 4 (build spec §2.C): RNS_REMOTE_ALLOWED, a comma-separated list
+    of lowercase-hex destination hashes -- no length/hex validation here
+    (mirrors `_parse_tcp_peers`'s "be lenient, let the caller reject a bad
+    hash at request time" style); blank entries are skipped."""
+    if not raw:
+        return ()
+    return tuple(chunk.strip().lower() for chunk in raw.split(",") if chunk.strip())
 
 
 def _parse_int(raw: Optional[str], name: str, default: int) -> int:
@@ -160,6 +188,11 @@ def load_config(env: Optional[Mapping[str, str]] = None) -> BridgeConfig:
       RNS_OWN_FREQUENCY, RNS_OWN_BANDWIDTH, RNS_OWN_SF, RNS_OWN_CR,
       RNS_OWN_TXPOWER, RNS_OWN_ST_ALOCK, RNS_OWN_LT_ALOCK (all optional
       initial radio params -- see `own_radio_params()`).
+    Phase 4 (bridge probe + remote status, build spec §2.C, R5, #3960 WP2):
+      RNS_REMOTE_ALLOWED (comma-separated destination hashes this bridge is
+      permitted to query via get_remote_status), RNS_REMOTE_STATUS_INTERVAL_S
+      (default 60 -- reserved for a future poller, see
+      DEFAULT_REMOTE_STATUS_INTERVAL_S).
     """
     env = os.environ if env is None else env
 
@@ -207,6 +240,12 @@ def load_config(env: Optional[Mapping[str, str]] = None) -> BridgeConfig:
         own_txpower=_parse_optional_int(env.get("RNS_OWN_TXPOWER"), "RNS_OWN_TXPOWER"),
         own_st_alock=_parse_optional_float(env.get("RNS_OWN_ST_ALOCK"), "RNS_OWN_ST_ALOCK"),
         own_lt_alock=_parse_optional_float(env.get("RNS_OWN_LT_ALOCK"), "RNS_OWN_LT_ALOCK"),
+        remote_allowed=_parse_remote_allowed(env.get("RNS_REMOTE_ALLOWED")),
+        remote_status_interval_s=_parse_float(
+            env.get("RNS_REMOTE_STATUS_INTERVAL_S"),
+            "RNS_REMOTE_STATUS_INTERVAL_S",
+            DEFAULT_REMOTE_STATUS_INTERVAL_S,
+        ),
     )
 
 
