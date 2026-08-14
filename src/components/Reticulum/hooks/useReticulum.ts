@@ -45,6 +45,9 @@ import type {
   ReticulumMessageState,
   ReticulumMessageMethod,
   ReticulumIdentity,
+  ReticulumPathRow,
+  ReticulumProbeResult,
+  ReticulumRemoteStatus,
 } from '../../../types/reticulum';
 
 // No Socket.io events exist for status/destinations/interfaces/conversations
@@ -120,6 +123,32 @@ export interface UseReticulumState {
   /** This source's own LXMF identity — `{destinationHash, displayName}`,
    *  both `null` until the first successful fetch or when disconnected. */
   identity: ReticulumIdentity | null;
+
+  // ---- Path table + fleet monitoring (Phase 4 WP4) -------------------
+
+  /** Path-table snapshot (ordered by hops then destinationHash), polled on
+   *  the same cadence as status/destinations/interfaces. */
+  paths: ReticulumPathRow[];
+  /** Result of the most recent {@link probe} call, or `null` before the
+   *  first call. Carries its own `destinationHash`, so a caller rendering
+   *  multiple rows can match it back to the row that was probed. */
+  probeResult: ReticulumProbeResult | null;
+  /** The destination hash currently being probed, or `null` when no probe
+   *  is in flight — lets a per-row UI show a loading state for just that row. */
+  probingHash: string | null;
+  /** POST /paths/probe (rnprobe-style on-demand reachability check). Returns
+   *  the result on success (already stored on {@link probeResult}) or `null`
+   *  on failure (`error` is set). */
+  probe: (destinationHash: string, timeoutS?: number) => Promise<ReticulumProbeResult | null>;
+  /** Result of the most recent {@link queryRemoteStatus} call, or `null`
+   *  before the first call. Never persisted server-side (on-demand only). */
+  remoteStatus: ReticulumRemoteStatus | null;
+  /** True while a {@link queryRemoteStatus} call is in flight. */
+  remoteStatusLoading: boolean;
+  /** GET /remote-status/:hash (remote Transport Node /status + /path query
+   *  — the fleet-monitoring surface). Returns the result on success (already
+   *  stored on {@link remoteStatus}) or `null` on failure (`error` is set). */
+  queryRemoteStatus: (destinationHash: string, timeoutS?: number) => Promise<ReticulumRemoteStatus | null>;
 }
 
 /** An endpoint's raw response, before unwrapping the `{success,data}` envelope. */
@@ -209,6 +238,11 @@ export function useReticulum(options: UseReticulumOptions): UseReticulumState {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [identity, setIdentity] = useState<ReticulumIdentity | null>(null);
+  const [paths, setPaths] = useState<ReticulumPathRow[]>([]);
+  const [probeResult, setProbeResult] = useState<ReticulumProbeResult | null>(null);
+  const [probingHash, setProbingHash] = useState<string | null>(null);
+  const [remoteStatus, setRemoteStatus] = useState<ReticulumRemoteStatus | null>(null);
+  const [remoteStatusLoading, setRemoteStatusLoading] = useState(false);
 
   const [activePeerHash, setActivePeerHash] = useState<string | null>(null);
   const [messages, setMessages] = useState<ReticulumMessageRow[]>([]);
@@ -228,17 +262,19 @@ export function useReticulum(options: UseReticulumOptions): UseReticulumState {
     setLoading(true);
     setConversationsLoading(true);
     try {
-      const [statusRes, destinationsRes, interfacesRes, conversationsRes] = await Promise.all([
+      const [statusRes, destinationsRes, interfacesRes, conversationsRes, pathsRes] = await Promise.all([
         api.get<Enveloped<ReticulumStatus>>(`${prefix}/status`),
         api.get<Enveloped<ReticulumDestinationRow[]>>(`${prefix}/destinations`),
         api.get<Enveloped<ReticulumInterfaceRow[]>>(`${prefix}/interfaces`),
         api.get<Enveloped<ReticulumConversation[]>>(`${prefix}/messages`),
+        api.get<Enveloped<ReticulumPathRow[]>>(`${prefix}/paths`),
       ]);
       if (cancelledRef.current) return;
       setStatus(unwrapData(statusRes));
       setDestinations(unwrapData(destinationsRes) ?? []);
       setInterfaces(unwrapData(interfacesRes) ?? []);
       setConversations(unwrapData(conversationsRes) ?? []);
+      setPaths(unwrapData(pathsRes) ?? []);
       setError(null);
     } catch (err) {
       if (cancelledRef.current) return;
@@ -369,6 +405,52 @@ export function useReticulum(options: UseReticulumOptions): UseReticulumState {
     }
   }, [prefix]);
 
+  // ---- Path table + fleet monitoring (Phase 4 WP4) --------------------
+  // On-demand, imperative helpers (mirroring loadConversation) — NOT part
+  // of the 30s poll (build spec §3.6/§4.4: probe/remote-status are live
+  // round-trips to the bridge, not DB reads).
+
+  const probe = useCallback(async (destinationHash: string, timeoutS?: number): Promise<ReticulumProbeResult | null> => {
+    if (!sourceId) return null;
+    setProbingHash(destinationHash);
+    try {
+      const body: { destinationHash: string; timeoutS?: number } = { destinationHash };
+      if (timeoutS !== undefined) body.timeoutS = timeoutS;
+      const res = await api.post<Enveloped<ReticulumProbeResult>>(`${prefix}/paths/probe`, body);
+      const result = unwrapData(res) ?? null;
+      setProbeResult(result);
+      setError(null);
+      return result;
+    } catch (err) {
+      console.error('Failed to probe Reticulum destination:', err);
+      setError(err instanceof Error ? err.message : 'Failed to probe destination');
+      return null;
+    } finally {
+      setProbingHash(prev => (prev === destinationHash ? null : prev));
+    }
+  }, [sourceId, prefix]);
+
+  const queryRemoteStatus = useCallback(async (destinationHash: string, timeoutS?: number): Promise<ReticulumRemoteStatus | null> => {
+    if (!sourceId) return null;
+    setRemoteStatusLoading(true);
+    try {
+      const qs = timeoutS !== undefined ? `?timeoutS=${encodeURIComponent(String(timeoutS))}` : '';
+      const res = await api.get<Enveloped<ReticulumRemoteStatus>>(
+        `${prefix}/remote-status/${encodeURIComponent(destinationHash)}${qs}`,
+      );
+      const result = unwrapData(res) ?? null;
+      setRemoteStatus(result);
+      setError(null);
+      return result;
+    } catch (err) {
+      console.error('Failed to query Reticulum remote status:', err);
+      setError(err instanceof Error ? err.message : 'Failed to query remote status');
+      return null;
+    } finally {
+      setRemoteStatusLoading(false);
+    }
+  }, [sourceId, prefix]);
+
   // Push events — join the per-source room and subscribe to the two LXMF
   // events (mirrors useMeshCore's push-event effect). Guarding `!socket`
   // (rather than requiring one) means callers that render before the
@@ -433,5 +515,12 @@ export function useReticulum(options: UseReticulumOptions): UseReticulumState {
     loadMoreMessages,
     sendMessage,
     identity,
+    paths,
+    probeResult,
+    probingHash,
+    probe,
+    remoteStatus,
+    remoteStatusLoading,
+    queryRemoteStatus,
   };
 }

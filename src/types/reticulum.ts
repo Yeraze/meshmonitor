@@ -111,8 +111,83 @@ export interface ReticulumInterfaceRow {
   deviceInfoJson: string | null;
 }
 
-/** Sub-toolbar view identifiers for `ReticulumPage`/`ReticulumSubToolbar` (WP2; 'dms' added Phase 2 WP5; 'map'/'configuration' added Phase 3). */
-export type ReticulumView = 'destinations' | 'interfaces' | 'map' | 'dms' | 'info' | 'configuration' | 'settings';
+/** Sub-toolbar view identifiers for `ReticulumPage`/`ReticulumSubToolbar` (WP2; 'dms' added Phase 2 WP5; 'map'/'configuration' added Phase 3; 'paths' added Phase 4 WP4). */
+export type ReticulumView = 'destinations' | 'interfaces' | 'map' | 'dms' | 'info' | 'configuration' | 'settings' | 'paths';
+
+/**
+ * One row from `GET /api/sources/:id/reticulum/paths` (mirrors the server's
+ * `ReticulumPathRow`, `src/db/repositories/reticulum.ts`) — the path table
+ * is a full-replace snapshot on every bridge poll (build spec §0 R4), so
+ * `updatedAt` doubles as "how fresh is this row" (the age column).
+ */
+export interface ReticulumPathRow {
+  id?: number;
+  sourceId: string;
+  destinationHash: string;
+  /** Next-hop destination hash, or null when this destination IS the next hop (zero-hop / directly reachable). */
+  viaHash: string | null;
+  hops: number | null;
+  /** Local interface the next hop is reachable through. */
+  interfaceName: string | null;
+  /** ms epoch; null when the bridge didn't report an expiry for this path. */
+  expiresAt: number | null;
+  /** ms epoch — set on write, the age source for this row. */
+  updatedAt: number;
+}
+
+/**
+ * `POST /api/sources/:id/reticulum/paths/probe` response (mirrors the
+ * server's `ProbeResultMessage` minus envelope fields,
+ * `src/server/reticulumProtocol.ts`). `ok: false` is a normal outcome (no
+ * path / no proof within timeout) — `rttMs`/`hops` are only meaningful when
+ * `ok` is true, `error` carries a short human-readable reason otherwise.
+ */
+export interface ReticulumProbeResult {
+  destinationHash: string;
+  ok: boolean;
+  rttMs: number | null;
+  hops: number | null;
+  error: string | null;
+}
+
+/**
+ * A single remote-management `/status` interface entry, as reported by the
+ * REMOTE Transport Node being queried (mirrors the server's
+ * `InterfaceStatsEntry`/`RemoteStatusPayload`, `reticulumProtocol.ts`).
+ */
+export interface ReticulumRemoteStatusInterface {
+  name: string;
+  type: string | null;
+  status: 'up' | 'down';
+  online: boolean;
+  bitrate?: number | null;
+  txBytes: number;
+  rxBytes: number;
+}
+
+/** One row of the REMOTE Transport Node's own path table (mirrors the server's `PathTableEntry`, `reticulumProtocol.ts`) — wire shape, distinct from {@link ReticulumPathRow} (this source's own persisted path table). */
+export interface ReticulumRemotePathEntry {
+  destinationHash: string;
+  via: string;
+  hops: number;
+  interface: string;
+  expires: number;
+}
+
+/**
+ * `GET /api/sources/:id/reticulum/remote-status/:hash` response (mirrors
+ * the server's `RemoteStatusMessage` minus envelope fields,
+ * `src/server/reticulumProtocol.ts`). `ok: false` covers no-path/
+ * link-establishment-failure/timeout — a normal response, not an error.
+ * Never persisted (build spec §0 R2) — on-demand only.
+ */
+export interface ReticulumRemoteStatus {
+  destinationHash: string;
+  ok: boolean;
+  status: { interfaces: ReticulumRemoteStatusInterface[]; linkCount: number } | null;
+  path: ReticulumRemotePathEntry[] | null;
+  error: string | null;
+}
 
 /**
  * LXMF message lifecycle state (Reticulum epic #3960, Phase 2 WP2/WP3).
