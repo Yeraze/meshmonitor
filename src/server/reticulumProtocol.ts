@@ -28,9 +28,23 @@
  * rationale as the 1->2 bump above. Types here are WP1 wire-contract
  * stubs only (mirroring `protocol.py`'s new builders) — WP4 adds the
  * actual `reticulumBridgeClient.ts` consumer methods/dispatch.
+ *
+ * Bumped 3->4 for Phase 4 WP2/WP3 (bridge probe + remote status,
+ * docs/internal/dev-notes/RETICULUM_PHASE4_BUILD_SPEC.md §2.A, #3960):
+ * adds the probe/probe_result and get_remote_status/remote_status
+ * command-response pairs (rnprobe-style reachability + RNS's built-in
+ * `rnstransport.remote.management` /status and /path queries against a
+ * REMOTE Transport Node). Same fail-closed strict-equality rationale as
+ * the 1->2/2->3 bumps above: these are net-new command types, not a
+ * change to any existing envelope shape, but a v3 Node talking to a v4
+ * bridge (or vice versa) should still get `PROTOCOL_VERSION_MISMATCH`
+ * rather than silently missing the new types. Neither family is
+ * mode-gated (unlike the Phase 3 own-mode radio family above) — both are
+ * valid in own/attach/tcp_peer alike, since all three modes hold a live
+ * RNS instance.
  */
 
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 
 // --------------------------------------------------------------------------
 // Message types
@@ -73,6 +87,15 @@ export const MESSAGE_TYPE = {
   SET_RADIO_CONFIG: 'set_radio_config',
   GET_DEVICE_INFO: 'get_device_info',
   DEVICE_INFO: 'device_info',
+  // Phase 4 (bridge probe + remote status, build spec §2.A, #3960 WP2/WP3)
+  // -- commands (Node -> bridge) and their responses (bridge -> Node).
+  // Unlike the own-mode radio family above, NOT mode-gated: valid in
+  // own/attach/tcp_peer alike, since all three modes hold a live RNS
+  // instance.
+  PROBE: 'probe',
+  PROBE_RESULT: 'probe_result',
+  GET_REMOTE_STATUS: 'get_remote_status',
+  REMOTE_STATUS: 'remote_status',
 } as const;
 
 export type MessageType = (typeof MESSAGE_TYPE)[keyof typeof MESSAGE_TYPE];
@@ -125,6 +148,32 @@ export const FAILURE_CODE = {
    * been ruled out — mirrors protocol.py's `RNODE_COMMAND_FAILED`.
    */
   RNODE_COMMAND_FAILED: 'RNODE_COMMAND_FAILED',
+  /**
+   * Phase 4 (bridge probe + remote status, build spec §2.B, #3960 WP2):
+   * generic exception-wrapped failure for the `probe` command (rnprobe-style
+   * reachability) — a clean "no path / no proof within timeout" is NOT this
+   * code, it's a normal `probe_result` response with `ok: false`; this is
+   * reserved for anything that actually raises (malformed destinationHash,
+   * an unexpected RNS-layer exception) — mirrors protocol.py's `PROBE_FAILED`.
+   */
+  PROBE_FAILED: 'PROBE_FAILED',
+  /**
+   * Phase 4: same "exception-wrapped -> error" contract as `PROBE_FAILED`,
+   * for the `get_remote_status` command once `REMOTE_MANAGEMENT_DENIED`
+   * (below) has already been ruled out — mirrors protocol.py's
+   * `REMOTE_STATUS_FAILED`.
+   */
+  REMOTE_STATUS_FAILED: 'REMOTE_STATUS_FAILED',
+  /**
+   * Phase 4: TYPED error, distinct from `REMOTE_STATUS_FAILED` — the
+   * remote's `rnstransport.remote.management` link established (so the
+   * target is alive and reachable) but its /status and /path requests both
+   * failed to conclude, which RNS's ALLOW_LIST request-handler gate makes
+   * indistinguishable from "our identity isn't in their
+   * remote_management_allowed allowlist" (RNS never sends an explicit
+   * denial on the wire) — mirrors protocol.py's `REMOTE_MANAGEMENT_DENIED`.
+   */
+  REMOTE_MANAGEMENT_DENIED: 'REMOTE_MANAGEMENT_DENIED',
 } as const;
 
 export type FailureCode = (typeof FAILURE_CODE)[keyof typeof FAILURE_CODE];
@@ -355,6 +404,28 @@ export interface GetDeviceInfoMessage extends Envelope {
 }
 
 export type RadioCommandMessage = GetRadioConfigMessage | SetRadioConfigMessage | GetDeviceInfoMessage;
+
+// --------------------------------------------------------------------------
+// Phase 4 (bridge probe + remote status): client -> bridge commands (build
+// spec §2.A/§2.B/§2.C, #3960 WP2/WP3). Neither family is mode-gated (unlike
+// the Phase 3 own-mode radio family above) — see build spec §2.B/§2.C.
+// --------------------------------------------------------------------------
+
+export interface ProbeMessage extends Envelope {
+  type: typeof MESSAGE_TYPE.PROBE;
+  id?: string;
+  destinationHash: string;
+  timeoutS?: number;
+}
+
+export interface GetRemoteStatusMessage extends Envelope {
+  type: typeof MESSAGE_TYPE.GET_REMOTE_STATUS;
+  id?: string;
+  destinationHash: string;
+  timeoutS?: number;
+}
+
+export type RemoteCommandMessage = ProbeMessage | GetRemoteStatusMessage;
 
 // --------------------------------------------------------------------------
 // Bridge -> client messages
@@ -630,6 +701,59 @@ export interface DeviceInfoMessage extends Envelope {
   phy: DeviceInfoPhy;
 }
 
+// --------------------------------------------------------------------------
+// Phase 4 (bridge probe + remote status): bridge -> client responses (build
+// spec §2.A/§2.B/§2.C, #3960 WP2/WP3). Both are ALWAYS id-correlated replies
+// to `ProbeMessage`/`GetRemoteStatusMessage` above — never pushed
+// unsolicited, unlike `PathTableMessage`.
+// --------------------------------------------------------------------------
+
+/**
+ * rnprobe-style reachability result (build spec §2.B). `ok: false` is a
+ * normal outcome (no path / no proof within timeout), not a failure —
+ * `PROBE_FAILED` (an `ErrorMessage`) is reserved for something that
+ * actually raised. `rttMs`/`hops` are only meaningful when `ok: true`;
+ * `error` carries a short human-readable reason for `ok: false`.
+ */
+export interface ProbeResultMessage extends Envelope {
+  type: typeof MESSAGE_TYPE.PROBE_RESULT;
+  id?: string;
+  destinationHash: string;
+  ok: boolean;
+  rttMs: number | null;
+  hops: number | null;
+  error: string | null;
+}
+
+/**
+ * A single remote-management `/status` interface entry — same shape as
+ * {@link InterfaceStatsEntry} (this bridge's own `interface_stats`), just
+ * reported by the REMOTE Transport Node instead.
+ */
+export interface RemoteStatusPayload {
+  interfaces: InterfaceStatsEntry[];
+  linkCount: number;
+}
+
+/**
+ * Remote Transport Node's /status + /path query result (build spec §2.C).
+ * `status` is the remote's interface-stats-shaped payload; `path` is the
+ * remote's own path table (same row shape as {@link PathTableEntry}).
+ * `ok: false` covers no-path/link-establishment-failure/timeout (a normal
+ * response, not an error envelope) — outright denial (link established,
+ * both requests failed) is instead surfaced as the typed
+ * `REMOTE_MANAGEMENT_DENIED` `ErrorMessage`.
+ */
+export interface RemoteStatusMessage extends Envelope {
+  type: typeof MESSAGE_TYPE.REMOTE_STATUS;
+  id?: string;
+  destinationHash: string;
+  ok: boolean;
+  status: RemoteStatusPayload | null;
+  path: PathTableEntry[] | null;
+  error: string | null;
+}
+
 export type BridgeEventMessage =
   | WelcomeMessage
   | ErrorMessage
@@ -642,4 +766,6 @@ export type BridgeEventMessage =
   | DeliveryStateEvent
   | TelemetryMessage
   | RadioConfigMessage
-  | DeviceInfoMessage;
+  | DeviceInfoMessage
+  | ProbeResultMessage
+  | RemoteStatusMessage;

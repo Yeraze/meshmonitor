@@ -185,6 +185,7 @@ import {
   reticulumDestinationsSqlite, reticulumDestinationsPostgres, reticulumDestinationsMysql,
   reticulumInterfacesSqlite, reticulumInterfacesPostgres, reticulumInterfacesMysql,
   reticulumMessagesSqlite, reticulumMessagesPostgres, reticulumMessagesMysql,
+  reticulumPathsSqlite, reticulumPathsPostgres, reticulumPathsMysql,
 } from './schema/reticulum.js';
 
 /**
@@ -319,6 +320,8 @@ export interface ActiveSchema {
   reticulumInterfaces: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3960 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   reticulumMessages: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3960 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
+  reticulumPaths: any;
 
   // Allow dynamic access for flexibility
   [key: string]: any;
@@ -394,6 +397,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     reticulumDestinations: reticulumDestinationsSqlite,
     reticulumInterfaces: reticulumInterfacesSqlite,
     reticulumMessages: reticulumMessagesSqlite,
+    reticulumPaths: reticulumPathsSqlite,
   },
   postgres: {
     nodes: nodesPostgres,
@@ -461,6 +465,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     reticulumDestinations: reticulumDestinationsPostgres,
     reticulumInterfaces: reticulumInterfacesPostgres,
     reticulumMessages: reticulumMessagesPostgres,
+    reticulumPaths: reticulumPathsPostgres,
   },
   mysql: {
     nodes: nodesMysql,
@@ -528,6 +533,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     reticulumDestinations: reticulumDestinationsMysql,
     reticulumInterfaces: reticulumInterfacesMysql,
     reticulumMessages: reticulumMessagesMysql,
+    reticulumPaths: reticulumPathsMysql,
   },
 };
 

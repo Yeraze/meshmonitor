@@ -11,8 +11,9 @@ import type { ReactNode } from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { ReticulumMap } from './ReticulumMap';
-import type { ReticulumDestinationRow } from '../../types/reticulum';
+import type { ReticulumDestinationRow, ReticulumPathRow } from '../../types/reticulum';
 import type { NodeMarkerDescriptor } from '../map/layers/NodeMarkersLayer';
+import type { NeighborLinkDescriptor } from '../map/layers/NeighborLinksLayer';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -37,6 +38,14 @@ vi.mock('../map/MapLoadingOverlay', () => ({
   MapLoadingOverlay: () => <div data-testid="map-loading-overlay" />,
 }));
 
+const linksSpy = vi.fn();
+vi.mock('../map/layers/NeighborLinksLayer', () => ({
+  NeighborLinksLayer: ({ links }: { links: NeighborLinkDescriptor[] }) => {
+    linksSpy(links);
+    return <div data-testid="neighbor-links-layer" data-count={links.length} />;
+  },
+}));
+
 vi.mock('react-leaflet', () => ({
   Popup: ({ children }: { children: ReactNode }) => <>{children}</>,
   Tooltip: ({ children }: { children: ReactNode }) => <>{children}</>,
@@ -55,6 +64,14 @@ function dest(overrides: Partial<ReticulumDestinationRow> = {}): ReticulumDestin
     isFavorite: false, createdAt: 0, updatedAt: 0,
     latitude: null, longitude: null, altitude: null, speed: null,
     bearing: null, accuracy: null, positionUpdatedAt: null,
+    ...overrides,
+  };
+}
+
+function path(overrides: Partial<ReticulumPathRow> = {}): ReticulumPathRow {
+  return {
+    sourceId: 'src-rns', destinationHash: 'deadbeefcafef00d', viaHash: 'feedfacecafebabe',
+    hops: 1, interfaceName: null, expiresAt: null, updatedAt: 0,
     ...overrides,
   };
 }
@@ -88,5 +105,49 @@ describe('ReticulumMap', () => {
     render(<ReticulumMap destinations={[]} loading />);
     expect(screen.getByTestId('map-loading-overlay')).toBeTruthy();
     expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  describe('path-graph overlay', () => {
+    const destA = dest({ destinationHash: 'aaaa', displayName: 'A', latitude: 40.1, longitude: -105.2 });
+    const destB = dest({ destinationHash: 'bbbb', displayName: 'B', latitude: 41.0, longitude: -104.0 });
+    const destUnpositioned = dest({ destinationHash: 'cccc', displayName: 'C', latitude: null, longitude: null });
+
+    it('draws no polylines when paths is absent', () => {
+      linksSpy.mockClear();
+      render(<ReticulumMap destinations={[destA, destB]} />);
+      expect(screen.queryByTestId('neighbor-links-layer')).toBeNull();
+    });
+
+    it('draws no polylines when paths is an empty array', () => {
+      linksSpy.mockClear();
+      render(<ReticulumMap destinations={[destA, destB]} paths={[]} />);
+      expect(screen.queryByTestId('neighbor-links-layer')).toBeNull();
+    });
+
+    it('draws an edge only when both endpoints are positioned destinations', () => {
+      linksSpy.mockClear();
+      render(<ReticulumMap
+        destinations={[destA, destB, destUnpositioned]}
+        paths={[
+          path({ destinationHash: 'aaaa', viaHash: 'bbbb' }), // both positioned -> drawn
+          path({ destinationHash: 'aaaa', viaHash: 'cccc' }), // via unpositioned -> skipped
+          path({ destinationHash: 'cccc', viaHash: 'aaaa' }), // destination unpositioned -> skipped
+          path({ destinationHash: 'aaaa', viaHash: 'zzzz' }), // via unknown hash -> skipped
+        ]}
+      />);
+      expect(screen.getByTestId('neighbor-links-layer').getAttribute('data-count')).toBe('1');
+      const links = linksSpy.mock.calls.at(-1)![0] as NeighborLinkDescriptor[];
+      expect(links).toHaveLength(1);
+      expect(links[0].positions).toEqual([[40.1, -105.2], [41.0, -104.0]]);
+    });
+
+    it('draws no edge for a zero-hop row (null viaHash)', () => {
+      linksSpy.mockClear();
+      render(<ReticulumMap
+        destinations={[destA, destB]}
+        paths={[path({ destinationHash: 'aaaa', viaHash: null })]}
+      />);
+      expect(screen.queryByTestId('neighbor-links-layer')).toBeNull();
+    });
   });
 });

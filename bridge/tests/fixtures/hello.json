@@ -1,7 +1,7 @@
 {
-  "protocolVersion": 3,
+  "protocolVersion": 4,
   "token": "change-me",
   "ts": 1755000000000,
   "type": "hello",
-  "v": 3
+  "v": 4
 }

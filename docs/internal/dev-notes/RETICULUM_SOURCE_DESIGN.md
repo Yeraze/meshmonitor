@@ -459,7 +459,15 @@ Each phase ships on its own.
 | **1 — Attach & observe** | Python bridge (both modes), `ReticulumManager`, source type + lifecycle branches, `reticulum_destinations`, `reticulum_interfaces`, Destinations + Interfaces + Info views, interface telemetry into the shared Dashboard | ~7,500 |
 | **2 — Messaging** | LXMF identity, send/receive, delivery proofs, propagation-node sync, threads/replies/reactions, `reticulum_messages`, DMs view, notifications, automation events | ~5,000 |
 | **3 — Position & radio** | Sideband telemetry decode, map view, `ReticulumDetails` popup section, RNode configuration view (`own` mode), device info | ~4,000 |
-| **4 — Topology & remote** | `reticulum_paths`, probe, remote transport-node status, path-graph overlay, fleet monitoring of remote instances | ~3,500 |
+| **4, Topology & remote** | `reticulum_paths`, probe, remote transport-node status, path-graph overlay, fleet monitoring of remote instances | ~3,500 |
+
+> **Phase 4 implemented** (epic #3960): the `reticulum_paths` table (migration 146,
+> snapshot-replace per source per poll), the `ReticulumPathsView` path table + per-row probe
+> action + remote-fleet panel, and the path-graph overlay on `ReticulumMap` (draws a
+> destination → via/next-hop edge only when both endpoints are positioned, reusing the shared
+> `NeighborLinksLayer`). See `RETICULUM_SOURCE_EPIC.md`'s Phase 4 decisions block and the
+> Phase 4 build spec for the full write-up, including the `RNS_REMOTE_ALLOWED` env-var vs.
+> `configure`-message limitation.
 
 Realistically **2–3 weeks of focused work for Phase 1**, and a multi-month arc for all four
 — MeshCore scale, as the July research said. Phase 1 is where you learn whether the bridge

@@ -45,6 +45,17 @@ logger = logging.getLogger("meshmonitor_rns_bridge.rns_manager")
 LXMF_PATH_WAIT_TIMEOUT_S = 5.0
 LXMF_PATH_WAIT_POLL_S = 0.2
 
+# Phase 4 (bridge probe + remote status, build spec §2.B/§2.C, #3960 WP2):
+# default timeouts when the Node caller doesn't supply an explicit
+# `timeoutS` -- DEFAULT_PROBE_TIMEOUT_S matches RNS's own
+# RNS.Utilities.rnprobe DEFAULT_TIMEOUT (12s); DEFAULT_REMOTE_STATUS_TIMEOUT_S
+# is a bit longer since it covers path resolution + link establishment +
+# TWO round-trip requests (/status and /path), not just one packet. Both
+# poll loops reuse LXMF_PATH_WAIT_POLL_S above rather than a new constant.
+DEFAULT_PROBE_TIMEOUT_S = 12.0
+DEFAULT_REMOTE_STATUS_TIMEOUT_S = 15.0
+PROBE_SIZE_BYTES = 16  # matches RNS.Utilities.rnprobe's DEFAULT_PROBE_SIZE
+
 # WP0 §6.2: RNS's own shared-instance plumbing interfaces, never real user interfaces.
 EXCLUDED_INTERFACE_TYPES = frozenset({"LocalServerInterface", "LocalClientInterface"})
 
@@ -244,6 +255,19 @@ class OwnModeRequiredError(Exception):
     a typed own-mode-required error, never crash"."""
 
 
+class RemoteManagementDeniedError(Exception):
+    """Raised by get_remote_status() (Phase 4, #3960 WP2) when a link to
+    the remote's `rnstransport.remote.management` destination established
+    successfully (proving the target is alive and reachable) but BOTH its
+    /status and /path requests failed to conclude. ws_server.py catches
+    this specifically and returns the typed REMOTE_MANAGEMENT_DENIED
+    error, distinct from the generic exception-wrapped REMOTE_STATUS_FAILED
+    it uses for every other failure in get_remote_status() -- see that
+    method's docstring for why RNS's own ALLOW_LIST request-handler gate
+    makes this the best available signal for "denied" (RNS never sends an
+    explicit denial on the wire)."""
+
+
 def _build_rnode_ifconf(device: str, params: dict) -> dict:
     """Pure builder (Phase 3, #3960 WP1) for the ConfigObj dict
     `RNS.Interfaces.RNodeInterface.RNodeInterface.__init__` expects.
@@ -414,6 +438,109 @@ class _AnnounceHandler:
             logger.exception("error handling announce")
 
 
+class _RNSProbeBackend:
+    """Real RNS calls used by probe()/get_remote_status() (Phase 4, build
+    spec §2.B/§2.C, #3960 WP2). Isolated behind this class so tests
+    substitute a MagicMock/fake stand-in wholesale
+    (`RNSManager._probe_backend = ...`) rather than patching a dozen
+    individual RNS.* names one at a time -- R1 (build spec §0): CONTRACT/
+    UNIT-ONLY, mocked RNS, no live dual-rnsd network in the default suite.
+
+    API surface verified against the vendored rns==1.4.2 package (`import
+    RNS` is NOT available in this dev shell -- confirmed instead by
+    `pip install rns==1.4.2` into a throwaway venv and reading the
+    installed source directly, per build spec §2.C "verify the exact RNS
+    remote-management client API against the vendored RNS in the bridge
+    image"):
+
+      - RNS.Transport registers TWO built-in per-instance management
+        destinations when the TARGET enables them in its own config, both
+        constructed from the same `Transport.identity` (the per-process
+        transport-layer identity -- distinct from any app-level identity
+        like an LXMF delivery identity):
+          * app_name="rnstransport", aspects=("probe",) -- only exists when
+            the target sets `probe_destination_enabled` (Reticulum config);
+            `set_proof_strategy(PROVE_ALL)` means ANY correctly addressed +
+            encrypted RNS.Packet gets an automatic proof back, no Link/
+            Request needed. This is the actual mechanism
+            RNS.Utilities.rnprobe (RNS's own CLI probe tool) uses.
+          * app_name="rnstransport", aspects=("remote", "management") --
+            only exists when the target sets `enable_remote_management`;
+            reachable only via an RNS.Link + Link.request(), with
+            "/status" and "/path" handlers gated by
+            RNS.Destination.ALLOW_LIST against `remote_management_allowed`
+            (an identity-hash allowlist configured ON THE TARGET, unrelated
+            to our own RNS_REMOTE_ALLOWED querying-side allowlist in
+            config.py).
+      - Both operations need the destinationHash the operator configures to
+        already BE the target's probe / remote-management destination hash
+        specifically (not e.g. its LXMF delivery hash) -- there is no way
+        to derive one from the other, since they're different (identity,
+        app_name, aspects) tuples even for the same physical node. This
+        mirrors how rnprobe itself requires the operator to supply the full
+        dotted app name alongside the raw hash on its CLI.
+      - `RNS.Identity.recall(destination_hash)` returns "the identity that
+        announced this destination hash", regardless of what app_name/
+        aspects produced it -- reconstructing
+        `RNS.Destination(identity, OUT, SINGLE, "rnstransport", ...)` from
+        it reproduces the SAME hash as the target's real probe/remote-
+        management destination (Destination.hash() is a pure function of
+        identity + app_name + aspects), which is what makes addressing
+        either one from just a destinationHash possible at all.
+    """
+
+    APP_NAME = "rnstransport"  # RNS.Transport.APP_NAME -- hardcoded here
+    # rather than imported off the (internal) Transport class, since it's
+    # not part of RNS's documented public API; verified stable in rns==1.4.2.
+    PROBE_ASPECTS = ("probe",)
+    REMOTE_MGMT_ASPECTS = ("remote", "management")
+
+    def has_path(self, destination_hash: bytes) -> bool:
+        return RNS.Transport.has_path(destination_hash)
+
+    def request_path(self, destination_hash: bytes) -> None:
+        RNS.Transport.request_path(destination_hash)
+
+    def hops_to(self, destination_hash: bytes) -> Optional[int]:
+        try:
+            return RNS.Transport.hops_to(destination_hash)
+        except Exception:
+            return None
+
+    def recall_identity(self, destination_hash: bytes) -> Optional["RNS.Identity"]:
+        return RNS.Identity.recall(destination_hash)
+
+    def send_probe(self, identity: "RNS.Identity") -> "RNS.PacketReceipt":
+        """Builds the target's `rnstransport.probe` destination from
+        `identity` and sends one probe packet, returning the
+        RNS.PacketReceipt -- mirrors RNS.Utilities.rnprobe's
+        program_setup()."""
+        request_destination = RNS.Destination(
+            identity, RNS.Destination.OUT, RNS.Destination.SINGLE, self.APP_NAME, *self.PROBE_ASPECTS
+        )
+        packet = RNS.Packet(request_destination, os.urandom(PROBE_SIZE_BYTES))
+        return packet.send()
+
+    def open_management_link(self, identity: "RNS.Identity") -> "RNS.Link":
+        """Builds the target's `rnstransport.remote.management` destination
+        from `identity` and opens an RNS.Link to it."""
+        destination = RNS.Destination(
+            identity, RNS.Destination.OUT, RNS.Destination.SINGLE, self.APP_NAME, *self.REMOTE_MGMT_ASPECTS
+        )
+        return RNS.Link(destination)
+
+    def link_request(self, link: "RNS.Link", path: str, data: Any, timeout_s: float) -> "RNS.RequestReceipt | None":
+        """`data` MUST be a list matching what RNS.Transport's own
+        remote_status_handler/remote_path_handler (Transport.py, verified
+        against the vendored rns==1.4.2 source) expect -- both bail out to
+        `None` (server-side, no response at all) for any non-list `data`:
+          - "/status": `[True]` (the bool requests the link-count be
+            included alongside interface stats; `[False]`/`[]` omits it).
+          - "/path": `["table"]` (the "table" command; remote_path_handler
+            also supports "rates", not used here)."""
+        return link.request(path, data=data, timeout=timeout_s)
+
+
 class RNSManager:
     """Owns the process's single RNS.Reticulum instance and fans out normalized
     events (announce / interface_stats / path_table) to subscriber queues.
@@ -478,6 +605,10 @@ class RNSManager:
         # request_start(), but the actual RNS.Reticulum() construction always happens
         # on whichever thread calls run_dispatcher() -- which must be the main thread.
         self._start_requests: "queue.Queue" = queue.Queue()
+        # Phase 4 (bridge probe + remote status, #3960 WP2): swappable seam
+        # for probe()/get_remote_status() -- see `_RNSProbeBackend`'s
+        # docstring. Tests replace this attribute wholesale with a fake.
+        self._probe_backend = _RNSProbeBackend()
 
     # -- pub/sub --------------------------------------------------------
 
@@ -1092,6 +1223,212 @@ class RNSManager:
                 "csmaDifsMs": getattr(interface, "r_csma_difs_ms", None),
             },
         }
+
+    # -- probe / remote status (Phase 4, build spec §2.B/§2.C, #3960 WP2) ------
+    # Neither method is mode-gated (unlike the own-mode radio family above):
+    # both are valid in own/attach/tcp_peer alike, since all three modes
+    # hold a live RNS instance. Both go through self._probe_backend (see
+    # `_RNSProbeBackend`'s docstring for the exact RNS API this pins, and
+    # why it's a swappable seam rather than direct RNS.* calls).
+
+    @staticmethod
+    def _parse_destination_hash(destination_hash_hex: Optional[str]) -> bytes:
+        if not destination_hash_hex:
+            raise ValueError("destinationHash is required")
+        try:
+            return bytes.fromhex(destination_hash_hex)
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"invalid destination hash {destination_hash_hex!r}: {e}") from e
+
+    def _resolve_path(self, destination_hash: bytes, deadline: float) -> bool:
+        """Shared path-resolution poll loop (build spec §2.B: "resolves the
+        path via RNS.Transport.request_path if unknown, reusing the
+        existing request_path call site") -- same pattern as
+        send_lxmf()'s unknown-identity wait above, generalized to a
+        caller-supplied deadline instead of the LXMF-specific timeout
+        constant."""
+        if self._probe_backend.has_path(destination_hash):
+            return True
+        self._probe_backend.request_path(destination_hash)
+        while not self._probe_backend.has_path(destination_hash) and time.monotonic() < deadline:
+            time.sleep(LXMF_PATH_WAIT_POLL_S)
+        return self._probe_backend.has_path(destination_hash)
+
+    def probe(self, destination_hash_hex: Optional[str], timeout_s: Optional[float] = None) -> dict:
+        """rnprobe-style reachability probe (build spec §2.B) against the
+        target's built-in `rnstransport.probe` destination (RNS.Transport,
+        PROVE_ALL -- see `_RNSProbeBackend`'s docstring for why this,
+        rather than an arbitrary app destination, is the only thing
+        genuinely probable from just a destinationHash). Returns
+        `{ok, rttMs, hops}`. `ok=False` (NOT an exception) covers "no path"
+        and "no proof within timeout" -- both normal, expected outcomes for
+        an unreachable node, matching rnprobe's own timeout behavior.
+        Raises for anything else (malformed hash, unexpected RNS-layer
+        exception) -- ws_server.py's `_handle_probe` catches broadly and
+        reports PROBE_FAILED, same "exception-wrapped -> error" contract as
+        the Phase 2 LXMF command handlers."""
+        timeout = timeout_s if timeout_s is not None else DEFAULT_PROBE_TIMEOUT_S
+        destination_hash = self._parse_destination_hash(destination_hash_hex)
+        deadline = time.monotonic() + timeout
+
+        if not self._resolve_path(destination_hash, deadline):
+            return {"ok": False, "rttMs": None, "hops": None, "error": "no path to destination"}
+
+        identity = self._probe_backend.recall_identity(destination_hash)
+        if identity is None:
+            return {"ok": False, "rttMs": None, "hops": None, "error": "identity for destination is unknown"}
+
+        receipt = self._probe_backend.send_probe(identity)
+
+        while receipt.status == RNS.PacketReceipt.SENT and time.monotonic() < deadline:
+            time.sleep(LXMF_PATH_WAIT_POLL_S)
+
+        if receipt.status != RNS.PacketReceipt.DELIVERED:
+            return {"ok": False, "rttMs": None, "hops": None, "error": "probe timed out"}
+
+        rtt_s = receipt.get_rtt()
+        return {
+            "ok": True,
+            "rttMs": round(rtt_s * 1000, 3) if rtt_s is not None else None,
+            "hops": self._probe_backend.hops_to(destination_hash),
+            "error": None,
+        }
+
+    def _wait_for_link_active(self, link: Any, deadline: float) -> bool:
+        while time.monotonic() < deadline:
+            status = getattr(link, "status", None)
+            if status == RNS.Link.ACTIVE:
+                return True
+            if status == RNS.Link.CLOSED:
+                return False
+            time.sleep(LXMF_PATH_WAIT_POLL_S)
+        return getattr(link, "status", None) == RNS.Link.ACTIVE
+
+    @staticmethod
+    def _wait_for_request(receipt: Any, deadline: float) -> Optional[Any]:
+        if receipt is None or receipt is False:
+            return None
+        while not receipt.concluded() and time.monotonic() < deadline:
+            time.sleep(LXMF_PATH_WAIT_POLL_S)
+        return receipt.get_response()
+
+    def get_remote_status(self, destination_hash_hex: Optional[str], timeout_s: Optional[float] = None) -> dict:
+        """Queries a remote Transport Node's built-in
+        `rnstransport.remote.management` destination (build spec §2.C) for
+        /status and /path over an RNS.Link + Link.request(). The target
+        must have `enable_remote_management` on AND our identity's hash
+        present in ITS `remote_management_allowed` allowlist (their config,
+        entirely invisible to us -- our side's RNS_REMOTE_ALLOWED,
+        config.py, only gates which hashes Node is allowed to ask THIS
+        bridge to query, enforced at the route/manager layer, not here).
+
+        Returns `{ok, status, path}` for the "reached but nothing useful
+        yet" and success cases. `ok=False` covers "no path" and "link never
+        established" -- both a normal response, not a failure (network-
+        level, could just mean the node is offline). Once the LINK itself
+        establishes (proving the target is alive) but BOTH /status and
+        /path fail to conclude, that's the best available signal for
+        "denied": RNS's ALLOW_LIST request-handler gate never sends an
+        explicit denial on the wire (verified against the vendored
+        RNS/Link.py -- a request simply never gets a `response_received()`
+        callback), so a genuine timeout and an allowlist rejection are
+        indistinguishable at the protocol level. This method raises
+        RemoteManagementDeniedError in that case; ws_server.py maps it to
+        the typed REMOTE_MANAGEMENT_DENIED error. Any other exception
+        (malformed hash, unexpected RNS-layer failure) propagates and is
+        mapped to the generic REMOTE_STATUS_FAILED."""
+        timeout = timeout_s if timeout_s is not None else DEFAULT_REMOTE_STATUS_TIMEOUT_S
+        destination_hash = self._parse_destination_hash(destination_hash_hex)
+        # Build spec §2.C / R5: RNS_REMOTE_ALLOWED is OUR identity-ACL on
+        # the querying side -- which hashes THIS bridge is permitted to ask
+        # about at all, checked BEFORE any network I/O. Empty allowlist
+        # (the default) means no restriction here; enforcement is left to
+        # the caller/route layer in that case.
+        if self.cfg.remote_allowed and destination_hash_hex.strip().lower() not in self.cfg.remote_allowed:
+            raise ValueError(f"destination {destination_hash_hex!r} is not in RNS_REMOTE_ALLOWED")
+        deadline = time.monotonic() + timeout
+
+        if not self._resolve_path(destination_hash, deadline):
+            return {"ok": False, "status": None, "path": None, "error": "no path to remote management destination"}
+
+        identity = self._probe_backend.recall_identity(destination_hash)
+        if identity is None:
+            return {
+                "ok": False,
+                "status": None,
+                "path": None,
+                "error": "identity for remote management destination is unknown",
+            }
+
+        link = self._probe_backend.open_management_link(identity)
+        if not self._wait_for_link_active(link, deadline):
+            return {
+                "ok": False,
+                "status": None,
+                "path": None,
+                "error": "link to remote management destination did not establish",
+            }
+
+        # data payloads match RNS.Transport's own remote_status_handler/
+        # remote_path_handler contract exactly (verified against the
+        # vendored rns==1.4.2 source -- both silently return None
+        # server-side for non-list/malformed `data`): [True] for /status
+        # requests the link count alongside interface stats; ["table"] is
+        # /path's "give me the full path table" command.
+        status_receipt = self._probe_backend.link_request(
+            link, "/status", [True], max(deadline - time.monotonic(), 0.1)
+        )
+        path_receipt = self._probe_backend.link_request(
+            link, "/path", ["table"], max(deadline - time.monotonic(), 0.1)
+        )
+        raw_status = self._wait_for_request(status_receipt, deadline)
+        raw_path = self._wait_for_request(path_receipt, deadline)
+
+        if raw_status is None and raw_path is None:
+            raise RemoteManagementDeniedError(
+                "remote management link established but /status and /path both failed to conclude "
+                "(likely not on the remote's remote_management_allowed allowlist)"
+            )
+
+        return {
+            "ok": True,
+            "status": self._normalize_remote_status(raw_status),
+            "path": self._normalize_remote_path(raw_path),
+            "error": None,
+        }
+
+    @staticmethod
+    def _normalize_remote_status(raw: Any) -> Optional[dict]:
+        """Normalizes the raw `[interface_stats_dict, link_count?]` list
+        RNS.Transport.remote_status_handler returns (build spec §2.C, /status
+        with `data=[True]`) into the SAME `{name,type,hash,mode,status,
+        online,bitrate,txBytes,rxBytes}` per-interface shape
+        `get_interface_stats()`/`_normalize_interface()` already use for
+        THIS bridge's own interfaces (WP0 correction #2's plumbing-interface
+        filter applies here too), plus an optional `linkCount`."""
+        if not isinstance(raw, list) or not raw:
+            return None
+        interfaces_raw = raw[0] if isinstance(raw[0], dict) else {}
+        interfaces = interfaces_raw.get("interfaces", []) if isinstance(interfaces_raw, dict) else []
+        result: dict = {
+            "interfaces": [
+                _normalize_interface(i) for i in interfaces if i.get("type") not in EXCLUDED_INTERFACE_TYPES
+            ]
+        }
+        if len(raw) > 1:
+            result["linkCount"] = raw[1]
+        return result
+
+    @staticmethod
+    def _normalize_remote_path(raw: Any) -> Optional[list]:
+        """Normalizes the raw path-table rows RNS.Transport.remote_path_handler
+        returns (build spec §2.C, /path with `data=["table"]`) using the
+        SAME `_normalize_path()` this bridge already applies to its OWN path
+        table in `refresh_path_table()` -- identical row shape
+        (`hash`/`via`/`hops`/`expires`/`interface`) on both sides."""
+        if not isinstance(raw, list):
+            return None
+        return [_normalize_path(e) for e in raw if isinstance(e, dict)]
 
     # -- announce enrichment --------------------------------------------------
 

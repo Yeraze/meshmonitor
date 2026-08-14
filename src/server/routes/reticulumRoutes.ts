@@ -303,6 +303,180 @@ router.get(
 );
 
 // ==========================================================================
+// Path table + fleet monitoring: probe / remote status (#3960 Phase 4 WP3,
+// build spec §3.4/§3.6)
+//
+// Resource: 'nodes' (sourcey — same as destinations/interfaces above; the
+// path table and remote-fleet targets are the same category of per-source
+// network-topology data as those). GET /paths reads straight from the DB
+// (poll-populated by ReticulumManager's path_table handler) and tolerates
+// an absent manager, same as the destinations/interfaces read routes above.
+// POST /paths/probe and GET /remote-status/:hash need a live bridge
+// connection — 409 SOURCE_NOT_CONNECTED otherwise, same convention as the
+// LXMF write routes below. NEITHER is own-mode gated (build spec §2.B/
+// §2.C: valid in own/attach/tcp_peer alike, unlike the radio-config family
+// above) — a clean `ok: false` bridge result (no path / no proof / no link
+// within timeoutS) is a normal 200, not an error; only a transport/typed
+// bridge failure maps to a non-2xx response.
+// ==========================================================================
+
+/** Reticulum destination hashes are arbitrary-length lowercase hex on the wire (`bytes.fromhex` on the bridge side, build spec §2.B) — validate hex-ness only, not a fixed length. */
+const HEX_HASH_RE = /^[0-9a-fA-F]+$/;
+
+/** Upper bound for a caller-supplied `timeoutS` (build spec §3.6 "bounded timeout") — well above the bridge's own defaults (probe 12s, remote status 15s, rns_manager.py). */
+const MAX_TIMEOUT_S = 120;
+
+function validateDestinationHashParam(raw: unknown): { hash: string } | { error: string } {
+  if (typeof raw !== 'string' || raw.trim().length === 0) {
+    return { error: 'destinationHash must be a non-empty string' };
+  }
+  const trimmed = raw.trim();
+  if (trimmed.length % 2 !== 0 || !HEX_HASH_RE.test(trimmed)) {
+    return { error: 'destinationHash must be a hex-encoded string with an even number of digits' };
+  }
+  return { hash: trimmed.toLowerCase() };
+}
+
+function validateTimeoutSParam(raw: unknown): { timeoutS?: number } | { error: string } {
+  if (raw === undefined) return { timeoutS: undefined };
+  if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0 || raw > MAX_TIMEOUT_S) {
+    return { error: `timeoutS must be a number between 0 (exclusive) and ${MAX_TIMEOUT_S}` };
+  }
+  return { timeoutS: raw };
+}
+
+/**
+ * Map a caught error from a probe/remote-status bridge call to a response.
+ * A typed `ReticulumBridgeError` with a wire `FailureCode` surfaces that
+ * code verbatim: 403 for `REMOTE_MANAGEMENT_DENIED` (build spec §2.C — the
+ * target established a link, proving it's alive and reachable, but denied
+ * our /status and /path requests), 502 for anything else
+ * (`PROBE_FAILED`/`REMOTE_STATUS_FAILED` — a generic upstream bridge/RNS
+ * failure). Anything else is a generic 500.
+ */
+function respondFleetError(
+  res: Response,
+  err: unknown,
+  sourceId: string,
+  logLabel: string,
+  fallbackCode: string,
+  fallbackMessage: string,
+): void {
+  if (err instanceof ReticulumBridgeError && err.code) {
+    const status = err.code === FAILURE_CODE.REMOTE_MANAGEMENT_DENIED ? 403 : 502;
+    fail(res, status, err.code, err.message ?? `Reticulum ${logLabel} request failed (${err.code})`);
+    return;
+  }
+  logger.error(`[Reticulum:${sourceId}] Error in ${logLabel}: ${err instanceof Error ? err.message : String(err)}`);
+  fail(res, 500, fallbackCode, fallbackMessage);
+}
+
+/**
+ * GET /paths
+ * Path-table snapshot for this source, ordered by hops then destinationHash
+ * (nearest-first, `ReticulumRepository.listPaths`). Serves from the DB
+ * (poll-populated by the bridge's `path_table` event via
+ * `ReticulumManager.handlePathTable`) — does NOT round-trip the bridge, so
+ * this keeps answering with the last-known snapshot even when disconnected.
+ */
+router.get(
+  '/paths',
+  requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    const sourceId = (req.params as { id: string }).id;
+    try {
+      const paths = await databaseService.reticulum.listPaths(sourceId);
+      return ok(res, paths);
+    } catch (err) {
+      logger.error(`[Reticulum:${sourceId}] Error listing paths: ${err instanceof Error ? err.message : String(err)}`);
+      return fail(res, 500, 'RETICULUM_PATHS_LIST_FAILED', 'Failed to list Reticulum paths');
+    }
+  },
+);
+
+/**
+ * POST /paths/probe
+ * Body: `{ destinationHash: string, timeoutS?: number }`. rnprobe-style
+ * on-demand reachability check (`probe`) — NOT own-mode gated. 409
+ * SOURCE_NOT_CONNECTED when this source has no registered manager (no live
+ * bridge to ask).
+ */
+router.post(
+  '/paths/probe',
+  requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    const sourceId = (req.params as { id: string }).id;
+    const body = (req.body ?? {}) as { destinationHash?: unknown; timeoutS?: unknown };
+
+    const hashResult = validateDestinationHashParam(body.destinationHash);
+    if ('error' in hashResult) {
+      return fail(res, 400, 'INVALID_DESTINATION_HASH', hashResult.error);
+    }
+    const timeoutResult = validateTimeoutSParam(body.timeoutS);
+    if ('error' in timeoutResult) {
+      return fail(res, 400, 'INVALID_TIMEOUT', timeoutResult.error);
+    }
+
+    const manager = res.locals.reticulumManager as ReticulumManager | undefined;
+    if (!manager) {
+      return fail(res, 409, 'SOURCE_NOT_CONNECTED', `Reticulum source ${sourceId} has no active connection`);
+    }
+
+    try {
+      const result = await manager.probe(hashResult.hash, timeoutResult.timeoutS);
+      return ok(res, result);
+    } catch (err) {
+      return respondFleetError(res, err, sourceId, 'probe', 'RETICULUM_PROBE_FAILED', 'Failed to probe Reticulum destination');
+    }
+  },
+);
+
+/**
+ * GET /remote-status/:hash
+ * Remote Transport Node /status + /path query (`get_remote_status`) — the
+ * fleet-monitoring surface (build spec §3.6/§0 R2: on-demand only, no
+ * persistence). NOT own-mode gated. 409 SOURCE_NOT_CONNECTED when this
+ * source has no registered manager. Optional `?timeoutS=` query param.
+ */
+router.get(
+  '/remote-status/:hash',
+  requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    const sourceId = (req.params as { id: string }).id;
+    const hashResult = validateDestinationHashParam((req.params as { hash?: string }).hash);
+    if ('error' in hashResult) {
+      return fail(res, 400, 'INVALID_DESTINATION_HASH', hashResult.error);
+    }
+    const rawTimeout = req.query.timeoutS;
+    const timeoutResult = validateTimeoutSParam(
+      typeof rawTimeout === 'string' && rawTimeout.length > 0 ? Number(rawTimeout) : undefined,
+    );
+    if ('error' in timeoutResult) {
+      return fail(res, 400, 'INVALID_TIMEOUT', timeoutResult.error);
+    }
+
+    const manager = res.locals.reticulumManager as ReticulumManager | undefined;
+    if (!manager) {
+      return fail(res, 409, 'SOURCE_NOT_CONNECTED', `Reticulum source ${sourceId} has no active connection`);
+    }
+
+    try {
+      const result = await manager.getRemoteStatus(hashResult.hash, timeoutResult.timeoutS);
+      return ok(res, result);
+    } catch (err) {
+      return respondFleetError(
+        res,
+        err,
+        sourceId,
+        'get remote status',
+        'RETICULUM_REMOTE_STATUS_FAILED',
+        'Failed to query Reticulum remote status',
+      );
+    }
+  },
+);
+
+// ==========================================================================
 // Own-mode RNode radio config / device info (#3960 Phase 3 WP1/WP4)
 //
 // Resource: 'configuration' (sourcey — same resource MeshCore's own

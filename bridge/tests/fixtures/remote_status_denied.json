@@ -1,0 +1,11 @@
+{
+  "destinationHash": "112233445566778899aabbccddeeff0",
+  "error": "link to remote management destination did not establish",
+  "id": "c16",
+  "ok": false,
+  "path": null,
+  "status": null,
+  "ts": 1755000000000,
+  "type": "remote_status",
+  "v": 4
+}

@@ -458,6 +458,298 @@ describe('Reticulum routes', () => {
     });
   });
 
+  // ── Path table + fleet monitoring: probe / remote status (#3960 Phase 4 WP3) ──
+
+  describe('Reticulum path table + fleet monitoring routes', () => {
+    function fakeFleetManager(
+      overrides: {
+        probe?: (destinationHash: string, timeoutS?: number) => Promise<unknown>;
+        getRemoteStatus?: (destinationHash: string, timeoutS?: number) => Promise<unknown>;
+      } = {},
+    ) {
+      return {
+        sourceId: harness.sourceA,
+        sourceType: 'reticulum',
+        isConnected: () => true,
+        getStatus: () => ({ sourceId: harness.sourceA, sourceName: harness.sourceA, sourceType: 'reticulum', connected: true }),
+        getBridgeVersion: () => null,
+        getRnsVersion: () => null,
+        probe:
+          overrides.probe ??
+          (async (destinationHash: string) => ({
+            type: 'probe_result',
+            destinationHash,
+            ok: true,
+            rttMs: 100,
+            hops: 1,
+            error: null,
+          })),
+        getRemoteStatus:
+          overrides.getRemoteStatus ??
+          (async (destinationHash: string) => ({
+            type: 'remote_status',
+            destinationHash,
+            ok: true,
+            status: { interfaces: [], linkCount: 0 },
+            path: [],
+            error: null,
+          })),
+      };
+    }
+
+    // ── GET /paths ────────────────────────────────────────────────────────
+
+    describe('GET /:id/reticulum/paths', () => {
+      beforeEach(async () => {
+        await harness.db.reticulum.replacePaths(harness.sourceA, [
+          {
+            destinationHash: 'a1'.repeat(16),
+            viaHash: 'v1'.repeat(16),
+            hops: 1,
+            interfaceName: 'tcp0',
+            expiresAt: Date.now() + 60_000,
+            updatedAt: Date.now(),
+          },
+        ]);
+        await harness.db.reticulum.replacePaths(harness.sourceB, [
+          {
+            destinationHash: 'b1'.repeat(16),
+            viaHash: 'v2'.repeat(16),
+            hops: 1,
+            interfaceName: 'tcp0',
+            expiresAt: Date.now() + 60_000,
+            updatedAt: Date.now(),
+          },
+        ]);
+      });
+
+      it("lists the requested source's paths, never the other source's (data-layer isolation)", async () => {
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/paths`);
+        expect(res.status).toBe(200);
+        const hashes = res.body.data.map((p: { destinationHash: string }) => p.destinationHash);
+        expect(hashes).toContain('a1'.repeat(16));
+        expect(hashes).not.toContain('b1'.repeat(16));
+      });
+
+      it('serves persisted rows even with no manager registered (disconnected source)', async () => {
+        mockGetManager.mockReturnValue(undefined);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/paths`);
+        expect(res.status).toBe(200);
+        expect(res.body.data.map((p: { destinationHash: string }) => p.destinationHash)).toContain('a1'.repeat(16));
+      });
+
+      it('403s for a source the user has no `nodes:read` grant on (real per-source access control)', async () => {
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceB}/reticulum/paths`);
+        expect(res.status).toBe(403);
+      });
+
+      it('403s when the user holds no `nodes:read` grant at all', async () => {
+        await harness.revokeAll(harness.limited.id);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/paths`);
+        expect(res.status).toBe(403);
+      });
+    });
+
+    // ── POST /paths/probe ────────────────────────────────────────────────
+
+    describe('POST /:id/reticulum/paths/probe', () => {
+      beforeEach(async () => {
+        // Outer describe already granted nodes:read on sourceA; revoke first
+        // since (user, resource, sourceId) is unique — write tests need
+        // write only (mirrors the POST /messages precedent above).
+        await harness.revokeAll(harness.limited.id);
+        await harness.grant(harness.limited.id, 'nodes', 'write', harness.sourceA);
+      });
+
+      it('probes via manager.probe and returns the probe_result envelope', async () => {
+        const probe = vi
+          .fn()
+          .mockResolvedValue({ type: 'probe_result', destinationHash: 'aa'.repeat(16), ok: true, rttMs: 50, hops: 2, error: null });
+        mockGetManager.mockReturnValue(fakeFleetManager({ probe }));
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent
+          .post(`/api/sources/${harness.sourceA}/reticulum/paths/probe`)
+          .send({ destinationHash: 'aa'.repeat(16), timeoutS: 10 });
+        expect(res.status).toBe(200);
+        expect(res.body.data).toMatchObject({ ok: true, rttMs: 50, hops: 2 });
+        expect(probe).toHaveBeenCalledWith('aa'.repeat(16), 10);
+      });
+
+      it('a clean ok:false probe result is still a 200 (not an error)', async () => {
+        mockGetManager.mockReturnValue(
+          fakeFleetManager({
+            probe: async () => ({ type: 'probe_result', destinationHash: 'aa'.repeat(16), ok: false, rttMs: null, hops: null, error: 'no path to destination' }),
+          }),
+        );
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent
+          .post(`/api/sources/${harness.sourceA}/reticulum/paths/probe`)
+          .send({ destinationHash: 'aa'.repeat(16) });
+        expect(res.status).toBe(200);
+        expect(res.body.data).toMatchObject({ ok: false });
+      });
+
+      it('400s on a missing destinationHash', async () => {
+        mockGetManager.mockReturnValue(fakeFleetManager());
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.post(`/api/sources/${harness.sourceA}/reticulum/paths/probe`).send({});
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe('INVALID_DESTINATION_HASH');
+      });
+
+      it('400s on a non-hex destinationHash', async () => {
+        mockGetManager.mockReturnValue(fakeFleetManager());
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent
+          .post(`/api/sources/${harness.sourceA}/reticulum/paths/probe`)
+          .send({ destinationHash: 'not-hex!!' });
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe('INVALID_DESTINATION_HASH');
+      });
+
+      it('400s on an out-of-bounds timeoutS', async () => {
+        mockGetManager.mockReturnValue(fakeFleetManager());
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent
+          .post(`/api/sources/${harness.sourceA}/reticulum/paths/probe`)
+          .send({ destinationHash: 'aa'.repeat(16), timeoutS: 999 });
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe('INVALID_TIMEOUT');
+      });
+
+      it('409s with SOURCE_NOT_CONNECTED when no manager is registered', async () => {
+        mockGetManager.mockReturnValue(undefined);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent
+          .post(`/api/sources/${harness.sourceA}/reticulum/paths/probe`)
+          .send({ destinationHash: 'aa'.repeat(16) });
+        expect(res.status).toBe(409);
+        expect(res.body.code).toBe('SOURCE_NOT_CONNECTED');
+      });
+
+      it('502s with the bridge-typed code for a PROBE_FAILED bridge failure', async () => {
+        mockGetManager.mockReturnValue(
+          fakeFleetManager({
+            probe: async () => {
+              throw new ReticulumBridgeError('PROBE_FAILED' as FailureCode, 'malformed destination hash');
+            },
+          }),
+        );
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent
+          .post(`/api/sources/${harness.sourceA}/reticulum/paths/probe`)
+          .send({ destinationHash: 'aa'.repeat(16) });
+        expect(res.status).toBe(502);
+        expect(res.body.code).toBe('PROBE_FAILED');
+      });
+
+      it('403s when the user holds no `nodes:write` grant', async () => {
+        await harness.revokeAll(harness.limited.id);
+        mockGetManager.mockReturnValue(fakeFleetManager());
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent
+          .post(`/api/sources/${harness.sourceA}/reticulum/paths/probe`)
+          .send({ destinationHash: 'aa'.repeat(16) });
+        expect(res.status).toBe(403);
+      });
+
+      it('403s for a source the user has no `nodes:write` grant on (real per-source access control)', async () => {
+        mockGetManager.mockReturnValue(fakeFleetManager());
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent
+          .post(`/api/sources/${harness.sourceB}/reticulum/paths/probe`)
+          .send({ destinationHash: 'aa'.repeat(16) });
+        expect(res.status).toBe(403);
+      });
+    });
+
+    // ── GET /remote-status/:hash ────────────────────────────────────────
+
+    describe('GET /:id/reticulum/remote-status/:hash', () => {
+      const hash = 'bb'.repeat(16);
+
+      it('queries via manager.getRemoteStatus and returns the remote_status envelope', async () => {
+        const getRemoteStatus = vi.fn().mockResolvedValue({
+          type: 'remote_status',
+          destinationHash: hash,
+          ok: true,
+          status: { interfaces: [], linkCount: 1 },
+          path: [],
+          error: null,
+        });
+        mockGetManager.mockReturnValue(fakeFleetManager({ getRemoteStatus }));
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/remote-status/${hash}?timeoutS=20`);
+        expect(res.status).toBe(200);
+        expect(res.body.data).toMatchObject({ ok: true });
+        expect(getRemoteStatus).toHaveBeenCalledWith(hash, 20);
+      });
+
+      it('400s on a non-hex hash', async () => {
+        mockGetManager.mockReturnValue(fakeFleetManager());
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/remote-status/not-hex!!`);
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe('INVALID_DESTINATION_HASH');
+      });
+
+      it('409s with SOURCE_NOT_CONNECTED when no manager is registered', async () => {
+        mockGetManager.mockReturnValue(undefined);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/remote-status/${hash}`);
+        expect(res.status).toBe(409);
+        expect(res.body.code).toBe('SOURCE_NOT_CONNECTED');
+      });
+
+      it('403s (REMOTE_MANAGEMENT_DENIED-mapped) when the bridge denies the remote-management query', async () => {
+        mockGetManager.mockReturnValue(
+          fakeFleetManager({
+            getRemoteStatus: async () => {
+              throw new ReticulumBridgeError('REMOTE_MANAGEMENT_DENIED' as FailureCode, 'link did not establish');
+            },
+          }),
+        );
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/remote-status/${hash}`);
+        expect(res.status).toBe(403);
+        expect(res.body.code).toBe('REMOTE_MANAGEMENT_DENIED');
+      });
+
+      it('502s with the bridge-typed code for a REMOTE_STATUS_FAILED bridge failure', async () => {
+        mockGetManager.mockReturnValue(
+          fakeFleetManager({
+            getRemoteStatus: async () => {
+              throw new ReticulumBridgeError('REMOTE_STATUS_FAILED' as FailureCode, 'unexpected RNS-layer failure');
+            },
+          }),
+        );
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/remote-status/${hash}`);
+        expect(res.status).toBe(502);
+        expect(res.body.code).toBe('REMOTE_STATUS_FAILED');
+      });
+
+      it('403s for a source the user has no `nodes:read` grant on (real per-source access control)', async () => {
+        mockGetManager.mockReturnValue(fakeFleetManager());
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceB}/reticulum/remote-status/${hash}`);
+        expect(res.status).toBe(403);
+      });
+
+      it('403s when the user holds no `nodes:read` grant at all', async () => {
+        await harness.revokeAll(harness.limited.id);
+        mockGetManager.mockReturnValue(fakeFleetManager());
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/remote-status/${hash}`);
+        expect(res.status).toBe(403);
+      });
+    });
+  });
+
   // ── Own-mode RNode radio config / device info (#3960 Phase 3 WP1/WP4) ──
 
   describe('Reticulum own-mode radio config / device info routes', () => {

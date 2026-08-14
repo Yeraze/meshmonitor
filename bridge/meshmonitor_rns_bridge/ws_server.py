@@ -22,7 +22,7 @@ from websockets.sync.server import serve as ws_serve
 
 from . import protocol
 from .config import TcpPeer
-from .rns_manager import OwnModeRequiredError, RNSManager, RNSStartupError
+from .rns_manager import OwnModeRequiredError, RemoteManagementDeniedError, RNSManager, RNSStartupError
 
 logger = logging.getLogger("meshmonitor_rns_bridge.ws_server")
 
@@ -283,6 +283,58 @@ def _handle_get_device_info(websocket, manager: RNSManager, req: dict) -> None:
     _safe_send(websocket, protocol.device_info_message(id=req_id, **info))
 
 
+# --------------------------------------------------------------------------
+# Phase 4 (bridge probe + remote status, build spec §2.B/§2.C, #3960 WP2):
+# two new command handlers. NEITHER is mode-gated (unlike the own-mode
+# radio family above) -- both valid in own/attach/tcp_peer alike.
+# --------------------------------------------------------------------------
+
+
+def _handle_probe(websocket, manager: RNSManager, req: dict) -> None:
+    req_id = req.get("id")
+    destination_hash = req.get("destinationHash")
+    try:
+        result = manager.probe(destination_hash, timeout_s=req.get("timeoutS"))
+    except Exception as e:
+        _safe_send(websocket, protocol.error_message(protocol.PROBE_FAILED, str(e), id=req_id))
+        return
+    _safe_send(
+        websocket,
+        protocol.probe_result_message(
+            destination_hash=destination_hash,
+            ok=result.get("ok", False),
+            rtt_ms=result.get("rttMs"),
+            hops=result.get("hops"),
+            error=result.get("error"),
+            id=req_id,
+        ),
+    )
+
+
+def _handle_get_remote_status(websocket, manager: RNSManager, req: dict) -> None:
+    req_id = req.get("id")
+    destination_hash = req.get("destinationHash")
+    try:
+        result = manager.get_remote_status(destination_hash, timeout_s=req.get("timeoutS"))
+    except RemoteManagementDeniedError as e:
+        _safe_send(websocket, protocol.error_message(protocol.REMOTE_MANAGEMENT_DENIED, str(e), id=req_id))
+        return
+    except Exception as e:
+        _safe_send(websocket, protocol.error_message(protocol.REMOTE_STATUS_FAILED, str(e), id=req_id))
+        return
+    _safe_send(
+        websocket,
+        protocol.remote_status_message(
+            destination_hash=destination_hash,
+            ok=result.get("ok", False),
+            status=result.get("status"),
+            path=result.get("path"),
+            error=result.get("error"),
+            id=req_id,
+        ),
+    )
+
+
 def _handle_connection(websocket, manager: RNSManager, cfg, bridge_version: str) -> None:
     peer = getattr(websocket, "remote_address", None)
     logger.info("connection opened from %s", peer)
@@ -389,6 +441,12 @@ def _handle_connection(websocket, manager: RNSManager, cfg, bridge_version: str)
 
             elif req_type == protocol.TYPE_GET_DEVICE_INFO:
                 _handle_get_device_info(websocket, manager, req)
+
+            elif req_type == protocol.TYPE_PROBE:
+                _handle_probe(websocket, manager, req)
+
+            elif req_type == protocol.TYPE_GET_REMOTE_STATUS:
+                _handle_get_remote_status(websocket, manager, req)
 
             else:
                 logger.debug("ignoring unknown message type %r from %s", req_type, peer)

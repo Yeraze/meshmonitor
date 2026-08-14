@@ -150,3 +150,37 @@ def test_own_radio_params_builds_internal_key_names():
         "sf": 8,
         "st_alock": pytest.approx(33.3),
     }
+
+
+# --------------------------------------------------------------------------
+# Phase 4 (bridge probe + remote status, build spec §2.C, R5, #3960 WP2):
+# RNS_REMOTE_ALLOWED / RNS_REMOTE_STATUS_INTERVAL_S
+# --------------------------------------------------------------------------
+
+
+def test_remote_allowed_defaults_to_empty_tuple():
+    cfg = bridge_config.load_config(_env())
+    assert cfg.remote_allowed == ()
+
+
+def test_remote_allowed_parses_comma_separated_hashes():
+    cfg = bridge_config.load_config(
+        _env(RNS_REMOTE_ALLOWED="AaBbCcDd, 11223344 ,,9f8e7d6c")
+    )
+    # lowercased, blank entries skipped -- see _parse_remote_allowed.
+    assert cfg.remote_allowed == ("aabbccdd", "11223344", "9f8e7d6c")
+
+
+def test_remote_status_interval_defaults():
+    cfg = bridge_config.load_config(_env())
+    assert cfg.remote_status_interval_s == bridge_config.DEFAULT_REMOTE_STATUS_INTERVAL_S
+
+
+def test_remote_status_interval_parsed_when_present():
+    cfg = bridge_config.load_config(_env(RNS_REMOTE_STATUS_INTERVAL_S="30"))
+    assert cfg.remote_status_interval_s == 30.0
+
+
+def test_remote_status_interval_invalid_raises_config_error():
+    with pytest.raises(bridge_config.ConfigError, match="RNS_REMOTE_STATUS_INTERVAL_S"):
+        bridge_config.load_config(_env(RNS_REMOTE_STATUS_INTERVAL_S="not-a-number"))

@@ -23,6 +23,8 @@ import type {
   InterfaceStatsEntry,
   InterfaceStatsMessage,
   LxmfMessageEvent,
+  PathTableEntry,
+  PathTableMessage,
   StatusMessage,
   TelemetryMessage,
   WelcomeMessage,
@@ -37,6 +39,7 @@ const renameMessageId = vi.fn().mockResolvedValue(undefined);
 const getMessage = vi.fn();
 const updateDestinationPosition = vi.fn().mockResolvedValue(undefined);
 const insertTelemetryBatch = vi.fn().mockResolvedValue(0);
+const replacePaths = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../services/database.js', () => ({
   default: {
@@ -48,6 +51,7 @@ vi.mock('../services/database.js', () => ({
       renameMessageId: (...args: unknown[]) => renameMessageId(...args),
       getMessage: (...args: unknown[]) => getMessage(...args),
       updateDestinationPosition: (...args: unknown[]) => updateDestinationPosition(...args),
+      replacePaths: (...args: unknown[]) => replacePaths(...args),
     },
     telemetry: {
       insertTelemetryBatch: (...args: unknown[]) => insertTelemetryBatch(...args),
@@ -279,6 +283,146 @@ describe('ReticulumManager DB persistence', () => {
       // @ts-expect-error - exercising the private handler directly
       manager.handleInterfaceStats(makeInterfaceStats([{ ...IFACE_A, txBytes: 1100, rxBytes: 550 }], 1_700_000_010_000)),
     ).resolves.toBeUndefined();
+  });
+});
+
+function makePathTable(paths: PathTableEntry[], ts = 1_700_000_000_000): PathTableMessage {
+  return { v: 4, type: 'path_table', ts, paths };
+}
+
+const PATH_A: PathTableEntry = {
+  destinationHash: 'dest1',
+  via: 'via1',
+  hops: 2,
+  interface: 'TCP Client',
+  expires: 1_700_000_100,
+};
+
+describe('ReticulumManager path_table -> replacePaths (#3960 Phase 4 WP3)', () => {
+  beforeEach(() => {
+    replacePaths.mockClear();
+  });
+
+  it('path_table -> replacePaths with mapped rows (via->viaHash, interface->interfaceName, expires seconds->ms)', async () => {
+    const manager = new ReticulumManager('src-a');
+    // @ts-expect-error - exercising the private handler directly
+    await manager.handlePathTable(makePathTable([PATH_A]));
+
+    expect(replacePaths).toHaveBeenCalledTimes(1);
+    const [sourceId, rows] = replacePaths.mock.calls[0];
+    expect(sourceId).toBe('src-a');
+    expect(rows).toEqual([
+      {
+        destinationHash: 'dest1',
+        viaHash: 'via1',
+        hops: 2,
+        interfaceName: 'TCP Client',
+        expiresAt: 1_700_000_100_000,
+        updatedAt: expect.any(Number),
+      },
+    ]);
+  });
+
+  it('maps multiple rows in one call', async () => {
+    const manager = new ReticulumManager('src-a');
+    const pathB: PathTableEntry = { ...PATH_A, destinationHash: 'dest2', hops: 1 };
+    // @ts-expect-error - exercising the private handler directly
+    await manager.handlePathTable(makePathTable([PATH_A, pathB]));
+
+    expect(replacePaths).toHaveBeenCalledTimes(1);
+    const [, rows] = replacePaths.mock.calls[0];
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r: { destinationHash: string }) => r.destinationHash)).toEqual(['dest1', 'dest2']);
+  });
+
+  it('an empty path table still calls replacePaths with an empty array (source now reports zero known paths)', async () => {
+    const manager = new ReticulumManager('src-a');
+    // @ts-expect-error - exercising the private handler directly
+    await manager.handlePathTable(makePathTable([]));
+    expect(replacePaths).toHaveBeenCalledWith('src-a', []);
+  });
+
+  it('a replacePaths failure propagates from the private handler (the client.on(\'path_table\') wrapper is what catches/logs it, mirrors handleAnnounce)', async () => {
+    replacePaths.mockRejectedValueOnce(new Error('db down'));
+    const manager = new ReticulumManager('src-a');
+    await expect(
+      // @ts-expect-error - exercising the private handler directly
+      manager.handlePathTable(makePathTable([PATH_A])),
+    ).rejects.toThrow('db down');
+  });
+});
+
+describe('ReticulumManager fleet monitoring: probe + remote status (#3960 Phase 4 WP3)', () => {
+  it('probe() throws when not connected', async () => {
+    const manager = new ReticulumManager('src-a');
+    await expect(manager.probe('abc123')).rejects.toThrow(/not connected/);
+  });
+
+  it('getRemoteStatus() throws when not connected', async () => {
+    const manager = new ReticulumManager('src-a');
+    await expect(manager.getRemoteStatus('abc123')).rejects.toThrow(/not connected/);
+  });
+
+  it('probe()/getRemoteStatus() delegate to the connected bridge client and surface typed bridge errors', async () => {
+    const wss = new WebSocketServer({ port: 0, host: '127.0.0.1' });
+    try {
+      const { url } = await new Promise<{ url: string }>((resolve) => {
+        wss.on('listening', () => {
+          const addr = wss.address();
+          const port = addr && typeof addr === 'object' ? addr.port : 0;
+          resolve({ url: `ws://127.0.0.1:${port}` });
+        });
+      });
+      wss.on('connection', (ws) => {
+        ws.on('message', (data) => {
+          const env = JSON.parse(String(data)) as Record<string, unknown>;
+          if (env.type === 'hello') {
+            ws.send(
+              JSON.stringify({ v: 4, type: 'welcome', ts: Date.now(), protocolVersion: 4, bridgeVersion: '0.2.1', rnsVersion: '1.6.0' }),
+            );
+          } else if (env.type === 'configure') {
+            ws.send(JSON.stringify({ v: 4, type: 'ready', id: env.id, ts: Date.now() }));
+          } else if (env.type === 'probe') {
+            ws.send(
+              JSON.stringify({
+                v: 4,
+                type: 'probe_result',
+                id: env.id,
+                ts: Date.now(),
+                destinationHash: env.destinationHash,
+                ok: true,
+                rttMs: 100,
+                hops: 1,
+                error: null,
+              }),
+            );
+          } else if (env.type === 'get_remote_status') {
+            ws.send(
+              JSON.stringify({
+                v: 4,
+                type: 'error',
+                id: env.id,
+                code: 'REMOTE_MANAGEMENT_DENIED',
+                message: 'link to remote management destination did not establish',
+                ts: Date.now(),
+              }),
+            );
+          }
+        });
+      });
+
+      const manager = new ReticulumManager('src-a');
+      await manager.connect({ mode: 'attach', bridgeUrl: url, token: 't', protocolVersion: 4, configDir: '/rns' });
+
+      const result = await manager.probe('abc123', 10);
+      expect(result).toMatchObject({ ok: true, rttMs: 100, hops: 1 });
+
+      await expect(manager.getRemoteStatus('abc123')).rejects.toMatchObject({ code: 'REMOTE_MANAGEMENT_DENIED' });
+
+      await manager.disconnect();
+    } finally {
+      await new Promise<void>((res) => wss.close(() => res()));
+    }
   });
 });
 

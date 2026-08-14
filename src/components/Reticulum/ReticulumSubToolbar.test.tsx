@@ -61,4 +61,26 @@ describe('ReticulumSubToolbar', () => {
     // sanity: the label text renders through the i18n fallback
     expect(screen.getByText('Configuration')).toBeTruthy();
   });
+
+  // Phase 4 WP4: 'paths' (path table + probe + remote-fleet) exists in every
+  // mode — no filtering, unlike 'configuration' above.
+  it('shows the paths item in attach mode', () => {
+    renderToolbar('attach');
+    expect(item('paths')).not.toBeNull();
+  });
+
+  it('shows the paths item in tcp_peer mode', () => {
+    renderToolbar('tcp_peer');
+    expect(item('paths')).not.toBeNull();
+  });
+
+  it('shows the paths item in own mode', () => {
+    renderToolbar('own');
+    expect(item('paths')).not.toBeNull();
+  });
+
+  it('shows the paths item when mode is null/unknown', () => {
+    renderToolbar(null);
+    expect(item('paths')).not.toBeNull();
+  });
 });

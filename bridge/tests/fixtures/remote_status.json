@@ -1,0 +1,34 @@
+{
+  "destinationHash": "9f8e7d6c5b4a39281706f5e4d3c2b1a0",
+  "error": null,
+  "id": "c15",
+  "ok": true,
+  "path": [
+    {
+      "destinationHash": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+      "expires": 1755001800.0,
+      "hops": 1,
+      "interface": "TCP Server Interface",
+      "via": "a1b2c3d4e5f60718293a4b5c6d7e8f90"
+    }
+  ],
+  "status": {
+    "interfaces": [
+      {
+        "bitrate": null,
+        "hash": "9f8e7d6c5b4a39281706f5e4d3c2b1a0",
+        "mode": "full",
+        "name": "TCP Server Interface",
+        "online": true,
+        "rxBytes": 362,
+        "status": "up",
+        "txBytes": 603,
+        "type": "TCPServerInterface"
+      }
+    ],
+    "linkCount": 2
+  },
+  "ts": 1755000000000,
+  "type": "remote_status",
+  "v": 4
+}

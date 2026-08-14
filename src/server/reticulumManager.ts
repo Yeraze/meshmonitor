@@ -27,7 +27,7 @@
 import { randomUUID } from 'crypto';
 import { EventEmitter } from 'events';
 import type { Source } from '../db/repositories/sources.js';
-import type { ReticulumMessageRow, UpsertMessageInput } from '../db/repositories/reticulum.js';
+import type { ReticulumMessageRow, UpsertMessageInput, UpsertPathInput } from '../db/repositories/reticulum.js';
 import databaseService from '../services/database.js';
 import type { DbTelemetry } from '../services/database.js';
 import { logger } from '../utils/logger.js';
@@ -47,8 +47,11 @@ import type {
   InterfaceStatsMessage,
   LxmfMessageEvent,
   LxmfMethod,
+  PathTableMessage,
+  ProbeResultMessage,
   RadioConfigMessage,
   ReadyMessage,
+  RemoteStatusMessage,
   StatusMessage,
   TelemetryMessage,
   WelcomeMessage,
@@ -415,6 +418,16 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
       });
     });
 
+    client.on('path_table', (msg: PathTableMessage) => {
+      this.handlePathTable(msg).catch((err: unknown) => {
+        logger.warn(
+          `[Reticulum:${this.sourceId}] failed to process path_table: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      });
+    });
+
     client.on('telemetry', (msg: TelemetryMessage) => {
       this.handleTelemetry(msg).catch((err: unknown) => {
         logger.warn(
@@ -557,6 +570,29 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
   }
 
   /**
+   * `path_table` -> `reticulum_paths` snapshot replace (#3960 Phase 4 WP3,
+   * build spec §3.4). The bridge's `path_table` event always carries the
+   * WHOLE table for this source, not a delta (build spec §0 R4) — so this
+   * maps every wire row straight through to {@link UpsertPathInput} and
+   * hands the full array to {@link ReticulumRepository.replacePaths}, which
+   * does the delete-then-bulk-insert itself, scoped to `this.sourceId`
+   * (never touches another source's rows). `expiresAt` converts the wire
+   * `expires` (Unix epoch SECONDS, matching `PathTableEntry`'s doc) to ms;
+   * `updatedAt` is this poll's wall-clock time, the row's age source.
+   */
+  private async handlePathTable(msg: PathTableMessage): Promise<void> {
+    const rows: UpsertPathInput[] = msg.paths.map((p) => ({
+      destinationHash: p.destinationHash,
+      viaHash: p.via ?? null,
+      hops: p.hops ?? null,
+      interfaceName: p.interface ?? null,
+      expiresAt: typeof p.expires === 'number' ? Math.round(p.expires * 1000) : null,
+      updatedAt: Date.now(),
+    }));
+    await databaseService.reticulum.replacePaths(this.sourceId, rows);
+  }
+
+  /**
    * `telemetry` -> decoded Sideband `FIELD_TELEMETRY` payload (#3960 Phase 3
    * WP2/WP4, build spec §2.A/§4). Two independent writes, neither gated on
    * the other succeeding:
@@ -678,6 +714,33 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
       throw new Error(`ReticulumManager(${this.sourceId}): not connected`);
     }
     return this.client.getDeviceInfo();
+  }
+
+  // --------------------------------------------------------------------
+  // Fleet monitoring: probe + remote status (#3960 Phase 4 WP3, build spec
+  // §3.4). Thin delegates onto ReticulumBridgeClient's id-correlated
+  // commands, same shape as the own-mode radio delegates above — but,
+  // unlike those, NEITHER of these is own-mode gated: they're valid
+  // whenever the bridge holds a live RNS instance (own/attach/tcp_peer
+  // alike). Bridge-side typed failures (PROBE_FAILED/REMOTE_STATUS_FAILED/
+  // REMOTE_MANAGEMENT_DENIED) surface unchanged as a ReticulumBridgeError —
+  // the route layer maps them to the right HTTP status.
+  // --------------------------------------------------------------------
+
+  /** rnprobe-style reachability probe (`probe`) against `destinationHash`. */
+  async probe(destinationHash: string, timeoutS?: number): Promise<ProbeResultMessage> {
+    if (!this.client) {
+      throw new Error(`ReticulumManager(${this.sourceId}): not connected`);
+    }
+    return this.client.probe({ destinationHash, timeoutS });
+  }
+
+  /** Remote Transport Node /status + /path query (`get_remote_status`). */
+  async getRemoteStatus(destinationHash: string, timeoutS?: number): Promise<RemoteStatusMessage> {
+    if (!this.client) {
+      throw new Error(`ReticulumManager(${this.sourceId}): not connected`);
+    }
+    return this.client.getRemoteStatus({ destinationHash, timeoutS });
   }
 
   // --------------------------------------------------------------------

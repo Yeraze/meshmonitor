@@ -13,7 +13,7 @@
  * hand-rolled DDL, so this test can never silently drift from the schema.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { ReticulumRepository, type UpsertDestinationInput, type UpsertInterfaceInput } from './reticulum.js';
+import { ReticulumRepository, type UpsertDestinationInput, type UpsertInterfaceInput, type UpsertPathInput } from './reticulum.js';
 import { ALL_SOURCES } from './base.js';
 import { createTestDb, type TestDb } from '../../server/test-helpers/testDb.js';
 
@@ -36,6 +36,16 @@ function makeIface(overrides: Partial<UpsertInterfaceInput> = {}): UpsertInterfa
     online: true,
     txBytes: 0,
     rxBytes: 0,
+    ...overrides,
+  };
+}
+
+function makePath(overrides: Partial<UpsertPathInput> = {}): UpsertPathInput {
+  return {
+    destinationHash: 'shared-path-hash-' + '0'.repeat(14),
+    viaHash: 'via-hash-' + '0'.repeat(20),
+    hops: 2,
+    interfaceName: 'TCPClientInterface[rns.example.com]',
     ...overrides,
   };
 }
@@ -175,6 +185,100 @@ describe('ReticulumRepository - per-source isolation', () => {
 
     it('upsertInterface throws on an empty sourceId', async () => {
       await expect(repo.upsertInterface('', makeIface())).rejects.toThrow(/requires a sourceId/);
+    });
+  });
+
+  describe('paths', () => {
+    it('same destinationHash under two sources produces two independent rows', async () => {
+      await repo.replacePaths(SRC_A, [makePath({ hops: 1 })]);
+      await repo.replacePaths(SRC_B, [makePath({ hops: 9 })]);
+
+      const onA = await repo.listPaths(SRC_A);
+      const onB = await repo.listPaths(SRC_B);
+      expect(onA).toHaveLength(1);
+      expect(onB).toHaveLength(1);
+      expect(onA[0].hops).toBe(1);
+      expect(onB[0].hops).toBe(9);
+    });
+
+    it('listPaths(A) excludes B rows and vice versa', async () => {
+      await repo.replacePaths(SRC_A, [
+        makePath({ destinationHash: 'hash-a1'.padEnd(26, '0') }),
+        makePath({ destinationHash: 'hash-a2'.padEnd(26, '0') }),
+      ]);
+      await repo.replacePaths(SRC_B, [makePath({ destinationHash: 'hash-b1'.padEnd(26, '0') })]);
+
+      const onA = await repo.listPaths(SRC_A);
+      expect(onA.map((p) => p.destinationHash).sort()).toEqual(
+        ['hash-a1'.padEnd(26, '0'), 'hash-a2'.padEnd(26, '0')].sort(),
+      );
+
+      const onB = await repo.listPaths(SRC_B);
+      expect(onB.map((p) => p.destinationHash)).toEqual(['hash-b1'.padEnd(26, '0')]);
+    });
+
+    it('replacePaths(A) never touches B rows — B survives A being cleared to empty', async () => {
+      await repo.replacePaths(SRC_A, [makePath({ destinationHash: 'hash-a1'.padEnd(26, '0') })]);
+      await repo.replacePaths(SRC_B, [makePath({ destinationHash: 'hash-b1'.padEnd(26, '0') })]);
+
+      // A's next poll reports zero known paths — a full snapshot replace with an empty set.
+      await repo.replacePaths(SRC_A, []);
+
+      expect(await repo.listPaths(SRC_A)).toEqual([]);
+      const onB = await repo.listPaths(SRC_B);
+      expect(onB.map((p) => p.destinationHash)).toEqual(['hash-b1'.padEnd(26, '0')]);
+    });
+
+    it('replacePaths(A) fully replaces A\'s own rows across polls (snapshot, not merge)', async () => {
+      await repo.replacePaths(SRC_A, [
+        makePath({ destinationHash: 'hash-a1'.padEnd(26, '0'), hops: 1 }),
+        makePath({ destinationHash: 'hash-a2'.padEnd(26, '0'), hops: 2 }),
+      ]);
+      // Next poll only sees hash-a2 (a1 dropped out of range) with updated hops.
+      await repo.replacePaths(SRC_A, [makePath({ destinationHash: 'hash-a2'.padEnd(26, '0'), hops: 5 })]);
+
+      const onA = await repo.listPaths(SRC_A);
+      expect(onA.map((p) => p.destinationHash)).toEqual(['hash-a2'.padEnd(26, '0')]);
+      expect(onA[0].hops).toBe(5);
+    });
+
+    it('listPaths orders by hops (nulls last) then destinationHash', async () => {
+      await repo.replacePaths(SRC_A, [
+        makePath({ destinationHash: 'hash-null'.padEnd(26, '0'), hops: null }),
+        makePath({ destinationHash: 'hash-z'.padEnd(26, '0'), hops: 3 }),
+        makePath({ destinationHash: 'hash-a'.padEnd(26, '0'), hops: 3 }),
+        makePath({ destinationHash: 'hash-b'.padEnd(26, '0'), hops: 1 }),
+      ]);
+
+      const onA = await repo.listPaths(SRC_A);
+      expect(onA.map((p) => p.destinationHash)).toEqual([
+        'hash-b'.padEnd(26, '0'),
+        'hash-a'.padEnd(26, '0'),
+        'hash-z'.padEnd(26, '0'),
+        'hash-null'.padEnd(26, '0'),
+      ]);
+    });
+
+    it('listPaths(ALL_SOURCES) returns rows from every source in one query', async () => {
+      await repo.replacePaths(SRC_A, [makePath({ destinationHash: 'hash-a1'.padEnd(26, '0') })]);
+      await repo.replacePaths(SRC_B, [makePath({ destinationHash: 'hash-b1'.padEnd(26, '0') })]);
+
+      const all = await repo.listPaths(ALL_SOURCES);
+      expect(all.map((p) => p.destinationHash).sort()).toEqual(
+        ['hash-a1'.padEnd(26, '0'), 'hash-b1'.padEnd(26, '0')].sort(),
+      );
+      expect(new Set(all.map((p) => p.sourceId))).toEqual(new Set([SRC_A, SRC_B]));
+    });
+
+    it('listPaths throws on an empty sourceId (withSourceScope fail-closed)', async () => {
+      await expect(repo.listPaths('')).rejects.toThrow(/sourceId is required/);
+    });
+
+    it('replacePaths throws on an empty sourceId and never runs the delete/insert', async () => {
+      await repo.replacePaths(SRC_A, [makePath()]);
+      await expect(repo.replacePaths('', [makePath()])).rejects.toThrow(/requires a sourceId/);
+      // A's row must be untouched by the failed call.
+      expect(await repo.listPaths(SRC_A)).toHaveLength(1);
     });
   });
 });

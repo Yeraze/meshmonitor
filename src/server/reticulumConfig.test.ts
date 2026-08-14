@@ -89,6 +89,56 @@ describe('reticulumConfigFromSource', () => {
     });
   });
 
+  describe('remoteAllowed (#3960 Phase 4 WP3, build spec §0 R5)', () => {
+    it('omits remoteAllowed entirely when not configured', () => {
+      const cfg = reticulumConfigFromSource(fakeSource({ mode: 'attach', configDir: '/rns', token: 'secret' }));
+      expect(cfg?.remoteAllowed).toBeUndefined();
+    });
+
+    it('lowercases, trims, and deduplicates remoteAllowed hashes', () => {
+      const cfg = reticulumConfigFromSource(
+        fakeSource({
+          mode: 'attach',
+          configDir: '/rns',
+          token: 'secret',
+          remoteAllowed: ['  AABB1122  ', 'ccdd3344', 'aabb1122'],
+        }),
+      );
+      expect(cfg?.remoteAllowed).toEqual(['aabb1122', 'ccdd3344']);
+    });
+
+    it('ignores non-array/non-string entries', () => {
+      const cfg = reticulumConfigFromSource(
+        fakeSource({
+          mode: 'attach',
+          configDir: '/rns',
+          token: 'secret',
+          remoteAllowed: ['aabb1122', 123 as unknown as string, '', '   '],
+        }),
+      );
+      expect(cfg?.remoteAllowed).toEqual(['aabb1122']);
+    });
+
+    it('is NOT mode-specific — own mode also carries it through', () => {
+      const cfg = reticulumConfigFromSource(
+        fakeSource({ mode: 'own', device: '/dev/ttyUSB0', token: 'secret', remoteAllowed: ['aabb1122'] }),
+      );
+      expect(cfg?.remoteAllowed).toEqual(['aabb1122']);
+    });
+
+    it('is NOT mode-specific — tcp_peer mode also carries it through', () => {
+      const cfg = reticulumConfigFromSource(
+        fakeSource({
+          mode: 'tcp_peer',
+          token: 'secret',
+          peers: [{ host: '10.0.0.5', port: 4242 }],
+          remoteAllowed: ['aabb1122'],
+        }),
+      );
+      expect(cfg?.remoteAllowed).toEqual(['aabb1122']);
+    });
+  });
+
   describe('tcp_peer mode', () => {
     it('maps a valid tcp_peer config with one peer', () => {
       const cfg = reticulumConfigFromSource(

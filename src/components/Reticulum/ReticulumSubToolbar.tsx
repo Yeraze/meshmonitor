@@ -45,6 +45,9 @@ const ITEMS: Item[] = [
   // interfaces/info/settings pages.
   { id: 'dms', labelKey: 'reticulum.nav.dms', fallback: 'Messages', icon: 'messages' },
   { id: 'interfaces', labelKey: 'reticulum.nav.interfaces', fallback: 'Interfaces', icon: 'network' },
+  // 'paths' (Phase 4 WP4) — path table + probe + remote-fleet monitoring.
+  // Not mode-gated: the path table exists in every mode (build spec §4.4).
+  { id: 'paths', labelKey: 'reticulum.nav.paths', fallback: 'Paths', icon: 'route' },
   // 'map' (Phase 3) — peer positions shared via Sideband telemetry. Always shown.
   { id: 'map', labelKey: 'reticulum.nav.map', fallback: 'Map', icon: 'map' },
   // 'configuration' (Phase 3) — editable RNode radio config; own-mode only (filtered below).

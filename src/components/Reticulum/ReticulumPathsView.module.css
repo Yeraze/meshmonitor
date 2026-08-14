@@ -1,0 +1,204 @@
+/*
+ * ReticulumPathsView — path table + remote-fleet panel styling.
+ * CSS module (CLAUDE.md — new components style with CSS modules, not the
+ * frozen global sheets). Token names mirror ReticulumInterfacesView.module.css
+ * / ReticulumDestinationsView.module.css — semantic --color-* tokens only.
+ */
+
+.view {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.tableSection {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.tableWrap {
+  overflow: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--color-surface);
+  color: var(--color-text-subtle);
+  text-align: left;
+  font-weight: 600;
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--color-surface-hover);
+  white-space: nowrap;
+}
+
+.table tbody td {
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid var(--color-surface-hover);
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.table tbody tr:hover {
+  background: var(--color-surface-hover);
+}
+
+.hashText {
+  font-family: var(--font-mono, monospace);
+}
+
+.emptyState {
+  text-align: center;
+  color: var(--color-text-subtle);
+  padding: 1.5rem;
+  white-space: normal;
+}
+
+.probeCell {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
+
+.probeBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-hover);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+}
+
+.probeBtn:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+.probeBtn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.probeResult {
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.probeResultOk {
+  color: var(--color-success);
+}
+
+.probeResultFail {
+  color: var(--color-error);
+}
+
+.remotePanel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-hover);
+  border-radius: var(--radius-md);
+}
+
+.remoteTitle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  color: var(--color-text);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.remoteHint {
+  margin: 0;
+  color: var(--color-text-subtle);
+  font-size: 0.8rem;
+}
+
+.remoteForm {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.remoteInput {
+  flex: 1;
+  min-width: 12rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--color-surface-hover);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.85rem;
+}
+
+.remoteQueryBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: var(--color-accent);
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--color-accent-text);
+  cursor: pointer;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.remoteQueryBtn:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+}
+
+.remoteQueryBtn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.remoteResult {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-surface-hover);
+}
+
+.remoteResultOk {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--color-success);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.remoteResultFail {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--color-error);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.remoteResultDetail {
+  color: var(--color-text-subtle);
+  font-size: 0.8rem;
+}
