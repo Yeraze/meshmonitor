@@ -61,6 +61,7 @@ import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
 import { migrateAutomationChannels } from './utils/automationChannelMigration.js';
 import { detectChannelMoves } from './utils/channelMoveDetection.js';
 import { detectLocalNodeSpoof, SentPacketIdCache, type SpoofDetectionResult } from './utils/spoofDetection.js';
+import { resolveBroadcastChannel } from './utils/resolveDestinationChannel.js';
 import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
 import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, resolveRadioPacketTransport, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS, StoreForwardRequestResponse, getStoreForwardRequestResponseName, isUdpBroadcastEnabled, resolveHopLimit } from './constants/meshtastic.js';
 import { normalizeChannelRole } from './constants/channelRole.js';
@@ -2317,7 +2318,10 @@ class MeshtasticManager implements ISourceManager {
           // Use async version which supports PostgreSQL/MySQL; scope to this source
           const targetNode = await databaseService.getNodeNeedingTracerouteAsync(this.localNodeInfo.nodeNum, this.sourceId);
           if (targetNode) {
-            const channel = targetNode.channel ?? 0; // Use node's channel, default to 0
+            // Resolve the well-known channel every intermediate node can
+            // decrypt and relay, rather than the target's raw stored channel
+            // (which may be a private secondary) — issues #3696, #4691.
+            const channel = await resolveBroadcastChannel(this, databaseService);
             const targetName = targetNode.longName || targetNode.nodeId;
             logger.debug(`🗺️ Auto-traceroute: Sending traceroute to ${targetName} (${targetNode.nodeId}) on channel ${channel}`);
 
@@ -11471,7 +11475,10 @@ class MeshtasticManager implements ISourceManager {
 
             // Send the actual traceroute packet
             try {
-              const channel = targetNode.channel ?? 0;
+              // Resolve the well-known channel every intermediate node can
+              // decrypt and relay, rather than the target's raw stored channel
+              // (which may be a private secondary) — issues #3696, #4691.
+              const channel = await resolveBroadcastChannel(this, databaseService);
               await this.sendTraceroute(targetNodeNum, channel);
               logger.debug(`🔍 Auto-responder traceroute to ${targetName} (${targetNode.nodeId}) initiated by ${nodeId}`);
 
