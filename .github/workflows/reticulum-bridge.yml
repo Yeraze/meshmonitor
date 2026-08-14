@@ -11,6 +11,14 @@ name: Reticulum Bridge
 # with its own toolchain), but also runs on push to the default branches like
 # ci.yml's main job, so a change that lands via a non-PR path (e.g. a direct
 # push to main) is still covered.
+#
+# R5 (deployment build spec, INVARIANT): the meshmonitor-rns-bridge image is
+# published ONLY from this workflow's `publish` job below, NEVER from
+# docker-publish.yml/ci.yml -- RNS's non-OSI license must not touch the main
+# node:24 image. `release`/`workflow_dispatch` don't support path filters (only
+# push/pull_request do), so those two triggers fire regardless of what changed
+# in the release commit -- that's intentional, a release publish shouldn't
+# depend on bridge/ having changed in that exact commit.
 on:
   push:
     branches: [ main, develop ]
@@ -21,6 +29,14 @@ on:
     paths:
       - 'bridge/**'
       - '.github/workflows/reticulum-bridge.yml'
+  release:
+    types: [ published ]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Image tag to publish (e.g., 0.1.0-test)'
+        required: false
+        default: 'test'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -91,3 +107,81 @@ jobs:
             exit 1
           fi
           echo "Fixtures are up to date with protocol.py."
+
+  # Publishes the meshmonitor-rns-bridge sidecar image. R5 (INVARIANT): this is
+  # the ONLY place this image is built and pushed -- never bolt it onto
+  # docker-publish.yml/ci.yml, since that workflow builds the main node:24
+  # image and RNS's non-OSI license must never touch it (bridge/NOTICE).
+  #
+  # Gated behind bridge-tests so a broken bridge never gets published, even on
+  # a manual workflow_dispatch. Only runs for `release: published` and
+  # `workflow_dispatch` -- ordinary pushes/PRs stop at the pytest gate above.
+  publish:
+    name: Publish bridge image
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    needs: bridge-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8  # v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4
+
+      # Same auth pattern as docker-publish.yml's build-main job: GHCR via the
+      # ambient GITHUB_TOKEN, no separate PAT/secret to manage.
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Version tag comes from the release's git tag (vX.Y.Z -> X.Y.Z, same
+      # convention as docker-publish.yml) or, for a manual dispatch, the
+      # `version` input. `:latest` only moves on a published, non-prerelease
+      # release -- a workflow_dispatch test build or an RC/prerelease never
+      # touches the tag users pull by default.
+      - name: Compute image tags
+        id: tags
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" == "release" ]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="${{ github.event.inputs.version }}"
+          fi
+          {
+            echo "tags<<EOF"
+            echo "ghcr.io/yeraze/meshmonitor-rns-bridge:${VERSION}"
+            if [ "${{ github.event_name }}" == "release" ] && [ "${{ github.event.release.prerelease }}" != "true" ]; then
+              echo "ghcr.io/yeraze/meshmonitor-rns-bridge:latest"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push meshmonitor-rns-bridge (amd64, arm64)
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7
+        with:
+          context: bridge
+          file: bridge/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          labels: |
+            org.opencontainers.image.description=Reticulum (RNS) bridge sidecar for MeshMonitor
+          cache-from: type=gha,scope=rns-bridge
+          cache-to: type=gha,mode=max,scope=rns-bridge
+          provenance: true
+          sbom: true
+        timeout-minutes: 25

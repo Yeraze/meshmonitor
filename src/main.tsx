@@ -39,6 +39,7 @@ import UnifiedPacketMonitorPage from './pages/UnifiedPacketMonitorPage.tsx';
 import GlobalSettingsPage from './pages/GlobalSettingsPage.tsx';
 import UsersPage from './pages/UsersPage.tsx';
 import MeshCoreSourcePage from './pages/MeshCoreSourcePage.tsx';
+import ReticulumSourcePage from './pages/ReticulumSourcePage.tsx';
 import { useDashboardSources } from './hooks/useDashboardData';
 import './index.css';
 import { AuthProvider } from './contexts/AuthContext';
@@ -61,10 +62,17 @@ installKeyboardInsetsObserver();
  *
  * Slice 4 of the MeshCore-as-source refactor: dispatch on `source.type`.
  * Meshcore sources render the dedicated MeshCoreSourcePage, which talks to
- * the `/api/sources/:id/meshcore/*` routes; everything else falls through to
- * the legacy Meshtastic <App>.
+ * the `/api/sources/:id/meshcore/*` routes; Reticulum sources (#3960 Phase
+ * 1b WP2) render ReticulumSourcePage the same way, talking to
+ * `/api/sources/:id/reticulum/*`; everything else falls through to the
+ * legacy Meshtastic <App>.
+ *
+ * Exported (not just module-local) so `SourceApp` can be exercised directly
+ * in a dispatch test without importing this file's module-level
+ * `ReactDOM.createRoot(...).render(...)` side effect for anything other
+ * than mounting to the DOM.
  */
-function SourceApp() {
+export function SourceApp() {
   const { sourceId } = useParams<{ sourceId: string }>();
   const { data: sources, isLoading } = useDashboardSources();
 
@@ -73,8 +81,9 @@ function SourceApp() {
   const source = sources?.find((s) => s.id === sourceId);
 
   // While the source list is in flight we don't yet know whether to render
-  // App or the meshcore page. Block both so we don't flash the wrong UI and
-  // immediately re-mount on switch — App is heavy and re-mount is costly.
+  // App or the meshcore/reticulum page. Block both so we don't flash the
+  // wrong UI and immediately re-mount on switch — App is heavy and re-mount
+  // is costly.
   if (isLoading && !source) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100dvh' }}>
@@ -88,6 +97,16 @@ function SourceApp() {
       <SourceProvider sourceId={sourceId} sourceName={source.name} sourceType={source.type}>
         <WebSocketProvider>
           <MeshCoreSourcePage key={sourceId} />
+        </WebSocketProvider>
+      </SourceProvider>
+    );
+  }
+
+  if (source?.type === 'reticulum') {
+    return (
+      <SourceProvider sourceId={sourceId} sourceName={source.name} sourceType={source.type}>
+        <WebSocketProvider>
+          <ReticulumSourcePage key={sourceId} />
         </WebSocketProvider>
       </SourceProvider>
     );

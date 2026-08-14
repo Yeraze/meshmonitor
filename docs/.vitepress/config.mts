@@ -214,7 +214,8 @@ export default defineConfig({
           items: [
             { text: 'Deployment Guide', link: '/deployment/DEPLOYMENT_GUIDE' },
             { text: '☸️ Kubernetes / Helm', link: '/deployment/HELM_GUIDE' },
-            { text: '📦 Proxmox LXC', link: '/deployment/PROXMOX_LXC_GUIDE' }
+            { text: '📦 Proxmox LXC', link: '/deployment/PROXMOX_LXC_GUIDE' },
+            { text: '📡 Reticulum Bridge', link: '/deployment/RETICULUM_BRIDGE_GUIDE' }
           ]
         }
       ],

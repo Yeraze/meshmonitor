@@ -1,0 +1,148 @@
+/*
+ * ReticulumInterfacesView — card grid + history mount styling.
+ * CSS module (CLAUDE.md — new components style with CSS modules, not the
+ * frozen global sheets). Token names mirror ReticulumPage.module.css.
+ */
+
+.view {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.empty {
+  padding: 2rem;
+  text-align: center;
+  color: var(--color-text-subtle);
+  font-size: 0.95rem;
+}
+
+.cardGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-hover);
+  border-radius: var(--radius-md);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.cardTitle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.cardName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.chipOnline {
+  background: color-mix(in srgb, var(--color-success) 20%, transparent);
+  color: var(--color-success);
+}
+
+.chipOffline {
+  background: color-mix(in srgb, var(--color-text-faint) 20%, transparent);
+  color: var(--color-text-faint);
+}
+
+.cardMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: var(--color-text-subtle);
+  font-size: 0.8rem;
+}
+
+.statusText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.statGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.stat dt {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--color-text-subtle);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.stat dd {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.rateRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-surface-hover);
+  font-size: 0.8rem;
+  color: var(--color-text-subtle);
+}
+
+.rateItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.rateUnavailable {
+  font-style: italic;
+  color: var(--color-text-faint);
+}
+
+.history {
+  min-height: 0;
+}

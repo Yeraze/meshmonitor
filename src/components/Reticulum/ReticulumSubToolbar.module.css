@@ -1,0 +1,11 @@
+/*
+ * Reticulum-specific geometry for the shared SourceNav (#4473).
+ *
+ * Everything structural (item layout, mobile bottom bar) lives in
+ * SourceNav.module.css; this file only carries the rail-width pair,
+ * mirroring MeshCoreSubToolbar.module.css.
+ */
+.subToolbar {
+  --source-nav-collapsed-width: 56px;
+  --source-nav-expanded-width: 220px;
+}

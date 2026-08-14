@@ -106,6 +106,11 @@ interface DirectionSpec {
 function buildDirectionForm(spec: DirectionSpec): WorkflowForm {
   const triggerParams: Record<string, unknown> = {
     rateLimit: { maxActions: spec.rateLimitMax ?? DEFAULT_RATE_LIMIT_MAX_ACTIONS, windowSeconds: 60 },
+    // Opt out of the engine's #3914 self-origin guard (automationEngineService.ts
+    // includesSelfOrigin()) — otherwise a message the operator types directly on
+    // the bridged node never reaches this trigger at all. Safe here because the
+    // `notContains 'MT@'/'MC@'` conditions below are this bridge's own loop guard (#4694).
+    includeSelf: true,
   };
   if (spec.triggerChannel) triggerParams.channels = [spec.triggerChannel];
 

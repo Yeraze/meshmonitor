@@ -135,6 +135,12 @@ describe('bridgeTemplate', () => {
     }
   });
 
+  it('sets includeSelf:true on both triggers so the operator\'s own outgoing messages still relay (#4694)', () => {
+    for (const a of buildPair(FULL_PARAMS)) {
+      expect(node(a.config, 't').params.includeSelf).toBe(true);
+    }
+  });
+
   // #4697: a Meshtastic tapback/reply relayed to MeshCore (which has no
   // reply-id field to preserve real threading) previously showed up as an
   // indistinguishable standalone message. `replyContext` marks it instead.
@@ -145,6 +151,7 @@ describe('bridgeTemplate', () => {
       expect(text).toContain('{{ trigger.replyContext }}{{ trigger.text }}');
     }
   });
+
 
   it('never emits a portnum trigger param on either direction (would silently go Meshtastic-only)', () => {
     for (const a of buildPair(FULL_PARAMS)) {

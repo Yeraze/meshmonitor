@@ -58,12 +58,17 @@ import {
 const mockGetManager = sourceManagerRegistry.getManager as ReturnType<typeof vi.fn>;
 
 /** Minimal stand-in for ReticulumManager — only what the guard/status route touch. */
-function fakeConnectedManager(sourceId: string) {
+function fakeConnectedManager(
+  sourceId: string,
+  versions: { bridgeVersion?: string | null; rnsVersion?: string | null } = {},
+) {
   return {
     sourceId,
     sourceType: 'reticulum',
     isConnected: () => true,
     getStatus: () => ({ sourceId, sourceName: sourceId, sourceType: 'reticulum', connected: true }),
+    getBridgeVersion: () => versions.bridgeVersion ?? null,
+    getRnsVersion: () => versions.rnsVersion ?? null,
   };
 }
 
@@ -112,6 +117,35 @@ describe('Reticulum routes', () => {
       const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/status`);
       expect(res.status).toBe(200);
       expect(res.body.data.connected).toBe(true);
+    });
+
+    it('includes rnsVersion/bridgeVersion when the manager has cached them (WP-B)', async () => {
+      mockGetManager.mockReturnValue(
+        fakeConnectedManager(harness.sourceA, { bridgeVersion: '0.1.0', rnsVersion: '1.4.2' }),
+      );
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/status`);
+      expect(res.status).toBe(200);
+      expect(res.body.data.bridgeVersion).toBe('0.1.0');
+      expect(res.body.data.rnsVersion).toBe('1.4.2');
+    });
+
+    it('reports rnsVersion/bridgeVersion as null when a manager is registered but hasn\'t handshaken yet', async () => {
+      mockGetManager.mockReturnValue(fakeConnectedManager(harness.sourceA));
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/status`);
+      expect(res.status).toBe(200);
+      expect(res.body.data.bridgeVersion).toBeNull();
+      expect(res.body.data.rnsVersion).toBeNull();
+    });
+
+    it('omits rnsVersion/bridgeVersion when no manager is registered (disconnected source)', async () => {
+      mockGetManager.mockReturnValue(undefined);
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/status`);
+      expect(res.status).toBe(200);
+      expect(res.body.data.bridgeVersion).toBeUndefined();
+      expect(res.body.data.rnsVersion).toBeUndefined();
     });
 
     it('reflects seeded destination/interface counts', async () => {
