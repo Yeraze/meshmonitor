@@ -107,7 +107,7 @@
     "@testing-library/user-event": "^14.6.3",
     "@types/archiver": "^8.0.0",
     "@types/bcrypt": "^6.0.0",
-    "@types/better-sqlite3": "^7.6.9",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/connect-pg-simple": "^7.0.3",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.6",
