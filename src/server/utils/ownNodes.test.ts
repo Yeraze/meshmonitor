@@ -4,7 +4,7 @@
  * self-origin guard (#3914) cannot recognise our own traffic arriving there.
  */
 import { describe, it, expect, afterEach } from 'vitest';
-import { getOwnNodeNums, isOwnNodeNum, getOwnPublicKeys, isOwnPublicKey } from './ownNodes.js';
+import { getOwnNodeNums, isOwnNodeNum, getOwnPublicKeys, isOwnPublicKey, getOwnReticulumAddresses, isOwnReticulumAddress } from './ownNodes.js';
 import { sourceManagerRegistry, type ISourceManager } from '../sourceManagerRegistry.js';
 
 function fakeManager(
@@ -12,6 +12,7 @@ function fakeManager(
   sourceType: any,
   nodeNum: number | null,
   publicKey: string | null = null,
+  reticulumAddresses: string[] = [],
 ): ISourceManager {
   return {
     sourceId,
@@ -22,6 +23,7 @@ function fakeManager(
     getLocalNodeInfo: () =>
       nodeNum == null ? null : { nodeNum, nodeId: `!${nodeNum.toString(16)}`, longName: 'n', shortName: 'n' },
     getLocalNode: () => (publicKey == null ? null : { publicKey, name: 'n', advType: 1 }),
+    getOwnAddresses: () => reticulumAddresses,
     startDistanceDeleteScheduler: async () => undefined,
     stopDistanceDeleteScheduler: () => undefined,
   } as ISourceManager;
@@ -136,6 +138,59 @@ describe('ownNodes', () => {
       expect(isOwnPublicKey(null)).toBe(false);
       expect(isOwnPublicKey(undefined)).toBe(false);
       expect(isOwnPublicKey('')).toBe(false);
+    });
+  });
+
+  describe('Reticulum LXMF addresses (#3960 Phase 2 WP3)', () => {
+    it('is empty (and drops nothing) when no source is registered', () => {
+      expect(getOwnReticulumAddresses()).toEqual([]);
+      expect(isOwnReticulumAddress('abcd')).toBe(false);
+    });
+
+    it('collects the local LXMF address of every Reticulum source that has one', async () => {
+      await add(fakeManager('ret-a', 'reticulum', null, null, ['AABBCC']));
+      await add(fakeManager('ret-b', 'reticulum', null, null, ['DDEEFF']));
+
+      expect(getOwnReticulumAddresses().sort()).toEqual(['aabbcc', 'ddeeff'].sort());
+      expect(isOwnReticulumAddress('AABBCC')).toBe(true);
+      expect(isOwnReticulumAddress('ddeeff')).toBe(true);
+      expect(isOwnReticulumAddress('112233')).toBe(false);
+    });
+
+    it('ignores non-Reticulum sources (meshtastic/meshcore/mqtt contribute nothing)', async () => {
+      await add(fakeManager('tcp-a', 'meshtastic_tcp', 0x11223344));
+      await add(fakeManager('mc-a', 'meshcore', null, 'AABBCC'));
+      expect(getOwnReticulumAddresses()).toEqual([]);
+      expect(isOwnReticulumAddress('anything')).toBe(false);
+    });
+
+    it('matches case-insensitively', async () => {
+      await add(fakeManager('ret-a', 'reticulum', null, null, ['AaBbCc']));
+      expect(isOwnReticulumAddress('aabbcc')).toBe(true);
+      expect(isOwnReticulumAddress('AABBCC')).toBe(true);
+    });
+
+    it('recognises an address owned by ANY Reticulum source, not just the one asking', async () => {
+      await add(fakeManager('ret-a', 'reticulum', null, null, ['AABBCC']));
+      await add(fakeManager('ret-b', 'reticulum', null, null, ['DDEEFF']));
+
+      expect(isOwnReticulumAddress('aabbcc')).toBe(true);
+    });
+
+    it('survives a manager that throws while reporting its own address', async () => {
+      const broken = fakeManager('broken', 'reticulum', null, null, ['AABBCC']);
+      (broken as any).getOwnAddresses = () => { throw new Error('mid-connect'); };
+      await add(broken);
+      await add(fakeManager('ret-a', 'reticulum', null, null, ['DDEEFF']));
+
+      expect(getOwnReticulumAddresses()).toEqual(['ddeeff']);
+    });
+
+    it('treats null/undefined/empty addresses as not ours', async () => {
+      await add(fakeManager('ret-a', 'reticulum', null, null, ['AABBCC']));
+      expect(isOwnReticulumAddress(null)).toBe(false);
+      expect(isOwnReticulumAddress(undefined)).toBe(false);
+      expect(isOwnReticulumAddress('')).toBe(false);
     });
   });
 });

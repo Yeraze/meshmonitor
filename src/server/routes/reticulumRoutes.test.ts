@@ -434,4 +434,405 @@ describe('Reticulum routes', () => {
       expect(res.status).toBe(403);
     });
   });
+
+  // ── Messages/propagation/identity (#3960 Phase 2 WP4) ───────────────────
+  //
+  // Resource: 'messages' (sourcey), distinct from the 'nodes' resource used
+  // by the Phase 1a routes above — these tests seed their own messages:read
+  // / messages:write grants rather than reusing the outer beforeEach's
+  // nodes:read grant, and assert real per-source 403s the same way.
+
+  /** Minimal stand-in for ReticulumManager covering only what WP4's routes touch. */
+  function fakeMessageManager(overrides: Partial<{
+    ownAddress: string | null;
+    sendMessage: ReturnType<typeof vi.fn>;
+    syncPropagation: ReturnType<typeof vi.fn>;
+    setPropagationNode: ReturnType<typeof vi.fn>;
+    setDisplayName: ReturnType<typeof vi.fn>;
+    getIdentity: ReturnType<typeof vi.fn>;
+  }> = {}) {
+    return {
+      sourceType: 'reticulum',
+      isConnected: () => true,
+      getOwnAddresses: () => (overrides.ownAddress ? [overrides.ownAddress] : []),
+      sendMessage: overrides.sendMessage ?? vi.fn(),
+      syncPropagation: overrides.syncPropagation ?? vi.fn().mockResolvedValue(undefined),
+      setPropagationNode: overrides.setPropagationNode ?? vi.fn().mockResolvedValue(undefined),
+      setDisplayName: overrides.setDisplayName ?? vi.fn().mockResolvedValue(undefined),
+      getIdentity:
+        overrides.getIdentity ?? vi.fn().mockResolvedValue({ destinationHash: 'aa'.repeat(16), displayName: 'Alice' }),
+    };
+  }
+
+  describe('LXMF messages/propagation/identity', () => {
+    beforeEach(async () => {
+      await harness.grant(harness.limited.id, 'messages', 'read', harness.sourceA);
+      // No messages:write grant, and no grant at all on sourceB — proves
+      // read/write enforcement and per-source isolation below.
+    });
+
+    // ── GET /messages ──────────────────────────────────────────────────
+
+    describe('GET /:id/reticulum/messages', () => {
+      beforeEach(async () => {
+        await harness.db.reticulum.upsertMessage(harness.sourceA, {
+          id: `${harness.sourceA}_msg-a1`,
+          fromHash: 'aa'.repeat(16),
+          toHash: 'bb'.repeat(16),
+          content: 'hi from A',
+          timestamp: Date.now(),
+          // 'sent' is an outbound-flavored state (OUTBOUND_MESSAGE_STATES in
+          // reticulum.ts) — with no selfHash available (no manager
+          // registered in this describe), listConversations infers the peer
+          // as toHash for outbound-flavored rows, so the peer is 'bb'*16.
+          state: 'sent',
+        });
+        await harness.db.reticulum.upsertMessage(harness.sourceB, {
+          id: `${harness.sourceB}_msg-b1`,
+          fromHash: 'cc'.repeat(16),
+          toHash: 'dd'.repeat(16),
+          content: 'hi from B',
+          timestamp: Date.now(),
+          state: 'delivered',
+        });
+      });
+
+      it('lists conversations for the requested source only (data-layer isolation)', async () => {
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/messages`);
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        const peers = res.body.data.map((c: { peerHash: string }) => c.peerHash);
+        expect(peers).toContain('bb'.repeat(16));
+        expect(peers).not.toContain('dd'.repeat(16));
+      });
+
+      it('serves persisted conversations even with no manager registered', async () => {
+        mockGetManager.mockReturnValue(undefined);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/messages`);
+        expect(res.status).toBe(200);
+        expect(res.body.data.length).toBeGreaterThan(0);
+      });
+
+      it('403s when the user holds no `messages:read` grant at all', async () => {
+        await harness.revokeAll(harness.limited.id);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/messages`);
+        expect(res.status).toBe(403);
+      });
+
+      it('403s for a source the user has no `messages:read` grant on (cross-source)', async () => {
+        // limited holds messages:read on sourceA ONLY.
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceB}/reticulum/messages`);
+        expect(res.status).toBe(403);
+      });
+    });
+
+    // ── GET /messages/:peerHash ───────────────────────────────────────────
+
+    describe('GET /:id/reticulum/messages/:peerHash', () => {
+      const peerHash = 'ee'.repeat(16);
+
+      beforeEach(async () => {
+        await harness.db.reticulum.upsertMessage(harness.sourceA, {
+          id: `${harness.sourceA}_msg-peer1`,
+          fromHash: 'aa'.repeat(16),
+          toHash: peerHash,
+          content: 'hello peer',
+          timestamp: Date.now(),
+          state: 'delivered',
+        });
+      });
+
+      it('returns the conversation for an authorised read', async () => {
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/messages/${peerHash}`);
+        expect(res.status).toBe(200);
+        expect(res.body.data.length).toBe(1);
+        expect(res.body.data[0].toHash).toBe(peerHash);
+      });
+
+      it('403s for a source the user has no grant on (cross-source)', async () => {
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceB}/reticulum/messages/${peerHash}`);
+        expect(res.status).toBe(403);
+      });
+    });
+
+    // ── GET /threads/:threadHash ──────────────────────────────────────────
+
+    describe('GET /:id/reticulum/threads/:threadHash', () => {
+      it('403s for a source the user has no grant on (cross-source)', async () => {
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceB}/reticulum/threads/${'ff'.repeat(16)}`);
+        expect(res.status).toBe(403);
+      });
+
+      it('200s with an empty array for an authorised read of an unknown thread', async () => {
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/threads/${'ff'.repeat(16)}`);
+        expect(res.status).toBe(200);
+        expect(res.body.data).toEqual([]);
+      });
+    });
+
+    // ── POST /messages ────────────────────────────────────────────────────
+
+    describe('POST /:id/reticulum/messages', () => {
+      beforeEach(async () => {
+        // Outer describe already granted messages:read on sourceA; revoke
+        // first since (user, resource, sourceId) is unique — write tests
+        // need write only.
+        await harness.revokeAll(harness.limited.id);
+        await harness.grant(harness.limited.id, 'messages', 'write', harness.sourceA);
+      });
+
+      it('sends via manager.sendMessage with the right args and returns the created row', async () => {
+        const createdRow = {
+          id: `${harness.sourceA}_abc123`,
+          sourceId: harness.sourceA,
+          fromHash: 'aa'.repeat(16),
+          toHash: 'bb'.repeat(16),
+          title: null,
+          content: 'hello',
+          timestamp: Date.now(),
+          state: 'sent',
+        };
+        const sendMessage = vi.fn().mockResolvedValue(createdRow);
+        mockGetManager.mockReturnValue(fakeMessageManager({ sendMessage }));
+
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent
+          .post(`/api/sources/${harness.sourceA}/reticulum/messages`)
+          .send({ to: 'bb'.repeat(16), content: 'hello', title: 'Hi', method: 'direct', replyToHash: 'cc'.repeat(16) });
+
+        expect(res.status).toBe(200);
+        expect(res.body.data).toEqual(createdRow);
+        expect(sendMessage).toHaveBeenCalledWith({
+          to: 'bb'.repeat(16),
+          content: 'hello',
+          title: 'Hi',
+          fields: undefined,
+          method: 'direct',
+          replyToHash: 'cc'.repeat(16),
+        });
+      });
+
+      it('409s with SOURCE_NOT_CONNECTED when no manager is registered', async () => {
+        mockGetManager.mockReturnValue(undefined);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent
+          .post(`/api/sources/${harness.sourceA}/reticulum/messages`)
+          .send({ to: 'bb'.repeat(16), content: 'hello' });
+        expect(res.status).toBe(409);
+        expect(res.body.code).toBe('SOURCE_NOT_CONNECTED');
+      });
+
+      it('400s on a missing `to`', async () => {
+        mockGetManager.mockReturnValue(fakeMessageManager());
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent
+          .post(`/api/sources/${harness.sourceA}/reticulum/messages`)
+          .send({ content: 'hello' });
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe('INVALID_TO');
+      });
+
+      it('400s on an invalid `method`', async () => {
+        mockGetManager.mockReturnValue(fakeMessageManager());
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent
+          .post(`/api/sources/${harness.sourceA}/reticulum/messages`)
+          .send({ to: 'bb'.repeat(16), content: 'hello', method: 'carrier-pigeon' });
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe('INVALID_METHOD');
+      });
+
+      it('403s on a read-only grant (write required)', async () => {
+        await harness.revokeAll(harness.limited.id);
+        await harness.grant(harness.limited.id, 'messages', 'read', harness.sourceA);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent
+          .post(`/api/sources/${harness.sourceA}/reticulum/messages`)
+          .send({ to: 'bb'.repeat(16), content: 'hello' });
+        expect(res.status).toBe(403);
+      });
+
+      it('403s for a source the user has no write grant on (cross-source)', async () => {
+        // limited holds messages:write on sourceA ONLY.
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent
+          .post(`/api/sources/${harness.sourceB}/reticulum/messages`)
+          .send({ to: 'bb'.repeat(16), content: 'hello' });
+        expect(res.status).toBe(403);
+      });
+    });
+
+    // ── POST /propagation/sync ────────────────────────────────────────────
+
+    describe('POST /:id/reticulum/propagation/sync', () => {
+      beforeEach(async () => {
+        // Outer describe already granted messages:read on sourceA; revoke
+        // first since (user, resource, sourceId) is unique — write tests
+        // need write only.
+        await harness.revokeAll(harness.limited.id);
+        await harness.grant(harness.limited.id, 'messages', 'write', harness.sourceA);
+      });
+
+      it('calls manager.syncPropagation and returns ok', async () => {
+        const syncPropagation = vi.fn().mockResolvedValue(undefined);
+        mockGetManager.mockReturnValue(fakeMessageManager({ syncPropagation }));
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.post(`/api/sources/${harness.sourceA}/reticulum/propagation/sync`);
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(syncPropagation).toHaveBeenCalledTimes(1);
+      });
+
+      it('409s with SOURCE_NOT_CONNECTED when no manager is registered', async () => {
+        mockGetManager.mockReturnValue(undefined);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.post(`/api/sources/${harness.sourceA}/reticulum/propagation/sync`);
+        expect(res.status).toBe(409);
+        expect(res.body.code).toBe('SOURCE_NOT_CONNECTED');
+      });
+
+      it('403s on a read-only grant (write required)', async () => {
+        await harness.revokeAll(harness.limited.id);
+        await harness.grant(harness.limited.id, 'messages', 'read', harness.sourceA);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.post(`/api/sources/${harness.sourceA}/reticulum/propagation/sync`);
+        expect(res.status).toBe(403);
+      });
+    });
+
+    // ── PUT /propagation/node ─────────────────────────────────────────────
+
+    describe('PUT /:id/reticulum/propagation/node', () => {
+      beforeEach(async () => {
+        // Outer describe already granted messages:read on sourceA; revoke
+        // first since (user, resource, sourceId) is unique — write tests
+        // need write only.
+        await harness.revokeAll(harness.limited.id);
+        await harness.grant(harness.limited.id, 'messages', 'write', harness.sourceA);
+      });
+
+      it('calls manager.setPropagationNode with the given destHash', async () => {
+        const setPropagationNode = vi.fn().mockResolvedValue(undefined);
+        mockGetManager.mockReturnValue(fakeMessageManager({ setPropagationNode }));
+        const agent = await harness.loginAs(harness.limited);
+        const destHash = 'ab'.repeat(16);
+        const res = await agent
+          .put(`/api/sources/${harness.sourceA}/reticulum/propagation/node`)
+          .send({ destHash });
+        expect(res.status).toBe(200);
+        expect(setPropagationNode).toHaveBeenCalledWith(destHash);
+      });
+
+      it('400s when destHash is null (clearing is unsupported)', async () => {
+        mockGetManager.mockReturnValue(fakeMessageManager());
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent
+          .put(`/api/sources/${harness.sourceA}/reticulum/propagation/node`)
+          .send({ destHash: null });
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe('PROPAGATION_NODE_CLEAR_UNSUPPORTED');
+      });
+
+      it('409s with SOURCE_NOT_CONNECTED when no manager is registered', async () => {
+        mockGetManager.mockReturnValue(undefined);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent
+          .put(`/api/sources/${harness.sourceA}/reticulum/propagation/node`)
+          .send({ destHash: 'ab'.repeat(16) });
+        expect(res.status).toBe(409);
+        expect(res.body.code).toBe('SOURCE_NOT_CONNECTED');
+      });
+    });
+
+    // ── GET /identity ──────────────────────────────────────────────────────
+
+    describe('GET /:id/reticulum/identity', () => {
+      it('returns only destinationHash + displayName — never a private key', async () => {
+        const identity = { destinationHash: 'aa'.repeat(16), displayName: 'Alice' };
+        mockGetManager.mockReturnValue(fakeMessageManager({ getIdentity: vi.fn().mockResolvedValue(identity) }));
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/identity`);
+        expect(res.status).toBe(200);
+        expect(res.body.data).toEqual(identity);
+        expect(Object.keys(res.body.data).sort()).toEqual(['destinationHash', 'displayName']);
+        const serialized = JSON.stringify(res.body);
+        expect(serialized.toLowerCase()).not.toContain('privatekey');
+        expect(serialized.toLowerCase()).not.toContain('identityhash');
+      });
+
+      it('degrades gracefully (nulls) rather than erroring when no manager is registered', async () => {
+        mockGetManager.mockReturnValue(undefined);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/identity`);
+        expect(res.status).toBe(200);
+        expect(res.body.data).toEqual({ destinationHash: null, displayName: null });
+      });
+
+      it('403s for a source the user has no `messages:read` grant on (cross-source)', async () => {
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceB}/reticulum/identity`);
+        expect(res.status).toBe(403);
+      });
+    });
+
+    // ── PUT /display-name ─────────────────────────────────────────────────
+
+    describe('PUT /:id/reticulum/display-name', () => {
+      beforeEach(async () => {
+        // Outer describe already granted messages:read on sourceA; revoke
+        // first since (user, resource, sourceId) is unique — write tests
+        // need write only.
+        await harness.revokeAll(harness.limited.id);
+        await harness.grant(harness.limited.id, 'messages', 'write', harness.sourceA);
+      });
+
+      it('calls manager.setDisplayName with the given name', async () => {
+        const setDisplayName = vi.fn().mockResolvedValue(undefined);
+        mockGetManager.mockReturnValue(fakeMessageManager({ setDisplayName }));
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent
+          .put(`/api/sources/${harness.sourceA}/reticulum/display-name`)
+          .send({ name: 'New Name' });
+        expect(res.status).toBe(200);
+        expect(setDisplayName).toHaveBeenCalledWith('New Name');
+      });
+
+      it('400s on an empty name', async () => {
+        mockGetManager.mockReturnValue(fakeMessageManager());
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent
+          .put(`/api/sources/${harness.sourceA}/reticulum/display-name`)
+          .send({ name: '' });
+        expect(res.status).toBe(400);
+      });
+
+      it('409s with SOURCE_NOT_CONNECTED when no manager is registered', async () => {
+        mockGetManager.mockReturnValue(undefined);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent
+          .put(`/api/sources/${harness.sourceA}/reticulum/display-name`)
+          .send({ name: 'New Name' });
+        expect(res.status).toBe(409);
+        expect(res.body.code).toBe('SOURCE_NOT_CONNECTED');
+      });
+
+      it('403s on a read-only grant (write required)', async () => {
+        await harness.revokeAll(harness.limited.id);
+        await harness.grant(harness.limited.id, 'messages', 'read', harness.sourceA);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent
+          .put(`/api/sources/${harness.sourceA}/reticulum/display-name`)
+          .send({ name: 'New Name' });
+        expect(res.status).toBe(403);
+      });
+    });
+  });
 });

@@ -21,18 +21,27 @@
  * `src/db/repositories/sources.ts`) — no cast needed.
  */
 
+import { randomUUID } from 'crypto';
 import { EventEmitter } from 'events';
 import type { Source } from '../db/repositories/sources.js';
+import type { ReticulumMessageRow, UpsertMessageInput } from '../db/repositories/reticulum.js';
 import databaseService from '../services/database.js';
 import type { DbTelemetry } from '../services/database.js';
 import { logger } from '../utils/logger.js';
+import { isOwnReticulumAddress } from './utils/ownNodes.js';
 import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
+import { dataEventEmitter } from './services/dataEventEmitter.js';
+import { notificationService } from './services/notificationService.js';
 import { ReticulumBridgeClient } from './reticulumBridgeClient.js';
 import type { ReticulumConfig } from './reticulumConfig.js';
 import type {
   AnnounceMessage,
+  DeliveryStateEvent,
   InterfaceStatsEntry,
   InterfaceStatsMessage,
+  LxmfMessageEvent,
+  LxmfMethod,
+  ReadyMessage,
   StatusMessage,
   WelcomeMessage,
 } from './reticulumProtocol.js';
@@ -42,6 +51,37 @@ import {
   RETICULUM_IFACE_RX_RATE,
   RETICULUM_IFACE_TX_RATE,
 } from './services/reticulumTelemetry.js';
+
+/**
+ * Extract the DB `replyToHash`/`threadHash` columns from an LXMF message's
+ * `fields` bag (bridge-sanitized, R3). LXMF carries these as the `replyTo`/
+ * `thread` keys inside `fields` on the wire (see the `lxmf_message.json`
+ * golden fixture) — there is no dedicated envelope field for either.
+ */
+function extractReplyAndThread(fields: Record<string, unknown> | null | undefined): {
+  replyToHash: string | null;
+  threadHash: string | null;
+} {
+  const replyToHash = fields && typeof fields.replyTo === 'string' ? fields.replyTo : null;
+  const threadHash = fields && typeof fields.thread === 'string' ? fields.thread : null;
+  return { replyToHash, threadHash };
+}
+
+/** Serialize an LXMF `fields` bag for the `fields` TEXT column — `null` for an absent/empty bag (not `"{}"`). */
+function serializeFields(fields: Record<string, unknown> | null | undefined): string | null {
+  if (!fields || Object.keys(fields).length === 0) return null;
+  return JSON.stringify(fields);
+}
+
+/** Parameters for {@link ReticulumManager.sendMessage} (mirrors the WP4 `POST /messages` route body). */
+export interface SendReticulumMessageParams {
+  to: string;
+  content: string;
+  title?: string;
+  fields?: Record<string, unknown>;
+  method?: LxmfMethod;
+  replyToHash?: string;
+}
 
 /** Per-interface byte-counter snapshot used to throttle throughput-history writes. */
 interface InterfaceSample {
@@ -76,6 +116,15 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
    */
   private bridgeVersion: string | null = null;
   private rnsVersion: string | null = null;
+
+  /**
+   * This source's own LXMF destination hash (Phase 2 WP3), cached from the
+   * `destinationHash` field on `ready`/`status` once the LXMF router has
+   * started. `null` until then. Feeds the cross-source self-origin guard
+   * (`utils/ownNodes.ts`'s `isOwnReticulumAddress`, mirroring #3914) and
+   * {@link getOwnAddresses}.
+   */
+  private ownDestinationHash: string | null = null;
 
   constructor(sourceId: string, sourceName?: string) {
     super();
@@ -193,6 +242,84 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
   }
 
   /**
+   * This source's own LXMF destination hash(es), for the cross-source
+   * self-origin guard (Phase 2 WP3, mirrors `getLocalNodeInfo()`/`getSelfPublicKey`-
+   * style accessors on the other manager types). A Reticulum source owns at
+   * most one LXMF identity, so this is empty until `ready`/`status` reports
+   * `destinationHash`, then a single-element array.
+   */
+  getOwnAddresses(): string[] {
+    return this.ownDestinationHash ? [this.ownDestinationHash] : [];
+  }
+
+  // --------------------------------------------------------------------
+  // LXMF identity/propagation commands (Phase 2 WP4)
+  //
+  // Thin delegates onto `ReticulumBridgeClient`'s already-wired commands
+  // (WP1) — added here because routes only ever reach a source through its
+  // manager (never the private `client` field directly), mirroring
+  // `sendMessage`'s existing not-connected guard below.
+  // --------------------------------------------------------------------
+
+  /** Re-announce our own LXMF identity to the network (`announce_self`). */
+  async announceSelf(): Promise<void> {
+    if (!this.client) {
+      throw new Error(`ReticulumManager(${this.sourceId}): not connected`);
+    }
+    await this.client.announceSelf();
+  }
+
+  /** Set this identity's LXMF display name (`set_display_name`). */
+  async setDisplayName(name: string): Promise<void> {
+    if (!this.client) {
+      throw new Error(`ReticulumManager(${this.sourceId}): not connected`);
+    }
+    await this.client.setDisplayName(name);
+  }
+
+  /** Trigger a best-effort propagation-node sync (`sync_propagation`). */
+  async syncPropagation(): Promise<void> {
+    if (!this.client) {
+      throw new Error(`ReticulumManager(${this.sourceId}): not connected`);
+    }
+    await this.client.syncPropagation();
+  }
+
+  /**
+   * Configure the outbound propagation node (`set_propagation_node`).
+   * `destinationHash` is required and non-empty — the bridge
+   * (`rns_manager.py: RNSManager.set_propagation_node`) raises
+   * `ValueError("destinationHash is required")` on a falsy value, so there
+   * is currently no wire-level way to *clear* a configured propagation node.
+   * Callers (the WP4 route) must validate non-null/non-empty before calling.
+   */
+  async setPropagationNode(destinationHash: string): Promise<void> {
+    if (!this.client) {
+      throw new Error(`ReticulumManager(${this.sourceId}): not connected`);
+    }
+    await this.client.setPropagationNode(destinationHash);
+  }
+
+  /**
+   * Fetch this identity's PUBLIC info (`get_identity`) — destination hash +
+   * display name ONLY. Mirrors `ReticulumBridgeClient.getIdentity()`'s R2/R5
+   * contract: the bridge's reply also carries `identityHash`, which is
+   * deliberately dropped here (never surfaced past this manager) since the
+   * WP4 `GET /identity` route's public contract is `{ destinationHash,
+   * displayName }` only — no other identifier, and never a private key.
+   */
+  async getIdentity(): Promise<{ destinationHash: string | null; displayName: string | null }> {
+    if (!this.client) {
+      throw new Error(`ReticulumManager(${this.sourceId}): not connected`);
+    }
+    const info = await this.client.getIdentity();
+    return {
+      destinationHash: info.destinationHash ?? this.ownDestinationHash ?? null,
+      displayName: info.displayName ?? null,
+    };
+  }
+
+  /**
    * ISourceManager: status snapshot. `connected` reflects the bridge
    * client's own state (`ready` == connected) rather than a
    * separately-tracked flag, so there's a single source of truth.
@@ -236,6 +363,27 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
   private wireClientEvents(client: ReticulumBridgeClient): void {
     client.on('welcome', (msg: WelcomeMessage) => this.handleWelcome(msg));
     client.on('status', (msg: StatusMessage) => this.handleStatus(msg));
+    client.on('ready', (msg: ReadyMessage) => this.handleReady(msg));
+
+    client.on('lxmf_message', (msg: LxmfMessageEvent) => {
+      this.handleLxmfMessage(msg).catch((err: unknown) => {
+        logger.warn(
+          `[Reticulum:${this.sourceId}] failed to persist lxmf_message ${msg.hash}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      });
+    });
+
+    client.on('delivery_state', (msg: DeliveryStateEvent) => {
+      this.handleDeliveryState(msg).catch((err: unknown) => {
+        logger.warn(
+          `[Reticulum:${this.sourceId}] failed to process delivery_state for ${msg.hash}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      });
+    });
 
     client.on('announce', (msg: AnnounceMessage) => {
       this.handleAnnounce(msg).catch((err: unknown) => {
@@ -286,6 +434,39 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
     if (msg.rnsVersion) {
       this.rnsVersion = msg.rnsVersion;
     }
+    if (msg.destinationHash) {
+      this.ownDestinationHash = msg.destinationHash;
+    }
+  }
+
+  /**
+   * `ready` -> cache our own LXMF destination hash (Phase 2 WP3), when
+   * present, and re-announce our identity to the network. Fires on BOTH the
+   * initial connect AND every subsequent reconnect (the bridge client emits
+   * `ready` at the end of `connectOnce`, which reconnects run through too).
+   *
+   * announce_self is fire-and-forget: the WP1 gotcha is that signature
+   * validation needs both sides to have announced, but a missed announce
+   * degrades signature checks — it must never break the connect/reconnect
+   * flow itself, so failures are logged, not thrown.
+   *
+   * Deferred via `queueMicrotask`: `ReticulumBridgeClient.connectOnce` emits
+   * `ready` (synchronously invoking this handler) BEFORE it flips its own
+   * `state` to `'ready'` — calling `announceSelf()` synchronously from here
+   * would still see `'configuring'` and be rejected as "not connected".
+   * Queuing past this tick lets that state flip complete first.
+   */
+  private handleReady(msg: ReadyMessage): void {
+    if (msg.destinationHash) {
+      this.ownDestinationHash = msg.destinationHash;
+    }
+    queueMicrotask(() => {
+      this.client?.announceSelf().catch((err: unknown) => {
+        logger.warn(
+          `[Reticulum:${this.sourceId}] announce_self failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
+    });
   }
 
   /** `announce` -> `reticulum_destinations` upsert (build spec §3.5/§4.4). */
@@ -352,6 +533,194 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
           err instanceof Error ? err.message : String(err)
         }`,
       );
+    }
+  }
+
+  // --------------------------------------------------------------------
+  // LXMF messaging (#3960 Phase 2 WP3)
+  // --------------------------------------------------------------------
+
+  /**
+   * `lxmf_message` -> persist as a `reticulum_messages` row, then emit the
+   * UI/automation-trigger event for genuinely INBOUND messages only.
+   *
+   * Self-origin guard (mirrors `utils/ownNodes.ts` #3914): when `msg.from` is
+   * one of MeshMonitor's own LXMF destinations (a self-addressed message —
+   * we sent a message to our own identity, or a multi-source setup owns both
+   * ends), the row is still persisted, but `dataEventEmitter.emitReticulumMessage`
+   * is NOT called — that call is what both updates the UI and feeds the
+   * `trigger.message` automation matcher, so skipping it prevents an
+   * automation from firing on our own traffic. The UI still reflects our own
+   * sends through the `sendMessage`/`delivery_state` flow instead.
+   */
+  private async handleLxmfMessage(msg: LxmfMessageEvent): Promise<void> {
+    const row = await this.persistLxmfMessage(msg);
+    if (isOwnReticulumAddress(msg.from)) {
+      return;
+    }
+    dataEventEmitter.emitReticulumMessage(row, this.sourceId);
+    await this.sendInboundNotification(row);
+  }
+
+  /**
+   * Push/Apprise/desktop notification for an inbound (non-self) LXMF DM.
+   * Routes through the existing `notificationService.broadcast()` ->
+   * `shouldFilterNotificationAsync` (`utils/notificationFiltering.ts`)
+   * pipeline shared with Meshtastic/MQTT (`messagePushNotifier.ts`) — every
+   * subscribed user's whitelist/blacklist/mute/enabled-channels preferences
+   * are honored per-user there. LXMF messages are always DMs (no channel
+   * concept), so `channelId` is a sentinel `-1` (unused when `isDirectMessage`
+   * is true) and per-DM muting by `nodeUuid` is not yet wireable — Reticulum
+   * destinations have no `uuid` column. Never throws: notification failures
+   * must not break message processing.
+   */
+  private async sendInboundNotification(row: ReticulumMessageRow): Promise<void> {
+    try {
+      const serviceStatus = notificationService.getServiceStatus();
+      if (!serviceStatus.anyAvailable) return;
+
+      const source = await databaseService.sources.getSource(this.sourceId);
+      const sourceName = source?.name || this.sourceId;
+      const text = row.content ?? '';
+      const body = text.length > 100 ? `${text.substring(0, 97)}...` : text;
+
+      await notificationService.broadcast(
+        {
+          title: `Direct Message from ${row.fromHash}`,
+          body,
+          sourceId: this.sourceId,
+          sourceName,
+          data: { type: 'dm', messageId: row.id, senderNodeId: row.fromHash },
+        },
+        {
+          messageText: text,
+          channelId: -1,
+          isDirectMessage: true,
+          sourceId: this.sourceId,
+          sourceName,
+        },
+      );
+    } catch (err) {
+      logger.warn(
+        `[Reticulum:${this.sourceId}] failed to send inbound message notification: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+
+  /** Build and persist the `reticulum_messages` row for an inbound `lxmf_message` event. */
+  private async persistLxmfMessage(msg: LxmfMessageEvent): Promise<ReticulumMessageRow> {
+    const id = `${this.sourceId}_${msg.hash}`;
+    const { replyToHash, threadHash } = extractReplyAndThread(msg.fields);
+    const input: UpsertMessageInput = {
+      id,
+      fromHash: msg.from,
+      toHash: msg.to,
+      title: msg.title,
+      content: msg.content,
+      timestamp: msg.ts,
+      receivedAt: Date.now(),
+      state: 'delivered',
+      method: msg.method,
+      signatureValidated: msg.signatureValidated,
+      ratcheted: msg.ratcheted,
+      fields: serializeFields(msg.fields),
+      replyToHash,
+      threadHash,
+      rssi: msg.rssi,
+      snr: msg.snr,
+      quality: msg.q,
+    };
+    await databaseService.reticulum.upsertMessage(this.sourceId, input);
+    const row = await databaseService.reticulum.getMessage(this.sourceId, id);
+    if (!row) {
+      throw new Error(`ReticulumManager(${this.sourceId}): message ${id} vanished immediately after upsert`);
+    }
+    return row;
+  }
+
+  /**
+   * `delivery_state` -> update the message row's state (+method) and emit a
+   * UI-only update event. Unlike {@link handleLxmfMessage}, this is never
+   * gated by the self-origin guard: a delivery-state transition only ever
+   * describes OUR OWN outbound message's progress, so it is inherently
+   * self-originated and never feeds `trigger.message`.
+   */
+  private async handleDeliveryState(msg: DeliveryStateEvent): Promise<void> {
+    const id = `${this.sourceId}_${msg.hash}`;
+    await databaseService.reticulum.updateMessageState(this.sourceId, id, msg.state, {
+      method: msg.method ?? undefined,
+    });
+    dataEventEmitter.emitReticulumDeliveryStateUpdated(
+      { id, hash: msg.hash, state: msg.state, method: msg.method, attempts: msg.attempts },
+      this.sourceId,
+    );
+  }
+
+  /**
+   * Send an LXMF message. Optimistically persists a `state: 'outbound'` row
+   * under a temporary id BEFORE the round-trip to the bridge (so a caller —
+   * the WP4 route — can show it immediately), then calls `send_lxmf` and
+   * reconciles the temporary id into the authoritative `${sourceId}_${hash}`
+   * id once the bridge assigns the real LXM hash (the hash arrives on
+   * `send_lxmf`'s own response, which doubles as the first `delivery_state`
+   * transition — see `ReticulumBridgeClient.sendLxmf`). Subsequent state
+   * transitions (sent/delivered/failed) arrive via the unsolicited
+   * `delivery_state` push and are handled by {@link handleDeliveryState}.
+   *
+   * On a `send_lxmf` failure, the optimistic row is marked `failed` (under
+   * its temporary id — no hash was ever assigned) rather than left stuck at
+   * `outbound`, and the error is rethrown to the caller.
+   */
+  async sendMessage(params: SendReticulumMessageParams): Promise<ReticulumMessageRow> {
+    if (!this.client) {
+      throw new Error(`ReticulumManager(${this.sourceId}): not connected`);
+    }
+    const client = this.client;
+    const now = Date.now();
+    const tempId = `${this.sourceId}_pending-${randomUUID()}`;
+    const wireFields: Record<string, unknown> | undefined = params.replyToHash
+      ? { ...(params.fields ?? {}), replyTo: params.replyToHash }
+      : params.fields;
+
+    const optimistic: UpsertMessageInput = {
+      id: tempId,
+      fromHash: this.ownDestinationHash ?? '',
+      toHash: params.to,
+      title: params.title ?? null,
+      content: params.content,
+      timestamp: now,
+      state: 'outbound',
+      method: params.method ?? null,
+      replyToHash: params.replyToHash ?? null,
+      fields: serializeFields(wireFields),
+    };
+    await databaseService.reticulum.upsertMessage(this.sourceId, optimistic);
+
+    try {
+      const response = await client.sendLxmf({
+        to: params.to,
+        title: params.title,
+        content: params.content,
+        fields: wireFields,
+        method: params.method,
+      });
+      const realId = `${this.sourceId}_${response.hash}`;
+      await databaseService.reticulum.renameMessageId(this.sourceId, tempId, realId);
+      await databaseService.reticulum.updateMessageState(this.sourceId, realId, response.state, {
+        method: response.method ?? params.method ?? undefined,
+      });
+      const row = await databaseService.reticulum.getMessage(this.sourceId, realId);
+      if (!row) {
+        throw new Error(`ReticulumManager(${this.sourceId}): message ${realId} vanished immediately after reconciliation`);
+      }
+      return row;
+    } catch (err) {
+      await databaseService.reticulum.updateMessageState(this.sourceId, tempId, 'failed').catch(() => {
+        // best-effort — the original error is what the caller needs to see.
+      });
+      throw err;
     }
   }
 

@@ -1,0 +1,101 @@
+# Reticulum Phase 2 (LXMF Messaging), Build Spec
+
+Epic #3960. Worktree /home/yeraze/Development/meshmonitor-reticulum-2 (branch feature/reticulum-phase-2). Base: Phases 1a + 1b merged.
+
+NOTE: code spans in this doc are written without backticks (plain text) to avoid a markdown-processing corruption that hit the first version. Treat monospace-looking identifiers (file paths, method names, wire keys) as literal.
+
+## 0. Orchestrator rulings (resolve the architect's open risks)
+
+- R1 (lxmf/rns pin): KEEP rns==1.4.2. RESOLVED by WP0 evidence, lxmf==1.1.1 resolves wheels-only on python:3.12-alpine with rns pinned at 1.4.2. No rns re-pin. See RETICULUM_WP0_PHASE2_SPIKE_EVIDENCE.md.
+- R2 (permissions): message routes use the sourcey 'messages' resource with sourceIdFrom (read for list/thread, write for send/propagation). NO private-key over HTTP: the bridge get_identity/import_identity commands may exist bridge-side, but the Node GET /identity route returns PUBLIC info only (destination hash + display name). Do NOT add a Node route that exports/imports the LXMF private key. Identity backup = backing up the bridge LXMF_STORAGE_DIR volume (R5).
+- R3 (attachments): Phase 2 = UTF-8 text content/title + attachment METADATA in fields (name/type/size/ref). Raw blob transfer over the WS is DEFERRED to a later phase.
+- R4 (protocol version): bumped to v2 with a strict-equality, fail-closed handshake (bridge + Node in one image → lockstep; skew ⇒ PROTOCOL_VERSION_MISMATCH). DONE in WP1.
+- R5 (identity as DB-absent secret): the LXMF private key lives only on the bridge filesystem (LXMF_STORAGE_DIR), never in MeshMonitor's DB. A fresh container without that volume regenerates the identity → new LXMF address. DOCUMENT this in the deployment guide AND a short UI note in the DMs/Info view.
+- R6 (envelope): new message routes use ok()/fail() freely (new handlers); do not convert any existing bare-payload handler.
+
+Migration number: 143 (DONE in WP2). migrations.test.ts is registry-derived, no edit.
+
+## 1. Reuse inventory (extend; do not re-create)
+
+Bridge (bridge/meshmonitor_rns_bridge/): protocol.py (envelope, PROTOCOL_VERSION, TYPE_* constants, builders, handshake, DONE v2 in WP1), rns_manager.py (RNSManager lifecycle + broadcast() fan-out + signal helpers, LXMRouter added in WP1), ws_server.py (threaded handshake, _tokens_match, req_type dispatch, command handlers added in WP1), pollers.py, config.py (LXMF_STORAGE_DIR added), requirements.txt (lxmf==1.1.1 added), tests/* (fixtures + pytest extended in WP1).
+
+Node (src/server/): reticulumProtocol.ts (wire types + PROTOCOL_VERSION=2, stubs added in WP1; WP3 fleshes out consumer types), reticulumBridgeClient.ts (EventEmitter client, requestStatus() id-correlation, WP3 adds sendLxmf + command methods, emits lxmf_message/delivery_state), reticulumManager.ts (event→persist pattern, WP3 adds LXMF handlers + sendMessage + own-address exposure), reticulumConfig.ts (carry display name/propagation config), sourceManagerTypes.ts (isReticulumManager, reuse), services/dataEventEmitter.ts (WP3 adds reticulum:message + emitReticulumMessage()), utils/ownNodes.ts (self-origin guard seam #3914, mirror for own LXMF address), utils/notificationFiltering.ts + notificationCheckHelpers.ts (inbound-notification pipeline, reuse), routes/reticulumRoutes.ts (route pattern, extend).
+
+Data (src/db/): schema/reticulum.ts (reticulum_messages triple + inferred types, DONE WP2), repositories/reticulum.ts (WP3 adds message methods), migrations.ts + migrations/helpers.ts (143 registered, DONE WP2).
+
+Frontend (src/): types/reticulum.ts (ReticulumView union + ReticulumMessageRow, row type DONE WP2), components/Reticulum/ReticulumSubToolbar.tsx (WP5 adds dms nav item), ReticulumPage.tsx (WP5 renders DMs view), hooks/useReticulum.ts (WP5 adds message fetch/live), components/MeshCore/ messages view + messageOrder.ts + delivery-state chips (reuse PATTERNS, build CSS-module Reticulum equivalents), SourceContext/ApiService/UiIcon/SourceNav (reuse).
+
+## 2. WP0, LXMF spike gate, DONE
+
+lxmf==1.1.1 pins against rns==1.4.2 wheels-only on alpine (R1 closed). Full send/receive+delivery-proof proof is the WP1 dual-rnsd integration test (test_lxmf_send_receive_between_two_identities, PASSES). Propagation store-and-forward is a documented skip (best-effort). See RETICULUM_WP0_PHASE2_SPIKE_EVIDENCE.md.
+
+## 3. Bridge additions, DONE in WP1 (commit 03a0d294)
+
+For reference, WP1 delivered: lxmf==1.1.1 dep; PROTOCOL_VERSION 1→2; event types lxmf_message, delivery_state; command types send_lxmf, announce_self, set_display_name, sync_propagation, set_propagation_node, get_identity, import_identity (last two bridge-only, no private key on wire); LXMF_STORAGE_DIR config; one LXMRouter per process with load-or-create identity + delivery callback; golden fixtures. Key facts for WP3:
+
+- lxmf_message event wire shape: { hash, from, to, title, content, fields, method, signatureValidated, ratcheted, rssi, snr, q, ts }.
+- delivery_state event wire shape: { hash, state, method, attempts, ts }, this ALSO doubles as send_lxmf's command response (id = request id, state: "sending").
+- ready/status payload now optionally carries destinationHash (and get_identity's reply also identityHash/displayName, reusing the status envelope). NO private-key field anywhere on the wire.
+- Delivery-state mapping (rns_manager.py _LXMF_STATE_TO_WIRE, verified vs lxmf==1.1.1): GENERATING(0x00)/OUTBOUND(0x01)/SENDING(0x02) → "sending"; SENT(0x04) → "sent"; DELIVERED(0x08) → "delivered"; REJECTED(0xFD)/CANCELLED(0xFE)/FAILED(0xFF) → "failed"; unmapped → "failed".
+- New failure code LXMF_COMMAND_FAILED for the seven command handlers' error path.
+- GOTCHA (WP1 found): signature validation requires BOTH sides to announce_self first (LXMF needs the receiver to know the sender's identity to verify the signature). The manager should announce_self on connect.
+
+## 4. Data model, migration 143 (reticulum_messages), DONE in WP2 (commit e2b5e862)
+
+Columns: id (TEXT PK = ${sourceId}_${lxmHashHex}), sourceId (NOT NULL), fromHash, toHash, title, content, timestamp, receivedAt, createdAt, state (draft|outbound|sending|sent|delivered|failed), method (opportunistic|direct|propagated), signatureValidated (bool), ratcheted (bool), fields (JSON text), replyToHash, threadHash, rssi, snr, quality. Indexes: PK on id; (sourceId,toHash,fromHash,timestamp); (sourceId,threadHash). Drizzle triple + ReticulumMessageRow/ReticulumMessageState/ReticulumMessageMethod types added.
+
+## 5. Backend (WP3 + WP4)
+
+### 5.1 Repository (src/db/repositories/reticulum.ts), WP3
+Add async, source-scoped methods (Drizzle, no raw SQL outside repo):
+- upsertMessage(sourceId, row), insert-or-update by id; used by inbound persist + outbound send.
+- updateMessageState(sourceId, id, state, {method?, attempts?}), for delivery_state.
+- listConversations(sourceId), grouped latest-per-peer summary.
+- listMessages(sourceId, peerHash, {before?, limit}), a conversation.
+- listThread(sourceId, threadHash).
+- getMessage(sourceId, id).
+Add reticulum.messages.perSource.test.ts (cross-source isolation).
+
+### 5.2 Manager (src/server/reticulumManager.ts), WP3
+- wireClientEvents: add client.on('lxmf_message',...) → handleLxmfMessage, client.on('delivery_state',...) → handleDeliveryState.
+- handleLxmfMessage(msg): build row id ${sourceId}_${msg.hash}, persist via upsertMessage, then emit dataEventEmitter.emitReticulumMessage(row, this.sourceId) INBOUND ONLY (self-origin guard, 5.3).
+- handleDeliveryState(msg): updateMessageState + emit a delivery-state UI update event.
+- sendMessage(...): optimistic state:'outbound', persist, call client.sendLxmf(...), reconcile the returned hash into the row id (LXM hash authoritative), let delivery_state drive terminal state.
+- getOwnAddresses(): expose the source's own LXMF destination hash for the self-origin guard. announce_self on connect (per the WP1 gotcha, needed for signature validation).
+
+### 5.3 Automation + self-origin guard, WP3
+Add reticulum:message (+ reticulum:delivery-state:updated) to DataEventType and emitReticulumMessage() on dataEventEmitter (carry sourceId). Self-origin guard: rows whose fromHash is this source's own LXMF destination do NOT fire message-received automations (mirror utils/ownNodes.ts #3914), still persist + still emit the UI update. Wire the automation trigger matcher to consume reticulum:message honoring condition.sourceFilter. Notifications: inbound (non-self) DMs route through the existing notificationFiltering/notificationCheckHelpers pipeline.
+
+### 5.4 Wire types/client (reticulumProtocol.ts, reticulumBridgeClient.ts), WP3
+reticulumProtocol.ts: flesh out LxmfMessageMessage/DeliveryStateMessage + command/response types (version already 2 from WP1). reticulumBridgeClient.ts: extend dispatchPushEvent() to emit lxmf_message/delivery_state; add id-correlated command methods sendLxmf, announceSelf, setDisplayName, syncPropagation, setPropagationNode (following requestStatus()'s pattern).
+
+### 5.5 Routes (src/server/routes/reticulumRoutes.ts), WP4
+All under /api/sources/:id/reticulum, ok()/fail() envelope, MISSING_SOURCE_ID guard, resource 'messages':
+- GET /messages, conversations list. requirePermission('messages','read', {sourceIdFrom:'params.id'}).
+- GET /messages/:peerHash, a conversation (pagination). read.
+- GET /threads/:threadHash, a thread. read.
+- POST /messages, send { to, content, title?, fields?, method?, replyToHash? } via manager.sendMessage. write. Resolve manager via sourceManagerRegistry.getManager(sourceId) + isReticulumManager.
+- POST /propagation/sync, PUT /propagation/node, propagation control. write.
+- GET /identity, PUBLIC info only (destination hash + display name). read.
+- PUT /display-name, write.
+Harness tests via createRouteTestApp() seeding 'messages' grants.
+
+## 6. Frontend (WP5)
+
+types/reticulum.ts: ReticulumView = 'destinations'|'interfaces'|'dms'|'info'|'settings'; add ReticulumConversation (ReticulumMessageRow already exists from WP2). ReticulumSubToolbar.tsx: add { id:'dms', label 'Messages', UiIcon name 'message', no emoji }. ReticulumPage.tsx: render <ReticulumDmsView> for 'dms' (wrap in any needed providers, remember the SaveBarProvider lesson from 1b if a SaveBar is used). New components/Reticulum/ReticulumDmsView.tsx (+.module.css) + compose component + conversation list, reuse MeshCore DM PATTERNS (messageOrder.ts ordering, delivery-state chips) as CSS-module components. hooks/useReticulum.ts: conversation/message fetch + live update off reticulum:message / delivery-state socket events. Delivery-state chips (sending|sent|delivered|failed). Replies/reactions/threads render from fields where present; attachments show metadata placeholders (blobs deferred). Inbound notifications via the existing path. A short note in the DMs/Info UI: "identity lives on the bridge volume, back it up" (R5). i18n keys with English fallbacks.
+
+## 7. Test plan
+
+Vitest: repo message methods + reticulum.messages.perSource.test.ts (cross-source isolation); reticulumManager LXMF handling (inbound persist+emit, delivery transitions, outbound hash reconciliation, SELF-ORIGIN GUARD) mocking dataEventEmitter; routes via createRouteTestApp() ('messages' read/write, per-source, ok/fail, send-path manager mock); DMs component tests; reticulumProtocol contract test on the golden fixtures. pytest (bridge): DONE in WP1 (112 passed, 1 skipped propagation). WP6 promotes the LXMF integration test to the CI gate + adds automation-trigger/notification integration tests.
+
+## 8. Work packages (dependency-ordered)
+
+- WP0, LXMF spike gate. DONE (lxmf==1.1.1, R1 closed).
+- WP1, Bridge LXMF (protocol v2, LXMRouter, events, commands, identity, fixtures, pytest incl. send/receive integration test). DONE (commit 03a0d294).
+- WP2, Migration 143 + schema + types. DONE (commit e2b5e862).
+- WP3, Backend: repo message methods (+perSource), manager LXMF handlers + sendMessage + own-address + announce_self-on-connect, dataEventEmitter reticulum:message + self-origin guard, reticulumProtocol/reticulumBridgeClient consumer types + commands. Deps WP1, WP2. Accept: Vitest repo+manager green; contract test consumes fixtures; self-origin guard test passes; full typecheck clean.
+- WP4, Routes: /messages list/thread/send, propagation, /identity (public)/display-name, ok/fail, requirePermission('messages',...), harness tests. Deps WP3. Accept: route harness tests green; per-source + read/write enforced.
+- WP5, Frontend: 'dms' view + sub-toolbar, DMs conversations + compose + delivery chips (CSS modules), notifications, useReticulum live, identity-volume UI note, i18n. Deps WP4. Accept: component tests green; view reachable; no global-sheet edits.
+- WP6, Integration/contract: promote WP0/WP1 LXMF test to CI gate; cross-layer golden-fixture contract; automation-trigger + notification integration tests. Deps WP1, WP4. Accept: full bridge+Node suites green in CI.
+
+Graph: WP0→WP1→WP3→WP4→WP5; WP2→WP3; {WP1,WP4}→WP6.

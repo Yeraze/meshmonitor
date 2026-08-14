@@ -11,6 +11,7 @@ import databaseService from '../../../services/database.js';
 import { dataEventEmitter, type DataEvent } from '../dataEventEmitter.js';
 import type { DbMessage, DbTelemetry } from '../../../services/database.js';
 import type { MeshCoreMessage } from '../../meshcoreManager.js';
+import type { ReticulumMessageRow } from '../../../db/repositories/reticulum.js';
 import { AutomationEngineService } from './automationEngineService.js';
 import { VariableResolver } from './variableResolver.js';
 import { createMeshActionDeps } from './meshActionDeps.js';
@@ -110,6 +111,13 @@ async function handleEvent(event: DataEvent): Promise<void> {
     case 'meshcore:message':
       // MeshCore received messages were previously ignored by the engine (#3833).
       await e.onMeshCoreMessage(event.data as MeshCoreMessage, sourceId);
+      break;
+
+    case 'reticulum:message':
+      // Only genuinely inbound LXMF messages reach here — ReticulumManager's
+      // self-origin guard skips emitting this event entirely for our own
+      // addressed messages (#3960 Phase 2 WP3, mirrors #3914).
+      await e.onReticulumMessage(event.data as ReticulumMessageRow, sourceId);
       break;
 
     case 'node:updated': {

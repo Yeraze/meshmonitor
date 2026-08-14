@@ -1,0 +1,285 @@
+/*
+ * ReticulumDmsView layout — a two-pane conversations/messages surface.
+ * Scoped as a CSS module (CLAUDE.md — new components style with CSS
+ * modules, not the frozen global sheets). Card/chip color tokens mirror
+ * ReticulumInfoView.module.css/ReticulumInterfacesView.module.css for visual
+ * consistency across the Reticulum surface.
+ */
+
+.view {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  width: 280px;
+  min-width: 220px;
+  border-right: 1px solid var(--color-surface-hover);
+  overflow-y: auto;
+}
+
+.sidebarHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.85rem 1rem;
+  font-weight: 600;
+  color: var(--color-text);
+  border-bottom: 1px solid var(--color-surface-hover);
+}
+
+.conversationList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.conversationItem {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  width: 100%;
+  padding: 0.65rem 1rem;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--color-surface-hover);
+  cursor: pointer;
+  text-align: left;
+  color: var(--color-text);
+}
+
+.conversationItem:hover {
+  background: var(--color-surface-hover);
+}
+
+.conversationItemActive {
+  background: var(--color-surface-active);
+}
+
+.peerName {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--color-text);
+}
+
+.conversationPreview {
+  font-size: 0.8rem;
+  color: var(--color-text-subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.conversationMeta {
+  font-size: 0.72rem;
+  color: var(--color-text-faint);
+}
+
+.mainPane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.mainHeader {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.85rem 1.25rem;
+  border-bottom: 1px solid var(--color-surface-hover);
+}
+
+.peerHashFull {
+  font-size: 0.75rem;
+  color: var(--color-text-faint);
+  font-family: var(--font-mono, monospace);
+}
+
+.noteBanner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1.25rem;
+  font-size: 0.78rem;
+  color: var(--color-text-subtle);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  border-bottom: 1px solid var(--color-surface-hover);
+}
+
+.messageList {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.loadMoreButton {
+  align-self: center;
+  padding: 0.35rem 0.9rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-surface-hover);
+  background: var(--color-surface);
+  color: var(--color-text-subtle);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.loadMoreButton:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.emptyState {
+  padding: 1.5rem;
+  color: var(--color-text-subtle);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.messageRow {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.messageRowOutgoing {
+  justify-content: flex-end;
+}
+
+.bubble {
+  max-width: 70%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-hover);
+  border-radius: var(--radius-md);
+  padding: 0.5rem 0.75rem;
+}
+
+.messageRowOutgoing .bubble {
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface));
+}
+
+.bubblePending {
+  opacity: 0.7;
+}
+
+.badgeRow {
+  display: flex;
+  gap: 0.35rem;
+  margin-bottom: 0.25rem;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-active);
+  color: var(--color-text-subtle);
+  font-size: 0.68rem;
+}
+
+.messageTitle {
+  font-weight: 600;
+  font-size: 0.85rem;
+  margin-bottom: 0.15rem;
+}
+
+.messageContent {
+  font-size: 0.9rem;
+  color: var(--color-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.attachments {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-top: 0.35rem;
+}
+
+.attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--color-text-subtle);
+}
+
+.reaction {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--color-text-subtle);
+}
+
+.messageMeta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.3rem;
+  font-size: 0.7rem;
+  color: var(--color-text-faint);
+}
+
+.deliveryChip {
+  display: inline-flex;
+  align-items: center;
+}
+
+.deliveryChip[data-state='delivered'] {
+  color: var(--color-success);
+}
+
+.deliveryChip[data-state='failed'] {
+  color: var(--color-danger);
+}
+
+.composeBar {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid var(--color-surface-hover);
+}
+
+.composeInput {
+  flex: 1;
+  resize: none;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-surface-hover);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.sendButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius-md);
+  border: none;
+  background: var(--color-accent);
+  color: var(--color-bg);
+  cursor: pointer;
+}
+
+.sendButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
