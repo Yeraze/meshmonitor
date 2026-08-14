@@ -844,12 +844,34 @@ router.get('/telemetry', async (req: Request, res: Response) => {
 
     const sourceResults = await Promise.allSettled(
       sources.map(async (source) => {
+        // 'telemetry' is not a real permission resource (#4700) — gate on
+        // 'nodes:read' like the v1 telemetry route does.
         const canRead = isAdmin || (user
-          ? await databaseService.checkPermissionAsync(user.id, 'telemetry', 'read', source.id)
+          ? await databaseService.checkPermissionAsync(user.id, 'nodes', 'read', source.id)
           : false);
         if (!canRead) return [];
 
-        const nodes = await databaseService.nodes.getAllNodes(source.id);
+        // MeshCore nodes live in a separate table keyed by publicKey, not
+        // the Meshtastic `nodes` table's nodeId — enumerate from the right
+        // table per source type so MeshCore telemetry rows (also keyed by
+        // publicKey) actually get looked up (#4700).
+        const nodeList: Array<{
+          telemetryNodeId: string;
+          longName?: string | null;
+          shortName?: string | null;
+        }> =
+          source.type === 'meshcore'
+            ? (await databaseService.meshcore.getNodesBySource(source.id)).map((n) => ({
+                telemetryNodeId: n.publicKey,
+                longName: n.name,
+                shortName: null,
+              }))
+            : (await databaseService.nodes.getAllNodes(source.id)).map((n) => ({
+                telemetryNodeId: n.nodeId,
+                longName: n.longName,
+                shortName: n.shortName,
+              }));
+
         const entries: Array<Record<string, unknown>> = [];
 
         // Fan out per-node telemetry lookups in parallel rather than awaiting
@@ -857,13 +879,13 @@ router.get('/telemetry', async (req: Request, res: Response) => {
         // form was the dominant cost of /api/unified/telemetry — O(sources *
         // nodes) serial round trips through Drizzle.
         const perNodeLatest = await Promise.all(
-          nodes.map((node) =>
+          nodeList.map((node) =>
             databaseService.telemetry
-              .getLatestTelemetryByNode(node.nodeId, source.id)
+              .getLatestTelemetryByNode(node.telemetryNodeId, source.id)
               .then((latest) => ({ node, latest }))
               .catch((err) => {
                 logger.warn(
-                  `Failed to load telemetry for node ${node.nodeId} (source ${source.id}):`,
+                  `Failed to load telemetry for node ${node.telemetryNodeId} (source ${source.id}):`,
                   err
                 );
                 return { node, latest: [] as Array<{ timestamp: number }> };
