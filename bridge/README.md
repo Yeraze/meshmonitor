@@ -75,14 +75,17 @@ Whichever mode you start with, the env vars below are just the defaults used bef
 | `RNS_MODE` | `attach` | `attach` \| `tcp_peer` (may be overridden per-session by Node's `configure` message) |
 | `RNS_CONFIG_DIR` | *(none)* | Path to the RNS config dir (attach mode); also usable as the standalone instance's config dir in tcp_peer mode |
 | `RNS_TCP_PEERS` | *(none)* | Comma-separated `host:port,host:port` list; required when `RNS_MODE=tcp_peer` |
-| `PROTOCOL_VERSION` | `1` | Wire protocol version advertised in `welcome` |
+| `PROTOCOL_VERSION` | *(fixed, currently `4`)* | Wire protocol version advertised in `welcome`. This is `protocol.PROTOCOL_VERSION`, a fixed protocol constant bumped in lockstep with `src/server/reticulumProtocol.ts` (Phase 4 bumped it 3 -> 4 for probe/remote-status support) -- not a meaningful runtime override. `config.py` does parse a same-named env var into `BridgeConfig.protocol_version`, but nothing reads that field back out; the `configure` handshake always speaks whatever `protocol.py` defines, and a mismatch fails closed with `PROTOCOL_VERSION_MISMATCH` (see below). |
 | `BRIDGE_STATS_INTERVAL_S` | `5` | Interface-stats poll interval |
 | `BRIDGE_PATHS_INTERVAL_S` | `15` | Path-table poll interval |
+| `RNS_REMOTE_ALLOWED` | *(none)* | Comma-separated list of remote destination hashes this bridge is permitted to query via remote-management requests (the fleet allowlist, Phase 4 build spec Section 2.C / R5). **Read once at process startup from this env var, not from Node's `configure` message.** Node forwards a per-source `remoteAllowed` list on `configure` as forward-compatible wire plumbing (`src/server/reticulumConfig.ts`), but `rns_manager.py` does not currently consume it -- the allowlist enforced at runtime is always the one this env var set when the bridge process started. Restart the bridge (or redeploy with a new value) to change it; editing the source's config in the UI alone has no effect on the allowlist until then. |
+| `RNS_REMOTE_STATUS_INTERVAL_S` | *(bridge default)* | Optional interval for bridge-internal remote-status housekeeping (Phase 4 build spec Section 2.C); remote `/status` queries themselves are on-demand, not polled (see R2). |
 | `BRIDGE_LOG_LEVEL` | `info` | Python `logging` level name |
 
 Mode/config-dir/peers can also be set (or overridden) per-connection by Node's `configure`
 message -- see the wire protocol section of the build spec. Env vars are the fallback used when
-running/testing the bridge standalone.
+running/testing the bridge standalone. `RNS_REMOTE_ALLOWED` is the one config value in this
+table that is the *exception* to that rule right now -- see its row above.
 
 ## Troubleshooting `rpc_key` / `RPC_AUTH_FAILED`
 

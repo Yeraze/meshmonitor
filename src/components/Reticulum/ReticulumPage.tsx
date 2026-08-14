@@ -156,7 +156,7 @@ export const ReticulumPage: React.FC<ReticulumPageProps> = ({ baseUrl, sourceId,
             />
           )}
           {view === 'map' && (
-            <ReticulumMap destinations={destinations} loading={loading} />
+            <ReticulumMap destinations={destinations} paths={paths} loading={loading} />
           )}
           {view === 'configuration' && (
             <ReticulumConfigurationView sourceId={sourceId} />

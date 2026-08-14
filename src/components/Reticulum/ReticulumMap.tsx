@@ -1,12 +1,19 @@
 /**
- * ReticulumMap — peer positions shared via Sideband telemetry (#3960 Phase 3).
+ * ReticulumMap — peer positions shared via Sideband telemetry (#3960 Phase 3),
+ * plus an optional path-graph overlay (#3960 Phase 4 WP5).
  *
- * Deliberately lean vs `MeshCoreMap`: Reticulum has no neighbor-link graph,
- * no hop-count star, and no promiscuous position history — a peer only appears
- * here when it shares Sideband `SID_LOCATION` telemetry with our identity
- * (design §7). So this composes the shared `BaseMap` + `NodeMarkersLayer`
- * with a self-contained popup (no NodeCard model coupling), null-island
- * filtered, and shows an explicit empty state when no peer is sharing.
+ * Deliberately lean vs `MeshCoreMap`: Reticulum has no hop-count star and no
+ * promiscuous position history — a peer only appears here when it shares
+ * Sideband `SID_LOCATION` telemetry with our identity (design §7). So this
+ * composes the shared `BaseMap` + `NodeMarkersLayer` with a self-contained
+ * popup (no NodeCard model coupling), null-island filtered, and shows an
+ * explicit empty state when no peer is sharing.
+ *
+ * The optional `paths` prop draws destination -> via/next-hop edges from the
+ * path table (`ReticulumPathRow`) by reusing the shared `NeighborLinksLayer`
+ * — an edge is drawn ONLY when both endpoints resolve to a positioned
+ * destination in the current `destinations` set; rows with a null `viaHash`
+ * (destination IS the next hop / zero-hop) never draw an edge.
  */
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -16,10 +23,11 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { BaseMap } from '../map/BaseMap';
 import { MapLoadingOverlay } from '../map/MapLoadingOverlay';
 import { NodeMarkersLayer, type NodeMarkerDescriptor } from '../map/layers/NodeMarkersLayer';
+import { NeighborLinksLayer, type NeighborLinkDescriptor } from '../map/layers/NeighborLinksLayer';
 import { createNodeIcon } from '../map/markerIcons';
 import { shouldDiscardPosition } from '../../utils/nullIsland';
 import { getDiscardInvalidPositions } from '../../utils/positionDisplayConfig';
-import type { ReticulumDestinationRow } from '../../types/reticulum';
+import type { ReticulumDestinationRow, ReticulumPathRow } from '../../types/reticulum';
 import styles from './ReticulumMap.module.css';
 
 const RETICULUM_COLOR = '#94e2d5';
@@ -29,6 +37,14 @@ const DEFAULT_ZOOM = 2;
 interface ReticulumMapProps {
   /** Announced destinations; those carrying a shared Sideband position render. */
   destinations: ReticulumDestinationRow[];
+  /**
+   * Path-table rows (#3960 Phase 4 WP5). When provided, an edge is drawn
+   * from a path's destination to its via/next-hop, but ONLY when both ends
+   * resolve to a positioned destination in `destinations` (design §7: dest
+   * -> next-hop when both have positions). Rows with a null `viaHash`
+   * (destination IS the next hop / zero-hop) never draw an edge.
+   */
+  paths?: ReticulumPathRow[];
   loading?: boolean;
   resizeTrigger?: unknown;
 }
@@ -37,7 +53,7 @@ function shortHash(hash: string): string {
   return hash.length > 12 ? `${hash.slice(0, 8)}…${hash.slice(-4)}` : hash;
 }
 
-export const ReticulumMap: React.FC<ReticulumMapProps> = ({ destinations, loading = false, resizeTrigger }) => {
+export const ReticulumMap: React.FC<ReticulumMapProps> = ({ destinations, paths, loading = false, resizeTrigger }) => {
   const { t } = useTranslation();
   const { mapTileset, customTilesets, setMapTileset, activeStyleJson } = useSettings();
 
@@ -89,6 +105,31 @@ export const ReticulumMap: React.FC<ReticulumMapProps> = ({ destinations, loadin
     [positioned, t],
   );
 
+  const positionByHash = useMemo(() => {
+    const map = new Map<string, [number, number]>();
+    for (const d of positioned) {
+      map.set(d.destinationHash, [d.latitude as number, d.longitude as number]);
+    }
+    return map;
+  }, [positioned]);
+
+  const pathLinks: NeighborLinkDescriptor[] = useMemo(() => {
+    if (!paths || paths.length === 0) return [];
+    const links: NeighborLinkDescriptor[] = [];
+    for (const p of paths) {
+      if (!p.viaHash) continue; // zero-hop / directly reachable — no edge to draw
+      const destPos = positionByHash.get(p.destinationHash);
+      const viaPos = positionByHash.get(p.viaHash);
+      if (!destPos || !viaPos) continue; // both endpoints must be positioned
+      links.push({
+        key: `${p.destinationHash}-${p.viaHash}`,
+        positions: [destPos, viaPos],
+        pathOptions: { color: RETICULUM_COLOR, weight: 2, opacity: 0.55, dashArray: '4 4' },
+      });
+    }
+    return links;
+  }, [paths, positionByHash]);
+
   const { center, zoom } = useMemo(() => {
     if (positioned.length > 0) {
       const d = positioned[0];
@@ -110,6 +151,7 @@ export const ReticulumMap: React.FC<ReticulumMapProps> = ({ destinations, loadin
         resizeTrigger={resizeTrigger}
       >
         <NodeMarkersLayer markers={markers} />
+        {pathLinks.length > 0 && <NeighborLinksLayer links={pathLinks} />}
       </BaseMap>
 
       {loading && <MapLoadingOverlay />}
