@@ -161,7 +161,7 @@ export async function resolveBroadcastChannel(
     .filter(
       (ch) =>
         isValidChannelIndex(ch.id) &&
-        ch.role !== 0 &&
+        ch.role !== 0 && // undefined role (no row/older data) is treated as enabled, not DISABLED
         isMeshReadablePsk(ch.psk) &&
         isWellKnownChannelName(ch.name),
     )
