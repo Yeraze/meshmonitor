@@ -3937,7 +3937,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                 <span
                   className="setting-description"
                   role="alert"
-                  style={{ color: 'var(--color-warning, #d97706)' }}
+                  style={{ color: 'var(--color-warning)' }}
                 >
                   {t(
                     'admin_commands.position_precision_public_clamp_warning',
