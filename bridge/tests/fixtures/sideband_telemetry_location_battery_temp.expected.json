@@ -1,0 +1,24 @@
+{
+  "ts": 1755123456,
+  "location": {
+    "lat": 37.7749,
+    "lon": -122.4194,
+    "altitude": 15.5,
+    "speed": 1.2,
+    "bearing": 270.0,
+    "accuracy": 8.5
+  },
+  "sensors": {
+    "rns_battery": {
+      "value": 82.5,
+      "unit": "%"
+    },
+    "rns_temperature": {
+      "value": 24.3,
+      "unit": "c"
+    }
+  },
+  "unknownSids": [
+    10
+  ]
+}

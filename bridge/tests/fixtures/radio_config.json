@@ -1,0 +1,14 @@
+{
+  "bandwidth": 125000,
+  "codingRate": 5,
+  "frequency": 914875000,
+  "id": "c10",
+  "ltAlock": null,
+  "radioState": true,
+  "spreadingFactor": 8,
+  "stAlock": 33.3,
+  "ts": 1755000000000,
+  "txPower": 17,
+  "type": "radio_config",
+  "v": 3
+}

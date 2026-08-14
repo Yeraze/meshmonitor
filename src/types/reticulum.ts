@@ -59,6 +59,19 @@ export interface ReticulumDestinationRow {
   isFavorite: boolean;
   createdAt: number;
   updatedAt: number;
+  /**
+   * Latest Sideband `SID_LOCATION` sample (Phase 3, migration 144).
+   * Peer-shared per-source; LATEST-ONLY overwrite (no history). Null when
+   * this destination has never shared a position.
+   */
+  latitude: number | null;
+  longitude: number | null;
+  altitude: number | null;
+  speed: number | null;
+  bearing: number | null;
+  accuracy: number | null;
+  /** ms epoch of the latest position sample; null when never observed. */
+  positionUpdatedAt: number | null;
 }
 
 /**
@@ -67,6 +80,8 @@ export interface ReticulumDestinationRow {
  * R1 (interface gauges DESCOPE, Phase 1b build spec §0): deliberately
  * excludes Phase-3-only fields like airtime/channel-load/noise-floor/battery
  * — those don't exist on `reticulum_interfaces` yet.
+ * Phase 3 (migration 145) adds the own-mode radio-config + device-info
+ * columns below — null for attach/tcp_peer sources, which never write them.
  */
 export interface ReticulumInterfaceRow {
   id?: number;
@@ -83,10 +98,21 @@ export interface ReticulumInterfaceRow {
   lastSeenAt: number;
   createdAt: number;
   updatedAt: number;
+  /** Own-mode RNode radio config (Phase 3, migration 145). Null for attach/tcp_peer. */
+  frequency: number | null;
+  bandwidth: number | null;
+  spreadingFactor: number | null;
+  codingRate: number | null;
+  txPower: number | null;
+  stAlock: number | null;
+  ltAlock: number | null;
+  radioState: boolean | null;
+  /** Loose JSON text — read-only RNode board/firmware info (R2). */
+  deviceInfoJson: string | null;
 }
 
-/** Sub-toolbar view identifiers for `ReticulumPage`/`ReticulumSubToolbar` (WP2; 'dms' added Phase 2 WP5). */
-export type ReticulumView = 'destinations' | 'interfaces' | 'dms' | 'info' | 'settings';
+/** Sub-toolbar view identifiers for `ReticulumPage`/`ReticulumSubToolbar` (WP2; 'dms' added Phase 2 WP5; 'map'/'configuration' added Phase 3). */
+export type ReticulumView = 'destinations' | 'interfaces' | 'map' | 'dms' | 'info' | 'configuration' | 'settings';
 
 /**
  * LXMF message lifecycle state (Reticulum epic #3960, Phase 2 WP2/WP3).

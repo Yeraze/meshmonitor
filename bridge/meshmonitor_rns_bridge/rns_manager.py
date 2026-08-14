@@ -29,6 +29,8 @@ import LXMF
 import RNS
 
 from . import protocol
+from .rnode_kiss import RADIO_STATE_OFF, RADIO_STATE_ON
+from .sideband_telemetry import decode_field_telemetry
 
 logger = logging.getLogger("meshmonitor_rns_bridge.rns_manager")
 
@@ -232,6 +234,67 @@ class RNSStartupError(Exception):
         self.message = message
 
 
+class OwnModeRequiredError(Exception):
+    """Raised by get_radio_config()/set_radio_config()/get_device_info() when
+    this source isn't running in `own` mode (attach/tcp_peer have no local
+    RNodeInterface to read or configure). ws_server.py catches this
+    specifically and returns the typed OWN_MODE_REQUIRED error, distinct
+    from the generic exception-wrapped RNODE_COMMAND_FAILED it uses for
+    every other failure in this command family -- build spec §2.B: "return
+    a typed own-mode-required error, never crash"."""
+
+
+def _build_rnode_ifconf(device: str, params: dict) -> dict:
+    """Pure builder (Phase 3, #3960 WP1) for the ConfigObj dict
+    `RNS.Interfaces.RNodeInterface.RNodeInterface.__init__` expects.
+    Verified against the installed rns==1.4.2 source: every value it reads
+    off the config object goes through `int(c["key"])` / `float(c["key"])`
+    (or is a bare string for "port"/"name"), so every value here must be a
+    string -- ConfigObj itself doesn't coerce types.
+
+    `params` keys are the internal wire-agnostic names shared by
+    `config.py`'s `own_radio_params()` and `ws_server.py`'s
+    `_parse_own_params()` (frequency, bandwidth, sf, cr, txpower,
+    st_alock, lt_alock); any subset may be omitted, matching
+    RNodeInterface's own defaults for a missing key (0 for
+    frequency/bandwidth/txpower/sf/cr, unset -- None -- for the two
+    airtime locks)."""
+    conf: dict = {"name": "own_rnode", "port": device}
+    if params.get("frequency") is not None:
+        conf["frequency"] = str(int(params["frequency"]))
+    if params.get("bandwidth") is not None:
+        conf["bandwidth"] = str(int(params["bandwidth"]))
+    if params.get("txpower") is not None:
+        conf["txpower"] = str(int(params["txpower"]))
+    if params.get("sf") is not None:
+        conf["spreadingfactor"] = str(int(params["sf"]))
+    if params.get("cr") is not None:
+        conf["codingrate"] = str(int(params["cr"]))
+    if params.get("st_alock") is not None:
+        conf["airtime_limit_short"] = str(float(params["st_alock"]))
+    if params.get("lt_alock") is not None:
+        conf["airtime_limit_long"] = str(float(params["lt_alock"]))
+    return conf
+
+
+# Radio-config wire field name -> (RNodeInterface attribute, RNodeInterface
+# setter method name). Used by both get_radio_config() (read the attribute)
+# and set_radio_config() (write the attribute, then call the setter to push
+# it to the device over KISS -- exactly what RNS's own configure_device()
+# does at interface startup). radioState is handled separately below since
+# its setter (setRadioState) takes an explicit argument rather than reading
+# back off an attribute the way the others do.
+_RADIO_CONFIG_SETTERS = {
+    "frequency": ("frequency", "setFrequency"),
+    "bandwidth": ("bandwidth", "setBandwidth"),
+    "spreadingFactor": ("sf", "setSpreadingFactor"),
+    "codingRate": ("cr", "setCodingRate"),
+    "txPower": ("txpower", "setTXPower"),
+    "stAlock": ("st_alock", "setSTALock"),
+    "ltAlock": ("lt_alock", "setLTALock"),
+}
+
+
 def _hexlify(value: Any) -> Optional[str]:
     if value is None:
         return None
@@ -378,6 +441,11 @@ class RNSManager:
         self.lxmf_router: Optional["LXMF.LXMRouter"] = None
         self.lxmf_identity: Optional[RNS.Identity] = None
         self.delivery_destination: Optional[RNS.Destination] = None
+        # Phase 3 (own mode, #3960 WP1): the RNodeInterface instance
+        # constructed by _start_own(), None in attach/tcp_peer mode (or
+        # before start() has run). get_radio_config()/set_radio_config()/
+        # get_device_info() all read/write through this.
+        self._rnode_interface: Optional[Any] = None
         # Effective RNS-level settings for the current (or most recent) start(),
         # which may have been overridden by a Node `configure` message rather than
         # coming from process env (build spec §4.4: configure carries mode/configDir/
@@ -385,6 +453,22 @@ class RNSManager:
         self._effective_mode = cfg.mode
         self._effective_configdir = cfg.rns_config_dir
         self._effective_peers = cfg.tcp_peers
+        # Phase 3: same override-from-configure pattern as the three fields
+        # above, for own mode's device path + initial radio params.
+        self._effective_own_device = cfg.own_device
+        self._effective_own_params = {
+            k: v
+            for k, v in {
+                "frequency": cfg.own_frequency,
+                "bandwidth": cfg.own_bandwidth,
+                "sf": cfg.own_sf,
+                "cr": cfg.own_cr,
+                "txpower": cfg.own_txpower,
+                "st_alock": cfg.own_st_alock,
+                "lt_alock": cfg.own_lt_alock,
+            }.items()
+            if v is not None
+        }
         # RNS.Reticulum() registers SIGINT/SIGTERM handlers in its constructor, which
         # Python only permits from the main thread of the main interpreter -- calling
         # it from a WS connection-handler thread raises "signal only works in main
@@ -425,14 +509,17 @@ class RNSManager:
         mode: Optional[str] = None,
         rns_config_dir: Optional[str] = None,
         tcp_peers: Optional[Iterable] = None,
+        own_device: Optional[str] = None,
+        own_params: Optional[dict] = None,
     ) -> None:
         """Idempotent: a second call while already started is a no-op. Raises
         RNSStartupError on failure; `.code` is one of protocol.STARTUP_FAILURE_CODES.
 
-        `mode`/`rns_config_dir`/`tcp_peers` override the env-derived BridgeConfig
-        defaults when provided -- this is how a Node `configure` message (build spec
-        §4.4) takes effect; env vars (config.py) are only the fallback for standalone
-        bridge testing/ops.
+        `mode`/`rns_config_dir`/`tcp_peers`/`own_device`/`own_params` override the
+        env-derived BridgeConfig defaults when provided -- this is how a Node
+        `configure` message (build spec §4.4, extended for own mode in §2.C) takes
+        effect; env vars (config.py) are only the fallback for standalone bridge
+        testing/ops.
 
         CALLER'S RESPONSIBILITY: this must run on the process's main thread (see the
         constructor docstring/comment). Direct callers (tests, single-threaded
@@ -447,11 +534,19 @@ class RNSManager:
                 rns_config_dir if rns_config_dir is not None else self.cfg.rns_config_dir
             )
             self._effective_peers = tuple(tcp_peers) if tcp_peers is not None else self.cfg.tcp_peers
+            if own_device is not None:
+                self._effective_own_device = own_device
+            if own_params is not None:
+                self._effective_own_params = dict(own_params)
 
             if self._effective_mode == "attach":
                 self._start_attach(self._effective_configdir)
-            else:
+            elif self._effective_mode == "tcp_peer":
                 self._start_tcp_peer(self._effective_configdir, self._effective_peers)
+            else:
+                self._start_own(
+                    self._effective_configdir, self._effective_own_device, self._effective_own_params
+                )
             RNS.Transport.register_announce_handler(_AnnounceHandler(self))
             self._start_lxmf()
             self._started = True
@@ -461,6 +556,8 @@ class RNSManager:
         mode: Optional[str] = None,
         rns_config_dir: Optional[str] = None,
         tcp_peers: Optional[Iterable] = None,
+        own_device: Optional[str] = None,
+        own_params: Optional[dict] = None,
     ) -> None:
         """Thread-safe entry point for callers that are NOT the main thread (e.g. a WS
         connection-handler thread, which is what actually calls this in practice).
@@ -470,7 +567,7 @@ class RNSManager:
         if self._started:
             return
         response_q: "queue.Queue" = queue.Queue(maxsize=1)
-        self._start_requests.put((mode, rns_config_dir, tcp_peers, response_q))
+        self._start_requests.put((mode, rns_config_dir, tcp_peers, own_device, own_params, response_q))
         result = response_q.get()
         if isinstance(result, Exception):
             raise result
@@ -483,11 +580,13 @@ class RNSManager:
         thread."""
         while not stop_event.is_set():
             try:
-                mode, rns_config_dir, tcp_peers, response_q = self._start_requests.get(timeout=0.2)
+                mode, rns_config_dir, tcp_peers, own_device, own_params, response_q = self._start_requests.get(
+                    timeout=0.2
+                )
             except queue.Empty:
                 continue
             try:
-                self.start(mode, rns_config_dir, tcp_peers)
+                self.start(mode, rns_config_dir, tcp_peers, own_device, own_params)
                 response_q.put(None)
             except RNSStartupError as e:
                 response_q.put(e)
@@ -592,6 +691,69 @@ class RNSManager:
 
         self.reticulum = reticulum
 
+    def _start_own(
+        self, configdir: Optional[str], device: Optional[str], radio_params: Optional[dict]
+    ) -> None:
+        """own mode (Phase 3 WP1, build spec §2.B/§3.3 "own" row, #3960): the
+        bridge owns the RNode radio directly via
+        RNS.Interfaces.RNodeInterface on `device` (e.g. /dev/ttyUSB0),
+        rather than attaching to someone else's rnsd (attach) or a remote
+        TCPServerInterface (tcp_peer).
+
+        RNodeInterface.__init__ does NOT raise on a bad/missing serial
+        port -- verified against the installed rns==1.4.2 source: it logs,
+        spawns a background reconnect thread, and leaves `.online == False`.
+        So both failure modes -- device path missing entirely, and device
+        path present but the open failed for some other reason (wrong
+        permissions, not a serial device, unplugged) -- are caught by an
+        explicit precheck / post-construction `.online` check, mirroring
+        WP0 correction #1's configdir precheck in _start_attach() above.
+
+        Anti-grind guard (#3960 Phase 3 R1): validated in CI ONLY against a
+        mocked RNodeInterface (test_rns_manager.py) -- no physical device,
+        no live serial open, ever.
+        """
+        if not device:
+            raise RNSStartupError(protocol.RNODE_DEVICE_UNAVAILABLE, "own mode requires a device path")
+        if not os.path.exists(device):
+            raise RNSStartupError(
+                protocol.RNODE_DEVICE_UNAVAILABLE, f"RNode device {device!r} does not exist"
+            )
+
+        try:
+            reticulum = RNS.Reticulum(configdir=configdir)
+        except Exception as e:
+            raise RNSStartupError(protocol.RNS_INIT_FAILED, str(e)) from e
+
+        try:
+            import RNS.Interfaces.RNodeInterface as RNodeInterfaceModule
+            from RNS.vendor.configobj import ConfigObj
+        except Exception as e:
+            # Guarded import (build spec §2.B "guard imports so a missing device
+            # fails cleanly"): RNodeInterface's own module-level import of
+            # `serial` (pyserial) calls RNS.panic() -- effectively os._exit() --
+            # rather than raising, if pyserial isn't installed. That can't be
+            # caught here, by design of the upstream code; this try/except only
+            # covers the (more survivable) case of the submodule import itself
+            # failing for some other reason.
+            raise RNSStartupError(protocol.RNODE_DEVICE_UNAVAILABLE, str(e)) from e
+
+        ifconf = ConfigObj(_build_rnode_ifconf(device, radio_params or {}))
+
+        try:
+            interface = RNodeInterfaceModule.RNodeInterface(RNS.Transport, ifconf)
+        except Exception as e:
+            raise RNSStartupError(protocol.RNODE_DEVICE_UNAVAILABLE, str(e)) from e
+
+        reticulum._add_interface(interface)
+        if not getattr(interface, "online", False):
+            raise RNSStartupError(
+                protocol.RNODE_DEVICE_UNAVAILABLE, f"RNode device {device!r} did not come online"
+            )
+
+        self._rnode_interface = interface
+        self.reticulum = reticulum
+
     # -- LXMF (Phase 2 messaging, build spec §3.2) -----------------------------
 
     def _start_lxmf(self) -> None:
@@ -631,15 +793,38 @@ class RNSManager:
         addressed to this source's delivery destination. Broadcasts a
         `lxmf_message` event; never raises back into LXMRouter (matches the
         _AnnounceHandler pattern -- an exception here must not take down the
-        router's calling thread)."""
+        router's calling thread).
+
+        Phase 3 WP2 (#3960, build spec §2.A): `LXMF.FIELD_TELEMETRY` is
+        intercepted HERE, off the raw `get_fields()` dict, BEFORE it reaches
+        `_sanitize_lxmf_fields()` -- that generic path hex-collapses any
+        `bytes` field over `_MAX_INLINE_BYTES` (32) to a length-only
+        placeholder (`{"bytesLength": N}`), and a real Sideband
+        FIELD_TELEMETRY blob is comfortably over that (the WP0 fixture alone
+        is 75 bytes), so relying on the generic path would produce nothing
+        useful. A telemetry-only delivery (no title/content) emits ONLY the
+        `telemetry` event -- no `lxmf_message` event, so Node never creates a
+        chat row for it (R3). A delivery carrying both text and telemetry
+        emits BOTH events."""
         try:
+            raw_fields = message.get_fields() or {}
+            telemetry_raw = raw_fields.get(LXMF.FIELD_TELEMETRY)
+            if telemetry_raw is not None:
+                self._emit_telemetry_event(message, telemetry_raw)
+
+            title = message.title_as_string() if message.title else None
+            content = message.content_as_string() if message.content else None
+            telemetry_only = telemetry_raw is not None and not title and not content
+            if telemetry_only:
+                return
+
             event = protocol.lxmf_message_event(
                 hash=_hexlify(message.hash),
                 from_hash=_hexlify(message.source_hash),
                 to_hash=_hexlify(message.destination_hash),
-                title=message.title_as_string() if message.title else None,
-                content=message.content_as_string() if message.content else None,
-                fields=_sanitize_lxmf_fields(message.get_fields()),
+                title=title,
+                content=content,
+                fields=_sanitize_lxmf_fields(raw_fields),
                 method=_lxmf_method_to_wire(message.method),
                 signature_validated=bool(message.signature_validated),
                 ratcheted=message.ratchet_id is not None,
@@ -650,6 +835,31 @@ class RNSManager:
             self.broadcast(event)
         except Exception:
             logger.exception("error handling inbound LXMF delivery")
+
+    def _emit_telemetry_event(self, message: "LXMF.LXMessage", telemetry_raw: Any) -> None:
+        """Decode+broadcast one LXM's `FIELD_TELEMETRY` payload as a
+        `telemetry` event (build spec §2.A/§2.C). Isolated in its own
+        try/except so a decode failure can never suppress the sibling
+        `lxmf_message` event for a text+telemetry delivery -- worst case,
+        this emits nothing and `_on_lxmf_delivery` carries on."""
+        try:
+            if not isinstance(telemetry_raw, (bytes, bytearray)):
+                logger.warning(
+                    "FIELD_TELEMETRY value is not bytes (%s); skipping decode",
+                    type(telemetry_raw).__name__,
+                )
+                return
+            decoded = decode_field_telemetry(bytes(telemetry_raw))
+            event = protocol.telemetry_event(
+                source_hash=_hexlify(message.source_hash),
+                destination_hash=_hexlify(message.destination_hash),
+                sensors=decoded["sensors"],
+                location=decoded["location"],
+                ts=decoded["ts"],
+            )
+            self.broadcast(event)
+        except Exception:
+            logger.exception("error decoding/broadcasting FIELD_TELEMETRY")
 
     # -- LXMF outbound (build spec §3.5) ---------------------------------------
 
@@ -803,6 +1013,85 @@ class RNSManager:
         except OSError:
             pass
         self.lxmf_identity = identity
+
+    # -- own mode: radio config / device info (Phase 3 WP1, build spec §2.B/§2.C) --
+
+    def _require_rnode(self) -> Any:
+        """Raises OwnModeRequiredError unless this source is running in
+        `own` mode with a live RNodeInterface -- shared guard for all three
+        radio-config/device-info methods below."""
+        if self._effective_mode != "own" or self._rnode_interface is None:
+            raise OwnModeRequiredError("this source is not running in own mode (no RNode interface)")
+        return self._rnode_interface
+
+    def get_radio_config(self) -> dict:
+        """Reads the CURRENTLY CONFIGURED (not necessarily device-confirmed)
+        radio params straight off the RNodeInterface's own attributes --
+        the same attributes RNS itself sets at construction time and
+        mutates via setFrequency()/setBandwidth()/etc. Wire field names
+        match build spec §2.C exactly."""
+        interface = self._require_rnode()
+        state = getattr(interface, "state", None)
+        return {
+            "frequency": getattr(interface, "frequency", None),
+            "bandwidth": getattr(interface, "bandwidth", None),
+            "spreadingFactor": getattr(interface, "sf", None),
+            "codingRate": getattr(interface, "cr", None),
+            "txPower": getattr(interface, "txpower", None),
+            "stAlock": getattr(interface, "st_alock", None),
+            "ltAlock": getattr(interface, "lt_alock", None),
+            "radioState": bool(state) if state is not None else None,
+        }
+
+    def set_radio_config(self, params: dict) -> dict:
+        """Applies a partial radio-config write (build spec §2.C: "partial
+        allowed") -- only the wire keys present in `params` are touched,
+        others are left as-is. Each field is applied by setting the
+        matching RNodeInterface attribute and then calling ITS OWN setter
+        method (e.g. `interface.frequency = value; interface.setFrequency()`)
+        -- reuses RNS's real KISS-frame-writing code (the same path its own
+        configure_device() uses at startup) rather than reimplementing wire
+        writes here. Returns the post-write config via get_radio_config()."""
+        interface = self._require_rnode()
+        for wire_key, (attr, setter_name) in _RADIO_CONFIG_SETTERS.items():
+            if wire_key in params and params[wire_key] is not None:
+                setattr(interface, attr, params[wire_key])
+                getattr(interface, setter_name)()
+        if "radioState" in params and params["radioState"] is not None:
+            interface.setRadioState(RADIO_STATE_ON if params["radioState"] else RADIO_STATE_OFF)
+        return self.get_radio_config()
+
+    def get_device_info(self) -> dict:
+        """Reads DEVICE-REPORTED info (firmware version, MCU/platform,
+        chip temperature, CSMA + PHY params) off the RNodeInterface's `r_*`
+        attributes -- populated asynchronously by RNS's own readLoop() as
+        the device sends its periodic STAT frames, so any of these may
+        still be None shortly after `own` mode starts (before the first
+        report has arrived). Shape matches build spec §2.C: firmwareVersion,
+        mcu, platform, chipTemp, csma{}, phy{}."""
+        interface = self._require_rnode()
+        maj = getattr(interface, "maj_version", None)
+        min_ = getattr(interface, "min_version", None)
+        firmware_version = f"{maj}.{min_}" if maj is not None and min_ is not None else None
+        return {
+            "firmwareVersion": firmware_version,
+            "mcu": getattr(interface, "mcu", None),
+            "platform": getattr(interface, "platform", None),
+            "chipTemp": getattr(interface, "cpu_temp", None),
+            "csma": {
+                "cwBand": getattr(interface, "r_csma_cw_band", None),
+                "cwMin": getattr(interface, "r_csma_cw_min", None),
+                "cwMax": getattr(interface, "r_csma_cw_max", None),
+            },
+            "phy": {
+                "symbolTimeMs": getattr(interface, "r_symbol_time_ms", None),
+                "symbolRate": getattr(interface, "r_symbol_rate", None),
+                "preambleSymbols": getattr(interface, "r_preamble_symbols", None),
+                "preambleTimeMs": getattr(interface, "r_premable_time_ms", None),
+                "csmaSlotTimeMs": getattr(interface, "r_csma_slot_time_ms", None),
+                "csmaDifsMs": getattr(interface, "r_csma_difs_ms", None),
+            },
+        }
 
     # -- announce enrichment --------------------------------------------------
 

@@ -19,9 +19,18 @@
  * event/command types below. Types in this file for the LXMF messages are
  * WP1 wire-contract stubs only (mirroring `protocol.py`'s builders) — WP3
  * adds the actual `reticulumBridgeClient.ts` consumer methods/dispatch.
+ *
+ * Bumped 2->3 for Phase 3 WP1 (own mode + RNode radio config/device info,
+ * docs/internal/dev-notes/RETICULUM_PHASE3_BUILD_SPEC.md §2.B/§2.C,
+ * #3960): adds the `'own'` `ReticulumMode` plus the
+ * get_radio_config/radio_config, set_radio_config, and
+ * get_device_info/device_info command-response pairs. Same fail-closed
+ * rationale as the 1->2 bump above. Types here are WP1 wire-contract
+ * stubs only (mirroring `protocol.py`'s new builders) — WP4 adds the
+ * actual `reticulumBridgeClient.ts` consumer methods/dispatch.
  */
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 // --------------------------------------------------------------------------
 // Message types
@@ -41,6 +50,12 @@ export const MESSAGE_TYPE = {
   // Phase 2 (LXMF messaging, build spec §3.1) -- events (bridge -> Node).
   LXMF_MESSAGE: 'lxmf_message',
   DELIVERY_STATE: 'delivery_state',
+  // Phase 3 (Sideband FIELD_TELEMETRY decode, build spec §2.A/§2.C, #3960
+  // WP2/WP4) -- event (bridge -> Node). A DEDICATED event type (R3) so
+  // telemetry-only Sideband packets never create a chat row on the Node
+  // side (see reticulumManager.ts's handleTelemetry, which never touches
+  // reticulum_messages).
+  TELEMETRY: 'telemetry',
   // Phase 2 -- commands (Node -> bridge).
   SEND_LXMF: 'send_lxmf',
   ANNOUNCE_SELF: 'announce_self',
@@ -49,6 +64,15 @@ export const MESSAGE_TYPE = {
   SET_PROPAGATION_NODE: 'set_propagation_node',
   GET_IDENTITY: 'get_identity',
   IMPORT_IDENTITY: 'import_identity',
+  // Phase 3 (own mode + RNode radio config/device info, build spec §2.C) --
+  // commands (Node -> bridge) and their responses (bridge -> Node). Only
+  // meaningful when the source's mode is 'own'; attach/tcp_peer reject
+  // these with OWN_MODE_REQUIRED.
+  GET_RADIO_CONFIG: 'get_radio_config',
+  RADIO_CONFIG: 'radio_config',
+  SET_RADIO_CONFIG: 'set_radio_config',
+  GET_DEVICE_INFO: 'get_device_info',
+  DEVICE_INFO: 'device_info',
 } as const;
 
 export type MessageType = (typeof MESSAGE_TYPE)[keyof typeof MESSAGE_TYPE];
@@ -79,6 +103,28 @@ export const FAILURE_CODE = {
    * protocol.py's `LXMF_COMMAND_FAILED`.
    */
   LXMF_COMMAND_FAILED: 'LXMF_COMMAND_FAILED',
+  /**
+   * Phase 3 (own mode, build spec §2.B): get_radio_config/set_radio_config/
+   * get_device_info sent to a source that isn't running in `'own'` mode
+   * (no local RNodeInterface to read/configure) — a TYPED error, distinct
+   * from the generic exception-wrapped `RNODE_COMMAND_FAILED` below, so
+   * the frontend can tell "wrong mode" apart from "the radio call itself
+   * failed" — mirrors protocol.py's `OWN_MODE_REQUIRED`.
+   */
+  OWN_MODE_REQUIRED: 'OWN_MODE_REQUIRED',
+  /**
+   * Phase 3: own mode's RNode device path is missing, unreadable, or the
+   * RNodeInterface failed to come online — can originate from RNS
+   * instance startup (rns_manager.py's `_start_own()`), same as the other
+   * `STARTUP_FAILURE_CODES` below.
+   */
+  RNODE_DEVICE_UNAVAILABLE: 'RNODE_DEVICE_UNAVAILABLE',
+  /**
+   * Phase 3: generic exception-wrapped failure for get_radio_config/
+   * set_radio_config/get_device_info once own-mode-required has already
+   * been ruled out — mirrors protocol.py's `RNODE_COMMAND_FAILED`.
+   */
+  RNODE_COMMAND_FAILED: 'RNODE_COMMAND_FAILED',
 } as const;
 
 export type FailureCode = (typeof FAILURE_CODE)[keyof typeof FAILURE_CODE];
@@ -92,6 +138,7 @@ export const STARTUP_FAILURE_CODES: ReadonlySet<FailureCode> = new Set([
   FAILURE_CODE.RPC_AUTH_FAILED,
   FAILURE_CODE.TCP_PEER_UNREACHABLE,
   FAILURE_CODE.RNS_INIT_FAILED,
+  FAILURE_CODE.RNODE_DEVICE_UNAVAILABLE,
 ]);
 
 export function isFailureCode(value: unknown): value is FailureCode {
@@ -158,7 +205,13 @@ export interface TcpPeerConfig {
   port: number;
 }
 
-export type ReticulumMode = 'attach' | 'tcp_peer';
+/**
+ * `'own'` added in Phase 3 WP1 (build spec §2.B, #3960): the bridge owns
+ * the RNode radio directly via a local RNodeInterface, rather than
+ * attaching to someone else's rnsd (`'attach'`) or a remote
+ * TCPServerInterface (`'tcp_peer'`).
+ */
+export type ReticulumMode = 'attach' | 'tcp_peer' | 'own';
 
 export interface ConfigureMessage extends Envelope {
   type: typeof MESSAGE_TYPE.CONFIGURE;
@@ -166,6 +219,21 @@ export interface ConfigureMessage extends Envelope {
   mode: ReticulumMode;
   configDir?: string;
   peers?: TcpPeerConfig[];
+  /**
+   * Phase 3 own-mode fields (build spec §2.C: "device path + initial
+   * params"). `device` is the RNode's serial path (e.g. `/dev/ttyUSB0`);
+   * the radio-param fields below are the INITIAL values applied at
+   * interface construction — all optional, only meaningful when
+   * `mode === 'own'`. WP4 wires the actual config-form consumer.
+   */
+  device?: string;
+  frequency?: number;
+  bandwidth?: number;
+  spreadingFactor?: number;
+  codingRate?: number;
+  txPower?: number;
+  stAlock?: number;
+  ltAlock?: number;
 }
 
 export interface GetStatusMessage extends Envelope {
@@ -249,6 +317,44 @@ export type LxmfCommandMessage =
   | SetPropagationNodeMessage
   | GetIdentityMessage
   | ImportIdentityMessage;
+
+// --------------------------------------------------------------------------
+// Phase 3 (own mode + RNode radio config/device info): client -> bridge
+// commands (build spec §2.C). Only meaningful when mode === 'own' —
+// attach/tcp_peer reject these with OWN_MODE_REQUIRED (see ErrorMessage).
+// Wire-contract stubs only (mirroring protocol.py's new builders) — WP4
+// adds the actual reticulumBridgeClient.ts consumer methods/dispatch.
+// --------------------------------------------------------------------------
+
+export interface GetRadioConfigMessage extends Envelope {
+  type: typeof MESSAGE_TYPE.GET_RADIO_CONFIG;
+  id?: string;
+}
+
+/**
+ * Partial radio-config write (build spec §2.C: "partial allowed") — any
+ * subset of `RadioConfigMessage`'s fields; omitted keys mean "leave this
+ * parameter unchanged".
+ */
+export interface SetRadioConfigMessage extends Envelope {
+  type: typeof MESSAGE_TYPE.SET_RADIO_CONFIG;
+  id?: string;
+  frequency?: number;
+  bandwidth?: number;
+  spreadingFactor?: number;
+  codingRate?: number;
+  txPower?: number;
+  stAlock?: number;
+  ltAlock?: number;
+  radioState?: boolean;
+}
+
+export interface GetDeviceInfoMessage extends Envelope {
+  type: typeof MESSAGE_TYPE.GET_DEVICE_INFO;
+  id?: string;
+}
+
+export type RadioCommandMessage = GetRadioConfigMessage | SetRadioConfigMessage | GetDeviceInfoMessage;
 
 // --------------------------------------------------------------------------
 // Bridge -> client messages
@@ -412,6 +518,118 @@ export interface DeliveryStateEvent extends Envelope {
   attempts?: number | null;
 }
 
+// --------------------------------------------------------------------------
+// Phase 3 (Sideband FIELD_TELEMETRY decode, build spec §2.A/§2.C, #3960
+// WP2/WP4): bridge -> client event.
+// --------------------------------------------------------------------------
+
+/**
+ * A decoded Sideband `SID_LOCATION` sample carried on a `telemetry` event
+ * (build spec §2.A/§3). Mirrors `sideband_telemetry.py`'s `_decode_location`
+ * output — always fully populated when present (the bridge drops `location`
+ * entirely rather than half-fill it on a decode error, see that module's
+ * doc), never partially `null`.
+ */
+export interface TelemetryLocation {
+  lat: number;
+  lon: number;
+  altitude: number;
+  speed: number;
+  bearing: number;
+  accuracy: number;
+}
+
+/** One pinned-subset sensor reading inside a `telemetry` event's `sensors` map (build spec §2.A). */
+export interface TelemetrySensorReading {
+  value: number;
+  unit?: string | null;
+}
+
+/**
+ * A decoded Sideband `LXMF.FIELD_TELEMETRY` payload (build spec §2.A/§2.C,
+ * `protocol.py`'s `telemetry_event()`). `sensors` is ALWAYS present (`{}`
+ * when the packet carried no pinned-subset sensor, per `decode_field_telemetry`'s
+ * contract) so consumers never need a null check before iterating it;
+ * `location` is nullable (absent/undecodable `SID_LOCATION`).
+ *
+ * `ts` deliberately does NOT reuse `Envelope.ts`'s epoch-ms convention: the
+ * bridge's `telemetry_event()` builder overwrites the envelope's own
+ * creation-time `ts` with the decoded `SID_TIME` value — a Unix
+ * epoch-**seconds** int from Sideband's `int(time.time())`, or `null` when
+ * `SID_TIME` wasn't present. Callers that need an epoch-ms value (DB
+ * `timestamp`/`positionUpdatedAt` columns) must multiply by 1000 — see
+ * `reticulumManager.ts`'s `handleTelemetry`. Not extending `Envelope`
+ * directly (its `ts: number` is not assignable from `number | null`) —
+ * this type intentionally redeclares every `Envelope` field it needs.
+ */
+export interface TelemetryMessage {
+  v: number;
+  type: typeof MESSAGE_TYPE.TELEMETRY;
+  id?: string;
+  ts: number | null;
+  sourceHash: string;
+  destinationHash: string;
+  sensors: Record<string, TelemetrySensorReading>;
+  location: TelemetryLocation | null;
+}
+
+// --------------------------------------------------------------------------
+// Phase 3 (own mode + RNode radio config/device info): bridge -> client
+// responses (build spec §2.C). Wire-contract stubs only — WP4 flesheshes
+// out the reticulumBridgeClient.ts / DB / route consumers.
+// --------------------------------------------------------------------------
+
+/**
+ * Radio-config response (build spec §2.C). All fields are nullable — a
+ * field the RNode hasn't reported yet, or the airtime locks when unset,
+ * are `null` rather than omitted (same convention as `AnnounceMessage`
+ * above). Also doubles as `set_radio_config`'s response, echoing the
+ * request `id` — mirrors `DeliveryStateEvent` doubling as `send_lxmf`'s
+ * response.
+ */
+export interface RadioConfigMessage extends Envelope {
+  type: typeof MESSAGE_TYPE.RADIO_CONFIG;
+  id?: string;
+  frequency: number | null;
+  bandwidth: number | null;
+  spreadingFactor: number | null;
+  codingRate: number | null;
+  txPower: number | null;
+  stAlock: number | null;
+  ltAlock: number | null;
+  radioState: boolean | null;
+}
+
+export interface DeviceInfoCsma {
+  cwBand: number | null;
+  cwMin: number | null;
+  cwMax: number | null;
+}
+
+export interface DeviceInfoPhy {
+  symbolTimeMs: number | null;
+  symbolRate: number | null;
+  preambleSymbols: number | null;
+  preambleTimeMs: number | null;
+  csmaSlotTimeMs: number | null;
+  csmaDifsMs: number | null;
+}
+
+/** Device-info response (build spec §2.C): firmware version, MCU/platform,
+ * chip temperature, CSMA + PHY params — all device-reported, so any field
+ * (and every field of `csma`/`phy`) may still be `null` shortly after own
+ * mode starts, before the RNode's first periodic STAT frame arrives. */
+export interface DeviceInfoMessage extends Envelope {
+  type: typeof MESSAGE_TYPE.DEVICE_INFO;
+  id?: string;
+  firmwareVersion: string | null;
+  mcu: number | null;
+  platform: number | null;
+  chipTemp: number | null;
+  csma: DeviceInfoCsma;
+  phy: DeviceInfoPhy;
+}
+
 export type BridgeEventMessage =
   | WelcomeMessage
   | ErrorMessage
@@ -421,4 +639,7 @@ export type BridgeEventMessage =
   | PathTableMessage
   | StatusMessage
   | LxmfMessageEvent
-  | DeliveryStateEvent;
+  | DeliveryStateEvent
+  | TelemetryMessage
+  | RadioConfigMessage
+  | DeviceInfoMessage;

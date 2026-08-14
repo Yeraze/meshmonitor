@@ -210,18 +210,52 @@ function reticulumInterfaceNodeId(interfaceName: string): string {
   return `rns:iface:${interfaceName}`;
 }
 
+/**
+ * Raw shape returned by `GET /api/sources/:id/reticulum/destinations` (mirrors
+ * the server's `ReticulumDestinationRow`). Only the fields this adapter reads.
+ */
+interface RawReticulumDestination {
+  destinationHash: string;
+  displayName: string | null;
+  appName: string | null;
+  isFavorite: boolean;
+  lastSeen: number;
+  positionUpdatedAt: number | null;
+}
+
+/**
+ * Synthetic node-id for a Reticulum destination's Sideband sensor-history
+ * rows. MUST equal `reticulumDestinationNodeId()` in
+ * `src/server/services/reticulumTelemetry.ts` (Phase 3 WP4) — the server keys
+ * the shared `telemetry` rows on this exact string. Re-declared, not imported,
+ * to keep this module frontend-only (matches the interface helper above).
+ */
+function reticulumDestinationNodeId(destinationHash: string): string {
+  return `rns:dest:${destinationHash}`;
+}
+
 export const reticulumDashboardSource: DashboardDataSource = {
   kind: 'reticulum',
   fetchNodes: async (sourceId) => {
     if (!sourceId) return [];
-    // Reticulum interfaces are served per-source, not globally.
-    const response = await api.get<{ data?: RawReticulumInterface[] } | RawReticulumInterface[]>(
-      `/api/sources/${encodeURIComponent(sourceId)}/reticulum/interfaces`,
-    );
-    const raw: RawReticulumInterface[] = Array.isArray(response)
-      ? response
-      : (response?.data ?? []);
-    return raw.map((iface): NodeInfo => ({
+    // Reticulum data is served per-source, not globally. Interfaces carry
+    // throughput history; destinations carry Sideband sensor/position history
+    // (Phase 3). Fetch both so the Dashboard lists the peers actually sharing
+    // telemetry with this identity.
+    const base = `/api/sources/${encodeURIComponent(sourceId)}/reticulum`;
+    const [ifaceRes, destRes] = await Promise.all([
+      api.get<{ data?: RawReticulumInterface[] } | RawReticulumInterface[]>(`${base}/interfaces`),
+      api.get<{ data?: RawReticulumDestination[] } | RawReticulumDestination[]>(`${base}/destinations`)
+        .catch(() => [] as RawReticulumDestination[]),
+    ]);
+    const interfaces: RawReticulumInterface[] = Array.isArray(ifaceRes)
+      ? ifaceRes
+      : (ifaceRes?.data ?? []);
+    const destinations: RawReticulumDestination[] = Array.isArray(destRes)
+      ? destRes
+      : (destRes?.data ?? []);
+
+    const interfaceNodes = interfaces.map((iface): NodeInfo => ({
       // Reticulum interfaces have no integer nodeNum — leave 0, matching the
       // MeshCore adapter's convention; the Dashboard's nodeNum-dependent
       // custom-widget machinery is hidden via showCustomWidgets below.
@@ -233,6 +267,23 @@ export const reticulumDashboardSource: DashboardDataSource = {
       },
       lastHeard: iface.lastSeenAt,
     }));
+
+    // Only surface destinations that actually share telemetry with us — those
+    // with a Sideband position, or explicit favorites (peers the user tracks).
+    // Announced-only destinations would flood the list with no history to show.
+    const destinationNodes = destinations
+      .filter(d => d.positionUpdatedAt != null || d.isFavorite)
+      .map((d): NodeInfo => ({
+        nodeNum: 0,
+        user: {
+          id: reticulumDestinationNodeId(d.destinationHash),
+          longName: d.displayName || d.appName || d.destinationHash.slice(0, 12),
+          shortName: d.destinationHash.slice(0, 4),
+        },
+        lastHeard: d.positionUpdatedAt ?? d.lastSeen,
+      }));
+
+    return [...interfaceNodes, ...destinationNodes];
   },
   nodeKey: (node) => node.user?.id,
   getDisplayName: (node, fallbackId) =>

@@ -38,6 +38,9 @@ import {
   type InterfaceStatsMessage,
   type LxmfMessageEvent,
   type DeliveryStateEvent,
+  type TelemetryMessage,
+  type RadioConfigMessage,
+  type DeviceInfoMessage,
 } from './reticulumProtocol.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -258,6 +261,74 @@ describe('ReticulumBridgeClient handshake', () => {
       mode: 'tcp_peer',
       peers: [{ host: '10.0.0.5', port: 4242 }],
     });
+  });
+
+  it('sends configure with own mode, device path, and initial radio params (#3960 Phase 3 WP4)', async () => {
+    let capturedConfigure: Record<string, unknown> | null = null;
+    const bridge = trackBridge(
+      await startMockBridge((ws, send) => {
+        ws.on('message', (data) => {
+          const env = parseIncoming(data);
+          if (env.type === 'hello') {
+            send({ v: 1, type: 'welcome', ts: Date.now(), protocolVersion: 1, bridgeVersion: '0.1.0', rnsVersion: '1.4.2' });
+          } else if (env.type === 'configure') {
+            capturedConfigure = env;
+            send({ v: 1, type: 'ready', id: env.id, ts: Date.now() });
+          }
+        });
+      }),
+    );
+
+    const client = trackClient(new ReticulumBridgeClient({ bridgeUrl: bridge.url, token: 'change-me' }));
+    await client.connect({
+      mode: 'own',
+      device: '/dev/ttyUSB0',
+      frequency: 914_875_000,
+      bandwidth: 125_000,
+      spreadingFactor: 8,
+      codingRate: 5,
+      txPower: 17,
+      stAlock: 33.3,
+      ltAlock: 66.6,
+    });
+
+    expect(capturedConfigure).toMatchObject({
+      type: 'configure',
+      mode: 'own',
+      device: '/dev/ttyUSB0',
+      frequency: 914_875_000,
+      bandwidth: 125_000,
+      spreadingFactor: 8,
+      codingRate: 5,
+      txPower: 17,
+      stAlock: 33.3,
+      ltAlock: 66.6,
+    });
+  });
+
+  it('own-mode configure omits unset radio-param fields rather than sending them as undefined', async () => {
+    let capturedConfigure: Record<string, unknown> | null = null;
+    const bridge = trackBridge(
+      await startMockBridge((ws, send) => {
+        ws.on('message', (data) => {
+          const env = parseIncoming(data);
+          if (env.type === 'hello') {
+            send({ v: 1, type: 'welcome', ts: Date.now(), protocolVersion: 1, bridgeVersion: '0.1.0', rnsVersion: '1.4.2' });
+          } else if (env.type === 'configure') {
+            capturedConfigure = env;
+            send({ v: 1, type: 'ready', id: env.id, ts: Date.now() });
+          }
+        });
+      }),
+    );
+
+    const client = trackClient(new ReticulumBridgeClient({ bridgeUrl: bridge.url, token: 'change-me' }));
+    await client.connect({ mode: 'own', device: '/dev/ttyUSB0' });
+
+    expect(capturedConfigure).toMatchObject({ type: 'configure', mode: 'own', device: '/dev/ttyUSB0' });
+    expect(Object.keys(capturedConfigure as Record<string, unknown>)).not.toEqual(
+      expect.arrayContaining(['frequency', 'bandwidth', 'spreadingFactor', 'codingRate', 'txPower', 'stAlock', 'ltAlock']),
+    );
   });
 
   // PR review finding 3: requestIdCounter used to be a module-level `let`,
@@ -484,7 +555,14 @@ describe('ReticulumBridgeClient reconnect/backoff', () => {
 });
 
 describe('ReticulumBridgeClient fixture contract parse', () => {
-  const fixtureFiles = fs.readdirSync(FIXTURES_DIR).filter((f) => f.endsWith('.json'));
+  // `.expected.json` files (e.g. sideband_telemetry_location_battery_temp.expected.json,
+  // #3960 Phase 3 WP0/WP2) are bridge-side Python decode-test fixtures, not
+  // Node-wire-protocol envelopes — they have no `type`/`v` envelope shell at
+  // all, so they're excluded from this generic "every *.json is a valid
+  // envelope" contract loop (pre-existing gap, fixed incidentally here).
+  const fixtureFiles = fs
+    .readdirSync(FIXTURES_DIR)
+    .filter((f) => f.endsWith('.json') && !f.endsWith('.expected.json'));
 
   it('found the golden fixture files committed by WP2', () => {
     expect(fixtureFiles.length).toBeGreaterThan(0);
@@ -791,5 +869,157 @@ describe('ReticulumBridgeClient Phase 2 LXMF messaging (#3960 Phase 2 WP3)', () 
     const client = trackClient(new ReticulumBridgeClient({ bridgeUrl: bridge.url, token: 'change-me' }));
     await client.connect({ mode: 'attach', configDir: '/rns' });
     await expect(client.sendLxmf({ to: 'deadbeef'.padEnd(32, '0') })).rejects.toMatchObject({ code: 'LXMF_COMMAND_FAILED' });
+  });
+});
+
+describe('ReticulumBridgeClient Phase 3 telemetry + own-mode radio config/device info (#3960 WP4)', () => {
+  it('client dispatches a live telemetry.json frame as a telemetry event', async () => {
+    const fixtureRaw = fs.readFileSync(path.join(FIXTURES_DIR, 'telemetry.json'), 'utf-8');
+    const fixture = JSON.parse(fixtureRaw) as TelemetryMessage;
+
+    const bridge = trackBridge(
+      await startMockBridge((ws, send) => {
+        ws.on('message', (data) => {
+          const env = parseIncoming(data);
+          if (env.type === 'hello') {
+            send({ v: 1, type: 'welcome', ts: Date.now(), protocolVersion: 1, bridgeVersion: '0.1.0', rnsVersion: '1.4.2' });
+          } else if (env.type === 'configure') {
+            send({ v: 1, type: 'ready', id: env.id, ts: Date.now() });
+            send(fixture as unknown as Record<string, unknown>);
+          }
+        });
+      }),
+    );
+
+    const client = trackClient(new ReticulumBridgeClient({ bridgeUrl: bridge.url, token: 'change-me' }));
+    const telemetryPromise = new Promise<TelemetryMessage>((resolve) => {
+      client.once('telemetry', (msg: TelemetryMessage) => resolve(msg));
+    });
+    await client.connect({ mode: 'attach', configDir: '/rns' });
+
+    const received = await telemetryPromise;
+    expect(received).toEqual(fixture);
+    expect(received.id).toBeUndefined(); // telemetry is always unsolicited/pushed, never id-correlated
+  });
+
+  it('getRadioConfig() resolves with a live radio_config.json-shaped reply', async () => {
+    const fixtureRaw = fs.readFileSync(path.join(FIXTURES_DIR, 'radio_config.json'), 'utf-8');
+    const fixture = JSON.parse(fixtureRaw) as Record<string, unknown>;
+
+    const bridge = trackBridge(
+      await startMockBridge((ws, send) => {
+        ws.on('message', (data) => {
+          const env = parseIncoming(data);
+          if (env.type === 'hello') {
+            send({ v: 1, type: 'welcome', ts: Date.now(), protocolVersion: 1, bridgeVersion: '0.1.0', rnsVersion: '1.4.2' });
+          } else if (env.type === 'configure') {
+            send({ v: 1, type: 'ready', id: env.id, ts: Date.now() });
+          } else if (env.type === 'get_radio_config') {
+            send({ ...fixture, id: env.id });
+          }
+        });
+      }),
+    );
+
+    const client = trackClient(new ReticulumBridgeClient({ bridgeUrl: bridge.url, token: 'change-me' }));
+    await client.connect({ mode: 'own', device: '/dev/ttyUSB0' });
+    const config: RadioConfigMessage = await client.getRadioConfig();
+    expect(config).toMatchObject({
+      type: 'radio_config',
+      frequency: 914_875_000,
+      bandwidth: 125_000,
+      spreadingFactor: 8,
+      codingRate: 5,
+      txPower: 17,
+      radioState: true,
+    });
+  });
+
+  it('setRadioConfig() sends only the patched fields and resolves with the echoed radio_config reply', async () => {
+    let capturedSet: Record<string, unknown> | null = null;
+    const bridge = trackBridge(
+      await startMockBridge((ws, send) => {
+        ws.on('message', (data) => {
+          const env = parseIncoming(data);
+          if (env.type === 'hello') {
+            send({ v: 1, type: 'welcome', ts: Date.now(), protocolVersion: 1, bridgeVersion: '0.1.0', rnsVersion: '1.4.2' });
+          } else if (env.type === 'configure') {
+            send({ v: 1, type: 'ready', id: env.id, ts: Date.now() });
+          } else if (env.type === 'set_radio_config') {
+            capturedSet = env;
+            send({ v: 3, type: 'radio_config', id: env.id, ts: Date.now(), frequency: 915_000_000, bandwidth: null, spreadingFactor: null, codingRate: null, txPower: 20, stAlock: null, ltAlock: null, radioState: null });
+          }
+        });
+      }),
+    );
+
+    const client = trackClient(new ReticulumBridgeClient({ bridgeUrl: bridge.url, token: 'change-me' }));
+    await client.connect({ mode: 'own', device: '/dev/ttyUSB0' });
+    const config = await client.setRadioConfig({ frequency: 915_000_000, txPower: 20 });
+
+    expect(capturedSet).toMatchObject({ type: 'set_radio_config', frequency: 915_000_000, txPower: 20 });
+    expect(Object.keys(capturedSet as Record<string, unknown>)).not.toEqual(
+      expect.arrayContaining(['bandwidth', 'spreadingFactor', 'codingRate', 'stAlock', 'ltAlock', 'radioState']),
+    );
+    expect(config).toMatchObject({ type: 'radio_config', frequency: 915_000_000, txPower: 20 });
+  });
+
+  it('getDeviceInfo() resolves with a live device_info.json-shaped reply', async () => {
+    const fixtureRaw = fs.readFileSync(path.join(FIXTURES_DIR, 'device_info.json'), 'utf-8');
+    const fixture = JSON.parse(fixtureRaw) as Record<string, unknown>;
+
+    const bridge = trackBridge(
+      await startMockBridge((ws, send) => {
+        ws.on('message', (data) => {
+          const env = parseIncoming(data);
+          if (env.type === 'hello') {
+            send({ v: 1, type: 'welcome', ts: Date.now(), protocolVersion: 1, bridgeVersion: '0.1.0', rnsVersion: '1.4.2' });
+          } else if (env.type === 'configure') {
+            send({ v: 1, type: 'ready', id: env.id, ts: Date.now() });
+          } else if (env.type === 'get_device_info') {
+            send({ ...fixture, id: env.id });
+          }
+        });
+      }),
+    );
+
+    const client = trackClient(new ReticulumBridgeClient({ bridgeUrl: bridge.url, token: 'change-me' }));
+    await client.connect({ mode: 'own', device: '/dev/ttyUSB0' });
+    const info: DeviceInfoMessage = await client.getDeviceInfo();
+    expect(info).toMatchObject({
+      type: 'device_info',
+      firmwareVersion: '1.52',
+      mcu: 30,
+      platform: 128,
+      chipTemp: 34,
+      csma: { cwBand: 2, cwMin: 3, cwMax: 8 },
+    });
+  });
+
+  it('getRadioConfig()/setRadioConfig()/getDeviceInfo() reject with the bridge-sent OWN_MODE_REQUIRED error in attach/tcp_peer mode', async () => {
+    const bridge = trackBridge(
+      await startMockBridge((ws, send) => {
+        ws.on('message', (data) => {
+          const env = parseIncoming(data);
+          if (env.type === 'hello') {
+            send({ v: 1, type: 'welcome', ts: Date.now(), protocolVersion: 1, bridgeVersion: '0.1.0', rnsVersion: '1.4.2' });
+          } else if (env.type === 'configure') {
+            send({ v: 1, type: 'ready', id: env.id, ts: Date.now() });
+          } else if (
+            env.type === 'get_radio_config' ||
+            env.type === 'set_radio_config' ||
+            env.type === 'get_device_info'
+          ) {
+            send({ v: 3, type: 'error', id: env.id, code: 'OWN_MODE_REQUIRED', message: 'source is not running in own mode', ts: Date.now() });
+          }
+        });
+      }),
+    );
+    const client = trackClient(new ReticulumBridgeClient({ bridgeUrl: bridge.url, token: 'change-me' }));
+    await client.connect({ mode: 'attach', configDir: '/rns' });
+
+    await expect(client.getRadioConfig()).rejects.toMatchObject({ code: 'OWN_MODE_REQUIRED' });
+    await expect(client.setRadioConfig({ txPower: 17 })).rejects.toMatchObject({ code: 'OWN_MODE_REQUIRED' });
+    await expect(client.getDeviceInfo()).rejects.toMatchObject({ code: 'OWN_MODE_REQUIRED' });
   });
 });

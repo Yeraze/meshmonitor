@@ -44,15 +44,19 @@ const SHARED_DB_TESTS = [
   // auth.test.ts's DROP TABLE ordering intermittently raises
   // ER_FK_CANNOT_DROP_PARENT on MySQL.
   'src/server/migrations/132_fan_out_settings_permissions.pgmysql.test.ts',
-  // Reticulum epic #3960, Phase 1a WP1 + Phase 2 WP2: `reticulum.test.ts` and
-  // migrations 141/142/143's container halves all DROP/CREATE
-  // `reticulum_destinations` / `reticulum_interfaces` / `reticulum_messages`
-  // against the shared PG/MySQL test DB — confirmed empirically (intermittent
-  // "table doesn't exist" mid-test on MySQL when run concurrently with the
-  // migration pgmysql tests).
+  // Reticulum epic #3960, Phase 1a WP1 + Phase 2 WP2 + Phase 3 WP3:
+  // `reticulum.test.ts` and migrations 141/142/143/144/145's container
+  // halves all DROP/CREATE (or ALTER) `reticulum_destinations` /
+  // `reticulum_interfaces` / `reticulum_messages` against the shared PG/MySQL
+  // test DB — confirmed empirically (intermittent "table doesn't exist"
+  // mid-test on MySQL when run concurrently with the migration pgmysql
+  // tests). 144/145 ADD COLUMN onto the same two tables 141/142 DROP/CREATE,
+  // so they join the same serial group.
   'src/server/migrations/141_create_reticulum_destinations.pgmysql.test.ts',
   'src/server/migrations/142_create_reticulum_interfaces.pgmysql.test.ts',
   'src/server/migrations/143_create_reticulum_messages.pgmysql.test.ts',
+  'src/server/migrations/144_add_reticulum_destination_position.pgmysql.test.ts',
+  'src/server/migrations/145_add_reticulum_interface_radio_config.pgmysql.test.ts',
   'src/db/repositories/reticulum.test.ts',
   // reticulumTelemetry.test.ts's regression guard DROPs/CREATEs the shared
   // `telemetry` table against the same PG/MySQL test DB as

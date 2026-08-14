@@ -48,6 +48,8 @@ vi.mock('../sourceManagerRegistry.js', () => ({
 import reticulumRoutes from './reticulumRoutes.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
+import { ReticulumBridgeError } from '../reticulumBridgeClient.js';
+import type { FailureCode } from '../reticulumProtocol.js';
 import {
   reticulumInterfaceNodeId,
   reticulumInterfaceNodeNum,
@@ -432,6 +434,234 @@ describe('Reticulum routes', () => {
       const agent = await harness.loginAs(harness.limited);
       const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/interfaces/${ifaceName}/history`);
       expect(res.status).toBe(403);
+    });
+  });
+
+  // ── GET /destinations?positioned=true ────────────────────────────────────
+
+  describe('GET /:id/reticulum/destinations?positioned=true', () => {
+    it('returns only destinations carrying a position sample, newest-first', async () => {
+      await harness.db.reticulum.upsertDestination(harness.sourceA, { destinationHash: 'e1'.repeat(16) });
+      await harness.db.reticulum.upsertDestination(harness.sourceA, { destinationHash: 'e2'.repeat(16) });
+      await harness.db.reticulum.updateDestinationPosition(harness.sourceA, {
+        destinationHash: 'e2'.repeat(16),
+        latitude: 37.7749,
+        longitude: -122.4194,
+        positionUpdatedAt: Date.now(),
+      });
+
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/destinations?positioned=true`);
+      expect(res.status).toBe(200);
+      const hashes = res.body.data.map((d: { destinationHash: string }) => d.destinationHash);
+      expect(hashes).toEqual(['e2'.repeat(16)]);
+    });
+  });
+
+  // ── Own-mode RNode radio config / device info (#3960 Phase 3 WP1/WP4) ──
+
+  describe('Reticulum own-mode radio config / device info routes', () => {
+    const radioConfigReply = {
+      type: 'radio_config',
+      frequency: 914_875_000,
+      bandwidth: 125_000,
+      spreadingFactor: 8,
+      codingRate: 5,
+      txPower: 17,
+      stAlock: null,
+      ltAlock: null,
+      radioState: true,
+    };
+    const deviceInfoReply = {
+      type: 'device_info',
+      firmwareVersion: '1.52',
+      mcu: 30,
+      platform: 128,
+      chipTemp: 34,
+      csma: { cwBand: 2, cwMin: 3, cwMax: 8 },
+      phy: { symbolTimeMs: 32.768, symbolRate: 976, preambleSymbols: 12, preambleTimeMs: 393, csmaSlotTimeMs: 15, csmaDifsMs: 45 },
+    };
+
+    function fakeOwnModeManager(overrides: {
+      getRadioConfig?: () => Promise<unknown>;
+      setRadioConfig?: (patch: unknown) => Promise<unknown>;
+      getDeviceInfo?: () => Promise<unknown>;
+    } = {}) {
+      return {
+        sourceId: harness.sourceA,
+        sourceType: 'reticulum',
+        isConnected: () => true,
+        getStatus: () => ({ sourceId: harness.sourceA, sourceName: harness.sourceA, sourceType: 'reticulum', connected: true }),
+        getBridgeVersion: () => null,
+        getRnsVersion: () => null,
+        getRadioConfig: overrides.getRadioConfig ?? (async () => radioConfigReply),
+        setRadioConfig: overrides.setRadioConfig ?? (async () => radioConfigReply),
+        getDeviceInfo: overrides.getDeviceInfo ?? (async () => deviceInfoReply),
+      };
+    }
+
+    // ── GET /radio-config ──────────────────────────────────────────────
+
+    describe('GET /:id/reticulum/radio-config', () => {
+      beforeEach(async () => {
+        await harness.grant(harness.limited.id, 'configuration', 'read', harness.sourceA);
+      });
+
+      it('200s with the live radio config for a connected own-mode source', async () => {
+        mockGetManager.mockReturnValue(fakeOwnModeManager());
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/radio-config`);
+        expect(res.status).toBe(200);
+        expect(res.body.data).toMatchObject({ frequency: 914_875_000, txPower: 17, radioState: true });
+      });
+
+      it('409s OWN_MODE_REQUIRED when no manager is registered (disconnected source)', async () => {
+        mockGetManager.mockReturnValue(undefined);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/radio-config`);
+        expect(res.status).toBe(409);
+        expect(res.body.code).toBe('OWN_MODE_REQUIRED');
+      });
+
+      it('409s OWN_MODE_REQUIRED when a manager is registered but the bridge rejects the command (attach/tcp_peer mode)', async () => {
+        mockGetManager.mockReturnValue(
+          fakeOwnModeManager({
+            getRadioConfig: async () => {
+              throw new ReticulumBridgeError('OWN_MODE_REQUIRED' as FailureCode, 'source is not running in own mode');
+            },
+          }),
+        );
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/radio-config`);
+        expect(res.status).toBe(409);
+        expect(res.body.code).toBe('OWN_MODE_REQUIRED');
+      });
+
+      it('502s with the bridge-typed code for a non-own-mode-required bridge failure (e.g. RNODE_COMMAND_FAILED)', async () => {
+        mockGetManager.mockReturnValue(
+          fakeOwnModeManager({
+            getRadioConfig: async () => {
+              throw new ReticulumBridgeError('RNODE_COMMAND_FAILED' as FailureCode, 'radio did not respond');
+            },
+          }),
+        );
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/radio-config`);
+        expect(res.status).toBe(502);
+        expect(res.body.code).toBe('RNODE_COMMAND_FAILED');
+      });
+
+      it('403s when the user holds no `configuration:read` grant', async () => {
+        await harness.revokeAll(harness.limited.id);
+        mockGetManager.mockReturnValue(fakeOwnModeManager());
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/radio-config`);
+        expect(res.status).toBe(403);
+      });
+
+      it('403s for a source the user has no configuration:read grant on (real per-source access control)', async () => {
+        mockGetManager.mockReturnValue(fakeOwnModeManager());
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceB}/reticulum/radio-config`);
+        expect(res.status).toBe(403);
+      });
+    });
+
+    // ── PUT /radio-config ──────────────────────────────────────────────
+
+    describe('PUT /:id/reticulum/radio-config', () => {
+      beforeEach(async () => {
+        await harness.grant(harness.limited.id, 'configuration', 'write', harness.sourceA);
+      });
+
+      it('200s and forwards the validated patch for an authorised write', async () => {
+        const setRadioConfig = vi.fn(async () => radioConfigReply);
+        mockGetManager.mockReturnValue(fakeOwnModeManager({ setRadioConfig }));
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent
+          .put(`/api/sources/${harness.sourceA}/reticulum/radio-config`)
+          .send({ frequency: 914_875_000, txPower: 17 });
+        expect(res.status).toBe(200);
+        expect(setRadioConfig).toHaveBeenCalledWith({ frequency: 914_875_000, txPower: 17 });
+      });
+
+      it('400s on an out-of-range field (frequency)', async () => {
+        mockGetManager.mockReturnValue(fakeOwnModeManager());
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.put(`/api/sources/${harness.sourceA}/reticulum/radio-config`).send({ frequency: 1 });
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe('INVALID_RADIO_CONFIG');
+      });
+
+      it('400s on an invalid bandwidth (not one of the fixed LoRa bandwidths)', async () => {
+        mockGetManager.mockReturnValue(fakeOwnModeManager());
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.put(`/api/sources/${harness.sourceA}/reticulum/radio-config`).send({ bandwidth: 123 });
+        expect(res.status).toBe(400);
+      });
+
+      it('400s on an empty body (no fields to set)', async () => {
+        mockGetManager.mockReturnValue(fakeOwnModeManager());
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.put(`/api/sources/${harness.sourceA}/reticulum/radio-config`).send({});
+        expect(res.status).toBe(400);
+      });
+
+      it('409s OWN_MODE_REQUIRED when no manager is registered', async () => {
+        mockGetManager.mockReturnValue(undefined);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.put(`/api/sources/${harness.sourceA}/reticulum/radio-config`).send({ txPower: 17 });
+        expect(res.status).toBe(409);
+        expect(res.body.code).toBe('OWN_MODE_REQUIRED');
+      });
+
+      it('403s on read-only grant (write required)', async () => {
+        await harness.revokeAll(harness.limited.id);
+        await harness.grant(harness.limited.id, 'configuration', 'read', harness.sourceA);
+        mockGetManager.mockReturnValue(fakeOwnModeManager());
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.put(`/api/sources/${harness.sourceA}/reticulum/radio-config`).send({ txPower: 17 });
+        expect(res.status).toBe(403);
+      });
+
+      it('403s for a source the user has no configuration:write grant on (real per-source access control)', async () => {
+        mockGetManager.mockReturnValue(fakeOwnModeManager());
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.put(`/api/sources/${harness.sourceB}/reticulum/radio-config`).send({ txPower: 17 });
+        expect(res.status).toBe(403);
+      });
+    });
+
+    // ── GET /device-info ────────────────────────────────────────────────
+
+    describe('GET /:id/reticulum/device-info', () => {
+      beforeEach(async () => {
+        await harness.grant(harness.limited.id, 'configuration', 'read', harness.sourceA);
+      });
+
+      it('200s with the live device info for a connected own-mode source', async () => {
+        mockGetManager.mockReturnValue(fakeOwnModeManager());
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/device-info`);
+        expect(res.status).toBe(200);
+        expect(res.body.data).toMatchObject({ firmwareVersion: '1.52', mcu: 30, platform: 128 });
+      });
+
+      it('409s OWN_MODE_REQUIRED when no manager is registered', async () => {
+        mockGetManager.mockReturnValue(undefined);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/device-info`);
+        expect(res.status).toBe(409);
+        expect(res.body.code).toBe('OWN_MODE_REQUIRED');
+      });
+
+      it('403s when the user holds no `configuration:read` grant', async () => {
+        await harness.revokeAll(harness.limited.id);
+        mockGetManager.mockReturnValue(fakeOwnModeManager());
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/device-info`);
+        expect(res.status).toBe(403);
+      });
     });
   });
 
