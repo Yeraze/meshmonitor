@@ -151,6 +151,15 @@ function isConfiguredMeshCoreChannel(ch: { name: string; secretHex: string }): b
   return hasName || hasSecret;
 }
 
+/**
+ * Display name for MeshCore's implicit slot-0 "Public" channel (#4733).
+ * Firmware never reports a name/secret for it — it reads as an empty slot
+ * (see `isConfiguredMeshCoreChannel`) — so it needs a synthetic DB row to be
+ * visible anywhere a channel needs to be picked from a list, e.g. the
+ * Automation Engine's "On channel" trigger.
+ */
+const MESHCORE_PUBLIC_CHANNEL_NAME = 'Public';
+
 // MeshCore device types
 export enum MeshCoreDeviceType {
   UNKNOWN = 0,
@@ -2600,6 +2609,29 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       );
     }
 
+    // Slot 0 is MeshCore's implicit "Public" broadcast channel. Firmware
+    // reports it exactly like an empty slot (no name, all-zero secret), so it
+    // never lands in `configured` above and would otherwise have no DB row at
+    // all — invisible to every DB-driven consumer (Automation Engine channel
+    // picker, auto-ack/auto-announce pickers, etc — issue #4733). Seed a
+    // synthetic placeholder whenever the device hasn't reported a REAL
+    // channel 0 of its own, so "Public" always has a stable DB identity.
+    if (!configured.some(ch => ch.channelIdx === 0)) {
+      await databaseService.channels.upsertChannel(
+        {
+          id: 0,
+          name: MESHCORE_PUBLIC_CHANNEL_NAME,
+          psk: null,
+          role: null,
+          uplinkEnabled: null,
+          downlinkEnabled: null,
+          positionPrecision: null,
+        },
+        this.sourceId,
+        { allowBlankName: true },
+      );
+    }
+
     // Reconcile: remove DB rows for slots the device positively reported as
     // unconfigured. This covers (a) out-of-band deletes via meshcore-cli and
     // (b) cleanup of legacy installs that had unconfigured-slot rows from
@@ -2608,13 +2640,16 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // `reportedIdxSet` is every slot the firmware actually answered for. A row
     // whose idx is NOT in it carries no evidence either way — the enumeration
     // may simply have stopped short — so it is preserved. Only "reported AND
-    // not configured" is treated as a delete.
+    // not configured" is treated as a delete. Slot 0 is exempt outright: it
+    // always carries either the device's real channel or the synthetic
+    // "Public" placeholder seeded just above, never a stale row to clean up.
     const reportedIdxSet = new Set(channels.map(ch => ch.channelIdx));
     const configuredIdxSet = new Set(configured.map(ch => ch.channelIdx));
     const existing = await databaseService.channels.getAllChannels(this.sourceId);
     let removed = 0;
     let preserved = 0;
     for (const row of existing) {
+      if (row.id === 0) continue;
       if (configuredIdxSet.has(row.id)) continue;
       if (!reportedIdxSet.has(row.id)) {
         // Unreported: the scan never reached this slot. Leave it be.

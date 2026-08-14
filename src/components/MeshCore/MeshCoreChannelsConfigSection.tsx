@@ -173,10 +173,14 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
     return () => { cancelled = true; };
   }, [baseUrl, sourceId, csrfFetch, reloadTick]);
 
-  // Find the smallest free channel index (starting at 0). Used by "Add channel".
+  // Find the smallest free channel index, starting at 1 — slot 0 is reserved
+  // for MeshCore's implicit "Public" channel and must never be offered as a
+  // destination for a newly added channel (issue #4733). The server mirrors
+  // this with a hard reject on writes to channel 0; this is the UI-side
+  // belt-and-braces so "Add channel" never even proposes it.
   const nextFreeIdx = useMemo(() => {
     const used = new Set(channels.map(c => c.id));
-    for (let i = 0; i < 256; i++) if (!used.has(i)) return i;
+    for (let i = 1; i < 256; i++) if (!used.has(i)) return i;
     return 255;
   }, [channels]);
 

@@ -344,6 +344,16 @@ describe('PUT /channels/:id', () => {
     expect(res.body.error).toContain('16 bytes');
   });
 
+  it('rejects writes to MeshCore channel 0 — reserved for the implicit Public channel (#4733)', async () => {
+    mockDb.sources.getSource.mockResolvedValue({ type: 'meshcore' });
+    const sixteen = Buffer.alloc(16).toString('base64');
+    const res = await request(app).put('/channels/0').send({ name: 'mc', psk: sixteen, sourceId: 'mc-1' });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('MESHCORE_CHANNEL_ZERO_RESERVED');
+    expect(res.body.error).toContain('Public');
+    expect(mockMeshcoreManager.setChannel).not.toHaveBeenCalled();
+  });
+
   it('503s for MeshCore when no manager is registered', async () => {
     mockDb.sources.getSource.mockResolvedValue({ type: 'meshcore' });
     mockSourceRegistry.getManager.mockReturnValue(undefined);

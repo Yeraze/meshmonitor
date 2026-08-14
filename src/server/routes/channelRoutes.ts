@@ -464,6 +464,16 @@ router.put('/:id', requireAuth(), requireSourceId('body'), async (req: Request, 
       return res.status(400).json({ error: 'Invalid channel ID. Must be between 0-7' });
     }
 
+    // Slot 0 on a MeshCore device is the implicit "Public" broadcast channel
+    // — firmware has no concept of "set channel 0", and letting a write land
+    // there displaces the synthetic Public row `syncChannelsFromDevice`
+    // maintains for it (issue #4733). Reject outright rather than silently
+    // overwriting; the client's "Add channel" flow never proposes slot 0.
+    if (sourceType === 'meshcore' && channelId === 0) {
+      return fail(res, 400, 'MESHCORE_CHANNEL_ZERO_RESERVED',
+        'Channel 0 is reserved for the MeshCore Public channel and cannot be modified. Delete it to restore Public, then add your channel to a different slot.');
+    }
+
     // MM-SEC-4: per-channel write gate — caller needs write permission for
     // the SPECIFIC channel they're modifying, not just channel_0.
     const channelResource = `channel_${channelId}` as import('../../types/permission.js').ResourceType;
