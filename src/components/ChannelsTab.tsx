@@ -32,9 +32,9 @@ import { UiIcon } from './icons';
 import UnreadDivider from './messages/UnreadDivider';
 import { resolveUnreadAnchorId, shouldSuppressDivider } from '../utils/unreadAnchor';
 import { useUnreadDividerAnchors } from '../contexts/MessagingContext';
-
-// Default PSK value (publicly known key - not truly secure)
-const DEFAULT_PUBLIC_PSK = 'AQ==';
+// Default PSK value (publicly known key - not truly secure) — shared
+// definition lives in utils/publicChannel.ts (#4705).
+import { DEFAULT_PUBLIC_PSK } from '../utils/publicChannel';
 
 // Offset for Channel Database channels
 // IMPORTANT: This value must match CHANNEL_DB_OFFSET in src/server/constants/meshtastic.ts

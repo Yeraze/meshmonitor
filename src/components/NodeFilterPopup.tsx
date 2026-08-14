@@ -6,9 +6,9 @@ import { useUI } from '../contexts/UIContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useChannels } from '../hooks/useServerData';
 import { UiIcon } from './icons';
-
 // Meshtastic default PSK (base64 encoded single byte 0x01 = default/unencrypted)
-const DEFAULT_UNENCRYPTED_PSK = 'AQ==';
+// — shared definition lives in utils/publicChannel.ts (#4705).
+import { DEFAULT_PUBLIC_PSK as DEFAULT_UNENCRYPTED_PSK } from '../utils/publicChannel';
 
 interface NodeFilterPopupProps {
   isOpen: boolean;
