@@ -16,7 +16,7 @@ import pytest
 
 from meshmonitor_rns_bridge import protocol
 
-from .fixture_builders import EXPECTED_FIXTURE_NAMES, FIXED_TS
+from .fixture_builders import EXPECTED_FIXTURE_NAMES, FIXED_TS, NON_PROTOCOL_FIXTURE_STEMS
 from .fixture_builders import build_fixture as _build_fixture
 
 
@@ -151,7 +151,12 @@ def test_fixture_directory_has_exactly_the_expected_files(load_fixture):
 
     fixtures_dir = pathlib.Path(__file__).parent / "fixtures"
     on_disk = {p.stem for p in fixtures_dir.glob("*.json")}
-    assert on_disk == EXPECTED_FIXTURE_NAMES
+    # NON_PROTOCOL_FIXTURE_STEMS (#3960 Phase 3 WP0/WP2): fixtures that exist
+    # under tests/fixtures/*.json but aren't protocol envelopes built via
+    # build_fixture() -- e.g. the Sideband FIELD_TELEMETRY golden-decode
+    # fixture. Without this union, any such fixture breaks this exact-set
+    # assertion despite being intentional and covered by its own tests.
+    assert on_disk == EXPECTED_FIXTURE_NAMES | NON_PROTOCOL_FIXTURE_STEMS
 
 
 @pytest.mark.parametrize("name", sorted(EXPECTED_FIXTURE_NAMES))
