@@ -15,12 +15,16 @@ exception, `_load_or_create_lxmf_identity`, only touches `RNS.Identity`
 
 from __future__ import annotations
 
+import queue
+from typing import Optional
 from unittest.mock import MagicMock, patch
 
 import LXMF
+import msgpack
 import RNS
 import pytest
 
+from meshmonitor_rns_bridge import protocol
 from meshmonitor_rns_bridge.config import BridgeConfig
 from meshmonitor_rns_bridge.rns_manager import (
     OwnModeRequiredError,
@@ -474,3 +478,173 @@ def test_get_device_info_missing_fw_version_is_none():
     manager = _own_manager()
     manager._rnode_interface = _mock_rnode_interface(maj_version=None, min_version=None)
     assert manager.get_device_info()["firmwareVersion"] is None
+
+
+# --------------------------------------------------------------------------
+# Sideband FIELD_TELEMETRY interception (#3960 Phase 3 WP2, build spec
+# §2.A): `_on_lxmf_delivery` must detect `LXMF.FIELD_TELEMETRY` off the raw
+# `get_fields()` dict BEFORE `_sanitize_lxmf_fields()` hex-collapses it,
+# emit a `telemetry` event, and skip the `lxmf_message` event entirely for
+# a telemetry-only delivery (no title/content) -- R3: no chat row for a
+# packet that carries no text. A delivery with both text and telemetry
+# emits both events. Deliberately does NOT touch RNS.Reticulum()/LXMRouter
+# networking (same constraint as the rest of this file) -- `message` is a
+# MagicMock stand-in for a real `LXMF.LXMessage`, and `broadcast()`/
+# `subscribe()` are pure in-process pub/sub with no RNS involvement.
+# --------------------------------------------------------------------------
+
+
+def _fake_lxm_message(
+    *,
+    fields: dict,
+    title: Optional[bytes] = None,
+    content: Optional[bytes] = None,
+    title_str: Optional[str] = None,
+    content_str: Optional[str] = None,
+) -> MagicMock:
+    message = MagicMock()
+    message.hash = b"\x1a\x2b\x3c\x4d"
+    message.source_hash = b"\xa1\xb2\xc3\xd4"
+    message.destination_hash = b"\x11\x22\x33\x44"
+    # `_on_lxmf_delivery` gates on truthiness of `message.title`/`.content`
+    # before calling `title_as_string()`/`content_as_string()` -- matches
+    # the real LXMessage contract (bytes-or-None).
+    message.title = title
+    message.content = content
+    message.title_as_string.return_value = title_str
+    message.content_as_string.return_value = content_str
+    message.get_fields.return_value = fields
+    message.method = LXMF.LXMessage.OPPORTUNISTIC
+    message.signature_validated = True
+    message.ratchet_id = None
+    message.rssi = None
+    message.snr = None
+    message.q = None
+    return message
+
+
+def _drain(q: "queue.Queue") -> list:
+    events = []
+    while True:
+        try:
+            events.append(q.get_nowait())
+        except queue.Empty:
+            break
+    return events
+
+
+def _manager() -> RNSManager:
+    return RNSManager(BridgeConfig(token="s3cret"))
+
+
+def test_on_lxmf_delivery_telemetry_only_emits_telemetry_not_message():
+    manager = _manager()
+    q = manager.subscribe()
+    telemetry_raw = msgpack.packb({0x07: 21.5})  # SID_TEMPERATURE
+    message = _fake_lxm_message(fields={LXMF.FIELD_TELEMETRY: telemetry_raw}, title=None, content=None)
+
+    manager._on_lxmf_delivery(message)
+
+    events = _drain(q)
+    assert len(events) == 1
+    assert events[0]["type"] == protocol.TYPE_TELEMETRY
+    assert events[0]["sensors"]["rns_temperature"] == {"value": 21.5, "unit": "c"}
+
+
+def test_on_lxmf_delivery_text_and_telemetry_emits_both():
+    manager = _manager()
+    q = manager.subscribe()
+    telemetry_raw = msgpack.packb({0x07: 21.5})
+    message = _fake_lxm_message(
+        fields={LXMF.FIELD_TELEMETRY: telemetry_raw},
+        title=b"Hello",
+        content=b"World",
+        title_str="Hello",
+        content_str="World",
+    )
+
+    manager._on_lxmf_delivery(message)
+
+    events = _drain(q)
+    types = {e["type"] for e in events}
+    assert types == {protocol.TYPE_TELEMETRY, protocol.TYPE_LXMF_MESSAGE}
+    lxmf_event = next(e for e in events if e["type"] == protocol.TYPE_LXMF_MESSAGE)
+    assert lxmf_event["title"] == "Hello"
+    assert lxmf_event["content"] == "World"
+
+
+def test_on_lxmf_delivery_text_only_never_emits_telemetry():
+    manager = _manager()
+    q = manager.subscribe()
+    message = _fake_lxm_message(fields={}, title=b"Hello", content=b"World", title_str="Hello", content_str="World")
+
+    manager._on_lxmf_delivery(message)
+
+    events = _drain(q)
+    assert len(events) == 1
+    assert events[0]["type"] == protocol.TYPE_LXMF_MESSAGE
+
+
+def test_on_lxmf_delivery_telemetry_event_carries_source_and_destination_hash():
+    manager = _manager()
+    q = manager.subscribe()
+    telemetry_raw = msgpack.packb({0x07: 21.5})
+    message = _fake_lxm_message(fields={LXMF.FIELD_TELEMETRY: telemetry_raw}, title=None, content=None)
+
+    manager._on_lxmf_delivery(message)
+
+    event = _drain(q)[0]
+    assert event["sourceHash"] == RNS.hexrep(message.source_hash, delimit=False)
+    assert event["destinationHash"] == RNS.hexrep(message.destination_hash, delimit=False)
+
+
+def test_on_lxmf_delivery_malformed_telemetry_bytes_still_treated_as_telemetry_only():
+    """Garbage FIELD_TELEMETRY bytes decode to an empty result (never
+    raises) but the field's mere PRESENCE with no text still counts as
+    telemetry-only -- no lxmf_message event, even though the telemetry
+    event itself carries empty sensors/location/ts."""
+    manager = _manager()
+    q = manager.subscribe()
+    message = _fake_lxm_message(fields={LXMF.FIELD_TELEMETRY: b"\xff\xff not msgpack"}, title=None, content=None)
+
+    manager._on_lxmf_delivery(message)
+
+    events = _drain(q)
+    assert len(events) == 1
+    assert events[0]["type"] == protocol.TYPE_TELEMETRY
+    assert events[0]["sensors"] == {}
+    assert events[0]["location"] is None
+
+
+def test_on_lxmf_delivery_non_bytes_telemetry_field_is_skipped_safely():
+    """A non-bytes FIELD_TELEMETRY value (shouldn't happen from a real lxmf
+    delivery, but defends against a hostile/buggy peer) must not crash the
+    delivery callback."""
+    manager = _manager()
+    q = manager.subscribe()
+    message = _fake_lxm_message(fields={LXMF.FIELD_TELEMETRY: "not-bytes"}, title=None, content=None)
+
+    manager._on_lxmf_delivery(message)
+
+    # telemetry_raw is not None, so still counted telemetry-only (no
+    # lxmf_message event); _emit_telemetry_event itself declines to decode
+    # and broadcasts nothing -- a defensive no-op, never a crash.
+    assert _drain(q) == []
+
+
+def test_on_lxmf_delivery_no_telemetry_field_behaves_as_before():
+    """Regression: a delivery with no FIELD_TELEMETRY key at all must be
+    unaffected by the WP2 interception -- exactly one lxmf_message event,
+    same as pre-WP2 behavior."""
+    manager = _manager()
+    q = manager.subscribe()
+    message = _fake_lxm_message(
+        fields={LXMF.FIELD_THREAD: b"\x01\x02"}, title=b"Hi", content=b"there", title_str="Hi", content_str="there"
+    )
+
+    manager._on_lxmf_delivery(message)
+
+    events = _drain(q)
+    assert len(events) == 1
+    assert events[0]["type"] == protocol.TYPE_LXMF_MESSAGE
+    assert events[0]["fields"]["thread"] == "0102"

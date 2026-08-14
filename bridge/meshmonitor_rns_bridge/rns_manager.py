@@ -30,6 +30,7 @@ import RNS
 
 from . import protocol
 from .rnode_kiss import RADIO_STATE_OFF, RADIO_STATE_ON
+from .sideband_telemetry import decode_field_telemetry
 
 logger = logging.getLogger("meshmonitor_rns_bridge.rns_manager")
 
@@ -792,15 +793,38 @@ class RNSManager:
         addressed to this source's delivery destination. Broadcasts a
         `lxmf_message` event; never raises back into LXMRouter (matches the
         _AnnounceHandler pattern -- an exception here must not take down the
-        router's calling thread)."""
+        router's calling thread).
+
+        Phase 3 WP2 (#3960, build spec §2.A): `LXMF.FIELD_TELEMETRY` is
+        intercepted HERE, off the raw `get_fields()` dict, BEFORE it reaches
+        `_sanitize_lxmf_fields()` -- that generic path hex-collapses any
+        `bytes` field over `_MAX_INLINE_BYTES` (32) to a length-only
+        placeholder (`{"bytesLength": N}`), and a real Sideband
+        FIELD_TELEMETRY blob is comfortably over that (the WP0 fixture alone
+        is 75 bytes), so relying on the generic path would produce nothing
+        useful. A telemetry-only delivery (no title/content) emits ONLY the
+        `telemetry` event -- no `lxmf_message` event, so Node never creates a
+        chat row for it (R3). A delivery carrying both text and telemetry
+        emits BOTH events."""
         try:
+            raw_fields = message.get_fields() or {}
+            telemetry_raw = raw_fields.get(LXMF.FIELD_TELEMETRY)
+            if telemetry_raw is not None:
+                self._emit_telemetry_event(message, telemetry_raw)
+
+            title = message.title_as_string() if message.title else None
+            content = message.content_as_string() if message.content else None
+            telemetry_only = telemetry_raw is not None and not title and not content
+            if telemetry_only:
+                return
+
             event = protocol.lxmf_message_event(
                 hash=_hexlify(message.hash),
                 from_hash=_hexlify(message.source_hash),
                 to_hash=_hexlify(message.destination_hash),
-                title=message.title_as_string() if message.title else None,
-                content=message.content_as_string() if message.content else None,
-                fields=_sanitize_lxmf_fields(message.get_fields()),
+                title=title,
+                content=content,
+                fields=_sanitize_lxmf_fields(raw_fields),
                 method=_lxmf_method_to_wire(message.method),
                 signature_validated=bool(message.signature_validated),
                 ratcheted=message.ratchet_id is not None,
@@ -811,6 +835,31 @@ class RNSManager:
             self.broadcast(event)
         except Exception:
             logger.exception("error handling inbound LXMF delivery")
+
+    def _emit_telemetry_event(self, message: "LXMF.LXMessage", telemetry_raw: Any) -> None:
+        """Decode+broadcast one LXM's `FIELD_TELEMETRY` payload as a
+        `telemetry` event (build spec §2.A/§2.C). Isolated in its own
+        try/except so a decode failure can never suppress the sibling
+        `lxmf_message` event for a text+telemetry delivery -- worst case,
+        this emits nothing and `_on_lxmf_delivery` carries on."""
+        try:
+            if not isinstance(telemetry_raw, (bytes, bytearray)):
+                logger.warning(
+                    "FIELD_TELEMETRY value is not bytes (%s); skipping decode",
+                    type(telemetry_raw).__name__,
+                )
+                return
+            decoded = decode_field_telemetry(bytes(telemetry_raw))
+            event = protocol.telemetry_event(
+                source_hash=_hexlify(message.source_hash),
+                destination_hash=_hexlify(message.destination_hash),
+                sensors=decoded["sensors"],
+                location=decoded["location"],
+                ts=decoded["ts"],
+            )
+            self.broadcast(event)
+        except Exception:
+            logger.exception("error decoding/broadcasting FIELD_TELEMETRY")
 
     # -- LXMF outbound (build spec §3.5) ---------------------------------------
 
