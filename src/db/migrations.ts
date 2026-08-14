@@ -160,6 +160,7 @@ import { migration as createReticulumInterfacesMigration, runMigration142Postgre
 import { migration as createReticulumMessagesMigration, runMigration143Postgres, runMigration143Mysql } from '../server/migrations/143_create_reticulum_messages.js';
 import { migration as addReticulumDestinationPositionMigration, runMigration144Postgres, runMigration144Mysql } from '../server/migrations/144_add_reticulum_destination_position.js';
 import { migration as addReticulumInterfaceRadioConfigMigration, runMigration145Postgres, runMigration145Mysql } from '../server/migrations/145_add_reticulum_interface_radio_config.js';
+import { migration as createReticulumPathsMigration, runMigration146Postgres, runMigration146Mysql } from '../server/migrations/146_create_reticulum_paths.js';
 
 // ============================================================================
 // Registry
@@ -2317,4 +2318,19 @@ registry.register({
   sqlite: (db) => addReticulumInterfaceRadioConfigMigration.up(db),
   postgres: (client) => runMigration145Postgres(client),
   mysql: (pool) => runMigration145Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 146: create `reticulum_paths` (Reticulum epic #3960, Phase 4
+// WP1). Row per next-hop path table entry (the bridge's `path_table` event).
+// Write semantics: snapshot replace scoped by sourceId per poll. PER-SOURCE.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 146,
+  name: 'create_reticulum_paths',
+  settingsKey: 'migration_146_create_reticulum_paths',
+  sqlite: (db) => createReticulumPathsMigration.up(db),
+  postgres: (client) => runMigration146Postgres(client),
+  mysql: (pool) => runMigration146Mysql(pool),
 });

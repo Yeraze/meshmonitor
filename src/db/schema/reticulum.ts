@@ -17,10 +17,16 @@
  *    `messages.id` row-id convention). Phase 2 scope: UTF-8 text
  *    `content`/`title` + attachment metadata in `fields`; raw blob transfer
  *    is deferred.
+ *  - `reticulum_paths` — one row per next-hop path table entry (the bridge's
+ *    `path_table` event / `RNS.Transport.get_path_table()`). Write semantics
+ *    are SNAPSHOT REPLACE scoped by sourceId per poll (see
+ *    `ReticulumRepository.replacePaths`), not a merge upsert.
  *
- * See `docs/internal/dev-notes/RETICULUM_PHASE1A_BUILD_SPEC.md` §3.1/§3.2 and
- * `docs/internal/dev-notes/RETICULUM_PHASE2_BUILD_SPEC.md` §4 for the exact
- * column lists and rationale. Matches migrations 141/142/143 exactly.
+ * See `docs/internal/dev-notes/RETICULUM_PHASE1A_BUILD_SPEC.md` §3.1/§3.2,
+ * `docs/internal/dev-notes/RETICULUM_PHASE2_BUILD_SPEC.md` §4, and
+ * `docs/internal/dev-notes/RETICULUM_PHASE4_BUILD_SPEC.md` §3.1/§3.2 for the
+ * exact column lists and rationale. Matches migrations 141/142/143/146
+ * exactly.
  */
 import { sqliteTable, text, integer, real, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
 import {
@@ -348,6 +354,61 @@ export const reticulumMessagesMysql = mysqlTable('reticulum_messages', {
   sourceThreadIdx: myIndex('reticulum_messages_source_thread_idx').on(t.sourceId, t.threadHash),
 }));
 
+// ============================================================================
+// reticulum_paths
+// ============================================================================
+
+// ============ SQLite Schema ============
+
+export const reticulumPathsSqlite = sqliteTable('reticulum_paths', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  sourceId: text('sourceId').notNull(),
+  destinationHash: text('destinationHash').notNull(),
+  viaHash: text('viaHash'),
+  hops: integer('hops'),
+  interfaceName: text('interfaceName'),
+  /** ms epoch; from the wire `expires` seconds * 1000. */
+  expiresAt: integer('expiresAt'),
+  /** ms epoch, set on write — the age source for this row. */
+  updatedAt: integer('updatedAt').notNull(),
+}, (t) => ({
+  sourceDestIdx: uniqueIndex('reticulum_paths_source_dest_idx').on(t.sourceId, t.destinationHash),
+  sourceUpdatedIdx: index('reticulum_paths_source_updated_idx').on(t.sourceId, t.updatedAt),
+}));
+
+// ============ PostgreSQL Schema ============
+
+export const reticulumPathsPostgres = pgTable('reticulum_paths', {
+  id: pgInteger('id').primaryKey().generatedAlwaysAsIdentity(),
+  sourceId: pgText('sourceId').notNull(),
+  destinationHash: pgText('destinationHash').notNull(),
+  viaHash: pgText('viaHash'),
+  hops: pgInteger('hops'),
+  interfaceName: pgText('interfaceName'),
+  // ms-epoch timestamps overflow 32-bit INTEGER; JS Date.now() is ~1.8e12.
+  expiresAt: pgBigint('expiresAt', { mode: 'number' }),
+  updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
+}, (t) => ({
+  sourceDestIdx: pgUniqueIndex('reticulum_paths_source_dest_idx').on(t.sourceId, t.destinationHash),
+  sourceUpdatedIdx: pgIndex('reticulum_paths_source_updated_idx').on(t.sourceId, t.updatedAt),
+}));
+
+// ============ MySQL Schema ============
+
+export const reticulumPathsMysql = mysqlTable('reticulum_paths', {
+  id: myInt('id').primaryKey().autoincrement(),
+  sourceId: myVarchar('sourceId', { length: 191 }).notNull(),
+  destinationHash: myVarchar('destinationHash', { length: 64 }).notNull(),
+  viaHash: myVarchar('viaHash', { length: 64 }),
+  hops: myInt('hops'),
+  interfaceName: myVarchar('interfaceName', { length: 191 }),
+  expiresAt: myBigint('expiresAt', { mode: 'number' }),
+  updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),
+}, (t) => ({
+  sourceDestIdx: myUniqueIndex('reticulum_paths_source_dest_idx').on(t.sourceId, t.destinationHash),
+  sourceUpdatedIdx: myIndex('reticulum_paths_source_updated_idx').on(t.sourceId, t.updatedAt),
+}));
+
 // ============ TYPE INFERENCE ============
 
 export type ReticulumDestinationSqlite = typeof reticulumDestinationsSqlite.$inferSelect;
@@ -370,3 +431,10 @@ export type ReticulumMessagePostgres = typeof reticulumMessagesPostgres.$inferSe
 export type NewReticulumMessagePostgres = typeof reticulumMessagesPostgres.$inferInsert;
 export type ReticulumMessageMysql = typeof reticulumMessagesMysql.$inferSelect;
 export type NewReticulumMessageMysql = typeof reticulumMessagesMysql.$inferInsert;
+
+export type ReticulumPathSqlite = typeof reticulumPathsSqlite.$inferSelect;
+export type NewReticulumPathSqlite = typeof reticulumPathsSqlite.$inferInsert;
+export type ReticulumPathPostgres = typeof reticulumPathsPostgres.$inferSelect;
+export type NewReticulumPathPostgres = typeof reticulumPathsPostgres.$inferInsert;
+export type ReticulumPathMysql = typeof reticulumPathsMysql.$inferSelect;
+export type NewReticulumPathMysql = typeof reticulumPathsMysql.$inferInsert;

@@ -73,6 +73,9 @@ export const TABLE_ORDER = [
   'reticulum_destinations',
   'reticulum_interfaces',
   'reticulum_messages',
+  // 3960 Phase 4 WP1: per-source Reticulum path table snapshot. Unique on
+  // (sourceId, destinationHash), no FKs — follows reticulum_messages.
+  'reticulum_paths',
   'backup_history',
   'custom_themes',
   'user_map_preferences',
@@ -141,6 +144,8 @@ export const SOURCE_SCOPED_TABLES = new Set([
   'dead_drop_messages',
   // 3960 Phase 1a WP1: per-source Reticulum destinations + interfaces.
   'reticulum_destinations', 'reticulum_interfaces', 'reticulum_messages',
+  // 3960 Phase 4 WP1: per-source Reticulum path table snapshot.
+  'reticulum_paths',
 ]);
 
 // Tables to skip entirely during migration (incompatible schemas or non-essential)

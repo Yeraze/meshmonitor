@@ -251,6 +251,38 @@ export interface ReticulumConversationSummary {
   messageCount: number;
 }
 
+// ============ Path Table Row (Phase 4 WP1) ============
+
+export interface ReticulumPathRow {
+  id?: number;
+  sourceId: string;
+  destinationHash: string;
+  viaHash: string | null;
+  hops: number | null;
+  interfaceName: string | null;
+  /** ms epoch; from the wire `expires` seconds * 1000. Null when the bridge omits an expiry. */
+  expiresAt: number | null;
+  /** ms epoch, set on write — the age source for this row. */
+  updatedAt: number;
+}
+
+/**
+ * A single path-table entry as reported by the bridge's `path_table` event.
+ * `replacePaths` snapshot-replaces the whole table for a source each poll, so
+ * there is no separate merge/partial-update semantic here (unlike
+ * {@link UpsertDestinationInput}/{@link UpsertInterfaceInput}) — every field
+ * the caller doesn't pass is stored as `null`.
+ */
+export interface UpsertPathInput {
+  destinationHash: string;
+  viaHash?: string | null;
+  hops?: number | null;
+  interfaceName?: string | null;
+  expiresAt?: number | null;
+  /** ms epoch of this poll; defaults to `Date.now()`. */
+  updatedAt?: number;
+}
+
 /** Terminal-or-in-flight states used when `selfHash` isn't given to {@link ReticulumRepository.listConversations} — see that method's doc. */
 const OUTBOUND_MESSAGE_STATES: ReadonlySet<ReticulumMessageState> = new Set([
   'draft',
@@ -922,5 +954,64 @@ export class ReticulumRepository extends BaseRepository {
       }
     }
     return Array.from(summaries.values()).sort((a, b) => b.lastMessage.timestamp - a.lastMessage.timestamp);
+  }
+
+  // ============ Path Table Operations (Phase 4 WP1) ============
+
+  /**
+   * Replace the entire path table for a source with a fresh snapshot —
+   * the bridge's `path_table` event always carries the whole table, not a
+   * delta, so this deletes every existing row for `sourceId` and bulk-inserts
+   * the new set in one pass (mirrors {@link pruneDestinations}'s delete
+   * pattern, generalized to "delete all" rather than "delete oldest N").
+   * `withSourceScope`'s fail-closed guard means an empty/missing `sourceId`
+   * throws before either the delete or the insert runs, so this can never
+   * touch another source's rows. An empty `paths` array still clears the
+   * table for `sourceId` (the source now reports zero known paths) but skips
+   * the insert.
+   */
+  async replacePaths(sourceId: string, paths: UpsertPathInput[]): Promise<void> {
+    if (!sourceId) {
+      throw new Error('ReticulumRepository.replacePaths requires a sourceId');
+    }
+    const { reticulumPaths } = this.tables;
+    const now = this.now();
+
+    await this.db
+      .delete(reticulumPaths)
+      .where(this.withSourceScope(reticulumPaths, sourceId));
+
+    if (paths.length === 0) return;
+
+    const values = paths.map((p) => ({
+      sourceId,
+      destinationHash: p.destinationHash,
+      viaHash: p.viaHash ?? null,
+      hops: p.hops ?? null,
+      interfaceName: p.interfaceName ?? null,
+      expiresAt: p.expiresAt ?? null,
+      updatedAt: p.updatedAt ?? now,
+    }));
+
+    await this.db.insert(reticulumPaths).values(values);
+  }
+
+  /**
+   * List path table rows for a source (or `ALL_SOURCES`), ordered by hops
+   * (fewest first, nulls last) then destinationHash — mirrors the topology
+   * view's "nearest first" reading order.
+   */
+  async listPaths(sourceId: SourceScope): Promise<ReticulumPathRow[]> {
+    const { reticulumPaths } = this.tables;
+    const rows = await this.db
+      .select()
+      .from(reticulumPaths)
+      .where(this.withSourceScope(reticulumPaths, sourceId))
+      .orderBy(
+        sql`CASE WHEN ${reticulumPaths.hops} IS NULL THEN 1 ELSE 0 END`,
+        asc(reticulumPaths.hops),
+        asc(reticulumPaths.destinationHash),
+      );
+    return this.normalizeBigInts(rows) as unknown as ReticulumPathRow[];
   }
 }
