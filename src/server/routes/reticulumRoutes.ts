@@ -105,7 +105,10 @@ router.get('/status', optionalAuth(), async (req: Request, res: Response) => {
     const manager = res.locals.reticulumManager as ReticulumManager | undefined;
     const connected = manager ? manager.isConnected() : false;
 
-    let mode: 'attach' | 'tcp_peer' | undefined;
+    // 'own' added in Phase 3 WP1 (#3960, reticulumProtocol.ts's ReticulumMode) --
+    // widened here to keep this route compiling; own-mode-specific status
+    // fields are WP4's job.
+    let mode: 'attach' | 'tcp_peer' | 'own' | undefined;
     try {
       const source = await databaseService.sources.getSource(sourceId);
       if (source) {
