@@ -16,7 +16,7 @@
  * the full column rationale (rssi/snr/quality included, position/telemetry
  * and LoRa-parameter columns excluded — those are Phase 3).
  */
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, lt, or, sql } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType } from '../types.js';
 import { SettingsRepository } from './settings.js';
@@ -108,6 +108,91 @@ export interface UpsertInterfaceInput {
   /** ms epoch of this poll; defaults to `Date.now()`. */
   lastSeenAt?: number;
 }
+
+/** LXMF message lifecycle state (Reticulum epic #3960, Phase 2 WP2/WP3). Mirrors `src/types/reticulum.ts`'s `ReticulumMessageState` — declared independently per the repo/frontend type-boundary convention (see `ReticulumDestinationRow` above). */
+export type ReticulumMessageState = 'draft' | 'outbound' | 'sending' | 'sent' | 'delivered' | 'failed';
+
+/**
+ * LXMF delivery method (Reticulum epic #3960, Phase 2 WP2/WP3). Includes
+ * `'paper'` (offline/manual transfer) per the wire protocol's `LxmfMethod`
+ * (`reticulumProtocol.ts`) — WP2's `src/types/reticulum.ts` mirror predates
+ * WP1's wire contract landing and only lists three values; widen that file
+ * too when it's next touched (frontend, WP5) so the two stay in sync.
+ */
+export type ReticulumMessageMethod = 'opportunistic' | 'direct' | 'propagated' | 'paper';
+
+export interface ReticulumMessageRow {
+  id: string;
+  sourceId: string;
+  fromHash: string;
+  toHash: string;
+  title: string | null;
+  content: string | null;
+  timestamp: number;
+  receivedAt: number | null;
+  createdAt: number;
+  state: ReticulumMessageState;
+  method: ReticulumMessageMethod | null;
+  signatureValidated: boolean;
+  ratcheted: boolean;
+  fields: string | null;
+  replyToHash: string | null;
+  threadHash: string | null;
+  rssi: number | null;
+  snr: number | null;
+  quality: number | null;
+}
+
+/**
+ * Fields needed to insert-or-update a message row. `id` is the caller-computed
+ * composite key `${sourceId}_${lxmHashHex}` (the `messages.id` row-id
+ * convention) — for an optimistic outbound send before the LXM hash is known,
+ * callers pass a temporary id and reconcile it via {@link ReticulumRepository.renameMessageId}
+ * once the bridge assigns the real hash.
+ */
+export interface UpsertMessageInput {
+  id: string;
+  fromHash: string;
+  toHash: string;
+  title?: string | null;
+  content?: string | null;
+  timestamp: number;
+  receivedAt?: number | null;
+  state: ReticulumMessageState;
+  method?: ReticulumMessageMethod | null;
+  signatureValidated?: boolean;
+  ratcheted?: boolean;
+  /** JSON text — replies/reactions/thread markers + attachment metadata. */
+  fields?: string | null;
+  replyToHash?: string | null;
+  threadHash?: string | null;
+  rssi?: number | null;
+  snr?: number | null;
+  quality?: number | null;
+}
+
+export interface ListMessagesOptions {
+  /** Return only messages strictly older than this ms-epoch timestamp (pagination cursor). */
+  before?: number;
+  /** Default 50. */
+  limit?: number;
+}
+
+/** One conversation's latest-message summary, as returned by {@link ReticulumRepository.listConversations}. */
+export interface ReticulumConversationSummary {
+  peerHash: string;
+  lastMessage: ReticulumMessageRow;
+  messageCount: number;
+}
+
+/** Terminal-or-in-flight states used when `selfHash` isn't given to {@link ReticulumRepository.listConversations} — see that method's doc. */
+const OUTBOUND_MESSAGE_STATES: ReadonlySet<ReticulumMessageState> = new Set([
+  'draft',
+  'outbound',
+  'sending',
+  'sent',
+  'failed',
+]);
 
 /**
  * Repository for Reticulum operations. All lookup/mutation methods are
@@ -439,5 +524,209 @@ export class ReticulumRepository extends BaseRepository {
       ))
       .limit(1);
     return rows[0] ? (this.normalizeBigInts(rows[0]) as unknown as ReticulumInterfaceRow) : null;
+  }
+
+  // ============ Message Operations (Phase 2 WP3) ============
+
+  /**
+   * Insert-or-update a message row on its `id` primary key. `createdAt` is
+   * seeded on first insert and preserved on every subsequent update (a
+   * conflicting upsert only happens for a row we already persisted — e.g. the
+   * bridge re-delivers the same `lxmf_message` event, or an outbound send is
+   * reconciled — never a brand-new logical message reusing an id).
+   */
+  async upsertMessage(sourceId: string, input: UpsertMessageInput): Promise<void> {
+    if (!sourceId) {
+      throw new Error('ReticulumRepository.upsertMessage requires a sourceId');
+    }
+    const { reticulumMessages } = this.tables;
+    const now = this.now();
+
+    const values = {
+      id: input.id,
+      sourceId,
+      fromHash: input.fromHash,
+      toHash: input.toHash,
+      title: input.title ?? null,
+      content: input.content ?? null,
+      timestamp: input.timestamp,
+      receivedAt: input.receivedAt ?? null,
+      createdAt: now,
+      state: input.state,
+      method: input.method ?? null,
+      signatureValidated: input.signatureValidated ?? false,
+      ratcheted: input.ratcheted ?? false,
+      fields: input.fields ?? null,
+      replyToHash: input.replyToHash ?? null,
+      threadHash: input.threadHash ?? null,
+      rssi: input.rssi ?? null,
+      snr: input.snr ?? null,
+      quality: input.quality ?? null,
+    };
+    const updateSet: Record<string, unknown> = {
+      fromHash: values.fromHash,
+      toHash: values.toHash,
+      title: values.title,
+      content: values.content,
+      timestamp: values.timestamp,
+      receivedAt: values.receivedAt,
+      // createdAt intentionally omitted — preserved from the original insert.
+      state: values.state,
+      method: values.method,
+      signatureValidated: values.signatureValidated,
+      ratcheted: values.ratcheted,
+      fields: values.fields,
+      replyToHash: values.replyToHash,
+      threadHash: values.threadHash,
+      rssi: values.rssi,
+      snr: values.snr,
+      quality: values.quality,
+    };
+
+    await this.upsert(reticulumMessages, values, [reticulumMessages.id], updateSet);
+  }
+
+  /**
+   * Update a message's delivery state (and optionally its method) — driven by
+   * `delivery_state` events. `opts.attempts` is accepted for signature parity
+   * with the wire event but is NOT persisted: `reticulum_messages` (migration
+   * 143) has no `attempts` column; the delivery-state event's attempt count is
+   * transient UI-update data only (see `dataEventEmitter.emitReticulumDeliveryStateUpdated`).
+   */
+  async updateMessageState(
+    sourceId: string,
+    id: string,
+    state: ReticulumMessageState,
+    opts: { method?: ReticulumMessageMethod | null } = {},
+  ): Promise<void> {
+    if (!sourceId) {
+      throw new Error('ReticulumRepository.updateMessageState requires a sourceId');
+    }
+    const { reticulumMessages } = this.tables;
+    const updateSet: Record<string, unknown> = { state };
+    if (opts.method !== undefined) updateSet.method = opts.method;
+
+    await this.db
+      .update(reticulumMessages)
+      .set(updateSet)
+      .where(and(this.withSourceScope(reticulumMessages, sourceId), eq(reticulumMessages.id, id)));
+  }
+
+  /**
+   * Rename a message row's `id` (its primary key). Used by the outbound send
+   * flow to reconcile an optimistically-persisted temporary id into the
+   * authoritative `${sourceId}_${lxmHashHex}` id once the bridge assigns the
+   * real LXM hash — see `ReticulumManager.sendMessage`.
+   */
+  async renameMessageId(sourceId: string, oldId: string, newId: string): Promise<void> {
+    if (!sourceId) {
+      throw new Error('ReticulumRepository.renameMessageId requires a sourceId');
+    }
+    const { reticulumMessages } = this.tables;
+    await this.db
+      .update(reticulumMessages)
+      .set({ id: newId })
+      .where(and(this.withSourceScope(reticulumMessages, sourceId), eq(reticulumMessages.id, oldId)));
+  }
+
+  /** Get a single message row scoped by `(sourceId, id)`. */
+  async getMessage(sourceId: string, id: string): Promise<ReticulumMessageRow | null> {
+    const { reticulumMessages } = this.tables;
+    const rows = await this.db
+      .select()
+      .from(reticulumMessages)
+      .where(and(this.withSourceScope(reticulumMessages, sourceId), eq(reticulumMessages.id, id)))
+      .limit(1);
+    return rows[0] ? (this.normalizeBigInts(rows[0]) as unknown as ReticulumMessageRow) : null;
+  }
+
+  /**
+   * A conversation's messages (a specific peer hash), newest-first, with
+   * optional `before` cursor pagination. `peerHash` matches either side of
+   * the message (fromHash or toHash) — LXMF conversations are always exactly
+   * two parties, so a peer hash unambiguously identifies the conversation
+   * regardless of message direction.
+   */
+  async listMessages(
+    sourceId: string,
+    peerHash: string,
+    opts: ListMessagesOptions = {},
+  ): Promise<ReticulumMessageRow[]> {
+    const { reticulumMessages } = this.tables;
+    const conditions = [
+      this.withSourceScope(reticulumMessages, sourceId),
+      or(eq(reticulumMessages.fromHash, peerHash), eq(reticulumMessages.toHash, peerHash)),
+    ];
+    if (opts.before !== undefined) conditions.push(lt(reticulumMessages.timestamp, opts.before));
+
+    const rows = await this.db
+      .select()
+      .from(reticulumMessages)
+      .where(and(...conditions))
+      .orderBy(desc(reticulumMessages.timestamp))
+      .limit(opts.limit ?? 50);
+    return this.normalizeBigInts(rows) as unknown as ReticulumMessageRow[];
+  }
+
+  /** A message thread (LXMF `fields.thread` marker), chronological (oldest first). */
+  async listThread(sourceId: string, threadHash: string): Promise<ReticulumMessageRow[]> {
+    const { reticulumMessages } = this.tables;
+    const rows = await this.db
+      .select()
+      .from(reticulumMessages)
+      .where(and(this.withSourceScope(reticulumMessages, sourceId), eq(reticulumMessages.threadHash, threadHash)))
+      .orderBy(asc(reticulumMessages.timestamp));
+    return this.normalizeBigInts(rows) as unknown as ReticulumMessageRow[];
+  }
+
+  /**
+   * Grouped latest-per-peer conversation summary for a source, newest-first.
+   *
+   * `selfHash` (the source's own LXMF destination — `ReticulumManager.getOwnAddresses()`)
+   * determines which side of each row is "the peer": when given, the peer is
+   * whichever of `fromHash`/`toHash` is NOT `selfHash`. Callers that know their
+   * own address (the manager, routes) should always pass it — without it, the
+   * peer is inferred from `state` (an outbound-flavored state means WE sent
+   * it, so the peer is `toHash`; otherwise the peer is `fromHash`), which is
+   * ambiguous for a 'delivered' row that could be either an inbound receipt
+   * or our own delivered send.
+   *
+   * Implemented as an in-process reduction over the most recent `scanLimit`
+   * rows (default 1000) rather than a SQL "greatest-per-group" query — Drizzle
+   * has no dialect-portable idiom for that, and LXMF message volume doesn't
+   * warrant one. Rows are fetched newest-first, so the first occurrence per
+   * peer is already the latest.
+   */
+  async listConversations(
+    sourceId: string,
+    selfHash?: string,
+    scanLimit = 1000,
+  ): Promise<ReticulumConversationSummary[]> {
+    const { reticulumMessages } = this.tables;
+    const rows = await this.db
+      .select()
+      .from(reticulumMessages)
+      .where(this.withSourceScope(reticulumMessages, sourceId))
+      .orderBy(desc(reticulumMessages.timestamp))
+      .limit(scanLimit);
+    const normalized = this.normalizeBigInts(rows) as unknown as ReticulumMessageRow[];
+
+    const lowerSelf = selfHash?.toLowerCase();
+    const peerOf = (row: ReticulumMessageRow): string => {
+      if (lowerSelf) return row.fromHash.toLowerCase() === lowerSelf ? row.toHash : row.fromHash;
+      return OUTBOUND_MESSAGE_STATES.has(row.state) ? row.toHash : row.fromHash;
+    };
+
+    const summaries = new Map<string, ReticulumConversationSummary>();
+    for (const row of normalized) {
+      const peerHash = peerOf(row);
+      const existing = summaries.get(peerHash);
+      if (existing) {
+        existing.messageCount += 1;
+      } else {
+        summaries.set(peerHash, { peerHash, lastMessage: row, messageCount: 1 });
+      }
+    }
+    return Array.from(summaries.values()).sort((a, b) => b.lastMessage.timestamp - a.lastMessage.timestamp);
   }
 }

@@ -22,7 +22,7 @@
  */
 
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
-import { isMeshCoreManager } from '../sourceManagerTypes.js';
+import { isMeshCoreManager, isReticulumManager } from '../sourceManagerTypes.js';
 
 /**
  * Every local node number MeshMonitor currently owns, across all registered
@@ -79,4 +79,35 @@ export function getOwnPublicKeys(): string[] {
 export function isOwnPublicKey(pubkey: string | null | undefined): boolean {
   if (!pubkey) return false;
   return getOwnPublicKeys().includes(pubkey.toLowerCase());
+}
+
+/**
+ * Every local LXMF destination hash MeshMonitor currently owns, across all
+ * registered Reticulum sources (#3960 Phase 2 WP3). Mirrors
+ * {@link getOwnPublicKeys}. Non-Reticulum managers contribute nothing.
+ */
+export function getOwnReticulumAddresses(): string[] {
+  const hashes: string[] = [];
+  for (const manager of sourceManagerRegistry.getAllManagers()) {
+    if (!isReticulumManager(manager)) continue;
+    let addrs: unknown;
+    try {
+      addrs = manager.getOwnAddresses();
+    } catch {
+      continue; // a manager mid-connect must never break the caller
+    }
+    if (!Array.isArray(addrs)) continue;
+    for (const a of addrs) {
+      if (typeof a !== 'string' || !a) continue;
+      const lower = a.toLowerCase();
+      if (!hashes.includes(lower)) hashes.push(lower);
+    }
+  }
+  return hashes;
+}
+
+/** True when `hash` is the local LXMF destination of ANY registered Reticulum source. */
+export function isOwnReticulumAddress(hash: string | null | undefined): boolean {
+  if (!hash) return false;
+  return getOwnReticulumAddresses().includes(hash.toLowerCase());
 }

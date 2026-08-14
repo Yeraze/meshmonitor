@@ -7,6 +7,7 @@ import { AutomationEngineService } from './automationEngineService.js';
 import type { ActionDeps } from './actionExecutor.js';
 import type { DbMessage } from '../../../services/database.js';
 import type { MeshCoreMessage } from '../../meshcoreManager.js';
+import type { ReticulumMessageRow } from '../../../db/repositories/reticulum.js';
 import type { AutomationGraph } from '../../../types/automation.js';
 import * as schema from '../../../db/schema/index.js';
 import { createTestDb } from '../../test-helpers/testDb.js';
@@ -52,6 +53,31 @@ function mcMessage(over: Partial<MeshCoreMessage> = {}): MeshCoreMessage {
     timestamp: 1000,
     ...over,
   } as MeshCoreMessage;
+}
+
+function retMessage(over: Partial<ReticulumMessageRow> = {}): ReticulumMessageRow {
+  return {
+    id: 'default_hash1',
+    sourceId: 'default',
+    fromHash: 'peer'.padEnd(32, '0'),
+    toHash: 'self'.padEnd(32, '0'),
+    title: null,
+    content: 'ping',
+    timestamp: 1000,
+    receivedAt: 1000,
+    createdAt: 1000,
+    state: 'delivered',
+    method: 'opportunistic',
+    signatureValidated: true,
+    ratcheted: false,
+    fields: null,
+    replyToHash: null,
+    threadHash: null,
+    rssi: null,
+    snr: null,
+    quality: null,
+    ...over,
+  };
 }
 
 describe('AutomationEngineService', () => {
@@ -221,6 +247,56 @@ describe('AutomationEngineService', () => {
     const engine = engineWith(deps);
     await engine.load();
     expect(await engine.onMeshCoreMessage(mcMessage({ text: 'hello' }), 'default')).toBe(0);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('fires a message automation on a Reticulum LXMF message (#3960 Phase 2 WP3)', async () => {
+    const { calls, deps } = recorder();
+    await createEnabled('ret-ping', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: { textContains: 'ping' } },
+        { id: 's', type: 'action.sendMessage', params: { text: 'pong' } },
+      ],
+      edges: [{ from: 't', to: 's' }],
+    });
+    const engine = engineWith(deps);
+    await engine.load();
+
+    const fired = await engine.onReticulumMessage(retMessage({ content: 'ping me' }), 'default');
+    expect(fired).toBe(1);
+    expect(calls.map((c) => c.fn)).toEqual(['sendMessage']);
+  });
+
+  it('does not fire a Reticulum message automation when the text filter misses', async () => {
+    const { calls, deps } = recorder();
+    await createEnabled('ret-ping', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: { textContains: 'ping' } },
+        { id: 's', type: 'action.sendMessage', params: { text: 'pong' } },
+      ],
+      edges: [{ from: 't', to: 's' }],
+    });
+    const engine = engineWith(deps);
+    await engine.load();
+    expect(await engine.onReticulumMessage(retMessage({ content: 'hello' }), 'default')).toBe(0);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('a channel-scoped message automation never fires on a Reticulum message (LXMF has no channel concept)', async () => {
+    const { calls, deps } = recorder();
+    await createEnabled('ret-channel', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: { channel: 0 } },
+        { id: 's', type: 'action.sendMessage', params: { text: 'pong' } },
+      ],
+      edges: [{ from: 't', to: 's' }],
+    });
+    const engine = engineWith(deps);
+    await engine.load();
+    expect(await engine.onReticulumMessage(retMessage(), 'default')).toBe(0);
     expect(calls).toHaveLength(0);
   });
 

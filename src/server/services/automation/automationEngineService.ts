@@ -30,6 +30,7 @@ import { VariableResolver } from './variableResolver.js';
 import {
   buildMessageContext,
   buildMeshCoreMessageContext,
+  buildReticulumMessageContext,
   buildNodeContext,
   buildTelemetryContext,
   buildMeshBeaconContext,
@@ -40,13 +41,16 @@ import {
   buildScheduleContext,
   messageMatchesFilter,
   meshCoreMessageMatchesFilter,
+  reticulumMessageMatchesFilter,
   describeMessageFilterMiss,
   describeMeshCoreFilterMiss,
+  describeReticulumFilterMiss,
   parseMeshCoreChannelIdx,
   type TriggerContext,
   type SystemEvent,
 } from './triggerContext.js';
 import type { MeshCoreMessage } from '../../meshcoreManager.js';
+import type { ReticulumMessageRow } from '../../../db/repositories/reticulum.js';
 import { scheduleCron, validateCron } from '../../utils/cronScheduler.js';
 import { haversineKm, geofenceFires, pointInShape, geofenceCenter, normalizeGeofenceParams, type GeofenceMode } from './geo.js';
 import { evaluateGraph, type EvaluatorHooks } from './graphEvaluator.js';
@@ -691,6 +695,26 @@ export class AutomationEngineService {
       ctx,
       (a) => meshCoreMessageMatchesFilter(msg, a.triggerNode.params ?? {}, channelName),
       (a) => describeMeshCoreFilterMiss(msg, a.triggerNode.params ?? {}, channelName),
+    );
+  }
+
+  /**
+   * Reticulum LXMF message entry point (#3960 Phase 2 WP3). Mirrors
+   * {@link onMessage}/{@link onMeshCoreMessage} but builds a Reticulum-shaped
+   * trigger context and uses the LXMF matcher, so the same `trigger.message`
+   * automations fire on inbound LXMF messages too.
+   *
+   * NO self-origin re-check here (unlike {@link onMessage}/{@link onMeshCoreMessage}):
+   * `ReticulumManager`'s guard already runs upstream, before `reticulum:message`
+   * is ever emitted for a self-addressed row — see `buildReticulumMessageContext`'s
+   * doc comment.
+   */
+  async onReticulumMessage(msg: ReticulumMessageRow, sourceId: string | null): Promise<number> {
+    const ctx = buildReticulumMessageContext(msg, sourceId, this.now());
+    return this.runTrigger(
+      ctx,
+      (a) => reticulumMessageMatchesFilter(msg, a.triggerNode.params ?? {}),
+      (a) => describeReticulumFilterMiss(msg, a.triggerNode.params ?? {}),
     );
   }
 
