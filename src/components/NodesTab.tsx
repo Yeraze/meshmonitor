@@ -50,6 +50,7 @@ import { BaseMap } from './map/BaseMap';
 import { MapLoadingOverlay } from './map/MapLoadingOverlay';
 import { MapModeIndicator } from './map/MapModeIndicator';
 import { NodeUnmessageableBadge } from './NodeUnmessageableBadge';
+import { NodeIncompleteBadge } from './NodeIncompleteBadge';
 import { NodeDetailsButton } from './NodeDetailsButton';
 import nodeRowStyles from './NodeRowActions.module.css';
 import { NeighborLinksLayer, type NeighborLinkDescriptor } from './map/layers/NeighborLinksLayer';
@@ -2286,6 +2287,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                           <span className="node-indicator-icon" title={t('nodes.has_remote_admin')}><UiIcon name="wrench" size={15} /></span>
                         )}
                         {node.isUnmessagable && <NodeUnmessageableBadge />}
+                        {/* #4720: mark a node we have no NODEINFO for. The row is
+                            otherwise indistinguishable from a synced one unless you
+                            hold nodes:write, which reveals the Copy NodeInfo action
+                            below — this states the fact for everyone. */}
+                        {!isNodeComplete(node) && <NodeIncompleteBadge />}
                         {/* The read-only half of the security warning. Its clickable
                             twin lives in the action group below. */}
                         {(node.keyIsLowEntropy || node.duplicateKeyDetected || node.keySecurityIssueDetails) && !hasPermission('security', 'write') && (

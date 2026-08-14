@@ -347,6 +347,7 @@
   "nodes.hop_one": "hop",
   "nodes.hop_other": "hops",
   "nodes.via_mqtt": "Connected via MQTT",
+  "nodes.incomplete_badge": "Incomplete — no NodeInfo received yet, so this node is missing its name or hardware info",
   "nodes.copy_nodeinfo": "Copy NodeInfo from another source",
   "nodes.copy_nodeinfo_title": "Copy NodeInfo",
   "nodes.security_risk_generic": "Key security issue detected",
