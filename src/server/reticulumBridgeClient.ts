@@ -404,6 +404,20 @@ export class ReticulumBridgeClient extends EventEmitter {
     );
   }
 
+  /**
+   * Fetch this identity's PUBLIC info (`get_identity`) — destination hash,
+   * identity hash, display name. NEVER the private key: the bridge's
+   * `get_identity_info()` (rns_manager.py) deliberately has no accessor for
+   * it, and this reply is the same `status`-shaped envelope documented on
+   * `StatusMessage` (R2/R5 — see reticulumProtocol.ts's `GetIdentityMessage`
+   * doc). Callers (WP4's `GET /identity` route, via `ReticulumManager`)
+   * MUST NOT surface `identityHash` over HTTP — only `destinationHash` +
+   * `displayName` are part of the public route contract.
+   */
+  async getIdentity(): Promise<StatusMessage> {
+    return this.sendIdCorrelatedRequest<StatusMessage>({ type: MESSAGE_TYPE.GET_IDENTITY }, 'get_identity reply');
+  }
+
   // --------------------------------------------------------------------
   // Connection lifecycle
   // --------------------------------------------------------------------

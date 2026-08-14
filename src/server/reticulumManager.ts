@@ -252,6 +252,73 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
     return this.ownDestinationHash ? [this.ownDestinationHash] : [];
   }
 
+  // --------------------------------------------------------------------
+  // LXMF identity/propagation commands (Phase 2 WP4)
+  //
+  // Thin delegates onto `ReticulumBridgeClient`'s already-wired commands
+  // (WP1) — added here because routes only ever reach a source through its
+  // manager (never the private `client` field directly), mirroring
+  // `sendMessage`'s existing not-connected guard below.
+  // --------------------------------------------------------------------
+
+  /** Re-announce our own LXMF identity to the network (`announce_self`). */
+  async announceSelf(): Promise<void> {
+    if (!this.client) {
+      throw new Error(`ReticulumManager(${this.sourceId}): not connected`);
+    }
+    await this.client.announceSelf();
+  }
+
+  /** Set this identity's LXMF display name (`set_display_name`). */
+  async setDisplayName(name: string): Promise<void> {
+    if (!this.client) {
+      throw new Error(`ReticulumManager(${this.sourceId}): not connected`);
+    }
+    await this.client.setDisplayName(name);
+  }
+
+  /** Trigger a best-effort propagation-node sync (`sync_propagation`). */
+  async syncPropagation(): Promise<void> {
+    if (!this.client) {
+      throw new Error(`ReticulumManager(${this.sourceId}): not connected`);
+    }
+    await this.client.syncPropagation();
+  }
+
+  /**
+   * Configure the outbound propagation node (`set_propagation_node`).
+   * `destinationHash` is required and non-empty — the bridge
+   * (`rns_manager.py: RNSManager.set_propagation_node`) raises
+   * `ValueError("destinationHash is required")` on a falsy value, so there
+   * is currently no wire-level way to *clear* a configured propagation node.
+   * Callers (the WP4 route) must validate non-null/non-empty before calling.
+   */
+  async setPropagationNode(destinationHash: string): Promise<void> {
+    if (!this.client) {
+      throw new Error(`ReticulumManager(${this.sourceId}): not connected`);
+    }
+    await this.client.setPropagationNode(destinationHash);
+  }
+
+  /**
+   * Fetch this identity's PUBLIC info (`get_identity`) — destination hash +
+   * display name ONLY. Mirrors `ReticulumBridgeClient.getIdentity()`'s R2/R5
+   * contract: the bridge's reply also carries `identityHash`, which is
+   * deliberately dropped here (never surfaced past this manager) since the
+   * WP4 `GET /identity` route's public contract is `{ destinationHash,
+   * displayName }` only — no other identifier, and never a private key.
+   */
+  async getIdentity(): Promise<{ destinationHash: string | null; displayName: string | null }> {
+    if (!this.client) {
+      throw new Error(`ReticulumManager(${this.sourceId}): not connected`);
+    }
+    const info = await this.client.getIdentity();
+    return {
+      destinationHash: info.destinationHash ?? this.ownDestinationHash ?? null,
+      displayName: info.displayName ?? null,
+    };
+  }
+
   /**
    * ISourceManager: status snapshot. `connected` reflects the bridge
    * client's own state (`ready` == connected) rather than a

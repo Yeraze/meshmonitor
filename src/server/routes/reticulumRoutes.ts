@@ -43,7 +43,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isReticulumManager } from '../sourceManagerTypes.js';
-import type { ReticulumManager } from '../reticulumManager.js';
+import type { ReticulumManager, SendReticulumMessageParams } from '../reticulumManager.js';
 import { reticulumConfigFromSource } from '../reticulumConfig.js';
 import {
   reticulumInterfaceNodeId,
@@ -54,9 +54,18 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import type { ListDestinationsOptions } from '../../db/repositories/reticulum.js';
+import type { LxmfMethod } from '../reticulumProtocol.js';
 
 /** Default lookback window for `GET /interfaces/:name/history` when `since` is omitted. */
 const DEFAULT_HISTORY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** Valid `POST /messages` `method` values — mirrors `LxmfMethod` (reticulumProtocol.ts). */
+const VALID_LXMF_METHODS: ReadonlySet<string> = new Set<LxmfMethod>([
+  'opportunistic',
+  'direct',
+  'propagated',
+  'paper',
+]);
 
 const router = Router({ mergeParams: true });
 
@@ -270,6 +279,282 @@ router.get(
     } catch (err) {
       logger.error(`[Reticulum:${sourceId}] Error getting interface history for ${name}: ${err instanceof Error ? err.message : String(err)}`);
       return fail(res, 500, 'RETICULUM_INTERFACE_HISTORY_FAILED', 'Failed to get Reticulum interface history');
+    }
+  },
+);
+
+// ==========================================================================
+// LXMF messages/propagation/identity (#3960 Phase 2 WP4)
+//
+// Resource: 'messages' (sourcey — see build spec §0 R2, unlike the
+// destinations/interfaces routes above which reuse 'nodes'). Read routes
+// (GET /messages*, GET /threads/:threadHash) serve straight from the DB and
+// tolerate an absent manager, same as the Phase 1a read routes. Write routes
+// (POST/PUT) need a live bridge connection and 409 SOURCE_NOT_CONNECTED when
+// `res.locals.reticulumManager` is undefined.
+// ==========================================================================
+
+/**
+ * GET /messages
+ * Conversations list (latest message per peer), newest-first. Uses this
+ * source's own LXMF destination hash — when a manager is registered and has
+ * cached one (`getOwnAddresses()`) — to disambiguate which side of each row
+ * is "the peer"; falls back to state-based inference (see
+ * `ReticulumRepository.listConversations`'s doc) when no manager/hash is
+ * available, e.g. a disconnected source still serving persisted rows.
+ */
+router.get(
+  '/messages',
+  requirePermission('messages', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    const sourceId = (req.params as { id: string }).id;
+    try {
+      const manager = res.locals.reticulumManager as ReticulumManager | undefined;
+      const selfHash = manager?.getOwnAddresses()[0];
+      const rows = await databaseService.reticulum.listConversations(sourceId, selfHash);
+      return ok(res, rows);
+    } catch (err) {
+      logger.error(`[Reticulum:${sourceId}] Error listing conversations: ${err instanceof Error ? err.message : String(err)}`);
+      return fail(res, 500, 'RETICULUM_MESSAGES_LIST_FAILED', 'Failed to list Reticulum conversations');
+    }
+  },
+);
+
+/**
+ * GET /messages/:peerHash
+ * One conversation's messages, newest-first. Optional query params: `before`
+ * (ms-epoch cursor, strictly-older pagination), `limit` (default 50, set by
+ * the repository).
+ */
+router.get(
+  '/messages/:peerHash',
+  requirePermission('messages', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    const sourceId = (req.params as { id: string }).id;
+    const peerHash = req.params.peerHash;
+    try {
+      const opts: { before?: number; limit?: number } = {};
+      if (typeof req.query.before === 'string') {
+        const n = parseInt(req.query.before, 10);
+        if (Number.isFinite(n)) opts.before = n;
+      }
+      if (typeof req.query.limit === 'string') {
+        const n = parseInt(req.query.limit, 10);
+        if (Number.isFinite(n) && n > 0) opts.limit = n;
+      }
+      const rows = await databaseService.reticulum.listMessages(sourceId, peerHash, opts);
+      return ok(res, rows);
+    } catch (err) {
+      logger.error(`[Reticulum:${sourceId}] Error listing messages for ${peerHash}: ${err instanceof Error ? err.message : String(err)}`);
+      return fail(res, 500, 'RETICULUM_MESSAGES_GET_FAILED', 'Failed to get Reticulum conversation');
+    }
+  },
+);
+
+/**
+ * GET /threads/:threadHash
+ * A message thread (LXMF `fields.thread` marker), chronological.
+ */
+router.get(
+  '/threads/:threadHash',
+  requirePermission('messages', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    const sourceId = (req.params as { id: string }).id;
+    const threadHash = req.params.threadHash;
+    try {
+      const rows = await databaseService.reticulum.listThread(sourceId, threadHash);
+      return ok(res, rows);
+    } catch (err) {
+      logger.error(`[Reticulum:${sourceId}] Error listing thread ${threadHash}: ${err instanceof Error ? err.message : String(err)}`);
+      return fail(res, 500, 'RETICULUM_THREAD_GET_FAILED', 'Failed to get Reticulum thread');
+    }
+  },
+);
+
+/**
+ * POST /messages
+ * Send an LXMF message. Body: `{ to, content, title?, fields?, method?, replyToHash? }`.
+ * Requires a live manager — 409 SOURCE_NOT_CONNECTED when this source has no
+ * registered Reticulum manager (disconnected). Returns the created/optimistic
+ * row from `ReticulumManager.sendMessage` (reconciled to its real LXM hash by
+ * the time this resolves).
+ */
+router.post(
+  '/messages',
+  requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    const sourceId = (req.params as { id: string }).id;
+    const body = (req.body ?? {}) as {
+      to?: unknown;
+      content?: unknown;
+      title?: unknown;
+      fields?: unknown;
+      method?: unknown;
+      replyToHash?: unknown;
+    };
+
+    if (typeof body.to !== 'string' || body.to.length === 0) {
+      return fail(res, 400, 'INVALID_TO', 'body.to must be a non-empty string');
+    }
+    if (typeof body.content !== 'string' || body.content.length === 0) {
+      return fail(res, 400, 'INVALID_CONTENT', 'body.content must be a non-empty string');
+    }
+    if (body.title !== undefined && typeof body.title !== 'string') {
+      return fail(res, 400, 'INVALID_TITLE', 'body.title must be a string');
+    }
+    if (
+      body.fields !== undefined &&
+      (typeof body.fields !== 'object' || body.fields === null || Array.isArray(body.fields))
+    ) {
+      return fail(res, 400, 'INVALID_FIELDS', 'body.fields must be an object');
+    }
+    if (body.method !== undefined && (typeof body.method !== 'string' || !VALID_LXMF_METHODS.has(body.method))) {
+      return fail(res, 400, 'INVALID_METHOD', `body.method must be one of: ${Array.from(VALID_LXMF_METHODS).join(', ')}`);
+    }
+    if (body.replyToHash !== undefined && typeof body.replyToHash !== 'string') {
+      return fail(res, 400, 'INVALID_REPLY_TO_HASH', 'body.replyToHash must be a string');
+    }
+
+    const manager = res.locals.reticulumManager as ReticulumManager | undefined;
+    if (!manager) {
+      return fail(res, 409, 'SOURCE_NOT_CONNECTED', `Reticulum source ${sourceId} has no active connection`);
+    }
+
+    try {
+      const params: SendReticulumMessageParams = {
+        to: body.to,
+        content: body.content,
+        title: body.title as string | undefined,
+        fields: body.fields as Record<string, unknown> | undefined,
+        method: body.method as LxmfMethod | undefined,
+        replyToHash: body.replyToHash as string | undefined,
+      };
+      const row = await manager.sendMessage(params);
+      return ok(res, row);
+    } catch (err) {
+      logger.error(`[Reticulum:${sourceId}] Error sending message: ${err instanceof Error ? err.message : String(err)}`);
+      return fail(res, 500, 'RETICULUM_SEND_FAILED', 'Failed to send Reticulum message');
+    }
+  },
+);
+
+/**
+ * POST /propagation/sync
+ * Trigger a best-effort propagation-node message pickup (`sync_propagation`).
+ */
+router.post(
+  '/propagation/sync',
+  requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    const sourceId = (req.params as { id: string }).id;
+    const manager = res.locals.reticulumManager as ReticulumManager | undefined;
+    if (!manager) {
+      return fail(res, 409, 'SOURCE_NOT_CONNECTED', `Reticulum source ${sourceId} has no active connection`);
+    }
+    try {
+      await manager.syncPropagation();
+      return ok(res);
+    } catch (err) {
+      logger.error(`[Reticulum:${sourceId}] Error syncing propagation: ${err instanceof Error ? err.message : String(err)}`);
+      return fail(res, 500, 'RETICULUM_PROPAGATION_SYNC_FAILED', 'Failed to sync Reticulum propagation node');
+    }
+  },
+);
+
+/**
+ * PUT /propagation/node
+ * Body: `{ destHash: string|null }`. `null` is accepted at the type level
+ * (matching the build spec's route contract) but currently rejected with a
+ * 400 — the bridge (`RNSManager.set_propagation_node`) has no wire-level
+ * "clear" operation, it raises on a falsy destination hash. Only a non-empty
+ * string destination hash can be applied today.
+ */
+router.put(
+  '/propagation/node',
+  requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    const sourceId = (req.params as { id: string }).id;
+    const { destHash } = (req.body ?? {}) as { destHash?: unknown };
+
+    if (destHash !== null && typeof destHash !== 'string') {
+      return fail(res, 400, 'INVALID_DEST_HASH', 'body.destHash must be a string or null');
+    }
+    if (destHash === null || destHash.length === 0) {
+      return fail(
+        res,
+        400,
+        'PROPAGATION_NODE_CLEAR_UNSUPPORTED',
+        'Clearing the propagation node is not supported — body.destHash must be a non-empty destination hash',
+      );
+    }
+
+    const manager = res.locals.reticulumManager as ReticulumManager | undefined;
+    if (!manager) {
+      return fail(res, 409, 'SOURCE_NOT_CONNECTED', `Reticulum source ${sourceId} has no active connection`);
+    }
+
+    try {
+      await manager.setPropagationNode(destHash);
+      return ok(res, { destinationHash: destHash });
+    } catch (err) {
+      logger.error(`[Reticulum:${sourceId}] Error setting propagation node: ${err instanceof Error ? err.message : String(err)}`);
+      return fail(res, 500, 'RETICULUM_PROPAGATION_NODE_FAILED', 'Failed to set Reticulum propagation node');
+    }
+  },
+);
+
+/**
+ * GET /identity
+ * PUBLIC info only (build spec §0 R2/R5): `{ destinationHash, displayName }`.
+ * NEVER a private key — there is deliberately no Node route for that (backup
+ * = the bridge's `LXMF_STORAGE_DIR` volume, per R5). Degrades gracefully
+ * (both fields `null`) rather than erroring when no manager is registered —
+ * mirrors `GET /status`'s disconnected-source behavior.
+ */
+router.get(
+  '/identity',
+  requirePermission('messages', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    const sourceId = (req.params as { id: string }).id;
+    const manager = res.locals.reticulumManager as ReticulumManager | undefined;
+    if (!manager) {
+      return ok(res, { destinationHash: null, displayName: null });
+    }
+    try {
+      const identity = await manager.getIdentity();
+      return ok(res, identity);
+    } catch (err) {
+      logger.error(`[Reticulum:${sourceId}] Error getting identity: ${err instanceof Error ? err.message : String(err)}`);
+      return fail(res, 500, 'RETICULUM_IDENTITY_FAILED', 'Failed to get Reticulum identity');
+    }
+  },
+);
+
+/**
+ * PUT /display-name
+ * Body: `{ name: string }`.
+ */
+router.put(
+  '/display-name',
+  requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    const sourceId = (req.params as { id: string }).id;
+    const { name } = (req.body ?? {}) as { name?: unknown };
+    if (typeof name !== 'string' || name.length === 0) {
+      return fail(res, 400, 'INVALID_NAME', 'body.name must be a non-empty string');
+    }
+
+    const manager = res.locals.reticulumManager as ReticulumManager | undefined;
+    if (!manager) {
+      return fail(res, 409, 'SOURCE_NOT_CONNECTED', `Reticulum source ${sourceId} has no active connection`);
+    }
+
+    try {
+      await manager.setDisplayName(name);
+      return ok(res, { displayName: name });
+    } catch (err) {
+      logger.error(`[Reticulum:${sourceId}] Error setting display name: ${err instanceof Error ? err.message : String(err)}`);
+      return fail(res, 500, 'RETICULUM_DISPLAY_NAME_FAILED', 'Failed to set Reticulum display name');
     }
   },
 );
