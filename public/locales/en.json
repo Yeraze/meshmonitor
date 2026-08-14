@@ -3792,6 +3792,7 @@
   "admin_commands.downlink_enabled_description": "Allow this channel to receive messages from MQTT",
   "admin_commands.position_precision": "Location Precision (bits)",
   "admin_commands.position_precision_description": "Number of bits for position data (0-32). Higher = more precise. 32 = full precision.",
+  "admin_commands.position_precision_public_clamp_warning": "This is a public channel (no encryption or the default {{psk}} key). Firmware 2.8+ reduces position precision to {{bits}} bits (~{{meters}} m) on public channels, so a higher value here will be silently ignored by the radio. Use a custom PSK if you need finer precision.",
   "admin_commands.edit_channel": "Edit Channel {{slot}}",
   "admin_commands.save_channel": "Save Channel",
   "admin_commands.please_select_node_export": "Please select a node",

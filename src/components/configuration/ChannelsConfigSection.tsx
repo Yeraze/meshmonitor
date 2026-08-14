@@ -27,9 +27,9 @@ import { logger } from '../../utils/logger';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useResolvedSourceId } from '../../hooks/useResolvedSourceId';
 import { formatPrecisionAccuracy } from '../../utils/distance';
-
-// Default public PSK (base64 encoded value of single byte 0x01)
-const DEFAULT_PUBLIC_PSK = 'AQ==';
+// Default public PSK (base64 encoded value of single byte 0x01) — shared
+// definition lives in utils/publicChannel.ts (#4705).
+import { DEFAULT_PUBLIC_PSK } from '../../utils/publicChannel';
 
 /** A device channel sharing its key with a differently-named Channel Database
  *  (server-decryption) entry (#3644). */
