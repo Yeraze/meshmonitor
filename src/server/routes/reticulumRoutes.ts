@@ -83,7 +83,7 @@ function reticulumRouteGuard(req: Request, res: Response, next: NextFunction) {
     return fail(res, 404, 'MISSING_SOURCE_ID', 'Reticulum routes must be mounted under /api/sources/:id/reticulum');
   }
   const mgr = sourceManagerRegistry.getManager(sourceId);
-  res.locals.reticulumManager = mgr && isReticulumManager(mgr) ? (mgr as ReticulumManager) : undefined;
+  res.locals.reticulumManager = mgr && isReticulumManager(mgr) ? mgr : undefined;
   next();
 }
 
@@ -396,7 +396,7 @@ router.post(
     if (typeof body.to !== 'string' || body.to.length === 0) {
       return fail(res, 400, 'INVALID_TO', 'body.to must be a non-empty string');
     }
-    if (typeof body.content !== 'string' || body.content.length === 0) {
+    if (typeof body.content !== 'string' || body.content.trim().length === 0) {
       return fail(res, 400, 'INVALID_CONTENT', 'body.content must be a non-empty string');
     }
     if (body.title !== undefined && typeof body.title !== 'string') {

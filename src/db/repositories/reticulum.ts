@@ -21,6 +21,12 @@ import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType } from '../types.js';
 import { SettingsRepository } from './settings.js';
 import { logger } from '../../utils/logger.js';
+import type {
+  ReticulumMessageState,
+  ReticulumMessageMethod,
+} from '../../types/reticulum.js';
+
+export type { ReticulumMessageState, ReticulumMessageMethod };
 
 /** Setting key (see `src/server/constants/settings.ts` VALID_SETTINGS_KEYS). */
 const RETICULUM_DESTINATIONS_MAX_SETTING_KEY = 'reticulum_destinations_max';
@@ -108,18 +114,6 @@ export interface UpsertInterfaceInput {
   /** ms epoch of this poll; defaults to `Date.now()`. */
   lastSeenAt?: number;
 }
-
-/** LXMF message lifecycle state (Reticulum epic #3960, Phase 2 WP2/WP3). Mirrors `src/types/reticulum.ts`'s `ReticulumMessageState` — declared independently per the repo/frontend type-boundary convention (see `ReticulumDestinationRow` above). */
-export type ReticulumMessageState = 'draft' | 'outbound' | 'sending' | 'sent' | 'delivered' | 'failed';
-
-/**
- * LXMF delivery method (Reticulum epic #3960, Phase 2 WP2/WP3). Includes
- * `'paper'` (offline/manual transfer) per the wire protocol's `LxmfMethod`
- * (`reticulumProtocol.ts`) — WP2's `src/types/reticulum.ts` mirror predates
- * WP1's wire contract landing and only lists three values; widen that file
- * too when it's next touched (frontend, WP5) so the two stay in sync.
- */
-export type ReticulumMessageMethod = 'opportunistic' | 'direct' | 'propagated' | 'paper';
 
 export interface ReticulumMessageRow {
   id: string;

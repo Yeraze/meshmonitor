@@ -94,6 +94,27 @@ function stripBrackets(hostname: string): string {
 }
 
 /**
+ * Hosts already warned about via `warnNonLoopbackHostOnce` — module-level so
+ * the warning fires once per host for the process lifetime rather than on
+ * every `validateBridgeUrl` call (config load, reconnect, etc.).
+ */
+const warnedNonLoopbackHosts = new Set<string>();
+
+/**
+ * Logs a one-time operator-facing warning when a non-loopback host is
+ * permitted only because it was added to `RETICULUM_BRIDGE_ALLOWED_HOSTS`, so
+ * an operator who accidentally allowlists a public host notices it.
+ */
+function warnNonLoopbackHostOnce(bareHostname: string): void {
+  if (warnedNonLoopbackHosts.has(bareHostname)) return;
+  warnedNonLoopbackHosts.add(bareHostname);
+  logger.warn(
+    `[Reticulum] Bridge host '${bareHostname}' is not loopback and is permitted only because it is listed in ` +
+      `${RETICULUM_BRIDGE_ALLOWED_HOSTS_ENV} — verify this is intentional.`,
+  );
+}
+
+/**
  * Validate a bridge WebSocket URL for config-time fail-fast (called from
  * `reticulumConfigFromSource`, and again here at the top of `connectOnce`).
  * `bridgeUrl` originates from admin-set source config, so CodeQL's
@@ -139,6 +160,11 @@ export function validateBridgeUrl(raw: string, env: NodeJS.ProcessEnv = process.
       `bridge URL host '${url.hostname}' is not loopback and is not listed in ${RETICULUM_BRIDGE_ALLOWED_HOSTS_ENV} ` +
         `(add it to that comma-separated env var to allow a non-loopback bridge host)`,
     );
+  }
+
+  const isLoopback = LOOPBACK_HOSTS.some((h) => h.toLowerCase() === bareHostname);
+  if (!isLoopback) {
+    warnNonLoopbackHostOnce(bareHostname);
   }
 
   return url;

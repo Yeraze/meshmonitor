@@ -88,11 +88,24 @@ export interface ReticulumInterfaceRow {
 /** Sub-toolbar view identifiers for `ReticulumPage`/`ReticulumSubToolbar` (WP2; 'dms' added Phase 2 WP5). */
 export type ReticulumView = 'destinations' | 'interfaces' | 'dms' | 'info' | 'settings';
 
-/** LXMF message lifecycle state (Reticulum epic #3960, Phase 2 WP2). */
+/**
+ * LXMF message lifecycle state (Reticulum epic #3960, Phase 2 WP2/WP3).
+ * Canonical definition — `src/db/repositories/reticulum.ts` re-exports this
+ * rather than redeclaring it, so server and frontend can't drift (both
+ * consume the same union; the server/frontend type-boundary convention still
+ * holds for the interface *shapes* like `ReticulumMessageRow`, which remain
+ * independently declared, see the module comment above).
+ */
 export type ReticulumMessageState = 'draft' | 'outbound' | 'sending' | 'sent' | 'delivered' | 'failed';
 
-/** LXMF delivery method (Reticulum epic #3960, Phase 2 WP2). */
-export type ReticulumMessageMethod = 'opportunistic' | 'direct' | 'propagated';
+/**
+ * LXMF delivery method (Reticulum epic #3960, Phase 2 WP2/WP3). Includes
+ * `'paper'` (offline/manual transfer) to match the wire protocol's
+ * `LxmfMethod` (`src/server/reticulumProtocol.ts` — kept as its own type
+ * there since it also carries wire-message fields, but its value set MUST
+ * match this one). Canonical definition — see `ReticulumMessageState` above.
+ */
+export type ReticulumMessageMethod = 'opportunistic' | 'direct' | 'propagated' | 'paper';
 
 /**
  * One row from the (Phase 3+) `GET /api/sources/:id/reticulum/messages*`

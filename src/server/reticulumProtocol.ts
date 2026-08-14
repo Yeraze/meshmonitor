@@ -177,7 +177,14 @@ export interface GetStatusMessage extends Envelope {
 // Phase 2 (LXMF messaging): client -> bridge commands (build spec §3.5)
 // --------------------------------------------------------------------------
 
-/** Matches migration 143's `method` column + protocol.py's `_WIRE_METHOD_TO_LXMF`. */
+/**
+ * Matches migration 143's `method` column + protocol.py's `_WIRE_METHOD_TO_LXMF`.
+ * Kept as its own type (not imported from `types/reticulum.ts`) because this
+ * file is wire-protocol-only and has no dependency on the DB/frontend type
+ * modules — but its value set MUST match `ReticulumMessageMethod`
+ * (`src/types/reticulum.ts`, canonical definition, re-exported by
+ * `src/db/repositories/reticulum.ts`). Update both together.
+ */
 export type LxmfMethod = 'opportunistic' | 'direct' | 'propagated' | 'paper';
 
 export interface SendLxmfMessage extends Envelope {
