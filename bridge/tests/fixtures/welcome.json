@@ -1,8 +1,8 @@
 {
   "bridgeVersion": "0.1.0",
-  "protocolVersion": 2,
+  "protocolVersion": 3,
   "rnsVersion": "1.4.2",
   "ts": 1755000000000,
   "type": "welcome",
-  "v": 2
+  "v": 3
 }

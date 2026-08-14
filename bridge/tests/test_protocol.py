@@ -206,3 +206,103 @@ def test_welcome_fixture_declares_protocol_version(load_fixture):
     assert welcome["protocolVersion"] == protocol.PROTOCOL_VERSION
     assert "bridgeVersion" in welcome
     assert "rnsVersion" in welcome
+
+
+# --------------------------------------------------------------------------
+# Phase 3 (own mode + RNode radio config/device info, build spec §2.B/§2.C,
+# #3960 WP1)
+# --------------------------------------------------------------------------
+
+
+def test_protocol_version_is_3():
+    """Bumped 2->3 for Phase 3 WP1 (own mode) -- pins the exact value so a
+    future accidental revert is caught immediately rather than only via the
+    fixture-drift test."""
+    assert protocol.PROTOCOL_VERSION == 3
+
+
+def test_own_mode_and_rnode_failure_codes_are_declared():
+    for code in (protocol.OWN_MODE_REQUIRED, protocol.RNODE_DEVICE_UNAVAILABLE, protocol.RNODE_COMMAND_FAILED):
+        assert code in protocol.FAILURE_CODES
+
+
+def test_rnode_device_unavailable_is_a_startup_failure_code():
+    assert protocol.RNODE_DEVICE_UNAVAILABLE in protocol.STARTUP_FAILURE_CODES
+
+
+def test_own_mode_required_and_rnode_command_failed_are_not_startup_codes():
+    """Distinguishes command-time failures (radio-config commands, only
+    possible after startup already succeeded) from startup failures."""
+    assert protocol.OWN_MODE_REQUIRED not in protocol.STARTUP_FAILURE_CODES
+    assert protocol.RNODE_COMMAND_FAILED not in protocol.STARTUP_FAILURE_CODES
+
+
+def test_radio_config_fixture_carries_all_wire_fields(load_fixture):
+    radio_config = load_fixture("radio_config")
+    for key in (
+        "frequency",
+        "bandwidth",
+        "spreadingFactor",
+        "codingRate",
+        "txPower",
+        "stAlock",
+        "ltAlock",
+        "radioState",
+    ):
+        assert key in radio_config
+
+
+def test_device_info_fixture_carries_all_wire_fields(load_fixture):
+    device_info = load_fixture("device_info")
+    for key in ("firmwareVersion", "mcu", "platform", "chipTemp", "csma", "phy"):
+        assert key in device_info
+    for key in ("cwBand", "cwMin", "cwMax"):
+        assert key in device_info["csma"]
+    for key in (
+        "symbolTimeMs",
+        "symbolRate",
+        "preambleSymbols",
+        "preambleTimeMs",
+        "csmaSlotTimeMs",
+        "csmaDifsMs",
+    ):
+        assert key in device_info["phy"]
+
+
+def test_set_radio_config_fixture_is_partial(load_fixture):
+    """build spec §2.C 'partial allowed': the fixture only sets two of the
+    eight possible radio-config fields."""
+    set_radio_config = load_fixture("set_radio_config")
+    assert set_radio_config["frequency"] == 915000000
+    assert set_radio_config["txPower"] == 20
+    assert "bandwidth" not in set_radio_config
+    assert "spreadingFactor" not in set_radio_config
+
+
+def test_configure_message_own_mode_carries_device_and_radio_params():
+    env = protocol.configure_message(
+        mode="own",
+        id="c0",
+        device="/dev/ttyUSB0",
+        frequency=914875000,
+        bandwidth=125000,
+        spreading_factor=8,
+        coding_rate=5,
+        tx_power=17,
+        st_alock=33.3,
+        lt_alock=None,
+    )
+    assert env["mode"] == "own"
+    assert env["device"] == "/dev/ttyUSB0"
+    assert env["frequency"] == 914875000
+    assert env["spreadingFactor"] == 8
+    assert env["codingRate"] == 5
+    assert env["txPower"] == 17
+    assert env["stAlock"] == 33.3
+    assert "ltAlock" not in env
+
+
+def test_configure_message_without_own_fields_omits_them():
+    env = protocol.configure_message(mode="attach", id="c0", config_dir="/rns")
+    assert "device" not in env
+    assert "frequency" not in env

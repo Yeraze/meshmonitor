@@ -40,6 +40,13 @@ EXPECTED_FIXTURE_NAMES = {
     "send_lxmf_response",
     "set_display_name",
     "sync_propagation",
+    # Phase 3 (own mode + RNode radio config/device info, #3960 WP1) -- build
+    # spec §2.C.
+    "get_radio_config",
+    "radio_config",
+    "set_radio_config",
+    "get_device_info",
+    "device_info",
 }
 
 # Frozen envelope timestamp so regenerated fixtures are byte-stable across
@@ -215,4 +222,45 @@ def build_fixture(name: str) -> dict:
         return protocol.set_display_name_message(display_name="Alice", id="c4")
     if name == "sync_propagation":
         return protocol.sync_propagation_message(id="c5")
+    # Phase 3 (own mode + RNode radio config/device info, #3960 WP1) -- build
+    # spec §2.C.
+    if name == "get_radio_config":
+        return protocol.get_radio_config_message(id="c10")
+    if name == "radio_config":
+        return protocol.radio_config_message(
+            id="c10",
+            frequency=914875000,
+            bandwidth=125000,
+            spreadingFactor=8,
+            codingRate=5,
+            txPower=17,
+            stAlock=33.3,
+            ltAlock=None,
+            radioState=True,
+        )
+    if name == "set_radio_config":
+        return protocol.set_radio_config_message(id="c11", frequency=915000000, txPower=20)
+    if name == "get_device_info":
+        return protocol.get_device_info_message(id="c12")
+    if name == "device_info":
+        return protocol.device_info_message(
+            id="c12",
+            firmwareVersion="1.52",
+            mcu=0x1E,
+            # Raw CMD_PLATFORM byte (RNSManager.get_device_info() passes
+            # `interface.platform` through as-is, per rns_manager.py) --
+            # 0x80 == RNS.Interfaces.RNodeInterface.KISS.PLATFORM_ESP32,
+            # also `rnode_kiss.PLATFORM_ESP32`.
+            platform=0x80,
+            chipTemp=34,
+            csma={"cwBand": 2, "cwMin": 3, "cwMax": 8},
+            phy={
+                "symbolTimeMs": 32.768,
+                "symbolRate": 976,
+                "preambleSymbols": 12,
+                "preambleTimeMs": 393,
+                "csmaSlotTimeMs": 15,
+                "csmaDifsMs": 45,
+            },
+        )
     raise ValueError(f"no builder registered for fixture {name!r}")
