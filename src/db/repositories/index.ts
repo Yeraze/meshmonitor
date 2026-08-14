@@ -115,6 +115,8 @@ export type {
 } from './mqttOkToMqttViolations.js';
 export { AtakContactsRepository } from './atakContacts.js';
 export type { AtakContactRow } from './atakContacts.js';
+export { MeshBeaconOffersRepository, offerContentChanged } from './meshBeaconOffers.js';
+export type { MeshBeaconOfferRow, BeaconOfferInput } from './meshBeaconOffers.js';
 
 export { ReticulumRepository, DEFAULT_RETICULUM_DESTINATIONS_MAX } from './reticulum.js';
 export type {

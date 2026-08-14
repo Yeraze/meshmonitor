@@ -371,6 +371,11 @@ setTimeout(async () => {
     // subscribes to the event bus so they fire on live mesh traffic.
     await startAutomationEngine();
 
+    // Persist received MeshBeacon offers (#4723). A separate subscriber to the
+    // same event, so offers are recorded for the invitation card even when no
+    // automation references beacons.
+    startMeshBeaconOfferIngestion();
+
     // Seed the global "discard invalid GPS positions" ingest gate from settings
     // (default ON = discard, the historical behavior). Refreshed live on save via
     // the setDiscardInvalidPositions callback registered below.
@@ -575,6 +580,7 @@ import authRoutes from './routes/authRoutes.js';
 import automationRoutes from './routes/automationRoutes.js';
 import autoAckConverterRoutes from './routes/autoAckConverterRoutes.js';
 import { startAutomationEngine } from './services/automation/automationEngineSingleton.js';
+import { startMeshBeaconOfferIngestion } from './services/meshBeaconOfferService.js';
 import userRoutes from './routes/userRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
 import securityRoutes from './routes/securityRoutes.js';
