@@ -1,0 +1,8 @@
+{
+  "destinationHash": "9f8e7d6c5b4a39281706f5e4d3c2b1a0",
+  "id": "c15",
+  "timeoutS": 15.0,
+  "ts": 1755000000000,
+  "type": "get_remote_status",
+  "v": 4
+}

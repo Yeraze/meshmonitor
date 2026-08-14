@@ -41,6 +41,9 @@ import {
   type TelemetryMessage,
   type RadioConfigMessage,
   type DeviceInfoMessage,
+  type ProbeResultMessage,
+  type RemoteStatusMessage,
+  type PathTableMessage,
 } from './reticulumProtocol.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -331,6 +334,52 @@ describe('ReticulumBridgeClient handshake', () => {
     );
   });
 
+  it('forwards remoteAllowed as a comma-separated field on configure (#3960 Phase 4 WP3, build spec §0 R5)', async () => {
+    let capturedConfigure: Record<string, unknown> | null = null;
+    const bridge = trackBridge(
+      await startMockBridge((ws, send) => {
+        ws.on('message', (data) => {
+          const env = parseIncoming(data);
+          if (env.type === 'hello') {
+            send({ v: 1, type: 'welcome', ts: Date.now(), protocolVersion: 1, bridgeVersion: '0.1.0', rnsVersion: '1.4.2' });
+          } else if (env.type === 'configure') {
+            capturedConfigure = env;
+            send({ v: 1, type: 'ready', id: env.id, ts: Date.now() });
+          }
+        });
+      }),
+    );
+
+    const client = trackClient(new ReticulumBridgeClient({ bridgeUrl: bridge.url, token: 'change-me' }));
+    await client.connect({ mode: 'attach', configDir: '/rns', remoteAllowed: ['aabb1122', 'ccdd3344'] });
+
+    expect(capturedConfigure).toMatchObject({ type: 'configure', remoteAllowed: 'aabb1122,ccdd3344' });
+  });
+
+  it('omits remoteAllowed from configure when not provided', async () => {
+    let capturedConfigure: Record<string, unknown> | null = null;
+    const bridge = trackBridge(
+      await startMockBridge((ws, send) => {
+        ws.on('message', (data) => {
+          const env = parseIncoming(data);
+          if (env.type === 'hello') {
+            send({ v: 1, type: 'welcome', ts: Date.now(), protocolVersion: 1, bridgeVersion: '0.1.0', rnsVersion: '1.4.2' });
+          } else if (env.type === 'configure') {
+            capturedConfigure = env;
+            send({ v: 1, type: 'ready', id: env.id, ts: Date.now() });
+          }
+        });
+      }),
+    );
+
+    const client = trackClient(new ReticulumBridgeClient({ bridgeUrl: bridge.url, token: 'change-me' }));
+    await client.connect({ mode: 'attach', configDir: '/rns' });
+
+    expect(Object.keys(capturedConfigure as Record<string, unknown>)).not.toEqual(
+      expect.arrayContaining(['remoteAllowed']),
+    );
+  });
+
   // PR review finding 3: requestIdCounter used to be a module-level `let`,
   // so a second client (parallel test workers, or two real sources) would
   // continue the first client's sequence instead of starting its own.
@@ -579,8 +628,29 @@ describe('ReticulumBridgeClient fixture contract parse', () => {
         'path_table.json',
         'get_status.json',
         'status.json',
+        'probe.json',
+        'probe_result.json',
+        'probe_result_unreachable.json',
+        'get_remote_status.json',
+        'remote_status.json',
+        'remote_status_denied.json',
       ]),
     );
+  });
+
+  it('every fixture is pinned to protocol v4 (#3960 Phase 4 WP3 drift guard)', () => {
+    // This is the cross-language lockstep guard: protocol.py's
+    // PROTOCOL_VERSION bumped 3->4 for Phase 4 (probe + remote status), and
+    // every fixture WP2 committed was regenerated at v4 — if this file's
+    // PROTOCOL_VERSION or a fixture's `v` ever drifts from the other, this
+    // assertion (generalized from the per-file loop below, which already
+    // asserts `env.v === PROTOCOL_VERSION`) is where it's caught.
+    expect(PROTOCOL_VERSION).toBe(4);
+    for (const file of fixtureFiles) {
+      const raw = fs.readFileSync(path.join(FIXTURES_DIR, file), 'utf-8');
+      const parsed = JSON.parse(raw) as { v?: number };
+      expect(parsed.v, `${file} should be pinned to v4`).toBe(4);
+    }
   });
 
   for (const file of fixtureFiles) {
@@ -631,6 +701,73 @@ describe('ReticulumBridgeClient fixture contract parse', () => {
         ['bitrate', 'hash', 'mode', 'name', 'online', 'rxBytes', 'status', 'txBytes', 'type'].sort(),
       );
     }
+  });
+
+  it('path_table.json decodes into the mirrored PathTableEntry shape (#3960 Phase 4 WP3 drift guard)', () => {
+    const env = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, 'path_table.json'), 'utf-8')) as PathTableMessage;
+    expect(env.type).toBe('path_table');
+    expect(env.paths).toHaveLength(1);
+    expect(env.paths[0]).toMatchObject({
+      destinationHash: 'a1b2c3d4e5f60718293a4b5c6d7e8f90',
+      via: 'a1b2c3d4e5f60718293a4b5c6d7e8f90',
+      hops: 1,
+      interface: 'TCP Server Interface',
+      expires: 1755001800.0,
+    });
+  });
+
+  it('probe_result.json decodes into the mirrored ProbeResultMessage shape, ok:true branch (#3960 Phase 4 WP3 drift guard)', () => {
+    const env = JSON.parse(
+      fs.readFileSync(path.join(FIXTURES_DIR, 'probe_result.json'), 'utf-8'),
+    ) as ProbeResultMessage;
+    expect(env.type).toBe('probe_result');
+    expect(env.ok).toBe(true);
+    expect(env.destinationHash).toBe('a1b2c3d4e5f60718293a4b5c6d7e8f90');
+    expect(env.rttMs).toBe(842.5);
+    expect(env.hops).toBe(3);
+    expect(env.error).toBeNull();
+  });
+
+  it('probe_result_unreachable.json decodes into the mirrored ProbeResultMessage shape, ok:false branch (#3960 Phase 4 WP3 drift guard)', () => {
+    const env = JSON.parse(
+      fs.readFileSync(path.join(FIXTURES_DIR, 'probe_result_unreachable.json'), 'utf-8'),
+    ) as ProbeResultMessage;
+    expect(env.type).toBe('probe_result');
+    expect(env.ok).toBe(false);
+    expect(env.rttMs).toBeNull();
+    expect(env.hops).toBeNull();
+    expect(env.error).toBe('no path to destination');
+  });
+
+  it('remote_status.json decodes into the mirrored RemoteStatusMessage shape, ok:true branch (#3960 Phase 4 WP3 drift guard)', () => {
+    const env = JSON.parse(
+      fs.readFileSync(path.join(FIXTURES_DIR, 'remote_status.json'), 'utf-8'),
+    ) as RemoteStatusMessage;
+    expect(env.type).toBe('remote_status');
+    expect(env.ok).toBe(true);
+    expect(env.error).toBeNull();
+    expect(env.status).not.toBeNull();
+    expect(env.status?.linkCount).toBe(2);
+    expect(env.status?.interfaces).toHaveLength(1);
+    expect(env.status?.interfaces[0]).toMatchObject({
+      name: 'TCP Server Interface',
+      type: 'TCPServerInterface',
+      status: 'up',
+      online: true,
+    });
+    expect(env.path).toHaveLength(1);
+    expect(env.path?.[0]).toMatchObject({ destinationHash: 'a1b2c3d4e5f60718293a4b5c6d7e8f90', hops: 1 });
+  });
+
+  it('remote_status_denied.json decodes into the mirrored RemoteStatusMessage shape, ok:false branch (#3960 Phase 4 WP3 drift guard)', () => {
+    const env = JSON.parse(
+      fs.readFileSync(path.join(FIXTURES_DIR, 'remote_status_denied.json'), 'utf-8'),
+    ) as RemoteStatusMessage;
+    expect(env.type).toBe('remote_status');
+    expect(env.ok).toBe(false);
+    expect(env.status).toBeNull();
+    expect(env.path).toBeNull();
+    expect(env.error).toBe('link to remote management destination did not establish');
   });
 
   it('client dispatches a live announce.json frame as an announce event', async () => {
@@ -1021,5 +1158,233 @@ describe('ReticulumBridgeClient Phase 3 telemetry + own-mode radio config/device
     await expect(client.getRadioConfig()).rejects.toMatchObject({ code: 'OWN_MODE_REQUIRED' });
     await expect(client.setRadioConfig({ txPower: 17 })).rejects.toMatchObject({ code: 'OWN_MODE_REQUIRED' });
     await expect(client.getDeviceInfo()).rejects.toMatchObject({ code: 'OWN_MODE_REQUIRED' });
+  });
+});
+
+describe('ReticulumBridgeClient Phase 4 probe + remote status (#3960 WP2/WP3)', () => {
+  it('probe() resolves with a live probe_result.json-shaped reply and sends the destinationHash/timeoutS fields', async () => {
+    const fixtureRaw = fs.readFileSync(path.join(FIXTURES_DIR, 'probe_result.json'), 'utf-8');
+    const fixture = JSON.parse(fixtureRaw) as Record<string, unknown>;
+    let captured: Record<string, unknown> | null = null;
+
+    const bridge = trackBridge(
+      await startMockBridge((ws, send) => {
+        ws.on('message', (data) => {
+          const env = parseIncoming(data);
+          if (env.type === 'hello') {
+            send({ v: 4, type: 'welcome', ts: Date.now(), protocolVersion: 4, bridgeVersion: '0.1.0', rnsVersion: '1.4.2' });
+          } else if (env.type === 'configure') {
+            send({ v: 4, type: 'ready', id: env.id, ts: Date.now() });
+          } else if (env.type === 'probe') {
+            captured = env;
+            send({ ...fixture, id: env.id });
+          }
+        });
+      }),
+    );
+
+    const client = trackClient(new ReticulumBridgeClient({ bridgeUrl: bridge.url, token: 'change-me' }));
+    await client.connect({ mode: 'attach', configDir: '/rns' });
+    const result: ProbeResultMessage = await client.probe({
+      destinationHash: 'a1b2c3d4e5f60718293a4b5c6d7e8f90',
+      timeoutS: 12,
+    });
+
+    expect(captured).toMatchObject({
+      type: 'probe',
+      destinationHash: 'a1b2c3d4e5f60718293a4b5c6d7e8f90',
+      timeoutS: 12,
+    });
+    expect(result).toMatchObject({ type: 'probe_result', ok: true, rttMs: 842.5, hops: 3 });
+  });
+
+  it('probe() resolves (not rejects) with an ok:false result for an unreachable destination', async () => {
+    const fixtureRaw = fs.readFileSync(path.join(FIXTURES_DIR, 'probe_result_unreachable.json'), 'utf-8');
+    const fixture = JSON.parse(fixtureRaw) as Record<string, unknown>;
+
+    const bridge = trackBridge(
+      await startMockBridge((ws, send) => {
+        ws.on('message', (data) => {
+          const env = parseIncoming(data);
+          if (env.type === 'hello') {
+            send({ v: 4, type: 'welcome', ts: Date.now(), protocolVersion: 4, bridgeVersion: '0.1.0', rnsVersion: '1.4.2' });
+          } else if (env.type === 'configure') {
+            send({ v: 4, type: 'ready', id: env.id, ts: Date.now() });
+          } else if (env.type === 'probe') {
+            send({ ...fixture, id: env.id });
+          }
+        });
+      }),
+    );
+
+    const client = trackClient(new ReticulumBridgeClient({ bridgeUrl: bridge.url, token: 'change-me' }));
+    await client.connect({ mode: 'attach', configDir: '/rns' });
+    const result = await client.probe({ destinationHash: '112233445566778899aabbccddeeff0' });
+
+    expect(result).toMatchObject({ ok: false, rttMs: null, hops: null, error: 'no path to destination' });
+  });
+
+  it('probe() rejects with the bridge-sent PROBE_FAILED typed error', async () => {
+    const bridge = trackBridge(
+      await startMockBridge((ws, send) => {
+        ws.on('message', (data) => {
+          const env = parseIncoming(data);
+          if (env.type === 'hello') {
+            send({ v: 4, type: 'welcome', ts: Date.now(), protocolVersion: 4, bridgeVersion: '0.1.0', rnsVersion: '1.4.2' });
+          } else if (env.type === 'configure') {
+            send({ v: 4, type: 'ready', id: env.id, ts: Date.now() });
+          } else if (env.type === 'probe') {
+            send({ v: 4, type: 'error', id: env.id, code: 'PROBE_FAILED', message: 'malformed destination hash', ts: Date.now() });
+          }
+        });
+      }),
+    );
+
+    const client = trackClient(new ReticulumBridgeClient({ bridgeUrl: bridge.url, token: 'change-me' }));
+    await client.connect({ mode: 'attach', configDir: '/rns' });
+    await expect(client.probe({ destinationHash: 'zz' })).rejects.toMatchObject({ code: 'PROBE_FAILED' });
+  });
+
+  it('probe() rejects on a request timeout when the bridge never replies', async () => {
+    const bridge = trackBridge(
+      await startMockBridge((ws, send) => {
+        ws.on('message', (data) => {
+          const env = parseIncoming(data);
+          if (env.type === 'hello') {
+            send({ v: 4, type: 'welcome', ts: Date.now(), protocolVersion: 4, bridgeVersion: '0.1.0', rnsVersion: '1.4.2' });
+          } else if (env.type === 'configure') {
+            send({ v: 4, type: 'ready', id: env.id, ts: Date.now() });
+          }
+          // 'probe' command intentionally never answered.
+        });
+      }),
+    );
+
+    const client = trackClient(
+      new ReticulumBridgeClient({ bridgeUrl: bridge.url, token: 'change-me', requestTimeoutMs: 300 }),
+    );
+    await client.connect({ mode: 'attach', configDir: '/rns' });
+    await expect(client.probe({ destinationHash: 'a1b2c3d4e5f60718293a4b5c6d7e8f90' })).rejects.toThrow(
+      /timed out waiting for probe_result reply/,
+    );
+  });
+
+  it('getRemoteStatus() resolves with a live remote_status.json-shaped reply and sends the destinationHash/timeoutS fields', async () => {
+    const fixtureRaw = fs.readFileSync(path.join(FIXTURES_DIR, 'remote_status.json'), 'utf-8');
+    const fixture = JSON.parse(fixtureRaw) as Record<string, unknown>;
+    let captured: Record<string, unknown> | null = null;
+
+    const bridge = trackBridge(
+      await startMockBridge((ws, send) => {
+        ws.on('message', (data) => {
+          const env = parseIncoming(data);
+          if (env.type === 'hello') {
+            send({ v: 4, type: 'welcome', ts: Date.now(), protocolVersion: 4, bridgeVersion: '0.1.0', rnsVersion: '1.4.2' });
+          } else if (env.type === 'configure') {
+            send({ v: 4, type: 'ready', id: env.id, ts: Date.now() });
+          } else if (env.type === 'get_remote_status') {
+            captured = env;
+            send({ ...fixture, id: env.id });
+          }
+        });
+      }),
+    );
+
+    const client = trackClient(new ReticulumBridgeClient({ bridgeUrl: bridge.url, token: 'change-me' }));
+    await client.connect({ mode: 'attach', configDir: '/rns' });
+    const result: RemoteStatusMessage = await client.getRemoteStatus({
+      destinationHash: '9f8e7d6c5b4a39281706f5e4d3c2b1a0',
+      timeoutS: 15,
+    });
+
+    expect(captured).toMatchObject({
+      type: 'get_remote_status',
+      destinationHash: '9f8e7d6c5b4a39281706f5e4d3c2b1a0',
+      timeoutS: 15,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.status?.linkCount).toBe(2);
+  });
+
+  it('getRemoteStatus() rejects with the bridge-sent REMOTE_MANAGEMENT_DENIED typed error', async () => {
+    const bridge = trackBridge(
+      await startMockBridge((ws, send) => {
+        ws.on('message', (data) => {
+          const env = parseIncoming(data);
+          if (env.type === 'hello') {
+            send({ v: 4, type: 'welcome', ts: Date.now(), protocolVersion: 4, bridgeVersion: '0.1.0', rnsVersion: '1.4.2' });
+          } else if (env.type === 'configure') {
+            send({ v: 4, type: 'ready', id: env.id, ts: Date.now() });
+          } else if (env.type === 'get_remote_status') {
+            send({
+              v: 4,
+              type: 'error',
+              id: env.id,
+              code: 'REMOTE_MANAGEMENT_DENIED',
+              message: 'link to remote management destination did not establish',
+              ts: Date.now(),
+            });
+          }
+        });
+      }),
+    );
+
+    const client = trackClient(new ReticulumBridgeClient({ bridgeUrl: bridge.url, token: 'change-me' }));
+    await client.connect({ mode: 'attach', configDir: '/rns' });
+    await expect(
+      client.getRemoteStatus({ destinationHash: '112233445566778899aabbccddeeff0' }),
+    ).rejects.toMatchObject({ code: 'REMOTE_MANAGEMENT_DENIED' });
+  });
+
+  it('getRemoteStatus() rejects on a request timeout when the bridge never replies', async () => {
+    const bridge = trackBridge(
+      await startMockBridge((ws, send) => {
+        ws.on('message', (data) => {
+          const env = parseIncoming(data);
+          if (env.type === 'hello') {
+            send({ v: 4, type: 'welcome', ts: Date.now(), protocolVersion: 4, bridgeVersion: '0.1.0', rnsVersion: '1.4.2' });
+          } else if (env.type === 'configure') {
+            send({ v: 4, type: 'ready', id: env.id, ts: Date.now() });
+          }
+          // 'get_remote_status' command intentionally never answered.
+        });
+      }),
+    );
+
+    const client = trackClient(
+      new ReticulumBridgeClient({ bridgeUrl: bridge.url, token: 'change-me', requestTimeoutMs: 300 }),
+    );
+    await client.connect({ mode: 'attach', configDir: '/rns' });
+    await expect(
+      client.getRemoteStatus({ destinationHash: '9f8e7d6c5b4a39281706f5e4d3c2b1a0' }),
+    ).rejects.toThrow(/timed out waiting for remote_status reply/);
+  });
+
+  it('client emits a path_table event for a live path_table.json frame, and does not surface probe/remote_status as push events', async () => {
+    const fixtureRaw = fs.readFileSync(path.join(FIXTURES_DIR, 'path_table.json'), 'utf-8');
+    const fixture = JSON.parse(fixtureRaw) as Record<string, unknown>;
+
+    const bridge = trackBridge(
+      await startMockBridge((ws, send) => {
+        ws.on('message', (data) => {
+          const env = parseIncoming(data);
+          if (env.type === 'hello') {
+            send({ v: 4, type: 'welcome', ts: Date.now(), protocolVersion: 4, bridgeVersion: '0.1.0', rnsVersion: '1.4.2' });
+          } else if (env.type === 'configure') {
+            send({ v: 4, type: 'ready', id: env.id, ts: Date.now() });
+            send(fixture as unknown as Record<string, unknown>);
+          }
+        });
+      }),
+    );
+
+    const client = trackClient(new ReticulumBridgeClient({ bridgeUrl: bridge.url, token: 'change-me' }));
+    const pathTablePromise = new Promise<PathTableMessage>((resolve) => {
+      client.once('path_table', (msg: PathTableMessage) => resolve(msg));
+    });
+    await client.connect({ mode: 'attach', configDir: '/rns' });
+
+    const received = await pathTablePromise;
+    expect(received).toEqual(fixture);
   });
 });

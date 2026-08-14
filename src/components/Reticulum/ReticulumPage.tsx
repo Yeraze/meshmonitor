@@ -29,6 +29,7 @@ import { ReticulumInfoView } from './ReticulumInfoView';
 import { ReticulumSettingsView } from './ReticulumSettingsView';
 import { ReticulumMap } from './ReticulumMap';
 import { ReticulumConfigurationView } from './ReticulumConfigurationView';
+import { ReticulumPathsView } from './ReticulumPathsView';
 import { SaveBarProvider, SaveBarGroup } from '../../contexts/SaveBarContext';
 import { SaveBar } from '../SaveBar';
 import type { ReticulumStatus, ReticulumView } from '../../types/reticulum';
@@ -52,6 +53,7 @@ export const ReticulumPage: React.FC<ReticulumPageProps> = ({ baseUrl, sourceId,
     status, destinations, interfaces, loading, error, refresh, toggleFavorite,
     conversations, conversationsLoading, activePeerHash, messages, messagesLoading, hasMoreMessages,
     loadConversation, loadMoreMessages, sendMessage, identity,
+    paths, probeResult, probingHash, probe, remoteStatus, remoteStatusLoading, queryRemoteStatus,
   } = useReticulum({ sourceId, enabled });
 
   const [view, setView] = useState<ReticulumView>('destinations');
@@ -141,8 +143,20 @@ export const ReticulumPage: React.FC<ReticulumPageProps> = ({ baseUrl, sourceId,
               loading={loading}
             />
           )}
+          {view === 'paths' && (
+            <ReticulumPathsView
+              paths={paths}
+              loading={loading}
+              probeResult={probeResult}
+              probingHash={probingHash}
+              onProbe={probe}
+              remoteStatus={remoteStatus}
+              remoteStatusLoading={remoteStatusLoading}
+              onQueryRemoteStatus={queryRemoteStatus}
+            />
+          )}
           {view === 'map' && (
-            <ReticulumMap destinations={destinations} loading={loading} />
+            <ReticulumMap destinations={destinations} paths={paths} loading={loading} />
           )}
           {view === 'configuration' && (
             <ReticulumConfigurationView sourceId={sourceId} />

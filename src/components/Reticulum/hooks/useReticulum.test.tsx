@@ -53,6 +53,9 @@ import type {
   ReticulumConversation,
   ReticulumMessageRow,
   ReticulumIdentity,
+  ReticulumPathRow,
+  ReticulumProbeResult,
+  ReticulumRemoteStatus,
 } from '../../../types/reticulum';
 
 const mockedGet = api.get as unknown as ReturnType<typeof vi.fn>;
@@ -146,18 +149,33 @@ function baseConversation(overrides: Partial<ReticulumConversation> = {}): Retic
   };
 }
 
-/** Resolves the four GET calls (status, destinations, interfaces, conversations) in order. */
+function basePath(overrides: Partial<ReticulumPathRow> = {}): ReticulumPathRow {
+  return {
+    sourceId: 's1',
+    destinationHash: 'destHashA',
+    viaHash: 'viaHashA',
+    hops: 2,
+    interfaceName: 'TCPServer',
+    expiresAt: 9999999,
+    updatedAt: 2000,
+    ...overrides,
+  };
+}
+
+/** Resolves the five GET calls (status, destinations, interfaces, conversations, paths) in order. */
 function mockSnapshot(
   status: ReticulumStatus = baseStatus(),
   destinations: ReticulumDestinationRow[] = [baseDestination()],
   interfaces: ReticulumInterfaceRow[] = [baseInterface()],
   conversations: ReticulumConversation[] = [baseConversation()],
+  paths: ReticulumPathRow[] = [basePath()],
 ) {
   mockedGet
     .mockResolvedValueOnce({ success: true, data: status })
     .mockResolvedValueOnce({ success: true, data: destinations })
     .mockResolvedValueOnce({ success: true, data: interfaces })
-    .mockResolvedValueOnce({ success: true, data: conversations });
+    .mockResolvedValueOnce({ success: true, data: conversations })
+    .mockResolvedValueOnce({ success: true, data: paths });
 }
 
 /** Resolves the identity GET call (separate effect, fires alongside the snapshot poll). */
@@ -189,11 +207,13 @@ describe('useReticulum', () => {
     expect(mockedGet).toHaveBeenCalledWith('/api/sources/s1/reticulum/destinations');
     expect(mockedGet).toHaveBeenCalledWith('/api/sources/s1/reticulum/interfaces');
     expect(mockedGet).toHaveBeenCalledWith('/api/sources/s1/reticulum/messages');
+    expect(mockedGet).toHaveBeenCalledWith('/api/sources/s1/reticulum/paths');
 
     expect(result.current.status).toEqual(baseStatus());
     expect(result.current.destinations).toEqual([baseDestination()]);
     expect(result.current.interfaces).toEqual([baseInterface()]);
     expect(result.current.conversations).toEqual([baseConversation()]);
+    expect(result.current.paths).toEqual([basePath()]);
     expect(result.current.loading).toBe(false);
     expect(result.current.conversationsLoading).toBe(false);
     expect(result.current.error).toBeNull();
@@ -219,6 +239,7 @@ describe('useReticulum', () => {
       .mockResolvedValueOnce([baseDestination()])
       .mockResolvedValueOnce([baseInterface()])
       .mockResolvedValueOnce([baseConversation()])
+      .mockResolvedValueOnce([basePath()])
       .mockResolvedValueOnce({ destinationHash: null, displayName: null });
 
     const { result } = renderHook(() => useReticulum({ sourceId: 's1' }));
@@ -227,6 +248,7 @@ describe('useReticulum', () => {
     expect(result.current.status).toEqual(baseStatus());
     expect(result.current.destinations).toEqual([baseDestination()]);
     expect(result.current.conversations).toEqual([baseConversation()]);
+    expect(result.current.paths).toEqual([basePath()]);
   });
 
   it('enabled: false short-circuits all fetching', async () => {
@@ -240,6 +262,7 @@ describe('useReticulum', () => {
     expect(result.current.destinations).toEqual([]);
     expect(result.current.interfaces).toEqual([]);
     expect(result.current.conversations).toEqual([]);
+    expect(result.current.paths).toEqual([]);
   });
 
   it('polls again after 30s (R4 — no push events for the snapshot, poll is the only refresh)', async () => {
@@ -251,7 +274,7 @@ describe('useReticulum', () => {
     const { result } = renderHook(() => useReticulum({ sourceId: 's1' }));
 
     await waitFor(() => expect(result.current.status?.destinationCount).toBe(2));
-    expect(mockedGet).toHaveBeenCalledTimes(5);
+    expect(mockedGet).toHaveBeenCalledTimes(6);
 
     await act(async () => {
       vi.advanceTimersByTime(30000);
@@ -524,6 +547,159 @@ describe('useReticulum', () => {
       await waitFor(() => expect(result.current.status).not.toBeNull());
       // No throw, and the polled snapshot still loads normally.
       expect(result.current.status).toEqual(baseStatus());
+    });
+  });
+
+  describe('probe (Phase 4 WP4)', () => {
+    it('POSTs /paths/probe and stores the result', async () => {
+      mockSnapshot();
+      mockIdentity();
+      const probeResult: ReticulumProbeResult = { destinationHash: 'destHashA', ok: true, rttMs: 123, hops: 2, error: null };
+      mockedPost.mockResolvedValueOnce({ success: true, data: probeResult });
+
+      const { result } = renderHook(() => useReticulum({ sourceId: 's1' }));
+      await waitFor(() => expect(result.current.status).not.toBeNull());
+
+      let returned: ReticulumProbeResult | null = null;
+      await act(async () => {
+        returned = await result.current.probe('destHashA');
+      });
+
+      expect(mockedPost).toHaveBeenCalledWith('/api/sources/s1/reticulum/paths/probe', { destinationHash: 'destHashA' });
+      expect(returned).toEqual(probeResult);
+      expect(result.current.probeResult).toEqual(probeResult);
+      expect(result.current.probingHash).toBeNull();
+    });
+
+    it('forwards timeoutS when provided', async () => {
+      mockSnapshot();
+      mockIdentity();
+      mockedPost.mockResolvedValueOnce({ success: true, data: { destinationHash: 'destHashA', ok: false, rttMs: null, hops: null, error: null } });
+
+      const { result } = renderHook(() => useReticulum({ sourceId: 's1' }));
+      await waitFor(() => expect(result.current.status).not.toBeNull());
+
+      await act(async () => { await result.current.probe('destHashA', 30); });
+
+      expect(mockedPost).toHaveBeenCalledWith('/api/sources/s1/reticulum/paths/probe', { destinationHash: 'destHashA', timeoutS: 30 });
+    });
+
+    it('sets probingHash while the request is in flight', async () => {
+      mockSnapshot();
+      mockIdentity();
+      let resolvePost: (value: unknown) => void = () => {};
+      mockedPost.mockReturnValueOnce(new Promise((resolve) => { resolvePost = resolve; }));
+
+      const { result } = renderHook(() => useReticulum({ sourceId: 's1' }));
+      await waitFor(() => expect(result.current.status).not.toBeNull());
+
+      let probePromise: Promise<ReticulumProbeResult | null> = Promise.resolve(null);
+      act(() => { probePromise = result.current.probe('destHashA'); });
+
+      await waitFor(() => expect(result.current.probingHash).toBe('destHashA'));
+
+      await act(async () => {
+        resolvePost({ success: true, data: { destinationHash: 'destHashA', ok: true, rttMs: 50, hops: 1, error: null } });
+        await probePromise;
+      });
+
+      expect(result.current.probingHash).toBeNull();
+    });
+
+    it('returns null and sets an error on failure', async () => {
+      mockSnapshot();
+      mockIdentity();
+      mockedPost.mockRejectedValueOnce(new Error('bridge unreachable'));
+
+      const { result } = renderHook(() => useReticulum({ sourceId: 's1' }));
+      await waitFor(() => expect(result.current.status).not.toBeNull());
+
+      let returned: ReticulumProbeResult | null = { destinationHash: 'x', ok: true, rttMs: 1, hops: 1, error: null };
+      await act(async () => {
+        returned = await result.current.probe('destHashA');
+      });
+
+      expect(returned).toBeNull();
+      expect(result.current.error).toBe('bridge unreachable');
+      expect(result.current.probingHash).toBeNull();
+    });
+  });
+
+  describe('queryRemoteStatus (Phase 4 WP4)', () => {
+    it('GETs /remote-status/:hash and stores the result', async () => {
+      mockSnapshot();
+      mockIdentity();
+      const remoteStatus: ReticulumRemoteStatus = {
+        destinationHash: 'remoteHashA',
+        ok: true,
+        status: { interfaces: [], linkCount: 0 },
+        path: [],
+        error: null,
+      };
+      mockedGet.mockResolvedValueOnce({ success: true, data: remoteStatus });
+
+      const { result } = renderHook(() => useReticulum({ sourceId: 's1' }));
+      await waitFor(() => expect(result.current.status).not.toBeNull());
+
+      let returned: ReticulumRemoteStatus | null = null;
+      await act(async () => {
+        returned = await result.current.queryRemoteStatus('remoteHashA');
+      });
+
+      expect(mockedGet).toHaveBeenCalledWith('/api/sources/s1/reticulum/remote-status/remoteHashA');
+      expect(returned).toEqual(remoteStatus);
+      expect(result.current.remoteStatus).toEqual(remoteStatus);
+      expect(result.current.remoteStatusLoading).toBe(false);
+    });
+
+    it('appends the timeoutS query param when provided', async () => {
+      mockSnapshot();
+      mockIdentity();
+      mockedGet.mockResolvedValueOnce({
+        success: true,
+        data: { destinationHash: 'remoteHashA', ok: false, status: null, path: null, error: 'timeout' },
+      });
+
+      const { result } = renderHook(() => useReticulum({ sourceId: 's1' }));
+      await waitFor(() => expect(result.current.status).not.toBeNull());
+
+      await act(async () => { await result.current.queryRemoteStatus('remoteHashA', 20); });
+
+      expect(mockedGet).toHaveBeenCalledWith('/api/sources/s1/reticulum/remote-status/remoteHashA?timeoutS=20');
+    });
+
+    it('encodes the destination hash in the URL', async () => {
+      mockSnapshot();
+      mockIdentity();
+      mockedGet.mockResolvedValueOnce({
+        success: true,
+        data: { destinationHash: 'a/b', ok: false, status: null, path: null, error: null },
+      });
+
+      const { result } = renderHook(() => useReticulum({ sourceId: 's1' }));
+      await waitFor(() => expect(result.current.status).not.toBeNull());
+
+      await act(async () => { await result.current.queryRemoteStatus('a/b'); });
+
+      expect(mockedGet).toHaveBeenCalledWith('/api/sources/s1/reticulum/remote-status/a%2Fb');
+    });
+
+    it('returns null and sets an error on failure', async () => {
+      mockSnapshot();
+      mockIdentity();
+      mockedGet.mockRejectedValueOnce(new Error('access denied'));
+
+      const { result } = renderHook(() => useReticulum({ sourceId: 's1' }));
+      await waitFor(() => expect(result.current.status).not.toBeNull());
+
+      let returned: ReticulumRemoteStatus | null = { destinationHash: 'x', ok: true, status: null, path: null, error: null };
+      await act(async () => {
+        returned = await result.current.queryRemoteStatus('remoteHashA');
+      });
+
+      expect(returned).toBeNull();
+      expect(result.current.error).toBe('access denied');
+      expect(result.current.remoteStatusLoading).toBe(false);
     });
   });
 });

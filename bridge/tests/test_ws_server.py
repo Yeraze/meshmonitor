@@ -22,13 +22,15 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from meshmonitor_rns_bridge import protocol
-from meshmonitor_rns_bridge.rns_manager import OwnModeRequiredError
+from meshmonitor_rns_bridge.rns_manager import OwnModeRequiredError, RemoteManagementDeniedError
 from meshmonitor_rns_bridge.ws_server import (
     _handle_announce_self,
     _handle_get_device_info,
     _handle_get_identity,
     _handle_get_radio_config,
+    _handle_get_remote_status,
     _handle_import_identity,
+    _handle_probe,
     _handle_send_lxmf,
     _handle_set_display_name,
     _handle_set_propagation_node,
@@ -390,3 +392,107 @@ def test_get_device_info_generic_failure(ws, manager):
     _handle_get_device_info(ws, manager, {"id": "c12", "type": protocol.TYPE_GET_DEVICE_INFO})
     assert ws.last["type"] == protocol.TYPE_ERROR
     assert ws.last["code"] == protocol.RNODE_COMMAND_FAILED
+
+
+# --------------------------------------------------------------------------
+# Phase 4 (bridge probe + remote status, build spec §2.B/§2.C, #3960 WP2):
+# two new command handlers. NEITHER is mode-gated -- no OwnModeRequiredError
+# branch here, unlike the Phase 3 radio-config family above.
+# --------------------------------------------------------------------------
+
+
+def test_probe_happy_path_forwards_result(ws, manager):
+    manager.probe.return_value = {"ok": True, "rttMs": 842.5, "hops": 3, "error": None}
+    req = {
+        "id": "c13",
+        "type": protocol.TYPE_PROBE,
+        "destinationHash": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+        "timeoutS": 12.0,
+    }
+    _handle_probe(ws, manager, req)
+
+    manager.probe.assert_called_once_with("a1b2c3d4e5f60718293a4b5c6d7e8f90", timeout_s=12.0)
+    assert ws.last["type"] == protocol.TYPE_PROBE_RESULT
+    assert ws.last["id"] == "c13"
+    assert ws.last["destinationHash"] == "a1b2c3d4e5f60718293a4b5c6d7e8f90"
+    assert ws.last["ok"] is True
+    assert ws.last["rttMs"] == 842.5
+    assert ws.last["hops"] == 3
+
+
+def test_probe_ok_false_is_a_normal_response_not_an_error(ws, manager):
+    """A clean 'no path / no proof within timeout' result is a normal
+    probe_result envelope with ok=False, never PROBE_FAILED."""
+    manager.probe.return_value = {"ok": False, "rttMs": None, "hops": None, "error": "no path to destination"}
+    req = {"id": "c14", "type": protocol.TYPE_PROBE, "destinationHash": "112233445566778899aabbccddeeff0"}
+    _handle_probe(ws, manager, req)
+
+    assert ws.last["type"] == protocol.TYPE_PROBE_RESULT
+    assert ws.last["ok"] is False
+    assert ws.last["error"] == "no path to destination"
+
+
+def test_probe_exception_responds_with_probe_failed(ws, manager):
+    manager.probe.side_effect = ValueError("invalid destination hash")
+    req = {"id": "c13", "type": protocol.TYPE_PROBE, "destinationHash": "not-hex"}
+    _handle_probe(ws, manager, req)
+
+    assert ws.last["type"] == protocol.TYPE_ERROR
+    assert ws.last["id"] == "c13"
+    assert ws.last["code"] == protocol.PROBE_FAILED
+
+
+def test_get_remote_status_happy_path_forwards_result(ws, manager):
+    manager.get_remote_status.return_value = {
+        "ok": True,
+        "status": {"interfaces": [], "linkCount": 2},
+        "path": [],
+        "error": None,
+    }
+    req = {
+        "id": "c15",
+        "type": protocol.TYPE_GET_REMOTE_STATUS,
+        "destinationHash": "9f8e7d6c5b4a39281706f5e4d3c2b1a0",
+        "timeoutS": 15.0,
+    }
+    _handle_get_remote_status(ws, manager, req)
+
+    manager.get_remote_status.assert_called_once_with("9f8e7d6c5b4a39281706f5e4d3c2b1a0", timeout_s=15.0)
+    assert ws.last["type"] == protocol.TYPE_REMOTE_STATUS
+    assert ws.last["id"] == "c15"
+    assert ws.last["ok"] is True
+    assert ws.last["status"]["linkCount"] == 2
+
+
+def test_get_remote_status_ok_false_is_a_normal_response_not_an_error(ws, manager):
+    manager.get_remote_status.return_value = {
+        "ok": False,
+        "status": None,
+        "path": None,
+        "error": "no path to remote management destination",
+    }
+    req = {"id": "c16", "type": protocol.TYPE_GET_REMOTE_STATUS, "destinationHash": "112233445566778899aabbccddeeff0"}
+    _handle_get_remote_status(ws, manager, req)
+
+    assert ws.last["type"] == protocol.TYPE_REMOTE_STATUS
+    assert ws.last["ok"] is False
+    assert ws.last["error"] == "no path to remote management destination"
+
+
+def test_get_remote_status_denied_responds_with_typed_error(ws, manager):
+    manager.get_remote_status.side_effect = RemoteManagementDeniedError("not on the allowlist")
+    req = {"id": "c15", "type": protocol.TYPE_GET_REMOTE_STATUS, "destinationHash": "9f8e7d6c5b4a39281706f5e4d3c2b1a0"}
+    _handle_get_remote_status(ws, manager, req)
+
+    assert ws.last["type"] == protocol.TYPE_ERROR
+    assert ws.last["id"] == "c15"
+    assert ws.last["code"] == protocol.REMOTE_MANAGEMENT_DENIED
+
+
+def test_get_remote_status_generic_failure(ws, manager):
+    manager.get_remote_status.side_effect = RuntimeError("boom")
+    req = {"id": "c15", "type": protocol.TYPE_GET_REMOTE_STATUS, "destinationHash": "9f8e7d6c5b4a39281706f5e4d3c2b1a0"}
+    _handle_get_remote_status(ws, manager, req)
+
+    assert ws.last["type"] == protocol.TYPE_ERROR
+    assert ws.last["code"] == protocol.REMOTE_STATUS_FAILED

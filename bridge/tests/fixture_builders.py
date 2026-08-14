@@ -49,6 +49,15 @@ EXPECTED_FIXTURE_NAMES = {
     "device_info",
     # Phase 3 (Sideband FIELD_TELEMETRY decode, #3960 WP2) -- build spec §2.C.
     "telemetry",
+    # Phase 4 (bridge probe + remote status, #3960 WP2) -- build spec §2.A/§2.D.
+    # `probe_result`/`remote_status` each get an ok=True AND an ok=False
+    # fixture (build spec §2.D: "so the Node decoder tests both branches").
+    "probe",
+    "probe_result",
+    "probe_result_unreachable",
+    "get_remote_status",
+    "remote_status",
+    "remote_status_denied",
 }
 
 # Fixture-directory stems that exist under tests/fixtures/*.json but are NOT
@@ -304,5 +313,80 @@ def build_fixture(name: str) -> dict:
                 "accuracy": 8.5,
             },
             ts=1755123456,
+        )
+    # Phase 4 (bridge probe + remote status, #3960 WP2) -- build spec §2.A/§2.D.
+    if name == "probe":
+        return protocol.probe_message(
+            destination_hash="a1b2c3d4e5f60718293a4b5c6d7e8f90", timeout_s=12.0, id="c13"
+        )
+    if name == "probe_result":
+        return protocol.probe_result_message(
+            destination_hash="a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            ok=True,
+            rtt_ms=842.5,
+            hops=3,
+            error=None,
+            id="c13",
+        )
+    if name == "probe_result_unreachable":
+        # ok=False is a NORMAL outcome (no path / no proof within timeout),
+        # never PROBE_FAILED -- see rns_manager.py's probe() docstring.
+        return protocol.probe_result_message(
+            destination_hash="112233445566778899aabbccddeeff0",
+            ok=False,
+            rtt_ms=None,
+            hops=None,
+            error="no path to destination",
+            id="c14",
+        )
+    if name == "get_remote_status":
+        return protocol.get_remote_status_message(
+            destination_hash="9f8e7d6c5b4a39281706f5e4d3c2b1a0", timeout_s=15.0, id="c15"
+        )
+    if name == "remote_status":
+        return protocol.remote_status_message(
+            destination_hash="9f8e7d6c5b4a39281706f5e4d3c2b1a0",
+            ok=True,
+            # Representative interface-stats payload (build spec §2.D):
+            # same per-interface shape as interface_stats.json's rows,
+            # produced by rns_manager.py's `_normalize_remote_status()`.
+            status={
+                "interfaces": [
+                    {
+                        "name": "TCP Server Interface",
+                        "type": "TCPServerInterface",
+                        "hash": "9f8e7d6c5b4a39281706f5e4d3c2b1a0",
+                        "mode": "full",
+                        "status": "up",
+                        "online": True,
+                        "bitrate": None,
+                        "txBytes": 603,
+                        "rxBytes": 362,
+                    }
+                ],
+                "linkCount": 2,
+            },
+            # Representative path-table rows (build spec §2.D), same row
+            # shape as path_table.json.
+            path=[
+                {
+                    "destinationHash": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+                    "via": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+                    "hops": 1,
+                    "expires": 1755001800.0,
+                    "interface": "TCP Server Interface",
+                }
+            ],
+            error=None,
+            id="c15",
+        )
+    if name == "remote_status_denied":
+        return protocol.remote_status_message(
+            destination_hash="112233445566778899aabbccddeeff0",
+            ok=False,
+            status=None,
+            path=None,
+            error="link to remote management destination did not establish",
+            id="c16",
         )
     raise ValueError(f"no builder registered for fixture {name!r}")

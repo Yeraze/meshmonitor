@@ -1,0 +1,11 @@
+{
+  "destinationHash": "112233445566778899aabbccddeeff0",
+  "error": "no path to destination",
+  "hops": null,
+  "id": "c14",
+  "ok": false,
+  "rttMs": null,
+  "ts": 1755000000000,
+  "type": "probe_result",
+  "v": 4
+}

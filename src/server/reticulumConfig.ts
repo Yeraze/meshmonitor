@@ -56,6 +56,15 @@ export interface ReticulumSourceConfig {
   txPower?: number;
   stAlock?: number;
   ltAlock?: number;
+  /**
+   * Phase 4 WP3 (build spec §0 R5): the operator's remote-fleet allowlist —
+   * which remote destination hashes THIS source is permitted to query via
+   * `get_remote_status`. NOT mode-specific (own/attach/tcp_peer all forward
+   * it) — mirrors the bridge's own `RNS_REMOTE_ALLOWED` env var
+   * (`config.py`'s `remote_allowed`). Admin-set hex destination hashes,
+   * lowercased/deduplicated by `reticulumConfigFromSource`.
+   */
+  remoteAllowed?: string[];
 }
 
 /** Runtime config consumed by `ReticulumBridgeClient.connect()` (a superset used as `ReticulumConnectParams` plus transport fields). */
@@ -107,6 +116,10 @@ export function reticulumConfigFromSource(source: Source): ReticulumConfig | nul
     return null;
   }
 
+  // Phase 4 WP3 (build spec §0 R5): NOT mode-specific — every mode forwards
+  // the same remote-fleet allowlist.
+  const remoteAllowed = normalizeRemoteAllowed(cfg.remoteAllowed);
+
   if (mode === 'attach') {
     const configDir = cfg.configDir?.trim();
     if (!configDir) return null;
@@ -116,6 +129,7 @@ export function reticulumConfigFromSource(source: Source): ReticulumConfig | nul
       token,
       protocolVersion: PROTOCOL_VERSION,
       configDir,
+      remoteAllowed,
     };
   }
 
@@ -135,6 +149,7 @@ export function reticulumConfigFromSource(source: Source): ReticulumConfig | nul
       txPower: finiteNumberOrUndefined(cfg.txPower),
       stAlock: finiteNumberOrUndefined(cfg.stAlock),
       ltAlock: finiteNumberOrUndefined(cfg.ltAlock),
+      remoteAllowed,
     };
   }
 
@@ -147,12 +162,35 @@ export function reticulumConfigFromSource(source: Source): ReticulumConfig | nul
     token,
     protocolVersion: PROTOCOL_VERSION,
     peers,
+    remoteAllowed,
   };
 }
 
 /** Coerce a raw `sources.config` field into a finite number, or `undefined` (own-mode initial radio params are all optional — see build spec §2.C). */
 function finiteNumberOrUndefined(raw: unknown): number | undefined {
   return typeof raw === 'number' && Number.isFinite(raw) ? raw : undefined;
+}
+
+/**
+ * Normalize `sources.config`'s `remoteAllowed` field into a lowercased,
+ * deduplicated, blank-filtered hex-hash list — same leniency as the
+ * bridge's own `config.py`'s `_parse_remote_allowed` (no hex/length
+ * validation here, that happens at request time on the query side; see
+ * build spec §0 R5). Returns `undefined` (not an empty array) when nothing
+ * was configured, matching the `finiteNumberOrUndefined` "omit rather than
+ * send an empty/default value" convention used by the own-mode radio
+ * params below.
+ */
+function normalizeRemoteAllowed(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const seen = new Set<string>();
+  for (const entry of raw) {
+    if (typeof entry !== 'string') continue;
+    const hash = entry.trim().toLowerCase();
+    if (hash.length === 0) continue;
+    seen.add(hash);
+  }
+  return seen.size > 0 ? Array.from(seen) : undefined;
 }
 
 function normalizeTcpPeers(raw: ReticulumSourceConfig['peers']): TcpPeerConfig[] {

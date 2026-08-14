@@ -21,6 +21,17 @@ Bumped 2->3 for Phase 3 WP1 (own mode + RNode radio config/device info,
 RETICULUM_PHASE3_BUILD_SPEC.md §2.B/§2.C, #3960): adds the `own`
 ReticulumMode plus the get_radio_config/set_radio_config/get_device_info
 command-response pairs. Same fail-closed rationale as the 1->2 bump above.
+
+Bumped 3->4 for Phase 4 WP2 (bridge probe + remote status,
+RETICULUM_PHASE4_BUILD_SPEC.md §2.A, #3960): adds the probe/probe_result and
+get_remote_status/remote_status command-response pairs (rnprobe-style
+reachability + RNS's built-in `rnstransport.remote.management` /status and
+/path queries against a REMOTE Transport Node -- see rns_manager.py's
+`_RNSProbeBackend` for the exact vendored-RNS API this is pinned against).
+Same fail-closed strict-equality rationale as the 1->2/2->3 bumps above:
+these are net-new command types, not a change to any existing envelope
+shape, but a v3 Node talking to a v4 bridge (or vice versa) should still get
+PROTOCOL_VERSION_MISMATCH rather than silently missing the new types.
 """
 
 from __future__ import annotations
@@ -29,7 +40,7 @@ import json
 import time
 from typing import Any, Iterable, Optional
 
-PROTOCOL_VERSION = 3
+PROTOCOL_VERSION = 4
 
 # --------------------------------------------------------------------------
 # Message types
@@ -76,6 +87,15 @@ TYPE_SET_RADIO_CONFIG = "set_radio_config"
 TYPE_GET_DEVICE_INFO = "get_device_info"
 TYPE_DEVICE_INFO = "device_info"
 
+# Phase 4 (bridge probe + remote status, build spec §2.A, #3960 WP2) --
+# commands (Node -> bridge) and their responses (bridge -> Node). Unlike the
+# own-mode radio family above, these are NOT mode-gated: they're valid in
+# own/attach/tcp_peer alike, since all three modes hold a live RNS instance.
+TYPE_PROBE = "probe"
+TYPE_PROBE_RESULT = "probe_result"
+TYPE_GET_REMOTE_STATUS = "get_remote_status"
+TYPE_REMOTE_STATUS = "remote_status"
+
 # --------------------------------------------------------------------------
 # Failure codes (build spec §4.3 / §4.4)
 # --------------------------------------------------------------------------
@@ -112,6 +132,25 @@ RNODE_DEVICE_UNAVAILABLE = "RNODE_DEVICE_UNAVAILABLE"
 # ruled out -- same "exception-wrapped -> error" contract as
 # LXMF_COMMAND_FAILED, just for the radio-config command family.
 RNODE_COMMAND_FAILED = "RNODE_COMMAND_FAILED"
+# Phase 4 (bridge probe + remote status, build spec §2.B/§2.C, #3960 WP2):
+# generic exception-wrapped failure for the `probe` command (rnprobe-style
+# reachability) -- a clean "no path / no proof within timeout" is NOT this
+# code, it's a normal `probe_result` response with ok=False (see
+# rns_manager.py's `probe()`); this is reserved for anything that actually
+# raises (malformed destinationHash, an unexpected RNS-layer exception).
+PROBE_FAILED = "PROBE_FAILED"
+# Phase 4: same "exception-wrapped -> error" contract as PROBE_FAILED,
+# for the `get_remote_status` command once REMOTE_MANAGEMENT_DENIED (below)
+# has already been ruled out.
+REMOTE_STATUS_FAILED = "REMOTE_STATUS_FAILED"
+# Phase 4: TYPED error, distinct from REMOTE_STATUS_FAILED -- the remote's
+# `rnstransport.remote.management` link established (so the target is
+# alive and reachable) but its /status and /path requests both failed to
+# conclude, which RNS's ALLOW_LIST request-handler gate makes
+# indistinguishable from "our identity isn't in their
+# remote_management_allowed allowlist" (RNS never sends an explicit denial
+# on the wire -- see rns_manager.py's `get_remote_status()` docstring).
+REMOTE_MANAGEMENT_DENIED = "REMOTE_MANAGEMENT_DENIED"
 
 FAILURE_CODES = frozenset(
     {
@@ -127,6 +166,9 @@ FAILURE_CODES = frozenset(
         OWN_MODE_REQUIRED,
         RNODE_DEVICE_UNAVAILABLE,
         RNODE_COMMAND_FAILED,
+        PROBE_FAILED,
+        REMOTE_STATUS_FAILED,
+        REMOTE_MANAGEMENT_DENIED,
     }
 )
 
@@ -512,3 +554,87 @@ def device_info_message(id: Optional[str] = None, **fields: Any) -> dict:
     """Fields (build spec §2.C): firmwareVersion, mcu, platform, chipTemp,
     csma (dict), phy (dict)."""
     return envelope(TYPE_DEVICE_INFO, id=id, **fields)
+
+
+# --------------------------------------------------------------------------
+# Phase 4 (bridge probe + remote status, build spec §2.A, #3960 WP2):
+# commands (Node -> bridge) and their responses (bridge -> Node). Neither
+# family is mode-gated (build spec §2.B/§2.C: "valid in own/attach/
+# tcp_peer -- any mode where the bridge holds a live RNS instance").
+# --------------------------------------------------------------------------
+
+
+def probe_message(destination_hash: str, timeout_s: Optional[float] = None, id: Optional[str] = None) -> dict:
+    """Client -> server reference builder (used by tests / a reference
+    client, same as `get_status_message` above)."""
+    fields: dict = {"destinationHash": destination_hash}
+    if timeout_s is not None:
+        fields["timeoutS"] = timeout_s
+    return envelope(TYPE_PROBE, id=id, **fields)
+
+
+def probe_result_message(
+    *,
+    destination_hash: str,
+    ok: bool,
+    rtt_ms: Optional[float] = None,
+    hops: Optional[int] = None,
+    error: Optional[str] = None,
+    id: Optional[str] = None,
+) -> dict:
+    """rnprobe-style reachability result (build spec §2.B). `ok=False` is a
+    normal outcome (no path / no proof within timeout), not a failure --
+    PROBE_FAILED (an `error` envelope) is reserved for something that
+    actually raised. `rttMs`/`hops` are only meaningful when `ok=True`;
+    `error` carries a short human-readable reason for `ok=False`, e.g. "no
+    path found"."""
+    return envelope(
+        TYPE_PROBE_RESULT,
+        id=id,
+        destinationHash=destination_hash,
+        ok=ok,
+        rttMs=rtt_ms,
+        hops=hops,
+        error=error,
+    )
+
+
+def get_remote_status_message(destination_hash: str, timeout_s: Optional[float] = None, id: Optional[str] = None) -> dict:
+    """Client -> server reference builder. `destinationHash` MUST be the
+    target's `rnstransport.remote.management` destination hash specifically
+    (not e.g. its LXMF delivery hash) -- see rns_manager.py's
+    `_RNSProbeBackend` docstring for why the two can't be derived from one
+    another."""
+    fields: dict = {"destinationHash": destination_hash}
+    if timeout_s is not None:
+        fields["timeoutS"] = timeout_s
+    return envelope(TYPE_GET_REMOTE_STATUS, id=id, **fields)
+
+
+def remote_status_message(
+    *,
+    destination_hash: str,
+    ok: bool,
+    status: Optional[dict] = None,
+    path: Optional[list] = None,
+    error: Optional[str] = None,
+    id: Optional[str] = None,
+) -> dict:
+    """Remote Transport Node's /status + /path query result (build spec
+    §2.C). `status` is the remote's interface-stats-shaped payload (same
+    general shape as this bridge's own `interface_stats_message`); `path`
+    is the remote's own path table (same row shape as
+    `path_table_message`). `ok=False` covers no-path/link-establishment-
+    failure/timeout (a normal response, not an error envelope) -- outright
+    denial (link established, both requests failed) is instead surfaced as
+    the typed REMOTE_MANAGEMENT_DENIED `error` envelope, see ws_server.py's
+    `_handle_get_remote_status`."""
+    return envelope(
+        TYPE_REMOTE_STATUS,
+        id=id,
+        destinationHash=destination_hash,
+        ok=ok,
+        status=status,
+        path=path,
+        error=error,
+    )

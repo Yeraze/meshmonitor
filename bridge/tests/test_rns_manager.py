@@ -28,6 +28,7 @@ from meshmonitor_rns_bridge import protocol
 from meshmonitor_rns_bridge.config import BridgeConfig
 from meshmonitor_rns_bridge.rns_manager import (
     OwnModeRequiredError,
+    RemoteManagementDeniedError,
     RNSManager,
     RNSStartupError,
     _build_rnode_ifconf,
@@ -648,3 +649,215 @@ def test_on_lxmf_delivery_no_telemetry_field_behaves_as_before():
     assert len(events) == 1
     assert events[0]["type"] == protocol.TYPE_LXMF_MESSAGE
     assert events[0]["fields"]["thread"] == "0102"
+
+
+# --------------------------------------------------------------------------
+# probe() / get_remote_status() (Phase 4, build spec §2.B/§2.C, #3960 WP2):
+# always exercised against a MagicMock standing in for the WHOLE
+# `_probe_backend` seam (see rns_manager.py's `_RNSProbeBackend` docstring)
+# -- never real RNS.Transport/RNS.Packet/RNS.Link networking (R1: contract/
+# unit-only, no live dual-rnsd network, ever). `timeout_s=0` is used
+# throughout to keep the internal poll loops from ever actually sleeping
+# (the deadline is already in the past by the time the loop condition is
+# checked), so these tests run in milliseconds with no `time.sleep` stubbing
+# needed.
+# --------------------------------------------------------------------------
+
+
+def _manager_with_fake_backend(**cfg_overrides) -> RNSManager:
+    cfg = BridgeConfig(token="s3cret", **cfg_overrides)
+    manager = RNSManager(cfg)
+    manager._probe_backend = MagicMock()
+    return manager
+
+
+class _FakePacketReceipt:
+    def __init__(self, status, rtt=None):
+        self.status = status
+        self._rtt = rtt
+
+    def get_rtt(self):
+        return self._rtt
+
+
+class _FakeRequestReceipt:
+    def __init__(self, response):
+        self._response = response
+
+    def concluded(self):
+        return True
+
+    def get_response(self):
+        return self._response
+
+
+def test_probe_invalid_hash_raises_value_error():
+    manager = _manager_with_fake_backend()
+    with pytest.raises(ValueError):
+        manager.probe("not-hex")
+
+
+def test_probe_missing_hash_raises_value_error():
+    manager = _manager_with_fake_backend()
+    with pytest.raises(ValueError):
+        manager.probe(None)
+
+
+def test_probe_no_path_returns_ok_false():
+    manager = _manager_with_fake_backend()
+    manager._probe_backend.has_path.return_value = False
+    result = manager.probe("a1b2c3d4e5f60718293a4b5c6d7e8f90", timeout_s=0)
+    assert result["ok"] is False
+    assert result["rttMs"] is None
+    assert result["hops"] is None
+    assert result["error"]
+    manager._probe_backend.request_path.assert_called_once()
+
+
+def test_probe_unknown_identity_returns_ok_false():
+    manager = _manager_with_fake_backend()
+    manager._probe_backend.has_path.return_value = True
+    manager._probe_backend.recall_identity.return_value = None
+    result = manager.probe("a1b2c3d4e5f60718293a4b5c6d7e8f90", timeout_s=0)
+    assert result["ok"] is False
+    assert "identity" in result["error"]
+
+
+def test_probe_timeout_returns_ok_false():
+    manager = _manager_with_fake_backend()
+    manager._probe_backend.has_path.return_value = True
+    manager._probe_backend.recall_identity.return_value = MagicMock()
+    manager._probe_backend.send_probe.return_value = _FakePacketReceipt(RNS.PacketReceipt.SENT)
+    result = manager.probe("a1b2c3d4e5f60718293a4b5c6d7e8f90", timeout_s=0)
+    assert result["ok"] is False
+    assert result["error"] == "probe timed out"
+
+
+def test_probe_happy_path_returns_rtt_and_hops():
+    manager = _manager_with_fake_backend()
+    manager._probe_backend.has_path.return_value = True
+    manager._probe_backend.recall_identity.return_value = MagicMock()
+    manager._probe_backend.send_probe.return_value = _FakePacketReceipt(RNS.PacketReceipt.DELIVERED, rtt=0.842)
+    manager._probe_backend.hops_to.return_value = 3
+
+    result = manager.probe("a1b2c3d4e5f60718293a4b5c6d7e8f90", timeout_s=5)
+
+    assert result == {"ok": True, "rttMs": 842.0, "hops": 3, "error": None}
+
+
+def test_get_remote_status_invalid_hash_raises_value_error():
+    manager = _manager_with_fake_backend()
+    with pytest.raises(ValueError):
+        manager.get_remote_status("not-hex")
+
+
+def test_get_remote_status_rejects_hash_outside_allowlist():
+    """RNS_REMOTE_ALLOWED (build spec §2.C, R5) is OUR identity-ACL on the
+    querying side -- checked before any network I/O, never silently
+    ignored."""
+    manager = _manager_with_fake_backend(remote_allowed=("aabbccdd",))
+    with pytest.raises(ValueError, match="RNS_REMOTE_ALLOWED"):
+        manager.get_remote_status("9f8e7d6c5b4a39281706f5e4d3c2b1a0")
+    manager._probe_backend.has_path.assert_not_called()
+
+
+def test_get_remote_status_allowlist_accepts_case_insensitive_match():
+    manager = _manager_with_fake_backend(remote_allowed=("9f8e7d6c5b4a39281706f5e4d3c2b1a0",))
+    manager._probe_backend.has_path.return_value = False
+    result = manager.get_remote_status("9F8E7D6C5B4A39281706F5E4D3C2B1A0", timeout_s=0)
+    assert result["ok"] is False  # got past the allowlist check into path resolution
+
+
+def test_get_remote_status_no_path_returns_ok_false():
+    manager = _manager_with_fake_backend()
+    manager._probe_backend.has_path.return_value = False
+    result = manager.get_remote_status("9f8e7d6c5b4a39281706f5e4d3c2b1a0", timeout_s=0)
+    assert result["ok"] is False
+    assert result["status"] is None
+    assert result["path"] is None
+    assert result["error"]
+
+
+def test_get_remote_status_unknown_identity_returns_ok_false():
+    manager = _manager_with_fake_backend()
+    manager._probe_backend.has_path.return_value = True
+    manager._probe_backend.recall_identity.return_value = None
+    result = manager.get_remote_status("9f8e7d6c5b4a39281706f5e4d3c2b1a0", timeout_s=0)
+    assert result["ok"] is False
+    assert "identity" in result["error"]
+
+
+def test_get_remote_status_link_never_active_returns_ok_false():
+    manager = _manager_with_fake_backend()
+    manager._probe_backend.has_path.return_value = True
+    manager._probe_backend.recall_identity.return_value = MagicMock()
+    manager._probe_backend.open_management_link.return_value = MagicMock(status=RNS.Link.PENDING)
+    result = manager.get_remote_status("9f8e7d6c5b4a39281706f5e4d3c2b1a0", timeout_s=0)
+    assert result["ok"] is False
+    assert "did not establish" in result["error"]
+
+
+def test_get_remote_status_link_closed_returns_ok_false_without_waiting():
+    manager = _manager_with_fake_backend()
+    manager._probe_backend.has_path.return_value = True
+    manager._probe_backend.recall_identity.return_value = MagicMock()
+    manager._probe_backend.open_management_link.return_value = MagicMock(status=RNS.Link.CLOSED)
+    result = manager.get_remote_status("9f8e7d6c5b4a39281706f5e4d3c2b1a0", timeout_s=5)
+    assert result["ok"] is False
+
+
+def test_get_remote_status_both_requests_fail_raises_denied():
+    manager = _manager_with_fake_backend()
+    manager._probe_backend.has_path.return_value = True
+    manager._probe_backend.recall_identity.return_value = MagicMock()
+    manager._probe_backend.open_management_link.return_value = MagicMock(status=RNS.Link.ACTIVE)
+    manager._probe_backend.link_request.return_value = _FakeRequestReceipt(None)
+
+    with pytest.raises(RemoteManagementDeniedError):
+        manager.get_remote_status("9f8e7d6c5b4a39281706f5e4d3c2b1a0", timeout_s=5)
+
+
+def test_get_remote_status_happy_path_normalizes_status_and_path():
+    manager = _manager_with_fake_backend()
+    manager._probe_backend.has_path.return_value = True
+    manager._probe_backend.recall_identity.return_value = MagicMock()
+    manager._probe_backend.open_management_link.return_value = MagicMock(status=RNS.Link.ACTIVE)
+
+    raw_status = [
+        {
+            "interfaces": [
+                {
+                    "short_name": "TCP Server Interface",
+                    "type": "TCPServerInterface",
+                    "hash": b"\x9f\x8e\x7d\x6c",
+                    "mode": 1,
+                    "status": True,
+                    "bitrate": None,
+                    "txb": 603,
+                    "rxb": 362,
+                },
+                {"type": "LocalClientInterface", "short_name": "local", "status": True},
+            ]
+        },
+        2,
+    ]
+    raw_path = [{"hash": b"\xa1\xb2\xc3\xd4", "via": b"\xa1\xb2\xc3\xd4", "hops": 1, "expires": 123.0, "interface": "TCP Server Interface"}]
+
+    def _fake_link_request(link, path, data, timeout_s):
+        if path == "/status":
+            return _FakeRequestReceipt(raw_status)
+        return _FakeRequestReceipt(raw_path)
+
+    manager._probe_backend.link_request.side_effect = _fake_link_request
+
+    result = manager.get_remote_status("9f8e7d6c5b4a39281706f5e4d3c2b1a0", timeout_s=5)
+
+    assert result["ok"] is True
+    # WP0 correction #2's plumbing-interface filter applies to the remote's
+    # interfaces too -- LocalClientInterface must not survive normalization.
+    assert len(result["status"]["interfaces"]) == 1
+    assert result["status"]["interfaces"][0]["name"] == "TCP Server Interface"
+    assert result["status"]["interfaces"][0]["online"] is True
+    assert result["status"]["linkCount"] == 2
+    assert result["path"][0]["destinationHash"] == "a1b2c3d4"
+    assert result["path"][0]["hops"] == 1
