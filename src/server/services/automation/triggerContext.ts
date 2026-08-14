@@ -8,6 +8,7 @@
  */
 import type { DbMessage } from '../../../services/database.js';
 import type { MeshCoreMessage } from '../../meshcoreManager.js';
+import type { ReticulumMessageRow } from '../../../db/repositories/reticulum.js';
 import type { TriggerType } from '../../../types/automation.js';
 import { compileUserRegex } from '../../../utils/safeRegex.js';
 import { hopCountEmoji, hopOrMqttEmoji } from '../../../utils/hopEmoji.js';
@@ -270,6 +271,74 @@ export function buildMeshCoreMessageContext(
     // actually being per-channel. Null there, which degrades to the automation-wide
     // key rather than lying.
     subjectNodeKey: isChannel ? null : (msg.fromPublicKey ?? null),
+    timestamp,
+    fields,
+  };
+}
+
+/**
+ * Build the trigger context for a Reticulum `reticulum:message` event
+ * (#3960 Phase 2 WP3). `triggerType` stays `'trigger.message'` so the SAME
+ * message automations fire across Meshtastic/MeshCore/Reticulum — same
+ * cross-protocol convention as {@link buildMeshCoreMessageContext}.
+ *
+ * The event only ever reaches the automation engine for genuinely INBOUND
+ * messages — `ReticulumManager`'s self-origin guard (mirrors `utils/ownNodes.ts`
+ * #3914) skips emitting `reticulum:message` entirely for a row whose
+ * `fromHash` is one of MeshMonitor's own LXMF destinations, so there is no
+ * separate self-check to perform here (unlike the Meshtastic/MeshCore
+ * builders, whose engine call sites re-check self-origin at consumption
+ * time — Reticulum's guard already ran upstream, before this event was ever
+ * raised).
+ *
+ * LXMF has no channel concept (every message is a direct address-to-address
+ * DM), so `channel`/`channelName` are always unset here — a rule filtering
+ * on either never matches a Reticulum message (see
+ * {@link reticulumMessageMatchesFilter}).
+ */
+export function buildReticulumMessageContext(
+  msg: ReticulumMessageRow,
+  sourceId: string | null,
+  timestamp: number,
+): TriggerContext {
+  const fromId = msg.fromHash;
+  const senderLabel = fromId;
+  const fields: Record<string, unknown> = {
+    from: msg.fromHash,
+    fromId: msg.fromHash,
+    fromName: undefined,
+    to: msg.toHash,
+    toId: msg.toHash,
+    text: msg.content,
+    title: msg.title,
+    channel: undefined,
+    channelName: undefined,
+    senderLabel,
+    isDM: true,
+    isChannel: false,
+    isBroadcast: false,
+    hops: undefined,
+    hopEmoji: hopCountEmoji(undefined),
+    viaMqttSource: false,
+    zeroHop: 0,
+    snr: msg.snr,
+    rssi: msg.rssi,
+    quality: msg.quality,
+    method: msg.method,
+    signatureValidated: msg.signatureValidated,
+    ratcheted: msg.ratcheted,
+    replyToHash: msg.replyToHash,
+    threadHash: msg.threadHash,
+    protocol: 'reticulum',
+    protocolShort: 'RET',
+    sourceId,
+    timestamp,
+  };
+  return {
+    triggerType: 'trigger.message',
+    sourceId,
+    subjectNodeNum: null,
+    subjectNodeKey: msg.fromHash,
     timestamp,
     fields,
   };
@@ -644,6 +713,59 @@ export function describeMeshCoreFilterMiss(
     }
   }
   const text = msg.text ?? '';
+  if (typeof params.textContains === 'string' && params.textContains.length > 0) {
+    if (!text.toLowerCase().includes(params.textContains.toLowerCase())) return `text does not contain "${params.textContains}"`;
+  }
+  if (typeof params.regex === 'string' && params.regex.length > 0) {
+    try {
+      if (!compileUserRegex(params.regex).test(text)) return `text does not match /${params.regex}/`;
+    } catch {
+      return `invalid regex /${params.regex}/`;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Pre-filter for Reticulum `trigger.message` events — the LXMF analogue of
+ * {@link messageMatchesFilter}/{@link meshCoreMessageMatchesFilter}. LXMF has
+ * no channel concept (every message is a direct address-to-address DM), so
+ * ANY channel-oriented param (`channel`/`channelName`/`channels`) forces a
+ * non-match, same treatment as Meshtastic-only `from`/`to`/`portnum` params
+ * on the MeshCore matcher. Only `textContains`/`regex` (checked against
+ * `content`) can match a Reticulum message.
+ */
+export function reticulumMessageMatchesFilter(msg: ReticulumMessageRow, params: Record<string, unknown> = {}): boolean {
+  if (params.portnum != null || params.from != null || params.to != null) return false;
+  if (params.channel != null) return false;
+  if (typeof params.channelName === 'string' && params.channelName.length > 0) return false;
+  if (messageFilterChannelNames(params).length > 0) return false;
+
+  const text = msg.content ?? '';
+  if (typeof params.textContains === 'string' && params.textContains.length > 0) {
+    if (!text.toLowerCase().includes(params.textContains.toLowerCase())) return false;
+  }
+  if (typeof params.regex === 'string' && params.regex.length > 0) {
+    let re: RegExp;
+    try {
+      re = compileUserRegex(params.regex);
+    } catch {
+      return false;
+    }
+    if (!re.test(text)) return false;
+  }
+  return true;
+}
+
+/** Live-trace miss explainer for Reticulum messages — mirror of {@link reticulumMessageMatchesFilter}. */
+export function describeReticulumFilterMiss(msg: ReticulumMessageRow, params: Record<string, unknown> = {}): string | undefined {
+  if (params.portnum != null || params.from != null || params.to != null) {
+    return 'rule uses Meshtastic-only filters (from/to/portnum) — never matches Reticulum';
+  }
+  if (params.channel != null || (typeof params.channelName === 'string' && params.channelName.length > 0) || messageFilterChannelNames(params).length > 0) {
+    return 'rule filters by channel — Reticulum/LXMF messages have no channel concept, never matches';
+  }
+  const text = msg.content ?? '';
   if (typeof params.textContains === 'string' && params.textContains.length > 0) {
     if (!text.toLowerCase().includes(params.textContains.toLowerCase())) return `text does not contain "${params.textContains}"`;
   }

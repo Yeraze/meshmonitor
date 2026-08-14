@@ -1,0 +1,17 @@
+{
+  "content": "Hello over TCP loopback",
+  "fields": {},
+  "from": "b2c3d4e5f60718293a4b5c6d7e8f90a1",
+  "hash": "2b3c4d5e6f708192a3b4c5d6e7f8091a",
+  "method": "opportunistic",
+  "q": null,
+  "ratcheted": false,
+  "rssi": null,
+  "signatureValidated": true,
+  "snr": null,
+  "title": "Hello",
+  "to": "2233445566778899aabbccddeeff011",
+  "ts": 1755000000000,
+  "type": "lxmf_message",
+  "v": 2
+}

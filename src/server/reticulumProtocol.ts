@@ -1,17 +1,27 @@
 /**
- * Wire protocol v1 types for the meshmonitor-rns-bridge <-> Node WebSocket link.
+ * Wire protocol v2 types for the meshmonitor-rns-bridge <-> Node WebSocket link.
  *
  * Mirrors `bridge/meshmonitor_rns_bridge/protocol.py` exactly (#3960 Phase 1a
- * WP3). The golden fixtures under `bridge/tests/fixtures/*.json` are the
- * single source of truth for this contract — see reticulumBridgeClient.test.ts
- * for the parse-every-fixture guard. If a fixture and this file disagree, the
- * fixture wins (regenerate this file, not the fixture) — see
+ * WP3, bumped for Phase 2 WP1). The golden fixtures under
+ * `bridge/tests/fixtures/*.json` are the single source of truth for this
+ * contract — see reticulumBridgeClient.test.ts for the parse-every-fixture
+ * guard. If a fixture and this file disagree, the fixture wins (regenerate
+ * this file, not the fixture) — see
  * docs/internal/dev-notes/RETICULUM_PHASE1A_BUILD_SPEC.md §4.4 / §7 note 3.
  *
- * Envelope shape: `{ v: 1, type: <string>, id?: <string>, ts: <epoch_ms>, ...fields }`.
+ * Envelope shape: `{ v: 2, type: <string>, id?: <string>, ts: <epoch_ms>, ...fields }`.
+ *
+ * Bumped 1->2 for Phase 2 (LXMF messaging,
+ * docs/internal/dev-notes/RETICULUM_PHASE2_BUILD_SPEC.md §3.1, R4): a
+ * strict-equality, fail-closed handshake in ws_server.py/bridge means a v1
+ * Node talking to a v2 bridge (or vice versa) gets
+ * `PROTOCOL_VERSION_MISMATCH` rather than silently missing the new LXMF
+ * event/command types below. Types in this file for the LXMF messages are
+ * WP1 wire-contract stubs only (mirroring `protocol.py`'s builders) — WP3
+ * adds the actual `reticulumBridgeClient.ts` consumer methods/dispatch.
  */
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 // --------------------------------------------------------------------------
 // Message types
@@ -28,6 +38,17 @@ export const MESSAGE_TYPE = {
   PATH_TABLE: 'path_table',
   GET_STATUS: 'get_status',
   STATUS: 'status',
+  // Phase 2 (LXMF messaging, build spec §3.1) -- events (bridge -> Node).
+  LXMF_MESSAGE: 'lxmf_message',
+  DELIVERY_STATE: 'delivery_state',
+  // Phase 2 -- commands (Node -> bridge).
+  SEND_LXMF: 'send_lxmf',
+  ANNOUNCE_SELF: 'announce_self',
+  SET_DISPLAY_NAME: 'set_display_name',
+  SYNC_PROPAGATION: 'sync_propagation',
+  SET_PROPAGATION_NODE: 'set_propagation_node',
+  GET_IDENTITY: 'get_identity',
+  IMPORT_IDENTITY: 'import_identity',
 } as const;
 
 export type MessageType = (typeof MESSAGE_TYPE)[keyof typeof MESSAGE_TYPE];
@@ -51,6 +72,13 @@ export const FAILURE_CODE = {
    * this same comment).
    */
   BRIDGE_UNREACHABLE: 'BRIDGE_UNREACHABLE',
+  /**
+   * Phase 2: generic exception-wrapped failure for any of the LXMF command
+   * handlers (send_lxmf/announce_self/set_display_name/sync_propagation/
+   * set_propagation_node/get_identity/import_identity) — mirrors
+   * protocol.py's `LXMF_COMMAND_FAILED`.
+   */
+  LXMF_COMMAND_FAILED: 'LXMF_COMMAND_FAILED',
 } as const;
 
 export type FailureCode = (typeof FAILURE_CODE)[keyof typeof FAILURE_CODE];
@@ -146,6 +174,83 @@ export interface GetStatusMessage extends Envelope {
 }
 
 // --------------------------------------------------------------------------
+// Phase 2 (LXMF messaging): client -> bridge commands (build spec §3.5)
+// --------------------------------------------------------------------------
+
+/**
+ * Matches migration 143's `method` column + protocol.py's `_WIRE_METHOD_TO_LXMF`.
+ * Kept as its own type (not imported from `types/reticulum.ts`) because this
+ * file is wire-protocol-only and has no dependency on the DB/frontend type
+ * modules — but its value set MUST match `ReticulumMessageMethod`
+ * (`src/types/reticulum.ts`, canonical definition, re-exported by
+ * `src/db/repositories/reticulum.ts`). Update both together.
+ */
+export type LxmfMethod = 'opportunistic' | 'direct' | 'propagated' | 'paper';
+
+export interface SendLxmfMessage extends Envelope {
+  type: typeof MESSAGE_TYPE.SEND_LXMF;
+  id?: string;
+  to: string;
+  title?: string;
+  content?: string;
+  fields?: Record<string, unknown>;
+  method?: LxmfMethod;
+  propagationNode?: string;
+}
+
+export interface AnnounceSelfMessage extends Envelope {
+  type: typeof MESSAGE_TYPE.ANNOUNCE_SELF;
+  id?: string;
+}
+
+export interface SetDisplayNameMessage extends Envelope {
+  type: typeof MESSAGE_TYPE.SET_DISPLAY_NAME;
+  id?: string;
+  displayName: string;
+}
+
+export interface SyncPropagationMessage extends Envelope {
+  type: typeof MESSAGE_TYPE.SYNC_PROPAGATION;
+  id?: string;
+}
+
+export interface SetPropagationNodeMessage extends Envelope {
+  type: typeof MESSAGE_TYPE.SET_PROPAGATION_NODE;
+  id?: string;
+  destinationHash: string;
+}
+
+/**
+ * Bridge-internal-only (R2/R5): the bridge's reply carries PUBLIC info only
+ * (destinationHash/identityHash/displayName via a `status`-shaped envelope —
+ * see StatusMessage below). There is deliberately NO Node HTTP route that
+ * exposes or accepts a private key — WP4 must not add one.
+ */
+export interface GetIdentityMessage extends Envelope {
+  type: typeof MESSAGE_TYPE.GET_IDENTITY;
+  id?: string;
+}
+
+/**
+ * Bridge-internal-only (R2): the private key travels over this trusted,
+ * token-authenticated bridge<->Node WS link, never over a Node HTTP route.
+ */
+export interface ImportIdentityMessage extends Envelope {
+  type: typeof MESSAGE_TYPE.IMPORT_IDENTITY;
+  id?: string;
+  privateKeyB64: string;
+}
+
+export type LxmfCommandMessage =
+  | SendLxmfMessage
+  | AnnounceSelfMessage
+  | SetDisplayNameMessage
+  | SyncPropagationMessage
+  | SetPropagationNodeMessage
+  | GetIdentityMessage
+  | ImportIdentityMessage;
+
+// --------------------------------------------------------------------------
 // Bridge -> client messages
 // --------------------------------------------------------------------------
 
@@ -166,6 +271,13 @@ export interface ErrorMessage extends Envelope {
 export interface ReadyMessage extends Envelope {
   type: typeof MESSAGE_TYPE.READY;
   id?: string;
+  /**
+   * Phase 2 (build spec §3.4): the source's PUBLIC LXMF destination hash,
+   * present once the LXMF router has started alongside RNS itself — absent
+   * entirely (not null) on a `ready` that isn't a `configure` ack, or if
+   * LXMF startup itself failed but RNS attach still succeeded.
+   */
+  destinationHash?: string;
 }
 
 /**
@@ -240,6 +352,64 @@ export interface StatusMessage extends Envelope {
   /** Present on the health-monitor's failure broadcast (pollers.py on_error). */
   code?: FailureCode;
   message?: string;
+  /**
+   * Phase 2: present on a `get_status` reply once LXMF has started (build
+   * spec §3.4), AND this is the reused shape of the `get_identity` command's
+   * reply (ws_server.py's `_handle_get_identity` — PUBLIC info only, R2/R5;
+   * there is no private-key field anywhere on this type).
+   */
+  destinationHash?: string;
+  identityHash?: string;
+  displayName?: string | null;
+}
+
+// --------------------------------------------------------------------------
+// Phase 2 (LXMF messaging): bridge -> client events (build spec §3.3)
+// --------------------------------------------------------------------------
+
+/**
+ * An inbound (or reflected outbound) LXMF message. Nullable fields mirror
+ * the announce/signal-field precedent above — always present on the wire,
+ * just possibly `null`. `fields` is already sanitized by the bridge
+ * (rns_manager.py's `_sanitize_lxmf_fields`, R3): attachment fields carry
+ * metadata only, never raw bytes.
+ */
+export interface LxmfMessageEvent extends Envelope {
+  type: typeof MESSAGE_TYPE.LXMF_MESSAGE;
+  id?: string;
+  hash: string;
+  from: string;
+  to: string;
+  title: string | null;
+  content: string | null;
+  fields: Record<string, unknown>;
+  method: LxmfMethod | null;
+  signatureValidated: boolean;
+  ratcheted: boolean;
+  rssi: number | null;
+  snr: number | null;
+  q: number | null;
+}
+
+/**
+ * Delivery-state transition for an outbound LXM. The bridge maps LXMF's
+ * numeric `LXMessage` state constants to this set in exactly one place
+ * (rns_manager.py's `_lxmf_state_to_wire`) — GENERATING/OUTBOUND/SENDING all
+ * fold into "sending"; REJECTED/CANCELLED/FAILED (and any future/unknown
+ * state) all fold into "failed".
+ *
+ * Also doubles as the `send_lxmf` command's response (id = the request id,
+ * state = "sending") — see ws_server.py's `_handle_send_lxmf`.
+ */
+export type DeliveryState = 'sending' | 'sent' | 'delivered' | 'failed';
+
+export interface DeliveryStateEvent extends Envelope {
+  type: typeof MESSAGE_TYPE.DELIVERY_STATE;
+  id?: string;
+  hash: string;
+  state: DeliveryState;
+  method?: LxmfMethod | null;
+  attempts?: number | null;
 }
 
 export type BridgeEventMessage =
@@ -249,4 +419,6 @@ export type BridgeEventMessage =
   | AnnounceMessage
   | InterfaceStatsMessage
   | PathTableMessage
-  | StatusMessage;
+  | StatusMessage
+  | LxmfMessageEvent
+  | DeliveryStateEvent;

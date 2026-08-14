@@ -72,6 +72,7 @@ export const TABLE_ORDER = [
   // on (sourceId, destinationHash) / (sourceId, interfaceName), no FKs.
   'reticulum_destinations',
   'reticulum_interfaces',
+  'reticulum_messages',
   'backup_history',
   'custom_themes',
   'user_map_preferences',
@@ -139,7 +140,7 @@ export const SOURCE_SCOPED_TABLES = new Set([
   'auto_favorite_targets', 'auto_favorite_assignments',
   'dead_drop_messages',
   // 3960 Phase 1a WP1: per-source Reticulum destinations + interfaces.
-  'reticulum_destinations', 'reticulum_interfaces',
+  'reticulum_destinations', 'reticulum_interfaces', 'reticulum_messages',
 ]);
 
 // Tables to skip entirely during migration (incompatible schemas or non-essential)

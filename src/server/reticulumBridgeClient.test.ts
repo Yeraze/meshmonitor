@@ -31,7 +31,14 @@ import {
   validateBridgeUrl,
   RETICULUM_BRIDGE_ALLOWED_HOSTS_ENV,
 } from './reticulumBridgeClient.js';
-import { decodeEnvelope, PROTOCOL_VERSION, type AnnounceMessage, type InterfaceStatsMessage } from './reticulumProtocol.js';
+import {
+  decodeEnvelope,
+  PROTOCOL_VERSION,
+  type AnnounceMessage,
+  type InterfaceStatsMessage,
+  type LxmfMessageEvent,
+  type DeliveryStateEvent,
+} from './reticulumProtocol.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURES_DIR = path.resolve(__dirname, '../../bridge/tests/fixtures');
@@ -662,5 +669,127 @@ describe('ReticulumBridgeClient fixture contract parse', () => {
       interfaceCount: 2,
       rnsVersion: '1.4.2',
     });
+  });
+});
+
+describe('ReticulumBridgeClient Phase 2 LXMF messaging (#3960 Phase 2 WP3)', () => {
+  it('dispatches a live lxmf_message.json push frame as an lxmf_message event', async () => {
+    const fixture = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, 'lxmf_message.json'), 'utf-8'));
+    const bridge = trackBridge(
+      await startMockBridge((ws, send) => {
+        ws.on('message', (data) => {
+          const env = parseIncoming(data);
+          if (env.type === 'hello') {
+            send({ v: 1, type: 'welcome', ts: Date.now(), protocolVersion: 1, bridgeVersion: '0.1.0', rnsVersion: '1.4.2' });
+          } else if (env.type === 'configure') {
+            send({ v: 1, type: 'ready', id: env.id, ts: Date.now() });
+            send(fixture);
+          }
+        });
+      }),
+    );
+    const client = trackClient(new ReticulumBridgeClient({ bridgeUrl: bridge.url, token: 'change-me' }));
+    const received = new Promise<LxmfMessageEvent>((resolve) => client.once('lxmf_message', resolve));
+    await client.connect({ mode: 'attach', configDir: '/rns' });
+    expect(await received).toEqual(fixture);
+  });
+
+  it('dispatches an unsolicited delivery_state.json push frame (no id) as a delivery_state event', async () => {
+    const fixture = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, 'delivery_state.json'), 'utf-8'));
+    expect(fixture.id).toBeUndefined(); // guards the fixture's own shape assumption
+    const bridge = trackBridge(
+      await startMockBridge((ws, send) => {
+        ws.on('message', (data) => {
+          const env = parseIncoming(data);
+          if (env.type === 'hello') {
+            send({ v: 1, type: 'welcome', ts: Date.now(), protocolVersion: 1, bridgeVersion: '0.1.0', rnsVersion: '1.4.2' });
+          } else if (env.type === 'configure') {
+            send({ v: 1, type: 'ready', id: env.id, ts: Date.now() });
+            send(fixture);
+          }
+        });
+      }),
+    );
+    const client = trackClient(new ReticulumBridgeClient({ bridgeUrl: bridge.url, token: 'change-me' }));
+    const received = new Promise<DeliveryStateEvent>((resolve) => client.once('delivery_state', resolve));
+    await client.connect({ mode: 'attach', configDir: '/rns' });
+    expect(await received).toEqual(fixture);
+  });
+
+  it('sendLxmf() resolves with the send_lxmf_response.json-shaped delivery_state reply and does NOT also dispatch it as a push event', async () => {
+    const responseFixture = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, 'send_lxmf_response.json'), 'utf-8'));
+    const bridge = trackBridge(
+      await startMockBridge((ws, send) => {
+        ws.on('message', (data) => {
+          const env = parseIncoming(data);
+          if (env.type === 'hello') {
+            send({ v: 1, type: 'welcome', ts: Date.now(), protocolVersion: 1, bridgeVersion: '0.1.0', rnsVersion: '1.4.2' });
+          } else if (env.type === 'configure') {
+            send({ v: 1, type: 'ready', id: env.id, ts: Date.now() });
+          } else if (env.type === 'send_lxmf') {
+            send({ ...responseFixture, id: env.id });
+          }
+        });
+      }),
+    );
+    const client = trackClient(new ReticulumBridgeClient({ bridgeUrl: bridge.url, token: 'change-me' }));
+    let sawPushEvent = false;
+    client.on('delivery_state', () => {
+      sawPushEvent = true;
+    });
+    await client.connect({ mode: 'attach', configDir: '/rns' });
+
+    const result = await client.sendLxmf({ to: '112233445566778899aabbccddeeff0', title: 'Hello', content: 'Hello from the WP1 spike!', method: 'opportunistic' });
+    expect(result).toMatchObject({ type: 'delivery_state', hash: responseFixture.hash, state: 'sending', method: 'opportunistic' });
+    expect(sawPushEvent).toBe(false);
+  });
+
+  it('announceSelf()/setDisplayName()/syncPropagation()/setPropagationNode() resolve with a ready-shaped ack', async () => {
+    const bridge = trackBridge(
+      await startMockBridge((ws, send) => {
+        ws.on('message', (data) => {
+          const env = parseIncoming(data);
+          if (env.type === 'hello') {
+            send({ v: 1, type: 'welcome', ts: Date.now(), protocolVersion: 1, bridgeVersion: '0.1.0', rnsVersion: '1.4.2' });
+          } else if (env.type === 'configure') {
+            send({ v: 1, type: 'ready', id: env.id, ts: Date.now() });
+          } else if (
+            env.type === 'announce_self' ||
+            env.type === 'set_display_name' ||
+            env.type === 'sync_propagation' ||
+            env.type === 'set_propagation_node'
+          ) {
+            send({ v: 2, type: 'ready', id: env.id, ts: Date.now() });
+          }
+        });
+      }),
+    );
+    const client = trackClient(new ReticulumBridgeClient({ bridgeUrl: bridge.url, token: 'change-me' }));
+    await client.connect({ mode: 'attach', configDir: '/rns' });
+
+    await expect(client.announceSelf()).resolves.toMatchObject({ type: 'ready' });
+    await expect(client.setDisplayName('Alice')).resolves.toMatchObject({ type: 'ready' });
+    await expect(client.syncPropagation()).resolves.toMatchObject({ type: 'ready' });
+    await expect(client.setPropagationNode('abcd'.padEnd(32, '0'))).resolves.toMatchObject({ type: 'ready' });
+  });
+
+  it('sendLxmf()/announceSelf() reject with the bridge-sent error when the command fails (LXMF_COMMAND_FAILED)', async () => {
+    const bridge = trackBridge(
+      await startMockBridge((ws, send) => {
+        ws.on('message', (data) => {
+          const env = parseIncoming(data);
+          if (env.type === 'hello') {
+            send({ v: 1, type: 'welcome', ts: Date.now(), protocolVersion: 1, bridgeVersion: '0.1.0', rnsVersion: '1.4.2' });
+          } else if (env.type === 'configure') {
+            send({ v: 1, type: 'ready', id: env.id, ts: Date.now() });
+          } else if (env.type === 'send_lxmf') {
+            send({ v: 2, type: 'error', id: env.id, code: 'LXMF_COMMAND_FAILED', message: 'no route', ts: Date.now() });
+          }
+        });
+      }),
+    );
+    const client = trackClient(new ReticulumBridgeClient({ bridgeUrl: bridge.url, token: 'change-me' }));
+    await client.connect({ mode: 'attach', configDir: '/rns' });
+    await expect(client.sendLxmf({ to: 'deadbeef'.padEnd(32, '0') })).rejects.toMatchObject({ code: 'LXMF_COMMAND_FAILED' });
   });
 });

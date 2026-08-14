@@ -32,6 +32,14 @@ EXPECTED_FIXTURE_NAMES = {
     "hello",
     "configure",
     "get_status",
+    # Phase 2 (LXMF messaging, #3960 WP1) -- build spec §3.6.
+    "lxmf_message",
+    "lxmf_message_no_signal",
+    "delivery_state",
+    "send_lxmf",
+    "send_lxmf_response",
+    "set_display_name",
+    "sync_propagation",
 }
 
 # Frozen envelope timestamp so regenerated fixtures are byte-stable across
@@ -133,4 +141,78 @@ def build_fixture(name: str) -> dict:
         return protocol.configure_message(mode="attach", id="c0", config_dir="/rns", peers=None)
     if name == "get_status":
         return protocol.get_status_message(id="c2")
+    # Phase 2 (LXMF messaging, #3960 WP1) -- build spec §3.6.
+    if name == "lxmf_message":
+        return protocol.lxmf_message_event(
+            hash="1a2b3c4d5e6f708192a3b4c5d6e7f809",
+            from_hash="a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            to_hash="112233445566778899aabbccddeeff0",
+            title="Hello",
+            content="Hello from the WP1 spike!",
+            # Already-sanitized shape (rns_manager.py's _sanitize_lxmf_fields
+            # output) -- string field names, short byte values hex-encoded,
+            # no raw attachment bytes (R3). See rns_manager.py's _FIELD_NAMES.
+            fields={
+                "thread": "9f8e7d6c5b4a39281706f5e4d3c2b1a0",
+                "replyTo": "0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+                "renderer": 1,  # RENDERER_MICRON
+            },
+            method="opportunistic",
+            signature_validated=True,
+            ratcheted=True,
+            rssi=-97,
+            snr=6.5,
+            q=48,
+        )
+    if name == "lxmf_message_no_signal":
+        # Models the realistic dual-rnsd/TCP-loopback delivery this bridge's
+        # own integration test exercises: no RF hop means rssi/snr/q are
+        # always None (WP0 §6.3), method is still known, ratchets haven't
+        # been established yet on a first exchange.
+        return protocol.lxmf_message_event(
+            hash="2b3c4d5e6f708192a3b4c5d6e7f8091a",
+            from_hash="b2c3d4e5f60718293a4b5c6d7e8f90a1",
+            to_hash="2233445566778899aabbccddeeff011",
+            title="Hello",
+            content="Hello over TCP loopback",
+            fields={},
+            method="opportunistic",
+            signature_validated=True,
+            ratcheted=False,
+            rssi=None,
+            snr=None,
+            q=None,
+        )
+    if name == "delivery_state":
+        return protocol.delivery_state_event(
+            hash="1a2b3c4d5e6f708192a3b4c5d6e7f809",
+            state="delivered",
+            method="opportunistic",
+            attempts=1,
+        )
+    if name == "send_lxmf":
+        return protocol.send_lxmf_message(
+            to="112233445566778899aabbccddeeff0",
+            title="Hello",
+            content="Hello from the WP1 spike!",
+            fields=None,
+            method="opportunistic",
+            propagation_node=None,
+            id="c3",
+        )
+    if name == "send_lxmf_response":
+        # The bridge's reply to `send_lxmf` IS a `delivery_state` envelope
+        # (state="sending"), echoing the request id and carrying the
+        # freshly-assigned LXM hash -- see ws_server.py's _handle_send_lxmf.
+        return protocol.delivery_state_event(
+            hash="1a2b3c4d5e6f708192a3b4c5d6e7f809",
+            state="sending",
+            method="opportunistic",
+            attempts=0,
+            id="c3",
+        )
+    if name == "set_display_name":
+        return protocol.set_display_name_message(display_name="Alice", id="c4")
+    if name == "sync_propagation":
+        return protocol.sync_propagation_message(id="c5")
     raise ValueError(f"no builder registered for fixture {name!r}")

@@ -50,6 +50,9 @@ import {
   type ErrorMessage,
   type WelcomeMessage,
   type ReadyMessage,
+  type LxmfMessageEvent,
+  type DeliveryStateEvent,
+  type LxmfMethod,
 } from './reticulumProtocol.js';
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
@@ -88,6 +91,27 @@ function allowedHostLiterals(env: NodeJS.ProcessEnv): string[] {
 /** `URL.hostname` brackets IPv6 (`[::1]`); strip that to compare against the bare literals in `allowedHostLiterals`. */
 function stripBrackets(hostname: string): string {
   return hostname.startsWith('[') && hostname.endsWith(']') ? hostname.slice(1, -1) : hostname;
+}
+
+/**
+ * Hosts already warned about via `warnNonLoopbackHostOnce` — module-level so
+ * the warning fires once per host for the process lifetime rather than on
+ * every `validateBridgeUrl` call (config load, reconnect, etc.).
+ */
+const warnedNonLoopbackHosts = new Set<string>();
+
+/**
+ * Logs a one-time operator-facing warning when a non-loopback host is
+ * permitted only because it was added to `RETICULUM_BRIDGE_ALLOWED_HOSTS`, so
+ * an operator who accidentally allowlists a public host notices it.
+ */
+function warnNonLoopbackHostOnce(bareHostname: string): void {
+  if (warnedNonLoopbackHosts.has(bareHostname)) return;
+  warnedNonLoopbackHosts.add(bareHostname);
+  logger.warn(
+    `[Reticulum] Bridge host '${bareHostname}' is not loopback and is permitted only because it is listed in ` +
+      `${RETICULUM_BRIDGE_ALLOWED_HOSTS_ENV} — verify this is intentional.`,
+  );
 }
 
 /**
@@ -136,6 +160,11 @@ export function validateBridgeUrl(raw: string, env: NodeJS.ProcessEnv = process.
       `bridge URL host '${url.hostname}' is not loopback and is not listed in ${RETICULUM_BRIDGE_ALLOWED_HOSTS_ENV} ` +
         `(add it to that comma-separated env var to allow a non-loopback bridge host)`,
     );
+  }
+
+  const isLoopback = LOOPBACK_HOSTS.some((h) => h.toLowerCase() === bareHostname);
+  if (!isLoopback) {
+    warnNonLoopbackHostOnce(bareHostname);
   }
 
   return url;
@@ -198,11 +227,14 @@ interface HandshakeWaiter {
 /**
  * Emits: 'welcome' (WelcomeMessage), 'ready' (ReadyMessage), 'announce'
  * (AnnounceMessage), 'interface_stats' (InterfaceStatsMessage), 'path_table'
- * (PathTableMessage), 'status' (StatusMessage), 'reconnecting'
- * ({attempt, delayMs}), 'close' (no payload), 'error' (Error — transport or
- * wire-level ErrorMessage failures; NOT emitted for a wire ErrorMessage that
- * is correlated to a pending request/handshake, which rejects that
- * request/handshake's promise instead).
+ * (PathTableMessage), 'status' (StatusMessage), 'lxmf_message'
+ * (LxmfMessageEvent — Phase 2), 'delivery_state' (DeliveryStateEvent —
+ * Phase 2, unsolicited transitions AFTER the initial `send_lxmf` reply, which
+ * is instead correlated by request id and resolves {@link sendLxmf}'s
+ * promise), 'reconnecting' ({attempt, delayMs}), 'close' (no payload),
+ * 'error' (Error — transport or wire-level ErrorMessage failures; NOT emitted
+ * for a wire ErrorMessage that is correlated to a pending request/handshake,
+ * which rejects that request/handshake's promise instead).
  */
 export class ReticulumBridgeClient extends EventEmitter {
   private readonly options: Required<
@@ -307,6 +339,109 @@ export class ReticulumBridgeClient extends EventEmitter {
       });
       this.send({ type: MESSAGE_TYPE.GET_STATUS, id });
     });
+  }
+
+  // --------------------------------------------------------------------
+  // Phase 2 (LXMF messaging): id-correlated commands (build spec §5.4)
+  // --------------------------------------------------------------------
+
+  /**
+   * Shared id-correlated request/response plumbing for the Phase 2 LXMF
+   * commands below — same shape as {@link requestStatus}/{@link performConfigure},
+   * generalized over the response envelope type since the five commands
+   * reply with two different shapes (`send_lxmf` -> DeliveryStateEvent; the
+   * other four -> ReadyMessage, per `ws_server.py`'s handlers).
+   */
+  private sendIdCorrelatedRequest<T extends Envelope>(
+    fields: Record<string, unknown> & { type: string },
+    timeoutLabel: string,
+  ): Promise<T> {
+    if (!this.ws || this.state !== 'ready') {
+      throw new ReticulumBridgeError(undefined, 'client is not connected');
+    }
+    const id = this.nextRequestId();
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingRequests.delete(id);
+        reject(new ReticulumBridgeError(undefined, `timed out waiting for ${timeoutLabel}`));
+      }, this.options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS);
+      this.pendingRequests.set(id, {
+        resolve: (env) => resolve(env as T),
+        reject,
+        timer,
+      });
+      this.send({ ...fields, id });
+    });
+  }
+
+  /**
+   * Send an LXMF message via the bridge's `send_lxmf` command. Resolves with
+   * the initial `delivery_state` reply (`state: 'sending'`), which carries
+   * the bridge-assigned, authoritative LXM `hash` — callers reconcile any
+   * optimistically-persisted row id against that hash (see
+   * `ReticulumManager.sendMessage`). Only valid once `ready`.
+   */
+  async sendLxmf(params: {
+    to: string;
+    title?: string;
+    content?: string;
+    fields?: Record<string, unknown>;
+    method?: LxmfMethod;
+    propagationNode?: string;
+  }): Promise<DeliveryStateEvent> {
+    const fields: Record<string, unknown> & { type: string } = { type: MESSAGE_TYPE.SEND_LXMF, to: params.to };
+    if (params.title !== undefined) fields.title = params.title;
+    if (params.content !== undefined) fields.content = params.content;
+    if (params.fields !== undefined) fields.fields = params.fields;
+    if (params.method !== undefined) fields.method = params.method;
+    if (params.propagationNode !== undefined) fields.propagationNode = params.propagationNode;
+    return this.sendIdCorrelatedRequest<DeliveryStateEvent>(fields, 'send_lxmf response');
+  }
+
+  /**
+   * Announce our own LXMF identity to the network (`announce_self`). Needed
+   * so a peer we message can validate our signature — LXMF requires the
+   * receiver to already know the sender's identity (WP1 gotcha). Callers
+   * should invoke this on every `ready` (initial connect AND reconnect), not
+   * just once.
+   */
+  async announceSelf(): Promise<ReadyMessage> {
+    return this.sendIdCorrelatedRequest<ReadyMessage>({ type: MESSAGE_TYPE.ANNOUNCE_SELF }, 'announce_self ack');
+  }
+
+  /** Set this identity's LXMF display name (`set_display_name`). */
+  async setDisplayName(displayName: string): Promise<ReadyMessage> {
+    return this.sendIdCorrelatedRequest<ReadyMessage>(
+      { type: MESSAGE_TYPE.SET_DISPLAY_NAME, displayName },
+      'set_display_name ack',
+    );
+  }
+
+  /** Trigger a propagation-node sync (`sync_propagation`) — best-effort store-and-forward pickup. */
+  async syncPropagation(): Promise<ReadyMessage> {
+    return this.sendIdCorrelatedRequest<ReadyMessage>({ type: MESSAGE_TYPE.SYNC_PROPAGATION }, 'sync_propagation ack');
+  }
+
+  /** Configure the propagation node destination hash (`set_propagation_node`). */
+  async setPropagationNode(destinationHash: string): Promise<ReadyMessage> {
+    return this.sendIdCorrelatedRequest<ReadyMessage>(
+      { type: MESSAGE_TYPE.SET_PROPAGATION_NODE, destinationHash },
+      'set_propagation_node ack',
+    );
+  }
+
+  /**
+   * Fetch this identity's PUBLIC info (`get_identity`) — destination hash,
+   * identity hash, display name. NEVER the private key: the bridge's
+   * `get_identity_info()` (rns_manager.py) deliberately has no accessor for
+   * it, and this reply is the same `status`-shaped envelope documented on
+   * `StatusMessage` (R2/R5 — see reticulumProtocol.ts's `GetIdentityMessage`
+   * doc). Callers (WP4's `GET /identity` route, via `ReticulumManager`)
+   * MUST NOT surface `identityHash` over HTTP — only `destinationHash` +
+   * `displayName` are part of the public route contract.
+   */
+  async getIdentity(): Promise<StatusMessage> {
+    return this.sendIdCorrelatedRequest<StatusMessage>({ type: MESSAGE_TYPE.GET_IDENTITY }, 'get_identity reply');
   }
 
   // --------------------------------------------------------------------
@@ -545,6 +680,16 @@ export class ReticulumBridgeClient extends EventEmitter {
         break;
       case MESSAGE_TYPE.STATUS:
         this.emit('status', env as StatusMessage);
+        break;
+      case MESSAGE_TYPE.LXMF_MESSAGE:
+        this.emit('lxmf_message', env as LxmfMessageEvent);
+        break;
+      case MESSAGE_TYPE.DELIVERY_STATE:
+        // Only UNSOLICITED transitions reach here — the initial 'sending'
+        // reply to a send_lxmf command carries the request's `id` and is
+        // instead resolved via the pendingRequests correlation path above
+        // (see handleRawMessage), never dispatched as a push event.
+        this.emit('delivery_state', env as DeliveryStateEvent);
         break;
       case MESSAGE_TYPE.ERROR: {
         const errMsg = env as ErrorMessage;

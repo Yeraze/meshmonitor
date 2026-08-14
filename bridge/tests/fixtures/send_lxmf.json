@@ -1,0 +1,10 @@
+{
+  "content": "Hello from the WP1 spike!",
+  "id": "c3",
+  "method": "opportunistic",
+  "title": "Hello",
+  "to": "112233445566778899aabbccddeeff0",
+  "ts": 1755000000000,
+  "type": "send_lxmf",
+  "v": 2
+}

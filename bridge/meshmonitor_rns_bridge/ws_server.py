@@ -95,8 +95,106 @@ def _handle_configure(websocket, manager: RNSManager, req: dict) -> "queue.Queue
         _safe_send(websocket, protocol.error_message(e.code, e.message, id=req_id))
         return None
 
-    _safe_send(websocket, protocol.ready_message(id=req_id))
+    # Build spec §3.4: attach the source's PUBLIC LXMF destinationHash to the
+    # ready ack now that Phase 2's LXMF router has started alongside RNS
+    # itself. Defensive try/except: this is a nice-to-have on top of the core
+    # "RNS attached" contract -- get_status still carries it if this fails.
+    ready_fields: dict = {}
+    try:
+        ready_fields["destinationHash"] = manager.get_identity_info()["destinationHash"]
+    except Exception:
+        logger.warning("configure: LXMF identity info unavailable for ready ack", exc_info=True)
+
+    _safe_send(websocket, protocol.ready_message(id=req_id, **ready_fields))
     return manager.subscribe()
+
+
+def _handle_send_lxmf(websocket, manager: RNSManager, req: dict) -> None:
+    """`send_lxmf` (build spec §3.5): submits the message and replies with a
+    `delivery_state` envelope carrying the assigned hash and state="sending"
+    -- doubling as both the command's response and the first delivery-state
+    transition, echoing the request `id`."""
+    req_id = req.get("id")
+    try:
+        assigned_hash = manager.send_lxmf(
+            to_hash_hex=req.get("to"),
+            title=req.get("title") or "",
+            content=req.get("content") or "",
+            fields=req.get("fields"),
+            method=req.get("method"),
+            propagation_node_hex=req.get("propagationNode"),
+        )
+    except Exception as e:
+        _safe_send(websocket, protocol.error_message(protocol.LXMF_COMMAND_FAILED, str(e), id=req_id))
+        return
+    _safe_send(
+        websocket,
+        protocol.delivery_state_event(hash=assigned_hash, state="sending", method=req.get("method"), attempts=0, id=req_id),
+    )
+
+
+def _handle_announce_self(websocket, manager: RNSManager, req: dict) -> None:
+    req_id = req.get("id")
+    try:
+        manager.announce_self()
+    except Exception as e:
+        _safe_send(websocket, protocol.error_message(protocol.LXMF_COMMAND_FAILED, str(e), id=req_id))
+        return
+    _safe_send(websocket, protocol.ready_message(id=req_id))
+
+
+def _handle_set_display_name(websocket, manager: RNSManager, req: dict) -> None:
+    req_id = req.get("id")
+    try:
+        manager.set_display_name(req.get("displayName"))
+    except Exception as e:
+        _safe_send(websocket, protocol.error_message(protocol.LXMF_COMMAND_FAILED, str(e), id=req_id))
+        return
+    _safe_send(websocket, protocol.ready_message(id=req_id))
+
+
+def _handle_sync_propagation(websocket, manager: RNSManager, req: dict) -> None:
+    req_id = req.get("id")
+    try:
+        manager.sync_propagation()
+    except Exception as e:
+        _safe_send(websocket, protocol.error_message(protocol.LXMF_COMMAND_FAILED, str(e), id=req_id))
+        return
+    _safe_send(websocket, protocol.ready_message(id=req_id))
+
+
+def _handle_set_propagation_node(websocket, manager: RNSManager, req: dict) -> None:
+    req_id = req.get("id")
+    try:
+        manager.set_propagation_node(req.get("destinationHash"))
+    except Exception as e:
+        _safe_send(websocket, protocol.error_message(protocol.LXMF_COMMAND_FAILED, str(e), id=req_id))
+        return
+    _safe_send(websocket, protocol.ready_message(id=req_id))
+
+
+def _handle_get_identity(websocket, manager: RNSManager, req: dict) -> None:
+    """Bridge-side response carries PUBLIC info only (R2/R5) -- destination
+    hash + identity hash + display name, reusing `status_message`'s
+    free-form field-bag shape (same pattern as get_status). No private key
+    field exists anywhere in `get_identity_info()`'s return value."""
+    req_id = req.get("id")
+    try:
+        identity_info = manager.get_identity_info()
+    except Exception as e:
+        _safe_send(websocket, protocol.error_message(protocol.LXMF_COMMAND_FAILED, str(e), id=req_id))
+        return
+    _safe_send(websocket, protocol.status_message(id=req_id, **identity_info))
+
+
+def _handle_import_identity(websocket, manager: RNSManager, req: dict) -> None:
+    req_id = req.get("id")
+    try:
+        manager.import_identity(req.get("privateKeyB64"))
+    except Exception as e:
+        _safe_send(websocket, protocol.error_message(protocol.LXMF_COMMAND_FAILED, str(e), id=req_id))
+        return
+    _safe_send(websocket, protocol.ready_message(id=req_id))
 
 
 def _handle_connection(websocket, manager: RNSManager, cfg, bridge_version: str) -> None:
@@ -175,6 +273,27 @@ def _handle_connection(websocket, manager: RNSManager, cfg, bridge_version: str)
 
             elif req_type == protocol.TYPE_GET_STATUS:
                 _safe_send(websocket, protocol.status_message(id=req.get("id"), **manager.status()))
+
+            elif req_type == protocol.TYPE_SEND_LXMF:
+                _handle_send_lxmf(websocket, manager, req)
+
+            elif req_type == protocol.TYPE_ANNOUNCE_SELF:
+                _handle_announce_self(websocket, manager, req)
+
+            elif req_type == protocol.TYPE_SET_DISPLAY_NAME:
+                _handle_set_display_name(websocket, manager, req)
+
+            elif req_type == protocol.TYPE_SYNC_PROPAGATION:
+                _handle_sync_propagation(websocket, manager, req)
+
+            elif req_type == protocol.TYPE_SET_PROPAGATION_NODE:
+                _handle_set_propagation_node(websocket, manager, req)
+
+            elif req_type == protocol.TYPE_GET_IDENTITY:
+                _handle_get_identity(websocket, manager, req)
+
+            elif req_type == protocol.TYPE_IMPORT_IDENTITY:
+                _handle_import_identity(websocket, manager, req)
 
             else:
                 logger.debug("ignoring unknown message type %r from %s", req_type, peer)

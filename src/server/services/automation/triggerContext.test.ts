@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildMessageContext,
   buildMeshCoreMessageContext,
+  buildReticulumMessageContext,
   buildNodeContext,
   buildTelemetryContext,
   buildSystemContext,
@@ -12,8 +13,10 @@ import {
   deriveHops,
   messageMatchesFilter,
   meshCoreMessageMatchesFilter,
+  reticulumMessageMatchesFilter,
   describeMessageFilterMiss,
   describeMeshCoreFilterMiss,
+  describeReticulumFilterMiss,
   messageFilterChannelNames,
   messageFilterUsesChannelName,
   resolveTriggerPath,
@@ -24,6 +27,32 @@ import {
 import type { DbMessage } from '../../../services/database.js';
 import type { MeshCoreMessage } from '../../meshcoreManager.js';
 import { REPLY_CONTEXT_TAPBACK, REPLY_CONTEXT_REPLY } from '../../../utils/replyContext.js';
+import type { ReticulumMessageRow } from '../../../db/repositories/reticulum.js';
+
+function retMsg(overrides: Partial<ReticulumMessageRow> = {}): ReticulumMessageRow {
+  return {
+    id: 'src_hash1',
+    sourceId: 'src',
+    fromHash: 'peer'.padEnd(32, '0'),
+    toHash: 'self'.padEnd(32, '0'),
+    title: 'Hello',
+    content: 'hello world',
+    timestamp: 1000,
+    receivedAt: 1000,
+    createdAt: 1000,
+    state: 'delivered',
+    method: 'opportunistic',
+    signatureValidated: true,
+    ratcheted: false,
+    fields: null,
+    replyToHash: null,
+    threadHash: null,
+    rssi: -80,
+    snr: 4.5,
+    quality: 90,
+    ...overrides,
+  };
+}
 
 function mcMsg(overrides: Partial<MeshCoreMessage> = {}): MeshCoreMessage {
   return {
@@ -563,12 +592,87 @@ describe('buildMeshCoreMessageContext (#3833)', () => {
   });
 });
 
+describe('buildReticulumMessageContext (#3960 Phase 2 WP3)', () => {
+  it('maps fromHash/toHash/content/title/method/signal fields, always a DM (no channel concept)', () => {
+    const ctx = buildReticulumMessageContext(retMsg(), 'src', 1000);
+    expect(ctx.triggerType).toBe('trigger.message');
+    expect(ctx.sourceId).toBe('src');
+    expect(ctx.subjectNodeNum).toBeNull();
+    expect(ctx.subjectNodeKey).toBe('peer'.padEnd(32, '0'));
+    expect(ctx.fields.from).toBe('peer'.padEnd(32, '0'));
+    expect(ctx.fields.to).toBe('self'.padEnd(32, '0'));
+    expect(ctx.fields.text).toBe('hello world');
+    expect(ctx.fields.title).toBe('Hello');
+    expect(ctx.fields.method).toBe('opportunistic');
+    expect(ctx.fields.signatureValidated).toBe(true);
+    expect(ctx.fields.ratcheted).toBe(false);
+    expect(ctx.fields.snr).toBe(4.5);
+    expect(ctx.fields.rssi).toBe(-80);
+    expect(ctx.fields.quality).toBe(90);
+    expect(ctx.fields.isDM).toBe(true);
+    expect(ctx.fields.isChannel).toBe(false);
+    expect(ctx.fields.isBroadcast).toBe(false);
+    expect(ctx.fields.channel).toBeUndefined();
+    expect(ctx.fields.channelName).toBeUndefined();
+    expect(ctx.fields.senderLabel).toBe('peer'.padEnd(32, '0'));
+    expect(ctx.fields.protocol).toBe('reticulum');
+    expect(ctx.fields.protocolShort).toBe('RET');
+  });
+
+  it('exposes replyToHash/threadHash from the persisted row columns', () => {
+    const ctx = buildReticulumMessageContext(
+      retMsg({ replyToHash: 'reply'.padEnd(32, '0'), threadHash: 'thread'.padEnd(32, '0') }),
+      'src',
+      1000,
+    );
+    expect(ctx.fields.replyToHash).toBe('reply'.padEnd(32, '0'));
+    expect(ctx.fields.threadHash).toBe('thread'.padEnd(32, '0'));
+  });
+});
+
 describe('protocolShort token (#4577)', () => {
-  it('{{ trigger.protocolShort }} resolves to MT/MC per protocol', () => {
+  it('{{ trigger.protocolShort }} resolves to MT/MC/RET per protocol', () => {
     const mt = buildMessageContext(msg(), 'default', 1);
     expect(resolveTriggerPath(mt, 'trigger.protocolShort', 1)).toBe('MT');
     const mc = buildMeshCoreMessageContext(mcMsg({ fromPublicKey: 'channel-1' }), 'default', 1);
     expect(resolveTriggerPath(mc, 'trigger.protocolShort', 1)).toBe('MC');
+    const ret = buildReticulumMessageContext(retMsg(), 'default', 1);
+    expect(resolveTriggerPath(ret, 'trigger.protocolShort', 1)).toBe('RET');
+  });
+});
+
+describe('reticulumMessageMatchesFilter (#3960 Phase 2 WP3)', () => {
+  it('matches text/regex against content', () => {
+    expect(reticulumMessageMatchesFilter(retMsg({ content: 'PING me' }), { textContains: 'ping' })).toBe(true);
+    expect(reticulumMessageMatchesFilter(retMsg({ content: 'nope' }), { regex: '^(test|ping)' })).toBe(false);
+  });
+  it('any channel-oriented param forces a non-match (LXMF has no channel concept)', () => {
+    expect(reticulumMessageMatchesFilter(retMsg(), { channel: 0 })).toBe(false);
+    expect(reticulumMessageMatchesFilter(retMsg(), { channelName: 'Primary' })).toBe(false);
+    expect(reticulumMessageMatchesFilter(retMsg(), { channels: [{ name: 'Primary' }] })).toBe(false);
+  });
+  it('Meshtastic-only params force a non-match', () => {
+    expect(reticulumMessageMatchesFilter(retMsg(), { from: 111 })).toBe(false);
+    expect(reticulumMessageMatchesFilter(retMsg(), { to: 222 })).toBe(false);
+    expect(reticulumMessageMatchesFilter(retMsg(), { portnum: 1 })).toBe(false);
+  });
+  it('an empty/absent params object matches everything', () => {
+    expect(reticulumMessageMatchesFilter(retMsg())).toBe(true);
+  });
+});
+
+describe('describeReticulumFilterMiss (live-trace reasons)', () => {
+  it('explains a channel-filter miss', () => {
+    expect(describeReticulumFilterMiss(retMsg(), { channel: 0 })).toMatch(/no channel concept/);
+  });
+  it('explains a Meshtastic-only-param miss', () => {
+    expect(describeReticulumFilterMiss(retMsg(), { from: 1 })).toMatch(/Meshtastic-only/);
+  });
+  it('explains a textContains miss', () => {
+    expect(describeReticulumFilterMiss(retMsg({ content: 'hello' }), { textContains: 'goodbye' })).toMatch(/does not contain/);
+  });
+  it('returns undefined when the message actually matches', () => {
+    expect(describeReticulumFilterMiss(retMsg(), {})).toBeUndefined();
   });
 });
 
