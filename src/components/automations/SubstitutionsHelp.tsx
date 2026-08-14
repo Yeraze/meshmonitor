@@ -7,6 +7,7 @@
  */
 import { UiIcon } from '../icons';
 import { HOP_COUNT_EMOJIS, HOP_EMOJI_MAX, MQTT_SOURCE_EMOJI } from '../../utils/hopEmoji';
+import { REPLY_CONTEXT_TAPBACK, REPLY_CONTEXT_REPLY } from '../../utils/replyContext';
 import { NODE_TOKENS, SUBJECT_NODE_TRIGGER_TYPES } from './substitutionNodeTokens';
 
 // All `{{ trigger.* }}` tokens, by trigger type. `sourceId`/`timestamp` are added to every group.
@@ -32,6 +33,7 @@ export const TRIGGER_TOKENS: Record<string, Array<[string, string]>> = {
     ['isBroadcast', 'true if broadcast (alias of isChannel)'],
     ['wantAck', 'Sender requested an ack'], ['replyId', 'Replied-to packet id'],
     ['emoji', 'Tapback/reaction emoji flag'], ['viaMqtt', 'true if it arrived via MQTT'],
+    ['replyContext', `"${REPLY_CONTEXT_TAPBACK}"/"${REPLY_CONTEXT_REPLY}"/"" — Meshtastic only; a short marker for a tapback/reply so it doesn't read as a standalone message once relayed to a protocol with no thread concept`],
     ['zeroHop', '1 when the message arrived over RF with 0 hops; 0 when relayed or received via MQTT'],
     ['decryptedBy', 'Channel/key that decrypted it'], ['protocol', 'meshtastic or meshcore'],
     ['protocolShort', 'Short protocol code: MT (Meshtastic) or MC (MeshCore)'],
