@@ -109,9 +109,10 @@ describe('POST /traceroute', () => {
   });
 
   it('honors an explicit channel override of 0 (guards the `?? ` vs `||` falsy trap)', async () => {
-    // The default-keyed resolution would also yield 0 here, so force the broadcast
-    // resolver toward a different slot — proving the explicit 0 is what wins.
-    (databaseService.channels.getAllChannels as any).mockResolvedValue([{ id: 3, psk: 'AQ==' }]);
+    // Make slot 3 genuinely well-known (mesh-readable PSK + matching preset
+    // name) so the broadcast resolver would pick it if consulted — proving
+    // the explicit 0 is what wins, not just an unresolvable fallback.
+    (databaseService.channels.getAllChannels as any).mockResolvedValue([{ id: 3, psk: 'AQ==', name: 'LongFast' }]);
     mockManager.sendTraceroute.mockResolvedValue(undefined);
     const res = await request(app).post('/traceroute').send({ destination: '!12345678', channel: 0 });
     expect(res.status).toBe(200);
