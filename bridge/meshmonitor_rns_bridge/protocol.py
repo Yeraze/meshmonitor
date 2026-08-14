@@ -1,14 +1,21 @@
-"""Wire protocol v1 for the meshmonitor-rns-bridge <-> Node WebSocket link.
+"""Wire protocol v2 for the meshmonitor-rns-bridge <-> Node WebSocket link.
 
 Envelope shape (build spec doc #3960, RETICULUM_PHASE1A_BUILD_SPEC.md §4.4):
 
-    {"v": 1, "type": <str>, "id"?: <str>, "ts": <epoch_ms>, ...fields}
+    {"v": 2, "type": <str>, "id"?: <str>, "ts": <epoch_ms>, ...fields}
 
 This module intentionally supersedes the older `{t, snake_case}` sketch in
 RETICULUM_ATTACH_PHASE1_SPEC.md: the build spec's `{v, type, camelCase}`
 envelope is the one implemented on both sides. The golden fixtures under
 `bridge/tests/fixtures/` are the single source of truth for the Node-side
 (WP3) contract test -- keep this module and those fixtures in lockstep.
+
+Bumped 1->2 for Phase 2 (LXMF messaging, RETICULUM_PHASE2_BUILD_SPEC.md §3.1,
+R4): a strict-equality, fail-closed handshake means a v1 Node talking to a v2
+bridge (or vice versa) gets PROTOCOL_VERSION_MISMATCH rather than silently
+missing the new LXMF event/command types -- bridge and Node ship in one
+image, so skew should never happen outside a mid-upgrade race, and failing
+loudly there is the correct behavior.
 """
 
 from __future__ import annotations
@@ -17,7 +24,7 @@ import json
 import time
 from typing import Any, Iterable, Optional
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 
 # --------------------------------------------------------------------------
 # Message types
@@ -34,6 +41,19 @@ TYPE_PATH_TABLE = "path_table"
 TYPE_GET_STATUS = "get_status"
 TYPE_STATUS = "status"
 
+# Phase 2 (LXMF messaging, build spec §3.1) -- events (bridge -> Node).
+TYPE_LXMF_MESSAGE = "lxmf_message"
+TYPE_DELIVERY_STATE = "delivery_state"
+
+# Phase 2 -- commands (Node -> bridge).
+TYPE_SEND_LXMF = "send_lxmf"
+TYPE_ANNOUNCE_SELF = "announce_self"
+TYPE_SET_DISPLAY_NAME = "set_display_name"
+TYPE_SYNC_PROPAGATION = "sync_propagation"
+TYPE_SET_PROPAGATION_NODE = "set_propagation_node"
+TYPE_GET_IDENTITY = "get_identity"
+TYPE_IMPORT_IDENTITY = "import_identity"
+
 # --------------------------------------------------------------------------
 # Failure codes (build spec §4.3 / §4.4)
 # --------------------------------------------------------------------------
@@ -48,6 +68,12 @@ RNS_INIT_FAILED = "RNS_INIT_FAILED"
 # Node-side only: the bridge never emits this (it means the WS socket never
 # opened at all), documented here so both sides agree on the full code set.
 BRIDGE_UNREACHABLE = "BRIDGE_UNREACHABLE"
+# Phase 2: generic exception-wrapped failure for any of the new LXMF command
+# handlers (send_lxmf/announce_self/set_display_name/sync_propagation/
+# set_propagation_node/get_identity/import_identity) -- ws_server.py catches
+# broadly and reports this rather than letting the connection die, per build
+# spec §3.5 "exception-wrapped -> error".
+LXMF_COMMAND_FAILED = "LXMF_COMMAND_FAILED"
 
 FAILURE_CODES = frozenset(
     {
@@ -59,6 +85,7 @@ FAILURE_CODES = frozenset(
         TCP_PEER_UNREACHABLE,
         RNS_INIT_FAILED,
         BRIDGE_UNREACHABLE,
+        LXMF_COMMAND_FAILED,
     }
 )
 
@@ -143,8 +170,13 @@ def error_message(code: str, message: Optional[str] = None, id: Optional[str] = 
     return envelope(TYPE_ERROR, id=id, **fields)
 
 
-def ready_message(id: Optional[str] = None) -> dict:
-    return envelope(TYPE_READY, id=id)
+def ready_message(id: Optional[str] = None, **fields: Any) -> dict:
+    """`**fields` lets `_handle_configure` (ws_server.py) attach the source's
+    PUBLIC LXMF destinationHash once Phase 2's LXMF router has started
+    (build spec §3.4: "return the source's PUBLIC destination hash in
+    ready/status so Node persists it") -- optional, so plain `ready_message(id=...)`
+    is unchanged for Phase 1a callers."""
+    return envelope(TYPE_READY, id=id, **fields)
 
 
 def announce_message(
@@ -216,3 +248,126 @@ def configure_message(
 
 def get_status_message(id: str) -> dict:
     return envelope(TYPE_GET_STATUS, id=id)
+
+
+# --------------------------------------------------------------------------
+# Phase 2 (LXMF messaging): events, bridge -> Node (build spec §3.3)
+# --------------------------------------------------------------------------
+
+
+def lxmf_message_event(
+    *,
+    hash: str,
+    from_hash: str,
+    to_hash: str,
+    title: Optional[str] = None,
+    content: Optional[str] = None,
+    fields: Optional[dict] = None,
+    method: Optional[str] = None,
+    signature_validated: bool = False,
+    ratcheted: bool = False,
+    rssi: Optional[int] = None,
+    snr: Optional[float] = None,
+    q: Optional[int] = None,
+    id: Optional[str] = None,
+) -> dict:
+    """An inbound (or reflected outbound) LXMF message. `from`/`to` are
+    reserved words in Python, so they're passed through a dict-unpack rather
+    than `**kwargs` literal syntax -- still ordinary string keys on the wire.
+    Field sanitation (R3: attachment metadata only, never raw bytes) is the
+    caller's (rns_manager.py's) responsibility; this builder just shapes the
+    envelope."""
+    return envelope(
+        TYPE_LXMF_MESSAGE,
+        id=id,
+        **{
+            "hash": hash,
+            "from": from_hash,
+            "to": to_hash,
+            "title": title,
+            "content": content,
+            "fields": fields if fields is not None else {},
+            "method": method,
+            "signatureValidated": signature_validated,
+            "ratcheted": ratcheted,
+            "rssi": rssi,
+            "snr": snr,
+            "q": q,
+        },
+    )
+
+
+def delivery_state_event(
+    *,
+    hash: str,
+    state: str,
+    method: Optional[str] = None,
+    attempts: Optional[int] = None,
+    id: Optional[str] = None,
+) -> dict:
+    """A delivery-state transition for an outbound LXM. `state` is one of
+    `sending|sent|delivered|failed` -- the bridge maps LXMF's numeric
+    LXMessage state constants to this set in exactly one place
+    (rns_manager.py's `_lxmf_state_to_wire`). Also doubles as the `send_lxmf`
+    command's response (id=the request id, state="sending") -- see build
+    spec §3.5."""
+    return envelope(
+        TYPE_DELIVERY_STATE,
+        id=id,
+        hash=hash,
+        state=state,
+        method=method,
+        attempts=attempts,
+    )
+
+
+# --------------------------------------------------------------------------
+# Phase 2 (LXMF messaging): commands, Node -> bridge (build spec §3.5)
+# --------------------------------------------------------------------------
+
+
+def send_lxmf_message(
+    to: str,
+    title: str = "",
+    content: str = "",
+    fields: Optional[dict] = None,
+    method: Optional[str] = None,
+    propagation_node: Optional[str] = None,
+    id: Optional[str] = None,
+) -> dict:
+    fields_dict: dict = {"to": to, "title": title, "content": content}
+    if fields is not None:
+        fields_dict["fields"] = fields
+    if method is not None:
+        fields_dict["method"] = method
+    if propagation_node is not None:
+        fields_dict["propagationNode"] = propagation_node
+    return envelope(TYPE_SEND_LXMF, id=id, **fields_dict)
+
+
+def announce_self_message(id: Optional[str] = None) -> dict:
+    return envelope(TYPE_ANNOUNCE_SELF, id=id)
+
+
+def set_display_name_message(display_name: str, id: Optional[str] = None) -> dict:
+    return envelope(TYPE_SET_DISPLAY_NAME, id=id, displayName=display_name)
+
+
+def sync_propagation_message(id: Optional[str] = None) -> dict:
+    return envelope(TYPE_SYNC_PROPAGATION, id=id)
+
+
+def set_propagation_node_message(destination_hash: str, id: Optional[str] = None) -> dict:
+    return envelope(TYPE_SET_PROPAGATION_NODE, id=id, destinationHash=destination_hash)
+
+
+def get_identity_message(id: Optional[str] = None) -> dict:
+    return envelope(TYPE_GET_IDENTITY, id=id)
+
+
+def import_identity_message(private_key_b64: str, id: Optional[str] = None) -> dict:
+    """Bridge-internal command only (R2): the private key travels over this
+    trusted bridge<->Node WS link (guarded by BRIDGE_TOKEN), but there is
+    deliberately NO Node HTTP route that exposes or accepts it -- see
+    rns_manager.py's `import_identity` docstring and the build spec §3.4."""
+    return envelope(TYPE_IMPORT_IDENTITY, id=id, privateKeyB64=private_key_b64)

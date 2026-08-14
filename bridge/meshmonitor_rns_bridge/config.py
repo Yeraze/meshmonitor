@@ -23,6 +23,19 @@ DEFAULT_MODE = "attach"
 VALID_MODES = ("attach", "tcp_peer")
 
 
+def _default_lxmf_storage_dir() -> str:
+    """Default LXMF_STORAGE_DIR (build spec §3.4, R5): under the process's
+    writable home, NOT under RNS_CONFIG_DIR -- that dir is frequently a
+    read-only bind mount of the operator's own `~/.reticulum` in attach mode
+    (see docker-compose.reticulum.yml), so the LXMF identity/message-store
+    needs a separate, always-writable location. `HOME` is set explicitly in
+    the bridge's Dockerfile (`/home/bridge`) for exactly this kind of need.
+    The identity file that lives here is the ONLY copy of the source's LXMF
+    private key (R5) -- operators MUST persist this directory as a volume or
+    a fresh container regenerates the identity (new LXMF address)."""
+    return os.path.join(os.path.expanduser("~"), "lxmf-storage")
+
+
 class ConfigError(Exception):
     """Raised for invalid/missing configuration at startup."""
 
@@ -45,6 +58,7 @@ class BridgeConfig:
     stats_interval_s: float = DEFAULT_STATS_INTERVAL_S
     paths_interval_s: float = DEFAULT_PATHS_INTERVAL_S
     log_level: str = DEFAULT_LOG_LEVEL
+    lxmf_storage_dir: str = field(default_factory=_default_lxmf_storage_dir)
 
 
 def _parse_tcp_peers(raw: Optional[str]) -> tuple:
@@ -104,6 +118,8 @@ def load_config(env: Optional[Mapping[str, str]] = None) -> BridgeConfig:
     Plus poller cadence / logging (build spec §4.2, attach spec §4.3 defaults):
       BRIDGE_STATS_INTERVAL_S (default 5), BRIDGE_PATHS_INTERVAL_S (default 15),
       BRIDGE_LOG_LEVEL (default info).
+    Phase 2 (LXMF messaging, build spec §3.4): LXMF_STORAGE_DIR (default
+      under the writable home dir -- see `_default_lxmf_storage_dir()`).
     """
     env = os.environ if env is None else env
 
@@ -138,4 +154,5 @@ def load_config(env: Optional[Mapping[str, str]] = None) -> BridgeConfig:
             env.get("BRIDGE_PATHS_INTERVAL_S"), "BRIDGE_PATHS_INTERVAL_S", DEFAULT_PATHS_INTERVAL_S
         ),
         log_level=env.get("BRIDGE_LOG_LEVEL", DEFAULT_LOG_LEVEL),
+        lxmf_storage_dir=env.get("LXMF_STORAGE_DIR") or _default_lxmf_storage_dir(),
     )

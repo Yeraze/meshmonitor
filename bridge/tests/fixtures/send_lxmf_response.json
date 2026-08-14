@@ -1,0 +1,10 @@
+{
+  "attempts": 0,
+  "hash": "1a2b3c4d5e6f708192a3b4c5d6e7f809",
+  "id": "c3",
+  "method": "opportunistic",
+  "state": "sending",
+  "ts": 1755000000000,
+  "type": "delivery_state",
+  "v": 2
+}
