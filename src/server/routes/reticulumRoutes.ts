@@ -45,6 +45,7 @@ import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isReticulumManager } from '../sourceManagerTypes.js';
 import type { ReticulumManager, SendReticulumMessageParams } from '../reticulumManager.js';
 import { reticulumConfigFromSource } from '../reticulumConfig.js';
+import { ReticulumBridgeError } from '../reticulumBridgeClient.js';
 import {
   reticulumInterfaceNodeId,
   RETICULUM_IFACE_RX_RATE,
@@ -54,7 +55,7 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import type { ListDestinationsOptions } from '../../db/repositories/reticulum.js';
-import type { LxmfMethod } from '../reticulumProtocol.js';
+import { FAILURE_CODE, type LxmfMethod } from '../reticulumProtocol.js';
 
 /** Default lookback window for `GET /interfaces/:name/history` when `since` is omitted. */
 const DEFAULT_HISTORY_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -105,7 +106,11 @@ router.get('/status', optionalAuth(), async (req: Request, res: Response) => {
     const manager = res.locals.reticulumManager as ReticulumManager | undefined;
     const connected = manager ? manager.isConnected() : false;
 
-    let mode: 'attach' | 'tcp_peer' | undefined;
+    // 'own' added in Phase 3 WP1 (#3960, reticulumProtocol.ts's ReticulumMode).
+    // Own-mode radio/device-info state is NOT surfaced here — that's the
+    // dedicated GET /radio-config and GET /device-info routes below (WP4);
+    // this endpoint only reports which mode the source is configured for.
+    let mode: 'attach' | 'tcp_peer' | 'own' | undefined;
     try {
       const source = await databaseService.sources.getSource(sourceId);
       if (source) {
@@ -147,7 +152,16 @@ router.get('/status', optionalAuth(), async (req: Request, res: Response) => {
 /**
  * GET /destinations
  * List destinations for this source. Optional query filters: `favorite`
- * ("true" to restrict to favorites), `appName`, `limit`.
+ * ("true" to restrict to favorites), `appName`, `limit`. Every row already
+ * carries the migration-144 position columns (`latitude`/`longitude`/
+ * `altitude`/`speed`/`bearing`/`accuracy`/`positionUpdatedAt`, #3960 Phase 3
+ * WP3/WP4) — `listDestinations` selects the full row, so no separate
+ * position-only route is needed for the map to consume them.
+ *
+ * `positioned=true` narrows the result to destinations that currently carry
+ * a position sample (non-null lat/lon), newest-position-first — a lighter
+ * read for a map view than filtering the full unpositioned list client-side
+ * (`ReticulumRepository.getDestinationsWithPosition`, build spec §4).
  */
 router.get(
   '/destinations',
@@ -155,6 +169,11 @@ router.get(
   async (req: Request, res: Response) => {
     const sourceId = (req.params as { id: string }).id;
     try {
+      if (req.query.positioned === 'true') {
+        const rows = await databaseService.reticulum.getDestinationsWithPosition(sourceId);
+        return ok(res, rows);
+      }
+
       const opts: ListDestinationsOptions = {};
       if (req.query.favorite === 'true') opts.favoriteOnly = true;
       if (typeof req.query.appName === 'string' && req.query.appName.length > 0) {
@@ -279,6 +298,205 @@ router.get(
     } catch (err) {
       logger.error(`[Reticulum:${sourceId}] Error getting interface history for ${name}: ${err instanceof Error ? err.message : String(err)}`);
       return fail(res, 500, 'RETICULUM_INTERFACE_HISTORY_FAILED', 'Failed to get Reticulum interface history');
+    }
+  },
+);
+
+// ==========================================================================
+// Own-mode RNode radio config / device info (#3960 Phase 3 WP1/WP4)
+//
+// Resource: 'configuration' (sourcey — same resource MeshCore's own
+// hardware-config routes use). Both routes need a LIVE bridge connection
+// (there is nothing to read/patch from the DB — R2's deviceInfoJson column
+// is a loose, read-only convention, not populated by these routes): a
+// missing manager is reported the same way as attach/tcp_peer mode,
+// OWN_MODE_REQUIRED, since neither case has a radio to talk to.
+// ==========================================================================
+
+/** RNode's admissible LoRa bandwidth values (matches RNS's own RNodeInterface validation). */
+const VALID_RADIO_BANDWIDTHS: ReadonlySet<number> = new Set([
+  7800, 10400, 15600, 20800, 31250, 41700, 62500, 125000, 250000, 500000,
+]);
+
+/** Fields accepted by `PUT /radio-config` (subset of `RadioConfigMessage`, all optional — partial patch). */
+interface RadioConfigPatch {
+  frequency?: number;
+  bandwidth?: number;
+  spreadingFactor?: number;
+  codingRate?: number;
+  txPower?: number;
+  stAlock?: number;
+  ltAlock?: number;
+  radioState?: boolean;
+}
+
+/**
+ * Validate `PUT /radio-config`'s body into a typed partial patch, or return
+ * an error message. Ranges mirror RNS's own `RNodeInterface` validation
+ * (frequency 137-1020MHz, the fixed LoRa bandwidth list, SF 5-12, CR 5-8,
+ * airtime locks 0-100%) — rejecting an out-of-range value here, before ever
+ * reaching the bridge, avoids round-tripping a value the RNode firmware
+ * would silently clamp or reject.
+ */
+function validateRadioConfigPatch(body: Record<string, unknown>): { patch: RadioConfigPatch } | { error: string } {
+  const patch: RadioConfigPatch = {};
+
+  if (body.frequency !== undefined) {
+    const v = body.frequency;
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < 137_000_000 || v > 1_020_000_000) {
+      return { error: 'frequency must be a number between 137000000 and 1020000000 (Hz)' };
+    }
+    patch.frequency = v;
+  }
+  if (body.bandwidth !== undefined) {
+    const v = body.bandwidth;
+    if (typeof v !== 'number' || !VALID_RADIO_BANDWIDTHS.has(v)) {
+      return { error: `bandwidth must be one of: ${Array.from(VALID_RADIO_BANDWIDTHS).join(', ')} (Hz)` };
+    }
+    patch.bandwidth = v;
+  }
+  if (body.spreadingFactor !== undefined) {
+    const v = body.spreadingFactor;
+    if (typeof v !== 'number' || !Number.isInteger(v) || v < 5 || v > 12) {
+      return { error: 'spreadingFactor must be an integer between 5 and 12' };
+    }
+    patch.spreadingFactor = v;
+  }
+  if (body.codingRate !== undefined) {
+    const v = body.codingRate;
+    if (typeof v !== 'number' || !Number.isInteger(v) || v < 5 || v > 8) {
+      return { error: 'codingRate must be an integer between 5 and 8' };
+    }
+    patch.codingRate = v;
+  }
+  if (body.txPower !== undefined) {
+    const v = body.txPower;
+    if (typeof v !== 'number' || !Number.isInteger(v) || v < 0 || v > 22) {
+      return { error: 'txPower must be an integer between 0 and 22 (dBm)' };
+    }
+    patch.txPower = v;
+  }
+  if (body.stAlock !== undefined) {
+    const v = body.stAlock;
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 100) {
+      return { error: 'stAlock must be a number between 0 and 100 (percent)' };
+    }
+    patch.stAlock = v;
+  }
+  if (body.ltAlock !== undefined) {
+    const v = body.ltAlock;
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 100) {
+      return { error: 'ltAlock must be a number between 0 and 100 (percent)' };
+    }
+    patch.ltAlock = v;
+  }
+  if (body.radioState !== undefined) {
+    if (typeof body.radioState !== 'boolean') {
+      return { error: 'radioState must be a boolean' };
+    }
+    patch.radioState = body.radioState;
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return { error: 'body must include at least one radio-config field to set' };
+  }
+  return { patch };
+}
+
+/**
+ * Map a caught error from a radio-config/device-info bridge call to a
+ * response: a typed `ReticulumBridgeError` with a wire `FailureCode`
+ * surfaces that code verbatim (409 for `OWN_MODE_REQUIRED`, 502 — upstream
+ * bridge/radio failure — for anything else, e.g. `RNODE_COMMAND_FAILED`/
+ * `RNODE_DEVICE_UNAVAILABLE`); anything else is a generic 500.
+ */
+function respondRadioError(res: Response, err: unknown, sourceId: string, logLabel: string, fallbackCode: string, fallbackMessage: string): void {
+  if (err instanceof ReticulumBridgeError && err.code) {
+    const status = err.code === FAILURE_CODE.OWN_MODE_REQUIRED ? 409 : 502;
+    fail(res, status, err.code, err.message ?? `Reticulum ${logLabel} request failed (${err.code})`);
+    return;
+  }
+  logger.error(`[Reticulum:${sourceId}] Error in ${logLabel}: ${err instanceof Error ? err.message : String(err)}`);
+  fail(res, 500, fallbackCode, fallbackMessage);
+}
+
+/**
+ * GET /radio-config
+ * Live round-trip to the own-mode RNode's current radio config
+ * (`get_radio_config`). 409 OWN_MODE_REQUIRED both when no manager is
+ * registered for this source (disconnected — there's no live radio to ask)
+ * and when a manager IS registered but isn't running in own mode (the
+ * bridge itself rejects the command with the same typed code).
+ */
+router.get(
+  '/radio-config',
+  requirePermission('configuration', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    const sourceId = (req.params as { id: string }).id;
+    const manager = res.locals.reticulumManager as ReticulumManager | undefined;
+    if (!manager) {
+      return fail(res, 409, 'OWN_MODE_REQUIRED', `Reticulum source ${sourceId} is not connected in own mode`);
+    }
+    try {
+      const config = await manager.getRadioConfig();
+      return ok(res, config);
+    } catch (err) {
+      return respondRadioError(res, err, sourceId, 'get radio config', 'RETICULUM_RADIO_CONFIG_GET_FAILED', 'Failed to get Reticulum radio config');
+    }
+  },
+);
+
+/**
+ * PUT /radio-config
+ * Body: a partial `{ frequency?, bandwidth?, spreadingFactor?, codingRate?,
+ * txPower?, stAlock?, ltAlock?, radioState? }` patch — omitted fields are
+ * left unchanged on the RNode. Validated (range-checked) BEFORE the bridge
+ * round-trip; 409 OWN_MODE_REQUIRED under the same conditions as the GET
+ * route above.
+ */
+router.put(
+  '/radio-config',
+  requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    const sourceId = (req.params as { id: string }).id;
+    const validated = validateRadioConfigPatch((req.body ?? {}) as Record<string, unknown>);
+    if ('error' in validated) {
+      return fail(res, 400, 'INVALID_RADIO_CONFIG', validated.error);
+    }
+
+    const manager = res.locals.reticulumManager as ReticulumManager | undefined;
+    if (!manager) {
+      return fail(res, 409, 'OWN_MODE_REQUIRED', `Reticulum source ${sourceId} is not connected in own mode`);
+    }
+    try {
+      const config = await manager.setRadioConfig(validated.patch);
+      return ok(res, config);
+    } catch (err) {
+      return respondRadioError(res, err, sourceId, 'set radio config', 'RETICULUM_RADIO_CONFIG_SET_FAILED', 'Failed to set Reticulum radio config');
+    }
+  },
+);
+
+/**
+ * GET /device-info
+ * Live round-trip to the own-mode RNode's device/firmware info
+ * (`get_device_info`) — firmware version, MCU/platform, chip temp, CSMA/PHY
+ * params. Same OWN_MODE_REQUIRED semantics as `GET /radio-config`.
+ */
+router.get(
+  '/device-info',
+  requirePermission('configuration', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    const sourceId = (req.params as { id: string }).id;
+    const manager = res.locals.reticulumManager as ReticulumManager | undefined;
+    if (!manager) {
+      return fail(res, 409, 'OWN_MODE_REQUIRED', `Reticulum source ${sourceId} is not connected in own mode`);
+    }
+    try {
+      const info = await manager.getDeviceInfo();
+      return ok(res, info);
+    } catch (err) {
+      return respondRadioError(res, err, sourceId, 'get device info', 'RETICULUM_DEVICE_INFO_FAILED', 'Failed to get Reticulum device info');
     }
   },
 );

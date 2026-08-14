@@ -16,6 +16,20 @@ import {
   reticulumInterfaceNodeId,
   RETICULUM_IFACE_TX_RATE,
   RETICULUM_IFACE_RX_RATE,
+  reticulumDestinationNodeNum,
+  reticulumDestinationNodeId,
+  RETICULUM_DEST_BATTERY,
+  RETICULUM_DEST_TEMPERATURE,
+  RETICULUM_DEST_HUMIDITY,
+  RETICULUM_DEST_PRESSURE,
+  RETICULUM_DEST_POWER_IN,
+  RETICULUM_DEST_POWER_OUT,
+  RETICULUM_DEST_CPU,
+  RETICULUM_DEST_RAM,
+  RETICULUM_DEST_NVM,
+  RETICULUM_DEST_LINK_RSSI,
+  RETICULUM_DEST_LINK_SNR,
+  RETICULUM_DEST_LINK_Q,
 } from './reticulumTelemetry.js';
 import { TelemetryRepository } from '../../db/repositories/telemetry.js';
 import {
@@ -54,6 +68,79 @@ describe('reticulumInterfaceNodeNum / reticulumInterfaceNodeId', () => {
 
   it('reticulumInterfaceNodeId namespaces with rns:iface: so it cannot collide with Meshtastic/MeshCore node ids', () => {
     expect(reticulumInterfaceNodeId('TCPClientInterface[a]')).toBe('rns:iface:TCPClientInterface[a]');
+  });
+});
+
+describe('reticulumDestinationNodeNum / reticulumDestinationNodeId', () => {
+  const HASH_A = 'a'.repeat(32);
+  const HASH_B = 'b'.repeat(32);
+
+  it('is deterministic for the same destination hash', () => {
+    expect(reticulumDestinationNodeNum(HASH_A)).toBe(reticulumDestinationNodeNum(HASH_A));
+  });
+
+  it('differs across distinct destination hashes (no accidental collision for these samples)', () => {
+    expect(reticulumDestinationNodeNum(HASH_A)).not.toBe(reticulumDestinationNodeNum(HASH_B));
+  });
+
+  it('differs from an interface-derived nodeNum for the "same" raw string (namespaced by prefix)', () => {
+    // reticulumInterfaceNodeNum hashes "if:<name>"; reticulumDestinationNodeNum
+    // hashes "dest:<hash>" — using the same raw string for both must not
+    // collide, since the two synthetic identity spaces are namespaced by
+    // their crc32 input prefix, not just the caller-supplied string.
+    expect(reticulumDestinationNodeNum(HASH_A)).not.toBe(reticulumInterfaceNodeNum(HASH_A));
+  });
+
+  it('is always a non-negative 31-bit integer', () => {
+    const n = reticulumDestinationNodeNum(HASH_A);
+    expect(Number.isInteger(n)).toBe(true);
+    expect(n).toBeGreaterThanOrEqual(0);
+    expect(n).toBeLessThanOrEqual(0x7fffffff);
+  });
+
+  it('returns 0 for an empty destination hash', () => {
+    expect(reticulumDestinationNodeNum('')).toBe(0);
+  });
+
+  it('reticulumDestinationNodeId namespaces with rns:dest: so it cannot collide with rns:iface:/Meshtastic/MeshCore node ids', () => {
+    expect(reticulumDestinationNodeId(HASH_A)).toBe(`rns:dest:${HASH_A}`);
+    expect(reticulumDestinationNodeId(HASH_A)).not.toBe(reticulumInterfaceNodeId(HASH_A));
+  });
+});
+
+describe('rns_* telemetryType constants (Phase 3 §2.A/§3 pinned SID subset)', () => {
+  it('are all distinct, rns_-prefixed values', () => {
+    const values = [
+      RETICULUM_DEST_BATTERY,
+      RETICULUM_DEST_TEMPERATURE,
+      RETICULUM_DEST_HUMIDITY,
+      RETICULUM_DEST_PRESSURE,
+      RETICULUM_DEST_POWER_IN,
+      RETICULUM_DEST_POWER_OUT,
+      RETICULUM_DEST_CPU,
+      RETICULUM_DEST_RAM,
+      RETICULUM_DEST_NVM,
+      RETICULUM_DEST_LINK_RSSI,
+      RETICULUM_DEST_LINK_SNR,
+      RETICULUM_DEST_LINK_Q,
+    ];
+    expect(new Set(values).size).toBe(values.length);
+    for (const v of values) expect(v).toMatch(/^rns_/);
+  });
+
+  it('match the pinned wire names from the build spec', () => {
+    expect(RETICULUM_DEST_BATTERY).toBe('rns_battery');
+    expect(RETICULUM_DEST_TEMPERATURE).toBe('rns_temperature');
+    expect(RETICULUM_DEST_HUMIDITY).toBe('rns_humidity');
+    expect(RETICULUM_DEST_PRESSURE).toBe('rns_pressure');
+    expect(RETICULUM_DEST_POWER_IN).toBe('rns_power_in');
+    expect(RETICULUM_DEST_POWER_OUT).toBe('rns_power_out');
+    expect(RETICULUM_DEST_CPU).toBe('rns_cpu');
+    expect(RETICULUM_DEST_RAM).toBe('rns_ram');
+    expect(RETICULUM_DEST_NVM).toBe('rns_nvm');
+    expect(RETICULUM_DEST_LINK_RSSI).toBe('rns_link_rssi');
+    expect(RETICULUM_DEST_LINK_SNR).toBe('rns_link_snr');
+    expect(RETICULUM_DEST_LINK_Q).toBe('rns_link_q');
   });
 });
 
@@ -99,6 +186,7 @@ const MYSQL_CREATE = `
 
 const RETICULUM_SOURCE_ID = 'reticulum-source-1';
 const IFACE_NAME = 'TCPClientInterface[rns.example.com]';
+const DEST_HASH = 'c'.repeat(32);
 
 function runRegression(getBackend: () => TestBackend) {
   it('insertTelemetryBatch with the derived nodeNum + reticulum sourceId inserts and reads back', async () => {
@@ -132,6 +220,36 @@ function runRegression(getBackend: () => TestBackend) {
     const rxBack = await repo.getTelemetryByNode(nodeId, 10, undefined, undefined, 0, RETICULUM_IFACE_RX_RATE, RETICULUM_SOURCE_ID);
     expect(rxBack).toHaveLength(1);
     expect(rxBack[0].value).toBeCloseTo(64.25);
+  });
+
+  it('insertTelemetryBatch with the rns:dest-derived nodeNum + reticulum sourceId inserts and reads back (Phase 3)', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    const repo = new TelemetryRepository(backend.drizzleDb, backend.dbType);
+    const nodeNum = reticulumDestinationNodeNum(DEST_HASH);
+    const nodeId = reticulumDestinationNodeId(DEST_HASH);
+    const now = Date.now();
+
+    const rows: DbTelemetry[] = [
+      { nodeId, nodeNum, telemetryType: RETICULUM_DEST_BATTERY, timestamp: now, value: 87, createdAt: now },
+      { nodeId, nodeNum, telemetryType: RETICULUM_DEST_TEMPERATURE, timestamp: now, value: 21.5, createdAt: now },
+    ];
+
+    const inserted = await repo.insertTelemetryBatch(rows, RETICULUM_SOURCE_ID);
+    expect(inserted).toBe(2);
+
+    const battBack = await repo.getTelemetryByNode(nodeId, 10, undefined, undefined, 0, RETICULUM_DEST_BATTERY, RETICULUM_SOURCE_ID);
+    expect(battBack).toHaveLength(1);
+    expect(battBack[0].nodeNum).toBe(nodeNum);
+    expect(battBack[0].value).toBeCloseTo(87);
+
+    const tempBack = await repo.getTelemetryByNode(nodeId, 10, undefined, undefined, 0, RETICULUM_DEST_TEMPERATURE, RETICULUM_SOURCE_ID);
+    expect(tempBack).toHaveLength(1);
+    expect(tempBack[0].value).toBeCloseTo(21.5);
   });
 }
 

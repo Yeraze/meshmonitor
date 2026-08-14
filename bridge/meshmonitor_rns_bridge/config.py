@@ -20,7 +20,7 @@ DEFAULT_PATHS_INTERVAL_S = 15.0
 DEFAULT_LOG_LEVEL = "info"
 DEFAULT_MODE = "attach"
 
-VALID_MODES = ("attach", "tcp_peer")
+VALID_MODES = ("attach", "tcp_peer", "own")
 
 
 def _default_lxmf_storage_dir() -> str:
@@ -59,6 +59,23 @@ class BridgeConfig:
     paths_interval_s: float = DEFAULT_PATHS_INTERVAL_S
     log_level: str = DEFAULT_LOG_LEVEL
     lxmf_storage_dir: str = field(default_factory=_default_lxmf_storage_dir)
+    # Phase 3 (#3960 WP1, build spec §2.B): own mode -- the bridge owns the
+    # RNode radio directly via RNS.Interfaces.RNodeInterface on `own_device`
+    # (e.g. /dev/ttyUSB0). Only `own_device` is required; the radio params
+    # below are the INITIAL values applied at interface construction --
+    # None means "let RNodeInterface use its own defaults" (0 for
+    # frequency/bandwidth/txpower/sf/cr, unset for the airtime locks). All
+    # of these are also settable afterwards via the `set_radio_config`
+    # command (ws_server.py), which is the normal path once own mode is
+    # already running.
+    own_device: Optional[str] = None
+    own_frequency: Optional[int] = None
+    own_bandwidth: Optional[int] = None
+    own_sf: Optional[int] = None
+    own_cr: Optional[int] = None
+    own_txpower: Optional[int] = None
+    own_st_alock: Optional[float] = None
+    own_lt_alock: Optional[float] = None
 
 
 def _parse_tcp_peers(raw: Optional[str]) -> tuple:
@@ -100,6 +117,24 @@ def _parse_float(raw: Optional[str], name: str, default: float) -> float:
         raise ConfigError(f"{name} must be a number, got {raw!r}") from e
 
 
+def _parse_optional_int(raw: Optional[str], name: str) -> Optional[int]:
+    if raw is None or raw == "":
+        return None
+    try:
+        return int(raw)
+    except ValueError as e:
+        raise ConfigError(f"{name} must be an integer, got {raw!r}") from e
+
+
+def _parse_optional_float(raw: Optional[str], name: str) -> Optional[float]:
+    if raw is None or raw == "":
+        return None
+    try:
+        return float(raw)
+    except ValueError as e:
+        raise ConfigError(f"{name} must be a number, got {raw!r}") from e
+
+
 def load_config(env: Optional[Mapping[str, str]] = None) -> BridgeConfig:
     """Parse BridgeConfig from an environment mapping (defaults to os.environ).
 
@@ -114,12 +149,17 @@ def load_config(env: Optional[Mapping[str, str]] = None) -> BridgeConfig:
 
     Env vars (build spec §4.1 module-layout comment):
       BRIDGE_HOST, BRIDGE_PORT, BRIDGE_TOKEN, RNS_CONFIG_DIR,
-      RNS_MODE (attach|tcp_peer), RNS_TCP_PEERS, PROTOCOL_VERSION
+      RNS_MODE (attach|tcp_peer|own), RNS_TCP_PEERS, PROTOCOL_VERSION
     Plus poller cadence / logging (build spec §4.2, attach spec §4.3 defaults):
       BRIDGE_STATS_INTERVAL_S (default 5), BRIDGE_PATHS_INTERVAL_S (default 15),
       BRIDGE_LOG_LEVEL (default info).
     Phase 2 (LXMF messaging, build spec §3.4): LXMF_STORAGE_DIR (default
       under the writable home dir -- see `_default_lxmf_storage_dir()`).
+    Phase 3 (own mode + RNode radio config, build spec §2.B, #3960 WP1):
+      RNS_OWN_DEVICE (required when RNS_MODE=own, e.g. /dev/ttyUSB0),
+      RNS_OWN_FREQUENCY, RNS_OWN_BANDWIDTH, RNS_OWN_SF, RNS_OWN_CR,
+      RNS_OWN_TXPOWER, RNS_OWN_ST_ALOCK, RNS_OWN_LT_ALOCK (all optional
+      initial radio params -- see `own_radio_params()`).
     """
     env = os.environ if env is None else env
 
@@ -134,6 +174,10 @@ def load_config(env: Optional[Mapping[str, str]] = None) -> BridgeConfig:
     tcp_peers = _parse_tcp_peers(env.get("RNS_TCP_PEERS"))
     if mode == "tcp_peer" and not tcp_peers:
         raise ConfigError("RNS_TCP_PEERS is required when RNS_MODE=tcp_peer")
+
+    own_device = env.get("RNS_OWN_DEVICE") or None
+    if mode == "own" and not own_device:
+        raise ConfigError("RNS_OWN_DEVICE is required when RNS_MODE=own")
 
     protocol_version = _parse_int(
         env.get("PROTOCOL_VERSION"), "PROTOCOL_VERSION", protocol.PROTOCOL_VERSION
@@ -155,4 +199,37 @@ def load_config(env: Optional[Mapping[str, str]] = None) -> BridgeConfig:
         ),
         log_level=env.get("BRIDGE_LOG_LEVEL", DEFAULT_LOG_LEVEL),
         lxmf_storage_dir=env.get("LXMF_STORAGE_DIR") or _default_lxmf_storage_dir(),
+        own_device=own_device,
+        own_frequency=_parse_optional_int(env.get("RNS_OWN_FREQUENCY"), "RNS_OWN_FREQUENCY"),
+        own_bandwidth=_parse_optional_int(env.get("RNS_OWN_BANDWIDTH"), "RNS_OWN_BANDWIDTH"),
+        own_sf=_parse_optional_int(env.get("RNS_OWN_SF"), "RNS_OWN_SF"),
+        own_cr=_parse_optional_int(env.get("RNS_OWN_CR"), "RNS_OWN_CR"),
+        own_txpower=_parse_optional_int(env.get("RNS_OWN_TXPOWER"), "RNS_OWN_TXPOWER"),
+        own_st_alock=_parse_optional_float(env.get("RNS_OWN_ST_ALOCK"), "RNS_OWN_ST_ALOCK"),
+        own_lt_alock=_parse_optional_float(env.get("RNS_OWN_LT_ALOCK"), "RNS_OWN_LT_ALOCK"),
     )
+
+
+def own_radio_params(cfg: BridgeConfig) -> dict:
+    """Builds the `{frequency,bandwidth,sf,cr,txpower,st_alock,lt_alock}`
+    dict `RNSManager._start_own()` / `_build_rnode_ifconf()` expect, from
+    the individual `BridgeConfig.own_*` fields -- keeps the env-var-driven
+    defaults (this function) and the Node `configure` message's own-mode
+    fields (`ws_server.py`'s `_parse_own_params`) shaped identically, so
+    `RNSManager.start()` can treat them the same way regardless of source."""
+    params: dict = {}
+    if cfg.own_frequency is not None:
+        params["frequency"] = cfg.own_frequency
+    if cfg.own_bandwidth is not None:
+        params["bandwidth"] = cfg.own_bandwidth
+    if cfg.own_sf is not None:
+        params["sf"] = cfg.own_sf
+    if cfg.own_cr is not None:
+        params["cr"] = cfg.own_cr
+    if cfg.own_txpower is not None:
+        params["txpower"] = cfg.own_txpower
+    if cfg.own_st_alock is not None:
+        params["st_alock"] = cfg.own_st_alock
+    if cfg.own_lt_alock is not None:
+        params["lt_alock"] = cfg.own_lt_alock
+    return params

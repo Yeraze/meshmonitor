@@ -1,0 +1,23 @@
+{
+  "chipTemp": 34,
+  "csma": {
+    "cwBand": 2,
+    "cwMax": 8,
+    "cwMin": 3
+  },
+  "firmwareVersion": "1.52",
+  "id": "c12",
+  "mcu": 30,
+  "phy": {
+    "csmaDifsMs": 45,
+    "csmaSlotTimeMs": 15,
+    "preambleSymbols": 12,
+    "preambleTimeMs": 393,
+    "symbolRate": 976,
+    "symbolTimeMs": 32.768
+  },
+  "platform": 128,
+  "ts": 1755000000000,
+  "type": "device_info",
+  "v": 3
+}

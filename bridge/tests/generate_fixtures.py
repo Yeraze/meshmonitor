@@ -42,11 +42,16 @@ TESTS_DIR = pathlib.Path(__file__).resolve().parent
 FIXTURES_DIR = TESTS_DIR / "fixtures"
 
 try:
-    from .fixture_builders import EXPECTED_FIXTURE_NAMES, FIXED_TS, build_fixture
+    from .fixture_builders import EXPECTED_FIXTURE_NAMES, FIXED_TS, NON_PROTOCOL_FIXTURE_STEMS, build_fixture
 except ImportError:
     # Executed as a bare script (no package context for a relative import).
     sys.path.insert(0, str(TESTS_DIR))
-    from fixture_builders import EXPECTED_FIXTURE_NAMES, FIXED_TS, build_fixture  # type: ignore[no-redef]
+    from fixture_builders import (  # type: ignore[no-redef]
+        EXPECTED_FIXTURE_NAMES,
+        FIXED_TS,
+        NON_PROTOCOL_FIXTURE_STEMS,
+        build_fixture,
+    )
 
 
 def main() -> None:
@@ -66,8 +71,11 @@ def main() -> None:
 
     # Prune any fixture file that no longer has a builder, kept in sync with
     # test_protocol.py's test_fixture_directory_has_exactly_the_expected_files.
+    # NON_PROTOCOL_FIXTURE_STEMS (#3960 Phase 3 WP0/WP2) are deliberately not
+    # written above (no build_fixture() entry) but must survive pruning too --
+    # e.g. the Sideband FIELD_TELEMETRY golden-decode fixture.
     for path in FIXTURES_DIR.glob("*.json"):
-        if path.name not in written:
+        if path.name not in written and path.stem not in NON_PROTOCOL_FIXTURE_STEMS:
             path.unlink()
             print(f"removed stale {path.relative_to(BRIDGE_ROOT)}")
 

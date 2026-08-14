@@ -24,17 +24,19 @@ import type {
   InterfaceStatsMessage,
   LxmfMessageEvent,
   StatusMessage,
+  TelemetryMessage,
   WelcomeMessage,
 } from './reticulumProtocol.js';
 import type { ReticulumMessageRow } from '../db/repositories/reticulum.js';
 
 const upsertDestination = vi.fn().mockResolvedValue(undefined);
 const upsertInterface = vi.fn().mockResolvedValue(undefined);
-const insertTelemetryBatch = vi.fn().mockResolvedValue(0);
 const upsertMessage = vi.fn().mockResolvedValue(undefined);
 const updateMessageState = vi.fn().mockResolvedValue(undefined);
 const renameMessageId = vi.fn().mockResolvedValue(undefined);
 const getMessage = vi.fn();
+const updateDestinationPosition = vi.fn().mockResolvedValue(undefined);
+const insertTelemetryBatch = vi.fn().mockResolvedValue(0);
 
 vi.mock('../services/database.js', () => ({
   default: {
@@ -45,6 +47,7 @@ vi.mock('../services/database.js', () => ({
       updateMessageState: (...args: unknown[]) => updateMessageState(...args),
       renameMessageId: (...args: unknown[]) => renameMessageId(...args),
       getMessage: (...args: unknown[]) => getMessage(...args),
+      updateDestinationPosition: (...args: unknown[]) => updateDestinationPosition(...args),
     },
     telemetry: {
       insertTelemetryBatch: (...args: unknown[]) => insertTelemetryBatch(...args),
@@ -69,7 +72,12 @@ vi.mock('./utils/ownNodes.js', () => ({
 }));
 
 import { ReticulumManager } from './reticulumManager.js';
-import { reticulumInterfaceNodeId, reticulumInterfaceNodeNum } from './services/reticulumTelemetry.js';
+import {
+  reticulumInterfaceNodeId,
+  reticulumInterfaceNodeNum,
+  reticulumDestinationNodeId,
+  reticulumDestinationNodeNum,
+} from './services/reticulumTelemetry.js';
 
 function makeAnnounce(overrides: Partial<AnnounceMessage> = {}): AnnounceMessage {
   return {
@@ -94,6 +102,29 @@ function makeAnnounce(overrides: Partial<AnnounceMessage> = {}): AnnounceMessage
 
 function makeInterfaceStats(interfaces: InterfaceStatsEntry[], ts = 1_700_000_000_000): InterfaceStatsMessage {
   return { v: 1, type: 'interface_stats', ts, interfaces };
+}
+
+function makeTelemetry(overrides: Partial<TelemetryMessage> = {}): TelemetryMessage {
+  return {
+    v: 3,
+    type: 'telemetry',
+    sourceHash: 'a1b2c3d4e5f60718293a4b5c6d7e8f90',
+    destinationHash: '112233445566778899aabbccddeeff0',
+    ts: 1_755_123_456, // SID_TIME, Unix epoch SECONDS (not envelope ms) -- see TelemetryMessage's doc
+    sensors: {
+      rns_battery: { value: 82.5, unit: '%' },
+      rns_temperature: { value: 24.3, unit: 'c' },
+    },
+    location: {
+      lat: 37.7749,
+      lon: -122.4194,
+      altitude: 15.5,
+      speed: 1.2,
+      bearing: 270.0,
+      accuracy: 8.5,
+    },
+    ...overrides,
+  };
 }
 
 const IFACE_A: InterfaceStatsEntry = {
@@ -248,6 +279,127 @@ describe('ReticulumManager DB persistence', () => {
       // @ts-expect-error - exercising the private handler directly
       manager.handleInterfaceStats(makeInterfaceStats([{ ...IFACE_A, txBytes: 1100, rxBytes: 550 }], 1_700_000_010_000)),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe('ReticulumManager telemetry ingest (#3960 Phase 3 WP2/WP4)', () => {
+  beforeEach(() => {
+    insertTelemetryBatch.mockClear();
+    updateDestinationPosition.mockClear();
+    upsertMessage.mockClear();
+    emitReticulumMessage.mockClear();
+  });
+
+  it('sensors -> insertTelemetryBatch rows keyed by rns:dest:<hash>, timestamp converted from SID_TIME seconds to ms', async () => {
+    const manager = new ReticulumManager('src-a');
+    // @ts-expect-error - exercising the private handler directly
+    await manager.handleTelemetry(makeTelemetry());
+
+    expect(insertTelemetryBatch).toHaveBeenCalledTimes(1);
+    const [rows, sourceId] = insertTelemetryBatch.mock.calls[0];
+    expect(sourceId).toBe('src-a');
+    const nodeId = reticulumDestinationNodeId('112233445566778899aabbccddeeff0');
+    const nodeNum = reticulumDestinationNodeNum('112233445566778899aabbccddeeff0');
+    expect(rows).toEqual([
+      expect.objectContaining({
+        nodeId,
+        nodeNum,
+        telemetryType: 'rns_battery',
+        timestamp: 1_755_123_456_000, // 1_755_123_456 (seconds) * 1000
+        value: 82.5,
+        unit: '%',
+      }),
+      expect.objectContaining({
+        nodeId,
+        nodeNum,
+        telemetryType: 'rns_temperature',
+        timestamp: 1_755_123_456_000,
+        value: 24.3,
+        unit: 'c',
+      }),
+    ]);
+  });
+
+  it('a telemetry event with an empty sensors map writes no telemetry rows', async () => {
+    const manager = new ReticulumManager('src-a');
+    // @ts-expect-error - exercising the private handler directly
+    await manager.handleTelemetry(makeTelemetry({ sensors: {} }));
+    expect(insertTelemetryBatch).not.toHaveBeenCalled();
+  });
+
+  it('a null ts (SID_TIME absent) falls back to "now" for both telemetry rows and the position sample', async () => {
+    const before = Date.now();
+    const manager = new ReticulumManager('src-a');
+    // @ts-expect-error - exercising the private handler directly
+    await manager.handleTelemetry(makeTelemetry({ ts: null }));
+    const after = Date.now();
+
+    const [rows] = insertTelemetryBatch.mock.calls[0];
+    expect(rows[0].timestamp).toBeGreaterThanOrEqual(before);
+    expect(rows[0].timestamp).toBeLessThanOrEqual(after);
+
+    const [, positionInput] = updateDestinationPosition.mock.calls[0];
+    expect(positionInput.positionUpdatedAt).toBeGreaterThanOrEqual(before);
+    expect(positionInput.positionUpdatedAt).toBeLessThanOrEqual(after);
+  });
+
+  it('location -> updateDestinationPosition with the six position fields + positionUpdatedAt', async () => {
+    const manager = new ReticulumManager('src-a');
+    // @ts-expect-error - exercising the private handler directly
+    await manager.handleTelemetry(makeTelemetry());
+
+    expect(updateDestinationPosition).toHaveBeenCalledTimes(1);
+    expect(updateDestinationPosition).toHaveBeenCalledWith('src-a', {
+      destinationHash: '112233445566778899aabbccddeeff0',
+      latitude: 37.7749,
+      longitude: -122.4194,
+      altitude: 15.5,
+      speed: 1.2,
+      bearing: 270.0,
+      accuracy: 8.5,
+      positionUpdatedAt: 1_755_123_456_000,
+    });
+  });
+
+  it('a null location writes no position sample', async () => {
+    const manager = new ReticulumManager('src-a');
+    // @ts-expect-error - exercising the private handler directly
+    await manager.handleTelemetry(makeTelemetry({ location: null }));
+    expect(updateDestinationPosition).not.toHaveBeenCalled();
+  });
+
+  it('a null-island location (0,0) is discarded, not written as a position sample (server-side guard)', async () => {
+    const manager = new ReticulumManager('src-a');
+    // @ts-expect-error - exercising the private handler directly
+    await manager.handleTelemetry(
+      makeTelemetry({ location: { lat: 0, lon: 0, altitude: 0, speed: 0, bearing: 0, accuracy: 0 } }),
+    );
+    expect(updateDestinationPosition).not.toHaveBeenCalled();
+    // Sensors are independent of the position guard and still get written.
+    expect(insertTelemetryBatch).toHaveBeenCalledTimes(1);
+  });
+
+  it('a telemetry event never creates or updates a reticulum_messages row (R3: telemetry-only, no chat row)', async () => {
+    const manager = new ReticulumManager('src-a');
+    // @ts-expect-error - exercising the private handler directly
+    await manager.handleTelemetry(makeTelemetry());
+    expect(upsertMessage).not.toHaveBeenCalled();
+    expect(emitReticulumMessage).not.toHaveBeenCalled();
+  });
+
+  it('a telemetry write failure is swallowed (logged, not thrown) and does not block the position write', async () => {
+    insertTelemetryBatch.mockRejectedValueOnce(new Error('db down'));
+    const manager = new ReticulumManager('src-a');
+    // @ts-expect-error - exercising the private handler directly
+    await expect(manager.handleTelemetry(makeTelemetry())).resolves.toBeUndefined();
+    expect(updateDestinationPosition).toHaveBeenCalledTimes(1);
+  });
+
+  it('a position write failure is swallowed (logged, not thrown)', async () => {
+    updateDestinationPosition.mockRejectedValueOnce(new Error('db down'));
+    const manager = new ReticulumManager('src-a');
+    // @ts-expect-error - exercising the private handler directly
+    await expect(manager.handleTelemetry(makeTelemetry())).resolves.toBeUndefined();
   });
 });
 
@@ -448,6 +600,64 @@ describe('ReticulumManager connection lifecycle', () => {
       manager.connect({ mode: 'attach', bridgeUrl: 'ws://127.0.0.1:1', token: 't', protocolVersion: 1, configDir: '/rns' }),
     ).rejects.toThrow();
     expect(manager.isConnected()).toBe(false);
+  });
+
+  // -- Phase 3 own-mode radio config / device info (#3960 WP4) --
+
+  it('getRadioConfig()/setRadioConfig()/getDeviceInfo() throw when not connected', async () => {
+    const manager = trackManager(new ReticulumManager('src-a'));
+    await expect(manager.getRadioConfig()).rejects.toThrow(/not connected/);
+    await expect(manager.setRadioConfig({ txPower: 17 })).rejects.toThrow(/not connected/);
+    await expect(manager.getDeviceInfo()).rejects.toThrow(/not connected/);
+  });
+
+  it('getRadioConfig()/setRadioConfig()/getDeviceInfo() delegate to the bridge client over a live own-mode connection', async () => {
+    const { url } = await startMockBridge((ws, send) => {
+      ws.on('message', (data) => {
+        const env = JSON.parse(String(data)) as Record<string, unknown>;
+        if (env.type === 'hello') {
+          send({ v: 1, type: 'welcome', ts: Date.now(), protocolVersion: 1, bridgeVersion: '0.1.0', rnsVersion: '1.4.2' });
+        } else if (env.type === 'configure') {
+          send({ v: 1, type: 'ready', id: env.id, ts: Date.now() });
+        } else if (env.type === 'get_radio_config') {
+          send({ v: 3, type: 'radio_config', id: env.id, ts: Date.now(), frequency: 914_875_000, bandwidth: 125_000, spreadingFactor: 8, codingRate: 5, txPower: 17, stAlock: null, ltAlock: null, radioState: true });
+        } else if (env.type === 'set_radio_config') {
+          send({ v: 3, type: 'radio_config', id: env.id, ts: Date.now(), frequency: 915_000_000, bandwidth: null, spreadingFactor: null, codingRate: null, txPower: 20, stAlock: null, ltAlock: null, radioState: null });
+        } else if (env.type === 'get_device_info') {
+          send({ v: 3, type: 'device_info', id: env.id, ts: Date.now(), firmwareVersion: '1.52', mcu: 30, platform: 128, chipTemp: 34, csma: { cwBand: 2, cwMin: 3, cwMax: 8 }, phy: { symbolTimeMs: 32.768, symbolRate: 976, preambleSymbols: 12, preambleTimeMs: 393, csmaSlotTimeMs: 15, csmaDifsMs: 45 } });
+        }
+      });
+    });
+
+    const manager = trackManager(new ReticulumManager('src-a'));
+    await manager.connect({ mode: 'own', bridgeUrl: url, token: 't', protocolVersion: 1, device: '/dev/ttyUSB0' });
+
+    await expect(manager.getRadioConfig()).resolves.toMatchObject({ type: 'radio_config', frequency: 914_875_000, txPower: 17 });
+    await expect(manager.setRadioConfig({ frequency: 915_000_000, txPower: 20 })).resolves.toMatchObject({
+      type: 'radio_config',
+      frequency: 915_000_000,
+      txPower: 20,
+    });
+    await expect(manager.getDeviceInfo()).resolves.toMatchObject({ type: 'device_info', firmwareVersion: '1.52', mcu: 30 });
+  });
+
+  it('getRadioConfig() propagates the bridge-typed OWN_MODE_REQUIRED error when the source is not in own mode', async () => {
+    const { url } = await startMockBridge((ws, send) => {
+      ws.on('message', (data) => {
+        const env = JSON.parse(String(data)) as Record<string, unknown>;
+        if (env.type === 'hello') {
+          send({ v: 1, type: 'welcome', ts: Date.now(), protocolVersion: 1, bridgeVersion: '0.1.0', rnsVersion: '1.4.2' });
+        } else if (env.type === 'configure') {
+          send({ v: 1, type: 'ready', id: env.id, ts: Date.now() });
+        } else if (env.type === 'get_radio_config') {
+          send({ v: 3, type: 'error', id: env.id, ts: Date.now(), code: 'OWN_MODE_REQUIRED', message: 'not own mode' });
+        }
+      });
+    });
+
+    const manager = trackManager(new ReticulumManager('src-a'));
+    await manager.connect({ mode: 'attach', bridgeUrl: url, token: 't', protocolVersion: 1, configDir: '/rns' });
+    await expect(manager.getRadioConfig()).rejects.toMatchObject({ code: 'OWN_MODE_REQUIRED' });
   });
 });
 

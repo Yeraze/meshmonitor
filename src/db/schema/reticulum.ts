@@ -75,6 +75,15 @@ export const reticulumDestinationsSqlite = sqliteTable('reticulum_destinations',
   isFavorite: integer('isFavorite', { mode: 'boolean' }).notNull().default(false),
   createdAt: integer('createdAt').notNull(),
   updatedAt: integer('updatedAt').notNull(),
+  /** Sideband SID_LOCATION sample (migration 144). Peer-shared, latest-only overwrite. */
+  latitude: real('latitude'),
+  longitude: real('longitude'),
+  altitude: real('altitude'),
+  speed: real('speed'),
+  bearing: real('bearing'),
+  accuracy: real('accuracy'),
+  /** ms epoch of the latest position sample; null when never observed. */
+  positionUpdatedAt: integer('positionUpdatedAt'),
 }, (t) => ({
   sourceHashIdx: uniqueIndex('reticulum_destinations_source_hash_idx').on(t.sourceId, t.destinationHash),
   sourceLastSeenIdx: index('reticulum_destinations_source_lastseen_idx').on(t.sourceId, t.lastSeen),
@@ -104,6 +113,13 @@ export const reticulumDestinationsPostgres = pgTable('reticulum_destinations', {
   isFavorite: pgBoolean('isFavorite').notNull().default(false),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
+  latitude: pgDoublePrecision('latitude'),
+  longitude: pgDoublePrecision('longitude'),
+  altitude: pgDoublePrecision('altitude'),
+  speed: pgDoublePrecision('speed'),
+  bearing: pgDoublePrecision('bearing'),
+  accuracy: pgDoublePrecision('accuracy'),
+  positionUpdatedAt: pgBigint('positionUpdatedAt', { mode: 'number' }),
 }, (t) => ({
   sourceHashIdx: pgUniqueIndex('reticulum_destinations_source_hash_idx').on(t.sourceId, t.destinationHash),
   sourceLastSeenIdx: pgIndex('reticulum_destinations_source_lastseen_idx').on(t.sourceId, t.lastSeen),
@@ -132,6 +148,13 @@ export const reticulumDestinationsMysql = mysqlTable('reticulum_destinations', {
   isFavorite: myBoolean('isFavorite').notNull().default(false),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),
+  latitude: myDouble('latitude'),
+  longitude: myDouble('longitude'),
+  altitude: myDouble('altitude'),
+  speed: myDouble('speed'),
+  bearing: myDouble('bearing'),
+  accuracy: myDouble('accuracy'),
+  positionUpdatedAt: myBigint('positionUpdatedAt', { mode: 'number' }),
 }, (t) => ({
   sourceHashIdx: myUniqueIndex('reticulum_destinations_source_hash_idx').on(t.sourceId, t.destinationHash),
 }));
@@ -157,6 +180,17 @@ export const reticulumInterfacesSqlite = sqliteTable('reticulum_interfaces', {
   lastSeenAt: integer('lastSeenAt').notNull(),
   createdAt: integer('createdAt').notNull(),
   updatedAt: integer('updatedAt').notNull(),
+  /** Own-mode RNode radio config (migration 145). Null for attach/tcp_peer sources. */
+  frequency: real('frequency'),
+  bandwidth: real('bandwidth'),
+  spreadingFactor: integer('spreadingFactor'),
+  codingRate: integer('codingRate'),
+  txPower: integer('txPower'),
+  stAlock: real('stAlock'),
+  ltAlock: real('ltAlock'),
+  radioState: integer('radioState', { mode: 'boolean' }),
+  /** Loose JSON text — read-only RNode board/firmware info (R2). */
+  deviceInfoJson: text('deviceInfoJson'),
 }, (t) => ({
   sourceNameIdx: uniqueIndex('reticulum_interfaces_source_name_idx').on(t.sourceId, t.interfaceName),
 }));
@@ -179,6 +213,15 @@ export const reticulumInterfacesPostgres = pgTable('reticulum_interfaces', {
   lastSeenAt: pgBigint('lastSeenAt', { mode: 'number' }).notNull(),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
+  frequency: pgDoublePrecision('frequency'),
+  bandwidth: pgDoublePrecision('bandwidth'),
+  spreadingFactor: pgInteger('spreadingFactor'),
+  codingRate: pgInteger('codingRate'),
+  txPower: pgInteger('txPower'),
+  stAlock: pgDoublePrecision('stAlock'),
+  ltAlock: pgDoublePrecision('ltAlock'),
+  radioState: pgBoolean('radioState'),
+  deviceInfoJson: pgText('deviceInfoJson'),
 }, (t) => ({
   sourceNameIdx: pgUniqueIndex('reticulum_interfaces_source_name_idx').on(t.sourceId, t.interfaceName),
 }));
@@ -200,6 +243,15 @@ export const reticulumInterfacesMysql = mysqlTable('reticulum_interfaces', {
   lastSeenAt: myBigint('lastSeenAt', { mode: 'number' }).notNull(),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),
+  frequency: myDouble('frequency'),
+  bandwidth: myDouble('bandwidth'),
+  spreadingFactor: myInt('spreadingFactor'),
+  codingRate: myInt('codingRate'),
+  txPower: myInt('txPower'),
+  stAlock: myDouble('stAlock'),
+  ltAlock: myDouble('ltAlock'),
+  radioState: myBoolean('radioState'),
+  deviceInfoJson: myText('deviceInfoJson'),
 }, (t) => ({
   sourceNameIdx: myUniqueIndex('reticulum_interfaces_source_name_idx').on(t.sourceId, t.interfaceName),
 }));

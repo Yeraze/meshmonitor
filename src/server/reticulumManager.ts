@@ -5,7 +5,10 @@
  * and persists what it emits: `announce` events become
  * `reticulum_destinations` rows, `interface_stats` events become
  * `reticulum_interfaces` snapshot rows plus throttled throughput-history rows
- * on the shared `telemetry` table.
+ * on the shared `telemetry` table, and `telemetry` events (decoded Sideband
+ * `FIELD_TELEMETRY`, #3960 Phase 3 WP2/WP4) become `telemetry` table rows
+ * (sensors) plus a latest-only position overwrite on the destination's
+ * `reticulum_destinations` row (location) — see `handleTelemetry`.
  *
  * Structural template: `meshcoreManager.ts` (`MeshCoreManager`). Mirrors:
  * constructor(sourceId, sourceName?), `configure()`/pendingConfig staging,
@@ -28,6 +31,8 @@ import type { ReticulumMessageRow, UpsertMessageInput } from '../db/repositories
 import databaseService from '../services/database.js';
 import type { DbTelemetry } from '../services/database.js';
 import { logger } from '../utils/logger.js';
+import { shouldDiscardPosition } from '../utils/nullIsland.js';
+import { getDiscardInvalidPositions } from '../utils/positionIngestConfig.js';
 import { isOwnReticulumAddress } from './utils/ownNodes.js';
 import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
@@ -37,15 +42,20 @@ import type { ReticulumConfig } from './reticulumConfig.js';
 import type {
   AnnounceMessage,
   DeliveryStateEvent,
+  DeviceInfoMessage,
   InterfaceStatsEntry,
   InterfaceStatsMessage,
   LxmfMessageEvent,
   LxmfMethod,
+  RadioConfigMessage,
   ReadyMessage,
   StatusMessage,
+  TelemetryMessage,
   WelcomeMessage,
 } from './reticulumProtocol.js';
 import {
+  reticulumDestinationNodeId,
+  reticulumDestinationNodeNum,
   reticulumInterfaceNodeId,
   reticulumInterfaceNodeNum,
   RETICULUM_IFACE_RX_RATE,
@@ -405,6 +415,16 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
       });
     });
 
+    client.on('telemetry', (msg: TelemetryMessage) => {
+      this.handleTelemetry(msg).catch((err: unknown) => {
+        logger.warn(
+          `[Reticulum:${this.sourceId}] failed to process telemetry for ${msg.destinationHash}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      });
+    });
+
     client.on('error', (err: Error) => {
       logger.warn(`[Reticulum:${this.sourceId}] bridge client error: ${err.message}`);
       this.emit('error', err);
@@ -534,6 +554,130 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
         }`,
       );
     }
+  }
+
+  /**
+   * `telemetry` -> decoded Sideband `FIELD_TELEMETRY` payload (#3960 Phase 3
+   * WP2/WP4, build spec §2.A/§4). Two independent writes, neither gated on
+   * the other succeeding:
+   *  - `sensors` (always present, `{}` if none) -> rows on the shared
+   *    `telemetry` table, mirroring {@link handleInterfaceStats}'s
+   *    `insertTelemetryBatch` pattern exactly, just keyed by the destination
+   *    hash (`rns:dest:<hash>`, {@link reticulumDestinationNodeId}/
+   *    {@link reticulumDestinationNodeNum}) instead of an interface name.
+   *  - `location` (nullable) -> the six position columns +
+   *    `positionUpdatedAt` on the destination's `reticulum_destinations` row,
+   *    LATEST-ONLY overwrite (build spec §3/§4 — no history table, no
+   *    `estimated_positions`), guarded by the same server-side null-island
+   *    filter Meshtastic/MQTT/MeshCore ingest use.
+   *
+   * `msg.ts` is `SID_TIME` in Unix epoch **seconds** (or `null`) — NOT the
+   * envelope's usual epoch-ms creation time (see `TelemetryMessage`'s doc in
+   * reticulumProtocol.ts) — so it's converted to epoch-ms once here and
+   * reused for both the telemetry rows' `timestamp` and the position
+   * sample's `positionUpdatedAt`. A missing `ts` falls back to "now".
+   *
+   * Never creates a `reticulum_messages` row — telemetry-only Sideband
+   * packets are intentionally invisible to the message/chat surface (R3).
+   */
+  private async handleTelemetry(msg: TelemetryMessage): Promise<void> {
+    const sampleAtMs = msg.ts != null ? msg.ts * 1000 : Date.now();
+    const createdAt = Date.now();
+
+    const sensorEntries = Object.entries(msg.sensors);
+    if (sensorEntries.length > 0) {
+      const nodeId = reticulumDestinationNodeId(msg.destinationHash);
+      const nodeNum = reticulumDestinationNodeNum(msg.destinationHash);
+      const rows: DbTelemetry[] = sensorEntries.map(([telemetryType, reading]) => ({
+        nodeId,
+        nodeNum,
+        telemetryType,
+        timestamp: sampleAtMs,
+        value: reading.value,
+        unit: reading.unit ?? undefined,
+        createdAt,
+      }));
+      try {
+        await databaseService.telemetry.insertTelemetryBatch(rows, this.sourceId);
+      } catch (err) {
+        logger.warn(
+          `[Reticulum:${this.sourceId}] failed to write Sideband telemetry for ${msg.destinationHash}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+
+    if (msg.location) {
+      const { lat, lon, altitude, speed, bearing, accuracy } = msg.location;
+      if (shouldDiscardPosition(lat, lon, undefined, getDiscardInvalidPositions())) {
+        logger.debug(
+          `[Reticulum:${this.sourceId}] discarding null-island/invalid position for ${msg.destinationHash}`,
+        );
+      } else {
+        try {
+          await databaseService.reticulum.updateDestinationPosition(this.sourceId, {
+            destinationHash: msg.destinationHash,
+            latitude: lat,
+            longitude: lon,
+            altitude,
+            speed,
+            bearing,
+            accuracy,
+            positionUpdatedAt: sampleAtMs,
+          });
+        } catch (err) {
+          logger.warn(
+            `[Reticulum:${this.sourceId}] failed to write position for ${msg.destinationHash}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+      }
+    }
+  }
+
+  // --------------------------------------------------------------------
+  // Own mode: RNode radio config / device info (#3960 Phase 3 WP1/WP4)
+  //
+  // Thin delegates onto ReticulumBridgeClient's id-correlated commands
+  // (mirrors the LXMF identity/propagation delegates above) — only
+  // meaningful when this source's mode is 'own'; the bridge itself rejects
+  // these with a typed OWN_MODE_REQUIRED ReticulumBridgeError otherwise
+  // (surfaced to the caller unchanged, same as any other client rejection).
+  // --------------------------------------------------------------------
+
+  /** Fetch the own-mode RNode's current radio config (`get_radio_config`). */
+  async getRadioConfig(): Promise<RadioConfigMessage> {
+    if (!this.client) {
+      throw new Error(`ReticulumManager(${this.sourceId}): not connected`);
+    }
+    return this.client.getRadioConfig();
+  }
+
+  /** Apply a partial radio-config patch to the own-mode RNode (`set_radio_config`). */
+  async setRadioConfig(patch: {
+    frequency?: number;
+    bandwidth?: number;
+    spreadingFactor?: number;
+    codingRate?: number;
+    txPower?: number;
+    stAlock?: number;
+    ltAlock?: number;
+    radioState?: boolean;
+  }): Promise<RadioConfigMessage> {
+    if (!this.client) {
+      throw new Error(`ReticulumManager(${this.sourceId}): not connected`);
+    }
+    return this.client.setRadioConfig(patch);
+  }
+
+  /** Fetch the own-mode RNode's device/firmware info (`get_device_info`). */
+  async getDeviceInfo(): Promise<DeviceInfoMessage> {
+    if (!this.client) {
+      throw new Error(`ReticulumManager(${this.sourceId}): not connected`);
+    }
+    return this.client.getDeviceInfo();
   }
 
   // --------------------------------------------------------------------

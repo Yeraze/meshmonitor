@@ -158,6 +158,8 @@ import { migration as xeddsaSignedMessagesMigration, runMigration140Postgres, ru
 import { migration as createReticulumDestinationsMigration, runMigration141Postgres, runMigration141Mysql } from '../server/migrations/141_create_reticulum_destinations.js';
 import { migration as createReticulumInterfacesMigration, runMigration142Postgres, runMigration142Mysql } from '../server/migrations/142_create_reticulum_interfaces.js';
 import { migration as createReticulumMessagesMigration, runMigration143Postgres, runMigration143Mysql } from '../server/migrations/143_create_reticulum_messages.js';
+import { migration as addReticulumDestinationPositionMigration, runMigration144Postgres, runMigration144Mysql } from '../server/migrations/144_add_reticulum_destination_position.js';
+import { migration as addReticulumInterfaceRadioConfigMigration, runMigration145Postgres, runMigration145Mysql } from '../server/migrations/145_add_reticulum_interface_radio_config.js';
 
 // ============================================================================
 // Registry
@@ -2283,4 +2285,36 @@ registry.register({
   sqlite: (db) => createReticulumMessagesMigration.up(db),
   postgres: (client) => runMigration143Postgres(client),
   mysql: (pool) => runMigration143Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 144: add position columns to `reticulum_destinations` (Reticulum
+// epic #3960, Phase 3 WP3). Sideband SID_LOCATION samples, peer-shared
+// per-source, LATEST-ONLY overwrite. PER-SOURCE (columns on an existing
+// per-source table).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 144,
+  name: 'add_reticulum_destination_position',
+  settingsKey: 'migration_144_add_reticulum_destination_position',
+  sqlite: (db) => addReticulumDestinationPositionMigration.up(db),
+  postgres: (client) => runMigration144Postgres(client),
+  mysql: (pool) => runMigration144Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 145: add own-mode radio-config + device-info columns to
+// `reticulum_interfaces` (Reticulum epic #3960, Phase 3 WP3). Written only
+// when the source runs in own mode; attach/tcp_peer leave these NULL.
+// PER-SOURCE (columns on an existing per-source table).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 145,
+  name: 'add_reticulum_interface_radio_config',
+  settingsKey: 'migration_145_add_reticulum_interface_radio_config',
+  sqlite: (db) => addReticulumInterfaceRadioConfigMigration.up(db),
+  postgres: (client) => runMigration145Postgres(client),
+  mysql: (pool) => runMigration145Mysql(pool),
 });

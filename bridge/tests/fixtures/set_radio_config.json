@@ -1,0 +1,8 @@
+{
+  "frequency": 915000000,
+  "id": "c11",
+  "ts": 1755000000000,
+  "txPower": 20,
+  "type": "set_radio_config",
+  "v": 3
+}

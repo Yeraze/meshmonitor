@@ -68,3 +68,50 @@ export function reticulumInterfaceNodeId(interfaceName: string): string {
 /** `telemetry.telemetryType` values used for Reticulum interface history. */
 export const RETICULUM_IFACE_TX_RATE = 'reticulum_iface_tx_rate';
 export const RETICULUM_IFACE_RX_RATE = 'reticulum_iface_rx_rate';
+
+/**
+ * Derive a stable, synthetic `nodeNum` for a Reticulum destination so
+ * Sideband `FIELD_TELEMETRY` sensor history can be written to the shared
+ * `telemetry` table (epic #3960, Phase 3 WP3; see
+ * `docs/internal/dev-notes/RETICULUM_PHASE3_BUILD_SPEC.md` §3). Computed as
+ * `crc32("dest:<destinationHash>")`, masked to a positive 31-bit int — same
+ * convention as {@link reticulumInterfaceNodeNum}, just keyed by the
+ * destination hash instead of the interface name.
+ *
+ * Deterministic and collision-free for any two distinct destination hashes
+ * short of an actual CRC-32 collision — stable across restarts/reconnects
+ * since it depends only on the destination hash.
+ */
+export function reticulumDestinationNodeNum(destinationHash: string): number {
+  if (!destinationHash) return 0;
+  return crc32(Buffer.from(`dest:${destinationHash}`, 'utf8')) & 0x7fffffff;
+}
+
+/**
+ * Synthetic `telemetry.nodeId` for a Reticulum destination's Sideband sensor
+ * history rows. Namespaced with `rns:dest:` so it can never collide with
+ * `rns:iface:`, a Meshtastic `!hexnodeid`, or a MeshCore 64-char hex public
+ * key.
+ */
+export function reticulumDestinationNodeId(destinationHash: string): string {
+  return `rns:dest:${destinationHash}`;
+}
+
+/**
+ * `telemetry.telemetryType` values used for Reticulum Sideband
+ * `FIELD_TELEMETRY` sensor history (epic #3960, Phase 3 WP3 §2.A/§3). Pinned
+ * SID subset — `SID_LOCATION` is NOT here, it writes the position columns on
+ * `reticulum_destinations` (migration 144) instead of a telemetry row.
+ */
+export const RETICULUM_DEST_BATTERY = 'rns_battery';
+export const RETICULUM_DEST_TEMPERATURE = 'rns_temperature';
+export const RETICULUM_DEST_HUMIDITY = 'rns_humidity';
+export const RETICULUM_DEST_PRESSURE = 'rns_pressure';
+export const RETICULUM_DEST_POWER_IN = 'rns_power_in';
+export const RETICULUM_DEST_POWER_OUT = 'rns_power_out';
+export const RETICULUM_DEST_CPU = 'rns_cpu';
+export const RETICULUM_DEST_RAM = 'rns_ram';
+export const RETICULUM_DEST_NVM = 'rns_nvm';
+export const RETICULUM_DEST_LINK_RSSI = 'rns_link_rssi';
+export const RETICULUM_DEST_LINK_SNR = 'rns_link_snr';
+export const RETICULUM_DEST_LINK_Q = 'rns_link_q';

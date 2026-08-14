@@ -25,6 +25,10 @@ interface ReticulumSubToolbarProps {
   onSelect: (view: ReticulumView) => void;
   expanded: boolean;
   onToggleExpanded: () => void;
+  /** Source connection mode; the 'configuration' item is shown only for 'own'
+   *  mode (editable RNode radio config exists only when the bridge owns the
+   *  radio), mirroring how MeshCore hides Meshtastic-only panels. */
+  sourceMode?: string | null;
 }
 
 interface Item {
@@ -41,6 +45,10 @@ const ITEMS: Item[] = [
   // interfaces/info/settings pages.
   { id: 'dms', labelKey: 'reticulum.nav.dms', fallback: 'Messages', icon: 'messages' },
   { id: 'interfaces', labelKey: 'reticulum.nav.interfaces', fallback: 'Interfaces', icon: 'network' },
+  // 'map' (Phase 3) — peer positions shared via Sideband telemetry. Always shown.
+  { id: 'map', labelKey: 'reticulum.nav.map', fallback: 'Map', icon: 'map' },
+  // 'configuration' (Phase 3) — editable RNode radio config; own-mode only (filtered below).
+  { id: 'configuration', labelKey: 'reticulum.nav.configuration', fallback: 'Configuration', icon: 'configuration' },
   { id: 'info', labelKey: 'reticulum.nav.info', fallback: 'Info', icon: 'info' },
   { id: 'settings', labelKey: 'reticulum.nav.settings', fallback: 'Settings', icon: 'settings' },
 ];
@@ -55,17 +63,21 @@ export const ReticulumSubToolbar: React.FC<ReticulumSubToolbarProps> = ({
   onSelect,
   expanded,
   onToggleExpanded,
+  sourceMode,
 }) => {
   const { t } = useTranslation();
 
   const items = useMemo<SourceNavItem[]>(() => (
-    ITEMS.map(item => ({
-      id: item.id,
-      label: t(item.labelKey, item.fallback),
-      icon: item.icon,
-      onClick: () => onSelect(item.id),
-    }))
-  ), [t, onSelect]);
+    ITEMS
+      // 'configuration' (editable RNode radio config) exists only in 'own' mode.
+      .filter(item => item.id !== 'configuration' || sourceMode === 'own')
+      .map(item => ({
+        id: item.id,
+        label: t(item.labelKey, item.fallback),
+        icon: item.icon,
+        onClick: () => onSelect(item.id),
+      }))
+  ), [t, onSelect, sourceMode]);
 
   return (
     <SourceNav

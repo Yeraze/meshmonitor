@@ -13,3 +13,11 @@ websockets>=13
 # wheels-only on python:3.12-alpine against rns==1.4.2 WITHOUT forcing an rns
 # upgrade (verified via `pip install --only-binary=:all:`).
 lxmf==1.1.1
+
+# Pinned per Phase 3 WP0 spike evidence (docs/internal/dev-notes/
+# RETICULUM_WP0_PHASE3_SPIKE_EVIDENCE.md §1, build spec R4): Sideband's
+# FIELD_TELEMETRY payload is standard MessagePack, round-tripped
+# byte-for-byte against RNS's own vendored `RNS.vendor.umsgpack` in that
+# spike. Declared explicitly (R4) rather than relying on RNS's vendored
+# copy, which is not part of RNS's public API surface.
+msgpack==1.2.1
