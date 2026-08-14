@@ -50,6 +50,13 @@ TYPE_STATUS = "status"
 TYPE_LXMF_MESSAGE = "lxmf_message"
 TYPE_DELIVERY_STATE = "delivery_state"
 
+# Phase 3 (Sideband FIELD_TELEMETRY decode, build spec §2.A/§2.C, #3960 WP2)
+# -- event (bridge -> Node). A DEDICATED event type (R3) so telemetry-only
+# Sideband packets never create a chat row on the Node side -- see
+# rns_manager.py's `_on_lxmf_delivery` for the interception that keeps this
+# separate from TYPE_LXMF_MESSAGE.
+TYPE_TELEMETRY = "telemetry"
+
 # Phase 2 -- commands (Node -> bridge).
 TYPE_SEND_LXMF = "send_lxmf"
 TYPE_ANNOUNCE_SELF = "announce_self"
@@ -358,6 +365,36 @@ def lxmf_message_event(
             "snr": snr,
             "q": q,
         },
+    )
+
+
+def telemetry_event(
+    *,
+    source_hash: str,
+    destination_hash: str,
+    sensors: Optional[dict] = None,
+    location: Optional[dict] = None,
+    ts: Optional[int] = None,
+    id: Optional[str] = None,
+) -> dict:
+    """A decoded Sideband `FIELD_TELEMETRY` payload (build spec §2.A/§2.C).
+    `sensors` is the pinned-subset `{telemetryType: {value, unit}}` map
+    (`sideband_telemetry.decode_field_telemetry()`'s `sensors` key,
+    defaults to `{}` rather than omitted so Node can always iterate it
+    without a null check); `location` is that decode's `location` key,
+    nullable when SID_LOCATION wasn't present or didn't decode; `ts` is
+    from SID_TIME, nullable for the same reason. `source_hash`/
+    `destination_hash` name the LXMF delivery endpoints the same way
+    `lxmf_message_event`'s `from`/`to` do, just spelled out in full since
+    `source`/`destination` aren't Python reserved words here."""
+    return envelope(
+        TYPE_TELEMETRY,
+        id=id,
+        sourceHash=source_hash,
+        destinationHash=destination_hash,
+        sensors=sensors if sensors is not None else {},
+        location=location,
+        ts=ts,
     )
 
 
