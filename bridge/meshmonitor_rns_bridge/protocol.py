@@ -16,6 +16,11 @@ bridge (or vice versa) gets PROTOCOL_VERSION_MISMATCH rather than silently
 missing the new LXMF event/command types -- bridge and Node ship in one
 image, so skew should never happen outside a mid-upgrade race, and failing
 loudly there is the correct behavior.
+
+Bumped 2->3 for Phase 3 WP1 (own mode + RNode radio config/device info,
+RETICULUM_PHASE3_BUILD_SPEC.md §2.B/§2.C, #3960): adds the `own`
+ReticulumMode plus the get_radio_config/set_radio_config/get_device_info
+command-response pairs. Same fail-closed rationale as the 1->2 bump above.
 """
 
 from __future__ import annotations
@@ -24,7 +29,7 @@ import json
 import time
 from typing import Any, Iterable, Optional
 
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 3
 
 # --------------------------------------------------------------------------
 # Message types
@@ -54,6 +59,16 @@ TYPE_SET_PROPAGATION_NODE = "set_propagation_node"
 TYPE_GET_IDENTITY = "get_identity"
 TYPE_IMPORT_IDENTITY = "import_identity"
 
+# Phase 3 (own mode + RNode radio config/device info, build spec §2.C,
+# #3960 WP1) -- commands (Node -> bridge) and their responses (bridge ->
+# Node). Only meaningful in `own` mode; attach/tcp_peer reject these with
+# OWN_MODE_REQUIRED (see ws_server.py).
+TYPE_GET_RADIO_CONFIG = "get_radio_config"
+TYPE_RADIO_CONFIG = "radio_config"
+TYPE_SET_RADIO_CONFIG = "set_radio_config"
+TYPE_GET_DEVICE_INFO = "get_device_info"
+TYPE_DEVICE_INFO = "device_info"
+
 # --------------------------------------------------------------------------
 # Failure codes (build spec §4.3 / §4.4)
 # --------------------------------------------------------------------------
@@ -74,6 +89,22 @@ BRIDGE_UNREACHABLE = "BRIDGE_UNREACHABLE"
 # broadly and reports this rather than letting the connection die, per build
 # spec §3.5 "exception-wrapped -> error".
 LXMF_COMMAND_FAILED = "LXMF_COMMAND_FAILED"
+# Phase 3 (own mode, build spec §2.B, #3960 WP1): get_radio_config/
+# set_radio_config/get_device_info sent to a source that isn't running in
+# `own` mode (no local RNodeInterface to read/configure) -- a TYPED error,
+# distinct from the generic exception-wrapped RNODE_COMMAND_FAILED below,
+# so Node can tell "wrong mode" apart from "the radio call itself failed".
+OWN_MODE_REQUIRED = "OWN_MODE_REQUIRED"
+# Phase 3: own mode's RNode device path is missing, unreadable, or the
+# RNodeInterface failed to come online -- can originate from RNS instance
+# startup (rns_manager.py's _start_own()), same as the other STARTUP_
+# FAILURE_CODES below.
+RNODE_DEVICE_UNAVAILABLE = "RNODE_DEVICE_UNAVAILABLE"
+# Phase 3: generic exception-wrapped failure for get_radio_config/
+# set_radio_config/get_device_info once own-mode-required has already been
+# ruled out -- same "exception-wrapped -> error" contract as
+# LXMF_COMMAND_FAILED, just for the radio-config command family.
+RNODE_COMMAND_FAILED = "RNODE_COMMAND_FAILED"
 
 FAILURE_CODES = frozenset(
     {
@@ -86,6 +117,9 @@ FAILURE_CODES = frozenset(
         RNS_INIT_FAILED,
         BRIDGE_UNREACHABLE,
         LXMF_COMMAND_FAILED,
+        OWN_MODE_REQUIRED,
+        RNODE_DEVICE_UNAVAILABLE,
+        RNODE_COMMAND_FAILED,
     }
 )
 
@@ -98,6 +132,7 @@ STARTUP_FAILURE_CODES = frozenset(
         RPC_AUTH_FAILED,
         TCP_PEER_UNREACHABLE,
         RNS_INIT_FAILED,
+        RNODE_DEVICE_UNAVAILABLE,
     }
 )
 
@@ -237,12 +272,41 @@ def configure_message(
     id: Optional[str] = None,
     config_dir: Optional[str] = None,
     peers: Optional[list] = None,
+    device: Optional[str] = None,
+    frequency: Optional[int] = None,
+    bandwidth: Optional[int] = None,
+    spreading_factor: Optional[int] = None,
+    coding_rate: Optional[int] = None,
+    tx_power: Optional[int] = None,
+    st_alock: Optional[float] = None,
+    lt_alock: Optional[float] = None,
 ) -> dict:
+    """`device` + the radio-param kwargs are Phase 3's own-mode addition
+    (build spec §2.C: "Add 'own' to ... ConfigureMessage payload (device
+    path + initial params)") -- all optional, and only meaningful when
+    `mode == "own"`; omitted (not sent as null) when not provided, same
+    convention as `config_dir`/`peers` above."""
     fields: dict = {"mode": mode}
     if config_dir is not None:
         fields["configDir"] = config_dir
     if peers is not None:
         fields["peers"] = peers
+    if device is not None:
+        fields["device"] = device
+    if frequency is not None:
+        fields["frequency"] = frequency
+    if bandwidth is not None:
+        fields["bandwidth"] = bandwidth
+    if spreading_factor is not None:
+        fields["spreadingFactor"] = spreading_factor
+    if coding_rate is not None:
+        fields["codingRate"] = coding_rate
+    if tx_power is not None:
+        fields["txPower"] = tx_power
+    if st_alock is not None:
+        fields["stAlock"] = st_alock
+    if lt_alock is not None:
+        fields["ltAlock"] = lt_alock
     return envelope(TYPE_CONFIGURE, id=id, **fields)
 
 
@@ -371,3 +435,43 @@ def import_identity_message(private_key_b64: str, id: Optional[str] = None) -> d
     deliberately NO Node HTTP route that exposes or accepts it -- see
     rns_manager.py's `import_identity` docstring and the build spec §3.4."""
     return envelope(TYPE_IMPORT_IDENTITY, id=id, privateKeyB64=private_key_b64)
+
+
+# --------------------------------------------------------------------------
+# Phase 3 (own mode + RNode radio config/device info, build spec §2.C,
+# #3960 WP1): commands (Node -> bridge) and their responses (bridge ->
+# Node). All free-form `**fields` passthrough (same pattern as
+# `status_message` above) since `RNSManager.get_radio_config()` /
+# `get_device_info()` already return dicts keyed exactly by these wire
+# field names -- ws_server.py's handlers forward them directly rather than
+# re-typing every key.
+# --------------------------------------------------------------------------
+
+
+def get_radio_config_message(id: Optional[str] = None) -> dict:
+    return envelope(TYPE_GET_RADIO_CONFIG, id=id)
+
+
+def radio_config_message(id: Optional[str] = None, **fields: Any) -> dict:
+    """Fields (build spec §2.C): frequency, bandwidth, spreadingFactor,
+    codingRate, txPower, stAlock, ltAlock, radioState. Doubles as the
+    `set_radio_config` command's response (echoing the request `id`), same
+    as `delivery_state_event` doubling as `send_lxmf`'s response above."""
+    return envelope(TYPE_RADIO_CONFIG, id=id, **fields)
+
+
+def set_radio_config_message(id: Optional[str] = None, **fields: Any) -> dict:
+    """Partial radio-config write (build spec §2.C: "partial allowed"): any
+    subset of radio_config_message's fields. Omitted keys mean "leave this
+    parameter unchanged" -- `RNSManager.set_radio_config()`'s contract."""
+    return envelope(TYPE_SET_RADIO_CONFIG, id=id, **fields)
+
+
+def get_device_info_message(id: Optional[str] = None) -> dict:
+    return envelope(TYPE_GET_DEVICE_INFO, id=id)
+
+
+def device_info_message(id: Optional[str] = None, **fields: Any) -> dict:
+    """Fields (build spec §2.C): firmwareVersion, mcu, platform, chipTemp,
+    csma (dict), phy (dict)."""
+    return envelope(TYPE_DEVICE_INFO, id=id, **fields)
