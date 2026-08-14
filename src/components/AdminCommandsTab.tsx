@@ -18,6 +18,12 @@ import { DeviceConfigurationSection } from './admin-commands/DeviceConfiguration
 import AutoFavoriteManagementSection from './admin-commands/AutoFavoriteManagementSection';
 import { ModuleConfigurationSection } from './admin-commands/ModuleConfigurationSection';
 import { useAdminCommandsState, packMeshBeaconFlags, unpackMeshBeaconFlags, pskToBase64 } from './admin-commands/useAdminCommandsState';
+import {
+  DEFAULT_PUBLIC_PSK,
+  PUBLIC_CHANNEL_PRECISION_MAX_BITS,
+  PUBLIC_CHANNEL_PRECISION_MAX_METERS,
+  exceedsPublicChannelPrecisionClamp,
+} from '../utils/publicChannel';
 import { buildNodeOptions, filterNodes, sortNodeOptionsForRemoteAdmin, type NodeOption } from './admin-commands/nodeOptionsUtils';
 import { createEmptyChannelSlot, createChannelFromResponse, isRetryableChannelError, countLoadedChannels } from './admin-commands/channelLoadingUtils';
 import { UiIcon } from './icons';
@@ -3921,6 +3927,29 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                 className="setting-input"
                 style={{ width: '100%' }}
               />
+              {/*
+                #4705: firmware 2.8+ silently clamps position precision to 15
+                bits on known-public channels. Warn rather than cap the input —
+                2.7.x honours higher values, so capping would break the setting
+                for everyone not yet on 2.8.
+              */}
+              {exceedsPublicChannelPrecisionClamp(channelPsk, channelPositionPrecision) && (
+                <span
+                  className="setting-description"
+                  role="alert"
+                  style={{ color: 'var(--color-warning, #d97706)' }}
+                >
+                  {t(
+                    'admin_commands.position_precision_public_clamp_warning',
+                    'This is a public channel (no encryption or the default {{psk}} key). Firmware 2.8+ reduces position precision to {{bits}} bits (~{{meters}} m) on public channels, so a higher value here will be silently ignored by the radio. Use a custom PSK if you need finer precision.',
+                    {
+                      psk: DEFAULT_PUBLIC_PSK,
+                      bits: PUBLIC_CHANNEL_PRECISION_MAX_BITS,
+                      meters: PUBLIC_CHANNEL_PRECISION_MAX_METERS,
+                    },
+                  )}
+                </span>
+              )}
             </div>
 
             <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
