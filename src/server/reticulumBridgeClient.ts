@@ -56,6 +56,8 @@ import {
   type TelemetryMessage,
   type RadioConfigMessage,
   type DeviceInfoMessage,
+  type ProbeResultMessage,
+  type RemoteStatusMessage,
 } from './reticulumProtocol.js';
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
@@ -207,6 +209,20 @@ export interface ReticulumConnectParams {
   txPower?: number;
   stAlock?: number;
   ltAlock?: number;
+  /**
+   * Phase 4 WP3 (build spec §0 R5): the operator's remote-fleet allowlist —
+   * which remote destination hashes THIS bridge is permitted to query via
+   * `get_remote_status`. Sourced from `sources.config` (`reticulumConfig.ts`)
+   * and forwarded on the wire `configure` message as a comma-separated
+   * `remoteAllowed` field, mirroring the bridge's own `RNS_REMOTE_ALLOWED`
+   * env var format (`config.py`'s `_parse_remote_allowed`). NOTE: the WP2
+   * bridge (`rns_manager.py`) currently only reads its allowlist from that
+   * env var at process startup — `configure()`'s per-field override list
+   * (mode/rns_config_dir/tcp_peers/own_device/own_params) does not yet
+   * include `remote_allowed`, so this is forward-compatible plumbing on the
+   * Node side today, not yet a live per-source override on the bridge side.
+   */
+  remoteAllowed?: string[];
 }
 
 export type ReticulumBridgeClientState =
@@ -255,7 +271,10 @@ interface HandshakeWaiter {
  * request/handshake's promise instead). {@link RadioConfigMessage}/
  * {@link DeviceInfoMessage} (Phase 3 own mode) are never pushed — they only
  * ever arrive as id-correlated replies to {@link getRadioConfig}/
- * {@link setRadioConfig}/{@link getDeviceInfo}.
+ * {@link setRadioConfig}/{@link getDeviceInfo}. {@link ProbeResultMessage}/
+ * {@link RemoteStatusMessage} (Phase 4) are likewise never pushed — they
+ * only ever arrive as id-correlated replies to {@link probe}/
+ * {@link getRemoteStatus}.
  */
 export class ReticulumBridgeClient extends EventEmitter {
   private readonly options: Required<
@@ -518,6 +537,51 @@ export class ReticulumBridgeClient extends EventEmitter {
   }
 
   // --------------------------------------------------------------------
+  // Phase 4 (bridge probe + remote status): id-correlated commands (build
+  // spec §2.A/§2.B/§2.C, #3960 WP2/WP3). Unlike the Phase 3 own-mode radio
+  // family above, NEITHER of these is mode-gated — valid in own/attach/
+  // tcp_peer alike, since all three modes hold a live RNS instance. The
+  // bridge answers each with an id-correlated reply (never a pushed event),
+  // same `sendIdCorrelatedRequest` plumbing as every other command family.
+  // --------------------------------------------------------------------
+
+  /**
+   * rnprobe-style reachability probe (`probe`) against `destinationHash`.
+   * Resolves with a `probe_result` reply — `ok: false` (no path / no proof
+   * within `timeoutS`) is a normal outcome, not a rejection; this promise
+   * only REJECTS on a transport/timeout failure or a typed `PROBE_FAILED`
+   * `ReticulumBridgeError`. Only valid once `ready`.
+   */
+  async probe(params: { destinationHash: string; timeoutS?: number }): Promise<ProbeResultMessage> {
+    const fields: Record<string, unknown> & { type: string } = {
+      type: MESSAGE_TYPE.PROBE,
+      destinationHash: params.destinationHash,
+    };
+    if (params.timeoutS !== undefined) fields.timeoutS = params.timeoutS;
+    return this.sendIdCorrelatedRequest<ProbeResultMessage>(fields, 'probe_result reply');
+  }
+
+  /**
+   * Query a remote Transport Node's `/status` + `/path` (`get_remote_status`)
+   * — RNS's built-in `rnstransport.remote.management` interface. Resolves
+   * with a `remote_status` reply — `ok: false` (no path / link never
+   * established) is a normal outcome; this promise REJECTS on a transport/
+   * timeout failure or a typed `ReticulumBridgeError`
+   * (`REMOTE_STATUS_FAILED` for a generic bridge-side exception,
+   * `REMOTE_MANAGEMENT_DENIED` once the link established but both requests
+   * failed to conclude — see that failure code's doc in
+   * `reticulumProtocol.ts`). Only valid once `ready`.
+   */
+  async getRemoteStatus(params: { destinationHash: string; timeoutS?: number }): Promise<RemoteStatusMessage> {
+    const fields: Record<string, unknown> & { type: string } = {
+      type: MESSAGE_TYPE.GET_REMOTE_STATUS,
+      destinationHash: params.destinationHash,
+    };
+    if (params.timeoutS !== undefined) fields.timeoutS = params.timeoutS;
+    return this.sendIdCorrelatedRequest<RemoteStatusMessage>(fields, 'remote_status reply');
+  }
+
+  // --------------------------------------------------------------------
   // Connection lifecycle
   // --------------------------------------------------------------------
 
@@ -650,6 +714,11 @@ export class ReticulumBridgeClient extends EventEmitter {
       if (params.txPower !== undefined) fields.txPower = params.txPower;
       if (params.stAlock !== undefined) fields.stAlock = params.stAlock;
       if (params.ltAlock !== undefined) fields.ltAlock = params.ltAlock;
+      // Phase 4 WP3 (build spec §0 R5): forward the remote-fleet allowlist as
+      // a comma-separated string, matching RNS_REMOTE_ALLOWED's wire format.
+      if (params.remoteAllowed !== undefined && params.remoteAllowed.length > 0) {
+        fields.remoteAllowed = params.remoteAllowed.join(',');
+      }
       this.send(fields);
     });
   }
