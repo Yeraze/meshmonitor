@@ -5,15 +5,18 @@
  *   ┌─ status bar (connected / mode / counts) ─────────┐
  *   ├─┬──────────────────────────────────────────────────┤
  *   │ │  ReticulumSubToolbar  │  current view            │
- *   │ │  (narrow, expandable) │  (destinations/interfaces/│
- *   │ │                       │   info/settings)          │
+ *   │ │  (narrow, expandable) │  (destinations/dms/       │
+ *   │ │                       │   interfaces/info/       │
+ *   │ │                       │   settings)               │
  *   └─┴──────────────────────────────────────────────────┘
  *
- * Talks to /api/sources/:id/reticulum/* via `useReticulum` (WP1). The four
- * view slots below are stubs — WP3 (`ReticulumDestinationsView`), WP4
- * (`ReticulumInterfacesView`), and WP5 (`ReticulumInfoView` +
- * `ReticulumSettingsView`) drop their real components into the marked seams
- * without needing to touch this file's structure.
+ * Talks to /api/sources/:id/reticulum/* via `useReticulum` (WP1, extended
+ * Phase 2 WP5 with LXMF conversations/messages). The view slots below are
+ * stubs turned real components across several work packages: WP3
+ * (`ReticulumDestinationsView`), WP4 (`ReticulumInterfacesView`), and WP5
+ * (`ReticulumInfoView`, `ReticulumSettingsView`, `ReticulumDmsView`) drop
+ * their real components into the marked seams without needing to touch this
+ * file's structure.
  */
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -21,6 +24,7 @@ import { useReticulum } from './hooks/useReticulum';
 import { ReticulumSubToolbar } from './ReticulumSubToolbar';
 import { ReticulumDestinationsView } from './ReticulumDestinationsView';
 import { ReticulumInterfacesView } from './ReticulumInterfacesView';
+import { ReticulumDmsView } from './ReticulumDmsView';
 import { ReticulumInfoView } from './ReticulumInfoView';
 import { ReticulumSettingsView } from './ReticulumSettingsView';
 import { SaveBarProvider, SaveBarGroup } from '../../contexts/SaveBarContext';
@@ -42,7 +46,11 @@ interface ReticulumPageProps {
 
 export const ReticulumPage: React.FC<ReticulumPageProps> = ({ baseUrl, sourceId, enabled, onStatusChange }) => {
   const { t } = useTranslation();
-  const { status, destinations, interfaces, loading, error, refresh, toggleFavorite } = useReticulum({ sourceId, enabled });
+  const {
+    status, destinations, interfaces, loading, error, refresh, toggleFavorite,
+    conversations, conversationsLoading, activePeerHash, messages, messagesLoading, hasMoreMessages,
+    loadConversation, loadMoreMessages, sendMessage, identity,
+  } = useReticulum({ sourceId, enabled });
 
   const [view, setView] = useState<ReticulumView>('destinations');
   const [toolbarExpanded, setToolbarExpanded] = useState(false);
@@ -104,6 +112,22 @@ export const ReticulumPage: React.FC<ReticulumPageProps> = ({ baseUrl, sourceId,
               destinations={destinations}
               onToggleFavorite={toggleFavorite}
               loading={loading}
+            />
+          )}
+          {view === 'dms' && (
+            <ReticulumDmsView
+              sourceId={sourceId}
+              conversations={conversations}
+              conversationsLoading={conversationsLoading}
+              activePeerHash={activePeerHash}
+              messages={messages}
+              messagesLoading={messagesLoading}
+              hasMoreMessages={hasMoreMessages}
+              identity={identity}
+              destinations={destinations}
+              onSelectConversation={loadConversation}
+              onLoadMoreMessages={loadMoreMessages}
+              onSend={sendMessage}
             />
           )}
           {view === 'interfaces' && (
