@@ -62,16 +62,22 @@ function channelLabel(e: Record<string, unknown>): string | undefined {
  * The one trigger-specific line, keyed off marker fields unique to each builder:
  * `telemetryType` (telemetry), `distanceMeters` (leftHome), `previousMobile`
  * (becameMobile), `changed` (node discovered/updated), `event` (geofence + system).
+ *
+ * Order matters only where a payload could carry two markers; today none do.
  */
 function detailLabel(e: Record<string, unknown>): string | undefined {
-  if (e.telemetryType != null || e.value != null) {
+  // Each test keys ONLY on the field unique to its builder, never on a field a
+  // future builder might plausibly reuse (`value`, `mobile`): a bare `value` must
+  // not read as telemetry, and a bare `mobile` must not read as a mobility flip.
+  const telemetryType = str(e.telemetryType);
+  if (telemetryType) {
     const unit = str(e.unit);
-    return `${str(e.telemetryType) ?? '?'} = ${str(e.value) ?? '?'}${unit ? ` ${unit}` : ''}`;
+    return `${telemetryType} = ${str(e.value) ?? '?'}${unit ? ` ${unit}` : ''}`;
   }
   if (typeof e.distanceMeters === 'number') {
     return `left home · ${Math.round(e.distanceMeters)}m`;
   }
-  if (e.previousMobile != null || e.mobile != null) {
+  if (e.previousMobile != null) {
     return 'became mobile';
   }
   if (Array.isArray(e.changed)) {

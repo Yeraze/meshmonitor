@@ -459,7 +459,8 @@ function RunRow({ run }: { run: Run }) {
       {run.triggerEvent && (
         <details className="ae-trace-steps-wrap">
           <summary className="ae-muted">trigger payload</summary>
-          <pre className="ae-muted ae-run-raw">{run.triggerEvent}</pre>
+          {/* Stored minified; `pretty` falls back to the raw string if it won't parse. */}
+          <pre className="ae-muted ae-run-raw">{pretty(run.triggerEvent)}</pre>
         </details>
       )}
     </div>

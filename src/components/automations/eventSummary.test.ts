@@ -81,6 +81,20 @@ describe('summarizeTriggerEvent', () => {
       .toBe('changed: longName, hwModel');
   });
 
+  it('keys each detail on the field unique to its builder, not a reusable one', () => {
+    // Review feedback on #4716: `value` and `mobile` are generic enough that a
+    // future builder could plausibly carry them. Only `telemetryType` may mean
+    // telemetry, and only `previousMobile` may mean a mobility flip — otherwise a
+    // payload that merely happens to have `value`/`mobile` gets mislabelled.
+    expect(summarizeTriggerEvent({ nodeNum: 1, value: 42 }).detail).toBeUndefined();
+    expect(summarizeTriggerEvent({ nodeNum: 1, mobile: 1 }).detail).toBeUndefined();
+    // …and the genuine articles still resolve.
+    expect(summarizeTriggerEvent({ nodeNum: 1, telemetryType: 'ch1Voltage', value: 12 }).detail)
+      .toBe('ch1Voltage = 12');
+    expect(summarizeTriggerEvent({ nodeNum: 1, previousMobile: 0, mobile: 1 }).detail)
+      .toBe('became mobile');
+  });
+
   it('reads a MeshBeacon body as the text, and its offer as the detail', () => {
     const s = summarizeTriggerEvent({ nodeNum: 11, message: 'join us', offerChannelName: 'RegionMesh', hasOffer: true });
     expect(s.text).toBe('join us');

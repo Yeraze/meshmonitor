@@ -91,7 +91,7 @@ describe('AutomationsPage — Runs view', () => {
     expect(screen.queryByText(JSON.stringify(STEPS))).not.toBeInTheDocument();
   });
 
-  it('keeps the full captured payload available behind a details toggle', async () => {
+  it('keeps the full captured payload available behind a details toggle, pretty-printed', async () => {
     const raw = JSON.stringify(TRIGGER_EVENT);
     mockRuns([{
       id: 'run-1', status: 'completed', sourceId: 'src-1', startedAt: 1_700_000_123_000,
@@ -100,7 +100,12 @@ describe('AutomationsPage — Runs view', () => {
     await openRuns();
 
     expect(await screen.findByText('trigger payload')).toBeInTheDocument();
-    expect(screen.getByText(raw)).toBeInTheDocument();
+    // `getByText` collapses whitespace, so assert on the element: the payload is
+    // stored minified and rendered indented (#4716 review), losing nothing.
+    const pre = document.querySelector('details .ae-run-raw') as HTMLElement;
+    expect(pre).not.toBeNull();
+    expect(JSON.parse(pre.textContent!)).toEqual(TRIGGER_EVENT);
+    expect(pre.textContent).toContain('\n  "fromName": "Base Station"');
   });
 
   it('renders a DM run without inventing a channel', async () => {
