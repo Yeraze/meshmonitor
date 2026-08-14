@@ -135,6 +135,12 @@ describe('bridgeTemplate', () => {
     }
   });
 
+  it('sets includeSelf:true on both triggers so the operator\'s own outgoing messages still relay (#4694)', () => {
+    for (const a of buildPair(FULL_PARAMS)) {
+      expect(node(a.config, 't').params.includeSelf).toBe(true);
+    }
+  });
+
   it('never emits a portnum trigger param on either direction (would silently go Meshtastic-only)', () => {
     for (const a of buildPair(FULL_PARAMS)) {
       expect(node(a.config, 't').params).not.toHaveProperty('portnum');

@@ -126,6 +126,13 @@ export const TRIGGERS: BlockDef[] = [
       { name: 'from', label: 'From node #', kind: 'number', placeholder: 'any', advanced: true, help: 'Only fire for messages from this node number.' },
       COOLDOWN,
       COOLDOWN_SCOPE,
+      // `includeSelf` (bypasses the engine's #3914 self-origin guard, #4694) is
+      // deliberately NOT a field here, same as `rateLimit` (also trigger.message-
+      // only and also absent from this list) — both are template-internal params
+      // set directly by bridge.ts, not general builder options. Exposing
+      // `includeSelf` as a checkbox would let a user re-create the self-reply
+      // loop #3914 exists to prevent; don't add one without a loop-safety story
+      // for whatever automation would use it.
     ],
   },
   {
