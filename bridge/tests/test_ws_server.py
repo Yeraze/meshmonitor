@@ -22,14 +22,19 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from meshmonitor_rns_bridge import protocol
+from meshmonitor_rns_bridge.rns_manager import OwnModeRequiredError
 from meshmonitor_rns_bridge.ws_server import (
     _handle_announce_self,
+    _handle_get_device_info,
     _handle_get_identity,
+    _handle_get_radio_config,
     _handle_import_identity,
     _handle_send_lxmf,
     _handle_set_display_name,
     _handle_set_propagation_node,
+    _handle_set_radio_config,
     _handle_sync_propagation,
+    _parse_own_params,
     _tokens_match,
 )
 
@@ -242,3 +247,146 @@ def test_import_identity_error_path_responds_with_error(ws, manager):
     _handle_import_identity(ws, manager, {"id": "c9", "type": protocol.TYPE_IMPORT_IDENTITY, "privateKeyB64": "!!"})
     assert ws.last["type"] == protocol.TYPE_ERROR
     assert ws.last["code"] == protocol.LXMF_COMMAND_FAILED
+
+
+# --------------------------------------------------------------------------
+# Phase 3 (own mode + RNode radio config/device info, #3960 WP1): three new
+# command handlers. Each is exercised happy-path, own-mode-required
+# (typed error), and generic-failure paths, per build spec §2.B "return a
+# typed own-mode-required error, never crash".
+# --------------------------------------------------------------------------
+
+
+def test_parse_own_params_extracts_known_wire_fields():
+    req = {
+        "frequency": 914875000,
+        "bandwidth": 125000,
+        "spreadingFactor": 8,
+        "codingRate": 5,
+        "txPower": 17,
+        "stAlock": 33.3,
+        "ltAlock": None,
+        "unrelatedField": "ignored",
+    }
+    assert _parse_own_params(req) == {
+        "frequency": 914875000,
+        "bandwidth": 125000,
+        "sf": 8,
+        "cr": 5,
+        "txpower": 17,
+        "st_alock": 33.3,
+    }
+
+
+def test_parse_own_params_returns_none_when_no_fields_present():
+    assert _parse_own_params({"mode": "own", "device": "/dev/ttyUSB0"}) is None
+
+
+def test_get_radio_config_happy_path(ws, manager):
+    manager.get_radio_config.return_value = {
+        "frequency": 914875000,
+        "bandwidth": 125000,
+        "spreadingFactor": 8,
+        "codingRate": 5,
+        "txPower": 17,
+        "stAlock": None,
+        "ltAlock": None,
+        "radioState": True,
+    }
+    _handle_get_radio_config(ws, manager, {"id": "c10", "type": protocol.TYPE_GET_RADIO_CONFIG})
+    assert ws.last["type"] == protocol.TYPE_RADIO_CONFIG
+    assert ws.last["id"] == "c10"
+    assert ws.last["frequency"] == 914875000
+    assert ws.last["radioState"] is True
+
+
+def test_get_radio_config_own_mode_required(ws, manager):
+    manager.get_radio_config.side_effect = OwnModeRequiredError("not in own mode")
+    _handle_get_radio_config(ws, manager, {"id": "c10", "type": protocol.TYPE_GET_RADIO_CONFIG})
+    assert ws.last["type"] == protocol.TYPE_ERROR
+    assert ws.last["id"] == "c10"
+    assert ws.last["code"] == protocol.OWN_MODE_REQUIRED
+
+
+def test_get_radio_config_generic_failure(ws, manager):
+    manager.get_radio_config.side_effect = RuntimeError("boom")
+    _handle_get_radio_config(ws, manager, {"id": "c10", "type": protocol.TYPE_GET_RADIO_CONFIG})
+    assert ws.last["type"] == protocol.TYPE_ERROR
+    assert ws.last["code"] == protocol.RNODE_COMMAND_FAILED
+
+
+def test_set_radio_config_happy_path_extracts_params_and_forwards(ws, manager):
+    manager.set_radio_config.return_value = {
+        "frequency": 915000000,
+        "bandwidth": 125000,
+        "spreadingFactor": 8,
+        "codingRate": 5,
+        "txPower": 20,
+        "stAlock": None,
+        "ltAlock": None,
+        "radioState": True,
+    }
+    req = {
+        "id": "c11",
+        "type": protocol.TYPE_SET_RADIO_CONFIG,
+        "frequency": 915000000,
+        "txPower": 20,
+        "bandwidth": None,
+    }
+    _handle_set_radio_config(ws, manager, req)
+
+    manager.set_radio_config.assert_called_once_with({"frequency": 915000000, "txPower": 20})
+    assert ws.last["type"] == protocol.TYPE_RADIO_CONFIG
+    assert ws.last["id"] == "c11"
+    assert ws.last["txPower"] == 20
+
+
+def test_set_radio_config_own_mode_required(ws, manager):
+    manager.set_radio_config.side_effect = OwnModeRequiredError("not in own mode")
+    _handle_set_radio_config(ws, manager, {"id": "c11", "type": protocol.TYPE_SET_RADIO_CONFIG, "frequency": 915000000})
+    assert ws.last["type"] == protocol.TYPE_ERROR
+    assert ws.last["code"] == protocol.OWN_MODE_REQUIRED
+
+
+def test_set_radio_config_generic_failure(ws, manager):
+    manager.set_radio_config.side_effect = RuntimeError("boom")
+    _handle_set_radio_config(ws, manager, {"id": "c11", "type": protocol.TYPE_SET_RADIO_CONFIG, "frequency": 1})
+    assert ws.last["type"] == protocol.TYPE_ERROR
+    assert ws.last["code"] == protocol.RNODE_COMMAND_FAILED
+
+
+def test_get_device_info_happy_path(ws, manager):
+    manager.get_device_info.return_value = {
+        "firmwareVersion": "1.52",
+        "mcu": 0x1E,
+        "platform": 0x80,
+        "chipTemp": 34,
+        "csma": {"cwBand": 2, "cwMin": 3, "cwMax": 8},
+        "phy": {
+            "symbolTimeMs": 32.768,
+            "symbolRate": 976,
+            "preambleSymbols": 12,
+            "preambleTimeMs": 393,
+            "csmaSlotTimeMs": 15,
+            "csmaDifsMs": 45,
+        },
+    }
+    _handle_get_device_info(ws, manager, {"id": "c12", "type": protocol.TYPE_GET_DEVICE_INFO})
+    assert ws.last["type"] == protocol.TYPE_DEVICE_INFO
+    assert ws.last["id"] == "c12"
+    assert ws.last["firmwareVersion"] == "1.52"
+    assert ws.last["csma"]["cwBand"] == 2
+
+
+def test_get_device_info_own_mode_required(ws, manager):
+    manager.get_device_info.side_effect = OwnModeRequiredError("not in own mode")
+    _handle_get_device_info(ws, manager, {"id": "c12", "type": protocol.TYPE_GET_DEVICE_INFO})
+    assert ws.last["type"] == protocol.TYPE_ERROR
+    assert ws.last["code"] == protocol.OWN_MODE_REQUIRED
+
+
+def test_get_device_info_generic_failure(ws, manager):
+    manager.get_device_info.side_effect = RuntimeError("boom")
+    _handle_get_device_info(ws, manager, {"id": "c12", "type": protocol.TYPE_GET_DEVICE_INFO})
+    assert ws.last["type"] == protocol.TYPE_ERROR
+    assert ws.last["code"] == protocol.RNODE_COMMAND_FAILED

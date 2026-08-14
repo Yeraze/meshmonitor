@@ -22,7 +22,7 @@ from websockets.sync.server import serve as ws_serve
 
 from . import protocol
 from .config import TcpPeer
-from .rns_manager import RNSManager, RNSStartupError
+from .rns_manager import OwnModeRequiredError, RNSManager, RNSStartupError
 
 logger = logging.getLogger("meshmonitor_rns_bridge.ws_server")
 
@@ -76,12 +76,41 @@ def _parse_peers(raw_peers) -> Optional[list]:
     return peers
 
 
+_OWN_PARAM_FIELDS = (
+    ("frequency", "frequency"),
+    ("bandwidth", "bandwidth"),
+    ("spreadingFactor", "sf"),
+    ("codingRate", "cr"),
+    ("txPower", "txpower"),
+    ("stAlock", "st_alock"),
+    ("ltAlock", "lt_alock"),
+)
+
+
+def _parse_own_params(req: dict) -> "dict | None":
+    """Parses the `configure` message's own-mode radio-param fields (build
+    spec §2.C) into the internal wire-agnostic key names
+    `RNSManager._start_own()`/`_build_rnode_ifconf()` expect (mirrors
+    `config.py`'s `own_radio_params()` for the env-var-driven path). Returns
+    None (not an empty dict) when no own-mode fields are present, so
+    `RNSManager.start()`'s "only override when explicitly provided"
+    contract for `own_params` is preserved."""
+    params: dict = {}
+    for wire_key, param_key in _OWN_PARAM_FIELDS:
+        value = req.get(wire_key)
+        if value is not None:
+            params[param_key] = value
+    return params or None
+
+
 def _handle_configure(websocket, manager: RNSManager, req: dict) -> "queue.Queue | None":
     """Handles a `configure` message. Returns a freshly-subscribed queue.Queue if
     this call started (or found already-started) the manager, else None."""
     mode = req.get("mode")
     config_dir = req.get("configDir")
     peers = _parse_peers(req.get("peers"))
+    device = req.get("device")
+    own_params = _parse_own_params(req)
     req_id = req.get("id")
 
     try:
@@ -90,7 +119,9 @@ def _handle_configure(websocket, manager: RNSManager, req: dict) -> "queue.Queue
         # registers SIGINT/SIGTERM handlers, which Python restricts to the main
         # thread). request_start() hands off to RNSManager.run_dispatcher(), which
         # __main__.py runs on the main thread, and blocks here for the result.
-        manager.request_start(mode=mode, rns_config_dir=config_dir, tcp_peers=peers)
+        manager.request_start(
+            mode=mode, rns_config_dir=config_dir, tcp_peers=peers, own_device=device, own_params=own_params
+        )
     except RNSStartupError as e:
         _safe_send(websocket, protocol.error_message(e.code, e.message, id=req_id))
         return None
@@ -197,6 +228,61 @@ def _handle_import_identity(websocket, manager: RNSManager, req: dict) -> None:
     _safe_send(websocket, protocol.ready_message(id=req_id))
 
 
+# --------------------------------------------------------------------------
+# Phase 3 (own mode + RNode radio config/device info, build spec §2.B/§2.C,
+# #3960 WP1): three new command handlers. Each catches OwnModeRequiredError
+# FIRST and specifically (typed OWN_MODE_REQUIRED error, per build spec
+# §2.B "return a typed own-mode-required error, never crash"), then falls
+# back to the generic exception-wrapped RNODE_COMMAND_FAILED for any other
+# failure -- same shape as the Phase 2 LXMF handlers above, just with an
+# extra typed-error tier.
+# --------------------------------------------------------------------------
+
+
+def _handle_get_radio_config(websocket, manager: RNSManager, req: dict) -> None:
+    req_id = req.get("id")
+    try:
+        config = manager.get_radio_config()
+    except OwnModeRequiredError as e:
+        _safe_send(websocket, protocol.error_message(protocol.OWN_MODE_REQUIRED, str(e), id=req_id))
+        return
+    except Exception as e:
+        _safe_send(websocket, protocol.error_message(protocol.RNODE_COMMAND_FAILED, str(e), id=req_id))
+        return
+    _safe_send(websocket, protocol.radio_config_message(id=req_id, **config))
+
+
+def _handle_set_radio_config(websocket, manager: RNSManager, req: dict) -> None:
+    req_id = req.get("id")
+    params = {
+        key: req[key]
+        for key in ("frequency", "bandwidth", "spreadingFactor", "codingRate", "txPower", "stAlock", "ltAlock", "radioState")
+        if key in req and req[key] is not None
+    }
+    try:
+        config = manager.set_radio_config(params)
+    except OwnModeRequiredError as e:
+        _safe_send(websocket, protocol.error_message(protocol.OWN_MODE_REQUIRED, str(e), id=req_id))
+        return
+    except Exception as e:
+        _safe_send(websocket, protocol.error_message(protocol.RNODE_COMMAND_FAILED, str(e), id=req_id))
+        return
+    _safe_send(websocket, protocol.radio_config_message(id=req_id, **config))
+
+
+def _handle_get_device_info(websocket, manager: RNSManager, req: dict) -> None:
+    req_id = req.get("id")
+    try:
+        info = manager.get_device_info()
+    except OwnModeRequiredError as e:
+        _safe_send(websocket, protocol.error_message(protocol.OWN_MODE_REQUIRED, str(e), id=req_id))
+        return
+    except Exception as e:
+        _safe_send(websocket, protocol.error_message(protocol.RNODE_COMMAND_FAILED, str(e), id=req_id))
+        return
+    _safe_send(websocket, protocol.device_info_message(id=req_id, **info))
+
+
 def _handle_connection(websocket, manager: RNSManager, cfg, bridge_version: str) -> None:
     peer = getattr(websocket, "remote_address", None)
     logger.info("connection opened from %s", peer)
@@ -294,6 +380,15 @@ def _handle_connection(websocket, manager: RNSManager, cfg, bridge_version: str)
 
             elif req_type == protocol.TYPE_IMPORT_IDENTITY:
                 _handle_import_identity(websocket, manager, req)
+
+            elif req_type == protocol.TYPE_GET_RADIO_CONFIG:
+                _handle_get_radio_config(websocket, manager, req)
+
+            elif req_type == protocol.TYPE_SET_RADIO_CONFIG:
+                _handle_set_radio_config(websocket, manager, req)
+
+            elif req_type == protocol.TYPE_GET_DEVICE_INFO:
+                _handle_get_device_info(websocket, manager, req)
 
             else:
                 logger.debug("ignoring unknown message type %r from %s", req_type, peer)
