@@ -1,7 +1,7 @@
 import { useMemo, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, LocateFixed, Maximize, Clock, Ruler, Mountain, RotateCcw,
+  ArrowLeft, LocateFixed, Maximize, Clock, Ruler, Mountain, RadioTower, RotateCcw,
   MapPin, Palette, Flag, CircleDashed, Radar, Route, Share2, Flame, Spline, Signal, Box, Users,
 } from 'lucide-react';
 import { useDashboardSources } from '../../hooks/useDashboardData';
@@ -69,6 +69,8 @@ export default function MapAnalysisToolbar() {
     measureMode,
     setMeasureMode,
     linkProfileMode,
+    sitePlannerMode,
+    setSitePlannerMode,
     setLinkProfileMode,
     reset,
   } = useMapAnalysisCtx();
@@ -274,6 +276,31 @@ export default function MapAnalysisToolbar() {
           aria-label="Link Profile"
         >
           <Mountain size={ICON} />
+        </button>
+      )}
+
+      {/* Site Planner (#4727). Gated on elevation like Link Profile — both are
+          terrain tools and neither can say anything useful without a DEM.
+          Unlike Link Profile it needs NO existing nodes: siting a repeater is
+          the main use, and that means places where no node exists yet. */}
+      {elevationEnabled && (
+        <button
+          type="button"
+          className={`map-analysis-layer-btn icon-only ${sitePlannerMode ? 'active' : ''}`}
+          onClick={() => {
+            const next = !sitePlannerMode;
+            setSitePlannerMode(next);
+            // Mutually exclusive with the other click-capturing tools —
+            // two capture-phase listeners would both eat the same click.
+            if (next) {
+              setMeasureMode(false);
+              setLinkProfileMode(false);
+            }
+          }}
+          title="Site Planner — predict outbound coverage over terrain from any point"
+          aria-label="Site Planner"
+        >
+          <RadioTower size={ICON} />
         </button>
       )}
       {UNTIMED_LAYERS.map(({ key, label, icon }) => (

@@ -5068,5 +5068,22 @@
   "survey.hops_direct": "Direct",
   "survey.hops_n_one": "{{count}} hop",
   "survey.hops_n_other": "{{count}} hops",
-  "nodes.position_history_simplified": "Trail simplified — intermediate fixes between these points are not drawn."
+  "nodes.position_history_simplified": "Trail simplified — intermediate fixes between these points are not drawn.",
+  "site_planner.title": "Site planner",
+  "site_planner.pick_origin": "Click a node or anywhere on the map to choose a transmitter site.",
+  "site_planner.origin_node": "Predicting from {{name}}.",
+  "site_planner.origin_point": "Predicting from {{lat}}, {{lng}} (no node here yet).",
+  "site_planner.tx_height": "TX antenna (m)",
+  "site_planner.rx_height": "RX antenna (m)",
+  "site_planner.radius": "Search radius (km)",
+  "site_planner.tx_power": "TX power (dBm)",
+  "site_planner.tx_gain": "TX gain (dBi)",
+  "site_planner.sensitivity": "Sensitivity (dBm)",
+  "site_planner.seeded": "Read from this radio: {{fields}}. Everything else is assumed — edit if you know better.",
+  "site_planner.not_seeded": "No radio config available, so all values are assumed. Edit them to match your setup.",
+  "site_planner.predict": "Predict coverage",
+  "site_planner.running": "Predicting…",
+  "site_planner.clear": "Clear",
+  "site_planner.failed": "Could not compute coverage.",
+  "site_planner.caveat": "Modelled from terrain only — no buildings, foliage or multipath. A prediction, not a measurement."
 }

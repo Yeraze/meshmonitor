@@ -1,6 +1,8 @@
 import { createContext, useContext, useRef, useState, ReactNode, type RefObject } from 'react';
 import { useMapAnalysisConfig } from '../../hooks/useMapAnalysisConfig';
 import type { LinkEndpoint, LinkVerdict } from '../../utils/linkProfile';
+import type { SitePlannerOrigin } from './SitePlannerOriginController';
+import type { PredictedCoverage } from '../map/layers/predictedCoverageGeometry';
 
 export interface SelectedTarget {
   type: 'node' | 'segment' | 'neighbor' | 'trail';
@@ -52,6 +54,13 @@ type CtxShape = ReturnType<typeof useMapAnalysisConfig> & {
    * toolbar's button handlers, not here (see `MapAnalysisToolbar.tsx`).
    */
   linkProfileMode: boolean;
+  /** Site Planner (#4727): origin-pick mode, chosen origin, and the last result. */
+  sitePlannerMode: boolean;
+  setSitePlannerMode: (v: boolean) => void;
+  sitePlannerOrigin: SitePlannerOrigin | null;
+  setSitePlannerOrigin: (v: SitePlannerOrigin | null) => void;
+  predictedCoverage: PredictedCoverage | null;
+  setPredictedCoverage: (v: PredictedCoverage | null) => void;
   setLinkProfileMode: (m: boolean) => void;
   /** Picked endpoints (0..2) for the Link Profile tool; transient, not persisted. */
   linkEndpoints: LinkEndpoint[];
@@ -110,6 +119,9 @@ export function MapAnalysisProvider({ children }: { children: ReactNode }) {
   const [followPaused, setFollowPaused] = useState(false);
   const [measureMode, setMeasureMode] = useState(false);
   const [linkProfileMode, setLinkProfileMode] = useState(false);
+  const [sitePlannerMode, setSitePlannerMode] = useState(false);
+  const [sitePlannerOrigin, setSitePlannerOrigin] = useState<SitePlannerOrigin | null>(null);
+  const [predictedCoverage, setPredictedCoverage] = useState<PredictedCoverage | null>(null);
   const [linkEndpoints, setLinkEndpoints] = useState<LinkEndpoint[]>([]);
   const [linkVerdict, setLinkVerdict] = useState<LinkVerdict | null>(null);
   const [hoverPoint, setHoverPoint] = useState<{ lat: number; lng: number } | null>(null);
@@ -127,6 +139,12 @@ export function MapAnalysisProvider({ children }: { children: ReactNode }) {
         measureMode,
         setMeasureMode,
         linkProfileMode,
+        sitePlannerMode,
+        setSitePlannerMode,
+        sitePlannerOrigin,
+        setSitePlannerOrigin,
+        predictedCoverage,
+        setPredictedCoverage,
         setLinkProfileMode,
         linkEndpoints,
         setLinkEndpoints,

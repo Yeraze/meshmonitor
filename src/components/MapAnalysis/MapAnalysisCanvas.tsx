@@ -4,11 +4,15 @@ import type maplibregl from 'maplibre-gl';
 import 'leaflet/dist/leaflet.css';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useMapAnalysisCtx } from './MapAnalysisContext';
+import { useSource } from '../../contexts/SourceContext';
 import { useAnalysisNodes } from './useAnalysisNodes';
 import MeasureDistanceController from '../MeasureDistanceController';
 import type { MeasurePoint } from '../../utils/measureDistance';
 import LinkProfileController from './LinkProfileController';
 import LinkProfileDrawer from './LinkProfileDrawer';
+import SitePlannerOriginController from './SitePlannerOriginController';
+import SitePlannerPanel from './SitePlannerPanel';
+import PredictedCoverageLayer from '../map/layers/PredictedCoverageLayer';
 import LinkProfileHoverLayer from './LinkProfileHoverLayer';
 import type { LinkEndpoint } from '../../utils/linkProfile';
 import { BaseMap } from '../map/BaseMap';
@@ -62,6 +66,12 @@ export default function MapAnalysisCanvas() {
     measureMode,
     setMeasureMode,
     linkProfileMode,
+    sitePlannerMode,
+    setSitePlannerMode,
+    sitePlannerOrigin,
+    setSitePlannerOrigin,
+    predictedCoverage,
+    setPredictedCoverage,
     setLinkProfileMode,
     linkEndpoints,
     setLinkEndpoints,
@@ -69,6 +79,10 @@ export default function MapAnalysisCanvas() {
     setExaggeration,
     mapViewRef,
   } = useMapAnalysisCtx();
+  // Seeds the Site Planner's radio parameters (#4727). Null outside a
+  // SourceProvider, which the panel handles by falling back to assumed values
+  // rather than inventing a config.
+  const { sourceId: activeSourceId } = useSource();
 
   // #3636: measurement endpoints, from the same visible+positioned node list
   // the markers layer uses so the two never disagree.
@@ -276,6 +290,21 @@ export default function MapAnalysisCanvas() {
             verdict={linkVerdict}
           />
         )}
+        {/* Site Planner (#4727). The predicted-coverage polygon sits BELOW the
+            node markers so a prediction never hides the real data it is
+            reasoning about. */}
+        {sitePlannerMode && (
+          <SitePlannerOriginController
+            active={sitePlannerMode}
+            points={linkEndpointCandidates}
+            origin={sitePlannerOrigin}
+            onPick={setSitePlannerOrigin}
+            onExit={() => setSitePlannerMode(false)}
+          />
+        )}
+        <Pane name="predictedCoverage" style={{ zIndex: 420 }}>
+          <PredictedCoverageLayer coverage={predictedCoverage} visible={sitePlannerMode} />
+        </Pane>
         <Pane name="waypoints" style={{ zIndex: 650 }}>
           {config.layers.waypoints.enabled && <WaypointsLayer />}
         </Pane>
@@ -321,6 +350,13 @@ export default function MapAnalysisCanvas() {
       <MapLegend />
       <FollowResumeButton />
       <LinkProfileDrawer />
+      <SitePlannerPanel
+        open={sitePlannerMode}
+        sourceId={activeSourceId}
+        origin={sitePlannerOrigin}
+        onClose={() => setSitePlannerMode(false)}
+        onCoverage={setPredictedCoverage}
+      />
     </div>
   );
 }
