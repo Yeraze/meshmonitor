@@ -14,7 +14,11 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { downsamplePositionHistory, MAX_RENDERED_POSITION_POINTS } from '../utils/positionHistoryDownsample';
+import {
+  downsamplePositionHistory,
+  MAX_RENDERED_POSITION_POINTS,
+  MAX_ACCUMULATED_POSITION_FIXES,
+} from '../utils/positionHistoryDownsample';
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const nodesTab = readFileSync(join(dir, 'NodesTab.tsx'), 'utf8');
@@ -64,13 +68,12 @@ describe('history fetching is bounded', () => {
   it('stops accumulating once it holds enough fixes', () => {
     // The other half of the freeze: 50 sequential requests, each followed by a
     // state update and a full re-render of the trail.
-    expect(app).toContain('MAX_ACCUMULATED_FIXES');
-    expect(app).toContain('if (accumulated.length >= MAX_ACCUMULATED_FIXES) break;');
+    expect(app).toContain('if (accumulated.length >= MAX_ACCUMULATED_POSITION_FIXES) break;');
   });
 
   it('fetches more than it draws, so the trail still spans full history', () => {
-    const m = /const MAX_ACCUMULATED_FIXES = (\d+);/.exec(app);
-    expect(m, 'MAX_ACCUMULATED_FIXES not found').toBeTruthy();
-    expect(Number(m![1])).toBeGreaterThan(MAX_RENDERED_POSITION_POINTS);
+    // Both caps are now exported from one module, so this compares the real
+    // values rather than a number scraped out of source text (review note).
+    expect(MAX_ACCUMULATED_POSITION_FIXES).toBeGreaterThan(MAX_RENDERED_POSITION_POINTS);
   });
 });

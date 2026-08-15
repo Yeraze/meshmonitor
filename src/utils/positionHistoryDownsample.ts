@@ -22,6 +22,12 @@
  * Evenly sample `items` down to at most `maxPoints`, always keeping the first
  * and last entries.
  *
+ * One documented exception to "at most": `maxPoints` below 2 still returns two
+ * entries (first and last) when the input has them, because a single point
+ * draws no segment and callers of this are drawing lines. The cap is a
+ * rendering budget, and one point is not a smaller drawing than two — it is no
+ * drawing at all.
+ *
  * Preserving the endpoints is load-bearing: the map legend reads the oldest and
  * newest timestamps off this array, so dropping either would misreport the
  * trail's time span while the line itself still looked right.
@@ -56,3 +62,16 @@ export function downsamplePositionHistory<T>(items: T[], maxPoints: number): T[]
  * still drives the legend's time span.
  */
 export const MAX_RENDERED_POSITION_POINTS = 500;
+
+/**
+ * Maximum position fixes accumulated by the progressive history fetch.
+ *
+ * Lives beside the render budget so the relationship between them is visible:
+ * this must stay comfortably ABOVE `MAX_RENDERED_POSITION_POINTS`, so the
+ * drawn trail still spans the node's full recorded history and only detail
+ * nothing consumes is dropped.
+ *
+ * Bounds the OTHER half of the #4743 freeze — walking all 50 pages meant 50
+ * sequential round trips, each followed by a state update and a full re-render.
+ */
+export const MAX_ACCUMULATED_POSITION_FIXES = 5000;
