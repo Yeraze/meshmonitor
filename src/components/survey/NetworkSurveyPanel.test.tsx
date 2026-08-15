@@ -168,3 +168,14 @@ describe('stylesheet', () => {
     expect(Array.from(used).filter((c) => !defined.has(c))).toEqual([]);
   });
 });
+
+describe('nodeLabel empty-name handling', () => {
+  it('falls back to the hex id for an empty or whitespace name', async () => {
+    // Review catch on #4737: `??` passes '' through, rendering a neighbour row
+    // with no identifier at all.
+    const { nodeLabel: fn } = await import('./nodeLabel');
+    expect(fn({ nodeNum: 0xaabbccdd, name: '' })).toBe('!aabbccdd');
+    expect(fn({ nodeNum: 0xaabbccdd, name: '   ' })).toBe('!aabbccdd');
+    expect(fn({ nodeNum: 0xaabbccdd, name: 'Hilltop' })).toBe('Hilltop');
+  });
+});

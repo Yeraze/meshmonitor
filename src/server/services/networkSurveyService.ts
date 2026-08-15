@@ -138,7 +138,13 @@ export async function buildNetworkSurvey(
   for (const n of nodes) {
     const num = Number(n.nodeNum);
     if (Number.isFinite(num)) {
-      nameFor.set(num, (n.longName as string) ?? (n.shortName as string) ?? null);
+      // `||`, not `??`: a node stored with an EMPTY longName must fall through
+      // to shortName and then to null, so the UI reaches its hex-id fallback.
+      // `??` only catches null/undefined, which would render a blank label —
+      // a neighbour row with no identifier at all.
+      const long = typeof n.longName === 'string' ? n.longName.trim() : '';
+      const short = typeof n.shortName === 'string' ? n.shortName.trim() : '';
+      nameFor.set(num, long || short || null);
     }
   }
 

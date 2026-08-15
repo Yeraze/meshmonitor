@@ -9,7 +9,14 @@ export interface NodeLabelLike {
   name: string | null;
 }
 
-/** Falls back to the hex node id, matching how nodes are addressed elsewhere. */
+/**
+ * Falls back to the hex node id, matching how nodes are addressed elsewhere.
+ *
+ * Treats an empty/whitespace name as absent rather than rendering a blank
+ * label. `??` alone would pass `''` straight through and produce a row with no
+ * identifier in it.
+ */
 export function nodeLabel(n: NodeLabelLike): string {
-  return n.name ?? `!${n.nodeNum.toString(16).padStart(8, '0')}`;
+  const name = n.name?.trim();
+  return name || `!${n.nodeNum.toString(16).padStart(8, '0')}`;
 }
