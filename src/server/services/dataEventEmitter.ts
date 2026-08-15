@@ -65,7 +65,16 @@ export interface MeshBeaconReceivedData {
   nodeNum: number;
   message: string;
   offerChannelName?: string;
+  /**
+   * Base64 PSK for the offered channel — SECRET, and deliberately not exposed
+   * to automation templates (see `buildMeshBeaconContext`). Present so the
+   * offer can actually be accepted server-side; a channel name without its key
+   * decrypts nothing.
+   */
+  offerChannelPsk?: string;
+  /** Normalized: `RegionCode.UNSET` (0) arrives as undefined, not 0. */
   offerRegion?: number;
+  /** Preset 0 (LONG_FAST) is a real value — `offer_preset` has explicit presence. */
   offerPreset?: number;
 }
 

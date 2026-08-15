@@ -344,6 +344,16 @@ describe('PUT /channels/:id', () => {
     expect(res.body.error).toContain('16 bytes');
   });
 
+  it('rejects writes to MeshCore channel 0 — reserved for the implicit Public channel (#4733)', async () => {
+    mockDb.sources.getSource.mockResolvedValue({ type: 'meshcore' });
+    const sixteen = Buffer.alloc(16).toString('base64');
+    const res = await request(app).put('/channels/0').send({ name: 'mc', psk: sixteen, sourceId: 'mc-1' });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('MESHCORE_CHANNEL_ZERO_RESERVED');
+    expect(res.body.error).toContain('Public');
+    expect(mockMeshcoreManager.setChannel).not.toHaveBeenCalled();
+  });
+
   it('503s for MeshCore when no manager is registered', async () => {
     mockDb.sources.getSource.mockResolvedValue({ type: 'meshcore' });
     mockSourceRegistry.getManager.mockReturnValue(undefined);
@@ -394,6 +404,22 @@ describe('DELETE /channels/:id', () => {
     
     // Verify the manager registry was queried for the correct source
     expect(mockSourceRegistry.getManager).toHaveBeenCalledWith('meshcore-1');
+  });
+
+  // #4733: unlike Meshtastic, MeshCore channel 0 CAN be deleted — this is the
+  // documented recovery path for a channel that got misconfigured onto slot 0
+  // before writes to it were blocked (deleting it lets syncChannelsFromDevice
+  // re-seed the synthetic Public placeholder on the next sync).
+  it('MeshCore: allows deleting channel 0 (the reserved-slot recovery path)', async () => {
+    mockDb.sources.getSource.mockResolvedValue({ type: 'meshcore' });
+    mockSourceRegistry.getManager.mockReturnValue(mockMeshcoreManager);
+    mockMeshcoreManager.deleteChannel.mockResolvedValue(undefined);
+
+    const res = await request(app).delete('/channels/0').send({ sourceId: 'meshcore-1' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(mockMeshcoreManager.deleteChannel).toHaveBeenCalledWith(0);
   });
 });
 
