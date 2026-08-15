@@ -8,6 +8,7 @@
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../styles/messages.css';
+import BeaconOffersPanel from './beacons/BeaconOffersPanel';
 import { Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
 import { ResourceType } from '../types/permission';
@@ -942,6 +943,16 @@ export default function ChannelsTab({
                 );
               })}
             </div>
+
+            {/* MeshBeacon invitations (#4723) — an offer to join a channel
+                belongs next to the channel list. Renders nothing when no
+                beacons have been heard, so pre-2.8 meshes see no empty surface. */}
+            <BeaconOffersPanel
+              sourceId={sourceId}
+              channels={channels}
+              canWrite={hasPermission('nodes', 'write')}
+              nodeName={(nodeNum) => nodes.find((n) => n.nodeNum === nodeNum)?.user?.longName}
+            />
 
             {/* Selected Channel Messaging */}
             {selectedChannel !== -1 && (
