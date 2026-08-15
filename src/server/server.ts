@@ -621,6 +621,7 @@ import sourceRoutes from './routes/sourceRoutes.js';
 import unifiedRoutes from './routes/unifiedRoutes.js';
 import analysisRoutes from './routes/analysisRoutes.js';
 import elevationRoutes from './routes/elevationRoutes.js';
+import rfCoverageRoutes from './routes/rfCoverageRoutes.js';
 import { firmwareUpdateService } from './services/firmwareUpdateService.js';
 import { createGeoJsonRouter } from './routes/geojsonRoutes.js';
 import { GeoJsonService } from './services/geojsonService.js';
@@ -745,6 +746,11 @@ apiRouter.use('/sources/:id/beacon-offers', beaconOfferRoutes);
 // Network survey (#4726) — nested under `/api/sources/:id/survey`. Read-only
 // synthesis of already-collected data; emits no radio traffic.
 apiRouter.use('/sources/:id/survey', surveyRoutes);
+
+// Predictive RF coverage (#4727) — terrain-modelled, read-only, and NOT
+// per-source: the origin and radio parameters come from the request, so this
+// is a planning tool rather than a property of a configured radio.
+apiRouter.use('/rf', rfCoverageRoutes);
 
 // Reticulum routes — nested under `/api/sources/:id/reticulum` so each
 // request resolves the destinations/interfaces bound to a specific source.

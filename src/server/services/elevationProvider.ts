@@ -60,6 +60,15 @@ export const RAW_TILE_CACHE_MAX = 256;
  */
 export const MAX_TERRARIUM_TILE_ZOOM = 15;
 
+/**
+ * Hard ceiling on points accepted by a single `sample()` call (#4727).
+ *
+ * Comfortably above every legitimate caller — a link profile is capped at 512
+ * samples and a coverage sweep at 24,000 — so this is a backstop against an
+ * unbounded caller rather than a working limit.
+ */
+export const MAX_SAMPLE_POINTS_PER_CALL = 32_000;
+
 /** Max cached JSON point samples (keyed by rounded lat,lng). */
 const JSON_CACHE_MAX = 10_000;
 
@@ -204,7 +213,24 @@ export class TerrariumTileProvider implements ElevationProvider {
     }
     const tileGroups = new Map<string, TileGroup>();
 
-    for (let index = 0; index < points.length; index++) {
+    // Bound the iteration explicitly rather than trusting the caller's array
+    // length (#4727, CodeQL js/loop-bound-injection). Callers reached here
+    // from HTTP request parameters once the coverage sweep landed, and while
+    // that path clamps upstream, a provider should not iterate a caller-
+    // supplied array without a ceiling of its own — every future caller would
+    // otherwise re-inherit the obligation to get it right.
+    //
+    // Excess points keep their pre-filled `null`, which is the same "no data"
+    // outcome a failed tile fetch produces, so callers already handle it.
+    const count = Math.min(points.length, MAX_SAMPLE_POINTS_PER_CALL);
+    if (points.length > count) {
+      logger.warn(
+        `[Elevation] sample() truncated ${points.length} points to ${count}; ` +
+        'the excess return null. This indicates an unbounded caller.'
+      );
+    }
+
+    for (let index = 0; index < count; index++) {
       const { lat, lng } = points[index];
       const { x, y, px, py } = lngLatToTilePixel(lat, lng, TERRARIUM_ZOOM, TILE_SIZE);
       const key = `${TERRARIUM_ZOOM}/${x}/${y}`;

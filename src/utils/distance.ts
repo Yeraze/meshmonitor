@@ -1,3 +1,4 @@
+import { EARTH_RADIUS_KM } from './earthConstants.js';
 /**
  * Distance calculation utilities for Meshtastic nodes
  */
@@ -11,7 +12,7 @@
  * @returns Distance in kilometers
  */
 export function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371; // Earth's radius in kilometers
+  const R = EARTH_RADIUS_KM;
   const dLat = toRadians(lat2 - lat1);
   const dLon = toRadians(lon2 - lon1);
 

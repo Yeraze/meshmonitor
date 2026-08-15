@@ -183,6 +183,27 @@ export const elevationLimiter = rateLimit({
   ...rateLimitConfig,
 });
 
+// Predictive RF coverage sweep (#4727) — one call fans out to thousands of
+// terrain samples across many tiles (bounded at 180 azimuths x 256 samples).
+// That is an order of magnitude heavier than a single elevation profile, so it
+// gets its own, much stricter budget rather than borrowing `elevationLimiter`.
+// Default: 6/min production, 60/min development.
+export const rfCoverageLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: env.isProduction ? 6 : 60,
+  message: 'Too many coverage prediction requests, please slow down',
+  skip: (req) => isPrivateNetworkIp(req.ip ?? ''),
+  handler: (req, res) => {
+    const ip = req.ip || 'unknown';
+    logger.warn(`🚫 Rate limit exceeded for RF_COVERAGE - IP: ${ip}, Path: ${req.path}`);
+    res.status(429).json({
+      error: 'Too many coverage prediction requests, please slow down',
+      retryAfter: '1 minute'
+    });
+  },
+  ...rateLimitConfig,
+});
+
 // DEM terrain tile proxy (#3826 Phase 2 WP-A) — one call per tile, and a
 // fresh 3D view legitimately fetches dozens on load/pan/zoom, so this is far
 // more generous than `elevationLimiter` (one heavy fan-out per call). Abuse

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { interpolateGreatCircle, lngLatToTile, lngLatToTilePixel } from './greatCircle';
+import { interpolateGreatCircle, lngLatToTile, lngLatToTilePixel, destinationPoint } from './greatCircle';
+import { calculateDistance } from './distance';
 
 describe('interpolateGreatCircle', () => {
   it('returns exactly `count` points', () => {
@@ -107,5 +108,47 @@ describe('lngLatToTilePixel', () => {
     expect(result.px).toBeLessThan(256);
     expect(result.py).toBeGreaterThanOrEqual(0);
     expect(result.py).toBeLessThan(256);
+  });
+});
+
+describe('destinationPoint (#4727)', () => {
+  it('moves north by the requested distance', () => {
+    // 1 degree of latitude is ~111.19 km on a sphere of radius 6371 km.
+    const d = destinationPoint({ lat: 0, lng: 0 }, 0, 111_195);
+    expect(d.lat).toBeCloseTo(1, 2);
+    expect(d.lng).toBeCloseTo(0, 6);
+  });
+
+  it('agrees with calculateDistance for the distance travelled', () => {
+    // Independent check: walk out, then measure back with the Haversine helper.
+    const origin = { lat: 30.2672, lng: -97.7431 };
+    for (const bearing of [0, 45, 137, 250, 359]) {
+      for (const km of [1, 10, 50]) {
+        const d = destinationPoint(origin, bearing, km * 1000);
+        expect(calculateDistance(origin.lat, origin.lng, d.lat, d.lng)).toBeCloseTo(km, 2);
+      }
+    }
+  });
+
+  it('normalises longitude across the antimeridian', () => {
+    // Heading east from just west of the antimeridian must not yield >180.
+    const d = destinationPoint({ lat: 0, lng: 179.9 }, 90, 50_000);
+    expect(d.lng).toBeLessThanOrEqual(180);
+    expect(d.lng).toBeGreaterThanOrEqual(-180);
+    expect(d.lng).toBeLessThan(0); // wrapped to the far side
+  });
+
+  it('returns the origin for zero distance', () => {
+    const origin = { lat: 12.34, lng: -56.78 };
+    const d = destinationPoint(origin, 123, 0);
+    expect(d.lat).toBeCloseTo(origin.lat, 9);
+    expect(d.lng).toBeCloseTo(origin.lng, 9);
+  });
+
+  it('stays finite at the poles', () => {
+    const d = destinationPoint({ lat: 89.999, lng: 0 }, 0, 200_000);
+    expect(Number.isFinite(d.lat)).toBe(true);
+    expect(Number.isFinite(d.lng)).toBe(true);
+    expect(Math.abs(d.lat)).toBeLessThanOrEqual(90);
   });
 });
