@@ -21,6 +21,7 @@
  * misleading one.
  */
 import databaseService from '../../services/database.js';
+import { isBogusPosition } from '../../utils/nullIsland.js';
 import { logger } from '../../utils/logger.js';
 
 /** A node heard at zero hops — i.e. genuinely within direct radio range. */
@@ -113,9 +114,16 @@ export async function buildNetworkSurvey(
   try {
     nodes = (await databaseService.nodes.getAllNodes(sourceId)) as unknown as Array<Record<string, unknown>>;
     survey.nodes.total = nodes.length;
-    survey.nodes.withPosition = nodes.filter(
-      (n) => typeof n.latitude === 'number' && typeof n.longitude === 'number',
-    ).length;
+    // A stored coordinate is not the same as a usable one. Firmware
+    // position-precision re-centres an obscured (0,0) to (offset, offset), and
+    // out-of-range junk gets stored too, so counting "has a latitude column"
+    // would overstate how much of the mesh is actually locatable. Reuse the
+    // canonical predicate rather than a second opinion on what counts.
+    survey.nodes.withPosition = nodes.filter((n) => {
+      const lat = n.latitude, lon = n.longitude;
+      if (typeof lat !== 'number' || typeof lon !== 'number') return false;
+      return !isBogusPosition(lat, lon, n.positionPrecision as number | null | undefined);
+    }).length;
     // `lastHeard` is SECONDS on the nodes table while the survey window is in
     // ms — comparing them directly would mark every node inactive.
     survey.nodes.activeInWindow = nodes.filter((n) => {
@@ -154,8 +162,11 @@ export async function buildNetworkSurvey(
   try {
     const { entries } = await databaseService.analysis.getHopCounts({ sourceIds: [sourceId] });
     survey.hopDistribution = bucketHops(entries);
+    // Derived with Math.max rather than "last bucket": reading the tail is
+    // correct only while bucketHops sorts ascending, and that coupling is
+    // invisible — a re-sort would break this with no type error.
     survey.maxHops = survey.hopDistribution.length
-      ? survey.hopDistribution[survey.hopDistribution.length - 1].hops
+      ? Math.max(...survey.hopDistribution.map((b) => b.hops))
       : null;
   } catch (e) {
     logger.warn(`[NetworkSurvey] hop distribution failed for ${sourceId}: ${e instanceof Error ? e.message : e}`);

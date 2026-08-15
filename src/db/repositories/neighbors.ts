@@ -311,7 +311,12 @@ export class NeighborsRepository extends BaseRepository {
           sql`${packetLog.hop_start} = ${packetLog.hop_limit}`,
           sql`${packetLog.rssi} IS NOT NULL`,
           sql`${packetLog.direction} = 'rx'`,
-          ...(sourceId === undefined ? [] : [this.withSourceScope(packetLog, sourceId)]),
+          // `undefined` is the opt-out, not ALL_SOURCES: withSourceScope already
+        // treats ALL_SOURCES as "every source", so passing it through is the
+        // DELIBERATE cross-source request, while omitting the argument keeps
+        // the pre-#4726 signature working for any caller that has not been
+        // updated. The two look alike and mean different things.
+        ...(sourceId === undefined ? [] : [this.withSourceScope(packetLog, sourceId)]),
         )
       )
       .groupBy(packetLog.from_node);

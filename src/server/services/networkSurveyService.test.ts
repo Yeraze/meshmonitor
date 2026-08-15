@@ -96,6 +96,35 @@ describe('buildNetworkSurvey', () => {
     expect((await buildNetworkSurvey(SRC)).nodes.withPosition).toBe(1);
   });
 
+  it('does not count Null Island or out-of-range coordinates as positioned', async () => {
+    // Review catch on #4737. A stored coordinate is not a usable one: firmware
+    // position-precision re-centres an obscured (0,0), and junk gets stored
+    // too. Counting the column would overstate how locatable the mesh is.
+    getAllNodes.mockResolvedValue([
+      { nodeNum: 1, latitude: 30, longitude: -95 },   // real
+      { nodeNum: 2, latitude: 0, longitude: 0 },      // Null Island
+      { nodeNum: 3, latitude: 91, longitude: 0 },     // out of WGS-84 range
+    ]);
+    expect((await buildNetworkSurvey(SRC)).nodes.withPosition).toBe(1);
+  });
+
+  it('falls back to shortName when a node has no longName', async () => {
+    // Review catch on #4737: the longName -> shortName -> null chain had only
+    // its first and last links exercised.
+    getAllNodes.mockResolvedValue([{ nodeNum: 5, shortName: 'HLTP' }]);
+    getDirectNeighborRssiAsync.mockResolvedValue(new Map([
+      [5, { nodeNum: 5, avgRssi: -80, packetCount: 1, lastHeard: 1 }],
+    ]));
+    expect((await buildNetworkSurvey(SRC)).directNeighbours[0].name).toBe('HLTP');
+  });
+
+  it('derives maxHops independently of bucket ordering', async () => {
+    // Reading the last bucket is correct only while bucketHops sorts ascending;
+    // that coupling is invisible and would break with no type error.
+    getHopCounts.mockResolvedValue({ entries: [{ hops: 7 }, { hops: 1 }, { hops: 3 }] });
+    expect((await buildNetworkSurvey(SRC)).maxHops).toBe(7);
+  });
+
   it('orders direct neighbours strongest-first and resolves names', async () => {
     getAllNodes.mockResolvedValue([{ nodeNum: 7, longName: 'Hilltop' }]);
     getDirectNeighborRssiAsync.mockResolvedValue(new Map([
