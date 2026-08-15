@@ -136,3 +136,39 @@ export function lngLatToTilePixel(
 
   return { x, y, px, py };
 }
+
+/** Mean earth radius in metres, matching the Haversine constant in `./distance`. */
+const EARTH_RADIUS_M = 6_371_000;
+
+/**
+ * Destination point reached by travelling `distanceM` from `origin` along a
+ * constant initial bearing (degrees clockwise from true north), following a
+ * great circle. Added for the predictive RF coverage sweep (#4727), which
+ * needs to walk outward along evenly spaced azimuths.
+ *
+ * Uses the standard spherical direct-geodesy formulae. Longitude is
+ * normalised back into [-180, 180], so a sweep centred near the antimeridian
+ * produces continuous coordinates rather than values that jump to ±360.
+ */
+export function destinationPoint(origin: LatLng, bearingDeg: number, distanceM: number): LatLng {
+  const angular = distanceM / EARTH_RADIUS_M;
+  const bearing = toRadians(bearingDeg);
+  const lat1 = toRadians(origin.lat);
+  const lng1 = toRadians(origin.lng);
+
+  const sinLat2 =
+    Math.sin(lat1) * Math.cos(angular) +
+    Math.cos(lat1) * Math.sin(angular) * Math.cos(bearing);
+  const lat2 = Math.asin(Math.min(1, Math.max(-1, sinLat2)));
+
+  const y = Math.sin(bearing) * Math.sin(angular) * Math.cos(lat1);
+  const x = Math.cos(angular) - Math.sin(lat1) * sinLat2;
+  const lng2 = lng1 + Math.atan2(y, x);
+
+  return {
+    lat: toDegrees(lat2),
+    // ((x + 540) % 360) - 180 normalises into [-180, 180] for negative values
+    // too, which a bare `% 360` would not.
+    lng: ((toDegrees(lng2) + 540) % 360) - 180,
+  };
+}
