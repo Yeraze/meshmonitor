@@ -3462,6 +3462,26 @@ class DatabaseService {
           logger.error('Failed to purge ATAK contacts during purge:', err);
         }
       }
+      // Clear MeshBeacon offers for the same reason as the ATAK contacts above
+      // (#4723): they are per-node received state, so a purged source must not
+      // leave them behind. The rows also carry the user's dismissals, which a
+      // future source reusing the id would otherwise inherit — declined
+      // invitations staying hidden for someone who never saw them.
+      if (this.meshBeaconOffersRepo) {
+        try {
+          if (sourceId) {
+            await this.meshBeaconOffersRepo.deleteForSource(sourceId);
+          } else {
+            // undefined sourceId = admin global purge across every source
+            const offerSourceIds = await this.meshBeaconOffersRepo.getOfferSourceIds();
+            for (const offerSourceId of offerSourceIds) {
+              await this.meshBeaconOffersRepo.deleteForSource(offerSourceId);
+            }
+          }
+        } catch (err) {
+          logger.error('Failed to purge MeshBeacon offers during purge:', err);
+        }
+      }
       // Clear the auto-traceroute and auto-time-sync explicit node allowlists so
       // purged nodes don't linger as orphaned selections (issue #4629) — these
       // are separate persisted tables, not derived from the `nodes` table, so

@@ -217,7 +217,20 @@ export class MeshBeaconOffersRepository extends BaseRepository {
     return this.getAffectedRows(result);
   }
 
-  /** Drop every offer for a source — used when a source is deleted. */
+  /**
+   * Distinct sourceIds present in the table. Mirrors
+   * `AtakContactsRepository.getContactSourceIds` — used by the global
+   * (source-less) purge branch, which has no single id to scope to.
+   */
+  async getOfferSourceIds(): Promise<string[]> {
+    const { meshBeaconOffers } = this.tables;
+    const rows = await this.db
+      .selectDistinct({ sourceId: meshBeaconOffers.sourceId })
+      .from(meshBeaconOffers);
+    return (rows as Array<{ sourceId: string }>).map((r) => r.sourceId);
+  }
+
+  /** Drop every offer for a source — used when a source is purged or deleted. */
   async deleteForSource(sourceId: string): Promise<number> {
     const { meshBeaconOffers } = this.tables;
     const result = await this.db
