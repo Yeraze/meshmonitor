@@ -439,6 +439,7 @@ router.post('/load-config', requireAdmin(), async (req, res) => {
           case 'paxcounter':
           case 'statusmessage':
           case 'trafficmanagement':
+          case 'meshbeacon':
             const moduleKey = MODULE_FIELD_BY_ID[configType];
             if (moduleKey && finalConfig.moduleConfig?.[moduleKey]) {
               config = finalConfig.moduleConfig[moduleKey];
@@ -585,6 +586,7 @@ router.post('/load-config', requireAdmin(), async (req, res) => {
           case 'paxcounter':
           case 'statusmessage':
           case 'trafficmanagement':
+          case 'meshbeacon':
             config = remoteConfig || { enabled: false };
             break;
         }
