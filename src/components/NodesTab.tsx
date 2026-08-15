@@ -9,6 +9,7 @@ import { TabType } from '../types/ui';
 import { nodePassesTransportFilter, transportCutoffSec } from '../utils/nodeTransport';
 import { getNodeTypeCategory } from '../utils/nodeTypeCategory';
 import { effectiveMapMaxAgeHours } from '../utils/mapAge';
+import { downsamplePositionHistory, MAX_RENDERED_POSITION_POINTS } from '../utils/positionHistoryDownsample';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHistoryArrows, snrToColor } from '../utils/mapHelpers.tsx';
 import { convertSpeed } from '../utils/speedConversion';
@@ -694,6 +695,27 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     return positionHistory;
   }, [showMotion, positionHistory, positionHistoryHours]);
 
+  /**
+   * Trail actually drawn, bounded to `MAX_RENDERED_POSITION_POINTS` (#4743).
+   *
+   * A node using estimated positions is relocated every time a neighbour
+   * reports, so its history reaches thousands of fixes — one `<Polyline>` plus
+   * one rich `<Popup>` each, which froze the UI for about a minute on mobile.
+   * A time window alone does not bound this: even 24 hours of estimated
+   * positions can hold thousands of entries.
+   *
+   * `filteredPositionHistory` stays the source of truth for the legend's time
+   * span, so the reported oldest/newest remain exact while the drawing is
+   * capped.
+   */
+  const renderedPositionHistory = useMemo(
+    () => downsamplePositionHistory(filteredPositionHistory, MAX_RENDERED_POSITION_POINTS),
+    [filteredPositionHistory],
+  );
+
+  /** True when the drawn trail omits intermediate fixes — surfaced in the popup. */
+  const positionHistoryDownsampled = renderedPositionHistory.length < filteredPositionHistory.length;
+
   // Memoize position history legend data for MapLegend
   const positionHistoryLegendData = useMemo(() => {
     if (filteredPositionHistory.length < 2) return undefined;
@@ -707,15 +729,15 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
   // Memoize position history polyline elements
   const positionHistoryElements = useMemo(() => {
-    if (filteredPositionHistory.length < 2) return null;
+    if (renderedPositionHistory.length < 2) return null;
 
     const elements: React.ReactElement[] = [];
-    const segmentCount = filteredPositionHistory.length - 1;
+    const segmentCount = renderedPositionHistory.length - 1;
     const segmentColors: string[] = [];
 
     for (let i = 0; i < segmentCount; i++) {
-      const startPos = filteredPositionHistory[i];
-      const endPos = filteredPositionHistory[i + 1];
+      const startPos = renderedPositionHistory[i];
+      const endPos = renderedPositionHistory[i + 1];
       const color = getPositionHistoryColor(i, segmentCount, overlayColors.positionHistoryOld, overlayColors.positionHistoryNew);
       segmentColors.push(color);
 
@@ -751,6 +773,14 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               <div className="route-usage">
                 <strong>To:</strong> {formatDateTime(new Date(endPos.timestamp), timeFormat, dateFormat)}
               </div>
+              {/* The trail is thinned for very dense histories (#4743), so a
+                  segment can span more fixes than it draws. Say so rather than
+                  implying these two points were consecutive. */}
+              {positionHistoryDownsampled && (
+                <div className="route-usage">
+                  <em>{t('nodes.position_history_simplified')}</em>
+                </div>
+              )}
               {startPos.groundSpeed !== undefined && (() => {
                 const { speed, unit } = convertSpeed(startPos.groundSpeed, distanceUnit);
                 return (
@@ -775,7 +805,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     }
 
     const historyArrows = generatePositionHistoryArrows(
-      filteredPositionHistory,
+      renderedPositionHistory,
       segmentColors,
       30,
       distanceUnit
@@ -783,7 +813,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     elements.push(...historyArrows);
 
     return elements;
-  }, [filteredPositionHistory, overlayColors.positionHistoryOld, overlayColors.positionHistoryNew, positionHistoryLineStyle, positionHistoryPointsOnly, timeFormat, dateFormat, distanceUnit]);
+  }, [renderedPositionHistory, positionHistoryDownsampled, t, overlayColors.positionHistoryOld, overlayColors.positionHistoryNew, positionHistoryLineStyle, positionHistoryPointsOnly, timeFormat, dateFormat, distanceUnit]);
 
   // Detect touch device to disable hover tooltips on mobile
   const [isTouchDevice, setIsTouchDevice] = useState(false);
