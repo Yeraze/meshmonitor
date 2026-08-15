@@ -273,7 +273,7 @@ function ConfirmJoinDialog({
           <button type="button" onClick={onCancel} disabled={busy}>{t('common.cancel')}</button>
           <button
             type="button"
-            className={styles.beaconConfirmGo}
+            className={`${styles.beaconConfirmGo}${occupant ? ` ${styles.beaconConfirmDanger}` : ''}`}
             data-testid="beacon-confirm-go"
             disabled={busy}
             onClick={() => onConfirm(Boolean(occupant))}

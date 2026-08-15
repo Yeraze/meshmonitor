@@ -10,6 +10,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const get = vi.fn();
 const post = vi.fn();
@@ -151,5 +154,23 @@ describe('BeaconOffersPanel', () => {
     // region/preset would rewrite the radio's LoRa config.
     expect(screen.getByText(/Advertises a mesh/i)).toBeTruthy();
     expect(screen.queryByText(/switch preset/i)).toBeNull();
+  });
+});
+
+describe('stylesheet', () => {
+  it('defines every class the component references', () => {
+    // Review catch on #4735: three `styles.*` references had no rule in the
+    // module, so those buttons rendered unstyled. Nothing failed, because the
+    // behavioural tests select by data-testid and a missing CSS-module key is
+    // just `undefined` — invisible to React and to TypeScript. This closes
+    // that gap by checking the two files against each other.
+    const dir = dirname(fileURLToPath(import.meta.url));
+    const tsx = readFileSync(join(dir, 'BeaconOffersPanel.tsx'), 'utf8');
+    const css = readFileSync(join(dir, 'BeaconOffersPanel.module.css'), 'utf8');
+
+    const defined = new Set(Array.from(css.matchAll(/^\.([A-Za-z][\w-]*)/gm), (m) => m[1]));
+    const used = new Set(Array.from(tsx.matchAll(/styles\.([A-Za-z][\w]*)/g), (m) => m[1]));
+
+    expect(Array.from(used).filter((c) => !defined.has(c))).toEqual([]);
   });
 });

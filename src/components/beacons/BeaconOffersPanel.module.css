@@ -86,6 +86,36 @@
   margin-top: 0.6rem;
 }
 
+.beaconOfferJoin,
+.beaconOfferDismiss,
+.beaconConfirmGo {
+  padding: 0.35rem 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.beaconOfferJoin:disabled,
+.beaconOfferDismiss:disabled,
+.beaconConfirmGo:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* The affirmative action carries the accent; Dismiss stays neutral so the
+   destructive-looking option is not the visually loudest one. */
+.beaconOfferJoin,
+.beaconConfirmGo {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+}
+
+.beaconOfferDismiss {
+  background: transparent;
+  color: var(--color-text-muted);
+}
+
 .beaconConfirmOverlay {
   position: fixed;
   inset: 0;
@@ -127,4 +157,11 @@
   justify-content: flex-end;
   gap: 0.5rem;
   margin-top: 1rem;
+}
+
+/* Replacing an existing channel is destructive — the button that does it should
+   not look identical to the one that simply joins a free slot. */
+.beaconConfirmDanger {
+  border-color: var(--color-danger);
+  background: var(--color-danger);
 }

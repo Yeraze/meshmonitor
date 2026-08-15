@@ -1212,6 +1212,17 @@ router.delete('/:id', requirePermission('sources', 'write'), async (req: Request
       logger.warn(`Failed to purge settings for deleted source ${req.params.id}:`, settingsError);
     }
 
+    // #4723: same reasoning as the settings purge above, and the same failure
+    // mode it calls out — a future source reusing this id would inherit these
+    // rows. Here that means inheriting DISMISSALS: invitations the previous
+    // owner declined would stay hidden for the new one, which is silent and
+    // hard to diagnose. Best-effort, matching the two cleanups above.
+    try {
+      await databaseService.meshBeaconOffers.deleteForSource(req.params.id);
+    } catch (offerError) {
+      logger.warn(`Failed to purge beacon offers for deleted source ${req.params.id}:`, offerError);
+    }
+
     res.json({ success: true });
   } catch (error) {
     logger.error('Error deleting source:', error);
