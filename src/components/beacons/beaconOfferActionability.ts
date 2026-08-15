@@ -2,15 +2,21 @@
  * Can this beacon offer actually be accepted? (#4723)
  *
  * Some received offers are un-actionable — a text-only beacon advertises
- * nothing, and an offered preset can be illegal in the offered region. The card
+ * nothing, and an offer can name a channel without including its key. The card
  * SHOWS those rather than hiding them, with the reason, so a user can tell
- * "nobody is inviting me" from "this invitation cannot legally be accepted"
+ * "nobody is inviting me" from "this invitation cannot be accepted"
  * (maintainer decision on #4723).
  *
- * Region/preset legality has no wire field — it is the firmware fit-check
- * `(freqEnd - freqStart) >= presetBandwidth`, evaluated client-side by
- * `isPresetLegalForRegion`. So this must be assessed here, not trusted from the
- * beacon.
+ * **Scope: accepting means joining the offered channel, nothing else.**
+ * A beacon may also advertise a region and modem preset. Applying those is not
+ * a channel edit — it rewrites the radio's LoRa config, which on this codebase
+ * is a whole-struct replace that moves the node to a different network
+ * entirely, potentially cutting it off from every peer it currently hears.
+ * The firmware itself never auto-applies an offer, and a one-click button for
+ * "change my whole radio" would be a sharper edge than this card is worth. So
+ * region/preset are rendered as context ("there is a mesh on LongFast/US") and
+ * `presetNote` explains when that combination could not legally be used, but
+ * neither gates or drives the accept.
  */
 import {
   isPresetLegalForRegion,
@@ -20,15 +26,29 @@ import {
 
 export interface BeaconOfferLike {
   offerChannelName?: string | null;
+  /**
+   * Whether the offer arrived with a channel key. Deliberately a boolean and
+   * not the key itself: the PSK is a secret that stays server-side, so the
+   * client is told only that one exists.
+   */
+  hasChannelKey?: boolean;
+  /** `RegionCode.UNSET` (0) is normalized to null/undefined before it gets here. */
   offerRegion?: number | null;
+  /** Preset 0 (LONG_FAST) is a real value — `offer_preset` has explicit presence. */
   offerPreset?: number | null;
 }
 
 export interface OfferActionability {
-  /** True when Add/Switch may be offered at all. */
+  /** True when the offered channel can be joined. */
   actionable: boolean;
   /** Why not, in user-facing words. Undefined when actionable. */
   reason?: string;
+  /**
+   * Informational note about the advertised region/preset. Present regardless
+   * of `actionable` — it never blocks the join, because joining a channel does
+   * not touch LoRa config.
+   */
+  presetNote?: string;
 }
 
 export function presetName(preset: number | null | undefined): string {
@@ -39,31 +59,56 @@ export function presetName(preset: number | null | undefined): string {
 export function regionName(region: number | null | undefined): string {
   if (region == null) return 'unknown region';
   const opt = REGION_OPTIONS.find((o) => o.value === region);
-  // RegionOption uses `name` like MODEM_PRESET_OPTIONS; fall back to the enum.
   return (opt as { name?: string } | undefined)?.name ?? `region ${region}`;
 }
 
 /**
- * Assess an offer. Note `!= null` rather than truthiness throughout: region and
- * preset 0 are valid enum values, and a falsy check would misreport a real
- * offer as "carries no network offer".
+ * Note `!= null` on preset but truthiness on region: `RegionCode.UNSET` is 0,
+ * so a zero region means "none offered", while preset 0 is LONG_FAST. The
+ * asymmetry comes from the protobuf — `offer_region` is a plain enum field and
+ * `offer_preset` is `optional`.
  */
-export function assessBeaconOffer(offer: BeaconOfferLike): OfferActionability {
-  const hasChannel = Boolean(offer.offerChannelName && offer.offerChannelName.trim());
-  const hasRegion = offer.offerRegion != null;
-  const hasPreset = offer.offerPreset != null;
+function hasRegion(offer: BeaconOfferLike): boolean {
+  return Boolean(offer.offerRegion);
+}
+function hasPreset(offer: BeaconOfferLike): boolean {
+  return offer.offerPreset != null;
+}
 
-  if (!hasChannel && !hasRegion && !hasPreset) {
-    return { actionable: false, reason: 'This beacon carries no network offer — it is text only.' };
+function buildPresetNote(offer: BeaconOfferLike): string | undefined {
+  if (!hasRegion(offer) && !hasPreset(offer)) return undefined;
+
+  if (hasRegion(offer) && hasPreset(offer)) {
+    if (!isPresetLegalForRegion(offer.offerRegion!, offer.offerPreset!)) {
+      return `Advertises ${presetName(offer.offerPreset)} on ${regionName(offer.offerRegion)}, which is not a legal combination — that preset's bandwidth exceeds the region's frequency span.`;
+    }
+    return `Advertises a mesh on ${presetName(offer.offerPreset)} / ${regionName(offer.offerRegion)}.`;
+  }
+  if (hasPreset(offer)) return `Advertises a mesh on ${presetName(offer.offerPreset)}.`;
+  return `Advertises a mesh in ${regionName(offer.offerRegion)}.`;
+}
+
+export function assessBeaconOffer(offer: BeaconOfferLike): OfferActionability {
+  const presetNote = buildPresetNote(offer);
+  const channelName = offer.offerChannelName?.trim();
+
+  if (!channelName) {
+    // No channel to join. Distinguish "advertises nothing at all" from
+    // "advertises a network but gives no way in" — they mean different things
+    // to someone deciding whether to chase it up.
+    const reason = presetNote
+      ? 'This beacon advertises a mesh but offers no channel to join, so there is nothing to apply automatically.'
+      : 'This beacon carries no network offer — it is text only.';
+    return { actionable: false, reason, presetNote };
   }
 
-  // Only a region+preset pair can be illegal; either alone is unconstrained.
-  if (hasRegion && hasPreset && !isPresetLegalForRegion(offer.offerRegion!, offer.offerPreset!)) {
+  if (!offer.hasChannelKey) {
     return {
       actionable: false,
-      reason: `${presetName(offer.offerPreset)} is not legal in ${regionName(offer.offerRegion)} — its bandwidth exceeds the region's frequency span, so the radio could not use this configuration.`,
+      reason: `The beacon names a channel ("${channelName}") but did not include its key, so joining it would produce a channel that cannot decrypt anything.`,
+      presetNote,
     };
   }
 
-  return { actionable: true };
+  return { actionable: true, presetNote };
 }

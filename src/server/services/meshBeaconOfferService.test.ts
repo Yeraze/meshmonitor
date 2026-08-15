@@ -20,6 +20,7 @@ const beacon = (o: Record<string, unknown> = {}) => ({
   nodeNum: 0xaabbccdd,
   message: 'join us',
   offerChannelName: 'RegionMesh',
+  offerChannelPsk: 'AQ==',
   offerRegion: 1,
   offerPreset: 2,
   ...o,
@@ -34,26 +35,45 @@ describe('recordMeshBeaconOffer', () => {
     expect(recordBeacon).toHaveBeenCalledWith(
       'src-a',
       0xaabbccdd,
-      { message: 'join us', offerChannelName: 'RegionMesh', offerRegion: 1, offerPreset: 2 },
+      {
+        message: 'join us',
+        offerChannelName: 'RegionMesh',
+        offerChannelPsk: 'AQ==',
+        offerRegion: 1,
+        offerPreset: 2,
+      },
       1_000,
     );
   });
 
-  it('preserves region/preset 0 — valid enum values, not "absent"', async () => {
-    // `|| null` here would turn a real offer into "no offer".
-    await recordMeshBeaconOffer(beacon({ offerRegion: 0, offerPreset: 0 }), 'src-a', 1_000);
+  it('preserves preset 0 — LONG_FAST is a real offer, not "absent"', async () => {
+    // `offer_preset` is declared `optional` in the protobuf, so 0 has explicit
+    // presence. `|| null` here would turn a real offer into "no offer".
+    await recordMeshBeaconOffer(beacon({ offerPreset: 0 }), 'src-a', 1_000);
 
-    expect(recordBeacon.mock.calls[0][2]).toMatchObject({ offerRegion: 0, offerPreset: 0 });
+    expect(recordBeacon.mock.calls[0][2]).toMatchObject({ offerPreset: 0 });
+  });
+
+  it('carries the offered channel key through to storage', async () => {
+    // Without the PSK an accepted offer would join with the right name and no
+    // usable key — a channel that silently decrypts nothing.
+    await recordMeshBeaconOffer(beacon({ offerChannelPsk: 'c2VjcmV0' }), 'src-a', 1_000);
+
+    expect(recordBeacon.mock.calls[0][2]).toMatchObject({ offerChannelPsk: 'c2VjcmV0' });
   });
 
   it('maps absent offer fields to null rather than undefined', async () => {
     await recordMeshBeaconOffer(
-      beacon({ offerChannelName: undefined, offerRegion: undefined, offerPreset: undefined }),
+      beacon({
+        offerChannelName: undefined, offerChannelPsk: undefined,
+        offerRegion: undefined, offerPreset: undefined,
+      }),
       'src-a', 1_000,
     );
 
     expect(recordBeacon.mock.calls[0][2]).toEqual({
-      message: 'join us', offerChannelName: null, offerRegion: null, offerPreset: null,
+      message: 'join us', offerChannelName: null, offerChannelPsk: null,
+      offerRegion: null, offerPreset: null,
     });
   });
 

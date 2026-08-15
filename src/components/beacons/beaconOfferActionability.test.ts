@@ -10,9 +10,11 @@ import { describe, it, expect } from 'vitest';
 import { assessBeaconOffer } from './beaconOfferActionability';
 import { isPresetLegalForRegion } from '../configuration/constants';
 
+const joinable = { offerChannelName: 'RegionMesh', hasChannelKey: true };
+
 describe('assessBeaconOffer', () => {
-  it('accepts a plain channel offer', () => {
-    expect(assessBeaconOffer({ offerChannelName: 'RegionMesh' })).toEqual({ actionable: true });
+  it('accepts a channel offer that came with its key', () => {
+    expect(assessBeaconOffer(joinable).actionable).toBe(true);
   });
 
   it('rejects a text-only beacon with a plain-language reason', () => {
@@ -21,54 +23,71 @@ describe('assessBeaconOffer', () => {
     expect(r.reason).toMatch(/text only/i);
   });
 
-  it('treats region 0 / preset 0 as a real offer, not "nothing"', () => {
-    // The falsy-check bug: `!offer.offerRegion` would call this text-only.
-    const r = assessBeaconOffer({ offerRegion: 0, offerPreset: 0 });
-    // May legitimately be actionable (no reason at all) or rejected on
-    // legality — but never dismissed as carrying no offer.
-    expect(r.reason ?? '').not.toMatch(/text only/i);
+  it('rejects a named channel with no key, rather than joining one that decrypts nothing', () => {
+    // The whole reason the PSK is plumbed through: a name-only offer is not
+    // joinable, and silently adding the channel would look like success.
+    const r = assessBeaconOffer({ offerChannelName: 'RegionMesh', hasChannelKey: false });
+    expect(r.actionable).toBe(false);
+    expect(r.reason).toMatch(/did not include its key/i);
+    expect(r.reason).toContain('RegionMesh');
   });
 
   it('treats a whitespace-only channel name as no channel', () => {
-    const r = assessBeaconOffer({ offerChannelName: '   ' });
+    const r = assessBeaconOffer({ offerChannelName: '   ', hasChannelKey: true });
     expect(r.actionable).toBe(false);
     expect(r.reason).toMatch(/text only/i);
   });
 
-  it('does not judge legality when only one of region/preset is offered', () => {
-    // Neither alone constrains the other, so there is nothing to fit-check.
-    expect(assessBeaconOffer({ offerRegion: 1 }).actionable).toBe(true);
-    expect(assessBeaconOffer({ offerPreset: 0 }).actionable).toBe(true);
-  });
-
-  it('agrees with isPresetLegalForRegion across every region/preset pair it is given', () => {
-    // The card must never contradict the picker used elsewhere in the app.
-    for (const region of [0, 1, 2, 3, 4, 5]) {
-      for (const preset of [0, 1, 3, 4, 5, 6, 7, 8]) {
-        const legal = isPresetLegalForRegion(region, preset);
-        const assessed = assessBeaconOffer({ offerRegion: region, offerPreset: preset });
-        expect(assessed.actionable).toBe(legal);
-        if (!legal) expect(assessed.reason).toMatch(/not legal/i);
-      }
-    }
-  });
-
-  it('names the offending preset and region in the reason', () => {
-    // Find a genuinely illegal pair rather than hard-coding one, so this keeps
-    // working if REGION_FREQ_INFO changes.
-    let illegal: { region: number; preset: number } | null = null;
-    for (const region of [0, 1, 2, 3, 4, 5, 6, 7, 8]) {
-      for (const preset of [0, 1, 3, 4, 5, 6, 7, 8]) {
-        if (!isPresetLegalForRegion(region, preset)) { illegal = { region, preset }; break; }
-      }
-      if (illegal) break;
-    }
-    if (!illegal) return; // no illegal pair in the current table — nothing to assert
-
-    const r = assessBeaconOffer({ offerRegion: illegal.region, offerPreset: illegal.preset });
+  it('distinguishes "advertises a mesh but no channel" from "text only"', () => {
+    const r = assessBeaconOffer({ offerPreset: 0 });
     expect(r.actionable).toBe(false);
-    // The reason must be specific enough to act on, not just "invalid".
-    expect(r.reason).toMatch(/bandwidth/i);
-    expect(r.reason!.length).toBeGreaterThan(30);
+    expect(r.reason).toMatch(/no channel to join/i);
+    expect(r.reason).not.toMatch(/text only/i);
+  });
+
+  describe('region 0 is UNSET, preset 0 is LONG_FAST', () => {
+    // RegionCode.UNSET === 0 and `offer_region` is a plain proto3 enum field,
+    // so 0 means "not offered". `offer_preset` is `optional`, so 0 is real.
+    // Getting these the same way round is the easy mistake.
+    it('treats region 0 as no region offered', () => {
+      expect(assessBeaconOffer({ offerRegion: 0 }).reason).toMatch(/text only/i);
+    });
+
+    it('treats preset 0 as a genuine offer', () => {
+      expect(assessBeaconOffer({ offerPreset: 0 }).presetNote).toBeDefined();
+    });
+  });
+
+  describe('presetNote', () => {
+    it('is informational only — an illegal region/preset never blocks a channel join', () => {
+      // Joining a channel does not touch LoRa config, so legality of the
+      // advertised preset is context, not a gate.
+      let illegal: { region: number; preset: number } | null = null;
+      for (const region of [1, 2, 3, 4, 5, 6, 7, 8]) {
+        for (const preset of [0, 1, 3, 4, 5, 6, 7, 8]) {
+          if (!isPresetLegalForRegion(region, preset)) { illegal = { region, preset }; break; }
+        }
+        if (illegal) break;
+      }
+      if (!illegal) return; // no illegal pair in the current table — nothing to assert
+
+      const r = assessBeaconOffer({ ...joinable, offerRegion: illegal.region, offerPreset: illegal.preset });
+      expect(r.actionable).toBe(true);
+      expect(r.presetNote).toMatch(/not a legal combination/i);
+    });
+
+    it('agrees with isPresetLegalForRegion across every region/preset pair', () => {
+      // The card must never contradict the picker used elsewhere in the app.
+      for (const region of [1, 2, 3, 4, 5]) {
+        for (const preset of [0, 1, 3, 4, 5, 6, 7, 8]) {
+          const note = assessBeaconOffer({ ...joinable, offerRegion: region, offerPreset: preset }).presetNote ?? '';
+          expect(/not a legal combination/i.test(note)).toBe(!isPresetLegalForRegion(region, preset));
+        }
+      }
+    });
+
+    it('is absent when the beacon advertises neither region nor preset', () => {
+      expect(assessBeaconOffer(joinable).presetNote).toBeUndefined();
+    });
   });
 });

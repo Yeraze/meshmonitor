@@ -45,8 +45,12 @@ export async function recordMeshBeaconOffer(
       {
         message: data.message ?? null,
         offerChannelName: data.offerChannelName ?? null,
-        // `?? null` rather than `|| null`: region/preset 0 are valid enum
-        // values, and coercing them away would turn a real offer into "no offer".
+        offerChannelPsk: data.offerChannelPsk ?? null,
+        // `?? null` rather than `|| null` on preset: `offer_preset` is declared
+        // `optional` in the protobuf, so preset 0 (LONG_FAST) is a real offer
+        // and `||` would erase it. Region needs no such care — the parser has
+        // already mapped RegionCode.UNSET (0) to undefined — but it uses the
+        // same operator so neither reads as the deliberate one.
         offerRegion: data.offerRegion ?? null,
         offerPreset: data.offerPreset ?? null,
       },

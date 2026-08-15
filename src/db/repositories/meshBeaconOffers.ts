@@ -24,6 +24,8 @@ export interface MeshBeaconOfferRow {
   nodeNum: number;
   message: string | null;
   offerChannelName: string | null;
+  /** Base64 PSK — SECRET. Strip with `toPublicOffer` before serializing. */
+  offerChannelPsk: string | null;
   offerRegion: number | null;
   offerPreset: number | null;
   hasOffer: boolean;
@@ -32,12 +34,61 @@ export interface MeshBeaconOfferRow {
   dismissedAt: number | null;
 }
 
+/** A row safe to send to a client: identical minus the channel key. */
+export type PublicMeshBeaconOffer = Omit<MeshBeaconOfferRow, 'offerChannelPsk'> & {
+  /** Whether a key came with the offer, without revealing it. */
+  hasChannelKey: boolean;
+};
+
+/**
+ * Drop the PSK from a row.
+ *
+ * Written as an explicit field-by-field construction rather than
+ * `const { offerChannelPsk, ...rest } = row` so that a column added to the
+ * table later cannot silently ride along into an API response.
+ */
+export function toPublicOffer(row: MeshBeaconOfferRow): PublicMeshBeaconOffer {
+  return {
+    sourceId: row.sourceId,
+    nodeNum: row.nodeNum,
+    message: row.message,
+    offerChannelName: row.offerChannelName,
+    offerRegion: row.offerRegion,
+    offerPreset: row.offerPreset,
+    hasOffer: row.hasOffer,
+    hasChannelKey: Boolean(row.offerChannelPsk),
+    firstSeenAt: row.firstSeenAt,
+    lastSeenAt: row.lastSeenAt,
+    dismissedAt: row.dismissedAt,
+  };
+}
+
 /** The advertised half of a beacon — what actually constitutes "an offer". */
 export interface BeaconOfferInput {
   message: string | null;
   offerChannelName: string | null;
+  offerChannelPsk: string | null;
   offerRegion: number | null;
   offerPreset: number | null;
+}
+
+/**
+ * Does this beacon advertise a joinable network?
+ *
+ * Region uses truthiness and preset uses `!= null`, which looks inconsistent
+ * and is deliberate: `RegionCode.UNSET` is 0 and `offer_region` is a plain
+ * proto3 enum field (no explicit presence), so a zero region means "none
+ * offered". `offer_preset` is declared `optional`, so preset 0 (LONG_FAST) is a
+ * real offer that truthiness would erase.
+ *
+ * Ingestion already normalizes region 0 to null, so this is belt-and-braces —
+ * but the function is exported and reusable, and a caller that hands it a raw
+ * decoded beacon should still get the right answer.
+ */
+export function computeHasOffer(offer: BeaconOfferInput): boolean {
+  return Boolean(offer.offerChannelName)
+    || Boolean(offer.offerRegion)
+    || offer.offerPreset != null;
 }
 
 /**
@@ -46,9 +97,13 @@ export interface BeaconOfferInput {
  * Deliberately ignores `message`: a node re-wording its beacon text is still
  * the same invitation, and treating it as new would resurrect a dismissal on a
  * cosmetic edit — precisely the nagging this table exists to prevent.
+ *
+ * The PSK *is* compared: the same channel name re-keyed is a different network,
+ * and a user who declined the old one has not seen the new one.
  */
 export function offerContentChanged(a: BeaconOfferInput, b: BeaconOfferInput): boolean {
   return a.offerChannelName !== b.offerChannelName
+    || a.offerChannelPsk !== b.offerChannelPsk
     || a.offerRegion !== b.offerRegion
     || a.offerPreset !== b.offerPreset;
 }
@@ -86,13 +141,12 @@ export class MeshBeaconOffersRepository extends BaseRepository {
   ): Promise<void> {
     const { meshBeaconOffers } = this.tables;
     const existing = await this.getOffer(sourceId, nodeNum);
-    const hasOffer = Boolean(offer.offerChannelName || offer.offerRegion != null || offer.offerPreset != null);
 
     const row: MeshBeaconOfferRow = {
       sourceId,
       nodeNum,
       ...offer,
-      hasOffer,
+      hasOffer: computeHasOffer(offer),
       firstSeenAt: existing?.firstSeenAt ?? now,
       lastSeenAt: now,
       dismissedAt: existing && !offerContentChanged(existing, offer) ? existing.dismissedAt : null,
@@ -105,6 +159,7 @@ export class MeshBeaconOffersRepository extends BaseRepository {
       {
         message: row.message,
         offerChannelName: row.offerChannelName,
+        offerChannelPsk: row.offerChannelPsk,
         offerRegion: row.offerRegion,
         offerPreset: row.offerPreset,
         hasOffer: row.hasOffer,

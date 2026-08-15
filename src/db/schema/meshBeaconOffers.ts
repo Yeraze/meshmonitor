@@ -49,9 +49,27 @@ export const meshBeaconOffersSqlite = sqliteTable('mesh_beacon_offers', {
   message: text('message'),
   /** Channel the beacon advertises, when it advertises one. */
   offerChannelName: text('offerChannelName'),
-  /** Meshtastic region enum; null when the beacon offers no region. */
+  /**
+   * Base64 PSK for the offered channel — a SECRET.
+   *
+   * `MeshBeacon.offer_channel` is a full `ChannelSettings` (name + psk), and
+   * the name alone is useless: joining with the right name and the wrong key
+   * produces a channel that silently decrypts nothing. It is stored so the
+   * server can perform the join, and MUST NOT be serialized to any API
+   * response — the accept happens server-side precisely so this never reaches
+   * a client.
+   */
+  offerChannelPsk: text('offerChannelPsk'),
+  /**
+   * Meshtastic region enum; null when the beacon offers no region.
+   *
+   * Note `RegionCode.UNSET = 0`, and `offer_region` is a plain proto3 enum
+   * field (no explicit presence), so a decoded 0 means "not offered" and
+   * normalizes to null here. `offer_preset` is declared `optional`, so preset 0
+   * (LONG_FAST) is a genuine offer — the two are deliberately asymmetric.
+   */
   offerRegion: integer('offerRegion'),
-  /** Modem-preset enum; null when the beacon offers no preset. */
+  /** Modem-preset enum; null when the beacon offers no preset. Preset 0 is real. */
   offerPreset: integer('offerPreset'),
   /**
    * True when the beacon advertises a joinable network (any of channel/region/
@@ -85,6 +103,8 @@ export const meshBeaconOffersPostgres = pgTable('mesh_beacon_offers', {
   nodeNum: pgBigint('nodeNum', { mode: 'number' }).notNull(),
   message: pgText('message'),
   offerChannelName: pgText('offerChannelName'),
+  /** Base64 PSK — secret; never serialized to an API response. */
+  offerChannelPsk: pgText('offerChannelPsk'),
   offerRegion: pgInteger('offerRegion'),
   offerPreset: pgInteger('offerPreset'),
   hasOffer: pgBoolean('hasOffer').notNull(),
@@ -105,6 +125,8 @@ export const meshBeaconOffersMysql = mysqlTable('mesh_beacon_offers', {
   nodeNum: myBigint('nodeNum', { mode: 'number' }).notNull(),
   message: myText('message'),
   offerChannelName: myVarchar('offerChannelName', { length: 255 }),
+  /** Base64 PSK — secret; never serialized to an API response. */
+  offerChannelPsk: myText('offerChannelPsk'),
   offerRegion: myInt('offerRegion'),
   offerPreset: myInt('offerPreset'),
   hasOffer: myBoolean('hasOffer').notNull(),

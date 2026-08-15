@@ -11,6 +11,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   MeshBeaconOffersRepository,
   offerContentChanged,
+  computeHasOffer,
+  toPublicOffer,
   type BeaconOfferInput,
 } from './meshBeaconOffers.js';
 import { ALL_SOURCES } from './base.js';
@@ -23,6 +25,7 @@ const NODE = 0xaabbccdd;
 const offer = (o: Partial<BeaconOfferInput> = {}): BeaconOfferInput => ({
   message: 'join us',
   offerChannelName: 'RegionMesh',
+  offerChannelPsk: 'AQ==',
   offerRegion: 1,
   offerPreset: 2,
   ...o,
@@ -37,6 +40,62 @@ describe('offerContentChanged', () => {
     expect(offerContentChanged(offer(), offer({ offerChannelName: 'OtherMesh' }))).toBe(true);
     expect(offerContentChanged(offer(), offer({ offerRegion: 7 }))).toBe(true);
     expect(offerContentChanged(offer(), offer({ offerPreset: 5 }))).toBe(true);
+  });
+
+  it('treats the same channel name re-keyed as a new invitation', () => {
+    // Same name, different PSK is a different network — someone who declined
+    // the old one has not been asked about this one.
+    expect(offerContentChanged(offer(), offer({ offerChannelPsk: 'Zm9v' }))).toBe(true);
+  });
+});
+
+describe('computeHasOffer', () => {
+  // RegionCode.UNSET === 0 and `offer_region` is a plain proto3 enum field, so
+  // a zero region means "none offered". `offer_preset` is declared `optional`,
+  // so preset 0 (LONG_FAST) is real. Getting these the same way round is the
+  // easy mistake, so both directions are pinned.
+  const bare = { message: '', offerChannelName: null, offerChannelPsk: null, offerRegion: null, offerPreset: null };
+
+  it('reads region 0 as UNSET, not as an offer', () => {
+    expect(computeHasOffer({ ...bare, offerRegion: 0 })).toBe(false);
+  });
+
+  it('reads preset 0 as LONG_FAST — a genuine offer', () => {
+    expect(computeHasOffer({ ...bare, offerPreset: 0 })).toBe(true);
+  });
+
+  it('reads a named channel as an offer', () => {
+    expect(computeHasOffer({ ...bare, offerChannelName: 'Mesh' })).toBe(true);
+  });
+
+  it('reads a bare text beacon as no offer', () => {
+    expect(computeHasOffer(bare)).toBe(false);
+  });
+});
+
+describe('toPublicOffer', () => {
+  it('strips the channel key', () => {
+    // The PSK is why accept is server-side; leaking it here would defeat that.
+    const pub = toPublicOffer({
+      sourceId: SRC_A, nodeNum: NODE, message: 'hi',
+      offerChannelName: 'Mesh', offerChannelPsk: 'c2VjcmV0',
+      offerRegion: 1, offerPreset: 2, hasOffer: true,
+      firstSeenAt: 1, lastSeenAt: 2, dismissedAt: null,
+    });
+
+    expect(JSON.stringify(pub)).not.toContain('c2VjcmV0');
+    expect('offerChannelPsk' in pub).toBe(false);
+    expect(pub.hasChannelKey).toBe(true);
+  });
+
+  it('reports hasChannelKey false when the offer came without one', () => {
+    const pub = toPublicOffer({
+      sourceId: SRC_A, nodeNum: NODE, message: 'hi',
+      offerChannelName: 'Mesh', offerChannelPsk: null,
+      offerRegion: null, offerPreset: null, hasOffer: true,
+      firstSeenAt: 1, lastSeenAt: 2, dismissedAt: null,
+    });
+    expect(pub.hasChannelKey).toBe(false);
   });
 });
 
@@ -99,21 +158,16 @@ describe('MeshBeaconOffersRepository', () => {
   it('marks a text-only beacon as having no offer', async () => {
     await repo.recordBeacon(
       SRC_A, NODE,
-      { message: 'hello', offerChannelName: null, offerRegion: null, offerPreset: null },
+      { message: 'hello', offerChannelName: null, offerChannelPsk: null, offerRegion: null, offerPreset: null },
       1_000,
     );
     const row = await repo.getOffer(SRC_A, NODE);
     expect(row?.hasOffer).toBe(false);
   });
 
-  it('treats offerRegion 0 as a real offer — 0 is a valid region enum', async () => {
-    // The falsy-check bug: `offerRegion || ...` would read 0 as "no offer".
-    await repo.recordBeacon(
-      SRC_A, NODE,
-      { message: '', offerChannelName: null, offerRegion: 0, offerPreset: null },
-      1_000,
-    );
-    expect((await repo.getOffer(SRC_A, NODE))?.hasOffer).toBe(true);
+  it('round-trips the channel key so an accept has something to join with', async () => {
+    await repo.recordBeacon(SRC_A, NODE, offer({ offerChannelPsk: 'c2VjcmV0' }), 1_000);
+    expect((await repo.getOffer(SRC_A, NODE))?.offerChannelPsk).toBe('c2VjcmV0');
   });
 
   it('isolates offers between sources', async () => {
