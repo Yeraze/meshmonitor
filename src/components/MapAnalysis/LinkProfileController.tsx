@@ -1,13 +1,11 @@
 import React, { useEffect, useRef } from 'react';
 import { CircleMarker, Polyline, Tooltip, useMap } from 'react-leaflet';
 import { useSettings } from '../../contexts/SettingsContext';
-import { nearestPoint, measureLabel } from '../../utils/measureDistance';
+import { measureLabel } from '../../utils/measureDistance';
+import { resolvePickedPoint } from './mapClickPicker';
 import type { LinkEndpoint, LinkVerdict } from '../../utils/linkProfile';
 import { VERDICT_COLOR } from '../../utils/linkProfile';
 import './LinkProfileController.css';
-
-/** Screen-space snap threshold (px) for treating a click as "on" a node. */
-const SNAP_PX = 24;
 
 /** Amber shown while the drawer hasn't resolved a verdict yet (or none applies). */
 const PENDING_COLOR = '#f59e0b';
@@ -43,7 +41,7 @@ export interface LinkProfileControllerProps {
  *  - It is a **controlled** component: picked endpoints live in
  *    `MapAnalysisContext` (`linkEndpoints`), not local state, so the bottom
  *    drawer can read them too. Every pick is emitted via `onPick`.
- *  - A click that doesn't land within `SNAP_PX` screen pixels of the nearest
+ *  - A click that doesn't land within `MAP_PICK_SNAP_PX` screen pixels of the nearest
  *    candidate node still picks — as an arbitrary (non-node) endpoint at the
  *    raw clicked lat/lng. This lets the tool profile a link to/from a point
  *    that has no node, unlike the node-only Measure tool.
@@ -94,28 +92,14 @@ const LinkProfileController: React.FC<LinkProfileControllerProps> = ({
     if (!enabled) return;
     const container = map.getContainer();
     const onClick = (e: MouseEvent) => {
-      // Let map controls (zoom, attribution, tileset toggle) work normally.
-      const target = e.target as HTMLElement | null;
-      if (target && target.closest('.leaflet-control')) return;
+      // Shared with the Site Planner so both tools agree on what counts as
+      // "on" a node (see mapClickPicker). Returns null for clicks on Leaflet
+      // controls, which must keep working while a pick tool is active.
+      const picked = resolvePickedPoint(map, e, pointsRef.current) as LinkEndpoint | null;
+      if (!picked) return;
       // Stop the marker popup / map click from also handling this event.
       e.stopPropagation();
       e.preventDefault();
-      const latlng = map.mouseEventToLatLng(e);
-      const nearest = nearestPoint(pointsRef.current, latlng.lat, latlng.lng);
-
-      let picked: LinkEndpoint | null = null;
-      if (nearest) {
-        const rect = container.getBoundingClientRect();
-        const clickPx = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-        const nearestPx = map.latLngToContainerPoint([nearest.lat, nearest.lng]);
-        const distPx = Math.hypot(clickPx.x - nearestPx.x, clickPx.y - nearestPx.y);
-        if (distPx < SNAP_PX) {
-          picked = { ...nearest, isNode: true };
-        }
-      }
-      if (!picked) {
-        picked = { id: `pt-${latlng.lat},${latlng.lng}`, lat: latlng.lat, lng: latlng.lng, isNode: false };
-      }
 
       const prev = endpointsRef.current;
       let next: LinkEndpoint[];
