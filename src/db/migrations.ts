@@ -161,6 +161,7 @@ import { migration as createReticulumMessagesMigration, runMigration143Postgres,
 import { migration as addReticulumDestinationPositionMigration, runMigration144Postgres, runMigration144Mysql } from '../server/migrations/144_add_reticulum_destination_position.js';
 import { migration as addReticulumInterfaceRadioConfigMigration, runMigration145Postgres, runMigration145Mysql } from '../server/migrations/145_add_reticulum_interface_radio_config.js';
 import { migration as createReticulumPathsMigration, runMigration146Postgres, runMigration146Mysql } from '../server/migrations/146_create_reticulum_paths.js';
+import { migration as addMeshBeaconOffersMigration, runMigration147Postgres, runMigration147Mysql } from '../server/migrations/147_add_mesh_beacon_offers.js';
 
 // ============================================================================
 // Registry
@@ -2333,4 +2334,20 @@ registry.register({
   sqlite: (db) => createReticulumPathsMigration.up(db),
   postgres: (client) => runMigration146Postgres(client),
   mysql: (pool) => runMigration146Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 147: create `mesh_beacon_offers` (#4723). Row per beaconing node
+// per source, holding the offer a received MeshBeacon advertises plus its
+// dismissal state. Write semantics: upsert on (sourceId, nodeNum) — a
+// rebroadcast updates the row rather than appending. PER-SOURCE.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 147,
+  name: 'add_mesh_beacon_offers',
+  settingsKey: 'migration_147_add_mesh_beacon_offers',
+  sqlite: (db) => addMeshBeaconOffersMigration.up(db),
+  postgres: (client) => runMigration147Postgres(client),
+  mysql: (pool) => runMigration147Mysql(pool),
 });

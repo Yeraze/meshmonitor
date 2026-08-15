@@ -371,6 +371,11 @@ setTimeout(async () => {
     // subscribes to the event bus so they fire on live mesh traffic.
     await startAutomationEngine();
 
+    // Persist received MeshBeacon offers (#4723). A separate subscriber to the
+    // same event, so offers are recorded for the invitation card even when no
+    // automation references beacons.
+    startMeshBeaconOfferIngestion();
+
     // Seed the global "discard invalid GPS positions" ingest gate from settings
     // (default ON = discard, the historical behavior). Refreshed live on save via
     // the setDiscardInvalidPositions callback registered below.
@@ -575,6 +580,7 @@ import authRoutes from './routes/authRoutes.js';
 import automationRoutes from './routes/automationRoutes.js';
 import autoAckConverterRoutes from './routes/autoAckConverterRoutes.js';
 import { startAutomationEngine } from './services/automation/automationEngineSingleton.js';
+import { startMeshBeaconOfferIngestion } from './services/meshBeaconOfferService.js';
 import userRoutes from './routes/userRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
 import securityRoutes from './routes/securityRoutes.js';
@@ -593,6 +599,7 @@ import v1Router from './routes/v1/index.js';
 import meshcoreRoutes from './routes/meshcoreRoutes.js';
 import mqttPacketRoutes from './routes/mqttPacketRoutes.js';
 import atakRoutes from './routes/atakRoutes.js';
+import beaconOfferRoutes from './routes/beaconOfferRoutes.js';
 import reticulumRoutes from './routes/reticulumRoutes.js';
 // meshcoreConfigFromSource / ensureMeshCoreManagerStarted moved to bootstrapSources.ts
 import { isMeshtasticManager, isMeshCoreManager } from './sourceManagerTypes.js';
@@ -729,6 +736,10 @@ apiRouter.use('/sources/:id/mqtt/packets', mqttPacketRoutes);
 // disconnected source simply has no rows. See
 // docs/internal/dev-notes/ATAK_COT_PHASE2_SPEC.md §2g.
 apiRouter.use('/sources/:id/atak', atakRoutes);
+
+// MeshBeacon offer routes (#4723) — nested under `/api/sources/:id/beacon-offers`.
+// Per-source because accepting an offer is a device write against one radio.
+apiRouter.use('/sources/:id/beacon-offers', beaconOfferRoutes);
 
 // Reticulum routes — nested under `/api/sources/:id/reticulum` so each
 // request resolves the destinations/interfaces bound to a specific source.

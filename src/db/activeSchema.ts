@@ -180,6 +180,11 @@ import {
   atakContactsSqlite, atakContactsPostgres, atakContactsMysql,
 } from './schema/atakContacts.js';
 
+// Received MeshBeacon offers (#4723)
+import {
+  meshBeaconOffersSqlite, meshBeaconOffersPostgres, meshBeaconOffersMysql,
+} from './schema/meshBeaconOffers.js';
+
 // Reticulum tables (epic #3960, Phase 1a + Phase 2)
 import {
   reticulumDestinationsSqlite, reticulumDestinationsPostgres, reticulumDestinationsMysql,
@@ -312,6 +317,8 @@ export interface ActiveSchema {
   // ATAK contacts (ATAK/CoT Phase 2, issue #3691)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3691 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   atakContacts: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4723 same reason as every other field here (see the interface doc comment): the three per-backend table types are incompatible at compile time but structurally identical at runtime. Disabled rather than baselined so the file's `any` count does not ratchet up.
+  meshBeaconOffers: any;
 
   // Reticulum tables (epic #3960, Phase 1a + Phase 2)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3960 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
@@ -394,6 +401,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreObserverCredentials: meshcoreObserverCredentialsSqlite,
     deadDropMessages: deadDropMessagesSqlite,
     atakContacts: atakContactsSqlite,
+    meshBeaconOffers: meshBeaconOffersSqlite,
     reticulumDestinations: reticulumDestinationsSqlite,
     reticulumInterfaces: reticulumInterfacesSqlite,
     reticulumMessages: reticulumMessagesSqlite,
@@ -462,6 +470,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreObserverCredentials: meshcoreObserverCredentialsPostgres,
     deadDropMessages: deadDropMessagesPostgres,
     atakContacts: atakContactsPostgres,
+    meshBeaconOffers: meshBeaconOffersPostgres,
     reticulumDestinations: reticulumDestinationsPostgres,
     reticulumInterfaces: reticulumInterfacesPostgres,
     reticulumMessages: reticulumMessagesPostgres,
@@ -530,6 +539,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreObserverCredentials: meshcoreObserverCredentialsMysql,
     deadDropMessages: deadDropMessagesMysql,
     atakContacts: atakContactsMysql,
+    meshBeaconOffers: meshBeaconOffersMysql,
     reticulumDestinations: reticulumDestinationsMysql,
     reticulumInterfaces: reticulumInterfacesMysql,
     reticulumMessages: reticulumMessagesMysql,

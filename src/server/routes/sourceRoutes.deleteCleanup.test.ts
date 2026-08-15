@@ -103,3 +103,46 @@ describe('DELETE /api/sources/:id — orphaned node cleanup (#4137)', () => {
     expect(res.body.success).toBe(true);
   });
 });
+
+/**
+ * Beacon offers are cleaned up with the source (#4723).
+ *
+ * Same failure mode as the node and settings purges above, with a twist: the
+ * rows carry the user's DISMISSALS. A future source reusing the id would
+ * inherit invitations the previous owner had already declined and keep them
+ * hidden — silent, and hard to trace back to a source deleted months earlier.
+ */
+describe('DELETE /api/sources/:id — beacon offer cleanup (#4723)', () => {
+  let harness: RouteTestHarness;
+  const BEACON_NODE = 0x50000009;
+
+  beforeEach(async () => {
+    harness = await createRouteTestApp({ mount: (app) => app.use('/', sourceRoutes) });
+    await harness.grant(harness.limited.id, 'sources', 'write');
+
+    for (const src of [harness.sourceA, harness.sourceB]) {
+      await databaseService.meshBeaconOffers.recordBeacon(src, BEACON_NODE, {
+        message: 'join us',
+        offerChannelName: 'RegionMesh',
+        offerChannelPsk: 'AQIDBAUGBwgJCgsMDQ4PEA==',
+        offerRegion: 1,
+        offerPreset: 0,
+      }, Date.now());
+    }
+  });
+
+  afterEach(async () => {
+    await databaseService.meshBeaconOffers.deleteForSource(harness.sourceA).catch(() => {});
+    await databaseService.meshBeaconOffers.deleteForSource(harness.sourceB).catch(() => {});
+    await harness.cleanup();
+  });
+
+  it('purges the deleted source\'s offers and leaves other sources alone', async () => {
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.delete(`/${harness.sourceA}`);
+    expect(res.status).toBe(200);
+
+    expect(await databaseService.meshBeaconOffers.listAll(harness.sourceA)).toHaveLength(0);
+    expect(await databaseService.meshBeaconOffers.listAll(harness.sourceB)).toHaveLength(1);
+  });
+});

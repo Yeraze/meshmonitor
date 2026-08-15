@@ -220,8 +220,9 @@ export interface NodeInfo {
  */
 export interface MeshBeaconPayload {
   message?: string;
-  offerChannel?: { name?: string };
-  offer_channel?: { name?: string };
+  /** `ChannelSettings` — the PSK is `bytes`, so protobufjs yields a Uint8Array. */
+  offerChannel?: { name?: string; psk?: Uint8Array };
+  offer_channel?: { name?: string; psk?: Uint8Array };
   offerRegion?: number;
   offer_region?: number;
   offerPreset?: number;
