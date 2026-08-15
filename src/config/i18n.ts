@@ -23,6 +23,7 @@ export const AVAILABLE_LANGUAGES = [
   { code: 'fr', name: 'French', nativeName: 'Français' },
   { code: 'ru', name: 'Russian', nativeName: 'Русский' },
   { code: 'zh_Hans', name: 'Chinese (Simplified)', nativeName: '简体中文' },
+  { code: 'zh_Hant', name: 'Chinese (Traditional)', nativeName: '繁體中文' },
 ];
 
 void i18n
