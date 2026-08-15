@@ -9,6 +9,8 @@
  * circle, and Web-Mercator slippy-tile conversion.
  */
 
+import { EARTH_RADIUS_M } from './earthConstants.js';
+
 /** A simple lat/lng coordinate pair (degrees). */
 export interface LatLng {
   lat: number;
@@ -136,9 +138,6 @@ export function lngLatToTilePixel(
 
   return { x, y, px, py };
 }
-
-/** Mean earth radius in metres, matching the Haversine constant in `./distance`. */
-const EARTH_RADIUS_M = 6_371_000;
 
 /**
  * Destination point reached by travelling `distanceM` from `origin` along a

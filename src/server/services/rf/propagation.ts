@@ -25,11 +25,10 @@
  * SI implementations.
  */
 
+import { EARTH_RADIUS_M } from '../../../utils/earthConstants.js';
+
 /** Speed of light, m/s. */
 const C = 299_792_458;
-
-/** Mean earth radius, metres. */
-const EARTH_RADIUS_M = 6_371_000;
 
 /**
  * Effective-earth-radius factor for standard atmospheric refraction. 4/3 is

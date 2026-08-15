@@ -115,6 +115,26 @@ describe('knifeEdgeLossDb', () => {
     expect(knifeEdgeLossDb(-3)).toBe(0);
   });
 
+  it('never returns negative loss anywhere in the active range', () => {
+    // Review question on #4741: could J(v) go negative just above the -0.7
+    // cutoff? Swept numerically — the minimum over (-0.7, 5] is +0.536 dB at
+    // v just above the boundary, so no. Asserted as a property rather than
+    // wrapped in a Math.max: a clamp that can never fire is dead code that
+    // would also absorb a genuine future regression in the guard threshold.
+    for (let v = -0.699; v <= 5; v += 0.001) {
+      expect(knifeEdgeLossDb(v)).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('is continuous-ish across the -0.7 cutoff, stepping by well under a dB', () => {
+    // The guard makes J(v) discontinuous by construction; this pins how big
+    // that step is, so a future change to the threshold cannot quietly turn a
+    // half-dB seam into a large one.
+    expect(knifeEdgeLossDb(-0.7)).toBe(0);
+    expect(knifeEdgeLossDb(-0.699)).toBeGreaterThan(0);
+    expect(knifeEdgeLossDb(-0.699)).toBeLessThan(1);
+  });
+
   it('increases monotonically as the obstruction rises', () => {
     const losses = [0, 1, 2, 3, 5].map(knifeEdgeLossDb);
     for (let i = 1; i < losses.length; i++) {
