@@ -1,7 +1,7 @@
 import { useMemo, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, LocateFixed, Maximize, Clock, Ruler, Mountain, RotateCcw,
+  ArrowLeft, LocateFixed, Maximize, Clock, Ruler, Mountain, RadioTower, RotateCcw,
   MapPin, Palette, Flag, CircleDashed, Radar, Route, Share2, Flame, Spline, Signal, Box, Users,
 } from 'lucide-react';
 import { useDashboardSources } from '../../hooks/useDashboardData';
@@ -69,6 +69,8 @@ export default function MapAnalysisToolbar() {
     measureMode,
     setMeasureMode,
     linkProfileMode,
+    sitePlannerMode,
+    setSitePlannerMode,
     setLinkProfileMode,
     reset,
   } = useMapAnalysisCtx();
@@ -241,9 +243,15 @@ export default function MapAnalysisToolbar() {
         type="button"
         className={`map-analysis-layer-btn icon-only ${measureMode ? 'active' : ''}`}
         onClick={() => {
-          setMeasureMode(!measureMode);
-          // Mutually exclusive with the Link Profile picker (#4111 Phase 2).
-          if (!measureMode) setLinkProfileMode(false);
+          const next = !measureMode;
+          setMeasureMode(next);
+          // Mutually exclusive with every other click-capturing tool — each
+          // installs a capture-phase listener, so two active at once both
+          // consume the same click (#4111 Phase 2, extended for #4727).
+          if (next) {
+            setLinkProfileMode(false);
+            setSitePlannerMode(false);
+          }
         }}
         disabled={analysisNodes.length < 2}
         title={analysisNodes.length < 2
@@ -263,9 +271,15 @@ export default function MapAnalysisToolbar() {
           type="button"
           className={`map-analysis-layer-btn icon-only ${linkProfileMode ? 'active' : ''}`}
           onClick={() => {
-            setLinkProfileMode(!linkProfileMode);
-            // Mutually exclusive with the Measure tool.
-            if (!linkProfileMode) setMeasureMode(false);
+            const next = !linkProfileMode;
+            setLinkProfileMode(next);
+            // Mutually exclusive with the other click-capturing tools. This has
+            // to be symmetric: every one of these installs a capture-phase
+            // click listener, so any two active at once both eat the same click.
+            if (next) {
+              setMeasureMode(false);
+              setSitePlannerMode(false);
+            }
           }}
           disabled={analysisNodes.length < 2}
           title={analysisNodes.length < 2
@@ -274,6 +288,31 @@ export default function MapAnalysisToolbar() {
           aria-label="Link Profile"
         >
           <Mountain size={ICON} />
+        </button>
+      )}
+
+      {/* Site Planner (#4727). Gated on elevation like Link Profile — both are
+          terrain tools and neither can say anything useful without a DEM.
+          Unlike Link Profile it needs NO existing nodes: siting a repeater is
+          the main use, and that means places where no node exists yet. */}
+      {elevationEnabled && (
+        <button
+          type="button"
+          className={`map-analysis-layer-btn icon-only ${sitePlannerMode ? 'active' : ''}`}
+          onClick={() => {
+            const next = !sitePlannerMode;
+            setSitePlannerMode(next);
+            // Mutually exclusive with the other click-capturing tools —
+            // two capture-phase listeners would both eat the same click.
+            if (next) {
+              setMeasureMode(false);
+              setLinkProfileMode(false);
+            }
+          }}
+          title="Site Planner — predict outbound coverage over terrain from any point"
+          aria-label="Site Planner"
+        >
+          <RadioTower size={ICON} />
         </button>
       )}
       {UNTIMED_LAYERS.map(({ key, label, icon }) => (

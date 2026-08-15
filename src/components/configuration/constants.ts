@@ -268,6 +268,25 @@ export function getPresetBandwidthKHz(preset: number, wideLora: boolean): number
  * bounds (not in REGION_FREQ_INFO) and null/undefined regions are treated as
  * permissive (all presets legal).
  */
+/**
+ * Representative frequency for a region, in Hz — the centre of its band.
+ *
+ * Path loss varies with frequency, so a coverage prediction (#4727) needs one.
+ * The centre is used rather than either edge because a mesh's actual channel
+ * sits somewhere inside the band and the endpoints would bias every estimate
+ * in the same direction. Across these bands the choice moves free-space loss
+ * by well under a dB, which is far below the model's own error.
+ *
+ * Returns null for a region with no known band, so callers fall back to their
+ * own default rather than silently predicting on a fabricated frequency.
+ */
+export function regionCenterFrequencyHz(region: number | null | undefined): number | null {
+  if (region == null) return null;
+  const info = REGION_FREQ_INFO[region];
+  if (!info) return null;
+  return ((info.start + info.end) / 2) * 1_000_000;
+}
+
 export function isPresetLegalForRegion(
   region: number | null | undefined,
   preset: number
