@@ -47,6 +47,7 @@ import { ResourceType } from './types/permission';
 import api, { type ChannelDatabaseEntry } from './services/api';
 import { getPacketStats } from './services/packetApi';
 import { logger } from './utils/logger';
+import { MAX_ACCUMULATED_POSITION_FIXES } from './utils/positionHistoryDownsample';
 import { isTxDisabledBody } from './utils/txDisabled';
 import { resolveNeighborInfoErrorToast } from './utils/neighborInfoError';
 // generateArrowMarkers moved to useTraceroutePaths hook
@@ -1308,6 +1309,7 @@ function App() {
       let beforeCursor: number | undefined;
       const MAX_PAGES = 50; // safety bound (~15k fixes) against a runaway loop
 
+
       try {
         for (let page = 0; page < MAX_PAGES; page++) {
           const params = new URLSearchParams();
@@ -1332,6 +1334,9 @@ function App() {
           // Next page: strictly older than the oldest fix just received. A
           // boundary fix split by the row cap is always older than this, so it
           // re-assembles on the next page without duplicating an emitted fix.
+          // Stop paging once we hold enough (#4743) — see the constant's comment.
+          if (accumulated.length >= MAX_ACCUMULATED_POSITION_FIXES) break;
+
           const oldest = pageItems[0].timestamp;
           if (beforeCursor !== undefined && oldest >= beforeCursor) break; // no-progress guard
           beforeCursor = oldest;
