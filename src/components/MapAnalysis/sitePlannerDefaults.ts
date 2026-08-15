@@ -35,6 +35,16 @@ export interface SitePlannerDefaults {
   radiusKm: number;
   /** Field names genuinely taken from the device, for UI disclosure. */
   seededFrom: string[];
+  /**
+   * Set when the radio reported a region MeshMonitor has no frequency band
+   * for, so the UI can say which one rather than showing a generic "assumed".
+   *
+   * `REGION_FREQ_INFO` is transcribed from firmware and currently stops short
+   * of several amateur and newer EU regions (27-32 as of writing). Guessing a
+   * band from the region's NAME would be worse than falling back: the guess
+   * would be reported as read-from-device and silently shift every prediction.
+   */
+  unknownRegion: number | null;
 }
 
 /**
@@ -63,6 +73,10 @@ export function buildSitePlannerDefaults(lora?: LoraConfigLike | null): SitePlan
 
   const freq = regionCenterFrequencyHz(lora?.region);
   if (freq != null) seededFrom.push('frequency');
+  // The radio told us a region but we have no band for it — a materially
+  // different situation from "no radio config at all", and one the user can
+  // fix immediately now that frequency is editable.
+  const unknownRegion = lora?.region != null && freq == null ? Number(lora.region) : null;
 
   // `!= null` rather than truthiness: 0 dBm is a legitimate transmit power
   // (some regions cap low), and truthiness would silently replace it with 30.
@@ -83,5 +97,6 @@ export function buildSitePlannerDefaults(lora?: LoraConfigLike | null): SitePlan
     rxHeightM: SITE_PLANNER_FALLBACKS.rxHeightM,
     radiusKm: SITE_PLANNER_FALLBACKS.radiusKm,
     seededFrom,
+    unknownRegion,
   };
 }

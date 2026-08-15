@@ -158,9 +158,11 @@ export default function SitePlannerPanel({
       {/* Which numbers are real and which are assumed. A prediction computed on
           a guessed frequency looks exactly as confident as one that isn't. */}
       <p className={styles.sitePlannerSeeded} data-testid="site-planner-seeded">
-        {params.seededFrom.length > 0
-          ? t('site_planner.seeded', { fields: params.seededFrom.join(', ') })
-          : t('site_planner.not_seeded')}
+        {params.unknownRegion != null
+          ? t('site_planner.unknown_region', { region: params.unknownRegion })
+          : params.seededFrom.length > 0
+            ? t('site_planner.seeded', { fields: params.seededFrom.join(', ') })
+            : t('site_planner.not_seeded')}
       </p>
 
       {error && <p className={styles.sitePlannerError} role="alert">{error}</p>}

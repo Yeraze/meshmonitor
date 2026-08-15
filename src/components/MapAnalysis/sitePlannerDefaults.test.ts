@@ -62,6 +62,28 @@ describe('buildSitePlannerDefaults', () => {
     expect(d.seededFrom).not.toContain('frequency');
   });
 
+  it('names a region it has no band for, instead of a generic "assumed"', () => {
+    // Review catch on #4746: REGION_FREQ_INFO stops short of several amateur
+    // and newer EU regions (27-32). A device on one of those was falling back
+    // to the US band with only a generic disclosure. Naming the region turns a
+    // silent gap into something the user can act on.
+    const d = buildSitePlannerDefaults({ region: 29 }); // EU_866
+    expect(d.unknownRegion).toBe(29);
+    expect(d.seededFrom).not.toContain('frequency');
+    expect(d.frequencyHz).toBe(SITE_PLANNER_FALLBACKS.frequencyHz);
+  });
+
+  it('does not flag an unknown region when no region was reported at all', () => {
+    // "No radio config" and "region we cannot map" are different situations
+    // and must not produce the same message.
+    expect(buildSitePlannerDefaults(null).unknownRegion).toBeNull();
+    expect(buildSitePlannerDefaults({ txPower: 20 }).unknownRegion).toBeNull();
+  });
+
+  it('does not flag a region it CAN map', () => {
+    expect(buildSitePlannerDefaults({ region: 1 }).unknownRegion).toBeNull();
+  });
+
   it('assumes a peer handheld receiver, not a base station', () => {
     // Receiver height drives predicted reach; assuming a mast would inflate it.
     expect(buildSitePlannerDefaults(null).rxHeightM).toBeLessThanOrEqual(2);
