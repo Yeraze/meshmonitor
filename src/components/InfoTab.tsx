@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import NetworkSurveyPanel from './survey/NetworkSurveyPanel';
 import { UiIcon } from './icons';
 import { DeviceInfo, Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
@@ -489,6 +490,13 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
               )}
             </p>
           )}
+        </div>
+
+        {/* Network survey (#4726) — passive synthesis of what this radio can
+            reach. Lives in Info because it describes the local network rather
+            than acting on it. */}
+        <div className="info-section">
+          <NetworkSurveyPanel sourceId={activeSourceId} />
         </div>
 
         <div className="info-section">
