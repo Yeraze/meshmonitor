@@ -221,7 +221,7 @@ export const TRIGGERS: BlockDef[] = [
           { value: 'dwell', label: 'Moves while inside the region' },
         ],
       },
-      { name: 'shape', label: 'Region', kind: 'geofence', help: 'Draw a circle (center + radius) or a polygon on the map.' },
+      { name: 'shape', label: 'Region', kind: 'geofence', help: 'Draw a circle (center + radius) or a polygon on the map, or anchor the fence to a waypoint so it follows the waypoint when it moves.' },
       COOLDOWN,
       COOLDOWN_SCOPE,
     ],

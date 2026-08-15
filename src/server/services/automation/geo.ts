@@ -25,6 +25,64 @@ export type GeofenceShape =
   | { type: 'circle'; center: { lat: number; lng: number }; radiusKm: number }
   | { type: 'polygon'; vertices: Array<{ lat: number; lng: number }> };
 
+/**
+ * A geofence anchored to a waypoint instead of a drawn region (#4722).
+ *
+ * This is NOT a `GeofenceShape`: it carries no coordinates, because the whole
+ * point is that the fence follows the waypoint. It resolves to a circle at
+ * evaluation time, so moving the waypoint moves the fence with no edit to the
+ * automation.
+ *
+ * `sourceId` is stored explicitly rather than taken from the position event.
+ * Automations are global while waypoints are per-source, so resolving against
+ * the moving node's source would make one fence mean different physical places
+ * for different nodes — surprising, and impossible to see from the rule. Pinning
+ * the source keeps a fence to exactly one place on the map, while still letting
+ * a node from ANY source cross it.
+ */
+export type GeofenceWaypointAnchor = {
+  type: 'waypoint';
+  sourceId: string;
+  waypointId: number;
+  radiusKm: number;
+};
+
+/**
+ * Read a waypoint anchor out of a geofence trigger's params, or null when the
+ * params describe a drawn region (or nothing usable).
+ *
+ * Deliberately separate from {@link normalizeGeofenceParams}: that function is
+ * pure and total, and an anchor cannot become a shape without a database read.
+ * Keeping them apart means every existing caller of `normalizeGeofenceParams`
+ * keeps its synchronous contract.
+ */
+export function normalizeGeofenceAnchor(params: Record<string, unknown>): GeofenceWaypointAnchor | null {
+  const raw = params?.shape;
+  if (!raw || typeof raw !== 'object') return null;
+  const s = raw as Record<string, unknown>;
+  if (s.type !== 'waypoint') return null;
+
+  const sourceId = typeof s.sourceId === 'string' ? s.sourceId.trim() : '';
+  const waypointId = Number(s.waypointId);
+  const radiusKm = Number(s.radiusKm);
+  if (!sourceId) return null;
+  if (!Number.isFinite(waypointId)) return null;
+  if (!Number.isFinite(radiusKm) || radiusKm <= 0) return null;
+  return { type: 'waypoint', sourceId, waypointId, radiusKm };
+}
+
+/** Build the circle a resolved waypoint stands for. */
+export function shapeFromWaypoint(
+  anchor: GeofenceWaypointAnchor,
+  position: { latitude: number; longitude: number },
+): GeofenceShape {
+  return {
+    type: 'circle',
+    center: { lat: position.latitude, lng: position.longitude },
+    radiusKm: anchor.radiusKm,
+  };
+}
+
 /** Point-in-polygon via ray casting (mirrors `src/utils/geometry.ts`). */
 export function pointInPolygon(lat: number, lon: number, vertices: Array<{ lat: number; lng: number }>): boolean {
   if (vertices.length < 3) return false;
