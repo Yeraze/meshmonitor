@@ -11,6 +11,7 @@
  * building a pair.
  */
 import { useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CircleMarker, Tooltip, useMap } from 'react-leaflet';
 import { resolvePickedPoint, type PickCandidate } from './mapClickPicker';
 
@@ -36,6 +37,7 @@ export default function SitePlannerOriginController({
   onExit,
 }: SitePlannerOriginControllerProps) {
   const map = useMap();
+  const { t } = useTranslation();
 
   // Keep the latest candidates reachable from the stable click handler without
   // re-registering the listener on every render.
@@ -91,7 +93,7 @@ export default function SitePlannerOriginController({
       className="site-planner-origin"
     >
       <Tooltip permanent direction="top" offset={[0, -8]}>
-        {origin.isNode ? (origin.name ?? 'Transmitter') : 'Proposed site'}
+        {origin.isNode ? (origin.name ?? t('site_planner.transmitter')) : t('site_planner.proposed_site')}
       </Tooltip>
     </CircleMarker>
   );

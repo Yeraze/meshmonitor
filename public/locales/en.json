@@ -5085,5 +5085,8 @@
   "site_planner.running": "Predicting…",
   "site_planner.clear": "Clear",
   "site_planner.failed": "Could not compute coverage.",
-  "site_planner.caveat": "Modelled from terrain only — no buildings, foliage or multipath. A prediction, not a measurement."
+  "site_planner.caveat": "Modelled from terrain only — no buildings, foliage or multipath. A prediction, not a measurement.",
+  "site_planner.transmitter": "Transmitter",
+  "site_planner.proposed_site": "Proposed site",
+  "site_planner.frequency": "Frequency (MHz)"
 }

@@ -33,7 +33,14 @@ export default function SitePlannerPanel({
 }: SitePlannerPanelProps) {
   const { t } = useTranslation();
   const [params, setParams] = useState<SitePlannerDefaults>(() => buildSitePlannerDefaults(null));
-  const [seeded, setSeeded] = useState(false);
+  /**
+   * Which source the current values were seeded from. Keyed by source rather
+   * than a plain boolean so switching sources re-seeds: carrying one radio's
+   * frequency and power over to another would predict with the wrong radio
+   * while still claiming the values were read from a device (review, #4746).
+   */
+  const [seededFor, setSeededFor] = useState<string | null | undefined>(undefined);
+  const seeded = seededFor === (sourceId ?? null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,7 +60,7 @@ export default function SitePlannerPanel({
         // says the values are assumed.
         if (!cancelled) setParams(buildSitePlannerDefaults(null));
       } finally {
-        if (!cancelled) setSeeded(true);
+        if (!cancelled) setSeededFor(sourceId ?? null);
       }
     })();
     return () => { cancelled = true; };
@@ -127,6 +134,19 @@ export default function SitePlannerPanel({
       </p>
 
       <div className={styles.sitePlannerGrid}>
+        {/* Shown in MHz: nobody reasons about a radio in hertz, and this was
+            seeded-but-unreachable before — a non-US user whose seeding failed
+            had no way to correct the band (review, #4746). */}
+        <label className={styles.sitePlannerField}>
+          <span>{t('site_planner.frequency')}</span>
+          <input
+            type="number"
+            step={0.1}
+            value={Math.round((params.frequencyHz / 1e6) * 10) / 10}
+            data-testid="site-planner-frequencyMhz"
+            onChange={(e) => update('frequencyHz', Number(e.target.value) * 1e6)}
+          />
+        </label>
         {num('txHeightM', t('site_planner.tx_height'))}
         {num('rxHeightM', t('site_planner.rx_height'))}
         {num('radiusKm', t('site_planner.radius'))}

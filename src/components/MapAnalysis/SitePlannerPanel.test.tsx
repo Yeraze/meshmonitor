@@ -122,6 +122,38 @@ describe('SitePlannerPanel', () => {
     expect(onCoverage).toHaveBeenCalledWith(null);
   });
 
+  it('re-seeds when the source changes', async () => {
+    // Carrying one radio's frequency and power to another would predict with
+    // the wrong radio while still claiming the values were read from a device.
+    const { rerender } = renderPanel();
+    await waitFor(() => expect(getCurrentConfig).toHaveBeenCalledWith('src-a'));
+
+    getCurrentConfig.mockResolvedValue({ deviceConfig: { lora: { region: 2, txPower: 14 } } });
+    rerender(
+      <SitePlannerPanel open sourceId="src-b" origin={origin} onClose={() => {}} onCoverage={() => {}} />,
+    );
+
+    await waitFor(() => expect(getCurrentConfig).toHaveBeenCalledWith('src-b'));
+    await waitFor(() =>
+      expect((screen.getByTestId('site-planner-txPowerDbm') as HTMLInputElement).value).toBe('14'));
+  });
+
+  it('lets the user correct the frequency the seeding guessed', async () => {
+    // Previously seeded-but-unreachable: a non-US user whose seeding failed
+    // had no way to fix the band.
+    const user = userEvent.setup();
+    renderPanel();
+    await waitFor(() => expect(getCurrentConfig).toHaveBeenCalled());
+
+    const input = screen.getByTestId('site-planner-frequencyMhz') as HTMLInputElement;
+    await user.clear(input);
+    await user.type(input, '868');
+    await user.click(screen.getByTestId('site-planner-run'));
+
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/rf/coverage',
+      expect.objectContaining({ frequencyHz: 868e6 })));
+  });
+
   it('always states that this is modelled, not measured', async () => {
     renderPanel();
     await waitFor(() => expect(screen.getByText('site_planner.caveat')).toBeTruthy());

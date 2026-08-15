@@ -243,9 +243,15 @@ export default function MapAnalysisToolbar() {
         type="button"
         className={`map-analysis-layer-btn icon-only ${measureMode ? 'active' : ''}`}
         onClick={() => {
-          setMeasureMode(!measureMode);
-          // Mutually exclusive with the Link Profile picker (#4111 Phase 2).
-          if (!measureMode) setLinkProfileMode(false);
+          const next = !measureMode;
+          setMeasureMode(next);
+          // Mutually exclusive with every other click-capturing tool — each
+          // installs a capture-phase listener, so two active at once both
+          // consume the same click (#4111 Phase 2, extended for #4727).
+          if (next) {
+            setLinkProfileMode(false);
+            setSitePlannerMode(false);
+          }
         }}
         disabled={analysisNodes.length < 2}
         title={analysisNodes.length < 2
@@ -265,9 +271,15 @@ export default function MapAnalysisToolbar() {
           type="button"
           className={`map-analysis-layer-btn icon-only ${linkProfileMode ? 'active' : ''}`}
           onClick={() => {
-            setLinkProfileMode(!linkProfileMode);
-            // Mutually exclusive with the Measure tool.
-            if (!linkProfileMode) setMeasureMode(false);
+            const next = !linkProfileMode;
+            setLinkProfileMode(next);
+            // Mutually exclusive with the other click-capturing tools. This has
+            // to be symmetric: every one of these installs a capture-phase
+            // click listener, so any two active at once both eat the same click.
+            if (next) {
+              setMeasureMode(false);
+              setSitePlannerMode(false);
+            }
           }}
           disabled={analysisNodes.length < 2}
           title={analysisNodes.length < 2
