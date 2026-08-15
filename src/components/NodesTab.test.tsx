@@ -210,6 +210,46 @@ describe('NodesTab', () => {
       expect(indicatorGroup).not.toContain('NodeDetailsButton');
     });
 
+    // #4720 — an incomplete node used to be indistinguishable from a synced one
+    // unless you held nodes:write, which revealed the Copy NodeInfo action. The
+    // badge states the fact for everyone; the remedy stays permission-gated.
+    describe('incomplete-node badge (#4720)', () => {
+      it('puts the incomplete badge among the inert indicators, with no props', () => {
+        expect(indicatorGroup).toContain('<NodeIncompleteBadge />');
+        expect(actionGroup).not.toContain('NodeIncompleteBadge');
+      });
+
+      it('shows the badge to read-only users — it is NOT permission-gated', () => {
+        // This is the whole point of the issue. The Copy NodeInfo action below
+        // shares the same `!isNodeComplete(node)` condition but adds
+        // `hasPermission('nodes', 'write')`; if that guard ever creeps onto the
+        // badge, read-only users go back to seeing nothing at all.
+        const badgeAt = indicatorGroup.indexOf('<NodeIncompleteBadge />');
+        const guard = indicatorGroup.slice(
+          indicatorGroup.lastIndexOf('{', badgeAt),
+          badgeAt,
+        );
+        expect(guard).toContain('!isNodeComplete(node)');
+        expect(guard).not.toMatch(/hasPermission/);
+      });
+
+      it('leaves the Copy NodeInfo remedy permission-gated', () => {
+        // The badge is a fact (ungated); copying NodeInfo mutates data and must
+        // stay behind nodes:write.
+        const copyAt = actionGroup.indexOf("t('nodes.copy_nodeinfo')");
+        const guard = actionGroup.slice(0, copyAt);
+        expect(guard).toMatch(/hasPermission\('nodes', 'write'\)/);
+      });
+
+      it('drives the badge off the shared predicate, not a local re-derivation', () => {
+        // isNodeComplete already encodes two subtleties (a firmware-default
+        // "Node !xxxxxxxx" longName is incomplete; a default 4-hex shortName is
+        // NOT). A second, hand-rolled check here would drift from the filter and
+        // from Auto-Ack's node.completeness.
+        expect(src).toMatch(/import \{[^}]*isNodeComplete[^}]*\} from '\.\.\/utils\/nodeHelpers'/);
+      });
+    });
+
     it('offers Node Details on every node, not just unmessageable ones', () => {
       const detailsAt = actionGroup.indexOf('<NodeDetailsButton');
       const guard = actionGroup.slice(actionGroup.lastIndexOf('{', detailsAt), detailsAt);
