@@ -5089,5 +5089,15 @@
   "site_planner.transmitter": "Transmitter",
   "site_planner.proposed_site": "Proposed site",
   "site_planner.frequency": "Frequency (MHz)",
-  "site_planner.unknown_region": "This radio reports region {{region}}, which MeshMonitor has no frequency band for. Set the frequency manually — the default below is a guess."
+  "site_planner.unknown_region": "This radio reports region {{region}}, which MeshMonitor has no frequency band for. Set the frequency manually — the default below is a guess.",
+  "key_mismatch.headline": "This node's public key has changed",
+  "key_mismatch.severity_high": "Needs attention",
+  "key_mismatch.severity_low": "Informational",
+  "key_mismatch.risk_high": "You have sent encrypted direct messages to this node, which were encrypted to its previous key. A key change can mean the node was reset or reflashed — or that something else is now impersonating it. Future DMs would be encrypted to the new key, so if it is not genuinely this node, they could be read by whoever controls it.",
+  "key_mismatch.risk_low": "You have only seen this node on public channels, which are not protected by this key, so there is little practical risk to you. Nodes commonly change keys after a factory reset or firmware reflash.",
+  "key_mismatch.show_actions": "What should I do?",
+  "key_mismatch.hide_actions": "Hide guidance",
+  "key_mismatch.action_verify": "Confirm the change with the node's owner over a channel you already trust — in person, by phone, or another route that does not depend on this mesh.",
+  "key_mismatch.action_intentional": "If the change was expected (factory reset, reflash, new firmware), delete this node in MeshMonitor and let it exchange keys again naturally.",
+  "key_mismatch.action_avoid_dms": "Until you have confirmed it, avoid sending anything sensitive to this node by direct message."
 }

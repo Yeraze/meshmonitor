@@ -30,6 +30,7 @@ import { TracerouteParticipationPicker } from './traceroute/TracerouteParticipat
 import { useNodeTraceroutes } from '../hooks/useNodeTraceroutes';
 import { useTraceroutePairHistory } from '../hooks/useTraceroutePairHistory';
 import { getMessageSortTime } from '../utils/messageSort';
+import KeyMismatchWarning from './security/KeyMismatchWarning';
 import { getUtf8ByteLength, formatByteCount, isEmoji } from '../utils/text';
 import { isDeviceDbWarningMitigatable } from '../utils/deviceDbWarning';
 import { applyHomoglyphOptimization } from '../utils/homoglyph';
@@ -1672,8 +1673,44 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
               </div>
             </div>
 
+            {/* Public-key mismatch (#4738) — explained rather than asserted,
+                with severity driven by whether the user has actually encrypted
+                anything to the old key. Scoped to the mismatch case: low-entropy
+                and duplicate-key are different problems needing different
+                guidance, so they keep the original banner below. */}
+            {selectedNode && selectedNode.keyMismatchDetected && (
+              <div style={{ marginBottom: '10px' }}>
+                <KeyMismatchWarning
+                  sentDirectMessageCount={
+                    selectedDMNode
+                      ? selectedDMMessages.filter(m => m.to === selectedDMNode).length
+                      : 0
+                  }
+                  details={selectedNode.keySecurityIssueDetails}
+                >
+                  {hasPermission('security', 'write') && (
+                    <button
+                      onClick={() => void handleClearSecurityWarning(selectedNode.nodeNum)}
+                      disabled={clearingSecurityWarningNode === selectedNode.nodeNum}
+                      title={t('messages.security_risk_clear_title', 'Clear this security warning')}
+                      style={{
+                        background: 'transparent',
+                        border: '1px solid currentColor',
+                        color: 'inherit',
+                        borderRadius: '4px',
+                        padding: '2px 10px',
+                        cursor: clearingSecurityWarningNode === selectedNode.nodeNum ? 'default' : 'pointer',
+                      }}
+                    >
+                      {clearingSecurityWarningNode === selectedNode.nodeNum ? t('messages.security_risk_clearing', 'Clearing…') : t('messages.security_risk_clear', 'Clear')}
+                    </button>
+                  )}
+                </KeyMismatchWarning>
+              </div>
+            )}
+
             {/* Security Warning Bar */}
-            {selectedNode && (selectedNode.keyIsLowEntropy || selectedNode.duplicateKeyDetected || selectedNode.keySecurityIssueDetails) && (
+            {selectedNode && !selectedNode.keyMismatchDetected && (selectedNode.keyIsLowEntropy || selectedNode.duplicateKeyDetected || selectedNode.keySecurityIssueDetails) && (
               <div
                 style={{
                   backgroundColor: '#f44336',
@@ -1690,7 +1727,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                 }}
               >
                 <span>
-                  <UiIcon name={selectedNode.keyMismatchDetected ? 'unlock' : 'alert'} /> {selectedNode.keyMismatchDetected ? t('messages.key_mismatch') : t('messages.security_risk')}
+                  <UiIcon name="alert" /> {t('messages.security_risk')}
                 </span>
                 {hasPermission('security', 'write') && (
                   <button
