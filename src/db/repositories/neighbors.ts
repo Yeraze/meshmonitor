@@ -276,9 +276,23 @@ export class NeighborsRepository extends BaseRepository {
    * aggregating RSSI values to help identify likely relay nodes.
    *
    * @param hoursBack Number of hours to look back (default 24)
+   * @param sourceId Source to scope to. Omitting it aggregates across EVERY
+   *   source, which is almost never what a caller wants — see the note below.
    * @returns Map of nodeNum to DirectNeighborStats
+   *
+   * **Scoping (#4726).** This originally took no `sourceId` and aggregated
+   * `packet_log` across every source, so a node heard by a second radio
+   * inflated the first radio's "direct neighbour" stats — the exact
+   * cross-source leak the per-source rule exists to prevent. It had one
+   * caller, itself uncalled, so nothing depended on the old behaviour.
+   * `sourceId` stays optional only because `withSourceScope` already models
+   * "all sources" explicitly (`ALL_SOURCES`); pass a real id from anything
+   * describing one radio.
    */
-  async getDirectNeighborRssiAsync(hoursBack: number = 24): Promise<Map<number, DirectNeighborStats>> {
+  async getDirectNeighborRssiAsync(
+    hoursBack: number = 24,
+    sourceId?: SourceScope,
+  ): Promise<Map<number, DirectNeighborStats>> {
     const cutoffTime = Date.now() - (hoursBack * 60 * 60 * 1000);
     const resultMap = new Map<number, DirectNeighborStats>();
     const { packetLog } = this.tables;
@@ -296,7 +310,13 @@ export class NeighborsRepository extends BaseRepository {
           gte(packetLog.timestamp, cutoffTime),
           sql`${packetLog.hop_start} = ${packetLog.hop_limit}`,
           sql`${packetLog.rssi} IS NOT NULL`,
-          sql`${packetLog.direction} = 'rx'`
+          sql`${packetLog.direction} = 'rx'`,
+          // `undefined` is the opt-out, not ALL_SOURCES: withSourceScope already
+        // treats ALL_SOURCES as "every source", so passing it through is the
+        // DELIBERATE cross-source request, while omitting the argument keeps
+        // the pre-#4726 signature working for any caller that has not been
+        // updated. The two look alike and mean different things.
+        ...(sourceId === undefined ? [] : [this.withSourceScope(packetLog, sourceId)]),
         )
       )
       .groupBy(packetLog.from_node);

@@ -158,12 +158,13 @@ describe('MeshCoreManager — syncChannelsFromDevice', () => {
     });
   });
 
-  it('handles an empty channel list without throwing', async () => {
+  it('handles an empty channel list without throwing, seeding the synthetic Public row for slot 0', async () => {
     const { manager, upsertCalls } = makeManager({
       getChannelsResponse: { success: true, data: [] },
     });
     await manager.syncChannelsFromDevice();
-    expect(upsertCalls).toHaveLength(0);
+    expect(upsertCalls).toHaveLength(1);
+    expect(upsertCalls[0].data).toMatchObject({ id: 0, name: 'Public', psk: null });
   });
 
   it('stores psk as null when the device reports an empty secret', async () => {
@@ -207,8 +208,55 @@ describe('MeshCoreManager — syncChannelsFromDevice', () => {
       },
     });
     await manager.syncChannelsFromDevice();
-    expect(upsertCalls).toHaveLength(1);
+    // The real configured slot 3, plus the synthetic Public row seeded for
+    // slot 0 since the device didn't report a real channel there.
+    expect(upsertCalls).toHaveLength(2);
     expect(upsertCalls[0].data.id).toBe(3);
+    expect(upsertCalls[1].data).toMatchObject({ id: 0, name: 'Public', psk: null });
+  });
+
+  it('seeds the synthetic Public row for slot 0 when the device reports it as an empty/unconfigured slot', async () => {
+    const zero = '00'.repeat(16);
+    const { manager, upsertCalls } = makeManager({
+      getChannelsResponse: {
+        success: true,
+        data: [{ channel_idx: 0, name: '', secret_hex: zero }],
+      },
+    });
+    await manager.syncChannelsFromDevice();
+    expect(upsertCalls).toHaveLength(1);
+    expect(upsertCalls[0].data).toMatchObject({ id: 0, name: 'Public', psk: null });
+  });
+
+  it('does not overwrite a real user-configured channel 0 with the synthetic Public placeholder', async () => {
+    const { manager, upsertCalls } = makeManager({
+      getChannelsResponse: {
+        success: true,
+        data: [{ channel_idx: 0, name: 'MyRealChannel', secret_hex: 'ab'.repeat(16) }],
+      },
+    });
+    await manager.syncChannelsFromDevice();
+    expect(upsertCalls).toHaveLength(1);
+    expect(upsertCalls[0].data).toMatchObject({
+      id: 0,
+      name: 'MyRealChannel',
+      psk: Buffer.from('ab'.repeat(16), 'hex').toString('base64'),
+    });
+  });
+
+  it('never deletes the DB row for slot 0, even when the device reports it as unconfigured', async () => {
+    const zero = '00'.repeat(16);
+    const { manager, deleteCalls, upsertCalls } = makeManager({
+      preExistingRows: [{ id: 0, name: 'Public', psk: null }],
+      getChannelsResponse: {
+        success: true,
+        data: [{ channel_idx: 0, name: '', secret_hex: zero }],
+      },
+    });
+    await manager.syncChannelsFromDevice();
+    expect(deleteCalls).toEqual([]);
+    // Re-seeded (idempotent) rather than deleted.
+    expect(upsertCalls.map(c => c.data.id)).toEqual([0]);
   });
 
   it('reconciles: deletes DB rows for slots the device no longer treats as configured', async () => {
@@ -341,5 +389,27 @@ describe('MeshCoreManager — setChannel / deleteChannel', () => {
   it('deleteChannel throws when device is not Companion', async () => {
     const { manager } = makeManager({ deviceType: MeshCoreDeviceType.REPEATER });
     await expect(manager.deleteChannel(0)).rejects.toThrow(/Companion mode/);
+  });
+
+  // Regression for #4733 code review: deleting a misconfigured channel 0 is
+  // the documented recovery path ("delete it to restore Public"). Confirm the
+  // re-sync that deleteChannel() triggers actually re-seeds the synthetic
+  // Public placeholder rather than leaving slot 0 with no DB row at all.
+  it('deleteChannel(0) re-seeds the synthetic Public row once the device reports the slot empty', async () => {
+    const zero = '00'.repeat(16);
+    const { manager, deleteCalls, upsertCalls } = makeManager({
+      preExistingRows: [{ id: 0, name: 'MyMisconfiguredChannel', psk: 'realsecret' }],
+      // Post-delete device state: slot 0 now reads as empty/unconfigured.
+      getChannelsResponse: {
+        success: true,
+        data: [{ channel_idx: 0, name: '', secret_hex: zero }],
+      },
+    });
+    await manager.deleteChannel(0);
+
+    expect(upsertCalls).toHaveLength(1);
+    expect(upsertCalls[0].data).toMatchObject({ id: 0, name: 'Public', psk: null });
+    // Slot 0 is exempt from the reconcile-delete pass — it's re-seeded, not deleted.
+    expect(deleteCalls).toEqual([]);
   });
 });

@@ -52,7 +52,7 @@ import {
 import type { MeshCoreMessage } from '../../meshcoreManager.js';
 import type { ReticulumMessageRow } from '../../../db/repositories/reticulum.js';
 import { scheduleCron, validateCron } from '../../utils/cronScheduler.js';
-import { haversineKm, geofenceFires, pointInShape, geofenceCenter, normalizeGeofenceParams, type GeofenceMode } from './geo.js';
+import { haversineKm, geofenceFires, pointInShape, geofenceCenter, normalizeGeofenceParams, normalizeGeofenceAnchor, shapeFromWaypoint, type GeofenceMode, type GeofenceShape } from './geo.js';
 import { evaluateGraph, type EvaluatorHooks } from './graphEvaluator.js';
 import { automationTraceBus } from './automationTraceBus.js';
 import { evaluateCondition } from './conditionEvaluator.js';
@@ -841,7 +841,32 @@ export class AutomationEngineService {
     for (const a of entries) {
       const p = (a.triggerNode.params ?? {}) as Record<string, unknown>;
       const mode = (String(p.event ?? 'enter') as GeofenceMode);
-      const shape = normalizeGeofenceParams(p);
+
+      // #4722: a fence may be anchored to a waypoint instead of a drawn region.
+      // Resolve it per check so moving the waypoint moves the fence. It fails
+      // CLOSED — a deleted waypoint (or a provider without waypoint support)
+      // never fires rather than falling back to some other region.
+      const anchor = normalizeGeofenceAnchor(p);
+      let shape: GeofenceShape | null;
+      if (anchor) {
+        const position = this.data.getWaypoint
+          ? await this.data.getWaypoint(anchor.sourceId, anchor.waypointId).catch(() => null)
+          : null;
+        if (!position) {
+          if (automationTraceBus.activeCount() > 0 && automationTraceBus.isTracing(a.id, now)) {
+            this.emitTrace(
+              a,
+              buildGeofenceContext(nodeNum, mode, node.latitude, node.longitude, 0, sourceId, now),
+              now,
+              { outcome: 'prefiltered', reason: `waypoint ${anchor.waypointId} not found on source ${anchor.sourceId} — fence cannot be resolved` },
+            );
+          }
+          continue;
+        }
+        shape = shapeFromWaypoint(anchor, position);
+      } else {
+        shape = normalizeGeofenceParams(p);
+      }
       if (!shape) continue;
 
       const inside = pointInShape(node.latitude, node.longitude, shape);

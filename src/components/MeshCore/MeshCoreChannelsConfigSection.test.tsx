@@ -158,6 +158,25 @@ describe('MeshCoreChannelsConfigSection — add channel', () => {
     expect(secretInput.value).toBe('0102030405060708090a0b0c0d0e0f10');
   });
 
+  // Regression for #4733: slot 0 is the implicit MeshCore "Public" channel.
+  // "Add channel" must never propose it, even starting from a completely
+  // empty channel list (e.g. before the first device sync has landed).
+  it('never proposes slot 0, even with an empty channel list', async () => {
+    csrfFetchMock.mockResolvedValueOnce(jsonResponse([]));
+
+    render(
+      <MeshCoreChannelsConfigSection baseUrl="" sourceId="src-a" canWrite={true} />,
+    );
+    await waitFor(() =>
+      expect(screen.getByText('No channels reported by the device yet.')).toBeTruthy(),
+    );
+
+    fireEvent.click(screen.getByText('+ Add channel'));
+
+    expect(screen.getByText('Adding channel 1')).toBeTruthy();
+    expect(screen.queryByText('Adding channel 0')).toBeNull();
+  });
+
   it('Save sends PUT to /api/channels/<idx> with base64 PSK + sourceId, then re-fetches', async () => {
     csrfFetchMock
       // initial list

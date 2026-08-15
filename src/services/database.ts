@@ -51,6 +51,7 @@ import {
   MqttPacketLogRepository,
   MqttOkToMqttViolationsRepository,
   AtakContactsRepository,
+  MeshBeaconOffersRepository,
   ReticulumRepository,
   EstimatedPositionsRepository,
   AutoFavoriteTargetsRepository,
@@ -525,6 +526,7 @@ class DatabaseService {
   public mqttPacketLogRepo: MqttPacketLogRepository | null = null;
   public mqttOkToMqttViolationsRepo: MqttOkToMqttViolationsRepository | null = null;
   public atakContactsRepo: AtakContactsRepository | null = null;
+  public meshBeaconOffersRepo: MeshBeaconOffersRepository | null = null;
   public reticulumRepo: ReticulumRepository | null = null;
   public estimatedPositionsRepo: EstimatedPositionsRepository | null = null;
   public autoFavoriteTargetsRepo: AutoFavoriteTargetsRepository | null = null;
@@ -743,6 +745,11 @@ class DatabaseService {
   get mqttOkToMqttViolations(): MqttOkToMqttViolationsRepository {
     if (!this.mqttOkToMqttViolationsRepo) throw new Error('Database not initialized');
     return this.mqttOkToMqttViolationsRepo;
+  }
+
+  get meshBeaconOffers(): MeshBeaconOffersRepository {
+    if (!this.meshBeaconOffersRepo) throw new Error('Database not initialized');
+    return this.meshBeaconOffersRepo;
   }
 
   get atakContacts(): AtakContactsRepository {
@@ -998,6 +1005,7 @@ class DatabaseService {
       this.mqttPacketLogRepo = new MqttPacketLogRepository(drizzleDb, this.drizzleDbType);
       this.mqttOkToMqttViolationsRepo = new MqttOkToMqttViolationsRepository(drizzleDb, this.drizzleDbType);
       this.atakContactsRepo = new AtakContactsRepository(drizzleDb, this.drizzleDbType);
+      this.meshBeaconOffersRepo = new MeshBeaconOffersRepository(drizzleDb, this.drizzleDbType);
       this.reticulumRepo = new ReticulumRepository(drizzleDb, this.drizzleDbType);
       this.estimatedPositionsRepo = new EstimatedPositionsRepository(drizzleDb, this.drizzleDbType);
       this.autoFavoriteTargetsRepo = new AutoFavoriteTargetsRepository(drizzleDb, this.drizzleDbType);
@@ -3452,6 +3460,26 @@ class DatabaseService {
           }
         } catch (err) {
           logger.error('Failed to purge ATAK contacts during purge:', err);
+        }
+      }
+      // Clear MeshBeacon offers for the same reason as the ATAK contacts above
+      // (#4723): they are per-node received state, so a purged source must not
+      // leave them behind. The rows also carry the user's dismissals, which a
+      // future source reusing the id would otherwise inherit — declined
+      // invitations staying hidden for someone who never saw them.
+      if (this.meshBeaconOffersRepo) {
+        try {
+          if (sourceId) {
+            await this.meshBeaconOffersRepo.deleteForSource(sourceId);
+          } else {
+            // undefined sourceId = admin global purge across every source
+            const offerSourceIds = await this.meshBeaconOffersRepo.getOfferSourceIds();
+            for (const offerSourceId of offerSourceIds) {
+              await this.meshBeaconOffersRepo.deleteForSource(offerSourceId);
+            }
+          }
+        } catch (err) {
+          logger.error('Failed to purge MeshBeacon offers during purge:', err);
         }
       }
       // Clear the auto-traceroute and auto-time-sync explicit node allowlists so

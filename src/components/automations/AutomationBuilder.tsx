@@ -160,7 +160,9 @@ export function FieldInput({ field, value, onChange, variables, sources, channel
       );
       break;
     case 'geofence':
-      control = <GeofenceFieldInput value={value as GeofenceShape | undefined} onChange={onChange} />;
+      // #4722: `sources` is needed for the waypoint-anchor mode — waypoints are
+      // per-source, so the fence has to name which source's waypoint it means.
+      control = <GeofenceFieldInput value={value as GeofenceShape | undefined} sources={sources} onChange={onChange} />;
       break;
     case 'nodeMulti':
       control = <NodeMultiFieldInput value={value} onChange={onChange} nodes={nodes} />;

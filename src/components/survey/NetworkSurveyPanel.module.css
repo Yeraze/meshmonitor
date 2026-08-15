@@ -1,0 +1,112 @@
+/* Network survey panel (#4726). Scoped module — see CLAUDE.md. */
+
+.survey {
+  margin: 1rem 0;
+}
+
+.surveyHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.surveyTitle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.surveyWindow {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+
+.surveyPassive {
+  margin: 0.35rem 0 0.75rem;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.surveyError {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-error);
+  border-radius: 4px;
+  color: var(--color-error);
+}
+
+.surveyStats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+}
+
+.surveyStats dt {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.surveyStats dd {
+  margin: 0.15rem 0 0;
+  font-size: 1.35rem;
+  font-weight: 600;
+}
+
+.surveyEmpty {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.surveyTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.surveyTable th,
+.surveyTable td {
+  padding: 0.3rem 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.surveyHops {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.surveyHops li {
+  display: grid;
+  grid-template-columns: 7rem 1fr 2.5rem;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.surveyHopLabel {
+  color: var(--color-text-muted);
+}
+
+/* min-height keeps a 1-node bucket visible rather than collapsing to nothing. */
+.surveyHopBar {
+  display: block;
+  min-width: 2px;
+  height: 0.7rem;
+  border-radius: 2px;
+  background: var(--color-accent);
+}
+
+.surveyHopCount {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
