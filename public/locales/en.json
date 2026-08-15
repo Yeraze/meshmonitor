@@ -5067,5 +5067,6 @@
   "survey.no_hops": "No answered traceroutes yet, so reach is unknown.",
   "survey.hops_direct": "Direct",
   "survey.hops_n_one": "{{count}} hop",
-  "survey.hops_n_other": "{{count}} hops"
+  "survey.hops_n_other": "{{count}} hops",
+  "nodes.position_history_simplified": "Trail simplified — intermediate fixes between these points are not drawn."
 }
