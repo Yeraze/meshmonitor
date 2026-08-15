@@ -31,7 +31,7 @@ import { logger } from '../../utils/logger.js';
 import { requirePermission } from '../auth/authMiddleware.js';
 import { rfCoverageLimiter } from '../middleware/rateLimiters.js';
 import { ok, fail } from '../utils/apiResponse.js';
-import { computeCoverage, type CoverageParams } from '../services/rf/coverageSweep.js';
+import { computeCoverage, clampCoverageParams, type CoverageParams } from '../services/rf/coverageSweep.js';
 
 const router = Router();
 
@@ -98,11 +98,16 @@ router.post(
           // default matches a long-range preset rather than a generic radio.
           sensitivityDbm: clamp(num(b.sensitivityDbm, -130), -200, 0),
         },
-        // Bounds are enforced again inside computeCoverage — this endpoint is
-        // not the only possible caller of the sweep.
-        radiusKm: num(b.radiusKm, 15),
-        azimuthCount: num(b.azimuthCount, 72),
-        samplesPerRadial: num(b.samplesPerRadial, 96),
+        // Sanitized HERE rather than relying on the sweep to do it downstream.
+        // The sweep clamps too (it is not the only possible caller), but
+        // handing raw request values across a boundary and trusting the callee
+        // is the shape CodeQL flagged as loop-bound injection — correctly, even
+        // though the value was clamped further in.
+        ...clampCoverageParams({
+          radiusKm: num(b.radiusKm, 15),
+          azimuthCount: num(b.azimuthCount, 72),
+          samplesPerRadial: num(b.samplesPerRadial, 96),
+        }),
       };
 
       ok(res, await computeCoverage(params, settings.elevationSourceUrl));

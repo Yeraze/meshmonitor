@@ -38,6 +38,7 @@ import {
   modelAssumptions,
   MAX_RADIUS_KM,
   MAX_AZIMUTHS,
+  MAX_TOTAL_SAMPLE_POINTS,
   type CoverageParams,
 } from './coverageSweep.js';
 import type { TerrainSample } from './propagation.js';
@@ -81,7 +82,7 @@ describe('clampCoverageParams', () => {
     const c = clampCoverageParams({ radiusKm: 9999, azimuthCount: 100000, samplesPerRadial: 99999 });
     expect(c.radiusKm).toBe(MAX_RADIUS_KM);
     expect(c.azimuthCount).toBe(MAX_AZIMUTHS);
-    expect(c.samplesPerRadial).toBe(256);
+    expect(c.azimuthCount * c.samplesPerRadial).toBeLessThanOrEqual(MAX_TOTAL_SAMPLE_POINTS);
   });
 
   it('defaults nonsense instead of rejecting', () => {
@@ -89,6 +90,29 @@ describe('clampCoverageParams', () => {
     expect(c.radiusKm).toBe(15);
     expect(c.azimuthCount).toBe(72);
     expect(c.samplesPerRadial).toBe(96);
+  });
+
+  it('caps TOTAL points, not just each axis', () => {
+    // CodeQL flagged js/loop-bound-injection: request values reached the
+    // elevation provider's iteration bound. They were clamped, but via two
+    // separate axes whose product (180 x 256 = 46,080) was neither stated nor
+    // obvious. The ceiling is now a single constant.
+    const c = clampCoverageParams({ azimuthCount: 180, samplesPerRadial: 256 });
+    expect(c.azimuthCount * c.samplesPerRadial).toBeLessThanOrEqual(MAX_TOTAL_SAMPLE_POINTS);
+  });
+
+  it('sheds resolution rather than radials when capping', () => {
+    // Dropping azimuths would leave gaps in the polygon that look like real
+    // coverage holes; a coarser profile just degrades the answer smoothly.
+    const c = clampCoverageParams({ azimuthCount: 180, samplesPerRadial: 256 });
+    expect(c.azimuthCount).toBe(180);
+    expect(c.samplesPerRadial).toBeLessThan(256);
+    expect(c.samplesPerRadial).toBeGreaterThanOrEqual(16);
+  });
+
+  it('leaves a normal request untouched by the total cap', () => {
+    const c = clampCoverageParams({ azimuthCount: 72, samplesPerRadial: 96 });
+    expect(c).toMatchObject({ azimuthCount: 72, samplesPerRadial: 96 });
   });
 
   it('floors a request to a workable minimum', () => {
@@ -210,6 +234,8 @@ describe('computeCoverage', () => {
 
     expect(r.radiusKm).toBe(MAX_RADIUS_KM);
     expect(r.radials).toHaveLength(MAX_AZIMUTHS);
+    // The provider never sees more than the stated ceiling.
+    expect(sampleCalls[0].length).toBeLessThanOrEqual(MAX_TOTAL_SAMPLE_POINTS);
   });
 
   it('still answers when elevation sampling fails outright', async () => {

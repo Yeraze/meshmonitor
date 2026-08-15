@@ -10,7 +10,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 const computeCoverage = vi.fn();
-vi.mock('../services/rf/coverageSweep.js', () => ({
+
+// Only `computeCoverage` is stubbed; `clampCoverageParams` stays REAL via
+// importActual. The route now sanitizes request values itself, so mocking the
+// clamp would hide exactly the behaviour these tests need to cover.
+vi.mock('../services/rf/coverageSweep.js', async (importActual) => ({
+  ...(await importActual<typeof import('../services/rf/coverageSweep.js')>()),
   computeCoverage: (...a: unknown[]) => computeCoverage(...a),
 }));
 
@@ -92,6 +97,16 @@ describe('POST /api/rf/coverage', () => {
     expect(params.rxHeightM).toBe(0);
     expect(params.budget.txPowerDbm).toBe(60);
     expect(params.budget.sensitivityDbm).toBe(0);
+  });
+
+  it('sanitizes sweep bounds at the route, not only downstream', async () => {
+    // CodeQL flagged the raw-values-across-a-boundary shape as loop-bound
+    // injection. The values reaching computeCoverage must already be bounded.
+    await post(body({ azimuthCount: 100000, samplesPerRadial: 99999 }));
+
+    const params = computeCoverage.mock.calls[0][0];
+    expect(params.azimuthCount).toBeLessThanOrEqual(180);
+    expect(params.azimuthCount * params.samplesPerRadial).toBeLessThanOrEqual(24_000);
   });
 
   it('applies defaults for omitted radio parameters', async () => {

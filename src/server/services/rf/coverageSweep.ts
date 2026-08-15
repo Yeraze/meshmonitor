@@ -67,6 +67,22 @@ export interface CoverageResult {
 export const MAX_RADIUS_KM = 50;
 export const MAX_AZIMUTHS = 180;
 export const MAX_SAMPLES_PER_RADIAL = 256;
+
+/**
+ * Hard ceiling on terrain points per sweep.
+ *
+ * The per-axis caps alone allow 180 x 256 = 46,080 points, which is bounded but
+ * far heavier than any useful sweep needs, and it leaves the real limit as an
+ * emergent product of two numbers rather than a stated one. This is the stated
+ * one: `azimuthCount * samplesPerRadial` is reduced to fit, so the array handed
+ * to the elevation provider has a constant upper bound no combination of
+ * request parameters can exceed.
+ *
+ * Added after CodeQL flagged `js/loop-bound-injection` — request values reached
+ * the provider's iteration bound. They were already clamped, but through two
+ * separate axes, which is neither obvious to an analyzer nor to a reader.
+ */
+export const MAX_TOTAL_SAMPLE_POINTS = 24_000;
 export const DEFAULT_RADIUS_KM = 15;
 export const DEFAULT_AZIMUTHS = 72;
 export const DEFAULT_SAMPLES_PER_RADIAL = 96;
@@ -80,11 +96,18 @@ function clampInt(n: unknown, min: number, max: number, fallback: number): numbe
 export function clampCoverageParams(raw: Partial<CoverageParams>): {
   radiusKm: number; azimuthCount: number; samplesPerRadial: number;
 } {
-  return {
-    radiusKm: clampInt(raw.radiusKm, 1, MAX_RADIUS_KM, DEFAULT_RADIUS_KM),
-    azimuthCount: clampInt(raw.azimuthCount, 8, MAX_AZIMUTHS, DEFAULT_AZIMUTHS),
-    samplesPerRadial: clampInt(raw.samplesPerRadial, 16, MAX_SAMPLES_PER_RADIAL, DEFAULT_SAMPLES_PER_RADIAL),
-  };
+  const radiusKm = clampInt(raw.radiusKm, 1, MAX_RADIUS_KM, DEFAULT_RADIUS_KM);
+  const azimuthCount = clampInt(raw.azimuthCount, 8, MAX_AZIMUTHS, DEFAULT_AZIMUTHS);
+  let samplesPerRadial = clampInt(raw.samplesPerRadial, 16, MAX_SAMPLES_PER_RADIAL, DEFAULT_SAMPLES_PER_RADIAL);
+
+  // Trade resolution along each radial rather than dropping radials: a coarser
+  // profile degrades the answer smoothly, whereas losing azimuths leaves gaps
+  // in the polygon that look like real coverage holes.
+  if (azimuthCount * samplesPerRadial > MAX_TOTAL_SAMPLE_POINTS) {
+    samplesPerRadial = Math.max(16, Math.floor(MAX_TOTAL_SAMPLE_POINTS / azimuthCount));
+  }
+
+  return { radiusKm, azimuthCount, samplesPerRadial };
 }
 
 /**
