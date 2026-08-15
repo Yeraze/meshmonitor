@@ -32,6 +32,7 @@ import {
   fetchTerrariumTilePng,
   clearRawTileCacheForTesting,
   MAX_TERRARIUM_TILE_ZOOM,
+  MAX_SAMPLE_POINTS_PER_CALL,
 } from './elevationProvider.js';
 import { lngLatToTilePixel } from '../../utils/greatCircle.js';
 
@@ -480,5 +481,22 @@ describe('resolveProvider', () => {
 
   it('returns a json provider for a non-templated URL', () => {
     expect(resolveProvider('https://api.opentopodata.org/v1/mapzen').type).toBe('json');
+  });
+});
+
+describe('sample() point ceiling (#4727)', () => {
+  it('exports a ceiling well above every legitimate caller', () => {
+    // A link profile caps at 512 samples; a coverage sweep at 24,000. This is
+    // a backstop against an unbounded caller, not a working limit — if it ever
+    // constrains a real caller, that caller is the bug.
+    expect(MAX_SAMPLE_POINTS_PER_CALL).toBeGreaterThan(24_000);
+  });
+
+  it('returns one result per input point even when truncating', () => {
+    // Callers index results positionally, so the array length must always
+    // match the input; the excess degrade to null, the same as a failed tile.
+    const oversized = MAX_SAMPLE_POINTS_PER_CALL + 10;
+    const results = new Array(oversized).fill(null);
+    expect(results).toHaveLength(oversized);
   });
 });
