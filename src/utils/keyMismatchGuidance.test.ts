@@ -57,6 +57,13 @@ describe('assessKeyMismatch', () => {
     expect(assessKeyMismatch({ sentDirectMessageCount: 0 }).actionKeys).not.toContain('key_mismatch.action_avoid_dms');
   });
 
+  it('still models administered exposure, for when that history exists', () => {
+    // No caller supplies this yet — MeshMonitor stores no per-node remote-admin
+    // history — but the exposure is real, so the model keeps it and the
+    // low-risk copy states the omission instead of implying certainty.
+    expect(assessKeyMismatch({ sentDirectMessageCount: 0, hasAdministered: true }).severity).toBe('high');
+  });
+
   it('gives every severity a non-empty action list', () => {
     // A warning with no remedy is the problem this issue was filed about.
     for (const n of [0, 1]) {

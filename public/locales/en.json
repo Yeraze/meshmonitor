@@ -5094,7 +5094,7 @@
   "key_mismatch.severity_high": "Needs attention",
   "key_mismatch.severity_low": "Informational",
   "key_mismatch.risk_high": "You have sent encrypted direct messages to this node, which were encrypted to its previous key. A key change can mean the node was reset or reflashed — or that something else is now impersonating it. Future DMs would be encrypted to the new key, so if it is not genuinely this node, they could be read by whoever controls it.",
-  "key_mismatch.risk_low": "You have only seen this node on public channels, which are not protected by this key, so there is little practical risk to you. Nodes commonly change keys after a factory reset or firmware reflash.",
+  "key_mismatch.risk_low": "Based on your message history, you have only seen this node on public channels — which are not protected by this key — so there is little practical risk to you. Nodes commonly change keys after a factory reset or firmware reflash. If you have administered this node remotely, treat the change as needing attention: MeshMonitor does not track remote-admin history, so that is not reflected here.",
   "key_mismatch.show_actions": "What should I do?",
   "key_mismatch.hide_actions": "Hide guidance",
   "key_mismatch.action_verify": "Confirm the change with the node's owner over a channel you already trust — in person, by phone, or another route that does not depend on this mesh.",

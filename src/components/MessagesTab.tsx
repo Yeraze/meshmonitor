@@ -1682,9 +1682,13 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
               <div style={{ marginBottom: '10px' }}>
                 <KeyMismatchWarning
                   sentDirectMessageCount={
-                    selectedDMNode
-                      ? selectedDMMessages.filter(m => m.to === selectedDMNode).length
-                      : 0
+                    // `isMyMessage`, not `to === node`: it is the canonical
+                    // "did I send this" check AND it excludes spoof-suspected
+                    // messages. A forged message claiming to be from us must
+                    // not be counted as us having encrypted something to this
+                    // node — that would inflate the severity of the very
+                    // warning meant to detect impersonation (review, #4747).
+                    selectedDMNode ? selectedDMMessages.filter(isMyMessage).length : 0
                   }
                   details={selectedNode.keySecurityIssueDetails}
                 >

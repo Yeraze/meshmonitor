@@ -30,6 +30,13 @@ export interface KeyMismatchContext {
   /**
    * Whether the user has administered this node remotely. Admin traffic is
    * PKI-encrypted like a DM, so it carries the same exposure.
+   *
+   * NOT CURRENTLY SUPPLIED by any caller: MeshMonitor stores no per-node
+   * remote-admin history (admin traffic is not persisted as messages), so
+   * there is nothing honest to pass. Modelled here because the exposure is
+   * real, and left for whenever that history exists. Until then the low-risk
+   * copy states the omission rather than letting an admin-only user read a
+   * confident "little practical risk" (review, #4747).
    */
   hasAdministered?: boolean;
 }
