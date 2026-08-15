@@ -68,6 +68,11 @@ export const TABLE_ORDER = [
   'mqtt_ok_to_mqtt_violations',
   // 3691 Phase 2: per-source ATAK contact state (composite PK uid+sourceId, no FKs)
   'atak_contacts',
+  // 4723: per-source MeshBeacon offers (composite PK sourceId+nodeNum, no FKs).
+  // Migrated rather than skipped because the row carries the user's dismissal —
+  // dropping it on a backend migration would resurrect every invitation the
+  // user had already declined.
+  'mesh_beacon_offers',
   // 3960 Phase 1a WP1: per-source Reticulum destinations + interfaces. Unique
   // on (sourceId, destinationHash) / (sourceId, interfaceName), no FKs.
   'reticulum_destinations',
@@ -139,7 +144,7 @@ export const SOURCE_SCOPED_TABLES = new Set([
   'embed_profiles', 'meshcore_nodes', 'meshcore_messages',
   'meshcore_neighbor_info', 'meshcore_packet_log',
   'meshcore_heard_repeaters', 'mqtt_packet_log', 'mqtt_ok_to_mqtt_violations',
-  'atak_contacts',
+  'atak_contacts', 'mesh_beacon_offers',
   'auto_favorite_targets', 'auto_favorite_assignments',
   'dead_drop_messages',
   // 3960 Phase 1a WP1: per-source Reticulum destinations + interfaces.

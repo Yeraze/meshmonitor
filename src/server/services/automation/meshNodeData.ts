@@ -35,6 +35,26 @@ export function createMeshNodeDataProvider(): NodeDataProvider {
       }
     },
 
+    /**
+     * #4722 — current position of a waypoint a geofence is anchored to.
+     *
+     * An EXPIRED waypoint reads as gone. `expireAt` is epoch *seconds* (null or
+     * 0 = never expires, matching `waypoints.listAsync`), and an expired
+     * waypoint has already vanished from the map — continuing to fence the spot
+     * it used to occupy would fire on a region the user believes no longer
+     * exists. Failing closed here is the safer half of that trade.
+     */
+    async getWaypoint(sourceId, waypointId) {
+      try {
+        const w = await databaseService.waypoints.getAsync(sourceId, waypointId);
+        if (!w || w.latitude == null || w.longitude == null) return null;
+        if (w.expireAt != null && w.expireAt !== 0 && w.expireAt < Math.floor(Date.now() / 1000)) return null;
+        return { latitude: Number(w.latitude), longitude: Number(w.longitude) };
+      } catch {
+        return null;
+      }
+    },
+
     async getChannelName(sourceId, channelIndex) {
       try {
         const ch = await databaseService.channels.getChannelById(channelIndex, sourceId ?? undefined);

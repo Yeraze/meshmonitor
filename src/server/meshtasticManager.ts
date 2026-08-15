@@ -6057,7 +6057,20 @@ class MeshtasticManager implements ISourceManager {
             const beacon = processedPayload as MeshBeaconPayload;
             const beaconText = typeof beacon?.message === 'string' ? beacon.message : '';
             const offerChannelName = beacon?.offerChannel?.name ?? beacon?.offer_channel?.name;
-            const offerRegion = beacon?.offerRegion ?? beacon?.offer_region;
+            // The offered ChannelSettings carries a PSK alongside the name.
+            // Without it an "accept" would join with the right name and no
+            // usable key, so carry it through as base64 (the representation
+            // used everywhere else channels are stored).
+            const rawOfferPsk = beacon?.offerChannel?.psk ?? beacon?.offer_channel?.psk;
+            const offerChannelPsk = rawOfferPsk && rawOfferPsk.length > 0
+              ? Buffer.from(rawOfferPsk).toString('base64')
+              : undefined;
+            // RegionCode.UNSET === 0 and `offer_region` has no explicit
+            // presence, so a decoded 0 means "no region offered". `offer_preset`
+            // IS `optional`, so preset 0 (LONG_FAST) is a genuine offer and must
+            // survive — the asymmetry is in the protobuf, not a typo here.
+            const rawOfferRegion = beacon?.offerRegion ?? beacon?.offer_region;
+            const offerRegion = rawOfferRegion ? Number(rawOfferRegion) : undefined;
             const offerPreset = beacon?.offerPreset ?? beacon?.offer_preset;
             logger.debug(`📡 MeshBeacon from ${meshPacket.from}: "${beaconText}" (offerChannel=${offerChannelName ?? 'none'})`);
 
@@ -6068,6 +6081,7 @@ class MeshtasticManager implements ISourceManager {
               nodeNum: meshPacket.from ? Number(meshPacket.from) : 0,
               message: beaconText,
               offerChannelName,
+              offerChannelPsk,
               offerRegion,
               offerPreset,
             }, this.sourceId);

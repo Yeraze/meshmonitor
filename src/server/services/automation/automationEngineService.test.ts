@@ -874,6 +874,136 @@ describe('AutomationEngineService', () => {
     expect(calls.filter((c) => c.fn === 'notify')).toHaveLength(1);
   });
 
+  // #4722 — a geofence anchored to a waypoint instead of a drawn region.
+  describe('geofence anchored to a waypoint', () => {
+    const anchoredGraph: AutomationGraph = {
+      version: 1,
+      nodes: [
+        {
+          id: 't',
+          type: 'trigger.geofence',
+          params: { event: 'enter', shape: { type: 'waypoint', sourceId: 'src-a', waypointId: 42, radiusKm: 5 } },
+        },
+        { id: 'a', type: 'action.notify', params: { body: 'entered' } },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    };
+
+    it('fires on entry, resolving the fence from the waypoint', async () => {
+      const { calls, deps } = recorder();
+      await createEnabled('geo-wp', anchoredGraph);
+      const pos = { lat: 1, lon: 0 }; // ~111km from the waypoint → outside
+      const data = {
+        getNode: async () => ({ nodeNum: 5, latitude: pos.lat, longitude: pos.lon }),
+        getTelemetry: async () => null,
+        getWaypoint: async () => ({ latitude: 0, longitude: 0 }),
+      };
+      const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data, now: () => clock });
+      await engine.load();
+
+      expect(await engine.checkGeofences(5, 'default')).toBe(0); // baseline (outside)
+      pos.lat = 0.01; // ~1.1km → inside
+      expect(await engine.checkGeofences(5, 'default')).toBe(1);
+      expect(calls.filter((c) => c.fn === 'notify')).toHaveLength(1);
+    });
+
+    it('follows the waypoint when it moves, with no edit to the automation', async () => {
+      // The whole reason to anchor rather than draw: the node never moves here,
+      // only the waypoint does, and that alone must produce an entry.
+      const { deps } = recorder();
+      await createEnabled('geo-wp-move', anchoredGraph);
+      const waypoint = { latitude: 10, longitude: 10 }; // far from the node
+      const data = {
+        getNode: async () => ({ nodeNum: 5, latitude: 0, longitude: 0 }),
+        getTelemetry: async () => null,
+        getWaypoint: async () => waypoint,
+      };
+      const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data, now: () => clock });
+      await engine.load();
+
+      expect(await engine.checkGeofences(5, 'default')).toBe(0); // baseline (outside)
+      waypoint.latitude = 0.01; waypoint.longitude = 0; // dragged onto the node
+      expect(await engine.checkGeofences(5, 'default')).toBe(1);
+    });
+
+    it('fails CLOSED when the waypoint is gone — never falls back to another region', async () => {
+      // A deleted/expired waypoint must not fire. Firing on a stale or default
+      // region would alert about a place the user believes no longer exists.
+      const { calls, deps } = recorder();
+      await createEnabled('geo-wp-deleted', anchoredGraph);
+      const data = {
+        getNode: async () => ({ nodeNum: 5, latitude: 0, longitude: 0 }), // dead centre
+        getTelemetry: async () => null,
+        getWaypoint: async () => null, // deleted
+      };
+      const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data, now: () => clock });
+      await engine.load();
+
+      expect(await engine.checkGeofences(5, 'default')).toBe(0);
+      expect(await engine.checkGeofences(5, 'default')).toBe(0);
+      expect(calls.filter((c) => c.fn === 'notify')).toHaveLength(0);
+    });
+
+    it('fails closed when the provider has no waypoint support at all', async () => {
+      const { calls, deps } = recorder();
+      await createEnabled('geo-wp-unsupported', anchoredGraph);
+      // No getWaypoint on the provider — the optional-method contract.
+      const data = {
+        getNode: async () => ({ nodeNum: 5, latitude: 0, longitude: 0 }),
+        getTelemetry: async () => null,
+      };
+      const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data, now: () => clock });
+      await engine.load();
+
+      expect(await engine.checkGeofences(5, 'default')).toBe(0);
+      expect(calls.filter((c) => c.fn === 'notify')).toHaveLength(0);
+    });
+
+    it('survives a throwing waypoint lookup rather than killing the whole sweep', async () => {
+      // checkGeofences loops every geofence automation; one bad DB read must not
+      // take down the fences that follow it.
+      const { calls, deps } = recorder();
+      await createEnabled('geo-wp-throws', anchoredGraph);
+      const data = {
+        getNode: async () => ({ nodeNum: 5, latitude: 0, longitude: 0 }),
+        getTelemetry: async () => null,
+        getWaypoint: async () => { throw new Error('db down'); },
+      };
+      const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data, now: () => clock });
+      await engine.load();
+
+      await expect(engine.checkGeofences(5, 'default')).resolves.toBe(0);
+      expect(calls.filter((c) => c.fn === 'notify')).toHaveLength(0);
+    });
+
+    it('leaves drawn-region fences on the synchronous path (no waypoint lookup)', async () => {
+      const { deps } = recorder();
+      await createEnabled('geo-drawn', {
+        version: 1,
+        nodes: [
+          { id: 't', type: 'trigger.geofence', params: { event: 'enter', lat: 0, lon: 0, radiusKm: 5 } },
+          { id: 'a', type: 'action.notify', params: { body: 'entered' } },
+        ],
+        edges: [{ from: 't', to: 'a' }],
+      });
+      const pos = { lat: 1, lon: 0 };
+      let waypointLookups = 0;
+      const data = {
+        getNode: async () => ({ nodeNum: 5, latitude: pos.lat, longitude: pos.lon }),
+        getTelemetry: async () => null,
+        getWaypoint: async () => { waypointLookups++; return { latitude: 99, longitude: 99 }; },
+      };
+      const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data, now: () => clock });
+      await engine.load();
+
+      await engine.checkGeofences(5, 'default');
+      pos.lat = 0.01;
+      expect(await engine.checkGeofences(5, 'default')).toBe(1);
+      // A drawn fence must not pay for — or be perturbed by — waypoint resolution.
+      expect(waypointLookups).toBe(0);
+    });
+  });
+
   it('system: a trigger only fires for its configured event (prefilter)', async () => {
     const { calls, deps } = recorder();
     await createEnabled('on-boot', {

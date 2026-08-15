@@ -50,6 +50,20 @@ export interface NodeDataProvider {
    */
   getChannelName?(sourceId: string | null, channelIndex: number): Promise<string | null>;
   /**
+   * Current position of a waypoint, for a geofence anchored to one rather than
+   * to a drawn region (#4722). Resolved on every geofence check so moving the
+   * waypoint moves the fence with no edit to the automation.
+   *
+   * Returns null when the waypoint is gone — deleted, or belonging to a source
+   * that no longer exists. Such a fence must fail CLOSED (never fire) rather
+   * than fall back to some other region: silently fencing the wrong place is
+   * worse than not firing, and the trace says which waypoint went missing.
+   *
+   * Optional — providers that don't implement it disable waypoint anchoring
+   * entirely, which is the same fail-closed behaviour.
+   */
+  getWaypoint?(sourceId: string, waypointId: number): Promise<{ latitude: number; longitude: number } | null>;
+  /**
    * All channels for a source as {slot, name, psk, role}, for resolving a
    * unified channel (by name) to its local slot when sending. Optional.
    */
