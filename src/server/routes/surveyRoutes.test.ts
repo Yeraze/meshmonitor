@@ -29,7 +29,6 @@ async function seedNode(nodeNum: number, sourceId: string, extra: Record<string,
     createdAt: Date.now(),
     updatedAt: Date.now(),
     ...extra,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4726 test fixture; DbNode has many optional fields the harness does not need
   } as any, sourceId);
 }
 

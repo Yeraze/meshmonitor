@@ -32,7 +32,6 @@ async function seedDirectPacket(sourceId: string, rssi: number) {
     hop_limit: 3,
     hop_start: 3,
     direction: 'rx',
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4726 fixture: DbPacketLog has many optional fields irrelevant here
   } as any, sourceId);
 }
 
