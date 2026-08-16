@@ -143,8 +143,19 @@ export const REGION_OPTIONS: RegionOption[] = [
 // when one of these regions is selected.
 //
 // Values mirror Config.LoRaConfig.RegionCode (meshtastic/protobufs config.proto):
-//   27 = ITU1_2M   (ITU Region 1 amateur 2m, 144-146 MHz)
-//   28 = ITU23_2M  (ITU Region 2/3 amateur 2m, 144-148 MHz)
+//   27 = ITU1_2M     (ITU Region 1 amateur 2m,    144-146 MHz)
+//   28 = ITU2_2M     (ITU Region 2 amateur 2m,    144-148 MHz)
+//   33 = ITU3_2M     (ITU Region 3 amateur 2m,    144-148 MHz)
+//   34 = ITU1_70CM   (ITU Region 1 amateur 70cm,  430-440 MHz)
+//   35 = ITU2_70CM   (ITU Region 2 amateur 70cm,  420-450 MHz)
+//   36 = ITU3_70CM   (ITU Region 3 amateur 70cm,  430-450 MHz)
+//   37 = ITU2_125CM  (ITU Region 2 amateur 1.25m, 220-225 MHz)
+//
+// This block previously listed `28 = ITU23_2M (ITU Region 2/3)`, a name the
+// protobuf does not define and which merged two distinct codes. A comment
+// claiming to mirror the protobuf while stating something else is worse than
+// no comment: it is exactly what would reassure someone checking whether the
+// mapping was complete. It was not — see REGION_MAP's own note.
 //
 // NOTE (issue #3924, Part 1 — preset legality filtering):
 // There is NO protobuf wire field that carries a region -> preset legality map.
@@ -160,7 +171,14 @@ export const REGION_OPTIONS: RegionOption[] = [
 // which mirror that table + math WITHOUT requiring a protobuf submodule bump.
 export const AMATEUR_RADIO_REGIONS: Record<number, string> = {
   27: 'ITU1_2M',
-  28: 'ITU23_2M'
+  // Upstream names 28 ITU2_2M and 33 ITU3_2M separately; the old combined
+  // `ITU23_2M` spelling was MeshMonitor's own and matched neither.
+  28: 'ITU2_2M',
+  33: 'ITU3_2M',
+  34: 'ITU1_70CM',
+  35: 'ITU2_70CM',
+  36: 'ITU3_70CM',
+  37: 'ITU2_125CM'
 };
 
 /**
@@ -363,6 +381,20 @@ export const PRESET_MAP: Record<string, number> = {
 };
 
 // Mapping from string region names to numeric values
+/**
+ * Firmware-reported region NAME -> numeric RegionCode.
+ *
+ * Load-bearing and destructive when incomplete. `ConfigurationTab` resolves a
+ * string-valued region with `REGION_MAP[name] || 0`, so an unknown name becomes
+ * UNSET(0) — and that value is then included in the `setLoRaConfig` payload,
+ * which is a whole-struct replace. A user on an unmapped region who saved any
+ * unrelated LoRa setting would have written UNSET back to their radio, taking
+ * it off its band. That was the case for every amateur 2m/70cm/1.25m region
+ * until this was completed.
+ *
+ * Must therefore stay in step with `RegionCode` in `meshtastic/config.proto`.
+ * `regionCodeMapping.test.ts` fails if the protobuf gains a name this lacks.
+ */
 export const REGION_MAP: Record<string, number> = {
   'UNSET': 0, 'US': 1, 'EU_433': 2, 'EU_868': 3, 'CN': 4, 'JP': 5,
   'ANZ': 6, 'KR': 7, 'TW': 8, 'RU': 9, 'IN': 10, 'NZ_865': 11,
@@ -370,8 +402,13 @@ export const REGION_MAP: Record<string, number> = {
   'MY_433': 16, 'MY_919': 17, 'SG_923': 18, 'PH_433': 19,
   'PH_868': 20, 'PH_915': 21, 'ANZ_433': 22, 'KZ_433': 23,
   'KZ_863': 24, 'NP_865': 25, 'BR_902': 26, 'ITU1_2M': 27,
-  'ITU23_2M': 28, 'EU_866': 29, 'EU_874': 30, 'EU_917': 31,
-  'EU_N_868': 32
+  'ITU2_2M': 28, 'EU_866': 29, 'EU_874': 30, 'EU_917': 31,
+  'EU_N_868': 32, 'ITU3_2M': 33, 'ITU1_70CM': 34, 'ITU2_70CM': 35,
+  'ITU3_70CM': 36, 'ITU2_125CM': 37,
+  // Legacy alias: MeshMonitor previously called value 28 `ITU23_2M`, conflating
+  // ITU regions 2 and 3 — which are separate codes upstream (28 and 33). Kept
+  // so any stored/exported config using the old spelling still resolves.
+  'ITU23_2M': 28
 };
 
 // Timezone presets in POSIX TZ format

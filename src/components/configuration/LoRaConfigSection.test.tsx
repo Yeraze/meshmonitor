@@ -141,14 +141,27 @@ describe('LoRaConfigSection', () => {
   describe('Amateur Radio Region Warning (#3924)', () => {
     it('flags the ITU 2m amateur regions (27, 28) as amateur bands', () => {
       expect(isAmateurRadioRegion(27)).toBe(true); // ITU1_2M
-      expect(isAmateurRadioRegion(28)).toBe(true); // ITU23_2M
+      expect(isAmateurRadioRegion(28)).toBe(true); // ITU2_2M
     });
 
     it('keeps the amateur region set in sync with REGION_MAP values', () => {
       expect(AMATEUR_RADIO_REGIONS[27]).toBe('ITU1_2M');
-      expect(AMATEUR_RADIO_REGIONS[28]).toBe('ITU23_2M');
+      // 28 is `ITU2_2M` upstream. MeshMonitor previously called it `ITU23_2M`,
+      // conflating ITU regions 2 and 3 — which are separate codes (28 and 33).
+      expect(AMATEUR_RADIO_REGIONS[28]).toBe('ITU2_2M');
       expect(REGION_MAP['ITU1_2M']).toBe(27);
+      expect(REGION_MAP['ITU2_2M']).toBe(28);
+      // The old spelling still resolves, for stored/exported configs.
       expect(REGION_MAP['ITU23_2M']).toBe(28);
+    });
+
+    it('flags the amateur bands that were previously unrecognised', () => {
+      // 33-37 are amateur 2m/70cm/1.25m allocations. They were absent from
+      // AMATEUR_RADIO_REGIONS, so a user on one of them got no amateur-band
+      // warning at all — a second consequence of the same drift.
+      for (const region of [33, 34, 35, 36, 37]) {
+        expect(isAmateurRadioRegion(region)).toBe(true);
+      }
     });
 
     it('does not flag standard ISM/SRD regions as amateur bands', () => {
