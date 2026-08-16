@@ -143,8 +143,19 @@ export const REGION_OPTIONS: RegionOption[] = [
 // when one of these regions is selected.
 //
 // Values mirror Config.LoRaConfig.RegionCode (meshtastic/protobufs config.proto):
-//   27 = ITU1_2M   (ITU Region 1 amateur 2m, 144-146 MHz)
-//   28 = ITU23_2M  (ITU Region 2/3 amateur 2m, 144-148 MHz)
+//   27 = ITU1_2M     (ITU Region 1 amateur 2m,    144-146 MHz)
+//   28 = ITU2_2M     (ITU Region 2 amateur 2m,    144-148 MHz)
+//   33 = ITU3_2M     (ITU Region 3 amateur 2m,    144-148 MHz)
+//   34 = ITU1_70CM   (ITU Region 1 amateur 70cm,  430-440 MHz)
+//   35 = ITU2_70CM   (ITU Region 2 amateur 70cm,  420-450 MHz)
+//   36 = ITU3_70CM   (ITU Region 3 amateur 70cm,  430-450 MHz)
+//   37 = ITU2_125CM  (ITU Region 2 amateur 1.25m, 220-225 MHz)
+//
+// This block previously listed `28 = ITU23_2M (ITU Region 2/3)`, a name the
+// protobuf does not define and which merged two distinct codes. A comment
+// claiming to mirror the protobuf while stating something else is worse than
+// no comment: it is exactly what would reassure someone checking whether the
+// mapping was complete. It was not — see REGION_MAP's own note.
 //
 // NOTE (issue #3924, Part 1 — preset legality filtering):
 // There is NO protobuf wire field that carries a region -> preset legality map.
