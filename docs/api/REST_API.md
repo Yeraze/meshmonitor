@@ -802,16 +802,25 @@ scrape_configs:
 
 **Example alert queries:**
 ```promql
-# Mesh airtime saturation: any node seeing >25% channel utilization
-# (exclude nodes not heard for 30+ minutes so stale telemetry can't alert)
+# Mesh airtime saturation: any node seeing >20% channel utilization
+# (exclude nodes not heard for 30+ minutes so stale telemetry can't alert).
+# 20, not 25: the firmware's polite threshold is 25%, where nodes start
+# suppressing position/telemetry broadcasts — alert before that, not at it.
 max by (source) (
   meshmonitor_node_channel_utilization_percent
   and on (source, node_id)
     (time() - meshmonitor_node_last_heard_timestamp_seconds < 1800)
-) > 25
+) > 20
 
 # Infrastructure node silent for 15 minutes
 time() - meshmonitor_node_last_heard_timestamp_seconds > 900
+
+# Battery-powered node projected to hit 0% within 4 hours
+# (2h discharge trend; excludes externally-powered and stale nodes)
+(predict_linear(meshmonitor_node_battery_level[2h], 14400) <= bool 0)
+  and (meshmonitor_node_battery_level <= 100)
+  and on (source, node_id)
+    (time() - meshmonitor_node_last_heard_timestamp_seconds < 1800)
 
 # Gateway link down
 meshmonitor_source_connected == 0
@@ -822,6 +831,9 @@ meshmonitor_source_connected == 0
 curl -H "Authorization: Bearer mm_v1_YOUR_TOKEN" \
   http://localhost:8080/api/v1/metrics
 ```
+
+A ready-made Grafana dashboard for these metrics ships in
+[`examples/grafana/`](https://github.com/Yeraze/meshmonitor/tree/main/examples/grafana).
 
 ---
 
