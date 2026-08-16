@@ -50,6 +50,22 @@ describe('WaypointEditorModal — create mode', () => {
     });
   });
 
+  it('shows the Android-notification warning only once a rebroadcast interval is entered (#4752)', () => {
+    const { container, queryByRole } = renderModal({ defaultCoords: { lat: 1, lon: 2 } });
+    // Off by default: no rebroadcast value, so no warning.
+    expect(queryByRole('note')).toBeNull();
+
+    const rebroadcastInput = container.querySelector(
+      'input[type="number"][min="10"][step="1"]',
+    ) as HTMLInputElement;
+    fireEvent.change(rebroadcastInput, { target: { value: '15' } });
+    expect(queryByRole('note')?.textContent).toMatch(/Android/i);
+
+    // Clearing it hides the warning again.
+    fireEvent.change(rebroadcastInput, { target: { value: '' } });
+    expect(queryByRole('note')).toBeNull();
+  });
+
   it('rejects out-of-range latitude', async () => {
     const { onSave, getByText, container } = renderModal();
     const inputs = container.querySelectorAll('input[type="number"][step="0.000001"]');
