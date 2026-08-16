@@ -18,10 +18,13 @@
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { AVAILABLE_LANGUAGES } from './i18n';
 
-const LOCALE_DIR = resolve('public/locales');
+// Resolved from this file rather than the process cwd, so the guard does not
+// depend on where the runner happens to be invoked from (review, #4748).
+const LOCALE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../../public/locales');
 
 /**
  * Non-empty share at or above which a translation is considered shippable.
@@ -41,19 +44,38 @@ const READY_THRESHOLD_PCT = 50;
  * silently dropped: if one improves past the threshold, or another sub-threshold
  * language is added, this test fails and a human decides.
  */
-const KNOWN_PARTIAL = ['de', 'es'];
+const KNOWN_PARTIAL = ['de', 'es'];  // keep alphabetical — compared order-sensitively
+
+/**
+ * Every leaf string in a locale object, keyed by dotted path.
+ *
+ * Recursive rather than top-level-only. `en.json` is mostly flat but carries a
+ * nested `map` group, and a flat pass had two problems: it made English score
+ * 99.98% against itself, and — the reason this recurses instead of just
+ * skipping non-strings — any nested group added later would be silently
+ * excluded from every locale's score, so a badly-translated section could hide
+ * inside a passing number (review, #4748).
+ */
+function leafStrings(obj: Record<string, unknown>, prefix = ''): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    const path = prefix ? `${prefix}.${k}` : k;
+    if (typeof v === 'string') out[path] = v;
+    else if (v && typeof v === 'object' && !Array.isArray(v)) {
+      Object.assign(out, leafStrings(v as Record<string, unknown>, path));
+    }
+  }
+  return out;
+}
 
 function coveragePct(): Record<string, number> {
-  const en = JSON.parse(readFileSync(join(LOCALE_DIR, 'en.json'), 'utf8')) as Record<string, unknown>;
-  // Only leaf strings. `en.json` carries one nested group (`map`), and counting
-  // it in the denominator made even English score 99.98% — a metric that cannot
-  // reach 100 for the reference locale is measuring the wrong thing.
-  const keys = Object.keys(en).filter((k) => typeof en[k] === 'string');
+  const en = leafStrings(JSON.parse(readFileSync(join(LOCALE_DIR, 'en.json'), 'utf8')));
+  const keys = Object.keys(en);
   const out: Record<string, number> = {};
   for (const file of readdirSync(LOCALE_DIR).filter((f) => f.endsWith('.json'))) {
     const code = file.replace(/\.json$/, '');
-    const d = JSON.parse(readFileSync(join(LOCALE_DIR, file), 'utf8')) as Record<string, unknown>;
-    const nonEmpty = keys.filter((k) => typeof d[k] === 'string' && (d[k] as string).trim() !== '').length;
+    const d = leafStrings(JSON.parse(readFileSync(join(LOCALE_DIR, file), 'utf8')));
+    const nonEmpty = keys.filter((k) => typeof d[k] === 'string' && d[k].trim() !== '').length;
     out[code] = (100 * nonEmpty) / keys.length;
   }
   return out;
@@ -68,6 +90,17 @@ describe('language selector covers the translations that are ready', () => {
     const cov = coveragePct();
     expect(Object.keys(cov).length).toBeGreaterThan(5);
     expect(cov.en).toBe(100);
+    // Nested groups are counted, so the corpus is larger than the flat key set.
+    expect(Object.keys(leafStrings(JSON.parse(readFileSync(join(LOCALE_DIR, 'en.json'), 'utf8')))).length)
+      .toBeGreaterThan(1000);
+  });
+
+  it('has a listed language actually clearing the threshold', () => {
+    // Otherwise a corpus-wide collapse would leave every assertion here passing
+    // for the wrong reason: nothing "ready but unlisted", because nothing ready
+    // (review, #4748).
+    const cov = coveragePct();
+    expect(cov.pl).toBeGreaterThanOrEqual(READY_THRESHOLD_PCT);
   });
 
   it('lists every locale that has reached the readiness threshold', () => {
