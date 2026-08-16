@@ -13,8 +13,17 @@ import HttpBackend from 'i18next-http-backend';
 import { appBasename } from '../init';
 
 /**
- * Available languages configuration
- * Add new languages here as they become available via Weblate
+ * Available languages configuration.
+ *
+ * Hand-maintained on purpose — shipping a translation is an editorial call, not
+ * an automatic consequence of a file existing. But it drifts: Weblate adds
+ * locale files continuously and this list does not, so Traditional Chinese sat
+ * at 99% translated and unselectable until a contributor noticed (#4742), and
+ * Polish reached 89% the same way.
+ *
+ * `i18nLanguageCoverage.test.ts` now fails when a locale crosses the
+ * readiness threshold without being listed here, so the next one surfaces in
+ * CI instead of waiting for a user to report it.
  */
 export const AVAILABLE_LANGUAGES = [
   { code: 'en', name: 'English', nativeName: 'English' },
@@ -24,6 +33,7 @@ export const AVAILABLE_LANGUAGES = [
   { code: 'ru', name: 'Russian', nativeName: 'Русский' },
   { code: 'zh_Hans', name: 'Chinese (Simplified)', nativeName: '简体中文' },
   { code: 'zh_Hant', name: 'Chinese (Traditional)', nativeName: '繁體中文' },
+  { code: 'pl', name: 'Polish', nativeName: 'Polski' },
 ];
 
 void i18n
