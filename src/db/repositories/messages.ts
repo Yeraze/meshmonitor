@@ -246,6 +246,23 @@ export class MessagesRepository extends BaseRepository {
   }
 
   /**
+   * Count messages whose `timestamp` (server receive time, milliseconds)
+   * falls within the last `sinceMs` milliseconds.
+   *
+   * Powers the message-rate gauge on the v1 metrics endpoint, which only
+   * needs the number — going through getMessagesAfterTimestamp and taking
+   * `.length` would haul every matching row's text through the ORM on each
+   * scrape.
+   */
+  async getMessageCountSince(sourceId: SourceScope, sinceMs: number): Promise<number> {
+    const cutoff = Date.now() - sinceMs;
+    const { messages } = this.tables;
+    const result = await this.db.select({ count: count() }).from(messages)
+      .where(and(gt(messages.timestamp, cutoff), this.withSourceScope(messages, sourceId)));
+    return Number(result[0].count);
+  }
+
+  /**
    * Get the distinct `channel` numbers that have messages for a source, with a
    * per-channel message count and the most recent message timestamp. Used by
    * the Channels tab to enumerate the channel_database-backed virtual channels
