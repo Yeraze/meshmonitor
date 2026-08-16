@@ -603,7 +603,7 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
           any = true;
         }
       }
-      void databaseService.upsertNodeAsync({
+      const node: Partial<DbNode> = {
         nodeNum: fromNum,
         nodeId: fromNodeId,
         // Intentionally omit longName/shortName/hwModel: this upsert only
@@ -616,7 +616,27 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
         transportMechanism: TransportMechanism.MQTT, transportLastMqtt: mqttSeenAt(),
         createdAt: nowMs,
         updatedAt: nowMs,
-      }, sourceId).catch(err => logger.error('MQTT upsertNode failed:', err));
+      };
+      const deviceMetrics = t.deviceMetrics ?? t.device_metrics;
+      if (deviceMetrics && typeof deviceMetrics === 'object') {
+        const batteryLevel = deviceMetrics.batteryLevel ?? deviceMetrics.battery_level;
+        const voltage = deviceMetrics.voltage;
+        const channelUtilization = deviceMetrics.channelUtilization ?? deviceMetrics.channel_utilization;
+        const airUtilTx = deviceMetrics.airUtilTx ?? deviceMetrics.air_util_tx;
+        if (typeof batteryLevel === 'number' && Number.isFinite(batteryLevel)) {
+          node.batteryLevel = batteryLevel;
+        }
+        if (typeof voltage === 'number' && Number.isFinite(voltage)) {
+          node.voltage = voltage;
+        }
+        if (typeof channelUtilization === 'number' && Number.isFinite(channelUtilization)) {
+          node.channelUtilization = channelUtilization;
+        }
+        if (typeof airUtilTx === 'number' && Number.isFinite(airUtilTx)) {
+          node.airUtilTx = airUtilTx;
+        }
+      }
+      void databaseService.upsertNodeAsync(node, sourceId).catch(err => logger.error('MQTT upsertNode failed:', err));
       return any ? { ingested: true, portnum } : { ingested: false, reason: 'decode-error', portnum };
     }
 
