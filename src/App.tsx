@@ -41,6 +41,7 @@ import { type TemperatureUnit } from './utils/temperature';
 // calculateDistance and formatDistance moved to useTraceroutePaths hook
 import { DeviceInfo, Channel } from './types/device';
 import { MeshMessage } from './types/message';
+import { isMqttBridgeMessage } from './utils/messageFilters';
 import { NodeFilters } from './types/ui';
 import { getHashTabRedirectTarget } from './utils/tabHashRedirect';
 import { ResourceType } from './types/permission';
@@ -928,36 +929,6 @@ function App() {
     dmMessagesContainerRef,
     applyPollMessages,
   } = useMessagingView();
-
-  // Function to detect MQTT/bridge messages that should be filtered
-  const isMqttBridgeMessage = (msg: MeshMessage): boolean => {
-    // Primary check: use the viaMqtt field from the packet if available
-    if (msg.viaMqtt === true) {
-      return true;
-    }
-
-    // Filter messages from unknown senders
-    if (msg.from === 'unknown' || msg.fromNodeId === 'unknown') {
-      return true;
-    }
-
-    // Filter MQTT-related text patterns (fallback for older messages without viaMqtt)
-    const mqttPatterns = [
-      'mqtt.',
-      'areyoumeshingwith.us',
-      /^\d+\.\d+\.\d+\.[a-f0-9]+$/, // Version patterns like "2.5.7.f77c87d"
-      /^\/.*\.(js|css|proto|html)/, // File paths
-      /^[A-Z]{2,3}[�\x00-\x1F\x7F-\xFF]+/, // Garbage data patterns
-    ];
-
-    return mqttPatterns.some(pattern => {
-      if (typeof pattern === 'string') {
-        return msg.text.includes(pattern);
-      } else {
-        return pattern.test(msg.text);
-      }
-    });
-  };
 
   // Load configuration and check connection status on startup
   useEffect(() => {
