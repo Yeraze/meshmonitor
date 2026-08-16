@@ -9,8 +9,12 @@ WORKDIR /app
 # be able to compile it from source. `build-base` (C/C++ compiler) is what's new
 # here; `python3` is node-gyp's other requirement (also installed in the runtime
 # stage, but the stages are independent). Also a fallback for any other native
-# dep missing a prebuilt for the target arch.
-RUN apk add --no-cache build-base python3
+# dep missing a prebuilt for the target arch. `linux-headers` is required by
+# node-gyp for sources that include kernel headers (musl does not ship them with
+# build-base, unlike glibc distros) — not currently exercised by the amd64/arm64
+# builds, which resolve prebuilts, but it is what turns a source-compile
+# fallback from "sometimes works" into "works".
+RUN apk add --no-cache build-base python3 linux-headers
 
 # Copy package files
 COPY package*.json ./
