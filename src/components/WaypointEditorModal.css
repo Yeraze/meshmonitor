@@ -102,6 +102,8 @@
   display: flex;
   align-items: flex-start;
   gap: 0.4rem;
+  /* Slightly more than .form-hint's 4px: this sits below the hint and reads as
+     a distinct caution, so the extra breathing room is intentional. */
   margin-top: 6px;
   color: var(--color-warning);
   font-size: 0.85em;

@@ -61,7 +61,11 @@ describe('WaypointEditorModal — create mode', () => {
     fireEvent.change(rebroadcastInput, { target: { value: '15' } });
     expect(queryByRole('note')?.textContent).toMatch(/Android/i);
 
-    // Clearing it hides the warning again.
+    // Clearing it hides the warning again. Whitespace-only counts as cleared:
+    // the display guard uses `.trim().length > 0`, matching validate()'s own
+    // trim, so the warning and the "interval is set" check never diverge.
+    fireEvent.change(rebroadcastInput, { target: { value: '   ' } });
+    expect(queryByRole('note')).toBeNull();
     fireEvent.change(rebroadcastInput, { target: { value: '' } });
     expect(queryByRole('note')).toBeNull();
   });
