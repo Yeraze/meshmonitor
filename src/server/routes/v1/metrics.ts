@@ -111,6 +111,12 @@ router.get('/', async (req: Request, res: Response) => {
       labelNames: ['source'],
       registers: [registry],
     });
+    const packetsByPort = new Gauge({
+      name: 'meshmonitor_packets_by_port_last_hour',
+      help: 'Packets logged in the last hour by protocol; empty unless the packet monitor is enabled (requires packetmonitor read permission)',
+      labelNames: ['source', 'portnum', 'portnum_name'],
+      registers: [registry],
+    });
 
     const nodeLabels = ['source', 'node_id', 'short_name'] as const;
     const nodeChannelUtil = new Gauge({
@@ -197,6 +203,25 @@ router.get('/', async (req: Request, res: Response) => {
         messagesLastHour.labels(source.id).set(
           await databaseService.messages.getMessageCountSince(source.id, 3600 * 1000)
         );
+      }
+
+      // Traffic mix. Backed by the packet monitor's log, so it is empty on
+      // installs that have not enabled packet logging — a config state, not
+      // an error, hence no gauge rather than a zero. Mirrors the v1 packets
+      // route's permission resource.
+      const canReadPackets =
+        user.isAdmin ||
+        (await databaseService.checkPermissionAsync(user.id, 'packetmonitor', 'read', source.id));
+      if (canReadPackets) {
+        const portCounts = await databaseService.packetLog.getPacketCountsByPortSince(
+          source.id, 3600 * 1000
+        );
+        for (const row of portCounts) {
+          const portnum = row.portnum == null ? 'unknown' : String(row.portnum);
+          packetsByPort
+            .labels(source.id, portnum, row.portnumName || `PORT_${portnum}`)
+            .set(row.packetCount);
+        }
       }
 
       // getActiveNodes takes days; fractional values work (cutoff arithmetic).

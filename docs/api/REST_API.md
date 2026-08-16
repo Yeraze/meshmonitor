@@ -776,6 +776,7 @@ permission on that source.
 | `meshmonitor_nodes_total` | `source` | Total nodes known |
 | `meshmonitor_nodes_active` | `source` | Nodes heard in the last 2 hours (matches the dashboard activity badge) |
 | `meshmonitor_messages_last_hour` | `source` | Messages received in the last hour |
+| `meshmonitor_packets_by_port_last_hour` | `source`, `portnum`, `portnum_name` | Packets logged in the last hour by protocol (empty unless the packet monitor is enabled; needs `packetmonitor` read) |
 | `meshmonitor_node_channel_utilization_percent` | `source`, `node_id`, `short_name` | Channel utilization observed by this node (airtime saturation) |
 | `meshmonitor_node_air_util_tx_percent` | `source`, `node_id`, `short_name` | This node's own transmit duty cycle |
 | `meshmonitor_node_battery_level` | `source`, `node_id`, `short_name` | Battery level 0–100 (>100 = externally powered) |

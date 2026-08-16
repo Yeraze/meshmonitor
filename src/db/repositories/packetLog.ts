@@ -468,6 +468,51 @@ export class PacketLogRepository extends BaseRepository {
   }
 
   /**
+   * Count packets logged in the last `sinceMs` milliseconds, grouped by
+   * protocol (portnum). Powers the traffic-mix gauge on the v1 metrics
+   * endpoint. `portnum_name` rides along so consumers get a display name
+   * without needing the protobuf enum; rows logged before decode (or for
+   * ports the decoder does not name) have a NULL name and the caller is
+   * expected to fall back to the number.
+   */
+  async getPacketCountsByPortSince(
+    sourceId: string,
+    sinceMs: number
+  ): Promise<Array<{ portnum: number | null; portnumName: string | null; packetCount: number }>> {
+    const cutoff = Date.now() - sinceMs;
+    try {
+      const conditions = [
+        sql`timestamp >= ${cutoff}`,
+        sql`${sql.identifier('sourceId')} = ${sourceId}`,
+      ];
+      const whereClause = this.combineConditions(conditions);
+
+      const rows = await this.executeQuery(sql`
+        SELECT portnum, portnum_name as "portnumName", COUNT(*) as "packetCount"
+        FROM packet_log
+        WHERE ${whereClause}
+        GROUP BY portnum, portnum_name
+      `);
+
+      type PortCountRow = {
+        portnum?: number | string | null;
+        portnumName?: string | null;
+        portnumname?: string | null;
+        packetCount?: number | string;
+        packetcount?: number | string;
+      };
+      return (rows as PortCountRow[]).map((r) => ({
+        portnum: r.portnum === null || r.portnum === undefined ? null : Number(r.portnum),
+        portnumName: r.portnumName ?? r.portnumname ?? null,
+        packetCount: Number(r.packetCount ?? r.packetcount),
+      }));
+    } catch (error) {
+      logger.error('[PacketLogRepository] Failed to get packet counts by port since:', error);
+      return [];
+    }
+  }
+
+  /**
    * Get top N broadcasters by packet count since a given timestamp, excluding
    * internal traffic (packets where both ends are the local node).
    */

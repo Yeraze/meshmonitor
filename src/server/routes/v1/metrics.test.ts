@@ -29,6 +29,9 @@ vi.mock('../../../services/database.js', () => ({
     messages: {
       getMessageCountSince: vi.fn(),
     },
+    packetLog: {
+      getPacketCountsByPortSince: vi.fn(),
+    },
     checkPermissionAsync: vi.fn(),
   },
 }));
@@ -170,6 +173,11 @@ describe('Metrics API Routes', () => {
     vi.mocked(databaseService.nodes.getActiveNodeCount).mockResolvedValue(7);
     vi.mocked(databaseService.nodes.getActiveNodes).mockResolvedValue([fullNode, bareNode, ignoredNode]);
     vi.mocked(databaseService.messages.getMessageCountSince).mockResolvedValue(42);
+    vi.mocked(databaseService.packetLog.getPacketCountsByPortSince).mockResolvedValue([
+      { portnum: 3, portnumName: 'POSITION_APP', packetCount: 120 },
+      { portnum: 67, portnumName: 'TELEMETRY_APP', packetCount: 55 },
+      { portnum: 512, portnumName: null, packetCount: 7 },
+    ]);
     vi.mocked(databaseService.checkPermissionAsync).mockResolvedValue(true);
     // src_mqtt deliberately has no manager -> reported as down
     vi.mocked(sourceManagerRegistry.getAllManagers).mockReturnValue([connectedTcpManager]);
@@ -247,6 +255,40 @@ describe('Metrics API Routes', () => {
 
       expect(response.text).toContain('meshmonitor_messages_last_hour{source="src_tcp"} 42');
       expect(databaseService.messages.getMessageCountSince).toHaveBeenCalledWith('src_tcp', 3600000);
+    });
+
+    it('exports the packet mix by protocol with display names', async () => {
+      const app = createApp(adminUser);
+      const response = await request(app).get('/api/v1/metrics').expect(200);
+
+      const body = response.text;
+      expect(body).toContain('meshmonitor_packets_by_port_last_hour{source="src_tcp",portnum="3",portnum_name="POSITION_APP"} 120');
+      expect(body).toContain('meshmonitor_packets_by_port_last_hour{source="src_tcp",portnum="67",portnum_name="TELEMETRY_APP"} 55');
+      // A port the decoder has no name for falls back to the number
+      expect(body).toContain('meshmonitor_packets_by_port_last_hour{source="src_tcp",portnum="512",portnum_name="PORT_512"} 7');
+      expect(databaseService.packetLog.getPacketCountsByPortSince).toHaveBeenCalledWith('src_tcp', 3600000);
+    });
+
+    it('emits no packet-mix series when the packet log is empty', async () => {
+      vi.mocked(databaseService.packetLog.getPacketCountsByPortSince).mockResolvedValue([]);
+
+      const app = createApp(adminUser);
+      const response = await request(app).get('/api/v1/metrics').expect(200);
+
+      expect(response.text).not.toContain('meshmonitor_packets_by_port_last_hour{');
+    });
+
+    it('withholds the packet mix without packetmonitor read permission', async () => {
+      vi.mocked(databaseService.checkPermissionAsync).mockImplementation(
+        async (_userId, resource, _action, sourceId) =>
+          sourceId === 'src_tcp' && resource !== 'packetmonitor'
+      );
+
+      const app = createApp(readOnlyUser);
+      const response = await request(app).get('/api/v1/metrics').expect(200);
+
+      expect(response.text).toContain('meshmonitor_messages_last_hour{source="src_tcp"} 42');
+      expect(response.text).not.toContain('meshmonitor_packets_by_port_last_hour{');
     });
 
     it('uses the default 24h per-node window', async () => {
