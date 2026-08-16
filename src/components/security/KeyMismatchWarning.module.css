@@ -1,0 +1,77 @@
+/* Public-key mismatch warning (#4738). Scoped module — see CLAUDE.md. */
+
+.keyMismatch {
+  padding: 0.6rem 0.85rem;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  text-align: left;
+}
+
+/* Severity is carried by text and icon as well as colour — colour alone
+   conveys nothing to a user who cannot distinguish it. */
+.keyMismatchHigh {
+  border-color: var(--color-error);
+  color: var(--color-error);
+}
+
+.keyMismatchLow {
+  border-color: var(--color-caution);
+  color: var(--color-text);
+}
+
+.keyMismatchHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.keyMismatchTitle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+}
+
+.keyMismatchBadge {
+  padding: 0.05rem 0.4rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.keyMismatchRisk {
+  margin: 0.4rem 0 0;
+  font-size: 0.85rem;
+}
+
+.keyMismatchToggle {
+  margin-top: 0.4rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: 0.8rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.keyMismatchActions {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+}
+
+.keyMismatchActions li {
+  margin: 0.2rem 0;
+}
+
+.keyMismatchDetails {
+  margin: 0.5rem 0 0;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.75rem;
+  opacity: 0.85;
+}
