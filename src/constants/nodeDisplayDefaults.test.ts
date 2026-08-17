@@ -77,8 +77,9 @@ describe('parseNodeDisplayNumber', () => {
     ['0', 24], // 0 is below maxNodeAgeHours' min of 1 -> clamps to default
     ['-5', 24], // negative is out of range -> clamps to default (NOT '-5' verbatim)
     ['24', 24],
-    ['168', 168], // upper bound, inclusive
-    ['169', 24], // above upper bound -> default
+    ['168', 168], // 1 week — still well within the 720h (30d) cap (#4770)
+    ['720', 720], // upper bound, inclusive (30 days)
+    ['721', 24], // above upper bound -> default
     ['1', 1], // lower bound, inclusive
   ];
 

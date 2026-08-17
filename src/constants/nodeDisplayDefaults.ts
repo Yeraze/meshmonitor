@@ -73,7 +73,7 @@ export const NODE_DISPLAY_STRING_DEFAULTS = { nodeHopsCalculation: 'nodeinfo' } 
 /**
  * Accepted ranges. Lifted verbatim from the existing server-side write
  * validation so the read-side clamp and the write-side 400 can never disagree:
- *   maxNodeAgeHours                   settingsRoutes.ts:345-351   1..168
+ *   maxNodeAgeHours                   settingsRoutes.ts (reads this range)  1..720
  *   inactiveNodeThresholdHours        settingsRoutes.ts:363-368   1..720
  *   inactiveNodeCheckIntervalMinutes  settingsRoutes.ts:370-377   1..1440
  *   inactiveNodeCooldownHours         settingsRoutes.ts:379-384   1..720
@@ -86,7 +86,7 @@ export const NODE_DISPLAY_STRING_DEFAULTS = { nodeHopsCalculation: 'nodeinfo' } 
 export const NODE_DISPLAY_RANGES: Readonly<Partial<Record<
   NodeDisplayNumericKey, { min: number; max: number; integer: boolean }
 >>> = {
-  maxNodeAgeHours:                  { min: 1, max: 168,  integer: true },
+  maxNodeAgeHours:                  { min: 1, max: 720,  integer: true },
   inactiveNodeThresholdHours:       { min: 1, max: 720,  integer: true },
   inactiveNodeCheckIntervalMinutes: { min: 1, max: 1440, integer: true },
   inactiveNodeCooldownHours:        { min: 1, max: 720,  integer: true },
