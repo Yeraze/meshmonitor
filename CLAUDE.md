@@ -81,8 +81,9 @@ Ask:
 - Does it run on a timer, so the cost is permanent rather than one-off?
 - Does it fire on every source? N sources means N times the traffic.
 
-**Budgets to measure against.** The firmware hard-codes these in
-`src/airtime.h` with no config binding:
+**Budgets to measure against.** The firmware hard-codes these with no config
+binding (`meshtastic/firmware`, `src/airtime.h`; these are firmware paths, not
+paths in this repo):
 
 | Figure | Value | Window |
 |--------|-------|--------|
@@ -97,7 +98,7 @@ seconds and includes everything the radio hears, while `airUtilTx` is a rolling
 hour of our own transmissions.
 
 **Duty cycle is a hard block, and only in some regions.** `RegionInfo.dutyCycle`
-(table in `src/mesh/RadioInterface.cpp`) is 100, meaning no limit, everywhere
+(table in `meshtastic/firmware`, `src/mesh/RadioInterface.cpp`) is 100, meaning no limit, everywhere
 except EU_433, EU_868, TH and UA_433 at **10%**, and UA_868 at **1%**. Where a
 limit applies, `Router::send()` drops the packet, NAKs
 `Routing.Error.DUTY_CYCLE_LIMIT`, and notifies the client. It gates **user text
@@ -114,7 +115,7 @@ do **not** cover user text messages. Anything we send on a text port is
 ungoverned except by the duty-cycle block above, so our own limits are the only
 thing standing between a feature and the mesh.
 
-Prefer passive data we already receive over anything we have to ask for.
+**Prefer passive data we already receive over anything we have to ask for.**
 Traceroutes, telemetry requests, and NodeInfo exchanges are expensive, so batch
 them, spread them out, or make them on-demand.
 
@@ -131,6 +132,10 @@ Spam is not only a flood of channel messages. Count the indirect paths too:
   reacts to a message and sends a message can trigger itself. See the
   self-origin guard in the automation engine (#3914).
 - **Retries:** a failed send that retries forever is a flood with extra steps.
+- **MQTT:** costs no airtime, so it is easy to wave through, but it is still a
+  volume problem. One update per node on a 200-node mesh is 200 publishes, and
+  every downstream subscriber pays for them. "No LoRa cost" does not mean
+  "no limit needed".
 
 If any of these fire automatically or repeatedly, the feature needs a limit. A
 single send the user explicitly asked for does not. Reuse what exists rather
@@ -171,6 +176,9 @@ feature needs a cap, a cooldown, or a warning, **bring the numbers to the user
 and ask**. Do not pick a limit, ship a default, or decide something is "safe
 enough" on your own. State the airtime cost you calculated and propose an
 option; let the user choose.
+
+If you reach this point mid-implementation, stop there. Surface the numbers
+before you write the rate-limiting code, not after.
 
 ## Multi-Source Architecture (4.x)
 
