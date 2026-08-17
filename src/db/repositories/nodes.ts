@@ -297,18 +297,28 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
-   * Get active nodes (heard within sinceDays)
+   * Get active nodes (heard within sinceDays), most-recently-heard first.
+   *
+   * When `limit` is a positive number, at most that many nodes are returned —
+   * because the result is ordered by `lastHeard` descending, the cap yields the
+   * N most-recently-heard nodes. This bounds result size for callers that emit
+   * per-node series (e.g. the v1 metrics endpoint) so an MQTT-firehose source
+   * with thousands of rows can't explode a scrape.
    */
-  async getActiveNodes(sinceDays: number = 7, sourceId?: SourceScope): Promise<DbNode[]> {
+  async getActiveNodes(sinceDays: number = 7, sourceId?: SourceScope, limit?: number): Promise<DbNode[]> {
     // lastHeard is stored in seconds (Unix timestamp)
     const cutoff = Math.floor(Date.now() / 1000) - (sinceDays * 24 * 60 * 60);
     const { nodes } = this.tables;
 
-    const result = await this.db
+    const query = this.db
       .select()
       .from(nodes)
       .where(and(gt(nodes.lastHeard, cutoff), this.withSourceScope(nodes, sourceId)))
       .orderBy(desc(nodes.lastHeard));
+
+    const result = typeof limit === 'number' && limit > 0
+      ? await query.limit(limit)
+      : await query;
 
     return this.normalizeBigInts(result) as DbNode[];
   }

@@ -291,26 +291,28 @@ describe('Metrics API Routes', () => {
       expect(response.text).not.toContain('meshmonitor_packets_by_port_last_hour{');
     });
 
-    it('uses the default 24h per-node window', async () => {
+    // The third arg is the per-source node-series cap (MAX_NODE_SERIES_PER_SOURCE)
+    // that bounds scrape cardinality on firehose sources.
+    it('uses the default 24h per-node window and caps node series', async () => {
       const app = createApp(adminUser);
       await request(app).get('/api/v1/metrics').expect(200);
 
-      expect(databaseService.nodes.getActiveNodes).toHaveBeenCalledWith(1, 'src_tcp');
+      expect(databaseService.nodes.getActiveNodes).toHaveBeenCalledWith(1, 'src_tcp', 1000);
     });
 
     it('respects and clamps the window query parameter', async () => {
       const app = createApp(adminUser);
 
       await request(app).get('/api/v1/metrics?window=3600').expect(200);
-      expect(databaseService.nodes.getActiveNodes).toHaveBeenCalledWith(3600 / 86400, 'src_tcp');
+      expect(databaseService.nodes.getActiveNodes).toHaveBeenCalledWith(3600 / 86400, 'src_tcp', 1000);
 
       vi.mocked(databaseService.nodes.getActiveNodes).mockClear();
       await request(app).get('/api/v1/metrics?window=1').expect(200);
-      expect(databaseService.nodes.getActiveNodes).toHaveBeenCalledWith(60 / 86400, 'src_tcp');
+      expect(databaseService.nodes.getActiveNodes).toHaveBeenCalledWith(60 / 86400, 'src_tcp', 1000);
 
       vi.mocked(databaseService.nodes.getActiveNodes).mockClear();
       await request(app).get('/api/v1/metrics?window=99999999').expect(200);
-      expect(databaseService.nodes.getActiveNodes).toHaveBeenCalledWith(604800 / 86400, 'src_tcp');
+      expect(databaseService.nodes.getActiveNodes).toHaveBeenCalledWith(604800 / 86400, 'src_tcp', 1000);
     });
 
     it('ignores disabled sources', async () => {

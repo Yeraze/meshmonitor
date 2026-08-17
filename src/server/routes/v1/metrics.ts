@@ -54,6 +54,16 @@ const WINDOW_MAX = 604800;
  */
 const ACTIVE_WINDOW_SECONDS = 7200;
 
+/**
+ * Hard cap on the number of per-node series exported per source per scrape.
+ * getActiveNodes returns nodes ordered by lastHeard desc, so the cap keeps the
+ * N most-recently-heard nodes — an MQTT-firehose source with thousands of rows
+ * inside the window can't explode Prometheus cardinality (~8 series/node). The
+ * `meshmonitor_nodes_total` gauge still reports the true count, so truncation
+ * stays visible (exported < total).
+ */
+const MAX_NODE_SERIES_PER_SOURCE = 1000;
+
 router.get('/', async (req: Request, res: Response) => {
   try {
     const user = req.user;
@@ -225,8 +235,10 @@ router.get('/', async (req: Request, res: Response) => {
       }
 
       // getActiveNodes takes days; fractional values work (cutoff arithmetic).
+      // Capped to the N most-recently-heard nodes so a firehose source can't
+      // blow up scrape cardinality (see MAX_NODE_SERIES_PER_SOURCE).
       const activeNodes = await databaseService.nodes.getActiveNodes(
-        windowSeconds / 86400, source.id
+        windowSeconds / 86400, source.id, MAX_NODE_SERIES_PER_SOURCE
       );
 
       for (const node of activeNodes) {
