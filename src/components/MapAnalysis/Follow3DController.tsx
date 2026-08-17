@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import { useMapAnalysisCtx } from './MapAnalysisContext';
 import { useAnalysisNodes } from './useAnalysisNodes';
 import { averageLatLng, planAutoZoom, type LatLng } from './followMath';

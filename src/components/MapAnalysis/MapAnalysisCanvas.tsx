@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pane } from 'react-leaflet';
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import 'leaflet/dist/leaflet.css';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useMapAnalysisCtx } from './MapAnalysisContext';

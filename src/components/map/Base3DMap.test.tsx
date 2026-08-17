@@ -103,12 +103,12 @@ const { FakeMap, FakeNavigationControl, FakeAttributionControl } = vi.hoisted(()
   return { FakeMap, FakeNavigationControl, FakeAttributionControl };
 });
 
+// maplibre-gl v6 is ESM-only with named exports (no default) — mirror that so
+// `import * as maplibregl` resolves `maplibregl.Map` etc. (#4650).
 vi.mock('maplibre-gl', () => ({
-  default: {
-    Map: FakeMap,
-    NavigationControl: FakeNavigationControl,
-    AttributionControl: FakeAttributionControl,
-  },
+  Map: FakeMap,
+  NavigationControl: FakeNavigationControl,
+  AttributionControl: FakeAttributionControl,
 }));
 
 // ---------------------------------------------------------------------------

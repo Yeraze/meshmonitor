@@ -8,7 +8,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from '@testing-library/react';
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import Follow3DController from './Follow3DController';
 import type { AnalysisNode } from './useAnalysisNodes';
 import type { MapAnalysisConfig } from '../../hooks/useMapAnalysisConfig';
