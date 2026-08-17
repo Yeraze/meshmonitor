@@ -37,6 +37,7 @@
 - **App-owned interface icons use `UiIcon`.** Do not hardcode emoji or Unicode icon stand-ins in JSX or locale UI copy. Use `BrandIcon` for supported Simple Icons brand marks. User/content/protocol emoji require an issue-referenced exception when the distinction is not obvious.
 - **CSS containment (#3962 Task 5.6).** New components style with CSS modules (`Component.module.css`) scoped to that component, not the global sheets. The legacy global sheets (`src/styles/nodes.css` and siblings) are frozen — additions are discouraged; extend a CSS module instead where practical. `src/styles/nodes.css` in particular carries a hard ordering constraint: a mobile `@media` override must be declared *after* any unconditional base rule for the same selector, or it is silently shadowed by the cascade (issue #3532, bitten twice). See the banner comment at the top of that file before moving or adding rules there.
 - After bulk find-and-replace or sed, verify modified functions have correct `async`/`await` signatures. Route handlers and callbacks need `async` if `await` was added inside.
+- **Run the [Mesh impact checklist](#mesh-impact-checklist) on any feature that sends packets, fires notifications, or arms a timer.** Ask the user before you pick a limit.
 
 ### Response envelope
 API handlers use a shared envelope helper — `src/server/utils/apiResponse.ts`:
@@ -53,6 +54,83 @@ already return `{ success: true, data }` — converting a bare-payload handler
 reads only `error`/`code`/`retryAfterSeconds` and ignores `success` on errors.
 Existing bare-`{error}` handlers convert opportunistically as they're touched
 (Phases 2/4); this is not a mass conversion.
+
+## Mesh impact checklist
+
+LoRa is a shared, slow, half-duplex medium. A feature that looks cheap on a
+desk with one node becomes a mesh-wide outage on a busy channel with 200. Work
+through these three questions **before** you write the code, and put the answers
+in the plan and the PR body.
+
+### 1. What does this cost in airtime?
+
+Every packet we send takes the channel away from everyone else on it. LongFast
+gives you a few hundred bytes per second across the whole mesh, and each hop
+re-broadcasts the packet, a 3-hop send is ~4 transmissions, not 1.
+
+Ask:
+- How many packets does this send, and how often? Multiply by hop count.
+- Does it scale with node count? A per-node ping is O(n) packets and will not
+  survive a large mesh.
+- Does it run on a timer, so the cost is permanent rather than one-off?
+- Does it fire on every source? N sources means N times the traffic.
+
+Prefer passive data we already receive over anything we have to ask for.
+Traceroutes, telemetry requests, and NodeInfo exchanges are expensive, batch
+them, spread them out, or make them on-demand.
+
+### 2. Can this spam the mesh or the users?
+
+Spam is not only a flood of channel messages. Count the indirect paths too:
+
+- **Direct:** text messages, DMs, auto-responses, announcements, traceroutes,
+  admin packets.
+- **Indirect:** rows that trigger an automation, events on `dataEventEmitter`
+  that fan out to Apprise / desktop / MQTT publish, or notification-worthy state
+  changes (node online, position moved, key mismatch).
+- **Feedback loops:** our own sends re-enter the event bus. An automation that
+  reacts to a message and sends a message can trigger itself. See the
+  self-origin guard in the automation engine (#3914).
+- **Retries:** a failed send that retries forever is a flood with extra steps.
+
+If any of these are true, the feature needs a limit. Reuse what exists rather
+than inventing a new mechanism:
+
+| Need | Use |
+|------|-----|
+| HTTP-side cap | `src/server/middleware/rateLimiters.ts` (`messageLimiter`, etc.) |
+| Per-automation cap | `rateLimit: { maxActions, windowSeconds }` + `cooldownSeconds` / `cooldownScope` in `automationEngineService.ts` |
+| Scheduled sends | Clamp the interval, like `autoAnnounceService` (3–24 hours) |
+
+Default to conservative. A limit the user can raise beats a flood they have to
+notice. Where a setting could plausibly hurt the mesh, warn in the UI next to
+the input, not in a doc nobody reads.
+
+### 3. Does a save reset a safety timer?
+
+This is the bug we keep re-introducing. Most schedulers restart when settings
+are saved. If the "time since last fire" lives only in memory, every save
+re-arms the timer, so a user tweaking a settings page sends a burst of
+announcements, or a cooldown never expires and the feature silently stops.
+
+Rules:
+- **Persist the last-fire timestamp to the database**, not to an instance field.
+  `autoAnnounceService` stores `lastAnnouncementTime` in settings and checks the
+  elapsed time on startup for exactly this reason
+  (`src/server/services/autoAnnounceService.ts`).
+- Restarting a scheduler must **not** count as a trigger.
+- Check the reverse failure too: does a save clear a cooldown that was
+  protecting the mesh, letting the next event fire immediately?
+- Restart the container and confirm the timer survives. In-memory state looks
+  correct until the process restarts.
+
+### Ask before you decide
+
+These limits are policy, not implementation detail. When the checklist says a
+feature needs a cap, a cooldown, or a warning, **bring the numbers to the user
+and ask**, do not pick a limit, ship a default, or decide something is "safe
+enough" on your own. State the airtime cost you calculated and propose an
+option; let the user choose.
 
 ## Multi-Source Architecture (4.x)
 
