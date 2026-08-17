@@ -117,6 +117,17 @@ describe('header safe-area clearance (#4772)', () => {
     expect(ruleBody(mobile, '.dashboard-sidebar-backdrop')).toMatch(/top:\s*var\(--header-offset/);
   });
 
+  it('subtracts the full header footprint from viewport-height math', () => {
+    // `calc(100vh - var(--header-height) - …)` overstates the room left below a
+    // header that is inset-taller than its nominal height, so the panel runs off
+    // the bottom of the screen by exactly the inset.
+    const viewportMath = [...appCss.matchAll(/calc\(100d?vh\s*-\s*var\(--header-(\w+)\)/g)].map(
+      (m) => m[1]
+    );
+    expect(viewportMath.length).toBeGreaterThan(0);
+    expect(viewportMath.every((v) => v === 'offset')).toBe(true);
+  });
+
   it('hangs the banners off the bottom of the header without re-adding the inset', () => {
     expect(ruleBody(bannersCss, '.warning-banner')).toMatch(/top:\s*var\(--header-offset\)/);
     // Double-counting: the header already reserved the inset above the banner.
