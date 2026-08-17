@@ -58,7 +58,7 @@ Existing bare-`{error}` handlers convert opportunistically as they're touched
 ## Mesh impact checklist
 
 LoRa is a shared, slow, half-duplex medium. A feature that looks cheap on a
-desk with one node becomes a mesh-wide outage on a busy channel with 200. Work
+desk with one node becomes mesh-wide congestion on a busy channel with 200. Work
 through these three questions **before** you write the code, and put the answers
 in the plan and the PR body.
 
@@ -66,7 +66,7 @@ in the plan and the PR body.
 
 Every packet we send takes the channel away from everyone else on it. LongFast
 gives you a few hundred bytes per second across the whole mesh, and each hop
-re-broadcasts the packet, a 3-hop send is ~4 transmissions, not 1.
+re-broadcasts the packet — a 3-hop send is ~4 transmissions, not 1.
 
 Ask:
 - How many packets does this send, and how often? Multiply by hop count.
@@ -93,7 +93,8 @@ Spam is not only a flood of channel messages. Count the indirect paths too:
   self-origin guard in the automation engine (#3914).
 - **Retries:** a failed send that retries forever is a flood with extra steps.
 
-If any of these are true, the feature needs a limit. Reuse what exists rather
+If any of these fire automatically or repeatedly, the feature needs a limit. A
+single send the user explicitly asked for does not. Reuse what exists rather
 than inventing a new mechanism:
 
 | Need | Use |
