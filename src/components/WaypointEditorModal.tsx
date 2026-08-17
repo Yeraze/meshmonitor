@@ -362,6 +362,13 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
           <span className="form-hint">
             Minimum 10 minutes. The scheduler rebroadcasts at most one waypoint per minute across the whole mesh.
           </span>
+          {rebroadcast.trim().length > 0 && (
+            <span className="waypoint-rebroadcast-warning" role="note">
+              <UiIcon name="alert" size={14} /> Android clients notify on every
+              rebroadcast, so repeat broadcasts can spam users in range. Leave
+              this blank unless the waypoint really needs to stay refreshed.
+            </span>
+          )}
         </label>
 
         {error && (
