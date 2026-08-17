@@ -21,6 +21,8 @@ import TelemetryGauge from './TelemetryGauge';
 import TelemetryNumericLabel from './TelemetryNumericLabel';
 import { getTelemetryLabel } from './TelemetryChart';
 import { compareTelemetryGraphs } from '../utils/telemetryGraphOrder';
+import { buildTelemetryFilename, telemetrySeriesToCsv } from '../utils/telemetryChartCsv';
+import { downloadTextFile } from '../utils/nodeExport';
 import { UiIcon } from './icons';
 
 /** Telemetry types that represent discrete integer values where fractional display is meaningless */
@@ -161,6 +163,7 @@ interface TelemetryGraphWidgetProps {
   getColor: (type: string) => string;
   prepareChartData: (data: TelemetryData[], isTemperature?: boolean, globalMinTime?: number) => ChartData[];
   timeFormat: TimeFormat;
+  hours: number;
   t: (key: string, opts?: Record<string, unknown>) => string;
   canEditSettings: boolean;
 }
@@ -190,6 +193,7 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
   getColor,
   prepareChartData,
   timeFormat,
+  hours,
   t,
   canEditSettings,
 }) => {
@@ -236,6 +240,34 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
   const scaledChartData = !isTemperature && display.factor !== 1
     ? chartData.map(d => ({ ...d, value: d.value == null ? d.value : d.value * display.factor }))
     : chartData;
+
+  const canExportCsv = scaledChartData.length > 0;
+  const handleExportCsv = () => {
+    if (!canExportCsv) return;
+    const rows = scaledChartData.map((d) => {
+      // Paxcounter merge attaches paxWifi/paxBle on the chart point (same as plot).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const p = d as any;
+      return {
+        timestamp: d.timestamp,
+        value: d.value,
+        solarEstimate: d.solarEstimate,
+        paxWifi: p.paxWifi as number | null | undefined,
+        paxBle: p.paxBle as number | null | undefined,
+      };
+    });
+    const csv = telemetrySeriesToCsv(rows, {
+      nodeId,
+      telemetryType: type,
+      unit,
+      hours,
+    });
+    downloadTextFile(
+      buildTelemetryFilename(nodeId, type, hours),
+      `\uFEFF${csv}`,
+      'text/csv;charset=utf-8',
+    );
+  };
 
   // Gauge/numeric modes display a single raw value, so convert it (and the
   // gauge range) to the selected unit. Ranges persist in base units (Celsius
@@ -293,6 +325,15 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
               <UiIcon name={getSolarVisibility(type) ? 'sun' : 'visibilityOff'} size={15} />
             </button>
           )}
+          <button
+            className="telemetry-export-btn"
+            onClick={handleExportCsv}
+            disabled={!canExportCsv}
+            aria-label={t('telemetry.export_csv')}
+            title={t('telemetry.export_csv')}
+          >
+            <UiIcon name="downloadData" size={15} />
+          </button>
           <button
             className={`favorite-btn ${favorites.has(type) ? 'favorited' : ''}`}
             onClick={createToggleFavorite(type)}
@@ -1023,6 +1064,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
               getColor={getColor}
               prepareChartData={prepareChartData}
               timeFormat={timeFormat}
+              hours={effectiveHours}
               t={t as (key: string, opts?: Record<string, unknown>) => string}
               canEditSettings={canEditSettings}
             />

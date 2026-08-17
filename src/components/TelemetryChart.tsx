@@ -29,6 +29,8 @@ import { useWidgetRange } from '../hooks/useWidgetRange';
 import { useSource } from '../contexts/SourceContext';
 import { getLatestValue } from '../utils/telemetry';
 import { telemetryDisplayScale } from '../utils/telemetryFormat';
+import { buildTelemetryFilename, telemetrySeriesToCsv } from '../utils/telemetryChartCsv';
+import { downloadTextFile } from '../utils/nodeExport';
 import TelemetryGauge from './TelemetryGauge';
 import TelemetryNumericLabel from './TelemetryNumericLabel';
 import { UiIcon } from './icons';
@@ -602,6 +604,33 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
       ? chartData.map((d) => ({ ...d, value: d.value == null ? d.value : d.value * display.factor }))
       : chartData;
 
+    const canExportCsv = scaledChartData.length > 0;
+    const handleExportCsv = () => {
+      if (!canExportCsv) return;
+      const rows = scaledChartData.map((d) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const p = d as any;
+        return {
+          timestamp: d.timestamp,
+          value: d.value,
+          solarEstimate: d.solarEstimate,
+          paxWifi: p.paxWifi as number | null | undefined,
+          paxBle: p.paxBle as number | null | undefined,
+        };
+      });
+      const csv = telemetrySeriesToCsv(rows, {
+        nodeId: favorite.nodeId,
+        telemetryType: favorite.telemetryType,
+        unit,
+        hours,
+      });
+      downloadTextFile(
+        buildTelemetryFilename(favorite.nodeId, favorite.telemetryType, hours),
+        `\uFEFF${csv}`,
+        'text/csv;charset=utf-8',
+      );
+    };
+
     // Gauge/numeric modes display a single raw value, so convert it (and the
     // gauge range) to the display unit. Ranges persist in base units (Celsius
     // for temperature, the stored A/W for current/power), so edits made in the
@@ -663,6 +692,15 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
                 <UiIcon name={showSolar ? 'sun' : 'visibilityOff'} size={15} />
               </button>
             )}
+            <button
+              className="telemetry-export-btn"
+              onClick={handleExportCsv}
+              disabled={!canExportCsv}
+              aria-label={t('dashboard.export_csv')}
+              title={t('dashboard.export_csv')}
+            >
+              <UiIcon name="downloadData" size={15} />
+            </button>
             <button
               className="dashboard-remove-btn"
               onClick={handleRemoveClick}
