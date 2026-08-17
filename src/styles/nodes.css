@@ -1218,7 +1218,11 @@
 /* Responsive design */
 @media (max-width: 768px) {
   .nodes-split-view {
-    top: 48px; /* Mobile header is 48px */
+    /* Clear the header including the iOS safe-area inset. A flat 48px ignored
+       env(safe-area-inset-top), so in an iOS standalone/PWA the taller
+       safe-area header overlapped the map and pushed its bottom controls
+       off-screen (#4772). Mirrors the bottom edge's safe-area handling below. */
+    top: calc(var(--header-height) + env(safe-area-inset-top, 0px));
     /* The left rail became a bottom bar (#4473 phase 2), so the map/list split
        spans the full width and instead has to clear the bar, which is fixed
        over the bottom of the viewport. */
@@ -1896,7 +1900,11 @@
 .node-popup {
   min-width: 200px;
   max-width: 280px;
-  max-height: 400px;
+  /* Cap relative to the viewport rather than a flat 400px so a fully-populated
+     Info tab (name, IDs, role, hw, hops, elevation, accuracy, position source,
+     timestamp, action buttons) fits without a scrollbar on desktop, while short
+     viewports still clamp to 70vh and scroll (#4758). */
+  max-height: min(70vh, 600px);
   overflow-y: auto;
   overflow-x: hidden;
   font-family: system-ui, -apple-system, sans-serif;

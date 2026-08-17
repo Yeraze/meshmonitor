@@ -280,18 +280,28 @@
 }
 
 @media (max-width: 768px) {
+  /* Stop the overlay above the bottom navigation bar so the nav stays visible
+     and tappable instead of being covered (the overlay and the nav share
+     z-index 10001, and the overlay paints later). The nav reserves
+     --app-nav-bar-height + safe-area-inset-bottom, so clearing exactly that
+     docks the modal right above it (#4774). The keyboard inset is still handled
+     by the base .search-modal-overlay padding-bottom (issue #2994). */
+  .search-modal-overlay {
+    bottom: calc(var(--app-nav-bar-height, 56px) + env(safe-area-inset-bottom, 0px));
+  }
+
   .search-modal {
     width: 100%;
     max-width: 100%;
-    max-height: 100vh;
-    max-height: calc(100dvh - var(--keyboard-inset, 0px));
-    height: 100vh;
-    height: calc(100dvh - var(--keyboard-inset, 0px));
+    /* Fill the overlay, which already clears the nav bar (and, via its
+       padding-bottom, the keyboard). */
+    height: 100%;
+    max-height: 100%;
     border-radius: 0;
     padding-top: env(safe-area-inset-top);
-    /* Stack the iOS home-indicator inset on top of the keyboard inset so the
-       search input stays above both (issue #2994). */
-    padding-bottom: calc(env(safe-area-inset-bottom));
+    /* The overlay's bottom offset already clears the home-indicator inset, so
+       no extra padding-bottom is needed here (#4774). */
+    padding-bottom: 0;
   }
 
   .search-filters {
