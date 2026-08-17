@@ -33,6 +33,7 @@ vi.mock('../services/database.js', () => ({
     getNode: mockGetNode,
     deleteNode: mockDeleteNode,
     suppressGhostNode: mockSuppressGhostNode,
+    suppressGhostNodeAsync: mockSuppressGhostNode,
     getNodesNeedingKeyRepairAsync: mockGetNodesNeedingKeyRepairAsync,
     getKeyRepairLogAsync: mockGetKeyRepairLogAsync,
     isNodeSuppressed: mockIsNodeSuppressed,
@@ -488,6 +489,91 @@ describe('MeshtasticManager - Node Identity Guards', () => {
     it('rebootMergeInProgress defaults to false', () => {
       // Fresh manager should not be blocking
       expect(manager.rebootMergeInProgress).toBe(false);
+    });
+  });
+
+  // #1390: a LOCKED localNodeInfo must not freeze a stale node number. When the
+  // device reports a different myNodeNum, the lock has to yield so the Virtual
+  // Node stops advertising the old ID (which spawned an unpurgeable phantom).
+  describe('locked local nodeNum change (#1390)', () => {
+    const NEW_NODE_NUM = 3735928559; // 0xdeadbeef
+    const NEW_NODE_ID = '!deadbeef';
+    const DEVICE_ID_HEX = '0011223344556677889900aabbccddee'; // stable 16-byte hw id
+
+    beforeEach(() => {
+      // The reboot-merge path schedules a 5s sendRemoveNode; keep it off the real
+      // clock and stub the send so the test neither waits nor hits a transport.
+      vi.useFakeTimers();
+      manager.sendRemoveNode = vi.fn().mockResolvedValue(undefined);
+    });
+
+    afterEach(() => {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    });
+
+    it('accepts a new myNodeNum for the same device, flips identity, and ghost-suppresses the old num', async () => {
+      // Locked on the OLD identity — the stuck state that made the VN advertise a phantom.
+      manager.localNodeInfo = {
+        nodeNum: LOCAL_NODE_NUM,
+        nodeId: LOCAL_NODE_ID,
+        longName: 'neoSG2',
+        shortName: 'nSG2',
+        isLocked: true,
+      };
+      // Persisted settings also hold the OLD num + the stable device_id.
+      mockGetSetting.mockImplementation((key: string) => {
+        if (key.includes('localNodeNum')) return String(LOCAL_NODE_NUM);
+        if (key.includes('localNodeId')) return LOCAL_NODE_ID;
+        if (key.includes('localDeviceId')) return DEVICE_ID_HEX;
+        return null;
+      });
+      const oldNode = { nodeNum: LOCAL_NODE_NUM, nodeId: LOCAL_NODE_ID, longName: 'neoSG2', shortName: 'nSG2', hwModel: 43 };
+      mockGetNode.mockImplementation((num: number) => (num === LOCAL_NODE_NUM ? oldNode : null));
+
+      // Same physical device (matching device_id) now reports a DIFFERENT num.
+      await manager.processMyNodeInfo({
+        myNodeNum: NEW_NODE_NUM,
+        deviceId: Buffer.from(DEVICE_ID_HEX, 'hex'),
+        hwModel: 43,
+        rebootCount: 5,
+      });
+
+      // Identity flips to the new num — the VN will now advertise the correct ID.
+      expect(manager.getLocalNodeInfo().nodeNum).toBe(NEW_NODE_NUM);
+      expect(manager.getLocalNodeInfo().nodeId).toBe(NEW_NODE_ID);
+      // Old ghost is deleted AND suppressed so inbound traffic can't resurrect it.
+      expect(mockDeleteNode).toHaveBeenCalledWith(LOCAL_NODE_NUM, expect.anything());
+      expect(mockSuppressGhostNode).toHaveBeenCalledWith(LOCAL_NODE_NUM);
+      // Persisted identity is rewritten to the new num (no stale row to re-seed on boot).
+      expect(mockSetSetting).toHaveBeenCalledWith(expect.stringContaining('localNodeNum'), String(NEW_NODE_NUM));
+      // High-signal field-repro line.
+      expect(loggerModule.logger.warn).toHaveBeenCalledWith(expect.stringContaining('#1390'));
+    });
+
+    it('still skips the update when locked and the num is unchanged (lock intent preserved)', async () => {
+      manager.localNodeInfo = {
+        nodeNum: LOCAL_NODE_NUM,
+        nodeId: LOCAL_NODE_ID,
+        longName: 'neoSG2',
+        shortName: 'nSG2',
+        isLocked: true,
+      };
+
+      await manager.processMyNodeInfo({
+        myNodeNum: LOCAL_NODE_NUM,
+        deviceId: Buffer.from(DEVICE_ID_HEX, 'hex'),
+      });
+
+      // Unchanged: the lock short-circuits before any DB churn.
+      expect(manager.getLocalNodeInfo().nodeNum).toBe(LOCAL_NODE_NUM);
+      expect(manager.getLocalNodeInfo().isLocked).toBe(true);
+      expect(mockSuppressGhostNode).not.toHaveBeenCalled();
+      expect(mockDeleteNode).not.toHaveBeenCalled();
+      expect(mockSetSetting).not.toHaveBeenCalledWith(expect.stringContaining('localNodeNum'), expect.anything());
+      expect(loggerModule.logger.debug).toHaveBeenCalledWith(
+        expect.stringContaining('same nodeNum')
+      );
     });
   });
 });
