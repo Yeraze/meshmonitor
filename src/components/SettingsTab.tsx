@@ -2013,7 +2013,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               id="maxNodeAge"
               type="number"
               min="1"
-              max="168"
+              max="720"
               value={draft.maxNodeAgeHours}
               onChange={(e) => updateField('maxNodeAgeHours', parseInt(e.target.value))}
               className="setting-input"

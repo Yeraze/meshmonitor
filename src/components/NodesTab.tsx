@@ -9,6 +9,7 @@ import { TabType } from '../types/ui';
 import { nodePassesTransportFilter, transportCutoffSec } from '../utils/nodeTransport';
 import { getNodeTypeCategory } from '../utils/nodeTypeCategory';
 import { effectiveMapMaxAgeHours } from '../utils/mapAge';
+import { ageFilterStops, nearestAgeStopIndex, formatAgeStop } from '../utils/mapAgeSteps';
 import { downsamplePositionHistory, MAX_RENDERED_POSITION_POINTS } from '../utils/positionHistoryDownsample';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHistoryArrows, snrToColor } from '../utils/mapHelpers.tsx';
@@ -2554,37 +2555,39 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       traceroutes, and route segments older than the chosen age.
                       Ranges 1h–maxNodeAgeHours (settings); default = max ("All"). */}
                   {(() => {
+                    // Non-linear discrete stops (1h..30d) instead of a linear
+                    // per-hour tick — see mapAgeSteps (#4770). Bounded by the
+                    // per-source maxNodeAgeHours setting.
                     const maxHours = Math.max(1, Math.round(maxNodeAgeHours));
+                    const stops = ageFilterStops(maxHours);
+                    const topIndex = stops.length - 1;
                     const currentHours = Math.min(Math.max(1, Math.round(effectiveMapMaxAge)), maxHours);
-                    const formatDuration = (hours: number): string => {
-                      if (hours >= maxHours) return t('map.maxAgeAll', 'All');
-                      if (hours < 24) return `${hours}h`;
-                      const days = Math.floor(hours / 24);
-                      const remainingHours = hours % 24;
-                      return remainingHours === 0 ? `${days}d` : `${days}d ${remainingHours}h`;
-                    };
+                    const currentIndex = nearestAgeStopIndex(stops, currentHours);
+                    const label = (idx: number) =>
+                      formatAgeStop(stops[idx], maxHours, t('map.maxAgeAll', 'All'));
                     return (
                       <div className="map-control-item" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '0.25rem' }}>
                         <span>{t('map.maximumAge', 'Maximum age')}</span>
                         <div className="position-history-slider">
                           <input
                             type="range"
-                            min={1}
-                            max={maxHours}
-                            value={currentHours}
+                            min={0}
+                            max={topIndex}
+                            step={1}
+                            value={currentIndex}
                             aria-label={t('map.maximumAge', 'Maximum age')}
-                            aria-valuemin={1}
-                            aria-valuemax={maxHours}
-                            aria-valuenow={currentHours}
-                            aria-valuetext={formatDuration(currentHours)}
-                            disabled={maxHours <= 1}
+                            aria-valuemin={0}
+                            aria-valuemax={topIndex}
+                            aria-valuenow={currentIndex}
+                            aria-valuetext={label(currentIndex)}
+                            disabled={topIndex < 1}
                             onChange={(e) => {
-                              const value = parseInt(e.target.value, 10);
-                              // At max, store null so the map follows the setting.
-                              setMapMaxAgeHours(value >= maxHours ? null : value);
+                              const idx = parseInt(e.target.value, 10);
+                              // Top stop == the setting cap → store null so the map follows the setting.
+                              setMapMaxAgeHours(idx >= topIndex ? null : stops[idx]);
                             }}
                           />
-                          <span className="slider-value">{formatDuration(currentHours)}</span>
+                          <span className="slider-value">{label(currentIndex)}</span>
                         </div>
                       </div>
                     );
