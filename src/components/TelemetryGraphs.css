@@ -115,7 +115,8 @@
 
 .favorite-btn,
 .graph-menu-btn,
-.solar-toggle-btn {
+.solar-toggle-btn,
+.telemetry-export-btn {
   background: none;
   border: none;
   font-size: 1.2rem;
@@ -132,13 +133,19 @@
 
 .favorite-btn:hover,
 .graph-menu-btn:hover,
-.solar-toggle-btn:hover {
+.solar-toggle-btn:hover,
+.telemetry-export-btn:hover:not(:disabled) {
   color: var(--color-warning);
 }
 
 .favorite-btn.favorited,
 .solar-toggle-btn.active {
   color: var(--color-warning);
+}
+
+.telemetry-export-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .graph-menu-btn {

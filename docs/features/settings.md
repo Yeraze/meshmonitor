@@ -641,6 +641,8 @@ Admin-only setting that controls where users land at the root URL (`/`).
 
 **Effect**: Adjusts the time window for telemetry graphs showing battery levels, voltage, temperature, and other sensor data.
 
+**CSV export**: Each graph (Node Details and Dashboard favorite charts) includes a download control that exports the **currently plotted** series for that metric — the same averaged points and display units shown on screen — as a CSV file. Solar overlay and paxcounter Wi‑Fi/BLE columns are included only when those series are present.
+
 **Side Effects**: Larger values may result in slower graph rendering if you have many nodes with frequent telemetry updates.
 
 ## Telemetry Dashboard
