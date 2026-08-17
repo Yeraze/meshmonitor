@@ -4714,12 +4714,6 @@ class MeshtasticManager implements ISourceManager {
     logger.debug('📱 Processing MyNodeInfo for local device');
     logger.debug('📱 MyNodeInfo contents:', JSON.stringify(myNodeInfo, null, 2));
 
-    // If we already have locked local node info, don't overwrite it
-    if (this.localNodeInfo?.isLocked) {
-      logger.debug('📱 Local node info already locked, skipping update');
-      return;
-    }
-
     // Log minAppVersion for debugging but don't use it as firmware version
     if (myNodeInfo.minAppVersion) {
       const minVersion = `v${this.decodeMinAppVersion(myNodeInfo.minAppVersion)}`;
@@ -4728,6 +4722,25 @@ class MeshtasticManager implements ISourceManager {
 
     const nodeNum = Number(myNodeInfo.myNodeNum);
     const nodeId = `!${myNodeInfo.myNodeNum.toString(16).padStart(8, '0')}`;
+
+    // A locked localNodeInfo means "don't churn good names/metadata with a
+    // partial MyNodeInfo" — but that lock must apply ONLY while the node number
+    // still matches. If the device now reports a DIFFERENT myNodeNum (factory
+    // reset, a proxy like meshtasticd swapping the backing radio, or a reboot
+    // that produced a new num), freezing the stale identity is exactly the
+    // #1390 bug: the Virtual Node keeps advertising the old ID, spawning a
+    // phantom duplicate that can't be purged. So skip the update only when the
+    // num is unchanged; otherwise unlock and fall through to the reboot-merge /
+    // different-device / settings-rewrite / ghost-suppress handling below, which
+    // re-derives (and re-locks) the identity from the new num.
+    if (this.localNodeInfo?.isLocked) {
+      if (this.localNodeInfo.nodeNum === nodeNum) {
+        logger.debug('📱 Local node info already locked (same nodeNum), skipping update');
+        return;
+      }
+      logger.warn(`📱 Locked local nodeNum ${this.localNodeInfo.nodeNum} (${this.localNodeInfo.nodeId ?? '?'}) != incoming ${nodeNum} (${nodeId}); unlocking to re-evaluate local identity (#1390)`);
+      this.localNodeInfo.isLocked = false;
+    }
 
     // Extract device_id (stable hardware identifier, 16 bytes) if available
     const deviceId = myNodeInfo.deviceId && myNodeInfo.deviceId.length > 0
