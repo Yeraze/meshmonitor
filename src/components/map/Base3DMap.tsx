@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import maplibregl from 'maplibre-gl';
+// maplibre-gl v6 is ESM-only and dropped its default export (#4650).
+import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { Basemap3DSource } from '../../config/basemap3d';
 import './Base3DMap.css';
@@ -483,7 +484,9 @@ export function Base3DMap({
     const map = mapRef.current;
     if (!map || !loaded) return;
     const source = map.getSource(NODES_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-    source?.setData(toNodesFeatureCollection(nodes));
+    // maplibre v6: setData returns a Promise (v5 returned `this`). We don't need
+    // to await the render — fire-and-forget matches the previous behavior (#4650).
+    void source?.setData(toNodesFeatureCollection(nodes));
   }, [nodes, loaded]);
 
   // ---- Line data change: patch the source + reconcile dash-group layers ----
@@ -494,7 +497,8 @@ export function Base3DMap({
     const map = mapRef.current;
     if (!map || !loaded) return;
     const source = map.getSource(LINES_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-    source?.setData(toLinesFeatureCollection(lines));
+    // maplibre v6: setData returns a Promise — fire-and-forget (#4650).
+    void source?.setData(toLinesFeatureCollection(lines));
 
     const currentGroups = dashGroupsOf(lines);
     const liveLayerIds = lineLayerIdsRef.current;
