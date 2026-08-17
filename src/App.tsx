@@ -3507,7 +3507,7 @@ function App() {
             path="packetmonitor"
             element={
               <ErrorBoundary fallbackTitle="Packet Monitor failed to load">
-                <div style={{ height: 'calc(100dvh - var(--header-height, 60px) - 4rem)', overflow: 'hidden' }}>
+                <div style={{ height: 'calc(100dvh - var(--header-offset, 60px) - 4rem)', overflow: 'hidden' }}>
                   {isMqtt && sourceId ? (
                     <MqttPacketMonitorView baseUrl={baseUrl} sourceId={sourceId} />
                   ) : (

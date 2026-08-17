@@ -7,6 +7,23 @@
   --sidebar-width: 60px;
   --banner-height: 36px;
 
+  /*
+   * iOS safe-area inset, read through a variable rather than env() directly.
+   * env() cannot be set from script, so indirecting it is what lets the shell's
+   * standalone-PWA geometry be exercised in a desktop browser:
+   *   document.documentElement.style.setProperty('--safe-area-top', '59px')
+   *
+   * --header-offset is "where the header ends" = its own height plus the inset
+   * it reserves above itself. ANYTHING anchored below the fixed header must use
+   * --header-offset, never --header-height on its own: in an iOS standalone PWA
+   * the inset is ~47-59px, so a bare --header-height offset puts the element
+   * under the header, which is what hid the map view's chrome in #4772.
+   * Off iOS (and in-browser, where the browser chrome absorbs the inset) the
+   * inset is 0 and --header-offset === --header-height.
+   */
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --header-offset: calc(var(--header-height) + var(--safe-area-top));
+
   /* Spacing scale */
   --spacing-xs: 0.25rem;
   --spacing-sm: 0.5rem;
@@ -783,7 +800,7 @@ body {
 
 .app-main {
   padding: 2rem;
-  padding-top: calc(var(--header-height) + 2rem); /* Account for fixed header + desired padding */
+  padding-top: calc(var(--header-offset) + 2rem); /* Account for fixed header (incl. its safe-area inset) + desired padding */
   padding-bottom: max(2rem, env(safe-area-inset-bottom)); /* Account for iPhone home indicator */
   width: calc(100% - var(--sidebar-width)); /* Full width minus sidebar */
   margin: 0;
@@ -1671,10 +1688,10 @@ body {
     font-size: 0.875rem; /* 14px - reduced from 16px */
   }
 
-  .app-header {
-    padding: 0.25rem 0.5rem;
-    /* height and left now use CSS variables that are updated in the :root above */
-  }
+  /* NOTE: the mobile `.app-header` padding lives in AppHeader.css's own mobile
+     block. It was here, and never applied — App.css is imported first, so this
+     file loses same-specificity ties to AppHeader.css's base rule (#4772).
+     Header height and left still come from the CSS variables set in :root above. */
 
   /* Adjust filter popup for sidebar on mobile */
   .filter-popup-overlay {
@@ -1683,7 +1700,7 @@ body {
 
   .app-main {
     padding: 0.5rem;
-    padding-top: calc(var(--header-height) + 0.5rem); /* Account for fixed header + desired padding */
+    padding-top: calc(var(--header-offset) + 0.5rem); /* Account for fixed header (incl. its safe-area inset) + desired padding */
     /* Clear the bottom bar as well as the iPhone home indicator — the bar is
        fixed and would otherwise cover the end of the content. */
     padding-bottom: calc(
@@ -3074,7 +3091,7 @@ body {
   border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-lg);
   position: sticky;
-  top: var(--header-height);
+  top: var(--header-offset);
   z-index: 10;
 }
 
@@ -3230,7 +3247,7 @@ body {
   }
 
   .app-main {
-    padding-top: calc(var(--header-height) + 0.25rem);
+    padding-top: calc(var(--header-offset) + 0.25rem);
     padding-bottom: calc(
       var(--app-nav-bar-height, 44px) + max(0.25rem, env(safe-area-inset-bottom))
     );
@@ -3238,8 +3255,8 @@ body {
 
   /* Compact channel conversation for landscape */
   .channels-tab-content {
-    height: calc(100vh - var(--header-height) - 0.25rem - max(0.25rem, env(safe-area-inset-bottom)));
-    height: calc(100dvh - var(--header-height) - 0.25rem - max(0.25rem, env(safe-area-inset-bottom)));
+    height: calc(100vh - var(--header-offset) - 0.25rem - max(0.25rem, env(safe-area-inset-bottom)));
+    height: calc(100dvh - var(--header-offset) - 0.25rem - max(0.25rem, env(safe-area-inset-bottom)));
   }
 
   .channels-header h2 {

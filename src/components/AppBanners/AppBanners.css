@@ -4,8 +4,10 @@
   position: fixed;
   left: var(--sidebar-width);
   right: 0;
+  /* No safe-area padding: banners hang off the BOTTOM of the header, which
+     already reserves the inset in --header-offset. Adding it again here padded
+     every banner by a second status bar's worth of space (#4772). */
   padding: 8px 16px;
-  padding-top: calc(8px + env(safe-area-inset-top));
   text-align: center;
   font-size: 14px;
   font-weight: 500;
@@ -14,7 +16,7 @@
 }
 
 .warning-banner {
-  top: var(--header-height);
+  top: var(--header-offset);
   background-color: var(--color-error);
   color: var(--color-bg-sunken);
   border-bottom: 2px solid var(--color-danger);
@@ -110,7 +112,8 @@
   .warning-banner,
   .update-banner {
     font-size: 13px;
-    padding-top: calc(6px + env(safe-area-inset-top));
+    /* Inset deliberately absent — see the base rule. */
+    padding-top: 6px;
     padding-bottom: 6px;
     padding-left: 12px;
   }

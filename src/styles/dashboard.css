@@ -4,9 +4,26 @@
 
 /* ── Page layout ─────────────────────────────────────────────────────────── */
 
+/*
+ * This page is the PWA's start_url (it is the `path="*"` landing route), so on
+ * an iOS home-screen install it is the FIRST thing the safe-area insets hit —
+ * and it handled none of them (#4772). `viewport-fit=cover` means 100dvh spans
+ * the physical screen, insets included: the topbar (and its hamburger, the only
+ * way into the source list) rendered underneath the status bar, and the bottom
+ * of the column sat under the home indicator.
+ *
+ * Insetting the whole column keeps the background painting edge to edge while
+ * every child lays out inside the safe area. `position: fixed` descendants —
+ * the mobile sidebar drawer and its backdrop — are viewport-relative and so
+ * escape this padding; they carry the insets themselves in the mobile block.
+ */
 .dashboard-page {
   height: 100vh;
   height: 100dvh;
+  padding-top: var(--safe-area-top, env(safe-area-inset-top, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
   display: flex;
   flex-direction: column;
   background: var(--color-bg);
@@ -799,12 +816,16 @@
     font-size: 0.8rem;
   }
 
-  /* Sidebar becomes a slide-in overlay drawer */
+  /* Sidebar becomes a slide-in overlay drawer.
+     Fixed positioning is viewport-relative, so .dashboard-page's safe-area
+     padding does not apply here — the drawer places itself against the topbar's
+     bottom edge (--header-offset) and lifts its own foot clear of the home
+     indicator (#4772). */
   .dashboard-sidebar {
     position: fixed;
-    top: var(--header-height, 64px);
-    left: 0;
-    bottom: 0;
+    top: var(--header-offset, var(--header-height, 64px));
+    left: env(safe-area-inset-left, 0px);
+    bottom: env(safe-area-inset-bottom, 0px);
     /* Overlay drawer has a fixed width; ignore the desktop resize var. */
     width: 260px;
     z-index: 999;
@@ -825,7 +846,7 @@
   /* Backdrop fades in when drawer is open */
   .dashboard-sidebar-backdrop {
     display: block;
-    top: var(--header-height, 64px);
+    top: var(--header-offset, var(--header-height, 64px));
   }
 
   .dashboard-sidebar-backdrop.open {

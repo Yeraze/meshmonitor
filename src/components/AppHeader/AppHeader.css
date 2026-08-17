@@ -3,12 +3,21 @@
   background: var(--color-bg-raised);
   border-bottom: 1px solid var(--color-surface);
   padding: 1.5rem 2rem;
-  padding-top: max(1.5rem, env(safe-area-inset-top)); /* Account for iPhone notch/status bar */
+  /*
+   * The iPhone notch/status-bar inset is ADDED to both the padding and the
+   * height — it is not max()'d into the padding alone. `height` plus
+   * `box-sizing: border-box` means padding can never grow the box, so an inset
+   * taller than the padding merely ate the content box: in an iOS standalone
+   * PWA the header's contents rendered below its background band, floating over
+   * the page (#4772). Growing the box by the inset keeps the content row
+   * exactly --header-height tall wherever the inset lands.
+   */
+  padding-top: calc(1.5rem + var(--safe-area-top, 0px));
   position: fixed;
   top: 0;
   left: var(--sidebar-width);
   right: 0;
-  height: var(--header-height);
+  height: var(--header-offset, var(--header-height));
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -244,6 +253,19 @@
 
 /* Mobile responsive */
 @media (max-width: 768px) {
+  /*
+   * The mobile padding lives HERE rather than in App.css's mobile block, where
+   * it used to sit and never applied: App.css is imported before this file, so
+   * its `.app-header` shorthand lost the same-specificity tie to the base rule
+   * above and the header kept its 1.5rem/2rem desktop padding. Against a 40px
+   * mobile --header-height that left a zero-height content box even before any
+   * safe-area inset entered the picture (#4772).
+   */
+  .app-header {
+    padding: 0.25rem 0.5rem;
+    padding-top: calc(0.25rem + var(--safe-area-top, 0px));
+  }
+
   .app-header .header-logo,
   .app-header .node-info,
   .app-header h1 {
@@ -273,9 +295,11 @@
 @media (max-height: 500px) and (orientation: landscape) {
   .app-header {
     padding: 0.5rem 1rem;
-    padding-top: max(0.5rem, env(safe-area-inset-top));
+    padding-top: calc(0.5rem + var(--safe-area-top, 0px));
     height: auto;
-    min-height: 40px;
+    /* --header-offset, not a bare 40px: `height: auto` lets the box grow, but
+       only the min-height carries the inset when the row is short. */
+    min-height: var(--header-offset, 40px);
   }
 
   .app-header h1 {

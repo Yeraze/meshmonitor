@@ -117,7 +117,7 @@ export const AppBanners: React.FC<AppBannersProps> = ({
       {showTxBanner && (
         <div
           className="warning-banner"
-          style={{ top: 'var(--header-height)' }}
+          style={{ top: 'var(--header-offset)' }}
         >
           <UiIcon name="alert" />{' '}
           {isTxDisabled
@@ -132,8 +132,8 @@ export const AppBanners: React.FC<AppBannersProps> = ({
         const bannersAbove = [showTxBanner].filter(Boolean).length + index;
         const topOffset =
           bannersAbove === 0
-            ? 'var(--header-height)'
-            : `calc(var(--header-height) + (var(--banner-height) * ${bannersAbove}))`;
+            ? 'var(--header-offset)'
+            : `calc(var(--header-offset) + (var(--banner-height) * ${bannersAbove}))`;
 
         return (
           <div key={issue.type} className="warning-banner" style={{ top: topOffset }}>
@@ -157,8 +157,8 @@ export const AppBanners: React.FC<AppBannersProps> = ({
           const warningBannersCount = [showTxBanner].filter(Boolean).length + configIssues.length;
           const topOffset =
             warningBannersCount === 0
-              ? 'var(--header-height)'
-              : `calc(var(--header-height) + (var(--banner-height) * ${warningBannersCount}))`;
+              ? 'var(--header-offset)'
+              : `calc(var(--header-offset) + (var(--banner-height) * ${warningBannersCount}))`;
 
           return (
             <div className="update-banner" style={{ top: topOffset }}>

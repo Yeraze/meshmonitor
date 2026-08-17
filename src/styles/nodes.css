@@ -25,7 +25,9 @@
 /* Fullscreen Map Layout for Nodes */
 .nodes-split-view {
   position: fixed;
-  top: var(--header-height); /* Below header */
+  /* --header-offset, not --header-height: the header reserves the iOS top inset
+     inside its own box, so the bare height lands this view under it (#4772). */
+  top: var(--header-offset); /* Below header */
   left: var(--sidebar-width); /* After sidebar */
   right: 0;
   bottom: 0;
@@ -1218,7 +1220,13 @@
 /* Responsive design */
 @media (max-width: 768px) {
   .nodes-split-view {
-    top: 48px; /* Mobile header is 48px */
+    /* No `top` here on purpose. It was a hardcoded 48px, which was wrong twice
+       over: the mobile header is 40px (--header-height in App.css's mobile
+       :root), leaving an 8px strip of page behind the map, and a constant
+       cannot carry the iOS safe-area inset, so in a standalone PWA this view
+       started ~59px above where the header ends and swallowed the shell's
+       chrome (#4772). The base rule's `top: var(--header-offset)` resolves
+       against the mobile --header-height and tracks the inset. */
     /* The left rail became a bottom bar (#4473 phase 2), so the map/list split
        spans the full width and instead has to clear the bar, which is fixed
        over the bottom of the viewport. */
