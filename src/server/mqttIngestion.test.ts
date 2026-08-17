@@ -1143,7 +1143,7 @@ describe('ingestServiceEnvelope — TELEMETRY_APP key normalization (#3314)', ()
     expect(rowByType('humidity')).toMatchObject({ value: 55, unit: '%' });
     expect(rowByType('pressure')).toMatchObject({ value: 1013.2, unit: 'hPa' });
     expect(rowByType('envVoltage')).toMatchObject({ value: 4.1, unit: 'V' });
-    expect(rowByType('envCurrent')).toMatchObject({ value: 0.25, unit: 'A' });
+    expect(rowByType('envCurrent')).toMatchObject({ value: 0.25, unit: 'mA' });
 
     // None of the old dotted forms should appear.
     const types = telemetryRows().map((r: any) => r.telemetryType);

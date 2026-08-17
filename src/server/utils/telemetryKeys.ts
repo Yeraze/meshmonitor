@@ -45,7 +45,11 @@ const ENVIRONMENT_UNITS: Record<string, string> = {
   distance: 'mm',
   weight: 'kg',
   envVoltage: 'V',
-  envCurrent: 'A',
+  // Firmware INA219/INA260 populate EnvironmentMetrics.current from
+  // getCurrent_mA() — the value is milliamps, matching the per-channel
+  // PowerMetrics currents below (ch{N}Current: 'mA'). See migration that
+  // backfills historical rows stored with the wrong 'A' unit.
+  envCurrent: 'mA',
 };
 
 const AIR_QUALITY_UNITS: Record<string, string> = {
