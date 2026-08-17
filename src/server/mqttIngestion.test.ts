@@ -246,6 +246,60 @@ describe('ingestServiceEnvelope — ignore gate (defense-in-depth)', () => {
   });
 });
 
+describe('ingestServiceEnvelope — MQTT device telemetry snapshot', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (databaseService.ignoredNodes.isIgnoredCached as any).mockReturnValue(false);
+  });
+
+  it('updates the latest node device metrics from MQTT TELEMETRY_APP packets', async () => {
+    (meshtasticProtobufService.processPayload as any).mockImplementationOnce(() => ({
+      deviceMetrics: {
+        batteryLevel: 0,
+        voltage: 4.11,
+        channelUtilization: 2.5,
+        airUtilTx: 0,
+        uptimeSeconds: 12345,
+      },
+    }));
+
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_IN, 67 /* TELEMETRY_APP */),
+    });
+
+    expect(result.ingested).toBe(true);
+    expect(databaseService.insertTelemetryAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ telemetryType: 'batteryLevel', value: 0 }),
+      'bridge-1',
+    );
+    expect(databaseService.insertTelemetryAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ telemetryType: 'voltage', value: 4.11 }),
+      'bridge-1',
+    );
+    expect(databaseService.insertTelemetryAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ telemetryType: 'channelUtilization', value: 2.5 }),
+      'bridge-1',
+    );
+    expect(databaseService.insertTelemetryAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ telemetryType: 'airUtilTx', value: 0 }),
+      'bridge-1',
+    );
+
+    const node = (databaseService.upsertNodeAsync as any).mock.calls.at(-1)[0];
+    expect(node).toEqual(expect.objectContaining({
+      nodeNum: NODE_IN,
+      nodeId: '!7ff80a48',
+      batteryLevel: 0,
+      voltage: 4.11,
+      channelUtilization: 2.5,
+      airUtilTx: 0,
+      viaMqtt: true,
+    }));
+    expect(node.uptimeSeconds).toBeUndefined();
+  });
+});
+
 describe('ingestServiceEnvelope — POSITION geo evaluation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
