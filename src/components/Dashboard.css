@@ -357,6 +357,31 @@
   flex-shrink: 0;
 }
 
+.telemetry-export-btn {
+  background: none;
+  border: none;
+  color: var(--color-surface-active);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease;
+  flex-shrink: 0;
+}
+
+.telemetry-export-btn:hover:not(:disabled) {
+  color: var(--color-warning);
+}
+
+.telemetry-export-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .solar-toggle-btn:hover {
   color: var(--color-warning);
 }
@@ -445,6 +470,7 @@
 @media (hover: none) {
   .dashboard-remove-btn,
   .solar-toggle-btn,
+  .telemetry-export-btn,
   .distance-settings-btn {
     width: 36px;
     height: 36px;
