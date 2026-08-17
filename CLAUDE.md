@@ -37,6 +37,7 @@
 - **App-owned interface icons use `UiIcon`.** Do not hardcode emoji or Unicode icon stand-ins in JSX or locale UI copy. Use `BrandIcon` for supported Simple Icons brand marks. User/content/protocol emoji require an issue-referenced exception when the distinction is not obvious.
 - **CSS containment (#3962 Task 5.6).** New components style with CSS modules (`Component.module.css`) scoped to that component, not the global sheets. The legacy global sheets (`src/styles/nodes.css` and siblings) are frozen — additions are discouraged; extend a CSS module instead where practical. `src/styles/nodes.css` in particular carries a hard ordering constraint: a mobile `@media` override must be declared *after* any unconditional base rule for the same selector, or it is silently shadowed by the cascade (issue #3532, bitten twice). See the banner comment at the top of that file before moving or adding rules there.
 - After bulk find-and-replace or sed, verify modified functions have correct `async`/`await` signatures. Route handlers and callbacks need `async` if `await` was added inside.
+- **Run the [Mesh impact checklist](#mesh-impact-checklist) on any feature that sends packets, fires notifications, or arms a timer.** Ask the user before you pick a limit.
 
 ### Response envelope
 API handlers use a shared envelope helper — `src/server/utils/apiResponse.ts`:
@@ -53,6 +54,131 @@ already return `{ success: true, data }` — converting a bare-payload handler
 reads only `error`/`code`/`retryAfterSeconds` and ignores `success` on errors.
 Existing bare-`{error}` handlers convert opportunistically as they're touched
 (Phases 2/4); this is not a mass conversion.
+
+## Mesh impact checklist
+
+LoRa is a shared, slow, half-duplex medium. A feature that looks cheap on a
+desk with one node becomes mesh-wide congestion on a busy channel with 200. Work
+through these three questions **before** you write the code, and put the answers
+in the plan and the PR body.
+
+### 1. What does this cost in airtime?
+
+Every packet we send takes the channel away from everyone else on it. LongFast
+runs at 1.07 kbps, about **134 bytes/sec** of raw on-air rate for the whole
+mesh, before headers, retries, and rebroadcasts. Every packet also carries a
+16-byte LoRa header on top of its payload.
+
+Meshtastic uses managed flooding: every rebroadcast-eligible node that hears a
+packet and has not already seen it rebroadcasts it. So `hop_limit=3` costs **at
+least** 4 transmissions, and in a dense mesh many more, because the real count
+scales with node count rather than hop count.
+
+Ask:
+- How many packets does this send, and how often?
+- Does it scale with node count? A per-node ping is O(n) packets and will not
+  survive a large mesh.
+- Does it run on a timer, so the cost is permanent rather than one-off?
+- Does it fire on every source? N sources means N times the traffic.
+
+**Budgets to measure against.** The firmware hard-codes these with no config
+binding (`meshtastic/firmware`, `src/airtime.h`; these are firmware paths, not
+paths in this repo):
+
+| Figure | Value | Window |
+|--------|-------|--------|
+| Channel utilization, polite ceiling | 25% | rolling 60s, counts TX + RX including non-Meshtastic energy |
+| Channel utilization, impolite ceiling | 40% | same |
+| `airUtilTx` "stop doing this" threshold | 7-8% | rolling 1 hour, TX only |
+| Background traffic share of duty cycle | 50% of the region limit | rolling 1 hour |
+
+The 7-8% figure comes from Meshtastic's own ROUTER_LATE blog post, not the docs
+proper. Note the two windows differ: channel utilization is a rolling 60
+seconds and includes everything the radio hears, while `airUtilTx` is a rolling
+hour of our own transmissions.
+
+**Duty cycle is a hard block, and only in some regions.** `RegionInfo.dutyCycle`
+(table in `meshtastic/firmware`, `src/mesh/RadioInterface.cpp`) is 100, meaning no limit, everywhere
+except EU_433, EU_868, TH and UA_433 at **10%**, and UA_868 at **1%**. Where a
+limit applies, `Router::send()` drops the packet, NAKs
+`Routing.Error.DUTY_CYCLE_LIMIT`, and notifies the client. It gates **user text
+messages too**, not just background traffic.
+
+US and the other 100% regions get **no** duty-cycle enforcement, and the
+firmware implements no dwell-time or channel-hopping substitute. Two rules
+follow: never write an EU limit into code as if it were universal, and never
+assume the firmware will stop us elsewhere. It will not.
+
+The firmware's soft gates (channel utilization and `airUtilTx`) cover Position,
+NodeInfo, NeighborInfo, Telemetry, StoreForward, RangeTest and MeshBeacon. They
+do **not** cover user text messages. Anything we send on a text port is
+ungoverned except by the duty-cycle block above, so our own limits are the only
+thing standing between a feature and the mesh.
+
+**Prefer passive data we already receive over anything we have to ask for.**
+Traceroutes, telemetry requests, and NodeInfo exchanges are expensive, so batch
+them, spread them out, or make them on-demand.
+
+### 2. Can this spam the mesh or the users?
+
+Spam is not only a flood of channel messages. Count the indirect paths too:
+
+- **Direct:** text messages, DMs, auto-responses, announcements, traceroutes,
+  admin packets.
+- **Indirect:** rows that trigger an automation, events on `dataEventEmitter`
+  that fan out to Apprise / desktop / MQTT publish, or notification-worthy state
+  changes (node online, position moved, key mismatch).
+- **Feedback loops:** our own sends re-enter the event bus. An automation that
+  reacts to a message and sends a message can trigger itself. See the
+  self-origin guard in the automation engine (#3914).
+- **Retries:** a failed send that retries forever is a flood with extra steps.
+- **MQTT:** costs no airtime, so it is easy to wave through, but it is still a
+  volume problem. One update per node on a 200-node mesh is 200 publishes, and
+  every downstream subscriber pays for them. "No LoRa cost" does not mean
+  "no limit needed".
+
+If any of these fire automatically or repeatedly, the feature needs a limit. A
+single send the user explicitly asked for does not. Reuse what exists rather
+than inventing a new mechanism:
+
+| Need | Use |
+|------|-----|
+| HTTP-side cap | `src/server/middleware/rateLimiters.ts` (`messageLimiter`, etc.) |
+| Per-automation cap | `rateLimit: { maxActions, windowSeconds }` + `cooldownSeconds` / `cooldownScope` in `automationEngineService.ts` |
+| Scheduled sends | Clamp the interval, like `autoAnnounceService` (3–24 hours) |
+
+Default to conservative. A limit the user can raise beats a flood they have to
+notice. Where a setting could plausibly hurt the mesh, warn in the UI next to
+the input, not in a doc nobody reads.
+
+### 3. Does a save reset a safety timer?
+
+This is the bug we keep re-introducing. Most schedulers restart when settings
+are saved. If the "time since last fire" lives only in memory, every save
+re-arms the timer, so a user tweaking a settings page sends a burst of
+announcements, or a cooldown never expires and the feature silently stops.
+
+Rules:
+- **Persist the last-fire timestamp to the database**, not to an instance field.
+  `autoAnnounceService` stores `lastAnnouncementTime` in settings and checks the
+  elapsed time on startup for exactly this reason
+  (`src/server/services/autoAnnounceService.ts`).
+- Restarting a scheduler must **not** count as a trigger.
+- Check the reverse failure too: does a save clear a cooldown that was
+  protecting the mesh, letting the next event fire immediately?
+- Restart the container and confirm the timer survives. In-memory state looks
+  correct until the process restarts.
+
+### Ask before you decide
+
+These limits are policy, not implementation detail. When the checklist says a
+feature needs a cap, a cooldown, or a warning, **bring the numbers to the user
+and ask**. Do not pick a limit, ship a default, or decide something is "safe
+enough" on your own. State the airtime cost you calculated and propose an
+option; let the user choose.
+
+If you reach this point mid-implementation, stop there. Surface the numbers
+before you write the rate-limiting code, not after.
 
 ## Multi-Source Architecture (4.x)
 
