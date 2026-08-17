@@ -745,6 +745,99 @@ curl -X GET http://localhost:8080/api/stats
 
 ---
 
+## Monitoring (Prometheus Metrics)
+
+### Get Prometheus Metrics
+
+#### GET /api/v1/metrics
+
+Returns current mesh health in Prometheus text exposition format, for
+scraping by Prometheus-compatible monitoring systems. Deployment-global:
+one scrape covers every source, with the source id as a label.
+
+Requires an API token (like all v1 endpoints). Only sources the token has
+`nodes` read permission on are included — admin tokens see every enabled
+source. The message-volume gauge additionally requires `messages` read
+permission on that source.
+
+**Query Parameters:**
+- `window` (optional, default `86400`, range `60`–`604800`) — only export
+  per-node series for nodes heard within this many seconds. Bounds series
+  cardinality on busy MQTT firehose sources. Ignored nodes are never
+  exported.
+
+**Metrics:**
+
+| Metric | Labels | Meaning |
+|---|---|---|
+| `meshmonitor_info` | `version` | Build info (always 1) |
+| `meshmonitor_source_info` | `source`, `name`, `type` | Source metadata (always 1) |
+| `meshmonitor_source_connected` | `source` | Link to the source up (1) / down (0) |
+| `meshmonitor_nodes_total` | `source` | Total nodes known |
+| `meshmonitor_nodes_active` | `source` | Nodes heard in the last 2 hours (matches the dashboard activity badge) |
+| `meshmonitor_messages_last_hour` | `source` | Messages received in the last hour |
+| `meshmonitor_packets_by_port_last_hour` | `source`, `portnum`, `portnum_name` | Packets logged in the last hour by protocol (empty unless the packet monitor is enabled; needs `packetmonitor` read) |
+| `meshmonitor_node_channel_utilization_percent` | `source`, `node_id`, `short_name` | Channel utilization observed by this node (airtime saturation) |
+| `meshmonitor_node_air_util_tx_percent` | `source`, `node_id`, `short_name` | This node's own transmit duty cycle |
+| `meshmonitor_node_battery_level` | `source`, `node_id`, `short_name` | Battery level 0–100 (>100 = externally powered) |
+| `meshmonitor_node_voltage_volts` | `source`, `node_id`, `short_name` | Battery voltage |
+| `meshmonitor_node_snr_db` | `source`, `node_id`, `short_name` | SNR of the last packet from this node |
+| `meshmonitor_node_rssi_dbm` | `source`, `node_id`, `short_name` | RSSI of the last packet from this node |
+| `meshmonitor_node_last_heard_timestamp_seconds` | `source`, `node_id`, `short_name` | Unix time the node was last heard |
+| `meshmonitor_node_hops_away` | `source`, `node_id`, `short_name` | Hop distance from the local node |
+
+Per-node values are the latest reported telemetry — check
+`meshmonitor_node_last_heard_timestamp_seconds` in queries where staleness
+matters.
+
+**Prometheus scrape config:**
+```yaml
+scrape_configs:
+  - job_name: meshmonitor
+    metrics_path: /api/v1/metrics
+    static_configs:
+      - targets: ['meshmonitor:3001']
+    authorization:
+      credentials: mm_v1_YOUR_TOKEN
+```
+
+**Example alert queries:**
+```promql
+# Mesh airtime saturation: any node seeing >20% channel utilization
+# (exclude nodes not heard for 30+ minutes so stale telemetry can't alert).
+# 20, not 25: the firmware's polite threshold is 25%, where nodes start
+# suppressing position/telemetry broadcasts — alert before that, not at it.
+max by (source) (
+  meshmonitor_node_channel_utilization_percent
+  and on (source, node_id)
+    (time() - meshmonitor_node_last_heard_timestamp_seconds < 1800)
+) > 20
+
+# Infrastructure node silent for 15 minutes
+time() - meshmonitor_node_last_heard_timestamp_seconds > 900
+
+# Battery-powered node projected to hit 0% within 4 hours
+# (2h discharge trend; excludes externally-powered and stale nodes)
+(predict_linear(meshmonitor_node_battery_level[2h], 14400) <= bool 0)
+  and (meshmonitor_node_battery_level <= 100)
+  and on (source, node_id)
+    (time() - meshmonitor_node_last_heard_timestamp_seconds < 1800)
+
+# Gateway link down
+meshmonitor_source_connected == 0
+```
+
+**Example:**
+```bash
+curl -H "Authorization: Bearer mm_v1_YOUR_TOKEN" \
+  http://localhost:8080/api/v1/metrics
+```
+
+A ready-made Grafana dashboard for these metrics ships in
+[`examples/grafana/`](https://github.com/Yeraze/meshmonitor/tree/main/examples/grafana).
+
+---
+
 ## Data Management
 
 ### Export Data

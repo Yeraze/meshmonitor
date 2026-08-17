@@ -12,7 +12,7 @@
  *   /api/v1/sources/:sourceId/{nodes,messages,channels,telemetry,traceroutes,
  *                              packets,network,status}  — per-source, canonical
  *   /api/v1/sources/:sourceId/nodes/:nodeId/position-history
- *   /api/v1/solar, /api/v1/channel-database — deployment-global (unchanged)
+ *   /api/v1/solar, /api/v1/channel-database, /api/v1/metrics — deployment-global
  *
  * The legacy root shape (`/api/v1/{nodes,messages,...}?sourceId=...`) shipped
  * with a one-release `Warning: 299` deprecation grace period in 4.13 and was
@@ -39,6 +39,7 @@ import positionHistoryRouter from './positionHistory.js';
 import docsRouter from './docs.js';
 import statusRouter from './status.js';
 import sourcesRouter from './sources.js';
+import metricsRouter from './metrics.js';
 import { attachSource } from './sourceParam.js';
 import actionsRouter from './actions.js';
 
@@ -70,6 +71,7 @@ router.get('/', (_req, res) => {
       status: '/api/v1/sources/{sourceId}/status',
       channelDatabase: '/api/v1/channel-database',
       solar: '/api/v1/solar',
+      metrics: '/api/v1/metrics',
       actions: '/api/v1/sources/{sourceId}/actions',
     },
     note:
@@ -82,6 +84,7 @@ router.get('/', (_req, res) => {
 router.use('/sources', sourcesRouter);
 router.use('/solar', solarRouter);
 router.use('/channel-database', channelDatabaseRouter);
+router.use('/metrics', metricsRouter);
 
 // Per-source canonical routes. `attachSource(resource, action)` resolves the
 // :sourceId param (including the `default` alias) and enforces the

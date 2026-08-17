@@ -87,6 +87,8 @@ tags:
     description: Raw packet log data from the mesh network
   - name: Solar
     description: Solar production estimates from forecast.solar
+  - name: Metrics
+    description: Prometheus-format mesh health metrics for monitoring and alerting
 
 security:
   - BearerAuth: []
@@ -2161,6 +2163,72 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /metrics:
+    get:
+      tags:
+        - Metrics
+      summary: Prometheus metrics
+      description: |
+        Current mesh health in Prometheus text exposition format, for scraping
+        by Prometheus-compatible monitoring systems (deployment-global — one
+        scrape covers every source, labeled by source id).
+
+        Includes, per source: link state, node counts (total and active), and
+        messages received in the last hour. Per node (limited to nodes heard
+        within `window` seconds, ignored nodes excluded): channel utilization,
+        transmit air utilization, battery level, voltage, SNR, RSSI,
+        last-heard time, and hop distance.
+
+        Only sources the token has `nodes` read permission on are included
+        (admin tokens see every enabled source); the message-volume gauge
+        additionally requires `messages` read permission on that source.
+
+        Configure the API token as a bearer credential in the Prometheus
+        scrape config:
+
+        ```yaml
+        scrape_configs:
+          - job_name: meshmonitor
+            metrics_path: /api/v1/metrics
+            authorization:
+              credentials: mm_v1_YOUR_TOKEN
+        ```
+      parameters:
+        - name: window
+          in: query
+          description: >-
+            Only export per-node series for nodes heard within this many
+            seconds (bounds cardinality on busy MQTT sources)
+          required: false
+          schema:
+            type: integer
+            default: 86400
+            minimum: 60
+            maximum: 604800
+      responses:
+        '200':
+          description: Metrics in Prometheus text exposition format
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: |
+                # HELP meshmonitor_node_channel_utilization_percent Channel utilization observed by this node, percent (airtime saturation; alert on max by source)
+                # TYPE meshmonitor_node_channel_utilization_percent gauge
+                meshmonitor_node_channel_utilization_percent{source="src_abc",node_id="!a1b2c3d4",short_name="BASE"} 12.5
         '401':
           description: Unauthorized
           content:
