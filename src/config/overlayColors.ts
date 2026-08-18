@@ -102,6 +102,7 @@ export const tilesetSchemeMap: Record<string, OverlayScheme> = {
   cartoLight: 'light',
   openTopo: 'light',
   esriSatellite: 'dark',
+  esriHybrid: 'dark',
 };
 
 /** Get the overlay scheme for a tileset ID. Custom tilesets default to 'dark'. */
