@@ -120,17 +120,57 @@ export const SourceNav: React.FC<SourceNavProps> = ({
       });
     };
 
+    // Publish the bar's REAL rendered height so overlays that dock above it
+    // (the search modal) clear the actual nav, not the static
+    // `--app-nav-bar-height: 56px` estimate. A taller bar (safe-area inset,
+    // large system text, or the expanded state) overflowed that estimate, and
+    // because the search overlay outranks the nav in z-index its hit-box then
+    // covered the visible-but-untappable top strip of the nav (#4774). Only the
+    // bottom-bar layout (below the 768px breakpoint) docks, so the property is
+    // published only then and removed otherwise, leaving the static fallback in
+    // place. offsetHeight already includes the safe-area padding-bottom.
+    const bottomBarMq =
+      typeof window !== 'undefined' && window.matchMedia
+        ? window.matchMedia('(max-width: 768px), (max-height: 500px) and (orientation: landscape)')
+        : null;
+    let publishedHeight = -1;
+    const publishHeight = () => {
+      const active = mobileVariant === 'bottom-bar' && !!bottomBarMq?.matches;
+      if (active) {
+        const h = el.offsetHeight;
+        if (h !== publishedHeight) {
+          publishedHeight = h;
+          document.documentElement.style.setProperty('--source-nav-bar-height', `${h}px`);
+        }
+      } else if (publishedHeight !== -1) {
+        publishedHeight = -1;
+        document.documentElement.style.removeProperty('--source-nav-bar-height');
+      }
+    };
+
+    const onResize = () => {
+      measure();
+      publishHeight();
+    };
+
     measure();
+    publishHeight();
     el.addEventListener('scroll', measure, { passive: true });
     // Tab set and viewport both change the answer: permissions can add or drop
     // entries, and rotation changes how many fit.
     const observer =
-      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(onResize) : null;
     observer?.observe(el);
+    bottomBarMq?.addEventListener?.('change', onResize);
 
     return () => {
       el.removeEventListener('scroll', measure);
       observer?.disconnect();
+      bottomBarMq?.removeEventListener?.('change', onResize);
+      // Intentionally unconditional: removeProperty is a no-op when we never
+      // published (rail / desktop), so clearing on every teardown is safe and
+      // guarantees a stale height can never outlive this nav.
+      document.documentElement.style.removeProperty('--source-nav-bar-height');
     };
   }, [sections, collapsed, mobileVariant]);
 
