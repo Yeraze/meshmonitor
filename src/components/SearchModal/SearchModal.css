@@ -289,6 +289,10 @@
      when the bar is not mounted. The keyboard inset is still handled by the
      base .search-modal-overlay padding-bottom (issue #2994). */
   .search-modal-overlay {
+    /* --source-nav-bar-height is offsetHeight, which ALREADY includes the nav's
+       safe-area padding-bottom, so it is used as-is. Only the static fallback
+       adds env(safe-area-inset-bottom). Do NOT add env() to the real-height
+       branch or the inset is counted twice. */
     bottom: var(
       --source-nav-bar-height,
       calc(var(--app-nav-bar-height, 56px) + env(safe-area-inset-bottom, 0px))

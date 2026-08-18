@@ -167,6 +167,9 @@ export const SourceNav: React.FC<SourceNavProps> = ({
       el.removeEventListener('scroll', measure);
       observer?.disconnect();
       bottomBarMq?.removeEventListener?.('change', onResize);
+      // Intentionally unconditional: removeProperty is a no-op when we never
+      // published (rail / desktop), so clearing on every teardown is safe and
+      // guarantees a stale height can never outlive this nav.
       document.documentElement.style.removeProperty('--source-nav-bar-height');
     };
   }, [sections, collapsed, mobileVariant]);
