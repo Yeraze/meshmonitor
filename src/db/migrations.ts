@@ -162,6 +162,7 @@ import { migration as addReticulumDestinationPositionMigration, runMigration144P
 import { migration as addReticulumInterfaceRadioConfigMigration, runMigration145Postgres, runMigration145Mysql } from '../server/migrations/145_add_reticulum_interface_radio_config.js';
 import { migration as createReticulumPathsMigration, runMigration146Postgres, runMigration146Mysql } from '../server/migrations/146_create_reticulum_paths.js';
 import { migration as addMeshBeaconOffersMigration, runMigration147Postgres, runMigration147Mysql } from '../server/migrations/147_add_mesh_beacon_offers.js';
+import { migration as fixEnvCurrentUnitMigration, runMigration148Postgres, runMigration148Mysql } from '../server/migrations/148_fix_env_current_unit.js';
 
 // ============================================================================
 // Registry
@@ -2350,4 +2351,20 @@ registry.register({
   sqlite: (db) => addMeshBeaconOffersMigration.up(db),
   postgres: (client) => runMigration147Postgres(client),
   mysql: (pool) => runMigration147Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 148: relabel historical `envCurrent` telemetry rows 'A' -> 'mA'.
+// EnvironmentMetrics.current is milliamps (firmware getCurrent_mA()); the
+// canonical unit map was corrected, this backfills the per-row stored unit on
+// pre-existing rows. Value is untouched (already raw mA). GLOBAL, idempotent.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 148,
+  name: 'fix_env_current_unit',
+  settingsKey: 'migration_148_fix_env_current_unit',
+  sqlite: (db) => fixEnvCurrentUnitMigration.up(db),
+  postgres: (client) => runMigration148Postgres(client),
+  mysql: (pool) => runMigration148Mysql(pool),
 });
