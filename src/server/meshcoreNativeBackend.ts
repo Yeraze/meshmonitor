@@ -1379,59 +1379,74 @@ export class MeshCoreNativeBackend extends EventEmitter {
         frame.writeUInt8(pathSz, 9);
         Buffer.from(path).copy(frame, 10);
 
-        // The library's own onTraceDataPush() also mis-parses multi-byte
-        // replies: it reads `pathSnrs` as `pathLen` bytes (the raw hash byte
-        // count) instead of the hop count (`pathLen >> path_sz`), so for
-        // 2-byte hops it reads into `lastSnr` and desyncs the payload.
-        // Install a corrected parser on the connection for the life of this
-        // request only; runExclusiveRadioOp below guarantees no concurrent
-        // trace_path can observe the swap.
-        const originalOnTraceDataPush = c.onTraceDataPush;
-        c.onTraceDataPush = (bufferReader: TraceDataBufferReader) => {
-          const reserved = bufferReader.readByte();
-          const respPathLen = bufferReader.readUInt8();
-          const respFlags = bufferReader.readUInt8();
-          const respPathSz = respFlags & 0x03;
-          const respTag = bufferReader.readUInt32LE();
-          const authCode = bufferReader.readUInt32LE();
-          const pathHashes = bufferReader.readBytes(respPathLen);
-          const hopCount = respPathSz > 0 ? respPathLen >> respPathSz : respPathLen;
-          const pathSnrs = bufferReader.readBytes(hopCount);
-          const lastSnr = bufferReader.readInt8() / 4;
-          c.emit(K.PushCodes.TraceData, {
-            reserved, pathLen: respPathLen, flags: respFlags, tag: respTag, authCode, pathHashes, pathSnrs, lastSnr,
-          });
-        };
-
-        try {
-          const result = await this.runExclusiveRadioOp(() => new Promise<TraceDataResponse>((resolve, reject) => {
-            const onTraceData = (response: TraceDataResponse) => {
-              if (response.tag !== tag) return;
-              cleanup();
-              resolve(response);
-            };
-            const onErr = () => {
-              cleanup();
-              reject(new Error('Device rejected trace-path request'));
-            };
-            function cleanup() {
-              c.off(K.PushCodes.TraceData, onTraceData);
-              c.off(K.ResponseCodes.Err, onErr);
-            }
-            c.on(K.PushCodes.TraceData, onTraceData);
-            c.once(K.ResponseCodes.Err, onErr);
-            void c.sendToRadioFrame(frame);
-          }));
-          return {
-            ok: true,
-            pathLen: result.pathLen,
-            flags: result.flags,
-            pathSnrs: Array.from(result.pathSnrs as Uint8Array),
-            lastSnr: result.lastSnr,
+        // Guarantees the swap below can't bleed into a queued trace_path (or
+        // any other radio op waiting on this connection's lock): a call
+        // queued behind this one only starts its own executor — and its own
+        // patch/restore — after cleanup() has already restored this call's
+        // handler. Patching outside runExclusiveRadioOp would let a second
+        // call's synchronous dispatch-time patch land before this call's own
+        // send/reply window, which is only serialized against *sends*, not
+        // against arbitrary property writes on `c`.
+        const timeoutMs = Number(params.timeout_ms) || 45_000;
+        const result = await this.runExclusiveRadioOp(() => new Promise<TraceDataResponse>((resolve, reject) => {
+          // The library's own onTraceDataPush() also mis-parses multi-byte
+          // replies: it reads `pathSnrs` as `pathLen` bytes (the raw hash
+          // byte count) instead of the hop count (`pathLen >> path_sz`), so
+          // for 2-byte hops it reads into `lastSnr` and desyncs the payload.
+          // Install a corrected parser for exactly this request's window.
+          const originalOnTraceDataPush = c.onTraceDataPush;
+          c.onTraceDataPush = (bufferReader: TraceDataBufferReader) => {
+            const reserved = bufferReader.readByte();
+            const respPathLen = bufferReader.readUInt8();
+            const respFlags = bufferReader.readUInt8();
+            const respPathSz = respFlags & 0x03;
+            const respTag = bufferReader.readUInt32LE();
+            const authCode = bufferReader.readUInt32LE();
+            const pathHashes = bufferReader.readBytes(respPathLen);
+            const hopCount = respPathSz > 0 ? respPathLen >> respPathSz : respPathLen;
+            const pathSnrs = bufferReader.readBytes(hopCount);
+            const lastSnr = bufferReader.readInt8() / 4;
+            c.emit(K.PushCodes.TraceData, {
+              reserved, pathLen: respPathLen, flags: respFlags, tag: respTag, authCode, pathHashes, pathSnrs, lastSnr,
+            });
           };
-        } finally {
-          c.onTraceDataPush = originalOnTraceDataPush;
-        }
+
+          // Own timeout (mirrors request_owner/request_regions above): a
+          // trace that never gets Sent/TraceData/Err back must still settle
+          // this promise, or runExclusiveRadioOp's chain — and every other
+          // radio op queued on this connection — would stall forever behind
+          // it. Kept comfortably under sendCommand's outer timeout so this
+          // fires first and always releases the lock via cleanup().
+          const timer = setTimeout(() => {
+            cleanup();
+            reject(new Error('trace_path timed out'));
+          }, timeoutMs);
+          const onTraceData = (response: TraceDataResponse) => {
+            if (response.tag !== tag) return;
+            cleanup();
+            resolve(response);
+          };
+          const onErr = () => {
+            cleanup();
+            reject(new Error('Device rejected trace-path request'));
+          };
+          function cleanup() {
+            clearTimeout(timer);
+            c.off(K.PushCodes.TraceData, onTraceData);
+            c.off(K.ResponseCodes.Err, onErr);
+            c.onTraceDataPush = originalOnTraceDataPush;
+          }
+          c.on(K.PushCodes.TraceData, onTraceData);
+          c.once(K.ResponseCodes.Err, onErr);
+          void c.sendToRadioFrame(frame);
+        }));
+        return {
+          ok: true,
+          pathLen: result.pathLen,
+          flags: result.flags,
+          pathSnrs: Array.from(result.pathSnrs as Uint8Array),
+          lastSnr: result.lastSnr,
+        };
       }
 
       case 'share_contact': {

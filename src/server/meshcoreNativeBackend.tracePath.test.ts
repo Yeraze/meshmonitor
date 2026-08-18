@@ -244,4 +244,49 @@ describe('MeshCoreNativeBackend — trace_path (#4786)', () => {
 
     expect((conn as any).onTraceDataPush).toBe(sentinel);
   });
+
+  it('serializes two queued trace_path calls so each gets its own corrected parser and reply, with no cross-contamination', async () => {
+    // Regression coverage for a race a reviewer flagged: the onTraceDataPush
+    // patch/restore now lives INSIDE the runExclusiveRadioOp executor, so a
+    // second call queued behind the first can only patch/send/restore after
+    // the first has fully released the lock (including its own restore).
+    // Patching outside that lock (the pre-fix shape) let a queued call's
+    // synchronous dispatch-time patch land before the in-flight call's own
+    // send/reply window, since only sends were actually serialized.
+    const { backend, conn } = await connectedBackend();
+
+    const promiseA = backend.sendCommand('trace_path', {
+      path: Uint8Array.from([0x0d, 0x34]),
+      path_hash_bytes: 2,
+    });
+    const promiseB = backend.sendCommand('trace_path', {
+      path: Uint8Array.from([0xaa, 0xbb]),
+      path_hash_bytes: 2,
+    });
+
+    // B is queued behind the lock — only A's frame has gone out so far.
+    await new Promise((r) => setImmediate(r));
+    expect(conn.sentFrames).toHaveLength(1);
+    const frameA = conn.sentFrames[0]!;
+    const tagA = (frameA as Buffer).readUInt32LE(1);
+
+    const bodyA = buildTraceDataBody({ pathHashes: [0x0d, 0x34], pathSz: 1, tag: tagA, snrs: [44], lastSnr: 8 });
+    (conn as any).onTraceDataPush(readerFor(bodyA));
+    const resA = await promiseA;
+    expect(resA.success).toBe(true);
+    expect(resA.data.pathSnrs).toEqual([44]);
+
+    // Only now does B's executor run: send its frame, patch its own parser.
+    await new Promise((r) => setImmediate(r));
+    expect(conn.sentFrames).toHaveLength(2);
+    const frameB = conn.sentFrames[1]!;
+    const tagB = (frameB as Buffer).readUInt32LE(1);
+    expect(tagB).not.toBe(tagA);
+
+    const bodyB = buildTraceDataBody({ pathHashes: [0xaa, 0xbb], pathSz: 1, tag: tagB, snrs: [99], lastSnr: 4 });
+    (conn as any).onTraceDataPush(readerFor(bodyB));
+    const resB = await promiseB;
+    expect(resB.success).toBe(true);
+    expect(resB.data.pathSnrs).toEqual([99]);
+  });
 });
