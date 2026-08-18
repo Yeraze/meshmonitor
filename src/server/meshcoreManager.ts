@@ -4307,12 +4307,29 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       logger.warn(`[MeshCore] Trace-path: no known path for ${publicKey.substring(0, 16)}…`);
       return null;
     }
-    // Expand each comma-separated hop token into its constituent bytes so
-    // multi-byte hops (e.g. "a3f2") yield [0xa3, 0xf2] rather than being
-    // truncated to a single byte by parseInt. 1-byte paths are unaffected.
+    const pathHops = parsePathHops(contact.outPath);
+    if (pathHops.length === 0) {
+      logger.warn(`[MeshCore] Trace-path: cached path for ${publicKey.substring(0, 16)}… is empty or malformed`);
+      return null;
+    }
+    const hashBytes = pathHashBytesOf(pathHops);
+    if (pathHops.some((h) => h.length !== hashBytes * 2)) {
+      logger.warn(`[MeshCore] Trace-path: cached path for ${publicKey.substring(0, 16)}… has mixed-width hops, aborting`);
+      return null;
+    }
+    // CMD_SEND_TRACE_PATH's flags byte only encodes power-of-two hop widths
+    // (device: `1 << (flags & 0x03)`), so 1- and 2-byte hops are
+    // representable but the 3-byte width MeshMonitor also supports elsewhere
+    // is not (#4786).
+    if (hashBytes !== 1 && hashBytes !== 2) {
+      logger.warn(`[MeshCore] Trace-path: ${hashBytes}-byte hop hash width for ${publicKey.substring(0, 16)}… is not supported by the device's trace-path command (only 1 or 2 bytes/hop)`);
+      return null;
+    }
+    // Expand each hop token into its constituent bytes so multi-byte hops
+    // (e.g. "a3f2") yield [0xa3, 0xf2] rather than being truncated to a
+    // single byte by parseInt. 1-byte paths are unaffected.
     const pathBytes = Uint8Array.from(
-      contact.outPath.split(',').flatMap((h) => {
-        const tok = h.trim();
+      pathHops.flatMap((tok) => {
         const bytes: number[] = [];
         for (let i = 0; i + 2 <= tok.length; i += 2) {
           bytes.push(parseInt(tok.slice(i, i + 2), 16));
@@ -4323,6 +4340,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     try {
       const response = await this.sendBridgeCommand('trace_path', {
         path: pathBytes,
+        path_hash_bytes: hashBytes,
       }, 60000);
       if (!response.success) {
         logger.warn(`[MeshCore] trace_path failed for ${publicKey}: ${response.error}`);
