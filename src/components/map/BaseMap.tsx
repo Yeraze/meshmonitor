@@ -148,12 +148,28 @@ export function BaseMap({
             />
           )
           : (
-            <TileLayer
-              key={`raster-${tileset.maxZoom}`}
-              url={tileset.url}
-              attribution={tileset.attribution}
-              maxZoom={tileset.maxZoom}
-            />
+            <>
+              <TileLayer
+                key={`raster-${tileset.maxZoom}`}
+                url={tileset.url}
+                attribution={tileset.attribution}
+                maxZoom={tileset.maxZoom}
+              />
+              {/* Optional transparent label/road overlay drawn on top of the
+                  base raster (e.g. the satellite+labels hybrid). Keyed like the
+                  base by maxZoom so same-ceiling swaps refresh in place; a
+                  higher zIndex keeps it above the base tiles. Absent when the
+                  tileset defines no overlayUrl. */}
+              {tileset.overlayUrl && (
+                <TileLayer
+                  key={`raster-overlay-${tileset.maxZoom}`}
+                  url={tileset.overlayUrl}
+                  attribution={tileset.overlayAttribution ?? tileset.attribution}
+                  maxZoom={tileset.maxZoom}
+                  zIndex={10}
+                />
+              )}
+            </>
           )}
         {resizeTrigger !== undefined && <MapResizeHandler trigger={resizeTrigger} />}
         {children}
