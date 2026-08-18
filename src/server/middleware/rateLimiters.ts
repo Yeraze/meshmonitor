@@ -204,6 +204,28 @@ export const rfCoverageLimiter = rateLimit({
   ...rateLimitConfig,
 });
 
+// GNSS sky-view / DOP-grid compute (#4729) — each call is CPU-bound SGP4
+// propagation over a GNSS constellation (~32 GPS sats), and the DOP-grid
+// endpoint fans that out across a bounded grid of observer cells. Outbound
+// CelesTrak traffic is already throttled by the 24h TLE cache, so this limiter
+// protects server CPU rather than the network. Sized like `elevationLimiter`.
+// Default: 20/min production, 120/min development.
+export const gnssLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: env.isProduction ? 20 : 120,
+  message: 'Too many GNSS requests, please slow down',
+  skip: (req) => isPrivateNetworkIp(req.ip ?? ''),
+  handler: (req, res) => {
+    const ip = req.ip || 'unknown';
+    logger.warn(`🚫 Rate limit exceeded for GNSS - IP: ${ip}, Path: ${req.path}`);
+    res.status(429).json({
+      error: 'Too many GNSS requests, please slow down',
+      retryAfter: '1 minute'
+    });
+  },
+  ...rateLimitConfig,
+});
+
 // DEM terrain tile proxy (#3826 Phase 2 WP-A) — one call per tile, and a
 // fresh 3D view legitimately fetches dozens on load/pan/zoom, so this is far
 // more generous than `elevationLimiter` (one heavy fan-out per call). Abuse
