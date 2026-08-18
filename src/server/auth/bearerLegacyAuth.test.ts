@@ -11,6 +11,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
+import { pushRouter } from '../routes/notificationRoutes.js';
 import { requireAdmin, requireAuth, requirePermission } from './authMiddleware.js';
 
 let harness: RouteTestHarness;
@@ -33,6 +34,10 @@ beforeEach(async () => {
       app.post('/rt/admin-only', requireAdmin(), (req, res) =>
         res.json({ ok: true, userId: req.user?.id }),
       );
+      // The REAL notification router. Its handlers read the user id
+      // themselves, so a guard that accepts a token is not enough -- the
+      // handler has to look at req.user too.
+      app.use('/rt/push', pushRouter);
     },
   });
 });
@@ -179,5 +184,28 @@ describe('Bearer tokens on requireAdmin-gated legacy routes', () => {
     const res = await agent.post('/rt/admin-only').send({});
     expect(res.status).toBe(403);
     expect(res.body.code).toBe('FORBIDDEN_ADMIN');
+  });
+});
+
+describe('Bearer tokens reach notification handlers, not just their guards', () => {
+  it('GET /preferences resolves the token user instead of 401ing', async () => {
+    // The guard (requireAuth) already accepted Bearer tokens; the handler then
+    // read req.session.userId and rejected anyway. That combination is what
+    // made per-user notification preferences unreachable by automation.
+    const token = await harness.tokenFor(harness.admin);
+    const res = await request(harness.app)
+      .get('/rt/push/preferences')
+      .query({ sourceId: harness.sourceA })
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).not.toBe(401);
+  });
+
+  it('still 401s with neither session nor token', async () => {
+    const res = await request(harness.app)
+      .get('/rt/push/preferences')
+      .query({ sourceId: harness.sourceA });
+
+    expect(res.status).toBe(401);
   });
 });

@@ -75,7 +75,11 @@ pushRouter.post(
         return res.status(400).json({ error: `Unknown sourceId: ${sourceId}` });
       }
 
-      const userId = req.session?.userId;
+      // requireAuth()/requireAdmin() populate req.user for BOTH a session and a
+      // Bearer API token (#4259). Reading the session directly ignored the token
+      // half, so these endpoints 401d for a valid token even though the guard had
+      // already accepted it.
+      const userId = req.user?.id ?? req.session?.userId;
       const userAgent = req.headers['user-agent'];
 
       await pushNotificationService.saveSubscription(userId, subscription, userAgent, sourceId);
@@ -117,7 +121,11 @@ pushRouter.post(
 // Test push notification (admin only)
 pushRouter.post('/test', requireAdmin(), async (req: Request, res: Response) => {
   try {
-    const userId = req.session?.userId;
+    // requireAuth()/requireAdmin() populate req.user for BOTH a session and a
+    // Bearer API token (#4259). Reading the session directly ignored the token
+    // half, so these endpoints 401d for a valid token even though the guard had
+    // already accepted it.
+    const userId = req.user?.id ?? req.session?.userId;
 
     // Get local node name for prefix
     const mgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
@@ -154,7 +162,11 @@ pushRouter.get(
   requirePermission('messages', 'read', { sourceIdFrom: 'query' }),
   async (req: Request, res: Response) => {
   try {
-    const userId = req.session?.userId;
+    // requireAuth()/requireAdmin() populate req.user for BOTH a session and a
+    // Bearer API token (#4259). Reading the session directly ignored the token
+    // half, so these endpoints 401d for a valid token even though the guard had
+    // already accepted it.
+    const userId = req.user?.id ?? req.session?.userId;
     if (!userId) {
       return res.status(401).json({ error: 'Authentication required' });
     }
@@ -206,7 +218,11 @@ pushRouter.post(
   requirePermission('messages', 'read', { sourceIdFrom: 'body' }),
   async (req: Request, res: Response) => {
   try {
-    const userId = req.session?.userId;
+    // requireAuth()/requireAdmin() populate req.user for BOTH a session and a
+    // Bearer API token (#4259). Reading the session directly ignored the token
+    // half, so these endpoints 401d for a valid token even though the guard had
+    // already accepted it.
+    const userId = req.user?.id ?? req.session?.userId;
     if (!userId) {
       return res.status(401).json({ error: 'Authentication required' });
     }
@@ -400,7 +416,11 @@ appriseRouter.post(
   requirePermission('settings', 'write', { sourceIdFrom: 'body' }),
   async (req: Request, res: Response) => {
   try {
-    const userId = req.session?.userId;
+    // requireAuth()/requireAdmin() populate req.user for BOTH a session and a
+    // Bearer API token (#4259). Reading the session directly ignored the token
+    // half, so these endpoints 401d for a valid token even though the guard had
+    // already accepted it.
+    const userId = req.user?.id ?? req.session?.userId;
     if (!userId) {
       return res.status(401).json({ success: false, message: 'Not authenticated' });
     }
