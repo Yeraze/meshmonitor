@@ -117,6 +117,42 @@ describe('SourceNav publishes its measured bottom-bar height (#4774)', () => {
     unmount();
     expect(document.documentElement.style.getPropertyValue(PROP)).toBe('');
   });
+
+  it('clears the property when the viewport crosses out of the bottom-bar breakpoint mid-mount', () => {
+    // Drive the matchMedia 'change' path directly: a phone rotated to a wide
+    // landscape (or a resized window) toggles matches without a ResizeObserver
+    // fire, and the published height must be withdrawn.
+    let matches = true;
+    const changeListeners: Array<() => void> = [];
+    const mql = {
+      get matches() {
+        return matches;
+      },
+      media: '',
+      onchange: null,
+      addEventListener: (ev: string, cb: () => void) => {
+        if (ev === 'change') changeListeners.push(cb);
+      },
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    };
+    Object.defineProperty(window, 'matchMedia', { writable: true, value: vi.fn(() => mql) });
+
+    const { container } = render(
+      <SourceNav sections={sections} activeId="nodes" collapsed mobileVariant="bottom-bar" />,
+    );
+    const nav = container.querySelector('[data-source-nav]') as HTMLElement;
+    Object.defineProperty(nav, 'offsetHeight', { configurable: true, value: 64 });
+    roCallback?.();
+    expect(document.documentElement.style.getPropertyValue(PROP)).toBe('64px');
+
+    // Viewport widens past the breakpoint: matches flips and the mq fires.
+    matches = false;
+    changeListeners.forEach(cb => cb());
+    expect(document.documentElement.style.getPropertyValue(PROP)).toBe('');
+  });
 });
 
 describe('SearchModal overlay consumes the published nav height (#4774)', () => {
