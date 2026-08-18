@@ -518,6 +518,26 @@ export function requireAdmin() {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.session.userId) {
+        // No session — accept a Bearer API token before rejecting, the same
+        // way requireAuth and requirePermission do (#4259). Without this the
+        // admin-only routes are the one part of the API a token can never
+        // reach, so anything automating them has to hold a password and drive
+        // a login instead. The admin check below still applies: the token
+        // inherits its creating user's rights, so a non-admin's token gets the
+        // same 403 a non-admin session would.
+        const tokenUser = await resolveBearerUser(req);
+        if (tokenUser) {
+          if (!tokenUser.isAdmin) {
+            logger.debug(`❌ Token user ${tokenUser.username} denied admin access`);
+            return res.status(403).json({
+              error: 'Admin access required',
+              code: 'FORBIDDEN_ADMIN'
+            });
+          }
+          req.user = tokenUser;
+          return next();
+        }
+
         return res.status(401).json({
           error: 'Authentication required',
           code: 'UNAUTHORIZED'
