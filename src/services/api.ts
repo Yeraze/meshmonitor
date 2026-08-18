@@ -36,6 +36,45 @@ export interface MeshtasticContactUrl {
   url: string;
 }
 
+/** One visible satellite in a GNSS sky view (#4729). `azDeg` ∈ [0,360) with
+ *  0=North increasing clockwise; `elDeg` ∈ [mask,90] with 90=zenith. */
+export interface SkyViewSatellite {
+  name: string;
+  azDeg: number;
+  elDeg: number;
+  rangeKm: number;
+}
+
+/** Dilution-of-precision factors for a sky view. Null when too few satellites
+ *  are visible to solve the geometry (#4729). */
+export interface SkyViewDop {
+  gdop: number;
+  pdop: number;
+  hdop: number;
+  vdop: number;
+}
+
+/** Response payload of POST /api/gnss/skyview (unwrapped from `{success,data}`). */
+export interface SkyViewResult {
+  satellites: SkyViewSatellite[];
+  dop: SkyViewDop | null;
+  visibleCount: number;
+  observer?: { lat: number; lon: number; altKm: number };
+  timeMs?: number;
+  elevationMaskDeg?: number;
+  constellations?: string[];
+}
+
+/** Request parameters for POST /api/gnss/skyview. */
+export interface SkyViewParams {
+  lat: number;
+  lon: number;
+  altKm?: number;
+  timeMs?: number;
+  elevationMaskDeg?: number;
+  constellations?: string[];
+}
+
 /**
  * One traceroute a node took part in — as an endpoint or an intermediate hop.
  * Backs `GET /api/traceroutes/participation/:nodeNum` (epic phase 2 traceroute
@@ -1975,6 +2014,21 @@ class ApiService {
     const res = await this.post<{ success: boolean; data: ElevationTestResult }>(
       '/api/elevation/test',
       probe ? { url, lat: probe.lat, lng: probe.lng } : { url },
+    );
+    return res.data;
+  }
+
+  /**
+   * GNSS sky view for one observer point (#4729). Returns the visible-satellite
+   * list + DOP for the given lat/lon (defaults: now, 5° mask, GPS only). POST is
+   * CSRF-guarded; `post()` attaches the token. Unwraps the `{ success, data }`
+   * envelope — `request()` returns the raw body, so `.data` is read explicitly
+   * here (see the MQTT-monitor unwrap gotcha documented in CLAUDE.md).
+   */
+  async getSkyView(params: SkyViewParams): Promise<SkyViewResult> {
+    const res = await this.post<{ success: boolean; data: SkyViewResult }>(
+      '/api/gnss/skyview',
+      params,
     );
     return res.data;
   }
