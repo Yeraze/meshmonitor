@@ -20,6 +20,7 @@ export interface CustomTileset {
   isVector?: boolean;
   overlayScheme?: 'light' | 'dark';
   overlayUrl?: string;
+  overlayAttribution?: string;
 }
 
 export interface TilesetConfig {
@@ -34,6 +35,11 @@ export interface TilesetConfig {
   /** Optional transparent raster overlay drawn on top of the base tiles (e.g.
    *  labels/roads over satellite imagery). Raster tilesets only. */
   readonly overlayUrl?: string;
+  /** Attribution for the overlay layer. The overlay's data sources usually
+   *  differ from the base (e.g. ESRI's reference overlay credits Garmin/USGS/NPS,
+   *  not the imagery providers), so it needs its own credit. Falls back to
+   *  `attribution` when omitted. Only meaningful alongside `overlayUrl`. */
+  readonly overlayAttribution?: string;
 }
 
 export const TILESETS: Readonly<Record<PredefinedTilesetId, TilesetConfig>> = {
@@ -91,6 +97,7 @@ export const TILESETS: Readonly<Record<PredefinedTilesetId, TilesetConfig>> = {
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     overlayUrl: 'https://services.arcgisonline.com/arcgis/rest/services/Reference/World_Reference_Overlay/MapServer/tile/{z}/{y}/{x}',
     attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+    overlayAttribution: 'Labels &copy; Esri &mdash; Sources: Esri, Garmin, USGS, NPS',
     maxZoom: 18,
     description: 'Satellite imagery with place names and road labels'
   }

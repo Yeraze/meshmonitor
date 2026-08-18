@@ -164,7 +164,7 @@ export function BaseMap({
                 <TileLayer
                   key={`raster-overlay-${tileset.maxZoom}`}
                   url={tileset.overlayUrl}
-                  attribution={tileset.attribution}
+                  attribution={tileset.overlayAttribution ?? tileset.attribution}
                   maxZoom={tileset.maxZoom}
                   zIndex={10}
                 />

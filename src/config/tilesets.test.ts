@@ -17,6 +17,11 @@ describe('tilesets — hybrid overlay support', () => {
     expect(hybrid.overlayUrl).toBeDefined();
     expect(hybrid.overlayUrl).toContain('World_Reference_Overlay');
     expect(hybrid.overlayUrl).toMatch(/\{z\}.*\{y\}.*\{x\}/); // ESRI z/y/x order
+    // The overlay credits its own sources (Garmin/USGS/NPS), distinct from the
+    // imagery attribution — ESRI serves them as separate services.
+    expect(hybrid.overlayAttribution).toBeDefined();
+    expect(hybrid.overlayAttribution).toContain('Garmin');
+    expect(hybrid.overlayAttribution).not.toBe(hybrid.attribution);
   });
 
   it('plain esriSatellite has no overlayUrl (kept as a distinct option)', () => {

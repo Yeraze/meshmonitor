@@ -23,12 +23,13 @@ vi.mock('react-leaflet', () => ({
       {children}
     </div>
   ),
-  TileLayer: (props: { url?: string; maxZoom?: number; zIndex?: number }) => (
+  TileLayer: (props: { url?: string; maxZoom?: number; zIndex?: number; attribution?: string }) => (
     <div
       data-testid="raster-tile"
       data-url={props.url}
       data-maxzoom={String(props.maxZoom)}
       data-zindex={props.zIndex === undefined ? '' : String(props.zIndex)}
+      data-attribution={props.attribution}
     />
   ),
   useMap: () => ({ invalidateSize: vi.fn() }),
@@ -114,6 +115,11 @@ describe('BaseMap', () => {
     expect(base.getAttribute('data-zindex')).toBe(''); // base uses the leaflet default
     expect(overlay.getAttribute('data-url')).toContain('World_Reference_Overlay');
     expect(Number(overlay.getAttribute('data-zindex'))).toBeGreaterThan(0);
+
+    // The overlay's data sources differ from the imagery, so it carries its own
+    // attribution (Garmin/USGS/NPS) rather than reusing the base's credit.
+    expect(overlay.getAttribute('data-attribution')).not.toBe(base.getAttribute('data-attribution'));
+    expect(overlay.getAttribute('data-attribution')).toContain('Garmin');
 
     expect(screen.queryByTestId('vector-tile')).not.toBeInTheDocument();
   });
