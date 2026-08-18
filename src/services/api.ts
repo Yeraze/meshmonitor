@@ -75,6 +75,39 @@ export interface SkyViewParams {
   constellations?: string[];
 }
 
+/** One grid cell in a DOP overlay: the observer point and its GDOP (#4729).
+ *  `gdop` is null where too few satellites are visible to solve the geometry. */
+export interface DopGridPoint {
+  lat: number;
+  lon: number;
+  gdop: number | null;
+}
+
+/** Request parameters for POST /api/gnss/dop. `bbox` is the map viewport; the
+ *  server coarsens `stepDeg` (reporting `clamped`) if the cell count exceeds its
+ *  cap, so pass what you'd like and read back what you got. */
+export interface DopGridParams {
+  bbox: { minLat: number; minLon: number; maxLat: number; maxLon: number };
+  stepDeg: number;
+  timeMs?: number;
+  elevationMaskDeg?: number;
+  constellations?: string[];
+}
+
+/** Response payload of POST /api/gnss/dop (unwrapped from `{success,data}`).
+ *  `stepDeg` is the step actually used; `requestedStepDeg` is what was asked.
+ *  `clamped` is true when the server coarsened the grid to fit its cell cap. */
+export interface DopGridResult {
+  points: DopGridPoint[];
+  cellCount: number;
+  stepDeg: number;
+  requestedStepDeg: number;
+  clamped: boolean;
+  timeMs: number;
+  elevationMaskDeg: number;
+  constellations: string[];
+}
+
 /**
  * One traceroute a node took part in — as an endpoint or an intermediate hop.
  * Backs `GET /api/traceroutes/participation/:nodeNum` (epic phase 2 traceroute
@@ -2028,6 +2061,21 @@ class ApiService {
   async getSkyView(params: SkyViewParams): Promise<SkyViewResult> {
     const res = await this.post<{ success: boolean; data: SkyViewResult }>(
       '/api/gnss/skyview',
+      params,
+    );
+    return res.data;
+  }
+
+  /**
+   * GNSS DOP grid over a bounding box (#4729), backing the Map Analysis DOP
+   * overlay. Returns a grid of `{ lat, lon, gdop }` cells for the given bbox at
+   * the given time (defaults: now, 5° mask, GPS only). Server-side compute over
+   * cached TLEs — no mesh traffic. Same `{ success, data }` unwrap as
+   * `getSkyView` (see the MQTT-monitor unwrap gotcha in CLAUDE.md).
+   */
+  async getDopGrid(params: DopGridParams): Promise<DopGridResult> {
+    const res = await this.post<{ success: boolean; data: DopGridResult }>(
+      '/api/gnss/dop',
       params,
     );
     return res.data;
