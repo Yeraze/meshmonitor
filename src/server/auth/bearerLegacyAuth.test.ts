@@ -11,7 +11,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
-import { requireAuth, requirePermission } from './authMiddleware.js';
+import { requireAdmin, requireAuth, requirePermission } from './authMiddleware.js';
 
 let harness: RouteTestHarness;
 
@@ -27,6 +27,11 @@ beforeEach(async () => {
       // requireAuth-gated route (session-or-token, no anonymous fallback).
       app.get('/rt/whoami', requireAuth(), (req, res) =>
         res.json({ userId: req.user?.id, username: req.user?.username }),
+      );
+      // requireAdmin-gated route — the last legacy guard that read only the
+      // session, leaving admin-only endpoints unreachable by any API token.
+      app.post('/rt/admin-only', requireAdmin(), (req, res) =>
+        res.json({ ok: true, userId: req.user?.id }),
       );
     },
   });
@@ -118,5 +123,61 @@ describe('Bearer tokens on requireAuth-gated legacy routes (#4259)', () => {
       .set('Authorization', 'Bearer mm_v1_notarealtoken00');
     expect(res.status).toBe(401);
     expect(res.body.code).toBe('UNAUTHORIZED');
+  });
+});
+
+describe('Bearer tokens on requireAdmin-gated legacy routes', () => {
+  it('accepts an admin token in place of a session', async () => {
+    const token = await harness.tokenFor(harness.admin);
+    const res = await request(harness.app)
+      .post('/rt/admin-only')
+      .set('Authorization', `Bearer ${token}`)
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ ok: true, userId: harness.admin.id });
+  });
+
+  it('rejects a NON-admin token with 403, not 401', async () => {
+    // The distinction matters: 401 would say "authenticate", which the caller
+    // already did. The token is valid, its user simply is not an admin -- the
+    // same answer a non-admin session gets.
+    const token = await harness.tokenFor(harness.limited);
+    const res = await request(harness.app)
+      .post('/rt/admin-only')
+      .set('Authorization', `Bearer ${token}`)
+      .send({});
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('FORBIDDEN_ADMIN');
+  });
+
+  it('rejects with 401 when neither session nor token is present', async () => {
+    const res = await request(harness.app).post('/rt/admin-only').send({});
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe('UNAUTHORIZED');
+  });
+
+  it('rejects an invalid token with 401 (no anonymous fallback)', async () => {
+    const res = await request(harness.app)
+      .post('/rt/admin-only')
+      .set('Authorization', 'Bearer mm_v1_notarealtoken00')
+      .send({});
+
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe('UNAUTHORIZED');
+  });
+
+  it('still works with an admin session cookie (no regression)', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.post('/rt/admin-only').send({});
+    expect(res.status).toBe(200);
+  });
+
+  it('still rejects a non-admin session with 403 (no regression)', async () => {
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.post('/rt/admin-only').send({});
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('FORBIDDEN_ADMIN');
   });
 });
