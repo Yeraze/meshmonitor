@@ -27,6 +27,9 @@ const mocks = vi.hoisted(() => ({
     defaultMapCenterZoom: null as number | null,
     activeStyleJson: null as Record<string, unknown> | null,
   },
+  // #4704: terrain capabilities gate the 2D/3D toggle. Default unavailable so
+  // existing tests stay on the 2D BaseMap; the 3D tests flip it on.
+  terrainCaps: { enabled: false, terrainTiles: false, isLoading: false },
 }));
 
 // ---------------------------------------------------------------------------
@@ -39,6 +42,30 @@ const mocks = vi.hoisted(() => ({
 // side-effecting leafletDefaultIcon module (mutates L.Icon.Default, which the
 // `leaflet` mock below doesn't provide) — both are stubbed the same way
 // BaseMap.test.tsx does it, so this bare-component render stays dependency-free.
+// #4704: the 3D surface (Base3DMap → maplibre-gl) is heavy and irrelevant to
+// these DOM-light 2D tests. Stub Map3DView, exposing the props the 3D tests
+// assert on. Also short-circuit basemap3d/init so DashboardMap's unconditional
+// 3D-basemap derivation and `appBasename` import don't pull real modules.
+vi.mock('../map/Map3DView', () => ({
+  Map3DView: ({ nodes, sourceIds, showNeighbors, showTraceroutes }: any) => (
+    <div
+      data-testid="map-3d-view"
+      data-node-count={nodes.length}
+      data-source-ids={JSON.stringify(sourceIds)}
+      data-show-neighbors={String(showNeighbors)}
+      data-show-traceroutes={String(showTraceroutes)}
+    />
+  ),
+}));
+vi.mock('../../config/basemap3d', () => ({
+  resolve3DBasemap: () => ({ tiles: [], attribution: '', maxZoom: 19, usedFallback: false }),
+  buildTerrainTileUrl: () => '/api/elevation/tiles/{z}/{x}/{y}',
+}));
+vi.mock('../../init', () => ({ appBasename: '' }));
+vi.mock('../../hooks/useTerrainCapabilities', () => ({
+  useTerrainCapabilities: () => mocks.terrainCaps,
+}));
+
 vi.mock('../VectorTileLayer', () => ({
   // Surfaces styleJson as a data attribute (issue #4348) so tests can assert
   // DashboardMap forwards the active MapLibre style through to the vector
@@ -325,6 +352,8 @@ describe('DashboardMap', () => {
     mocks.settings.defaultMapCenterLon = null;
     mocks.settings.defaultMapCenterZoom = null;
     mocks.settings.activeStyleJson = null;
+    // Default: terrain unavailable ⇒ no 3D toggle, stays on 2D BaseMap.
+    mocks.terrainCaps = { enabled: false, terrainTiles: false, isLoading: false };
   });
 
   // --- Default Map Center vs auto-fit (issue #4125) ---------------------------
@@ -744,5 +773,61 @@ describe('DashboardMap', () => {
       />,
     );
     expect(screen.getByTestId('vector-tile-layer').dataset.styleJson).toBe('');
+  });
+
+  // --- 2D/3D toggle (#4704) ---------------------------------------------------
+
+  it('renders the 2D BaseMap and hides the 3D toggle when terrain is unavailable', () => {
+    render(<DashboardMap {...defaultProps} nodes={[nodeWithPosition]} />);
+    expect(screen.getByTestId('map-container')).toBeInTheDocument();
+    expect(screen.queryByTestId('map-3d-view')).not.toBeInTheDocument();
+    expect(screen.queryByText('3D Terrain')).not.toBeInTheDocument();
+  });
+
+  it('offers the 3D toggle only when terrain tiles are available', () => {
+    mocks.terrainCaps = { enabled: true, terrainTiles: true, isLoading: false };
+    render(<DashboardMap {...defaultProps} nodes={[nodeWithPosition]} />);
+    expect(screen.getByText('3D Terrain')).toBeInTheDocument();
+    // Starts in 2D until toggled.
+    expect(screen.getByTestId('map-container')).toBeInTheDocument();
+    expect(screen.queryByTestId('map-3d-view')).not.toBeInTheDocument();
+  });
+
+  it('renders Map3DView (not BaseMap) after toggling 3D, for a single source', () => {
+    mocks.terrainCaps = { enabled: true, terrainTiles: true, isLoading: false };
+    render(<DashboardMap {...defaultProps} sourceId="src-a" nodes={[nodeWithPosition]} />);
+    const toggle = screen.getByText('3D Terrain').previousSibling as HTMLInputElement;
+    fireEvent.click(toggle);
+    const view = screen.getByTestId('map-3d-view');
+    expect(view).toBeInTheDocument();
+    expect(screen.queryByTestId('map-container')).not.toBeInTheDocument();
+    // Single-source map scopes the 3D lines to just that source.
+    expect(JSON.parse(view.dataset.sourceIds ?? 'null')).toEqual(['src-a']);
+    expect(view.dataset.nodeCount).toBe('1');
+  });
+
+  it('renders Map3DView on the Unified map after toggling 3D', () => {
+    mocks.terrainCaps = { enabled: true, terrainTiles: true, isLoading: false };
+    render(<DashboardMap {...defaultProps} sourceId="__unified__" nodes={[nodeWithPosition]} />);
+    const toggle = screen.getByText('3D Terrain').previousSibling as HTMLInputElement;
+    fireEvent.click(toggle);
+    expect(screen.getByTestId('map-3d-view')).toBeInTheDocument();
+    expect(screen.queryByTestId('map-container')).not.toBeInTheDocument();
+  });
+
+  it('forces 2D when terrain capabilities are lost after selecting 3D', () => {
+    mocks.terrainCaps = { enabled: true, terrainTiles: true, isLoading: false };
+    const { rerender } = render(
+      <DashboardMap {...defaultProps} sourceId="src-a" nodes={[nodeWithPosition]} />,
+    );
+    const toggle = screen.getByText('3D Terrain').previousSibling as HTMLInputElement;
+    fireEvent.click(toggle);
+    expect(screen.getByTestId('map-3d-view')).toBeInTheDocument();
+    // Capabilities resolve unavailable (e.g. elevation disabled) — the map must
+    // drop back to 2D on the spot rather than strand the user in 3D.
+    mocks.terrainCaps = { enabled: false, terrainTiles: false, isLoading: false };
+    rerender(<DashboardMap {...defaultProps} sourceId="src-a" nodes={[nodeWithPosition]} />);
+    expect(screen.queryByTestId('map-3d-view')).not.toBeInTheDocument();
+    expect(screen.getByTestId('map-container')).toBeInTheDocument();
   });
 });

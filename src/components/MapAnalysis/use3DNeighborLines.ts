@@ -4,7 +4,7 @@ import {
   useDashboardUnifiedData,
 } from '../../hooks/useDashboardData';
 import { useNeighbors, useMeshCoreNeighbors } from '../../hooks/useMapAnalysisData';
-import { useMapAnalysisCtx, type SelectedTarget } from './MapAnalysisContext';
+import type { SelectedTarget } from './MapAnalysisContext';
 import { resolveNodeLatLng, type MaybePositionedNode } from './nodePositionUtil';
 import { classifyNodeTransport, type NodeTransportClass } from '../../utils/nodeTransport';
 import { snrToNeighborOpacity } from '../../utils/neighborLinks';
@@ -74,14 +74,34 @@ export interface NeighborLines3D {
   selectionByKey: Map<string, SelectedTarget>;
 }
 
-export function use3DNeighborLines(): NeighborLines3D {
-  const { config } = useMapAnalysisCtx();
-  const layer = config.layers.neighbors;
+/** Time-slider window state — the `config.timeSlider` shape. */
+export interface TimeSliderWindow {
+  enabled: boolean;
+  windowStartMs?: number;
+  windowEndMs?: number;
+}
+
+/**
+ * Explicit inputs for `use3DNeighborLines`, previously read from
+ * `useMapAnalysisCtx()`. Passing them in lets non-MapAnalysis surfaces
+ * (DashboardMap, NodesTab) reuse the exact same 3D neighbor-edge wiring.
+ */
+export interface Use3DNeighborLinesParams {
+  /** `config.layers.neighbors`. */
+  layer: { enabled: boolean; lookbackHours?: number | null };
+  /** `config.sources` — empty = all sources. */
+  sources: string[];
+  /** `config.timeSlider`. */
+  timeSlider: TimeSliderWindow;
+}
+
+export function use3DNeighborLines(params: Use3DNeighborLinesParams): NeighborLines3D {
+  const { layer } = params;
   const { data: sources = [] } = useDashboardSources();
   const sourceIds =
-    config.sources.length === 0
+    params.sources.length === 0
       ? (sources as { id: string }[]).map((s) => s.id)
-      : config.sources;
+      : params.sources;
 
   const { data: mtData } = useNeighbors({
     enabled: layer.enabled,
@@ -144,7 +164,7 @@ export function use3DNeighborLines(): NeighborLines3D {
     return map;
   }, [nodes]);
 
-  const ts = config.timeSlider;
+  const ts = params.timeSlider;
 
   return useMemo(() => {
     if (!layer.enabled) return { lines: [], selectionByKey: new Map<string, SelectedTarget>() };

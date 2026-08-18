@@ -62,7 +62,9 @@ export default function MapAnalysisCanvas() {
   const {
     config,
     setViewMode,
+    selected,
     setSelected,
+    nodeFilter,
     measureMode,
     setMeasureMode,
     linkProfileMode,
@@ -178,8 +180,18 @@ export default function MapAnalysisCanvas() {
   // unconditionally (Rules of Hooks) — both hooks self-gate on their layer
   // toggle/time-window and return empties when off, matching the 2D panes'
   // `config.layers.*.enabled` guards above.
-  const neighborLines3D = use3DNeighborLines();
-  const tracerouteLines3D = use3DTracerouteLines();
+  const neighborLines3D = use3DNeighborLines({
+    layer: config.layers.neighbors,
+    sources: config.sources,
+    timeSlider: config.timeSlider,
+  });
+  const tracerouteLines3D = use3DTracerouteLines({
+    layer: config.layers.traceroutes,
+    sources: config.sources,
+    timeSlider: config.timeSlider,
+    selected,
+    nodeFilter,
+  });
   const lines3D: Line3DFeature[] = useMemo(
     () => [...neighborLines3D.lines, ...tracerouteLines3D.lines],
     [neighborLines3D.lines, tracerouteLines3D.lines],

@@ -52,6 +52,12 @@ import { resolveMapEndpoint } from '../../utils/nodeHelpers';
 import api from '../../services/api';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { BaseMap } from '../map/BaseMap';
+import { Map3DView } from '../map/Map3DView';
+import type { Node3DFeature } from '../map/Base3DMap';
+import { TilesetSelector } from '../TilesetSelector';
+import { resolve3DBasemap, buildTerrainTileUrl } from '../../config/basemap3d';
+import { useTerrainCapabilities } from '../../hooks/useTerrainCapabilities';
+import { appBasename } from '../../init';
 import { MapLoadingOverlay } from '../map/MapLoadingOverlay';
 import { TraceroutePathsLayer } from '../map/layers/TraceroutePathsLayer';
 import { NeighborLinksLayer, type NeighborLinkDescriptor } from '../map/layers/NeighborLinksLayer';
@@ -224,6 +230,21 @@ export default function DashboardMap({
   // #3636: node-to-node LOS distance measurement tool.
   const [measureActive, setMeasureActive] = useState(false);
 
+  // #4704: 2D/3D toggle. `viewMode` is ephemeral (not persisted) — the toggle
+  // is only offered when the server can serve DEM terrain tiles, and any
+  // capability loss forces 2D on the spot (mirrors `useEffectiveViewMode`).
+  const terrainCaps = useTerrainCapabilities();
+  const canUse3D = !terrainCaps.isLoading && terrainCaps.enabled && terrainCaps.terrainTiles;
+  const [viewMode, setViewMode] = useState<'2d' | '3d'>('2d');
+  const effective3D = viewMode === '3d' && canUse3D;
+  const basemap3D = useMemo(
+    () => resolve3DBasemap(tilesetId, customTilesets),
+    [tilesetId, customTilesets],
+  );
+  // `appBasename` is the base-path prefix `ApiService` was seeded with at
+  // startup — module-scope constant, never changes.
+  const terrainTileUrl = useMemo(() => buildTerrainTileUrl(appBasename), []);
+
   const {
     showPaths,
     setShowPaths,
@@ -315,6 +336,20 @@ export default function DashboardMap({
 
   // Array form of node positions for MapBoundsUpdater (fit bounds).
   const nodePositions: [number, number][] = nodesWithPosition.map((e) => [e.pos.lat, e.pos.lng]);
+
+  // #4704: node markers for the 3D surface — same visible+positioned node list
+  // the 2D markers use, mapped to the shape `Base3DMap` expects. Computed
+  // unconditionally (cheap map, no hooks); only consumed when `effective3D`.
+  const node3DFeatures: Node3DFeature[] = useMemo(
+    () =>
+      nodesWithPosition.map(({ node, pos }) => ({
+        key: unifiedNodeKey(node) ?? String(node.nodeNum ?? node.nodeId ?? node.user?.id),
+        lat: pos.lat,
+        lng: pos.lng,
+        label: node.shortName ?? node.user?.shortName ?? undefined,
+      })),
+    [nodesWithPosition],
+  );
 
   // #3636: measurement endpoints — nearest-node snapping picks from these.
   const measurePoints: MeasurePoint[] = nodesWithPosition.map(({ node, pos }) => ({
@@ -624,6 +659,29 @@ export default function DashboardMap({
 
   return (
     <div className="dashboard-map-container" style={{ position: 'relative' }}>
+      {effective3D ? (
+        <>
+          {/* #4704: 3D terrain surface. Shows nodes + traceroute + neighbor
+              lines only (v1 non-goals: waypoints, ATAK, polar grid, accuracy
+              regions, GeoJSON, measure tool). The tileset selector is a sibling
+              because Base3DMap can't host it. */}
+          <Map3DView
+            center={[defaultCenter.lat, defaultCenter.lng]}
+            zoom={hasConfiguredDefaultCenter ? defaultMapCenterZoom : 10}
+            basemap={basemap3D}
+            terrainTileUrl={terrainTileUrl}
+            nodes={node3DFeatures}
+            sourceIds={polarSourceIds}
+            showNeighbors={showNeighborInfo}
+            showTraceroutes={showPaths || showRoute}
+            lookbackHours={effectiveMaxAge}
+            onUnsupported={() => setViewMode('2d')}
+          />
+          {showTileSelector && (
+            <TilesetSelector selectedTilesetId={tilesetId} onTilesetChange={setMapTileset} />
+          )}
+        </>
+      ) : (
       <BaseMap
         center={[defaultCenter.lat, defaultCenter.lng]}
         zoom={hasConfiguredDefaultCenter ? defaultMapCenterZoom : 10}
@@ -703,10 +761,12 @@ export default function DashboardMap({
             unidirectional dashed. */}
         <NeighborLinksLayer links={meshtasticNeighborLinks} />
       </BaseMap>
+      )}
 
       {/* Polar grid legend — names each source whose grid is drawn, with its
-          color swatch, so overlapping grids on the Unified map aren't confused. */}
-      {showPolarGrid && ownNodePositions.length > 0 && (
+          color swatch, so overlapping grids on the Unified map aren't confused.
+          2D only: the 3D surface doesn't draw the polar grid. */}
+      {!effective3D && showPolarGrid && ownNodePositions.length > 0 && (
         <div className="dashboard-polar-grid-legend" role="note" aria-label="Polar grid sources">
           <div className="dashboard-polar-grid-legend__title">Polar Grid</div>
           {ownNodePositions.map((op) => (
@@ -750,6 +810,18 @@ export default function DashboardMap({
             />
             <span>Measure Distance</span>
           </label>
+          {/* #4704: 2D/3D toggle — only offered when the server can serve DEM
+              terrain tiles (elevation enabled + terrarium tiles). */}
+          {canUse3D && (
+            <label className="map-control-item" title="Show terrain in a pitched 3D view">
+              <input
+                type="checkbox"
+                checked={viewMode === '3d'}
+                onChange={(e) => setViewMode(e.target.checked ? '3d' : '2d')}
+              />
+              <span>3D Terrain</span>
+            </label>
+          )}
           {/* Map Features age slider (#3322): hides node markers, traceroutes,
               and route segments older than the chosen age. Ranges 1h–maxNodeAge. */}
           {(() => {

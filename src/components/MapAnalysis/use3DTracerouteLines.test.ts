@@ -3,10 +3,8 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { createElement, useEffect, type ReactNode } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MapAnalysisProvider, useMapAnalysisCtx } from './MapAnalysisContext';
-import { use3DTracerouteLines } from './use3DTracerouteLines';
+import { use3DTracerouteLines, type Use3DTracerouteLinesParams } from './use3DTracerouteLines';
+import type { SelectedTarget } from './MapAnalysisContext';
 import type { AnalyzedSegment } from '../../hooks/useTracerouteAnalysis';
 import { getSegmentSnrOpacity, weightByOccurrence } from '../../utils/mapHelpers';
 
@@ -51,47 +49,26 @@ vi.mock('../../hooks/useTracerouteAnalysis', async () => {
   };
 });
 
-const TRACEROUTES_ENABLED_CONFIG = {
-  version: 1,
-  layers: {
-    markers: { enabled: true, lookbackHours: null },
-    traceroutes: { enabled: true, lookbackHours: 24 },
-    neighbors: { enabled: false, lookbackHours: 24 },
-    heatmap: { enabled: false, lookbackHours: 24 },
-    trails: { enabled: false, lookbackHours: 24 },
-    hopShading: { enabled: false, lookbackHours: null },
-    snrOverlay: { enabled: false, lookbackHours: null },
-    waypoints: { enabled: true, lookbackHours: null },
-    polarGrid: { enabled: false, lookbackHours: null },
-  },
-  sources: [],
-  timeSlider: { enabled: false },
-  inspectorOpen: true,
-  selectedNodeIds: [],
-};
-
-function setConfig(overrides: Record<string, unknown> = {}) {
-  localStorage.setItem(
-    'mapAnalysis.config.v1',
-    JSON.stringify({ ...TRACEROUTES_ENABLED_CONFIG, ...overrides }),
-  );
+/**
+ * Build the explicit params the hook now takes (previously read from
+ * `useMapAnalysisCtx()`). `sources: []` = "all sources"; `selected: null` =
+ * SNR color mode.
+ */
+function makeParams(overrides: Partial<Use3DTracerouteLinesParams> = {}): Use3DTracerouteLinesParams {
+  return {
+    layer: { enabled: true, lookbackHours: 24 },
+    sources: [],
+    timeSlider: { enabled: false },
+    selected: null,
+    nodeFilter: '',
+    ...overrides,
+  };
 }
 
-function wrapper({ children }: { children: ReactNode }) {
-  const qc = new QueryClient();
-  return createElement(QueryClientProvider, { client: qc }, createElement(MapAnalysisProvider, null, children));
-}
-
-/** Renders `use3DTracerouteLines()` after selecting a node (via the shared
- * context), so `colorMode` flips to 'direction' the same way it does when a
- * user clicks a node marker in the real app. */
-function useTracerouteLinesWithNodeSelected(nodeNum: number, sourceId: string) {
-  const { selected, setSelected } = useMapAnalysisCtx();
-  useEffect(() => {
-    if (!selected) setSelected({ type: 'node', nodeNum, sourceId });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected]);
-  return use3DTracerouteLines();
+/** A node selection, so `colorMode` flips to 'direction' the same way it does
+ * when a user clicks a node marker in the real app. */
+function nodeSelected(nodeNum: number, sourceId: string): SelectedTarget {
+  return { type: 'node', nodeNum, sourceId };
 }
 
 const RF_SEGMENT: AnalyzedSegment = {
@@ -124,13 +101,11 @@ const MQTT_SEGMENT: AnalyzedSegment = {
 
 describe('use3DTracerouteLines', () => {
   beforeEach(() => {
-    localStorage.clear();
     mockState.segments = [RF_SEGMENT];
-    setConfig();
   });
 
   it('produces a straight 2-vertex Line3DFeature for an RF segment (solid, §2.6 no curvature)', () => {
-    const { result } = renderHook(() => use3DTracerouteLines(), { wrapper });
+    const { result } = renderHook(() => use3DTracerouteLines(makeParams()));
     const line = result.current.lines.find((l) => l.key === `tr:${RF_SEGMENT.key}`);
     expect(line).toBeDefined();
     expect(line).toEqual({
@@ -145,7 +120,7 @@ describe('use3DTracerouteLines', () => {
   });
 
   it('PARITY: segment selectionByKey deep-equals the 2D setSelected payload (layers/TraceroutePathsLayer.tsx L165-174)', () => {
-    const { result } = renderHook(() => use3DTracerouteLines(), { wrapper });
+    const { result } = renderHook(() => use3DTracerouteLines(makeParams()));
     expect(result.current.selectionByKey.get(`tr:${RF_SEGMENT.key}`)).toEqual({
       type: 'segment',
       fromNodeNum: RF_SEGMENT.from,
@@ -158,7 +133,7 @@ describe('use3DTracerouteLines', () => {
 
   it('dashes an MQTT/unknown-SNR segment (dash=[2,2]) and colors it via overlayColors.mqttSegment', () => {
     mockState.segments = [MQTT_SEGMENT];
-    const { result } = renderHook(() => use3DTracerouteLines(), { wrapper });
+    const { result } = renderHook(() => use3DTracerouteLines(makeParams()));
     const line = result.current.lines.find((l) => l.key === `tr:${MQTT_SEGMENT.key}`);
     expect(line?.dash).toEqual([2, 2]);
     expect(line?.color).toBe('#b4befe');
@@ -170,7 +145,9 @@ describe('use3DTracerouteLines', () => {
       { ...RF_SEGMENT, direction: 'outbound' },
       { ...RF_SEGMENT, key: 'a:0x2222->0x1111', from: 0x2222, to: 0x1111, direction: 'inbound' },
     ];
-    const { result } = renderHook(() => useTracerouteLinesWithNodeSelected(0x1111, 'a'), { wrapper });
+    const { result } = renderHook(() =>
+      use3DTracerouteLines(makeParams({ selected: nodeSelected(0x1111, 'a') })),
+    );
     const outbound = result.current.lines.find((l) => l.key === 'tr:a:0x1111->0x2222');
     const inbound = result.current.lines.find((l) => l.key === 'tr:a:0x2222->0x1111');
     expect(outbound?.color).toBe('#3b82f6'); // OUTBOUND_COLOR (mirror of TraceroutePathsLayer.tsx L25)
@@ -179,16 +156,17 @@ describe('use3DTracerouteLines', () => {
 
   it('falls back to snrColors.noData for a neutral segment while colorMode is direction', () => {
     mockState.segments = [{ ...RF_SEGMENT, direction: 'neutral' }];
-    const { result } = renderHook(() => useTracerouteLinesWithNodeSelected(0x1111, 'a'), { wrapper });
+    const { result } = renderHook(() =>
+      use3DTracerouteLines(makeParams({ selected: nodeSelected(0x1111, 'a') })),
+    );
     const line = result.current.lines.find((l) => l.key === `tr:${RF_SEGMENT.key}`);
     expect(line?.color).toBe('#6c7086'); // snrColors.noData
   });
 
   it('returns empty lines/selectionByKey when the traceroutes layer is disabled', () => {
-    setConfig({
-      layers: { ...TRACEROUTES_ENABLED_CONFIG.layers, traceroutes: { enabled: false, lookbackHours: 24 } },
-    });
-    const { result } = renderHook(() => use3DTracerouteLines(), { wrapper });
+    const { result } = renderHook(() =>
+      use3DTracerouteLines(makeParams({ layer: { enabled: false, lookbackHours: 24 } })),
+    );
     expect(result.current.lines).toEqual([]);
     expect(result.current.selectionByKey.size).toBe(0);
   });
