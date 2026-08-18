@@ -3245,6 +3245,16 @@ function App() {
     }
   }, [setActiveTab, setSelectedDMNode, setSelectedChannel]);
 
+  // On mobile the search modal opens over the bottom nav. Once the nav is
+  // reachable again (#4774), tapping another nav item changes the active tab,
+  // and the transient modal should get out of the way rather than linger over
+  // the destination view. Closing on tab change makes search behave like the
+  // rest of the tab bar. Opening search does not change activeTab, so this does
+  // not fight the open action.
+  useEffect(() => {
+    setIsSearchOpen(false);
+  }, [activeTab]);
+
   // Ctrl+K / Cmd+K keyboard shortcut to toggle search modal
   const canSearch = hasPermission('messages', 'read') ||
     Array.from({ length: 8 }, (_, i) =>

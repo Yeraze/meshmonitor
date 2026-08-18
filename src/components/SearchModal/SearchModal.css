@@ -281,13 +281,22 @@
 
 @media (max-width: 768px) {
   /* Stop the overlay above the bottom navigation bar so the nav stays visible
-     and tappable instead of being covered (the overlay and the nav share
-     z-index 10001, and the overlay paints later). The nav reserves
-     --app-nav-bar-height + safe-area-inset-bottom, so clearing exactly that
-     docks the modal right above it (#4774). The keyboard inset is still handled
-     by the base .search-modal-overlay padding-bottom (issue #2994). */
+     AND tappable instead of being covered. The overlay outranks the nav in
+     z-index, so any strip where it overlaps the nav swallows the nav's taps
+     (visible but not clickable, #4774). SourceNav publishes its REAL height as
+     --source-nav-bar-height (which already includes the safe-area inset), so we
+     clear exactly the rendered nav; the static estimate is only a fallback for
+     when the bar is not mounted. The keyboard inset is still handled by the
+     base .search-modal-overlay padding-bottom (issue #2994). */
   .search-modal-overlay {
-    bottom: calc(var(--app-nav-bar-height, 56px) + env(safe-area-inset-bottom, 0px));
+    /* --source-nav-bar-height is offsetHeight, which ALREADY includes the nav's
+       safe-area padding-bottom, so it is used as-is. Only the static fallback
+       adds env(safe-area-inset-bottom). Do NOT add env() to the real-height
+       branch or the inset is counted twice. */
+    bottom: var(
+      --source-nav-bar-height,
+      calc(var(--app-nav-bar-height, 56px) + env(safe-area-inset-bottom, 0px))
+    );
   }
 
   .search-modal {
