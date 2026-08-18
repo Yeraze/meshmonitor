@@ -22,12 +22,36 @@ import { isRfBridgeCommand, MESHCORE_RECEIVE_ONLY_MESSAGE } from './constants/me
 // upstream package; a workspace clone can be aliased via package.json.
 type AnyConnection = any;
 
+/** meshcore.js's internal BufferReader surface, as used by our corrected
+ * TraceData(0x89) push parser (see the `trace_path` dispatch case). */
+interface TraceDataBufferReader {
+  readByte(): number;
+  readUInt8(): number;
+  readUInt32LE(): number;
+  readBytes(count: number): Uint8Array;
+  readInt8(): number;
+}
+
+/** Parsed CMD_SEND_TRACE_PATH reply, correcting the pinned meshcore.js's
+ * `pathSnrs` over-read for multi-byte hop hashes (#4786). */
+interface TraceDataResponse {
+  reserved: number;
+  pathLen: number;
+  flags: number;
+  tag: number;
+  authCode: number;
+  pathHashes: Uint8Array;
+  pathSnrs: Uint8Array;
+  lastSnr: number;
+}
+
 interface MeshCoreJsModule {
   NodeJSSerialConnection: new (path: string) => AnyConnection;
   TCPConnection: new (host: string, port: number) => AnyConnection;
   Constants: {
     ResponseCodes: Record<string, number>;
     PushCodes: Record<string, number>;
+    CommandCodes: Record<string, number>;
     StatsTypes: { Core: number; Radio: number; Packets: number };
     SelfAdvertTypes: { ZeroHop: number; Flood: number };
     BinaryRequestTypes: { GetTelemetryData: number };
@@ -1329,14 +1353,85 @@ export class MeshCoreNativeBackend extends EventEmitter {
           throw new Error('trace_path requires a non-empty path');
         }
         const path = pathBytes instanceof Uint8Array ? pathBytes : Uint8Array.from(pathBytes);
-        const result = await c.tracePath(path, params.extra_timeout as number | undefined);
-        return {
-          ok: true,
-          pathLen: result.pathLen,
-          flags: result.flags,
-          pathSnrs: Array.from(result.pathSnrs as Uint8Array),
-          lastSnr: result.lastSnr,
+        // CMD_SEND_TRACE_PATH's flags byte packs the per-hop hash width as
+        // `1 << (flags & 0x03)` bytes (companion_radio/MyMesh.cpp), so only
+        // 1- and 2-byte hops are representable (path_sz 0/1); the caller
+        // rejects other widths before reaching here.
+        const hashBytes = Number(params.path_hash_bytes) || 1;
+        if (hashBytes !== 1 && hashBytes !== 2) {
+          throw new Error(`trace_path: unsupported hop hash width ${hashBytes} (device only supports 1 or 2 bytes/hop)`);
+        }
+        if (path.length % hashBytes !== 0) {
+          throw new Error(`trace_path: path length ${path.length} is not a multiple of hop hash width ${hashBytes}`);
+        }
+        const pathSz = hashBytes === 2 ? 1 : 0;
+
+        // The pinned meshcore.js's sendCommandSendTracePath() hardcodes
+        // flags=0, so any cached path wider than 1 byte/hop gets misread by
+        // the firmware as twice as many 1-byte hops and the trace times out
+        // (#4786). Build the frame ourselves so we can set the real width:
+        // [SendTracePath][tag:4 LE][auth:4 LE][flags][path bytes].
+        const tag = Math.floor(Math.random() * 0x1_0000_0000);
+        const frame = Buffer.alloc(1 + 4 + 4 + 1 + path.length);
+        frame.writeUInt8(K.CommandCodes.SendTracePath, 0);
+        frame.writeUInt32LE(tag, 1);
+        frame.writeUInt32LE(0, 5); // auth
+        frame.writeUInt8(pathSz, 9);
+        Buffer.from(path).copy(frame, 10);
+
+        // The library's own onTraceDataPush() also mis-parses multi-byte
+        // replies: it reads `pathSnrs` as `pathLen` bytes (the raw hash byte
+        // count) instead of the hop count (`pathLen >> path_sz`), so for
+        // 2-byte hops it reads into `lastSnr` and desyncs the payload.
+        // Install a corrected parser on the connection for the life of this
+        // request only; runExclusiveRadioOp below guarantees no concurrent
+        // trace_path can observe the swap.
+        const originalOnTraceDataPush = c.onTraceDataPush;
+        c.onTraceDataPush = (bufferReader: TraceDataBufferReader) => {
+          const reserved = bufferReader.readByte();
+          const respPathLen = bufferReader.readUInt8();
+          const respFlags = bufferReader.readUInt8();
+          const respPathSz = respFlags & 0x03;
+          const respTag = bufferReader.readUInt32LE();
+          const authCode = bufferReader.readUInt32LE();
+          const pathHashes = bufferReader.readBytes(respPathLen);
+          const hopCount = respPathSz > 0 ? respPathLen >> respPathSz : respPathLen;
+          const pathSnrs = bufferReader.readBytes(hopCount);
+          const lastSnr = bufferReader.readInt8() / 4;
+          c.emit(K.PushCodes.TraceData, {
+            reserved, pathLen: respPathLen, flags: respFlags, tag: respTag, authCode, pathHashes, pathSnrs, lastSnr,
+          });
         };
+
+        try {
+          const result = await this.runExclusiveRadioOp(() => new Promise<TraceDataResponse>((resolve, reject) => {
+            const onTraceData = (response: TraceDataResponse) => {
+              if (response.tag !== tag) return;
+              cleanup();
+              resolve(response);
+            };
+            const onErr = () => {
+              cleanup();
+              reject(new Error('Device rejected trace-path request'));
+            };
+            function cleanup() {
+              c.off(K.PushCodes.TraceData, onTraceData);
+              c.off(K.ResponseCodes.Err, onErr);
+            }
+            c.on(K.PushCodes.TraceData, onTraceData);
+            c.once(K.ResponseCodes.Err, onErr);
+            void c.sendToRadioFrame(frame);
+          }));
+          return {
+            ok: true,
+            pathLen: result.pathLen,
+            flags: result.flags,
+            pathSnrs: Array.from(result.pathSnrs as Uint8Array),
+            lastSnr: result.lastSnr,
+          };
+        } finally {
+          c.onTraceDataPush = originalOnTraceDataPush;
+        }
       }
 
       case 'share_contact': {
