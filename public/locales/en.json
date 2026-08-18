@@ -2397,6 +2397,7 @@
   "automation.auto_welcome.mark_welcomed_failed": "Failed to mark nodes as welcomed",
   "automation.auto_announce.title": "Auto Announce",
   "automation.auto_announce.description": "When enabled, automatically broadcast an announcement message to a selected channel at the configured interval. Use tokens like {VERSION}, {DURATION}, {FEATURES}, {NODECOUNT}, and {DIRECTCOUNT} for dynamic content.",
+  "automation.auto_announce.native_notice": "Heads up: firmware 2.8's MeshBeacon module can broadcast a periodic message natively (see the MeshBeacon settings). It's more limited than Auto Announce, though — it's zero-hop (only direct neighbors hear it), capped at a minimum one-hour interval, and currently only on the Meshtastic development branch, not a released firmware — so it isn't a full replacement.",
   "automation.auto_announce.channel": "Channel",
   "automation.auto_announce.channel_description": "Select which channel to broadcast the announcement",
   "automation.auto_announce.schedule": "Schedule",

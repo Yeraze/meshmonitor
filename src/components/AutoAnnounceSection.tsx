@@ -379,6 +379,22 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
           {t('automation.auto_announce.description')}
         </p>
 
+        {/* #4731: point users at the firmware-native alternative, worded to the
+            verified 2.8 behavior — MeshBeacon is a periodic broadcaster (overlaps
+            Auto Announce), NOT the "Auto Welcome" the reporter assumed, and it is
+            dev-branch/unreleased + zero-hop + >=1h interval. Do not overstate it. */}
+        <div style={{
+          padding: '0.75rem 1rem',
+          backgroundColor: 'var(--color-surface)',
+          borderRadius: '0.5rem',
+          color: 'var(--color-text-subtle)',
+          fontSize: '0.9rem',
+          lineHeight: '1.5',
+          marginBottom: '1rem',
+        }}>
+          {t('automation.auto_announce.native_notice', "Heads up: firmware 2.8's MeshBeacon module can broadcast a periodic message natively (see the MeshBeacon settings). It's more limited than Auto Announce, though — it's zero-hop (only direct neighbors hear it), capped at a minimum one-hour interval, and currently only on the Meshtastic development branch, not a released firmware — so it isn't a full replacement.")}
+        </div>
+
         {lastAnnouncementTime && (
           <div style={{
             marginBottom: '1rem',
