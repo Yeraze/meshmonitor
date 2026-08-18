@@ -17,8 +17,10 @@ export interface Map3DViewProps {
   nodes: Node3DFeature[];
   /**
    * Sources whose neighbor/traceroute edges to render — a single `[sourceId]`
-   * for a per-source map, or every source id for a unified map. Empty resolves
-   * to "all sources" (the generalized hooks' convention).
+   * for a per-source map, or every source id for a unified map. NOTE: an empty
+   * array resolves to "all sources" (the generalized hooks' convention), so a
+   * host with no source should instead gate `showNeighbors`/`showTraceroutes`
+   * off to render nodes without any cross-source edges.
    */
   sourceIds: string[];
   /** Gate neighbor lines — mirrors the host's "Show Neighbors" toggle. */

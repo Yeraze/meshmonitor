@@ -2937,8 +2937,12 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   terrainTileUrl={terrainTileUrl}
                   nodes={node3DFeatures}
                   sourceIds={currentSourceId ? [currentSourceId] : []}
-                  showNeighbors={showNeighborInfo}
-                  showTraceroutes={showPaths || showRoute}
+                  // Guard the "empty = all sources" hook convention: with no
+                  // source (useSource() is null outside a SourceProvider), draw
+                  // the nodes but NOT cross-source neighbor/traceroute lines,
+                  // rather than silently pulling every source's edges in.
+                  showNeighbors={!!currentSourceId && showNeighborInfo}
+                  showTraceroutes={!!currentSourceId && (showPaths || showRoute)}
                   lookbackHours={effectiveMapMaxAge}
                   onUnsupported={() => setViewMode('2d')}
                 />
