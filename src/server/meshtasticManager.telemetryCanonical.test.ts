@@ -71,7 +71,8 @@ describe('MeshtasticManager - canonical telemetry normalization (#3506)', () => 
     expect(storedValue('envVoltage')).toBeCloseTo(3.7, 2);
     expect(storedUnit('envVoltage')).toBe('V');
     expect(storedValue('envCurrent')).toBeCloseTo(0.12, 2);
-    expect(storedUnit('envCurrent')).toBe('A');
+    // EnvironmentMetrics.current is milliamps (firmware getCurrent_mA()).
+    expect(storedUnit('envCurrent')).toBe('mA');
   });
 
   it('stores device metrics through the shared path', async () => {
