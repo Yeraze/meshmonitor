@@ -49,6 +49,12 @@ import PacketMonitorPanel from './PacketMonitorPanel';
 import { getPacketStats } from '../services/packetApi';
 
 import { BaseMap } from './map/BaseMap';
+import { Map3DView } from './map/Map3DView';
+import type { Node3DFeature } from './map/Base3DMap';
+import { TilesetSelector } from './TilesetSelector';
+import { resolve3DBasemap, buildTerrainTileUrl } from '../config/basemap3d';
+import { useTerrainCapabilities } from '../hooks/useTerrainCapabilities';
+import { appBasename } from '../init';
 import { MapLoadingOverlay } from './map/MapLoadingOverlay';
 import { MapModeIndicator } from './map/MapModeIndicator';
 import { NodeUnmessageableBadge } from './NodeUnmessageableBadge';
@@ -964,6 +970,18 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // #3636: node-to-node LOS distance measurement tool.
   const [measureActive, setMeasureActive] = useState(false);
 
+  // #4704: 2D/3D toggle. `viewMode` is ephemeral (not persisted); the toggle is
+  // only offered when the server can serve DEM terrain tiles, and any
+  // capability loss forces 2D on the spot (mirrors `useEffectiveViewMode`).
+  const terrainCaps = useTerrainCapabilities();
+  const canUse3D = !terrainCaps.isLoading && terrainCaps.enabled && terrainCaps.terrainTiles;
+  const [viewMode, setViewMode] = useState<'2d' | '3d'>('2d');
+  const basemap3D = useMemo(
+    () => resolve3DBasemap(mapTileset, customTilesets),
+    [mapTileset, customTilesets],
+  );
+  const terrainTileUrl = useMemo(() => buildTerrainTileUrl(appBasename), []);
+
   const sidebarRef = useRef<HTMLDivElement>(null);
 
   // Save packet monitor preference to localStorage
@@ -1652,7 +1670,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // `user?.id` — also gives spiderfy/`markerRefs` coverage to the rare node
   // that has a position but no user info yet (matches the Dashboard/MapAnalysis
   // marker-key fallback convention).
-  const nodeMarkers: NodeMarkerDescriptor[] = nodesWithPosition
+  // The visible+positioned node set — the shared source of truth for both the
+  // 2D marker descriptors below and the #4704 3D node features.
+  const visibleMapNodes = nodesWithPosition
     .filter(node => {
       // Apply standard filters
       if (!nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes }, transportCutoff)) return false;
@@ -1665,7 +1685,26 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       // node age filter. Default (slider at max) is a no-op.
       if (!node.isFavorite && node.lastHeard && node.lastHeard < mapAgeCutoffSeconds) return false;
       return true;
-    })
+    });
+  // #4704: node features for the 3D surface — the same visible+positioned set
+  // the 2D markers use, at the same (precision-offset) positions from
+  // `nodePositions`. Computed unconditionally (no hooks); only consumed in 3D.
+  const node3DFeatures: Node3DFeature[] = useMemo(() => {
+    const out: Node3DFeature[] = [];
+    for (const node of visibleMapNodes) {
+      const pos = nodePositions.get(node.nodeNum);
+      if (!pos) continue;
+      out.push({
+        key: String(node.user?.id ?? node.nodeNum),
+        lat: pos[0],
+        lng: pos[1],
+        label: node.user?.shortName ?? undefined,
+      });
+    }
+    return out;
+  }, [visibleMapNodes, nodePositions]);
+
+  const nodeMarkers: NodeMarkerDescriptor[] = visibleMapNodes
     .map(node => {
       const markerKey = String(node.user?.id ?? node.nodeNum);
       const roleNum = typeof node.user?.role === 'string'
@@ -2072,6 +2111,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   };
 
   const mapDefaults = getMapCenter();
+
+  // #4704: whether the 3D surface is actually on screen right now.
+  const effective3D = viewMode === '3d' && canUse3D;
 
   return (
     <div ref={splitViewRef} className="nodes-split-view nodes-anchored-view">
@@ -2551,6 +2593,18 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                     />
                     <span>Measure Distance</span>
                   </label>
+                  {/* #4704: 2D/3D toggle — only offered when the server can
+                      serve DEM terrain tiles (elevation enabled + terrarium). */}
+                  {canUse3D && (
+                    <label className="map-control-item" title="Show terrain in a pitched 3D view">
+                      <input
+                        type="checkbox"
+                        checked={viewMode === '3d'}
+                        onChange={(e) => setViewMode(e.target.checked ? '3d' : '2d')}
+                      />
+                      <span>3D Terrain</span>
+                    </label>
+                  )}
                   {/* Map Features age slider (#3322): hides node markers,
                       traceroutes, and route segments older than the chosen age.
                       Ranges 1h–maxNodeAgeHours (settings); default = max ("All"). */}
@@ -2869,6 +2923,34 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 disableLabel={t('map.tracerouteModeDisable', 'Turn off Show Traceroute')}
               />
             )}
+            {effective3D ? (
+              <>
+                {/* #4704: 3D terrain surface. Shows nodes + traceroute +
+                    neighbor lines only (v1 non-goals: waypoints, ATAK, polar
+                    grid, accuracy regions, estimated positions, GeoJSON,
+                    position history, measure tool). The tileset selector is a
+                    sibling because Base3DMap can't host it. */}
+                <Map3DView
+                  center={mapDefaults.center}
+                  zoom={mapDefaults.zoom}
+                  basemap={basemap3D}
+                  terrainTileUrl={terrainTileUrl}
+                  nodes={node3DFeatures}
+                  sourceIds={currentSourceId ? [currentSourceId] : []}
+                  // Guard the "empty = all sources" hook convention: with no
+                  // source (useSource() is null outside a SourceProvider), draw
+                  // the nodes but NOT cross-source neighbor/traceroute lines,
+                  // rather than silently pulling every source's edges in.
+                  showNeighbors={!!currentSourceId && showNeighborInfo}
+                  showTraceroutes={!!currentSourceId && (showPaths || showRoute)}
+                  lookbackHours={effectiveMapMaxAge}
+                  onUnsupported={() => setViewMode('2d')}
+                />
+                {shouldShowData() && showTileSelector && (
+                  <TilesetSelector selectedTilesetId={activeTileset} onTilesetChange={setMapTileset} />
+                )}
+              </>
+            ) : (
             <BaseMap
               center={mapDefaults.center}
               zoom={mapDefaults.zoom}
@@ -2990,6 +3072,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               {positionHistoryElements}
 
           </BaseMap>
+          )}
           {shouldShowData() && nodesIsLoading && <MapLoadingOverlay />}
           {shouldShowData() && !nodesIsLoading && nodesWithPosition.length === 0 && (
             <div className="map-overlay">

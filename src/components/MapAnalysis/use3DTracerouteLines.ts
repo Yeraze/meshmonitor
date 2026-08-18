@@ -4,8 +4,12 @@ import {
   useDashboardUnifiedData,
 } from '../../hooks/useDashboardData';
 import { useTraceroutes } from '../../hooks/useMapAnalysisData';
-import { useMapAnalysisCtx, type SelectedTarget } from './MapAnalysisContext';
-import { getTracerouteOptions } from '../../hooks/useMapAnalysisConfig';
+import type { SelectedTarget } from './MapAnalysisContext';
+import {
+  DEFAULT_TRACEROUTE_OPTIONS,
+  type TracerouteLayerOptions,
+} from '../../hooks/useMapAnalysisConfig';
+import type { TimeSliderWindow } from './use3DNeighborLines';
 import {
   useTracerouteAnalysis,
   type AnalyzedSegment,
@@ -50,6 +54,24 @@ export interface TracerouteLines3D {
 }
 
 /**
+ * Explicit inputs for `use3DTracerouteLines`, previously read from
+ * `useMapAnalysisCtx()`. Passing them in lets non-MapAnalysis surfaces
+ * (DashboardMap, NodesTab) reuse the exact same 3D traceroute-segment wiring.
+ */
+export interface Use3DTracerouteLinesParams {
+  /** `config.layers.traceroutes` — `options` feeds `getTracerouteOptions`. */
+  layer: { enabled: boolean; lookbackHours?: number | null; options?: Record<string, unknown> };
+  /** `config.sources` — empty = all sources. */
+  sources: string[];
+  /** `config.timeSlider`. */
+  timeSlider: TimeSliderWindow;
+  /** Selected target (drives direction-mode coloring); null = SNR mode. */
+  selected: SelectedTarget | null;
+  /** Free-text node search term; empty = no filter. */
+  nodeFilter: string;
+}
+
+/**
  * Resolve a segment's line color, replicating
  * `map/layers/TraceroutePathsLayer.tsx`'s `resolveColor` for the two prop
  * shapes the MapAnalysis 2D adapter actually passes: `colorMode: 'snr'` with
@@ -73,23 +95,24 @@ function resolveSegmentColor(
   return snrToColor(seg.avgSnr, snrColors);
 }
 
-export function use3DTracerouteLines(): TracerouteLines3D {
-  const { config, selected, nodeFilter } = useMapAnalysisCtx();
+export function use3DTracerouteLines(params: Use3DTracerouteLinesParams): TracerouteLines3D {
+  const { layer, selected, nodeFilter } = params;
   const { overlayColors } = useSettings();
-  const layer = config.layers.traceroutes;
   const options = useMemo(
-    () => getTracerouteOptions(config),
     // Only the traceroute options object affects the result — mirrors
     // layers/TraceroutePathsLayer.tsx L76-82.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [config.layers.traceroutes.options],
+    () => ({
+      ...DEFAULT_TRACEROUTE_OPTIONS,
+      ...(layer.options as Partial<TracerouteLayerOptions> | undefined),
+    }),
+    [layer.options],
   );
 
   const { data: sources = [] } = useDashboardSources();
   const sourceIds =
-    config.sources.length === 0
+    params.sources.length === 0
       ? (sources as { id: string }[]).map((s) => s.id)
-      : config.sources;
+      : params.sources;
   const { items } = useTraceroutes({
     enabled: layer.enabled,
     sources: sourceIds,
@@ -112,7 +135,7 @@ export function use3DTracerouteLines(): TracerouteLines3D {
     [nodes, nodeFilter],
   );
 
-  const ts = config.timeSlider;
+  const ts = params.timeSlider;
   const timeWindow = useMemo(
     () =>
       ts.enabled && ts.windowStartMs !== undefined && ts.windowEndMs !== undefined
