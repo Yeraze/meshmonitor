@@ -23,8 +23,13 @@ vi.mock('react-leaflet', () => ({
       {children}
     </div>
   ),
-  TileLayer: (props: { url?: string; maxZoom?: number }) => (
-    <div data-testid="raster-tile" data-url={props.url} data-maxzoom={String(props.maxZoom)} />
+  TileLayer: (props: { url?: string; maxZoom?: number; zIndex?: number }) => (
+    <div
+      data-testid="raster-tile"
+      data-url={props.url}
+      data-maxzoom={String(props.maxZoom)}
+      data-zindex={props.zIndex === undefined ? '' : String(props.zIndex)}
+    />
   ),
   useMap: () => ({ invalidateSize: vi.fn() }),
   useMapEvents: () => ({ invalidateSize: vi.fn() }),
@@ -94,6 +99,30 @@ describe('BaseMap', () => {
     const rasterTile = screen.getByTestId('raster-tile');
     expect(rasterTile).toBeInTheDocument();
     expect(rasterTile.getAttribute('data-url')).toBe(OSM_URL);
+  });
+
+  // 3c. Hybrid overlay branch: a raster tileset with an `overlayUrl` renders a
+  // SECOND transparent TileLayer on top of the base, at a higher zIndex so the
+  // labels/roads sit above the imagery.
+  it('renders a second overlay TileLayer above the base when the tileset has an overlayUrl (esriHybrid)', () => {
+    render(<BaseMap center={[0, 0]} zoom={3} tilesetId="esriHybrid" />);
+    const tiles = screen.getAllByTestId('raster-tile');
+    expect(tiles).toHaveLength(2);
+
+    const [base, overlay] = tiles;
+    expect(base.getAttribute('data-url')).toContain('World_Imagery');
+    expect(base.getAttribute('data-zindex')).toBe(''); // base uses the leaflet default
+    expect(overlay.getAttribute('data-url')).toContain('World_Reference_Overlay');
+    expect(Number(overlay.getAttribute('data-zindex'))).toBeGreaterThan(0);
+
+    expect(screen.queryByTestId('vector-tile')).not.toBeInTheDocument();
+  });
+
+  it('renders only the base raster tile (no overlay) for a tileset without overlayUrl', () => {
+    render(<BaseMap center={[0, 0]} zoom={3} tilesetId="esriSatellite" />);
+    const tiles = screen.getAllByTestId('raster-tile');
+    expect(tiles).toHaveLength(1);
+    expect(tiles[0].getAttribute('data-url')).toContain('World_Imagery');
   });
 
   // 3b. Raster tile-layer keying (tile-loading regression fix): the raster

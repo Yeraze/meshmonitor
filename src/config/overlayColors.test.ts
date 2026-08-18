@@ -45,14 +45,15 @@ describe('overlayColors', () => {
   });
 
   describe('tilesetSchemeMap completeness', () => {
-    it('maps all 6 built-in tilesets', () => {
-      expect(Object.keys(tilesetSchemeMap)).toHaveLength(6);
+    it('maps all 7 built-in tilesets', () => {
+      expect(Object.keys(tilesetSchemeMap)).toHaveLength(7);
       expect(tilesetSchemeMap).toHaveProperty('osm');
       expect(tilesetSchemeMap).toHaveProperty('osmHot');
       expect(tilesetSchemeMap).toHaveProperty('cartoDark');
       expect(tilesetSchemeMap).toHaveProperty('cartoLight');
       expect(tilesetSchemeMap).toHaveProperty('openTopo');
       expect(tilesetSchemeMap).toHaveProperty('esriSatellite');
+      expect(tilesetSchemeMap).toHaveProperty('esriHybrid');
     });
   });
 
