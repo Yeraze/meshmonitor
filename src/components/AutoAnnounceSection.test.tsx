@@ -860,3 +860,45 @@ describe.skip('AutoAnnounceSection Component', () => {
     });
   });
 });
+
+// Standalone suite — the legacy describe above is `.skip`ped (it broke in the
+// SaveBar refactor). This runs independently so #4731's notice is actually
+// covered. Module-level mocks (react-i18next, useCsrfFetch, ToastContainer,
+// useSaveBar, useSourceQuery) apply here too.
+describe('AutoAnnounceSection — firmware 2.8 MeshBeacon notice (#4731)', () => {
+  const props = {
+    enabled: true,
+    intervalHours: 6,
+    message: 'hi',
+    channelIndexes: [0],
+    announceOnStart: false,
+    useSchedule: false,
+    schedule: '0 */6 * * *',
+    channels: [] as Channel[],
+    baseUrl: '',
+    onEnabledChange: vi.fn(),
+    onIntervalChange: vi.fn(),
+    onMessageChange: vi.fn(),
+    onChannelIndexesChange: vi.fn(),
+    onAnnounceOnStartChange: vi.fn(),
+    onUseScheduleChange: vi.fn(),
+    onScheduleChange: vi.fn(),
+  };
+
+  beforeEach(() => {
+    (global.fetch as any) = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ lastAnnouncementTime: Date.now() }),
+    });
+  });
+
+  it('renders the notice, worded to the verified firmware behavior', () => {
+    render(<AutoAnnounceSection {...props} />);
+    const notice = screen.getByText(/firmware 2\.8's MeshBeacon module/i);
+    expect(notice).toBeInTheDocument();
+    expect(notice.textContent).toMatch(/zero-hop/i);
+    expect(notice.textContent).toMatch(/development branch/i);
+    // Must NOT claim a native "Auto Welcome" exists (the firmware has none).
+    expect(notice.textContent || '').not.toMatch(/auto[- ]?welcome/i);
+  });
+});
