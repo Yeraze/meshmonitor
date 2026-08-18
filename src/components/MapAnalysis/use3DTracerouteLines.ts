@@ -99,13 +99,12 @@ export function use3DTracerouteLines(params: Use3DTracerouteLinesParams): Tracer
   const { layer, selected, nodeFilter } = params;
   const { overlayColors } = useSettings();
   const options = useMemo(
+    // Only the traceroute options object affects the result — mirrors
+    // layers/TraceroutePathsLayer.tsx L76-82.
     () => ({
       ...DEFAULT_TRACEROUTE_OPTIONS,
       ...(layer.options as Partial<TracerouteLayerOptions> | undefined),
     }),
-    // Only the traceroute options object affects the result — mirrors
-    // layers/TraceroutePathsLayer.tsx L76-82.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [layer.options],
   );
 

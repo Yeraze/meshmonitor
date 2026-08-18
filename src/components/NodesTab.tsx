@@ -1689,22 +1689,20 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // #4704: node features for the 3D surface — the same visible+positioned set
   // the 2D markers use, at the same (precision-offset) positions from
   // `nodePositions`. Computed unconditionally (no hooks); only consumed in 3D.
-  const node3DFeatures: Node3DFeature[] = useMemo(
-    () =>
-      visibleMapNodes
-        .map(node => {
-          const pos = nodePositions.get(node.nodeNum);
-          if (!pos) return null;
-          return {
-            key: String(node.user?.id ?? node.nodeNum),
-            lat: pos[0],
-            lng: pos[1],
-            label: node.user?.shortName ?? undefined,
-          };
-        })
-        .filter((f): f is Node3DFeature => f !== null),
-    [visibleMapNodes, nodePositions],
-  );
+  const node3DFeatures: Node3DFeature[] = useMemo(() => {
+    const out: Node3DFeature[] = [];
+    for (const node of visibleMapNodes) {
+      const pos = nodePositions.get(node.nodeNum);
+      if (!pos) continue;
+      out.push({
+        key: String(node.user?.id ?? node.nodeNum),
+        lat: pos[0],
+        lng: pos[1],
+        label: node.user?.shortName ?? undefined,
+      });
+    }
+    return out;
+  }, [visibleMapNodes, nodePositions]);
 
   const nodeMarkers: NodeMarkerDescriptor[] = visibleMapNodes
     .map(node => {
