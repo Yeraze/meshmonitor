@@ -3,6 +3,7 @@ import { useMapAnalysisConfig } from '../../hooks/useMapAnalysisConfig';
 import type { LinkEndpoint, LinkVerdict } from '../../utils/linkProfile';
 import type { SitePlannerOrigin } from './SitePlannerOriginController';
 import type { PredictedCoverage } from '../map/layers/predictedCoverageGeometry';
+import type { GnssDopMeta, GnssDopUiParams } from '../map/layers/gnssDopGeometry';
 
 export interface SelectedTarget {
   type: 'node' | 'segment' | 'neighbor' | 'trail';
@@ -61,6 +62,20 @@ type CtxShape = ReturnType<typeof useMapAnalysisConfig> & {
   setSitePlannerOrigin: (v: SitePlannerOrigin | null) => void;
   predictedCoverage: PredictedCoverage | null;
   setPredictedCoverage: (v: PredictedCoverage | null) => void;
+  /**
+   * GNSS DOP overlay (#4729): on/off mode, the user-set params (elevation mask,
+   * time, constellations), and the last fetch's meta (clamp/loading/error) that
+   * the layer reports up for the panel's legend + "resolution reduced" notice.
+   * Off by default and mutually exclusive with the other click-capturing tools
+   * only insofar as it needs no map clicks — it is a passive overlay, so it can
+   * coexist, but the toolbar keeps it a simple toggle.
+   */
+  gnssDopMode: boolean;
+  setGnssDopMode: (v: boolean) => void;
+  gnssDopParams: GnssDopUiParams;
+  setGnssDopParams: (v: GnssDopUiParams) => void;
+  gnssDopMeta: GnssDopMeta | null;
+  setGnssDopMeta: (v: GnssDopMeta | null) => void;
   setLinkProfileMode: (m: boolean) => void;
   /** Picked endpoints (0..2) for the Link Profile tool; transient, not persisted. */
   linkEndpoints: LinkEndpoint[];
@@ -122,6 +137,13 @@ export function MapAnalysisProvider({ children }: { children: ReactNode }) {
   const [sitePlannerMode, setSitePlannerMode] = useState(false);
   const [sitePlannerOrigin, setSitePlannerOrigin] = useState<SitePlannerOrigin | null>(null);
   const [predictedCoverage, setPredictedCoverage] = useState<PredictedCoverage | null>(null);
+  const [gnssDopMode, setGnssDopMode] = useState(false);
+  const [gnssDopParams, setGnssDopParams] = useState<GnssDopUiParams>(() => ({
+    maskDeg: 5,
+    timeMs: Date.now(),
+    constellations: ['gps'],
+  }));
+  const [gnssDopMeta, setGnssDopMeta] = useState<GnssDopMeta | null>(null);
   const [linkEndpoints, setLinkEndpoints] = useState<LinkEndpoint[]>([]);
   const [linkVerdict, setLinkVerdict] = useState<LinkVerdict | null>(null);
   const [hoverPoint, setHoverPoint] = useState<{ lat: number; lng: number } | null>(null);
@@ -145,6 +167,12 @@ export function MapAnalysisProvider({ children }: { children: ReactNode }) {
         setSitePlannerOrigin,
         predictedCoverage,
         setPredictedCoverage,
+        gnssDopMode,
+        setGnssDopMode,
+        gnssDopParams,
+        setGnssDopParams,
+        gnssDopMeta,
+        setGnssDopMeta,
         setLinkProfileMode,
         linkEndpoints,
         setLinkEndpoints,

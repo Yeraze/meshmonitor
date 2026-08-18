@@ -2,7 +2,7 @@ import { useMemo, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, LocateFixed, Maximize, Clock, Ruler, Mountain, RadioTower, RotateCcw,
-  MapPin, Palette, Flag, CircleDashed, Radar, Route, Share2, Flame, Spline, Signal, Box, Users,
+  MapPin, Palette, Flag, CircleDashed, Radar, Route, Share2, Flame, Spline, Signal, Box, Users, Satellite,
 } from 'lucide-react';
 import { useDashboardSources } from '../../hooks/useDashboardData';
 import LayerToggleButton from './LayerToggleButton';
@@ -71,6 +71,8 @@ export default function MapAnalysisToolbar() {
     linkProfileMode,
     sitePlannerMode,
     setSitePlannerMode,
+    gnssDopMode,
+    setGnssDopMode,
     setLinkProfileMode,
     reset,
   } = useMapAnalysisCtx();
@@ -315,6 +317,20 @@ export default function MapAnalysisToolbar() {
           <RadioTower size={ICON} />
         </button>
       )}
+
+      {/* GNSS DOP overlay (#4729). A passive heatmap of satellite-geometry
+          quality over the viewport — no map clicks, no elevation, no existing
+          nodes needed, so it's always available and doesn't fight the
+          click-capturing tools for the pointer. Off by default. */}
+      <button
+        type="button"
+        className={`map-analysis-layer-btn icon-only ${gnssDopMode ? 'active' : ''}`}
+        onClick={() => setGnssDopMode(!gnssDopMode)}
+        title="GNSS DOP — GPS position-fix quality over the map, by time of day"
+        aria-label="GNSS DOP overlay"
+      >
+        <Satellite size={ICON} />
+      </button>
       {UNTIMED_LAYERS.map(({ key, label, icon }) => (
         <LayerToggleButton
           key={key}
