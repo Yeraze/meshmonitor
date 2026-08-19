@@ -1,0 +1,144 @@
+/* GNSS DOP overlay panel (#4729). Scoped module — see CLAUDE.md. */
+
+.gnssDop {
+  position: absolute;
+  top: 4rem;
+  right: 0.75rem;
+  z-index: 1000;
+  width: min(320px, calc(100vw - 1.5rem));
+  max-height: calc(100% - 5rem);
+  overflow-y: auto;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.gnssDopHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.gnssDopHead h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.gnssDopField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.75rem;
+  font-size: 0.8rem;
+}
+
+.gnssDopField input[type='number'] {
+  width: 100%;
+  padding: 0.25rem 0.35rem;
+}
+
+.gnssDopField input[type='range'] {
+  width: 100%;
+}
+
+.gnssDopTimeHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.gnssDopTimeHead span {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.gnssDopNow {
+  padding: 0.1rem 0.45rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.gnssDopTimeReadout {
+  margin: 0;
+  font-size: 0.74rem;
+  color: var(--color-text-muted);
+}
+
+.gnssDopConstellations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.gnssDopChip,
+.gnssDopChipDisabled {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.4rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-size: 0.74rem;
+}
+
+.gnssDopChipDisabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.gnssDopLegend {
+  margin-top: 0.85rem;
+  font-size: 0.74rem;
+}
+
+.gnssDopLegendTitle {
+  color: var(--color-text-muted);
+}
+
+.gnssDopLegendRamp {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.35rem;
+}
+
+.gnssDopLegendStop {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.gnssDopLegendStop i {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.gnssDopHint,
+.gnssDopCaveat {
+  margin: 0.6rem 0 0;
+  font-size: 0.74rem;
+  color: var(--color-text-muted);
+}
+
+.gnssDopError {
+  margin: 0.6rem 0 0;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--color-error);
+  border-radius: 4px;
+  color: var(--color-error);
+  font-size: 0.78rem;
+}

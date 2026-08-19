@@ -621,6 +621,7 @@ import sourceRoutes from './routes/sourceRoutes.js';
 import unifiedRoutes from './routes/unifiedRoutes.js';
 import analysisRoutes from './routes/analysisRoutes.js';
 import elevationRoutes from './routes/elevationRoutes.js';
+import gnssRoutes from './routes/gnssRoutes.js';
 import rfCoverageRoutes from './routes/rfCoverageRoutes.js';
 import { firmwareUpdateService } from './services/firmwareUpdateService.js';
 import { createGeoJsonRouter } from './routes/geojsonRoutes.js';
@@ -799,6 +800,9 @@ apiRouter.use('/analysis', analysisRoutes);
 
 // Terrain link elevation profile (#4111 Phase 1)
 apiRouter.use('/elevation', elevationRoutes);
+
+// GNSS/GPS constellation overlay (#4729) — sky view + DOP compute over live TLEs
+apiRouter.use('/gnss', gnssRoutes);
 
 // GeoJSON overlay layer routes
 const geojsonDataDir = path.join(process.env.DATA_DIR || '/data', 'geojson');

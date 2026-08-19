@@ -36,6 +36,78 @@ export interface MeshtasticContactUrl {
   url: string;
 }
 
+/** One visible satellite in a GNSS sky view (#4729). `azDeg` ∈ [0,360) with
+ *  0=North increasing clockwise; `elDeg` ∈ [mask,90] with 90=zenith. */
+export interface SkyViewSatellite {
+  name: string;
+  azDeg: number;
+  elDeg: number;
+  rangeKm: number;
+}
+
+/** Dilution-of-precision factors for a sky view. Null when too few satellites
+ *  are visible to solve the geometry (#4729). */
+export interface SkyViewDop {
+  gdop: number;
+  pdop: number;
+  hdop: number;
+  vdop: number;
+}
+
+/** Response payload of POST /api/gnss/skyview (unwrapped from `{success,data}`). */
+export interface SkyViewResult {
+  satellites: SkyViewSatellite[];
+  dop: SkyViewDop | null;
+  visibleCount: number;
+  observer?: { lat: number; lon: number; altKm: number };
+  timeMs?: number;
+  elevationMaskDeg?: number;
+  constellations?: string[];
+}
+
+/** Request parameters for POST /api/gnss/skyview. */
+export interface SkyViewParams {
+  lat: number;
+  lon: number;
+  altKm?: number;
+  timeMs?: number;
+  elevationMaskDeg?: number;
+  constellations?: string[];
+}
+
+/** One grid cell in a DOP overlay: the observer point and its GDOP (#4729).
+ *  `gdop` is null where too few satellites are visible to solve the geometry. */
+export interface DopGridPoint {
+  lat: number;
+  lon: number;
+  gdop: number | null;
+}
+
+/** Request parameters for POST /api/gnss/dop. `bbox` is the map viewport; the
+ *  server coarsens `stepDeg` (reporting `clamped`) if the cell count exceeds its
+ *  cap, so pass what you'd like and read back what you got. */
+export interface DopGridParams {
+  bbox: { minLat: number; minLon: number; maxLat: number; maxLon: number };
+  stepDeg: number;
+  timeMs?: number;
+  elevationMaskDeg?: number;
+  constellations?: string[];
+}
+
+/** Response payload of POST /api/gnss/dop (unwrapped from `{success,data}`).
+ *  `stepDeg` is the step actually used; `requestedStepDeg` is what was asked.
+ *  `clamped` is true when the server coarsened the grid to fit its cell cap. */
+export interface DopGridResult {
+  points: DopGridPoint[];
+  cellCount: number;
+  stepDeg: number;
+  requestedStepDeg: number;
+  clamped: boolean;
+  timeMs: number;
+  elevationMaskDeg: number;
+  constellations: string[];
+}
+
 /**
  * One traceroute a node took part in — as an endpoint or an intermediate hop.
  * Backs `GET /api/traceroutes/participation/:nodeNum` (epic phase 2 traceroute
@@ -1975,6 +2047,36 @@ class ApiService {
     const res = await this.post<{ success: boolean; data: ElevationTestResult }>(
       '/api/elevation/test',
       probe ? { url, lat: probe.lat, lng: probe.lng } : { url },
+    );
+    return res.data;
+  }
+
+  /**
+   * GNSS sky view for one observer point (#4729). Returns the visible-satellite
+   * list + DOP for the given lat/lon (defaults: now, 5° mask, GPS only). POST is
+   * CSRF-guarded; `post()` attaches the token. Unwraps the `{ success, data }`
+   * envelope — `request()` returns the raw body, so `.data` is read explicitly
+   * here (see the MQTT-monitor unwrap gotcha documented in CLAUDE.md).
+   */
+  async getSkyView(params: SkyViewParams): Promise<SkyViewResult> {
+    const res = await this.post<{ success: boolean; data: SkyViewResult }>(
+      '/api/gnss/skyview',
+      params,
+    );
+    return res.data;
+  }
+
+  /**
+   * GNSS DOP grid over a bounding box (#4729), backing the Map Analysis DOP
+   * overlay. Returns a grid of `{ lat, lon, gdop }` cells for the given bbox at
+   * the given time (defaults: now, 5° mask, GPS only). Server-side compute over
+   * cached TLEs — no mesh traffic. Same `{ success, data }` unwrap as
+   * `getSkyView` (see the MQTT-monitor unwrap gotcha in CLAUDE.md).
+   */
+  async getDopGrid(params: DopGridParams): Promise<DopGridResult> {
+    const res = await this.post<{ success: boolean; data: DopGridResult }>(
+      '/api/gnss/dop',
+      params,
     );
     return res.data;
   }
