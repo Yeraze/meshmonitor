@@ -206,8 +206,12 @@ describe('Base3DMap', () => {
       .find((l: any) => l.id === 'nodes-marker');
     expect(markerLayer).toBeDefined();
     expect(markerLayer.type).toBe('symbol');
-    expect(markerLayer.layout['icon-image']).toBe('node-marker-icon');
+    // icon-image is now data-driven (#4808): standard→SDF disc, glyph families→
+    // a per-(family,color) raster, resolved from the `iconImage` feature prop.
+    expect(markerLayer.layout['icon-image']).toEqual(['get', 'iconImage']);
     expect(markerLayer.paint['icon-color']).toEqual(['get', 'color']);
+    // #4808 marker parity: per-hop color + age-dim opacity are data-driven.
+    expect(markerLayer.paint['icon-opacity']).toEqual(['get', 'opacity']);
     // Must NOT be a circle layer (the buried-marker regression).
     expect(map.addLayer).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'circle' }));
     expect(map.addLayer).toHaveBeenCalledWith(expect.objectContaining({ id: 'nodes-label', type: 'symbol' }));

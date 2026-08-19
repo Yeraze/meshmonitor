@@ -5,6 +5,7 @@ import './maplibreWorker';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { Basemap3DSource } from '../../config/basemap3d';
 import { NODE_MARKER_IMAGE_ID, NODE_MARKER_IMAGE_SIZE, createNodeMarkerImage } from './nodeMarkerIcon';
+import { glyphIconId, parseGlyphIconId, rasterizeGlyphIcon } from './nodeGlyphIcons';
 import './Base3DMap.css';
 
 /** A single node marker fed into the MapLibre `nodes` GeoJSON source. */
@@ -13,7 +14,19 @@ export interface Node3DFeature {
   lat: number;
   lng: number;
   label?: string;
+  /** Hop-based marker color (`getHopColor`), matching the 2D map (#4808). */
   color?: string;
+  /**
+   * Node-type category from `getNodeTypeCategory` (#4808). Selects the marker
+   * glyph (repeater tower, sensor, room server, companion, or the plain disc).
+   */
+  category?: string;
+  /**
+   * Marker opacity [0,1] from the 2D age-dimming (`calculateNodeOpacity` /
+   * `ageOpacity`), so old nodes fade in 3D exactly as they do in 2D (#4808).
+   * Defaults to 1 (fully opaque).
+   */
+  opacity?: number;
 }
 
 /**
@@ -133,11 +146,25 @@ function isWebGlAvailable(): boolean {
 function toNodesFeatureCollection(nodes: Node3DFeature[]): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
-    features: nodes.map((n) => ({
-      type: 'Feature',
-      geometry: { type: 'Point', coordinates: [n.lng, n.lat] },
-      properties: { key: n.key, label: n.label ?? '', color: n.color ?? '#3fb1ce' },
-    })),
+    features: nodes.map((n) => {
+      const color = n.color ?? '#3fb1ce';
+      const category = n.category ?? 'standard';
+      // `standard` (no glyph) uses the shared SDF disc, tinted by icon-color;
+      // glyph families select a pre-colored raster generated on demand (#4808).
+      const iconImage = category === 'standard' ? NODE_MARKER_IMAGE_ID : glyphIconId(category, color);
+      return {
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [n.lng, n.lat] },
+        properties: {
+          key: n.key,
+          label: n.label ?? '',
+          color,
+          category,
+          iconImage,
+          opacity: n.opacity ?? 1,
+        },
+      };
+    }),
   };
 }
 
@@ -396,15 +423,36 @@ export function Base3DMap({
           sdf: true,
         });
       }
+      // Per-node-type glyph icons (#4808): the `standard` family uses the SDF
+      // disc above; glyph families (repeater/sensor/roomServer/companion) use a
+      // full-color raster of the 2D role-glyph marker, generated lazily the
+      // first time the layer asks for a `"<family>_<color>"` id that isn't
+      // registered yet. A Set guards against duplicate in-flight rasterizations
+      // while the async image loads (styleimagemissing fires every frame).
+      const pendingGlyphIcons = new Set<string>();
+      map.on('styleimagemissing', (e) => {
+        const id = e.id;
+        if (map.hasImage(id) || pendingGlyphIcons.has(id)) return;
+        const parsed = parseGlyphIconId(id);
+        if (!parsed) return;
+        pendingGlyphIcons.add(id);
+        void rasterizeGlyphIcon(parsed.family, parsed.color)
+          .then((imgData) => {
+            pendingGlyphIcons.delete(id);
+            if (imgData && !map.hasImage(id)) map.addImage(id, imgData);
+          })
+          .catch(() => pendingGlyphIcons.delete(id));
+      });
       map.addLayer({
         id: NODES_MARKER_LAYER_ID,
         type: 'symbol',
         source: NODES_SOURCE_ID,
         layout: {
-          'icon-image': NODE_MARKER_IMAGE_ID,
-          // 64px source image scaled to ~a 6px-radius dot, matching the old
-          // circle-radius of 6.
-          'icon-size': 0.25,
+          // `standard` → the tinted SDF disc; glyph families → the pre-colored
+          // raster keyed by `iconImage` (see toNodesFeatureCollection).
+          'icon-image': ['get', 'iconImage'],
+          // 64px source image scaled down; glyph markers read at this size.
+          'icon-size': 0.35,
           // Always draw every dot — dots must never be dropped by symbol
           // collision the way a label legitimately can be.
           'icon-allow-overlap': true,
@@ -419,6 +467,8 @@ export function Base3DMap({
           'icon-color': ['get', 'color'],
           'icon-halo-color': '#ffffff',
           'icon-halo-width': 1.5,
+          // Fade aged nodes exactly as the 2D map does (#4808).
+          'icon-opacity': ['get', 'opacity'],
         },
       });
       map.addLayer({
@@ -435,6 +485,7 @@ export function Base3DMap({
           'text-color': '#f8fafc',
           'text-halo-color': '#0f172a',
           'text-halo-width': 1,
+          'text-opacity': ['get', 'opacity'],
         },
       });
 

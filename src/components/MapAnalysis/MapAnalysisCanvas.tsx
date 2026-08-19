@@ -6,6 +6,7 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { useMapAnalysisCtx } from './MapAnalysisContext';
 import { useSource } from '../../contexts/SourceContext';
 import { useAnalysisNodes } from './useAnalysisNodes';
+import { getNodeTypeCategory, categoryGlyphFamily } from '../../utils/nodeTypeCategory';
 import MeasureDistanceController from '../MeasureDistanceController';
 import type { MeasurePoint } from '../../utils/measureDistance';
 import LinkProfileController from './LinkProfileController';
@@ -165,6 +166,11 @@ export default function MapAnalysisCanvas() {
       lat: a.latLng[0],
       lng: a.latLng[1],
       label: a.node.shortName ?? undefined,
+      // Node-type glyph, consistent with the other 3D surfaces (#4808). Hop
+      // color + age dimming here depend on MapAnalysis's own hop-shading / age
+      // model and are handled in the follow-up; markers default to the disc's
+      // color/opacity until then.
+      category: categoryGlyphFamily(getNodeTypeCategory(a.node)),
     })),
     [analysisNodes],
   );
