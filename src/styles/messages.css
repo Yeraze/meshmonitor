@@ -86,7 +86,7 @@
   color: var(--color-chat-bubble-sent-text, var(--color-accent-text));
 }
 
-.message-bubble.mine a.message-link {
+.message-bubble.mine .message-text a.message-link {
   color: var(--color-chat-bubble-sent-text, var(--color-accent-text));
   text-decoration: underline;
 }
