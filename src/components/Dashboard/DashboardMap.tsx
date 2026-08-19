@@ -18,7 +18,8 @@ import type { PathOptions } from 'leaflet';
 import L from 'leaflet';
 import { createNodeIcon } from '../../utils/mapIcons';
 import { markerAgeOpacity } from '../../utils/markerAgeOpacity';
-import { getNodeTypeCategory } from '../../utils/nodeTypeCategory';
+import { getNodeTypeCategory, categoryGlyphFamily } from '../../utils/nodeTypeCategory';
+import { getHopColor } from '../../utils/mapIcons';
 import { NodeMarkersLayer, type NodeMarkerDescriptor } from '../map/layers/NodeMarkersLayer';
 import type { CustomTileset } from '../../config/tilesets';
 import DashboardWaypoints from './DashboardWaypoints';
@@ -340,16 +341,24 @@ export default function DashboardMap({
   // #4704: node markers for the 3D surface — same visible+positioned node list
   // the 2D markers use, mapped to the shape `Base3DMap` expects. Computed
   // unconditionally (cheap map, no hooks); only consumed when `effective3D`.
-  const node3DFeatures: Node3DFeature[] = useMemo(
-    () =>
-      nodesWithPosition.map(({ node, pos }) => ({
-        key: unifiedNodeKey(node) ?? String(node.nodeNum ?? node.nodeId ?? node.user?.id),
-        lat: pos.lat,
-        lng: pos.lng,
-        label: node.shortName ?? node.user?.shortName ?? undefined,
-      })),
-    [nodesWithPosition],
-  );
+  const node3DFeatures: Node3DFeature[] = useMemo(() => {
+    // Computed once per recompute (not per render) — age dimming is approximate,
+    // and pinning it to a dep-free `now` avoids re-setData churn (#4808).
+    const now = Date.now();
+    const cutoffMs = (now / 1000 - effectiveMaxAge * 60 * 60) * 1000;
+    return nodesWithPosition.map(({ node, pos }) => ({
+      key: unifiedNodeKey(node) ?? String(node.nodeNum ?? node.nodeId ?? node.user?.id),
+      lat: pos.lat,
+      lng: pos.lng,
+      label: node.shortName ?? node.user?.shortName ?? undefined,
+      // Match the 2D marker (#4808): hop color + glyph-family category + age dim.
+      color: getHopColor(node.hopsAway ?? 999),
+      category: categoryGlyphFamily(getNodeTypeCategory(node)),
+      opacity: node.isFavorite
+        ? 1
+        : markerAgeOpacity(now, cutoffMs, node.lastHeard != null ? node.lastHeard * 1000 : null),
+    }));
+  }, [nodesWithPosition, effectiveMaxAge]);
 
   // #3636: measurement endpoints — nearest-node snapping picks from these.
   const measurePoints: MeasurePoint[] = nodesWithPosition.map(({ node, pos }) => ({

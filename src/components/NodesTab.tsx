@@ -7,7 +7,7 @@ import type { Marker as LeafletMarker } from 'leaflet';
 import { DeviceInfo } from '../types/device';
 import { TabType } from '../types/ui';
 import { nodePassesTransportFilter, transportCutoffSec } from '../utils/nodeTransport';
-import { getNodeTypeCategory } from '../utils/nodeTypeCategory';
+import { getNodeTypeCategory, categoryGlyphFamily } from '../utils/nodeTypeCategory';
 import { effectiveMapMaxAgeHours } from '../utils/mapAge';
 import { ageFilterStops, nearestAgeStopIndex, formatAgeStop } from '../utils/mapAgeSteps';
 import { downsamplePositionHistory, MAX_RENDERED_POSITION_POINTS } from '../utils/positionHistoryDownsample';
@@ -1694,15 +1694,38 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     for (const node of visibleMapNodes) {
       const pos = nodePositions.get(node.nodeNum);
       if (!pos) continue;
+      // Match the 2D marker (#4808): hop-based color + glyph-family category.
+      const isLocalNode = node.user?.id === currentNodeId;
+      const hops = isLocalNode ? 0 : getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
       out.push({
         key: String(node.user?.id ?? node.nodeNum),
         lat: pos[0],
         lng: pos[1],
         label: node.user?.shortName ?? undefined,
+        color: getHopColor(hops),
+        category: categoryGlyphFamily(getNodeTypeCategory(node)),
+        opacity: calculateNodeOpacity(
+          node.lastHeard,
+          nodeDimmingEnabled,
+          nodeDimmingStartHours,
+          nodeDimmingMinOpacity,
+          maxNodeAgeHours,
+        ),
       });
     }
     return out;
-  }, [visibleMapNodes, nodePositions]);
+  }, [
+    visibleMapNodes,
+    nodePositions,
+    currentNodeId,
+    nodeHopsCalculation,
+    traceroutes,
+    currentNodeNum,
+    nodeDimmingEnabled,
+    nodeDimmingStartHours,
+    nodeDimmingMinOpacity,
+    maxNodeAgeHours,
+  ]);
 
   const nodeMarkers: NodeMarkerDescriptor[] = visibleMapNodes
     .map(node => {
