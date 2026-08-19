@@ -134,6 +134,9 @@ const { FakeMap, FakeNavigationControl, FakeAttributionControl, FakePopup } = vi
     }
     remove() {
       this.removed = true;
+      // Real maplibre fires 'close' synchronously on remove(); mirror that so
+      // tests exercise the close-listener path (#4808 rapid-click guard).
+      this.handlers.close?.();
     }
   }
 
@@ -315,6 +318,44 @@ describe('Base3DMap', () => {
       map.layerHandlers['click:nodes-marker']({ features: [{ properties: { key: 'node-1' } }], lngLat: { lng: 0, lat: 0 } });
     });
     expect(FakePopup.instances).toHaveLength(0);
+  });
+
+  it('keeps the newer popup when markers are clicked in rapid succession (#4808)', () => {
+    FakePopup.instances = [];
+    render(
+      <Base3DMap
+        center={[40.0, -105.0]}
+        zoom={12}
+        basemap={basemap}
+        terrainTileUrl={terrainTileUrl}
+        nodes={nodes}
+        renderPopup={(key) => <div data-testid="popup-body">popup:{key}</div>}
+      />,
+    );
+    const map = currentFakeMap();
+    act(() => {
+      map.triggerLoad();
+    });
+    // First marker click opens popup A.
+    act(() => {
+      map.layerHandlers['click:nodes-marker']({
+        features: [{ properties: { key: 'node-1' }, geometry: { type: 'Point', coordinates: [-105, 40] } }],
+        lngLat: { lng: -105, lat: 40 },
+      });
+    });
+    // Second marker click tears down A (firing its guarded close) and opens B.
+    act(() => {
+      map.layerHandlers['click:nodes-marker']({
+        features: [{ properties: { key: 'node-2' }, geometry: { type: 'Point', coordinates: [-104, 41] } }],
+        lngLat: { lng: -104, lat: 41 },
+      });
+    });
+    // The first popup was removed; the second survives with its own content.
+    expect(FakePopup.instances).toHaveLength(2);
+    expect(FakePopup.instances[0].removed).toBe(true);
+    const latest = FakePopup.instances.at(-1)!;
+    expect(latest.removed).toBe(false);
+    expect(latest.container?.querySelector('[data-testid="popup-body"]')?.textContent).toBe('popup:node-2');
   });
 
   it('updates terrain exaggeration via setTerrain when the slider changes', () => {

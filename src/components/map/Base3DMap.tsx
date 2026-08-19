@@ -531,7 +531,15 @@ export function Base3DMap({
             .setLngLat(lngLat)
             .setDOMContent(container)
             .addTo(map);
-          popup.on('close', () => setOpenPopup(null));
+          // Guard the close listener by popup identity: a stale popup being
+          // torn down (rapid successive clicks, unmount) must not clear the
+          // state of a newer popup that has already replaced it.
+          popup.on('close', () => {
+            if (popupRef.current === popup) {
+              popupRef.current = null;
+              setOpenPopup(null);
+            }
+          });
           popupRef.current = popup;
           setOpenPopup({ key, container });
         }
