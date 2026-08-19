@@ -1727,6 +1727,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     maxNodeAgeHours,
   ]);
 
+  // Visible node numbers for gating the 3D neighbor/traceroute lines to the
+  // rendered markers, matching 2D (#4808).
+  const visible3DNodeNums = useMemo(
+    () => new Set(visibleMapNodes.map((n) => n.nodeNum)),
+    [visibleMapNodes],
+  );
+
   const nodeMarkers: NodeMarkerDescriptor[] = visibleMapNodes
     .map(node => {
       const markerKey = String(node.user?.id ?? node.nodeNum);
@@ -2967,6 +2974,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   showNeighbors={!!currentSourceId && showNeighborInfo}
                   showTraceroutes={!!currentSourceId && (showPaths || showRoute)}
                   lookbackHours={effectiveMapMaxAge}
+                  visibleNodeNums={visible3DNodeNums}
                   onUnsupported={() => setViewMode('2d')}
                 />
                 {shouldShowData() && showTileSelector && (

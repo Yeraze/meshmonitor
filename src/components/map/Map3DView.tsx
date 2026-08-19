@@ -29,6 +29,13 @@ export interface Map3DViewProps {
   showTraceroutes: boolean;
   /** Fetch lookback window in hours for the neighbor/traceroute data. */
   lookbackHours: number;
+  /**
+   * Visible node numbers (the host's rendered-marker set). When provided, the
+   * neighbor/traceroute lines are gated so both endpoints are visible — 3D
+   * lines then match the 2D map instead of dangling to nodes hidden by its
+   * age/transport/estimated filters (#4808). Omit for MapAnalysis (all nodes).
+   */
+  visibleNodeNums?: Set<number>;
   /** Seed for the exaggeration slider (default `1.3`). */
   initialExaggeration?: number;
   /** Fired with the new exaggeration value whenever the slider changes. */
@@ -60,6 +67,7 @@ export function Map3DView({
   showNeighbors,
   showTraceroutes,
   lookbackHours,
+  visibleNodeNums,
   initialExaggeration,
   onExaggerationChange,
   onUnsupported,
@@ -73,6 +81,7 @@ export function Map3DView({
     layer: { enabled: showNeighbors, lookbackHours },
     sources: sourceIds,
     timeSlider,
+    visibleNodeNums,
   });
   const tracerouteLines = use3DTracerouteLines({
     layer: { enabled: showTraceroutes, lookbackHours },
@@ -80,6 +89,7 @@ export function Map3DView({
     timeSlider,
     selected: null,
     nodeFilter: '',
+    visibleNodeNums,
   });
 
   const lines: Line3DFeature[] = useMemo(
