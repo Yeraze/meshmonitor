@@ -74,6 +74,7 @@ import {
   recordMqttEcho,
   matchesMqttEcho,
 } from './services/mqttProxyBridge.js';
+import { isDuplicatePacketLog, packetLogDedupKey } from './services/packetLogDedup.js';
 import { NodeDbMaintenanceService } from './services/nodeDbMaintenanceService.js';
 import { AutoAnnounceService } from './services/autoAnnounceService.js';
 import { AdminTransactionService } from './services/adminTransactionService.js';
@@ -862,6 +863,11 @@ class MeshtasticManager implements ISourceManager {
 
   private autoAckCooldowns: Map<number, number> = new Map(); // nodeNum -> lastResponseTimestamp; bounded, see pruneAutoAckCooldowns (#4399)
   private autoAckProcessedPackets: Set<number> = new Set(); // packetIds already auto-acked (dedup guard)
+  // Packet Monitor recently-seen guard (#4811): key -> expiry ms. Suppresses the
+  // firmware's exact-duplicate deliveries and reconnect replays from the packet
+  // log while preserving distinct relay/transport copies. Per-source (one map
+  // per manager instance).
+  private recentPacketLogKeys: Map<string, number> = new Map();
   private autoResponderCooldowns: Map<string, number> = new Map(); // "triggerIndex:nodeNum" -> lastResponseTimestamp
   private autoResponderProcessedPackets: Set<number> = new Set(); // packetIds already auto-responded (dedup guard)
 
@@ -5834,6 +5840,20 @@ class MeshtasticManager implements ISourceManager {
         // above) arrived over the air, so it is a reception, not our own 'tx'.
         const spoof = this.assessLocalSpoof(meshPacket);
 
+        // Drop exact-duplicate receptions the firmware delivers twice, or that a
+        // reconnect replays, from the Packet Monitor (#4811). The key folds in
+        // relay_node + transport, so a rebroadcast via a different relay or the
+        // same packet over LoRa vs MQTT keeps its own row. Only guard when we
+        // have a real packet id (0/absent = unknown, never collapse). Genuine
+        // local TX is logged on a different path and is never deduped here.
+        const dedupPacketId = meshPacket.id ? Number(meshPacket.id) : 0;
+        if (dedupPacketId && isDuplicatePacketLog(
+          this.recentPacketLogKeys,
+          packetLogDedupKey(fromNum, dedupPacketId, meshPacket.relayNode, meshPacket.transportMechanism),
+          Date.now()
+        )) {
+          logger.debug(`📦 Skipping duplicate packet-log entry for id ${dedupPacketId} from ${fromNum}`);
+        } else {
         void packetLogService.logPacket({
           packet_id: meshPacket.id ?? undefined,
           timestamp: Date.now(), // Use server time in ms for consistent ordering (rxTime preserved in metadata.rx_time)
@@ -5868,6 +5888,7 @@ class MeshtasticManager implements ISourceManager {
           transport_mechanism: meshPacket.transportMechanism ?? TransportMechanism.LORA,
           sourceId: this.sourceId,
         });
+        } // end else (not a duplicate packet-log entry)
         } // end else (not internal packet)
       }
     } catch (error) {
