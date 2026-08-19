@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import type { ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 // maplibre-gl v6 is ESM-only and dropped its default export (#4650).
 import * as maplibregl from 'maplibre-gl';
 import './maplibreWorker';
@@ -74,6 +76,13 @@ export interface Base3DMapProps {
   nodes: Node3DFeature[];
   /** Fired when a node's marker is clicked, with its `key`. */
   onNodeClick?: (key: string) => void;
+  /**
+   * Render the popup body for a clicked node (#4808). When provided, a marker
+   * click opens a MapLibre popup and this content is portaled into it — so it
+   * renders inside the app's provider tree and keeps its React context (e.g.
+   * SettingsContext), unlike a detached `createRoot`. Return null to suppress.
+   */
+  renderPopup?: (key: string) => ReactNode;
   /** Line segments (neighbor links, traceroute paths, …) to render below the node layers. */
   lines?: Line3DFeature[];
   /** Fired when a line is clicked, with its `key`. */
@@ -239,6 +248,7 @@ export function Base3DMap({
   terrainTileUrl,
   nodes,
   onNodeClick,
+  renderPopup,
   lines = [],
   onLineClick,
   onUnsupported,
@@ -251,6 +261,11 @@ export function Base3DMap({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [loaded, setLoaded] = useState(false);
+  // Open node popup (#4808): the maplibre Popup owns the on-map container; React
+  // portals `renderPopup(key)` into it (see the render below). `popupRef` holds
+  // the live maplibre Popup so a new click / unmount can tear the old one down.
+  const [openPopup, setOpenPopup] = useState<{ key: string; container: HTMLDivElement } | null>(null);
+  const popupRef = useRef<maplibregl.Popup | null>(null);
   const [webglUnavailable, setWebglUnavailable] = useState(false);
   // Seed-once from initialExaggeration (spec §2.4): exaggeration only ever
   // changes via the slider below, so no prop-driven re-sync after mount.
@@ -260,6 +275,8 @@ export function Base3DMap({
   // without adding them as effect deps that would force a map/layer rebuild.
   const onNodeClickRef = useRef(onNodeClick);
   onNodeClickRef.current = onNodeClick;
+  const renderPopupRef = useRef(renderPopup);
+  renderPopupRef.current = renderPopup;
   const onLineClickRef = useRef(onLineClick);
   onLineClickRef.current = onLineClick;
   const onExaggerationChangeRef = useRef(onExaggerationChange);
@@ -497,8 +514,26 @@ export function Base3DMap({
       map.on('click', NODES_MARKER_LAYER_ID, (e) => {
         const feature = e.features?.[0];
         const key = feature?.properties?.key;
-        if (typeof key === 'string') {
-          onNodeClickRef.current?.(key);
+        if (typeof key !== 'string') return;
+        onNodeClickRef.current?.(key);
+        // Open the node popup, if the host supplies one (#4808). Tear down any
+        // previous popup, anchor a fresh one at the marker, and portal the
+        // host's content into its container (see the render below).
+        if (renderPopupRef.current) {
+          popupRef.current?.remove();
+          const container = document.createElement('div');
+          const geometry = feature?.geometry;
+          const lngLat =
+            geometry && geometry.type === 'Point'
+              ? (geometry.coordinates as [number, number])
+              : e.lngLat;
+          const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: false, maxWidth: '320px' })
+            .setLngLat(lngLat)
+            .setDOMContent(container)
+            .addTo(map);
+          popup.on('close', () => setOpenPopup(null));
+          popupRef.current = popup;
+          setOpenPopup({ key, container });
         }
       });
       map.on('mouseenter', NODES_MARKER_LAYER_ID, () => {
@@ -532,6 +567,9 @@ export function Base3DMap({
       mapRemoved = true;
       setLoaded(false);
       onMapReadyRef.current?.(null);
+      popupRef.current?.remove();
+      popupRef.current = null;
+      setOpenPopup(null);
       map.remove();
       mapRef.current = null;
     };
@@ -620,6 +658,11 @@ export function Base3DMap({
   return (
     <div className={`base-3d-map ${className ?? ''}`.trim()}>
       <div ref={containerRef} className="base-3d-map-canvas" data-testid="base-3d-map-canvas" />
+      {/* Node popup content (#4808): portaled into the maplibre-owned container
+          so it renders within the app provider tree and keeps React context. */}
+      {openPopup && renderPopupRef.current
+        ? createPortal(renderPopupRef.current(openPopup.key), openPopup.container)
+        : null}
       {webglUnavailable ? (
         <div className="base-3d-map-unsupported" data-testid="base-3d-map-unsupported" role="alert">
           3D view requires WebGL, which is not available in this browser

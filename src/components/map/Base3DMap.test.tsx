@@ -20,7 +20,7 @@ type Listener = (...args: unknown[]) => void;
 // classes they reference must be created via `vi.hoisted` rather than plain
 // top-level `class` declarations (which are hoisted but stay in the
 // temporal dead zone until their declaration point).
-const { FakeMap, FakeNavigationControl, FakeAttributionControl } = vi.hoisted(() => {
+const { FakeMap, FakeNavigationControl, FakeAttributionControl, FakePopup } = vi.hoisted(() => {
   class FakeMap {
     static instances: FakeMap[] = [];
     /** When true, the constructor throws like a real WebGL-init failure. */
@@ -106,7 +106,38 @@ const { FakeMap, FakeNavigationControl, FakeAttributionControl } = vi.hoisted(()
     }
   }
 
-  return { FakeMap, FakeNavigationControl, FakeAttributionControl };
+  // Records the popup lifecycle so tests can assert a marker click opens one
+  // and portals content into its DOM container (#4808).
+  class FakePopup {
+    static instances: FakePopup[] = [];
+    lngLat: unknown;
+    container: HTMLElement | null = null;
+    removed = false;
+    handlers: Record<string, () => void> = {};
+    constructor(public options: unknown) {
+      FakePopup.instances.push(this);
+    }
+    setLngLat(ll: unknown) {
+      this.lngLat = ll;
+      return this;
+    }
+    setDOMContent(el: HTMLElement) {
+      this.container = el;
+      return this;
+    }
+    addTo() {
+      return this;
+    }
+    on(type: string, cb: () => void) {
+      this.handlers[type] = cb;
+      return this;
+    }
+    remove() {
+      this.removed = true;
+    }
+  }
+
+  return { FakeMap, FakeNavigationControl, FakeAttributionControl, FakePopup };
 });
 
 // maplibre-gl v6 is ESM-only with named exports (no default) — mirror that so
@@ -115,6 +146,7 @@ vi.mock('maplibre-gl', () => ({
   Map: FakeMap,
   NavigationControl: FakeNavigationControl,
   AttributionControl: FakeAttributionControl,
+  Popup: FakePopup,
   setWorkerUrl: vi.fn(),
 }));
 
@@ -239,6 +271,50 @@ describe('Base3DMap', () => {
     clickHandler({ features: [{ properties: { key: 'node-1' } }] });
 
     expect(onNodeClick).toHaveBeenCalledWith('node-1');
+  });
+
+  it('opens a popup and portals renderPopup content on marker click (#4808)', () => {
+    FakePopup.instances = [];
+    render(
+      <Base3DMap
+        center={[40.0, -105.0]}
+        zoom={12}
+        basemap={basemap}
+        terrainTileUrl={terrainTileUrl}
+        nodes={nodes}
+        renderPopup={(key) => <div data-testid="popup-body">popup:{key}</div>}
+      />,
+    );
+    const map = currentFakeMap();
+    act(() => {
+      map.triggerLoad();
+    });
+    act(() => {
+      map.layerHandlers['click:nodes-marker']({
+        features: [{ properties: { key: 'node-1' }, geometry: { type: 'Point', coordinates: [-105, 40] } }],
+        lngLat: { lng: -105, lat: 40 },
+      });
+    });
+    const popup = FakePopup.instances.at(-1);
+    expect(popup).toBeDefined();
+    expect(popup!.lngLat).toEqual([-105, 40]);
+    // Host content is portaled into the maplibre-owned container.
+    expect(popup!.container?.querySelector('[data-testid="popup-body"]')?.textContent).toBe('popup:node-1');
+  });
+
+  it('does NOT open a popup when renderPopup is omitted', () => {
+    FakePopup.instances = [];
+    render(
+      <Base3DMap center={[40.0, -105.0]} zoom={12} basemap={basemap} terrainTileUrl={terrainTileUrl} nodes={nodes} />,
+    );
+    const map = currentFakeMap();
+    act(() => {
+      map.triggerLoad();
+    });
+    act(() => {
+      map.layerHandlers['click:nodes-marker']({ features: [{ properties: { key: 'node-1' } }], lngLat: { lng: 0, lat: 0 } });
+    });
+    expect(FakePopup.instances).toHaveLength(0);
   });
 
   it('updates terrain exaggeration via setTerrain when the slider changes', () => {

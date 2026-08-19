@@ -50,6 +50,7 @@ import { getPacketStats } from '../services/packetApi';
 
 import { BaseMap } from './map/BaseMap';
 import { Map3DView } from './map/Map3DView';
+import DashboardNodePopup from './Dashboard/DashboardNodePopup';
 import type { Node3DFeature } from './map/Base3DMap';
 import { TilesetSelector } from './TilesetSelector';
 import { resolve3DBasemap, buildTerrainTileUrl } from '../config/basemap3d';
@@ -1734,6 +1735,14 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     [visibleMapNodes],
   );
 
+  // key → node for resolving a clicked 3D marker back to its node so the shared
+  // DashboardNodePopup can render on the 3D map (#4808).
+  const node3DByKey = useMemo(() => {
+    const m = new Map<string, (typeof visibleMapNodes)[number]>();
+    for (const node of visibleMapNodes) m.set(String(node.user?.id ?? node.nodeNum), node);
+    return m;
+  }, [visibleMapNodes]);
+
   const nodeMarkers: NodeMarkerDescriptor[] = visibleMapNodes
     .map(node => {
       const markerKey = String(node.user?.id ?? node.nodeNum);
@@ -2975,6 +2984,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   showTraceroutes={!!currentSourceId && (showPaths || showRoute)}
                   lookbackHours={effectiveMapMaxAge}
                   visibleNodeNums={visible3DNodeNums}
+                  renderPopup={(key) => {
+                    const node = node3DByKey.get(key);
+                    const pos = node ? nodePositions.get(node.nodeNum) : undefined;
+                    return node && pos ? (
+                      <DashboardNodePopup node={node} pos={{ lat: pos[0], lng: pos[1] }} />
+                    ) : null;
+                  }}
                   onUnsupported={() => setViewMode('2d')}
                 />
                 {shouldShowData() && showTileSelector && (

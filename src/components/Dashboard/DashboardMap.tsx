@@ -368,6 +368,16 @@ export default function DashboardMap({
     [nodesWithPosition],
   );
 
+  // key → { node, pos } for resolving a clicked 3D marker back to its node so
+  // the shared DashboardNodePopup can render on the 3D map too (#4808).
+  const node3DByKey = useMemo(() => {
+    const m = new Map<string, { node: (typeof nodesWithPosition)[number]['node']; pos: { lat: number; lng: number } }>();
+    for (const { node, pos } of nodesWithPosition) {
+      m.set(unifiedNodeKey(node) ?? String(node.nodeNum ?? node.nodeId ?? node.user?.id), { node, pos });
+    }
+    return m;
+  }, [nodesWithPosition]);
+
   // #3636: measurement endpoints — nearest-node snapping picks from these.
   const measurePoints: MeasurePoint[] = nodesWithPosition.map(({ node, pos }) => ({
     id: String(node.nodeId ?? node.user?.id ?? node.nodeNum),
@@ -693,6 +703,12 @@ export default function DashboardMap({
             showTraceroutes={showPaths || showRoute}
             lookbackHours={effectiveMaxAge}
             visibleNodeNums={visible3DNodeNums}
+            renderPopup={(key) => {
+              const entry = node3DByKey.get(key);
+              return entry ? (
+                <DashboardNodePopup node={entry.node} pos={entry.pos} onSourceSelect={onNodeSourceSelect} />
+              ) : null;
+            }}
             onUnsupported={() => setViewMode('2d')}
           />
           {showTileSelector && (

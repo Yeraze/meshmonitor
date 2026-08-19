@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { Base3DMap, type Node3DFeature, type Line3DFeature } from './Base3DMap';
+import type { ReactNode } from 'react';
 import type { Basemap3DSource } from '../../config/basemap3d';
 import { use3DNeighborLines } from '../MapAnalysis/use3DNeighborLines';
 import { use3DTracerouteLines } from '../MapAnalysis/use3DTracerouteLines';
@@ -44,6 +45,8 @@ export interface Map3DViewProps {
   onUnsupported?: () => void;
   /** Fired with a node's `key` when its marker is clicked. */
   onNodeClick?: (key: string) => void;
+  /** Render the popup body for a clicked node; portaled into a maplibre popup (#4808). */
+  renderPopup?: (key: string) => ReactNode;
 }
 
 /**
@@ -72,6 +75,7 @@ export function Map3DView({
   onExaggerationChange,
   onUnsupported,
   onNodeClick,
+  renderPopup,
 }: Map3DViewProps) {
   // Static coloring for v1: the time slider is always off, so the 3D hooks
   // fall back to SNR/direction coloring over the full lookback window.
@@ -106,6 +110,7 @@ export function Map3DView({
       nodes={nodes}
       lines={lines}
       onNodeClick={onNodeClick}
+      renderPopup={renderPopup}
       onUnsupported={onUnsupported}
       initialExaggeration={initialExaggeration}
       onExaggerationChange={onExaggerationChange}
