@@ -35,5 +35,9 @@ export function getTemperatureUnit(unit: TemperatureUnit): string {
 const TEMPERATURE_TELEMETRY_TYPES = new Set(['temperature', 'soilTemperature', 'co2Temperature']);
 
 export function isTemperatureType(type: string): boolean {
-  return TEMPERATURE_TELEMETRY_TYPES.has(type);
+  // MeshCore telemetry names its temperature channels `mc_temperature`,
+  // `mc_temperature_ch1`, `mc_temperature_ch2`, … — all Celsius, all should
+  // honor the unit preference like Meshtastic's (issue #3659). Match the whole
+  // family by prefix rather than enumerating each channel.
+  return TEMPERATURE_TELEMETRY_TYPES.has(type) || type.startsWith('mc_temperature');
 }
