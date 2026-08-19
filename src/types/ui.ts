@@ -28,7 +28,7 @@ export type TabType =
 // omitted — see comment above.
 export const VALID_TABS: TabType[] = ['nodes', 'channels', 'messages', 'info', 'settings', 'automation', 'dashboard', 'configuration', 'notifications', 'users', 'audit', 'security', 'admin', 'packetmonitor', 'mqtt-config'];
 
-export type SortField = 'longName' | 'shortName' | 'id' | 'lastHeard' | 'snr' | 'battery' | 'hwModel' | 'hops';
+export type SortField = 'longName' | 'shortName' | 'id' | 'lastHeard' | 'snr' | 'battery' | 'hwModel' | 'hops' | 'uptime';
 
 export type SortDirection = 'asc' | 'desc';
 

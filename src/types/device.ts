@@ -29,6 +29,13 @@ export interface DeviceInfo {
     /** Radio noise floor in dBm, from LocalStats telemetry (#3396). */
     noiseFloor?: number;
   };
+  /**
+   * Latest device uptime in seconds, enriched onto the node list from telemetry
+   * by the /api/nodes route (#4814). Not a node column — lives only in
+   * device-metrics telemetry — so it is attached at serialization time to back
+   * the "Sort: Uptime" option. Undefined when the node has never reported it.
+   */
+  uptimeSeconds?: number;
   hopsAway?: number;
   lastMessageHops?: number; // Hops from most recent packet (hopStart - hopLimit)
   viaMqtt?: boolean;

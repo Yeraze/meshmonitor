@@ -422,3 +422,21 @@ export async function checkNodeChannelAccess(
   const channelDbId = channelNum - CHANNEL_DB_OFFSET;
   return channelDbPermissions[channelDbId]?.viewOnMap === true;
 }
+
+/**
+ * Attach latest device uptime onto client node objects for the node list's
+ * "Sort: Uptime" option (#4814). Uptime is not a node column — it lives only in
+ * device-metrics telemetry — so the route fetches one grouped map keyed by node
+ * id and this attaches it. Nodes without a reported uptime are left untouched
+ * (undefined), so the sort pushes them to the bottom. Mutates `nodes` in place.
+ */
+export function attachUptimeToNodes<T extends { user?: { id?: string }; uptimeSeconds?: number }>(
+  nodes: T[],
+  uptimeMap: Map<string, number>,
+): void {
+  for (const node of nodes) {
+    const id = node.user?.id;
+    const uptime = id ? uptimeMap.get(id) : undefined;
+    if (uptime !== undefined) node.uptimeSeconds = uptime;
+  }
+}
