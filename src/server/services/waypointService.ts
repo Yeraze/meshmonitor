@@ -108,6 +108,7 @@ export interface UpdateInput {
   lockedTo?: number | null;
   channel?: number | null;
   rebroadcastIntervalS?: number | null;
+  isVirtual?: boolean;
 }
 
 /**
@@ -297,7 +298,11 @@ class WaypointService {
       description: (fields.description ?? existing.description).slice(0, 100),
       iconCodepoint,
       iconEmoji,
-      isVirtual: existing.isVirtual,
+      // Editable on PATCH (#4795): undefined => keep the existing flag, same as
+      // every other optional field here. A false value (unchecked "virtual")
+      // makes the waypoint eligible for the existing rebroadcast scheduler;
+      // update() itself sends nothing over the mesh.
+      isVirtual: fields.isVirtual === undefined ? existing.isVirtual : fields.isVirtual,
       channel:
         fields.channel === undefined
           ? existing.channel

@@ -361,6 +361,61 @@ describe('Waypoint routes', () => {
       expect(fields).not.toHaveProperty('channel');
     });
 
+    it('PATCH threads the virtual flag through update as isVirtual (#4795)', async () => {
+      mockManager();
+      mockWaypointService.update.mockResolvedValue({
+        sourceId: harness.sourceA, waypointId: 5, latitude: 30, longitude: -90,
+        name: '', description: '', isVirtual: true, channel: 0,
+      });
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent
+        .patch(`/api/sources/${harness.sourceA}/waypoints/5`)
+        .send({ virtual: true });
+
+      expect(res.status).toBe(200);
+      expect(mockWaypointService.update).toHaveBeenCalledWith(
+        harness.sourceA,
+        5,
+        42,
+        expect.objectContaining({ isVirtual: true }),
+      );
+    });
+
+    it('PATCH threads virtual:false through update — the reported bug (#4795)', async () => {
+      mockManager();
+      mockWaypointService.update.mockResolvedValue({
+        sourceId: harness.sourceA, waypointId: 5, latitude: 30, longitude: -90,
+        name: '', description: '', isVirtual: false, channel: 0,
+      });
+
+      const agent = await harness.loginAs(harness.admin);
+      await agent
+        .patch(`/api/sources/${harness.sourceA}/waypoints/5`)
+        .send({ virtual: false });
+
+      expect(mockWaypointService.update).toHaveBeenCalledWith(
+        harness.sourceA,
+        5,
+        42,
+        expect.objectContaining({ isVirtual: false }),
+      );
+    });
+
+    it('PATCH omits isVirtual from the update when virtual is absent (#4795)', async () => {
+      mockManager();
+      mockWaypointService.update.mockResolvedValue({
+        sourceId: harness.sourceA, waypointId: 5, latitude: 30, longitude: -90,
+        name: '', description: '', isVirtual: false, channel: 4,
+      });
+
+      const agent = await harness.loginAs(harness.admin);
+      await agent.patch(`/api/sources/${harness.sourceA}/waypoints/5`).send({ name: 'edit' });
+
+      const fields = mockWaypointService.update.mock.calls[0][3];
+      expect(fields).not.toHaveProperty('isVirtual');
+    });
+
     it('sends the delete tombstone on the waypoint\'s own channel', async () => {
       const { broadcastWaypointDelete } = mockManager();
       vi.spyOn(databaseService.waypoints, 'getAsync').mockResolvedValue({
