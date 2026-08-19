@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, StrictMode } from 'react';
 import { render, fireEvent, cleanup, screen } from '@testing-library/react';
 import { Base3DMap, type Node3DFeature, type Line3DFeature } from './Base3DMap';
+import { createNodeMarkerImage } from './nodeMarkerIcon';
 import type { Basemap3DSource } from '../../config/basemap3d';
 
 // ---------------------------------------------------------------------------
@@ -39,6 +40,11 @@ const { FakeMap, FakeNavigationControl, FakeAttributionControl } = vi.hoisted(()
       this.layerIds.add(layer.id);
     });
     setTerrain = vi.fn();
+    images = new Set<string>();
+    addImage = vi.fn((id: string) => {
+      this.images.add(id);
+    });
+    hasImage = vi.fn((id: string) => this.images.has(id));
     getSource = vi.fn((id: string) => this.sources[id]);
     getLayer = vi.fn((id: string) => (this.layerIds.has(id) ? {} : undefined));
     removeLayer = vi.fn((id: string) => {
@@ -186,7 +192,18 @@ describe('Base3DMap', () => {
     expect(map.setTerrain).toHaveBeenCalledWith({ source: 'terrain-dem', exaggeration: 1.3 });
     expect(map.addLayer).toHaveBeenCalledWith(expect.objectContaining({ id: 'terrain-hillshade', type: 'hillshade' }));
     expect(map.addSource).toHaveBeenCalledWith('nodes', expect.objectContaining({ type: 'geojson' }));
-    expect(map.addLayer).toHaveBeenCalledWith(expect.objectContaining({ id: 'nodes-circle', type: 'circle' }));
+    // Node dots are a `symbol` layer, not `circle` (#4800): circle layers don't
+    // drape onto 3D terrain, so they were buried under exaggerated terrain.
+    expect(map.addImage).toHaveBeenCalledWith('node-marker-icon', expect.anything(), { sdf: true });
+    const markerLayer = map.addLayer.mock.calls
+      .map((c: unknown[]) => c[0] as any)
+      .find((l: any) => l.id === 'nodes-marker');
+    expect(markerLayer).toBeDefined();
+    expect(markerLayer.type).toBe('symbol');
+    expect(markerLayer.layout['icon-image']).toBe('node-marker-icon');
+    expect(markerLayer.paint['icon-color']).toEqual(['get', 'color']);
+    // Must NOT be a circle layer (the buried-marker regression).
+    expect(map.addLayer).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'circle' }));
     expect(map.addLayer).toHaveBeenCalledWith(expect.objectContaining({ id: 'nodes-label', type: 'symbol' }));
   });
 
@@ -207,7 +224,7 @@ describe('Base3DMap', () => {
       map.triggerLoad();
     });
 
-    const clickHandler = map.layerHandlers['click:nodes-circle'];
+    const clickHandler = map.layerHandlers['click:nodes-marker'];
     expect(clickHandler).toBeDefined();
     clickHandler({ features: [{ properties: { key: 'node-1' } }] });
 
@@ -348,9 +365,9 @@ describe('Base3DMap', () => {
       expect(dashed.map(([layer]) => layer.paint['line-dasharray'])).toEqual(
         expect.arrayContaining([[2, 2], [3, 2]]),
       );
-      // Line layers must be inserted below the node circle layer.
+      // Line layers must be inserted below the node marker layer.
       for (const [, beforeId] of calls) {
-        expect(beforeId).toBe('nodes-circle');
+        expect(beforeId).toBe('nodes-marker');
       }
     });
 
@@ -699,5 +716,48 @@ describe('Base3DMap', () => {
       );
       expect(onMapReady).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('createNodeMarkerImage (#4800 SDF node dot)', () => {
+  const alphaAt = (img: { width: number; data: Uint8ClampedArray }, x: number, y: number) =>
+    img.data[(y * img.width + x) * 4 + 3];
+
+  it('returns a square RGBA buffer of the requested size', () => {
+    const img = createNodeMarkerImage(64);
+    expect(img.width).toBe(64);
+    expect(img.height).toBe(64);
+    expect(img.data.length).toBe(64 * 64 * 4);
+  });
+
+  it('defaults to the module marker size when called with no argument', () => {
+    const img = createNodeMarkerImage();
+    expect(img.width).toBe(64);
+  });
+
+  it('keeps RGB solid white so icon-color can tint it per node', () => {
+    const img = createNodeMarkerImage(32);
+    for (let i = 0; i < img.data.length; i += 4) {
+      expect(img.data[i]).toBe(255);
+      expect(img.data[i + 1]).toBe(255);
+      expect(img.data[i + 2]).toBe(255);
+    }
+  });
+
+  it('encodes the disc in alpha: opaque center, transparent corner, edge near 191', () => {
+    const size = 64;
+    const img = createNodeMarkerImage(size);
+    // Center is well inside the disc → saturated.
+    expect(alphaAt(img, size / 2, size / 2)).toBe(255);
+    // Corner is far outside → fully transparent.
+    expect(alphaAt(img, 0, 0)).toBe(0);
+    // A pixel one row out from the exact disc edge straddles MapLibre's 191
+    // threshold — inside is brighter, outside is dimmer.
+    const center = (size - 1) / 2;
+    const radius = size / 2 - 6;
+    const justInside = alphaAt(img, Math.round(center + radius - 1), Math.round(center));
+    const justOutside = alphaAt(img, Math.round(center + radius + 1), Math.round(center));
+    expect(justInside).toBeGreaterThan(191);
+    expect(justOutside).toBeLessThan(191);
   });
 });
