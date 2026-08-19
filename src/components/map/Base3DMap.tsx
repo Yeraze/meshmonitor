@@ -332,6 +332,11 @@ export function Base3DMap({
       return;
     }
 
+    // Guards the async glyph rasterization below: if the component unmounts
+    // while a rasterize promise is in flight, its `addImage` must not run
+    // against the already-removed map (MapLibre throws) (#4808).
+    let mapRemoved = false;
+
     let map: maplibregl.Map;
     try {
       map = new maplibregl.Map({
@@ -439,7 +444,7 @@ export function Base3DMap({
         void rasterizeGlyphIcon(parsed.family, parsed.color)
           .then((imgData) => {
             pendingGlyphIcons.delete(id);
-            if (imgData && !map.hasImage(id)) map.addImage(id, imgData);
+            if (!mapRemoved && imgData && !map.hasImage(id)) map.addImage(id, imgData);
           })
           .catch(() => pendingGlyphIcons.delete(id));
       });
@@ -524,6 +529,7 @@ export function Base3DMap({
     });
 
     return () => {
+      mapRemoved = true;
       setLoaded(false);
       onMapReadyRef.current?.(null);
       map.remove();

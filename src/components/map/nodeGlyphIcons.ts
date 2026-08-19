@@ -24,7 +24,11 @@ export function glyphIconId(family: string, color: string): string {
   return `${family}_${color}`;
 }
 
-/** Split a `"<family>_<color>"` icon id back into its parts (color may contain no `_`). */
+/**
+ * Split a `"<family>_<color>"` icon id back into its parts, on the FIRST `_`.
+ * Safe because family names contain no `_` (a hex color has `#` but no `_`); if
+ * a future family name introduces one, switch this to a fixed separator.
+ */
 export function parseGlyphIconId(id: string): { family: string; color: string } | null {
   const i = id.indexOf('_');
   if (i < 0) return null;
