@@ -47,6 +47,11 @@ export default defineConfig({
   ],
   // Always build for root - runtime HTML rewriting will handle BASE_URL
   base: '/',
+  // MapLibre v6 loads its bundled worker with `{ type: 'module' }`, so Vite must
+  // emit worker chunks in ES format rather than the default IIFE (#4800).
+  worker: {
+    format: 'es',
+  },
   server: {
     host: true,
     port: 5173,

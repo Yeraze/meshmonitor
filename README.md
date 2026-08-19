@@ -369,8 +369,13 @@ This project is licensed under the BSD-3-Clause License - see the [LICENSE](LICE
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Yeraze/meshmonitor&type=date&legend=top-left)](https://www.star-history.com/#Yeraze/meshmonitor&type=date&legend=top-left)
-
+<a href="https://www.star-history.com/?type=date&legend=top-left&repos=Yeraze%2Fmeshmonitor">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Yeraze/meshmonitor&type=date&theme=dark&legend=top-left&sealed_token=Fs7Ix_3bOK4tGTBW5ZqSTt80LpzGL0KuuL1FiS6N7z9_HztNiLR_a8X86Wue28xZmdZCTdw-O9plgP9v88nJhZYEGhyBQCmGED1IJPn8-Wfeey8-fI9NvATNCBV47ilJrFbdFqCh1ZmPsQm1anwYIcGrR2doRWnysAeya4Tak9z1asynOAuhIJFTnwPo" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Yeraze/meshmonitor&type=date&legend=top-left&sealed_token=Fs7Ix_3bOK4tGTBW5ZqSTt80LpzGL0KuuL1FiS6N7z9_HztNiLR_a8X86Wue28xZmdZCTdw-O9plgP9v88nJhZYEGhyBQCmGED1IJPn8-Wfeey8-fI9NvATNCBV47ilJrFbdFqCh1ZmPsQm1anwYIcGrR2doRWnysAeya4Tak9z1asynOAuhIJFTnwPo" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Yeraze/meshmonitor&type=date&legend=top-left&sealed_token=Fs7Ix_3bOK4tGTBW5ZqSTt80LpzGL0KuuL1FiS6N7z9_HztNiLR_a8X86Wue28xZmdZCTdw-O9plgP9v88nJhZYEGhyBQCmGED1IJPn8-Wfeey8-fI9NvATNCBV47ilJrFbdFqCh1ZmPsQm1anwYIcGrR2doRWnysAeya4Tak9z1asynOAuhIJFTnwPo" />
+ </picture>
+</a>
 ---
 
 **MeshMonitor** - Monitor your mesh, beautifully. 🌐✨

@@ -63,11 +63,20 @@ describe('temperature utilities', () => {
       expect(isTemperatureType('co2Temperature')).toBe(true);
     });
 
+    it('matches the MeshCore temperature channel family (#3659)', () => {
+      expect(isTemperatureType('mc_temperature')).toBe(true);
+      expect(isTemperatureType('mc_temperature_ch1')).toBe(true);
+      expect(isTemperatureType('mc_temperature_ch2')).toBe(true);
+    });
+
     it('does not match non-temperature types', () => {
       expect(isTemperatureType('humidity')).toBe(false);
       expect(isTemperatureType('voltage')).toBe(false);
       expect(isTemperatureType('batteryLevel')).toBe(false);
       expect(isTemperatureType('')).toBe(false);
+      // A non-temperature MeshCore channel must not be swept in by the prefix.
+      expect(isTemperatureType('mc_humidity')).toBe(false);
+      expect(isTemperatureType('mc_voltage')).toBe(false);
     });
   });
 });

@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 // maplibre-gl v6 is ESM-only and dropped its default export (#4650).
 import * as maplibregl from 'maplibre-gl';
+import './maplibreWorker';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { Basemap3DSource } from '../../config/basemap3d';
+import { NODE_MARKER_IMAGE_ID, NODE_MARKER_IMAGE_SIZE, createNodeMarkerImage } from './nodeMarkerIcon';
+import { glyphIconId, parseGlyphIconId, rasterizeGlyphIcon } from './nodeGlyphIcons';
 import './Base3DMap.css';
 
 /** A single node marker fed into the MapLibre `nodes` GeoJSON source. */
@@ -11,7 +14,19 @@ export interface Node3DFeature {
   lat: number;
   lng: number;
   label?: string;
+  /** Hop-based marker color (`getHopColor`), matching the 2D map (#4808). */
   color?: string;
+  /**
+   * Node-type category from `getNodeTypeCategory` (#4808). Selects the marker
+   * glyph (repeater tower, sensor, room server, companion, or the plain disc).
+   */
+  category?: string;
+  /**
+   * Marker opacity [0,1] from the 2D age-dimming (`calculateNodeOpacity` /
+   * `ageOpacity`), so old nodes fade in 3D exactly as they do in 2D (#4808).
+   * Defaults to 1 (fully opaque).
+   */
+  opacity?: number;
 }
 
 /**
@@ -55,9 +70,9 @@ export interface Base3DMapProps {
   basemap: Basemap3DSource;
   /** Same-origin DEM tile URL template, from `buildTerrainTileUrl`. */
   terrainTileUrl: string;
-  /** Node markers to render as a GeoJSON `circle` + `symbol` label layer. */
+  /** Node markers to render as a GeoJSON `symbol` icon + `symbol` label layer. */
   nodes: Node3DFeature[];
-  /** Fired when a node's circle marker is clicked, with its `key`. */
+  /** Fired when a node's marker is clicked, with its `key`. */
   onNodeClick?: (key: string) => void;
   /** Line segments (neighbor links, traceroute paths, …) to render below the node layers. */
   lines?: Line3DFeature[];
@@ -101,7 +116,7 @@ const BASEMAP_LAYER_ID = 'basemap-raster-layer';
 const TERRAIN_SOURCE_ID = 'terrain-dem';
 const HILLSHADE_LAYER_ID = 'terrain-hillshade';
 const NODES_SOURCE_ID = 'nodes';
-const NODES_CIRCLE_LAYER_ID = 'nodes-circle';
+const NODES_MARKER_LAYER_ID = 'nodes-marker';
 const NODES_LABEL_LAYER_ID = 'nodes-label';
 const LINES_SOURCE_ID = 'lines';
 const LINES_LAYER_PREFIX = 'lines-';
@@ -131,11 +146,25 @@ function isWebGlAvailable(): boolean {
 function toNodesFeatureCollection(nodes: Node3DFeature[]): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
-    features: nodes.map((n) => ({
-      type: 'Feature',
-      geometry: { type: 'Point', coordinates: [n.lng, n.lat] },
-      properties: { key: n.key, label: n.label ?? '', color: n.color ?? '#3fb1ce' },
-    })),
+    features: nodes.map((n) => {
+      const color = n.color ?? '#3fb1ce';
+      const category = n.category ?? 'standard';
+      // `standard` (no glyph) uses the shared SDF disc, tinted by icon-color;
+      // glyph families select a pre-colored raster generated on demand (#4808).
+      const iconImage = category === 'standard' ? NODE_MARKER_IMAGE_ID : glyphIconId(category, color);
+      return {
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [n.lng, n.lat] },
+        properties: {
+          key: n.key,
+          label: n.label ?? '',
+          color,
+          category,
+          iconImage,
+          opacity: n.opacity ?? 1,
+        },
+      };
+    }),
   };
 }
 
@@ -251,7 +280,7 @@ export function Base3DMap({
   const nextLineLayerIndexRef = useRef(0);
 
   // Adds one MapLibre `line` layer for a dash group, filtered to its
-  // features via `dashKey`, inserted below the node circle/label layers so
+  // features via `dashKey`, inserted below the node marker/label layers so
   // markers stay clickable on top. Stable identity (empty deps, refs only)
   // so it can be an effect dep without forcing extra reconciliation runs.
   const addLineLayer = useCallback((map: maplibregl.Map, dashKey: string, dash: number[], layerId: string) => {
@@ -268,7 +297,7 @@ export function Base3DMap({
           ...(dash.length ? { 'line-dasharray': dash } : {}),
         },
       },
-      NODES_CIRCLE_LAYER_ID,
+      NODES_MARKER_LAYER_ID,
     );
     map.on('click', layerId, (e) => {
       const feature = e.features?.[0];
@@ -302,6 +331,11 @@ export function Base3DMap({
       markUnsupported();
       return;
     }
+
+    // Guards the async glyph rasterization below: if the component unmounts
+    // while a rasterize promise is in flight, its `addImage` must not run
+    // against the already-removed map (MapLibre throws) (#4808).
+    let mapRemoved = false;
 
     let map: maplibregl.Map;
     try {
@@ -383,15 +417,63 @@ export function Base3DMap({
         type: 'geojson',
         data: toNodesFeatureCollection(nodes),
       });
+      // Node dots are a `symbol` layer, NOT a `circle` layer: MapLibre circle
+      // layers render at elevation 0 and do not drape onto 3D terrain, so with
+      // exaggerated terrain the dots were buried under the surface and vanished
+      // (#4800). Symbol layers are elevated onto the terrain, so the dot is a
+      // symbol using a generated SDF disc icon — tinted per-node via icon-color
+      // and outlined via icon-halo, reproducing the 2D circle marker's look.
+      if (!map.hasImage(NODE_MARKER_IMAGE_ID)) {
+        map.addImage(NODE_MARKER_IMAGE_ID, createNodeMarkerImage(NODE_MARKER_IMAGE_SIZE), {
+          sdf: true,
+        });
+      }
+      // Per-node-type glyph icons (#4808): the `standard` family uses the SDF
+      // disc above; glyph families (repeater/sensor/roomServer/companion) use a
+      // full-color raster of the 2D role-glyph marker, generated lazily the
+      // first time the layer asks for a `"<family>_<color>"` id that isn't
+      // registered yet. A Set guards against duplicate in-flight rasterizations
+      // while the async image loads (styleimagemissing fires every frame).
+      const pendingGlyphIcons = new Set<string>();
+      map.on('styleimagemissing', (e) => {
+        const id = e.id;
+        if (map.hasImage(id) || pendingGlyphIcons.has(id)) return;
+        const parsed = parseGlyphIconId(id);
+        if (!parsed) return;
+        pendingGlyphIcons.add(id);
+        void rasterizeGlyphIcon(parsed.family, parsed.color)
+          .then((imgData) => {
+            pendingGlyphIcons.delete(id);
+            if (!mapRemoved && imgData && !map.hasImage(id)) map.addImage(id, imgData);
+          })
+          .catch(() => pendingGlyphIcons.delete(id));
+      });
       map.addLayer({
-        id: NODES_CIRCLE_LAYER_ID,
-        type: 'circle',
+        id: NODES_MARKER_LAYER_ID,
+        type: 'symbol',
         source: NODES_SOURCE_ID,
+        layout: {
+          // `standard` → the tinted SDF disc; glyph families → the pre-colored
+          // raster keyed by `iconImage` (see toNodesFeatureCollection).
+          'icon-image': ['get', 'iconImage'],
+          // 64px source image scaled down; glyph markers read at this size.
+          'icon-size': 0.35,
+          // Always draw every dot — dots must never be dropped by symbol
+          // collision the way a label legitimately can be.
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+          // Billboard the dot toward the camera (as the 2D circle's default
+          // viewport alignment did) rather than laying it flat on the tilted
+          // terrain surface.
+          'icon-rotation-alignment': 'viewport',
+          'icon-pitch-alignment': 'viewport',
+        },
         paint: {
-          'circle-radius': 6,
-          'circle-color': ['get', 'color'],
-          'circle-stroke-width': 1.5,
-          'circle-stroke-color': '#ffffff',
+          'icon-color': ['get', 'color'],
+          'icon-halo-color': '#ffffff',
+          'icon-halo-width': 1.5,
+          // Fade aged nodes exactly as the 2D map does (#4808).
+          'icon-opacity': ['get', 'opacity'],
         },
       });
       map.addLayer({
@@ -408,25 +490,26 @@ export function Base3DMap({
           'text-color': '#f8fafc',
           'text-halo-color': '#0f172a',
           'text-halo-width': 1,
+          'text-opacity': ['get', 'opacity'],
         },
       });
 
-      map.on('click', NODES_CIRCLE_LAYER_ID, (e) => {
+      map.on('click', NODES_MARKER_LAYER_ID, (e) => {
         const feature = e.features?.[0];
         const key = feature?.properties?.key;
         if (typeof key === 'string') {
           onNodeClickRef.current?.(key);
         }
       });
-      map.on('mouseenter', NODES_CIRCLE_LAYER_ID, () => {
+      map.on('mouseenter', NODES_MARKER_LAYER_ID, () => {
         map.getCanvas().style.cursor = 'pointer';
       });
-      map.on('mouseleave', NODES_CIRCLE_LAYER_ID, () => {
+      map.on('mouseleave', NODES_MARKER_LAYER_ID, () => {
         map.getCanvas().style.cursor = '';
       });
 
       // Lines source + one line layer per distinct dash pattern (spec §2.1/§3.1),
-      // inserted below the node circle/label layers so markers stay clickable
+      // inserted below the node marker/label layers so markers stay clickable
       // on top. Zero dash groups when `lines` is omitted/empty ⇒ no line
       // layers added, matching pre-Phase-3 behavior.
       map.addSource(LINES_SOURCE_ID, {
@@ -446,6 +529,7 @@ export function Base3DMap({
     });
 
     return () => {
+      mapRemoved = true;
       setLoaded(false);
       onMapReadyRef.current?.(null);
       map.remove();

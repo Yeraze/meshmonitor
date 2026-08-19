@@ -2,6 +2,8 @@ import React, { useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { MODEM_PRESET_OPTIONS, REGION_OPTIONS } from './constants';
+import BroadcastTargetsEditor from './BroadcastTargetsEditor';
+import { MESH_BEACON_MIN_INTERVAL_SECS, type BroadcastTarget } from '../admin-commands/useAdminCommandsState';
 
 /**
  * MeshBeacon module config editor (firmware 2.8+, issue #3854).
@@ -35,6 +37,19 @@ interface MeshBeaconConfigSectionProps {
   /** null = advertise no preset (the proto field is `optional`). */
   broadcastOfferPreset: number | null;
   setBroadcastOfferPreset: (value: number | null) => void;
+  broadcastIntervalSecs: number;
+  setBroadcastIntervalSecs: (value: number) => void;
+  broadcastOnChannelName: string;
+  setBroadcastOnChannelName: (value: string) => void;
+  broadcastOnChannelPsk: string;
+  setBroadcastOnChannelPsk: (value: string) => void;
+  broadcastOnRegion: number;
+  setBroadcastOnRegion: (value: number) => void;
+  /** null = use the running config preset (the proto field is `optional`). */
+  broadcastOnPreset: number | null;
+  setBroadcastOnPreset: (value: number | null) => void;
+  broadcastTargets: BroadcastTarget[];
+  setBroadcastTargets: (value: BroadcastTarget[]) => void;
   isDisabled: boolean;
   isSaving: boolean;
   onSave: () => Promise<void>;
@@ -62,6 +77,18 @@ const MeshBeaconConfigSection: React.FC<MeshBeaconConfigSectionProps> = ({
   setBroadcastOfferRegion,
   broadcastOfferPreset,
   setBroadcastOfferPreset,
+  broadcastIntervalSecs,
+  setBroadcastIntervalSecs,
+  broadcastOnChannelName,
+  setBroadcastOnChannelName,
+  broadcastOnChannelPsk,
+  setBroadcastOnChannelPsk,
+  broadcastOnRegion,
+  setBroadcastOnRegion,
+  broadcastOnPreset,
+  setBroadcastOnPreset,
+  broadcastTargets,
+  setBroadcastTargets,
   isDisabled,
   isSaving,
   onSave
@@ -71,7 +98,9 @@ const MeshBeaconConfigSection: React.FC<MeshBeaconConfigSectionProps> = ({
   const initialValuesRef = useRef({
     listenEnabled, broadcastEnabled, legacySplit, broadcastMessage,
     broadcastSendAsNode, broadcastOfferChannelName, broadcastOfferChannelPsk,
-    broadcastOfferRegion, broadcastOfferPreset
+    broadcastOfferRegion, broadcastOfferPreset, broadcastIntervalSecs,
+    broadcastOnChannelName, broadcastOnChannelPsk, broadcastOnRegion,
+    broadcastOnPreset, broadcastTargets
   });
 
   const hasChanges = useMemo(() => {
@@ -85,11 +114,21 @@ const MeshBeaconConfigSection: React.FC<MeshBeaconConfigSectionProps> = ({
       broadcastOfferChannelName !== initial.broadcastOfferChannelName ||
       broadcastOfferChannelPsk !== initial.broadcastOfferChannelPsk ||
       broadcastOfferRegion !== initial.broadcastOfferRegion ||
-      broadcastOfferPreset !== initial.broadcastOfferPreset
+      broadcastOfferPreset !== initial.broadcastOfferPreset ||
+      broadcastIntervalSecs !== initial.broadcastIntervalSecs ||
+      broadcastOnChannelName !== initial.broadcastOnChannelName ||
+      broadcastOnChannelPsk !== initial.broadcastOnChannelPsk ||
+      broadcastOnRegion !== initial.broadcastOnRegion ||
+      broadcastOnPreset !== initial.broadcastOnPreset ||
+      // Array field — the neighbouring scalars are compared by value, so the
+      // targets list needs a structural compare rather than an identity check.
+      JSON.stringify(broadcastTargets) !== JSON.stringify(initial.broadcastTargets)
     );
   }, [listenEnabled, broadcastEnabled, legacySplit, broadcastMessage,
     broadcastSendAsNode, broadcastOfferChannelName, broadcastOfferChannelPsk,
-    broadcastOfferRegion, broadcastOfferPreset]);
+    broadcastOfferRegion, broadcastOfferPreset, broadcastIntervalSecs,
+    broadcastOnChannelName, broadcastOnChannelPsk, broadcastOnRegion,
+    broadcastOnPreset, broadcastTargets]);
 
   const resetChanges = useCallback(() => {
     const initial = initialValuesRef.current;
@@ -102,20 +141,32 @@ const MeshBeaconConfigSection: React.FC<MeshBeaconConfigSectionProps> = ({
     setBroadcastOfferChannelPsk(initial.broadcastOfferChannelPsk);
     setBroadcastOfferRegion(initial.broadcastOfferRegion);
     setBroadcastOfferPreset(initial.broadcastOfferPreset);
+    setBroadcastIntervalSecs(initial.broadcastIntervalSecs);
+    setBroadcastOnChannelName(initial.broadcastOnChannelName);
+    setBroadcastOnChannelPsk(initial.broadcastOnChannelPsk);
+    setBroadcastOnRegion(initial.broadcastOnRegion);
+    setBroadcastOnPreset(initial.broadcastOnPreset);
+    setBroadcastTargets(initial.broadcastTargets);
   }, [setListenEnabled, setBroadcastEnabled, setLegacySplit, setBroadcastMessage,
     setBroadcastSendAsNode, setBroadcastOfferChannelName, setBroadcastOfferChannelPsk,
-    setBroadcastOfferRegion, setBroadcastOfferPreset]);
+    setBroadcastOfferRegion, setBroadcastOfferPreset, setBroadcastIntervalSecs,
+    setBroadcastOnChannelName, setBroadcastOnChannelPsk, setBroadcastOnRegion,
+    setBroadcastOnPreset, setBroadcastTargets]);
 
   const handleSave = useCallback(async () => {
     await onSave();
     initialValuesRef.current = {
       listenEnabled, broadcastEnabled, legacySplit, broadcastMessage,
       broadcastSendAsNode, broadcastOfferChannelName, broadcastOfferChannelPsk,
-      broadcastOfferRegion, broadcastOfferPreset
+      broadcastOfferRegion, broadcastOfferPreset, broadcastIntervalSecs,
+      broadcastOnChannelName, broadcastOnChannelPsk, broadcastOnRegion,
+      broadcastOnPreset, broadcastTargets
     };
   }, [onSave, listenEnabled, broadcastEnabled, legacySplit, broadcastMessage,
     broadcastSendAsNode, broadcastOfferChannelName, broadcastOfferChannelPsk,
-    broadcastOfferRegion, broadcastOfferPreset]);
+    broadcastOfferRegion, broadcastOfferPreset, broadcastIntervalSecs,
+    broadcastOnChannelName, broadcastOnChannelPsk, broadcastOnRegion,
+    broadcastOnPreset, broadcastTargets]);
 
   const messageBytes = useMemo(
     () => new TextEncoder().encode(broadcastMessage).length,
@@ -332,6 +383,92 @@ const MeshBeaconConfigSection: React.FC<MeshBeaconConfigSectionProps> = ({
                 </select>
                 <span className="setting-description">{t('meshbeacon_config.offer_preset_desc', 'Modem preset advertised with the region — tells listeners "there is a mesh on this preset".')}</span>
               </div>
+            </div>
+
+            <div style={subGroupStyle}>
+              <div style={subGroupTitleStyle}>{t('meshbeacon_config.transmit_section', 'Transmit Settings')}</div>
+
+              <div className="setting-item">
+                <label htmlFor="meshBeaconInterval">{t('meshbeacon_config.interval', 'Broadcast Interval (seconds)')}</label>
+                <input
+                  id="meshBeaconInterval"
+                  type="number"
+                  min={MESH_BEACON_MIN_INTERVAL_SECS}
+                  value={broadcastIntervalSecs}
+                  onChange={(e) => setBroadcastIntervalSecs(parseInt(e.target.value) || 0)}
+                  disabled={isDisabled}
+                  className="setting-input"
+                />
+                <span className="setting-description">{t('meshbeacon_config.interval_desc', 'How often to broadcast. Firmware enforces a minimum of 3600 seconds (1 hour) and rejects lower values, so a shorter interval will not persist on the device.')}</span>
+              </div>
+
+              <div className="setting-item">
+                <label htmlFor="meshBeaconOnChannelName">{t('meshbeacon_config.on_channel_name', 'Transmit Channel Name')}</label>
+                <input
+                  id="meshBeaconOnChannelName"
+                  type="text"
+                  value={broadcastOnChannelName}
+                  onChange={(e) => setBroadcastOnChannelName(e.target.value)}
+                  disabled={isDisabled}
+                  className="setting-input"
+                />
+                <span className="setting-description">{t('meshbeacon_config.on_channel_name_desc', 'Channel the beacon is sent on. Leave blank to use the primary channel. Ignored when broadcast targets are set below.')}</span>
+              </div>
+
+              {broadcastOnChannelName.trim().length > 0 && (
+                <div className="setting-item">
+                  <label htmlFor="meshBeaconOnChannelPsk">{t('meshbeacon_config.on_channel_psk', 'Transmit Channel PSK')}</label>
+                  <input
+                    id="meshBeaconOnChannelPsk"
+                    type="text"
+                    value={broadcastOnChannelPsk}
+                    onChange={(e) => setBroadcastOnChannelPsk(e.target.value)}
+                    disabled={isDisabled}
+                    className="setting-input"
+                    placeholder={t('meshbeacon_config.offer_channel_psk_placeholder', 'base64, e.g. AQ==')}
+                  />
+                  <span className="setting-description">{t('meshbeacon_config.on_channel_psk_desc', 'Base64 pre-shared key for the transmit channel.')}</span>
+                </div>
+              )}
+
+              <div className="setting-item">
+                <label htmlFor="meshBeaconOnRegion">{t('meshbeacon_config.on_region', 'Transmit Region')}</label>
+                <select
+                  id="meshBeaconOnRegion"
+                  value={broadcastOnRegion}
+                  onChange={(e) => setBroadcastOnRegion(parseInt(e.target.value) || 0)}
+                  disabled={isDisabled}
+                  className="setting-input"
+                >
+                  {REGION_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+                <span className="setting-description">{t('meshbeacon_config.on_region_desc', 'Region to transmit beacons on. UNSET uses this node\'s running config region.')}</span>
+              </div>
+
+              <div className="setting-item">
+                <label htmlFor="meshBeaconOnPreset">{t('meshbeacon_config.on_preset', 'Transmit Modem Preset')}</label>
+                <select
+                  id="meshBeaconOnPreset"
+                  value={broadcastOnPreset === null ? '' : broadcastOnPreset}
+                  onChange={(e) => setBroadcastOnPreset(e.target.value === '' ? null : parseInt(e.target.value))}
+                  disabled={isDisabled}
+                  className="setting-input"
+                >
+                  <option value="">{t('meshbeacon_config.on_preset_running', 'Use running config preset')}</option>
+                  {MODEM_PRESET_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.name} — {option.description}</option>
+                  ))}
+                </select>
+                <span className="setting-description">{t('meshbeacon_config.on_preset_desc', 'Modem preset to transmit beacons on. The radio is temporarily switched for TX when this differs from the running config.')}</span>
+              </div>
+
+              <BroadcastTargetsEditor
+                targets={broadcastTargets}
+                onChange={setBroadcastTargets}
+                disabled={isDisabled}
+              />
             </div>
           </>
         )}

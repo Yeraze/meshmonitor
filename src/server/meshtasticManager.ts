@@ -74,6 +74,7 @@ import {
   recordMqttEcho,
   matchesMqttEcho,
 } from './services/mqttProxyBridge.js';
+import { isDuplicatePacketLog, packetLogDedupKey } from './services/packetLogDedup.js';
 import { NodeDbMaintenanceService } from './services/nodeDbMaintenanceService.js';
 import { AutoAnnounceService } from './services/autoAnnounceService.js';
 import { AdminTransactionService } from './services/adminTransactionService.js';
@@ -862,6 +863,11 @@ class MeshtasticManager implements ISourceManager {
 
   private autoAckCooldowns: Map<number, number> = new Map(); // nodeNum -> lastResponseTimestamp; bounded, see pruneAutoAckCooldowns (#4399)
   private autoAckProcessedPackets: Set<number> = new Set(); // packetIds already auto-acked (dedup guard)
+  // Packet Monitor recently-seen guard (#4811): key -> expiry ms. Suppresses the
+  // firmware's exact-duplicate deliveries and reconnect replays from the packet
+  // log while preserving distinct relay/transport copies. Per-source (one map
+  // per manager instance).
+  private recentPacketLogKeys: Map<string, number> = new Map();
   private autoResponderCooldowns: Map<string, number> = new Map(); // "triggerIndex:nodeNum" -> lastResponseTimestamp
   private autoResponderProcessedPackets: Set<number> = new Set(); // packetIds already auto-responded (dedup guard)
 
@@ -4520,9 +4526,21 @@ class MeshtasticManager implements ISourceManager {
               parsed.data.meshBeacon.broadcastOfferRegion = 0;
               logger.debug('📊 Set meshBeacon.broadcastOfferRegion to 0 (was undefined - Proto3 default)');
             }
-            // broadcastOfferPreset is `optional` in the proto — absence is
-            // meaningful ("advertise no preset"), so it is deliberately left
-            // undefined rather than defaulted to 0 (LONG_FAST).
+            // Transmit settings (#4802). broadcastOnRegion is a plain enum (0 =
+            // UNSET = use running config); default it so the UI reads "off"
+            // rather than indeterminate. broadcastIntervalSecs defaults to the
+            // firmware minimum/default of 3600, not 0.
+            if (parsed.data.meshBeacon.broadcastOnRegion === undefined) {
+              parsed.data.meshBeacon.broadcastOnRegion = 0;
+            }
+            if (parsed.data.meshBeacon.broadcastIntervalSecs === undefined) {
+              parsed.data.meshBeacon.broadcastIntervalSecs = 3600;
+            }
+            // broadcastOfferPreset / broadcastOnPreset are `optional` in the
+            // proto — absence is meaningful ("advertise/use no preset"), so they
+            // are deliberately left undefined rather than defaulted to 0
+            // (LONG_FAST). broadcastOnChannel / broadcastTargets are left as the
+            // device sent them (absent sub-message / empty repeated field).
           }
 
           // Merge the actual module configuration (don't overwrite)
@@ -5268,9 +5286,15 @@ class MeshtasticManager implements ISourceManager {
         flags: moduleConfig.meshBeacon.flags !== undefined ? moduleConfig.meshBeacon.flags : 0,
         broadcastSendAsNode: moduleConfig.meshBeacon.broadcastSendAsNode !== undefined ? moduleConfig.meshBeacon.broadcastSendAsNode : 0,
         broadcastMessage: moduleConfig.meshBeacon.broadcastMessage !== undefined ? moduleConfig.meshBeacon.broadcastMessage : '',
-        broadcastOfferRegion: moduleConfig.meshBeacon.broadcastOfferRegion !== undefined ? moduleConfig.meshBeacon.broadcastOfferRegion : 0
-        // broadcastOfferPreset is `optional` — absence means "advertise no
-        // preset" and must stay undefined rather than collapsing to LONG_FAST.
+        broadcastOfferRegion: moduleConfig.meshBeacon.broadcastOfferRegion !== undefined ? moduleConfig.meshBeacon.broadcastOfferRegion : 0,
+        // Transmit settings (#4802): broadcastOnRegion 0 = UNSET (running config);
+        // broadcastIntervalSecs defaults to the firmware minimum 3600, not 0.
+        broadcastOnRegion: moduleConfig.meshBeacon.broadcastOnRegion !== undefined ? moduleConfig.meshBeacon.broadcastOnRegion : 0,
+        broadcastIntervalSecs: moduleConfig.meshBeacon.broadcastIntervalSecs !== undefined ? moduleConfig.meshBeacon.broadcastIntervalSecs : 3600
+        // broadcastOfferPreset / broadcastOnPreset are `optional` — absence means
+        // "advertise/use no preset" and must stay undefined rather than
+        // collapsing to LONG_FAST. broadcastOnChannel / broadcastTargets are
+        // passed through as-is.
       };
 
       moduleConfig = {
@@ -5816,6 +5840,20 @@ class MeshtasticManager implements ISourceManager {
         // above) arrived over the air, so it is a reception, not our own 'tx'.
         const spoof = this.assessLocalSpoof(meshPacket);
 
+        // Drop exact-duplicate receptions the firmware delivers twice, or that a
+        // reconnect replays, from the Packet Monitor (#4811). The key folds in
+        // relay_node + transport, so a rebroadcast via a different relay or the
+        // same packet over LoRa vs MQTT keeps its own row. Only guard when we
+        // have a real packet id (0/absent = unknown, never collapse). Genuine
+        // local TX is logged on a different path and is never deduped here.
+        const dedupPacketId = meshPacket.id ? Number(meshPacket.id) : 0;
+        if (dedupPacketId && isDuplicatePacketLog(
+          this.recentPacketLogKeys,
+          packetLogDedupKey(fromNum, dedupPacketId, meshPacket.relayNode, meshPacket.transportMechanism),
+          Date.now()
+        )) {
+          logger.debug(`📦 Skipping duplicate packet-log entry for id ${dedupPacketId} from ${fromNum}`);
+        } else {
         void packetLogService.logPacket({
           packet_id: meshPacket.id ?? undefined,
           timestamp: Date.now(), // Use server time in ms for consistent ordering (rxTime preserved in metadata.rx_time)
@@ -5850,6 +5888,7 @@ class MeshtasticManager implements ISourceManager {
           transport_mechanism: meshPacket.transportMechanism ?? TransportMechanism.LORA,
           sourceId: this.sourceId,
         });
+        } // end else (not a duplicate packet-log entry)
         } // end else (not internal packet)
       }
     } catch (error) {
@@ -8999,6 +9038,22 @@ class MeshtasticManager implements ISourceManager {
       }
 
       // Add position information if available
+      // History rows sourced from the NodeDB config-sync dump are written ONLY for
+      // the local node (issue #4809). The node sends its entire NodeDB as
+      // FromRadio.node_info records on every config sync, each embedding that
+      // node's last-known position/device_metrics. For remote nodes that same
+      // history already arrives as live POSITION_APP/TELEMETRY_APP packets, which
+      // carry a packetId and are deduped; the embedded NodeInfo copies do not, so
+      // they bypass dedup and re-insert the whole database as duplicate graph
+      // points on every resync (badly amplified by Meshtastic 2.8's larger warm
+      // NodeDB and its nodes-only refresh). The LOCAL node is the sole exception:
+      // TCP clients never receive their own node's POSITION_APP/TELEMETRY_APP over
+      // the PhoneAPI, so NodeInfo is its only telemetry-history source. The node
+      // *row* (current position, last-known fields, SNR trend) still updates for
+      // every node below — only the duplicate history writes are gated.
+      const isLocalNode = this.localNodeInfo != null
+        && this.localNodeInfo.nodeNum === Number(nodeInfo.num);
+
       let positionTelemetryData: { timestamp: number; latitude: number; longitude: number; altitude?: number; precisionBits?: number; channel?: number; groundSpeed?: number; groundTrack?: number } | null = null;
       if (nodeInfo.position && (nodeInfo.position.latitudeI || nodeInfo.position.longitudeI)) {
         const coords = meshtasticProtobufService.convertCoordinates(
@@ -9070,19 +9125,24 @@ class MeshtasticManager implements ISourceManager {
             }
           }
 
-          // Always record position telemetry for history (regardless of whether the
-          // current-position columns were updated), using the actual incoming coordinates.
-          const timestamp = nodeInfo.position.time ? Number(nodeInfo.position.time) * 1000 : Date.now();
-          positionTelemetryData = {
-            timestamp,
-            latitude: coords.latitude,
-            longitude: coords.longitude,
-            altitude: nodeInfo.position.altitude,
-            precisionBits,
-            channel: channelIndex,
-            groundSpeed: nodeInfo.position.groundSpeed ?? nodeInfo.position.ground_speed,
-            groundTrack: nodeInfo.position.groundTrack ?? nodeInfo.position.ground_track
-          };
+          // Record position telemetry history for the LOCAL node only (issue #4809).
+          // Remote nodes' position history comes from live POSITION_APP packets
+          // (deduped by packetId); re-recording the NodeDB-dump copy here duplicated
+          // the whole database on every config resync. The current-position columns
+          // above still update for every node, so the map is unaffected.
+          if (isLocalNode) {
+            const timestamp = nodeInfo.position.time ? Number(nodeInfo.position.time) * 1000 : Date.now();
+            positionTelemetryData = {
+              timestamp,
+              latitude: coords.latitude,
+              longitude: coords.longitude,
+              altitude: nodeInfo.position.altitude,
+              precisionBits,
+              channel: channelIndex,
+              groundSpeed: nodeInfo.position.groundSpeed ?? nodeInfo.position.ground_speed,
+              groundTrack: nodeInfo.position.groundTrack ?? nodeInfo.position.ground_track
+            };
+          }
         } else {
           logger.warn(`⚠️ Invalid position coordinates for node ${nodeId}: lat=${coords.latitude}, lon=${coords.longitude}. Skipping position save.`);
         }
@@ -9092,7 +9152,7 @@ class MeshtasticManager implements ISourceManager {
       // This allows the local node's telemetry to be captured, since TCP clients
       // only receive TELEMETRY_APP packets from OTHER nodes via mesh, not from the local node
       let deviceMetricsTelemetryData: any = null;
-      if (nodeInfo.deviceMetrics) {
+      if (nodeInfo.deviceMetrics && isLocalNode) {
         const deviceMetrics = nodeInfo.deviceMetrics;
         const timestamp = nodeInfo.lastHeard ? Number(nodeInfo.lastHeard) * 1000 : Date.now();
 

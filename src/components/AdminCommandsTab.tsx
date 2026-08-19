@@ -17,7 +17,7 @@ import { getHardwareModelName, getRoleName } from '../utils/nodeHelpers';
 import { DeviceConfigurationSection } from './admin-commands/DeviceConfigurationSection';
 import AutoFavoriteManagementSection from './admin-commands/AutoFavoriteManagementSection';
 import { ModuleConfigurationSection } from './admin-commands/ModuleConfigurationSection';
-import { useAdminCommandsState, packMeshBeaconFlags, unpackMeshBeaconFlags, pskToBase64 } from './admin-commands/useAdminCommandsState';
+import { useAdminCommandsState, buildMeshBeaconConfigPayload, parseMeshBeaconConfig } from './admin-commands/useAdminCommandsState';
 import {
   DEFAULT_PUBLIC_PSK,
   PUBLIC_CHANNEL_PRECISION_MAX_BITS,
@@ -690,18 +690,9 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       await new Promise(resolve => setTimeout(resolve, 200));
 
       await loadConfig('meshbeacon', 12, (result) => {
-        const config = result.config;
-        setMeshBeaconConfig({
-          ...unpackMeshBeaconFlags(config.flags),
-          broadcastMessage: config.broadcastMessage ?? '',
-          broadcastSendAsNode: config.broadcastSendAsNode ?? 0,
-          broadcastOfferChannelName: config.broadcastOfferChannel?.name ?? '',
-          broadcastOfferChannelPsk: pskToBase64(config.broadcastOfferChannel?.psk),
-          broadcastOfferRegion: config.broadcastOfferRegion ?? 0,
-          // `optional` in the proto — absent means "advertise no preset", which
-          // must not collapse to 0 (LONG_FAST).
-          broadcastOfferPreset: config.broadcastOfferPreset ?? null
-        });
+        // Shared parser owns the load-time normalisation (flags, optional
+        // presets, UNSET regions, targets) — see parseMeshBeaconConfig.
+        setMeshBeaconConfig(parseMeshBeaconConfig(result.config));
       });
       await new Promise(resolve => setTimeout(resolve, 200));
 
@@ -2020,30 +2011,9 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   }, [setMeshBeaconConfig]);
 
   const handleSetMeshBeaconConfig = useCallback(async () => {
-    const beacon = configState.meshBeacon;
-    const config: Record<string, unknown> = {
-      // The three checkboxes are one bitfield on the wire.
-      flags: packMeshBeaconFlags(beacon),
-      broadcastMessage: beacon.broadcastMessage,
-      broadcastSendAsNode: beacon.broadcastSendAsNode,
-      broadcastOfferRegion: beacon.broadcastOfferRegion
-    };
-
-    // offer_channel is a whole ChannelSettings sub-message. Send it only when a
-    // channel name is present — an empty name means "advertise no channel", and
-    // sending an empty sub-message would advertise a nameless channel instead.
-    if (beacon.broadcastOfferChannelName.trim().length > 0) {
-      config.broadcastOfferChannel = {
-        name: beacon.broadcastOfferChannelName,
-        ...(beacon.broadcastOfferChannelPsk ? { psk: beacon.broadcastOfferChannelPsk } : {})
-      };
-    }
-
-    // `optional` field: omit entirely to advertise no preset. Sending 0 would
-    // advertise LONG_FAST, which is a different statement.
-    if (beacon.broadcastOfferPreset !== null) {
-      config.broadcastOfferPreset = beacon.broadcastOfferPreset;
-    }
+    // Shared builder owns the wire omit-logic (offer/on channels, optional
+    // presets, target normalisation) — see buildMeshBeaconConfigPayload.
+    const config = buildMeshBeaconConfigPayload(configState.meshBeacon);
 
     try {
       await executeCommand('setMeshBeaconConfig', { config });
@@ -3450,7 +3420,14 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         meshBeaconBroadcastOfferChannelPsk={configState.meshBeacon.broadcastOfferChannelPsk}
         meshBeaconBroadcastOfferRegion={configState.meshBeacon.broadcastOfferRegion}
         meshBeaconBroadcastOfferPreset={configState.meshBeacon.broadcastOfferPreset}
+        meshBeaconBroadcastIntervalSecs={configState.meshBeacon.broadcastIntervalSecs}
+        meshBeaconBroadcastOnChannelName={configState.meshBeacon.broadcastOnChannelName}
+        meshBeaconBroadcastOnChannelPsk={configState.meshBeacon.broadcastOnChannelPsk}
+        meshBeaconBroadcastOnRegion={configState.meshBeacon.broadcastOnRegion}
+        meshBeaconBroadcastOnPreset={configState.meshBeacon.broadcastOnPreset}
+        meshBeaconBroadcastTargets={configState.meshBeacon.broadcastTargets}
         onMeshBeaconConfigChange={handleMeshBeaconConfigChange}
+        onMeshBeaconTargetsChange={(targets) => setMeshBeaconConfig({ broadcastTargets: targets })}
         onSaveMeshBeaconConfig={handleSetMeshBeaconConfig}
         meshBeaconIsDisabled={sectionLoadStatus.meshbeacon === 'error'}
         isExecuting={isExecuting}
