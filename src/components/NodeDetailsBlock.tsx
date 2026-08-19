@@ -15,6 +15,7 @@ import apiService, { SignalTrendResult } from '../services/api';
 import './NodeDetailsBlock.css';
 import { UiIcon, type UiIconName } from './icons';
 import { MeshtasticContactShare } from './MeshtasticContactShare';
+import { NodeSkyView } from './gnss/NodeSkyView';
 
 interface NodeDetailsBlockProps {
   node: DeviceInfo | null;
@@ -383,6 +384,7 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
         </button>
       </div>
       {!isCollapsed && (
+        <>
         <div className="node-details-grid">
           {/* Hardware Model - Now First */}
           {hwModel !== undefined && (
@@ -780,6 +782,11 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
             </div>
           ) : null}
         </div>
+
+        {/* GNSS Sky View (#4729) — theoretical-vs-reported satellite diagnostic,
+            rendered only when the node has a position. Self-gated + collapsed. */}
+        <NodeSkyView node={node} sourceId={sourceId} />
+        </>
       )}
     </div>
   );

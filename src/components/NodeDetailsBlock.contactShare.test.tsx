@@ -25,6 +25,9 @@ const getSignalTrend = vi.fn();
 const getMeshtasticContactUrl = vi.fn();
 vi.mock('../services/api', () => ({
   default: {
+    // Called at import by ../init (pulled in transitively via NodeSkyView's
+    // telemetry hook chain, #4729); stubbed so the module loads under this mock.
+    setBaseUrl: () => {},
     getSignalTrend: (...args: unknown[]) => getSignalTrend(...args),
     getMeshtasticContactUrl: (...args: unknown[]) => getMeshtasticContactUrl(...args),
   },

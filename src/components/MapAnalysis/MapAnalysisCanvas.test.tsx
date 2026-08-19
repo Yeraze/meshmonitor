@@ -48,6 +48,9 @@ vi.mock('react-leaflet', () => ({
   Pane: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
   // Spiderfier (NodeMarkersLayer) calls useMap(); null makes the hook a no-op.
   useMap: () => null,
+  // GnssDopLayer (#4729) subscribes to moveend/zoomend; no-op here (its fetch
+  // is gated on `visible`, off by default, so it never dereferences the null map).
+  useMapEvents: () => null,
 }));
 
 // MapAnalysisCanvas now composes BaseMap (#4047 Phase 7 WP10), which
@@ -338,6 +341,16 @@ function PauseFollow() {
   return null;
 }
 
+/** Exposes a button to flip the GNSS DOP overlay mode, for the wiring test. */
+function ToggleGnssDop() {
+  const { gnssDopMode, setGnssDopMode } = useMapAnalysisCtx();
+  return (
+    <button type="button" data-testid="toggle-gnss-dop" onClick={() => setGnssDopMode(!gnssDopMode)}>
+      toggle
+    </button>
+  );
+}
+
 describe('MapAnalysisCanvas', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -367,6 +380,29 @@ describe('MapAnalysisCanvas', () => {
     expect(screen.getByText(/Seen by 2 sources/i)).toBeInTheDocument();
     expect(screen.getByText('Alpha Src')).toBeInTheDocument();
     expect(screen.getByText('Beta Src')).toBeInTheDocument();
+  });
+
+  // #4729: GNSS DOP overlay panel is off by default and shows once toggled on.
+  describe('GNSS DOP overlay wiring', () => {
+    it('does not render the DOP panel by default', () => {
+      render(<MapAnalysisCanvas />, { wrapper });
+      expect(screen.queryByTestId('gnss-dop-panel')).toBeNull();
+    });
+
+    it('renders the DOP panel when the mode is enabled, and hides it again when disabled', () => {
+      render(
+        <>
+          <ToggleGnssDop />
+          <MapAnalysisCanvas />
+        </>,
+        { wrapper },
+      );
+      expect(screen.queryByTestId('gnss-dop-panel')).toBeNull();
+      fireEvent.click(screen.getByTestId('toggle-gnss-dop'));
+      expect(screen.getByTestId('gnss-dop-panel')).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('toggle-gnss-dop'));
+      expect(screen.queryByTestId('gnss-dop-panel')).toBeNull();
+    });
   });
 
   // #3826 Phase 2 WP-D: 3D branch.

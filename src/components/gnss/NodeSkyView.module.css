@@ -1,0 +1,57 @@
+.section {
+  border-top: 1px solid var(--color-border-subtle);
+  margin-top: 0.5rem;
+  padding-top: 0.25rem;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.4rem 0.1rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.headerLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0 0.5rem;
+}
+
+.message {
+  color: var(--color-text-subtle);
+  font-size: 0.8rem;
+  padding: 0.75rem 0;
+}
+
+.diagnostic {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--color-text-subtle);
+}
+
+.diagnosticLabel {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.diagnosticValues strong {
+  color: var(--color-text);
+}

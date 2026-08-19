@@ -12,7 +12,9 @@ import LinkProfileController from './LinkProfileController';
 import LinkProfileDrawer from './LinkProfileDrawer';
 import SitePlannerOriginController from './SitePlannerOriginController';
 import SitePlannerPanel from './SitePlannerPanel';
+import GnssDopPanel from './GnssDopPanel';
 import PredictedCoverageLayer from '../map/layers/PredictedCoverageLayer';
+import GnssDopLayer from '../map/layers/GnssDopLayer';
 import LinkProfileHoverLayer from './LinkProfileHoverLayer';
 import type { LinkEndpoint } from '../../utils/linkProfile';
 import { BaseMap } from '../map/BaseMap';
@@ -74,6 +76,12 @@ export default function MapAnalysisCanvas() {
     setSitePlannerOrigin,
     predictedCoverage,
     setPredictedCoverage,
+    gnssDopMode,
+    setGnssDopMode,
+    gnssDopParams,
+    setGnssDopParams,
+    gnssDopMeta,
+    setGnssDopMeta,
     setLinkProfileMode,
     linkEndpoints,
     setLinkEndpoints,
@@ -317,6 +325,12 @@ export default function MapAnalysisCanvas() {
         <Pane name="predictedCoverage" style={{ zIndex: 420 }}>
           <PredictedCoverageLayer coverage={predictedCoverage} visible={sitePlannerMode} />
         </Pane>
+        {/* GNSS DOP heatmap (#4729). Sits low so the basemap and node markers
+            stay readable over it; it fetches server-side only, so it adds no
+            mesh traffic. */}
+        <Pane name="gnssDop" style={{ zIndex: 340 }}>
+          <GnssDopLayer visible={gnssDopMode} params={gnssDopParams} onMeta={setGnssDopMeta} />
+        </Pane>
         <Pane name="waypoints" style={{ zIndex: 650 }}>
           {config.layers.waypoints.enabled && <WaypointsLayer />}
         </Pane>
@@ -368,6 +382,13 @@ export default function MapAnalysisCanvas() {
         origin={sitePlannerOrigin}
         onClose={() => setSitePlannerMode(false)}
         onCoverage={setPredictedCoverage}
+      />
+      <GnssDopPanel
+        open={gnssDopMode}
+        params={gnssDopParams}
+        meta={gnssDopMeta}
+        onChange={setGnssDopParams}
+        onClose={() => setGnssDopMode(false)}
       />
     </div>
   );

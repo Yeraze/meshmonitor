@@ -29,7 +29,12 @@ vi.mock('./NodeDetailsBlock.css', () => ({}));
 
 const getSignalTrend = vi.fn();
 vi.mock('../services/api', () => ({
-  default: { getSignalTrend: (...args: unknown[]) => getSignalTrend(...args) },
+  // setBaseUrl is called at import by ../init (pulled in transitively via
+  // NodeSkyView's telemetry hook chain, #4729); stub it so the module loads.
+  default: {
+    setBaseUrl: () => {},
+    getSignalTrend: (...args: unknown[]) => getSignalTrend(...args),
+  },
 }));
 
 const baseNode: DeviceInfo = {

@@ -92,6 +92,7 @@
     "react-router-dom": "^7.18.2",
     "recharts": "^3.9.2",
     "rotating-file-stream": "^3.2.10",
+    "satellite.js": "^7.1.0",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
     "swagger-ui-express": "^5.0.1",
