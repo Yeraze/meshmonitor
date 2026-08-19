@@ -91,9 +91,10 @@ export const NodeSkyView: React.FC<NodeSkyViewProps> = ({ node, sourceId }) => {
 
   const lat = node.position?.latitude;
   const lon = node.position?.longitude;
-  const hasPosition = typeof lat === 'number' && typeof lon === 'number';
 
-  if (!hasPosition) return null;
+  // Inline the check so TypeScript narrows lat/lon to `number` below (a
+  // separate `hasPosition` boolean wouldn't narrow them).
+  if (typeof lat !== 'number' || typeof lon !== 'number') return null;
 
   return (
     <div className={styles.section}>
@@ -112,7 +113,7 @@ export const NodeSkyView: React.FC<NodeSkyViewProps> = ({ node, sourceId }) => {
 
       {expanded && (
         <div className={styles.body}>
-          <SkyViewBody node={node} sourceId={sourceId} lat={lat!} lon={lon!} />
+          <SkyViewBody node={node} sourceId={sourceId} lat={lat} lon={lon} />
         </div>
       )}
     </div>

@@ -69,7 +69,7 @@ export function parseTleText(text: string): Tle[] {
     .filter((l) => l.length > 0);
 
   const tles: Tle[] = [];
-  for (let i = 0; i + 2 < lines.length + 1; i += 3) {
+  for (let i = 0; i + 2 < lines.length; i += 3) {
     const name = lines[i];
     const line1 = lines[i + 1];
     const line2 = lines[i + 2];

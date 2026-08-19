@@ -91,6 +91,11 @@ const GREEN: [number, number, number] = [0x2e, 0xcc, 0x40]; // good
 const AMBER: [number, number, number] = [0xff, 0xc1, 0x07]; // moderate
 const RED: [number, number, number] = [0xe7, 0x4c, 0x3c]; // poor
 
+// Endpoint colors as literals — returned directly for the flat good/poor bands
+// (no interpolation needed there).
+const GREEN_HEX = '#2ecc40';
+const RED_HEX = '#e74c3c';
+
 /**
  * Color for a GDOP value on a good→poor ramp: green at/below `DOP_GOOD`,
  * through amber at `DOP_MODERATE`, to red at/above `DOP_POOR`. A null GDOP
@@ -99,8 +104,8 @@ const RED: [number, number, number] = [0xe7, 0x4c, 0x3c]; // poor
  */
 export function gdopToColor(gdop: number | null): string {
   if (gdop == null || !Number.isFinite(gdop)) return '#9aa0a6';
-  if (gdop <= DOP_GOOD) return lerpColor(GREEN, GREEN, 0);
-  if (gdop >= DOP_POOR) return lerpColor(RED, RED, 0);
+  if (gdop <= DOP_GOOD) return GREEN_HEX;
+  if (gdop >= DOP_POOR) return RED_HEX;
   if (gdop <= DOP_MODERATE) {
     return lerpColor(GREEN, AMBER, (gdop - DOP_GOOD) / (DOP_MODERATE - DOP_GOOD));
   }

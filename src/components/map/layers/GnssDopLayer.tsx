@@ -85,7 +85,8 @@ export default function GnssDopLayer({
         clamped: false,
         stepDeg,
         requestedStepDeg: stepDeg,
-        cellCount: result?.cellCount ?? 0,
+        // 0 while loading — the previous fetch's cellCount would be misleading here.
+        cellCount: 0,
         loading: true,
         error: null,
       });
