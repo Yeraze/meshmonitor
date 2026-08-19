@@ -255,6 +255,12 @@ router.patch(
       if (body.locked_to !== undefined) {
         fields.lockedTo = body.locked_to === null ? null : Number(body.locked_to);
       }
+      // #4795: the "Virtual — do not broadcast" flag was settable only at
+      // create time; PATCH silently dropped it, so the checkbox never persisted
+      // on edit. Mirror the POST handler's Boolean coercion.
+      if (body.virtual !== undefined) {
+        fields.isVirtual = Boolean(body.virtual);
+      }
       if (body.channel !== undefined) {
         const parsed = parseChannel(body.channel);
         if (parsed && typeof parsed === 'object' && 'error' in parsed) {

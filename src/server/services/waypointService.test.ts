@@ -434,6 +434,33 @@ describe('broadcast channel (#4341)', () => {
     expect(mockUpsert).toHaveBeenCalledWith(expect.objectContaining({ channel: 2 }));
   });
 
+  it('update keeps the stored isVirtual when the field is omitted (#4795)', async () => {
+    mockGet.mockResolvedValueOnce(eligibleRow({ isVirtual: true }));
+    mockUpsert.mockImplementationOnce(async (v: any) => ({ ...v }));
+
+    await waypointService.update('s1', 7, 0, { name: 'renamed' });
+
+    expect(mockUpsert).toHaveBeenCalledWith(expect.objectContaining({ isVirtual: true }));
+  });
+
+  it('update sets isVirtual=true when supplied (#4795)', async () => {
+    mockGet.mockResolvedValueOnce(eligibleRow({ isVirtual: false }));
+    mockUpsert.mockImplementationOnce(async (v: any) => ({ ...v }));
+
+    await waypointService.update('s1', 7, 0, { isVirtual: true });
+
+    expect(mockUpsert).toHaveBeenCalledWith(expect.objectContaining({ isVirtual: true }));
+  });
+
+  it('update clears isVirtual=false when supplied — the reported bug (#4795)', async () => {
+    mockGet.mockResolvedValueOnce(eligibleRow({ isVirtual: true }));
+    mockUpsert.mockImplementationOnce(async (v: any) => ({ ...v }));
+
+    await waypointService.update('s1', 7, 0, { isVirtual: false });
+
+    expect(mockUpsert).toHaveBeenCalledWith(expect.objectContaining({ isVirtual: false }));
+  });
+
   it('upsertFromMesh records the channel the packet arrived on', async () => {
     mockUpsert.mockImplementationOnce(async (v: any) => ({ ...v }));
 
