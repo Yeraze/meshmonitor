@@ -4520,9 +4520,21 @@ class MeshtasticManager implements ISourceManager {
               parsed.data.meshBeacon.broadcastOfferRegion = 0;
               logger.debug('📊 Set meshBeacon.broadcastOfferRegion to 0 (was undefined - Proto3 default)');
             }
-            // broadcastOfferPreset is `optional` in the proto — absence is
-            // meaningful ("advertise no preset"), so it is deliberately left
-            // undefined rather than defaulted to 0 (LONG_FAST).
+            // Transmit settings (#4802). broadcastOnRegion is a plain enum (0 =
+            // UNSET = use running config); default it so the UI reads "off"
+            // rather than indeterminate. broadcastIntervalSecs defaults to the
+            // firmware minimum/default of 3600, not 0.
+            if (parsed.data.meshBeacon.broadcastOnRegion === undefined) {
+              parsed.data.meshBeacon.broadcastOnRegion = 0;
+            }
+            if (parsed.data.meshBeacon.broadcastIntervalSecs === undefined) {
+              parsed.data.meshBeacon.broadcastIntervalSecs = 3600;
+            }
+            // broadcastOfferPreset / broadcastOnPreset are `optional` in the
+            // proto — absence is meaningful ("advertise/use no preset"), so they
+            // are deliberately left undefined rather than defaulted to 0
+            // (LONG_FAST). broadcastOnChannel / broadcastTargets are left as the
+            // device sent them (absent sub-message / empty repeated field).
           }
 
           // Merge the actual module configuration (don't overwrite)
@@ -5268,9 +5280,15 @@ class MeshtasticManager implements ISourceManager {
         flags: moduleConfig.meshBeacon.flags !== undefined ? moduleConfig.meshBeacon.flags : 0,
         broadcastSendAsNode: moduleConfig.meshBeacon.broadcastSendAsNode !== undefined ? moduleConfig.meshBeacon.broadcastSendAsNode : 0,
         broadcastMessage: moduleConfig.meshBeacon.broadcastMessage !== undefined ? moduleConfig.meshBeacon.broadcastMessage : '',
-        broadcastOfferRegion: moduleConfig.meshBeacon.broadcastOfferRegion !== undefined ? moduleConfig.meshBeacon.broadcastOfferRegion : 0
-        // broadcastOfferPreset is `optional` — absence means "advertise no
-        // preset" and must stay undefined rather than collapsing to LONG_FAST.
+        broadcastOfferRegion: moduleConfig.meshBeacon.broadcastOfferRegion !== undefined ? moduleConfig.meshBeacon.broadcastOfferRegion : 0,
+        // Transmit settings (#4802): broadcastOnRegion 0 = UNSET (running config);
+        // broadcastIntervalSecs defaults to the firmware minimum 3600, not 0.
+        broadcastOnRegion: moduleConfig.meshBeacon.broadcastOnRegion !== undefined ? moduleConfig.meshBeacon.broadcastOnRegion : 0,
+        broadcastIntervalSecs: moduleConfig.meshBeacon.broadcastIntervalSecs !== undefined ? moduleConfig.meshBeacon.broadcastIntervalSecs : 3600
+        // broadcastOfferPreset / broadcastOnPreset are `optional` — absence means
+        // "advertise/use no preset" and must stay undefined rather than
+        // collapsing to LONG_FAST. broadcastOnChannel / broadcastTargets are
+        // passed through as-is.
       };
 
       moduleConfig = {
