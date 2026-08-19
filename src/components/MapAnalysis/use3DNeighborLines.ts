@@ -93,10 +93,18 @@ export interface Use3DNeighborLinesParams {
   sources: string[];
   /** `config.timeSlider`. */
   timeSlider: TimeSliderWindow;
+  /**
+   * Restrict edges to those whose BOTH endpoints are in this set of visible
+   * node numbers (#4808). Undefined/null = no gate (MapAnalysis behavior:
+   * every node's edges). The non-MapAnalysis surfaces pass their rendered-
+   * marker set so 3D lines don't dangle to nodes hidden by the 2D map's
+   * age/transport/estimated/incomplete filters.
+   */
+  visibleNodeNums?: Set<number> | null;
 }
 
 export function use3DNeighborLines(params: Use3DNeighborLinesParams): NeighborLines3D {
-  const { layer } = params;
+  const { layer, visibleNodeNums } = params;
   const { data: sources = [] } = useDashboardSources();
   const sourceIds =
     params.sources.length === 0
@@ -181,6 +189,13 @@ export function use3DNeighborLines(params: Use3DNeighborLinesParams): NeighborLi
     // --- Meshtastic edges — mirrors layers/NeighborLinksLayer.tsx L115-175.
     const mtItems = (mtData as { items?: NeighborEdge[] } | undefined)?.items ?? [];
     for (const e of mtItems.filter((edge) => inWindow(edge.timestamp ?? 0))) {
+      // Visibility gate (#4808): drop edges to nodes the 2D map hid.
+      if (
+        visibleNodeNums &&
+        (!visibleNodeNums.has(Number(e.nodeNum)) || !visibleNodeNums.has(Number(e.neighborNum)))
+      ) {
+        continue;
+      }
       const aKey = `${e.sourceId}:${Number(e.nodeNum)}`;
       const bKey = `${e.sourceId}:${Number(e.neighborNum)}`;
       const a = positionByKey.get(aKey) ?? positionByNode.get(Number(e.nodeNum));
@@ -266,5 +281,6 @@ export function use3DNeighborLines(params: Use3DNeighborLinesParams): NeighborLi
     ts.enabled,
     ts.windowStartMs,
     ts.windowEndMs,
+    visibleNodeNums,
   ]);
 }

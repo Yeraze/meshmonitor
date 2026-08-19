@@ -360,6 +360,14 @@ export default function DashboardMap({
     }));
   }, [nodesWithPosition, effectiveMaxAge]);
 
+  // Visible node numbers for gating the 3D neighbor/traceroute lines to the
+  // rendered markers, matching 2D — also keeps a null-sourceId dashboard from
+  // pulling every source's edges (#4808).
+  const visible3DNodeNums = useMemo(
+    () => new Set(nodesWithPosition.map(({ node }) => Number(node.nodeNum))),
+    [nodesWithPosition],
+  );
+
   // #3636: measurement endpoints — nearest-node snapping picks from these.
   const measurePoints: MeasurePoint[] = nodesWithPosition.map(({ node, pos }) => ({
     id: String(node.nodeId ?? node.user?.id ?? node.nodeNum),
@@ -684,6 +692,7 @@ export default function DashboardMap({
             showNeighbors={showNeighborInfo}
             showTraceroutes={showPaths || showRoute}
             lookbackHours={effectiveMaxAge}
+            visibleNodeNums={visible3DNodeNums}
             onUnsupported={() => setViewMode('2d')}
           />
           {showTileSelector && (

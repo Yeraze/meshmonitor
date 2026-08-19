@@ -9,7 +9,7 @@ import type { AnalyzedSegment } from '../../hooks/useTracerouteAnalysis';
 import { getSegmentSnrOpacity, weightByOccurrence } from '../../utils/mapHelpers';
 
 // Mutable mock state, same convention as layers/TraceroutePathsLayer.test.tsx.
-const mockState: { segments: AnalyzedSegment[] } = { segments: [] };
+const mockState: { segments: AnalyzedSegment[]; lastAnalysisArgs?: unknown } = { segments: [] };
 
 vi.mock('../../contexts/SettingsContext', () => ({
   useSettings: () => ({
@@ -45,7 +45,10 @@ vi.mock('../../hooks/useTracerouteAnalysis', async () => {
   );
   return {
     ...actual,
-    useTracerouteAnalysis: () => ({ segments: mockState.segments, summary: null }),
+    useTracerouteAnalysis: (args: unknown) => {
+      mockState.lastAnalysisArgs = args;
+      return { segments: mockState.segments, summary: null };
+    },
   };
 });
 
@@ -169,5 +172,20 @@ describe('use3DTracerouteLines', () => {
     );
     expect(result.current.lines).toEqual([]);
     expect(result.current.selectionByKey.size).toBe(0);
+  });
+
+  describe('visibleNodeNums gate (#4808)', () => {
+    it('feeds the caller gate into useTracerouteAnalysis so segments are limited to visible nodes', () => {
+      renderHook(() => use3DTracerouteLines(makeParams({ visibleNodeNums: new Set([1, 2]) })));
+      // nodeFilter is '' (→ null "all"), so the combined gate is the caller set.
+      expect((mockState.lastAnalysisArgs as { visibleNodeNums?: Set<number> }).visibleNodeNums).toEqual(
+        new Set([1, 2]),
+      );
+    });
+
+    it('leaves useTracerouteAnalysis ungated (null) when no caller gate is passed (MapAnalysis)', () => {
+      renderHook(() => use3DTracerouteLines(makeParams()));
+      expect((mockState.lastAnalysisArgs as { visibleNodeNums?: Set<number> | null }).visibleNodeNums).toBeNull();
+    });
   });
 });
