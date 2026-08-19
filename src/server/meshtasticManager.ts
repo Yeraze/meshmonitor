@@ -9017,6 +9017,22 @@ class MeshtasticManager implements ISourceManager {
       }
 
       // Add position information if available
+      // History rows sourced from the NodeDB config-sync dump are written ONLY for
+      // the local node (issue #4809). The node sends its entire NodeDB as
+      // FromRadio.node_info records on every config sync, each embedding that
+      // node's last-known position/device_metrics. For remote nodes that same
+      // history already arrives as live POSITION_APP/TELEMETRY_APP packets, which
+      // carry a packetId and are deduped; the embedded NodeInfo copies do not, so
+      // they bypass dedup and re-insert the whole database as duplicate graph
+      // points on every resync (badly amplified by Meshtastic 2.8's larger warm
+      // NodeDB and its nodes-only refresh). The LOCAL node is the sole exception:
+      // TCP clients never receive their own node's POSITION_APP/TELEMETRY_APP over
+      // the PhoneAPI, so NodeInfo is its only telemetry-history source. The node
+      // *row* (current position, last-known fields, SNR trend) still updates for
+      // every node below — only the duplicate history writes are gated.
+      const isLocalNode = this.localNodeInfo != null
+        && this.localNodeInfo.nodeNum === Number(nodeInfo.num);
+
       let positionTelemetryData: { timestamp: number; latitude: number; longitude: number; altitude?: number; precisionBits?: number; channel?: number; groundSpeed?: number; groundTrack?: number } | null = null;
       if (nodeInfo.position && (nodeInfo.position.latitudeI || nodeInfo.position.longitudeI)) {
         const coords = meshtasticProtobufService.convertCoordinates(
@@ -9088,19 +9104,24 @@ class MeshtasticManager implements ISourceManager {
             }
           }
 
-          // Always record position telemetry for history (regardless of whether the
-          // current-position columns were updated), using the actual incoming coordinates.
-          const timestamp = nodeInfo.position.time ? Number(nodeInfo.position.time) * 1000 : Date.now();
-          positionTelemetryData = {
-            timestamp,
-            latitude: coords.latitude,
-            longitude: coords.longitude,
-            altitude: nodeInfo.position.altitude,
-            precisionBits,
-            channel: channelIndex,
-            groundSpeed: nodeInfo.position.groundSpeed ?? nodeInfo.position.ground_speed,
-            groundTrack: nodeInfo.position.groundTrack ?? nodeInfo.position.ground_track
-          };
+          // Record position telemetry history for the LOCAL node only (issue #4809).
+          // Remote nodes' position history comes from live POSITION_APP packets
+          // (deduped by packetId); re-recording the NodeDB-dump copy here duplicated
+          // the whole database on every config resync. The current-position columns
+          // above still update for every node, so the map is unaffected.
+          if (isLocalNode) {
+            const timestamp = nodeInfo.position.time ? Number(nodeInfo.position.time) * 1000 : Date.now();
+            positionTelemetryData = {
+              timestamp,
+              latitude: coords.latitude,
+              longitude: coords.longitude,
+              altitude: nodeInfo.position.altitude,
+              precisionBits,
+              channel: channelIndex,
+              groundSpeed: nodeInfo.position.groundSpeed ?? nodeInfo.position.ground_speed,
+              groundTrack: nodeInfo.position.groundTrack ?? nodeInfo.position.ground_track
+            };
+          }
         } else {
           logger.warn(`⚠️ Invalid position coordinates for node ${nodeId}: lat=${coords.latitude}, lon=${coords.longitude}. Skipping position save.`);
         }
@@ -9110,7 +9131,7 @@ class MeshtasticManager implements ISourceManager {
       // This allows the local node's telemetry to be captured, since TCP clients
       // only receive TELEMETRY_APP packets from OTHER nodes via mesh, not from the local node
       let deviceMetricsTelemetryData: any = null;
-      if (nodeInfo.deviceMetrics) {
+      if (nodeInfo.deviceMetrics && isLocalNode) {
         const deviceMetrics = nodeInfo.deviceMetrics;
         const timestamp = nodeInfo.lastHeard ? Number(nodeInfo.lastHeard) * 1000 : Date.now();
 
