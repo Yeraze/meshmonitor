@@ -1849,6 +1849,17 @@ router.post('/commands', requireAdmin(), async (req, res) => {
             error: `broadcastMessage exceeds ${MESH_BEACON_MESSAGE_MAX_BYTES} bytes (firmware limit)`
           });
         }
+        // Firmware enforces a 3600s (1h) minimum on broadcast_interval_secs and
+        // silently rejects lower values (#4802). Reject a positive sub-minimum
+        // here so the user gets a clear error instead of a setting that never
+        // persists. 0 is allowed (device falls back to the firmware default).
+        if (typeof params.config.broadcastIntervalSecs === 'number'
+          && params.config.broadcastIntervalSecs > 0
+          && params.config.broadcastIntervalSecs < 3600) {
+          return res.status(400).json({
+            error: 'broadcastIntervalSecs must be at least 3600 seconds (firmware minimum)'
+          });
+        }
         buildAdminMessage = (passkey) => protobufService.createSetModuleConfigMessageGeneric('meshbeacon', params.config, passkey);
         break;
       case 'setSecurityConfig':

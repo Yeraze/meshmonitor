@@ -456,6 +456,86 @@ describe('adminRoutes — TX-disabled mapping + txEnabled preservation (#4294)',
   });
 });
 
+describe('adminRoutes — setMeshBeaconConfig interval guard (#4802)', () => {
+  let harness: RouteTestHarness;
+
+  function makeManager(overrides: Record<string, unknown> = {}): ISourceManager {
+    return {
+      sourceId: harness.sourceA,
+      sourceType: 'meshtastic_tcp',
+      start: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn().mockResolvedValue(undefined),
+      getStatus: vi.fn().mockReturnValue({ sourceId: harness.sourceA, sourceName: 'A', sourceType: 'meshtastic_tcp', connected: true }),
+      getLocalNodeInfo: vi.fn().mockReturnValue({ nodeNum: 1, nodeId: '!00000001', longName: 'Local', shortName: 'LOC' }),
+      getSessionPasskey: vi.fn().mockReturnValue(new Uint8Array([1, 2, 3, 4])),
+      getSessionPasskeyStatus: vi.fn().mockReturnValue({ hasPasskey: true }),
+      sendAdminCommand: vi.fn().mockResolvedValue(undefined),
+      sendAdminCommandAwaitAck: vi.fn().mockResolvedValue({ acked: true, timedOut: false }),
+      updateCachedDeviceConfig: vi.fn(),
+      isTxEnabled: vi.fn().mockReturnValue(true),
+      ...overrides,
+    } as unknown as ISourceManager;
+  }
+
+  beforeEach(async () => {
+    harness = await createRouteTestApp({ mount: (app) => app.use('/', adminRoutes) });
+    vi.spyOn(protobufService, 'createSetModuleConfigMessageGeneric').mockReturnValue(new Uint8Array([0]));
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await sourceManagerRegistry.removeManager(harness.sourceA);
+    await harness.cleanup();
+  });
+
+  it('rejects a sub-minimum interval with 400, before touching the device', async () => {
+    const sendAdminCommand = vi.fn().mockResolvedValue(undefined);
+    await sourceManagerRegistry.addManager(makeManager({ sendAdminCommand }));
+    const agent = await harness.loginAs(harness.admin);
+
+    const res = await agent.post('/commands').send({
+      command: 'setMeshBeaconConfig',
+      sourceId: harness.sourceA,
+      nodeNum: 1,
+      config: { flags: 2, broadcastIntervalSecs: 60 },
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/3600/);
+    expect(sendAdminCommand).not.toHaveBeenCalled();
+    expect(protobufService.createSetModuleConfigMessageGeneric).not.toHaveBeenCalled();
+  });
+
+  it('accepts an interval at or above the firmware minimum', async () => {
+    await sourceManagerRegistry.addManager(makeManager());
+    const agent = await harness.loginAs(harness.admin);
+
+    const res = await agent.post('/commands').send({
+      command: 'setMeshBeaconConfig',
+      sourceId: harness.sourceA,
+      nodeNum: 1,
+      config: { flags: 2, broadcastIntervalSecs: 7200 },
+    });
+
+    expect(res.status).toBe(200);
+    expect(protobufService.createSetModuleConfigMessageGeneric).toHaveBeenCalled();
+  });
+
+  it('allows interval 0 (device falls back to the firmware default)', async () => {
+    await sourceManagerRegistry.addManager(makeManager());
+    const agent = await harness.loginAs(harness.admin);
+
+    const res = await agent.post('/commands').send({
+      command: 'setMeshBeaconConfig',
+      sourceId: harness.sourceA,
+      nodeNum: 1,
+      config: { flags: 2, broadcastIntervalSecs: 0 },
+    });
+
+    expect(res.status).toBe(200);
+  });
+});
+
 describe('adminRoutes — setSecurityConfig private key (#4632)', () => {
   let harness: RouteTestHarness;
   // A real X25519 pair, so the derived public key can be asserted exactly.
