@@ -157,6 +157,13 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // The MapLibre worker URL is a build-only Vite `?worker&url` virtual
+      // import (maplibreWorker.ts, #4800) that Vitest cannot resolve; stub it so
+      // any test importing Base3DMap can collect. jsdom tests mock maplibre-gl.
+      'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url': path.resolve(
+        __dirname,
+        'src/test/maplibreWorkerUrlStub.ts',
+      ),
       // Force the ESM build of the spiderfier under Vitest. Its package `main`
       // is a UMD bundle whose named `OverlappingMarkerSpiderfier` export isn't a
       // constructor when Vitest externalizes it, so any test that mounts a
