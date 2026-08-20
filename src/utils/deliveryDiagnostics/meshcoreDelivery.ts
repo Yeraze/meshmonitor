@@ -81,7 +81,9 @@ export function describeMeshCoreDelivery(msg: MeshCoreMessage): DeliveryDescript
       {
         labelKey: 'delivery_details.field.message_id',
         // Our own row id — MeshMonitor's bookkeeping, not a protocol value.
-        value: msg.id ?? null,
+        // Coerce to string: some backends hand back a numeric id, and a falsy
+        // id (0 / '') should read as Unknown rather than an empty value.
+        value: msg.id ? String(msg.id) : null,
         provenance: 'observed',
       },
       {

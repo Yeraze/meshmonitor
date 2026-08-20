@@ -124,6 +124,25 @@ describe('describeMeshtasticDelivery', () => {
     expect(field?.value).toBeNull();
   });
 
+  it('collapses message/request id into a single field (no duplicate rows)', () => {
+    const result = describeMeshtasticDelivery(baseMessage({ requestId: 2847391940 }));
+    // The old design rendered separate "Message ID" and "Request ID" rows that
+    // always held the identical value; there must now be exactly one id row.
+    expect(findField(result, 'delivery_details.field.message_id')).toBeUndefined();
+    expect(findField(result, 'delivery_details.field.request_id')).toBeUndefined();
+    const field = findField(result, 'delivery_details.field.message_request_id');
+    expect(field?.value).toBe('2847391940');
+    expect(field?.provenance).toBe('reported');
+    expect(field?.noteKey).toBe('delivery_details.note.packet_is_request_id');
+  });
+
+  it('leaves the message/request id null (and note-less) when requestId is absent', () => {
+    const result = describeMeshtasticDelivery(baseMessage({}));
+    const field = findField(result, 'delivery_details.field.message_request_id');
+    expect(field?.value).toBeNull();
+    expect(field?.noteKey).toBeUndefined();
+  });
+
   it('surfaces ackFromNode as reported when present', () => {
     const result = describeMeshtasticDelivery(baseMessage({ ackFromNode: 305419896 }));
     const field = findField(result, 'delivery_details.field.ack_from_node');

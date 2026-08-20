@@ -88,15 +88,15 @@ export function describeMeshtasticDelivery(msg: MeshMessage): DeliveryDescriptio
   const identitySection: DeliverySection = {
     titleKey: 'delivery_details.section.identity',
     fields: [
+      // Meshtastic uses the packet ID as the ACK request ID, so "Message ID"
+      // and "Request ID" are the same value — collapsed into one row rather
+      // than showing the identical number twice under two labels.
       {
-        labelKey: 'delivery_details.field.message_id',
+        labelKey: 'delivery_details.field.message_request_id',
         value: msg.requestId !== undefined ? String(msg.requestId) : null,
         provenance: 'reported',
-      },
-      {
-        labelKey: 'delivery_details.field.request_id',
-        value: msg.requestId !== undefined ? String(msg.requestId) : null,
-        provenance: 'reported',
+        noteKey:
+          msg.requestId !== undefined ? 'delivery_details.note.packet_is_request_id' : undefined,
       },
       {
         labelKey: 'delivery_details.field.ack_from_node',

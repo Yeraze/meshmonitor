@@ -39,6 +39,15 @@ describe('describeMeshCoreDelivery', () => {
     expect(rtt?.provenance).toBe('observed');
   });
 
+  it('stringifies a numeric row id and nulls a falsy id', () => {
+    // Some backends hand back a numeric id; the field type is string | null.
+    const numeric = describeMeshCoreDelivery(baseMessage({ id: 12345 as unknown as string }));
+    expect(findField(numeric, 'delivery_details.field.message_id')?.value).toBe('12345');
+
+    const empty = describeMeshCoreDelivery(baseMessage({ id: '' }));
+    expect(findField(empty, 'delivery_details.field.message_id')?.value).toBeNull();
+  });
+
   it('failed: uses the honest "no ACK does not mean not received" meaning key', () => {
     const result = describeMeshCoreDelivery(baseMessage({ deliveryStatus: 'failed' }));
     expect(result.statusKey).toBe('delivery_details.mc_status.not_confirmed');
