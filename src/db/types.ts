@@ -147,6 +147,8 @@ export interface DbMessage {
   deliveryState?: string | null;
   wantAck?: boolean | null;
   ackFromNode?: number | null;
+  /** Exact numeric Meshtastic RoutingError reason on a failed send (#4816 Phase 2). NULL = not recorded (pre-migration row or a success, which never writes this column). */
+  routingErrorCode?: number | null;
   createdAt: number;
   decryptedBy?: 'node' | 'server' | null;
   /** Client IP for HTTP-injected sends (honors X-Forwarded-For when trust proxy is configured). NULL for non-HTTP sources. */

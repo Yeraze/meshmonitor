@@ -192,6 +192,8 @@ export interface DbMessage {
   wantAck?: boolean;
   routingErrorReceived?: boolean;
   ackFromNode?: number;
+  /** Exact numeric Meshtastic RoutingError reason on a failed send (#4816 Phase 2). */
+  routingErrorCode?: number;
   decryptedBy?: 'node' | 'server' | null;
   /** Impersonation flag (#2584): claims from == our local node but arrived over RF. */
   spoofSuspected?: boolean | null;
@@ -1719,6 +1721,7 @@ class DatabaseService {
       wantAck: msg.wantAck ?? undefined,
       routingErrorReceived: msg.routingErrorReceived ?? undefined,
       ackFromNode: msg.ackFromNode ?? undefined,
+      routingErrorCode: msg.routingErrorCode ?? undefined,
       spoofSuspected: msg.spoofSuspected ?? undefined,
     };
   }
@@ -4737,6 +4740,7 @@ class DatabaseService {
         deliveryState: result.deliveryState ?? undefined,
         wantAck: result.wantAck ?? undefined,
         ackFromNode: result.ackFromNode ?? undefined,
+        routingErrorCode: result.routingErrorCode ?? undefined,
         decryptedBy: result.decryptedBy ?? undefined,
       };
     }
