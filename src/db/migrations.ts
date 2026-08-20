@@ -164,6 +164,7 @@ import { migration as createReticulumPathsMigration, runMigration146Postgres, ru
 import { migration as addMeshBeaconOffersMigration, runMigration147Postgres, runMigration147Mysql } from '../server/migrations/147_add_mesh_beacon_offers.js';
 import { migration as fixEnvCurrentUnitMigration, runMigration148Postgres, runMigration148Mysql } from '../server/migrations/148_fix_env_current_unit.js';
 import { migration as addNodeStatusMigration, runMigration149Postgres, runMigration149Mysql } from '../server/migrations/149_add_node_status.js';
+import { migration as addRoutingErrorCodeMigration, runMigration150Postgres, runMigration150Mysql } from '../server/migrations/150_add_routing_error_code.js';
 
 // ============================================================================
 // Registry
@@ -2383,4 +2384,19 @@ registry.register({
   sqlite: (db) => addNodeStatusMigration.up(db),
   postgres: (client) => runMigration149Postgres(client),
   mysql: (pool) => runMigration149Mysql(pool),
+});
+
+// Migration 150: add `routingErrorCode` to `messages` — persists the exact
+// numeric Meshtastic RoutingError reason on a failed send so the Delivery
+// Details popup can show it verbatim (#4816 Phase 2). Nullable, NULL on
+// success and on pre-migration rows.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 150,
+  name: 'add_routing_error_code',
+  settingsKey: 'migration_150_add_routing_error_code',
+  sqlite: (db) => addRoutingErrorCodeMigration.up(db),
+  postgres: (client) => runMigration150Postgres(client),
+  mysql: (pool) => runMigration150Mysql(pool),
 });

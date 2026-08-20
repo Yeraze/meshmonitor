@@ -8636,7 +8636,8 @@ class MeshtasticManager implements ISourceManager {
 
       // Update message in database to mark delivery as failed
       logger.debug(`❌ Marking message ${requestId} as failed due to routing error from ${isDM ? 'target' : 'mesh'}: ${errorName}`);
-      await databaseService.messages.updateMessageDeliveryState(requestId, 'failed');
+      const routingErrorCode = typeof errorReason === 'number' ? errorReason : null;
+      await databaseService.messages.updateMessageDeliveryState(requestId, 'failed', routingErrorCode);
       // Emit WebSocket event for real-time delivery failure update
       dataEventEmitter.emitRoutingUpdate({ requestId, status: 'nak', errorReason: errorName }, this.sourceId);
       // Notify message queue service of failure

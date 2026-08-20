@@ -1060,4 +1060,15 @@ describe('transformDbMessageToMeshMessage (ackFromNode plumb, #4816)', () => {
     const result = transformDbMessageToMeshMessage(baseRow());
     expect(result.ackFromNode).toBeUndefined();
   });
+
+  it('includes routingErrorCode in the transformed message when the row has it (#4816 Phase 2)', () => {
+    const row = { ...baseRow(), routingErrorCode: 5 };
+    const result = transformDbMessageToMeshMessage(row);
+    expect(result.routingErrorCode).toBe(5);
+  });
+
+  it('omits routingErrorCode (undefined) when the row has none', () => {
+    const result = transformDbMessageToMeshMessage(baseRow());
+    expect(result.routingErrorCode).toBeUndefined();
+  });
 });

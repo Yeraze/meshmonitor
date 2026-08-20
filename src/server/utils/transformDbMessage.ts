@@ -36,6 +36,7 @@ export function transformDbMessageToMeshMessage(msg: DbMessage): MeshMessage {
     rxRssi: msg.rxRssi ?? undefined,
     requestId: (msg as any).requestId,
     ackFromNode: msg.ackFromNode ?? undefined,
+    routingErrorCode: msg.routingErrorCode ?? undefined,
     wantAck: Boolean((msg as any).wantAck),
     ackFailed: Boolean((msg as any).ackFailed),
     routingErrorReceived: Boolean((msg as any).routingErrorReceived),

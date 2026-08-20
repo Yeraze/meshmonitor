@@ -61,6 +61,7 @@ export class MessagesRepository extends BaseRepository {
       deliveryState: messageData.deliveryState ?? null,
       wantAck: messageData.wantAck ?? null,
       ackFromNode: messageData.ackFromNode ?? null,
+      routingErrorCode: messageData.routingErrorCode ?? null,
       createdAt: messageData.createdAt,
       decryptedBy: messageData.decryptedBy ?? null,
       sourceIp: messageData.sourceIp ?? null,
@@ -407,6 +408,7 @@ export class MessagesRepository extends BaseRepository {
       deliveryState: (messageData as any).deliveryState ?? null,
       wantAck: (messageData as any).wantAck ?? null,
       ackFromNode: (messageData as any).ackFromNode ?? null,
+      routingErrorCode: messageData.routingErrorCode ?? null,
       createdAt: messageData.createdAt,
       decryptedBy: (messageData as any).decryptedBy ?? null,
       sourceIp: (messageData as any).sourceIp ?? null,
@@ -574,9 +576,19 @@ export class MessagesRepository extends BaseRepository {
   }
 
   /**
-   * Update message delivery state
+   * Update message delivery state.
+   *
+   * `routingErrorCode` (#4816 Phase 2) is optional and defaults to being
+   * omitted from the update set entirely — the success/ack call sites
+   * (`'delivered'` / `'confirmed'`) never pass it, so the column stays NULL
+   * (or whatever it already was) rather than being clobbered. Only the
+   * failed-routing call site passes a concrete numeric RoutingError reason.
    */
-  async updateMessageDeliveryState(requestId: number, deliveryState: 'delivered' | 'confirmed' | 'failed'): Promise<boolean> {
+  async updateMessageDeliveryState(
+    requestId: number,
+    deliveryState: 'delivered' | 'confirmed' | 'failed',
+    routingErrorCode?: number | null,
+  ): Promise<boolean> {
     const { messages } = this.tables;
     const existing = await this.db
       .select({ id: messages.id })
@@ -585,9 +597,14 @@ export class MessagesRepository extends BaseRepository {
 
     if (existing.length === 0) return false;
 
+    const updateSet: { deliveryState: string; routingErrorCode?: number | null } = { deliveryState };
+    if (routingErrorCode !== undefined) {
+      updateSet.routingErrorCode = routingErrorCode;
+    }
+
     await this.db
       .update(messages)
-      .set({ deliveryState })
+      .set(updateSet)
       .where(eq(messages.requestId, requestId));
     return true;
   }

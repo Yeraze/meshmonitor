@@ -8,6 +8,7 @@
 import { MeshMessage } from '../../types/message.js';
 import { getMeshtasticDeliveryState } from './status.js';
 import type { DeliveryDescription, DeliverySection, DeliveryTone } from './types.js';
+import { getRoutingErrorName } from '../routingErrors.js';
 
 /**
  * DM vs broadcast/channel convention used throughout the frontend
@@ -73,15 +74,23 @@ export function describeMeshtasticDelivery(msg: MeshMessage): DeliveryDescriptio
   const statusSection: DeliverySection = {
     titleKey: 'delivery_details.section.status',
     fields: [
-      // Exact protocol routing-result code is not persisted this phase
-      // (Phase 2 will add the numeric routing-error name map) — always
-      // Unknown, never guessed.
-      {
-        labelKey: 'delivery_details.field.protocol_result',
-        value: null,
-        provenance: 'unknown',
-        noteKey: 'delivery_details.note.protocol_result_deferred',
-      },
+      // Exact protocol routing-result code (#4816 Phase 2): reported when the
+      // backend persisted a numeric RoutingError on the failed send, else
+      // honestly Unknown — never guessed. Note this does NOT change the
+      // failed-state meaning text: a routing code still doesn't prove
+      // non-delivery, so the code lives only in this provenance-labeled row.
+      typeof msg.routingErrorCode === 'number'
+        ? {
+            labelKey: 'delivery_details.field.protocol_result',
+            value: `${getRoutingErrorName(msg.routingErrorCode)} (${msg.routingErrorCode})`,
+            provenance: 'reported',
+          }
+        : {
+            labelKey: 'delivery_details.field.protocol_result',
+            value: null,
+            provenance: 'unknown',
+            noteKey: 'delivery_details.note.protocol_result_deferred',
+          },
     ],
   };
 
