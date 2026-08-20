@@ -59,6 +59,10 @@ export type PortNumType = typeof PortNum[keyof typeof PortNum];
 /**
  * Routing error reasons from meshtastic.Routing.Error enum
  * in mesh.proto
+ *
+ * NOTE: the frontend keeps a hand-synced copy of this map in
+ * `src/utils/routingErrors.ts` (it must not import server code). If you add a
+ * new code here, mirror it there too. Unmapped codes degrade to `UNKNOWN_<n>`.
  */
 export const RoutingError = {
   NONE: 0,
