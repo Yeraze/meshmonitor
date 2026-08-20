@@ -179,14 +179,14 @@ export class MessageQueueService {
   private startCleanupInterval() {
     // Run cleanup every minute
     this.cleanupInterval = setInterval(() => {
-      this.cleanupOrphanedAcks();
+      void this.cleanupOrphanedAcks();
     }, 60000);
   }
 
   /**
    * Clean up pending ACKs that have been waiting too long
    */
-  private cleanupOrphanedAcks() {
+  private async cleanupOrphanedAcks() {
     const now = Date.now();
     let cleanedCount = 0;
     // Dedupe by message.id since retried messages have multiple requestIds
@@ -200,6 +200,31 @@ export class MessageQueueService {
         if (age > this.PENDING_ACK_TIMEOUT_MS) {
           seen.add(message.id);
           logger.warn(`🧹 Cleaning up orphaned ACK for message ${message.id} (requestId: ${requestId}, age: ${Math.round(age / 1000)}s)`);
+
+          // Delivery-diagnostics timeline event (#4816 Phase 3). This is the
+          // terminal timeout path — the mesh never delivered an ACK for the
+          // message's last requestId within PENDING_ACK_TIMEOUT_MS. Resolve
+          // the message's DB row from that requestId before it's dropped
+          // below. Provenance is 'inferred' — we never observed a failure,
+          // only the absence of a success. A diagnostics write must never
+          // break the send path, so failures are swallowed.
+          if (message.requestId !== undefined && this.sourceId) {
+            try {
+              const timedOutMessage = await databaseService.getMessageByRequestIdAsync(message.requestId);
+              if (timedOutMessage) {
+                await databaseService.messageEvents.recordEvent({
+                  sourceId: this.sourceId,
+                  messageId: timedOutMessage.id,
+                  eventType: 'timeout',
+                  provenance: 'inferred',
+                  timestamp: now,
+                });
+              }
+            } catch (eventError) {
+              logger.debug(`Failed to record timeout message event for ${message.id}:`, eventError);
+            }
+          }
+
           this.deleteAllRequestIds(message);
 
           // Call failure callback if present with error handling
@@ -350,10 +375,37 @@ export class MessageQueueService {
         }
       }
 
+      const isRetryAttempt = message.attempts > 1;
+
       message.requestId = requestId;
 
       // Update last send time
       this.lastSendTime = Date.now();
+
+      // Delivery-diagnostics timeline event (#4816 Phase 3). Each resend goes
+      // through sendTextMessage again, which inserts a brand-new `messages`
+      // row (a fresh packet id) — so the 'retry' event is recorded against
+      // THIS attempt's row, not the original. Only fires for attempts after
+      // the first (the first attempt's 'submitted' event is recorded by
+      // sendTextMessage itself). Bounded by MAX_ATTEMPTS (<=3). A diagnostics
+      // write must never break the send path, so failures are swallowed.
+      if (isRetryAttempt && this.sourceId) {
+        try {
+          const sentMessage = await databaseService.getMessageByRequestIdAsync(requestId);
+          if (sentMessage) {
+            await databaseService.messageEvents.recordEvent({
+              sourceId: this.sourceId,
+              messageId: sentMessage.id,
+              eventType: 'retry',
+              provenance: 'observed',
+              timestamp: Date.now(),
+              detail: JSON.stringify({ attempt: message.attempts }),
+            });
+          }
+        } catch (eventError) {
+          logger.debug(`Failed to record retry message event for ${message.id}:`, eventError);
+        }
+      }
 
       // Always remove from queue on successful send
       this.removeFromQueue(message);
