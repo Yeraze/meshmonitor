@@ -19,13 +19,27 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 const getNodesBySource = vi.fn();
 const upsertNode = vi.fn().mockResolvedValue(undefined);
 
+const PATHFINDING_SETTINGS: Record<string, string> = {
+  meshcoreAutoPathfindingEnabled: 'true',
+  meshcoreAutoPathfindingPathDiscoveryEnabled: 'true',
+  meshcoreAutoPathfindingNeighborsEnabled: 'true',
+  meshcoreAutoPathfindingIntervalMinutes: '3',
+  meshcoreAutoPathfindingRepeatHours: '1',
+};
+
 vi.mock('../services/database.js', () => ({
   default: {
     meshcore: {
       getNodesBySource: (...args: unknown[]) => getNodesBySource(...args),
       upsertNode: (...args: unknown[]) => upsertNode(...args),
       insertMessage: vi.fn().mockResolvedValue(undefined),
+      insertNeighborsBatch: vi.fn().mockResolvedValue(undefined),
     },
+    settings: {
+      getSettingForSource: async (_sourceId: unknown, key: string) =>
+        PATHFINDING_SETTINGS[key] ?? null,
+    },
+    getMeshcorePathfindingFilterSettingsAsync: async () => ({ enabled: false }),
   },
 }));
 
@@ -199,6 +213,38 @@ describe('MeshCoreManager — firmware contact eviction (#4838)', () => {
     // An on-device contact still goes out over the air as before.
     await expect(m.discoverContactPath(COMPANION)).resolves.toBe(true);
     expect(sent).toContain('discover_path');
+  });
+
+  it('Auto-Pathfinding skips evicted contacts, sparing the airtime', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, 'random').mockReturnValue(0); // no jitter
+    try {
+      // Both nodes are known; only the companion is still on the device.
+      const m = makeManager([companionContact]);
+      await m.refreshContacts();
+
+      const discovered: string[] = [];
+      const neighboured: string[] = [];
+      (m as any).discoverContactPath = async (k: string) => { discovered.push(k); return true; };
+      (m as any).getNeighbours = async (k: string) => { neighboured.push(k); return null; };
+
+      await m.startAutoPathfinding();
+      // The run walks targets with a configured gap between each (3 min
+      // here), so advance well past it — otherwise only the first target
+      // fires and the assertion below passes for the wrong reason.
+      await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
+
+      // The companion is still addressable and gets its probe...
+      expect(discovered).toContain(COMPANION);
+      // ...while the evicted repeater, a get_neighbours target by type, is
+      // skipped rather than costing airtime on a command the device rejects.
+      expect(neighboured).not.toContain(REPEATER);
+
+      m.stopAutoPathfinding();
+    } finally {
+      vi.restoreAllMocks();
+      vi.useRealTimers();
+    }
   });
 
   it('does not resurrect a contact the user just removed', async () => {
