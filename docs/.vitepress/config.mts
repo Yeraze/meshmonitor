@@ -81,6 +81,7 @@ export default defineConfig({
           collapsed: false,
           items: [
             { text: 'Message Search', link: '/features/message-search' },
+            { text: 'Delivery Details', link: '/features/delivery-diagnostics' },
             { text: 'Channel Database', link: '/features/channel-database' },
             { text: 'Store & Forward', link: '/features/store-forward' },
             { text: 'Embedded MQTT Broker & Bridge', link: '/features/mqtt-broker' }
