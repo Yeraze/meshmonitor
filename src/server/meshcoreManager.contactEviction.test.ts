@@ -24,6 +24,7 @@ vi.mock('../services/database.js', () => ({
     meshcore: {
       getNodesBySource: (...args: unknown[]) => getNodesBySource(...args),
       upsertNode: (...args: unknown[]) => upsertNode(...args),
+      insertMessage: vi.fn().mockResolvedValue(undefined),
     },
   },
 }));
@@ -165,6 +166,39 @@ describe('MeshCoreManager — firmware contact eviction (#4838)', () => {
     await Promise.resolve();
 
     expect(m.getContact(REPEATER)?.onDevice).toBe(true);
+  });
+
+  it('clears the off-device flag when a DM arrives from the contact', async () => {
+    const m = makeManager([companionContact]);
+    await m.refreshContacts();
+    expect(m.getContact(REPEATER)?.onDevice).toBe(false);
+
+    // The companion can only decrypt a DM it has a contact-table entry for.
+    (m as any).handleBridgeEvent({
+      event_type: 'contact_message',
+      data: { pubkey_prefix: REPEATER.substring(0, 12), text: 'hi', sender_timestamp: 1_700_001_000 },
+    });
+    await Promise.resolve();
+
+    expect(m.getContact(REPEATER)?.onDevice).toBe(true);
+  });
+
+  it('does not flood a discover-path request at an evicted contact', async () => {
+    const m = makeManager([companionContact]);
+    await m.refreshContacts();
+
+    const sent: string[] = [];
+    (m as any).sendBridgeCommand = async (cmd: string) => {
+      sent.push(cmd);
+      return { id: '3', success: true, data: {} };
+    };
+
+    await expect(m.discoverContactPath(REPEATER)).resolves.toBe(false);
+    expect(sent).not.toContain('discover_path');
+
+    // An on-device contact still goes out over the air as before.
+    await expect(m.discoverContactPath(COMPANION)).resolves.toBe(true);
+    expect(sent).toContain('discover_path');
   });
 
   it('does not resurrect a contact the user just removed', async () => {

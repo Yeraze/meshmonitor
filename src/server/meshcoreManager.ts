@@ -1760,7 +1760,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // pushes or the next refreshContacts() poll, so the Contact Details panel
       // can show a stale "1 day ago" moments after a live DM arrives (#4553).
       if (senderContact) {
-        const touchedContact: MeshCoreContact = { ...senderContact, lastSeen: Date.now() };
+        // Decrypting a DM requires the sender's entry in the device's own
+        // contact table, so receiving one is proof it's on-device again —
+        // clears a stale eviction flag (#4838) without waiting for an advert.
+        const touchedContact: MeshCoreContact = { ...senderContact, lastSeen: Date.now(), onDevice: true };
         this.contacts.set(senderContact.publicKey, touchedContact);
         void this.persistContact(touchedContact);
         this.emit('contacts_updated', { sourceId: this.sourceId, contact: touchedContact });
@@ -2003,6 +2006,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         outPath: outPathFormatted || null,
         pathLen: outHops,
         lastSeen: Date.now(),
+        // A path response for this contact means the device just addressed
+        // it directly — clears a stale eviction flag (#4838).
+        onDevice: true,
       };
       this.contacts.set(contact.publicKey, updated);
       void this.persistContact(updated);
@@ -3924,6 +3930,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       return false;
     }
     if (!this.connected) {
+      return false;
+    }
+    // Discover Path floods a real over-the-air request (see doc comment on
+    // the route). A contact restored from the DB after a firmware eviction
+    // (#4838) isn't addressable — sending anyway just burns airtime the
+    // device will reject.
+    if (this.contacts.get(publicKey)?.onDevice === false) {
+      logger.debug(`[MeshCore] Skipping discover_path for evicted contact ${publicKey.substring(0, 16)}…`);
       return false;
     }
     this.requireTransmit();

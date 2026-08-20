@@ -234,7 +234,16 @@ router.post(
           error: 'Invalid public key — must be 64-char hex',
         });
       }
-      const ok = await managerFor(req, res).discoverContactPath(publicKey);
+      const manager = managerFor(req, res);
+      if (manager.getContact(publicKey)?.onDevice === false) {
+        return res.status(409).json({
+          success: false,
+          error: 'This contact is no longer in the device\'s contact list — the companion '
+            + 'evicted it (its table is full, or it was removed). It will return on the '
+            + 'node\'s next advert; favorite it in the MeshCore app to stop it being evicted.',
+        });
+      }
+      const ok = await manager.discoverContactPath(publicKey);
       if (!ok) {
         return res.status(409).json({
           success: false,
