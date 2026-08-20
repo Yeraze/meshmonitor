@@ -226,6 +226,8 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
   const [showTest, setShowTest] = useState(false);
   const [resettingHomes, setResettingHomes] = useState(false);
   const [resetHomesMsg, setResetHomesMsg] = useState<string | null>(null);
+  const [runningNow, setRunningNow] = useState(false);
+  const [runNowMsg, setRunNowMsg] = useState<string | null>(null);
 
   /** Compile the current editor state → graph config for the Test panel. */
   const getTestConfig = () => {
@@ -361,6 +363,42 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
     }
   };
 
+  /**
+   * Fire the SAVED automation's real actions right now (#4827). Live execution,
+   * so it is gated behind an explicit confirm — distinct from the safe "Test"
+   * dry-run. The engine runs the persisted config (not the unsaved editor draft)
+   * and honors the rule's cooldown / rate limits without touching its schedule.
+   */
+  const runNow = async () => {
+    if (isNew || !initial?.id) return;
+    const proceed = window.confirm(
+      "Run this automation now?\n\n"
+      + "This fires the SAVED automation's real actions immediately. It can send "
+      + "messages to the mesh, reboot nodes, or trigger notifications. This is NOT "
+      + "a dry run.\n\n"
+      + "It still respects the rule's cooldown and rate limits, and does not change "
+      + "its schedule.\n\nContinue?",
+    );
+    if (!proceed) return;
+    setRunningNow(true);
+    setRunNowMsg(null);
+    try {
+      const r = await apiService.runAutomationNow(initial.id);
+      if (r.ran) {
+        const n = r.actions?.length ?? 0;
+        setRunNowMsg(`Fired: ${r.status ?? 'completed'} (${n} action${n === 1 ? '' : 's'} dispatched).`);
+      } else if (r.reason === 'cooldown' || r.reason === 'ratelimited') {
+        setRunNowMsg(`Did not fire: ${r.detail ?? r.reason}.`);
+      } else {
+        setRunNowMsg(`Did not fire: ${r.reason ?? 'unknown reason'}.`);
+      }
+    } catch (e) {
+      setRunNowMsg(e instanceof Error ? e.message : 'Failed to run automation');
+    } finally {
+      setRunningNow(false);
+    }
+  };
+
   const showResetHomes = !isNew && (
     (mode === 'builder' && form.trigger.type === 'trigger.leftHome')
     || (mode === 'json' && jsonText.includes('trigger.leftHome'))
@@ -400,6 +438,16 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
       <div className="ae-btn-row" style={{ marginTop: '0.75rem' }}>
         <button className="ae-btn ae-btn--primary" disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save automation'}</button>
         <button className="ae-btn" onClick={() => setShowTest((s) => !s)}>{!showTest && <UiIcon name="play" size={15} />} {showTest ? 'Hide test' : 'Test'}</button>
+        {!isNew && (
+          <button
+            className="ae-btn"
+            disabled={runningNow}
+            onClick={runNow}
+            title="Fire this automation's real actions now (live execution, not a dry run)"
+          >
+            {runningNow ? 'Running…' : <><UiIcon name="zap" size={15} /> Run now</>}
+          </button>
+        )}
         {showResetHomes && (
           <button
             className="ae-btn"
@@ -412,6 +460,7 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
         )}
       </div>
       {resetHomesMsg && <div className="ae-muted" style={{ marginTop: '0.4rem' }}>{resetHomesMsg}</div>}
+      {runNowMsg && <div className="ae-muted" style={{ marginTop: '0.4rem' }}>{runNowMsg}</div>}
 
       {showTest && <AutomationTester getConfig={getTestConfig} variables={variables} sources={sources} />}
     </div>

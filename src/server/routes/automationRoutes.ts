@@ -22,6 +22,7 @@ import {
   NUMERIC_OPS,
 } from '../../types/automation.js';
 import { reloadAutomations, getAutomationEngine } from '../services/automation/automationEngineSingleton.js';
+import { ok, fail } from '../utils/apiResponse.js';
 import { simulateAutomation, type SimEventInput } from '../services/automation/automationSimulator.js';
 import { createMeshNodeDataProvider } from '../services/automation/meshNodeData.js';
 import { unifyChannels, sourceProtocol } from '../services/automation/channelUnify.js';
@@ -417,6 +418,31 @@ router.post('/:id/reset-homes', canWrite, async (req: Request, res: Response) =>
   } catch (error) {
     logger.error('Error resetting left-home anchors:', error);
     res.status(500).json({ error: 'Failed to reset homes' });
+  }
+});
+
+/**
+ * Manually fire an automation's actions FOR REAL right now (#4827, "Run Now"),
+ * bypassing its trigger schedule. Distinct from `/:id/test`, which is a safe
+ * dry-run: this dispatches live actions (mesh sends, reboots, notifications).
+ * Gated on `automations:write` — a real execution is at least as privileged as
+ * editing the rule. Routes through the engine's real dispatch path, so the
+ * per-automation cooldown, rate-limit and self-origin guards all still apply and
+ * the cron cadence is left untouched.
+ */
+router.post('/:id/run-now', canWrite, async (req: Request, res: Response) => {
+  try {
+    const engine = getAutomationEngine();
+    if (!engine) return fail(res, 503, 'ENGINE_NOT_READY', 'automation engine not started');
+    const result = await engine.runNow(req.params.id);
+    if (result.reason === 'not_found') return fail(res, 404, 'AUTOMATION_NOT_FOUND', 'automation not found');
+    if (result.reason === 'invalid') return fail(res, 400, 'INVALID_AUTOMATION', 'automation config is invalid');
+    // cooldown / rate-limit suppression is a legitimate outcome (the guard did its
+    // job) — return 200 with the verdict so the UI can explain why it did not fire.
+    return ok(res, result);
+  } catch (error) {
+    logger.error('Error running automation now:', error);
+    return fail(res, 500, 'RUN_NOW_FAILED', 'Failed to run automation');
   }
 });
 
