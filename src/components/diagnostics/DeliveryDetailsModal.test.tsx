@@ -1,10 +1,12 @@
 /**
  * @vitest-environment jsdom
  *
- * DeliveryDetailsModal (#4816 Phase 1, WP2 + Phase 3 WP4) — a11y shell,
- * provenance badges, honest Unknown placeholders, the MeshCore Propagation
- * section's raw-hash-always-visible + DM-omission rules, and the persisted
- * event Timeline section (populated / empty / loading / error states).
+ * DeliveryDetailsModal (#4816 Phase 1, WP2 + Phase 3 WP4 + Phase 4 WP4) —
+ * a11y shell, provenance badges, honest Unknown placeholders, the MeshCore
+ * Propagation section's raw-hash-always-visible + DM-omission rules, the
+ * Meshtastic Propagation (Heard-By) section's honest partial-identity
+ * rendering, and the persisted event Timeline section (populated / empty /
+ * loading / error states).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
@@ -17,20 +19,30 @@ import apiService from '../../services/api';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, fallback?: string | Record<string, unknown>) =>
-      typeof fallback === 'string' ? fallback : key,
+    t: (key: string, fallback?: string | Record<string, unknown>, vars?: Record<string, unknown>) => {
+      if (typeof fallback !== 'string') return key;
+      // Minimal {{var}} interpolation so possible_relays/attempt-style
+      // fallbacks render their count in tests, matching real i18next.
+      if (vars) {
+        return fallback.replace(/\{\{(\w+)\}\}/g, (_, name) => String(vars[name] ?? ''));
+      }
+      return fallback;
+    },
   }),
 }));
 
-// The timeline section fetches via ApiService.getMessageEvents. Default to an
-// empty timeline; per-test overrides drive the populated/loading/error states.
+// The timeline section fetches via ApiService.getMessageEvents, and the
+// Meshtastic Propagation section via ApiService.getMeshtasticHeardBy. Default
+// both to empty; per-test overrides drive the populated/loading/error states.
 vi.mock('../../services/api', () => ({
   default: {
     getMessageEvents: vi.fn().mockResolvedValue([]),
+    getMeshtasticHeardBy: vi.fn().mockResolvedValue([]),
   },
 }));
 
 const mockGetMessageEvents = apiService.getMessageEvents as unknown as ReturnType<typeof vi.fn>;
+const mockGetMeshtasticHeardBy = apiService.getMeshtasticHeardBy as unknown as ReturnType<typeof vi.fn>;
 
 function renderModal(ui: ReactNode) {
   const client = new QueryClient({
@@ -42,6 +54,8 @@ function renderModal(ui: ReactNode) {
 beforeEach(() => {
   mockGetMessageEvents.mockReset();
   mockGetMessageEvents.mockResolvedValue([]);
+  mockGetMeshtasticHeardBy.mockReset();
+  mockGetMeshtasticHeardBy.mockResolvedValue([]);
 });
 
 function buildMeshtasticMessage(overrides: Partial<MeshMessage> = {}): MeshMessage {
@@ -185,6 +199,119 @@ describe('DeliveryDetailsModal', () => {
     expect(screen.getByText('Repeater-1')).toBeTruthy();
     expect(screen.getByText(/Observed by MeshMonitor through repeater re-flood correlation/)).toBeTruthy();
     expect(screen.getByText(/NOT recipient-specific proof of delivery/)).toBeTruthy();
+  });
+
+  describe('Meshtastic Propagation section (#4816 Phase 4 WP4)', () => {
+    it('renders honest partial-identity rows for a channel message: single/multi/zero candidates', async () => {
+      mockGetMeshtasticHeardBy.mockResolvedValue([
+        {
+          relayByte: 0x4a,
+          relayByteHex: '0x4A',
+          snr: 6.5,
+          heardAt: Date.parse('2026-01-01T10:00:00Z'),
+          candidates: [{ nodeNum: 0x12345678, longName: 'Repeater-1' }],
+        },
+        {
+          relayByte: 0x7b,
+          relayByteHex: '0x7B',
+          snr: null,
+          heardAt: Date.parse('2026-01-01T10:01:00Z'),
+          candidates: [
+            { nodeNum: 1, longName: 'Node-One' },
+            { nodeNum: 2, longName: 'Node-Two' },
+          ],
+        },
+        {
+          relayByte: 0x99,
+          relayByteHex: '0x99',
+          snr: 3,
+          heardAt: Date.parse('2026-01-01T10:02:00Z'),
+          candidates: [],
+        },
+      ]);
+
+      renderModal(
+        <DeliveryDetailsModal
+          protocol="meshtastic"
+          sourceId="source-a"
+          message={buildMeshtasticMessage({ channel: 0 })}
+          onClose={vi.fn()}
+        />,
+      );
+
+      await waitFor(() => expect(screen.getByText('Repeater-1')).toBeTruthy());
+
+      // Single candidate: the resolved node's name plus the raw hex.
+      expect(screen.getByText('Repeater-1')).toBeTruthy();
+      expect(screen.getByText('0x4A')).toBeTruthy();
+
+      // Multiple candidates: MUST NOT assert a single node — count + raw hex only.
+      expect(screen.getByText('2 possible relays')).toBeTruthy();
+      expect(screen.getByText('0x7B')).toBeTruthy();
+      expect(screen.queryByText('Node-One')).toBeNull();
+
+      // Zero candidates: raw hex only, honestly labeled unknown.
+      expect(screen.getByText('Unknown relay')).toBeTruthy();
+      expect(screen.getByText('0x99')).toBeTruthy();
+
+      // Every row carries the Observed provenance badge.
+      expect(screen.getAllByText('Observed by MeshMonitor').length).toBeGreaterThanOrEqual(3);
+
+      expect(mockGetMeshtasticHeardBy).toHaveBeenCalledWith('source-a', 'mt1');
+    });
+
+    it('shows the honest empty state for a channel message with no observed re-flood', async () => {
+      mockGetMeshtasticHeardBy.mockResolvedValue([]);
+      renderModal(
+        <DeliveryDetailsModal
+          protocol="meshtastic"
+          sourceId="source-a"
+          message={buildMeshtasticMessage({ channel: 0 })}
+          onClose={vi.fn()}
+        />,
+      );
+      expect(screen.getByText('Propagation (Heard By)')).toBeTruthy();
+      await waitFor(() => expect(screen.getByText('No re-flood observed')).toBeTruthy());
+    });
+
+    it('shows the loading state while heard-by is in flight', () => {
+      mockGetMeshtasticHeardBy.mockReturnValue(new Promise(() => {}));
+      renderModal(
+        <DeliveryDetailsModal
+          protocol="meshtastic"
+          sourceId="source-a"
+          message={buildMeshtasticMessage({ channel: 0 })}
+          onClose={vi.fn()}
+        />,
+      );
+      expect(screen.getByText('Checking observed propagation…')).toBeTruthy();
+    });
+
+    it('shows the honest error state when the heard-by fetch fails', async () => {
+      mockGetMeshtasticHeardBy.mockRejectedValue(new Error('boom'));
+      renderModal(
+        <DeliveryDetailsModal
+          protocol="meshtastic"
+          sourceId="source-a"
+          message={buildMeshtasticMessage({ channel: 0 })}
+          onClose={vi.fn()}
+        />,
+      );
+      await waitFor(() => expect(screen.getByText('Heard-by data unavailable')).toBeTruthy());
+    });
+
+    it('omits Propagation entirely for a Meshtastic direct message (channel === -1)', () => {
+      renderModal(
+        <DeliveryDetailsModal
+          protocol="meshtastic"
+          sourceId="source-a"
+          message={buildMeshtasticMessage({ channel: -1 })}
+          onClose={vi.fn()}
+        />,
+      );
+      expect(screen.queryByText('Propagation (Heard By)')).toBeNull();
+      expect(mockGetMeshtasticHeardBy).not.toHaveBeenCalled();
+    });
   });
 
   it('calls onClose on Escape, overlay click, and the close button', () => {
