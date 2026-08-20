@@ -88,12 +88,29 @@ describe('describeMeshtasticDelivery', () => {
     expect(field?.provenance).toBe('inferred');
   });
 
-  it('marks the routing/protocol-result field as unknown with a null value', () => {
+  it('marks the routing/protocol-result field as unknown with a null value when no routingErrorCode is present', () => {
     const result = describeMeshtasticDelivery(baseMessage({ ackFailed: true }));
     const field = findField(result, 'delivery_details.field.protocol_result');
     expect(field).toBeDefined();
     expect(field?.provenance).toBe('unknown');
     expect(field?.value).toBeNull();
+    expect(field?.noteKey).toBe('delivery_details.note.protocol_result_deferred');
+  });
+
+  it('reports the named routing error when routingErrorCode is present (#4816 Phase 2)', () => {
+    const result = describeMeshtasticDelivery(baseMessage({ ackFailed: true, routingErrorCode: 5 }));
+    const field = findField(result, 'delivery_details.field.protocol_result');
+    expect(field).toBeDefined();
+    expect(field?.provenance).toBe('reported');
+    expect(field?.value).toBe('MAX_RETRANSMIT (5)');
+    expect(field?.noteKey).toBeUndefined();
+  });
+
+  it('falls back to UNKNOWN_<code> for an unrecognized routingErrorCode', () => {
+    const result = describeMeshtasticDelivery(baseMessage({ ackFailed: true, routingErrorCode: 99 }));
+    const field = findField(result, 'delivery_details.field.protocol_result');
+    expect(field?.provenance).toBe('reported');
+    expect(field?.value).toBe('UNKNOWN_99 (99)');
   });
 
   it('marks Store & Forward as unknown with a null value', () => {
