@@ -6,9 +6,12 @@
  * hook at the per-source `/api/sources/:id/meshcore/*` routes. Permission
  * gating uses `hasPermission(resource, action, { sourceId })` with the
  * sourcey per-source resources (`connection`, `nodes`, `messages`,
- * `configuration`). When the user lacks `connection:read` the entire
- * surface is hidden — and the hook is left disabled so no probe requests
- * fire.
+ * `configuration`). When the user lacks `connection:read` the MeshCore
+ * surface is replaced with a permission-denied message — but the top bar
+ * (and its sign-in button/LoginModal) always renders, so a logged-out user
+ * landing here (e.g. via the default-landing-page setting, #4828) can still
+ * sign in instead of being stuck on a dead end. The hook is left disabled
+ * so no probe requests fire while the surface is hidden.
  */
 
 import { useState } from 'react';
@@ -45,18 +48,6 @@ function MeshCoreSourceInner() {
     return (
       <div className="meshcore-tab">
         <p>{t('meshcore.no_source', 'No source selected.')}</p>
-      </div>
-    );
-  }
-
-  // No connection-read permission means the entire surface is hidden, just
-  // like a Meshtastic source the user can't read. The hook is never mounted,
-  // so no `/meshcore/status` probe fires.
-  if (!canReadConnection) {
-    return (
-      <div className="meshcore-tab">
-        <h2>{t('meshcore.title')}</h2>
-        <p>{t('meshcore.no_permission', 'You do not have permission to view this MeshCore source.')}</p>
       </div>
     );
   }
@@ -122,7 +113,14 @@ function MeshCoreSourceInner() {
         </div>
       </header>
 
-      <MeshCorePage baseUrl={appBasename} sourceId={sourceId} onStatusChange={setMcStatus} />
+      {canReadConnection ? (
+        <MeshCorePage baseUrl={appBasename} sourceId={sourceId} onStatusChange={setMcStatus} />
+      ) : (
+        <div className="meshcore-tab">
+          <h2>{t('meshcore.title')}</h2>
+          <p>{t('meshcore.no_permission', 'You do not have permission to view this MeshCore source.')}</p>
+        </div>
+      )}
 
       <LoginModal isOpen={showLogin} onClose={() => setShowLogin(false)} />
     </div>

@@ -154,4 +154,55 @@ describe('use3DNeighborLines', () => {
     expect(mockUseNeighbors).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }));
     expect(mockUseMeshCoreNeighbors).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }));
   });
+
+  describe('visibleNodeNums gate (#4808)', () => {
+    it('keeps an edge when BOTH endpoints are visible', () => {
+      const { result } = renderHook(() =>
+        use3DNeighborLines(makeParams({ visibleNodeNums: new Set([1, 2]) })),
+      );
+      expect(result.current.lines.some((l) => l.key === 'mt:1')).toBe(true);
+    });
+
+    it('drops an edge when an endpoint is NOT visible (the 2D-hidden node)', () => {
+      const { result } = renderHook(() =>
+        use3DNeighborLines(makeParams({ visibleNodeNums: new Set([1]) })), // node 2 hidden
+      );
+      expect(result.current.lines.some((l) => l.key === 'mt:1')).toBe(false);
+    });
+
+    it('is a no-op when the gate is omitted (MapAnalysis behavior — all edges)', () => {
+      const { result } = renderHook(() => use3DNeighborLines(makeParams()));
+      expect(result.current.lines.some((l) => l.key === 'mt:1')).toBe(true);
+    });
+  });
+
+  describe('visibleMeshCoreKeys gate (#4808 follow-up)', () => {
+    it('keeps a meshcore edge when BOTH endpoint keys are visible', () => {
+      const { result } = renderHook(() =>
+        use3DNeighborLines(makeParams({ visibleMeshCoreKeys: new Set(['aa', 'bb']) })),
+      );
+      expect(result.current.lines.some((l) => l.key === 'mc:7')).toBe(true);
+    });
+
+    it('drops a meshcore edge when an endpoint key is NOT visible (the 2D-hidden node)', () => {
+      const { result } = renderHook(() =>
+        use3DNeighborLines(makeParams({ visibleMeshCoreKeys: new Set(['aa']) })), // 'bb' hidden
+      );
+      expect(result.current.lines.some((l) => l.key === 'mc:7')).toBe(false);
+    });
+
+    it('gates meshcore by key WITHOUT affecting meshtastic edges (independent sets)', () => {
+      const { result } = renderHook(() =>
+        // MeshCore fully hidden, Meshtastic ungated: mt edge survives, mc dropped.
+        use3DNeighborLines(makeParams({ visibleMeshCoreKeys: new Set<string>() })),
+      );
+      expect(result.current.lines.some((l) => l.key === 'mt:1')).toBe(true);
+      expect(result.current.lines.some((l) => l.key === 'mc:7')).toBe(false);
+    });
+
+    it('is a no-op when the gate is omitted (MapAnalysis behavior — all meshcore edges)', () => {
+      const { result } = renderHook(() => use3DNeighborLines(makeParams()));
+      expect(result.current.lines.some((l) => l.key === 'mc:7')).toBe(true);
+    });
+  });
 });

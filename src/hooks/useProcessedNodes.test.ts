@@ -642,6 +642,28 @@ describe('sortNodes helper', () => {
     expect(sorted[2].snr).toBe(-5);
   });
 
+  it('should sort by uptime, nodes without uptime last (#4814)', () => {
+    const uptimeNodes: DeviceInfo[] = [
+      { nodeNum: 1, user: { longName: 'Short', shortName: 'S', id: '!s' }, uptimeSeconds: 60 } as DeviceInfo,
+      { nodeNum: 2, user: { longName: 'None', shortName: 'N', id: '!n' } } as DeviceInfo, // never reported
+      { nodeNum: 3, user: { longName: 'Long', shortName: 'L', id: '!l' }, uptimeSeconds: 86400 } as DeviceInfo,
+    ];
+    const desc = sortNodes(uptimeNodes, 'uptime', 'desc');
+    expect(desc.map(n => n.user?.longName)).toEqual(['Long', 'Short', 'None']);
+
+    const asc = sortNodes(uptimeNodes, 'uptime', 'asc');
+    // Never-reported (-1 fallback) sorts below the real 60s value.
+    expect(asc.map(n => n.user?.longName)).toEqual(['None', 'Short', 'Long']);
+  });
+
+  it('falls back to deviceMetrics.uptimeSeconds when the top-level field is absent (#4814)', () => {
+    const nodes: DeviceInfo[] = [
+      { nodeNum: 1, user: { id: '!a', longName: 'A', shortName: 'A' }, deviceMetrics: { uptimeSeconds: 500 } } as DeviceInfo,
+      { nodeNum: 2, user: { id: '!b', longName: 'B', shortName: 'B' }, uptimeSeconds: 100 } as DeviceInfo,
+    ];
+    expect(sortNodes(nodes, 'uptime', 'desc').map(n => n.user?.longName)).toEqual(['A', 'B']);
+  });
+
   it('should not mutate original array', () => {
     const original = [...testNodes];
     sortNodes(testNodes, 'longName', 'asc');

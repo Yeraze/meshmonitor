@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { Base3DMap, type Node3DFeature, type Line3DFeature } from './Base3DMap';
+import type { ReactNode } from 'react';
 import type { Basemap3DSource } from '../../config/basemap3d';
 import { use3DNeighborLines } from '../MapAnalysis/use3DNeighborLines';
 import { use3DTracerouteLines } from '../MapAnalysis/use3DTracerouteLines';
@@ -29,6 +30,20 @@ export interface Map3DViewProps {
   showTraceroutes: boolean;
   /** Fetch lookback window in hours for the neighbor/traceroute data. */
   lookbackHours: number;
+  /**
+   * Visible node numbers (the host's rendered-marker set). When provided, the
+   * neighbor/traceroute lines are gated so both endpoints are visible — 3D
+   * lines then match the 2D map instead of dangling to nodes hidden by its
+   * age/transport/estimated filters (#4808). Omit for MapAnalysis (all nodes).
+   */
+  visibleNodeNums?: Set<number>;
+  /**
+   * Visible MeshCore public keys (#4808 follow-up). Gates MeshCore neighbor
+   * edges the same way `visibleNodeNums` gates Meshtastic edges; MeshCore
+   * nodes have no nodeNum so they need a separate key set. Omit for surfaces
+   * with no MeshCore nodes (NodesTab) or no gate (MapAnalysis).
+   */
+  visibleMeshCoreKeys?: Set<string>;
   /** Seed for the exaggeration slider (default `1.3`). */
   initialExaggeration?: number;
   /** Fired with the new exaggeration value whenever the slider changes. */
@@ -37,6 +52,8 @@ export interface Map3DViewProps {
   onUnsupported?: () => void;
   /** Fired with a node's `key` when its marker is clicked. */
   onNodeClick?: (key: string) => void;
+  /** Render the popup body for a clicked node; portaled into a maplibre popup (#4808). */
+  renderPopup?: (key: string) => ReactNode;
 }
 
 /**
@@ -60,10 +77,13 @@ export function Map3DView({
   showNeighbors,
   showTraceroutes,
   lookbackHours,
+  visibleNodeNums,
+  visibleMeshCoreKeys,
   initialExaggeration,
   onExaggerationChange,
   onUnsupported,
   onNodeClick,
+  renderPopup,
 }: Map3DViewProps) {
   // Static coloring for v1: the time slider is always off, so the 3D hooks
   // fall back to SNR/direction coloring over the full lookback window.
@@ -73,6 +93,8 @@ export function Map3DView({
     layer: { enabled: showNeighbors, lookbackHours },
     sources: sourceIds,
     timeSlider,
+    visibleNodeNums,
+    visibleMeshCoreKeys,
   });
   const tracerouteLines = use3DTracerouteLines({
     layer: { enabled: showTraceroutes, lookbackHours },
@@ -80,6 +102,7 @@ export function Map3DView({
     timeSlider,
     selected: null,
     nodeFilter: '',
+    visibleNodeNums,
   });
 
   const lines: Line3DFeature[] = useMemo(
@@ -96,6 +119,7 @@ export function Map3DView({
       nodes={nodes}
       lines={lines}
       onNodeClick={onNodeClick}
+      renderPopup={renderPopup}
       onUnsupported={onUnsupported}
       initialExaggeration={initialExaggeration}
       onExaggerationChange={onExaggerationChange}

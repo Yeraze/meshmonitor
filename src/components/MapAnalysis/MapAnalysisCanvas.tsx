@@ -7,6 +7,11 @@ import { useMapAnalysisCtx } from './MapAnalysisContext';
 import { useSource } from '../../contexts/SourceContext';
 import { useAnalysisNodes } from './useAnalysisNodes';
 import { getNodeTypeCategory, categoryGlyphFamily } from '../../utils/nodeTypeCategory';
+import { getHopColor } from '../../utils/mapIcons';
+import { markerAgeOpacity, MIN_MARKER_OPACITY } from '../../utils/markerAgeOpacity';
+import { isNodeEmphasized, selectionOpacity } from '../../utils/nodeIdentity';
+import { useHopCounts } from '../../hooks/useMapAnalysisData';
+import { useDashboardSources } from '../../hooks/useDashboardData';
 import MeasureDistanceController from '../MeasureDistanceController';
 import type { MeasurePoint } from '../../utils/measureDistance';
 import LinkProfileController from './LinkProfileController';
@@ -98,6 +103,24 @@ export default function MapAnalysisCanvas() {
   // #3636: measurement endpoints, from the same visible+positioned node list
   // the markers layer uses so the two never disagree.
   const analysisNodes = useAnalysisNodes();
+
+  // Hop counts for 3D hop-shading — the same source the 2D markers layer
+  // (`layers/NodeMarkersLayer.tsx`) uses, gated on the same toggle so the
+  // fetch only runs when hop-shading is on (#4808 follow-up).
+  const { data: hopSources = [] } = useDashboardSources();
+  const hopSourceIds = (hopSources as Array<{ id: string }>).map((s) => s.id);
+  const hopCounts = useHopCounts({
+    enabled: config.layers.hopShading.enabled,
+    sources: config.sources.length === 0 ? hopSourceIds : config.sources,
+  });
+  const hopByKey = useMemo(() => {
+    const m = new Map<string, number>();
+    const entries =
+      (hopCounts.data as { entries?: Array<{ sourceId: string; nodeNum: number; hops: number }> } | undefined)
+        ?.entries ?? [];
+    for (const e of entries) m.set(`${e.sourceId}:${Number(e.nodeNum)}`, e.hops);
+    return m;
+  }, [hopCounts.data]);
   const measurePoints: MeasurePoint[] = useMemo(
     () => analysisNodes.map((a) => ({
       id: a.key,
@@ -160,19 +183,39 @@ export default function MapAnalysisCanvas() {
 
   // Same shared `useAnalysisNodes()` data the 2D markers layer/picker use
   // (see `analysisNodes` above), mapped to the shape `Base3DMap` expects.
+  // #4808 follow-up: mirror the 2D markers layer's hop color + opacity so the
+  // 3D markers match. Hop color from `/api/analysis/hopCounts` (999 = no data /
+  // shading off ⇒ neutral); opacity is the time-slider age fade times the
+  // selection dim — the exact `finalOpacity` computation in
+  // `layers/NodeMarkersLayer.tsx`.
+  const ts3D = config.timeSlider;
+  const fadeByAge3D = ts3D.enabled && ts3D.windowStartMs != null && ts3D.windowEndMs != null;
+  const windowStartMs3D = ts3D.windowStartMs ?? 0;
+  const windowEndMs3D = ts3D.windowEndMs ?? 0;
   const node3DFeatures: Node3DFeature[] = useMemo(
-    () => analysisNodes.map((a) => ({
-      key: a.key,
-      lat: a.latLng[0],
-      lng: a.latLng[1],
-      label: a.node.shortName ?? undefined,
-      // Node-type glyph, consistent with the other 3D surfaces (#4808). Hop
-      // color + age dimming here depend on MapAnalysis's own hop-shading / age
-      // model and are handled in the follow-up; markers default to the disc's
-      // color/opacity until then.
-      category: categoryGlyphFamily(getNodeTypeCategory(a.node)),
-    })),
-    [analysisNodes],
+    () => analysisNodes.map((a) => {
+      const sourceId = a.node.sourceId ?? '';
+      const hopVal = hopByKey.get(`${sourceId}:${Number(a.node.nodeNum)}`);
+      const hops = config.layers.hopShading.enabled && hopVal !== undefined ? hopVal : 999;
+      // A missing lastHeard sits at the floor when fading, matching the 2D
+      // layer's raw-slider-window behavior.
+      const markerOpacity = !fadeByAge3D
+        ? 1
+        : a.node.lastHeard != null
+          ? markerAgeOpacity(windowEndMs3D, windowStartMs3D, a.node.lastHeard * 1000)
+          : MIN_MARKER_OPACITY;
+      const emphasized = isNodeEmphasized(a.key, config.selectedNodeIds);
+      return {
+        key: a.key,
+        lat: a.latLng[0],
+        lng: a.latLng[1],
+        label: a.node.shortName ?? undefined,
+        color: getHopColor(hops),
+        category: categoryGlyphFamily(getNodeTypeCategory(a.node)),
+        opacity: selectionOpacity(markerOpacity, emphasized),
+      };
+    }),
+    [analysisNodes, hopByKey, config.layers.hopShading.enabled, config.selectedNodeIds, fadeByAge3D, windowStartMs3D, windowEndMs3D],
   );
   const basemap3D = useMemo(
     () => resolve3DBasemap(mapTileset, customTilesets),

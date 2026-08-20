@@ -179,7 +179,7 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
           fontStyle: 'italic',
           marginBottom: '1rem'
         }}>
-          {t('trafficmanagement_config.unsupported', 'Unsupported by this device — the Traffic Management module is not in any released Meshtastic firmware yet (it is only on the development branch). Saving here would not persist on the device. It requires a firmware build newer than 2.7.25 (a develop/preview build, or a future release).')}
+          {t('trafficmanagement_config.unsupported', 'Unsupported by this device — Traffic Management requires Meshtastic firmware 2.8.0 or newer. Saving on 2.7.x firmware would not persist on the device.')}
         </div>
       )}
 

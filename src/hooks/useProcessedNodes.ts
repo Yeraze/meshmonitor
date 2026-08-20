@@ -86,6 +86,13 @@ export function sortNodes(nodes: DeviceInfo[], field: SortField, direction: Sort
         aVal = a.deviceMetrics?.batteryLevel || -1;
         bVal = b.deviceMetrics?.batteryLevel || -1;
         break;
+      case 'uptime':
+        // Nodes that have never reported uptime sort to the bottom (-1). Top-level
+        // uptimeSeconds is enriched by /api/nodes (#4814); fall back to the
+        // device-metrics copy if a caller passes an un-enriched node.
+        aVal = a.uptimeSeconds ?? a.deviceMetrics?.uptimeSeconds ?? -1;
+        bVal = b.uptimeSeconds ?? b.deviceMetrics?.uptimeSeconds ?? -1;
+        break;
       case 'hwModel':
         aVal = a.user?.hwModel || 0;
         bVal = b.user?.hwModel || 0;

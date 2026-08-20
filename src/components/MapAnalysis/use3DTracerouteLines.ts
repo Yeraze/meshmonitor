@@ -69,6 +69,14 @@ export interface Use3DTracerouteLinesParams {
   selected: SelectedTarget | null;
   /** Free-text node search term; empty = no filter. */
   nodeFilter: string;
+  /**
+   * Restrict segments to those whose endpoints are visible node numbers
+   * (#4808). Undefined/null = no extra gate (MapAnalysis behavior); the
+   * non-MapAnalysis surfaces pass their rendered-marker set so 3D route
+   * segments don't dangle to nodes hidden by the 2D map's filters. Combined
+   * (intersected) with any `nodeFilter`-derived set.
+   */
+  visibleNodeNums?: Set<number> | null;
 }
 
 /**
@@ -130,10 +138,15 @@ export function use3DTracerouteLines(params: Use3DTracerouteLinesParams): Tracer
     return map;
   }, [nodes]);
 
-  const visibleNodeNums = useMemo(
-    () => visibleNodeNumSet((nodes ?? []) as SearchableNode[], nodeFilter),
-    [nodes, nodeFilter],
-  );
+  const explicitVisible = params.visibleNodeNums;
+  const visibleNodeNums = useMemo(() => {
+    const filterSet = visibleNodeNumSet((nodes ?? []) as SearchableNode[], nodeFilter);
+    // No caller gate → keep the filter-derived set (null = all), exactly as
+    // before (#4808). With a caller gate, intersect the two.
+    if (!explicitVisible) return filterSet;
+    if (!filterSet) return explicitVisible;
+    return new Set([...filterSet].filter((n) => explicitVisible.has(n)));
+  }, [nodes, nodeFilter, explicitVisible]);
 
   const ts = params.timeSlider;
   const timeWindow = useMemo(

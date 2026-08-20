@@ -257,6 +257,12 @@ export interface DeviceInfo {
     airUtilTx?: number;
     uptimeSeconds?: number;
   };
+  /**
+   * Latest uptime (seconds) enriched onto the node list from telemetry by the
+   * /api/nodes route (#4814) to back the "Sort: Uptime" option. Not a node
+   * column — device-metrics telemetry is its only source.
+   */
+  uptimeSeconds?: number;
   hopsAway?: number;
   lastHeard?: number;
   snr?: number;
@@ -13171,22 +13177,15 @@ class MeshtasticManager implements ISourceManager {
   /**
    * Check if the local device firmware supports the Traffic Management module.
    *
-   * The module and its AdminModule set-config handler landed only on the
-   * meshtastic/firmware `develop` branch via PR #9358 (merged 2026-03-11) and
-   * are NOT in any release through the latest pre-release, 2.7.25 — verified:
-   * `TrafficManagementModule.cpp` doesn't exist at the v2.7.25 tag and
-   * `AdminModule.cpp` has no `traffic_management` case there. On such firmware
-   * the admin message decodes but is silently dropped (it never persists),
-   * which is what made saves appear to "succeed" but not stick (issue #3491).
-   *
-   * Gating at 2.7.22 (the previous value) wrongly advertised it as editable on
-   * 2.7.22–2.7.25. Since no release ships it yet, gate above the latest release:
-   * develop/preview builds (which already contain PR #9358) report a version
-   * newer than 2.7.25, and the first stable release to include it will be
-   * >= 2.7.26. Re-pin to the exact release once it is tagged.
+   * The module and its AdminModule set-config handler landed on the
+   * meshtastic/firmware `develop` branch via PR #9358. They are absent from
+   * the released v2.7.26.54e0d8d source: neither TrafficManagementModule nor
+   * the `traffic_management` AdminModule case exists at that tag. Firmware
+   * 2.7.x therefore silently drops this config instead of persisting it.
+   * Meshtastic documents Traffic Management as requiring firmware 2.8.0+.
    */
   supportsTrafficManagement(): boolean {
-    return this.firmwareVersionAtLeast(2, 7, 26);
+    return this.firmwareVersionAtLeast(2, 8, 0);
   }
 
   /**

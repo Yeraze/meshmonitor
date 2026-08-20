@@ -50,6 +50,7 @@ import { getPacketStats } from '../services/packetApi';
 
 import { BaseMap } from './map/BaseMap';
 import { Map3DView } from './map/Map3DView';
+import DashboardNodePopup from './Dashboard/DashboardNodePopup';
 import type { Node3DFeature } from './map/Base3DMap';
 import { TilesetSelector } from './TilesetSelector';
 import { resolve3DBasemap, buildTerrainTileUrl } from '../config/basemap3d';
@@ -1483,6 +1484,12 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
           aVal = a.deviceMetrics?.batteryLevel ?? -1;
           bVal = b.deviceMetrics?.batteryLevel ?? -1;
           break;
+        case 'uptime':
+          // Never-reported uptime sorts to the bottom. Top-level uptimeSeconds is
+          // enriched by /api/nodes (#4814), with the device-metrics copy as fallback.
+          aVal = a.uptimeSeconds ?? a.deviceMetrics?.uptimeSeconds ?? -1;
+          bVal = b.uptimeSeconds ?? b.deviceMetrics?.uptimeSeconds ?? -1;
+          break;
         case 'hwModel':
           aVal = a.user?.hwModel ?? 0;
           bVal = b.user?.hwModel ?? 0;
@@ -1726,6 +1733,21 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     nodeDimmingMinOpacity,
     maxNodeAgeHours,
   ]);
+
+  // Visible node numbers for gating the 3D neighbor/traceroute lines to the
+  // rendered markers, matching 2D (#4808).
+  const visible3DNodeNums = useMemo(
+    () => new Set(visibleMapNodes.map((n) => n.nodeNum)),
+    [visibleMapNodes],
+  );
+
+  // key → node for resolving a clicked 3D marker back to its node so the shared
+  // DashboardNodePopup can render on the 3D map (#4808).
+  const node3DByKey = useMemo(() => {
+    const m = new Map<string, (typeof visibleMapNodes)[number]>();
+    for (const node of visibleMapNodes) m.set(String(node.user?.id ?? node.nodeNum), node);
+    return m;
+  }, [visibleMapNodes]);
 
   const nodeMarkers: NodeMarkerDescriptor[] = visibleMapNodes
     .map(node => {
@@ -2227,6 +2249,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 <option value="shortName">{t('nodes.sort_short_name')}</option>
                 <option value="id">{t('nodes.sort_id')}</option>
                 <option value="lastHeard">{t('nodes.sort_updated')}</option>
+                <option value="uptime">{t('nodes.sort_uptime')}</option>
                 <option value="snr">{t('nodes.sort_signal')}</option>
                 <option value="battery">{t('nodes.sort_charge')}</option>
                 <option value="hwModel">{t('nodes.sort_hardware')}</option>
@@ -2967,6 +2990,14 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   showNeighbors={!!currentSourceId && showNeighborInfo}
                   showTraceroutes={!!currentSourceId && (showPaths || showRoute)}
                   lookbackHours={effectiveMapMaxAge}
+                  visibleNodeNums={visible3DNodeNums}
+                  renderPopup={(key) => {
+                    const node = node3DByKey.get(key);
+                    const pos = node ? nodePositions.get(node.nodeNum) : undefined;
+                    return node && pos ? (
+                      <DashboardNodePopup node={node} pos={{ lat: pos[0], lng: pos[1] }} />
+                    ) : null;
+                  }}
                   onUnsupported={() => setViewMode('2d')}
                 />
                 {shouldShowData() && showTileSelector && (

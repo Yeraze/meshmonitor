@@ -8,6 +8,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import MapAnalysisCanvas from './MapAnalysisCanvas';
 import { MapAnalysisProvider, useMapAnalysisCtx, type MapViewState } from './MapAnalysisContext';
+import { getHopColor } from '../../utils/mapIcons';
+import { MIN_MARKER_OPACITY } from '../../utils/markerAgeOpacity';
 
 // Stub react-leaflet — Vitest's jsdom doesn't provide all the DOM bits Leaflet needs.
 vi.mock('react-leaflet', () => ({
@@ -179,7 +181,7 @@ vi.mock('../map/Base3DMap', () => ({
     zoom: number;
     pitch?: number;
     bearing?: number;
-    nodes: Array<{ key: string; lat: number; lng: number; label?: string }>;
+    nodes: Array<{ key: string; lat: number; lng: number; label?: string; color?: string; opacity?: number }>;
     basemap: { tiles: string[]; usedFallback: boolean };
     terrainTileUrl: string;
     onNodeClick?: (key: string) => void;
@@ -207,6 +209,8 @@ vi.mock('../map/Base3DMap', () => ({
           key={n.key}
           type="button"
           data-testid={`base-3d-node-${n.key}`}
+          data-color={n.color}
+          data-opacity={n.opacity}
           onClick={() => props.onNodeClick?.(n.key)}
         >
           {n.label}
@@ -419,6 +423,34 @@ describe('MapAnalysisCanvas', () => {
       // label mapped from node.shortName ('A').
       const nodeBtn = screen.getByTestId('base-3d-node-mt:1');
       expect(nodeBtn).toHaveTextContent('A');
+    });
+
+    it('tints the 3D node with the 2D hop color and full opacity by default (#4808 follow-up)', () => {
+      persist3d();
+      render(<MapAnalysisCanvas />, { wrapper });
+      const nodeBtn = screen.getByTestId('base-3d-node-mt:1');
+      // hop-shading off + no hop data ⇒ hops=999 ⇒ the same neutral color the
+      // 2D marker uses (getHopColor(999)); no time slider + empty selection ⇒
+      // fully opaque, matching layers/NodeMarkersLayer.tsx's finalOpacity.
+      expect(nodeBtn).toHaveAttribute('data-color', getHopColor(999));
+      expect(nodeBtn).toHaveAttribute('data-opacity', '1');
+    });
+
+    it('fades a 3D node to the floor opacity when the time slider is on and the node has no lastHeard (#4808 follow-up)', () => {
+      localStorage.setItem(
+        'mapAnalysis.config.v1',
+        JSON.stringify({
+          version: 1,
+          viewMode: '3d',
+          // Window is enabled; the mock node carries no lastHeard, so the age
+          // fade drops it to the floor — the same MIN_MARKER_OPACITY branch the
+          // 2D layers/NodeMarkersLayer.tsx takes for a timestamp-less node.
+          timeSlider: { enabled: true, windowStartMs: 10, windowEndMs: 20 },
+        }),
+      );
+      render(<MapAnalysisCanvas />, { wrapper });
+      const nodeBtn = screen.getByTestId('base-3d-node-mt:1');
+      expect(nodeBtn).toHaveAttribute('data-opacity', String(MIN_MARKER_OPACITY));
     });
 
     it('clicking a 3D node marker resolves the node and does not throw for an unknown key', () => {

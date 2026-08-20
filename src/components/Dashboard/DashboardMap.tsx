@@ -360,6 +360,37 @@ export default function DashboardMap({
     }));
   }, [nodesWithPosition, effectiveMaxAge]);
 
+  // Visible node numbers for gating the 3D neighbor/traceroute lines to the
+  // rendered markers, matching 2D — also keeps a null-sourceId dashboard from
+  // pulling every source's edges (#4808).
+  const visible3DNodeNums = useMemo(
+    () => new Set(nodesWithPosition.map(({ node }) => Number(node.nodeNum))),
+    [nodesWithPosition],
+  );
+
+  // MeshCore analogue of `visible3DNodeNums` (#4808 follow-up): MeshCore nodes
+  // have no nodeNum (the numeric set holds NaN for them), so their neighbor
+  // edges are gated by the set of visible MeshCore public keys instead.
+  const visible3DMeshCoreKeys = useMemo(
+    () =>
+      new Set(
+        nodesWithPosition
+          .filter(({ node }) => node.isMeshCore && typeof node.publicKey === 'string' && node.publicKey.length > 0)
+          .map(({ node }) => node.publicKey as string),
+      ),
+    [nodesWithPosition],
+  );
+
+  // key → { node, pos } for resolving a clicked 3D marker back to its node so
+  // the shared DashboardNodePopup can render on the 3D map too (#4808).
+  const node3DByKey = useMemo(() => {
+    const m = new Map<string, { node: (typeof nodesWithPosition)[number]['node']; pos: { lat: number; lng: number } }>();
+    for (const { node, pos } of nodesWithPosition) {
+      m.set(unifiedNodeKey(node) ?? String(node.nodeNum ?? node.nodeId ?? node.user?.id), { node, pos });
+    }
+    return m;
+  }, [nodesWithPosition]);
+
   // #3636: measurement endpoints — nearest-node snapping picks from these.
   const measurePoints: MeasurePoint[] = nodesWithPosition.map(({ node, pos }) => ({
     id: String(node.nodeId ?? node.user?.id ?? node.nodeNum),
@@ -684,6 +715,14 @@ export default function DashboardMap({
             showNeighbors={showNeighborInfo}
             showTraceroutes={showPaths || showRoute}
             lookbackHours={effectiveMaxAge}
+            visibleNodeNums={visible3DNodeNums}
+            visibleMeshCoreKeys={visible3DMeshCoreKeys}
+            renderPopup={(key) => {
+              const entry = node3DByKey.get(key);
+              return entry ? (
+                <DashboardNodePopup node={entry.node} pos={entry.pos} onSourceSelect={onNodeSourceSelect} />
+              ) : null;
+            }}
             onUnsupported={() => setViewMode('2d')}
           />
           {showTileSelector && (

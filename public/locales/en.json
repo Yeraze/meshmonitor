@@ -333,6 +333,7 @@
   "nodes.sort_short_name": "Sort: Short Name",
   "nodes.sort_id": "Sort: ID",
   "nodes.sort_updated": "Sort: Updated",
+  "nodes.sort_uptime": "Sort: Uptime",
   "nodes.sort_signal": "Sort: Signal",
   "nodes.sort_charge": "Sort: Charge",
   "nodes.sort_hardware": "Sort: Hardware",

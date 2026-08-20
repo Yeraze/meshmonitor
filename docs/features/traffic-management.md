@@ -66,10 +66,10 @@ These plot alongside the node's other telemetry. See [Telemetry Widgets](/featur
 
 ## Firmware requirements
 
-Traffic Management requires **Meshtastic firmware 2.7.26 or newer**. MeshMonitor gates support on the firmware version and **disables the Traffic Management section as "Unsupported by this device" below 2.7.26**.
+Traffic Management requires **Meshtastic firmware 2.8.0 or newer**. MeshMonitor gates support on the firmware version and **disables the Traffic Management section as "Unsupported by this device" on all 2.7.x firmware**.
 
-::: warning The 2.7.22–2.7.25 silent-drop gotcha
-On firmware **2.7.22 through 2.7.25** the module's admin set-config message **decodes but is silently dropped** by the device — it never persists. A save would appear to succeed but the settings would not stick. The module's AdminModule handler only shipped in **v2.7.26**, so MeshMonitor gates support at that version. (An older MeshMonitor blog post advertised "2.7.22+"; that claim is stale — 2.7.26 is the correct floor.)
+::: warning The 2.7.x silent-drop gotcha
+The released **v2.7.26** source contains neither `TrafficManagementModule` nor the `traffic_management` AdminModule set-config handler. A 2.7.x node can decode the config message but silently drop it, making a save appear successful without persisting. MeshMonitor therefore gates support at **2.8.0**, matching Meshtastic's documented requirement.
 :::
 
 ## Recommended starting configuration

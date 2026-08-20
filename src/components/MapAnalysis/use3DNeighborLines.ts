@@ -93,10 +93,33 @@ export interface Use3DNeighborLinesParams {
   sources: string[];
   /** `config.timeSlider`. */
   timeSlider: TimeSliderWindow;
+  /**
+   * Restrict edges to those whose BOTH endpoints are in this set of visible
+   * node numbers (#4808). Undefined/null = no gate (MapAnalysis behavior:
+   * every node's edges). The non-MapAnalysis surfaces pass their rendered-
+   * marker set so 3D lines don't dangle to nodes hidden by the 2D map's
+   * age/transport/estimated/incomplete filters.
+   */
+  visibleNodeNums?: Set<number> | null;
+  /**
+   * MeshCore analogue of `visibleNodeNums` (#4808 follow-up). MeshCore nodes
+   * carry no Meshtastic nodeNum — their stable identity is `publicKey` — so
+   * the numeric set cannot gate MeshCore edges. Hosts that gate visibility
+   * pass the set of visible MeshCore public keys here; both endpoints of a
+   * MeshCore edge must be present or the edge is dropped. Undefined/null = no
+   * gate (MapAnalysis behavior).
+   *
+   * Keys are BARE `publicKey` strings (no `sourceId:` prefix), matching the
+   * bare `nodeNum` semantics of `visibleNodeNums`. On a unified map the same
+   * physical node can appear on multiple sources under one publicKey, so an
+   * edge passes the gate whenever its key is visible on ANY source — the
+   * intended unified-visibility behavior, symmetric with the Meshtastic set.
+   */
+  visibleMeshCoreKeys?: Set<string> | null;
 }
 
 export function use3DNeighborLines(params: Use3DNeighborLinesParams): NeighborLines3D {
-  const { layer } = params;
+  const { layer, visibleNodeNums, visibleMeshCoreKeys } = params;
   const { data: sources = [] } = useDashboardSources();
   const sourceIds =
     params.sources.length === 0
@@ -181,6 +204,13 @@ export function use3DNeighborLines(params: Use3DNeighborLinesParams): NeighborLi
     // --- Meshtastic edges — mirrors layers/NeighborLinksLayer.tsx L115-175.
     const mtItems = (mtData as { items?: NeighborEdge[] } | undefined)?.items ?? [];
     for (const e of mtItems.filter((edge) => inWindow(edge.timestamp ?? 0))) {
+      // Visibility gate (#4808): drop edges to nodes the 2D map hid.
+      if (
+        visibleNodeNums &&
+        (!visibleNodeNums.has(Number(e.nodeNum)) || !visibleNodeNums.has(Number(e.neighborNum)))
+      ) {
+        continue;
+      }
       const aKey = `${e.sourceId}:${Number(e.nodeNum)}`;
       const bKey = `${e.sourceId}:${Number(e.neighborNum)}`;
       const a = positionByKey.get(aKey) ?? positionByNode.get(Number(e.nodeNum));
@@ -216,6 +246,14 @@ export function use3DNeighborLines(params: Use3DNeighborLinesParams): NeighborLi
     // --- MeshCore edges — mirrors layers/MeshCoreNeighborLinksLayer.tsx L79-140.
     const mcItems = (mcData as { items?: MeshCoreNeighborEdge[] } | undefined)?.items ?? [];
     for (const e of mcItems.filter((edge) => inWindow(edge.timestamp))) {
+      // Visibility gate (#4808 follow-up): drop MeshCore edges to nodes the 2D
+      // map hid. Keyed by publicKey since MeshCore nodes have no nodeNum.
+      if (
+        visibleMeshCoreKeys &&
+        (!visibleMeshCoreKeys.has(e.publicKey) || !visibleMeshCoreKeys.has(e.neighborPublicKey))
+      ) {
+        continue;
+      }
       const aKey = `${e.sourceId}:${e.publicKey}`;
       const bKey = `${e.sourceId}:${e.neighborPublicKey}`;
       const a = mcPositionByKey.get(aKey);
@@ -266,5 +304,7 @@ export function use3DNeighborLines(params: Use3DNeighborLinesParams): NeighborLi
     ts.enabled,
     ts.windowStartMs,
     ts.windowEndMs,
+    visibleNodeNums,
+    visibleMeshCoreKeys,
   ]);
 }
