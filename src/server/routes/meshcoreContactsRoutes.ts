@@ -377,7 +377,7 @@ router.post(
  * Requires nodes:write like the other transmitting actions.
  *
  * 200 → { success: true, data: { hopHash, rttMs, snrToTarget, snrFromTarget } }
- * 409 → guard failure (not a Companion / disconnected / unknown contact)
+ * 409 → guard failure (not a Companion / disconnected / unknown or evicted contact)
  * 504 → no reply (not in direct range)
  */
 router.post(
@@ -399,6 +399,7 @@ router.post(
           result.reason === 'no-reply' ? 'MESHCORE_PING_NO_REPLY'
           : result.reason === 'not-companion' ? 'MESHCORE_PING_NOT_COMPANION'
           : result.reason === 'disconnected' ? 'MESHCORE_PING_DISCONNECTED'
+          : result.reason === 'evicted-contact' ? 'MESHCORE_PING_EVICTED_CONTACT'
           : 'MESHCORE_PING_UNKNOWN_CONTACT';
         return fail(res, status, code, result.error, { reason: result.reason });
       }

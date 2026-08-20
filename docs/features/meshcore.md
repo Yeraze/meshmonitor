@@ -588,6 +588,30 @@ This is fixed in 4.5 — source create/update/delete/connect/disconnect endpoint
 - Check that the radio frequency and parameters match other nodes in your mesh.
 - Try sending an advert to announce your presence on the network.
 
+### A contact loses its name and shows its public key instead
+
+The companion firmware stores contacts in a fixed-size table (100 entries on
+most companion builds). When it fills up, the firmware evicts the
+least-recently-adverted **non-favorite** contact to make room. A repeater on a
+long advert interval is usually the first to go, which is why this tends to
+show up after days rather than immediately.
+
+MeshMonitor keeps the contact listed with its name and type when this happens
+(it restores the entry from `meshcore_nodes`), but the radio can no longer
+address it: ping and Discover Path report that the contact was evicted, and
+Auto-Pathfinding skips it. The contact becomes fully usable again on the
+node's next advert.
+
+To stop it happening:
+
+- **Favorite the node on the device**, in the official MeshCore app or MeshCore
+  Web. MeshMonitor's own ⭐ is a local display flag and does **not** set the
+  firmware's favorite bit, so it does not protect a contact from eviction.
+- **Prune contacts you don't need** from the device, via the contact-management
+  panel, to keep the table below its limit.
+- **Consider turning off Discover Nearby Nodes** if you don't need it —
+  it auto-adds every responder as a device contact, which fills the table faster.
+
 ### Radio parameter changes "revert" on save
 Earlier 4.x versions had a hook-dependency bug where Phase 3 push events overwrote staged radio/location edits before Save fired. Fixed in 4.5.
 

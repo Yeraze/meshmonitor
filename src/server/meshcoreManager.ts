@@ -270,7 +270,7 @@ export type ZeroHopPingResult =
     }
   | {
       ok: false;
-      reason: 'not-companion' | 'disconnected' | 'unknown-contact' | 'no-reply';
+      reason: 'not-companion' | 'disconnected' | 'unknown-contact' | 'evicted-contact' | 'no-reply';
       error: string;
     };
 
@@ -515,6 +515,16 @@ export interface MeshCoreContact {
    * route (e.g. "a3,7f,02"). `null` / undefined means OUT_PATH_UNKNOWN.
    */
   outPath?: string | null;
+  /**
+   * `false` when the companion's own contact table no longer carries this
+   * key and the entry was restored from `meshcore_nodes` instead (#4838).
+   * The firmware evicts the least-recently-adverted non-favorite contact
+   * once its fixed-size table fills, which silently stripped the name,
+   * type and every contact-addressed operation until the next advert.
+   * Restoring the row keeps the identity; this flag is what stops us
+   * pretending the radio can still address it.
+   */
+  onDevice?: boolean;
 }
 
 /** Sentinel RSSI (dBm) below which a configured `rssiMin` threshold is a no-op. */
@@ -1859,6 +1869,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           latitude: data.latitude ?? existing.latitude,
           longitude: data.longitude ?? existing.longitude,
           lastSeen: Date.now(),
+          // An advert puts the contact back in the companion's own table, so
+          // this clears an earlier eviction (#4838). Must be set explicitly:
+          // `...existing` would otherwise carry `onDevice: false` forward.
+          onDevice: true,
         };
         this.contacts.set(publicKey, updated);
         // Mirror to meshcore_nodes so per-source consumers (telemetry
@@ -2014,6 +2028,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           publicKey,
           advType: data.adv_type ?? existing.advType,
           lastSeen: Date.now(),
+          // The native backend registers a discovered node on the device
+          // before this fires, so it is on-device again (#4838).
+          onDevice: true,
         };
         this.contacts.set(publicKey, updated);
         void this.persistContact(updated);
@@ -3113,6 +3130,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
             lastSeen: advertMs ?? nowMs,
             outPath: c.out_path ?? null,
             pathLen: c.path_len ?? null,
+            onDevice: true,
           });
         }
         // Mirror every contact to meshcore_nodes so stale stub rows
@@ -3123,6 +3141,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         await Promise.all(
           Array.from(this.contacts.values()).map((c) => this.persistContact(c)),
         );
+        // The clear above is authoritative for what the *device* holds, not
+        // for what we know. A contact the companion evicted from its own
+        // fixed-size table (least-recently-adverted non-favorite wins) would
+        // otherwise lose its name, its advType and every contact-addressed
+        // operation until its next advert — #4838. Restore those from
+        // meshcore_nodes, flagged `onDevice: false`, so identity survives
+        // while callers can still tell the radio can't address them.
+        await this.seedContactsFromDb();
         logger.debug(`[MeshCore] Refreshed ${this.contacts.size} contacts`);
       }
     } catch (error) {
@@ -3138,6 +3164,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * `get_contacts` sync degrades. Existing in-memory entries (e.g. a live
    * advert push that raced ahead) are left untouched. Companion-only — repeater
    * sources don't maintain a companion contact list. Non-fatal on DB error.
+   *
+   * Seeded entries carry `onDevice: false`: they are what we remember, not
+   * what the radio can currently address. `refreshContacts()` re-runs this
+   * after its clear-and-replace so a firmware eviction can't strip a
+   * contact's identity (#4838).
    */
   private async seedContactsFromDb(): Promise<void> {
     if (this.deviceType === MeshCoreDeviceType.REPEATER) return;
@@ -3147,6 +3178,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       for (const n of dbNodes) {
         if (n.isLocalNode) continue;
         if (this.contacts.has(n.publicKey)) continue;
+        // A contact the user just removed can still have a row in flight;
+        // the tombstone is the same guard refreshContacts applies above.
+        if (this.isContactTombstoned(n.publicKey)) continue;
         this.contacts.set(n.publicKey, {
           publicKey: n.publicKey,
           advName: n.name ?? undefined,
@@ -3159,6 +3193,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           lastSeen: n.lastHeard ?? undefined,
           outPath: n.outPath ?? null,
           pathLen: n.pathLen ?? null,
+          onDevice: false,
         });
         seeded++;
       }
@@ -4447,6 +4482,15 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         ok: false,
         reason: 'unknown-contact',
         error: 'Contact is not known to this source.',
+      };
+    }
+    if (contact.onDevice === false) {
+      return {
+        ok: false,
+        reason: 'evicted-contact',
+        error: 'This contact is no longer in the device\'s contact list — the companion '
+          + 'evicted it (its table is full, or it was removed). It will return on the '
+          + 'node\'s next advert; favorite it in the MeshCore app to stop it being evicted.',
       };
     }
     this.requireTransmit();
@@ -6713,8 +6757,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // start) so a config change takes effect on the next tick without
       // requiring a scheduler restart — see PATHFINDING_FILTER_SPEC.md §0/§3.2.
       const filterCfg = await databaseService.getMeshcorePathfindingFilterSettingsAsync(this.sourceId);
-      const filtered = filterPathfindingContacts(contacts, filterCfg);
-      logger.debug(`[MeshCore:${this.sourceId}] Auto-pathfinding: filter ${contacts.length}→${filtered.length} contacts (enabled=${filterCfg.enabled})`);
+      // Contacts restored from the DB after a firmware eviction (#4838) are
+      // names we remember, not addresses the radio can resolve. Probing them
+      // spends airtime on a command the device will reject.
+      const addressable = contacts.filter(c => c.onDevice !== false);
+      const filtered = filterPathfindingContacts(addressable, filterCfg);
+      logger.debug(`[MeshCore:${this.sourceId}] Auto-pathfinding: filter ${contacts.length}→${addressable.length} on-device→${filtered.length} contacts (enabled=${filterCfg.enabled})`);
 
       const companions = pathDiscoveryEnabled
         ? filtered.filter(c => c.advType === MeshCoreDeviceType.COMPANION)
