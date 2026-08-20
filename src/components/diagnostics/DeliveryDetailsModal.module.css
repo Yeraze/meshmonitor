@@ -1,0 +1,248 @@
+/*
+ * DeliveryDetailsModal (#4816 Phase 1, WP2) — CSS module.
+ *
+ * Own `ddm-*`-equivalent (module-scoped) class namespace. Shell metrics/feel
+ * are copied from the `mcpm-modal*` rules in MeshCorePacketMonitor.css, but
+ * this file is NOT an extension of that global sheet (CLAUDE.md CSS
+ * containment: new components use a module, the frozen global sheets are not
+ * to be reused or extended). All colors go through the app's existing
+ * theme-aware `--color-*` custom properties, so this module needs no
+ * light/dark media queries of its own — the tokens already vary per theme.
+ */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.content {
+  background: var(--color-bg);
+  border: 2px solid var(--color-accent);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  width: 100%;
+  max-width: 640px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: var(--color-bg-raised);
+  border-bottom: 1px solid var(--color-surface-active);
+}
+
+.header h4 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--color-text);
+}
+
+.protocolName {
+  color: var(--color-accent);
+}
+
+.closeButton {
+  background: none;
+  border: none;
+  color: var(--color-text-subtle);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.25rem;
+}
+
+.closeButton:hover {
+  color: var(--color-text);
+}
+
+.body {
+  padding: 0.75rem 1rem 1rem;
+  overflow-y: auto;
+}
+
+.statusRow {
+  margin-bottom: 0.75rem;
+}
+
+.statusPill {
+  display: inline-block;
+  padding: 0.3rem 0.7rem;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.toneSuccess {
+  color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
+  border-color: color-mix(in srgb, var(--color-success) 35%, transparent);
+}
+
+.toneError {
+  color: var(--color-error);
+  background: color-mix(in srgb, var(--color-error) 14%, transparent);
+  border-color: color-mix(in srgb, var(--color-error) 35%, transparent);
+}
+
+.tonePending {
+  color: var(--color-info);
+  background: color-mix(in srgb, var(--color-info) 14%, transparent);
+  border-color: color-mix(in srgb, var(--color-info) 35%, transparent);
+}
+
+.toneWarning {
+  color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+  border-color: color-mix(in srgb, var(--color-warning) 35%, transparent);
+}
+
+.section {
+  margin-bottom: 0.9rem;
+}
+
+.section h5 {
+  margin: 0 0 0.4rem;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-accent);
+  border-bottom: 1px solid var(--color-surface-hover);
+  padding-bottom: 0.2rem;
+}
+
+.meaning {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 0.5rem;
+  padding: 3px 0;
+  font-size: 0.82rem;
+  align-items: baseline;
+}
+
+.label {
+  color: var(--color-text-subtle);
+}
+
+.valueGroup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.value {
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  word-break: break-word;
+}
+
+.note {
+  display: block;
+  width: 100%;
+  font-size: 0.72rem;
+  color: var(--color-text-faint);
+  font-style: italic;
+}
+
+.badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: var(--radius-sm);
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.provenanceReported {
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+}
+
+.provenanceObserved {
+  color: var(--color-info);
+  background: color-mix(in srgb, var(--color-info) 14%, transparent);
+}
+
+.provenanceInferred {
+  color: var(--color-caution);
+  background: color-mix(in srgb, var(--color-caution) 14%, transparent);
+}
+
+.provenanceUnknown {
+  color: var(--color-text-faint);
+  background: var(--color-bg-sunken);
+}
+
+.propagationSubtitle {
+  margin: 0 0 0.5rem;
+  font-size: 0.76rem;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+
+.propagationEmpty {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--color-text-subtle);
+  font-style: italic;
+}
+
+.heardByList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.heardByItem {
+  display: flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  font-size: 0.82rem;
+  color: var(--color-text);
+}
+
+.heardByName {
+  font-family: var(--font-mono);
+}
+
+.heardBySnr {
+  color: var(--color-text-subtle);
+}
+
+@media (max-width: 480px) {
+  .content {
+    max-width: 100%;
+    max-height: 92vh;
+  }
+
+  .row {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+  }
+}
