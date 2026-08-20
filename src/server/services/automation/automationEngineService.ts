@@ -13,7 +13,7 @@
  */
 import { logger } from '../../../utils/logger.js';
 import type { DbMessage } from '../../../services/database.js';
-import type { AutomationsRepository } from '../../../db/repositories/automations.js';
+import type { AutomationsRepository, AutomationRecord } from '../../../db/repositories/automations.js';
 import type { AutomationHomeAnchorsRepository } from '../../../db/repositories/automationHomeAnchors.js';
 import { isMqttSourceType } from '../../../db/repositories/sources.js';
 import {
@@ -140,6 +140,21 @@ interface FireResult {
   steps: Array<{ nodeId: string; type: string; outcome: string; error?: string }>;
 }
 
+/**
+ * Verdict of a manual "Run Now" fire (#4827). `ran` is true only when the
+ * automation's actions actually dispatched; a `reason` explains a no-op (the
+ * rule was suppressed by its own cooldown / rate-limit guard, or could not be
+ * loaded). `status`/`actions`/`steps` mirror the real run when it fired.
+ */
+export interface RunNowResult {
+  ran: boolean;
+  reason?: 'not_found' | 'invalid' | 'cooldown' | 'ratelimited';
+  detail?: string;
+  status?: 'completed' | 'failed';
+  actions?: Array<{ nodeId: string; ok: boolean; error?: string }>;
+  steps?: Array<{ nodeId: string; type: string; outcome: string; error?: string }>;
+}
+
 /** Shallow copy of a trigger's fields with long text truncated, for trace payloads. */
 function compactEventFields(fields: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -222,37 +237,49 @@ export class AutomationEngineService {
   }
 
   /** (Re)load enabled automations and rebuild the trigger index. */
+  /**
+   * Parse + validate one automation row into a {@link LoadedAutomation}, or null
+   * if its config is unparseable / invalid / has no trigger node. Shared by
+   * {@link load} (which builds the enabled-trigger index) and {@link runNow} (a
+   * manual one-off fire that must work even for a disabled automation not in the
+   * running index).
+   */
+  private buildEntry(row: Pick<AutomationRecord, 'id' | 'name' | 'config'>): LoadedAutomation | null {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(row.config);
+    } catch {
+      logger.warn(`[AutomationEngine] automation "${row.name}" has unparseable config; skipping`);
+      return null;
+    }
+    const result = validateAutomationGraph(parsed);
+    if (!result.valid || !result.graph) {
+      logger.warn(`[AutomationEngine] automation "${row.name}" is invalid; skipping: ${result.errors.join('; ')}`);
+      return null;
+    }
+    const triggerNode = result.graph.nodes.find((n) => categoryOf(n.type) === 'trigger');
+    if (!triggerNode) return null;
+    const triggerType = triggerNode.type as TriggerType;
+    const cooldownSeconds = Number((triggerNode.params as any)?.cooldownSeconds ?? 0) || 0;
+    // No `as any` needed: params is Record<string, unknown> and parseCooldownScope
+    // takes unknown. (The cooldownSeconds line above predates the lint ratchet.)
+    const cooldownScope = parseCooldownScope(triggerNode.params?.cooldownScope);
+    // No `as any` needed: params is Record<string, unknown> and parseRateLimit
+    // takes unknown (same reasoning as the parseCooldownScope line above).
+    const rateLimit = parseRateLimit(triggerNode.params?.rateLimit);
+    return {
+      id: row.id, name: row.name, graph: result.graph, triggerNode, triggerType, cooldownSeconds, cooldownScope, rateLimit,
+    };
+  }
+
   async load(): Promise<void> {
     const rows = await this.automationsRepo.listEnabledAutomations();
     const index = new Map<TriggerType, LoadedAutomation[]>();
     for (const row of rows) {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(row.config);
-      } catch {
-        logger.warn(`[AutomationEngine] automation "${row.name}" has unparseable config; skipping`);
-        continue;
-      }
-      const result = validateAutomationGraph(parsed);
-      if (!result.valid || !result.graph) {
-        logger.warn(`[AutomationEngine] automation "${row.name}" is invalid; skipping: ${result.errors.join('; ')}`);
-        continue;
-      }
-      const triggerNode = result.graph.nodes.find((n) => categoryOf(n.type) === 'trigger');
-      if (!triggerNode) continue;
-      const triggerType = triggerNode.type as TriggerType;
-      const cooldownSeconds = Number((triggerNode.params as any)?.cooldownSeconds ?? 0) || 0;
-      // No `as any` needed: params is Record<string, unknown> and parseCooldownScope
-      // takes unknown. (The cooldownSeconds line above predates the lint ratchet.)
-      const cooldownScope = parseCooldownScope(triggerNode.params?.cooldownScope);
-      // No `as any` needed: params is Record<string, unknown> and parseRateLimit
-      // takes unknown (same reasoning as the parseCooldownScope line above).
-      const rateLimit = parseRateLimit(triggerNode.params?.rateLimit);
-      const entry: LoadedAutomation = {
-        id: row.id, name: row.name, graph: result.graph, triggerNode, triggerType, cooldownSeconds, cooldownScope, rateLimit,
-      };
-      if (!index.has(triggerType)) index.set(triggerType, []);
-      index.get(triggerType)!.push(entry);
+      const entry = this.buildEntry(row);
+      if (!entry) continue;
+      if (!index.has(entry.triggerType)) index.set(entry.triggerType, []);
+      index.get(entry.triggerType)!.push(entry);
     }
     this.index = index;
     // Drop cooldown state for automations that are no longer loaded (deleted or
@@ -332,6 +359,40 @@ export class AutomationEngineService {
     const fr = await this.fireAutomation(a, ctx, now);
     if (traced) this.emitTrace(a, ctx, now, { outcome: 'fired', status: fr.status, conditionResults: fr.conditionResults, actions: fr.actions, steps: fr.steps });
     return 1;
+  }
+
+  /**
+   * Manually fire an automation's actions FOR REAL right now (#4827, the "Run
+   * Now" button), bypassing its trigger (schedule / message / …) so a user can
+   * verify a scheduled rule end-to-end without waiting for its cron.
+   *
+   * Reuses the exact real dispatch path the scheduler uses ({@link fireAutomation}
+   * plus the {@link cooldownGate} / {@link rateLimitGate} checks), so the
+   * per-automation cooldown, rate-limit and self-origin guards all still apply —
+   * a manual fire counts against those windows exactly like a real one. The
+   * synthetic schedule context carries no originating node, so the self-origin
+   * guard (#3914) has nothing to drop.
+   *
+   * Does NOT disturb the cron cadence: croner computes each next fire from the
+   * wall clock, and this method never touches the cron jobs nor persists any
+   * last-fire timestamp (the cooldown map is in-memory). Loads the row directly
+   * rather than the enabled index, so it works for disabled automations too.
+   */
+  async runNow(automationId: string): Promise<RunNowResult> {
+    const row = await this.automationsRepo.getAutomation(automationId);
+    if (!row) return { ran: false, reason: 'not_found' };
+    const a = this.buildEntry(row);
+    if (!a) return { ran: false, reason: 'invalid' };
+    const now = this.now();
+    const ctx = buildScheduleContext(null, now);
+    const gate = this.cooldownGate(a, ctx, now);
+    if (!gate.ok) return { ran: false, reason: 'cooldown', detail: gate.reason };
+    const rateGate = this.rateLimitGate(a, now);
+    if (!rateGate.ok) return { ran: false, reason: 'ratelimited', detail: rateGate.reason };
+    this.markFired(a, gate.key, now);
+    this.markRateLimited(a, now);
+    const fr = await this.fireAutomation(a, ctx, now);
+    return { ran: true, status: fr.status, actions: fr.actions, steps: fr.steps };
   }
 
   /** Number of loaded automations for a trigger type (test/introspection aid). */

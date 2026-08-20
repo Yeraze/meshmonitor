@@ -2080,6 +2080,30 @@ class ApiService {
     );
     return res.data;
   }
+
+  /**
+   * Fire an automation's actions FOR REAL immediately (#4827, "Run Now"),
+   * bypassing its trigger schedule. Unlike a dry-run test this dispatches live
+   * actions; callers MUST confirm with the user first. Returns the engine's
+   * verdict — `ran: false` with a `reason` when the rule was suppressed by its
+   * own cooldown / rate-limit guard.
+   */
+  async runAutomationNow(id: string): Promise<AutomationRunNowResult> {
+    const res = await this.post<{ success: boolean; data: AutomationRunNowResult }>(
+      `/api/automations/${id}/run-now`,
+    );
+    return res.data;
+  }
+}
+
+/** Verdict returned by {@link ApiService.runAutomationNow} (#4827). */
+export interface AutomationRunNowResult {
+  ran: boolean;
+  reason?: 'not_found' | 'invalid' | 'cooldown' | 'ratelimited';
+  detail?: string;
+  status?: 'completed' | 'failed';
+  actions?: Array<{ nodeId: string; ok: boolean; error?: string }>;
+  steps?: Array<{ nodeId: string; type: string; outcome: string; error?: string }>;
 }
 
 // Channel Database types

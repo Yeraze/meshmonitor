@@ -130,6 +130,64 @@ describe('AutomationEngineService', () => {
     expect(runs[0].status).toBe('completed');
   });
 
+  // ── runNow / "Run Now" manual fire (#4827) ──────────────────────────────────
+  describe('runNow (#4827)', () => {
+    const notifyGraph = (over: Record<string, unknown> = {}): AutomationGraph => ({
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.schedule', params: { cron: '0 3 * * *', ...over } },
+        { id: 'n', type: 'action.notify', params: { body: 'nightly' } },
+      ],
+      edges: [{ from: 't', to: 'n' }],
+    });
+
+    it('fires the actions for real and writes a completed run, without needing load()', async () => {
+      const { calls, deps } = recorder();
+      const a = await createEnabled('sched', notifyGraph());
+      const engine = engineWith(deps);
+      // Deliberately NOT calling engine.load(): runNow loads the row directly,
+      // proving it does not depend on the enabled trigger index / cron schedule.
+      const res = await engine.runNow(a.id);
+      expect(res.ran).toBe(true);
+      expect(res.status).toBe('completed');
+      expect(calls.map((c) => c.fn)).toEqual(['notify']);
+      const runs = await autos.listRuns(a.id);
+      expect(runs).toHaveLength(1);
+      expect(runs[0].status).toBe('completed');
+    });
+
+    it('works on a DISABLED automation (not in the running index)', async () => {
+      const { calls, deps } = recorder();
+      const a = await autos.createAutomation({ name: 'off', enabled: false, config: JSON.stringify(notifyGraph()) });
+      const engine = engineWith(deps);
+      await engine.load();
+      expect(engine.countFor('trigger.schedule')).toBe(0); // not loaded (disabled)
+      const res = await engine.runNow(a.id);
+      expect(res.ran).toBe(true);
+      expect(calls.map((c) => c.fn)).toEqual(['notify']);
+    });
+
+    it('respects the per-automation cooldown (a manual fire counts against it)', async () => {
+      const { calls, deps } = recorder();
+      const a = await createEnabled('sched-cd', notifyGraph({ cooldownSeconds: 60 }));
+      const engine = engineWith(deps);
+      expect((await engine.runNow(a.id)).ran).toBe(true); // t0 fires
+      clock += 30_000;
+      const suppressed = await engine.runNow(a.id); // within cooldown window
+      expect(suppressed.ran).toBe(false);
+      expect(suppressed.reason).toBe('cooldown');
+      clock += 31_000;
+      expect((await engine.runNow(a.id)).ran).toBe(true); // past cooldown fires again
+      expect(calls.map((c) => c.fn)).toEqual(['notify', 'notify']); // only the two fires dispatched
+    });
+
+    it('returns not_found for an unknown id', async () => {
+      const { deps } = recorder();
+      const engine = engineWith(deps);
+      expect(await engine.runNow('does-not-exist')).toEqual({ ran: false, reason: 'not_found' });
+    });
+  });
+
   it('applies the trigger pre-filter (no match → no fire)', async () => {
     const { calls, deps } = recorder();
     await createEnabled('ping', {
