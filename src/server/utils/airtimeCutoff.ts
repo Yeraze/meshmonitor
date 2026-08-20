@@ -31,9 +31,10 @@ export const NEIGHBOR_UTIL_SAMPLE_COUNT = 3;
 /**
  * Device roles considered routing "infrastructure" (Meshtastic
  * Config.DeviceConfig.Role): Router (2), Router Client (3, deprecated),
- * Repeater (4, deprecated), Router Late (11).
+ * Repeater (4, deprecated), Router Late (11), Client Base (12). Client Base
+ * retransmits like Router Late, so it counts as infrastructure too.
  */
-export const INFRASTRUCTURE_ROLES: ReadonlySet<number> = new Set([2, 3, 4, 11]);
+export const INFRASTRUCTURE_ROLES: ReadonlySet<number> = new Set([2, 3, 4, 11, 12]);
 
 /** A node considered as a possible infrastructure neighbour. */
 export interface NeighborUtilCandidate {
