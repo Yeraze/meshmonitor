@@ -165,6 +165,7 @@ import { migration as addMeshBeaconOffersMigration, runMigration147Postgres, run
 import { migration as fixEnvCurrentUnitMigration, runMigration148Postgres, runMigration148Mysql } from '../server/migrations/148_fix_env_current_unit.js';
 import { migration as addNodeStatusMigration, runMigration149Postgres, runMigration149Mysql } from '../server/migrations/149_add_node_status.js';
 import { migration as addRoutingErrorCodeMigration, runMigration150Postgres, runMigration150Mysql } from '../server/migrations/150_add_routing_error_code.js';
+import { migration as createMessageEventsMigration, runMigration151Postgres, runMigration151Mysql } from '../server/migrations/151_create_message_events.js';
 
 // ============================================================================
 // Registry
@@ -2399,4 +2400,20 @@ registry.register({
   sqlite: (db) => addRoutingErrorCodeMigration.up(db),
   postgres: (client) => runMigration150Postgres(client),
   mysql: (pool) => runMigration150Mysql(pool),
+});
+
+// Migration 151: create `message_events` — a per-message delivery event
+// timeline (submitted/sent_to_radio/delivered/confirmed/routing_error/
+// timeout/retry), protocol-agnostic, keyed by (sourceId, messageId) so the
+// Delivery Details popup can render a restart-durable history (#4816 Phase 3
+// WP1). Idempotent, no backfill — starts empty.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 151,
+  name: 'create_message_events',
+  settingsKey: 'migration_151_create_message_events',
+  sqlite: (db) => createMessageEventsMigration.up(db),
+  postgres: (client) => runMigration151Postgres(client),
+  mysql: (pool) => runMigration151Mysql(pool),
 });

@@ -1,5 +1,5 @@
 import { DeviceInfo, Channel } from '../types/device.js';
-import { MeshMessage } from '../types/message.js';
+import { MeshMessage, MessageEvent } from '../types/message.js';
 import type { ElevationProfile, ElevationTestResult } from '../types/elevation.js';
 import {
   sanitizeTextInput,
@@ -1110,6 +1110,20 @@ class ApiService {
       `/api/traceroutes/participation/${nodeNum}?${params.toString()}`,
     );
     return body.data?.entries ?? [];
+  }
+
+  /**
+   * Delivery event timeline for one message on ONE source (Delivery
+   * Diagnostics epic #4816, Phase 3). Backs the Delivery Details modal
+   * timeline. Unwraps the `{success,data}` envelope here because `request()`
+   * deliberately does not (CLAUDE.md). Returns [] when the message has no
+   * recorded events (older messages predating Phase 3 legitimately do).
+   */
+  async getMessageEvents(sourceId: string, messageId: string): Promise<MessageEvent[]> {
+    const body = await this.get<{ success: boolean; data: { events: MessageEvent[] } }>(
+      `/api/sources/${sourceId}/messages/${encodeURIComponent(messageId)}/events`,
+    );
+    return body.data?.events ?? [];
   }
 
   /** Generate a source-scoped Meshtastic SharedContact URL for a node. */

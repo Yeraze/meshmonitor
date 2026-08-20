@@ -8478,6 +8478,23 @@ class MeshtasticManager implements ISourceManager {
               }
               // Emit WebSocket event for real-time delivery status update
               dataEventEmitter.emitRoutingUpdate({ requestId, status: 'ack' }, this.sourceId);
+              // Delivery-diagnostics timeline event (#4816 Phase 3). Recorded
+              // here — NOT inside updateMessageDeliveryState — because that
+              // repo method is also called for non-text-message flows (e.g.
+              // the position-exchange 'delivered' path), which must not gain
+              // false timeline entries. originalMessage.id + this.sourceId are
+              // already resolved above, so no extra query is needed.
+              try {
+                await databaseService.messageEvents.recordEvent({
+                  sourceId: this.sourceId,
+                  messageId: originalMessage.id,
+                  eventType: 'delivered',
+                  provenance: 'reported',
+                  timestamp: Date.now(),
+                });
+              } catch (eventError) {
+                logger.debug('Failed to record delivered message event:', eventError);
+              }
             }
             return;
           }
@@ -8490,6 +8507,20 @@ class MeshtasticManager implements ISourceManager {
               logger.debug(`💾 Marked message ${requestId} as confirmed (received by target)`);
               // Emit WebSocket event for real-time delivery status update
               dataEventEmitter.emitRoutingUpdate({ requestId, status: 'ack' }, this.sourceId);
+              // Delivery-diagnostics timeline event (#4816 Phase 3) — see the
+              // 'delivered' branch above for why this is recorded here rather
+              // than inside updateMessageDeliveryState.
+              try {
+                await databaseService.messageEvents.recordEvent({
+                  sourceId: this.sourceId,
+                  messageId: originalMessage.id,
+                  eventType: 'confirmed',
+                  provenance: 'reported',
+                  timestamp: Date.now(),
+                });
+              } catch (eventError) {
+                logger.debug('Failed to record confirmed message event:', eventError);
+              }
             }
             // Notify message queue service of successful ACK
             this.messageQueue.handleAck(requestId);
@@ -8640,6 +8671,22 @@ class MeshtasticManager implements ISourceManager {
       await databaseService.messages.updateMessageDeliveryState(requestId, 'failed', routingErrorCode);
       // Emit WebSocket event for real-time delivery failure update
       dataEventEmitter.emitRoutingUpdate({ requestId, status: 'nak', errorReason: errorName }, this.sourceId);
+      // Delivery-diagnostics timeline event (#4816 Phase 3) — see the
+      // 'delivered' branch above for why this is recorded here rather than
+      // inside updateMessageDeliveryState. originalMessage is guaranteed
+      // non-null here (early-returned above when it was null).
+      try {
+        await databaseService.messageEvents.recordEvent({
+          sourceId: this.sourceId,
+          messageId: originalMessage.id,
+          eventType: 'routing_error',
+          provenance: 'reported',
+          timestamp: Date.now(),
+          detail: JSON.stringify({ routingErrorCode }),
+        });
+      } catch (eventError) {
+        logger.debug('Failed to record routing_error message event:', eventError);
+      }
       // Notify message queue service of failure
       this.messageQueue.handleFailure(requestId, errorName);
     } catch (error) {
@@ -9584,6 +9631,23 @@ class MeshtasticManager implements ISourceManager {
         };
 
         await databaseService.messages.insertMessage(message, this.sourceId);
+
+        // Record the delivery-diagnostics timeline event for our own outgoing
+        // send (#4816 Phase 3). This is the ONLY place we know a row is our
+        // own outgoing send — never record 'submitted' on the shared inbound
+        // path, which also handles received traffic. A diagnostics write must
+        // never break the send path, so failures are swallowed + logged.
+        try {
+          await databaseService.messageEvents.recordEvent({
+            sourceId: this.sourceId,
+            messageId: messageId_str,
+            eventType: 'submitted',
+            provenance: 'observed',
+            timestamp: Date.now(),
+          });
+        } catch (eventError) {
+          logger.debug('Failed to record submitted message event:', eventError);
+        }
 
         // Emit WebSocket event for real-time updates (sent message)
         dataEventEmitter.emitNewMessage(message as any, this.sourceId);

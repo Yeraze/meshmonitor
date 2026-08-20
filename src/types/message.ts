@@ -61,3 +61,35 @@ export interface MeshMessage {
    */
   spoofSuspected?: boolean;
 }
+
+/**
+ * A single row from a message's delivery event timeline (Delivery Diagnostics
+ * epic #4816, Phase 3). Mirrors the `message_events` DB row shape
+ * (`src/db/repositories/messageEvents.ts`) — one record per real delivery
+ * transition, keyed by `(sourceId, messageId)`. Consumed by the Delivery
+ * Details modal timeline (WP4) via `ApiService.getMessageEvents`.
+ */
+export type MessageEventType =
+  | 'submitted'
+  | 'sent_to_radio'
+  | 'delivered'
+  | 'confirmed'
+  | 'routing_error'
+  | 'timeout'
+  | 'retry';
+
+export type MessageEventProvenance = 'reported' | 'observed' | 'inferred';
+
+export interface MessageEvent {
+  id: number;
+  sourceId: string;
+  messageId: string;
+  eventType: MessageEventType;
+  provenance: MessageEventProvenance;
+  /** Short JSON string with the relevant keys (routingErrorCode, attempt, …); null when absent. */
+  detail?: string | null;
+  /** Unix ms the event occurred. */
+  timestamp: number;
+  /** Row write time (Unix ms). */
+  createdAt: number;
+}

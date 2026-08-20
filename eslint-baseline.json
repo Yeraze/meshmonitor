@@ -169,7 +169,7 @@
   "src/components/NodesTab.tsx": {
     "@typescript-eslint/no-explicit-any": 8,
     "no-useless-assignment": 1,
-    "react-hooks/exhaustive-deps": 5
+    "react-hooks/exhaustive-deps": 4
   },
   "src/components/NotificationsTab.tsx": {
     "@typescript-eslint/no-explicit-any": 2,
@@ -300,7 +300,7 @@
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/configuration/ExportConfigModal.tsx": {
-    "@typescript-eslint/no-explicit-any": 4
+    "@typescript-eslint/no-explicit-any": 3
   },
   "src/components/configuration/FirmwareUpdateSection.tsx": {
     "@typescript-eslint/no-explicit-any": 1,
@@ -363,7 +363,7 @@
     "react-refresh/only-export-components": 2
   },
   "src/db/activeSchema.ts": {
-    "@typescript-eslint/no-explicit-any": 54
+    "@typescript-eslint/no-explicit-any": 55
   },
   "src/db/drivers/mysql.ts": {
     "preserve-caught-error": 1
@@ -382,9 +382,6 @@
   },
   "src/db/migrations.sourcePresent.test.ts": {
     "preserve-caught-error": 1
-  },
-  "src/db/repositories/analysis.ts": {
-    "no-useless-assignment": 1
   },
   "src/db/repositories/auth.migration.test.ts": {
     "@typescript-eslint/no-unused-vars": 1
@@ -452,7 +449,7 @@
     "@typescript-eslint/no-unused-vars": 1
   },
   "src/db/repositories/settings.ts": {
-    "@typescript-eslint/no-explicit-any": 6
+    "@typescript-eslint/no-explicit-any": 4
   },
   "src/db/repositories/sources.ts": {
     "@typescript-eslint/no-explicit-any": 5
@@ -519,9 +516,6 @@
   "src/hooks/useTraceroutePaths.tsx": {
     "react-refresh/only-export-components": 1
   },
-  "src/main.tsx": {
-    "react-refresh/only-export-components": 1
-  },
   "src/pages/DashboardPage.tsx": {
     "@typescript-eslint/no-explicit-any": 10
   },
@@ -551,9 +545,6 @@
   },
   "src/server/meshtasticManager.geofence.test.ts": {
     "@typescript-eslint/no-unused-vars": 5
-  },
-  "src/server/meshtasticManager.node-identity-guards.test.ts": {
-    "@typescript-eslint/no-unused-vars": 1
   },
   "src/server/meshtasticManager.timer-text.test.ts": {
     "@typescript-eslint/no-unused-vars": 1
@@ -919,7 +910,7 @@
     "@typescript-eslint/no-explicit-any": 11
   },
   "src/server/protobufService.ts": {
-    "@typescript-eslint/no-explicit-any": 52,
+    "@typescript-eslint/no-explicit-any": 51,
     "no-case-declarations": 3,
     "preserve-caught-error": 1
   },
@@ -927,7 +918,7 @@
     "@typescript-eslint/no-explicit-any": 10
   },
   "src/server/routes/adminRoutes.ts": {
-    "@typescript-eslint/no-explicit-any": 20,
+    "@typescript-eslint/no-explicit-any": 19,
     "@typescript-eslint/no-unused-vars": 2,
     "no-case-declarations": 3,
     "preserve-caught-error": 1
@@ -1017,7 +1008,7 @@
     "@typescript-eslint/no-unused-vars": 5
   },
   "src/server/routes/sourceRoutes.ts": {
-    "@typescript-eslint/no-explicit-any": 32
+    "@typescript-eslint/no-explicit-any": 31
   },
   "src/server/routes/statusRoutes.ts": {
     "@typescript-eslint/no-explicit-any": 1
@@ -1047,9 +1038,6 @@
   "src/server/routes/v1/channels.ts": {
     "@typescript-eslint/no-explicit-any": 3
   },
-  "src/server/routes/v1/deprecatedShim.ts": {
-    "@typescript-eslint/no-explicit-any": 1
-  },
   "src/server/routes/v1/messages.ts": {
     "@typescript-eslint/no-explicit-any": 6
   },
@@ -1077,9 +1065,6 @@
   },
   "src/server/routes/waypoints.ts": {
     "@typescript-eslint/no-explicit-any": 10
-  },
-  "src/server/server.neighbor-info-position.test.ts": {
-    "@typescript-eslint/no-unused-vars": 4
   },
   "src/server/server.test.ts": {
     "@typescript-eslint/no-unused-vars": 28
