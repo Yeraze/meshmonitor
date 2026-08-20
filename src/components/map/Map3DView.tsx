@@ -37,6 +37,13 @@ export interface Map3DViewProps {
    * age/transport/estimated filters (#4808). Omit for MapAnalysis (all nodes).
    */
   visibleNodeNums?: Set<number>;
+  /**
+   * Visible MeshCore public keys (#4808 follow-up). Gates MeshCore neighbor
+   * edges the same way `visibleNodeNums` gates Meshtastic edges; MeshCore
+   * nodes have no nodeNum so they need a separate key set. Omit for surfaces
+   * with no MeshCore nodes (NodesTab) or no gate (MapAnalysis).
+   */
+  visibleMeshCoreKeys?: Set<string>;
   /** Seed for the exaggeration slider (default `1.3`). */
   initialExaggeration?: number;
   /** Fired with the new exaggeration value whenever the slider changes. */
@@ -71,6 +78,7 @@ export function Map3DView({
   showTraceroutes,
   lookbackHours,
   visibleNodeNums,
+  visibleMeshCoreKeys,
   initialExaggeration,
   onExaggerationChange,
   onUnsupported,
@@ -86,6 +94,7 @@ export function Map3DView({
     sources: sourceIds,
     timeSlider,
     visibleNodeNums,
+    visibleMeshCoreKeys,
   });
   const tracerouteLines = use3DTracerouteLines({
     layer: { enabled: showTraceroutes, lookbackHours },
