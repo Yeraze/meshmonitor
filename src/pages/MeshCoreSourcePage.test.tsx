@@ -158,6 +158,20 @@ describe('MeshCoreSourcePage', () => {
     expect(fetchUrls.some((u) => u.includes('/meshcore/status'))).toBe(false);
   });
 
+  it('regression #4828: still shows the sign-in button when logged out and lacking connection:read', async () => {
+    // A logged-out visitor landing directly on a source (e.g. via the
+    // default-landing-page setting) must still be able to sign in — the
+    // permission-denied message must not black out the whole page.
+    authValue.authStatus = { authenticated: false, user: null };
+    authValue.hasPermission = () => false;
+    renderPage();
+    expect(
+      await screen.findByText('You do not have permission to view this MeshCore source.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'source.topbar.sign_in' })).toBeInTheDocument();
+    authValue.authStatus = { authenticated: true, user: { isAdmin: false } };
+  });
+
   it('shows Disconnected after snapshot returns connected=false', async () => {
     authValue.hasPermission = () => true;
     renderPage();
