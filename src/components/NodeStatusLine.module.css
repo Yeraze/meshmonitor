@@ -1,0 +1,13 @@
+/* Status Message subtitle on a node-list row (#4818). A dedicated CSS module
+   rather than an addition to the frozen global nodes.css (whose cascade order
+   is a documented hazard, #3532) or an inline style. Clamps to one line; the
+   full text is available via the element's title attribute. */
+.statusLine {
+  font-style: italic;
+  opacity: 0.7;
+  font-size: 0.85em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}

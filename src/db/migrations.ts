@@ -163,6 +163,7 @@ import { migration as addReticulumInterfaceRadioConfigMigration, runMigration145
 import { migration as createReticulumPathsMigration, runMigration146Postgres, runMigration146Mysql } from '../server/migrations/146_create_reticulum_paths.js';
 import { migration as addMeshBeaconOffersMigration, runMigration147Postgres, runMigration147Mysql } from '../server/migrations/147_add_mesh_beacon_offers.js';
 import { migration as fixEnvCurrentUnitMigration, runMigration148Postgres, runMigration148Mysql } from '../server/migrations/148_fix_env_current_unit.js';
+import { migration as addNodeStatusMigration, runMigration149Postgres, runMigration149Mysql } from '../server/migrations/149_add_node_status.js';
 
 // ============================================================================
 // Registry
@@ -2367,4 +2368,19 @@ registry.register({
   sqlite: (db) => fixEnvCurrentUnitMigration.up(db),
   postgres: (client) => runMigration148Postgres(client),
   mysql: (pool) => runMigration148Mysql(pool),
+});
+
+// Migration 149: add `nodeStatus` + `nodeStatusUpdatedAt` to `nodes` — the
+// receive side of the Status Message feature (#4818). Stores each node's
+// self-broadcast status (PortNum.NODE_STATUS_APP) as a per-node attribute.
+// Meshtastic-only, idempotent.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 149,
+  name: 'add_node_status',
+  settingsKey: 'migration_149_add_node_status',
+  sqlite: (db) => addNodeStatusMigration.up(db),
+  postgres: (client) => runMigration149Postgres(client),
+  mysql: (pool) => runMigration149Mysql(pool),
 });

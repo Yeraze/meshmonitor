@@ -490,6 +490,16 @@ export class NodesRepository extends BaseRepository {
           // #3684: User capability flags from NodeInfo (preserve prior value if not present)
           isUnmessagable: nodeData.isUnmessagable ?? existingNode.isUnmessagable,
           isLicensed: nodeData.isLicensed ?? existingNode.isLicensed,
+          // #4818 Status Message: only the NODE_STATUS_APP handler provides
+          // nodeStatus, so `undefined` = "not this packet" (preserve). An empty
+          // string is a genuine clear from the node → store null, matching the
+          // official clients.
+          nodeStatus: nodeData.nodeStatus !== undefined
+            ? (nodeData.nodeStatus === '' ? null : nodeData.nodeStatus)
+            : existingNode.nodeStatus,
+          nodeStatusUpdatedAt: nodeData.nodeStatusUpdatedAt !== undefined
+            ? this.coerceBigintField(nodeData.nodeStatusUpdatedAt)
+            : existingNode.nodeStatusUpdatedAt,
           updatedAt: now,
         })
         .where(and(eq(nodes.nodeNum, nodeData.nodeNum), eq(nodes.sourceId, effectiveSourceId)));
@@ -543,6 +553,10 @@ export class NodesRepository extends BaseRepository {
         notes: nodeData.notes ?? null,
         isUnmessagable: nodeData.isUnmessagable ?? false,
         isLicensed: nodeData.isLicensed ?? false,
+        // #4818 Status Message (first-seen): store the broadcast status; a blank
+        // status persists as null.
+        nodeStatus: nodeData.nodeStatus ? nodeData.nodeStatus : null,
+        nodeStatusUpdatedAt: this.coerceBigintField(nodeData.nodeStatusUpdatedAt),
         createdAt: now,
         updatedAt: now,
       } as any;
@@ -608,6 +622,11 @@ export class NodesRepository extends BaseRepository {
         // packet-driven upsert conflict. It is only written by setNodeNotes.
         isUnmessagable: nodeData.isUnmessagable ?? false,
         isLicensed: nodeData.isLicensed ?? false,
+        // Note: nodeStatus/nodeStatusUpdatedAt are intentionally NOT included
+        // here (#4818) — same reasoning as notes/mobile above. This conflict
+        // path only fires in the first-seen race; leaving them out means a
+        // racing non-status packet can never clobber an existing node's status
+        // to null. Status packets update via the UPDATE branch above.
         updatedAt: now,
       };
 
@@ -1717,6 +1736,13 @@ export class NodesRepository extends BaseRepository {
       if (nodeData.positionPrecisionBits !== undefined) updateSet.positionPrecisionBits = nodeData.positionPrecisionBits;
       if (nodeData.positionLocationSource !== undefined) updateSet.positionLocationSource = nodeData.positionLocationSource;
       if (nodeData.positionTimestamp !== undefined) updateSet.positionTimestamp = nodeData.positionTimestamp;
+      // #4818 Status Message: explicit key present clears on '' (null), matching
+      // the async upsertNode path and the official clients; absent key keeps
+      // the existing value.
+      if ('nodeStatus' in nodeData) {
+        updateSet.nodeStatus = nodeData.nodeStatus ? nodeData.nodeStatus : null;
+      }
+      if (nodeData.nodeStatusUpdatedAt !== undefined) updateSet.nodeStatusUpdatedAt = nodeData.nodeStatusUpdatedAt;
       // Per-source blocklist is authoritative (issue #2601): re-apply the ignore
       // flag on update when the caller signals the node is still blocklisted,
       // overriding any un-ignored status the device just reported. Note the
@@ -1763,6 +1789,8 @@ export class NodesRepository extends BaseRepository {
         duplicateKeyDetected: !!nodeData.duplicateKeyDetected,
         keyMismatchDetected: !!nodeData.keyMismatchDetected,
         keySecurityIssueDetails: nodeData.keySecurityIssueDetails || null,
+        nodeStatus: nodeData.nodeStatus || null,
+        nodeStatusUpdatedAt: nodeData.nodeStatusUpdatedAt || null,
         positionChannel: nodeData.positionChannel !== undefined ? nodeData.positionChannel : null,
         positionPrecisionBits: nodeData.positionPrecisionBits !== undefined ? nodeData.positionPrecisionBits : null,
         positionLocationSource: nodeData.positionLocationSource !== undefined ? nodeData.positionLocationSource : null,

@@ -6145,6 +6145,13 @@ class MeshtasticManager implements ISourceManager {
             }, this.sourceId);
             break;
           }
+          case PortNum.NODE_STATUS_APP: {
+            // StatusMessage (fw 2.7.20+/2.8, #4818): the node's self-broadcast
+            // status. Stored as a per-node attribute (cleared on empty),
+            // mirroring the official clients — never a message/DM.
+            await this.processNodeStatusMessageProtobuf(meshPacket, processedPayload as { status?: unknown });
+            break;
+          }
           default:
             logger.debug(`🤷 Unhandled portnum: ${normalizedPortNum} (${meshtasticProtobufService.getPortNumName(portnum)})`);
         }
@@ -7706,6 +7713,47 @@ class MeshtasticManager implements ISourceManager {
    * Process paxcounter message
    * Paxcounter counts nearby WiFi and BLE devices
    */
+  /**
+   * Status Message receive (#4818). The firmware StatusMessageModule broadcasts
+   * each node's self-set status on PortNum.NODE_STATUS_APP (36) as
+   * `meshtastic.StatusMessage { string status }`. Store it as a per-node
+   * attribute; an empty status CLEARS the stored value (the repo merge maps ''
+   * to null), matching the official Android/Apple clients. Never persisted as a
+   * message or DM — it is a node property like long/short name.
+   */
+  private async processNodeStatusMessageProtobuf(
+    meshPacket: { from?: unknown; rxSnr?: number | null; rxRssi?: number | null; rxTime?: unknown },
+    statusMessage: { status?: unknown },
+  ): Promise<void> {
+    try {
+      const fromNum = Number(meshPacket.from);
+      if (!fromNum) return;
+      const nodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
+      // Max 80 chars per the protobuf; clamp defensively. '' is a valid "clear".
+      const raw = typeof statusMessage?.status === 'string' ? statusMessage.status : '';
+      const status = raw.slice(0, 80);
+      logger.debug(`📝 Node status from ${nodeId}: "${status}"`);
+
+      await this.trackPKIEncryption(meshPacket, fromNum);
+
+      const nodeData: Parameters<typeof databaseService.upsertNodeAsync>[0] = {
+        nodeNum: fromNum,
+        nodeId,
+        nodeStatus: status, // '' clears the stored value in the repo merge
+        nodeStatusUpdatedAt: Date.now(), // epoch ms (NOT seconds like lastHeard)
+        // Replay guard: omit lastHeard for replayed/retained frames so a stale
+        // status can't resurrect an offline node (#4192/#4445).
+        lastHeard: this.lastHeardFor(meshPacket),
+      };
+      if (meshPacket.rxSnr != null && meshPacket.rxSnr !== -128) nodeData.snr = meshPacket.rxSnr;
+      if (meshPacket.rxRssi != null) nodeData.rssi = meshPacket.rxRssi;
+
+      await databaseService.upsertNodeAsync(nodeData, this.sourceId);
+    } catch (error) {
+      logger.error('Failed to process node status message:', error);
+    }
+  }
+
   private async processPaxcounterMessageProtobuf(meshPacket: any, paxcount: any): Promise<void> {
     try {
       logger.debug('📊 Processing paxcounter message');

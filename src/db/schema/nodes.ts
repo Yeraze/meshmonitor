@@ -65,6 +65,11 @@ export const nodesSqlite = sqliteTable('nodes', {
   isTimeOffsetIssue: integer('isTimeOffsetIssue', { mode: 'boolean' }).default(false),
   timeOffsetSeconds: integer('timeOffsetSeconds'),
   welcomedAt: integer('welcomedAt'),
+  // Status Message (#4818): the node's self-broadcast status from
+  // PortNum.NODE_STATUS_APP (36), max 80 chars. One current value, cleared
+  // (null) when the node broadcasts an empty status. Meshtastic-only.
+  nodeStatus: text('nodeStatus'),
+  nodeStatusUpdatedAt: integer('nodeStatusUpdatedAt'),
   // Position precision tracking
   positionChannel: integer('positionChannel'),
   positionPrecisionBits: integer('positionPrecisionBits'),
@@ -159,6 +164,10 @@ export const nodesPostgres = pgTable('nodes', {
   isTimeOffsetIssue: pgBoolean('isTimeOffsetIssue').default(false),
   timeOffsetSeconds: pgInteger('timeOffsetSeconds'),
   welcomedAt: pgBigint('welcomedAt', { mode: 'number' }),
+  // Status Message (#4818): self-broadcast status from NODE_STATUS_APP (36),
+  // max 80 chars; null when the node broadcasts an empty status.
+  nodeStatus: pgText('nodeStatus'),
+  nodeStatusUpdatedAt: pgBigint('nodeStatusUpdatedAt', { mode: 'number' }),
   // Position precision tracking
   positionChannel: pgInteger('positionChannel'),
   positionPrecisionBits: pgInteger('positionPrecisionBits'),
@@ -252,6 +261,10 @@ export const nodesMysql = mysqlTable('nodes', {
   isTimeOffsetIssue: myBoolean('isTimeOffsetIssue').default(false),
   timeOffsetSeconds: myInt('timeOffsetSeconds'),
   welcomedAt: myBigint('welcomedAt', { mode: 'number' }),
+  // Status Message (#4818): self-broadcast status from NODE_STATUS_APP (36),
+  // max 80 chars; null when the node broadcasts an empty status.
+  nodeStatus: myVarchar('nodeStatus', { length: 80 }),
+  nodeStatusUpdatedAt: myBigint('nodeStatusUpdatedAt', { mode: 'number' }),
   // Position precision tracking
   positionChannel: myInt('positionChannel'),
   positionPrecisionBits: myInt('positionPrecisionBits'),
