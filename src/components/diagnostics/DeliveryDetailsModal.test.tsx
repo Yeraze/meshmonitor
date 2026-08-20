@@ -1,15 +1,19 @@
 /**
  * @vitest-environment jsdom
  *
- * DeliveryDetailsModal (#4816 Phase 1, WP2) — a11y shell, provenance badges,
- * honest Unknown placeholders, and the MeshCore Propagation section's
- * raw-hash-always-visible + DM-omission rules.
+ * DeliveryDetailsModal (#4816 Phase 1, WP2 + Phase 3 WP4) — a11y shell,
+ * provenance badges, honest Unknown placeholders, the MeshCore Propagation
+ * section's raw-hash-always-visible + DM-omission rules, and the persisted
+ * event Timeline section (populated / empty / loading / error states).
  */
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createElement, type ReactNode } from 'react';
 import DeliveryDetailsModal from './DeliveryDetailsModal';
-import { MessageDeliveryState, type MeshMessage } from '../../types/message';
+import { MessageDeliveryState, type MeshMessage, type MessageEvent } from '../../types/message';
 import type { MeshCoreMessage } from '../MeshCore/hooks/useMeshCore';
+import apiService from '../../services/api';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -17,6 +21,28 @@ vi.mock('react-i18next', () => ({
       typeof fallback === 'string' ? fallback : key,
   }),
 }));
+
+// The timeline section fetches via ApiService.getMessageEvents. Default to an
+// empty timeline; per-test overrides drive the populated/loading/error states.
+vi.mock('../../services/api', () => ({
+  default: {
+    getMessageEvents: vi.fn().mockResolvedValue([]),
+  },
+}));
+
+const mockGetMessageEvents = apiService.getMessageEvents as unknown as ReturnType<typeof vi.fn>;
+
+function renderModal(ui: ReactNode) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  });
+  return render(createElement(QueryClientProvider, { client }, ui));
+}
+
+beforeEach(() => {
+  mockGetMessageEvents.mockReset();
+  mockGetMessageEvents.mockResolvedValue([]);
+});
 
 function buildMeshtasticMessage(overrides: Partial<MeshMessage> = {}): MeshMessage {
   return {
@@ -57,11 +83,26 @@ function buildMeshCoreMessage(overrides: Partial<MeshCoreMessage> = {}): MeshCor
   };
 }
 
+function buildEvent(overrides: Partial<MessageEvent> = {}): MessageEvent {
+  return {
+    id: 1,
+    sourceId: 'source-a',
+    messageId: 'mt1',
+    eventType: 'submitted',
+    provenance: 'observed',
+    detail: null,
+    timestamp: Date.parse('2026-01-01T10:00:00Z'),
+    createdAt: Date.parse('2026-01-01T10:00:00Z'),
+    ...overrides,
+  };
+}
+
 describe('DeliveryDetailsModal', () => {
   it('renders as an accessible dialog with protocol + status for a Meshtastic message', () => {
-    render(
+    renderModal(
       <DeliveryDetailsModal
         protocol="meshtastic"
+        sourceId="source-a"
         message={buildMeshtasticMessage()}
         onClose={vi.fn()}
       />,
@@ -76,9 +117,10 @@ describe('DeliveryDetailsModal', () => {
   });
 
   it('shows a provenance badge per field and the honest Unknown placeholder for deferred fields', () => {
-    render(
+    renderModal(
       <DeliveryDetailsModal
         protocol="meshtastic"
+        sourceId="source-a"
         message={buildMeshtasticMessage()}
         onClose={vi.fn()}
       />,
@@ -94,9 +136,10 @@ describe('DeliveryDetailsModal', () => {
   });
 
   it('renders MeshCore protocol + status and omits Propagation for a DM (no toPublicKey re-flood signal)', () => {
-    render(
+    renderModal(
       <DeliveryDetailsModal
         protocol="meshcore"
+        sourceId="source-a"
         message={buildMeshCoreMessage({ toPublicKey: 'deadbeef' })}
         onClose={vi.fn()}
       />,
@@ -108,9 +151,10 @@ describe('DeliveryDetailsModal', () => {
   });
 
   it('shows an honest "no re-flood observed" for a channel message with an empty heard-by list', () => {
-    render(
+    renderModal(
       <DeliveryDetailsModal
         protocol="meshcore"
+        sourceId="source-a"
         message={buildMeshCoreMessage()}
         onClose={vi.fn()}
       />,
@@ -121,9 +165,10 @@ describe('DeliveryDetailsModal', () => {
   });
 
   it('shows the RAW HASH for an unresolved relay and the honest re-flood subtitle for a channel message', () => {
-    render(
+    renderModal(
       <DeliveryDetailsModal
         protocol="meshcore"
+        sourceId="source-a"
         message={buildMeshCoreMessage({
           heardBy: [
             { hash: 'a3f2', name: null, snr: 6.5 },
@@ -144,31 +189,120 @@ describe('DeliveryDetailsModal', () => {
 
   it('calls onClose on Escape, overlay click, and the close button', () => {
     const onCloseEscape = vi.fn();
-    const { unmount } = render(
-      <DeliveryDetailsModal protocol="meshtastic" message={buildMeshtasticMessage()} onClose={onCloseEscape} />,
+    const { unmount } = renderModal(
+      <DeliveryDetailsModal protocol="meshtastic" sourceId="source-a" message={buildMeshtasticMessage()} onClose={onCloseEscape} />,
     );
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onCloseEscape).toHaveBeenCalledTimes(1);
     unmount();
 
     const onCloseOverlay = vi.fn();
-    const { getByRole: getByRoleOverlay, unmount: unmountOverlay } = render(
-      <DeliveryDetailsModal protocol="meshtastic" message={buildMeshtasticMessage()} onClose={onCloseOverlay} />,
+    const { getByRole: getByRoleOverlay, unmount: unmountOverlay } = renderModal(
+      <DeliveryDetailsModal protocol="meshtastic" sourceId="source-a" message={buildMeshtasticMessage()} onClose={onCloseOverlay} />,
     );
     fireEvent.click(getByRoleOverlay('presentation'));
     expect(onCloseOverlay).toHaveBeenCalledTimes(1);
     unmountOverlay();
 
     const onCloseButton = vi.fn();
-    render(<DeliveryDetailsModal protocol="meshtastic" message={buildMeshtasticMessage()} onClose={onCloseButton} />);
+    renderModal(<DeliveryDetailsModal protocol="meshtastic" sourceId="source-a" message={buildMeshtasticMessage()} onClose={onCloseButton} />);
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(onCloseButton).toHaveBeenCalledTimes(1);
   });
 
   it('does not close when clicking inside the dialog content', () => {
     const onClose = vi.fn();
-    render(<DeliveryDetailsModal protocol="meshtastic" message={buildMeshtasticMessage()} onClose={onClose} />);
+    renderModal(<DeliveryDetailsModal protocol="meshtastic" sourceId="source-a" message={buildMeshtasticMessage()} onClose={onClose} />);
     fireEvent.click(screen.getByRole('dialog'));
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  describe('Timeline section (#4816 Phase 3 WP4)', () => {
+    it('renders event rows chronologically with provenance badges and a named routing_error detail', async () => {
+      mockGetMessageEvents.mockResolvedValue([
+        buildEvent({ id: 1, eventType: 'submitted', provenance: 'observed', timestamp: Date.parse('2026-01-01T10:00:00Z') }),
+        buildEvent({ id: 2, eventType: 'delivered', provenance: 'reported', timestamp: Date.parse('2026-01-01T10:00:05Z') }),
+        buildEvent({
+          id: 3,
+          eventType: 'routing_error',
+          provenance: 'reported',
+          detail: JSON.stringify({ routingErrorCode: 5 }),
+          timestamp: Date.parse('2026-01-01T10:00:10Z'),
+        }),
+      ]);
+
+      renderModal(
+        <DeliveryDetailsModal
+          protocol="meshtastic"
+          sourceId="source-a"
+          message={buildMeshtasticMessage()}
+          onClose={vi.fn()}
+        />,
+      );
+
+      await waitFor(() => expect(screen.getByText('Submitted')).toBeTruthy());
+
+      const items = screen.getAllByRole('listitem');
+      // Timeline is an <ol> of <li>; the three event rows render in order.
+      const timelineRows = items.filter((li) =>
+        ['Submitted', 'Delivered to mesh', 'Routing error'].some((label) =>
+          li.textContent?.includes(label),
+        ),
+      );
+      expect(timelineRows.length).toBe(3);
+      expect(timelineRows[0].textContent).toContain('Submitted');
+      expect(timelineRows[1].textContent).toContain('Delivered to mesh');
+      expect(timelineRows[2].textContent).toContain('Routing error');
+
+      // routing_error names the numeric code via the shared frontend map.
+      expect(screen.getByText('MAX_RETRANSMIT (5)')).toBeTruthy();
+
+      // Provenance badges reuse the Phase 1 badge labels (also present on the
+      // description-section field rows, so assert presence, not uniqueness).
+      expect(screen.getAllByText('Observed by MeshMonitor').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Reported by protocol').length).toBeGreaterThan(0);
+
+      expect(mockGetMessageEvents).toHaveBeenCalledWith('source-a', 'mt1');
+    });
+
+    it('shows the honest empty state when no events are recorded', async () => {
+      mockGetMessageEvents.mockResolvedValue([]);
+      renderModal(
+        <DeliveryDetailsModal
+          protocol="meshtastic"
+          sourceId="source-a"
+          message={buildMeshtasticMessage()}
+          onClose={vi.fn()}
+        />,
+      );
+      await waitFor(() => expect(screen.getByText('No timeline recorded')).toBeTruthy());
+    });
+
+    it('shows the loading state while the timeline is in flight', () => {
+      // Never-resolving promise keeps the query pending.
+      mockGetMessageEvents.mockReturnValue(new Promise(() => {}));
+      renderModal(
+        <DeliveryDetailsModal
+          protocol="meshtastic"
+          sourceId="source-a"
+          message={buildMeshtasticMessage()}
+          onClose={vi.fn()}
+        />,
+      );
+      expect(screen.getByText('Loading timeline…')).toBeTruthy();
+    });
+
+    it('shows the honest error state when the fetch fails', async () => {
+      mockGetMessageEvents.mockRejectedValue(new Error('boom'));
+      renderModal(
+        <DeliveryDetailsModal
+          protocol="meshtastic"
+          sourceId="source-a"
+          message={buildMeshtasticMessage()}
+          onClose={vi.fn()}
+        />,
+      );
+      await waitFor(() => expect(screen.getByText('Timeline unavailable')).toBeTruthy());
+    });
   });
 });

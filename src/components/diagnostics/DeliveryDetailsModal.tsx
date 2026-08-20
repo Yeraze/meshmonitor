@@ -19,10 +19,12 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useDialogA11y } from '../../hooks/useDialogA11y';
+import { useMessageEvents } from '../../hooks/useMessageEvents';
 import { describeMeshtasticDelivery } from '../../utils/deliveryDiagnostics/meshtasticDelivery';
 import { describeMeshCoreDelivery } from '../../utils/deliveryDiagnostics/meshcoreDelivery';
+import { getRoutingErrorName } from '../../utils/routingErrors';
 import type { DeliveryTone, DiagField, Provenance } from '../../utils/deliveryDiagnostics/types';
-import type { MeshMessage } from '../../types/message';
+import type { MeshMessage, MessageEvent, MessageEventType } from '../../types/message';
 import type { MeshCoreMessage } from '../MeshCore/hooks/useMeshCore';
 import styles from './DeliveryDetailsModal.module.css';
 
@@ -30,6 +32,8 @@ export type DeliveryDetailsProtocol = 'meshtastic' | 'meshcore';
 
 interface Props {
   protocol: DeliveryDetailsProtocol;
+  /** Owning source id — required to fetch the persisted event timeline. */
+  sourceId: string;
   message: MeshMessage | MeshCoreMessage;
   onClose: () => void;
 }
@@ -91,9 +95,63 @@ const FieldRow: React.FC<{ field: DiagField }> = ({ field }) => {
   );
 };
 
-const DeliveryDetailsModal: React.FC<Props> = ({ protocol, message, onClose }) => {
+const EVENT_LABEL: Record<MessageEventType, { key: string; fallback: string }> = {
+  submitted: { key: 'delivery_details.timeline.event.submitted', fallback: 'Submitted' },
+  sent_to_radio: { key: 'delivery_details.timeline.event.sent_to_radio', fallback: 'Sent to radio' },
+  delivered: { key: 'delivery_details.timeline.event.delivered', fallback: 'Delivered to mesh' },
+  confirmed: { key: 'delivery_details.timeline.event.confirmed', fallback: 'Confirmed by destination' },
+  routing_error: { key: 'delivery_details.timeline.event.routing_error', fallback: 'Routing error' },
+  timeout: { key: 'delivery_details.timeline.event.timeout', fallback: 'Timed out' },
+  retry: { key: 'delivery_details.timeline.event.retry', fallback: 'Retry' },
+};
+
+/**
+ * Parse the short JSON `detail` blob defensively — it is persisted as a string
+ * and may be null, empty, or malformed. Returns an empty object on any failure
+ * rather than throwing, so a bad row can never break the timeline render.
+ */
+function parseEventDetail(detail?: string | null): Record<string, unknown> {
+  if (!detail) return {};
+  try {
+    const parsed: unknown = JSON.parse(detail);
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+const TimelineRow: React.FC<{ event: MessageEvent }> = ({ event }) => {
+  const { t } = useTranslation();
+  const label = EVENT_LABEL[event.eventType] ?? { key: '', fallback: event.eventType };
+  const detail = parseEventDetail(event.detail);
+
+  // Only routing_error surfaces a human-readable extra this phase: the numeric
+  // RoutingError code named via the shared frontend map (#4816 Phase 2).
+  let extra: string | null = null;
+  if (event.eventType === 'routing_error' && typeof detail.routingErrorCode === 'number') {
+    extra = `${getRoutingErrorName(detail.routingErrorCode)} (${detail.routingErrorCode})`;
+  } else if (event.eventType === 'retry' && typeof detail.attempt === 'number') {
+    extra = t('delivery_details.timeline.attempt', 'Attempt {{n}}', { n: detail.attempt });
+  }
+
+  return (
+    <li className={styles.timelineItem}>
+      <span className={styles.timelineTime}>{new Date(event.timestamp).toLocaleTimeString()}</span>
+      <span className={styles.timelineBody}>
+        <span className={styles.timelineLabel}>
+          {label.key ? t(label.key, label.fallback) : label.fallback}
+        </span>
+        <ProvenanceBadge provenance={event.provenance} />
+        {extra && <span className={styles.timelineDetail}>{extra}</span>}
+      </span>
+    </li>
+  );
+};
+
+const DeliveryDetailsModal: React.FC<Props> = ({ protocol, sourceId, message, onClose }) => {
   const { t } = useTranslation();
   const { contentRef, onKeyDown } = useDialogA11y(onClose);
+  const { events, isLoading, isError } = useMessageEvents(sourceId, message.id);
 
   const description =
     protocol === 'meshtastic'
@@ -185,6 +243,29 @@ const DeliveryDetailsModal: React.FC<Props> = ({ protocol, message, onClose }) =
               )}
             </section>
           )}
+
+          <section className={styles.section}>
+            <h5>{t('delivery_details.timeline.title', 'Timeline')}</h5>
+            {isLoading ? (
+              <p className={styles.timelineState}>
+                {t('delivery_details.timeline.loading', 'Loading timeline…')}
+              </p>
+            ) : isError ? (
+              <p className={styles.timelineState}>
+                {t('delivery_details.timeline.error', 'Timeline unavailable')}
+              </p>
+            ) : events.length === 0 ? (
+              <p className={styles.timelineState}>
+                {t('delivery_details.timeline.empty', 'No timeline recorded')}
+              </p>
+            ) : (
+              <ol className={styles.timelineList}>
+                {events.map((event) => (
+                  <TimelineRow key={event.id} event={event} />
+                ))}
+              </ol>
+            )}
+          </section>
         </div>
       </div>
     </div>

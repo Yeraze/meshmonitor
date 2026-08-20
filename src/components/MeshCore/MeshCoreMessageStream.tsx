@@ -14,6 +14,11 @@ import { resolveUnreadAnchorId, shouldSuppressDivider } from '../../utils/unread
 interface MeshCoreMessageStreamProps {
   messages: MeshCoreMessage[];
   contacts?: MeshCoreContact[];
+  /** Owning MeshCore source id — threaded to the Delivery Details modal so it
+   *  can fetch the persisted event timeline (#4816 Phase 3). Optional so the
+   *  many callers that predate the timeline keep type-checking; when absent the
+   *  modal's timeline query stays disabled and shows the honest empty state. */
+  sourceId?: string;
   selfPublicKey?: string;
   emptyText?: string;
   disabled?: boolean;
@@ -99,6 +104,7 @@ function renderMessageText(text: string): React.ReactNode {
 export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   messages,
   contacts,
+  sourceId,
   selfPublicKey,
   emptyText,
   disabled,
@@ -716,6 +722,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
       {deliveryDetailsMsg && (
         <DeliveryDetailsModal
           protocol="meshcore"
+          sourceId={sourceId ?? ''}
           message={deliveryDetailsMsg}
           onClose={() => setDeliveryDetailsMsg(null)}
         />

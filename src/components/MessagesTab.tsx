@@ -2872,6 +2872,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
       {deliveryDetailsMsg && (
         <DeliveryDetailsModal
           protocol="meshtastic"
+          sourceId={sourceId ?? ''}
           message={deliveryDetailsMsg}
           onClose={() => setDeliveryDetailsMsg(null)}
         />

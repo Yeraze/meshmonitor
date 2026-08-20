@@ -22,10 +22,20 @@ vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: () => {} },
 }));
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createElement, type ReactNode } from 'react';
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import type { MeshCoreMessage } from './hooks/useMeshCore';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+// The Delivery Details modal (#4816 Phase 3) uses a TanStack query hook, so
+// tests that open it must provide a QueryClient. The timeline query stays
+// disabled (no sourceId passed here), so no request fires.
+function renderWithQuery(ui: ReactNode) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  return render(createElement(QueryClientProvider, { client }, ui));
+}
 
 function msg(id: string, timestamp: number, text: string): MeshCoreMessage {
   return { id, fromPublicKey: 'abcdef0123456789', text, timestamp };
@@ -675,7 +685,7 @@ describe('MeshCoreMessageStream delivery details modal (#4816)', () => {
   }
 
   it('renders no dialog until the outgoing delivery-status button is clicked', () => {
-    const { container } = render(
+    const { container } = renderWithQuery(
       <MeshCoreMessageStream
         messages={[outgoingMessage()]}
         selfPublicKey={SELF_KEY}
@@ -701,7 +711,7 @@ describe('MeshCoreMessageStream delivery details modal (#4816)', () => {
   });
 
   it('closes the modal via its close button', () => {
-    const { container } = render(
+    const { container } = renderWithQuery(
       <MeshCoreMessageStream
         messages={[outgoingMessage()]}
         selfPublicKey={SELF_KEY}
@@ -716,7 +726,7 @@ describe('MeshCoreMessageStream delivery details modal (#4816)', () => {
   });
 
   it('does not disturb the heard-by toggle', () => {
-    const { container } = render(
+    const { container } = renderWithQuery(
       <MeshCoreMessageStream
         messages={[outgoingMessage({
           heardBy: [{ hash: 'ab12', name: 'Repeater1', snr: 5 }],
@@ -751,7 +761,7 @@ describe('MeshCoreMessageStream delivery details modal (#4816)', () => {
       routePath: 'a3,7f',
     };
     const outgoing = outgoingMessage();
-    const { container } = render(
+    const { container } = renderWithQuery(
       <MeshCoreMessageStream messages={[incoming, outgoing]} selfPublicKey={SELF_KEY} onSend={async () => true} />,
     );
 
