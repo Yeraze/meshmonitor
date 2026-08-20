@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { enhanceNodeForClient, filterNodesByChannelPermission, checkNodeChannelAccess, maskNodeLocationByChannel, maskTelemetryByChannel, maskTraceroutesByChannel } from './nodeEnhancer.js';
+import { enhanceNodeForClient, filterNodesByChannelPermission, checkNodeChannelAccess, maskNodeLocationByChannel, maskTelemetryByChannel, maskTraceroutesByChannel, attachUptimeToNodes } from './nodeEnhancer.js';
 
 // Mock the auth middleware
 vi.mock('../auth/authMiddleware.js', () => ({
@@ -682,5 +682,30 @@ describe('nodeEnhancer: maskTraceroutesByChannel', () => {
     expect(result).toHaveLength(2);
     expect((result[0] as any).toNodeId).toBe('!B');
     expect((result[1] as any).toNodeId).toBe('!D');
+  });
+});
+
+describe('attachUptimeToNodes (#4814)', () => {
+  it('attaches uptime by node user.id and leaves un-reported nodes undefined', () => {
+    const nodes: Array<{ user?: { id?: string }; uptimeSeconds?: number }> = [
+      { user: { id: '!a' } },
+      { user: { id: '!b' } },
+      { user: { id: '!c' } }, // no uptime in map
+      {}, // no user at all
+    ];
+    const uptimeMap = new Map<string, number>([['!a', 3600], ['!b', 120]]);
+
+    attachUptimeToNodes(nodes, uptimeMap);
+
+    expect(nodes[0].uptimeSeconds).toBe(3600);
+    expect(nodes[1].uptimeSeconds).toBe(120);
+    expect(nodes[2].uptimeSeconds).toBeUndefined();
+    expect(nodes[3].uptimeSeconds).toBeUndefined();
+  });
+
+  it('preserves a genuine 0 uptime (just booted) rather than dropping it', () => {
+    const nodes: Array<{ user?: { id?: string }; uptimeSeconds?: number }> = [{ user: { id: '!a' } }];
+    attachUptimeToNodes(nodes, new Map([['!a', 0]]));
+    expect(nodes[0].uptimeSeconds).toBe(0);
   });
 });

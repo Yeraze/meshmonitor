@@ -1484,6 +1484,12 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
           aVal = a.deviceMetrics?.batteryLevel ?? -1;
           bVal = b.deviceMetrics?.batteryLevel ?? -1;
           break;
+        case 'uptime':
+          // Never-reported uptime sorts to the bottom. Top-level uptimeSeconds is
+          // enriched by /api/nodes (#4814), with the device-metrics copy as fallback.
+          aVal = a.uptimeSeconds ?? a.deviceMetrics?.uptimeSeconds ?? -1;
+          bVal = b.uptimeSeconds ?? b.deviceMetrics?.uptimeSeconds ?? -1;
+          break;
         case 'hwModel':
           aVal = a.user?.hwModel ?? 0;
           bVal = b.user?.hwModel ?? 0;
@@ -2243,6 +2249,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 <option value="shortName">{t('nodes.sort_short_name')}</option>
                 <option value="id">{t('nodes.sort_id')}</option>
                 <option value="lastHeard">{t('nodes.sort_updated')}</option>
+                <option value="uptime">{t('nodes.sort_uptime')}</option>
                 <option value="snr">{t('nodes.sort_signal')}</option>
                 <option value="battery">{t('nodes.sort_charge')}</option>
                 <option value="hwModel">{t('nodes.sort_hardware')}</option>

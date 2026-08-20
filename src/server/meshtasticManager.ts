@@ -257,6 +257,12 @@ export interface DeviceInfo {
     airUtilTx?: number;
     uptimeSeconds?: number;
   };
+  /**
+   * Latest uptime (seconds) enriched onto the node list from telemetry by the
+   * /api/nodes route (#4814) to back the "Sort: Uptime" option. Not a node
+   * column — device-metrics telemetry is its only source.
+   */
+  uptimeSeconds?: number;
   hopsAway?: number;
   lastHeard?: number;
   snr?: number;

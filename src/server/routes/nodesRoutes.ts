@@ -25,7 +25,7 @@ import { fallbackManager } from '../meshtasticManager.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { isMeshCoreManager, getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
-import { filterNodesByChannelPermission, enhanceNodeForClient, checkNodeChannelAccess } from '../utils/nodeEnhancer.js';
+import { filterNodesByChannelPermission, enhanceNodeForClient, checkNodeChannelAccess, attachUptimeToNodes } from '../utils/nodeEnhancer.js';
 import { pivotPositionHistory } from '../utils/positionHistoryPivot.js';
 import { resolveRequestSourceId } from '../utils/sourceResolver.js';
 import { requireSourceId } from '../utils/requireSourceId.js';
@@ -79,6 +79,13 @@ router.get('/nodes', optionalAuth(), async (req, res) => {
     // source can't see another source's nodes (#3745).
     const filteredNodes = await filterNodesByChannelPermission(allNodes, (req as any).user, nodesSourceId);
     const enhancedNodes = await Promise.all(filteredNodes.map(node => enhanceNodeForClient(node, (req as any).user, estimatedPositions)));
+
+    // Enrich each node with its latest uptime from telemetry (#4814). Uptime is
+    // not a node column — it lives only in device-metrics telemetry — so the node
+    // list needs it attached here to support the "Sort: Uptime" option. One
+    // grouped query for all nodes, mirroring the v1 /nodes route.
+    const uptimeMap = await databaseService.telemetry.getLatestTelemetryValueForAllNodes('uptimeSeconds', nodesSourceId);
+    attachUptimeToNodes(enhancedNodes, uptimeMap);
 
     // Append MeshCore contacts/localNodes so the aggregate dashboard map can
     // render them alongside Meshtastic nodes. MeshCore stores lastSeen in ms;
