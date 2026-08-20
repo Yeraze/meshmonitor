@@ -7,8 +7,12 @@
  * the reticulum data routes (`/api/sources/:id/reticulum/destinations`,
  * `/interfaces`) require (build spec §2) — rather than `connection`, since
  * that's the actual gate the underlying routes enforce. When the user lacks
- * it the entire surface is hidden and `useReticulum` is left disabled so no
- * probe requests fire.
+ * it the Reticulum surface is replaced with a permission-denied message —
+ * but the top bar (and its sign-in button/LoginModal) always renders, so a
+ * logged-out user landing here (e.g. via the default-landing-page setting,
+ * #4828) can still sign in instead of being stuck on a dead end.
+ * `useReticulum` is left disabled while the surface is hidden so no probe
+ * requests fire.
  */
 
 import { useState } from 'react';
@@ -47,17 +51,6 @@ function ReticulumSourceInner() {
     return (
       <div className={styles.gate}>
         <p>{t('reticulum.no_source', 'No source selected.')}</p>
-      </div>
-    );
-  }
-
-  // No nodes-read permission means the entire surface is hidden. The hook
-  // is never mounted, so no `/reticulum/status` probe fires.
-  if (!canReadNodes) {
-    return (
-      <div className={styles.gate}>
-        <h2>{t('reticulum.title', 'Reticulum')}</h2>
-        <p>{t('reticulum.no_permission', 'You do not have permission to view this Reticulum source.')}</p>
       </div>
     );
   }
@@ -113,7 +106,14 @@ function ReticulumSourceInner() {
         </div>
       </header>
 
-      <ReticulumPage baseUrl={appBasename} sourceId={sourceId} onStatusChange={setRnsStatus} />
+      {canReadNodes ? (
+        <ReticulumPage baseUrl={appBasename} sourceId={sourceId} onStatusChange={setRnsStatus} />
+      ) : (
+        <div className={styles.gate}>
+          <h2>{t('reticulum.title', 'Reticulum')}</h2>
+          <p>{t('reticulum.no_permission', 'You do not have permission to view this Reticulum source.')}</p>
+        </div>
+      )}
 
       <LoginModal isOpen={showLogin} onClose={() => setShowLogin(false)} />
     </div>
