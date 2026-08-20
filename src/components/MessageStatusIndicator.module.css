@@ -1,0 +1,24 @@
+/* MessageStatusIndicator clickable variant (#4816 Phase 1 WP3). CSS module —
+ * do not add these rules to the frozen global sheets (CLAUDE.md CSS
+ * containment rule). Minimal button reset only: the icon must look
+ * identical to the plain, non-interactive `<span>` it replaces when
+ * `onShowDetails` is provided. Color/size/weight stay on the existing
+ * `.status-*` classes in `src/styles/messages.css` — this module only
+ * strips the native button chrome. */
+.resetButton {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+
+.resetButton:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+  border-radius: var(--radius-xs);
+}

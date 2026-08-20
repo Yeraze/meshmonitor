@@ -758,8 +758,20 @@
 }
 
 .mc-delivery-status {
+  /* Clickable since #4816 Phase 1 WP3 (opens the Delivery Details modal) —
+     minimal button reset so the icon looks unchanged from the plain span it
+     replaces. Base rule stays above any mobile @media override per the
+     nodes.css cascade-order gotcha (issue #3532). */
+  font: inherit;
   font-size: 0.75rem;
   margin-left: 0.25rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
 }
 
 .mc-delivery-sent { color: var(--color-text-faint); }
