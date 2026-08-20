@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getEffectivePosition, getRoleName, getHardwareModelName, getNodeName, getNodeShortName, formatSenderLabel, hasValidEffectivePosition, isNodeComplete, resolveMapEndpoint, formatLocationSource } from './nodeHelpers';
+import { getEffectivePosition, getRoleName, getHardwareModelName, getNodeName, getNodeShortName, formatSenderLabel, hasValidEffectivePosition, isNodeComplete, resolveMapEndpoint, formatLocationSource, parseNodeNumInput } from './nodeHelpers';
 import { setDiscardInvalidPositionsDisplay } from './positionDisplayConfig';
 import { ROLE_NAMES, HARDWARE_MODELS } from '../constants/index.js';
 import type { DeviceInfo } from '../types/device';
@@ -713,5 +713,53 @@ describe('formatLocationSource (#4176)', () => {
   it('returns null for any unknown/out-of-range value', () => {
     expect(formatLocationSource(4)).toBeNull();
     expect(formatLocationSource(-1)).toBeNull();
+  });
+});
+
+describe('parseNodeNumInput (#4826)', () => {
+  it('parses a Meshtastic hex id (!3ca956de) to its decimal node number', () => {
+    expect(parseNodeNumInput('!3ca956de')).toEqual({ ok: true, value: 1017730782 });
+  });
+
+  it('is case-insensitive for the hex form', () => {
+    expect(parseNodeNumInput('!3CA956DE')).toEqual({ ok: true, value: 1017730782 });
+  });
+
+  it('parses a bare decimal node number', () => {
+    expect(parseNodeNumInput('1017730782')).toEqual({ ok: true, value: 1017730782 });
+  });
+
+  it('keeps an all-digit value decimal rather than treating it as hex', () => {
+    // "12345678" is valid as both; the bare-digit branch must win → decimal.
+    expect(parseNodeNumInput('12345678')).toEqual({ ok: true, value: 12345678 });
+  });
+
+  it('accepts a bare 8-hex-digit id that contains a letter', () => {
+    expect(parseNodeNumInput('3ca956de')).toEqual({ ok: true, value: 1017730782 });
+  });
+
+  it('trims surrounding whitespace', () => {
+    expect(parseNodeNumInput('  !3ca956de  ')).toEqual({ ok: true, value: 1017730782 });
+  });
+
+  it('treats blank input as a valid clear (null value)', () => {
+    expect(parseNodeNumInput('')).toEqual({ ok: true, value: null });
+    expect(parseNodeNumInput('   ')).toEqual({ ok: true, value: null });
+  });
+
+  it('rejects a hex id with too many digits', () => {
+    expect(parseNodeNumInput('!3ca956def')).toEqual({ ok: false, value: null });
+  });
+
+  it('rejects non-hex, non-decimal garbage', () => {
+    expect(parseNodeNumInput('nope')).toEqual({ ok: false, value: null });
+    expect(parseNodeNumInput('!xyz')).toEqual({ ok: false, value: null });
+    expect(parseNodeNumInput('12.5')).toEqual({ ok: false, value: null });
+  });
+
+  it('rejects zero and values above the unsigned 32-bit range', () => {
+    expect(parseNodeNumInput('0')).toEqual({ ok: false, value: null });
+    expect(parseNodeNumInput('!ffffffff')).toEqual({ ok: true, value: 0xffffffff });
+    expect(parseNodeNumInput('4294967296')).toEqual({ ok: false, value: null });
   });
 });

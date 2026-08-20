@@ -27,6 +27,50 @@ export const parseNodeId = (nodeId: string): number | null => {
   return isNaN(num) ? null : num;
 };
 
+/** Largest valid Meshtastic node number (unsigned 32-bit). */
+const MAX_NODE_NUM = 0xffffffff;
+
+/** Outcome of parsing free-text node-number input. */
+export interface NodeNumParseResult {
+  /** True when the input is blank (a clear) or a valid node number. */
+  ok: boolean;
+  /** Parsed decimal node number, or null for a blank/invalid input. */
+  value: number | null;
+}
+
+/**
+ * Parse a user-typed node-number field that accepts BOTH a bare decimal
+ * (`1018373854`) and a Meshtastic hex id (`!3ca956de`, or a bare 8-hex-digit
+ * `3ca956de`), returning the decimal node number in every case (#4826).
+ *
+ * A leading `!` forces hex. Bare all-digit input is decimal (so `12345678`
+ * stays decimal, not hex). Bare input that is exactly 8 hex digits and contains
+ * a letter is treated as a hex id for convenience.
+ *
+ * @returns `{ ok: true, value: null }` for blank (a clear), `{ ok: true, value }`
+ *   for a valid node number, `{ ok: false, value: null }` for invalid input.
+ */
+export const parseNodeNumInput = (raw: string): NodeNumParseResult => {
+  const s = (raw ?? '').trim();
+  if (s === '') return { ok: true, value: null };
+
+  let num: number | null = null;
+  if (s.startsWith('!')) {
+    const hex = s.slice(1);
+    if (/^[0-9a-fA-F]{1,8}$/.test(hex)) num = parseInt(hex, 16);
+  } else if (/^[0-9]+$/.test(s)) {
+    num = Number(s);
+  } else if (/^[0-9a-fA-F]{8}$/.test(s)) {
+    // Bare 8-hex-digit id (contains a letter, else the decimal branch caught it).
+    num = parseInt(s, 16);
+  }
+
+  if (num === null || !Number.isInteger(num) || num <= 0 || num > MAX_NODE_NUM) {
+    return { ok: false, value: null };
+  }
+  return { ok: true, value: num };
+};
+
 /**
  * Check if a node has an infrastructure role (Router, Repeater, etc.)
  * @param node - The device node to check

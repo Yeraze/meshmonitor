@@ -5,7 +5,7 @@
  * → THEN actions) → an optional FINALLY combine step (ANY/ALL/NONE). Compiles to
  * the graph model in compile.ts.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TRIGGERS, CONDITIONS, ACTIONS, BLOCK_BY_TYPE, fieldsFor, fieldVisible, fieldPlaceholder, type BlockDef, type FieldDef } from './catalog';
 import type { WorkflowForm, FormBlock, Rule } from './compile';
@@ -15,6 +15,7 @@ import NodeMultiFieldInput, { type NodeMultiOption } from './NodeMultiFieldInput
 import TokenTextField from './TokenTextField';
 import type { GeofenceShape } from '../auto-responder/types';
 import { UiIcon } from '../icons';
+import { parseNodeNumInput } from '../../utils/nodeHelpers';
 
 export interface VariableOption { name: string; type: string; }
 export interface SourceOption {
@@ -94,6 +95,56 @@ function defaultParams(type: string, triggerType: string): Record<string, unknow
   return params;
 }
 
+/**
+ * Node-number field that accepts a decimal (`1018373854`) OR a Meshtastic hex id
+ * (`!3ca956de`), storing the decimal node number either way (#4826). A plain
+ * `<input type="number">` silently dropped `!hex`, so this is a text input that
+ * parses on change and surfaces a validation message rather than vanishing.
+ */
+function NodeNumFieldInput({ value, onChange, placeholder }: {
+  value: unknown; onChange: (v: unknown) => void; placeholder?: string;
+}) {
+  const { t } = useTranslation();
+  const [text, setText] = useState<string>(() =>
+    value === undefined || value === null || value === '' ? '' : String(value));
+
+  // Re-sync when the parent value changes to something this input didn't produce
+  // (e.g. loading a different automation into a reused builder instance). Guarded
+  // against clobbering in-progress hex typing: `!3ca956de` canonicalises to the
+  // same decimal the parent stores back, so no reset fires mid-edit.
+  useEffect(() => {
+    const incoming = value === undefined || value === null || value === '' ? '' : String(value);
+    const parsedNow = parseNodeNumInput(text);
+    const canonical = parsedNow.ok
+      ? (parsedNow.value === null ? '' : String(parsedNow.value))
+      : text;
+    if (incoming !== canonical) setText(incoming);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- #4826 sync on external value only; `text` is intentionally excluded to avoid a self-reset loop.
+  }, [value]);
+
+  const parsed = parseNodeNumInput(text);
+  const handle = (raw: string) => {
+    setText(raw);
+    const r = parseNodeNumInput(raw);
+    // Valid → store the decimal node number (or '' for a blank/clear). Invalid →
+    // keep the raw text in the param so it survives and server-side validation flags it.
+    onChange(r.ok ? (r.value === null ? '' : r.value) : raw);
+  };
+
+  return (
+    <>
+      <input className="ae-input" value={text} placeholder={placeholder}
+        onChange={(e) => handle(e.target.value)} />
+      {!parsed.ok && (
+        <div className="ae-field-error">
+          {t('automation.nodeNum.invalid',
+            'Enter a node number as a decimal (1017730782) or a hex id (!3ca956de).')}
+        </div>
+      )}
+    </>
+  );
+}
+
 export interface FieldInputProps {
   field: FieldDef; value: unknown; onChange: (v: unknown) => void; variables: VariableOption[]; sources: SourceOption[]; channels: UnifiedChannelOption[]; scripts: ScriptOption[]; regions: string[]; nodes: NodeMultiOption[]; triggerType: string;
 }
@@ -107,6 +158,9 @@ export function FieldInput({ field, value, onChange, variables, sources, channel
     case 'number':
       control = <input className="ae-input" type="number" value={(value ?? '') as string} placeholder={placeholder}
         onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))} />;
+      break;
+    case 'nodeNum':
+      control = <NodeNumFieldInput value={value} onChange={onChange} placeholder={placeholder} />;
       break;
     case 'textarea':
       control = field.tokens
