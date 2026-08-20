@@ -108,6 +108,12 @@ export interface Use3DNeighborLinesParams {
    * pass the set of visible MeshCore public keys here; both endpoints of a
    * MeshCore edge must be present or the edge is dropped. Undefined/null = no
    * gate (MapAnalysis behavior).
+   *
+   * Keys are BARE `publicKey` strings (no `sourceId:` prefix), matching the
+   * bare `nodeNum` semantics of `visibleNodeNums`. On a unified map the same
+   * physical node can appear on multiple sources under one publicKey, so an
+   * edge passes the gate whenever its key is visible on ANY source — the
+   * intended unified-visibility behavior, symmetric with the Meshtastic set.
    */
   visibleMeshCoreKeys?: Set<string> | null;
 }
