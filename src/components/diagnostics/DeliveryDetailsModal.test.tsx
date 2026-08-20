@@ -312,6 +312,19 @@ describe('DeliveryDetailsModal', () => {
       expect(screen.queryByText('Propagation (Heard By)')).toBeNull();
       expect(mockGetMeshtasticHeardBy).not.toHaveBeenCalled();
     });
+
+    it('omits Propagation when the channel is undefined (not treated as a channel message)', () => {
+      renderModal(
+        <DeliveryDetailsModal
+          protocol="meshtastic"
+          sourceId="source-a"
+          message={buildMeshtasticMessage({ channel: undefined })}
+          onClose={vi.fn()}
+        />,
+      );
+      expect(screen.queryByText('Propagation (Heard By)')).toBeNull();
+      expect(mockGetMeshtasticHeardBy).not.toHaveBeenCalled();
+    });
   });
 
   it('calls onClose on Escape, overlay click, and the close button', () => {

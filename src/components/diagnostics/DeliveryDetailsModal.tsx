@@ -219,7 +219,10 @@ const DeliveryDetailsModal: React.FC<Props> = ({ protocol, sourceId, message, on
   const mcMessage = protocol === 'meshcore' ? (message as MeshCoreMessage) : null;
   const isMeshCoreDirectMessage = mcMessage ? Boolean(mcMessage.toPublicKey) : false;
   const mtMessage = protocol === 'meshtastic' ? (message as MeshMessage) : null;
-  const isMeshtasticChannelMessage = mtMessage !== null && mtMessage.channel !== -1;
+  // A Meshtastic channel message has a numeric channel >= 0; a DM is -1. Guard
+  // an undefined channel so "unknown" is not treated as a channel message.
+  const isMeshtasticChannelMessage =
+    mtMessage !== null && typeof mtMessage.channel === 'number' && mtMessage.channel !== -1;
   const showMeshCorePropagation = protocol === 'meshcore' && !isMeshCoreDirectMessage;
   const showPropagation = showMeshCorePropagation || isMeshtasticChannelMessage;
   const heardBy = description.heardBy ?? [];
