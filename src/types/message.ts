@@ -45,6 +45,7 @@ export interface MeshMessage {
   wantAck?: boolean; // Whether message requested acknowledgment
   routingErrorReceived?: boolean; // Whether routing error was received
   requestId?: number; // Packet request ID for tracking
+  ackFromNode?: number; // Node that sent the routing ACK for this message (#4816)
   // Decryption source - 'server' means read-only (cannot reply)
   decryptedBy?: 'node' | 'server' | null;
   // Per-message ingress attribution. NULL for pre-migration rows.
