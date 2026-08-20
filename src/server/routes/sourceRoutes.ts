@@ -1451,6 +1451,46 @@ router.get('/:id/messages/:messageId/events', optionalAuth(), requirePermission(
   }
 });
 
+// GET /api/sources/:id/messages/:messageId/heard-by — Meshtastic Heard-By
+// list for one message (Delivery Diagnostics epic #4816, Phase 4 WP3). Reads
+// the persisted `meshtastic_heard_repeaters` rows (WP1/WP2 — re-floods of our
+// own outgoing channel packet, overheard back) and resolves each relay byte
+// (last byte of the relayer's nodeNum, inherently ambiguous) to every
+// candidate node on this source whose `nodeNum & 0xFF` matches — mirrors the
+// RelayNodeModal byte-match rule, computed server-side so the frontend stays
+// dumb. Fetched only on modal open — does not touch list payloads.
+router.get('/:id/messages/:messageId/heard-by', optionalAuth(), requirePermission('messages', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const sourceId = req.params.id;
+    const [rows, nodes] = await Promise.all([
+      databaseService.meshtasticHeardRepeaters.getHeardRepeatersForMessage(req.params.messageId, sourceId),
+      databaseService.nodes.getAllNodes(sourceId),
+    ]);
+
+    const heardBy = rows.map((row) => {
+      const candidates = nodes
+        .filter((node) => (Number(node.nodeNum) & 0xFF) === row.relayByte)
+        .map((node) => ({
+          nodeNum: Number(node.nodeNum),
+          longName: node.longName ?? undefined,
+          shortName: node.shortName ?? undefined,
+        }));
+      return {
+        relayByte: row.relayByte,
+        relayByteHex: `0x${row.relayByte.toString(16).padStart(2, '0').toUpperCase()}`,
+        snr: row.snr ?? null,
+        heardAt: row.heardAt,
+        candidates,
+      };
+    });
+
+    return ok(res, { heardBy });
+  } catch (error) {
+    logger.error('Error fetching Meshtastic heard-by for source:', error);
+    return fail(res, 500, 'MESHTASTIC_HEARD_BY_FETCH_FAILED', 'Failed to fetch Meshtastic heard-by data');
+  }
+});
+
 // GET /api/sources/:id/channels — channels for a source
 //
 // MM-SEC-7: same root cause as MM-SEC-2 — `getAllChannels(sourceId)` returns

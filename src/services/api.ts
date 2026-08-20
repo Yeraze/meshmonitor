@@ -1,5 +1,5 @@
 import { DeviceInfo, Channel } from '../types/device.js';
-import { MeshMessage, MessageEvent } from '../types/message.js';
+import { MeshMessage, MessageEvent, MeshtasticHeardByEntry } from '../types/message.js';
 import type { ElevationProfile, ElevationTestResult } from '../types/elevation.js';
 import {
   sanitizeTextInput,
@@ -1124,6 +1124,20 @@ class ApiService {
       `/api/sources/${sourceId}/messages/${encodeURIComponent(messageId)}/events`,
     );
     return body.data?.events ?? [];
+  }
+
+  /**
+   * Meshtastic Heard-By list for one message on ONE source (Delivery
+   * Diagnostics epic #4816, Phase 4 WP3). Backs the Delivery Details modal
+   * Propagation section for Meshtastic channel messages. Candidate
+   * resolution (relay byte → node names) happens server-side. Returns []
+   * when no re-flood was observed (or the message predates migration 152).
+   */
+  async getMeshtasticHeardBy(sourceId: string, messageId: string): Promise<MeshtasticHeardByEntry[]> {
+    const body = await this.get<{ success: boolean; data: { heardBy: MeshtasticHeardByEntry[] } }>(
+      `/api/sources/${sourceId}/messages/${encodeURIComponent(messageId)}/heard-by`,
+    );
+    return body.data?.heardBy ?? [];
   }
 
   /** Generate a source-scoped Meshtastic SharedContact URL for a node. */
