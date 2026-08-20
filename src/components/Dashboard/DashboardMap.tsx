@@ -368,6 +368,19 @@ export default function DashboardMap({
     [nodesWithPosition],
   );
 
+  // MeshCore analogue of `visible3DNodeNums` (#4808 follow-up): MeshCore nodes
+  // have no nodeNum (the numeric set holds NaN for them), so their neighbor
+  // edges are gated by the set of visible MeshCore public keys instead.
+  const visible3DMeshCoreKeys = useMemo(
+    () =>
+      new Set(
+        nodesWithPosition
+          .filter(({ node }) => node.isMeshCore && typeof node.publicKey === 'string' && node.publicKey.length > 0)
+          .map(({ node }) => node.publicKey as string),
+      ),
+    [nodesWithPosition],
+  );
+
   // key → { node, pos } for resolving a clicked 3D marker back to its node so
   // the shared DashboardNodePopup can render on the 3D map too (#4808).
   const node3DByKey = useMemo(() => {
@@ -703,6 +716,7 @@ export default function DashboardMap({
             showTraceroutes={showPaths || showRoute}
             lookbackHours={effectiveMaxAge}
             visibleNodeNums={visible3DNodeNums}
+            visibleMeshCoreKeys={visible3DMeshCoreKeys}
             renderPopup={(key) => {
               const entry = node3DByKey.get(key);
               return entry ? (
