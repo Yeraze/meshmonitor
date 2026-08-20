@@ -95,6 +95,13 @@ export { MeshCoreObserverKeysRepository } from './meshcoreObserverKeys.js';
 export type { DbMeshCoreObserverKey } from './meshcoreObserverKeys.js';
 export { MeshCoreObserverCredentialsRepository } from './meshcoreObserverCredentials.js';
 export type { DbMeshCoreObserverCredential } from './meshcoreObserverCredentials.js';
+export { MessageEventsRepository } from './messageEvents.js';
+export type {
+  MessageEventRow,
+  MessageEventType,
+  MessageEventProvenance,
+  RecordMessageEventParams,
+} from './messageEvents.js';
 export { DeadDropRepository } from './deadDrop.js';
 export type { DeadDropMessageInput } from './deadDrop.js';
 export { MqttPacketLogRepository } from './mqttPacketLog.js';
