@@ -4667,7 +4667,7 @@
     "map_style_manager.generate_desc": "",
     "tx_disabled.control_tooltip": "",
     "relay_modal.transport": "",
-    "admin_commands.node_ignored_no_ack": "",
+    "admin_commands.node_ignored_no_ack": "Ignorar enviado al nodo {{nodeNum}}, pero no se recibió ningún ACK — es posible que aun así se haya aplicado.",
     "meshcore.form.observer_error_broker_scheme": "",
     "mqtt.packets.outcome": "",
     "meshcore.observer.public_key": "",
