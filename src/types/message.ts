@@ -45,6 +45,8 @@ export interface MeshMessage {
   wantAck?: boolean; // Whether message requested acknowledgment
   routingErrorReceived?: boolean; // Whether routing error was received
   requestId?: number; // Packet request ID for tracking
+  ackFromNode?: number; // Node that sent the routing ACK for this message (#4816)
+  routingErrorCode?: number; // Exact numeric Meshtastic RoutingError reason on a failed send (#4816 Phase 2)
   // Decryption source - 'server' means read-only (cannot reply)
   decryptedBy?: 'node' | 'server' | null;
   // Per-message ingress attribution. NULL for pre-migration rows.
@@ -58,4 +60,64 @@ export interface MeshMessage {
    * a likely spoof. Such messages must NOT be rendered as our own outgoing.
    */
   spoofSuspected?: boolean;
+}
+
+/**
+ * A single row from a message's delivery event timeline (Delivery Diagnostics
+ * epic #4816, Phase 3). Mirrors the `message_events` DB row shape
+ * (`src/db/repositories/messageEvents.ts`) — one record per real delivery
+ * transition, keyed by `(sourceId, messageId)`. Consumed by the Delivery
+ * Details modal timeline (WP4) via `ApiService.getMessageEvents`.
+ */
+export type MessageEventType =
+  | 'submitted'
+  | 'sent_to_radio'
+  | 'delivered'
+  | 'confirmed'
+  | 'routing_error'
+  | 'timeout'
+  | 'retry';
+
+export type MessageEventProvenance = 'reported' | 'observed' | 'inferred';
+
+export interface MessageEvent {
+  id: number;
+  sourceId: string;
+  messageId: string;
+  eventType: MessageEventType;
+  provenance: MessageEventProvenance;
+  /** Short JSON string with the relevant keys (routingErrorCode, attempt, …); null when absent. */
+  detail?: string | null;
+  /** Unix ms the event occurred. */
+  timestamp: number;
+  /** Row write time (Unix ms). */
+  createdAt: number;
+}
+
+/**
+ * Meshtastic Heard-By entry (Delivery Diagnostics epic #4816, Phase 4 WP3).
+ *
+ * One row per relay byte that re-flooded our own outgoing channel message and
+ * was overheard back by us. `relayByte` is only the last byte of the
+ * relaying node's nodeNum (Meshtastic protobuf `relay_node`), so identity is
+ * inherently ambiguous — `candidates` lists every node on this source whose
+ * `nodeNum & 0xFF` matches, never a single asserted node.
+ */
+export interface MeshtasticHeardByEntry {
+  /** Last byte of the relayer's nodeNum (1-255; 0/unknown rows are never persisted). */
+  relayByte: number;
+  /** `relayByte` formatted as `0xNN` for display. */
+  relayByteHex: string;
+  /** SNR observed by us for this re-flood; null when unavailable. */
+  snr: number | null;
+  /** Unix ms the re-flood was heard. */
+  heardAt: number;
+  /** Nodes on this source whose `nodeNum & 0xFF` matches `relayByte`. */
+  candidates: MeshtasticHeardByCandidate[];
+}
+
+export interface MeshtasticHeardByCandidate {
+  nodeNum: number;
+  longName?: string;
+  shortName?: string;
 }

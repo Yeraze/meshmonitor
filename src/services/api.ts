@@ -1,5 +1,5 @@
 import { DeviceInfo, Channel } from '../types/device.js';
-import { MeshMessage } from '../types/message.js';
+import { MeshMessage, MessageEvent, MeshtasticHeardByEntry } from '../types/message.js';
 import type { ElevationProfile, ElevationTestResult } from '../types/elevation.js';
 import {
   sanitizeTextInput,
@@ -1112,6 +1112,34 @@ class ApiService {
     return body.data?.entries ?? [];
   }
 
+  /**
+   * Delivery event timeline for one message on ONE source (Delivery
+   * Diagnostics epic #4816, Phase 3). Backs the Delivery Details modal
+   * timeline. Unwraps the `{success,data}` envelope here because `request()`
+   * deliberately does not (CLAUDE.md). Returns [] when the message has no
+   * recorded events (older messages predating Phase 3 legitimately do).
+   */
+  async getMessageEvents(sourceId: string, messageId: string): Promise<MessageEvent[]> {
+    const body = await this.get<{ success: boolean; data: { events: MessageEvent[] } }>(
+      `/api/sources/${sourceId}/messages/${encodeURIComponent(messageId)}/events`,
+    );
+    return body.data?.events ?? [];
+  }
+
+  /**
+   * Meshtastic Heard-By list for one message on ONE source (Delivery
+   * Diagnostics epic #4816, Phase 4 WP3). Backs the Delivery Details modal
+   * Propagation section for Meshtastic channel messages. Candidate
+   * resolution (relay byte → node names) happens server-side. Returns []
+   * when no re-flood was observed (or the message predates migration 152).
+   */
+  async getMeshtasticHeardBy(sourceId: string, messageId: string): Promise<MeshtasticHeardByEntry[]> {
+    const body = await this.get<{ success: boolean; data: { heardBy: MeshtasticHeardByEntry[] } }>(
+      `/api/sources/${sourceId}/messages/${encodeURIComponent(messageId)}/heard-by`,
+    );
+    return body.data?.heardBy ?? [];
+  }
+
   /** Generate a source-scoped Meshtastic SharedContact URL for a node. */
   async getMeshtasticContactUrl(nodeNum: number, sourceId: string): Promise<string> {
     const body = await this.get<{ success: boolean; data: MeshtasticContactUrl }>(
@@ -2080,6 +2108,30 @@ class ApiService {
     );
     return res.data;
   }
+
+  /**
+   * Fire an automation's actions FOR REAL immediately (#4827, "Run Now"),
+   * bypassing its trigger schedule. Unlike a dry-run test this dispatches live
+   * actions; callers MUST confirm with the user first. Returns the engine's
+   * verdict — `ran: false` with a `reason` when the rule was suppressed by its
+   * own cooldown / rate-limit guard.
+   */
+  async runAutomationNow(id: string): Promise<AutomationRunNowResult> {
+    const res = await this.post<{ success: boolean; data: AutomationRunNowResult }>(
+      `/api/automations/${id}/run-now`,
+    );
+    return res.data;
+  }
+}
+
+/** Verdict returned by {@link ApiService.runAutomationNow} (#4827). */
+export interface AutomationRunNowResult {
+  ran: boolean;
+  reason?: 'not_found' | 'invalid' | 'cooldown' | 'ratelimited';
+  detail?: string;
+  status?: 'completed' | 'failed';
+  actions?: Array<{ nodeId: string; ok: boolean; error?: string }>;
+  steps?: Array<{ nodeId: string; type: string; outcome: string; error?: string }>;
 }
 
 // Channel Database types

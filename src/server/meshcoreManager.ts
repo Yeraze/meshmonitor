@@ -13,6 +13,7 @@ import { logger } from '../utils/logger.js';
 import { isBogusPosition } from '../utils/nullIsland.js';
 import databaseService from '../services/database.js';
 import type { MeshcorePathfindingFilterSettings } from '../services/database.js';
+import type { MessageEventType, MessageEventProvenance } from '../db/repositories/messageEvents.js';
 import { compileUserRegex } from '../utils/safeRegex.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { compileAutoAckRegex } from './utils/autoAckRegex.js';
@@ -1931,6 +1932,17 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       if (retryPending) {
         clearTimeout(retryPending.timer);
         this.pendingDmRetries.delete(data.ack_code);
+
+        // Delivery-diagnostics timeline (#4816 Phase 3): the ack_code resolves
+        // to the ORIGINAL message's stable id (retry re-keys the map but keeps
+        // messageId), so this is the single positive-ack seam for a MeshCore
+        // DM. provenance 'reported' (the device told us), roundTripMs in detail.
+        this.recordMessageEvent(
+          retryPending.messageId,
+          'delivered',
+          'reported',
+          data.round_trip_ms != null ? JSON.stringify({ roundTripMs: data.round_trip_ms }) : undefined,
+        );
       }
       this.emit('send_confirmed', {
         sourceId: this.sourceId,
@@ -2814,6 +2826,42 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   }
 
   /**
+   * Record one delivery-diagnostics event for a message (#4816 Phase 3).
+   * Fire-and-forget: a diagnostics write must NEVER break a send/ack path, so
+   * every failure — the `messageEvents` getter throwing before init, the repo's
+   * own sourceId/messageId validation, or the insert itself — is swallowed and
+   * logged. `recordEvent` self-dedups the at-most-once terminal event types;
+   * `retry` is exempt and always inserts.
+   */
+  private recordMessageEvent(
+    messageId: string,
+    eventType: MessageEventType,
+    provenance: MessageEventProvenance,
+    detail?: string,
+  ): void {
+    try {
+      databaseService.messageEvents
+        .recordEvent({
+          sourceId: this.sourceId,
+          messageId,
+          eventType,
+          provenance,
+          timestamp: Date.now(),
+          detail: detail ?? null,
+        })
+        .catch((err) => {
+          logger.warn(
+            `[MeshCore:${this.sourceId}] Failed to record ${eventType} event for ${messageId}: ${(err as Error).message}`,
+          );
+        });
+    } catch (err) {
+      logger.warn(
+        `[MeshCore:${this.sourceId}] Failed to record ${eventType} event for ${messageId}: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  /**
    * Send a command to Repeater firmware (text CLI).
    * Repeater CLI uses \r as line terminator and echoes the command back.
    * Response lines start with "  -> " prefix.
@@ -3451,6 +3499,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           this.emit('message', sentMessage);
           dataEventEmitter.emitMeshCoreMessage(sentMessage, this.sourceId);
 
+          // Delivery-diagnostics timeline (#4816 Phase 3): this branch is the
+          // one place we know a row is our OWN outgoing send (received traffic
+          // never reaches here, and auto-retry resends are excluded above), so
+          // it is the correct seam for `submitted`. provenance 'observed'.
+          this.recordMessageEvent(msgId, 'submitted', 'observed');
+
           // Arm the DM ack-timeout retry state machine for the first attempt
           // (#3977). Not for channel sends (unacked). Subsequent attempts are
           // armed directly by `handleDmAckTimeout`, not here.
@@ -3633,6 +3687,17 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       }
       // Re-point tracking to this attempt's CRC and update the single bubble.
       this.updateDmAttempt(pending.messageId, ackCrc, result.expectedAckCrc, result.estTimeout);
+
+      // Delivery-diagnostics timeline (#4816 Phase 3): a resend just went out on
+      // the existing, hard-bounded #3977 cadence. `retry` is non-terminal so it
+      // always inserts; attempt# derived from the remaining same-path/flood
+      // budget (initial send is attempt 1). provenance 'observed'.
+      const dmAttempt =
+        MeshCoreManager.DM_SAME_PATH_RETRIES +
+        MeshCoreManager.DM_FLOOD_RETRIES -
+        (pending.samePathRetriesLeft + pending.floodRetriesLeft) +
+        2;
+      this.recordMessageEvent(pending.messageId, 'retry', 'observed', JSON.stringify({ attempt: dmAttempt }));
       this.scheduleDmAckTimeout(
         result.expectedAckCrc,
         pending.messageId,
@@ -3683,6 +3748,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * rather than relying on that timer to eventually fire.
    */
   private failDmDelivery(messageId: string, lastAckCrc: number): void {
+    // Delivery-diagnostics timeline (#4816 Phase 3): every terminal give-up path
+    // in the #3977 cadence funnels here, so this is the single MeshCore DM
+    // failure seam. `timeout` is terminal (self-deduped to one row even though
+    // several give-up branches call this). provenance 'inferred' — we never got
+    // an ack, we concluded failure ourselves.
+    this.recordMessageEvent(messageId, 'timeout', 'inferred');
     dataEventEmitter.emitMeshCoreMessageUpdated(
       { id: messageId, previousAckCrc: lastAckCrc, deliveryStatus: 'failed' },
       this.sourceId,
@@ -3777,6 +3848,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       `[MeshCore:${this.sourceId}] Channel send ${messageId} heard ZERO repeaters within ` +
       `${MeshCoreManager.CHANNEL_RETRY_WINDOW_MS / 1000}s; resending once (auto-retry #3979)`,
     );
+
+    // Delivery-diagnostics timeline (#4816 Phase 3): the one-shot #3979 channel
+    // resend is about to fire. `retry` is non-terminal; attempt is always 1
+    // (one-shot). provenance 'observed'.
+    this.recordMessageEvent(messageId, 'retry', 'observed', JSON.stringify({ attempt: 1 }));
 
     await this.runSerialized(async () => {
       if (!this.connected) return;

@@ -58,6 +58,8 @@ import {
   SourcePkiKeysRepository,
   MeshCoreObserverKeysRepository,
   MeshCoreObserverCredentialsRepository,
+  MessageEventsRepository,
+  MeshtasticHeardRepeatersRepository,
   DeadDropRepository,
   AutomationsRepository,
   AutomationVariablesRepository,
@@ -192,6 +194,8 @@ export interface DbMessage {
   wantAck?: boolean;
   routingErrorReceived?: boolean;
   ackFromNode?: number;
+  /** Exact numeric Meshtastic RoutingError reason on a failed send (#4816 Phase 2). */
+  routingErrorCode?: number;
   decryptedBy?: 'node' | 'server' | null;
   /** Impersonation flag (#2584): claims from == our local node but arrived over RF. */
   spoofSuspected?: boolean | null;
@@ -533,6 +537,8 @@ class DatabaseService {
   public sourcePkiKeysRepo: SourcePkiKeysRepository | null = null;
   public meshcoreObserverKeysRepo: MeshCoreObserverKeysRepository | null = null;
   public meshcoreObserverCredentialsRepo: MeshCoreObserverCredentialsRepository | null = null;
+  public messageEventsRepo: MessageEventsRepository | null = null;
+  public meshtasticHeardRepeatersRepo: MeshtasticHeardRepeatersRepository | null = null;
   public deadDropRepo: DeadDropRepository | null = null;
   public automationsRepo: AutomationsRepository | null = null;
   public automationVariablesRepo: AutomationVariablesRepository | null = null;
@@ -600,6 +606,16 @@ class DatabaseService {
   get meshcoreObserverKeys(): MeshCoreObserverKeysRepository {
     if (!this.meshcoreObserverKeysRepo) throw new Error('Database not initialized');
     return this.meshcoreObserverKeysRepo;
+  }
+
+  get messageEvents(): MessageEventsRepository {
+    if (!this.messageEventsRepo) throw new Error('Database not initialized');
+    return this.messageEventsRepo;
+  }
+
+  get meshtasticHeardRepeaters(): MeshtasticHeardRepeatersRepository {
+    if (!this.meshtasticHeardRepeatersRepo) throw new Error('Database not initialized');
+    return this.meshtasticHeardRepeatersRepo;
   }
 
   get meshcoreObserverCredentials(): MeshCoreObserverCredentialsRepository {
@@ -1012,6 +1028,8 @@ class DatabaseService {
       this.sourcePkiKeysRepo = new SourcePkiKeysRepository(drizzleDb, this.drizzleDbType);
       this.meshcoreObserverKeysRepo = new MeshCoreObserverKeysRepository(drizzleDb, this.drizzleDbType);
       this.meshcoreObserverCredentialsRepo = new MeshCoreObserverCredentialsRepository(drizzleDb, this.drizzleDbType);
+      this.messageEventsRepo = new MessageEventsRepository(drizzleDb, this.drizzleDbType);
+      this.meshtasticHeardRepeatersRepo = new MeshtasticHeardRepeatersRepository(drizzleDb, this.drizzleDbType);
       this.deadDropRepo = new DeadDropRepository(drizzleDb, this.drizzleDbType);
       this.automationsRepo = new AutomationsRepository(drizzleDb, this.drizzleDbType);
       this.automationVariablesRepo = new AutomationVariablesRepository(drizzleDb, this.drizzleDbType);
@@ -1719,6 +1737,7 @@ class DatabaseService {
       wantAck: msg.wantAck ?? undefined,
       routingErrorReceived: msg.routingErrorReceived ?? undefined,
       ackFromNode: msg.ackFromNode ?? undefined,
+      routingErrorCode: msg.routingErrorCode ?? undefined,
       spoofSuspected: msg.spoofSuspected ?? undefined,
     };
   }
@@ -4737,6 +4756,7 @@ class DatabaseService {
         deliveryState: result.deliveryState ?? undefined,
         wantAck: result.wantAck ?? undefined,
         ackFromNode: result.ackFromNode ?? undefined,
+        routingErrorCode: result.routingErrorCode ?? undefined,
         decryptedBy: result.decryptedBy ?? undefined,
       };
     }

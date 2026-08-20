@@ -163,6 +163,10 @@ import { migration as addReticulumInterfaceRadioConfigMigration, runMigration145
 import { migration as createReticulumPathsMigration, runMigration146Postgres, runMigration146Mysql } from '../server/migrations/146_create_reticulum_paths.js';
 import { migration as addMeshBeaconOffersMigration, runMigration147Postgres, runMigration147Mysql } from '../server/migrations/147_add_mesh_beacon_offers.js';
 import { migration as fixEnvCurrentUnitMigration, runMigration148Postgres, runMigration148Mysql } from '../server/migrations/148_fix_env_current_unit.js';
+import { migration as addNodeStatusMigration, runMigration149Postgres, runMigration149Mysql } from '../server/migrations/149_add_node_status.js';
+import { migration as addRoutingErrorCodeMigration, runMigration150Postgres, runMigration150Mysql } from '../server/migrations/150_add_routing_error_code.js';
+import { migration as createMessageEventsMigration, runMigration151Postgres, runMigration151Mysql } from '../server/migrations/151_create_message_events.js';
+import { migration as createMeshtasticHeardRepeatersMigration, runMigration152Postgres, runMigration152Mysql } from '../server/migrations/152_create_meshtastic_heard_repeaters.js';
 
 // ============================================================================
 // Registry
@@ -2367,4 +2371,67 @@ registry.register({
   sqlite: (db) => fixEnvCurrentUnitMigration.up(db),
   postgres: (client) => runMigration148Postgres(client),
   mysql: (pool) => runMigration148Mysql(pool),
+});
+
+// Migration 149: add `nodeStatus` + `nodeStatusUpdatedAt` to `nodes` — the
+// receive side of the Status Message feature (#4818). Stores each node's
+// self-broadcast status (PortNum.NODE_STATUS_APP) as a per-node attribute.
+// Meshtastic-only, idempotent.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 149,
+  name: 'add_node_status',
+  settingsKey: 'migration_149_add_node_status',
+  sqlite: (db) => addNodeStatusMigration.up(db),
+  postgres: (client) => runMigration149Postgres(client),
+  mysql: (pool) => runMigration149Mysql(pool),
+});
+
+// Migration 150: add `routingErrorCode` to `messages` — persists the exact
+// numeric Meshtastic RoutingError reason on a failed send so the Delivery
+// Details popup can show it verbatim (#4816 Phase 2). Nullable, NULL on
+// success and on pre-migration rows.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 150,
+  name: 'add_routing_error_code',
+  settingsKey: 'migration_150_add_routing_error_code',
+  sqlite: (db) => addRoutingErrorCodeMigration.up(db),
+  postgres: (client) => runMigration150Postgres(client),
+  mysql: (pool) => runMigration150Mysql(pool),
+});
+
+// Migration 151: create `message_events` — a per-message delivery event
+// timeline (submitted/sent_to_radio/delivered/confirmed/routing_error/
+// timeout/retry), protocol-agnostic, keyed by (sourceId, messageId) so the
+// Delivery Details popup can render a restart-durable history (#4816 Phase 3
+// WP1). Idempotent, no backfill — starts empty.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 151,
+  name: 'create_message_events',
+  settingsKey: 'migration_151_create_message_events',
+  sqlite: (db) => createMessageEventsMigration.up(db),
+  postgres: (client) => runMigration151Postgres(client),
+  mysql: (pool) => runMigration151Mysql(pool),
+});
+
+// Migration 152: create `meshtastic_heard_repeaters` — repeaters that
+// re-flooded our own outgoing Meshtastic channel packet and were overheard
+// back by us, with observed SNR (Meshtastic Heard-By, #4816 Phase 4 WP1).
+// The Meshtastic analog of `meshcore_heard_repeaters` (migration 102).
+// Idempotent, no backfill — starts empty; populated by a live-RX ingest hook
+// (WP2) independent of the opt-in packet_log_enabled gate.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 152,
+  name: 'create_meshtastic_heard_repeaters',
+  settingsKey: 'migration_152_create_meshtastic_heard_repeaters',
+  sqlite: (db) => createMeshtasticHeardRepeatersMigration.up(db),
+  postgres: (client) => runMigration152Postgres(client),
+  mysql: (pool) => runMigration152Mysql(pool),
 });

@@ -303,6 +303,24 @@ export interface MeshMessage {
   rxRssi?: number;
 }
 
+/**
+ * Minimal decoded-MeshPacket shape read by `maybeRecordHeardReflood` (#4816
+ * Phase 4 WP2). The full packet stays `any` elsewhere in this file (no shared
+ * TS type for protobuf.js decoded messages), but this new method only needs
+ * these five fields, so it gets a narrow type instead of adding another
+ * `no-explicit-any` site. `from`/`id` are `number | bigint` because
+ * protobuf.js may decode uint32/uint64 fields either way depending on the
+ * field's proto type.
+ */
+type HeardRefloodPacket = {
+  from?: number | bigint | null;
+  id?: number | bigint | null;
+  relayNode?: number | null;
+  rxSnr?: number | null;
+  viaMqtt?: boolean;
+  transportMechanism?: number;
+};
+
 type TextMessage = {
   id: string;
   fromNodeNum: number;
@@ -5022,6 +5040,54 @@ class MeshtasticManager implements ISourceManager {
   }
 
   /**
+   * Record a Meshtastic "Heard-By" re-flood (#4816 Phase 4 WP2): a neighbour
+   * rebroadcasting OUR OWN outgoing channel packet, overheard back by us. This
+   * is the exact inverse of the local-node spoof case computed by
+   * {@link assessLocalSpoof} — same RF markers, `from == us`, but the packet
+   * id IS one we recently originated (`sentPacketIds`), so it's a benign echo
+   * rather than an impersonation.
+   *
+   * Deliberately independent of `packet_log_enabled` (called outside that
+   * gate in {@link processMeshPacket}) so the Delivery Details modal has data
+   * to show even for users who never turn packet logging on, and so rows
+   * survive packet_log's count/age pruning. A diagnostics write must never
+   * break the RX path: failures are swallowed and logged, never thrown.
+   */
+  private async maybeRecordHeardReflood(meshPacket: HeardRefloodPacket, spoof: SpoofDetectionResult): Promise<void> {
+    try {
+      const localNodeNum = this.localNodeInfo?.nodeNum ?? null;
+      if (localNodeNum === null) return;
+
+      const fromNum = meshPacket.from ? Number(meshPacket.from) : 0;
+      if (fromNum !== localNodeNum) return; // not claiming to be us
+
+      const packetId = meshPacket.id !== null && meshPacket.id !== undefined ? Number(meshPacket.id) : null;
+      if (!this.sentPacketIds.has(packetId)) return; // not a packet we originated → not a re-flood
+
+      if (spoof.isGenuineLocalTx) return; // our own direct TX, not an overheard echo
+
+      const viaMqtt = meshPacket.viaMqtt === true || isViaMqtt(meshPacket.transportMechanism);
+      if (viaMqtt) return; // MQTT-bridge echo, not a LoRa repeater
+
+      const relayNode = meshPacket.relayNode;
+      if (relayNode === null || relayNode === undefined) return;
+      const relayByte = Number(relayNode);
+      if (relayByte === 0) return; // 0 = firmware didn't stamp a relayer; record nothing rather than guess
+
+      const messageId = `${this.sourceId}_${fromNum}_${packetId}`;
+      await databaseService.meshtasticHeardRepeaters.recordHeardRepeater({
+        sourceId: this.sourceId,
+        messageId,
+        relayByte,
+        snr: meshPacket.rxSnr ?? null,
+        heardAt: Date.now(),
+      });
+    } catch (err) {
+      logger.debug('📡 Failed to record Heard-By re-flood (non-fatal):', err);
+    }
+  }
+
+  /**
    * Get cached remote node config
    * @param nodeNum The remote node number
    * @returns The cached config for the remote node, or null if not available
@@ -5901,6 +5967,12 @@ class MeshtasticManager implements ISourceManager {
       logger.error('❌ Failed to log packet:', error);
     }
 
+    // Heard-By re-flood correlation (#4816 Phase 4 WP2). Deliberately OUTSIDE
+    // the packet_log_enabled gate above — this diagnostic must work whether or
+    // not packet logging is on (see meshtasticHeardRepeaters repo header).
+    // Non-blocking: never delay packet processing on a diagnostics write.
+    void this.maybeRecordHeardReflood(meshPacket, this.assessLocalSpoof(meshPacket));
+
     // Extract node information if available
     // Note: Only update technical fields (SNR/RSSI/lastHeard/channel), not names
     // Names should only come from NODEINFO packets
@@ -6143,6 +6215,13 @@ class MeshtasticManager implements ISourceManager {
               offerRegion,
               offerPreset,
             }, this.sourceId);
+            break;
+          }
+          case PortNum.NODE_STATUS_APP: {
+            // StatusMessage (fw 2.7.20+/2.8, #4818): the node's self-broadcast
+            // status. Stored as a per-node attribute (cleared on empty),
+            // mirroring the official clients — never a message/DM.
+            await this.processNodeStatusMessageProtobuf(meshPacket, processedPayload as { status?: unknown });
             break;
           }
           default:
@@ -7706,6 +7785,47 @@ class MeshtasticManager implements ISourceManager {
    * Process paxcounter message
    * Paxcounter counts nearby WiFi and BLE devices
    */
+  /**
+   * Status Message receive (#4818). The firmware StatusMessageModule broadcasts
+   * each node's self-set status on PortNum.NODE_STATUS_APP (36) as
+   * `meshtastic.StatusMessage { string status }`. Store it as a per-node
+   * attribute; an empty status CLEARS the stored value (the repo merge maps ''
+   * to null), matching the official Android/Apple clients. Never persisted as a
+   * message or DM — it is a node property like long/short name.
+   */
+  private async processNodeStatusMessageProtobuf(
+    meshPacket: { from?: unknown; rxSnr?: number | null; rxRssi?: number | null; rxTime?: unknown },
+    statusMessage: { status?: unknown },
+  ): Promise<void> {
+    try {
+      const fromNum = Number(meshPacket.from);
+      if (!fromNum) return;
+      const nodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
+      // Max 80 chars per the protobuf; clamp defensively. '' is a valid "clear".
+      const raw = typeof statusMessage?.status === 'string' ? statusMessage.status : '';
+      const status = raw.slice(0, 80);
+      logger.debug(`📝 Node status from ${nodeId}: "${status}"`);
+
+      await this.trackPKIEncryption(meshPacket, fromNum);
+
+      const nodeData: Parameters<typeof databaseService.upsertNodeAsync>[0] = {
+        nodeNum: fromNum,
+        nodeId,
+        nodeStatus: status, // '' clears the stored value in the repo merge
+        nodeStatusUpdatedAt: Date.now(), // epoch ms (NOT seconds like lastHeard)
+        // Replay guard: omit lastHeard for replayed/retained frames so a stale
+        // status can't resurrect an offline node (#4192/#4445).
+        lastHeard: this.lastHeardFor(meshPacket),
+      };
+      if (meshPacket.rxSnr != null && meshPacket.rxSnr !== -128) nodeData.snr = meshPacket.rxSnr;
+      if (meshPacket.rxRssi != null) nodeData.rssi = meshPacket.rxRssi;
+
+      await databaseService.upsertNodeAsync(nodeData, this.sourceId);
+    } catch (error) {
+      logger.error('Failed to process node status message:', error);
+    }
+  }
+
   private async processPaxcounterMessageProtobuf(meshPacket: any, paxcount: any): Promise<void> {
     try {
       logger.debug('📊 Processing paxcounter message');
@@ -8430,6 +8550,23 @@ class MeshtasticManager implements ISourceManager {
               }
               // Emit WebSocket event for real-time delivery status update
               dataEventEmitter.emitRoutingUpdate({ requestId, status: 'ack' }, this.sourceId);
+              // Delivery-diagnostics timeline event (#4816 Phase 3). Recorded
+              // here — NOT inside updateMessageDeliveryState — because that
+              // repo method is also called for non-text-message flows (e.g.
+              // the position-exchange 'delivered' path), which must not gain
+              // false timeline entries. originalMessage.id + this.sourceId are
+              // already resolved above, so no extra query is needed.
+              try {
+                await databaseService.messageEvents.recordEvent({
+                  sourceId: this.sourceId,
+                  messageId: originalMessage.id,
+                  eventType: 'delivered',
+                  provenance: 'reported',
+                  timestamp: Date.now(),
+                });
+              } catch (eventError) {
+                logger.debug('Failed to record delivered message event:', eventError);
+              }
             }
             return;
           }
@@ -8442,6 +8579,20 @@ class MeshtasticManager implements ISourceManager {
               logger.debug(`💾 Marked message ${requestId} as confirmed (received by target)`);
               // Emit WebSocket event for real-time delivery status update
               dataEventEmitter.emitRoutingUpdate({ requestId, status: 'ack' }, this.sourceId);
+              // Delivery-diagnostics timeline event (#4816 Phase 3) — see the
+              // 'delivered' branch above for why this is recorded here rather
+              // than inside updateMessageDeliveryState.
+              try {
+                await databaseService.messageEvents.recordEvent({
+                  sourceId: this.sourceId,
+                  messageId: originalMessage.id,
+                  eventType: 'confirmed',
+                  provenance: 'reported',
+                  timestamp: Date.now(),
+                });
+              } catch (eventError) {
+                logger.debug('Failed to record confirmed message event:', eventError);
+              }
             }
             // Notify message queue service of successful ACK
             this.messageQueue.handleAck(requestId);
@@ -8588,9 +8739,26 @@ class MeshtasticManager implements ISourceManager {
 
       // Update message in database to mark delivery as failed
       logger.debug(`❌ Marking message ${requestId} as failed due to routing error from ${isDM ? 'target' : 'mesh'}: ${errorName}`);
-      await databaseService.messages.updateMessageDeliveryState(requestId, 'failed');
+      const routingErrorCode = typeof errorReason === 'number' ? errorReason : null;
+      await databaseService.messages.updateMessageDeliveryState(requestId, 'failed', routingErrorCode);
       // Emit WebSocket event for real-time delivery failure update
       dataEventEmitter.emitRoutingUpdate({ requestId, status: 'nak', errorReason: errorName }, this.sourceId);
+      // Delivery-diagnostics timeline event (#4816 Phase 3) — see the
+      // 'delivered' branch above for why this is recorded here rather than
+      // inside updateMessageDeliveryState. originalMessage is guaranteed
+      // non-null here (early-returned above when it was null).
+      try {
+        await databaseService.messageEvents.recordEvent({
+          sourceId: this.sourceId,
+          messageId: originalMessage.id,
+          eventType: 'routing_error',
+          provenance: 'reported',
+          timestamp: Date.now(),
+          detail: JSON.stringify({ routingErrorCode }),
+        });
+      } catch (eventError) {
+        logger.debug('Failed to record routing_error message event:', eventError);
+      }
       // Notify message queue service of failure
       this.messageQueue.handleFailure(requestId, errorName);
     } catch (error) {
@@ -9535,6 +9703,23 @@ class MeshtasticManager implements ISourceManager {
         };
 
         await databaseService.messages.insertMessage(message, this.sourceId);
+
+        // Record the delivery-diagnostics timeline event for our own outgoing
+        // send (#4816 Phase 3). This is the ONLY place we know a row is our
+        // own outgoing send — never record 'submitted' on the shared inbound
+        // path, which also handles received traffic. A diagnostics write must
+        // never break the send path, so failures are swallowed + logged.
+        try {
+          await databaseService.messageEvents.recordEvent({
+            sourceId: this.sourceId,
+            messageId: messageId_str,
+            eventType: 'submitted',
+            provenance: 'observed',
+            timestamp: Date.now(),
+          });
+        } catch (eventError) {
+          logger.debug('Failed to record submitted message event:', eventError);
+        }
 
         // Emit WebSocket event for real-time updates (sent message)
         dataEventEmitter.emitNewMessage(message as any, this.sourceId);

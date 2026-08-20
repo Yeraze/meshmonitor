@@ -338,3 +338,14 @@
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* Status Message (#4818): the node's self-broadcast status. Spans the full
+   grid width and wraps, since it can be up to 80 chars of free text. */
+.node-detail-card-status {
+  grid-column: 1 / -1;
+}
+.node-detail-status-message {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-style: italic;
+}

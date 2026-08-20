@@ -37,6 +37,14 @@ export interface DeviceInfo {
    */
   uptimeSeconds?: number;
   hopsAway?: number;
+  /** #4818 Status Message: the node's self-broadcast status (NODE_STATUS_APP), max 80 chars. Absent when unset. */
+  nodeStatus?: string;
+  /**
+   * Epoch **milliseconds** when nodeStatus was last received (server clock).
+   * NOTE: this is ms, unlike `lastHeard` which is Unix **seconds** — a
+   * "status updated X ago" display must not mix the two units.
+   */
+  nodeStatusUpdatedAt?: number;
   lastMessageHops?: number; // Hops from most recent packet (hopStart - hopLimit)
   viaMqtt?: boolean;
   /**

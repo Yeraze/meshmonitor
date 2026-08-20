@@ -62,6 +62,7 @@ import { NodeUnmessageableBadge } from './NodeUnmessageableBadge';
 import { NodeIncompleteBadge } from './NodeIncompleteBadge';
 import { NodeDetailsButton } from './NodeDetailsButton';
 import nodeRowStyles from './NodeRowActions.module.css';
+import nodeStatusStyles from './NodeStatusLine.module.css';
 import { NeighborLinksLayer, type NeighborLinkDescriptor } from './map/layers/NeighborLinksLayer';
 import { AccuracyRegionsLayer, type AccuracyRegionDescriptor } from './map/layers/AccuracyRegionsLayer';
 import { NodeCard } from './map/popups/NodeCard';
@@ -2375,6 +2376,15 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         </div>
                         {node.user?.role !== undefined && node.user?.role !== null && getRoleName(node.user.role) && (
                           <div className="node-role" title={t('nodes.node_role')}>{getRoleName(node.user.role)}</div>
+                        )}
+                        {/* Status Message (#4818): the node's self-broadcast status,
+                            shown as a short subtitle like the official clients. Styled via
+                            a CSS module (not the frozen nodes.css). Rendered verbatim
+                            (React escapes untrusted mesh text); title shows the full text. */}
+                        {node.nodeStatus && (
+                          <div className={nodeStatusStyles.statusLine} title={node.nodeStatus}>
+                            {node.nodeStatus}
+                          </div>
                         )}
                       </div>
                     </div>

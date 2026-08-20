@@ -56,6 +56,7 @@ import { PacketDistributionStats } from '../types/packet';
 
 import { MessageEmojiButton } from './MessageEmojiButton';
 import { MessageStatusIndicator } from './MessageStatusIndicator';
+import DeliveryDetailsModal from './diagnostics/DeliveryDetailsModal';
 import RelayNodeModal from './RelayNodeModal';
 import TelemetryRequestModal, { TelemetryType } from './TelemetryRequestModal';
 import { CopyNodeInfoModal } from './CopyNodeInfoModal';
@@ -372,6 +373,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   const [selectedRxTime, setSelectedRxTime] = useState<Date | undefined>(undefined);
   const [selectedMessageRssi, setSelectedMessageRssi] = useState<number | undefined>(undefined);
   const [selectedMessage, setSelectedMessage] = useState<MeshMessage | null>(null);
+  // Delivery Details modal (#4816 Phase 1 WP3) — the currently-open own-sent
+  // message's diagnostics popup, opened by clicking its status icon.
+  const [deliveryDetailsMsg, setDeliveryDetailsMsg] = useState<MeshMessage | null>(null);
   const [directNeighborStats, setDirectNeighborStats] = useState<Record<number, { avgRssi: number; packetCount: number; lastHeard: number }>>({});
   const [homoglyphEnabled, setHomoglyphEnabled] = useState(false);
 
@@ -2074,7 +2078,11 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             )}
                           </div>
                         </div>
-                        {isMine && <div className="message-status"><MessageStatusIndicator message={msg} /></div>}
+                        {isMine && (
+                          <div className="message-status">
+                            <MessageStatusIndicator message={msg} onShowDetails={() => setDeliveryDetailsMsg(msg)} />
+                          </div>
+                        )}
                       </div>
                     </React.Fragment>
                   );
@@ -2857,6 +2865,16 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
             setSelectedMessage(null);
             handleSenderClick(nodeId, { stopPropagation: () => {} } as React.MouseEvent);
           }}
+        />
+      )}
+
+      {/* Delivery Details modal (#4816 Phase 1 WP3) */}
+      {deliveryDetailsMsg && (
+        <DeliveryDetailsModal
+          protocol="meshtastic"
+          sourceId={sourceId ?? ''}
+          message={deliveryDetailsMsg}
+          onClose={() => setDeliveryDetailsMsg(null)}
         />
       )}
 

@@ -77,6 +77,10 @@ export interface DbNode {
   lastMeshReceivedKey?: string | null;
   keySecurityIssueDetails?: string | null;
   welcomedAt?: number | null;
+  /** #4818 Status Message: node's self-broadcast status (NODE_STATUS_APP), max 80 chars; null when cleared. */
+  nodeStatus?: string | null;
+  /** Epoch milliseconds (Date.now) — NOT seconds like lastHeard. */
+  nodeStatusUpdatedAt?: number | null;
   positionChannel?: number | null;
   positionPrecisionBits?: number | null;
   positionGpsAccuracy?: number | null;
@@ -143,6 +147,8 @@ export interface DbMessage {
   deliveryState?: string | null;
   wantAck?: boolean | null;
   ackFromNode?: number | null;
+  /** Exact numeric Meshtastic RoutingError reason on a failed send (#4816 Phase 2). NULL = not recorded (pre-migration row or a success, which never writes this column). */
+  routingErrorCode?: number | null;
   createdAt: number;
   decryptedBy?: 'node' | 'server' | null;
   /** Client IP for HTTP-injected sends (honors X-Forwarded-For when trust proxy is configured). NULL for non-HTTP sources. */

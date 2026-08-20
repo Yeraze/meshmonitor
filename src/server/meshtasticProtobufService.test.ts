@@ -465,6 +465,27 @@ describe('MeshtasticProtobufService', () => {
     });
   });
 
+  describe('processPayload NODE_STATUS_APP (#4818)', () => {
+    function encodeStatus(status: string): Uint8Array {
+      const root = getProtobufRoot()!;
+      const StatusMessage = root.lookupType('meshtastic.StatusMessage');
+      return StatusMessage.encode(StatusMessage.create({ status })).finish();
+    }
+
+    it('decodes a StatusMessage payload to { status }', () => {
+      if (!requireProtobufs()) return;
+      const decoded: any = service.processPayload(36, encodeStatus('Roaming the ridge 🏔'));
+      expect(decoded?.status).toBe('Roaming the ridge 🏔');
+    });
+
+    it('decodes an empty status (the node clearing its status)', () => {
+      if (!requireProtobufs()) return;
+      const decoded: any = service.processPayload(36, encodeStatus(''));
+      // protobufjs omits an empty proto3 string; normalize to '' for the check.
+      expect(decoded?.status ?? '').toBe('');
+    });
+  });
+
   describe('decodeServiceEnvelope', () => {
     it('decodes a valid ServiceEnvelope with packet', () => {
       if (!protobufInitialized) return;

@@ -43,6 +43,12 @@ export * from './meshcorePacketLog.js';
 export * from './meshcorePositionHistory.js';
 export * from './meshcoreHeardRepeaters.js';
 
+// Per-message delivery event timeline (#4816 Phase 3, protocol-agnostic)
+export * from './messageEvents.js';
+
+// Meshtastic Heard-By table (#4816 Phase 4 WP1)
+export * from './meshtasticHeardRepeaters.js';
+
 // Embed Profiles table
 export * from './embedProfiles.js';
 

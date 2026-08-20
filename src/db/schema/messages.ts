@@ -37,6 +37,10 @@ export const messagesSqlite = sqliteTable('messages', {
   deliveryState: text('deliveryState'),
   wantAck: integer('wantAck', { mode: 'boolean' }),
   ackFromNode: integer('ackFromNode'),
+  // Exact numeric Meshtastic RoutingError reason on a failed send (#4816 Phase 2).
+  // NULL = not recorded (pre-migration row, or success — never written on the
+  // success path). 0 (RoutingError.NONE) is a real success code, distinct from NULL.
+  routingErrorCode: integer('routingErrorCode'),
   createdAt: integer('createdAt').notNull(),
   // Decryption source - 'node' or 'server' (server = read-only)
   decryptedBy: text('decrypted_by'),
@@ -79,6 +83,7 @@ export const messagesPostgres = pgTable('messages', {
   deliveryState: pgText('deliveryState'),
   wantAck: pgBoolean('wantAck'),
   ackFromNode: pgBigint('ackFromNode', { mode: 'number' }),
+  routingErrorCode: pgInteger('routingErrorCode'),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   // Decryption source - 'node' or 'server' (server = read-only)
   decryptedBy: pgText('decrypted_by'),
@@ -119,6 +124,7 @@ export const messagesMysql = mysqlTable('messages', {
   deliveryState: myVarchar('deliveryState', { length: 32 }),
   wantAck: myBoolean('wantAck'),
   ackFromNode: myBigint('ackFromNode', { mode: 'number' }),
+  routingErrorCode: myInt('routingErrorCode'),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   // Decryption source - 'node' or 'server' (server = read-only)
   decryptedBy: myVarchar('decrypted_by', { length: 16 }),

@@ -22,10 +22,20 @@ vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: () => {} },
 }));
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createElement, type ReactNode } from 'react';
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import type { MeshCoreMessage } from './hooks/useMeshCore';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+// The Delivery Details modal (#4816 Phase 3) uses a TanStack query hook, so
+// tests that open it must provide a QueryClient. The timeline query stays
+// disabled (no sourceId passed here), so no request fires.
+function renderWithQuery(ui: ReactNode) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  return render(createElement(QueryClientProvider, { client }, ui));
+}
 
 function msg(id: string, timestamp: number, text: string): MeshCoreMessage {
   return { id, fromPublicKey: 'abcdef0123456789', text, timestamp };
@@ -651,5 +661,127 @@ describe('MeshCoreMessageStream direct-message signal (#4504)', () => {
       />,
     );
     expect(screen.getByText(/direct/)).toBeTruthy();
+  });
+});
+
+/**
+ * #4816 Phase 1 WP3 — the outgoing delivery-status icon became a clickable
+ * button that opens the Delivery Details modal. It must not disturb the
+ * pre-existing heard-by badge/toggle or the route-detail popup, which are
+ * independent, separately-keyed pieces of state on the same message row.
+ */
+describe('MeshCoreMessageStream delivery details modal (#4816)', () => {
+  const SELF_KEY = 'abcdef0123456789';
+  const now = Date.now();
+
+  function outgoingMessage(overrides: Partial<MeshCoreMessage> = {}): MeshCoreMessage {
+    return {
+      ...msg('out-1', now, 'ping'),
+      fromPublicKey: SELF_KEY,
+      deliveryStatus: 'delivered',
+      roundTripMs: 42,
+      ...overrides,
+    };
+  }
+
+  it('renders no dialog until the outgoing delivery-status button is clicked', () => {
+    const { container } = renderWithQuery(
+      <MeshCoreMessageStream
+        messages={[outgoingMessage()]}
+        selfPublicKey={SELF_KEY}
+        onSend={async () => true}
+      />,
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    fireEvent.click(container.querySelector('.mc-delivery-status')!);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('opens the modal as a real button (not the old inert span)', () => {
+    const { container } = render(
+      <MeshCoreMessageStream
+        messages={[outgoingMessage()]}
+        selfPublicKey={SELF_KEY}
+        onSend={async () => true}
+      />,
+    );
+    const statusEl = container.querySelector('.mc-delivery-status')!;
+    expect(statusEl.tagName).toBe('BUTTON');
+  });
+
+  it('closes the modal via its close button', () => {
+    const { container } = renderWithQuery(
+      <MeshCoreMessageStream
+        messages={[outgoingMessage()]}
+        selfPublicKey={SELF_KEY}
+        onSend={async () => true}
+      />,
+    );
+    fireEvent.click(container.querySelector('.mc-delivery-status')!);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /close/i }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('does not disturb the heard-by toggle', () => {
+    const { container } = renderWithQuery(
+      <MeshCoreMessageStream
+        messages={[outgoingMessage({
+          heardBy: [{ hash: 'ab12', name: 'Repeater1', snr: 5 }],
+        })]}
+        selfPublicKey={SELF_KEY}
+        onSend={async () => true}
+      />,
+    );
+
+    // Heard-by list is collapsed until the badge is toggled.
+    expect(container.querySelector('.mc-heard-by-list')).toBeNull();
+    fireEvent.click(container.querySelector('.mc-heard-by-badge')!);
+    expect(container.querySelector('.mc-heard-by-list')).not.toBeNull();
+    expect(screen.getByText('Repeater1')).toBeTruthy();
+
+    // Opening the delivery details modal afterward doesn't collapse it or
+    // interfere with its own state.
+    fireEvent.click(container.querySelector('.mc-delivery-status')!);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(container.querySelector('.mc-heard-by-list')).not.toBeNull();
+  });
+
+  it('does not disturb the route-detail popup', () => {
+    // The route-detail chain link only renders on RECEIVED messages (the
+    // stream gates it on `!outgoing`), so this needs a separate incoming
+    // message alongside the outgoing one whose delivery-status button we're
+    // testing — two independent pieces of state on two different rows.
+    const incoming: MeshCoreMessage = {
+      ...msg('in-1', now - 1000, 'pong'),
+      fromPublicKey: 'fedcba9876543210',
+      hopCount: 2,
+      routePath: 'a3,7f',
+    };
+    const outgoing = outgoingMessage();
+    const { container } = renderWithQuery(
+      <MeshCoreMessageStream messages={[incoming, outgoing]} selfPublicKey={SELF_KEY} onSend={async () => true} />,
+    );
+
+    // Route-detail modal opens independently of delivery details. Both
+    // modals use role="dialog" (see MeshCoreMessageRouteModal), so the
+    // Delivery Details modal is disambiguated by its own heading id
+    // (`#ddm-title`) rather than by role alone.
+    expect(container.querySelector('.mcpm-modal')).toBeNull();
+    fireEvent.click(container.querySelector('.mc-route-chain-link')!);
+    expect(container.querySelector('.mcpm-modal')).not.toBeNull();
+    expect(container.querySelector('#ddm-title')).toBeNull();
+
+    // Close the route-detail modal via the backdrop, then confirm the
+    // delivery-status button still opens its own modal independently.
+    fireEvent.click(container.querySelector('.mcpm-modal')!);
+    expect(container.querySelector('.mcpm-modal')).toBeNull();
+
+    fireEvent.click(container.querySelector('.mc-delivery-status')!);
+    expect(container.querySelector('#ddm-title')).not.toBeNull();
+    // The route-detail modal must not have reappeared as a side effect.
+    expect(container.querySelector('.mcpm-modal')).toBeNull();
   });
 });

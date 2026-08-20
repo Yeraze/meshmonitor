@@ -77,6 +77,7 @@
 .ae-textarea--code { font-family: var(--font-mono, monospace); font-size: 0.82rem; min-height: 280px; }
 .ae-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem 1rem; }
 .ae-help-text { font-size: 0.76rem; color: var(--color-text-subtle); margin-top: 0.25rem; }
+.ae-field-error { font-size: 0.76rem; color: var(--color-error); margin-top: 0.25rem; }
 
 /* Token-highlighting text field: a backdrop renders the chrome + highlighted
    {{ }} tokens; a transparent input/textarea sits on top for editing. Both share

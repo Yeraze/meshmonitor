@@ -71,6 +71,8 @@ const POSTGRES_CREATE = `
     "isTimeOffsetIssue" BOOLEAN DEFAULT FALSE,
     "timeOffsetSeconds" INTEGER,
     "welcomedAt" BIGINT,
+    "nodeStatus" TEXT,
+    "nodeStatusUpdatedAt" BIGINT,
     "positionChannel" INTEGER,
     "positionPrecisionBits" INTEGER,
     "positionGpsAccuracy" REAL,
@@ -147,6 +149,8 @@ const MYSQL_CREATE = `
     isTimeOffsetIssue BOOLEAN DEFAULT FALSE,
     timeOffsetSeconds INTEGER,
     welcomedAt BIGINT,
+    nodeStatus VARCHAR(80),
+    nodeStatusUpdatedAt BIGINT,
     positionChannel INTEGER,
     positionPrecisionBits INTEGER,
     positionGpsAccuracy DOUBLE,
@@ -257,6 +261,40 @@ function runNodesTests(getBackend: () => TestBackend) {
     const updated = await repo.getNode(221);
     expect(Boolean(updated!.isUnmessagable)).toBe(false);
     expect(Boolean(updated!.isLicensed)).toBe(false);
+  });
+
+  // #4818 Status Message: stored as a node attribute; set on insert/update,
+  // cleared to null on an empty broadcast, preserved when a non-status upsert
+  // omits it entirely.
+  it('upsertNode - nodeStatus: insert, clear-on-empty, preserve-on-undefined (#4818)', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    // Insert path carries the status + timestamp.
+    await repo.upsertNode(makeNode(230, { nodeStatus: 'On the trail', nodeStatusUpdatedAt: 1000 }));
+    const inserted = await repo.getNode(230);
+    expect(inserted!.nodeStatus).toBe('On the trail');
+    expect(Number(inserted!.nodeStatusUpdatedAt)).toBe(1000);
+
+    // A non-status upsert (no nodeStatus key) must PRESERVE the stored status.
+    await repo.upsertNode(makeNode(230, { longName: 'Renamed' }));
+    const preserved = await repo.getNode(230);
+    expect(preserved!.longName).toBe('Renamed');
+    expect(preserved!.nodeStatus).toBe('On the trail');
+
+    // Update path overwrites with a new status.
+    await repo.upsertNode(makeNode(230, { nodeStatus: 'Back at base', nodeStatusUpdatedAt: 2000 }));
+    const updated = await repo.getNode(230);
+    expect(updated!.nodeStatus).toBe('Back at base');
+    expect(Number(updated!.nodeStatusUpdatedAt)).toBe(2000);
+
+    // An empty status is a genuine CLEAR → null (matches the official clients).
+    await repo.upsertNode(makeNode(230, { nodeStatus: '', nodeStatusUpdatedAt: 3000 }));
+    const cleared = await repo.getNode(230);
+    expect(cleared!.nodeStatus == null).toBe(true);
   });
 
   it('upsertNode - does NOT clobber learned name/macaddr/hwModel with blanks (#3505)', async () => {

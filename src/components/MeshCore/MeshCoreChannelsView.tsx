@@ -768,6 +768,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
         <MeshCoreMessageStream
           messages={filtered}
           contacts={contacts}
+          sourceId={sourceId}
           selfPublicKey={selfKey}
           disabled={!connected || !canSend || receiveOnly}
           disabledReason={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}

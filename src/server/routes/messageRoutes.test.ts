@@ -10,6 +10,8 @@ import session from 'express-session';
 import request from 'supertest';
 import databaseService from '../../services/database.js';
 import { TxDisabledError } from '../errors/txDisabledError.js';
+import { transformDbMessageToMeshMessage } from '../utils/transformDbMessage.js';
+import type { DbMessage } from '../../services/database.js';
 
 // ---------------------------------------------------------------------------
 // sourceManagerRegistry stub — messageRoutes resolves its default-source
@@ -1024,5 +1026,49 @@ describe('Message Deletion Routes', () => {
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// transformDbMessageToMeshMessage — this route module is what surfaces the
+// transform to the frontend (GET / and GET /search both `.map()` it). #4816
+// Phase 1 WP1 plumbs `ackFromNode` through the transform (previously stored
+// and on the services DbMessage interface, but silently dropped) so the
+// Delivery Details "ACK From Node" field has real data instead of always
+// Unknown.
+// ---------------------------------------------------------------------------
+describe('transformDbMessageToMeshMessage (ackFromNode plumb, #4816)', () => {
+  const baseRow = (): DbMessage => ({
+    id: 'source-a_1_100',
+    fromNodeNum: 1,
+    toNodeNum: 2,
+    fromNodeId: '!00000001',
+    toNodeId: '!00000002',
+    text: 'hello',
+    channel: 0,
+    timestamp: 1_700_000_000_000,
+    createdAt: 1_700_000_000_000,
+  });
+
+  it('includes ackFromNode in the transformed message when the row has it', () => {
+    const row = { ...baseRow(), ackFromNode: 305419896 };
+    const result = transformDbMessageToMeshMessage(row);
+    expect(result.ackFromNode).toBe(305419896);
+  });
+
+  it('omits ackFromNode (undefined) when the row has none', () => {
+    const result = transformDbMessageToMeshMessage(baseRow());
+    expect(result.ackFromNode).toBeUndefined();
+  });
+
+  it('includes routingErrorCode in the transformed message when the row has it (#4816 Phase 2)', () => {
+    const row = { ...baseRow(), routingErrorCode: 5 };
+    const result = transformDbMessageToMeshMessage(row);
+    expect(result.routingErrorCode).toBe(5);
+  });
+
+  it('omits routingErrorCode (undefined) when the row has none', () => {
+    const result = transformDbMessageToMeshMessage(baseRow());
+    expect(result.routingErrorCode).toBeUndefined();
   });
 });

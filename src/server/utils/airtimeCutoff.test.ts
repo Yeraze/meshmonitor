@@ -51,8 +51,19 @@ describe('averageStrongestNeighborUtilization', () => {
     role: 2, hopsAway: 0, rssi: -60, channelUtilization: 40, ...over,
   });
 
-  it('treats Router/Router-Client/Repeater/Router-Late as infrastructure', () => {
-    expect([...INFRASTRUCTURE_ROLES].sort((a, b) => a - b)).toEqual([2, 3, 4, 11]);
+  it('treats Router/Router-Client/Repeater/Router-Late/Client-Base as infrastructure', () => {
+    expect([...INFRASTRUCTURE_ROLES].sort((a, b) => a - b)).toEqual([2, 3, 4, 11, 12]);
+  });
+
+  it('treats Client Base (role 12) as infrastructure and excludes Sensor (role 6)', () => {
+    // Client Base (12) retransmits like Router Late, so it must count. Sensor (6)
+    // — the role the issue text mistook for CLIENT_BASE — must NOT count.
+    const r = averageStrongestNeighborUtilization([
+      n({ role: 6, rssi: -40, channelUtilization: 99 }),  // sensor → excluded
+      n({ role: 12, rssi: -60, channelUtilization: 22 }), // client base → included
+    ]);
+    expect(r.sampleCount).toBe(1);
+    expect(r.value).toBe(22);
   });
 
   it('averages the channelUtilization of the top-3 strongest-RSSI infra neighbours', () => {
