@@ -7,63 +7,79 @@
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { MeshMessage, MessageDeliveryState } from '../types/message';
-import { UiIcon } from './icons';
-
-/** Timeout for pending messages before showing timeout indicator */
-const TIMEOUT_MS = 30000;
+import { MeshMessage } from '../types/message';
+import { UiIcon, type UiIconName } from './icons';
+import { getMeshtasticDeliveryState } from '../utils/deliveryDiagnostics/status';
+import styles from './MessageStatusIndicator.module.css';
 
 interface MessageStatusIndicatorProps {
   message: MeshMessage;
+  /** When provided, the indicator becomes a clickable button that opens the
+   *  Delivery Details modal for this message (#4816 Phase 1). When absent,
+   *  it stays a plain, non-interactive `<span>` for backward compatibility
+   *  with existing callers/tests. */
+  onShowDetails?: () => void;
 }
 
 /**
  * Render message delivery status indicator
  */
-export function MessageStatusIndicator({ message }: MessageStatusIndicatorProps): React.ReactElement {
+export function MessageStatusIndicator({ message, onShowDetails }: MessageStatusIndicatorProps): React.ReactElement {
   const { t } = useTranslation();
-  const messageAge = Date.now() - message.timestamp.getTime();
+  const state = getMeshtasticDeliveryState(message);
 
-  // Check for explicit failures first
-  if (message.ackFailed || message.routingErrorReceived || message.deliveryState === MessageDeliveryState.FAILED) {
+  let className: string;
+  let titleKey: string;
+  let iconName: UiIconName;
+
+  switch (state) {
+    case 'failed':
+      className = 'status-failed';
+      titleKey = 'message_status.failed';
+      iconName = 'error';
+      break;
+    case 'confirmed':
+      className = 'status-confirmed';
+      titleKey = 'message_status.confirmed';
+      iconName = 'encrypted';
+      break;
+    case 'delivered':
+      className = 'status-delivered';
+      titleKey = 'message_status.delivered';
+      iconName = 'check';
+      break;
+    case 'pending':
+      className = 'status-pending';
+      titleKey = 'message_status.pending';
+      iconName = 'time';
+      break;
+    case 'timeout':
+    default:
+      className = 'status-timeout';
+      titleKey = 'message_status.timeout';
+      iconName = 'timer';
+      break;
+  }
+
+  const title = t(titleKey);
+
+  if (onShowDetails) {
     return (
-      <span className="status-failed" title={t('message_status.failed')}>
-        <UiIcon name="error" />
-      </span>
+      <button
+        type="button"
+        className={`${className} ${styles.resetButton}`}
+        title={title}
+        aria-label={title}
+        onClick={onShowDetails}
+      >
+        <UiIcon name={iconName} />
+      </button>
     );
   }
 
-  // Confirmed - received by target node (DMs only)
-  if (message.deliveryState === MessageDeliveryState.CONFIRMED) {
-    return (
-      <span className="status-confirmed" title={t('message_status.confirmed')}>
-        <UiIcon name="encrypted" />
-      </span>
-    );
-  }
-
-  // Delivered - transmitted to mesh
-  if (message.deliveryState === MessageDeliveryState.DELIVERED) {
-    return (
-      <span className="status-delivered" title={t('message_status.delivered')}>
-        <UiIcon name="check" />
-      </span>
-    );
-  }
-
-  // Pending - still waiting for acknowledgment
-  if (messageAge < TIMEOUT_MS) {
-    return (
-      <span className="status-pending" title={t('message_status.pending')}>
-        <UiIcon name="time" />
-      </span>
-    );
-  }
-
-  // Timeout - no acknowledgment received
   return (
-    <span className="status-timeout" title={t('message_status.timeout')}>
-      <UiIcon name="timer" />
+    <span className={className} title={title}>
+      <UiIcon name={iconName} />
     </span>
   );
 }
