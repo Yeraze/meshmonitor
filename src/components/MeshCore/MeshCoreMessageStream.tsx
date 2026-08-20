@@ -6,6 +6,7 @@ import { getMessageDateSeparator, shouldShowDateSeparator } from '../../utils/da
 import { getUtf8ByteLength, formatByteCount } from '../../utils/text';
 import LinkPreview from '../LinkPreview';
 import MeshCoreMessageRouteModal from './MeshCoreMessageRouteModal';
+import DeliveryDetailsModal from '../diagnostics/DeliveryDetailsModal';
 import { UiIcon } from '../icons';
 import UnreadDivider from '../messages/UnreadDivider';
 import { resolveUnreadAnchorId, shouldSuppressDivider } from '../../utils/unreadAnchor';
@@ -122,6 +123,10 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   // Message whose relay-hash chain was clicked — opens the route-detail modal
   // that expands each hash to the matching repeater name.
   const [routeDetail, setRouteDetail] = useState<MeshCoreMessage | null>(null);
+  // Outgoing message whose delivery-status icon was clicked — opens the
+  // Delivery Details modal (#4816 Phase 1 WP3). Independent of `routeDetail`
+  // above, which is the pre-existing route-detail popup.
+  const [deliveryDetailsMsg, setDeliveryDetailsMsg] = useState<MeshCoreMessage | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   const toggleHeardBy = useCallback((id: string) => {
@@ -521,7 +526,8 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                   <span className="mc-message-time">
                   {formatTime(m.timestamp)}
                   {outgoing && m.deliveryStatus && (
-                    <span
+                    <button
+                      type="button"
                       className={`mc-delivery-status mc-delivery-${m.deliveryStatus}`}
                       title={
                         m.deliveryStatus === 'delivered'
@@ -532,6 +538,16 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                               ? 'Sent, awaiting confirmation'
                               : 'Sending…'
                       }
+                      aria-label={
+                        m.deliveryStatus === 'delivered'
+                          ? `Delivered (${m.roundTripMs}ms)`
+                          : m.deliveryStatus === 'failed'
+                            ? 'Delivery failed'
+                            : m.deliveryStatus === 'sent'
+                              ? 'Sent, awaiting confirmation'
+                              : 'Sending…'
+                      }
+                      onClick={() => setDeliveryDetailsMsg(m)}
                     >
                       <UiIcon
                         name={m.deliveryStatus === 'delivered'
@@ -543,7 +559,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                               : 'time'}
                         size={13}
                       />
-                    </span>
+                    </button>
                   )}
                   {outgoing && m.heardBy && m.heardBy.length > 0 && (
                     <button
@@ -695,6 +711,13 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
           fromLabel={routeDetail.fromName ?? nameForKey(routeDetail.fromPublicKey) ?? `${routeDetail.fromPublicKey.substring(0, 8)}…`}
           contacts={contacts ?? []}
           onClose={() => setRouteDetail(null)}
+        />
+      )}
+      {deliveryDetailsMsg && (
+        <DeliveryDetailsModal
+          protocol="meshcore"
+          message={deliveryDetailsMsg}
+          onClose={() => setDeliveryDetailsMsg(null)}
         />
       )}
     </div>
