@@ -7740,7 +7740,7 @@ class MeshtasticManager implements ISourceManager {
         nodeNum: fromNum,
         nodeId,
         nodeStatus: status, // '' clears the stored value in the repo merge
-        nodeStatusUpdatedAt: Date.now(),
+        nodeStatusUpdatedAt: Date.now(), // epoch ms (NOT seconds like lastHeard)
         // Replay guard: omit lastHeard for replayed/retained frames so a stale
         // status can't resurrect an offline node (#4192/#4445).
         lastHeard: this.lastHeardFor(meshPacket),
