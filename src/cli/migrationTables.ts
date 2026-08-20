@@ -40,6 +40,9 @@ export const TABLE_ORDER = [
   // (sourceId, messageId) with no FK. Migrated so timelines survive a backend
   // move (protocol-neutral: covers both Meshtastic and MeshCore messages).
   'message_events',
+  // 4816 Phase 4 WP1: Meshtastic Heard-By — repeaters that re-flooded our own
+  // outgoing channel packet, keyed by (sourceId, messageId, relayByte).
+  'meshtastic_heard_repeaters',
   // Auth tables (must come before channel_database — channel_database
   // FKs to users for createdBy and channel_database_permissions FKs to users
   // for userId/grantedBy).
@@ -147,7 +150,8 @@ export const SOURCE_SCOPED_TABLES = new Set([
   // every backend, so the `sourceId` backfill check never applies to it.
   'embed_profiles', 'meshcore_nodes', 'meshcore_messages',
   'meshcore_neighbor_info', 'meshcore_packet_log',
-  'meshcore_heard_repeaters', 'message_events', 'mqtt_packet_log', 'mqtt_ok_to_mqtt_violations',
+  'meshcore_heard_repeaters', 'message_events', 'meshtastic_heard_repeaters',
+  'mqtt_packet_log', 'mqtt_ok_to_mqtt_violations',
   'atak_contacts', 'mesh_beacon_offers',
   'auto_favorite_targets', 'auto_favorite_assignments',
   'dead_drop_messages',

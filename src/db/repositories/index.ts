@@ -102,6 +102,11 @@ export type {
   MessageEventProvenance,
   RecordMessageEventParams,
 } from './messageEvents.js';
+export { MeshtasticHeardRepeatersRepository } from './meshtasticHeardRepeaters.js';
+export type {
+  DbMeshtasticHeardRepeater,
+  RecordMeshtasticHeardRepeaterParams,
+} from './meshtasticHeardRepeaters.js';
 export { DeadDropRepository } from './deadDrop.js';
 export type { DeadDropMessageInput } from './deadDrop.js';
 export { MqttPacketLogRepository } from './mqttPacketLog.js';

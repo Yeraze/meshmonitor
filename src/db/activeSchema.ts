@@ -118,6 +118,9 @@ import {
 import {
   messageEventsSqlite, messageEventsPostgres, messageEventsMysql,
 } from './schema/messageEvents.js';
+import {
+  meshtasticHeardRepeatersSqlite, meshtasticHeardRepeatersPostgres, meshtasticHeardRepeatersMysql,
+} from './schema/meshtasticHeardRepeaters.js';
 
 // Embed Profiles table
 import {
@@ -275,6 +278,9 @@ export interface ActiveSchema {
   // Per-message delivery event timeline (#4816 Phase 3, protocol-agnostic)
   messageEvents: any;
 
+  // Meshtastic Heard-By (#4816 Phase 4 WP1)
+  meshtasticHeardRepeaters: any;
+
   // Embed Profiles
   embedProfiles: any;
 
@@ -390,6 +396,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcorePositionHistory: meshcorePositionHistorySqlite,
     meshcoreHeardRepeaters: meshcoreHeardRepeatersSqlite,
     messageEvents: messageEventsSqlite,
+    meshtasticHeardRepeaters: meshtasticHeardRepeatersSqlite,
     embedProfiles: embedProfilesSqlite,
     automations: automationsSqlite,
     automationRuns: automationRunsSqlite,
@@ -460,6 +467,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcorePositionHistory: meshcorePositionHistoryPostgres,
     meshcoreHeardRepeaters: meshcoreHeardRepeatersPostgres,
     messageEvents: messageEventsPostgres,
+    meshtasticHeardRepeaters: meshtasticHeardRepeatersPostgres,
     embedProfiles: embedProfilesPostgres,
     automations: automationsPostgres,
     automationRuns: automationRunsPostgres,
@@ -530,6 +538,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcorePositionHistory: meshcorePositionHistoryMysql,
     meshcoreHeardRepeaters: meshcoreHeardRepeatersMysql,
     messageEvents: messageEventsMysql,
+    meshtasticHeardRepeaters: meshtasticHeardRepeatersMysql,
     embedProfiles: embedProfilesMysql,
     automations: automationsMysql,
     automationRuns: automationRunsMysql,

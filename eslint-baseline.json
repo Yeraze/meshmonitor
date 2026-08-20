@@ -363,7 +363,7 @@
     "react-refresh/only-export-components": 2
   },
   "src/db/activeSchema.ts": {
-    "@typescript-eslint/no-explicit-any": 55
+    "@typescript-eslint/no-explicit-any": 56
   },
   "src/db/drivers/mysql.ts": {
     "preserve-caught-error": 1
