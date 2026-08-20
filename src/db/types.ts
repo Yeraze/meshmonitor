@@ -77,6 +77,9 @@ export interface DbNode {
   lastMeshReceivedKey?: string | null;
   keySecurityIssueDetails?: string | null;
   welcomedAt?: number | null;
+  /** #4818 Status Message: node's self-broadcast status (NODE_STATUS_APP), max 80 chars; null when cleared. */
+  nodeStatus?: string | null;
+  nodeStatusUpdatedAt?: number | null;
   positionChannel?: number | null;
   positionPrecisionBits?: number | null;
   positionGpsAccuracy?: number | null;

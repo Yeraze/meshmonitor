@@ -2871,6 +2871,7 @@
   "telemetry.show_solar": "Show solar overlay",
   "telemetry.hide_solar": "Hide solar overlay",
   "node_details.title": "Node Details",
+  "node_details.status_message": "Status",
   "node_details.expand": "Expand node details",
   "node_details.collapse": "Collapse node details",
   "node_details.hardware": "Hardware",

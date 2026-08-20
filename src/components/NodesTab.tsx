@@ -2376,6 +2376,27 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         {node.user?.role !== undefined && node.user?.role !== null && getRoleName(node.user.role) && (
                           <div className="node-role" title={t('nodes.node_role')}>{getRoleName(node.user.role)}</div>
                         )}
+                        {/* Status Message (#4818): the node's self-broadcast status,
+                            shown as a short subtitle like the official clients. Inline
+                            style avoids touching the frozen nodes.css. Rendered verbatim
+                            (React escapes untrusted mesh text); title shows the full text. */}
+                        {node.nodeStatus && (
+                          <div
+                            className="node-status-line"
+                            title={node.nodeStatus}
+                            style={{
+                              fontStyle: 'italic',
+                              opacity: 0.7,
+                              fontSize: '0.85em',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              maxWidth: '100%',
+                            }}
+                          >
+                            {node.nodeStatus}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="node-actions">

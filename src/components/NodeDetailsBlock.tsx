@@ -386,6 +386,16 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
       {!isCollapsed && (
         <>
         <div className="node-details-grid">
+          {/* Status Message (#4818) — the node's own broadcast status
+              (NODE_STATUS_APP). A node property like name/role, never a chat
+              message. Rendered verbatim (React escapes untrusted mesh text). */}
+          {node.nodeStatus && (
+            <div className="node-detail-card node-detail-card-status">
+              <div className="node-detail-label">{t('node_details.status_message', 'Status')}</div>
+              <div className="node-detail-value node-detail-status-message">{node.nodeStatus}</div>
+            </div>
+          )}
+
           {/* Hardware Model - Now First */}
           {hwModel !== undefined && (
             <div className="node-detail-card node-detail-card-hardware">

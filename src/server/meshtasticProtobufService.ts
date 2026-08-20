@@ -919,6 +919,13 @@ export class MeshtasticProtobufService {
           return MeshBeacon.decode(payload);
         }
 
+        case PortNum.NODE_STATUS_APP: {
+          // StatusMessage (firmware 2.7.20+/2.8, #4818): the node's self-set
+          // status string (max 80 chars), broadcast on change and ~every 12h.
+          const StatusMessage = root.lookupType('meshtastic.StatusMessage');
+          return StatusMessage.decode(payload);
+        }
+
         case PortNum.ATAK_PLUGIN: {
           // TAKPacket (ATAK plugin, portnum 72): oneof PLI/GeoChat/detail payload_variant.
           const TAKPacket = root.lookupType('meshtastic.TAKPacket');

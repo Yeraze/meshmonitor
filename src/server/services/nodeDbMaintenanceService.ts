@@ -76,6 +76,14 @@ export function mapDbNodeToDeviceInfo(node: any, uptimeSeconds?: number, noiseFl
     deviceInfo.hopsAway = node.hopsAway;
   }
 
+  // Status Message (#4818): the node's self-broadcast status (NODE_STATUS_APP).
+  // null when the node cleared it — omit rather than send null so the client's
+  // "has a status?" check is a simple truthiness test.
+  if (node.nodeStatus) {
+    deviceInfo.nodeStatus = node.nodeStatus;
+    deviceInfo.nodeStatusUpdatedAt = node.nodeStatusUpdatedAt ?? undefined;
+  }
+
   // Add lastMessageHops if it exists (for "All messages" hop calculation mode)
   if (node.lastMessageHops !== null && node.lastMessageHops !== undefined) {
     deviceInfo.lastMessageHops = node.lastMessageHops;
