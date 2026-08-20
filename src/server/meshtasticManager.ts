@@ -303,6 +303,24 @@ export interface MeshMessage {
   rxRssi?: number;
 }
 
+/**
+ * Minimal decoded-MeshPacket shape read by `maybeRecordHeardReflood` (#4816
+ * Phase 4 WP2). The full packet stays `any` elsewhere in this file (no shared
+ * TS type for protobuf.js decoded messages), but this new method only needs
+ * these five fields, so it gets a narrow type instead of adding another
+ * `no-explicit-any` site. `from`/`id` are `number | bigint` because
+ * protobuf.js may decode uint32/uint64 fields either way depending on the
+ * field's proto type.
+ */
+type HeardRefloodPacket = {
+  from?: number | bigint | null;
+  id?: number | bigint | null;
+  relayNode?: number | null;
+  rxSnr?: number | null;
+  viaMqtt?: boolean;
+  transportMechanism?: number;
+};
+
 type TextMessage = {
   id: string;
   fromNodeNum: number;
@@ -5022,6 +5040,54 @@ class MeshtasticManager implements ISourceManager {
   }
 
   /**
+   * Record a Meshtastic "Heard-By" re-flood (#4816 Phase 4 WP2): a neighbour
+   * rebroadcasting OUR OWN outgoing channel packet, overheard back by us. This
+   * is the exact inverse of the local-node spoof case computed by
+   * {@link assessLocalSpoof} — same RF markers, `from == us`, but the packet
+   * id IS one we recently originated (`sentPacketIds`), so it's a benign echo
+   * rather than an impersonation.
+   *
+   * Deliberately independent of `packet_log_enabled` (called outside that
+   * gate in {@link processMeshPacket}) so the Delivery Details modal has data
+   * to show even for users who never turn packet logging on, and so rows
+   * survive packet_log's count/age pruning. A diagnostics write must never
+   * break the RX path: failures are swallowed and logged, never thrown.
+   */
+  private async maybeRecordHeardReflood(meshPacket: HeardRefloodPacket, spoof: SpoofDetectionResult): Promise<void> {
+    try {
+      const localNodeNum = this.localNodeInfo?.nodeNum ?? null;
+      if (localNodeNum === null) return;
+
+      const fromNum = meshPacket.from ? Number(meshPacket.from) : 0;
+      if (fromNum !== localNodeNum) return; // not claiming to be us
+
+      const packetId = meshPacket.id !== null && meshPacket.id !== undefined ? Number(meshPacket.id) : null;
+      if (!this.sentPacketIds.has(packetId)) return; // not a packet we originated → not a re-flood
+
+      if (spoof.isGenuineLocalTx) return; // our own direct TX, not an overheard echo
+
+      const viaMqtt = meshPacket.viaMqtt === true || isViaMqtt(meshPacket.transportMechanism);
+      if (viaMqtt) return; // MQTT-bridge echo, not a LoRa repeater
+
+      const relayNode = meshPacket.relayNode;
+      if (relayNode === null || relayNode === undefined) return;
+      const relayByte = Number(relayNode);
+      if (relayByte === 0) return; // 0 = firmware didn't stamp a relayer; record nothing rather than guess
+
+      const messageId = `${this.sourceId}_${fromNum}_${packetId}`;
+      await databaseService.meshtasticHeardRepeaters.recordHeardRepeater({
+        sourceId: this.sourceId,
+        messageId,
+        relayByte,
+        snr: meshPacket.rxSnr ?? null,
+        heardAt: Date.now(),
+      });
+    } catch (err) {
+      logger.debug('📡 Failed to record Heard-By re-flood (non-fatal):', err);
+    }
+  }
+
+  /**
    * Get cached remote node config
    * @param nodeNum The remote node number
    * @returns The cached config for the remote node, or null if not available
@@ -5900,6 +5966,12 @@ class MeshtasticManager implements ISourceManager {
     } catch (error) {
       logger.error('❌ Failed to log packet:', error);
     }
+
+    // Heard-By re-flood correlation (#4816 Phase 4 WP2). Deliberately OUTSIDE
+    // the packet_log_enabled gate above — this diagnostic must work whether or
+    // not packet logging is on (see meshtasticHeardRepeaters repo header).
+    // Non-blocking: never delay packet processing on a diagnostics write.
+    void this.maybeRecordHeardReflood(meshPacket, this.assessLocalSpoof(meshPacket));
 
     // Extract node information if available
     // Note: Only update technical fields (SNR/RSSI/lastHeard/channel), not names
