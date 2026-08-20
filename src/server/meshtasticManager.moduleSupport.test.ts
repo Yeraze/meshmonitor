@@ -51,27 +51,22 @@ function makeManager(firmwareVersion: string | undefined) {
 }
 
 describe('MeshtasticManager — module support gating (firmware version, not config presence)', () => {
-  describe('supportsTrafficManagement (>= 2.7.26)', () => {
-    // The firmware set-config handler is develop-only (meshtastic/firmware
-    // PR #9358) and is NOT in any release through the latest pre-release 2.7.25,
-    // so the gate must sit above the latest release. See issue #3491.
-    it('returns false for 2.7.25 (latest pre-release — no firmware handler)', () => {
-      expect((makeManager('2.7.25') as any).supportsTrafficManagement()).toBe(false);
+  describe('supportsTrafficManagement (>= 2.8.0)', () => {
+    // Traffic Management is develop/2.8-only (meshtastic/firmware PR #9358).
+    // The released v2.7.26 tag does not contain the module or AdminModule handler.
+    it('returns false for 2.7.26 (released without the firmware module)', () => {
+      expect((makeManager('2.7.26') as any).supportsTrafficManagement()).toBe(false);
     });
 
-    it('returns false for 2.7.22 (the previous, incorrect threshold)', () => {
-      expect((makeManager('2.7.22') as any).supportsTrafficManagement()).toBe(false);
+    it('returns false with a 2.7.26 git suffix', () => {
+      expect((makeManager('2.7.26.abc1234') as any).supportsTrafficManagement()).toBe(false);
     });
 
-    it('returns true for the exact threshold 2.7.26', () => {
-      expect((makeManager('2.7.26') as any).supportsTrafficManagement()).toBe(true);
+    it('returns false for later 2.7.x builds', () => {
+      expect((makeManager('2.7.99') as any).supportsTrafficManagement()).toBe(false);
     });
 
-    it('returns true with a git suffix (2.7.26.abc1234)', () => {
-      expect((makeManager('2.7.26.abc1234') as any).supportsTrafficManagement()).toBe(true);
-    });
-
-    it('returns true for a newer release (2.8.0)', () => {
+    it('returns true for the exact threshold 2.8.0', () => {
       expect((makeManager('2.8.0') as any).supportsTrafficManagement()).toBe(true);
     });
 
@@ -103,13 +98,13 @@ describe('MeshtasticManager — module support gating (firmware version, not con
     // StatusMessage configured sends an all-default config. Proto3 omits an
     // all-default sub-message, so actualModuleConfig has no trafficManagement /
     // statusmessage key. Support MUST still be reported based on firmware version.
-    it('reports trafficManagement and statusmessage supported on 2.7.26 with empty module config', () => {
+    it('reports trafficManagement unsupported but statusmessage supported on 2.7.26 with empty config', () => {
       const mgr = makeManager('2.7.26');
       (mgr as any).actualModuleConfig = {}; // no trafficManagement / statusmessage keys (Proto3 omitted)
 
       const { supportedModules } = mgr.getCurrentConfig();
 
-      expect(supportedModules.trafficManagement).toBe(true);
+      expect(supportedModules.trafficManagement).toBe(false);
       expect(supportedModules.statusmessage).toBe(true);
     });
 
@@ -142,7 +137,7 @@ describe('MeshtasticManager — module support gating (firmware version, not con
 
       const { supportedModules } = mgr.getCurrentConfig();
 
-      expect(supportedModules.trafficManagement).toBe(false); // needs >= 2.7.26
+      expect(supportedModules.trafficManagement).toBe(false); // needs >= 2.8.0
       expect(supportedModules.statusmessage).toBe(true); // needs >= 2.7.20
     });
   });
