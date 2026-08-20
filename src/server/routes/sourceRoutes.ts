@@ -25,7 +25,7 @@ import {
 import { getSourcePkiKeyStore, isPkiDmDecryptionGloballyEnabled } from '../services/sourcePkiKeyStore.js';
 import { mqttGeoSweepService, type GeoSweepStatsSink } from '../services/mqttGeoSweepService.js';
 import type { MqttFilterConfig } from '../mqttPacketFilter.js';
-import { fail } from '../utils/apiResponse.js';
+import { ok, fail } from '../utils/apiResponse.js';
 import { normalizeBrokerUrl } from '../transports/mqttBrokerClient.js';
 
 const router = Router();
@@ -1433,6 +1433,21 @@ router.get('/:id/messages', requirePermission('messages', 'read', { sourceIdFrom
   } catch (error) {
     logger.error('Error fetching messages for source:', error);
     res.status(500).json({ error: 'Failed to fetch messages' });
+  }
+});
+
+// GET /api/sources/:id/messages/:messageId/events — delivery event timeline
+// for one message (Delivery Diagnostics epic #4816, Phase 3). Protocol-neutral:
+// the message_events table is keyed by (sourceId, messageId) regardless of
+// protocol, so this one route serves both Meshtastic and MeshCore modals.
+// Fetched only on modal open — does not touch list payloads.
+router.get('/:id/messages/:messageId/events', optionalAuth(), requirePermission('messages', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const events = await databaseService.messageEvents.getEventsForMessage(req.params.id, req.params.messageId);
+    return ok(res, { events });
+  } catch (error) {
+    logger.error('Error fetching message events for source:', error);
+    return fail(res, 500, 'MESSAGE_EVENTS_FETCH_FAILED', 'Failed to fetch message events');
   }
 });
 
