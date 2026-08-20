@@ -166,6 +166,7 @@ import { migration as fixEnvCurrentUnitMigration, runMigration148Postgres, runMi
 import { migration as addNodeStatusMigration, runMigration149Postgres, runMigration149Mysql } from '../server/migrations/149_add_node_status.js';
 import { migration as addRoutingErrorCodeMigration, runMigration150Postgres, runMigration150Mysql } from '../server/migrations/150_add_routing_error_code.js';
 import { migration as createMessageEventsMigration, runMigration151Postgres, runMigration151Mysql } from '../server/migrations/151_create_message_events.js';
+import { migration as createMeshtasticHeardRepeatersMigration, runMigration152Postgres, runMigration152Mysql } from '../server/migrations/152_create_meshtastic_heard_repeaters.js';
 
 // ============================================================================
 // Registry
@@ -2416,4 +2417,21 @@ registry.register({
   sqlite: (db) => createMessageEventsMigration.up(db),
   postgres: (client) => runMigration151Postgres(client),
   mysql: (pool) => runMigration151Mysql(pool),
+});
+
+// Migration 152: create `meshtastic_heard_repeaters` — repeaters that
+// re-flooded our own outgoing Meshtastic channel packet and were overheard
+// back by us, with observed SNR (Meshtastic Heard-By, #4816 Phase 4 WP1).
+// The Meshtastic analog of `meshcore_heard_repeaters` (migration 102).
+// Idempotent, no backfill — starts empty; populated by a live-RX ingest hook
+// (WP2) independent of the opt-in packet_log_enabled gate.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 152,
+  name: 'create_meshtastic_heard_repeaters',
+  settingsKey: 'migration_152_create_meshtastic_heard_repeaters',
+  sqlite: (db) => createMeshtasticHeardRepeatersMigration.up(db),
+  postgres: (client) => runMigration152Postgres(client),
+  mysql: (pool) => runMigration152Mysql(pool),
 });

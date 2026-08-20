@@ -20,11 +20,12 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useDialogA11y } from '../../hooks/useDialogA11y';
 import { useMessageEvents } from '../../hooks/useMessageEvents';
+import { useMeshtasticHeardBy } from '../../hooks/useMeshtasticHeardBy';
 import { describeMeshtasticDelivery } from '../../utils/deliveryDiagnostics/meshtasticDelivery';
 import { describeMeshCoreDelivery } from '../../utils/deliveryDiagnostics/meshcoreDelivery';
 import { getRoutingErrorName } from '../../utils/routingErrors';
 import type { DeliveryTone, DiagField, Provenance } from '../../utils/deliveryDiagnostics/types';
-import type { MeshMessage, MessageEvent, MessageEventType } from '../../types/message';
+import type { MeshMessage, MeshtasticHeardByEntry, MessageEvent, MessageEventType } from '../../types/message';
 import type { MeshCoreMessage } from '../MeshCore/hooks/useMeshCore';
 import styles from './DeliveryDetailsModal.module.css';
 
@@ -148,6 +149,57 @@ const TimelineRow: React.FC<{ event: MessageEvent }> = ({ event }) => {
   );
 };
 
+/**
+ * One row for a Meshtastic re-flood observation.
+ *
+ * `relayByte` is only the last byte of the relaying node's nodeNum, so
+ * identity is inherently ambiguous (#4816 Phase 4 WP3/WP4). This row is the
+ * honesty boundary: it must NEVER collapse an ambiguous set of candidates
+ * down to a single asserted name.
+ *
+ *   - 1 candidate  -> show that node's name (longName, falling back to
+ *     shortName) alongside the raw hex.
+ *   - >1 candidates -> show "{{count}} possible relays" plus the raw hex,
+ *     with the candidate names listed on a secondary line.
+ *   - 0 candidates -> show "Unknown relay" plus the raw hex; the hex is the
+ *     only fact we actually have.
+ *
+ * The raw `relayByteHex` is always rendered, in every branch.
+ */
+const MeshtasticHeardByRow: React.FC<{ entry: MeshtasticHeardByEntry }> = ({ entry }) => {
+  const { t } = useTranslation();
+  const candidates = entry.candidates;
+
+  let nameLabel: string;
+  if (candidates.length === 1) {
+    nameLabel = candidates[0].longName || candidates[0].shortName || entry.relayByteHex;
+  } else if (candidates.length > 1) {
+    nameLabel = t('delivery_details.heard_by.possible_relays', '{{count}} possible relays', {
+      count: candidates.length,
+    });
+  } else {
+    nameLabel = t('delivery_details.heard_by.unknown_relay', 'Unknown relay');
+  }
+
+  return (
+    <li className={styles.heardByItem}>
+      <span className={styles.heardByName}>{nameLabel}</span>
+      <span className={styles.heardByHex}>{entry.relayByteHex}</span>
+      {typeof entry.snr === 'number' && (
+        <span className={styles.heardBySnr}>({entry.snr} dB)</span>
+      )}
+      <ProvenanceBadge provenance="observed" />
+      {candidates.length > 1 && (
+        <span className={styles.note}>
+          {candidates
+            .map((c) => c.longName || c.shortName || `!${c.nodeNum.toString(16).padStart(8, '0')}`)
+            .join(', ')}
+        </span>
+      )}
+    </li>
+  );
+};
+
 const DeliveryDetailsModal: React.FC<Props> = ({ protocol, sourceId, message, onClose }) => {
   const { t } = useTranslation();
   const { contentRef, onKeyDown } = useDialogA11y(onClose);
@@ -160,13 +212,27 @@ const DeliveryDetailsModal: React.FC<Props> = ({ protocol, sourceId, message, on
 
   const protocolLabel = PROTOCOL_LABEL[protocol];
 
-  // MeshCore Propagation (heard-by) is only meaningful for channel sends —
-  // an outgoing DM has no self-echo re-flood to correlate against, so the
+  // Propagation (heard-by) is only meaningful for channel sends — an
+  // outgoing DM has no self-echo re-flood to correlate against (Meshtastic:
+  // an ACK proves delivery instead; MeshCore: same reasoning), so the
   // section is omitted entirely rather than showing a misleading "none".
   const mcMessage = protocol === 'meshcore' ? (message as MeshCoreMessage) : null;
   const isMeshCoreDirectMessage = mcMessage ? Boolean(mcMessage.toPublicKey) : false;
-  const showPropagation = protocol === 'meshcore' && !isMeshCoreDirectMessage;
+  const mtMessage = protocol === 'meshtastic' ? (message as MeshMessage) : null;
+  // A Meshtastic channel message has a numeric channel >= 0; a DM is -1. Guard
+  // an undefined channel so "unknown" is not treated as a channel message.
+  const isMeshtasticChannelMessage =
+    mtMessage !== null && typeof mtMessage.channel === 'number' && mtMessage.channel !== -1;
+  const showMeshCorePropagation = protocol === 'meshcore' && !isMeshCoreDirectMessage;
+  const showPropagation = showMeshCorePropagation || isMeshtasticChannelMessage;
   const heardBy = description.heardBy ?? [];
+  // Query stays disabled (see useMeshtasticHeardBy's own `enabled` gate)
+  // unless this is actually a Meshtastic channel message.
+  const {
+    heardBy: mtHeardBy,
+    isLoading: mtHeardByLoading,
+    isError: mtHeardByError,
+  } = useMeshtasticHeardBy(sourceId, isMeshtasticChannelMessage ? message.id : '');
 
   return (
     <div className={styles.overlay} onClick={onClose} role="presentation">
@@ -225,7 +291,27 @@ const DeliveryDetailsModal: React.FC<Props> = ({ protocol, sourceId, message, on
                   'Observed by MeshMonitor through repeater re-flood correlation. This confirms the packet propagated through parts of the mesh — it is NOT recipient-specific proof of delivery.',
                 )}
               </p>
-              {heardBy.length === 0 ? (
+              {isMeshtasticChannelMessage ? (
+                mtHeardByLoading ? (
+                  <p className={styles.propagationEmpty}>
+                    {t('delivery_details.heard_by.loading', 'Checking observed propagation…')}
+                  </p>
+                ) : mtHeardByError ? (
+                  <p className={styles.propagationEmpty}>
+                    {t('delivery_details.heard_by.error', 'Heard-by data unavailable')}
+                  </p>
+                ) : mtHeardBy.length === 0 ? (
+                  <p className={styles.propagationEmpty}>
+                    {t('delivery_details.heard_by.none', 'No re-flood observed')}
+                  </p>
+                ) : (
+                  <ul className={styles.heardByList}>
+                    {mtHeardBy.map((entry) => (
+                      <MeshtasticHeardByRow key={`${entry.relayByte}-${entry.heardAt}`} entry={entry} />
+                    ))}
+                  </ul>
+                )
+              ) : heardBy.length === 0 ? (
                 <p className={styles.propagationEmpty}>
                   {t('delivery_details.heard_by.none', 'No re-flood observed')}
                 </p>

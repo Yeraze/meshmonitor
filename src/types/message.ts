@@ -93,3 +93,31 @@ export interface MessageEvent {
   /** Row write time (Unix ms). */
   createdAt: number;
 }
+
+/**
+ * Meshtastic Heard-By entry (Delivery Diagnostics epic #4816, Phase 4 WP3).
+ *
+ * One row per relay byte that re-flooded our own outgoing channel message and
+ * was overheard back by us. `relayByte` is only the last byte of the
+ * relaying node's nodeNum (Meshtastic protobuf `relay_node`), so identity is
+ * inherently ambiguous — `candidates` lists every node on this source whose
+ * `nodeNum & 0xFF` matches, never a single asserted node.
+ */
+export interface MeshtasticHeardByEntry {
+  /** Last byte of the relayer's nodeNum (1-255; 0/unknown rows are never persisted). */
+  relayByte: number;
+  /** `relayByte` formatted as `0xNN` for display. */
+  relayByteHex: string;
+  /** SNR observed by us for this re-flood; null when unavailable. */
+  snr: number | null;
+  /** Unix ms the re-flood was heard. */
+  heardAt: number;
+  /** Nodes on this source whose `nodeNum & 0xFF` matches `relayByte`. */
+  candidates: MeshtasticHeardByCandidate[];
+}
+
+export interface MeshtasticHeardByCandidate {
+  nodeNum: number;
+  longName?: string;
+  shortName?: string;
+}

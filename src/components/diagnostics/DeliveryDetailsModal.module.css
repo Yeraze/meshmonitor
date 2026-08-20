@@ -231,6 +231,12 @@
   font-family: var(--font-mono);
 }
 
+.heardByHex {
+  color: var(--color-text-subtle);
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+}
+
 .heardBySnr {
   color: var(--color-text-subtle);
 }
