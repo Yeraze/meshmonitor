@@ -100,7 +100,7 @@ describe('SitePlannerPanel', () => {
 
     await user.click(screen.getByTestId('site-planner-run'));
 
-    await waitFor(() => expect(post).toHaveBeenCalledWith('/rf/coverage', expect.objectContaining({
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/api/rf/coverage', expect.objectContaining({
       origin: { lat: 30, lng: -97 },
       txPowerDbm: 27,
     })));
@@ -150,7 +150,7 @@ describe('SitePlannerPanel', () => {
     await user.type(input, '868');
     await user.click(screen.getByTestId('site-planner-run'));
 
-    await waitFor(() => expect(post).toHaveBeenCalledWith('/rf/coverage',
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/api/rf/coverage',
       expect.objectContaining({ frequencyHz: 868e6 })));
   });
 
