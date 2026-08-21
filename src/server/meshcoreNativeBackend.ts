@@ -1092,6 +1092,11 @@ export class MeshCoreNativeBackend extends EventEmitter {
             outPathByteCount = (rawLen & 0x3F) * hopHashBytes;
           }
           const { outPathHex, pathLen } = formatOutPath(ct.outPath, outPathByteCount, hopHashBytes);
+          // ContactInfo.flags bit 0 (mask 0x01) is the firmware "favourite"
+          // bit; the upper bits are per-contact telemetry permissions. Surface
+          // both so the manager can mirror the device favourite into
+          // meshcore_nodes.isFavorite and preserve the upper bits on write.
+          const flags = typeof ct.flags === 'number' ? ct.flags : 0;
           return {
             public_key: bytesToHex(ct.publicKey),
             adv_name: ct.advName,
@@ -1102,6 +1107,8 @@ export class MeshCoreNativeBackend extends EventEmitter {
             last_advert: ct.lastAdvert,
             out_path: outPathHex,
             path_len: pathLen,
+            flags,
+            favorite: (flags & 0x01) === 0x01,
           };
         });
       }
@@ -1531,6 +1538,61 @@ export class MeshCoreNativeBackend extends EventEmitter {
           );
         }
         return { ok: true };
+      }
+
+      case 'set_contact_favorite': {
+        // Set/clear the firmware "favourite" bit (ContactInfo.flags bit 0,
+        // mask 0x01) on an existing device contact via CMD_ADD_UPDATE_CONTACT
+        // (opcode 9). The firmware's contact-table eviction skips favourited
+        // contacts (BaseChatMesh.cpp), so this is what actually protects a
+        // node from being dropped when the table fills — MeshMonitor's local
+        // meshcore_nodes.isFavorite column alone never did (#4838).
+        //
+        // Read-modify-write: bit 0 is the favourite flag, bits 1..7 are the
+        // per-contact telemetry-permission bits (firmware reads them as
+        // `flags >> 1`), so we preserve the existing flags byte and only
+        // toggle the LSB. addOrUpdateContact overwrites ALL contact fields, so
+        // we re-send the record's current type/path/name/advert/coords
+        // unchanged (same pattern as set_out_path). Local serial write — it
+        // updates the saved contact table and puts nothing on the radio.
+        const publicKey = await this.resolvePublicKey(params.public_key as string);
+        if (!publicKey) throw new Error('Set-favorite target not found');
+        const favorite = params.favorite === true;
+        const contacts = (await c.getContacts()) as Array<{
+          publicKey: Uint8Array;
+          type: number;
+          flags?: number;
+          outPathLen: number;
+          outPath: Uint8Array;
+          advName: string;
+          lastAdvert: number;
+          advLat: number;
+          advLon: number;
+        }>;
+        const contact = contacts.find((ct) => bytesToHex(ct.publicKey) === bytesToHex(publicKey));
+        if (!contact) {
+          // Not in the device table (never synced, or already evicted). We
+          // can't set a flag on a record that doesn't exist — surface it so
+          // the caller keeps the local star but knows the device isn't
+          // protecting the contact yet.
+          throw new Error('Favorite target not in device contact list');
+        }
+        const currentFlags = typeof contact.flags === 'number' ? contact.flags : 0;
+        const newFlags = (favorite ? (currentFlags | 0x01) : (currentFlags & ~0x01)) & 0xff;
+        if (newFlags !== currentFlags) {
+          await c.addOrUpdateContact(
+            contact.publicKey,
+            contact.type,
+            newFlags,
+            contact.outPathLen,
+            contact.outPath,
+            contact.advName,
+            contact.lastAdvert,
+            contact.advLat,
+            contact.advLon,
+          );
+        }
+        return { ok: true, favorite, flags: newFlags };
       }
 
       case 'send_message': {

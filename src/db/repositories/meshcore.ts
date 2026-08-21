@@ -437,9 +437,10 @@ export class MeshCoreRepository extends BaseRepository {
   }
 
   /**
-   * Set the server-side favorite flag for a (sourceId, publicKey) node
-   * (migration 094). MeshCore firmware has no native favorite concept, so
-   * this only ever touches local state — there is no device round-trip.
+   * Set the local favorite flag for a (sourceId, publicKey) node
+   * (migration 094). This repository method only writes local state; syncing
+   * the firmware favourite bit to the device (#4838) is handled separately by
+   * `MeshCoreManager.setNodeFavorite`.
    *
    * Inserts a stub row if one doesn't yet exist, because the user may
    * favorite a node that has only been seen in-memory (the same situation

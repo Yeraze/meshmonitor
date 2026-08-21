@@ -429,6 +429,116 @@ describe('MeshCoreNativeBackend', () => {
     ]);
   });
 
+  it('get_contacts surfaces the firmware favourite bit and raw flags', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+    conn.contactsResponse = [
+      // flags 0xA1 = favourite (bit 0) + telemetry-permission bits in the top.
+      { publicKey: Uint8Array.from([0xab, 0xcd, 0xef, ...new Array(29).fill(0)]), type: AdvType.Chat, advName: 'Fav', flags: 0xa1 },
+      // flags 0xA0 = same telemetry perms, favourite bit clear.
+      { publicKey: Uint8Array.from([0x11, 0x22, 0x33, ...new Array(29).fill(0)]), type: AdvType.Chat, advName: 'Plain', flags: 0xa0 },
+    ];
+
+    const resp = await backend.sendCommand('get_contacts', {});
+    expect(resp.success).toBe(true);
+    expect(resp.data[0]).toEqual(expect.objectContaining({ flags: 0xa1, favorite: true }));
+    expect(resp.data[1]).toEqual(expect.objectContaining({ flags: 0xa0, favorite: false }));
+  });
+
+  it('set_contact_favorite sets flags bit 0 while preserving the upper bits', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+    const key = Uint8Array.from([0xab, 0xcd, 0xef, ...new Array(29).fill(0)]);
+    // flags 0xA0 = telemetry-permission bits set, favourite bit clear.
+    conn.contactsResponse = [
+      { publicKey: key, type: AdvType.Repeater, flags: 0xa0, outPathLen: 0xff, outPath: new Uint8Array(64), advName: 'Rptr', lastAdvert: 42, advLat: 1, advLon: 2 },
+    ];
+
+    const resp = await backend.sendCommand('set_contact_favorite', {
+      public_key: 'abcdef' + '00'.repeat(29),
+      favorite: true,
+    });
+    expect(resp.success).toBe(true);
+    expect(resp.data).toEqual(expect.objectContaining({ favorite: true, flags: 0xa1 }));
+    // Read-modify-write: only the favourite LSB flipped; every other field
+    // re-sent unchanged so the device record isn't clobbered.
+    expect(conn.addOrUpdateContactCalls).toHaveLength(1);
+    const [pk, type, flags, outPathLen, , advName, lastAdvert, advLat, advLon] = conn.addOrUpdateContactCalls[0];
+    expect(Buffer.from(pk as Uint8Array).toString('hex')).toBe('abcdef' + '00'.repeat(29));
+    expect(type).toBe(AdvType.Repeater);
+    expect(flags).toBe(0xa1);
+    expect(outPathLen).toBe(0xff);
+    expect(advName).toBe('Rptr');
+    expect(lastAdvert).toBe(42);
+    expect(advLat).toBe(1);
+    expect(advLon).toBe(2);
+  });
+
+  it('set_contact_favorite clears flags bit 0 while preserving the upper bits', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+    const key = Uint8Array.from([0xab, 0xcd, 0xef, ...new Array(29).fill(0)]);
+    conn.contactsResponse = [
+      { publicKey: key, type: AdvType.Chat, flags: 0xa1, outPathLen: 0, outPath: new Uint8Array(64), advName: 'X', lastAdvert: 1, advLat: 0, advLon: 0 },
+    ];
+
+    const resp = await backend.sendCommand('set_contact_favorite', {
+      public_key: 'abcdef' + '00'.repeat(29),
+      favorite: false,
+    });
+    expect(resp.success).toBe(true);
+    expect(resp.data).toEqual(expect.objectContaining({ favorite: false, flags: 0xa0 }));
+    expect(conn.addOrUpdateContactCalls[0][2]).toBe(0xa0);
+  });
+
+  it('set_contact_favorite is a no-op write when the bit is already in the desired state', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+    conn.contactsResponse = [
+      { publicKey: Uint8Array.from([0xab, 0xcd, 0xef, ...new Array(29).fill(0)]), type: AdvType.Chat, flags: 0x01, outPathLen: 0, outPath: new Uint8Array(64), advName: 'Y', lastAdvert: 1, advLat: 0, advLon: 0 },
+    ];
+
+    const resp = await backend.sendCommand('set_contact_favorite', {
+      public_key: 'abcdef' + '00'.repeat(29),
+      favorite: true,
+    });
+    expect(resp.success).toBe(true);
+    expect(conn.addOrUpdateContactCalls).toHaveLength(0);
+  });
+
+  it('set_contact_favorite fails when the contact is not in the device table', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+    conn.contactsResponse = [];
+
+    const resp = await backend.sendCommand('set_contact_favorite', {
+      public_key: 'abcdef' + '00'.repeat(29),
+      favorite: true,
+    });
+    expect(resp.success).toBe(false);
+    expect(resp.error).toMatch(/not in device contact list/i);
+  });
+
   it('routes broadcast send_message to channel 0', async () => {
     const backend = new MeshCoreNativeBackend('src-1', {
       connectionType: 'serial',

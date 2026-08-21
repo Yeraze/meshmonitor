@@ -245,10 +245,11 @@ export interface MeshCoreActions {
   /** Remove a contact from the device's contact list. Resolves `true` when
    *  the device ACKed the removal; `false` for any error. */
   removeContact: (publicKey: string) => Promise<boolean>;
-  /** Toggle the server-side favorite flag for a node (issue #3588). MeshCore
-   *  has no native favorite concept, so this persists locally only and never
-   *  touches the device. Favorited nodes pin to the top of the node list.
-   *  Resolves `true` on success. */
+  /** Toggle the favorite flag for a node (issue #3588). Persists the local
+   *  favorite (which pins the node to the top of the list) and, for a
+   *  connected Companion source, also sets the firmware favourite bit so the
+   *  contact is protected from contact-table eviction (#4838). Resolves `true`
+   *  on success. */
   setNodeFavorite: (publicKey: string, isFavorite: boolean) => Promise<boolean>;
   /** Export a contact as a signed advert blob for sharing. Pass 'self' to
    *  export the local node's identity. Returns the raw bytes or null. */

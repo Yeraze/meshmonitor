@@ -125,8 +125,8 @@ describe('meshcoreTx denylist completeness (#4547)', () => {
 
   it('pins the current classification sizes (deliberate, like PER_SOURCE_KEYS_NOT_POSTABLE.size)', () => {
     expect(RF_BRIDGE_COMMANDS.size).toBe(14);
-    expect(SERIAL_ONLY_BRIDGE_COMMANDS.size).toBe(28);
-    expect(RF_BRIDGE_COMMANDS.size + SERIAL_ONLY_BRIDGE_COMMANDS.size).toBe(42);
+    expect(SERIAL_ONLY_BRIDGE_COMMANDS.size).toBe(29);
+    expect(RF_BRIDGE_COMMANDS.size + SERIAL_ONLY_BRIDGE_COMMANDS.size).toBe(43);
   });
 });
 
