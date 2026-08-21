@@ -80,16 +80,25 @@ const FieldRow: React.FC<{ field: DiagField }> = ({ field }) => {
   // Rendering rule (fixed by the WP1 field contract): a translatable enum
   // value wins via valueKey; otherwise the literal formatted value; otherwise
   // the honest Unknown placeholder — never a guess.
-  const displayValue = field.valueKey
-    ? t(field.valueKey)
-    : field.value ?? t('delivery_details.value.unknown', 'Unknown');
+  const hasValue = Boolean(field.valueKey) || field.value != null;
+  const displayValue = hasValue
+    ? field.valueKey
+      ? t(field.valueKey)
+      : field.value
+    : t('delivery_details.value.unknown', 'Unknown');
+
+  // Honest-labeling audit (Phase 5): when a field has no value it shows the
+  // "Unknown" placeholder, so its badge must read Unknown too — a nominal
+  // "Reported by protocol" badge next to an Unknown value overstates what we
+  // have. The field's declared provenance only applies when a value is present.
+  const provenance = hasValue ? field.provenance : 'unknown';
 
   return (
     <div className={styles.row}>
       <span className={styles.label}>{t(field.labelKey)}</span>
       <span className={styles.valueGroup}>
         <span className={styles.value}>{displayValue}</span>
-        <ProvenanceBadge provenance={field.provenance} />
+        <ProvenanceBadge provenance={provenance} />
         {field.noteKey && <span className={styles.note}>{t(field.noteKey)}</span>}
       </span>
     </div>

@@ -9,7 +9,7 @@
  * loading / error states).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createElement, type ReactNode } from 'react';
 import DeliveryDetailsModal from './DeliveryDetailsModal';
@@ -147,6 +147,24 @@ describe('DeliveryDetailsModal', () => {
     // protocol_result (exact routing code) and store_forward are ALWAYS
     // provenance:'unknown' + value:null this phase — never guessed.
     expect(screen.getAllByText('Unknown').length).toBeGreaterThan(0);
+  });
+
+  it('shows an Unknown provenance badge (not the nominal one) when a field has no value', () => {
+    // Honest-labeling audit (Phase 5): SNR is normally "Reported by protocol",
+    // but when rxSnr is absent the row shows the Unknown placeholder and its
+    // badge must read Unknown too — never "Reported by protocol: Unknown".
+    renderModal(
+      <DeliveryDetailsModal
+        protocol="meshtastic"
+        sourceId="source-a"
+        message={buildMeshtasticMessage({ rxSnr: undefined })}
+        onClose={vi.fn()}
+      />,
+    );
+    const snrRow = screen.getByText('delivery_details.field.snr').closest('div') as HTMLElement;
+    // Both the value and the badge render "Unknown" → two occurrences in the row.
+    expect(within(snrRow).getAllByText('Unknown').length).toBe(2);
+    expect(within(snrRow).queryByText('Reported by protocol')).toBeNull();
   });
 
   it('renders MeshCore protocol + status and omits Propagation for a DM (no toPublicKey re-flood signal)', () => {
