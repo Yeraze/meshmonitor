@@ -579,15 +579,28 @@ export class MessagesRepository extends BaseRepository {
    * Update message delivery state.
    *
    * `routingErrorCode` (#4816 Phase 2) is optional and defaults to being
-   * omitted from the update set entirely — the success/ack call sites
-   * (`'delivered'` / `'confirmed'`) never pass it, so the column stays NULL
-   * (or whatever it already was) rather than being clobbered. Only the
-   * failed-routing call site passes a concrete numeric RoutingError reason.
+   * omitted from the update set entirely — the failed-routing call site is
+   * the only one that passes a concrete numeric RoutingError reason, so the
+   * column stays NULL (or whatever it already was) rather than being
+   * clobbered on the other states.
+   *
+   * `ackMeta` (#4851) carries fields read directly off the ACK packet itself
+   * — who sent it, and the signal it was received with — for the Delivery
+   * Details popup's Identity/Signal sections. Only the destination-ACK
+   * ('confirmed') call site has a genuine over-the-air packet to read these
+   * from, so every other call site omits it and the columns stay untouched,
+   * same NULL-preserving contract as `routingErrorCode` above.
    */
   async updateMessageDeliveryState(
     requestId: number,
     deliveryState: 'delivered' | 'confirmed' | 'failed',
     routingErrorCode?: number | null,
+    ackMeta?: {
+      ackFromNode?: number | null;
+      relayNode?: number | null;
+      rxSnr?: number | null;
+      rxRssi?: number | null;
+    },
   ): Promise<boolean> {
     const { messages } = this.tables;
     const existing = await this.db
@@ -597,10 +610,21 @@ export class MessagesRepository extends BaseRepository {
 
     if (existing.length === 0) return false;
 
-    const updateSet: { deliveryState: string; routingErrorCode?: number | null } = { deliveryState };
+    const updateSet: {
+      deliveryState: string;
+      routingErrorCode?: number | null;
+      ackFromNode?: number | null;
+      relayNode?: number | null;
+      rxSnr?: number | null;
+      rxRssi?: number | null;
+    } = { deliveryState };
     if (routingErrorCode !== undefined) {
       updateSet.routingErrorCode = routingErrorCode;
     }
+    if (ackMeta?.ackFromNode !== undefined) updateSet.ackFromNode = ackMeta.ackFromNode;
+    if (ackMeta?.relayNode !== undefined) updateSet.relayNode = ackMeta.relayNode;
+    if (ackMeta?.rxSnr !== undefined) updateSet.rxSnr = ackMeta.rxSnr;
+    if (ackMeta?.rxRssi !== undefined) updateSet.rxRssi = ackMeta.rxRssi;
 
     await this.db
       .update(messages)
