@@ -183,9 +183,10 @@ class NotificationService {
     try {
       const hopsText = hopsAway !== undefined ? ` (${hopsAway} ${hopsAway === 1 ? 'hop' : 'hops'} away)` : '';
       const hwModelText = hwModel !== undefined ? ` - ${getHardwareModelName(hwModel) || 'Unknown'}` : '';
+      // #4845: title carries the service, body says which instance detected it.
       const payload: NotificationPayload = {
-        title: `[${sourceName}] 🆕 New Node Discovered`,
-        body: `[${sourceName}] ${longName} (${shortName})${hwModelText}${hopsText}`,
+        title: `New Meshtastic Node Detected`,
+        body: `${longName} (${shortName}) detected by ${sourceName}${hwModelText}${hopsText}`,
         type: 'info',
         sourceId,
         sourceName
@@ -223,9 +224,10 @@ class NotificationService {
   ): Promise<void> {
     try {
       const typeText = deviceTypeLabel ? ` - ${deviceTypeLabel}` : '';
+      // #4845: title carries the service, body says which instance detected it.
       const payload: NotificationPayload = {
-        title: `[${sourceName}] 🆕 New Node Discovered`,
-        body: `[${sourceName}] ${displayName}${typeText}`,
+        title: `New MeshCore Device Detected`,
+        body: `${displayName} detected by ${sourceName}${typeText}`,
         type: 'info',
         sourceId,
         sourceName

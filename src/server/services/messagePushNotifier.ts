@@ -49,6 +49,22 @@ export interface MessagePushInput {
 }
 
 /** Resolve a display name for the message's channel, including virtual (channel_database) ids. */
+/**
+ * Human-readable service label from a Source.type, for notification titles
+ * (#4845). Lets a mobile notification say "New Meshtastic Message" vs
+ * "New MeshCore Message" at a glance across a multi-source install.
+ */
+function serviceLabelFromSourceType(type: string | undefined): string {
+  switch (type) {
+    case 'meshcore': return 'MeshCore';
+    case 'meshtastic_tcp': return 'Meshtastic';
+    case 'mqtt_bridge':
+    case 'mqtt_broker': return 'MQTT';
+    case 'reticulum': return 'Reticulum';
+    default: return 'Mesh';
+  }
+}
+
 async function resolveChannelName(channelId: number, sourceId: string): Promise<string> {
   try {
     const channel = await databaseService.channels.getChannelById(channelId, sourceId);
@@ -105,11 +121,24 @@ export async function sendMessagePushNotification(input: MessagePushInput): Prom
     const fromNode = await databaseService.nodes.getNode(message.fromNodeNum);
     const senderName = fromNode?.longName || fromNode?.shortName || `Node ${message.fromNodeNum}`;
 
-    // Determine notification title and body
-    const body = messageText.length > 100 ? messageText.substring(0, 97) + '...' : messageText;
+    // Resolve the source (name + service type) so the notification can say
+    // which service, channel, and instance the message came from (#4845).
+    const source = await databaseService.sources.getSource(sourceId);
+    const sourceName = source?.name || sourceId;
+    const serviceLabel = serviceLabelFromSourceType(source?.type);
+
+    // Determine notification title and body (#4845):
+    //   Title: "New {Service} Message" / "New {Service} Direct Message"
+    //   Body:  line 1 "{Channel} • {Source}" (DM: just "{Source}")
+    //          line 2 "{Sender}: {text}"
+    const truncatedText = messageText.length > 100 ? messageText.substring(0, 97) + '...' : messageText;
     const title = isDirectMessage
-      ? `Direct Message from ${senderName}`
-      : `${senderName} in ${await resolveChannelName(message.channel, sourceId)}`;
+      ? `New ${serviceLabel} Direct Message`
+      : `New ${serviceLabel} Message`;
+    const locationLine = isDirectMessage
+      ? sourceName
+      : `${await resolveChannelName(message.channel, sourceId)} • ${sourceName}`;
+    const body = `${locationLine}\n${senderName}: ${truncatedText}`;
 
     // Build navigation data for push notification click handling.
     // `sourceId` is required for the cold-launch deep link: the service
@@ -128,10 +157,6 @@ export async function sendMessagePushNotification(input: MessagePushInput): Prom
           channelId: message.channel,
           messageId: message.id,
         };
-
-    // Phase B: resolve source name for prefixing
-    const source = await databaseService.sources.getSource(sourceId);
-    const sourceName = source?.name || sourceId;
 
     // Send notifications (Web Push + Apprise) with filtering to all subscribed users
     const result = await notificationService.broadcast({
