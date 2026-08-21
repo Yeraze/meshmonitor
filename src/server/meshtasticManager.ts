@@ -8574,7 +8574,18 @@ class MeshtasticManager implements ISourceManager {
           // ACK from target node - message confirmed received by recipient (only for DMs)
           if (fromNodeId === targetNodeId && isDM) {
             logger.debug(`✅ ACK received from TARGET node ${fromNodeId} for requestId ${requestId} - message confirmed`);
-            const updated = await databaseService.messages.updateMessageDeliveryState(requestId, 'confirmed');
+            // This ACK packet is a genuine over-the-air reception from the
+            // destination itself (unlike the own-radio 'delivered' ack above,
+            // which is a locally-synthesized notification with no real RF
+            // metadata) — persist who sent it and how it was received so the
+            // Delivery Details popup's Identity/Signal sections aren't stuck
+            // on "Unknown" for confirmed DMs (#4851).
+            const updated = await databaseService.messages.updateMessageDeliveryState(requestId, 'confirmed', undefined, {
+              ackFromNode: fromNum,
+              relayNode: meshPacket.relayNode ?? undefined,
+              rxSnr: meshPacket.rxSnr ?? meshPacket.rx_snr,
+              rxRssi: meshPacket.rxRssi ?? meshPacket.rx_rssi,
+            });
             if (updated) {
               logger.debug(`💾 Marked message ${requestId} as confirmed (received by target)`);
               // Emit WebSocket event for real-time delivery status update

@@ -352,7 +352,7 @@ describe('MeshtasticManager - delivery-diagnostics event recording (#4816 Phase 
       );
     });
 
-    it('records "confirmed" on the destination DM ack', async () => {
+    it('records "confirmed" on the destination DM ack, persisting who ACKed and its signal (#4851)', async () => {
       mockGetMessageByRequestId.mockResolvedValue({
         id: 'msg-confirmed-1',
         toNodeId: toNodeId(PEER),
@@ -360,10 +360,23 @@ describe('MeshtasticManager - delivery-diagnostics event recording (#4816 Phase 
         channel: -1,
       });
 
-      const packet = { from: PEER, to: LOCAL, rxTime: 0, decoded: { requestId: REQ_ID } };
+      const packet = {
+        from: PEER,
+        to: LOCAL,
+        rxTime: 0,
+        decoded: { requestId: REQ_ID },
+        relayNode: 0x4a,
+        rxSnr: 7.25,
+        rxRssi: -91,
+      };
       await (manager as any).processRoutingErrorMessage(packet, { errorReason: 0 });
 
-      expect(mockUpdateMessageDeliveryState).toHaveBeenCalledWith(REQ_ID, 'confirmed');
+      expect(mockUpdateMessageDeliveryState).toHaveBeenCalledWith(REQ_ID, 'confirmed', undefined, {
+        ackFromNode: PEER,
+        relayNode: 0x4a,
+        rxSnr: 7.25,
+        rxRssi: -91,
+      });
       expect(mockRecordEvent).toHaveBeenCalledTimes(1);
       expect(mockRecordEvent).toHaveBeenCalledWith(
         expect.objectContaining({
