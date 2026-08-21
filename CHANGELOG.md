@@ -6,10 +6,52 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.15.0] - 2026-08-21
+
 ### Added
-- **Telemetry graph CSV export** — each node telemetry graph and each Dashboard favorite chart gains a download control that exports the currently plotted series (display units, same averaged points shown on the chart) as UTF-8 CSV for Excel/spreadsheets. Optional solar and paxcounter columns are included only when present.
+- **Reticulum network support** — MeshMonitor can now bridge to and monitor a [Reticulum](https://reticulum.network/) network end to end: LXMF messaging, node position and telemetry, own-mode radio, and topology / remote monitoring. (Epic #3960, Phases 1–4)
+- **RF predictive coverage & Site Planner** — model the expected radio reach of a node or an arbitrary map point using a Fresnel-zone + path-loss model, sweep the parameters, and view the result as a map layer. A dedicated Site Planner panel makes predictive coverage reachable, seeded from the node's live LoRa config. (#4727)
+- **Passive network survey** — a reach, neighbours, and hop-distribution survey built entirely from traffic already received, so it costs the mesh no extra airtime. (#4726)
+- **Message Delivery Details** — click any message for delivery diagnostics: the exact Meshtastic RoutingError code, a per-message event timeline, and a Heard-By correlation showing which nodes relayed it, plus persisted ACK metadata for confirmed DMs. (Epic #4816; #4851, #4855)
+- **3D maps** — optional 3D terrain on the Mesh Map, Unified Map, and classic map; 3D node markers now match the 2D map (color, type glyphs, age dimming) and open node popups on click. (#4704, #4808)
+- **GNSS satellite constellation overlay** — a live sky plot and DOP map for a node's GPS/GNSS fix. (#4729)
+- **Satellite + labels (hybrid) map tiles** — a new base-tile option. (#4728)
+- **Node Status Messages** — receive and display the status text nodes broadcast. (#4818)
+- **MeshBeacon** — completed MeshBeacon + XEdDSA support, an actionable invitation card, and configurable broadcast interval and transmit region / broadcast targets. (#4689, #4723, #4802)
+- **Prometheus metrics endpoint** — scrape mesh-health metrics for Grafana / alerting. (#4757)
+- **Telemetry graph CSV export** — each node telemetry graph and each Dashboard favorite chart gains a download control that exports the currently plotted series (display units, same averaged points shown on the chart) as UTF-8 CSV for Excel/spreadsheets. Optional solar and paxcounter columns are included only when present. (#4771)
+- **Automation additions** — a **Run Now** action to fire an automation's actions immediately, a geofence anchored to a waypoint, and the triggering message shown in the run log. (#4827, #4722, #4711)
+- **Map & node-list additions** — a non-linear age filter with week/month reach, an Uptime sort in the node list, and a badge for nodes with incomplete NodeInfo. (#4770, #4814, #4720)
+- **MeshCore ⭐ favorite syncs to the firmware favourite bit**, bidirectionally. (#4838)
+- **Notifications now show the service, channel, and instance.** (#4845)
+- **Public-key mismatches are now explained**, not merely asserted, in the security UI. (#4738)
+- **Position-precision warning** — warn when a node's position precision exceeds the public-channel clamp. (#4705)
+- **More languages** — Polish and Traditional Chinese added to the language selector. (#4748, #4742)
+
+### Changed
+- **MapLibre GL upgraded from v5 to v6.** (#4650)
+- **Airtime neighbour averaging counts CLIENT_BASE nodes as infrastructure.** (#4822)
+- **Traffic Management configuration is gated on firmware 2.8.** (#4792)
 
 ### Fixed
+- **Relayed packets no longer attribute their RSSI/SNR to the source node** — signal stats from a relayed packet were being credited to the originating node. (#4849)
+- **Node metrics refresh from MQTT telemetry.** (#4755)
+- **MeshCore fixes** — telemetry honours the configured temperature unit (#3659), Trace Path preserves hop hash width (#4787), and channel 0 is reserved for the implicit Public channel (#4733).
+- **Traceroute channel resolution** — fixed three bypassing paths plus PSK/name gaps. (#4712)
+- **Firmware region names all resolve, and UNSET is no longer written back to radios.** (#4749)
+- **EnvironmentMetrics current is labelled mA, not A.** (#4780)
+- **Bearer API tokens are accepted on `requireAdmin` routes.** (#4784)
+- **Sign-in stays reachable** when landing on a source without connection permission. (#4829)
+- **Invisible links on sent message bubbles fixed.** (#4821)
+- **Mobile bottom nav stays tappable under the search modal**, plus three mobile/map CSS quirks. (#4774, #4776)
+- **Waypoints persist their virtual flag on edit.** (#4795)
+- **Packet log drops exact-duplicate receptions.** (#4811)
+- **NodeInfo position/telemetry history is recorded only for the local node.** (#4809)
+- **A virtual node no longer advertises a stale local node number after a num change.** (#4779)
+- **Automation fixes** — the `deviceReboot` target accepts `!hex` node IDs (#4826), and the MT↔MC bridge relays the operator's own messages and marks tapback/reply text (#4695, #4697).
+- **Position-history rendering and fetching are bounded.** (#4743)
+- **Asynchronous TCP socket write failures now propagate.** (#4692)
+- **Messages that mention `areyoumeshingwith.us` are no longer hidden.** (#4751)
 - **Map node popups render one card, not a card inside a card** — Leaflet's popup wrapper and the app's own node card both drew a background, border, radius and shadow, so a popup showed a double border with an uneven inset. The wrapper is now the only shell. Long popups also scroll their body under a pinned header instead of clipping the card, and are capped by the viewport on phones. (#4677)
 
 ## [4.14.1-rc3] - 2026-08-10
