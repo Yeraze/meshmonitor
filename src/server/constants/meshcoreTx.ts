@@ -33,6 +33,7 @@ export const RF_BRIDGE_COMMANDS: ReadonlySet<string> = new Set([
 export const SERIAL_ONLY_BRIDGE_COMMANDS: ReadonlySet<string> = new Set([
   'get_channels', 'set_channel', 'delete_channel',
   'get_self_info', 'get_contacts', 'remove_contact',
+  'set_contact_favorite', 'set_contacts_favorite',
   'export_contact', 'import_contact',
   'export_private_key', 'import_private_key',
   'set_name', 'set_radio', 'set_tx_power', 'set_coords',

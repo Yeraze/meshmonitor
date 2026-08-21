@@ -51,9 +51,10 @@ export interface DbMeshCoreNode {
   lastAdminCheck?: number | null;
   isLocalNode?: boolean | null;
   /**
-   * Server-side favorite flag (migration 094). MeshCore firmware has no
-   * native favorite concept, so this is stored locally only and never
-   * pushed to the device. Favorited nodes pin to the top of the node list.
+   * Favorite flag (migration 094). This column is the local favourite that
+   * pins the node to the top of the list; for a connected Companion source
+   * `MeshCoreManager.setNodeFavorite` also syncs the firmware favourite bit
+   * (ContactInfo.flags 0x01) so the contact is protected from eviction (#4838).
    */
   isFavorite?: boolean | null;
   /** Owning source id; required on writes since slice 1 (migration 056). */
@@ -437,9 +438,10 @@ export class MeshCoreRepository extends BaseRepository {
   }
 
   /**
-   * Set the server-side favorite flag for a (sourceId, publicKey) node
-   * (migration 094). MeshCore firmware has no native favorite concept, so
-   * this only ever touches local state — there is no device round-trip.
+   * Set the local favorite flag for a (sourceId, publicKey) node
+   * (migration 094). This repository method only writes local state; syncing
+   * the firmware favourite bit to the device (#4838) is handled separately by
+   * `MeshCoreManager.setNodeFavorite`.
    *
    * Inserts a stub row if one doesn't yet exist, because the user may
    * favorite a node that has only been seen in-memory (the same situation

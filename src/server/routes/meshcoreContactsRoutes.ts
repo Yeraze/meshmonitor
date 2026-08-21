@@ -976,10 +976,12 @@ router.patch(
  * Toggle the server-side favorite flag for a MeshCore node (any role:
  * Companion, Repeater, Room Server, …). Body: { isFavorite: boolean }.
  *
- * MeshCore firmware has no native favorite concept, so this persists locally
- * only and never pushes anything to the device (unlike Meshtastic, whose
- * favorite toggle round-trips a SetFavoriteNode admin message). Favorited
- * nodes pin to the top of the node list (issue #3588).
+ * Persists the local `meshcore_nodes.isFavorite` column (which pins the node
+ * to the top of the list) AND, for a connected Companion source, pushes the
+ * firmware favourite bit (ContactInfo.flags bit 0) to the device so the
+ * contact is protected from contact-table eviction (#4838). The device push is
+ * best-effort inside `setNodeFavorite`; the local star always sticks (issue
+ * #3588).
  *
  * Gated by `nodes:write` to match the Meshtastic favorite endpoint and the
  * other MeshCore node-mutation routes.
