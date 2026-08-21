@@ -7548,6 +7548,7 @@ class MeshtasticManager implements ISourceManager {
         meshPacket.hopStart ?? meshPacket.hop_start,
         meshPacket.hopLimit ?? meshPacket.hop_limit,
       );
+      const tenMinutesMs = 10 * 60 * 1000;
 
       // Only include SNR/RSSI if they have valid values.
       // Use the firmware-sentinel check (-128 = "no SNR") rather than a truthiness
@@ -7558,7 +7559,6 @@ class MeshtasticManager implements ISourceManager {
         // Save SNR as telemetry if it has changed OR if 10+ minutes have passed
         // This ensures we have historical data for stable links
         const latestSnrTelemetry = await databaseService.getLatestTelemetryForTypeAsync(nodeId, 'snr_local');
-        const tenMinutesMs = 10 * 60 * 1000;
         const shouldSaveSnr = !relayedReception && (!latestSnrTelemetry ||
                               latestSnrTelemetry.value !== meshPacket.rxSnr ||
                               (timestamp - latestSnrTelemetry.timestamp) >= tenMinutesMs);
@@ -7585,7 +7585,6 @@ class MeshtasticManager implements ISourceManager {
         // Save RSSI as telemetry if it has changed OR if 10+ minutes have passed
         // This ensures we have historical data for stable links
         const latestRssiTelemetry = await databaseService.getLatestTelemetryForTypeAsync(nodeId, 'rssi');
-        const tenMinutesMs = 10 * 60 * 1000;
         const shouldSaveRssi = !relayedReception && (!latestRssiTelemetry ||
                                latestRssiTelemetry.value !== meshPacket.rxRssi ||
                                (timestamp - latestRssiTelemetry.timestamp) >= tenMinutesMs);
