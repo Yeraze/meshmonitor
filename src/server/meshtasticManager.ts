@@ -50,6 +50,7 @@ import { isWithinTimeWindow } from './utils/timeWindow.js';
 import { compileUserRegex } from '../utils/safeRegex.js';
 import { shouldGateAutomations, averageStrongestNeighborUtilization, DEFAULT_AIRTIME_CUTOFF_THRESHOLD, DEFAULT_AIRTIME_CUTOFF_SOURCE, NEIGHBOR_UTIL_SAMPLE_COUNT, type AirtimeCutoffSource, type NeighborUtilContributor } from './utils/airtimeCutoff.js';
 import { resolveLastHopName } from './utils/lastHop.js';
+import { isRelayedReception } from './utils/packetHops.js';
 import { resolveLastHeardSec } from './utils/replayGuard.js';
 import { autoAckIsZeroHop, autoAckCellKey, resolveAutoAckReplyRouting } from './utils/autoAckDecision.js';
 import { hopCountEmoji, HOP_COUNT_EMOJIS } from '../utils/hopEmoji.js';
@@ -7535,6 +7536,20 @@ class MeshtasticManager implements ISourceManager {
       // Track if this packet was PKI encrypted (using the helper method)
       await this.trackPKIEncryption(meshPacket, fromNum);
 
+      // A relayed packet's rx_snr/rx_rssi describe the link to the LAST repeater,
+      // not the originating node, so recording them as this node's signal
+      // telemetry makes its chart swing to the repeater's signal (#4849). Skip
+      // the time-series inserts for known-relayed receptions; the current-value
+      // badge (nodeData.snr/rssi) is left as-is, and packet_log still records the
+      // real per-reception value with hop info. Unknown hop counts are treated as
+      // direct so we don't drop legitimate readings from transports that omit
+      // hop_start.
+      const relayedReception = isRelayedReception(
+        meshPacket.hopStart ?? meshPacket.hop_start,
+        meshPacket.hopLimit ?? meshPacket.hop_limit,
+      );
+      const tenMinutesMs = 10 * 60 * 1000;
+
       // Only include SNR/RSSI if they have valid values.
       // Use the firmware-sentinel check (-128 = "no SNR") rather than a truthiness
       // guard, so a legitimate 0 dB SNR from a directly-heard node is not dropped (#3590).
@@ -7544,10 +7559,9 @@ class MeshtasticManager implements ISourceManager {
         // Save SNR as telemetry if it has changed OR if 10+ minutes have passed
         // This ensures we have historical data for stable links
         const latestSnrTelemetry = await databaseService.getLatestTelemetryForTypeAsync(nodeId, 'snr_local');
-        const tenMinutesMs = 10 * 60 * 1000;
-        const shouldSaveSnr = !latestSnrTelemetry ||
+        const shouldSaveSnr = !relayedReception && (!latestSnrTelemetry ||
                               latestSnrTelemetry.value !== meshPacket.rxSnr ||
-                              (timestamp - latestSnrTelemetry.timestamp) >= tenMinutesMs;
+                              (timestamp - latestSnrTelemetry.timestamp) >= tenMinutesMs);
 
         if (shouldSaveSnr) {
           await databaseService.telemetry.insertTelemetry({
@@ -7571,10 +7585,9 @@ class MeshtasticManager implements ISourceManager {
         // Save RSSI as telemetry if it has changed OR if 10+ minutes have passed
         // This ensures we have historical data for stable links
         const latestRssiTelemetry = await databaseService.getLatestTelemetryForTypeAsync(nodeId, 'rssi');
-        const tenMinutesMs = 10 * 60 * 1000;
-        const shouldSaveRssi = !latestRssiTelemetry ||
+        const shouldSaveRssi = !relayedReception && (!latestRssiTelemetry ||
                                latestRssiTelemetry.value !== meshPacket.rxRssi ||
-                               (timestamp - latestRssiTelemetry.timestamp) >= tenMinutesMs;
+                               (timestamp - latestRssiTelemetry.timestamp) >= tenMinutesMs);
 
         if (shouldSaveRssi) {
           await databaseService.telemetry.insertTelemetry({
