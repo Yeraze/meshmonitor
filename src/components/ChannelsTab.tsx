@@ -631,11 +631,16 @@ export default function ChannelsTab({
                   const optionTitle = `${encryptionLabel}${locationLabel ? ` · ${locationLabel}` : ''}${
                     channelConfig?.uplinkEnabled ? ` · ${t('channels.mqtt_uplink', 'Uplink')}` : ''
                   }${channelConfig?.downlinkEnabled ? ` · ${t('channels.mqtt_downlink', 'Downlink')}` : ''}`;
+                  // Bell + count for unread channels. A native <option> cannot
+                  // host UiIcon (see the glyphs above), so mirror #4660's
+                  // channel-list bell here with the 🔔 emoji instead.
+                  // eslint-disable-next-line meshmonitor-ui/no-hardcoded-ui-glyph -- #4660 native <option> cannot host UiIcon
+                  const unreadBadge = unread > 0 ? ` 🔔${unread}` : '';
 
                   return (
                     <option key={channelId} value={channelId} title={optionTitle}>
                       {encryptionIcon}{locationIcon ? ` ${locationIcon}` : ''} {displayName} #{channelId} {uplink}
-                      {downlink} {unread > 0 ? `(${unread})` : ''}
+                      {downlink}{unreadBadge}
                     </option>
                   );
                 })}
