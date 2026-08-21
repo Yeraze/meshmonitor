@@ -23,7 +23,7 @@ vi.mock('../../services/database.js', () => ({
     nodes: { getNode: vi.fn(async () => ({ nodeNum: 0x0a0b0c0d, nodeId: '!0a0b0c0d', longName: 'Far Node', shortName: 'FAR' })) },
     channels: { getChannelById: vi.fn(async () => null) },
     channelDatabase: { getByIdAsync: vi.fn(async () => ({ id: 3, name: 'LongFast' })) },
-    sources: { getSource: vi.fn(async () => ({ id: 'bridge-1', name: 'Public Bridge' })) },
+    sources: { getSource: vi.fn(async () => ({ id: 'bridge-1', name: 'Public Bridge', type: 'meshtastic_tcp' })) },
   },
 }));
 
@@ -66,8 +66,10 @@ describe('sendMessagePushNotification', () => {
 
     expect(broadcast).toHaveBeenCalledTimes(1);
     const [payload, filterCtx] = (broadcast as any).mock.calls[0];
-    expect(payload.title).toContain('Far Node');
-    expect(payload.body).toBe('hello mesh');
+    // #4845: title carries the service; body carries channel • source then sender.
+    expect(payload.title).toBe('New Meshtastic Message');
+    expect(payload.body).toContain('Public Bridge');
+    expect(payload.body).toContain('Far Node: hello mesh');
     expect(payload.sourceId).toBe('bridge-1');
     expect(payload.sourceName).toBe('Public Bridge');
     expect(payload.data).toMatchObject({ type: 'channel', sourceId: 'bridge-1', channelId: 0 });
@@ -82,7 +84,11 @@ describe('sendMessagePushNotification', () => {
       sourceId: 'bridge-1',
     });
 
-    expect((broadcast as any).mock.calls[0][0].title).toBe('Far Node in LongFast');
+    const p = (broadcast as any).mock.calls[0][0];
+    expect(p.title).toBe('New Meshtastic Message');
+    // Virtual (channel_database) channel named, not its offset id (#4845 body line 1).
+    expect(p.body).toContain('LongFast • Public Bridge');
+    expect(p.body).toContain('Far Node: hi');
   });
 
   it('titles a DM and carries the sender node id for deep linking', async () => {
@@ -94,7 +100,11 @@ describe('sendMessagePushNotification', () => {
     });
 
     const payload = (broadcast as any).mock.calls[0][0];
-    expect(payload.title).toBe('Direct Message from Far Node');
+    // #4845: DM title carries the service; body drops the channel line (source only).
+    expect(payload.title).toBe('New Meshtastic Direct Message');
+    expect(payload.body).toContain('Public Bridge');
+    expect(payload.body).toContain('Far Node: psst');
+    expect(payload.body).not.toContain('•');
     expect(payload.data).toMatchObject({ type: 'dm', senderNodeId: '!0a0b0c0d' });
   });
 

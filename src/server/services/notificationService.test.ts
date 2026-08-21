@@ -170,16 +170,20 @@ describe('notificationService.notifyNewNode', () => {
     await notificationService.notifyNewNode('!abc123', 'Test Node', 'TN', 100, 1, 'src1', 'Source One');
     expect(mockPush.broadcastToPreferenceUsers).toHaveBeenCalledWith(
       'notifyOnNewNode',
-      expect.objectContaining({ title: expect.stringContaining('🆕 New Node Discovered') }),
+      expect.objectContaining({ title: 'New Meshtastic Node Detected' }),
       undefined,
       'src1'
     );
     expect(mockApprise.broadcastToPreferenceUsers).toHaveBeenCalledWith(
       'notifyOnNewNode',
-      expect.objectContaining({ title: expect.stringContaining('🆕 New Node Discovered') }),
+      expect.objectContaining({ title: 'New Meshtastic Node Detected' }),
       undefined,
       'src1'
     );
+    // #4845: body names the node and which instance detected it.
+    const body = mockPush.broadcastToPreferenceUsers.mock.calls[0][1].body;
+    expect(body).toContain('Test Node (TN)');
+    expect(body).toContain('detected by Source One');
   });
 
   it('includes hops away in body when provided', async () => {
@@ -213,6 +217,30 @@ describe('notificationService.notifyNewNode', () => {
     await expect(
       notificationService.notifyNewNode('!abc123', 'Test Node', 'TN', undefined, undefined, 'src1', 'Source One')
     ).resolves.toBeUndefined();
+  });
+});
+
+// ─── notifyNewMeshCoreNode (#4845) ────────────────────────────────────────────
+
+describe('notificationService.notifyNewMeshCoreNode', () => {
+  it('titles the notification for the MeshCore service and names the detecting instance', async () => {
+    await notificationService.notifyNewMeshCoreNode('pubkey123', 'Base Repeater', 'Repeater', 'src2', 'MTDL Base');
+    expect(mockPush.broadcastToPreferenceUsers).toHaveBeenCalledWith(
+      'notifyOnNewNode',
+      expect.objectContaining({ title: 'New MeshCore Device Detected' }),
+      undefined,
+      'src2'
+    );
+    const body = mockPush.broadcastToPreferenceUsers.mock.calls[0][1].body;
+    expect(body).toContain('Base Repeater');
+    expect(body).toContain('detected by MTDL Base');
+    expect(body).toContain('Repeater'); // device type retained
+  });
+
+  it('omits the device-type suffix when none is provided', async () => {
+    await notificationService.notifyNewMeshCoreNode('pubkey123', 'Nameless', undefined, 'src2', 'MTDL Base');
+    const body = mockPush.broadcastToPreferenceUsers.mock.calls[0][1].body;
+    expect(body).toBe('Nameless detected by MTDL Base');
   });
 });
 
