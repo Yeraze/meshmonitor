@@ -151,6 +151,24 @@ describe('MeshCoreManager favourite ↔ device sync', () => {
       expect(dbSetNodeFavorite).not.toHaveBeenCalled();
     });
 
+    it('does not mark the in-memory mirror for contacts the batch reported missing', async () => {
+      const { p } = makeCompanion(true);
+      p.contacts.set(KEY_A, { publicKey: KEY_A, deviceFavorite: false });
+      p.contacts.set(KEY_B, { publicKey: KEY_B, deviceFavorite: false });
+      getNodesBySource.mockResolvedValue([dbNode(KEY_A, true), dbNode(KEY_B, true)]);
+      // KEY_B was evicted in the race — the device didn't set it.
+      p.sendBridgeCommand = vi.fn().mockResolvedValue({
+        success: true,
+        data: { updated: 1, missing: [KEY_B] },
+      }) as unknown as Private['sendBridgeCommand'];
+
+      await p.reconcileDeviceFavorites();
+
+      expect(p.contacts.get(KEY_A)!.deviceFavorite).toBe(true);
+      // Left false so the next reconcile retries it instead of assuming it synced.
+      expect(p.contacts.get(KEY_B)!.deviceFavorite).toBe(false);
+    });
+
     it('does nothing when device and app agree', async () => {
       const { p, bridge } = makeCompanion(true);
       p.contacts.set(KEY_A, { publicKey: KEY_A, deviceFavorite: true });

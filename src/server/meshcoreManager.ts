@@ -6459,7 +6459,17 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           favorites: toReassert.map((publicKey) => ({ public_key: publicKey, favorite: true })),
         });
         if (response.success) {
+          // Only mark the mirror for contacts the device actually held. A
+          // `missing` entry (evicted in the race between our get_contacts and
+          // the batch) was NOT set, so leaving deviceFavorite=false lets the
+          // next reconcile retry it rather than silently treating it as synced.
+          const missing = new Set(
+            (Array.isArray(response.data?.missing) ? response.data.missing : []).map((k: string) =>
+              k.toLowerCase(),
+            ),
+          );
           for (const publicKey of toReassert) {
+            if (missing.has(publicKey.toLowerCase())) continue;
             const contact = this.contacts.get(publicKey);
             if (contact) contact.deviceFavorite = true;
           }
