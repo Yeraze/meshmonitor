@@ -516,6 +516,20 @@ export interface MeshCoreContact {
    * route (e.g. "a3,7f,02"). `null` / undefined means OUT_PATH_UNKNOWN.
    */
   outPath?: string | null;
+  /**
+   * Raw firmware `ContactInfo.flags` byte as last read from the device
+   * (bit 0 = favourite, bits 1..7 = telemetry-permission bits). Undefined for
+   * DB-seeded contacts we haven't yet read live.
+   */
+  flags?: number;
+  /**
+   * Whether the firmware's favourite bit (flags & 0x01) is currently set on the
+   * device for this contact. This is what actually protects the contact from
+   * contact-table eviction (#4838), separate from MeshMonitor's local
+   * `meshcore_nodes.isFavorite` column. `reconcileDeviceFavorites` keeps the two
+   * in sync.
+   */
+  deviceFavorite?: boolean;
 }
 
 /** Sentinel RSSI (dBm) below which a configured `rssiMin` threshold is a no-op. */
@@ -3161,6 +3175,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
             lastSeen: advertMs ?? nowMs,
             outPath: c.out_path ?? null,
             pathLen: c.path_len ?? null,
+            flags: typeof c.flags === 'number' ? c.flags : undefined,
+            deviceFavorite: c.favorite === true,
           });
         }
         // Mirror every contact to meshcore_nodes so stale stub rows
@@ -3172,6 +3188,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           Array.from(this.contacts.values()).map((c) => this.persistContact(c)),
         );
         logger.debug(`[MeshCore] Refreshed ${this.contacts.size} contacts`);
+        // Sync the firmware favourite bit with MeshMonitor's local favourites
+        // now that we have fresh device flags. Runs on connect (backfilling
+        // existing favourites onto the device) and on every subsequent refresh.
+        await this.reconcileDeviceFavorites();
       }
     } catch (error) {
       logger.error('[MeshCore] Failed to refresh contacts:', error);
@@ -6331,13 +6351,139 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   }
 
   /**
-   * Toggle the server-side favorite flag for a node (issue #3588). MeshCore
-   * firmware has no native favorite concept, so this persists locally only
-   * and never pushes anything to the device. Favorited nodes pin to the top
-   * of the node list.
+   * Toggle the favorite flag for a node (issue #3588). Persists the local
+   * `meshcore_nodes.isFavorite` column (which pins the node to the top of the
+   * list) AND pushes the firmware favourite bit to the device, so a favourited
+   * contact is protected from the companion's contact-table eviction (#4838).
+   *
+   * The device push is best-effort and companion-only: the local star still
+   * works if the write fails (disconnected, repeater source, or the contact
+   * isn't in the device table because it was never synced or was evicted).
+   * MeshMonitor is the source of truth for favourites — `reconcileDeviceFavorites`
+   * re-asserts local favourites onto the device and mirrors device-side
+   * favourites back into the DB.
    */
   async setNodeFavorite(publicKey: string, isFavorite: boolean): Promise<void> {
     await databaseService.meshcore.setNodeFavorite(this.sourceId, publicKey, isFavorite);
+    await this.pushFavoriteToDevice(publicKey, isFavorite);
+  }
+
+  /**
+   * Set/clear the firmware favourite bit (ContactInfo.flags bit 0) for a
+   * contact via the `set_contact_favorite` bridge command. Companion-only and
+   * best-effort — logs and returns false on any failure rather than throwing,
+   * so callers persist the local favourite regardless. It is a local serial
+   * write (no radio energy), so receive-only mode does not block it.
+   */
+  private async pushFavoriteToDevice(publicKey: string, isFavorite: boolean): Promise<boolean> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) return false;
+    if (!this.connected) return false;
+    try {
+      const response = await this.sendBridgeCommand('set_contact_favorite', {
+        public_key: publicKey,
+        favorite: isFavorite,
+      });
+      if (!response.success) {
+        logger.warn(
+          `[MeshCore:${this.sourceId}] set_contact_favorite failed for ${publicKey.substring(0, 16)}…: ${response.error}`,
+        );
+        return false;
+      }
+      // Keep the in-memory device-favourite mirror in step so the next
+      // reconcile doesn't re-push a change we just made.
+      const contact = this.contacts.get(publicKey);
+      if (contact) contact.deviceFavorite = isFavorite;
+      return true;
+    } catch (err) {
+      logger.warn(
+        `[MeshCore:${this.sourceId}] set_contact_favorite threw for ${publicKey.substring(0, 16)}…: ${(err as Error).message}`,
+      );
+      return false;
+    }
+  }
+
+  /**
+   * Reconcile the firmware favourite bit with MeshMonitor's local favourites,
+   * using `this.contacts` (freshly read device flags) and the persisted
+   * `isFavorite` column. Two directions, both preserving the protective intent
+   * of a favourite:
+   *
+   * - **Device → app (additive):** a contact favourited on the device/phone
+   *   that MeshMonitor doesn't know about gets `isFavorite` set locally.
+   * - **App → device (self-healing):** a local favourite the device is missing
+   *   (e.g. a fresh advert re-added an evicted contact with `flags=0`) is
+   *   re-pushed so eviction protection is restored. MeshMonitor favourites are
+   *   authoritative; to remove one, un-favourite it in MeshMonitor.
+   *
+   * Companion-only and best-effort. Called from `refreshContacts` after the
+   * device flags are loaded (so on connect it backfills existing favourites).
+   * The app→device re-assertions are sent as a single `set_contacts_favorite`
+   * batch so the device contact list is read once, not once per contact.
+   */
+  private async reconcileDeviceFavorites(): Promise<void> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) return;
+    try {
+      const dbNodes = await databaseService.meshcore.getNodesBySource(this.sourceId);
+      const appFavByKey = new Map(dbNodes.map((n) => [n.publicKey, n.isFavorite === true]));
+      const toReassert: string[] = [];
+      for (const contact of this.contacts.values()) {
+        const deviceFav = contact.deviceFavorite === true;
+        const appFav = appFavByKey.get(contact.publicKey) === true;
+        if (deviceFav === appFav) continue;
+        if (deviceFav && !appFav) {
+          // Device/phone has it favourited but MeshMonitor doesn't → adopt the
+          // device state locally (additive). The reverse — app un-favourite vs
+          // device still favourited — is NOT reconciled here; un-favouriting is
+          // authoritative only through setNodeFavorite (see the class doc).
+          // Write the DB directly (the device already holds the bit; no push).
+          await databaseService.meshcore.setNodeFavorite(this.sourceId, contact.publicKey, true);
+        } else {
+          // App favourite the device is missing → re-assert it on the device.
+          toReassert.push(contact.publicKey);
+        }
+      }
+      // Locally-favourited nodes that aren't in the device contact table at all
+      // (truly evicted and not yet re-adverted) can't have their firmware bit
+      // set — there's no record to write. They regain protection once they
+      // re-advert and re-enter this.contacts. Surface the gap so it's visible.
+      const evictedFavCount = dbNodes.filter(
+        (n) => n.isFavorite === true && !this.contacts.has(n.publicKey),
+      ).length;
+      if (evictedFavCount > 0) {
+        logger.warn(
+          `[MeshCore:${this.sourceId}] ${evictedFavCount} locally-favourited node(s) not in the device contact table — eviction protection inactive until they re-advert`,
+        );
+      }
+      if (toReassert.length > 0 && this.connected) {
+        const response = await this.sendBridgeCommand('set_contacts_favorite', {
+          favorites: toReassert.map((publicKey) => ({ public_key: publicKey, favorite: true })),
+        });
+        if (response.success) {
+          // Only mark the mirror for contacts the device actually held. A
+          // `missing` entry (evicted in the race between our get_contacts and
+          // the batch) was NOT set, so leaving deviceFavorite=false lets the
+          // next reconcile retry it rather than silently treating it as synced.
+          const missing = new Set(
+            (Array.isArray(response.data?.missing) ? response.data.missing : []).map((k: string) =>
+              k.toLowerCase(),
+            ),
+          );
+          for (const publicKey of toReassert) {
+            if (missing.has(publicKey.toLowerCase())) continue;
+            const contact = this.contacts.get(publicKey);
+            if (contact) contact.deviceFavorite = true;
+          }
+        } else {
+          logger.warn(
+            `[MeshCore:${this.sourceId}] set_contacts_favorite (${toReassert.length}) failed: ${response.error}`,
+          );
+        }
+      }
+    } catch (err) {
+      logger.warn(
+        `[MeshCore:${this.sourceId}] reconcileDeviceFavorites failed: ${(err as Error).message}`,
+      );
+    }
   }
 
   getRecentMessages(limit: number = 50): MeshCoreMessage[] {
