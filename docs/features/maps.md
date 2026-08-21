@@ -157,6 +157,36 @@ including a **Maximum acceptable accuracy** cutoff that discards low-confidence
 guesses. See the dedicated [Position Estimation](/features/position-estimation)
 page.
 
+### Node Age Filter
+
+The **Maximum age** slider in the **Map Features** panel hides node markers
+last heard before the window it defines. Rather than one linear hour-per-tick
+(unusable once you reach weeks), the slider snaps to human-scale stops — 1h,
+3h, 6h, 12h, 1d, 3d, 7d, 14d, and 30d/All — so it stays usable whether you're
+narrowing to the last hour or reaching out to a month. The top stop always
+matches your **Max Node Age** setting, so the slider can never select an age
+the setting would filter out anyway.
+
+### GNSS Satellite Overlay
+
+MeshMonitor can show a node's live GPS constellation geometry:
+
+- **Node Sky Plot** — expand the **GNSS** section in a node's details for a
+  sky plot of the theoretical GPS constellation overhead, next to the node's
+  reported `sats_in_view` telemetry. A large gap between the two hints at an
+  antenna or sky-view problem.
+- **DOP Overlay** (Map Analysis only) — a dilution-of-precision heatmap
+  showing expected GPS positioning quality across the visible area, with a
+  time scrubber (satellite geometry shifts minute to minute) and an
+  adjustable elevation mask. Open it from the Map Analysis toolbar.
+
+### 3D Terrain View
+
+The Nodes map, Dashboard/Mesh map, and Unified map all support the same
+pitched-terrain 3D view as Map Analysis — see
+[3D terrain view](/features/map-analysis#3d-terrain-view) for requirements
+and how to use it.
+
 ## Map Tilesets
 
 ### Built-in Tilesets
@@ -186,6 +216,14 @@ MeshMonitor includes several pre-configured map styles:
 - **Use Cases**: Identifying terrain features, physical landmarks
 - **URL**: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}`
 - **Attribution**: Tiles © Esri
+
+#### Satellite + Labels (Hybrid)
+
+- **Style**: Satellite imagery with place names and road labels overlaid
+- **Max Zoom**: 18
+- **Use Cases**: Terrain identification that still needs street/place context
+- **URL**: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}` (labels overlay from Esri's Reference/World_Reference_Overlay service)
+- **Attribution**: Tiles © Esri; Labels © Esri, Garmin, USGS, NPS
 
 #### OpenTopoMap
 

@@ -146,6 +146,10 @@ Per-contact DM view (renamed from "Direct Messages" to reflect that it also surf
 - **Define Path** editor — manually set the route to a contact when you already know the relay hops, instead of probing for it. Add hops in order and pick the per-hop **hash width** (1, 2, or 3 bytes) — the selector is pre-filled from the current path, and changing the width clears the hop list since the encoding differs. The hop count is capped at 63. Use this when Discover Path can't reach the contact but you know the topology.
 - **Delivery status** — sent DMs show pending / confirmed / failed indicators with timestamp tooltips
 
+Toggling a contact's ⭐ **favorite** syncs to the firmware's favourite bit on
+the device, in both directions. MeshMonitor is the source of truth: to
+un-favourite a contact, do it in MeshMonitor rather than on the device.
+
 Contact names in messages are **clickable** — clicking a name navigates directly to that contact's DM thread. Messages containing **@YourName** are visually highlighted.
 
 The panel is collapsible with state persisted to localStorage.
