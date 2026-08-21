@@ -6,7 +6,7 @@ import { getMessageDateSeparator, shouldShowDateSeparator } from '../../utils/da
 import { getUtf8ByteLength, formatByteCount } from '../../utils/text';
 import LinkPreview from '../LinkPreview';
 import MeshCoreMessageRouteModal from './MeshCoreMessageRouteModal';
-import DeliveryDetailsModal from '../diagnostics/DeliveryDetailsModal';
+import MessageDetailsModal from '../diagnostics/MessageDetailsModal';
 import { UiIcon } from '../icons';
 import UnreadDivider from '../messages/UnreadDivider';
 import { resolveUnreadAnchorId, shouldSuppressDivider } from '../../utils/unreadAnchor';
@@ -720,8 +720,9 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
         />
       )}
       {deliveryDetailsMsg && (
-        <DeliveryDetailsModal
+        <MessageDetailsModal
           protocol="meshcore"
+          direction="sent"
           sourceId={sourceId ?? ''}
           message={deliveryDetailsMsg}
           onClose={() => setDeliveryDetailsMsg(null)}

@@ -7,14 +7,17 @@
 
 import type { MeshCoreMessage } from '../../components/MeshCore/hooks/useMeshCore.js';
 import { getMeshCoreDeliveryState } from './status.js';
-import type { DeliveryDescription, DeliverySection, DeliveryTone } from './types.js';
+import type { DeliveryDescription, DeliverySection, DeliveryTone, MessageDirection } from './types.js';
 
 function formatHex(value: number | null | undefined): string | null {
   if (value === null || value === undefined) return null;
   return `0x${value.toString(16)}`;
 }
 
-export function describeMeshCoreDelivery(msg: MeshCoreMessage): DeliveryDescription {
+export function describeMeshCoreDelivery(
+  msg: MeshCoreMessage,
+  direction: MessageDirection = 'sent',
+): DeliveryDescription {
   const state = getMeshCoreDeliveryState(msg.deliveryStatus);
 
   let statusKey: string;
@@ -170,12 +173,19 @@ export function describeMeshCoreDelivery(msg: MeshCoreMessage): DeliveryDescript
     ],
   };
 
+  // A RECEIVED MeshCore message has no outbound delivery lifecycle, so hide
+  // status/identity and show only the reception facts (#4816 follow-up).
+  const sections =
+    direction === 'received'
+      ? [routeSection, signalSection, scopeSection]
+      : [statusSection, identitySection, routeSection, signalSection, scopeSection];
+
   return {
     protocol: 'meshcore',
     statusKey,
     tone,
     meaningKey,
-    sections: [statusSection, identitySection, routeSection, signalSection, scopeSection],
+    sections,
     // Observed by MeshMonitor through repeater re-flood correlation (#3700).
     // Passed through verbatim — the modal (WP2) decides whether to render it
     // (omit for DMs, show "no re-flood observed" for channel sends).

@@ -12,7 +12,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createElement, type ReactNode } from 'react';
-import DeliveryDetailsModal from './DeliveryDetailsModal';
+import MessageDetailsModal from './MessageDetailsModal';
 import { MessageDeliveryState, type MeshMessage, type MessageEvent } from '../../types/message';
 import type { MeshCoreMessage } from '../MeshCore/hooks/useMeshCore';
 import apiService from '../../services/api';
@@ -114,7 +114,7 @@ function buildEvent(overrides: Partial<MessageEvent> = {}): MessageEvent {
 describe('DeliveryDetailsModal', () => {
   it('renders as an accessible dialog with protocol + status for a Meshtastic message', () => {
     renderModal(
-      <DeliveryDetailsModal
+      <MessageDetailsModal direction="sent"
         protocol="meshtastic"
         sourceId="source-a"
         message={buildMeshtasticMessage()}
@@ -130,9 +130,29 @@ describe('DeliveryDetailsModal', () => {
     expect(screen.getByText('delivery_details.mt_status.confirmed_destination')).toBeTruthy();
   });
 
+  it('received direction shows reception fields + packet section and hides status/timeline (#4816 follow-up)', () => {
+    renderModal(
+      <MessageDetailsModal direction="received"
+        protocol="meshtastic"
+        sourceId="source-a"
+        message={buildMeshtasticMessage({ hopStart: 5, hopLimit: 3, rxSnr: 4, portnum: 1, channel: 0 })}
+        onClose={vi.fn()}
+      />,
+    );
+    // Received title + reception/packet fields present.
+    expect(screen.getByRole('dialog').textContent).toContain('Message Details');
+    expect(screen.getByText('delivery_details.field.route_type')).toBeTruthy();
+    expect(screen.getByText('delivery_details.field.snr')).toBeTruthy();
+    expect(screen.getByText('delivery_details.field.message_type')).toBeTruthy();
+    // Outbound-only surfaces hidden: no delivery status pill, no timeline, no ACK.
+    expect(screen.queryByText('delivery_details.mt_status.confirmed_destination')).toBeNull();
+    expect(screen.queryByText('Timeline')).toBeNull();
+    expect(screen.queryByText('delivery_details.field.ack_from_node')).toBeNull();
+  });
+
   it('shows a provenance badge per field and the honest Unknown placeholder for deferred fields', () => {
     renderModal(
-      <DeliveryDetailsModal
+      <MessageDetailsModal direction="sent"
         protocol="meshtastic"
         sourceId="source-a"
         message={buildMeshtasticMessage()}
@@ -154,7 +174,7 @@ describe('DeliveryDetailsModal', () => {
     // but when rxSnr is absent the row shows the Unknown placeholder and its
     // badge must read Unknown too — never "Reported by protocol: Unknown".
     renderModal(
-      <DeliveryDetailsModal
+      <MessageDetailsModal direction="received"
         protocol="meshtastic"
         sourceId="source-a"
         message={buildMeshtasticMessage({ rxSnr: undefined })}
@@ -169,7 +189,7 @@ describe('DeliveryDetailsModal', () => {
 
   it('renders MeshCore protocol + status and omits Propagation for a DM (no toPublicKey re-flood signal)', () => {
     renderModal(
-      <DeliveryDetailsModal
+      <MessageDetailsModal direction="sent"
         protocol="meshcore"
         sourceId="source-a"
         message={buildMeshCoreMessage({ toPublicKey: 'deadbeef' })}
@@ -184,7 +204,7 @@ describe('DeliveryDetailsModal', () => {
 
   it('shows an honest "no re-flood observed" for a channel message with an empty heard-by list', () => {
     renderModal(
-      <DeliveryDetailsModal
+      <MessageDetailsModal direction="sent"
         protocol="meshcore"
         sourceId="source-a"
         message={buildMeshCoreMessage()}
@@ -198,7 +218,7 @@ describe('DeliveryDetailsModal', () => {
 
   it('shows the RAW HASH for an unresolved relay and the honest re-flood subtitle for a channel message', () => {
     renderModal(
-      <DeliveryDetailsModal
+      <MessageDetailsModal direction="sent"
         protocol="meshcore"
         sourceId="source-a"
         message={buildMeshCoreMessage({
@@ -249,7 +269,7 @@ describe('DeliveryDetailsModal', () => {
       ]);
 
       renderModal(
-        <DeliveryDetailsModal
+        <MessageDetailsModal direction="sent"
           protocol="meshtastic"
           sourceId="source-a"
           message={buildMeshtasticMessage({ channel: 0 })}
@@ -281,7 +301,7 @@ describe('DeliveryDetailsModal', () => {
     it('shows the honest empty state for a channel message with no observed re-flood', async () => {
       mockGetMeshtasticHeardBy.mockResolvedValue([]);
       renderModal(
-        <DeliveryDetailsModal
+        <MessageDetailsModal direction="sent"
           protocol="meshtastic"
           sourceId="source-a"
           message={buildMeshtasticMessage({ channel: 0 })}
@@ -295,7 +315,7 @@ describe('DeliveryDetailsModal', () => {
     it('shows the loading state while heard-by is in flight', () => {
       mockGetMeshtasticHeardBy.mockReturnValue(new Promise(() => {}));
       renderModal(
-        <DeliveryDetailsModal
+        <MessageDetailsModal direction="sent"
           protocol="meshtastic"
           sourceId="source-a"
           message={buildMeshtasticMessage({ channel: 0 })}
@@ -308,7 +328,7 @@ describe('DeliveryDetailsModal', () => {
     it('shows the honest error state when the heard-by fetch fails', async () => {
       mockGetMeshtasticHeardBy.mockRejectedValue(new Error('boom'));
       renderModal(
-        <DeliveryDetailsModal
+        <MessageDetailsModal direction="sent"
           protocol="meshtastic"
           sourceId="source-a"
           message={buildMeshtasticMessage({ channel: 0 })}
@@ -320,7 +340,7 @@ describe('DeliveryDetailsModal', () => {
 
     it('omits Propagation entirely for a Meshtastic direct message (channel === -1)', () => {
       renderModal(
-        <DeliveryDetailsModal
+        <MessageDetailsModal direction="sent"
           protocol="meshtastic"
           sourceId="source-a"
           message={buildMeshtasticMessage({ channel: -1 })}
@@ -333,7 +353,7 @@ describe('DeliveryDetailsModal', () => {
 
     it('omits Propagation when the channel is undefined (not treated as a channel message)', () => {
       renderModal(
-        <DeliveryDetailsModal
+        <MessageDetailsModal direction="sent"
           protocol="meshtastic"
           sourceId="source-a"
           message={buildMeshtasticMessage({ channel: undefined })}
@@ -348,7 +368,7 @@ describe('DeliveryDetailsModal', () => {
   it('calls onClose on Escape, overlay click, and the close button', () => {
     const onCloseEscape = vi.fn();
     const { unmount } = renderModal(
-      <DeliveryDetailsModal protocol="meshtastic" sourceId="source-a" message={buildMeshtasticMessage()} onClose={onCloseEscape} />,
+      <MessageDetailsModal direction="sent" protocol="meshtastic" sourceId="source-a" message={buildMeshtasticMessage()} onClose={onCloseEscape} />,
     );
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onCloseEscape).toHaveBeenCalledTimes(1);
@@ -356,21 +376,21 @@ describe('DeliveryDetailsModal', () => {
 
     const onCloseOverlay = vi.fn();
     const { getByRole: getByRoleOverlay, unmount: unmountOverlay } = renderModal(
-      <DeliveryDetailsModal protocol="meshtastic" sourceId="source-a" message={buildMeshtasticMessage()} onClose={onCloseOverlay} />,
+      <MessageDetailsModal direction="sent" protocol="meshtastic" sourceId="source-a" message={buildMeshtasticMessage()} onClose={onCloseOverlay} />,
     );
     fireEvent.click(getByRoleOverlay('presentation'));
     expect(onCloseOverlay).toHaveBeenCalledTimes(1);
     unmountOverlay();
 
     const onCloseButton = vi.fn();
-    renderModal(<DeliveryDetailsModal protocol="meshtastic" sourceId="source-a" message={buildMeshtasticMessage()} onClose={onCloseButton} />);
+    renderModal(<MessageDetailsModal direction="sent" protocol="meshtastic" sourceId="source-a" message={buildMeshtasticMessage()} onClose={onCloseButton} />);
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(onCloseButton).toHaveBeenCalledTimes(1);
   });
 
   it('does not close when clicking inside the dialog content', () => {
     const onClose = vi.fn();
-    renderModal(<DeliveryDetailsModal protocol="meshtastic" sourceId="source-a" message={buildMeshtasticMessage()} onClose={onClose} />);
+    renderModal(<MessageDetailsModal direction="sent" protocol="meshtastic" sourceId="source-a" message={buildMeshtasticMessage()} onClose={onClose} />);
     fireEvent.click(screen.getByRole('dialog'));
     expect(onClose).not.toHaveBeenCalled();
   });
@@ -390,7 +410,7 @@ describe('DeliveryDetailsModal', () => {
       ]);
 
       renderModal(
-        <DeliveryDetailsModal
+        <MessageDetailsModal direction="sent"
           protocol="meshtastic"
           sourceId="source-a"
           message={buildMeshtasticMessage()}
@@ -426,7 +446,7 @@ describe('DeliveryDetailsModal', () => {
     it('shows the honest empty state when no events are recorded', async () => {
       mockGetMessageEvents.mockResolvedValue([]);
       renderModal(
-        <DeliveryDetailsModal
+        <MessageDetailsModal direction="sent"
           protocol="meshtastic"
           sourceId="source-a"
           message={buildMeshtasticMessage()}
@@ -440,7 +460,7 @@ describe('DeliveryDetailsModal', () => {
       // Never-resolving promise keeps the query pending.
       mockGetMessageEvents.mockReturnValue(new Promise(() => {}));
       renderModal(
-        <DeliveryDetailsModal
+        <MessageDetailsModal direction="sent"
           protocol="meshtastic"
           sourceId="source-a"
           message={buildMeshtasticMessage()}
@@ -453,7 +473,7 @@ describe('DeliveryDetailsModal', () => {
     it('shows the honest error state when the fetch fails', async () => {
       mockGetMessageEvents.mockRejectedValue(new Error('boom'));
       renderModal(
-        <DeliveryDetailsModal
+        <MessageDetailsModal direction="sent"
           protocol="meshtastic"
           sourceId="source-a"
           message={buildMeshtasticMessage()}

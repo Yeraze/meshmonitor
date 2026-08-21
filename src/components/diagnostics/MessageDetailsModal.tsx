@@ -24,18 +24,25 @@ import { useMeshtasticHeardBy } from '../../hooks/useMeshtasticHeardBy';
 import { describeMeshtasticDelivery } from '../../utils/deliveryDiagnostics/meshtasticDelivery';
 import { describeMeshCoreDelivery } from '../../utils/deliveryDiagnostics/meshcoreDelivery';
 import { getRoutingErrorName } from '../../utils/routingErrors';
-import type { DeliveryTone, DiagField, Provenance } from '../../utils/deliveryDiagnostics/types';
+import type { DeliveryTone, DiagField, Provenance, MessageDirection } from '../../utils/deliveryDiagnostics/types';
 import type { MeshMessage, MeshtasticHeardByEntry, MessageEvent, MessageEventType } from '../../types/message';
 import type { MeshCoreMessage } from '../MeshCore/hooks/useMeshCore';
-import styles from './DeliveryDetailsModal.module.css';
+import RelayCandidateList, { type RelayCandidateNode } from './RelayCandidateList';
+import styles from './MessageDetailsModal.module.css';
 
 export type DeliveryDetailsProtocol = 'meshtastic' | 'meshcore';
 
 interface Props {
   protocol: DeliveryDetailsProtocol;
+  /** Sent (our outgoing) vs received — gates which sections show (#4816 follow-up). */
+  direction: MessageDirection;
   /** Owning source id — required to fetch the persisted event timeline. */
   sourceId: string;
   message: MeshMessage | MeshCoreMessage;
+  /** Relay-candidate nodes (received Meshtastic only) for the "who relayed this" list. */
+  nodes?: RelayCandidateNode[];
+  /** Navigate to a relay-candidate node (received Meshtastic only). */
+  onNodeClick?: (nodeId: string) => void;
   onClose: () => void;
 }
 
@@ -209,15 +216,27 @@ const MeshtasticHeardByRow: React.FC<{ entry: MeshtasticHeardByEntry }> = ({ ent
   );
 };
 
-const DeliveryDetailsModal: React.FC<Props> = ({ protocol, sourceId, message, onClose }) => {
+const MessageDetailsModal: React.FC<Props> = ({
+  protocol,
+  direction,
+  sourceId,
+  message,
+  nodes,
+  onNodeClick,
+  onClose,
+}) => {
   const { t } = useTranslation();
   const { contentRef, onKeyDown } = useDialogA11y(onClose);
-  const { events, isLoading, isError } = useMessageEvents(sourceId, message.id);
+  const isSent = direction === 'sent';
+  // The event timeline is only ever written during our own send lifecycle, so
+  // for a received message it is always empty — skip the fetch entirely by
+  // passing an empty id (the hook's `enabled` gate then stays off).
+  const { events, isLoading, isError } = useMessageEvents(sourceId, isSent ? message.id : '');
 
   const description =
     protocol === 'meshtastic'
-      ? describeMeshtasticDelivery(message as MeshMessage)
-      : describeMeshCoreDelivery(message as MeshCoreMessage);
+      ? describeMeshtasticDelivery(message as MeshMessage, direction)
+      : describeMeshCoreDelivery(message as MeshCoreMessage, direction);
 
   const protocolLabel = PROTOCOL_LABEL[protocol];
 
@@ -230,13 +249,15 @@ const DeliveryDetailsModal: React.FC<Props> = ({ protocol, sourceId, message, on
   const mtMessage = protocol === 'meshtastic' ? (message as MeshMessage) : null;
   // A Meshtastic channel message has a numeric channel >= 0; a DM is -1. Guard
   // an undefined channel so "unknown" is not treated as a channel message.
+  // Heard-By/propagation is a SENT-message concept (our own channel send's
+  // re-flood, correlated by MeshMonitor) — never shown for received messages.
   const isMeshtasticChannelMessage =
-    mtMessage !== null && typeof mtMessage.channel === 'number' && mtMessage.channel !== -1;
-  const showMeshCorePropagation = protocol === 'meshcore' && !isMeshCoreDirectMessage;
+    isSent && mtMessage !== null && typeof mtMessage.channel === 'number' && mtMessage.channel !== -1;
+  const showMeshCorePropagation = isSent && protocol === 'meshcore' && !isMeshCoreDirectMessage;
   const showPropagation = showMeshCorePropagation || isMeshtasticChannelMessage;
   const heardBy = description.heardBy ?? [];
   // Query stays disabled (see useMeshtasticHeardBy's own `enabled` gate)
-  // unless this is actually a Meshtastic channel message.
+  // unless this is actually a Meshtastic channel message we sent.
   const {
     heardBy: mtHeardBy,
     isLoading: mtHeardByLoading,
@@ -257,7 +278,10 @@ const DeliveryDetailsModal: React.FC<Props> = ({ protocol, sourceId, message, on
       >
         <div className={styles.header}>
           <h4 id="ddm-title">
-            {t('delivery_details.title', 'Delivery Details')} —{' '}
+            {isSent
+              ? t('delivery_details.title', 'Delivery Details')
+              : t('delivery_details.title_received', 'Message Details')}{' '}
+            —{' '}
             <span className={styles.protocolName}>{t(protocolLabel.key, protocolLabel.fallback)}</span>
           </h4>
           <button
@@ -271,16 +295,21 @@ const DeliveryDetailsModal: React.FC<Props> = ({ protocol, sourceId, message, on
         </div>
 
         <div className={styles.body}>
-          <div className={styles.statusRow}>
-            <span className={`${styles.statusPill} ${TONE_CLASS[description.tone]}`}>
-              {t(description.statusKey)}
-            </span>
-          </div>
+          {/* Delivery status + plain-language meaning are outbound-only. */}
+          {isSent && (
+            <>
+              <div className={styles.statusRow}>
+                <span className={`${styles.statusPill} ${TONE_CLASS[description.tone]}`}>
+                  {t(description.statusKey)}
+                </span>
+              </div>
 
-          <section className={styles.section}>
-            <h5>{t('delivery_details.meaning_title', 'What this means')}</h5>
-            <p className={styles.meaning}>{t(description.meaningKey)}</p>
-          </section>
+              <section className={styles.section}>
+                <h5>{t('delivery_details.meaning_title', 'What this means')}</h5>
+                <p className={styles.meaning}>{t(description.meaningKey)}</p>
+              </section>
+            </>
+          )}
 
           {description.sections.map((section) => (
             <section key={section.titleKey} className={styles.section}>
@@ -290,6 +319,17 @@ const DeliveryDetailsModal: React.FC<Props> = ({ protocol, sourceId, message, on
               ))}
             </section>
           ))}
+
+          {/* "Who relayed this?" candidate list — received Meshtastic only. */}
+          {!isSent && protocol === 'meshtastic' && nodes && onNodeClick && (
+            <RelayCandidateList
+              relayNode={mtMessage?.relayNode}
+              ackFromNode={mtMessage?.ackFromNode}
+              nodes={nodes}
+              messageRssi={mtMessage?.rxRssi}
+              onNodeClick={onNodeClick}
+            />
+          )}
 
           {showPropagation && (
             <section className={styles.section}>
@@ -339,6 +379,8 @@ const DeliveryDetailsModal: React.FC<Props> = ({ protocol, sourceId, message, on
             </section>
           )}
 
+          {/* Send-lifecycle timeline is outbound-only (empty for received). */}
+          {isSent && (
           <section className={styles.section}>
             <h5>{t('delivery_details.timeline.title', 'Timeline')}</h5>
             {isLoading ? (
@@ -361,10 +403,11 @@ const DeliveryDetailsModal: React.FC<Props> = ({ protocol, sourceId, message, on
               </ol>
             )}
           </section>
+          )}
         </div>
       </div>
     </div>
   );
 };
 
-export default DeliveryDetailsModal;
+export default MessageDetailsModal;

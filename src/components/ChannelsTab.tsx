@@ -25,10 +25,10 @@ import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
 import HopCountDisplay from './HopCountDisplay';
 import LinkPreview from './LinkPreview';
 import { MessageEmojiButton } from './MessageEmojiButton';
-import RelayNodeModal from './RelayNodeModal';
 import { logger } from '../utils/logger';
 import { MessageStatusIndicator } from './MessageStatusIndicator';
-import DeliveryDetailsModal from './diagnostics/DeliveryDetailsModal';
+import MessageDetailsModal from './diagnostics/MessageDetailsModal';
+import type { MessageDirection } from '../utils/deliveryDiagnostics/types';
 import { useNodes } from '../hooks/useServerData';
 import { UiIcon } from './icons';
 import UnreadDivider from './messages/UnreadDivider';
@@ -262,14 +262,9 @@ export default function ChannelsTab({
   const [virtualChannelInfoModal, setVirtualChannelInfoModal] = useState<ChannelDatabaseEntry | null>(null);
 
   // Relay node modal state
-  const [relayModalOpen, setRelayModalOpen] = useState(false);
-  const [selectedRelayNode, setSelectedRelayNode] = useState<number | null>(null);
-  const [selectedRxTime, setSelectedRxTime] = useState<Date | undefined>(undefined);
-  const [selectedMessageRssi, setSelectedMessageRssi] = useState<number | undefined>(undefined);
-  const [selectedMessage, setSelectedMessage] = useState<MeshMessage | null>(null);
-  // Delivery Details modal (#4816 Phase 1 WP3) — the currently-open own-sent
-  // message's diagnostics popup, opened by clicking its status icon.
-  const [deliveryDetailsMsg, setDeliveryDetailsMsg] = useState<MeshMessage | null>(null);
+  // Unified Message Details popup (#4816 follow-up): one modal for both the
+  // sent delivery-status icon and the hop/⏱ badge (sent or received).
+  const [detailsState, setDetailsState] = useState<{ message: MeshMessage; direction: MessageDirection } | null>(null);
   const [directNeighborStats, setDirectNeighborStats] = useState<Record<number, { avgRssi: number; packetCount: number; lastHeard: number }>>({});
   const [homoglyphEnabled, setHomoglyphEnabled] = useState(false);
 
@@ -317,15 +312,10 @@ export default function ChannelsTab({
 
   // Handle relay node click - opens modal to show potential relay nodes
   const handleRelayClick = useCallback(
-    async (msg: MeshMessage) => {
-      // Opens the packet-detail view for this message (#4657). The relay byte is
-      // optional now — MQTT and direct-reception messages have no relay node but
-      // still carry packet detail worth inspecting.
-      setSelectedMessage(msg);
-      setSelectedRelayNode(msg.relayNode ?? null);
-      setSelectedRxTime(msg.timestamp);
-      setSelectedMessageRssi(msg.rxRssi ?? undefined);
-
+    async (msg: MeshMessage, direction: MessageDirection) => {
+      // Opens the unified Message Details popup (#4816 follow-up). Fetch direct
+      // neighbor stats when a relay byte is present (keeps the relay-candidate
+      // list populated); harmless otherwise.
       if (msg.relayNode !== undefined && msg.relayNode !== null) {
         try {
           const stats = await apiService.getDirectNeighborStats(24);
@@ -335,7 +325,7 @@ export default function ChannelsTab({
         }
       }
 
-      setRelayModalOpen(true);
+      setDetailsState({ message: msg, direction });
     },
     []
   );
@@ -1164,7 +1154,7 @@ export default function ChannelsTab({
                                             viaMqtt={msg.viaMqtt}
                                             viaStoreForward={msg.viaStoreForward}
                                             xeddsaSigned={msg.xeddsaSigned}
-                                            onClick={() => handleRelayClick(msg)}
+                                            onClick={() => handleRelayClick(msg, isMine ? 'sent' : 'received')}
                                           />
                                         </span>
                                       </div>
@@ -1258,7 +1248,7 @@ export default function ChannelsTab({
                                 </div>
                                 {isMine && (
                                   <div className="message-status">
-                                    <MessageStatusIndicator message={msg} onShowDetails={() => setDeliveryDetailsMsg(msg)} />
+                                    <MessageStatusIndicator message={msg} onShowDetails={() => setDetailsState({ message: msg, direction: 'sent' })} />
                                   </div>
                                 )}
                               </div>
@@ -1646,35 +1636,19 @@ export default function ChannelsTab({
       )}
 
       {/* Relay node / packet detail modal */}
-      {relayModalOpen && selectedMessage && (
-        <RelayNodeModal
-          isOpen={relayModalOpen}
-          onClose={() => {
-            setRelayModalOpen(false);
-            setSelectedRelayNode(null);
-            setSelectedMessage(null);
-          }}
-          relayNode={selectedRelayNode ?? undefined}
-          rxTime={selectedRxTime}
+      {/* Unified Message Details modal (#4816 follow-up). */}
+      {detailsState && (
+        <MessageDetailsModal
+          protocol="meshtastic"
+          direction={detailsState.direction}
+          sourceId={sourceId ?? ''}
+          message={detailsState.message}
           nodes={mappedNodes}
-          messageRssi={selectedMessageRssi}
-          message={selectedMessage}
           onNodeClick={(nodeId) => {
-            setRelayModalOpen(false);
-            setSelectedRelayNode(null);
-            setSelectedMessage(null);
+            setDetailsState(null);
             handleSenderClick(nodeId, { stopPropagation: () => {} } as React.MouseEvent);
           }}
-        />
-      )}
-
-      {/* Delivery Details modal (#4816 Phase 1 WP3) */}
-      {deliveryDetailsMsg && (
-        <DeliveryDetailsModal
-          protocol="meshtastic"
-          sourceId={sourceId ?? ''}
-          message={deliveryDetailsMsg}
-          onClose={() => setDeliveryDetailsMsg(null)}
+          onClose={() => setDetailsState(null)}
         />
       )}
     </div>
