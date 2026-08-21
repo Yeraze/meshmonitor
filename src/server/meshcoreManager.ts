@@ -6417,12 +6417,15 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    *
    * Companion-only and best-effort. Called from `refreshContacts` after the
    * device flags are loaded (so on connect it backfills existing favourites).
+   * The app→device re-assertions are sent as a single `set_contacts_favorite`
+   * batch so the device contact list is read once, not once per contact.
    */
   private async reconcileDeviceFavorites(): Promise<void> {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) return;
     try {
       const dbNodes = await databaseService.meshcore.getNodesBySource(this.sourceId);
       const appFavByKey = new Map(dbNodes.map((n) => [n.publicKey, n.isFavorite === true]));
+      const toReassert: string[] = [];
       for (const contact of this.contacts.values()) {
         const deviceFav = contact.deviceFavorite === true;
         const appFav = appFavByKey.get(contact.publicKey) === true;
@@ -6433,7 +6436,22 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           await databaseService.meshcore.setNodeFavorite(this.sourceId, contact.publicKey, true);
         } else {
           // App favourite the device is missing → re-assert it on the device.
-          await this.pushFavoriteToDevice(contact.publicKey, true);
+          toReassert.push(contact.publicKey);
+        }
+      }
+      if (toReassert.length > 0 && this.connected) {
+        const response = await this.sendBridgeCommand('set_contacts_favorite', {
+          favorites: toReassert.map((publicKey) => ({ public_key: publicKey, favorite: true })),
+        });
+        if (response.success) {
+          for (const publicKey of toReassert) {
+            const contact = this.contacts.get(publicKey);
+            if (contact) contact.deviceFavorite = true;
+          }
+        } else {
+          logger.warn(
+            `[MeshCore:${this.sourceId}] set_contacts_favorite (${toReassert.length}) failed: ${response.error}`,
+          );
         }
       }
     } catch (err) {

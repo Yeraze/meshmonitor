@@ -130,15 +130,23 @@ describe('MeshCoreManager favourite ↔ device sync', () => {
       expect(bridge).not.toHaveBeenCalled();
     });
 
-    it('re-asserts an app favourite the device is missing (self-healing after eviction/re-add)', async () => {
+    it('re-asserts app favourites the device is missing in a single batch (self-healing)', async () => {
       const { p, bridge } = makeCompanion(true);
       p.contacts.set(KEY_A, { publicKey: KEY_A, deviceFavorite: false });
-      getNodesBySource.mockResolvedValue([dbNode(KEY_A, true)]);
+      p.contacts.set(KEY_B, { publicKey: KEY_B, deviceFavorite: false });
+      getNodesBySource.mockResolvedValue([dbNode(KEY_A, true), dbNode(KEY_B, true)]);
 
       await p.reconcileDeviceFavorites();
 
-      expect(bridge).toHaveBeenCalledWith('set_contact_favorite', { public_key: KEY_A, favorite: true });
-      // App favourite is already persisted — reconcile must not rewrite the column here.
+      // One batched device read+write for both, not one round-trip per contact.
+      expect(bridge).toHaveBeenCalledTimes(1);
+      expect(bridge).toHaveBeenCalledWith('set_contacts_favorite', {
+        favorites: [
+          { public_key: KEY_A, favorite: true },
+          { public_key: KEY_B, favorite: true },
+        ],
+      });
+      // App favourites are already persisted — reconcile must not rewrite the column here.
       expect(dbSetNodeFavorite).not.toHaveBeenCalled();
     });
 

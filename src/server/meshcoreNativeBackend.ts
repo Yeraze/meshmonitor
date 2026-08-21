@@ -45,6 +45,21 @@ interface TraceDataResponse {
   lastSnr: number;
 }
 
+/** A raw meshcore.js contact record as returned by `connection.getContacts()`.
+ * These are the wire-format fields (fixed-point coords, packed out_path_len,
+ * 64-byte out_path buffer) needed to re-send a contact via AddUpdateContact. */
+interface RawDeviceContact {
+  publicKey: Uint8Array;
+  type: number;
+  flags?: number;
+  outPathLen: number;
+  outPath: Uint8Array;
+  advName: string;
+  lastAdvert: number;
+  advLat: number;
+  advLon: number;
+}
+
 interface MeshCoreJsModule {
   NodeJSSerialConnection: new (path: string) => AnyConnection;
   TCPConnection: new (host: string, port: number) => AnyConnection;
@@ -1558,18 +1573,9 @@ export class MeshCoreNativeBackend extends EventEmitter {
         const publicKey = await this.resolvePublicKey(params.public_key as string);
         if (!publicKey) throw new Error('Set-favorite target not found');
         const favorite = params.favorite === true;
-        const contacts = (await c.getContacts()) as Array<{
-          publicKey: Uint8Array;
-          type: number;
-          flags?: number;
-          outPathLen: number;
-          outPath: Uint8Array;
-          advName: string;
-          lastAdvert: number;
-          advLat: number;
-          advLon: number;
-        }>;
-        const contact = contacts.find((ct) => bytesToHex(ct.publicKey) === bytesToHex(publicKey));
+        const contacts = (await c.getContacts()) as RawDeviceContact[];
+        const targetHex = bytesToHex(publicKey);
+        const contact = contacts.find((ct) => bytesToHex(ct.publicKey) === targetHex);
         if (!contact) {
           // Not in the device table (never synced, or already evicted). We
           // can't set a flag on a record that doesn't exist — surface it so
@@ -1577,22 +1583,36 @@ export class MeshCoreNativeBackend extends EventEmitter {
           // protecting the contact yet.
           throw new Error('Favorite target not in device contact list');
         }
-        const currentFlags = typeof contact.flags === 'number' ? contact.flags : 0;
-        const newFlags = (favorite ? (currentFlags | 0x01) : (currentFlags & ~0x01)) & 0xff;
-        if (newFlags !== currentFlags) {
-          await c.addOrUpdateContact(
-            contact.publicKey,
-            contact.type,
-            newFlags,
-            contact.outPathLen,
-            contact.outPath,
-            contact.advName,
-            contact.lastAdvert,
-            contact.advLat,
-            contact.advLon,
-          );
+        const { flags } = await this.applyContactFavorite(contact, favorite);
+        return { ok: true, favorite, flags };
+      }
+
+      case 'set_contacts_favorite': {
+        // Batch variant used by reconcileDeviceFavorites: fetch the device
+        // contact list ONCE, then apply many favourite toggles — instead of a
+        // separate getContacts() round-trip per contact when several favourites
+        // need re-asserting at once (e.g. right after a contact-table rebuild).
+        // Same read-modify-write semantics as set_contact_favorite. Contacts
+        // not on the device are reported in `missing` rather than throwing, so
+        // one evicted entry doesn't abort the rest of the batch.
+        const updates = Array.isArray(params.favorites)
+          ? (params.favorites as Array<{ public_key: string; favorite: boolean }>)
+          : [];
+        const contacts = (await c.getContacts()) as RawDeviceContact[];
+        const byHex = new Map(contacts.map((ct) => [bytesToHex(ct.publicKey), ct]));
+        let updated = 0;
+        const missing: string[] = [];
+        for (const u of updates) {
+          const hex = (u.public_key ?? '').toLowerCase();
+          const contact = byHex.get(hex);
+          if (!contact) {
+            missing.push(hex);
+            continue;
+          }
+          const { changed } = await this.applyContactFavorite(contact, u.favorite === true);
+          if (changed) updated++;
         }
-        return { ok: true, favorite, flags: newFlags };
+        return { ok: true, updated, missing };
       }
 
       case 'send_message': {
@@ -2094,6 +2114,35 @@ export class MeshCoreNativeBackend extends EventEmitter {
    * Uint8Array required by meshcore.js DM-shaped APIs. The manager passes
    * around hex strings, but meshcore.js wants raw bytes.
    */
+  /**
+   * Read-modify-write a contact's firmware favourite bit (ContactInfo.flags
+   * bit 0), preserving the upper telemetry-permission bits. Re-sends the full
+   * record via AddUpdateContact only when the bit actually changes. Shared by
+   * the `set_contact_favorite` and `set_contacts_favorite` dispatch cases.
+   */
+  private async applyContactFavorite(
+    contact: RawDeviceContact,
+    favorite: boolean,
+  ): Promise<{ changed: boolean; flags: number }> {
+    const currentFlags = typeof contact.flags === 'number' ? contact.flags : 0;
+    const newFlags = (favorite ? (currentFlags | 0x01) : (currentFlags & ~0x01)) & 0xff;
+    const changed = newFlags !== currentFlags;
+    if (changed && this.connection) {
+      await this.connection.addOrUpdateContact(
+        contact.publicKey,
+        contact.type,
+        newFlags,
+        contact.outPathLen,
+        contact.outPath,
+        contact.advName,
+        contact.lastAdvert,
+        contact.advLat,
+        contact.advLon,
+      );
+    }
+    return { changed, flags: newFlags };
+  }
+
   private async resolvePublicKey(hexKey: string): Promise<Uint8Array | null> {
     if (!hexKey || !this.connection) return null;
     const normalized = hexKey.toLowerCase();

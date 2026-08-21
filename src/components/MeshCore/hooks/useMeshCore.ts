@@ -90,8 +90,9 @@ export interface MeshCoreNode {
   latitude?: number;
   longitude?: number;
   advLocPolicy?: number;
-  /** Server-side favorite flag (issue #3588). Stored locally only — never
-   *  pushed to the device. Favorited nodes pin to the top of the node list. */
+  /** Favorite flag (issue #3588). Pins the node to the top of the list; for a
+   *  connected Companion source it also syncs the firmware favourite bit so the
+   *  contact is protected from contact-table eviction (#4838). */
   isFavorite?: boolean;
   telemetryModeBase?: TelemetryMode;
   telemetryModeLoc?: TelemetryMode;

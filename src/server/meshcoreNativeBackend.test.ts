@@ -522,6 +522,39 @@ describe('MeshCoreNativeBackend', () => {
     expect(conn.addOrUpdateContactCalls).toHaveLength(0);
   });
 
+  it('set_contacts_favorite applies many favourites with a single getContacts read', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+    const keyA = Uint8Array.from([0xab, 0xcd, 0xef, ...new Array(29).fill(0)]);
+    const keyB = Uint8Array.from([0x11, 0x22, 0x33, ...new Array(29).fill(0)]);
+    conn.contactsResponse = [
+      { publicKey: keyA, type: AdvType.Chat, flags: 0xa0, outPathLen: 0, outPath: new Uint8Array(64), advName: 'A', lastAdvert: 1, advLat: 0, advLon: 0 },
+      { publicKey: keyB, type: AdvType.Chat, flags: 0x01, outPathLen: 0, outPath: new Uint8Array(64), advName: 'B', lastAdvert: 1, advLat: 0, advLon: 0 },
+    ];
+    // Count getContacts round-trips.
+    let getContactsCalls = 0;
+    const origGet = conn.getContacts.bind(conn);
+    conn.getContacts = async () => { getContactsCalls++; return origGet(); };
+
+    const resp = await backend.sendCommand('set_contacts_favorite', {
+      favorites: [
+        { public_key: 'abcdef' + '00'.repeat(29), favorite: true },   // 0xa0 -> 0xa1 (changed)
+        { public_key: '112233' + '00'.repeat(29), favorite: true },   // 0x01 -> 0x01 (no-op)
+        { public_key: 'ff'.repeat(32), favorite: true },              // not in table -> missing
+      ],
+    });
+    expect(resp.success).toBe(true);
+    expect(resp.data).toEqual(expect.objectContaining({ updated: 1, missing: ['ff'.repeat(32)] }));
+    // Only the changed contact was re-sent, and the device list was read once.
+    expect(conn.addOrUpdateContactCalls).toHaveLength(1);
+    expect(conn.addOrUpdateContactCalls[0][2]).toBe(0xa1);
+    expect(getContactsCalls).toBe(1);
+  });
+
   it('set_contact_favorite fails when the contact is not in the device table', async () => {
     const backend = new MeshCoreNativeBackend('src-1', {
       connectionType: 'serial',
