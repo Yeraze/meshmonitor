@@ -252,6 +252,47 @@ describe('Base3DMap', () => {
     expect(map.addLayer).toHaveBeenCalledWith(expect.objectContaining({ id: 'nodes-label', type: 'symbol' }));
   });
 
+  // #4863: MapLibre stores a single `sdfIcons` flag per tile bucket, so mixing
+  // the SDF disc (standard nodes) and the non-SDF glyph rasters in ONE symbol
+  // layer makes a glyph render as a tinted disc whenever it shares a bucket with
+  // a disc — and which one wins flips with the zoom-dependent tiling. The two
+  // icon families must therefore live in separate, filter-partitioned layers.
+  it('splits SDF disc and non-SDF glyph markers into separate filtered layers (#4863)', () => {
+    render(
+      <Base3DMap center={[40.0, -105.0]} zoom={12} basemap={basemap} terrainTileUrl={terrainTileUrl} nodes={nodes} />,
+    );
+    const map = currentFakeMap();
+    act(() => {
+      map.triggerLoad();
+    });
+
+    const layers = map.addLayer.mock.calls.map((c: unknown[]) => c[0] as any);
+    const discLayer = layers.find((l: any) => l.id === 'nodes-marker');
+    const glyphLayer = layers.find((l: any) => l.id === 'nodes-glyph');
+
+    // Both icon layers exist and read the same data-driven icon-image.
+    expect(discLayer).toBeDefined();
+    expect(glyphLayer).toBeDefined();
+    expect(discLayer.type).toBe('symbol');
+    expect(glyphLayer.type).toBe('symbol');
+    expect(discLayer.layout['icon-image']).toEqual(['get', 'iconImage']);
+    expect(glyphLayer.layout['icon-image']).toEqual(['get', 'iconImage']);
+
+    // The disc layer is SDF-only (standard nodes) and keeps the SDF-only paints.
+    expect(discLayer.filter).toEqual(['==', ['get', 'category'], 'standard']);
+    expect(discLayer.paint['icon-color']).toEqual(['get', 'color']);
+
+    // The glyph layer is non-SDF-only (every non-standard family) and must NOT
+    // set icon-color — tinting an SDF flag onto a full-color raster is exactly
+    // the flatten-to-disc bug. Opacity (which applies to all icons) is kept.
+    expect(glyphLayer.filter).toEqual(['!=', ['get', 'category'], 'standard']);
+    expect(glyphLayer.paint['icon-color']).toBeUndefined();
+    expect(glyphLayer.paint['icon-opacity']).toEqual(['get', 'opacity']);
+
+    // A glyph marker must be clickable via its own layer's handler.
+    expect(map.layerHandlers['click:nodes-glyph']).toBeDefined();
+  });
+
   it('calls onNodeClick with the clicked feature key', () => {
     const onNodeClick = vi.fn();
     render(

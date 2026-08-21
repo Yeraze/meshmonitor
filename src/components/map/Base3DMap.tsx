@@ -126,7 +126,20 @@ const TERRAIN_SOURCE_ID = 'terrain-dem';
 const HILLSHADE_LAYER_ID = 'terrain-hillshade';
 const NODES_SOURCE_ID = 'nodes';
 const NODES_MARKER_LAYER_ID = 'nodes-marker';
+// Separate symbol layer for the per-type glyph rasters (#4863). MapLibre stores
+// a SINGLE `sdfIcons` flag per tile bucket (set by the first icon shaped into
+// it) and renders every icon in that bucket in that one mode — mixing SDF and
+// non-SDF icons in one layer only logs "Cannot mix SDF and non-SDF icons in one
+// buffer" and draws them all in whichever mode won the bucket. The SDF disc
+// (standard nodes) and the full-color glyph rasters therefore MUST live in
+// separate layers, or a glyph sharing a tile bucket with a disc renders as a
+// tinted disc — and which one wins flips with the zoom-dependent tiling.
+const NODES_GLYPH_LAYER_ID = 'nodes-glyph';
 const NODES_LABEL_LAYER_ID = 'nodes-label';
+// Both node icon layers are interactive (click / hover), so event handlers bind
+// to each. Order matters for hit-testing only cosmetically here (icons don't
+// overlap within a node), but keep the disc layer first for stable listing.
+const NODE_ICON_LAYER_IDS = [NODES_MARKER_LAYER_ID, NODES_GLYPH_LAYER_ID] as const;
 const LINES_SOURCE_ID = 'lines';
 const LINES_LAYER_PREFIX = 'lines-';
 
@@ -465,15 +478,17 @@ export function Base3DMap({
           })
           .catch(() => pendingGlyphIcons.delete(id));
       });
+      // Standard nodes: the tinted SDF disc. Filtered to `category === 'standard'`
+      // so this layer's buckets are SDF-only (#4863) — `icon-color`/`icon-halo`
+      // apply only to SDF icons, and the sdfIcons bucket flag must stay uniform.
       map.addLayer({
         id: NODES_MARKER_LAYER_ID,
         type: 'symbol',
         source: NODES_SOURCE_ID,
+        filter: ['==', ['get', 'category'], 'standard'],
         layout: {
-          // `standard` → the tinted SDF disc; glyph families → the pre-colored
-          // raster keyed by `iconImage` (see toNodesFeatureCollection).
           'icon-image': ['get', 'iconImage'],
-          // 64px source image scaled down; glyph markers read at this size.
+          // 64px source image scaled down; markers read at this size.
           'icon-size': 0.35,
           // Always draw every dot — dots must never be dropped by symbol
           // collision the way a label legitimately can be.
@@ -490,6 +505,29 @@ export function Base3DMap({
           'icon-halo-color': '#ffffff',
           'icon-halo-width': 1.5,
           // Fade aged nodes exactly as the 2D map does (#4808).
+          'icon-opacity': ['get', 'opacity'],
+        },
+      });
+      // Glyph nodes (repeater/sensor/roomServer/companion): pre-colored, full-
+      // color rasters. A SEPARATE layer keeps this bucket non-SDF-only (#4863),
+      // so a glyph never shares a bucket with an SDF disc and gets flattened
+      // into a tinted disc. No `icon-color`/`icon-halo` — those only tint SDF
+      // icons and the raster already carries the white disc + hop-colored glyph.
+      map.addLayer({
+        id: NODES_GLYPH_LAYER_ID,
+        type: 'symbol',
+        source: NODES_SOURCE_ID,
+        filter: ['!=', ['get', 'category'], 'standard'],
+        layout: {
+          'icon-image': ['get', 'iconImage'],
+          'icon-size': 0.35,
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+          'icon-rotation-alignment': 'viewport',
+          'icon-pitch-alignment': 'viewport',
+        },
+        paint: {
+          // Non-SDF raster: icon-color/halo are ignored, only opacity applies.
           'icon-opacity': ['get', 'opacity'],
         },
       });
@@ -511,7 +549,11 @@ export function Base3DMap({
         },
       });
 
-      map.on('click', NODES_MARKER_LAYER_ID, (e) => {
+      // Bind the same interaction handlers to both icon layers (#4863): the disc
+      // and glyph markers are two layers sharing one source, but click/hover
+      // behave identically.
+      for (const iconLayerId of NODE_ICON_LAYER_IDS) {
+      map.on('click', iconLayerId, (e) => {
         const feature = e.features?.[0];
         const key = feature?.properties?.key;
         if (typeof key !== 'string') return;
@@ -544,12 +586,13 @@ export function Base3DMap({
           setOpenPopup({ key, container });
         }
       });
-      map.on('mouseenter', NODES_MARKER_LAYER_ID, () => {
+      map.on('mouseenter', iconLayerId, () => {
         map.getCanvas().style.cursor = 'pointer';
       });
-      map.on('mouseleave', NODES_MARKER_LAYER_ID, () => {
+      map.on('mouseleave', iconLayerId, () => {
         map.getCanvas().style.cursor = '';
       });
+      }
 
       // Lines source + one line layer per distinct dash pattern (spec §2.1/§3.1),
       // inserted below the node marker/label layers so markers stay clickable
