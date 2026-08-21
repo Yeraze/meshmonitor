@@ -35,6 +35,7 @@ vi.mock('./services/dataEventEmitter.js', () => ({
 }));
 
 import { MeshCoreManager, MeshCoreDeviceType, type MeshCoreContact } from './meshcoreManager.js';
+import { logger } from '../utils/logger.js';
 
 type Private = {
   deviceType: MeshCoreDeviceType;
@@ -160,6 +161,20 @@ describe('MeshCoreManager favourite ↔ device sync', () => {
 
       expect(bridge).not.toHaveBeenCalled();
       expect(dbSetNodeFavorite).not.toHaveBeenCalled();
+    });
+
+    it('warns (and does not push) for a local favourite absent from the device table', async () => {
+      const { p, bridge } = makeCompanion(true);
+      // KEY_A is favourited locally but NOT in this.contacts (evicted, not re-adverted).
+      getNodesBySource.mockResolvedValue([dbNode(KEY_A, true)]);
+      const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+
+      await p.reconcileDeviceFavorites();
+
+      expect(bridge).not.toHaveBeenCalled();
+      expect(dbSetNodeFavorite).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('not in the device contact table'));
+      warn.mockRestore();
     });
 
     it('is a no-op for repeater sources', async () => {

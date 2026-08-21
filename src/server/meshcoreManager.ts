@@ -6431,13 +6431,28 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         const appFav = appFavByKey.get(contact.publicKey) === true;
         if (deviceFav === appFav) continue;
         if (deviceFav && !appFav) {
-          // Phone-side favourite → reflect into MeshMonitor's local column.
+          // Device/phone has it favourited but MeshMonitor doesn't → adopt the
+          // device state locally (additive). The reverse — app un-favourite vs
+          // device still favourited — is NOT reconciled here; un-favouriting is
+          // authoritative only through setNodeFavorite (see the class doc).
           // Write the DB directly (the device already holds the bit; no push).
           await databaseService.meshcore.setNodeFavorite(this.sourceId, contact.publicKey, true);
         } else {
           // App favourite the device is missing → re-assert it on the device.
           toReassert.push(contact.publicKey);
         }
+      }
+      // Locally-favourited nodes that aren't in the device contact table at all
+      // (truly evicted and not yet re-adverted) can't have their firmware bit
+      // set — there's no record to write. They regain protection once they
+      // re-advert and re-enter this.contacts. Surface the gap so it's visible.
+      const evictedFavCount = dbNodes.filter(
+        (n) => n.isFavorite === true && !this.contacts.has(n.publicKey),
+      ).length;
+      if (evictedFavCount > 0) {
+        logger.warn(
+          `[MeshCore:${this.sourceId}] ${evictedFavCount} locally-favourited node(s) not in the device contact table — eviction protection inactive until they re-advert`,
+        );
       }
       if (toReassert.length > 0 && this.connected) {
         const response = await this.sendBridgeCommand('set_contacts_favorite', {
