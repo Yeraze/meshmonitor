@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.15.1] - 2026-08-21
+
+### Fixed
+- **Site Planner no longer fails with a JSON parse error** — the predictive RF coverage request was sent to `/rf/coverage` instead of `/api/rf/coverage`, so it fell through to the SPA and returned HTML, which the frontend then tried to parse as JSON (`Unexpected token '<'`). The path now includes the `/api` prefix like every other API call. (#4862)
+
 ## [4.15.0] - 2026-08-21
 
 ### Added
