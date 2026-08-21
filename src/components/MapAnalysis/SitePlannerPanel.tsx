@@ -75,7 +75,7 @@ export default function SitePlannerPanel({
     setError(null);
     try {
       const res = await apiService.post<{ success: boolean; data: PredictedCoverage }>(
-        '/rf/coverage',
+        '/api/rf/coverage',
         {
           origin: { lat: origin.lat, lng: origin.lng },
           txHeightM: params.txHeightM,
