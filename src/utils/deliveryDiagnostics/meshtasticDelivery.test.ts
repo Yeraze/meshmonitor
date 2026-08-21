@@ -74,7 +74,7 @@ describe('describeMeshtasticDelivery', () => {
   });
 
   it('marks hopsUsed field as inferred and computes hopStart - hopLimit', () => {
-    const result = describeMeshtasticDelivery(baseMessage({ hopStart: 5, hopLimit: 2 }));
+    const result = describeMeshtasticDelivery(baseMessage({ hopStart: 5, hopLimit: 2 }), 'received');
     const field = findField(result, 'delivery_details.field.hops_used');
     expect(field).toBeDefined();
     expect(field?.provenance).toBe('inferred');
@@ -82,7 +82,7 @@ describe('describeMeshtasticDelivery', () => {
   });
 
   it('hopsUsed is null when hop data is missing', () => {
-    const result = describeMeshtasticDelivery(baseMessage({}));
+    const result = describeMeshtasticDelivery(baseMessage({}), 'received');
     const field = findField(result, 'delivery_details.field.hops_used');
     expect(field?.value).toBeNull();
     expect(field?.provenance).toBe('inferred');
@@ -122,20 +122,20 @@ describe('describeMeshtasticDelivery', () => {
   });
 
   it('detects a direct route when hopStart === hopLimit', () => {
-    const result = describeMeshtasticDelivery(baseMessage({ hopStart: 3, hopLimit: 3 }));
+    const result = describeMeshtasticDelivery(baseMessage({ hopStart: 3, hopLimit: 3 }), 'received');
     const field = findField(result, 'delivery_details.field.route_type');
     expect(field?.valueKey).toBe('delivery_details.value.direct');
     expect(field?.provenance).toBe('inferred');
   });
 
   it('detects a relayed route when hopStart !== hopLimit', () => {
-    const result = describeMeshtasticDelivery(baseMessage({ hopStart: 5, hopLimit: 2 }));
+    const result = describeMeshtasticDelivery(baseMessage({ hopStart: 5, hopLimit: 2 }), 'received');
     const field = findField(result, 'delivery_details.field.route_type');
     expect(field?.valueKey).toBe('delivery_details.value.relayed');
   });
 
   it('leaves route type unresolved when hop data is missing', () => {
-    const result = describeMeshtasticDelivery(baseMessage({}));
+    const result = describeMeshtasticDelivery(baseMessage({}), 'received');
     const field = findField(result, 'delivery_details.field.route_type');
     expect(field?.valueKey).toBeUndefined();
     expect(field?.value).toBeNull();
@@ -175,7 +175,7 @@ describe('describeMeshtasticDelivery', () => {
   });
 
   it('formats last relay as a hex byte with a partial-identity note', () => {
-    const result = describeMeshtasticDelivery(baseMessage({ relayNode: 0x4a }));
+    const result = describeMeshtasticDelivery(baseMessage({ relayNode: 0x4a }), 'received');
     const field = findField(result, 'delivery_details.field.last_relay');
     expect(field?.value).toBe('0x4a');
     expect(field?.provenance).toBe('reported');
@@ -183,7 +183,7 @@ describe('describeMeshtasticDelivery', () => {
   });
 
   it('formats SNR and RSSI with units when present', () => {
-    const result = describeMeshtasticDelivery(baseMessage({ rxSnr: 4.5, rxRssi: -90 }));
+    const result = describeMeshtasticDelivery(baseMessage({ rxSnr: 4.5, rxRssi: -90 }), 'received');
     expect(findField(result, 'delivery_details.field.snr')?.value).toBe('4.5 dB');
     expect(findField(result, 'delivery_details.field.rssi')?.value).toBe('-90 dBm');
   });
@@ -196,6 +196,34 @@ describe('describeMeshtasticDelivery', () => {
 
     const rfResult = describeMeshtasticDelivery(baseMessage({ viaMqtt: false }));
     expect(findField(rfResult, 'delivery_details.field.path')?.valueKey).toBe('delivery_details.value.rf');
+  });
+
+  it('sent direction omits reception route/signal sections (#4816 follow-up)', () => {
+    const result = describeMeshtasticDelivery(baseMessage({ hopStart: 5, hopLimit: 2, rxSnr: 4 }), 'sent');
+    expect(findField(result, 'delivery_details.field.route_type')).toBeUndefined();
+    expect(findField(result, 'delivery_details.field.snr')).toBeUndefined();
+    // ...but the outbound status/identity sections are present.
+    expect(findField(result, 'delivery_details.field.protocol_result')).toBeDefined();
+    expect(findField(result, 'delivery_details.field.ack_from_node')).toBeDefined();
+  });
+
+  it('received direction omits status/identity and adds a packet section (#4816 follow-up)', () => {
+    const result = describeMeshtasticDelivery(
+      baseMessage({ portnum: 1, channel: 0, replyId: 42, decryptedBy: 'server', sourcePath: 'mqtt_bridge' }),
+      'received',
+    );
+    expect(findField(result, 'delivery_details.field.protocol_result')).toBeUndefined();
+    expect(findField(result, 'delivery_details.field.ack_from_node')).toBeUndefined();
+    expect(findField(result, 'delivery_details.field.snr')).toBeDefined();
+    expect(findField(result, 'delivery_details.field.message_type')?.value).toBe('TEXT_MESSAGE (1)');
+    expect(findField(result, 'delivery_details.field.reply_to')?.value).toBe('42');
+    expect(findField(result, 'delivery_details.field.decrypted_by')?.valueKey).toBe('delivery_details.value.decrypted_by_server');
+    expect(findField(result, 'delivery_details.field.ingress')?.valueKey).toBe('delivery_details.value.ingress_mqtt_bridge');
+  });
+
+  it('received DM channel renders the DM valueKey (#4816 follow-up)', () => {
+    const result = describeMeshtasticDelivery(baseMessage({ channel: -1 }), 'received');
+    expect(findField(result, 'delivery_details.field.channel')?.valueKey).toBe('delivery_details.value.dm');
   });
 
   it('surfaces xeddsaSigned and wantAck as Yes/No when defined', () => {

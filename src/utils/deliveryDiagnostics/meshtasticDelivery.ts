@@ -7,8 +7,9 @@
 
 import { MeshMessage } from '../../types/message.js';
 import { getMeshtasticDeliveryState } from './status.js';
-import type { DeliveryDescription, DeliverySection, DeliveryTone } from './types.js';
+import type { DeliveryDescription, DeliverySection, DeliveryTone, MessageDirection } from './types.js';
 import { getRoutingErrorName } from '../routingErrors.js';
+import { getPortnumName } from '../packetFormat.js';
 
 /**
  * DM vs broadcast/channel convention used throughout the frontend
@@ -25,7 +26,10 @@ function formatRelayByte(relayNode: number | undefined): string | null {
   return `0x${relayNode.toString(16)}`;
 }
 
-export function describeMeshtasticDelivery(msg: MeshMessage): DeliveryDescription {
+export function describeMeshtasticDelivery(
+  msg: MeshMessage,
+  direction: MessageDirection = 'sent',
+): DeliveryDescription {
   const state = getMeshtasticDeliveryState(msg);
   const dm = isMeshtasticDirectMessage(msg);
 
@@ -212,11 +216,83 @@ export function describeMeshtasticDelivery(msg: MeshMessage): DeliveryDescriptio
     ],
   };
 
+  // Packet-detail rows shown for RECEIVED messages (unified popup — absorbs
+  // the old RelayNodeModal fields). All read straight off the decoded packet.
+  const idTail = msg.id?.split('_').pop();
+  const packetId = idTail !== undefined ? Number(idTail) : NaN;
+  const packetDetailsSection: DeliverySection = {
+    titleKey: 'delivery_details.section.packet',
+    fields: [
+      {
+        labelKey: 'delivery_details.field.message_type',
+        value:
+          msg.portnum !== undefined && msg.portnum !== null
+            ? `${getPortnumName(msg.portnum)} (${msg.portnum})`
+            : null,
+        provenance: 'reported',
+      },
+      {
+        labelKey: 'delivery_details.field.channel',
+        value: msg.channel === -1 ? null : msg.channel !== undefined && msg.channel !== null ? String(msg.channel) : null,
+        valueKey: msg.channel === -1 ? 'delivery_details.value.dm' : undefined,
+        provenance: 'reported',
+      },
+      {
+        labelKey: 'delivery_details.field.packet_id',
+        value:
+          Number.isFinite(packetId) && packetId > 0
+            ? `${packetId} (0x${packetId.toString(16).toUpperCase()})`
+            : null,
+        provenance: 'reported',
+      },
+      {
+        labelKey: 'delivery_details.field.reply_to',
+        value: msg.replyId ? String(msg.replyId) : null,
+        provenance: 'reported',
+      },
+      {
+        labelKey: 'delivery_details.field.decrypted_by',
+        value: null,
+        valueKey:
+          msg.decryptedBy === 'server'
+            ? 'delivery_details.value.decrypted_by_server'
+            : msg.decryptedBy
+            ? 'delivery_details.value.decrypted_by_node'
+            : undefined,
+        provenance: 'observed',
+      },
+      {
+        labelKey: 'delivery_details.field.ingress',
+        value: null,
+        valueKey:
+          msg.sourcePath === 'http_api'
+            ? 'delivery_details.value.ingress_http_api'
+            : msg.sourcePath === 'tcp_radio'
+            ? 'delivery_details.value.ingress_tcp_radio'
+            : msg.sourcePath === 'mqtt_bridge'
+            ? 'delivery_details.value.ingress_mqtt_bridge'
+            : msg.sourcePath === 'system'
+            ? 'delivery_details.value.ingress_system'
+            : undefined,
+        provenance: 'observed',
+      },
+    ],
+  };
+
+  // Section gating (#4816 follow-up): a message WE sent has no reception data
+  // (route/signal are ours-never-heard), so hide those; a message we RECEIVED
+  // has no outbound delivery lifecycle (status/ACK/identity), so hide those and
+  // surface the packet detail instead.
+  const sections =
+    direction === 'received'
+      ? [routeSection, signalSection, transportSection, packetDetailsSection]
+      : [statusSection, identitySection, transportSection];
+
   return {
     protocol: 'meshtastic',
     statusKey,
     tone,
     meaningKey,
-    sections: [statusSection, identitySection, routeSection, signalSection, transportSection],
+    sections,
   };
 }

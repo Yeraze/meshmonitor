@@ -28,6 +28,15 @@ export type Provenance = 'reported' | 'observed' | 'inferred' | 'unknown';
 export type DeliveryTone = 'success' | 'error' | 'pending' | 'warning';
 
 /**
+ * Whether the message being described is one WE sent or one we RECEIVED
+ * (#4816 follow-up — unified message-detail popup). Drives which sections a
+ * describe builder emits: delivery/ACK/routing/identity are outbound-only,
+ * while route/signal/packet-detail are reception facts meaningful on inbound
+ * messages (and empty on our own sends).
+ */
+export type MessageDirection = 'sent' | 'received';
+
+/**
  * A single labeled fact in the Delivery Details modal.
  *
  * `value` holds an already-formatted literal (e.g. "12 dB", "0x4a", "5") or
