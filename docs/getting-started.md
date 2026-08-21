@@ -15,6 +15,7 @@ MeshMonitor supports multiple deployment options to fit your infrastructure.
 | Method | Platform | Updating | Complexity | Support |
 |--------|----------|--------------|------------|---------|
 | 🐳 [Docker Compose](#quick-start-with-docker-compose) | Any | `docker compose pull && up -d`, or [Watchtower](/configuration/updating#unattended-updates-with-watchtower) | Low | Official |
+| 🚢 [Portainer Stack](#deploy-with-portainer) | Any | Re-pull image + redeploy the stack | Low | Official |
 | 🖥️ [Desktop App](/configuration/desktop) | Windows / macOS | ❌ Manual | Very Low | Official |
 | ☸️ [Kubernetes / Helm](/deployment/DEPLOYMENT_GUIDE) | Any | ✅ Yes (image pull) | High | Official |
 | 📦 [Proxmox LXC](/deployment/PROXMOX_LXC_GUIDE) | Proxmox VE | `meshmonitor-update` | Low | Community |
@@ -24,6 +25,7 @@ MeshMonitor supports multiple deployment options to fit your infrastructure.
 ### Which Should I Choose?
 
 - **You want the smoothest update experience** → **Docker Compose**. `docker compose pull && docker compose up -d` when you see the update banner, or add [Watchtower](/configuration/updating#unattended-updates-with-watchtower) for unattended updates.
+- **You manage your containers through Portainer** → **[Portainer Stack](#deploy-with-portainer)**. Paste a single generated stack YAML into Portainer's web editor — no `.env` file, secrets go in Portainer's own Environment variables form.
 - **You're on a single Windows or macOS machine and don't want to think about servers** → **Desktop App**. Updates are manual (download a new installer), but setup is the simplest.
 - **You're running on a Kubernetes cluster** → **Helm chart**. Upgrades are an `image:` tag bump and a `helm upgrade`.
 - **You're a Proxmox VE user** → **Proxmox LXC** for a lightweight, native-feeling install. Updates are a single `meshmonitor-update` command.
@@ -54,6 +56,10 @@ and an unattended-updates recipe using Watchtower.
   - Available in our [GitHub repository](https://github.com/yeraze/meshmonitor)
   - See [Deployment Guide](/deployment/DEPLOYMENT_GUIDE) for details
 
+- **🚢 Portainer Stack** - Docker Compose deployed through Portainer's web UI
+  - Generate the stack YAML from the [Configurator](/configurator) (Export format → Portainer Stack)
+  - See [Deploy with Portainer](#deploy-with-portainer) below
+
 ### Community Supported
 
 The following deployment methods are contributed and supported by the community:
@@ -70,6 +76,28 @@ The following deployment methods are contributed and supported by the community:
 - **🔧 Bare Metal** - Direct installation with Node.js
   - For development or custom setups
   - See [Deployment Guide](/deployment/DEPLOYMENT_GUIDE)
+
+### Deploy with Portainer
+
+If you manage Docker through [Portainer](https://www.portainer.io/), deploy
+MeshMonitor as a **Stack** — no shell access or `.env` file required.
+
+1. Open the **[Docker Compose Configurator](/configurator)**, configure your
+   setup (connection type, reverse proxy, security), and set **Export format →
+   Portainer Stack**. It produces a single stack YAML.
+2. In Portainer, go to **Stacks → Add stack → Web editor** and paste the YAML.
+3. Portainer has no `.env` file, so the Configurator drops `env_file: .env` and
+   instead lists the variables you must add in Portainer's **Environment
+   variables** form — typically `SESSION_SECRET`, your database credentials, and
+   the BLE address, depending on the options you chose.
+4. Deploy the stack. To update later, re-pull the image and redeploy the stack
+   from Portainer (Portainer's "Re-pull image and redeploy").
+
+::: tip
+The Portainer format is just Docker Compose delivered through Portainer's UI, so
+everything in the [Quick Start](#quick-start-with-docker-compose) below applies —
+only the delivery mechanism and the env-var handling differ.
+:::
 
 ## Prerequisites
 
