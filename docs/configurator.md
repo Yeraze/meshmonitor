@@ -57,7 +57,7 @@ After deploying with the generated configuration:
 The configurator can hand you the same deployment in two shapes:
 
 - **docker-compose** (default): a `docker-compose.yml` plus a separate `.env` file holding secrets and credentials. Use this when you run `docker compose up` yourself.
-- **Portainer Stack**: a single YAML to paste into Portainer's stack web editor. Portainer has no `.env` file to read, so this format drops `env_file: .env` and instead lists the variables you must set in Portainer's own **Environment variables** form — `SESSION_SECRET`, your database credentials, and the BLE address, depending on what you picked above.
+- **Portainer Stack**: a single YAML to paste into Portainer's stack web editor. Portainer has no `.env` file to read, so this format drops `env_file: .env` and instead lists the variables you must set in Portainer's own **Environment variables** form — `SESSION_SECRET`, your database credentials, and the BLE address, depending on what you picked above. See [Deploy with Portainer](/getting-started#deploy-with-portainer) for the step-by-step.
 
 The services, ports, and volumes are identical between the two. Only how the secrets reach the container changes.
 
