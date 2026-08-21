@@ -25,6 +25,7 @@ The default mode. Displays a time-series line chart of all recorded values for t
 - X-axis shows time; Y-axis shows the metric value
 - Hover over the chart to see exact values at a point in time
 - If [Solar Monitoring](solar-monitoring.md) is enabled and the metric is power-related, a translucent solar production overlay may appear
+- **Export CSV** downloads the plotted series — in display units, with solar or Paxcounter columns included when present. Available on both node telemetry charts and Dashboard favorite charts.
 
 ## Gauge Mode
 

@@ -291,7 +291,7 @@ A few things you may notice if you're running a 2.8 development build:
 
 - **Signed-packet shield.** Firmware 2.8 introduces an **XEdDSA** packet-signing scheme. When the connected node reports a packet as signature-verified, MeshMonitor shows a small shield icon next to it, in the [Packet Monitor](/features/packet-monitor), and alongside the existing MQTT and store-and-forward indicators on messages. MeshMonitor doesn't verify the signature itself; it only surfaces what the node already checked.
 - **MeshBeacon.** 2.8 adds a periodic `MESH_BEACON_APP` broadcast that a node can use to advertise a joinable channel (name, region, and modem preset). The Packet Monitor decodes and previews these as `[MeshBeacon: "..."]`. You can also:
-  - **Configure the module** from Configuration → MeshBeacon, or the Admin Commands tab: listen and broadcast toggles, the beacon text, and what network (if any) to advertise. The section is greyed out on firmware older than 2.8, because such a device silently ignores the setting rather than rejecting it.
+  - **Configure the module** from Configuration → MeshBeacon, or the Admin Commands tab: listen and broadcast toggles, the beacon text, the broadcast interval, the transmit region, and what network(s) (if any) to advertise or broadcast on. The section is greyed out on firmware older than 2.8, because such a device silently ignores the setting rather than rejecting it.
   - **Trigger an automation** on a received beacon, optionally filtered by beacon text or narrowed to beacons that actually advertise a network. See [Automations](/features/automation-engine).
 
   Beacons are **not** stored as messages, they appear in the Packet Monitor and can drive automations.

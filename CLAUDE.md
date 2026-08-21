@@ -1,6 +1,6 @@
 # MeshMonitor — Claude Agent Brief
 
-**Version:** 4.13.x (multi-source architecture)
+**Version:** 4.15.x (multi-source architecture)
 **Stack:** React 19 + TS + Vite frontend / Node.js 22+ (Docker image ships Node 24; armv7 image ships Node 22 — the lowest supported runtime, since Node 24 has no ARMv7 build; CI matrix covers 22/24/25) + Express 5 + TS backend / SQLite (default), PostgreSQL, MySQL via Drizzle ORM / Meshtastic protobuf-over-TCP and MeshCore (native `meshcore.js` for companion, serial CLI for repeater) through a per-source manager registry.
 
 ## Read order for new agents
@@ -58,65 +58,25 @@ Existing bare-`{error}` handlers convert opportunistically as they're touched
 ## Mesh impact checklist
 
 LoRa is a shared, slow, half-duplex medium. A feature that looks cheap on a
-desk with one node becomes mesh-wide congestion on a busy channel with 200. Work
+desk with one node becomes a mesh-wide outage on a busy channel with 200. Work
 through these three questions **before** you write the code, and put the answers
 in the plan and the PR body.
 
 ### 1. What does this cost in airtime?
 
 Every packet we send takes the channel away from everyone else on it. LongFast
-runs at 1.07 kbps, about **134 bytes/sec** of raw on-air rate for the whole
-mesh, before headers, retries, and rebroadcasts. Every packet also carries a
-16-byte LoRa header on top of its payload.
-
-Meshtastic uses managed flooding: every rebroadcast-eligible node that hears a
-packet and has not already seen it rebroadcasts it. So `hop_limit=3` costs **at
-least** 4 transmissions, and in a dense mesh many more, because the real count
-scales with node count rather than hop count.
+gives you a few hundred bytes per second across the whole mesh, and each hop
+re-broadcasts the packet, a 3-hop send is ~4 transmissions, not 1.
 
 Ask:
-- How many packets does this send, and how often?
+- How many packets does this send, and how often? Multiply by hop count.
 - Does it scale with node count? A per-node ping is O(n) packets and will not
   survive a large mesh.
 - Does it run on a timer, so the cost is permanent rather than one-off?
 - Does it fire on every source? N sources means N times the traffic.
 
-**Budgets to measure against.** The firmware hard-codes these with no config
-binding (`meshtastic/firmware`, `src/airtime.h`; these are firmware paths, not
-paths in this repo):
-
-| Figure | Value | Window |
-|--------|-------|--------|
-| Channel utilization, polite ceiling | 25% | rolling 60s, counts TX + RX including non-Meshtastic energy |
-| Channel utilization, impolite ceiling | 40% | same |
-| `airUtilTx` "stop doing this" threshold | 7-8% | rolling 1 hour, TX only |
-| Background traffic share of duty cycle | 50% of the region limit | rolling 1 hour |
-
-The 7-8% figure comes from Meshtastic's own ROUTER_LATE blog post, not the docs
-proper. Note the two windows differ: channel utilization is a rolling 60
-seconds and includes everything the radio hears, while `airUtilTx` is a rolling
-hour of our own transmissions.
-
-**Duty cycle is a hard block, and only in some regions.** `RegionInfo.dutyCycle`
-(table in `meshtastic/firmware`, `src/mesh/RadioInterface.cpp`) is 100, meaning no limit, everywhere
-except EU_433, EU_868, TH and UA_433 at **10%**, and UA_868 at **1%**. Where a
-limit applies, `Router::send()` drops the packet, NAKs
-`Routing.Error.DUTY_CYCLE_LIMIT`, and notifies the client. It gates **user text
-messages too**, not just background traffic.
-
-US and the other 100% regions get **no** duty-cycle enforcement, and the
-firmware implements no dwell-time or channel-hopping substitute. Two rules
-follow: never write an EU limit into code as if it were universal, and never
-assume the firmware will stop us elsewhere. It will not.
-
-The firmware's soft gates (channel utilization and `airUtilTx`) cover Position,
-NodeInfo, NeighborInfo, Telemetry, StoreForward, RangeTest and MeshBeacon. They
-do **not** cover user text messages. Anything we send on a text port is
-ungoverned except by the duty-cycle block above, so our own limits are the only
-thing standing between a feature and the mesh.
-
-**Prefer passive data we already receive over anything we have to ask for.**
-Traceroutes, telemetry requests, and NodeInfo exchanges are expensive, so batch
+Prefer passive data we already receive over anything we have to ask for.
+Traceroutes, telemetry requests, and NodeInfo exchanges are expensive, batch
 them, spread them out, or make them on-demand.
 
 ### 2. Can this spam the mesh or the users?
@@ -132,13 +92,8 @@ Spam is not only a flood of channel messages. Count the indirect paths too:
   reacts to a message and sends a message can trigger itself. See the
   self-origin guard in the automation engine (#3914).
 - **Retries:** a failed send that retries forever is a flood with extra steps.
-- **MQTT:** costs no airtime, so it is easy to wave through, but it is still a
-  volume problem. One update per node on a 200-node mesh is 200 publishes, and
-  every downstream subscriber pays for them. "No LoRa cost" does not mean
-  "no limit needed".
 
-If any of these fire automatically or repeatedly, the feature needs a limit. A
-single send the user explicitly asked for does not. Reuse what exists rather
+If any of these are true, the feature needs a limit. Reuse what exists rather
 than inventing a new mechanism:
 
 | Need | Use |
@@ -173,12 +128,9 @@ Rules:
 
 These limits are policy, not implementation detail. When the checklist says a
 feature needs a cap, a cooldown, or a warning, **bring the numbers to the user
-and ask**. Do not pick a limit, ship a default, or decide something is "safe
+and ask**, do not pick a limit, ship a default, or decide something is "safe
 enough" on your own. State the airtime cost you calculated and propose an
 option; let the user choose.
-
-If you reach this point mid-implementation, stop there. Surface the numbers
-before you write the rate-limiting code, not after.
 
 ## Multi-Source Architecture (4.x)
 
