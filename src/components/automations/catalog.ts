@@ -267,11 +267,20 @@ export const TRIGGERS: BlockDef[] = [
       COOLDOWN_SCOPE,
     ],
   },
+  {
+    type: 'trigger.nodeRebooted',
+    label: 'A node reboots unexpectedly',
+    description: 'Fires when a node’s uptime counter resets — the sign of an unexpected restart. Detected from the uptime telemetry a node already reports, by comparing each new reading against the last stored one; there is no extra polling and no packet is sent. Meshtastic only for now. It never fires on the first uptime reading for a node (no prior to compare).',
+    fields: [
+      COOLDOWN,
+      COOLDOWN_SCOPE,
+    ],
+  },
 ];
 
 // ─── Comparison field registry (event / node / latest-telemetry) ─────────────
 
-const SUBJECT_NODE_TRIGGERS = ['trigger.message', 'trigger.nodeDiscovered', 'trigger.nodeUpdated', 'trigger.telemetry', 'trigger.geofence', 'trigger.becameMobile', 'trigger.leftHome', 'trigger.meshBeacon', 'trigger.nodeStale', 'trigger.nodeOnline'];
+const SUBJECT_NODE_TRIGGERS = ['trigger.message', 'trigger.nodeDiscovered', 'trigger.nodeUpdated', 'trigger.telemetry', 'trigger.geofence', 'trigger.becameMobile', 'trigger.leftHome', 'trigger.meshBeacon', 'trigger.nodeStale', 'trigger.nodeOnline', 'trigger.nodeRebooted'];
 const hasSubjectNode = (t: string) => SUBJECT_NODE_TRIGGERS.includes(t);
 
 const EVENT_NUMERIC: Record<string, FieldOpt[]> = {
@@ -312,6 +321,11 @@ const EVENT_NUMERIC: Record<string, FieldOpt[]> = {
     { value: 'nodeNum', label: 'Node #' },
     { value: 'offlineDurationMinutes', label: 'Minutes offline' },
     { value: 'staleAfterMinutes', label: 'Silence threshold (min)' },
+  ],
+  'trigger.nodeRebooted': [
+    { value: 'nodeNum', label: 'Node #' },
+    { value: 'previousUptimeSeconds', label: 'Uptime before reset (s)' },
+    { value: 'uptimeSeconds', label: 'Uptime after reset (s)' },
   ],
   'trigger.becameMobile': [{ value: 'nodeNum', label: 'Node #' }, { value: 'mobile', label: 'Mobile flag (1)' }, { value: 'previousMobile', label: 'Previous mobile flag' }],
   'trigger.leftHome': [

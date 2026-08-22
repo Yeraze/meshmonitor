@@ -139,6 +139,15 @@ async function handleEvent(event: DataEvent): Promise<void> {
       break;
     }
 
+    case 'node:rebooted': {
+      // Device Health (#4558 Phase B): the telemetry-save seam detected a node's
+      // uptime reset. Fire trigger.nodeRebooted. Detection state lives in the DB
+      // (the prior uptime row), not here, so this is a pure event forward.
+      const data = event.data as { nodeNum: number; previousUptimeSeconds: number; uptimeSeconds: number };
+      await e.onNodeRebooted(data.nodeNum, data.previousUptimeSeconds, data.uptimeSeconds, sourceId);
+      break;
+    }
+
     case 'node:mobility': {
       const data = event.data as {
         nodeNum: number;

@@ -50,6 +50,7 @@ export const TRIGGER_TOKENS: Record<string, Array<[string, string]>> = {
   'trigger.meshBeacon': [['nodeNum', 'Node number'], ['message', 'Beacon text'], ['offerChannelName', 'Offered channel name'], ['offerRegion', 'Offered region code'], ['offerPreset', 'Offered modem preset'], ['hasOffer', 'true if the beacon advertises a network']],
   'trigger.nodeStale': [['nodeNum', 'Node number (Meshtastic)'], ['publicKey', 'Public key (MeshCore)'], ['ageMinutes', 'Minutes since last heard'], ['staleAfterMinutes', 'Configured silence threshold (min)'], ['lastHeard', 'Last-heard time (epoch ms)']],
   'trigger.nodeOnline': [['nodeNum', 'Node number (Meshtastic)'], ['publicKey', 'Public key (MeshCore)'], ['offlineDurationMinutes', 'Minutes the node was offline'], ['staleAfterMinutes', 'Configured silence threshold (min)']],
+  'trigger.nodeRebooted': [['nodeNum', 'Node number'], ['previousUptimeSeconds', 'Uptime before the reset (s)'], ['uptimeSeconds', 'Uptime after the reset (s)']],
   'trigger.schedule': [],
 };
 
@@ -60,6 +61,7 @@ const TRIGGER_LABEL: Record<string, string> = {
   'trigger.becameMobile': 'Became mobile', 'trigger.leftHome': 'Left home', 'trigger.schedule': 'Schedule',
   'trigger.meshBeacon': 'MeshBeacon',
   'trigger.nodeStale': 'Node silent', 'trigger.nodeOnline': 'Node recovered',
+  'trigger.nodeRebooted': 'Node rebooted',
 };
 
 /** Drawer listing every available substitution token (current trigger first). */

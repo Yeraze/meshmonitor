@@ -40,6 +40,7 @@ import {
   buildLeftHomeContext,
   buildNodeStaleContext,
   buildNodeOnlineContext,
+  buildNodeRebootedContext,
   buildScheduleContext,
   messageMatchesFilter,
   meshCoreMessageMatchesFilter,
@@ -895,6 +896,28 @@ export class AutomationEngineService {
         return `telemetry "${telemetryType}" ≠ rule metric "${want}"`;
       },
     );
+  }
+
+  /**
+   * A node's uptime counter reset — an unexpected reboot (`trigger.nodeRebooted`,
+   * Device Health #4558 Phase B). Detection (reading the prior uptime from the
+   * DB and comparing) already happened at the telemetry-save seam, so this is a
+   * pure event entry point: build the context and fire.
+   *
+   * No self-origin guard (#3914) here — unlike {@link onTelemetry}. This is a
+   * health signal in the same family as {@link runStaleCheck}'s nodeStale/
+   * nodeOnline, which also don't drop our own node: knowing your OWN gateway
+   * rebooted is useful, and a reboot is not something an automation action can
+   * cause, so there is no self-trigger loop to guard against.
+   */
+  async onNodeRebooted(
+    nodeNum: number,
+    previousUptimeSeconds: number,
+    uptimeSeconds: number,
+    sourceId: string | null,
+  ): Promise<number> {
+    const ctx = buildNodeRebootedContext(nodeNum, previousUptimeSeconds, uptimeSeconds, sourceId, this.now());
+    return this.runTrigger(ctx);
   }
 
   /**
