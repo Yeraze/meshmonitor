@@ -205,6 +205,10 @@ describe('createNodeIcon — variant:"meshtastic" (default) unchanged code paths
     expect(icon.popupAnchor).toEqual([0, -24]);
     expect(icon.html).toContain('ABCD');
     expect(icon.html).toContain(getHopColor(0)); // #22c55e
+    // #4860: the short name carries a white halo so it stays legible over
+    // satellite imagery where the backing circle washes out on bright terrain.
+    expect(icon.html).toContain('paint-order="stroke"');
+    expect(icon.html).toContain('stroke="#ffffff"');
   });
 
   it('animate + highlightSelected classes are applied when requested', () => {

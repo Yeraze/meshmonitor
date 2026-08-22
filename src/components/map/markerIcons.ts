@@ -172,7 +172,11 @@ export function createNodeIcon(options: CreateNodeIconOptions): L.DivIcon {
     ` : `
       <svg width="${circleSize}" height="${circleSize}" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
         <circle cx="24" cy="24" r="20" fill="white" fill-opacity="0.95" stroke="${color}" stroke-width="${strokeWidth}" />
-        <text x="24" y="28" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#333">${shortName || '?'}</text>
+        <!-- White halo under the glyph so the short name stays legible over
+             satellite imagery even where the backing circle washes out against
+             bright terrain (snow/sand/cloud). paint-order draws the stroke first
+             so the dark fill sits on top of its own outline (#4860). -->
+        <text x="24" y="28" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#333" stroke="#ffffff" stroke-width="3" stroke-linejoin="round" paint-order="stroke">${shortName || '?'}</text>
       </svg>
     `;
 
