@@ -21,6 +21,7 @@ export type DataEventType =
   | 'node:updated'
   | 'node:mobility'
   | 'node:rebooted'
+  | 'node:powerChanged'
   | 'message:new'
   | 'channel:updated'
   | 'telemetry:batch'
@@ -89,6 +90,21 @@ export interface NodeRebootedData {
   nodeNum: number;
   previousUptimeSeconds: number;
   uptimeSeconds: number;
+}
+
+/**
+ * A detected node power-source transition (Device Health #4558 Phase C) — the
+ * node crossed between external/USB power and battery power, derived from its
+ * `batteryLevel` telemetry (firmware convention: > 100 = powered). Carries the
+ * prior and new powered-states plus the new battery reading so
+ * `trigger.nodePowerChanged` automations can report which way it flipped. Not
+ * stored anywhere; this event is the only way a rule sees the transition.
+ */
+export interface NodePowerChangedData {
+  nodeNum: number;
+  previousPowered: boolean;
+  powered: boolean;
+  batteryLevel: number;
 }
 
 export interface ConnectionStatusData {
@@ -191,6 +207,22 @@ class DataEventEmitter extends EventEmitter {
     };
     this.emit('data', event);
     logger.debug(`[DataEventEmitter] Node rebooted: ${data.nodeNum} (uptime ${data.previousUptimeSeconds}s → ${data.uptimeSeconds}s)`);
+  }
+
+  /**
+   * Emit a node power-source transition event (used by trigger.nodePowerChanged,
+   * #4558 Phase C). Raised by the telemetry-save seam when a node's batteryLevel
+   * reading crosses the firmware's powered threshold (> 100) in either direction.
+   */
+  emitNodePowerChanged(data: NodePowerChangedData, sourceId?: string): void {
+    const event: DataEvent = {
+      type: 'node:powerChanged',
+      data,
+      timestamp: Date.now(),
+      sourceId,
+    };
+    this.emit('data', event);
+    logger.debug(`[DataEventEmitter] Node power changed: ${data.nodeNum} (powered ${data.previousPowered} → ${data.powered}, battery ${data.batteryLevel})`);
   }
 
   /**

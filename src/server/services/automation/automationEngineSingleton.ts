@@ -148,6 +148,16 @@ async function handleEvent(event: DataEvent): Promise<void> {
       break;
     }
 
+    case 'node:powerChanged': {
+      // Device Health (#4558 Phase C): the telemetry-save seam detected a node's
+      // batteryLevel cross the firmware powered threshold (> 100). Fire
+      // trigger.nodePowerChanged. Detection state lives in the DB (the prior
+      // batteryLevel row), not here, so this is a pure event forward.
+      const data = event.data as { nodeNum: number; previousPowered: boolean; powered: boolean; batteryLevel: number };
+      await e.onNodePowerChanged(data.nodeNum, data.previousPowered, data.powered, data.batteryLevel, sourceId);
+      break;
+    }
+
     case 'node:mobility': {
       const data = event.data as {
         nodeNum: number;

@@ -463,6 +463,41 @@ export function buildNodeRebootedContext(
   };
 }
 
+/**
+ * Build the trigger context when a node's power source flips between external/USB
+ * power and battery (`trigger.nodePowerChanged` — Device Health #4558 Phase C).
+ * Subject node = the node whose power changed, so `{{ node.* }}` hydration and
+ * node-scoped cooldown work. Detection (reading the prior batteryLevel from the
+ * DB and comparing against the firmware's > 100 "powered" convention) happens at
+ * the telemetry-save seam; this builder only shapes what the conditions /
+ * interpolation read. `direction` is 'lost' (was powered, now on battery) or
+ * 'restored' (was on battery, now powered).
+ */
+export function buildNodePowerChangedContext(
+  nodeNum: number,
+  previousPowered: boolean,
+  powered: boolean,
+  batteryLevel: number,
+  sourceId: string | null,
+  timestamp: number,
+): TriggerContext {
+  return {
+    triggerType: 'trigger.nodePowerChanged',
+    sourceId,
+    subjectNodeNum: Number(nodeNum),
+    timestamp,
+    fields: {
+      nodeNum: Number(nodeNum),
+      powered,
+      previousPowered,
+      direction: powered ? 'restored' : 'lost',
+      batteryLevel,
+      sourceId,
+      timestamp,
+    },
+  };
+}
+
 /** Build the trigger context for a single telemetry reading (engine fans the batch out). */
 export function buildTelemetryContext(
   nodeNum: number,
