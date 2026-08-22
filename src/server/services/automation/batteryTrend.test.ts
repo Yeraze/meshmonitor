@@ -68,6 +68,8 @@ describe('trigger.batteryTrend (#4558 Phase E)', () => {
   let candidates: StaleCandidate[];
   /** `${sourceId}:${nodeNum}` → full battery history (the provider windows it by sinceMs). */
   let history: Map<string, Array<{ timestamp: number; value: number }>>;
+  /** `${sourceId}:${publicKey}` → full battery-VOLTS history for MeshCore nodes. */
+  let mcHistory: Map<string, Array<{ timestamp: number; value: number }>>;
 
   beforeEach(() => {
     const t = createTestDb();
@@ -78,6 +80,7 @@ describe('trigger.batteryTrend (#4558 Phase E)', () => {
     clock = 1000 * HOUR; // well past epoch
     candidates = [];
     history = new Map();
+    mcHistory = new Map();
   });
   afterEach(() => { db.close(); automationTraceBus.reset(); automationTraceBus.setSink(null); });
 
@@ -90,6 +93,11 @@ describe('trigger.batteryTrend (#4558 Phase E)', () => {
       const all = history.get(`${sourceId ?? ''}:${nodeNum}`) ?? [];
       return all.filter((s) => s.timestamp >= sinceMs);
     },
+    // MeshCore volts history, keyed by pubkey (#4558 follow-up).
+    getMeshCoreBatteryTrendSamples: async (sourceId, publicKey, sinceMs) => {
+      const all = mcHistory.get(`${sourceId ?? ''}:${publicKey}`) ?? [];
+      return all.filter((s) => s.timestamp >= sinceMs);
+    },
   };
   const engineWith = (deps: ActionDeps) =>
     new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data, now: () => clock });
@@ -99,6 +107,25 @@ describe('trigger.batteryTrend (#4558 Phase E)', () => {
 
   const setHistory = (sourceId: string, nodeNum: number, samples: Array<{ timestamp: number; value: number }>) =>
     history.set(`${sourceId}:${nodeNum}`, samples);
+
+  const setMcHistory = (sourceId: string, publicKey: string, samples: Array<{ timestamp: number; value: number }>) =>
+    mcHistory.set(`${sourceId}:${publicKey}`, samples);
+
+  /** batteryTrend rule tokenised to read back the MeshCore pubkey identity. */
+  const mcTrendGraph = (windowHours: number, minDropPercent: number): AutomationGraph => ({
+    version: 1,
+    nodes: [
+      { id: 't', type: 'trigger.batteryTrend', params: { windowHours, minDropPercent } },
+      {
+        id: 'n', type: 'action.notify',
+        params: {
+          title: 'trend',
+          body: 'node={{ trigger.nodeNum }} key={{ trigger.publicKey }} drop={{ trigger.dropPercent }} start={{ trigger.startLevel }} latest={{ trigger.latestLevel }}',
+        },
+      },
+    ],
+    edges: [{ from: 't', to: 'n' }],
+  });
 
   // ── validation ──────────────────────────────────────────────────────────────
 
@@ -297,14 +324,105 @@ describe('trigger.batteryTrend (#4558 Phase E)', () => {
     expect(calls[0].args.sourceId).toBe('A');
   });
 
-  // ── MeshCore exclusion + provider absence ─────────────────────────────────────
+  // ── MeshCore parity (#4558 follow-up) ─────────────────────────────────────────
 
-  it('ignores MeshCore nodes (no batteryLevel history)', async () => {
+  it('fires for a MeshCore node on a relative VOLTS decline ≥ threshold, keyed by pubkey', async () => {
     const { calls, deps } = recorder();
-    await createEnabled('trend', trendGraph(12, 20));
+    await autos.createAutomation({ name: 'mc-trend', enabled: true, config: JSON.stringify(mcTrendGraph(12, 20)) });
     const engine = engineWith(deps);
     await engine.load();
-    // A MeshCore candidate has nodeNum == null; it must never be trended.
+    candidates = [{ sourceId: 'mc', nodeNum: null, publicKey: 'ABCDEF0123', lastHeardMs: clock }];
+
+    // Baseline: volts essentially flat → relative drop ~0.5% < 20% → no fire.
+    setMcHistory('mc', 'ABCDEF0123', [{ timestamp: clock - 2 * HOUR, value: 4.0 }, { timestamp: clock, value: 3.98 }]);
+    expect(await engine.runBatteryTrendCheck()).toBe(0);
+    expect(calls).toHaveLength(0);
+
+    // Volts fall 4.0 → 3.0: relative drop = (1.0 / 4.0) * 100 = 25% ≥ 20% → fires once.
+    setMcHistory('mc', 'ABCDEF0123', [
+      { timestamp: clock - 3 * HOUR, value: 4.0 },
+      { timestamp: clock - 1 * HOUR, value: 3.5 },
+      { timestamp: clock, value: 3.0 },
+    ]);
+    expect(await engine.runBatteryTrendCheck()).toBe(1);
+    expect(calls.map((c) => c.fn)).toEqual(['notify']);
+    // nodeNum interpolates empty (null); the pubkey carries the identity; drop is the relative %.
+    expect(calls[0].args.body).toBe('node= key=ABCDEF0123 drop=25 start=4 latest=3');
+    expect(calls[0].args.sourceId).toBe('mc');
+
+    // Still declining next tick → no re-fire.
+    expect(await engine.runBatteryTrendCheck()).toBe(0);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('does NOT fire for a MeshCore node whose volts are stable or rising', async () => {
+    const { calls, deps } = recorder();
+    await autos.createAutomation({ name: 'mc-trend', enabled: true, config: JSON.stringify(mcTrendGraph(12, 20)) });
+    const engine = engineWith(deps);
+    await engine.load();
+    candidates = [{ sourceId: 'mc', nodeNum: null, publicKey: 'ABCDEF0123', lastHeardMs: clock }];
+
+    // Flat.
+    setMcHistory('mc', 'ABCDEF0123', [{ timestamp: clock - 4 * HOUR, value: 3.8 }, { timestamp: clock, value: 3.8 }]);
+    expect(await engine.runBatteryTrendCheck()).toBe(0);
+    // Rising (charging): latest > start ⇒ negative drop.
+    setMcHistory('mc', 'ABCDEF0123', [{ timestamp: clock - 4 * HOUR, value: 3.2 }, { timestamp: clock, value: 4.1 }]);
+    expect(await engine.runBatteryTrendCheck()).toBe(0);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('is restart-safe for MeshCore: an already-declining node only baselines on first sight', async () => {
+    const { calls, deps } = recorder();
+    await autos.createAutomation({ name: 'mc-trend', enabled: true, config: JSON.stringify(mcTrendGraph(12, 20)) });
+    // Fresh engine == a process restart: batteryTrendState starts empty.
+    const engine = engineWith(deps);
+    await engine.load();
+    candidates = [{ sourceId: 'mc', nodeNum: null, publicKey: 'ABCDEF0123', lastHeardMs: clock }];
+
+    // Node is ALREADY deep into a steep volts decline when the engine starts.
+    setMcHistory('mc', 'ABCDEF0123', [{ timestamp: clock - 5 * HOUR, value: 4.1 }, { timestamp: clock, value: 3.0 }]);
+    expect(await engine.runBatteryTrendCheck()).toBe(0); // first sighting → baseline, no fire
+    expect(await engine.runBatteryTrendCheck()).toBe(0); // still declining, still no fire
+    expect(calls).toHaveLength(0);
+  });
+
+  it('scopes MeshCore state per source: the same pubkey on two sources is tracked separately', async () => {
+    const { calls, deps } = recorder();
+    await autos.createAutomation({ name: 'mc-trend', enabled: true, config: JSON.stringify(mcTrendGraph(12, 20)) });
+    const engine = engineWith(deps);
+    await engine.load();
+    candidates = [
+      { sourceId: 'A', nodeNum: null, publicKey: 'KEY', lastHeardMs: clock },
+      { sourceId: 'B', nodeNum: null, publicKey: 'KEY', lastHeardMs: clock },
+    ];
+
+    // Baseline both calm.
+    setMcHistory('A', 'KEY', [{ timestamp: clock - 2 * HOUR, value: 4.0 }, { timestamp: clock, value: 3.98 }]);
+    setMcHistory('B', 'KEY', [{ timestamp: clock - 2 * HOUR, value: 4.0 }, { timestamp: clock, value: 3.98 }]);
+    await engine.runBatteryTrendCheck();
+
+    // Only source A declines; B stays flat.
+    setMcHistory('A', 'KEY', [{ timestamp: clock - 3 * HOUR, value: 4.0 }, { timestamp: clock, value: 3.0 }]);
+    setMcHistory('B', 'KEY', [{ timestamp: clock - 3 * HOUR, value: 4.0 }, { timestamp: clock, value: 3.98 }]);
+    expect(await engine.runBatteryTrendCheck()).toBe(1);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].args.sourceId).toBe('A');
+  });
+
+  it('skips MeshCore nodes when no MeshCore samples provider is wired', async () => {
+    const { calls, deps } = recorder();
+    await createEnabled('trend', trendGraph(12, 20));
+    const engine = new AutomationEngineService({
+      automationsRepo: autos, varResolver: resolver, deps,
+      // has Meshtastic samples + enumeration but NO getMeshCoreBatteryTrendSamples
+      data: {
+        getNode: async () => null, getTelemetry: async () => null,
+        listNodesForStaleCheck: async () => candidates,
+        getBatteryTrendSamples: async () => [],
+      },
+      now: () => clock,
+    });
+    await engine.load();
     candidates = [{ sourceId: 'mc', nodeNum: null, publicKey: 'ABCDEF', lastHeardMs: clock }];
     expect(await engine.runBatteryTrendCheck()).toBe(0);
     expect(await engine.runBatteryTrendCheck()).toBe(0);

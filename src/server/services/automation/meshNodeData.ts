@@ -204,5 +204,35 @@ export function createMeshNodeDataProvider(): NodeDataProvider {
         return [];
       }
     },
+
+    // #4558 follow-up — battery-VOLTAGE history for a MeshCore node over the trend
+    // window. MeshCore reports no battery %, only volts, and is durable ONLY in the
+    // generic telemetry table (never a node column), keyed by nodeId = publicKey.
+    // A local/companion node writes `mc_battery_volts` (the local poller); a remote
+    // repeater/room-server writes `mc_status_battery_volts` (the remote scheduler) —
+    // a given pubkey has one or the other, so we read the poller series first and
+    // fall back to the status series when it's empty. Timestamps are epoch ms,
+    // matching `sinceMs`. Best-effort: a miss returns [] and the node is skipped.
+    async getMeshCoreBatteryTrendSamples(sourceId, publicKey, sinceMs) {
+      const read = async (telemetryType: string) => {
+        const rows = await databaseService.telemetry.getTelemetryByNode(
+          publicKey,
+          2000,
+          sinceMs,
+          undefined,
+          0,
+          telemetryType,
+          sourceId ?? undefined,
+        );
+        return rows.map((r) => ({ timestamp: Number(r.timestamp), value: Number(r.value) }));
+      };
+      try {
+        const volts = await read('mc_battery_volts');
+        if (volts.length > 0) return volts;
+        return await read('mc_status_battery_volts');
+      } catch {
+        return [];
+      }
+    },
   };
 }

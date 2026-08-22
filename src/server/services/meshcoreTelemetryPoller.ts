@@ -23,6 +23,7 @@ import type { DbMeshCoreNode } from '../../db/repositories/meshcore.js';
 import type { MeshCoreManager, MeshCoreDeviceInfo } from '../meshcoreManager.js';
 import type { SourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMeshCoreManager } from '../sourceManagerTypes.js';
+import { detectMeshCoreReboot, detectMeshCorePowerChange } from './meshcoreDeviceHealth.js';
 
 /**
  * Minimal slice of DatabaseService the poller depends on. Lets us unit-test
@@ -31,6 +32,13 @@ import { isMeshCoreManager } from '../sourceManagerTypes.js';
 export interface PollerDatabase {
   telemetry: {
     insertTelemetryBatch: (rows: DbTelemetry[], sourceId?: string) => Promise<number>;
+    // Optional: used for reboot detection (#4558 follow-up). Absent → no reboot
+    // fires. Minimal return shape so both DbTelemetry flavours satisfy it.
+    getLatestTelemetryForType?: (
+      nodeId: string,
+      telemetryType: string,
+      sourceId?: string,
+    ) => Promise<{ value: number } | null>;
   };
   meshcore: {
     upsertNode: (node: Partial<DbMeshCoreNode> & { publicKey: string }, sourceId: string) => Promise<void>;
@@ -439,6 +447,34 @@ export class MeshCoreTelemetryPoller {
         `[MeshCorePoller:${manager.sourceId}] No metrics produced for ${nodeId.substring(0, 16)}`,
       );
       return;
+    }
+
+    // Device Health (#4558 follow-up): detect a reboot from the uptime reading
+    // BEFORE inserting the new rows, so the "prior" it reads is genuinely the
+    // last poll's value. DB read only, no packet sent.
+    if (core?.uptimeSecs !== undefined) {
+      await detectMeshCoreReboot(
+        this.database.telemetry,
+        nodeId,
+        `${MC_TELEMETRY_PREFIX}uptime_secs`,
+        core.uptimeSecs,
+        manager.sourceId,
+      );
+    }
+
+    // Device Health (#4558 MeshCore parity): detect an external-power transition
+    // from the battery voltage BEFORE inserting the new rows, so the prior it
+    // reads (mc_battery_mv, already in mV → scale 1) is the last poll's value.
+    // HEURISTIC — a full/charging battery is indistinguishable from wall power.
+    if (core?.batteryMv !== undefined) {
+      await detectMeshCorePowerChange(
+        this.database.telemetry,
+        nodeId,
+        `${MC_TELEMETRY_PREFIX}battery_mv`,
+        1,
+        core.batteryMv,
+        manager.sourceId,
+      );
     }
 
     try {

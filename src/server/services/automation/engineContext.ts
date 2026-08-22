@@ -139,12 +139,30 @@ export interface NodeDataProvider {
    * engine picks the window's oldest and newest by timestamp). Optional; absent
    * → battery-trend checks are a no-op (e.g. unit tests that don't wire it).
    *
-   * MeshCore is out of scope: it stores battery as a single node column, not a
-   * batteryLevel time-series, so there is no history to trend.
+   * For MeshCore nodes use {@link getMeshCoreBatteryTrendSamples} instead — they
+   * have no numeric node id and report battery in volts, not %.
    */
   getBatteryTrendSamples?(
     sourceId: string | null,
     nodeNum: number,
+    sinceMs: number,
+  ): Promise<Array<{ timestamp: number; value: number }>>;
+  /**
+   * Battery-VOLTAGE history for a MeshCore node since a cutoff, for the periodic
+   * declining-battery check (`trigger.batteryTrend`, #4558 follow-up). The
+   * MeshCore analogue of {@link getBatteryTrendSamples}: keyed by the node's
+   * `publicKey` (MeshCore has no numeric node id) and returning VOLTS samples
+   * (MeshCore reports no battery %). Reads the durable MeshCore battery telemetry
+   * series (`mc_battery_volts`, falling back to `mc_status_battery_volts`) so the
+   * trend is recomputed from the DB each tick and a restart never replays an
+   * alert. `sinceMs` is an epoch-MILLISECONDS cutoff. Because the unit is volts,
+   * the engine interprets the drop as a RELATIVE percentage decline against the
+   * window's oldest sample so a single `minDropPercent` threshold still applies.
+   * Optional; absent → MeshCore battery-trend checks are a no-op.
+   */
+  getMeshCoreBatteryTrendSamples?(
+    sourceId: string | null,
+    publicKey: string,
     sinceMs: number,
   ): Promise<Array<{ timestamp: number; value: number }>>;
 }
