@@ -32,6 +32,7 @@ import type { SourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMeshCoreManager } from '../sourceManagerTypes.js';
 import { MC_TELEMETRY_PREFIX, nodeNumFromPubkey } from './meshcoreTelemetryPoller.js';
 import { isBogusPosition } from '../../utils/nullIsland.js';
+import { detectMeshCoreReboot, detectMeshCorePowerChange } from './meshcoreDeviceHealth.js';
 
 /**
  * `adv_type` values for MeshCore contacts. Matches the `MeshCoreDeviceType`
@@ -56,6 +57,13 @@ export interface RemoteTelemetrySchedulerDatabase {
   };
   telemetry: {
     insertTelemetryBatch: (rows: DbTelemetry[], sourceId?: string) => Promise<number>;
+    // Optional: used for reboot detection (#4558 follow-up). Absent → no reboot
+    // fires. Minimal return shape so both DbTelemetry flavours satisfy it.
+    getLatestTelemetryForType?: (
+      nodeId: string,
+      telemetryType: string,
+      sourceId?: string,
+    ) => Promise<{ value: number } | null>;
   };
 }
 
@@ -436,6 +444,34 @@ export class MeshCoreRemoteTelemetryScheduler {
       try {
         const status = await manager.requestNodeStatus(target.publicKey);
         if (status) {
+          // Device Health (#4558 follow-up): detect a reboot from the uptime
+          // reading BEFORE the batch insert below, so the "prior" it reads is the
+          // last tick's value. DB read only, no packet sent.
+          if (typeof status.uptimeSecs === 'number') {
+            await detectMeshCoreReboot(
+              this.database.telemetry,
+              target.publicKey,
+              `${MC_TELEMETRY_PREFIX}status_uptime_secs`,
+              status.uptimeSecs,
+              manager.sourceId,
+            );
+          }
+          // Device Health (#4558 MeshCore parity): detect an external-power
+          // transition from the battery voltage BEFORE the batch insert below,
+          // so the prior it reads is the last tick's value. The scheduler stores
+          // battery as mc_status_battery_volts (VOLTS → scale 1000 to mV);
+          // status.batteryMv is already mV. HEURISTIC — a full/charging battery
+          // is indistinguishable from wall power.
+          if (typeof status.batteryMv === 'number') {
+            await detectMeshCorePowerChange(
+              this.database.telemetry,
+              target.publicKey,
+              `${MC_TELEMETRY_PREFIX}status_battery_volts`,
+              1000,
+              status.batteryMv,
+              manager.sourceId,
+            );
+          }
           const statusRows = statusToTelemetryRows(status, target.publicKey, nodeNum, ts);
           if (statusRows.length > 0) {
             rows.push(...statusRows);

@@ -1430,7 +1430,8 @@ class MeshtasticManager implements ISourceManager {
       if (!isUptimeReboot(priorUptime, newUptimeSeconds)) return;
       logger.info(`🔁 Node ${nodeNum} reboot detected: uptime ${priorUptime}s → ${newUptimeSeconds}s (source ${this.sourceId})`);
       dataEventEmitter.emitNodeRebooted(
-        { nodeNum, previousUptimeSeconds: priorUptime as number, uptimeSeconds: newUptimeSeconds },
+        // Meshtastic reboot: real nodeNum, no pubkey (MeshCore carries the pubkey instead).
+        { nodeNum, publicKey: null, previousUptimeSeconds: priorUptime as number, uptimeSeconds: newUptimeSeconds },
         this.sourceId,
       );
     } catch (e) {

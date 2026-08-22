@@ -25,6 +25,9 @@ import type { NodeDataProvider } from './engineContext.js';
 import type { AutomationGraph } from '../../../types/automation.js';
 import { validateAutomationGraph } from '../../../types/automation.js';
 import { isUptimeReboot, REBOOT_UPTIME_SLACK_SECONDS } from '../../utils/rebootDetection.js';
+import { buildNodeRebootedContext } from './triggerContext.js';
+import { detectMeshCoreReboot } from '../meshcoreDeviceHealth.js';
+import { dataEventEmitter, type DataEvent } from '../dataEventEmitter.js';
 import * as schema from '../../../db/schema/index.js';
 import { createTestDb } from '../../test-helpers/testDb.js';
 import { automationTraceBus } from './automationTraceBus.js';
@@ -152,6 +155,74 @@ describe('reboot detection via getLatestTelemetryForType (#4558 Phase B)', () =>
   });
 });
 
+// ─── MeshCore seam: detectMeshCoreReboot → node:rebooted (#4558 follow-up) ────
+
+describe('detectMeshCoreReboot seam (#4558 follow-up)', () => {
+  let db: ReturnType<typeof createTestDb>['sqlite'];
+  let drizzleDb: BetterSQLite3Database<typeof schema>;
+  let telem: TelemetryRepository;
+  let events: DataEvent[];
+  let listener: (e: DataEvent) => void;
+
+  beforeEach(() => {
+    const t = createTestDb();
+    db = t.sqlite;
+    drizzleDb = t.db;
+    telem = new TelemetryRepository(drizzleDb, 'sqlite');
+    events = [];
+    listener = (e) => { if (e.type === 'node:rebooted') events.push(e); };
+    dataEventEmitter.on('data', listener);
+  });
+  afterEach(() => { dataEventEmitter.off('data', listener); db.close(); });
+
+  const insertUptime = (pk: string, telemetryType: string, value: number, ts: number, sourceId: string) =>
+    telem.insertTelemetry(
+      { nodeId: pk, nodeNum: 1, telemetryType, timestamp: ts, value, unit: 's', createdAt: ts },
+      sourceId,
+    );
+
+  it('emits node:rebooted carrying the pubkey (nodeNum null) on a genuine uptime reset', async () => {
+    await insertUptime('PUBKEY', 'mc_uptime_secs', 86_400, 1_000, 'mc');
+    await detectMeshCoreReboot(telem, 'PUBKEY', 'mc_uptime_secs', 12, 'mc');
+    expect(events).toHaveLength(1);
+    const data = events[0].data as { nodeNum: number | null; publicKey?: string; previousUptimeSeconds: number; uptimeSeconds: number };
+    expect(data.nodeNum).toBeNull();
+    expect(data.publicKey).toBe('PUBKEY');
+    expect(data.previousUptimeSeconds).toBe(86_400);
+    expect(data.uptimeSeconds).toBe(12);
+    expect(events[0].sourceId).toBe('mc');
+  });
+
+  it('does not emit on the first-ever reading (no prior)', async () => {
+    await detectMeshCoreReboot(telem, 'PUBKEY', 'mc_uptime_secs', 3_600, 'mc');
+    expect(events).toHaveLength(0);
+  });
+
+  it('does not emit on a normal uptime rise', async () => {
+    await insertUptime('PUBKEY', 'mc_uptime_secs', 3_600, 1_000, 'mc');
+    await detectMeshCoreReboot(telem, 'PUBKEY', 'mc_uptime_secs', 7_200, 'mc');
+    expect(events).toHaveLength(0);
+  });
+
+  it('works on the remote-scheduler status uptime series too', async () => {
+    await insertUptime('PUBKEY', 'mc_status_uptime_secs', 50_000, 1_000, 'mc');
+    await detectMeshCoreReboot(telem, 'PUBKEY', 'mc_status_uptime_secs', 5, 'mc');
+    expect(events).toHaveLength(1);
+    expect((events[0].data as { publicKey?: string }).publicKey).toBe('PUBKEY');
+  });
+
+  it('reads the prior per source: a fresh source baselines rather than firing', async () => {
+    await insertUptime('PUBKEY', 'mc_uptime_secs', 3_600, 1_000, 'A');
+    // Source B has no prior of its own → first reading, does not fire.
+    await detectMeshCoreReboot(telem, 'PUBKEY', 'mc_uptime_secs', 30, 'B');
+    expect(events).toHaveLength(0);
+    // Source A's own 3600s prior → a 30s reading is a reset.
+    await detectMeshCoreReboot(telem, 'PUBKEY', 'mc_uptime_secs', 30, 'A');
+    expect(events).toHaveLength(1);
+    expect(events[0].sourceId).toBe('A');
+  });
+});
+
 // ─── engine firing + tokens + validation ─────────────────────────────────────
 
 describe('trigger.nodeRebooted engine (#4558 Phase B)', () => {
@@ -189,7 +260,7 @@ describe('trigger.nodeRebooted engine (#4558 Phase B)', () => {
     const engine = engineWith(deps);
     await engine.load();
 
-    expect(await engine.onNodeRebooted(111, 86_400, 12, 'default')).toBe(1);
+    expect(await engine.onNodeRebooted(111, null, 86_400, 12, 'default')).toBe(1);
     expect(calls.map((c) => c.fn)).toEqual(['notify']);
     expect(calls[0].args.body).toBe('node=111 prev=86400 now=12 src=default');
   });
@@ -198,7 +269,7 @@ describe('trigger.nodeRebooted engine (#4558 Phase B)', () => {
     const { calls, deps } = recorder();
     const engine = engineWith(deps);
     await engine.load();
-    expect(await engine.onNodeRebooted(111, 86_400, 12, 'default')).toBe(0);
+    expect(await engine.onNodeRebooted(111, null, 86_400, 12, 'default')).toBe(0);
     expect(calls).toHaveLength(0);
   });
 
@@ -208,7 +279,52 @@ describe('trigger.nodeRebooted engine (#4558 Phase B)', () => {
     const engine = engineWith(deps);
     await engine.load();
 
-    await engine.onNodeRebooted(222, 5_000, 3, 'sourceZ');
+    await engine.onNodeRebooted(222, null, 5_000, 3, 'sourceZ');
     expect(calls[0].args.body).toBe('node=222 prev=5000 now=3 src=sourceZ');
+  });
+
+  // ── MeshCore parity (#4558 follow-up) ─────────────────────────────────────────
+
+  it('fires for a MeshCore node identified by pubkey (nodeNum null)', async () => {
+    const { calls, deps } = recorder();
+    // A rule that reads the MeshCore identity: nodeNum is null, publicKey is set.
+    await autos.createAutomation({
+      name: 'mc-reboot', enabled: true,
+      config: JSON.stringify({
+        version: 1,
+        nodes: [
+          { id: 't', type: 'trigger.nodeRebooted', params: {} },
+          { id: 'n', type: 'action.notify', params: { title: 'r', body: 'node={{ trigger.nodeNum }} key={{ trigger.publicKey }} prev={{ trigger.previousUptimeSeconds }} now={{ trigger.uptimeSeconds }}' } },
+        ],
+        edges: [{ from: 't', to: 'n' }],
+      }),
+    });
+    const engine = engineWith(deps);
+    await engine.load();
+
+    expect(await engine.onNodeRebooted(null, 'ABCDEF0123', 86_400, 7, 'mc')).toBe(1);
+    // nodeNum interpolates empty (null); the pubkey carries the identity.
+    expect(calls[0].args.body).toBe('node= key=ABCDEF0123 prev=86400 now=7');
+  });
+});
+
+// ─── context identity: pubkey vs nodeNum ─────────────────────────────────────
+
+describe('buildNodeRebootedContext identity (#4558 follow-up)', () => {
+  it('Meshtastic subject binds subjectNodeNum and leaves subjectNodeKey to derive', () => {
+    const ctx = buildNodeRebootedContext(111, null, 86_400, 12, 'default', 1_000);
+    expect(ctx.subjectNodeNum).toBe(111);
+    // undefined ⇒ derive from subjectNodeNum (a Meshtastic node), not an explicit key.
+    expect(ctx.subjectNodeKey).toBeUndefined();
+    expect(ctx.fields.nodeNum).toBe(111);
+    expect(ctx.fields.publicKey).toBeUndefined();
+  });
+
+  it('MeshCore subject binds subjectNodeKey to the pubkey with a null node number', () => {
+    const ctx = buildNodeRebootedContext(null, 'ABCDEF0123', 86_400, 7, 'mc', 1_000);
+    expect(ctx.subjectNodeNum).toBeNull();
+    expect(ctx.subjectNodeKey).toBe('ABCDEF0123');
+    expect(ctx.fields.nodeNum).toBeNull();
+    expect(ctx.fields.publicKey).toBe('ABCDEF0123');
   });
 });

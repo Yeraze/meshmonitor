@@ -85,9 +85,15 @@ export interface MeshBeaconReceivedData {
  * counter reset. Carries the prior and new uptime so `trigger.nodeRebooted`
  * automations can report the drop. Not stored anywhere; this event is the only
  * way a rule sees the reboot.
+ *
+ * Meshtastic reboots carry a real `nodeNum` (`publicKey` null/undefined).
+ * MeshCore reboots (#4558 follow-up) have NO real Meshtastic node number — only
+ * a synthetic one derived from the pubkey — so they set `nodeNum: null` and
+ * carry the MeshCore `publicKey` as the subject identity instead.
  */
 export interface NodeRebootedData {
-  nodeNum: number;
+  nodeNum: number | null;
+  publicKey?: string | null;
   previousUptimeSeconds: number;
   uptimeSeconds: number;
 }
@@ -101,9 +107,15 @@ export interface NodeRebootedData {
  * stored anywhere; this event is the only way a rule sees the transition.
  */
 export interface NodePowerChangedData {
-  nodeNum: number;
+  /** Meshtastic node number, or `null` for a MeshCore node (identified by
+   *  `publicKey` instead — #4558 MeshCore parity). */
+  nodeNum: number | null;
+  /** MeshCore public key when `nodeNum` is null; absent/null for Meshtastic. */
+  publicKey?: string | null;
   previousPowered: boolean;
   powered: boolean;
+  /** The new battery reading: percent for Meshtastic, millivolts for MeshCore
+   *  (the MeshCore path is a voltage heuristic — see poweredState.ts). */
   batteryLevel: number;
 }
 
@@ -206,7 +218,7 @@ class DataEventEmitter extends EventEmitter {
       sourceId,
     };
     this.emit('data', event);
-    logger.debug(`[DataEventEmitter] Node rebooted: ${data.nodeNum} (uptime ${data.previousUptimeSeconds}s → ${data.uptimeSeconds}s)`);
+    logger.debug(`[DataEventEmitter] Node rebooted: ${data.nodeNum ?? data.publicKey ?? '?'} (uptime ${data.previousUptimeSeconds}s → ${data.uptimeSeconds}s)`);
   }
 
   /**
@@ -222,7 +234,7 @@ class DataEventEmitter extends EventEmitter {
       sourceId,
     };
     this.emit('data', event);
-    logger.debug(`[DataEventEmitter] Node power changed: ${data.nodeNum} (powered ${data.previousPowered} → ${data.powered}, battery ${data.batteryLevel})`);
+    logger.debug(`[DataEventEmitter] Node power changed: ${data.nodeNum ?? data.publicKey ?? '?'} (powered ${data.previousPowered} → ${data.powered}, battery ${data.batteryLevel})`);
   }
 
   /**
