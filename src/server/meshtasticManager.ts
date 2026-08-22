@@ -52,6 +52,7 @@ import { shouldGateAutomations, averageStrongestNeighborUtilization, DEFAULT_AIR
 import { resolveLastHopName } from './utils/lastHop.js';
 import { isRelayedReception } from './utils/packetHops.js';
 import { resolveLastHeardSec } from './utils/replayGuard.js';
+import { isUptimeReboot } from './utils/rebootDetection.js';
 import { autoAckIsZeroHop, autoAckCellKey, resolveAutoAckReplyRouting } from './utils/autoAckDecision.js';
 import { hopCountEmoji, HOP_COUNT_EMOJIS } from '../utils/hopEmoji.js';
 import { scriptDependencyEnv } from './utils/scriptRunner.js';
@@ -1383,6 +1384,12 @@ class MeshtasticManager implements ISourceManager {
     const now = Date.now();
     for (const metric of metricsToSave) {
       if (metric.value !== undefined && metric.value !== null && !isNaN(Number(metric.value))) {
+        // Device Health (#4558 Phase B): an uptime reset is a reboot. Read the
+        // PRIOR stored uptime (persistent baseline — restart-safe) BEFORE
+        // inserting this reading and compare. DB read only, no packet sent.
+        if (metric.type === 'uptimeSeconds') {
+          await this.detectRebootFromUptime(nodeId, fromNum, Number(metric.value));
+        }
         await databaseService.telemetry.insertTelemetry({
           nodeId,
           nodeNum: fromNum,
@@ -1395,6 +1402,31 @@ class MeshtasticManager implements ISourceManager {
           packetId
         }, this.sourceId);
       }
+    }
+  }
+
+  /**
+   * Detect an unexpected reboot from an incoming `uptimeSeconds` reading
+   * (Device Health #4558 Phase B). Compares the new value against the node's
+   * latest stored uptime — read from the DB, so a MeshMonitor restart can never
+   * spuriously fire (the baseline is the durable row, not in-memory state). The
+   * first-ever reading has no prior and never fires. On a genuine reset (a real
+   * decrease beyond {@link REBOOT_UPTIME_SLACK_SECONDS}), emit `node:rebooted`
+   * for the automation engine. Must run BEFORE the new row is inserted so the
+   * "latest" it reads is genuinely the prior reading.
+   */
+  private async detectRebootFromUptime(nodeId: string, nodeNum: number, newUptimeSeconds: number): Promise<void> {
+    try {
+      const prior = await databaseService.telemetry.getLatestTelemetryForType(nodeId, 'uptimeSeconds', this.sourceId);
+      const priorUptime = prior ? Number(prior.value) : null;
+      if (!isUptimeReboot(priorUptime, newUptimeSeconds)) return;
+      logger.info(`🔁 Node ${nodeNum} reboot detected: uptime ${priorUptime}s → ${newUptimeSeconds}s (source ${this.sourceId})`);
+      dataEventEmitter.emitNodeRebooted(
+        { nodeNum, previousUptimeSeconds: priorUptime as number, uptimeSeconds: newUptimeSeconds },
+        this.sourceId,
+      );
+    } catch (e) {
+      logger.warn(`Reboot detection failed for node ${nodeNum}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 

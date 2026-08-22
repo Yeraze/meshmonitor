@@ -37,4 +37,5 @@ export const SUBJECT_NODE_TRIGGER_TYPES = [
   'trigger.meshBeacon',
   'trigger.nodeStale',
   'trigger.nodeOnline',
+  'trigger.nodeRebooted',
 ] as const;
