@@ -295,11 +295,22 @@ export const TRIGGERS: BlockDef[] = [
       COOLDOWN_SCOPE,
     ],
   },
+  {
+    type: 'trigger.batteryTrend',
+    label: 'A node’s battery is steadily draining',
+    description: 'Fires when a node’s battery level falls by at least the given amount across a lookback window — the “solar node losing charge / not charging” alert. Computed from the battery-level telemetry a node already reports; battery history is checked on a slow periodic tick (about every 15 minutes) against every Meshtastic node on every source, so narrow it with a “Source is one of…” condition. It fires once per decline and re-arms only after the battery recovers (net drop back under the threshold). Meshtastic only — MeshCore has no battery history. Heuristic note: the protocol carries no charge-state field, so a falling level is a proxy for “not charging”, not a certainty — it can false-alarm under heavy load and does not know day from night.',
+    fields: [
+      { name: 'windowHours', label: 'Lookback window (hours)', kind: 'number', placeholder: '12', help: 'How far back to compare the battery level. A longer window smooths out brief load spikes but reacts more slowly.' },
+      { name: 'minDropPercent', label: 'Minimum drop (percentage points)', kind: 'number', placeholder: '20', help: 'Fire when the battery level fell by at least this many points across the window (e.g. 80% → 55% is a 25-point drop).' },
+      COOLDOWN,
+      COOLDOWN_SCOPE,
+    ],
+  },
 ];
 
 // ─── Comparison field registry (event / node / latest-telemetry) ─────────────
 
-const SUBJECT_NODE_TRIGGERS = ['trigger.message', 'trigger.nodeDiscovered', 'trigger.nodeUpdated', 'trigger.telemetry', 'trigger.geofence', 'trigger.becameMobile', 'trigger.leftHome', 'trigger.meshBeacon', 'trigger.nodeStale', 'trigger.nodeOnline', 'trigger.nodeRebooted', 'trigger.nodePowerChanged'];
+const SUBJECT_NODE_TRIGGERS = ['trigger.message', 'trigger.nodeDiscovered', 'trigger.nodeUpdated', 'trigger.telemetry', 'trigger.geofence', 'trigger.becameMobile', 'trigger.leftHome', 'trigger.meshBeacon', 'trigger.nodeStale', 'trigger.nodeOnline', 'trigger.nodeRebooted', 'trigger.nodePowerChanged', 'trigger.batteryTrend'];
 const hasSubjectNode = (t: string) => SUBJECT_NODE_TRIGGERS.includes(t);
 
 const EVENT_NUMERIC: Record<string, FieldOpt[]> = {
@@ -351,6 +362,14 @@ const EVENT_NUMERIC: Record<string, FieldOpt[]> = {
     { value: 'batteryLevel', label: 'Battery level (%, >100 = powered)' },
     { value: 'powered', label: 'Now powered (1 = external, 0 = battery)' },
     { value: 'previousPowered', label: 'Was powered (1 = external, 0 = battery)' },
+  ],
+  'trigger.batteryTrend': [
+    { value: 'nodeNum', label: 'Node #' },
+    { value: 'dropPercent', label: 'Observed drop (percentage points)' },
+    { value: 'windowHours', label: 'Lookback window (hours)' },
+    { value: 'minDropPercent', label: 'Drop threshold (points)' },
+    { value: 'startLevel', label: 'Battery at window start (%)' },
+    { value: 'latestLevel', label: 'Latest battery (%)' },
   ],
   'trigger.becameMobile': [{ value: 'nodeNum', label: 'Node #' }, { value: 'mobile', label: 'Mobile flag (1)' }, { value: 'previousMobile', label: 'Previous mobile flag' }],
   'trigger.leftHome': [
