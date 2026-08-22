@@ -23,13 +23,14 @@ vi.mock('react-leaflet', () => ({
       {children}
     </div>
   ),
-  TileLayer: (props: { url?: string; maxZoom?: number; zIndex?: number; attribution?: string }) => (
+  TileLayer: (props: { url?: string; maxZoom?: number; zIndex?: number; attribution?: string; className?: string }) => (
     <div
       data-testid="raster-tile"
       data-url={props.url}
       data-maxzoom={String(props.maxZoom)}
       data-zindex={props.zIndex === undefined ? '' : String(props.zIndex)}
       data-attribution={props.attribution}
+      data-classname={props.className ?? ''}
     />
   ),
   useMap: () => ({ invalidateSize: vi.fn() }),
@@ -129,6 +130,20 @@ describe('BaseMap', () => {
     const tiles = screen.getAllByTestId('raster-tile');
     expect(tiles).toHaveLength(1);
     expect(tiles[0].getAttribute('data-url')).toContain('World_Imagery');
+    // #4860: the provided satellite base gets the saturation-damping class.
+    expect(tiles[0].getAttribute('data-classname')).toBe('mm-satellite-base-tile');
+  });
+
+  it('damps only the base imagery on esriHybrid, not the label overlay (#4860)', () => {
+    render(<BaseMap center={[0, 0]} zoom={3} tilesetId="esriHybrid" />);
+    const [base, overlay] = screen.getAllByTestId('raster-tile');
+    expect(base.getAttribute('data-classname')).toBe('mm-satellite-base-tile');
+    expect(overlay.getAttribute('data-classname')).toBe(''); // labels stay crisp
+  });
+
+  it('does not damp non-satellite raster tilesets (#4860)', () => {
+    render(<BaseMap center={[0, 0]} zoom={3} tilesetId="osm" />);
+    expect(screen.getByTestId('raster-tile').getAttribute('data-classname')).toBe('');
   });
 
   // 3b. Raster tile-layer keying (tile-loading regression fix): the raster

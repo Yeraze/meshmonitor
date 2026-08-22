@@ -41,6 +41,7 @@ import {
   buildNodeStaleContext,
   buildNodeOnlineContext,
   buildNodeRebootedContext,
+  buildNodePowerChangedContext,
   buildScheduleContext,
   messageMatchesFilter,
   meshCoreMessageMatchesFilter,
@@ -918,6 +919,45 @@ export class AutomationEngineService {
   ): Promise<number> {
     const ctx = buildNodeRebootedContext(nodeNum, previousUptimeSeconds, uptimeSeconds, sourceId, this.now());
     return this.runTrigger(ctx);
+  }
+
+  /**
+   * A node's power source flipped between external/USB power and battery
+   * (`trigger.nodePowerChanged`, Device Health #4558 Phase C). Detection (reading
+   * the prior batteryLevel from the DB and comparing against the firmware's > 100
+   * "powered" convention) already happened at the telemetry-save seam, so this is
+   * a pure event entry point: build the context and fire the rules whose
+   * `direction` param matches this transition.
+   *
+   * The `direction` param is 'lost' | 'restored' | 'either' (default 'either'):
+   * a rule fires only when the actual transition matches, so "external power
+   * lost" and its recovery live in one trigger without catalog bloat.
+   *
+   * No self-origin guard (#3914) here — same family as {@link onNodeRebooted}:
+   * a power transition is not something an automation action can cause, so there
+   * is no self-trigger loop to guard against, and knowing your OWN gateway lost
+   * wall power is useful.
+   */
+  async onNodePowerChanged(
+    nodeNum: number,
+    previousPowered: boolean,
+    powered: boolean,
+    batteryLevel: number,
+    sourceId: string | null,
+  ): Promise<number> {
+    const direction = powered ? 'restored' : 'lost';
+    const ctx = buildNodePowerChangedContext(nodeNum, previousPowered, powered, batteryLevel, sourceId, this.now());
+    return this.runTrigger(
+      ctx,
+      (a) => {
+        const want = a.triggerNode.params?.direction;
+        return want == null || want === '' || want === 'either' || want === direction;
+      },
+      (a) => {
+        const want = a.triggerNode.params?.direction ?? 'either';
+        return `power transition "${direction}" ≠ rule direction "${String(want)}"`;
+      },
+    );
   }
 
   /**
