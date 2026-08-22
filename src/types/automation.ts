@@ -24,7 +24,9 @@ export type TriggerType =
   | 'trigger.geofence'
   | 'trigger.becameMobile'
   | 'trigger.leftHome'
-  | 'trigger.meshBeacon';
+  | 'trigger.meshBeacon'
+  | 'trigger.nodeStale'
+  | 'trigger.nodeOnline';
 
 export type ConditionType =
   | 'condition.always'
@@ -71,6 +73,8 @@ export const TRIGGER_TYPES: readonly TriggerType[] = [
   'trigger.becameMobile',
   'trigger.leftHome',
   'trigger.meshBeacon',
+  'trigger.nodeStale',
+  'trigger.nodeOnline',
 ];
 
 export const CONDITION_TYPES: readonly ConditionType[] = [
@@ -529,6 +533,19 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
             if (!Number.isFinite(thr) || thr <= 0) {
               errors.push(`trigger.leftHome "${n.id}" requires params.thresholdMeters > 0`);
             }
+          }
+          break;
+        }
+        case 'trigger.nodeStale':
+        case 'trigger.nodeOnline': {
+          // Staleness is packet ABSENCE (#4558 Phase A): the threshold defines
+          // what "silent long enough" means for BOTH the going-silent alert and
+          // its recovery counterpart, so both require a positive minutes value.
+          const thrMin = p.staleAfterMinutes == null || p.staleAfterMinutes === ''
+            ? NaN
+            : Number(p.staleAfterMinutes);
+          if (!Number.isFinite(thrMin) || thrMin <= 0) {
+            errors.push(`${n.type} "${n.id}" requires params.staleAfterMinutes > 0`);
           }
           break;
         }

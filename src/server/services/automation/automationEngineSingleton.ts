@@ -83,6 +83,8 @@ export async function startAutomationEngine(): Promise<void> {
   });
   await engine.load();
   subscribe();
+  // Staleness is packet ABSENCE, so it needs a timer, not an event (#4558 Phase A).
+  engine.startStaleTicker();
   logger.info('[AutomationEngine] started');
   // Fire the system-start event so `trigger.system` (event: bootup) automations run.
   engine.onSystem('bootup', null, null).catch((e) => logger.error(`[AutomationEngine] bootup trigger error: ${e?.message}`));
@@ -126,6 +128,9 @@ async function handleEvent(event: DataEvent): Promise<void> {
       // Discovered vs updated detection (isNew) is deferred to a later phase; fire
       // as nodeUpdated with the changed field keys.
       await e.onNode('trigger.nodeUpdated', nodeNum, changed, sourceId);
+      // Hearing a node again is the fast recovery signal for trigger.nodeOnline
+      // (#4558 Phase A) — the stale tick catches it as a fallback otherwise.
+      await e.checkNodeOnline(nodeNum, sourceId);
       // Geofence + left-home checks only matter when position changed.
       if (changed.includes('latitude') || changed.includes('longitude')) {
         await e.checkGeofences(nodeNum, sourceId);
