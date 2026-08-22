@@ -53,6 +53,7 @@ import { resolveLastHopName } from './utils/lastHop.js';
 import { isRelayedReception } from './utils/packetHops.js';
 import { resolveLastHeardSec } from './utils/replayGuard.js';
 import { isUptimeReboot } from './utils/rebootDetection.js';
+import { isPowered, detectPowerTransition } from './utils/poweredState.js';
 import { autoAckIsZeroHop, autoAckCellKey, resolveAutoAckReplyRouting } from './utils/autoAckDecision.js';
 import { hopCountEmoji, HOP_COUNT_EMOJIS } from '../utils/hopEmoji.js';
 import { scriptDependencyEnv } from './utils/scriptRunner.js';
@@ -1390,6 +1391,13 @@ class MeshtasticManager implements ISourceManager {
         if (metric.type === 'uptimeSeconds') {
           await this.detectRebootFromUptime(nodeId, fromNum, Number(metric.value));
         }
+        // Device Health (#4558 Phase C): a batteryLevel crossing the firmware's
+        // "powered" threshold (> 100) is an external-power transition. Read the
+        // PRIOR stored batteryLevel (persistent baseline — restart-safe) BEFORE
+        // inserting this reading and compare. DB read only, no packet sent.
+        if (metric.type === 'batteryLevel') {
+          await this.detectPowerChangeFromBattery(nodeId, fromNum, Number(metric.value));
+        }
         await databaseService.telemetry.insertTelemetry({
           nodeId,
           nodeNum: fromNum,
@@ -1427,6 +1435,35 @@ class MeshtasticManager implements ISourceManager {
       );
     } catch (e) {
       logger.warn(`Reboot detection failed for node ${nodeNum}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  /**
+   * Detect an external-power transition from an incoming `batteryLevel` reading
+   * (Device Health #4558 Phase C). Compares the new value against the node's
+   * latest stored batteryLevel — read from the DB, so a MeshMonitor restart can
+   * never spuriously fire (the baseline is the durable row, not in-memory state).
+   * The first-ever reading has no prior and never fires. Powered-state is the
+   * firmware convention `batteryLevel > 100`; when the derived powered-state
+   * flips (via {@link detectPowerTransition}), emit `node:powerChanged` for the
+   * automation engine. Must run BEFORE the new row is inserted so the "latest" it
+   * reads is genuinely the prior reading.
+   */
+  private async detectPowerChangeFromBattery(nodeId: string, nodeNum: number, newBatteryLevel: number): Promise<void> {
+    try {
+      const prior = await databaseService.telemetry.getLatestTelemetryForType(nodeId, 'batteryLevel', this.sourceId);
+      const priorBattery = prior ? Number(prior.value) : null;
+      const direction = detectPowerTransition(priorBattery, newBatteryLevel);
+      if (direction === null) return;
+      const previousPowered = isPowered(priorBattery);
+      const powered = isPowered(newBatteryLevel);
+      logger.info(`🔌 Node ${nodeNum} power ${direction}: battery ${priorBattery} → ${newBatteryLevel} (powered ${previousPowered} → ${powered}, source ${this.sourceId})`);
+      dataEventEmitter.emitNodePowerChanged(
+        { nodeNum, previousPowered, powered, batteryLevel: newBatteryLevel },
+        this.sourceId,
+      );
+    } catch (e) {
+      logger.warn(`Power-change detection failed for node ${nodeNum}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 

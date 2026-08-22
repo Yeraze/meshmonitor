@@ -27,7 +27,8 @@ export type TriggerType =
   | 'trigger.meshBeacon'
   | 'trigger.nodeStale'
   | 'trigger.nodeOnline'
-  | 'trigger.nodeRebooted';
+  | 'trigger.nodeRebooted'
+  | 'trigger.nodePowerChanged';
 
 export type ConditionType =
   | 'condition.always'
@@ -77,6 +78,7 @@ export const TRIGGER_TYPES: readonly TriggerType[] = [
   'trigger.nodeStale',
   'trigger.nodeOnline',
   'trigger.nodeRebooted',
+  'trigger.nodePowerChanged',
 ];
 
 export const CONDITION_TYPES: readonly ConditionType[] = [
@@ -548,6 +550,16 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
             : Number(p.staleAfterMinutes);
           if (!Number.isFinite(thrMin) || thrMin <= 0) {
             errors.push(`${n.type} "${n.id}" requires params.staleAfterMinutes > 0`);
+          }
+          break;
+        }
+        case 'trigger.nodePowerChanged': {
+          // Device Health (#4558 Phase C). Optional direction filter; absent /
+          // blank means 'either', so every pre-existing stored automation and a
+          // freshly-dropped block both validate. Reject only an unknown value.
+          const dir = p.direction == null || p.direction === '' ? 'either' : String(p.direction);
+          if (!['lost', 'restored', 'either'].includes(dir)) {
+            errors.push(`trigger.nodePowerChanged "${n.id}" requires params.direction to be one of: lost, restored, either`);
           }
           break;
         }

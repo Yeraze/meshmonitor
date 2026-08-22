@@ -6,6 +6,7 @@ import { VectorTileLayer } from '../VectorTileLayer';
 import { TilesetSelector } from '../TilesetSelector';
 import MapResizeHandler from '../MapResizeHandler';
 import './leafletDefaultIcon';
+import './BaseMap.css';
 
 export interface BaseMapProps {
   /** Initial center. Like react-leaflet, this is applied once at mount and is
@@ -154,6 +155,14 @@ export function BaseMap({
                 url={tileset.url}
                 attribution={tileset.attribution}
                 maxZoom={tileset.maxZoom}
+                // Damp ESRI World_Imagery's over-saturated synthetic water blue
+                // on our provided satellite tilesets (#4860). Base tiles only —
+                // the hybrid label overlay below is left untouched.
+                className={
+                  tileset.id === 'esriSatellite' || tileset.id === 'esriHybrid'
+                    ? 'mm-satellite-base-tile'
+                    : undefined
+                }
               />
               {/* Optional transparent label/road overlay drawn on top of the
                   base raster (e.g. the satellite+labels hybrid). Keyed like the

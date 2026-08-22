@@ -51,6 +51,7 @@ export const TRIGGER_TOKENS: Record<string, Array<[string, string]>> = {
   'trigger.nodeStale': [['nodeNum', 'Node number (Meshtastic)'], ['publicKey', 'Public key (MeshCore)'], ['ageMinutes', 'Minutes since last heard'], ['staleAfterMinutes', 'Configured silence threshold (min)'], ['lastHeard', 'Last-heard time (epoch ms)']],
   'trigger.nodeOnline': [['nodeNum', 'Node number (Meshtastic)'], ['publicKey', 'Public key (MeshCore)'], ['offlineDurationMinutes', 'Minutes the node was offline'], ['staleAfterMinutes', 'Configured silence threshold (min)']],
   'trigger.nodeRebooted': [['nodeNum', 'Node number'], ['previousUptimeSeconds', 'Uptime before the reset (s)'], ['uptimeSeconds', 'Uptime after the reset (s)']],
+  'trigger.nodePowerChanged': [['nodeNum', 'Node number'], ['direction', 'lost (now on battery) / restored (now powered)'], ['powered', 'true if now on external/USB power'], ['previousPowered', 'true if previously on external/USB power'], ['batteryLevel', 'Battery level (%, >100 = powered)']],
   'trigger.schedule': [],
 };
 
@@ -62,6 +63,7 @@ const TRIGGER_LABEL: Record<string, string> = {
   'trigger.meshBeacon': 'MeshBeacon',
   'trigger.nodeStale': 'Node silent', 'trigger.nodeOnline': 'Node recovered',
   'trigger.nodeRebooted': 'Node rebooted',
+  'trigger.nodePowerChanged': 'Node power changed',
 };
 
 /** Drawer listing every available substitution token (current trigger first). */
