@@ -161,6 +161,7 @@ export const TRIGGERS: BlockDef[] = [
           { value: 'temperature', label: 'Temperature' },
           { value: 'channelUtilization', label: 'Channel utilization' },
           { value: 'airUtilTx', label: 'Air util TX' },
+          { value: 'noiseFloor', label: 'Noise floor (dBm) — local node only' },
         ],
       },
       COOLDOWN,
@@ -403,6 +404,7 @@ const TELEMETRY_FIELDS: FieldOpt[] = [
   { value: 'telemetry.temperature', label: 'Temperature' }, { value: 'telemetry.relativeHumidity', label: 'Humidity' },
   { value: 'telemetry.barometricPressure', label: 'Pressure' }, { value: 'telemetry.channelUtilization', label: 'Channel utilization' },
   { value: 'telemetry.airUtilTx', label: 'Air util TX' }, { value: 'telemetry.current', label: 'Current' }, { value: 'telemetry.iaq', label: 'IAQ (air quality)' },
+  { value: 'telemetry.noiseFloor', label: 'Noise floor (local node only)' },
 ];
 
 export function numericFields(triggerType: string): FieldGroup[] {
