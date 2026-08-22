@@ -175,6 +175,7 @@ describe('MeshCore receive-only — 409 TX_DISABLED mapping (#4547)', () => {
     { name: 'POST /contacts/:publicKey/share', method: 'post', path: `/contacts/${VALID_PK}/share` },
     { name: 'GET /contacts/:publicKey/neighbours', method: 'get', path: `/contacts/${VALID_PK}/neighbours` },
     { name: 'POST /nodes/:publicKey/telemetry/poll', method: 'post', path: `/nodes/${VALID_PK}/telemetry/poll`, body: { type: 'status' } },
+    { name: 'POST /nodes/:publicKey/neighbours/poll', method: 'post', path: `/nodes/${VALID_PK}/neighbours/poll` },
     { name: 'POST /admin/login', method: 'post', path: '/admin/login', body: { publicKey: VALID_PK, password: '' } },
     { name: 'POST /admin/cli', method: 'post', path: '/admin/cli', body: { publicKey: VALID_PK, command: 'ver' } },
     { name: 'POST /admin/login-with-saved', method: 'post', path: '/admin/login-with-saved', body: { publicKey: VALID_PK } },
@@ -184,8 +185,8 @@ describe('MeshCore receive-only — 409 TX_DISABLED mapping (#4547)', () => {
     { name: 'POST /automation/timers/:triggerId/run', method: 'post', path: '/automation/timers/t1/run' },
   ];
 
-  it('sanity: exactly 20 unconditional routes are under test (spec §2.5.2)', () => {
-    expect(unconditionalRoutes).toHaveLength(20);
+  it('sanity: exactly 21 unconditional routes are under test (spec §2.5.2)', () => {
+    expect(unconditionalRoutes).toHaveLength(21);
   });
 
   describe.each(unconditionalRoutes)('$name', ({ method, path }) => {

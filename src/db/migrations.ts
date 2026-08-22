@@ -167,6 +167,7 @@ import { migration as addNodeStatusMigration, runMigration149Postgres, runMigrat
 import { migration as addRoutingErrorCodeMigration, runMigration150Postgres, runMigration150Mysql } from '../server/migrations/150_add_routing_error_code.js';
 import { migration as createMessageEventsMigration, runMigration151Postgres, runMigration151Mysql } from '../server/migrations/151_create_message_events.js';
 import { migration as createMeshtasticHeardRepeatersMigration, runMigration152Postgres, runMigration152Mysql } from '../server/migrations/152_create_meshtastic_heard_repeaters.js';
+import { migration as meshcoreNodeNeighborsConfigMigration, runMigration153Postgres, runMigration153Mysql } from '../server/migrations/153_meshcore_node_neighbors_config.js';
 
 // ============================================================================
 // Registry
@@ -2434,4 +2435,21 @@ registry.register({
   sqlite: (db) => createMeshtasticHeardRepeatersMigration.up(db),
   postgres: (client) => runMigration152Postgres(client),
   mysql: (pool) => runMigration152Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 153: Per-node neighbours-retrieval config columns on meshcore_nodes
+// (neighborsEnabled, neighborsIntervalMinutes, lastNeighborsRequestAt). Read by
+// the MeshCoreNeighboursScheduler each tick (#4618). A separate column set from
+// the migration-060 telemetry trio so the two schedulers keep independent
+// cadences. Idempotent across SQLite / PostgreSQL / MySQL.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 153,
+  name: 'meshcore_node_neighbors_config',
+  settingsKey: 'migration_153_meshcore_node_neighbors_config',
+  sqlite: (db) => meshcoreNodeNeighborsConfigMigration.up(db),
+  postgres: (client) => runMigration153Postgres(client),
+  mysql: (pool) => runMigration153Mysql(pool),
 });

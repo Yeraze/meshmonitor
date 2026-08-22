@@ -9,6 +9,7 @@ import { meshcoreRoleIconName, meshcoreRoleLabelKey, meshcoreRoleLabel } from '.
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import { MeshCoreContactDetailPanel } from './MeshCoreContactDetailPanel';
 import { MeshCoreNodeTelemetryConfig } from './MeshCoreNodeTelemetryConfig';
+import { MeshCoreNodeNeighboursConfig } from './MeshCoreNodeNeighboursConfig';
 import TelemetryGraphs from '../TelemetryGraphs';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSettings } from '../../contexts/SettingsContext';
@@ -579,6 +580,12 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
               {!!sourceId && typeof baseUrl === 'string' && isRealNodeKey(selected) && (
                 <>
                   <MeshCoreNodeTelemetryConfig
+                    baseUrl={baseUrl}
+                    sourceId={sourceId}
+                    publicKey={selected}
+                    receiveOnly={receiveOnly}
+                  />
+                  <MeshCoreNodeNeighboursConfig
                     baseUrl={baseUrl}
                     sourceId={sourceId}
                     publicKey={selected}

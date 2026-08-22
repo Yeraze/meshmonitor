@@ -79,6 +79,8 @@ const meshcoreManager = {
   // Mesh-TX throttle primitives read by the manual telemetry-poll route.
   getLastMeshTxAt: vi.fn().mockReturnValue(0),
   recordMeshTx: vi.fn(),
+  // Shared request→resolve→store used by the manual neighbours-poll route (#4618).
+  pollNeighborsAndStore: vi.fn().mockResolvedValue({ total: 2, written: 2 }),
   // Fire-and-forget scope-cache refresh invoked by the saved-regions routes (#3829).
   notifySavedRegionsChanged: vi.fn(),
   // Receive-only TX guard (#4547) — requireMeshcoreTx() calls this unconditionally
@@ -1751,6 +1753,148 @@ describe('MeshCore Routes', () => {
       expect(res.body.retryAfterSecs).toBeGreaterThan(0);
       expect(res.headers['retry-after']).toBeDefined();
       expect(requestTelemetryForNode).not.toHaveBeenCalled();
+      expect(meshcoreManager.recordMeshTx).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('PATCH /api/sources/test-source/meshcore/nodes/:publicKey/neighbours-config', () => {
+    const NB_PUBKEY = 'e'.repeat(64);
+    const upsertNode = vi.fn().mockResolvedValue(undefined);
+    const setNodeNeighborsConfig = vi.fn().mockResolvedValue(undefined);
+    const getNodeByPublicKeyAndSource = vi.fn().mockResolvedValue({
+      publicKey: NB_PUBKEY,
+      neighborsEnabled: true,
+      neighborsIntervalMinutes: 60,
+      lastNeighborsRequestAt: null,
+    });
+
+    beforeEach(() => {
+      (DatabaseService as any).meshcore = {
+        upsertNode,
+        setNodeNeighborsConfig,
+        getNodeByPublicKeyAndSource,
+      };
+      upsertNode.mockClear();
+      setNodeNeighborsConfig.mockClear();
+      getNodeByPublicKeyAndSource.mockClear();
+      meshcoreManager.getContact.mockReset();
+    });
+
+    it('requires authentication', async () => {
+      const res = await request(app)
+        .patch(`/api/sources/test-source/meshcore/nodes/${NB_PUBKEY}/neighbours-config`)
+        .send({ enabled: true });
+      expect(res.status).toBe(401);
+    });
+
+    it('rejects a non-integer interval', async () => {
+      const res = await authenticatedAgent
+        .patch(`/api/sources/test-source/meshcore/nodes/${NB_PUBKEY}/neighbours-config`)
+        .send({ intervalMinutes: 3.5 });
+      expect(res.status).toBe(400);
+      expect(setNodeNeighborsConfig).not.toHaveBeenCalled();
+    });
+
+    it('persists enabled + interval and echoes the stored config', async () => {
+      meshcoreManager.getContact.mockReturnValueOnce(undefined);
+      const res = await authenticatedAgent
+        .patch(`/api/sources/test-source/meshcore/nodes/${NB_PUBKEY}/neighbours-config`)
+        .send({ enabled: true, intervalMinutes: 120 });
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(setNodeNeighborsConfig).toHaveBeenCalledWith(
+        'test-source',
+        NB_PUBKEY,
+        { enabled: true, intervalMinutes: 120 },
+      );
+      expect(res.body.data).toMatchObject({ enabled: true, intervalMinutes: 60 });
+    });
+
+    it('backfills advType/advName from the in-memory contact before seeding the row', async () => {
+      meshcoreManager.getContact.mockReturnValueOnce({
+        publicKey: NB_PUBKEY,
+        advName: 'MyRepeater',
+        advType: 2,
+        lastSeen: 1_700_000_000_000,
+      });
+      await authenticatedAgent
+        .patch(`/api/sources/test-source/meshcore/nodes/${NB_PUBKEY}/neighbours-config`)
+        .send({ enabled: true });
+      expect(upsertNode).toHaveBeenCalledWith(
+        expect.objectContaining({ publicKey: NB_PUBKEY, name: 'MyRepeater', advType: 2 }),
+        'test-source',
+      );
+      const upsertOrder = upsertNode.mock.invocationCallOrder[0];
+      const setCfgOrder = setNodeNeighborsConfig.mock.invocationCallOrder[0];
+      expect(upsertOrder).toBeLessThan(setCfgOrder);
+    });
+  });
+
+  describe('POST /api/sources/test-source/meshcore/nodes/:publicKey/neighbours/poll', () => {
+    const POLL_PUBKEY = 'a'.repeat(64);
+    const MALFORMED = 'abcd1234';
+    const markNeighborsRequested = vi.fn();
+
+    beforeEach(() => {
+      (DatabaseService as any).meshcore = { markNeighborsRequested };
+      markNeighborsRequested.mockReset().mockResolvedValue(undefined);
+      meshcoreManager.isConnected.mockReturnValue(true);
+      meshcoreManager.getLastMeshTxAt.mockReturnValue(0);
+      meshcoreManager.recordMeshTx.mockReset();
+      meshcoreManager.pollNeighborsAndStore.mockReset().mockResolvedValue({ total: 3, written: 2 });
+    });
+
+    afterEach(() => {
+      meshcoreManager.isConnected.mockReturnValue(false);
+      meshcoreManager.getLastMeshTxAt.mockReturnValue(0);
+    });
+
+    it('requires authentication', async () => {
+      const res = await request(app)
+        .post(`/api/sources/test-source/meshcore/nodes/${POLL_PUBKEY}/neighbours/poll`);
+      expect(res.status).toBe(401);
+    });
+
+    it('rejects a malformed public key', async () => {
+      const res = await authenticatedAgent
+        .post(`/api/sources/test-source/meshcore/nodes/${MALFORMED}/neighbours/poll`);
+      expect(res.status).toBe(400);
+    });
+
+    it('polls: stamps the gate and returns total + written', async () => {
+      const res = await authenticatedAgent
+        .post(`/api/sources/test-source/meshcore/nodes/${POLL_PUBKEY}/neighbours/poll`);
+      expect(res.status).toBe(200);
+      expect(res.body.data).toMatchObject({ total: 3, written: 2 });
+      expect(meshcoreManager.pollNeighborsAndStore).toHaveBeenCalledWith(POLL_PUBKEY);
+      expect(meshcoreManager.recordMeshTx).toHaveBeenCalledTimes(1);
+      expect(markNeighborsRequested).toHaveBeenCalledWith('test-source', POLL_PUBKEY, expect.any(Number));
+    });
+
+    it('reports notSupported when the query returns null', async () => {
+      meshcoreManager.pollNeighborsAndStore.mockResolvedValueOnce(null);
+      const res = await authenticatedAgent
+        .post(`/api/sources/test-source/meshcore/nodes/${POLL_PUBKEY}/neighbours/poll`);
+      expect(res.status).toBe(200);
+      expect(res.body.data).toMatchObject({ total: 0, written: 0, notSupported: true });
+    });
+
+    it('returns 409 when the source is not connected', async () => {
+      meshcoreManager.isConnected.mockReturnValue(false);
+      const res = await authenticatedAgent
+        .post(`/api/sources/test-source/meshcore/nodes/${POLL_PUBKEY}/neighbours/poll`);
+      expect(res.status).toBe(409);
+      expect(meshcoreManager.pollNeighborsAndStore).not.toHaveBeenCalled();
+    });
+
+    it('enforces the shared 60s mesh-TX gate with 429 + Retry-After', async () => {
+      meshcoreManager.getLastMeshTxAt.mockReturnValue(Date.now() - 5_000);
+      const res = await authenticatedAgent
+        .post(`/api/sources/test-source/meshcore/nodes/${POLL_PUBKEY}/neighbours/poll`);
+      expect(res.status).toBe(429);
+      expect(res.body.retryAfterSecs).toBeGreaterThan(0);
+      expect(res.headers['retry-after']).toBeDefined();
+      expect(meshcoreManager.pollNeighborsAndStore).not.toHaveBeenCalled();
       expect(meshcoreManager.recordMeshTx).not.toHaveBeenCalled();
     });
   });

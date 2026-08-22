@@ -227,6 +227,9 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         telemetryEnabled INTEGER DEFAULT 0,
         telemetryIntervalMinutes INTEGER DEFAULT 60,
         lastTelemetryRequestAt INTEGER,
+        neighborsEnabled INTEGER DEFAULT 0,
+        neighborsIntervalMinutes INTEGER DEFAULT 60,
+        lastNeighborsRequestAt INTEGER,
         out_path TEXT,
         path_len INTEGER,
         adminCredential TEXT,
@@ -474,6 +477,9 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         telemetryEnabled INTEGER DEFAULT 0,
         telemetryIntervalMinutes INTEGER DEFAULT 60,
         lastTelemetryRequestAt INTEGER,
+        neighborsEnabled INTEGER DEFAULT 0,
+        neighborsIntervalMinutes INTEGER DEFAULT 60,
+        lastNeighborsRequestAt INTEGER,
         out_path TEXT,
         path_len INTEGER,
         adminCredential TEXT,
@@ -564,6 +570,56 @@ describe('MeshCoreRepository — sourceId stamping', () => {
     ).rejects.toThrow(/requires a sourceId/);
   });
 
+  // ============ Neighbours-retrieval config (#4618) ============
+
+  it('getNeighborsEnabledNodes only returns rows with neighborsEnabled=true and matching sourceId', async () => {
+    await repo.upsertNode({ publicKey: 'pk-1' }, 'src-a');
+    await repo.upsertNode({ publicKey: 'pk-2' }, 'src-a');
+    await repo.upsertNode({ publicKey: 'pk-3' }, 'src-b');
+    await repo.setNodeNeighborsConfig('src-a', 'pk-1', { enabled: true });
+    await repo.setNodeNeighborsConfig('src-a', 'pk-2', { enabled: false });
+    await repo.setNodeNeighborsConfig('src-b', 'pk-3', { enabled: true });
+
+    const aResult = await repo.getNeighborsEnabledNodes('src-a');
+    expect(aResult.map((n) => n.publicKey)).toEqual(['pk-1']);
+
+    const bResult = await repo.getNeighborsEnabledNodes('src-b');
+    expect(bResult.map((n) => n.publicKey)).toEqual(['pk-3']);
+  });
+
+  it('markNeighborsRequested stamps lastNeighborsRequestAt WITHOUT touching lastTelemetryRequestAt', async () => {
+    await repo.upsertNode({ publicKey: 'pk-1' }, 'src-a');
+    await repo.setNodeNeighborsConfig('src-a', 'pk-1', { enabled: true });
+    await repo.markTelemetryRequested('src-a', 'pk-1', 111_111);
+    await repo.markNeighborsRequested('src-a', 'pk-1', 999_999);
+
+    const row = db
+      .prepare(`SELECT lastNeighborsRequestAt, lastTelemetryRequestAt FROM meshcore_nodes WHERE publicKey = 'pk-1'`)
+      .get() as { lastNeighborsRequestAt: number; lastTelemetryRequestAt: number };
+    // The two cadences must stay independent — a neighbours poll must never
+    // reset the telemetry timer (#4618).
+    expect(row.lastNeighborsRequestAt).toBe(999_999);
+    expect(row.lastTelemetryRequestAt).toBe(111_111);
+  });
+
+  it('setNodeNeighborsConfig is scoped by sourceId — same publicKey on two sources is independent', async () => {
+    await repo.upsertNode({ publicKey: 'pk-1' }, 'src-a');
+    await repo.upsertNode({ publicKey: 'pk-1' }, 'src-b');
+    await repo.setNodeNeighborsConfig('src-a', 'pk-1', { enabled: true, intervalMinutes: 10 });
+    await repo.setNodeNeighborsConfig('src-b', 'pk-1', { enabled: false, intervalMinutes: 90 });
+
+    const a = await repo.getNeighborsEnabledNodes('src-a');
+    expect(a.map((n) => n.publicKey)).toEqual(['pk-1']);
+    const b = await repo.getNeighborsEnabledNodes('src-b');
+    expect(b).toHaveLength(0);
+  });
+
+  it('setNodeNeighborsConfig throws without a sourceId', async () => {
+    await expect(
+      repo.setNodeNeighborsConfig('', 'pk-1', { enabled: true }),
+    ).rejects.toThrow(/requires a sourceId/);
+  });
+
   // ============ Composite-PK regression (issue: UNIQUE constraint failed) ============
 
   it('setNodeTelemetryConfig succeeds for the same publicKey under two sources on the composite-PK schema', async () => {
@@ -600,6 +656,9 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         telemetryEnabled INTEGER DEFAULT 0,
         telemetryIntervalMinutes INTEGER DEFAULT 60,
         lastTelemetryRequestAt INTEGER,
+        neighborsEnabled INTEGER DEFAULT 0,
+        neighborsIntervalMinutes INTEGER DEFAULT 60,
+        lastNeighborsRequestAt INTEGER,
         out_path TEXT,
         path_len INTEGER,
         adminCredential TEXT,
@@ -670,6 +729,9 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         telemetryEnabled INTEGER DEFAULT 0,
         telemetryIntervalMinutes INTEGER DEFAULT 60,
         lastTelemetryRequestAt INTEGER,
+        neighborsEnabled INTEGER DEFAULT 0,
+        neighborsIntervalMinutes INTEGER DEFAULT 60,
+        lastNeighborsRequestAt INTEGER,
         out_path TEXT,
         path_len INTEGER,
         adminCredential TEXT,
