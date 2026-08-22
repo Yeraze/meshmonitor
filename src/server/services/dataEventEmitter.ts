@@ -20,6 +20,7 @@ import { logger } from '../../utils/logger.js';
 export type DataEventType =
   | 'node:updated'
   | 'node:mobility'
+  | 'node:rebooted'
   | 'message:new'
   | 'channel:updated'
   | 'telemetry:batch'
@@ -76,6 +77,18 @@ export interface MeshBeaconReceivedData {
   offerRegion?: number;
   /** Preset 0 (LONG_FAST) is a real value — `offer_preset` has explicit presence. */
   offerPreset?: number;
+}
+
+/**
+ * A detected node reboot (Device Health #4558 Phase B) — the node's uptime
+ * counter reset. Carries the prior and new uptime so `trigger.nodeRebooted`
+ * automations can report the drop. Not stored anywhere; this event is the only
+ * way a rule sees the reboot.
+ */
+export interface NodeRebootedData {
+  nodeNum: number;
+  previousUptimeSeconds: number;
+  uptimeSeconds: number;
 }
 
 export interface ConnectionStatusData {
@@ -163,6 +176,21 @@ class DataEventEmitter extends EventEmitter {
     };
     this.emit('data', event);
     logger.debug(`[DataEventEmitter] Node mobility: ${nodeNum} ${previous}→${current}`);
+  }
+
+  /**
+   * Emit a node reboot event (used by trigger.nodeRebooted, #4558 Phase B).
+   * Raised by the telemetry-save seam when a node's uptime counter resets.
+   */
+  emitNodeRebooted(data: NodeRebootedData, sourceId?: string): void {
+    const event: DataEvent = {
+      type: 'node:rebooted',
+      data,
+      timestamp: Date.now(),
+      sourceId,
+    };
+    this.emit('data', event);
+    logger.debug(`[DataEventEmitter] Node rebooted: ${data.nodeNum} (uptime ${data.previousUptimeSeconds}s → ${data.uptimeSeconds}s)`);
   }
 
   /**

@@ -433,6 +433,36 @@ export function buildNodeOnlineContext(
   };
 }
 
+/**
+ * Build the trigger context when a node's uptime counter resets, i.e. an
+ * unexpected reboot (`trigger.nodeRebooted` — Device Health #4558 Phase B).
+ * Subject node = the node that rebooted, so `{{ node.* }}` hydration and
+ * node-scoped cooldown work. Detection (reading the prior uptime from the DB and
+ * comparing) happens at the telemetry-save seam; this builder only shapes what
+ * the conditions / interpolation read.
+ */
+export function buildNodeRebootedContext(
+  nodeNum: number,
+  previousUptimeSeconds: number,
+  uptimeSeconds: number,
+  sourceId: string | null,
+  timestamp: number,
+): TriggerContext {
+  return {
+    triggerType: 'trigger.nodeRebooted',
+    sourceId,
+    subjectNodeNum: Number(nodeNum),
+    timestamp,
+    fields: {
+      nodeNum: Number(nodeNum),
+      previousUptimeSeconds,
+      uptimeSeconds,
+      sourceId,
+      timestamp,
+    },
+  };
+}
+
 /** Build the trigger context for a single telemetry reading (engine fans the batch out). */
 export function buildTelemetryContext(
   nodeNum: number,

@@ -26,7 +26,8 @@ export type TriggerType =
   | 'trigger.leftHome'
   | 'trigger.meshBeacon'
   | 'trigger.nodeStale'
-  | 'trigger.nodeOnline';
+  | 'trigger.nodeOnline'
+  | 'trigger.nodeRebooted';
 
 export type ConditionType =
   | 'condition.always'
@@ -75,6 +76,7 @@ export const TRIGGER_TYPES: readonly TriggerType[] = [
   'trigger.meshBeacon',
   'trigger.nodeStale',
   'trigger.nodeOnline',
+  'trigger.nodeRebooted',
 ];
 
 export const CONDITION_TYPES: readonly ConditionType[] = [
