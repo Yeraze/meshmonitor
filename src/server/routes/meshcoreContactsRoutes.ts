@@ -15,6 +15,12 @@ import {
   MIN_INTERVAL_BETWEEN_REQUESTS_MS,
   getMeshCoreRemoteTelemetryScheduler,
 } from '../services/meshcoreRemoteTelemetryScheduler.js';
+// The neighbours routes gate against the neighbours scheduler's own limits so
+// they stay correct if the two schedulers' constants ever diverge (#4618).
+import {
+  MAX_INTERVAL_MINUTES as NEIGHBOURS_MAX_INTERVAL_MINUTES,
+  MIN_INTERVAL_BETWEEN_REQUESTS_MS as NEIGHBOURS_MIN_INTERVAL_BETWEEN_REQUESTS_MS,
+} from '../services/meshcoreNeighboursScheduler.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { requireAuth, optionalAuth, requirePermission } from '../auth/authMiddleware.js';
@@ -1041,8 +1047,8 @@ router.post(
       // request already in flight on this source.
       const lastTx = manager.getLastMeshTxAt();
       const sinceLastTx = Date.now() - lastTx;
-      if (lastTx > 0 && sinceLastTx < MIN_INTERVAL_BETWEEN_REQUESTS_MS) {
-        const retryAfterSecs = Math.ceil((MIN_INTERVAL_BETWEEN_REQUESTS_MS - sinceLastTx) / 1000);
+      if (lastTx > 0 && sinceLastTx < NEIGHBOURS_MIN_INTERVAL_BETWEEN_REQUESTS_MS) {
+        const retryAfterSecs = Math.ceil((NEIGHBOURS_MIN_INTERVAL_BETWEEN_REQUESTS_MS - sinceLastTx) / 1000);
         res.set('Retry-After', String(retryAfterSecs));
         return res.status(429).json({
           success: false,
@@ -1108,10 +1114,10 @@ router.patch(
       }
       if (intervalMinutes !== undefined) {
         const n = Number(intervalMinutes);
-        if (!Number.isInteger(n) || n < 1 || n > MAX_INTERVAL_MINUTES) {
+        if (!Number.isInteger(n) || n < 1 || n > NEIGHBOURS_MAX_INTERVAL_MINUTES) {
           return res.status(400).json({
             success: false,
-            error: `intervalMinutes must be an integer between 1 and ${MAX_INTERVAL_MINUTES}`,
+            error: `intervalMinutes must be an integer between 1 and ${NEIGHBOURS_MAX_INTERVAL_MINUTES}`,
           });
         }
         patch.intervalMinutes = n;

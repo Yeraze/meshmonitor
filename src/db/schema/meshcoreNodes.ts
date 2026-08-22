@@ -151,6 +151,10 @@ export const meshcoreNodesPostgres = pgTable('meshcore_nodes', {
   telemetryIntervalMinutes: pgInteger('telemetryIntervalMinutes').default(60),
   lastTelemetryRequestAt: pgBigint('lastTelemetryRequestAt', { mode: 'number' }),
 
+  neighborsEnabled: pgBoolean('neighborsEnabled').default(false),
+  neighborsIntervalMinutes: pgInteger('neighborsIntervalMinutes').default(60),
+  lastNeighborsRequestAt: pgBigint('lastNeighborsRequestAt', { mode: 'number' }),
+
   roomSyncEnabled: pgBoolean('roomSyncEnabled').default(false),
   roomSyncIntervalMinutes: pgInteger('roomSyncIntervalMinutes').default(60),
   lastRoomSyncAt: pgBigint('lastRoomSyncAt', { mode: 'number' }),
@@ -206,6 +210,10 @@ export const meshcoreNodesMysql = mysqlTable('meshcore_nodes', {
   telemetryEnabled: myBoolean('telemetryEnabled').default(false),
   telemetryIntervalMinutes: myInt('telemetryIntervalMinutes').default(60),
   lastTelemetryRequestAt: myBigint('lastTelemetryRequestAt', { mode: 'number' }),
+
+  neighborsEnabled: myBoolean('neighborsEnabled').default(false),
+  neighborsIntervalMinutes: myInt('neighborsIntervalMinutes').default(60),
+  lastNeighborsRequestAt: myBigint('lastNeighborsRequestAt', { mode: 'number' }),
 
   roomSyncEnabled: myBoolean('roomSyncEnabled').default(false),
   roomSyncIntervalMinutes: myInt('roomSyncIntervalMinutes').default(60),

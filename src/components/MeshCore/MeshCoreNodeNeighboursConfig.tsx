@@ -253,6 +253,7 @@ export const MeshCoreNodeNeighboursConfig: React.FC<MeshCoreNodeNeighboursConfig
                 onChange={(e) => setIntervalDraft(e.target.value)}
                 onBlur={handleIntervalCommit}
                 disabled={!canWriteConfig || saving}
+                aria-label={t('meshcore.neighbours_config.interval_label', 'Interval (minutes)')}
                 style={{ width: '6rem' }}
               />
             </div>
