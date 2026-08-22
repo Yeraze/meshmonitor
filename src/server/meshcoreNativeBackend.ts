@@ -273,17 +273,22 @@ export class MeshCoreNativeBackend extends EventEmitter {
 
   /**
    * Maximum age (ms) of a buffered LogRxData path before we treat it as stale
-   * and refuse to attach it to a message-recv event. LogRxData is emitted by
-   * the firmware immediately before the matching txt-msg recv for the SAME
-   * packet, so the correlated recv lands within the same I/O tick (sub-ms). A
-   * buffer older than this window almost certainly belongs to a *different*
-   * packet whose recv event never arrived (e.g. a non-TXT packet, or a
-   * LogRxData with no following recv), so consuming it would attach the wrong
-   * SNR/route to {SNR}/{ROUTE}. 500ms is generous enough to absorb event-loop
-   * scheduling jitter while still rejecting genuinely stale buffers — this is
-   * a core guard against the intermittent mis-correlation in issue #3589.
+   * and refuse to attach it to a message-recv event.
+   *
+   * On paper the firmware emits LogRxData immediately before the matching
+   * txt-msg recv (ContactMsgRecv / ChannelMsgRecv) for the SAME packet, so
+   * the correlated recv should land within the same I/O tick. In practice
+   * some companion firmware / USB stacks introduce a systematic ~500–600ms
+   * gap between the two pushes — observed live on a busy MeshCore mesh
+   * where a 500ms window dropped ~94% of channel-message correlations
+   * (scope badge blank, {SCOPE}/{ROUTE}/{SNR} → "—", auto-ack "trigger"
+   * scope mode always replying unscoped). A buffer older than this window
+   * almost certainly belongs to a *different* packet whose recv never
+   * arrived, so consuming it would attach the wrong SNR/route/scope.
+   * Hop-count FIFO matching still guards against mis-correlation (#3589);
+   * this window only bounds how long an unmatched buffer may wait.
    */
-  private static readonly PENDING_PATH_MAX_AGE_MS = 500;
+  private static readonly PENDING_PATH_MAX_AGE_MS = 2000;
   /**
    * Cap on buffered LogRxData entries. The FIFO only holds text-packet metadata
    * for the sub-millisecond gap until the matching recv consumes it (pruned by

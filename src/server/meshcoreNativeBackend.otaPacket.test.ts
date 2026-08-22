@@ -307,8 +307,8 @@ describe('MeshCoreNativeBackend — ota_packet capture', () => {
       const { conn, events } = await connectedBackend();
       const raw = Uint8Array.from([0x02, 0x01, 0x02, 0xa3, 0x7f]);
       conn.emit(PushCodes.LogRxData, { lastSnr: 7, lastRssi: -35, raw });
-      // Advance well past PENDING_PATH_MAX_AGE_MS (500ms) before the recv lands.
-      vi.advanceTimersByTime(1000);
+      // Advance well past PENDING_PATH_MAX_AGE_MS (2000ms) before the recv lands.
+      vi.advanceTimersByTime(3000);
       conn.emit(ResponseCodes.ContactMsgRecv, {
         pubKeyPrefix: Uint8Array.from([0xde, 0xad, 0xbe, 0xef, 0x00, 0x01]),
         text: 'late',
@@ -320,6 +320,34 @@ describe('MeshCoreNativeBackend — ota_packet capture', () => {
       expect(msg).toBeDefined();
       expect(msg.data.snr).toBeUndefined();
       expect(msg.data.path_hops).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('still correlates when LogRxData→recv gap is ~600ms (live companion delay)', async () => {
+    // Production companions can emit ChannelMsgRecv ~500–600ms after LogRxData.
+    // A 500ms freshness window dropped nearly all channel-message scope/route
+    // correlation on a busy mesh; 600ms must still attach.
+    vi.useFakeTimers();
+    try {
+      const { conn, events } = await connectedBackend();
+      // GRP_TXT (0x05), FLOOD, pathLen=0x02 (1-byte hashes, 2 hops) — same layout
+      // as the other channel-message correlation fixtures in this file.
+      const raw = Uint8Array.from([0x05, 0x01, 0x02, 0xa3, 0x7f]);
+      conn.emit(PushCodes.LogRxData, { lastSnr: 5.5, lastRssi: -80, raw });
+      vi.advanceTimersByTime(600);
+      conn.emit(ResponseCodes.ChannelMsgRecv, {
+        channelIdx: 0,
+        text: 'Alice: ping',
+        senderTimestamp: 1700,
+        pathLen: 2, // plain hop count (ChannelMsgRecv semantics)
+      });
+      const msg = events.find((e) => e.event_type === 'channel_message');
+      expect(msg).toBeDefined();
+      expect(msg.data.snr).toBe(5.5);
+      expect(msg.data.path_hops).toEqual(['a3', '7f']);
+      expect(msg.data.raw_hex).toBe('050102a37f');
     } finally {
       vi.useRealTimers();
     }
