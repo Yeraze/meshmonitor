@@ -555,6 +555,26 @@ setTimeout(async () => {
   }
 }, 10000); // After telemetry scheduler.
 
+// MeshCore Neighbours Scheduler (#4618) — periodically requests each opt-in
+// node's neighbour table over RF and fills it into Node Details. Like the
+// remote-telemetry scheduler it transmits, so it honours the same per-source
+// 60s minimum via the shared `MeshCoreManager.lastMeshTxAt` primitive; its
+// per-node cadence lives in a SEPARATE column set (`lastNeighborsRequestAt`)
+// so telemetry and neighbours polls never reset each other's timers.
+export const meshcoreNeighboursScheduler = new MeshCoreNeighboursScheduler({
+  registry: sourceManagerRegistry,
+  database: databaseService,
+});
+setMeshCoreNeighboursScheduler(meshcoreNeighboursScheduler);
+setTimeout(async () => {
+  try {
+    await databaseService.waitForReady();
+    meshcoreNeighboursScheduler.start();
+  } catch (error) {
+    logger.error('Failed to start MeshCore neighbours scheduler:', error);
+  }
+}, 9000); // After telemetry scheduler, before room-sync.
+
 // ==========================================
 // Version Check (detection / notification only)
 // ==========================================
@@ -613,6 +633,10 @@ import {
   MeshCoreRoomSyncScheduler,
   setMeshCoreRoomSyncScheduler,
 } from './services/meshcoreRoomSyncScheduler.js';
+import {
+  MeshCoreNeighboursScheduler,
+  setMeshCoreNeighboursScheduler,
+} from './services/meshcoreNeighboursScheduler.js';
 import { getMeshCoreCredentialStore } from './services/meshcoreCredentialStore.js';
 import embedProfileRoutes from './routes/embedProfileRoutes.js';
 import embedPublicRoutes from './routes/embedPublicRoutes.js';

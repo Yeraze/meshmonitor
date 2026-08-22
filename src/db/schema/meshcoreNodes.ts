@@ -82,6 +82,13 @@ export const meshcoreNodesSqlite = sqliteTable('meshcore_nodes', {
   telemetryIntervalMinutes: integer('telemetryIntervalMinutes').default(60),
   lastTelemetryRequestAt: integer('lastTelemetryRequestAt'),
 
+  // Per-node neighbours-retrieval config (migration 153, #4618). Read by the
+  // MeshCoreNeighboursScheduler; a separate column set from the telemetry trio
+  // above so the two schedulers keep independent per-node cadences.
+  neighborsEnabled: integer('neighborsEnabled', { mode: 'boolean' }).default(false),
+  neighborsIntervalMinutes: integer('neighborsIntervalMinutes').default(60),
+  lastNeighborsRequestAt: integer('lastNeighborsRequestAt'),
+
   // Per-room-server sync config (migration 072).
   roomSyncEnabled: integer('roomSyncEnabled', { mode: 'boolean' }).default(false),
   roomSyncIntervalMinutes: integer('roomSyncIntervalMinutes').default(60),
@@ -144,6 +151,10 @@ export const meshcoreNodesPostgres = pgTable('meshcore_nodes', {
   telemetryIntervalMinutes: pgInteger('telemetryIntervalMinutes').default(60),
   lastTelemetryRequestAt: pgBigint('lastTelemetryRequestAt', { mode: 'number' }),
 
+  neighborsEnabled: pgBoolean('neighborsEnabled').default(false),
+  neighborsIntervalMinutes: pgInteger('neighborsIntervalMinutes').default(60),
+  lastNeighborsRequestAt: pgBigint('lastNeighborsRequestAt', { mode: 'number' }),
+
   roomSyncEnabled: pgBoolean('roomSyncEnabled').default(false),
   roomSyncIntervalMinutes: pgInteger('roomSyncIntervalMinutes').default(60),
   lastRoomSyncAt: pgBigint('lastRoomSyncAt', { mode: 'number' }),
@@ -199,6 +210,10 @@ export const meshcoreNodesMysql = mysqlTable('meshcore_nodes', {
   telemetryEnabled: myBoolean('telemetryEnabled').default(false),
   telemetryIntervalMinutes: myInt('telemetryIntervalMinutes').default(60),
   lastTelemetryRequestAt: myBigint('lastTelemetryRequestAt', { mode: 'number' }),
+
+  neighborsEnabled: myBoolean('neighborsEnabled').default(false),
+  neighborsIntervalMinutes: myInt('neighborsIntervalMinutes').default(60),
+  lastNeighborsRequestAt: myBigint('lastNeighborsRequestAt', { mode: 'number' }),
 
   roomSyncEnabled: myBoolean('roomSyncEnabled').default(false),
   roomSyncIntervalMinutes: myInt('roomSyncIntervalMinutes').default(60),

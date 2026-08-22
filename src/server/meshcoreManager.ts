@@ -5016,6 +5016,39 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   }
 
   /**
+   * Query a node's neighbour table over RF and persist the result, resolving
+   * each returned prefix to a full contact pubkey the same way
+   * `startAutoPathfinding` does. Shared by the MeshCoreNeighboursScheduler
+   * (#4618) and the manual per-node neighbours-poll route so both paths use
+   * identical request → resolve → store logic.
+   *
+   * Returns `{ total, written }` (`written` = neighbours we could resolve and
+   * store), or `null` when the query failed (disconnected, not a Companion,
+   * firmware too old, or the bridge returned an error). Does NOT own the
+   * per-source 60s TX gate or the `lastNeighborsRequestAt` stamp — callers
+   * enforce those, mirroring the telemetry scheduler's division of labour.
+   */
+  async pollNeighborsAndStore(publicKey: string): Promise<{ total: number; written: number } | null> {
+    const result = await this.getNeighbours(publicKey);
+    if (!result) return null;
+
+    const toStore = result.neighbours
+      .map((n) => {
+        const contact = this.resolveContactByPrefix(n.publicKeyPrefix);
+        return contact?.publicKey
+          ? { neighborPublicKey: contact.publicKey, snr: n.snr, lastHeardSecs: n.heardSecondsAgo }
+          : null;
+      })
+      .filter((n): n is NonNullable<typeof n> => n !== null);
+
+    // Always call insertNeighborsBatch — even with zero resolved neighbours it
+    // clears the previous (now stale) set for this reporter, matching the
+    // route/auto-pathfinding semantics.
+    await databaseService.meshcore.insertNeighborsBatch(this.sourceId, publicKey, toStore);
+    return { total: result.total, written: toStore.length };
+  }
+
+  /**
    * Reboot the locally connected device. Companion only. This is a
    * destructive operation — the device will disconnect and restart.
    */
