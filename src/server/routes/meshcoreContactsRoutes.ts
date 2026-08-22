@@ -971,6 +971,204 @@ router.patch(
 );
 
 /**
+ * GET /api/sources/:id/meshcore/nodes/:publicKey/neighbours-config
+ *
+ * Read the per-node neighbours-retrieval config (issue #4618). Returns the
+ * persisted (neighborsEnabled, neighborsIntervalMinutes,
+ * lastNeighborsRequestAt) triple, or defaults (`enabled: false,
+ * intervalMinutes: 60, lastRequestAt: null`) if the node has never been
+ * written. Mirror of the telemetry-config GET.
+ */
+router.get(
+  '/nodes/:publicKey/neighbours-config',
+  optionalAuth(),
+  requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id: string }).id;
+      const { publicKey } = req.params;
+      if (!isValidPublicKey(publicKey)) {
+        return res.status(400).json({ success: false, error: 'Invalid public key format (expected 64-character hex string)' });
+      }
+      const node = await databaseService.meshcore.getNodeByPublicKeyAndSource(publicKey, sourceId);
+      res.json({
+        success: true,
+        data: {
+          publicKey,
+          sourceId,
+          enabled: Boolean(node?.neighborsEnabled),
+          intervalMinutes: node?.neighborsIntervalMinutes ?? 60,
+          lastRequestAt: node?.lastNeighborsRequestAt ?? null,
+        },
+      });
+    } catch (error) {
+      logger.error('[API] Error getting per-node neighbours-config:', error);
+      res.status(500).json({ success: false, error: 'Failed to read neighbours-config' });
+    }
+  },
+);
+
+/**
+ * POST /api/sources/:id/meshcore/nodes/:publicKey/neighbours/poll
+ *
+ * Manually request this node's neighbour table immediately, outside the
+ * scheduler's cadence (#4618). Honours the same per-source 60s mesh-TX gate
+ * as the scheduler and the telemetry poll, so the button can't be spammed
+ * onto the air. Gated by `nodes:read` (a manual poll is a user-initiated
+ * read that happens to transmit) and rate-limited by `meshcoreDeviceLimiter`.
+ */
+router.post(
+  '/nodes/:publicKey/neighbours/poll',
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }),
+  requireMeshcoreTx(),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id: string }).id;
+      const { publicKey } = req.params;
+      if (!isValidPublicKey(publicKey)) {
+        return res.status(400).json({ success: false, error: 'Invalid public key format (expected 64-character hex string)' });
+      }
+
+      const manager = managerFor(req, res);
+      if (!manager.isConnected()) {
+        return res.status(409).json({ success: false, error: 'MeshCore source is not connected' });
+      }
+
+      // Per-source 60s mesh-TX gate — the same primitive the scheduler uses,
+      // so a manual poll can't flood the air or collide with a scheduled
+      // request already in flight on this source.
+      const lastTx = manager.getLastMeshTxAt();
+      const sinceLastTx = Date.now() - lastTx;
+      if (lastTx > 0 && sinceLastTx < MIN_INTERVAL_BETWEEN_REQUESTS_MS) {
+        const retryAfterSecs = Math.ceil((MIN_INTERVAL_BETWEEN_REQUESTS_MS - sinceLastTx) / 1000);
+        res.set('Retry-After', String(retryAfterSecs));
+        return res.status(429).json({
+          success: false,
+          error: `Too soon since last mesh transmission; retry in ${retryAfterSecs}s`,
+          retryAfterSecs,
+        });
+      }
+
+      // Stamp before issuing so the gate applies regardless of result and the
+      // scheduler's fair-rotation clock advances too.
+      const now = Date.now();
+      manager.recordMeshTx(now);
+      await databaseService.meshcore.markNeighborsRequested(sourceId, publicKey, now);
+
+      const result = await manager.pollNeighborsAndStore(publicKey);
+      if (!result) {
+        return res.json({
+          success: true,
+          data: { total: 0, written: 0, notSupported: true },
+        });
+      }
+
+      res.json({
+        success: true,
+        data: { total: result.total, written: result.written },
+      });
+    } catch (error) {
+      if (failIfTxDisabled(res, error)) return;
+      logger.error('[API] Error polling node neighbours:', error);
+      res.status(500).json({ success: false, error: 'Neighbours poll failed' });
+    }
+  },
+);
+
+/**
+ * PATCH /api/sources/:id/meshcore/nodes/:publicKey/neighbours-config
+ *
+ * Update the per-node neighbours-retrieval config. Body:
+ *   { enabled?: boolean, intervalMinutes?: number }
+ *
+ * Gated by `configuration:write`, mirroring the telemetry-config PATCH.
+ */
+router.patch(
+  '/nodes/:publicKey/neighbours-config',
+  requireAuth(),
+  requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id: string }).id;
+      const { publicKey } = req.params;
+      if (!isValidPublicKey(publicKey)) {
+        return res.status(400).json({ success: false, error: 'Invalid public key format (expected 64-character hex string)' });
+      }
+
+      const { enabled, intervalMinutes } = req.body ?? {};
+
+      const patch: { enabled?: boolean; intervalMinutes?: number } = {};
+      if (enabled !== undefined) {
+        if (typeof enabled !== 'boolean') {
+          return res.status(400).json({ success: false, error: 'enabled must be a boolean' });
+        }
+        patch.enabled = enabled;
+      }
+      if (intervalMinutes !== undefined) {
+        const n = Number(intervalMinutes);
+        if (!Number.isInteger(n) || n < 1 || n > MAX_INTERVAL_MINUTES) {
+          return res.status(400).json({
+            success: false,
+            error: `intervalMinutes must be an integer between 1 and ${MAX_INTERVAL_MINUTES}`,
+          });
+        }
+        patch.intervalMinutes = n;
+      }
+      if (patch.enabled === undefined && patch.intervalMinutes === undefined) {
+        return res.status(400).json({ success: false, error: 'No fields to update' });
+      }
+
+      // Backfill advType/advName/position from the in-memory contact before
+      // seeding the stub row, mirroring the telemetry-config PATCH so the
+      // node is classified correctly and Node Details has a name to show.
+      const manager = managerFor(req, res);
+      const contact = manager.getContact(publicKey);
+      if (contact) {
+        try {
+          await databaseService.meshcore.upsertNode(
+            {
+              publicKey,
+              name: contact.advName ?? contact.name ?? null,
+              advType: contact.advType ?? null,
+              latitude: contact.latitude ?? null,
+              longitude: contact.longitude ?? null,
+              positionSource: (typeof contact.latitude === 'number'
+                && typeof contact.longitude === 'number'
+                && !isBogusPosition(contact.latitude, contact.longitude))
+                ? 'contact'
+                : undefined,
+              lastHeard: contact.lastSeen ?? null,
+            },
+            sourceId,
+          );
+        } catch (err) {
+          logger.warn(
+            `[API] neighbours-config: contact backfill for ${publicKey.substring(0, 16)}… failed: ${(err as Error).message}`,
+          );
+        }
+      }
+      await databaseService.meshcore.setNodeNeighborsConfig(sourceId, publicKey, patch);
+      const node = await databaseService.meshcore.getNodeByPublicKeyAndSource(publicKey, sourceId);
+      res.json({
+        success: true,
+        data: {
+          publicKey,
+          sourceId,
+          enabled: Boolean(node?.neighborsEnabled),
+          intervalMinutes: node?.neighborsIntervalMinutes ?? 60,
+          lastRequestAt: node?.lastNeighborsRequestAt ?? null,
+        },
+      });
+    } catch (error) {
+      logger.error('[API] Error setting per-node neighbours-config:', error);
+      res.status(500).json({ success: false, error: 'Failed to update neighbours-config' });
+    }
+  },
+);
+
+/**
  * POST /api/sources/:id/meshcore/nodes/:publicKey/favorite
  *
  * Toggle the server-side favorite flag for a MeshCore node (any role:

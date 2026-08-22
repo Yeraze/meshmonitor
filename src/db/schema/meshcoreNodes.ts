@@ -82,6 +82,13 @@ export const meshcoreNodesSqlite = sqliteTable('meshcore_nodes', {
   telemetryIntervalMinutes: integer('telemetryIntervalMinutes').default(60),
   lastTelemetryRequestAt: integer('lastTelemetryRequestAt'),
 
+  // Per-node neighbours-retrieval config (migration 153, #4618). Read by the
+  // MeshCoreNeighboursScheduler; a separate column set from the telemetry trio
+  // above so the two schedulers keep independent per-node cadences.
+  neighborsEnabled: integer('neighborsEnabled', { mode: 'boolean' }).default(false),
+  neighborsIntervalMinutes: integer('neighborsIntervalMinutes').default(60),
+  lastNeighborsRequestAt: integer('lastNeighborsRequestAt'),
+
   // Per-room-server sync config (migration 072).
   roomSyncEnabled: integer('roomSyncEnabled', { mode: 'boolean' }).default(false),
   roomSyncIntervalMinutes: integer('roomSyncIntervalMinutes').default(60),

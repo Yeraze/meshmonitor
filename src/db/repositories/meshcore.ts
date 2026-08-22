@@ -68,6 +68,16 @@ export interface DbMeshCoreNode {
   telemetryIntervalMinutes?: number | null;
   lastTelemetryRequestAt?: number | null;
   /**
+   * Per-node neighbours-retrieval config (migration 153, #4618). Controls
+   * whether the MeshCoreNeighboursScheduler periodically requests this
+   * node's neighbour table and at what cadence — independent of the
+   * telemetry-retrieval trio above so the two schedulers never reset each
+   * other's timers.
+   */
+  neighborsEnabled?: boolean | null;
+  neighborsIntervalMinutes?: number | null;
+  lastNeighborsRequestAt?: number | null;
+  /**
    * MeshCore per-contact forwarding route (migration 068). `outPath` is a
    * comma-separated hex chain of hop hashes ("a3,7f,02"); `pathLen` is the
    * hop count. Both null means the firmware's OUT_PATH_UNKNOWN (0xFF)
@@ -438,6 +448,48 @@ export class MeshCoreRepository extends BaseRepository {
   }
 
   /**
+   * Persist the per-node neighbours-retrieval config (migration 153, #4618).
+   * Direct mirror of `setNodeTelemetryConfig` — inserts a stub row when the
+   * node has only been seen in-memory, idempotent on (publicKey, sourceId).
+   * Passing `undefined` for either field leaves the existing value intact
+   * (on update) or applies the column default (on insert). Caller validates
+   * `intervalMinutes`.
+   */
+  async setNodeNeighborsConfig(
+    sourceId: string,
+    publicKey: string,
+    cfg: { enabled?: boolean; intervalMinutes?: number },
+  ): Promise<void> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.setNodeNeighborsConfig requires a sourceId');
+    }
+    const now = this.now();
+    const { meshcoreNodes } = this.tables;
+    const existing = await this.getNodeByPublicKeyAndSource(publicKey, sourceId);
+
+    if (existing) {
+      const patch: Record<string, unknown> = { updatedAt: now };
+      if (cfg.enabled !== undefined) patch.neighborsEnabled = cfg.enabled;
+      if (cfg.intervalMinutes !== undefined) patch.neighborsIntervalMinutes = cfg.intervalMinutes;
+      await this.db
+        .update(meshcoreNodes)
+        .set(patch)
+        .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
+      return;
+    }
+
+    const seed: Record<string, unknown> = {
+      publicKey,
+      sourceId,
+      createdAt: now,
+      updatedAt: now,
+    };
+    if (cfg.enabled !== undefined) seed.neighborsEnabled = cfg.enabled;
+    if (cfg.intervalMinutes !== undefined) seed.neighborsIntervalMinutes = cfg.intervalMinutes;
+    await this.db.insert(meshcoreNodes).values(seed);
+  }
+
+  /**
    * Set the local favorite flag for a (sourceId, publicKey) node
    * (migration 094). This repository method only writes local state; syncing
    * the firmware favourite bit to the device (#4838) is handled separately by
@@ -494,6 +546,28 @@ export class MeshCoreRepository extends BaseRepository {
     await this.db
       .update(meshcoreNodes)
       .set({ lastTelemetryRequestAt: when, updatedAt: when })
+      .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
+  }
+
+  /**
+   * Mark a node as having just had a neighbours request sent. Stamps
+   * `lastNeighborsRequestAt` so the scheduler waits at least
+   * `neighborsIntervalMinutes` before picking it again. Separate from
+   * `markTelemetryRequested` so a neighbours poll never resets the
+   * telemetry cadence (#4618).
+   */
+  async markNeighborsRequested(
+    sourceId: string,
+    publicKey: string,
+    when: number = this.now(),
+  ): Promise<void> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.markNeighborsRequested requires a sourceId');
+    }
+    const { meshcoreNodes } = this.tables;
+    await this.db
+      .update(meshcoreNodes)
+      .set({ lastNeighborsRequestAt: when, updatedAt: when })
       .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
   }
 
@@ -700,6 +774,21 @@ export class MeshCoreRepository extends BaseRepository {
       .select()
       .from(meshcoreNodes)
       .where(and(eq(meshcoreNodes.sourceId, sourceId), eq(meshcoreNodes.telemetryEnabled, true)));
+    return this.normalizeBigInts(result) as unknown as DbMeshCoreNode[];
+  }
+
+  /**
+   * Return every node in a source that currently has neighbours retrieval
+   * enabled. Like `getTelemetryEnabledNodes`, per-node eligibility (interval
+   * vs `lastNeighborsRequestAt`) is decided in memory by the scheduler so
+   * the query stays engine-portable (#4618).
+   */
+  async getNeighborsEnabledNodes(sourceId: string): Promise<DbMeshCoreNode[]> {
+    const { meshcoreNodes } = this.tables;
+    const result = await this.db
+      .select()
+      .from(meshcoreNodes)
+      .where(and(eq(meshcoreNodes.sourceId, sourceId), eq(meshcoreNodes.neighborsEnabled, true)));
     return this.normalizeBigInts(result) as unknown as DbMeshCoreNode[];
   }
 
