@@ -42,6 +42,7 @@ import {
   buildNodeOnlineContext,
   buildNodeRebootedContext,
   buildNodePowerChangedContext,
+  buildBatteryTrendContext,
   buildScheduleContext,
   messageMatchesFilter,
   meshCoreMessageMatchesFilter,
@@ -169,6 +170,41 @@ interface StaleEntry {
   ts: number;
 }
 
+/**
+ * How often the battery-trend ticker recomputes decline (#4558 Phase E). Battery
+ * decline is a SLOW phenomenon that unfolds over hours, so unlike the 60s stale
+ * tick this runs every 15 minutes: the added detection lag is negligible against
+ * a multi-hour window, and the tick is materially cheaper — each pass does one
+ * battery-history DB read PER Meshtastic node (O(n) reads), where the stale tick
+ * reads all last-heard times in a single query. It sends NO mesh packets (airtime
+ * cost is zero); notification spam is bounded by the same cooldownSeconds /
+ * cooldownScope / rateLimit every trigger already has.
+ */
+const BATTERY_TREND_TICK_INTERVAL_MS = 15 * 60_000;
+
+/**
+ * Per-automation battery-trend-state bounds (#4558 Phase E). Same reasoning as
+ * STALE_STATE_MAX: evicting an entry is behaviour-SAFE because a first sighting
+ * only ESTABLISHES a baseline and never fires, so an evicted node simply
+ * re-baselines on the next tick (a still-declining node re-seeds as alarmed — no
+ * spurious refire; a recovered node re-seeds calm). Bounded anyway so an MQTT-fed
+ * mesh churning nodeNums cannot strand one dead entry per node ever seen.
+ */
+const BATTERY_TREND_STATE_MAX = 8192;
+const BATTERY_TREND_STATE_TRIM_TO = 4096;
+
+/**
+ * Per-(automation, node) battery-trend baseline (#4558 Phase E). `alarmed` is
+ * whether the node was declining past the threshold at the last tick — the
+ * fire-once + re-arm latch; `ts` is when the entry was last touched (eviction
+ * ordering). The decline itself is recomputed from durable DB history every tick,
+ * so this latch only prevents repeat-firing; it holds no derived measurement.
+ */
+interface BatteryTrendEntry {
+  alarmed: boolean;
+  ts: number;
+}
+
 /** Compact result of evaluating one automation — persisted run-log shape is unchanged;
  *  this is the subset the live trace ("view logs") streams to the browser. */
 interface FireResult {
@@ -267,6 +303,10 @@ export class AutomationEngineService {
   private staleState = new Map<string, Map<string, StaleEntry>>();
   /** The periodic staleness ticker, or null when not running (#4558 Phase A). */
   private staleTimer: NodeJS.Timeout | null = null;
+  /** automationId → "sourceId:nodeNum" → battery-trend baseline (#4558 Phase E). */
+  private batteryTrendState = new Map<string, Map<string, BatteryTrendEntry>>();
+  /** The periodic battery-trend ticker, or null when not running (#4558 Phase E). */
+  private batteryTrendTimer: NodeJS.Timeout | null = null;
 
   constructor(opts: EngineServiceOptions) {
     this.automationsRepo = opts.automationsRepo;
@@ -354,6 +394,13 @@ export class AutomationEngineService {
     // re-arms a nodeStale timer, and editing this one (same id) never re-fires
     // "heartbeat lost" for already-stale nodes.
     for (const id of this.staleState.keys()) if (!liveIds.has(id)) this.staleState.delete(id);
+    // Same prune for battery-trend baselines (#4558 Phase E): a deleted/disabled
+    // automation's entries are unreachable (runBatteryTrendCheck only iterates
+    // `this.index`), so dropping them is unobservable. A still-present automation
+    // keeps its baseline across a reload — so saving OTHER automations never
+    // re-arms its ticker, and editing this one (same id) never re-fires for a
+    // node already flagged declining.
+    for (const id of this.batteryTrendState.keys()) if (!liveIds.has(id)) this.batteryTrendState.delete(id);
     this.rescheduleCron();
     logger.info(`[AutomationEngine] loaded ${rows.length} enabled automation(s)`);
   }
@@ -379,13 +426,17 @@ export class AutomationEngineService {
     }
   }
 
-  /** Stop all cron jobs + the staleness ticker (clean shutdown / test teardown). */
+  /** Stop all cron jobs + the staleness/battery-trend tickers (clean shutdown / test teardown). */
   stop(): void {
     for (const job of this.cronJobs.values()) job.stop();
     this.cronJobs.clear();
     if (this.staleTimer) {
       clearInterval(this.staleTimer);
       this.staleTimer = null;
+    }
+    if (this.batteryTrendTimer) {
+      clearInterval(this.batteryTrendTimer);
+      this.batteryTrendTimer = null;
     }
   }
 
@@ -401,6 +452,21 @@ export class AutomationEngineService {
     }, intervalMs);
     // Never hold the process open solely for this background timer.
     if (typeof this.staleTimer.unref === 'function') this.staleTimer.unref();
+  }
+
+  /**
+   * Start the periodic battery-trend ticker (#4558 Phase E). Idempotent;
+   * {@link stop} clears it. Not started in the constructor so unit tests drive
+   * {@link runBatteryTrendCheck} directly against the injected clock without a
+   * real timer.
+   */
+  startBatteryTrendTicker(intervalMs = BATTERY_TREND_TICK_INTERVAL_MS): void {
+    if (this.batteryTrendTimer) return;
+    this.batteryTrendTimer = setInterval(() => {
+      this.runBatteryTrendCheck().catch((e) => logger.error(`[AutomationEngine] battery-trend check error: ${e?.message}`));
+    }, intervalMs);
+    // Never hold the process open solely for this background timer.
+    if (typeof this.batteryTrendTimer.unref === 'function') this.batteryTrendTimer.unref();
   }
 
   /**
@@ -1434,6 +1500,132 @@ export class AutomationEngineService {
         Number.isFinite(thresholdMinutes) ? thresholdMinutes : 0, sourceId, now,
       );
       fired += await this.fireStaleTransition(a, ctx, now);
+    }
+    return fired;
+  }
+
+  // ─── battery trend: trigger.batteryTrend (#4558 Phase E) ────────────────────
+
+  private getBatteryTrendBaseline(a: LoadedAutomation, key: string): BatteryTrendEntry | undefined {
+    return this.batteryTrendState.get(a.id)?.get(key);
+  }
+
+  private setBatteryTrendBaseline(a: LoadedAutomation, key: string, entry: BatteryTrendEntry): void {
+    let inner = this.batteryTrendState.get(a.id);
+    if (!inner) { inner = new Map(); this.batteryTrendState.set(a.id, inner); }
+    inner.set(key, entry);
+    if (inner.size > BATTERY_TREND_STATE_MAX) this.pruneBatteryTrendState(a, inner);
+  }
+
+  private pruneBatteryTrendState(a: LoadedAutomation, inner: Map<string, BatteryTrendEntry>): void {
+    if (inner.size <= BATTERY_TREND_STATE_TRIM_TO) return;
+    // Eviction is behaviour-safe (see BATTERY_TREND_STATE_MAX doc): drop the
+    // least-recently-seen entries — those nodes have most likely churned out of
+    // the enumeration — and any live one just re-baselines on its next tick.
+    const byAge = [...inner.entries()].sort((x, y) => x[1].ts - y[1].ts);
+    const dropCount = byAge.length - BATTERY_TREND_STATE_TRIM_TO;
+    for (let i = 0; i < dropCount; i++) inner.delete(byAge[i][0]);
+    logger.debug(`[AutomationEngine] "${a.name}" battery-trend state trimmed to ${inner.size}`);
+  }
+
+  /**
+   * Periodic battery-decline evaluation (#4558 Phase E) — the "solar node losing
+   * battery / not charging" heuristic for `trigger.batteryTrend`.
+   *
+   * For every enabled batteryTrend automation, reads each tracked Meshtastic
+   * node's `batteryLevel` history over the automation's OWN `windowHours` and
+   * computes the drop from the window's oldest sample to its newest. A node is
+   * "declining" when there are ≥ 2 samples AND `startLevel - latestLevel >=
+   * minDropPercent` (percentage points) — the net fall over the window IS the
+   * monotonic-ish requirement, so a node that dipped and recovered nets out below
+   * threshold and does not fire.
+   *
+   *  - a node's FIRST sighting only ESTABLISHES a baseline (no fire). This is what
+   *    makes a process restart NOT replay an alert for a node that was already
+   *    declining — the real history lives in the DB and the latch re-seeds
+   *    silently on the first tick;
+   *  - not-declining → declining fires ONCE and latches the node alarmed;
+   *  - declining → not-declining clears the latch (re-arm) without firing.
+   *
+   * HEURISTIC CAVEAT: the protocol has no charge-state field, so this is a
+   * declining-battery PROXY, not a true "not charging" signal — it can
+   * false-positive under heavy transient load and does not model day/night.
+   *
+   * MeshCore is excluded (no batteryLevel time-series). Sends NO mesh packets;
+   * returns the number of automations that dispatched this tick.
+   */
+  async runBatteryTrendCheck(): Promise<number> {
+    const autos = this.index.get('trigger.batteryTrend') ?? [];
+    if (autos.length === 0) return 0;
+    if (!this.data.listNodesForStaleCheck || !this.data.getBatteryTrendSamples) return 0;
+
+    let candidates: StaleCandidate[];
+    try {
+      candidates = await this.data.listNodesForStaleCheck();
+    } catch (e) {
+      logger.error(`[AutomationEngine] battery-trend node enumeration failed: ${e instanceof Error ? e.message : String(e)}`);
+      return 0;
+    }
+    // Meshtastic only — MeshCore nodes (nodeNum == null) carry no batteryLevel history.
+    const meshtasticNodes = candidates.filter((c) => c.nodeNum != null);
+
+    const now = this.now();
+    let fired = 0;
+
+    for (const a of autos) {
+      const p = (a.triggerNode.params as Record<string, unknown>) ?? {};
+      const windowHours = Number(p.windowHours);
+      const minDropPercent = Number(p.minDropPercent);
+      if (!Number.isFinite(windowHours) || windowHours <= 0) continue;
+      if (!Number.isFinite(minDropPercent) || minDropPercent <= 0) continue;
+      const sinceMs = now - windowHours * 3_600_000;
+
+      for (const c of meshtasticNodes) {
+        const nodeNum = Number(c.nodeNum);
+        const key = `${c.sourceId ?? ''}:${nodeNum}`;
+
+        let samples: Array<{ timestamp: number; value: number }>;
+        try {
+          samples = await this.data.getBatteryTrendSamples(c.sourceId, nodeNum, sinceMs);
+        } catch {
+          continue; // a per-node read failure must not abort the rest of the tick
+        }
+        // Need at least two readings in the window to describe a trend at all.
+        if (!samples || samples.length < 2) continue;
+
+        let earliest = samples[0];
+        let latest = samples[0];
+        for (const s of samples) {
+          if (s.timestamp < earliest.timestamp) earliest = s;
+          if (s.timestamp > latest.timestamp) latest = s;
+        }
+        const startLevel = earliest.value;
+        const latestLevel = latest.value;
+        const drop = startLevel - latestLevel;
+        const declining = drop >= minDropPercent;
+
+        const prev = this.getBatteryTrendBaseline(a, key);
+        if (prev === undefined) {
+          // First sighting after (re)start: baseline only, never a fire.
+          this.setBatteryTrendBaseline(a, key, { alarmed: declining, ts: now });
+          continue;
+        }
+
+        if (!prev.alarmed && declining) {
+          // calm → declining. Latch alarmed FIRST so a suppressed fire can't re-fire.
+          this.setBatteryTrendBaseline(a, key, { alarmed: true, ts: now });
+          const ctx = buildBatteryTrendContext(
+            nodeNum, Math.round(drop), windowHours, minDropPercent, startLevel, latestLevel, c.sourceId, now,
+          );
+          fired += await this.fireStaleTransition(a, ctx, now);
+        } else if (prev.alarmed && !declining) {
+          // declining → recovered: re-arm, no fire.
+          this.setBatteryTrendBaseline(a, key, { alarmed: false, ts: now });
+        } else {
+          // No transition — refresh the touched-timestamp for eviction ordering.
+          this.setBatteryTrendBaseline(a, key, { alarmed: prev.alarmed, ts: now });
+        }
+      }
     }
     return fired;
   }

@@ -498,6 +498,53 @@ export function buildNodePowerChangedContext(
   };
 }
 
+/**
+ * Build the trigger context when a node's battery is steadily DECLINING over a
+ * window (`trigger.batteryTrend` — Device Health #4558 Phase E). Subject node =
+ * the node whose battery is falling, so `{{ node.* }}` hydration and node-scoped
+ * cooldown work. The trend is derived from the durable telemetry history each
+ * tick (see runBatteryTrendCheck); this builder only shapes what the conditions /
+ * interpolation read.
+ *
+ * `startLevel`/`latestLevel` are the battery-level (%) at the window's oldest and
+ * newest samples; `dropPercent` is `startLevel - latestLevel` (percentage POINTS,
+ * since the metric is batteryLevel %). Meshtastic only — MeshCore stores battery
+ * as a single node column, not a batteryLevel time-series — so `subjectNodeNum`
+ * is always a real node number here.
+ *
+ * HEURISTIC CAVEAT: the Meshtastic protocol carries no charge-state field, so a
+ * falling battery level is only a PROXY for "not charging" (the solar-node alert
+ * this phase exists for). It can false-positive under heavy transient load and is
+ * blind to day/night — it deliberately does not model solar hours.
+ */
+export function buildBatteryTrendContext(
+  nodeNum: number,
+  dropPercent: number,
+  windowHours: number,
+  minDropPercent: number,
+  startLevel: number,
+  latestLevel: number,
+  sourceId: string | null,
+  timestamp: number,
+): TriggerContext {
+  return {
+    triggerType: 'trigger.batteryTrend',
+    sourceId,
+    subjectNodeNum: Number(nodeNum),
+    timestamp,
+    fields: {
+      nodeNum: Number(nodeNum),
+      dropPercent,
+      windowHours,
+      minDropPercent,
+      startLevel,
+      latestLevel,
+      sourceId,
+      timestamp,
+    },
+  };
+}
+
 /** Build the trigger context for a single telemetry reading (engine fans the batch out). */
 export function buildTelemetryContext(
   nodeNum: number,

@@ -129,6 +129,24 @@ export interface NodeDataProvider {
    * absent → staleness checks are a no-op (e.g. unit tests that don't wire it).
    */
   listNodesForStaleCheck?(): Promise<StaleCandidate[]>;
+  /**
+   * Battery-level (%) history for a Meshtastic node since a cutoff, for the
+   * periodic declining-battery check (`trigger.batteryTrend`, #4558 Phase E).
+   * Reads the durable `batteryLevel` telemetry time-series — so the trend is
+   * recomputed from the database each tick and a process restart never replays
+   * an alert. `sinceMs` is an epoch-MILLISECONDS cutoff (telemetry timestamps
+   * are epoch ms). Returns `{ timestamp, value }` samples in any order (the
+   * engine picks the window's oldest and newest by timestamp). Optional; absent
+   * → battery-trend checks are a no-op (e.g. unit tests that don't wire it).
+   *
+   * MeshCore is out of scope: it stores battery as a single node column, not a
+   * batteryLevel time-series, so there is no history to trend.
+   */
+  getBatteryTrendSamples?(
+    sourceId: string | null,
+    nodeNum: number,
+    sinceMs: number,
+  ): Promise<Array<{ timestamp: number; value: number }>>;
 }
 
 export interface EngineEvalContext {
