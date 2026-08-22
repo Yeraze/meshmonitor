@@ -1,0 +1,19 @@
+/*
+ * Satellite imagery tone adjustment (#4860).
+ *
+ * ESRI's World_Imagery raster (our "Satellite" and "Satellite + Labels"
+ * tilesets) renders water bodies as a flat, over-saturated synthetic blue where
+ * high-resolution imagery is unavailable — it reads like an unnatural blue
+ * overlay on rivers and lakes. We can't restyle individual features of a raster
+ * tile, so we damp the whole base layer's saturation a touch: the blue is the
+ * most-saturated element, so it calms the most, while the already-muted terrain
+ * imagery is barely affected. Applied to the BASE tiles only (the hybrid label
+ * overlay is a separate layer and stays crisp).
+ *
+ * Scoped by the `mm-satellite-base-tile` class BaseMap adds to the provided
+ * satellite tilesets. `saturate()` is per-pixel, so it introduces no tile seams.
+ * The value is intentionally conservative and easy to tune.
+ */
+.leaflet-tile.mm-satellite-base-tile {
+  filter: saturate(0.8);
+}
