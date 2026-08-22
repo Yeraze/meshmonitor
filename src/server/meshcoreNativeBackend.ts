@@ -13,6 +13,7 @@
 
 import { EventEmitter } from 'events';
 import { createHash } from 'node:crypto';
+import { decodeMeshCorePacket } from '../utils/meshcorePacketDecode.js';
 import { logger } from '../utils/logger.js';
 import { TxDisabledError } from './errors/txDisabledError.js';
 import { isRfBridgeCommand, MESHCORE_RECEIVE_ONLY_MESSAGE } from './constants/meshcoreTx.js';
@@ -146,6 +147,30 @@ function bytesToHex(bytes: Uint8Array | number[]): string {
   return out;
 }
 
+/** Normalize a MeshCore pubkey prefix to 12 lowercase hex chars (6 bytes). */
+function normalizePubkeyPrefixHex(prefix: string | null | undefined): string | null {
+  if (!prefix) return null;
+  const trimmed = prefix.replace(/[^0-9a-f]/gi, '').toLowerCase();
+  return trimmed.length >= 12 ? trimmed.substring(0, 12) : null;
+}
+
+/**
+ * Extract the 6-byte sender pubkey prefix from a TXT_MSG LogRxData frame.
+ * Plaintext payload layout after the relay path: dest_prefix(6) + src_prefix(6) + ciphertext.
+ */
+export function extractTxtMsgSenderPrefix(rawHex: string | null | undefined): string | null {
+  const decoded = decodeMeshCorePacket(rawHex);
+  if (!decoded || decoded.header.payloadType !== 0x02) return null;
+  const payloadHex = decoded.payload.hex;
+  if (!payloadHex || payloadHex.length < 24) return null;
+  return payloadHex.substring(12, 24).toLowerCase();
+}
+
+interface PendingPathCorrelation {
+  /** ContactMsgRecv pubKeyPrefix — matched against buffered TXT_MSG src prefix. */
+  senderPrefixHex?: string | null;
+}
+
 /**
  * Render a MeshCore contact's `out_path` blob into a comma-separated hex
  * chain like "a3,7f,02" (1-byte hashes) or "a37f,02b0" (2-byte hashes).
@@ -266,10 +291,21 @@ export class MeshCoreNativeBackend extends EventEmitter {
    * the first's buffer before its recv consumed it, so the first message lost
    * its route/SNR and — most visibly — its scope badge (received-message scope
    * intermittently blank on busy meshes, even though the raw bytes were
-   * captured). {@link consumePendingPath} matches by hop count and takes the
-   * oldest unconsumed entry, so concurrent packets no longer evict each other.
+   * captured). {@link consumePendingPath} matches by hop count (and, for DMs,
+   * the sender pubkey prefix extracted from the TXT_MSG payload) and takes the
+   * oldest eligible unconsumed entry, so concurrent packets no longer evict
+   * each other.
    */
-  private pendingTxtMsgPaths: Array<{ hops: string[]; rawPathLen: number; snr?: number; rssi?: number; rawHex?: string; bufferedAt: number }> = [];
+  private pendingTxtMsgPaths: Array<{
+    hops: string[];
+    rawPathLen: number;
+    snr?: number;
+    rssi?: number;
+    rawHex?: string;
+    /** TXT_MSG only — 6-byte sender pubkey prefix from the plaintext payload. */
+    senderPrefixHex?: string;
+    bufferedAt: number;
+  }> = [];
 
   /**
    * Maximum age (ms) of a buffered LogRxData path before we treat it as stale
@@ -285,17 +321,29 @@ export class MeshCoreNativeBackend extends EventEmitter {
    * scope mode always replying unscoped). A buffer older than this window
    * almost certainly belongs to a *different* packet whose recv never
    * arrived, so consuming it would attach the wrong SNR/route/scope.
-   * Hop-count FIFO matching still guards against mis-correlation (#3589);
-   * this window only bounds how long an unmatched buffer may wait.
+   * Hop-count (+ optional pubkey prefix) matching guards against
+   * mis-correlation (#3589); this window only bounds how long an unmatched
+   * buffer may linger in the FIFO before pruning.
    */
   private static readonly PENDING_PATH_MAX_AGE_MS = 2000;
   /**
-   * Cap on buffered LogRxData entries. The FIFO only holds text-packet metadata
-   * for the sub-millisecond gap until the matching recv consumes it (pruned by
-   * age on every push/consume), so this is just a backstop against unbounded
-   * growth if a burst of LogRxData arrives with no following recv events.
+   * When several hop-matching buffers coexist (typical on busy GRP_TXT /
+   * channel traffic), only attach a candidate younger than this age. Covers
+   * the ~500–600ms LogRxData→recv gap on slow USB companions while rejecting
+   * stale orphans whose recv never arrived — the #3589 failure mode a wider
+   * MAX_AGE alone would re-open. Unique-hop and pubkey-prefix matches may
+   * use the full {@link PENDING_PATH_MAX_AGE_MS} window instead.
    */
-  private static readonly PENDING_PATH_MAX_ENTRIES = 8;
+  private static readonly PENDING_PATH_ATTACH_MAX_AGE_MS = 750;
+  /**
+   * Cap on buffered LogRxData entries. With a ~600ms recv gap on busy meshes,
+   * more than the old 8 text packets can sit unconsumed simultaneously; this
+   * backstop prevents unbounded growth when recv events never arrive. Stale
+   * rows are pruned by age in {@link prunePendingTxtMsgPaths} on push and
+   * consume; the length cap only evicts the oldest entry when the FIFO still
+   * overflows after pruning.
+   */
+  private static readonly PENDING_PATH_MAX_ENTRIES = 32;
   /** Constructor reference for the meshcore.js Packet parser, populated when the module loads. */
   private PacketCtor: MeshCoreJsModule['Packet'] | null = null;
   /**
@@ -424,64 +472,88 @@ export class MeshCoreNativeBackend extends EventEmitter {
    * correlating it to the current message-recv event so {SNR}/{ROUTE} only
    * populate from the *matching* packet (issue #3589).
    *
-   * The buffer is ALWAYS cleared (single-slot, consume-once) so a later recv
-   * that got no LogRxData of its own can't reuse a stale buffer. Two guards
-   * decide whether the buffered data is actually attached:
-   *
-   *  1. Freshness — the buffer must be younger than `PENDING_PATH_MAX_AGE_MS`.
-   *     LogRxData fires immediately before its txt-msg recv on the same tick;
-   *     an older buffer belongs to a packet whose recv never arrived.
-   *  2. hop-count correlation — when the recv event carries its own
-   *     `pathLen`, the *hop count* it implies must equal the hop count
-   *     decoded from the buffered packet's packed `rawPathLen`. A mismatch
-   *     proves the buffer is from a *different* packet and must not be
-   *     attached.
-   *
-   *     NOTE: the two values are NOT the same wire byte. ContactMsgRecv /
-   *     ChannelMsgRecv report a PLAIN hop count (0xFF == "sent direct"),
-   *     whereas LogRxData's `rawPathLen` is the PACKED OTA byte (top 2 bits
-   *     = hash-size-1, bottom 6 bits = hop count). Comparing them raw made
-   *     every flood packet using a 2- or 3-byte relay-hash width fail to
-   *     correlate, so {ROUTE} resolved to "—" for any routed message
-   *     (issue #3710). We decode the packed byte to a hop count first.
-   *
-   * Returns `{ hops, snr, rssi }` to attach, or `undefined` when the buffer is
-   * absent, stale, or for a different packet.
+   * Matching rules (prefer miss over wrong attach):
+   *  1. Require a usable recv hop count — no match-all fallback.
+   *  2. Hop count must match the buffered packed `rawPathLen` (#3710).
+   *  3. DMs: optional sender pubkey prefix disambiguates same-hop collisions.
+   *  4. Unique hop match → attach if within `PENDING_PATH_MAX_AGE_MS` (slow
+   *     companions). Several hop matches → attach the oldest candidate still
+   *     within `PENDING_PATH_ATTACH_MAX_AGE_MS`, skipping stale orphans.
    */
-  private consumePendingPath(msgPathLen: unknown): { hops: string[]; snr?: number; rssi?: number; rawHex?: string } | undefined {
-    const now = Date.now();
-    // Drop stale entries first — a buffer whose matching recv never arrived
-    // would mis-correlate route/SNR/scope if attached to a later message
-    // (issue #3589 guard).
+  private prunePendingTxtMsgPaths(now: number = Date.now()): void {
     this.pendingTxtMsgPaths = this.pendingTxtMsgPaths.filter(
       (e) => now - e.bufferedAt <= MeshCoreNativeBackend.PENDING_PATH_MAX_AGE_MS,
     );
+  }
+
+  private bufferedHopCount(rawPathLen: number): number {
+    return rawPathLen === 0xff
+      ? 0
+      : (this.PacketCtor?.extractPathHashCount(rawPathLen) ?? (rawPathLen & 0x3f));
+  }
+
+  private takeBufferedEntry(
+    entry: (typeof this.pendingTxtMsgPaths)[number],
+  ): { hops: string[]; snr?: number; rssi?: number; rawHex?: string } {
+    const idx = this.pendingTxtMsgPaths.indexOf(entry);
+    if (idx === -1) {
+      return { hops: entry.hops, snr: entry.snr, rssi: entry.rssi, rawHex: entry.rawHex };
+    }
+    this.pendingTxtMsgPaths.splice(idx, 1);
+    return { hops: entry.hops, snr: entry.snr, rssi: entry.rssi, rawHex: entry.rawHex };
+  }
+
+  private consumePendingPath(
+    msgPathLen: unknown,
+    correlation?: PendingPathCorrelation,
+    opts?: { discardOnly?: boolean },
+  ): { hops: string[]; snr?: number; rssi?: number; rawHex?: string } | undefined {
+    const now = Date.now();
+    this.prunePendingTxtMsgPaths(now);
     if (this.pendingTxtMsgPaths.length === 0) return undefined;
 
-    // Normalize the recv event's pathLen to a plain hop count (0xFF == sent
-    // direct == 0 hops). The buffered rawPathLen is the packed OTA byte.
     const msgHopCount =
       typeof msgPathLen === 'number' ? (msgPathLen === 0xff ? 0 : msgPathLen & 0x3f) : null;
-    const bufferedHopCount = (rawPathLen: number): number =>
-      rawPathLen === 0xff
-        ? 0
-        : (this.PacketCtor?.extractPathHashCount(rawPathLen) ?? (rawPathLen & 0x3f));
+    if (msgHopCount === null) return undefined;
 
-    // Take the OLDEST unconsumed entry whose hop count matches. LogRxData is
-    // emitted just before its own recv, so across concurrent packets the oldest
-    // hop-matching buffer is this recv's packet. When the recv carries no usable
-    // pathLen, fall back to the oldest entry outright (prior single-slot
-    // behavior generalized to the FIFO).
-    const idx = this.pendingTxtMsgPaths.findIndex(
-      (e) =>
-        msgHopCount === null ||
-        typeof e.rawPathLen !== 'number' ||
-        bufferedHopCount(e.rawPathLen) === msgHopCount,
+    const hopMatching = this.pendingTxtMsgPaths.filter(
+      (e) => typeof e.rawPathLen === 'number' && this.bufferedHopCount(e.rawPathLen) === msgHopCount,
     );
-    if (idx === -1) return undefined;
 
-    const [buffered] = this.pendingTxtMsgPaths.splice(idx, 1); // consume-once
-    return { hops: buffered.hops, snr: buffered.snr, rssi: buffered.rssi, rawHex: buffered.rawHex };
+    if (opts?.discardOnly) {
+      if (hopMatching.length > 0) this.takeBufferedEntry(hopMatching[0]);
+      return undefined;
+    }
+
+    if (hopMatching.length === 0) return undefined;
+
+    const senderPrefix = normalizePubkeyPrefixHex(correlation?.senderPrefixHex);
+    if (senderPrefix) {
+      const prefixMatches = hopMatching.filter((e) => e.senderPrefixHex === senderPrefix);
+      if (prefixMatches.length === 1) {
+        const [match] = prefixMatches;
+        if (now - match.bufferedAt <= MeshCoreNativeBackend.PENDING_PATH_MAX_AGE_MS) {
+          return this.takeBufferedEntry(match);
+        }
+        return undefined;
+      }
+      if (prefixMatches.length > 1) return undefined;
+    }
+
+    if (hopMatching.length === 1) {
+      const [only] = hopMatching;
+      if (now - only.bufferedAt <= MeshCoreNativeBackend.PENDING_PATH_MAX_AGE_MS) {
+        return this.takeBufferedEntry(only);
+      }
+      return undefined;
+    }
+
+    for (const entry of hopMatching) {
+      if (now - entry.bufferedAt <= MeshCoreNativeBackend.PENDING_PATH_ATTACH_MAX_AGE_MS) {
+        return this.takeBufferedEntry(entry);
+      }
+    }
+    return undefined;
   }
 
   private wirePushEvents(): void {
@@ -493,9 +565,9 @@ export class MeshCoreNativeBackend extends EventEmitter {
     // (ContactMsgRecv / ChannelMsgRecv) strip the relay-hash chain, so
     // we parse the raw bytes here, buffer the path for TXT_MSG packets
     // only, and let the next message-recv handler consume it. The
-    // single-buffer design is intentional — under the wire-level
-    // serialization the firmware uses, LogRxData is emitted right
-    // before the corresponding txt-msg event for the same packet.
+        // FIFO design — under wire-level serialization LogRxData is emitted
+        // right before the corresponding txt-msg event for the same packet,
+        // but several packets can be in flight on busy meshes.
     //
     // We also surface EVERY parsed packet as an `ota_packet` bridge event
     // so the MeshCore Packet Monitor can show full OTA metadata (route
@@ -536,7 +608,19 @@ export class MeshCoreNativeBackend extends EventEmitter {
             // each other's route/SNR/scope. Remaining limitation: if LogRxData
             // arrives AFTER its own recv (rare ordering), that packet's buffer is
             // still missed — inherent to the adjacency-buffer design.
-            this.pendingTxtMsgPaths.push({ hops, rawPathLen: pkt.pathLen, snr, rssi, rawHex: bytesToHex(raw), bufferedAt: Date.now() });
+            const rawHex = bytesToHex(raw);
+            const senderPrefixHex =
+              pkt.payload_type === TXT_MSG ? extractTxtMsgSenderPrefix(rawHex) ?? undefined : undefined;
+            this.pendingTxtMsgPaths.push({
+              hops,
+              rawPathLen: pkt.pathLen,
+              snr,
+              rssi,
+              rawHex,
+              senderPrefixHex,
+              bufferedAt: Date.now(),
+            });
+            this.prunePendingTxtMsgPaths();
             // Backstop against unbounded growth (recv-less LogRxData bursts).
             if (this.pendingTxtMsgPaths.length > MeshCoreNativeBackend.PENDING_PATH_MAX_ENTRIES) {
               this.pendingTxtMsgPaths.shift();
@@ -585,7 +669,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
         // the room post's own buffer can't leak onto the NEXT contact/channel
         // message — that leak attached a stale SNR/route to an unrelated
         // message (part of issue #3589). We don't surface SNR on room posts.
-        this.consumePendingPath(msg.pathLen);
+        this.consumePendingPath(msg.pathLen, undefined, { discardOnly: true });
         const rawText: string = msg.text ?? '';
         const authorPrefixHex = Array.from(rawText.substring(0, 4))
           .map((ch: string) => ch.charCodeAt(0).toString(16).padStart(2, '0'))
@@ -605,7 +689,9 @@ export class MeshCoreNativeBackend extends EventEmitter {
       // Consume the path buffered by the preceding LogRxData event, correlated
       // to THIS packet (freshness + pathLen match). Returns undefined when the
       // buffer is absent, stale, or for a different packet (issue #3589).
-      const consumedPath = this.consumePendingPath(msg.pathLen);
+      const consumedPath = this.consumePendingPath(msg.pathLen, {
+        senderPrefixHex: bytesToHex(msg.pubKeyPrefix),
+      });
       const payload = {
         pubkey_prefix: bytesToHex(msg.pubKeyPrefix),
         text: msg.text,
