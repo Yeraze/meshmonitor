@@ -366,6 +366,73 @@ export function buildNodeContext(
   };
 }
 
+/**
+ * Build the trigger context when a watched node crosses its staleness threshold
+ * (`trigger.nodeStale` — "heartbeat lost", #4558 Phase A). Subject node = the
+ * node that went quiet, so `{{ node.* }}` hydration and node-scoped cooldown work
+ * for Meshtastic. MeshCore nodes carry no numeric node id, so `subjectNodeNum`
+ * is null and `subjectNodeKey` is set explicitly to the public key (the same
+ * degrade a MeshCore DM uses) — that keys per-node cooldown off the pubkey.
+ */
+export function buildNodeStaleContext(
+  nodeNum: number | null,
+  publicKey: string | null,
+  ageMinutes: number,
+  staleAfterMinutes: number,
+  lastHeardMs: number | null,
+  sourceId: string | null,
+  timestamp: number,
+): TriggerContext {
+  return {
+    triggerType: 'trigger.nodeStale',
+    sourceId,
+    subjectNodeNum: nodeNum == null ? null : Number(nodeNum),
+    // undefined ⇒ derive from subjectNodeNum (Meshtastic); explicit pubkey for MeshCore.
+    subjectNodeKey: nodeNum == null ? (publicKey ?? null) : undefined,
+    timestamp,
+    fields: {
+      nodeNum: nodeNum == null ? null : Number(nodeNum),
+      publicKey: publicKey ?? undefined,
+      ageMinutes,
+      staleAfterMinutes,
+      lastHeard: lastHeardMs ?? undefined,
+      sourceId,
+      timestamp,
+    },
+  };
+}
+
+/**
+ * Build the trigger context when a previously-stale node is heard again
+ * (`trigger.nodeOnline` — "recovery", #4558 Phase A). Mirrors
+ * {@link buildNodeStaleContext}; `offlineDurationMinutes` is the gap between the
+ * last time we heard the node before it went silent and now hearing it again.
+ */
+export function buildNodeOnlineContext(
+  nodeNum: number | null,
+  publicKey: string | null,
+  offlineDurationMinutes: number,
+  staleAfterMinutes: number,
+  sourceId: string | null,
+  timestamp: number,
+): TriggerContext {
+  return {
+    triggerType: 'trigger.nodeOnline',
+    sourceId,
+    subjectNodeNum: nodeNum == null ? null : Number(nodeNum),
+    subjectNodeKey: nodeNum == null ? (publicKey ?? null) : undefined,
+    timestamp,
+    fields: {
+      nodeNum: nodeNum == null ? null : Number(nodeNum),
+      publicKey: publicKey ?? undefined,
+      offlineDurationMinutes,
+      staleAfterMinutes,
+      sourceId,
+      timestamp,
+    },
+  };
+}
+
 /** Build the trigger context for a single telemetry reading (engine fans the batch out). */
 export function buildTelemetryContext(
   nodeNum: number,

@@ -48,6 +48,8 @@ export const TRIGGER_TOKENS: Record<string, Array<[string, string]>> = {
   'trigger.becameMobile': [['nodeNum', 'Node number'], ['previousMobile', 'Previous mobile flag (0)'], ['mobile', 'New mobile flag (1)'], ['latitude', 'Node latitude'], ['longitude', 'Node longitude']],
   'trigger.leftHome': [['nodeNum', 'Node number'], ['latitude', 'Node latitude'], ['longitude', 'Node longitude'], ['homeLat', 'Home latitude'], ['homeLon', 'Home longitude'], ['distanceMeters', 'Distance from home (m)'], ['thresholdMeters', 'Configured threshold (m)']],
   'trigger.meshBeacon': [['nodeNum', 'Node number'], ['message', 'Beacon text'], ['offerChannelName', 'Offered channel name'], ['offerRegion', 'Offered region code'], ['offerPreset', 'Offered modem preset'], ['hasOffer', 'true if the beacon advertises a network']],
+  'trigger.nodeStale': [['nodeNum', 'Node number (Meshtastic)'], ['publicKey', 'Public key (MeshCore)'], ['ageMinutes', 'Minutes since last heard'], ['staleAfterMinutes', 'Configured silence threshold (min)'], ['lastHeard', 'Last-heard time (epoch ms)']],
+  'trigger.nodeOnline': [['nodeNum', 'Node number (Meshtastic)'], ['publicKey', 'Public key (MeshCore)'], ['offlineDurationMinutes', 'Minutes the node was offline'], ['staleAfterMinutes', 'Configured silence threshold (min)']],
   'trigger.schedule': [],
 };
 
@@ -57,6 +59,7 @@ const TRIGGER_LABEL: Record<string, string> = {
   'trigger.nodeDiscovered': 'Node discovered', 'trigger.system': 'System event', 'trigger.geofence': 'Geofence',
   'trigger.becameMobile': 'Became mobile', 'trigger.leftHome': 'Left home', 'trigger.schedule': 'Schedule',
   'trigger.meshBeacon': 'MeshBeacon',
+  'trigger.nodeStale': 'Node silent', 'trigger.nodeOnline': 'Node recovered',
 };
 
 /** Drawer listing every available substitution token (current trigger first). */
