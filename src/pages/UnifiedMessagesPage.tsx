@@ -29,6 +29,7 @@ import { useAuth } from '../contexts/AuthContext';
 import apiService from '../services/api';
 import { renderMessageWithLinks } from '../utils/linkRenderer';
 import { senderLabel, shortSenderLabel } from './unifiedSenderLabels';
+import { formatTime, formatTimeWithSeconds } from './unifiedTimeFormat';
 import { foldUnifiedMessagePages } from '../utils/unifiedMessageAccumulator';
 import LinkPreview from '../components/LinkPreview';
 import '../styles/unified.css';
@@ -113,10 +114,6 @@ function isReactionMessage(msg: UnifiedMessage): boolean {
     if (t.length > 0 && t.length <= 8 && EMOJI_RE.test(t)) return true;
   }
   return false;
-}
-
-function formatTime(timestampMs: number): string {
-  return new Date(timestampMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 function formatDateDivider(timestampMs: number, t: TFn): string {
@@ -685,7 +682,7 @@ export default function UnifiedMessagesPage() {
                       <td>{hopDisplay(r.hopStart, r.hopLimit, t)}</td>
                       <td>{r.rxSnr != null ? `${r.rxSnr.toFixed(1)} dB` : '—'}</td>
                       <td>{r.rxRssi != null ? `${r.rxRssi} dBm` : '—'}</td>
-                      <td>{formatTime(r.timestamp)}</td>
+                      <td>{formatTimeWithSeconds(r.timestamp)}</td>
                     </tr>
                   ))}
                 </tbody>
