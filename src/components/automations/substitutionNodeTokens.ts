@@ -39,4 +39,5 @@ export const SUBJECT_NODE_TRIGGER_TYPES = [
   'trigger.nodeOnline',
   'trigger.nodeRebooted',
   'trigger.nodePowerChanged',
+  'trigger.batteryTrend',
 ] as const;

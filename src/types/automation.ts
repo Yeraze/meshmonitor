@@ -28,7 +28,8 @@ export type TriggerType =
   | 'trigger.nodeStale'
   | 'trigger.nodeOnline'
   | 'trigger.nodeRebooted'
-  | 'trigger.nodePowerChanged';
+  | 'trigger.nodePowerChanged'
+  | 'trigger.batteryTrend';
 
 export type ConditionType =
   | 'condition.always'
@@ -79,6 +80,7 @@ export const TRIGGER_TYPES: readonly TriggerType[] = [
   'trigger.nodeOnline',
   'trigger.nodeRebooted',
   'trigger.nodePowerChanged',
+  'trigger.batteryTrend',
 ];
 
 export const CONDITION_TYPES: readonly ConditionType[] = [
@@ -560,6 +562,22 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
           const dir = p.direction == null || p.direction === '' ? 'either' : String(p.direction);
           if (!['lost', 'restored', 'either'].includes(dir)) {
             errors.push(`trigger.nodePowerChanged "${n.id}" requires params.direction to be one of: lost, restored, either`);
+          }
+          break;
+        }
+        case 'trigger.batteryTrend': {
+          // Device Health (#4558 Phase E). A declining-battery heuristic driven by
+          // durable telemetry history on a periodic tick: both the lookback window
+          // and the drop that counts as "declining" must be positive. `windowHours`
+          // is the lookback; `minDropPercent` is the battery-level fall (percentage
+          // POINTS, since the metric is batteryLevel %) that fires the alert.
+          const windowHours = p.windowHours == null || p.windowHours === '' ? NaN : Number(p.windowHours);
+          if (!Number.isFinite(windowHours) || windowHours <= 0) {
+            errors.push(`trigger.batteryTrend "${n.id}" requires params.windowHours > 0`);
+          }
+          const minDropPercent = p.minDropPercent == null || p.minDropPercent === '' ? NaN : Number(p.minDropPercent);
+          if (!Number.isFinite(minDropPercent) || minDropPercent <= 0) {
+            errors.push(`trigger.batteryTrend "${n.id}" requires params.minDropPercent > 0`);
           }
           break;
         }

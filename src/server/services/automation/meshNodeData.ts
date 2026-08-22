@@ -179,5 +179,30 @@ export function createMeshNodeDataProvider(): NodeDataProvider {
       }
       return out;
     },
+
+    // #4558 Phase E — battery-level (%) history for a Meshtastic node over the
+    // trend window. Reads the durable `batteryLevel` telemetry series so the
+    // decline is recomputed from the DB each tick (restart-safe). Telemetry
+    // timestamps are epoch ms, matching `sinceMs`. batteryLevel-only for this
+    // phase: `minDropPercent` is in percentage points, and voltage (volts) would
+    // need a different unit — a possible follow-up. Best-effort: a miss returns
+    // [] and the node is skipped rather than throwing.
+    async getBatteryTrendSamples(sourceId, nodeNum, sinceMs) {
+      try {
+        // limit large enough to cover a busy node's window; DESC by timestamp.
+        const rows = await databaseService.telemetry.getTelemetryByNode(
+          nodeIdOf(nodeNum),
+          2000,
+          sinceMs,
+          undefined,
+          0,
+          'batteryLevel',
+          sourceId ?? undefined,
+        );
+        return rows.map((r) => ({ timestamp: Number(r.timestamp), value: Number(r.value) }));
+      } catch {
+        return [];
+      }
+    },
   };
 }

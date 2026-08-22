@@ -85,6 +85,9 @@ export async function startAutomationEngine(): Promise<void> {
   subscribe();
   // Staleness is packet ABSENCE, so it needs a timer, not an event (#4558 Phase A).
   engine.startStaleTicker();
+  // Battery decline is a slow trend derived from telemetry history — polled on a
+  // slower timer, no event to react to (#4558 Phase E).
+  engine.startBatteryTrendTicker();
   logger.info('[AutomationEngine] started');
   // Fire the system-start event so `trigger.system` (event: bootup) automations run.
   engine.onSystem('bootup', null, null).catch((e) => logger.error(`[AutomationEngine] bootup trigger error: ${e?.message}`));
