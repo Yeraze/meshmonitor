@@ -6,7 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
-## [4.15.1] - 2026-08-21
+## [4.15.2-rc2] - 2026-08-22
+
+### Added
+- **Device Health automation triggers + template** (#4558) — five new Automation Engine triggers built on data MeshMonitor already receives, so node-health alerts no longer need a bespoke feature: **node silent** (not heard for N minutes / heartbeat lost), **node online** (recovery), **node rebooted** (uptime reset), **node power changed** (external power lost/restored), and **battery declining** (a "not charging" trend proxy). Noise floor is now a selectable telemetry field too. A new **Device Health** starter template quick-creates the notifications — pick a source/node, toggle any of ten alerts with thresholds, and it builds one automation per alert (each still fully editable). All alerts are passive (zero mesh airtime) and restart-safe. Caveats surfaced in the UI: noise floor is local-node-only on Meshtastic; power/charging are heuristics (no charge-state field in the protocol); MeshCore reboot/power/trend detection is deferred. (#4873, #4874, #4876, #4877, #4878, #4881)
+- **MeshCore neighbour autopoll** — a per-node retrieval scheduler that keeps neighbour data fresh. (#4618)
+- **Reception Heard column shows seconds** — the per-source reception table on the Unified Messages page now displays `HH:MM:SS`, for relay-delay and telemetry-correlation analysis. (#4869)
+- **Unread bell in the mobile channel dropdown** — the channel picker's unread count now carries the 🔔 indicator on mobile, matching the desktop channel list. (#4660)
+
+### Fixed
+- **3D node markers keep their role glyph across zoom** — mixing the SDF disc and non-SDF glyph rasters in one MapLibre layer made glyph markers collapse into plain discs at some zoom levels; they now render in two homogeneous layers. (#4863)
+- **ESRI satellite basemap** — damped the synthetic water-blue tint via a saturation filter, and fixed the white halo on satellite-map node labels. (#4860)
 
 ### Fixed
 - **Site Planner no longer fails with a JSON parse error** — the predictive RF coverage request was sent to `/rf/coverage` instead of `/api/rf/coverage`, so it fell through to the SPA and returned HTML, which the frontend then tried to parse as JSON (`Unexpected token '<'`). The path now includes the `/api` prefix like every other API call. (#4862)
