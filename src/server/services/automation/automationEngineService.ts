@@ -38,6 +38,8 @@ import {
   buildGeofenceContext,
   buildBecameMobileContext,
   buildLeftHomeContext,
+  buildNodeStaleContext,
+  buildNodeOnlineContext,
   buildScheduleContext,
   messageMatchesFilter,
   meshCoreMessageMatchesFilter,
@@ -60,6 +62,7 @@ import { executeAction, type ActionDeps } from './actionExecutor.js';
 import {
   type EngineEvalContext,
   type NodeDataProvider,
+  type StaleCandidate,
   varContextFromTrigger,
   resolveOperand,
   cooldownKeyFor,
@@ -128,6 +131,41 @@ const COOLDOWN_KEYS_TRIM_TO = 2048;
  */
 const GEOFENCE_STATE_MAX = 4096;
 const GEOFENCE_STATE_TRIM_TO = 2048;
+
+/**
+ * How often the staleness ticker evaluates node ages (#4558 Phase A). Staleness
+ * is packet ABSENCE, so it cannot be event-driven — the tick is the only signal.
+ * It sends NO mesh packets (airtime cost is zero); it only does DB reads and may
+ * fire automations whose notification spam is bounded by the same
+ * cooldownSeconds/cooldownScope/rateLimit every trigger already has. 60s matches
+ * inactiveNodeNotificationService's tick and means detection lags a "silent for
+ * N minutes" threshold by at most ~1 minute — negligible at minute granularity.
+ */
+const STALE_TICK_INTERVAL_MS = 60_000;
+
+/**
+ * Per-automation staleness-state bounds (#4558 Phase A). Unlike geofenceState,
+ * evicting a stale entry is behaviour-SAFE: a first sighting only ESTABLISHES a
+ * baseline and never fires, so an evicted node simply re-baselines on the next
+ * tick (a still-stale node re-seeds as stale — no spurious "heartbeat lost"; a
+ * fresh node re-seeds fresh). Bounded anyway because an MQTT-fed mesh churns
+ * nodeNums and would otherwise strand one dead entry per node ever seen. Higher
+ * cap than geofence because this watches EVERY node, not only the ones that move.
+ */
+const STALE_STATE_MAX = 8192;
+const STALE_STATE_TRIM_TO = 4096;
+
+/**
+ * Per-(automation, node) staleness baseline (#4558 Phase A). `stale` is whether
+ * the node is currently past its threshold; `lastHeardMs` is the node's last-heard
+ * epoch-ms captured at the last write, used to compute the recovery
+ * offlineDuration; `ts` is when the entry was last touched (eviction ordering).
+ */
+interface StaleEntry {
+  stale: boolean;
+  lastHeardMs: number | null;
+  ts: number;
+}
 
 /** Compact result of evaluating one automation — persisted run-log shape is unchanged;
  *  this is the subset the live trace ("view logs") streams to the browser. */
@@ -223,6 +261,10 @@ export class AutomationEngineService {
   private leftHomeAlarmed = new Map<string, Map<number, boolean>>();
   /** automationId → live cron job, for `trigger.schedule` automations. */
   private cronJobs = new Map<string, { stop: () => void }>();
+  /** automationId → "sourceId:nodeKey" → staleness baseline (#4558 Phase A). */
+  private staleState = new Map<string, Map<string, StaleEntry>>();
+  /** The periodic staleness ticker, or null when not running (#4558 Phase A). */
+  private staleTimer: NodeJS.Timeout | null = null;
 
   constructor(opts: EngineServiceOptions) {
     this.automationsRepo = opts.automationsRepo;
@@ -303,6 +345,13 @@ export class AutomationEngineService {
     // per-node entries, which is the risky case GEOFENCE_STATE_MAX guards.
     for (const id of this.geofenceState.keys()) if (!liveIds.has(id)) this.geofenceState.delete(id);
     for (const id of this.leftHomeAlarmed.keys()) if (!liveIds.has(id)) this.leftHomeAlarmed.delete(id);
+    // Same prune for staleness baselines (#4558): a deleted/disabled automation's
+    // entries are unreachable (runStaleCheck/checkNodeOnline only iterate
+    // `this.index`), so dropping them is unobservable. A still-present automation
+    // keeps its baseline across a reload — so saving OTHER automations never
+    // re-arms a nodeStale timer, and editing this one (same id) never re-fires
+    // "heartbeat lost" for already-stale nodes.
+    for (const id of this.staleState.keys()) if (!liveIds.has(id)) this.staleState.delete(id);
     this.rescheduleCron();
     logger.info(`[AutomationEngine] loaded ${rows.length} enabled automation(s)`);
   }
@@ -328,10 +377,28 @@ export class AutomationEngineService {
     }
   }
 
-  /** Stop all cron jobs (clean shutdown / test teardown). */
+  /** Stop all cron jobs + the staleness ticker (clean shutdown / test teardown). */
   stop(): void {
     for (const job of this.cronJobs.values()) job.stop();
     this.cronJobs.clear();
+    if (this.staleTimer) {
+      clearInterval(this.staleTimer);
+      this.staleTimer = null;
+    }
+  }
+
+  /**
+   * Start the periodic staleness ticker (#4558 Phase A). Idempotent; {@link stop}
+   * clears it. Not started in the constructor so unit tests drive
+   * {@link runStaleCheck} directly against the injected clock without a real timer.
+   */
+  startStaleTicker(intervalMs = STALE_TICK_INTERVAL_MS): void {
+    if (this.staleTimer) return;
+    this.staleTimer = setInterval(() => {
+      this.runStaleCheck().catch((e) => logger.error(`[AutomationEngine] stale check error: ${e?.message}`));
+    }, intervalMs);
+    // Never hold the process open solely for this background timer.
+    if (typeof this.staleTimer.unref === 'function') this.staleTimer.unref();
   }
 
   /**
@@ -1147,6 +1214,167 @@ export class AutomationEngineService {
     return fired;
   }
 
+  // ─── staleness: trigger.nodeStale / trigger.nodeOnline (#4558 Phase A) ──────
+
+  private getStaleBaseline(a: LoadedAutomation, key: string): StaleEntry | undefined {
+    return this.staleState.get(a.id)?.get(key);
+  }
+
+  private setStaleBaseline(a: LoadedAutomation, key: string, entry: StaleEntry): void {
+    let inner = this.staleState.get(a.id);
+    if (!inner) { inner = new Map(); this.staleState.set(a.id, inner); }
+    inner.set(key, entry);
+    if (inner.size > STALE_STATE_MAX) this.pruneStaleState(a, inner);
+  }
+
+  private pruneStaleState(a: LoadedAutomation, inner: Map<string, StaleEntry>): void {
+    if (inner.size <= STALE_STATE_TRIM_TO) return;
+    // Eviction is behaviour-safe (see STALE_STATE_MAX doc): drop the
+    // least-recently-seen entries — those nodes have most likely dropped out of
+    // the enumeration (deleted / churned), and any live one just re-baselines.
+    const byAge = [...inner.entries()].sort((x, y) => x[1].ts - y[1].ts);
+    const dropCount = byAge.length - STALE_STATE_TRIM_TO;
+    for (let i = 0; i < dropCount; i++) inner.delete(byAge[i][0]);
+    logger.debug(`[AutomationEngine] "${a.name}" stale state trimmed to ${inner.size}`);
+  }
+
+  /**
+   * Cooldown + rate-limit gate + fire + trace, shared by both staleness
+   * transitions. Returns 1 if it dispatched, 0 if a guard suppressed it. The
+   * baseline mark is flipped by the CALLER before this runs, so a cooldown that
+   * eats one fire does not cause a re-fire on the next tick — the transition is
+   * recorded regardless of whether its action was allowed to run.
+   */
+  private async fireStaleTransition(a: LoadedAutomation, ctx: TriggerContext, now: number): Promise<number> {
+    const traced = automationTraceBus.activeCount() > 0 && automationTraceBus.isTracing(a.id, now);
+    const gate = this.cooldownGate(a, ctx, now);
+    if (!gate.ok) {
+      if (traced) this.emitTrace(a, ctx, now, { outcome: 'cooldown', reason: gate.reason });
+      return 0;
+    }
+    const rateGate = this.rateLimitGate(a, now);
+    if (!rateGate.ok) {
+      if (traced) this.emitTrace(a, ctx, now, { outcome: 'ratelimited', reason: rateGate.reason });
+      return 0;
+    }
+    this.markFired(a, gate.key, now);
+    this.markRateLimited(a, now);
+    const fr = await this.fireAutomation(a, ctx, now);
+    if (traced) this.emitTrace(a, ctx, now, { outcome: 'fired', status: fr.status, conditionResults: fr.conditionResults, actions: fr.actions, steps: fr.steps });
+    return 1;
+  }
+
+  /**
+   * Periodic staleness evaluation (#4558 Phase A) — the packet-ABSENCE driver for
+   * `trigger.nodeStale` ("heartbeat lost") and `trigger.nodeOnline` ("recovery").
+   *
+   * For every enabled nodeStale/nodeOnline automation, compares each tracked
+   * node's age (now − lastHeard) against that automation's OWN staleAfterMinutes:
+   *  - a node's FIRST sighting only ESTABLISHES a baseline (no fire). This is what
+   *    makes a process restart NOT re-fire "heartbeat lost" for nodes that were
+   *    already stale before the restart — the real state (lastHeard) lives in the
+   *    DB, and the derived baseline is rebuilt silently on the first tick;
+   *  - online → stale fires `trigger.nodeStale` once and marks the node stale;
+   *  - stale → online fires `trigger.nodeOnline` once and clears the mark (also
+   *    reachable faster on a live update via {@link checkNodeOnline}; whichever
+   *    flips the mark first wins, so recovery never double-fires).
+   *
+   * Both triggers maintain the SAME baseline map so recovery is detectable — a
+   * nodeStale automation still marks/clears silently on the recovery side, and a
+   * nodeOnline automation still marks silently on the going-stale side. Returns
+   * the number of automations that dispatched this tick.
+   */
+  async runStaleCheck(): Promise<number> {
+    const autos = [
+      ...(this.index.get('trigger.nodeStale') ?? []),
+      ...(this.index.get('trigger.nodeOnline') ?? []),
+    ];
+    if (autos.length === 0) return 0;
+    if (!this.data.listNodesForStaleCheck) return 0;
+
+    let candidates: StaleCandidate[];
+    try {
+      candidates = await this.data.listNodesForStaleCheck();
+    } catch (e) {
+      logger.error(`[AutomationEngine] stale check node enumeration failed: ${e instanceof Error ? e.message : String(e)}`);
+      return 0;
+    }
+
+    const now = this.now();
+    let fired = 0;
+
+    for (const a of autos) {
+      const thresholdMinutes = Number((a.triggerNode.params as Record<string, unknown>)?.staleAfterMinutes);
+      if (!Number.isFinite(thresholdMinutes) || thresholdMinutes <= 0) continue;
+      const thresholdMs = thresholdMinutes * 60_000;
+      const isStaleTrigger = a.triggerType === 'trigger.nodeStale';
+
+      for (const c of candidates) {
+        if (c.lastHeardMs == null) continue; // never heard → no transition to detect
+        const key = staleKeyFor(c);
+        const isStale = now - c.lastHeardMs >= thresholdMs;
+        const prev = this.getStaleBaseline(a, key);
+
+        if (prev === undefined) {
+          // First sighting after (re)start: baseline only, never a fire.
+          this.setStaleBaseline(a, key, { stale: isStale, lastHeardMs: c.lastHeardMs, ts: now });
+          continue;
+        }
+
+        if (!prev.stale && isStale) {
+          // online → stale. Record the mark first (so a suppressed fire can't re-fire).
+          this.setStaleBaseline(a, key, { stale: true, lastHeardMs: c.lastHeardMs, ts: now });
+          if (isStaleTrigger) {
+            const ageMinutes = Math.max(0, Math.floor((now - c.lastHeardMs) / 60_000));
+            const ctx = buildNodeStaleContext(c.nodeNum, c.publicKey, ageMinutes, thresholdMinutes, c.lastHeardMs, c.sourceId, now);
+            fired += await this.fireStaleTransition(a, ctx, now);
+          }
+        } else if (prev.stale && !isStale) {
+          // stale → online (the tick observed the recovery; the fallback path).
+          const offlineDurationMinutes = Math.max(0, Math.floor((now - (prev.lastHeardMs ?? c.lastHeardMs)) / 60_000));
+          this.setStaleBaseline(a, key, { stale: false, lastHeardMs: c.lastHeardMs, ts: now });
+          if (!isStaleTrigger) {
+            const ctx = buildNodeOnlineContext(c.nodeNum, c.publicKey, offlineDurationMinutes, thresholdMinutes, c.sourceId, now);
+            fired += await this.fireStaleTransition(a, ctx, now);
+          }
+        } else {
+          // No transition — just refresh the touched-timestamp for eviction ordering.
+          this.setStaleBaseline(a, key, { stale: prev.stale, lastHeardMs: prev.lastHeardMs, ts: now });
+        }
+      }
+    }
+    return fired;
+  }
+
+  /**
+   * Live-update recovery path for `trigger.nodeOnline` (#4558 Phase A). Called
+   * when a Meshtastic node update arrives: if any nodeOnline automation had
+   * marked this node stale, fire the recovery now — faster than waiting for the
+   * next stale tick — and clear the mark. The tick reaches the same transition
+   * as a fallback; whichever flips the mark first wins, so it never double-fires.
+   */
+  async checkNodeOnline(nodeNum: number, sourceId: string | null): Promise<number> {
+    const online = this.index.get('trigger.nodeOnline');
+    if (!online || online.length === 0) return 0;
+    const now = this.now();
+    const key = `${sourceId ?? ''}:${nodeNum}`;
+    let fired = 0;
+    for (const a of online) {
+      const prev = this.getStaleBaseline(a, key);
+      if (!prev || !prev.stale) continue;
+      const thresholdMinutes = Number((a.triggerNode.params as Record<string, unknown>)?.staleAfterMinutes);
+      const offlineDurationMinutes = Math.max(0, Math.floor((now - (prev.lastHeardMs ?? now)) / 60_000));
+      // Clear the mark before firing so the tick's fallback can't also fire it.
+      this.setStaleBaseline(a, key, { stale: false, lastHeardMs: now, ts: now });
+      const ctx = buildNodeOnlineContext(
+        nodeNum, null, offlineDurationMinutes,
+        Number.isFinite(thresholdMinutes) ? thresholdMinutes : 0, sourceId, now,
+      );
+      fired += await this.fireStaleTransition(a, ctx, now);
+    }
+    return fired;
+  }
+
   /**
    * Drop in-memory left-home alarmed flags for one automation (e.g. after a
    * homes reset). Persisted anchors are managed by the caller / repository.
@@ -1154,6 +1382,16 @@ export class AutomationEngineService {
   clearLeftHomeRuntimeState(automationId: string): void {
     this.leftHomeAlarmed.delete(automationId);
   }
+}
+
+/**
+ * Per-(source, node) baseline key for the staleness maps. Meshtastic keys off the
+ * numeric node number, MeshCore off the public key — matching {@link staleKeyFor}'s
+ * counterpart in {@link AutomationEngineService.checkNodeOnline} for Meshtastic.
+ */
+function staleKeyFor(c: StaleCandidate): string {
+  const nodeKey = c.nodeNum != null ? String(c.nodeNum) : (c.publicKey ?? '');
+  return `${c.sourceId ?? ''}:${nodeKey}`;
 }
 
 /** EMA weight for leftHome anchor refinement (new fix vs existing home). */

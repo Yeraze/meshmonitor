@@ -39,6 +39,23 @@ export interface NodeFacts {
   mobile?: number;
 }
 
+/**
+ * One node's staleness inputs, protocol-agnostic (#4558 Phase A). Emitted by
+ * {@link NodeDataProvider.listNodesForStaleCheck} for the periodic
+ * `trigger.nodeStale` / `trigger.nodeOnline` evaluation. `lastHeardMs` is
+ * normalized to epoch MILLISECONDS regardless of protocol (Meshtastic stores
+ * lastHeard in seconds, MeshCore in ms) so the engine compares one unit.
+ */
+export interface StaleCandidate {
+  sourceId: string | null;
+  /** Meshtastic node number; null for a MeshCore node. */
+  nodeNum: number | null;
+  /** MeshCore public key; null for a Meshtastic node. */
+  publicKey: string | null;
+  /** Epoch ms of last contact, or null if never heard (skipped by the checker). */
+  lastHeardMs: number | null;
+}
+
 /** Hydrates the subject node + latest telemetry during evaluation. Injected for testability. */
 export interface NodeDataProvider {
   getNode(sourceId: string | null, nodeNum: number): Promise<NodeFacts | null>;
@@ -104,6 +121,14 @@ export interface NodeDataProvider {
   /** True when a MeshCore public key belongs to ANY MeshCore source MeshMonitor owns —
    *  cross-source fallback for the self-guard on multi-MC-source / bridge setups (#4577 P2). */
   isOwnPublicKey?(pubkey: string): Promise<boolean>;
+  /**
+   * Enumerate every tracked node with its last-heard time across ALL sources and
+   * BOTH protocols, for the periodic staleness check (`trigger.nodeStale` /
+   * `trigger.nodeOnline`, #4558 Phase A). Staleness is packet ABSENCE — there is
+   * no event to react to — so the engine polls this on a timer instead. Optional;
+   * absent → staleness checks are a no-op (e.g. unit tests that don't wire it).
+   */
+  listNodesForStaleCheck?(): Promise<StaleCandidate[]>;
 }
 
 export interface EngineEvalContext {

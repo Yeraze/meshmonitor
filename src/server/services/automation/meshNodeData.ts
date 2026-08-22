@@ -5,7 +5,7 @@
  */
 import databaseService from '../../../services/database.js';
 import { ALL_SOURCES } from '../../../db/repositories/index.js';
-import type { NodeDataProvider, NodeFacts } from './engineContext.js';
+import type { NodeDataProvider, NodeFacts, StaleCandidate } from './engineContext.js';
 import { sourceProtocol } from './channelUnify.js';
 import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
 import { isMeshCoreManager } from '../../sourceManagerTypes.js';
@@ -139,6 +139,45 @@ export function createMeshNodeDataProvider(): NodeDataProvider {
       } catch {
         return false;
       }
+    },
+
+    // #4558 Phase A — enumerate every node across all registered sources with a
+    // last-heard time normalized to epoch ms, for the periodic staleness check.
+    // Best-effort: one source failing must not abort the rest, and an empty list
+    // (or a missing method on an older provider) simply means no staleness fires.
+    async listNodesForStaleCheck() {
+      const out: StaleCandidate[] = [];
+      try {
+        for (const m of sourceManagerRegistry.getAllManagers()) {
+          const sourceId = m.sourceId;
+          try {
+            if (m.sourceType === 'meshcore') {
+              const nodes = await databaseService.meshcore.getNodesBySource(sourceId);
+              for (const n of nodes) {
+                // MeshCore lastHeard is already epoch milliseconds.
+                out.push({ sourceId, nodeNum: null, publicKey: n.publicKey, lastHeardMs: n.lastHeard ?? null });
+              }
+            } else if (m.sourceType !== 'reticulum') {
+              // Meshtastic TCP + MQTT bridge/broker all populate the `nodes` table.
+              const nodes = await databaseService.nodes.getAllNodes(sourceId);
+              for (const n of nodes) {
+                // Meshtastic lastHeard is epoch SECONDS → normalize to ms.
+                out.push({
+                  sourceId,
+                  nodeNum: Number(n.nodeNum),
+                  publicKey: null,
+                  lastHeardMs: n.lastHeard != null ? n.lastHeard * 1000 : null,
+                });
+              }
+            }
+          } catch {
+            // skip this source; keep enumerating the others
+          }
+        }
+      } catch {
+        return out;
+      }
+      return out;
     },
   };
 }

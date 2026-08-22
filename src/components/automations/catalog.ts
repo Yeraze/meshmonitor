@@ -247,11 +247,31 @@ export const TRIGGERS: BlockDef[] = [
       COOLDOWN_SCOPE,
     ],
   },
+  {
+    type: 'trigger.nodeStale',
+    label: 'A node goes silent (heartbeat lost)',
+    description: 'Fires once when a node has not been heard for longer than the threshold — a health/heartbeat alert. There is no packet to react to here, so silence is checked on a periodic tick (about once a minute) against every node on every source; narrow it with a “Source is one of…” condition. Works for Meshtastic and MeshCore. It will not fire again for that node until it is heard and then goes silent once more.',
+    fields: [
+      { name: 'staleAfterMinutes', label: 'Silent for (minutes)', kind: 'number', placeholder: '60', help: 'Fire when the node has not been heard for this many minutes. Silence is polled on a ~1-minute tick, so expect up to a minute of detection lag.' },
+      COOLDOWN,
+      COOLDOWN_SCOPE,
+    ],
+  },
+  {
+    type: 'trigger.nodeOnline',
+    label: 'A silent node is heard again (recovery)',
+    description: 'Fires once when a node that had been silent longer than the threshold is heard again — the recovery counterpart to “A node goes silent”. Works for Meshtastic and MeshCore.',
+    fields: [
+      { name: 'staleAfterMinutes', label: 'Was silent for (minutes)', kind: 'number', placeholder: '60', help: 'How long the node must have been silent to count as recovered when next heard. Match this to the value on your paired “goes silent” rule.' },
+      COOLDOWN,
+      COOLDOWN_SCOPE,
+    ],
+  },
 ];
 
 // ─── Comparison field registry (event / node / latest-telemetry) ─────────────
 
-const SUBJECT_NODE_TRIGGERS = ['trigger.message', 'trigger.nodeDiscovered', 'trigger.nodeUpdated', 'trigger.telemetry', 'trigger.geofence', 'trigger.becameMobile', 'trigger.leftHome', 'trigger.meshBeacon'];
+const SUBJECT_NODE_TRIGGERS = ['trigger.message', 'trigger.nodeDiscovered', 'trigger.nodeUpdated', 'trigger.telemetry', 'trigger.geofence', 'trigger.becameMobile', 'trigger.leftHome', 'trigger.meshBeacon', 'trigger.nodeStale', 'trigger.nodeOnline'];
 const hasSubjectNode = (t: string) => SUBJECT_NODE_TRIGGERS.includes(t);
 
 const EVENT_NUMERIC: Record<string, FieldOpt[]> = {
@@ -283,6 +303,16 @@ const EVENT_NUMERIC: Record<string, FieldOpt[]> = {
   ],
   'trigger.nodeUpdated': [{ value: 'nodeNum', label: 'Node #' }],
   'trigger.nodeDiscovered': [{ value: 'nodeNum', label: 'Node #' }],
+  'trigger.nodeStale': [
+    { value: 'nodeNum', label: 'Node #' },
+    { value: 'ageMinutes', label: 'Minutes since last heard' },
+    { value: 'staleAfterMinutes', label: 'Silence threshold (min)' },
+  ],
+  'trigger.nodeOnline': [
+    { value: 'nodeNum', label: 'Node #' },
+    { value: 'offlineDurationMinutes', label: 'Minutes offline' },
+    { value: 'staleAfterMinutes', label: 'Silence threshold (min)' },
+  ],
   'trigger.becameMobile': [{ value: 'nodeNum', label: 'Node #' }, { value: 'mobile', label: 'Mobile flag (1)' }, { value: 'previousMobile', label: 'Previous mobile flag' }],
   'trigger.leftHome': [
     { value: 'nodeNum', label: 'Node #' },
