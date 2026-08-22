@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, LocateFixed, Maximize, Clock, Ruler, Mountain, RadioTower, RotateCcw,
   MapPin, Palette, Flag, CircleDashed, Radar, Route, Share2, Flame, Spline, Signal, Box, Users, Satellite,
+  Eye, Wrench, Layers, Activity,
 } from 'lucide-react';
 import { useDashboardSources } from '../../hooks/useDashboardData';
-import LayerToggleButton from './LayerToggleButton';
+import ToolbarMenu, { ToolbarMenuItem } from './ToolbarMenu';
 import SourceMultiSelect from './SourceMultiSelect';
 import NodeTypeFilterControl from './NodeTypeFilterControl';
 import TransportFilterControl from './TransportFilterControl';
@@ -178,6 +179,21 @@ export default function MapAnalysisToolbar() {
     snrOverlay:  config.layers.snrOverlay.enabled  && snrUsesPositions && positions.isLoading,
   };
 
+  // Active-item counts per group — rendered as a badge on each menu trigger so
+  // grouping the toggles into dropdowns doesn't hide which ones are on (#4871).
+  const viewActiveCount =
+    (config.followMode ? 1 : 0) +
+    (config.autoZoom ? 1 : 0) +
+    (config.timeSlider.enabled ? 1 : 0) +
+    (config.viewMode === '3d' ? 1 : 0);
+  const toolsActiveCount =
+    (measureMode ? 1 : 0) + (linkProfileMode ? 1 : 0) + (sitePlannerMode ? 1 : 0);
+  const layersActiveCount =
+    UNTIMED_LAYERS.filter((l) => config.layers[l.key].enabled).length +
+    (config.layers.polarGrid.enabled && hasOwnNode ? 1 : 0) +
+    (gnssDopMode ? 1 : 0);
+  const analysisActiveCount = TIMED_LAYERS.filter((l) => config.layers[l.key].enabled).length;
+
   return (
     <div className="map-analysis-toolbar-row">
       <button
@@ -198,177 +214,163 @@ export default function MapAnalysisToolbar() {
       <TransportFilterControl />
       <NodeSearchControl />
       <NodeMultiSelect nodes={nodeOptions} value={config.selectedNodeIds} onChange={setSelectedNodeIds} />
-      <button
-        type="button"
-        className={`map-analysis-layer-btn icon-only ${config.followMode ? 'active' : ''}`}
-        onClick={() => setFollowMode(!config.followMode)}
-        title="Follow — recenter on the selected nodes as they move (keeps zoom)"
-        aria-label="Follow"
-      >
-        <LocateFixed size={ICON} />
-      </button>
-      <button
-        type="button"
-        className={`map-analysis-layer-btn icon-only ${config.autoZoom ? 'active' : ''}`}
-        onClick={() => setAutoZoom(!config.autoZoom)}
-        title="Auto-zoom — zoom to fit the selected nodes as they move"
-        aria-label="Auto-zoom"
-      >
-        <Maximize size={ICON} />
-      </button>
-      <button
-        type="button"
-        className={`map-analysis-layer-btn icon-only ${config.timeSlider.enabled ? 'active' : ''}`}
-        onClick={() => setTimeSlider({ enabled: !config.timeSlider.enabled })}
-        title="Time Slider"
-        aria-label="Time Slider"
-      >
-        <Clock size={ICON} />
-      </button>
-      {/* #3826 Phase 2 WP-D: 2D/3D toggle. Disabled with a tooltip when the
-          server can't serve DEM terrain tiles (elevation disabled, or a
-          configured JSON elevation source — spec §3.11); neutral-disabled
-          while the capabilities check is in flight. */}
-      <button
-        type="button"
-        className={`map-analysis-layer-btn icon-only ${config.viewMode === '3d' ? 'active' : ''}`}
-        onClick={() => setViewMode(config.viewMode === '3d' ? '2d' : '3d')}
-        disabled={threeDDisabled}
-        title={threeDTitle}
-        aria-label="3D View"
-      >
-        <Box size={ICON} />
-      </button>
-      {/* #3636: node-to-node LOS distance measurement tool. Disabled until at
-          least two positioned nodes exist, matching the "Features"-panel maps. */}
-      <button
-        type="button"
-        className={`map-analysis-layer-btn icon-only ${measureMode ? 'active' : ''}`}
-        onClick={() => {
-          const next = !measureMode;
-          setMeasureMode(next);
-          // Mutually exclusive with every other click-capturing tool — each
-          // installs a capture-phase listener, so two active at once both
-          // consume the same click (#4111 Phase 2, extended for #4727).
-          if (next) {
-            setLinkProfileMode(false);
-            setSitePlannerMode(false);
-          }
-        }}
-        disabled={analysisNodes.length < 2}
-        title={analysisNodes.length < 2
-          ? 'Measure — need at least two positioned nodes'
-          : 'Measure straight-line distance between two nodes'}
-        aria-label="Measure"
-      >
-        <Ruler size={ICON} />
-      </button>
-      {/* #4111 Phase 2: terrain link profile two-point picker. Hidden entirely
-          when the server has elevation sampling disabled (nothing to profile);
-          disabled until at least two positioned nodes exist for UX parity
-          with Measure, even though the controller itself also accepts an
-          arbitrary (non-node) map point as either endpoint. */}
-      {elevationEnabled && (
-        <button
-          type="button"
-          className={`map-analysis-layer-btn icon-only ${linkProfileMode ? 'active' : ''}`}
-          onClick={() => {
-            const next = !linkProfileMode;
-            setLinkProfileMode(next);
-            // Mutually exclusive with the other click-capturing tools. This has
-            // to be symmetric: every one of these installs a capture-phase
-            // click listener, so any two active at once both eat the same click.
+
+      {/* View — viewport & camera controls. */}
+      <ToolbarMenu label="View" icon={<Eye size={ICON} />} activeCount={viewActiveCount}>
+        <ToolbarMenuItem
+          icon={<LocateFixed size={ICON} />}
+          label="Follow"
+          active={config.followMode}
+          onToggle={() => setFollowMode(!config.followMode)}
+          title="Follow — recenter on the selected nodes as they move (keeps zoom)"
+        />
+        <ToolbarMenuItem
+          icon={<Maximize size={ICON} />}
+          label="Auto-zoom"
+          active={config.autoZoom}
+          onToggle={() => setAutoZoom(!config.autoZoom)}
+          title="Auto-zoom — zoom to fit the selected nodes as they move"
+        />
+        <ToolbarMenuItem
+          icon={<Clock size={ICON} />}
+          label="Time Slider"
+          active={config.timeSlider.enabled}
+          onToggle={() => setTimeSlider({ enabled: !config.timeSlider.enabled })}
+        />
+        {/* #3826 Phase 2 WP-D: 2D/3D toggle. Disabled with a tooltip when the
+            server can't serve DEM terrain tiles (elevation disabled, or a
+            configured JSON elevation source — spec §3.11); neutral-disabled
+            while the capabilities check is in flight. */}
+        <ToolbarMenuItem
+          icon={<Box size={ICON} />}
+          label="3D View"
+          active={config.viewMode === '3d'}
+          onToggle={() => setViewMode(config.viewMode === '3d' ? '2d' : '3d')}
+          disabled={threeDDisabled}
+          title={threeDTitle}
+        />
+      </ToolbarMenu>
+
+      {/* Tools — measurement & planning. All three install a capture-phase click
+          listener, so they're mutually exclusive: enabling one disables the
+          others (#4111 Phase 2, extended for #4727). */}
+      <ToolbarMenu label="Tools" icon={<Wrench size={ICON} />} activeCount={toolsActiveCount}>
+        {/* #3636: node-to-node LOS distance. Disabled until two positioned nodes. */}
+        <ToolbarMenuItem
+          icon={<Ruler size={ICON} />}
+          label="Measure"
+          active={measureMode}
+          onToggle={() => {
+            const next = !measureMode;
+            setMeasureMode(next);
             if (next) {
-              setMeasureMode(false);
+              setLinkProfileMode(false);
               setSitePlannerMode(false);
             }
           }}
           disabled={analysisNodes.length < 2}
           title={analysisNodes.length < 2
-            ? 'Link Profile — need at least two positioned nodes'
-            : 'Link Profile — terrain, Fresnel clearance, and link budget between two points'}
-          aria-label="Link Profile"
-        >
-          <Mountain size={ICON} />
-        </button>
-      )}
-
-      {/* Site Planner (#4727). Gated on elevation like Link Profile — both are
-          terrain tools and neither can say anything useful without a DEM.
-          Unlike Link Profile it needs NO existing nodes: siting a repeater is
-          the main use, and that means places where no node exists yet. */}
-      {elevationEnabled && (
-        <button
-          type="button"
-          className={`map-analysis-layer-btn icon-only ${sitePlannerMode ? 'active' : ''}`}
-          onClick={() => {
-            const next = !sitePlannerMode;
-            setSitePlannerMode(next);
-            // Mutually exclusive with the other click-capturing tools —
-            // two capture-phase listeners would both eat the same click.
-            if (next) {
-              setMeasureMode(false);
-              setLinkProfileMode(false);
-            }
-          }}
-          title="Site Planner — predict outbound coverage over terrain from any point"
-          aria-label="Site Planner"
-        >
-          <RadioTower size={ICON} />
-        </button>
-      )}
-
-      {/* GNSS DOP overlay (#4729). A passive heatmap of satellite-geometry
-          quality over the viewport — no map clicks, no elevation, no existing
-          nodes needed, so it's always available and doesn't fight the
-          click-capturing tools for the pointer. Off by default. */}
-      <button
-        type="button"
-        className={`map-analysis-layer-btn icon-only ${gnssDopMode ? 'active' : ''}`}
-        onClick={() => setGnssDopMode(!gnssDopMode)}
-        title="GNSS DOP — GPS position-fix quality over the map, by time of day"
-        aria-label="GNSS DOP overlay"
-      >
-        <Satellite size={ICON} />
-      </button>
-      {UNTIMED_LAYERS.map(({ key, label, icon }) => (
-        <LayerToggleButton
-          key={key}
-          label={label}
-          icon={icon}
-          enabled={config.layers[key].enabled}
-          onToggle={(next) => setLayerEnabled(key, next)}
-          disabled={twoDOnly(key)}
-          title={twoDOnly(key) ? twoDOnlyTitle(label) : undefined}
+            ? 'Measure — need at least two positioned nodes'
+            : 'Measure straight-line distance between two nodes'}
         />
-      ))}
-      <LayerToggleButton
-        label="Polar Grid"
-        icon={<Radar size={ICON} />}
-        enabled={config.layers.polarGrid.enabled && hasOwnNode}
-        onToggle={(next) => setLayerEnabled('polarGrid', next)}
-        disabled={!hasOwnNode || twoDOnly('polarGrid')}
-        title={
-          twoDOnly('polarGrid')
-            ? twoDOnlyTitle('Polar Grid')
-            : hasOwnNode ? undefined : 'Polar Grid — no source has a known own-node position'
-        }
-      />
-      {TIMED_LAYERS.map(({ key, label, options, icon }) => (
-        <LayerToggleButton
-          key={key}
-          label={label}
-          icon={icon}
-          enabled={config.layers[key].enabled}
-          onToggle={(next) => setLayerEnabled(key, next)}
-          lookbackHours={config.layers[key].lookbackHours}
-          lookbackOptions={options}
-          onLookbackChange={(h) => setLayerLookback(key, h)}
-          loading={layerLoading[key] ?? false}
-          disabled={twoDOnly(key)}
-          title={twoDOnly(key) ? twoDOnlyTitle(label) : undefined}
+        {/* #4111 Phase 2: terrain link profile. Hidden when elevation sampling
+            is disabled; disabled until two positioned nodes for parity with Measure. */}
+        {elevationEnabled && (
+          <ToolbarMenuItem
+            icon={<Mountain size={ICON} />}
+            label="Link Profile"
+            active={linkProfileMode}
+            onToggle={() => {
+              const next = !linkProfileMode;
+              setLinkProfileMode(next);
+              if (next) {
+                setMeasureMode(false);
+                setSitePlannerMode(false);
+              }
+            }}
+            disabled={analysisNodes.length < 2}
+            title={analysisNodes.length < 2
+              ? 'Link Profile — need at least two positioned nodes'
+              : 'Link Profile — terrain, Fresnel clearance, and link budget between two points'}
+          />
+        )}
+        {/* Site Planner (#4727). Gated on elevation like Link Profile, but needs
+            no existing nodes — siting a repeater is the main use. */}
+        {elevationEnabled && (
+          <ToolbarMenuItem
+            icon={<RadioTower size={ICON} />}
+            label="Site Planner"
+            active={sitePlannerMode}
+            onToggle={() => {
+              const next = !sitePlannerMode;
+              setSitePlannerMode(next);
+              if (next) {
+                setMeasureMode(false);
+                setLinkProfileMode(false);
+              }
+            }}
+            title="Site Planner — predict outbound coverage over terrain from any point"
+          />
+        )}
+      </ToolbarMenu>
+
+      {/* Layers — static map overlays. */}
+      <ToolbarMenu label="Layers" icon={<Layers size={ICON} />} activeCount={layersActiveCount}>
+        {UNTIMED_LAYERS.map(({ key, label, icon }) => (
+          <ToolbarMenuItem
+            key={key}
+            icon={icon}
+            label={label}
+            active={config.layers[key].enabled}
+            onToggle={() => setLayerEnabled(key, !config.layers[key].enabled)}
+            disabled={twoDOnly(key)}
+            title={twoDOnly(key) ? twoDOnlyTitle(label) : undefined}
+          />
+        ))}
+        {/* Polar grid (#3971): centered on each source's own-node position. */}
+        <ToolbarMenuItem
+          icon={<Radar size={ICON} />}
+          label="Polar Grid"
+          active={config.layers.polarGrid.enabled && hasOwnNode}
+          onToggle={() => setLayerEnabled('polarGrid', !config.layers.polarGrid.enabled)}
+          disabled={!hasOwnNode || twoDOnly('polarGrid')}
+          title={
+            twoDOnly('polarGrid')
+              ? twoDOnlyTitle('Polar Grid')
+              : hasOwnNode ? undefined : 'Polar Grid — no source has a known own-node position'
+          }
         />
-      ))}
+        {/* GNSS DOP overlay (#4729): passive satellite-geometry heatmap. */}
+        <ToolbarMenuItem
+          icon={<Satellite size={ICON} />}
+          label="GNSS DOP"
+          active={gnssDopMode}
+          onToggle={() => setGnssDopMode(!gnssDopMode)}
+          title="GNSS DOP — GPS position-fix quality over the map, by time of day"
+        />
+      </ToolbarMenu>
+
+      {/* Analysis — time-windowed data layers, each with its own lookback. */}
+      <ToolbarMenu label="Analysis" icon={<Activity size={ICON} />} activeCount={analysisActiveCount}>
+        {TIMED_LAYERS.map(({ key, label, options, icon }) => (
+          <ToolbarMenuItem
+            key={key}
+            icon={icon}
+            label={label}
+            active={config.layers[key].enabled}
+            onToggle={() => setLayerEnabled(key, !config.layers[key].enabled)}
+            lookbackHours={config.layers[key].lookbackHours}
+            lookbackOptions={options}
+            onLookbackChange={(h) => setLayerLookback(key, h)}
+            loading={layerLoading[key] ?? false}
+            disabled={twoDOnly(key)}
+            title={twoDOnly(key) ? twoDOnlyTitle(label) : undefined}
+          />
+        ))}
+      </ToolbarMenu>
+
+      {/* Traceroute filters stay inline and only appear while traceroutes are on
+          — contextual, so they add no permanent width. */}
       {config.layers.traceroutes.enabled && <TracerouteControls />}
       {aggregate !== null && (
         <div

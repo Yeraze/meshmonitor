@@ -1,0 +1,147 @@
+/* Grouped toolbar dropdown menu (#4871). Colors match the dark-only
+   Map Analysis workspace palette in src/styles/map-analysis.css. */
+
+.wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #1e1e1e;
+  color: #ddd;
+  border: 1px solid #3a3a3a;
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.trigger:hover {
+  background: #262626;
+  border-color: #555;
+}
+.trigger.active {
+  border-color: #2563eb;
+  color: #fff;
+}
+
+.icon {
+  display: inline-flex;
+}
+.icon svg {
+  display: block;
+}
+
+.caret {
+  opacity: 0.7;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  background: #2563eb;
+  color: #fff;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  background: #1e1e1e;
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  padding: 6px;
+  min-width: 240px;
+  /* Leaflet's controls sit at z-index 1000; stay above them. */
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #ddd;
+  background: transparent;
+  border: none;
+  text-align: left;
+  width: 100%;
+  user-select: none;
+}
+.item:hover {
+  background: #262626;
+}
+.itemActive {
+  color: #fff;
+}
+.itemDisabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.itemDisabled:hover {
+  background: transparent;
+}
+
+.itemIcon {
+  display: inline-flex;
+  width: 16px;
+  flex: 0 0 auto;
+}
+.itemIcon svg {
+  display: block;
+}
+.itemLabel {
+  flex: 1 1 auto;
+  white-space: nowrap;
+}
+
+.check {
+  display: inline-flex;
+  justify-content: center;
+  width: 16px;
+  flex: 0 0 auto;
+  color: #3b82f6;
+}
+
+.lookback {
+  background: #161616;
+  color: #ddd;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  padding: 2px 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: toolbar-menu-spin 0.7s linear infinite;
+  flex: 0 0 auto;
+}
+
+@keyframes toolbar-menu-spin {
+  to { transform: rotate(360deg); }
+}
