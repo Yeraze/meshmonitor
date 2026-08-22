@@ -62,3 +62,33 @@ export function detectPowerTransition(
   if (wasPowered === nowPowered) return null;
   return nowPowered ? 'restored' : 'lost';
 }
+
+/**
+ * MeshCore powered-voltage threshold, in millivolts (#4558 MeshCore parity).
+ *
+ * HEURISTIC — READ THIS BEFORE RELYING ON IT. MeshCore firmware exposes NO
+ * "on external power" flag the way Meshtastic overloads `battery_level > 100`.
+ * All we have is the raw battery voltage. A single-cell Li-ion battery that is
+ * full OR actively charging sits at ~4.2 V, which is INDISTINGUISHABLE from a
+ * node wired to wall/USB power. So we treat ">= 4200 mV" as "powered" and infer
+ * lost/restored transitions from voltage crossing that line.
+ *
+ * The consequence: false transitions are EXPECTED. A battery that charges up to
+ * full looks like "external power restored"; one that drops off the charger's
+ * float looks like "external power lost". This is why the trigger help text and
+ * the catalog label this MeshCore path experimental.
+ */
+export const MESHCORE_POWERED_MV_THRESHOLD = 4200;
+
+/**
+ * True when a MeshCore battery voltage reading (millivolts) is at/above the
+ * powered threshold — see {@link MESHCORE_POWERED_MV_THRESHOLD} for the heavy
+ * caveat that this cannot actually distinguish wall power from a full/charging
+ * battery. A missing / non-finite reading is treated as NOT powered (no evidence
+ * of external power), and never as a transition on its own — transitions are
+ * gated by {@link detectPowerTransition}'s null-prior guard.
+ */
+export function isPoweredMv(batteryMv: number | null | undefined): boolean {
+  if (batteryMv == null || !Number.isFinite(batteryMv)) return false;
+  return batteryMv >= MESHCORE_POWERED_MV_THRESHOLD;
+}

@@ -440,9 +440,16 @@ export function buildNodeOnlineContext(
  * node-scoped cooldown work. Detection (reading the prior uptime from the DB and
  * comparing) happens at the telemetry-save seam; this builder only shapes what
  * the conditions / interpolation read.
+ *
+ * Meshtastic reboots pass a real `nodeNum` (`publicKey` null). MeshCore reboots
+ * (#4558 follow-up) have no Meshtastic node number, so they pass `nodeNum: null`
+ * plus the pubkey — `subjectNodeKey` is then set explicitly to the pubkey (the
+ * same degrade {@link buildNodeStaleContext} uses), which keys per-node cooldown
+ * off the pubkey.
  */
 export function buildNodeRebootedContext(
-  nodeNum: number,
+  nodeNum: number | null,
+  publicKey: string | null,
   previousUptimeSeconds: number,
   uptimeSeconds: number,
   sourceId: string | null,
@@ -451,10 +458,13 @@ export function buildNodeRebootedContext(
   return {
     triggerType: 'trigger.nodeRebooted',
     sourceId,
-    subjectNodeNum: Number(nodeNum),
+    subjectNodeNum: nodeNum == null ? null : Number(nodeNum),
+    // undefined ⇒ derive from subjectNodeNum (Meshtastic); explicit pubkey for MeshCore.
+    subjectNodeKey: nodeNum == null ? (publicKey ?? null) : undefined,
     timestamp,
     fields: {
-      nodeNum: Number(nodeNum),
+      nodeNum: nodeNum == null ? null : Number(nodeNum),
+      publicKey: publicKey ?? undefined,
       previousUptimeSeconds,
       uptimeSeconds,
       sourceId,
@@ -472,9 +482,17 @@ export function buildNodeRebootedContext(
  * the telemetry-save seam; this builder only shapes what the conditions /
  * interpolation read. `direction` is 'lost' (was powered, now on battery) or
  * 'restored' (was on battery, now powered).
+ *
+ * Meshtastic passes a real `nodeNum` (`publicKey` null). MeshCore (#4558 parity)
+ * has no Meshtastic node number, so it passes `nodeNum: null` plus the pubkey —
+ * `subjectNodeKey` is then set explicitly to the pubkey (the same degrade
+ * {@link buildNodeRebootedContext} uses), keying per-node cooldown off the
+ * pubkey. The MeshCore path derives powered-state from battery voltage and is a
+ * HEURISTIC (see detectMeshCorePowerChange).
  */
 export function buildNodePowerChangedContext(
-  nodeNum: number,
+  nodeNum: number | null,
+  publicKey: string | null,
   previousPowered: boolean,
   powered: boolean,
   batteryLevel: number,
@@ -484,10 +502,13 @@ export function buildNodePowerChangedContext(
   return {
     triggerType: 'trigger.nodePowerChanged',
     sourceId,
-    subjectNodeNum: Number(nodeNum),
+    subjectNodeNum: nodeNum == null ? null : Number(nodeNum),
+    // undefined ⇒ derive from subjectNodeNum (Meshtastic); explicit pubkey for MeshCore.
+    subjectNodeKey: nodeNum == null ? (publicKey ?? null) : undefined,
     timestamp,
     fields: {
-      nodeNum: Number(nodeNum),
+      nodeNum: nodeNum == null ? null : Number(nodeNum),
+      publicKey: publicKey ?? undefined,
       powered,
       previousPowered,
       direction: powered ? 'restored' : 'lost',
@@ -506,19 +527,26 @@ export function buildNodePowerChangedContext(
  * tick (see runBatteryTrendCheck); this builder only shapes what the conditions /
  * interpolation read.
  *
- * `startLevel`/`latestLevel` are the battery-level (%) at the window's oldest and
- * newest samples; `dropPercent` is `startLevel - latestLevel` (percentage POINTS,
- * since the metric is batteryLevel %). Meshtastic only — MeshCore stores battery
- * as a single node column, not a batteryLevel time-series — so `subjectNodeNum`
- * is always a real node number here.
+ * `startLevel`/`latestLevel` are the window's oldest and newest battery readings;
+ * `dropPercent` is the decline the automation's `minDropPercent` is compared to.
  *
- * HEURISTIC CAVEAT: the Meshtastic protocol carries no charge-state field, so a
- * falling battery level is only a PROXY for "not charging" (the solar-node alert
- * this phase exists for). It can false-positive under heavy transient load and is
- * blind to day/night — it deliberately does not model solar hours.
+ * The two protocols carry battery in different units, so the meaning of these
+ * fields differs by subject (#4558 follow-up):
+ *  - Meshtastic (`nodeNum` set, `publicKey` null): readings are battery-level
+ *    (%), and `dropPercent = startLevel - latestLevel` in percentage POINTS.
+ *  - MeshCore (`nodeNum` null, `publicKey` set): readings are VOLTS (MeshCore
+ *    reports no %), and `dropPercent` is the RELATIVE decline
+ *    `(startLevel - latestLevel) / startLevel * 100` so a single `minDropPercent`
+ *    threshold stays meaningful across both units. See `runBatteryTrendCheck`.
+ *
+ * HEURISTIC CAVEAT: neither protocol carries a charge-state field, so a falling
+ * battery is only a PROXY for "not charging" (the solar-node alert this exists
+ * for). It can false-positive under heavy transient load and is blind to
+ * day/night — it deliberately does not model solar hours.
  */
 export function buildBatteryTrendContext(
-  nodeNum: number,
+  nodeNum: number | null,
+  publicKey: string | null,
   dropPercent: number,
   windowHours: number,
   minDropPercent: number,
@@ -530,10 +558,13 @@ export function buildBatteryTrendContext(
   return {
     triggerType: 'trigger.batteryTrend',
     sourceId,
-    subjectNodeNum: Number(nodeNum),
+    subjectNodeNum: nodeNum == null ? null : Number(nodeNum),
+    // undefined ⇒ derive from subjectNodeNum (Meshtastic); explicit pubkey for MeshCore.
+    subjectNodeKey: nodeNum == null ? (publicKey ?? null) : undefined,
     timestamp,
     fields: {
-      nodeNum: Number(nodeNum),
+      nodeNum: nodeNum == null ? null : Number(nodeNum),
+      publicKey: publicKey ?? undefined,
       dropPercent,
       windowHours,
       minDropPercent,

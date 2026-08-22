@@ -976,14 +976,19 @@ export class AutomationEngineService {
    * nodeOnline, which also don't drop our own node: knowing your OWN gateway
    * rebooted is useful, and a reboot is not something an automation action can
    * cause, so there is no self-trigger loop to guard against.
+   *
+   * Meshtastic reboots pass a real `nodeNum` (`publicKey` null); MeshCore reboots
+   * (#4558 follow-up) pass `nodeNum: null` plus the pubkey, which becomes the
+   * subject identity for `{{ node.* }}`-less pubkey cooldown scoping.
    */
   async onNodeRebooted(
-    nodeNum: number,
+    nodeNum: number | null,
+    publicKey: string | null,
     previousUptimeSeconds: number,
     uptimeSeconds: number,
     sourceId: string | null,
   ): Promise<number> {
-    const ctx = buildNodeRebootedContext(nodeNum, previousUptimeSeconds, uptimeSeconds, sourceId, this.now());
+    const ctx = buildNodeRebootedContext(nodeNum, publicKey, previousUptimeSeconds, uptimeSeconds, sourceId, this.now());
     return this.runTrigger(ctx);
   }
 
@@ -1003,16 +1008,22 @@ export class AutomationEngineService {
    * a power transition is not something an automation action can cause, so there
    * is no self-trigger loop to guard against, and knowing your OWN gateway lost
    * wall power is useful.
+   *
+   * Meshtastic passes a real `nodeNum` (`publicKey` null). MeshCore (#4558
+   * parity) passes `nodeNum: null` plus the pubkey, which becomes the subject
+   * identity — note the MeshCore path is a battery-voltage HEURISTIC and can
+   * misfire (see detectMeshCorePowerChange).
    */
   async onNodePowerChanged(
-    nodeNum: number,
+    nodeNum: number | null,
+    publicKey: string | null,
     previousPowered: boolean,
     powered: boolean,
     batteryLevel: number,
     sourceId: string | null,
   ): Promise<number> {
     const direction = powered ? 'restored' : 'lost';
-    const ctx = buildNodePowerChangedContext(nodeNum, previousPowered, powered, batteryLevel, sourceId, this.now());
+    const ctx = buildNodePowerChangedContext(nodeNum, publicKey, previousPowered, powered, batteryLevel, sourceId, this.now());
     return this.runTrigger(
       ctx,
       (a) => {
@@ -1551,13 +1562,22 @@ export class AutomationEngineService {
    * declining-battery PROXY, not a true "not charging" signal — it can
    * false-positive under heavy transient load and does not model day/night.
    *
-   * MeshCore is excluded (no batteryLevel time-series). Sends NO mesh packets;
-   * returns the number of automations that dispatched this tick.
+   * BOTH protocols are covered (#4558 follow-up). Meshtastic nodes trend on
+   * `batteryLevel` (%): the drop is `startLevel - latestLevel` in percentage
+   * POINTS. MeshCore nodes have no % and no numeric node id, so they trend on
+   * battery VOLTS keyed by pubkey (via {@link NodeDataProvider.getMeshCoreBatteryTrendSamples}),
+   * and the drop is the RELATIVE decline `(startV - latestV) / startV * 100` so
+   * the same `minDropPercent` threshold stays meaningful across both units.
+   * Sends NO mesh packets; returns the number of automations that dispatched
+   * this tick.
    */
   async runBatteryTrendCheck(): Promise<number> {
     const autos = this.index.get('trigger.batteryTrend') ?? [];
     if (autos.length === 0) return 0;
-    if (!this.data.listNodesForStaleCheck || !this.data.getBatteryTrendSamples) return 0;
+    if (!this.data.listNodesForStaleCheck) return 0;
+    // Need at least one battery-sample provider; each protocol's nodes are
+    // skipped individually below when its provider is absent.
+    if (!this.data.getBatteryTrendSamples && !this.data.getMeshCoreBatteryTrendSamples) return 0;
 
     let candidates: StaleCandidate[];
     try {
@@ -1566,8 +1586,6 @@ export class AutomationEngineService {
       logger.error(`[AutomationEngine] battery-trend node enumeration failed: ${e instanceof Error ? e.message : String(e)}`);
       return 0;
     }
-    // Meshtastic only — MeshCore nodes (nodeNum == null) carry no batteryLevel history.
-    const meshtasticNodes = candidates.filter((c) => c.nodeNum != null);
 
     const now = this.now();
     let fired = 0;
@@ -1580,13 +1598,24 @@ export class AutomationEngineService {
       if (!Number.isFinite(minDropPercent) || minDropPercent <= 0) continue;
       const sinceMs = now - windowHours * 3_600_000;
 
-      for (const c of meshtasticNodes) {
-        const nodeNum = Number(c.nodeNum);
-        const key = `${c.sourceId ?? ''}:${nodeNum}`;
+      for (const c of candidates) {
+        const isMeshCore = c.nodeNum == null;
+        const nodeNum = isMeshCore ? null : Number(c.nodeNum);
+        const publicKey = isMeshCore ? (c.publicKey ?? null) : null;
+        // MeshCore candidate with no pubkey is unaddressable; skip it.
+        if (isMeshCore && !publicKey) continue;
+        // Per-(source, node) baseline key: numeric node for Meshtastic, pubkey for MeshCore.
+        const key = staleKeyFor(c);
 
-        let samples: Array<{ timestamp: number; value: number }>;
+        let samples: Array<{ timestamp: number; value: number }> | undefined;
         try {
-          samples = await this.data.getBatteryTrendSamples(c.sourceId, nodeNum, sinceMs);
+          if (isMeshCore) {
+            if (!this.data.getMeshCoreBatteryTrendSamples) continue; // no MeshCore provider → skip
+            samples = await this.data.getMeshCoreBatteryTrendSamples(c.sourceId, publicKey as string, sinceMs);
+          } else {
+            if (!this.data.getBatteryTrendSamples) continue; // no Meshtastic provider → skip
+            samples = await this.data.getBatteryTrendSamples(c.sourceId, nodeNum as number, sinceMs);
+          }
         } catch {
           continue; // a per-node read failure must not abort the rest of the tick
         }
@@ -1601,7 +1630,12 @@ export class AutomationEngineService {
         }
         const startLevel = earliest.value;
         const latestLevel = latest.value;
-        const drop = startLevel - latestLevel;
+        // Meshtastic: battery %, absolute percentage-point drop. MeshCore: volts,
+        // so use the RELATIVE decline against the start voltage — a 0/negative
+        // start can't yield a meaningful percentage, so it never declines.
+        const drop = isMeshCore
+          ? (startLevel > 0 ? ((startLevel - latestLevel) / startLevel) * 100 : 0)
+          : (startLevel - latestLevel);
         const declining = drop >= minDropPercent;
 
         const prev = this.getBatteryTrendBaseline(a, key);
@@ -1615,7 +1649,7 @@ export class AutomationEngineService {
           // calm → declining. Latch alarmed FIRST so a suppressed fire can't re-fire.
           this.setBatteryTrendBaseline(a, key, { alarmed: true, ts: now });
           const ctx = buildBatteryTrendContext(
-            nodeNum, Math.round(drop), windowHours, minDropPercent, startLevel, latestLevel, c.sourceId, now,
+            nodeNum, publicKey, Math.round(drop), windowHours, minDropPercent, startLevel, latestLevel, c.sourceId, now,
           );
           fired += await this.fireStaleTransition(a, ctx, now);
         } else if (prev.alarmed && !declining) {

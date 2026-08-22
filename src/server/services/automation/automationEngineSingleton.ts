@@ -146,8 +146,8 @@ async function handleEvent(event: DataEvent): Promise<void> {
       // Device Health (#4558 Phase B): the telemetry-save seam detected a node's
       // uptime reset. Fire trigger.nodeRebooted. Detection state lives in the DB
       // (the prior uptime row), not here, so this is a pure event forward.
-      const data = event.data as { nodeNum: number; previousUptimeSeconds: number; uptimeSeconds: number };
-      await e.onNodeRebooted(data.nodeNum, data.previousUptimeSeconds, data.uptimeSeconds, sourceId);
+      const data = event.data as { nodeNum: number | null; publicKey?: string | null; previousUptimeSeconds: number; uptimeSeconds: number };
+      await e.onNodeRebooted(data.nodeNum, data.publicKey ?? null, data.previousUptimeSeconds, data.uptimeSeconds, sourceId);
       break;
     }
 
@@ -156,8 +156,8 @@ async function handleEvent(event: DataEvent): Promise<void> {
       // batteryLevel cross the firmware powered threshold (> 100). Fire
       // trigger.nodePowerChanged. Detection state lives in the DB (the prior
       // batteryLevel row), not here, so this is a pure event forward.
-      const data = event.data as { nodeNum: number; previousPowered: boolean; powered: boolean; batteryLevel: number };
-      await e.onNodePowerChanged(data.nodeNum, data.previousPowered, data.powered, data.batteryLevel, sourceId);
+      const data = event.data as { nodeNum: number | null; publicKey?: string | null; previousPowered: boolean; powered: boolean; batteryLevel: number };
+      await e.onNodePowerChanged(data.nodeNum, data.publicKey ?? null, data.previousPowered, data.powered, data.batteryLevel, sourceId);
       break;
     }
 

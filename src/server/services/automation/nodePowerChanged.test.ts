@@ -26,7 +26,10 @@ import type { ActionDeps } from './actionExecutor.js';
 import type { NodeDataProvider } from './engineContext.js';
 import type { AutomationGraph } from '../../../types/automation.js';
 import { validateAutomationGraph } from '../../../types/automation.js';
-import { isPowered, detectPowerTransition, POWERED_BATTERY_LEVEL_THRESHOLD } from '../../utils/poweredState.js';
+import { isPowered, isPoweredMv, detectPowerTransition, POWERED_BATTERY_LEVEL_THRESHOLD, MESHCORE_POWERED_MV_THRESHOLD } from '../../utils/poweredState.js';
+import { buildNodePowerChangedContext } from './triggerContext.js';
+import { detectMeshCorePowerChange } from '../meshcoreDeviceHealth.js';
+import { dataEventEmitter, type DataEvent } from '../dataEventEmitter.js';
 import * as schema from '../../../db/schema/index.js';
 import { createTestDb } from '../../test-helpers/testDb.js';
 import { automationTraceBus } from './automationTraceBus.js';
@@ -99,6 +102,29 @@ describe('isPowered / detectPowerTransition (#4558 Phase C)', () => {
   it('returns null when the new reading is non-finite', () => {
     expect(detectPowerTransition(101, NaN)).toBeNull();
     expect(detectPowerTransition(80, null)).toBeNull();
+  });
+});
+
+// ─── MeshCore powered-voltage heuristic (#4558 MeshCore parity) ───────────────
+
+describe('isPoweredMv (#4558 MeshCore parity)', () => {
+  it('treats >= 4200 mV as powered (the Li-ion full/charging voltage)', () => {
+    expect(MESHCORE_POWERED_MV_THRESHOLD).toBe(4200);
+    expect(isPoweredMv(4200)).toBe(true);   // exactly at the threshold
+    expect(isPoweredMv(4201)).toBe(true);
+    expect(isPoweredMv(4500)).toBe(true);
+  });
+
+  it('treats < 4200 mV as on battery', () => {
+    expect(isPoweredMv(4199)).toBe(false);  // just under the threshold
+    expect(isPoweredMv(3700)).toBe(false);  // nominal Li-ion
+    expect(isPoweredMv(0)).toBe(false);
+  });
+
+  it('treats a missing / non-finite reading as not powered', () => {
+    expect(isPoweredMv(null)).toBe(false);
+    expect(isPoweredMv(undefined)).toBe(false);
+    expect(isPoweredMv(NaN)).toBe(false);
   });
 });
 
@@ -176,6 +202,119 @@ describe('power-change detection via getLatestTelemetryForType (#4558 Phase C)',
   });
 });
 
+// ─── MeshCore seam: detectMeshCorePowerChange → node:powerChanged (parity) ────
+
+describe('detectMeshCorePowerChange seam (#4558 MeshCore parity)', () => {
+  let db: ReturnType<typeof createTestDb>['sqlite'];
+  let drizzleDb: BetterSQLite3Database<typeof schema>;
+  let telem: TelemetryRepository;
+  let events: DataEvent[];
+  let listener: (e: DataEvent) => void;
+
+  // 4300 mV ≥ 4200 threshold ⇒ "powered"; 3700 mV ⇒ on battery.
+  const POWERED_MV = 4300;
+  const BATTERY_MV = 3700;
+
+  beforeEach(() => {
+    const t = createTestDb();
+    db = t.sqlite;
+    drizzleDb = t.db;
+    telem = new TelemetryRepository(drizzleDb, 'sqlite');
+    events = [];
+    listener = (e) => { if (e.type === 'node:powerChanged') events.push(e); };
+    dataEventEmitter.on('data', listener);
+  });
+  afterEach(() => { dataEventEmitter.off('data', listener); db.close(); });
+
+  const insertBattery = (pk: string, telemetryType: string, value: number, ts: number, unit: string, sourceId: string) =>
+    telem.insertTelemetry(
+      { nodeId: pk, nodeNum: 1, telemetryType, timestamp: ts, value, unit, createdAt: ts },
+      sourceId,
+    );
+
+  // Local-poller path: prior stored as mc_battery_mv (mV → scale 1).
+  const insertMv = (pk: string, value: number, ts: number, sourceId: string) =>
+    insertBattery(pk, 'mc_battery_mv', value, ts, 'mV', sourceId);
+  const detectMv = (pk: string, newMv: number, sourceId: string) =>
+    detectMeshCorePowerChange(telem, pk, 'mc_battery_mv', 1, newMv, sourceId);
+
+  it('emits node:powerChanged (nodeNum null, pubkey) on powered → battery as "lost"', async () => {
+    await insertMv('PUBKEY', POWERED_MV, 1_000, 'mc');
+    await detectMv('PUBKEY', BATTERY_MV, 'mc');
+    expect(events).toHaveLength(1);
+    const data = events[0].data as { nodeNum: number | null; publicKey?: string; previousPowered: boolean; powered: boolean; batteryLevel: number };
+    expect(data.nodeNum).toBeNull();
+    expect(data.publicKey).toBe('PUBKEY');
+    expect(data.previousPowered).toBe(true);
+    expect(data.powered).toBe(false);
+    expect(data.batteryLevel).toBe(BATTERY_MV);
+    expect(events[0].sourceId).toBe('mc');
+  });
+
+  it('emits "restored" on battery → powered', async () => {
+    await insertMv('PUBKEY', BATTERY_MV, 1_000, 'mc');
+    await detectMv('PUBKEY', POWERED_MV, 'mc');
+    expect(events).toHaveLength(1);
+    const data = events[0].data as { previousPowered: boolean; powered: boolean };
+    expect(data.previousPowered).toBe(false);
+    expect(data.powered).toBe(true);
+  });
+
+  it('does not emit when the powered-state is unchanged', async () => {
+    // battery → battery
+    await insertMv('A', BATTERY_MV, 1_000, 'mc');
+    await detectMv('A', 3_600, 'mc');
+    // powered → powered
+    await insertMv('B', POWERED_MV, 1_000, 'mc');
+    await detectMv('B', 4_400, 'mc');
+    expect(events).toHaveLength(0);
+  });
+
+  it('does not emit on the first-ever reading (no prior)', async () => {
+    await detectMv('PUBKEY', POWERED_MV, 'mc');
+    expect(events).toHaveLength(0);
+  });
+
+  it('is restart-safe: the prior comes from the DB, not memory', async () => {
+    await insertMv('PUBKEY', POWERED_MV, 1_000, 'mc');
+    // A brand-new repository instance stands in for a MeshMonitor restart — the
+    // durable row is the only baseline.
+    const freshTelem = new TelemetryRepository(drizzleDb, 'sqlite');
+    await detectMeshCorePowerChange(freshTelem, 'PUBKEY', 'mc_battery_mv', 1, BATTERY_MV, 'mc');
+    expect(events).toHaveLength(1);
+    expect((events[0].data as { powered: boolean }).powered).toBe(false);
+  });
+
+  it('reads the prior per source: a fresh source baselines rather than firing', async () => {
+    await insertMv('PUBKEY', POWERED_MV, 1_000, 'A');
+    // Source B has no prior of its own → first reading, does not fire.
+    await detectMv('PUBKEY', BATTERY_MV, 'B');
+    expect(events).toHaveLength(0);
+    // Source A's own powered prior → a battery reading is a "lost" transition.
+    await detectMv('PUBKEY', BATTERY_MV, 'A');
+    expect(events).toHaveLength(1);
+    expect(events[0].sourceId).toBe('A');
+  });
+
+  it('works on the remote-scheduler volts series (mc_status_battery_volts, scale 1000)', async () => {
+    // The scheduler stores battery in VOLTS; the helper scales the prior ×1000.
+    await insertBattery('PUBKEY', 'mc_status_battery_volts', 4.3, 1_000, 'V', 'mc');
+    await detectMeshCorePowerChange(telem, 'PUBKEY', 'mc_status_battery_volts', 1000, BATTERY_MV, 'mc');
+    expect(events).toHaveLength(1);
+    const data = events[0].data as { publicKey?: string; previousPowered: boolean; powered: boolean };
+    expect(data.publicKey).toBe('PUBKEY');
+    expect(data.previousPowered).toBe(true);
+    expect(data.powered).toBe(false);
+  });
+
+  it('does not emit when newBatteryMv is null / non-finite', async () => {
+    await insertMv('PUBKEY', POWERED_MV, 1_000, 'mc');
+    await detectMeshCorePowerChange(telem, 'PUBKEY', 'mc_battery_mv', 1, null, 'mc');
+    await detectMeshCorePowerChange(telem, 'PUBKEY', 'mc_battery_mv', 1, NaN, 'mc');
+    expect(events).toHaveLength(0);
+  });
+});
+
 // ─── engine firing + direction filter + tokens + validation ──────────────────
 
 describe('trigger.nodePowerChanged engine (#4558 Phase C)', () => {
@@ -225,7 +364,7 @@ describe('trigger.nodePowerChanged engine (#4558 Phase C)', () => {
     await engine.load();
 
     // previousPowered=true, powered=false → "lost"
-    expect(await engine.onNodePowerChanged(111, true, false, 80, 'default')).toBe(1);
+    expect(await engine.onNodePowerChanged(111, null, true, false, 80, 'default')).toBe(1);
     expect(calls.map((c) => c.fn)).toEqual(['notify']);
     expect(calls[0].args.body).toBe('node=111 dir=lost prev=true now=false batt=80 src=default');
   });
@@ -237,10 +376,10 @@ describe('trigger.nodePowerChanged engine (#4558 Phase C)', () => {
     await engine.load();
 
     // A "restored" transition must NOT fire a lost-only rule…
-    expect(await engine.onNodePowerChanged(111, false, true, 101, 'default')).toBe(0);
+    expect(await engine.onNodePowerChanged(111, null, false, true, 101, 'default')).toBe(0);
     expect(calls).toHaveLength(0);
     // …but a "lost" transition does.
-    expect(await engine.onNodePowerChanged(111, true, false, 80, 'default')).toBe(1);
+    expect(await engine.onNodePowerChanged(111, null, true, false, 80, 'default')).toBe(1);
     expect(calls.map((c) => c.fn)).toEqual(['notify']);
     expect(calls[0].args.body).toContain('dir=lost');
   });
@@ -249,7 +388,7 @@ describe('trigger.nodePowerChanged engine (#4558 Phase C)', () => {
     const { calls, deps } = recorder();
     const engine = engineWith(deps);
     await engine.load();
-    expect(await engine.onNodePowerChanged(111, true, false, 80, 'default')).toBe(0);
+    expect(await engine.onNodePowerChanged(111, null, true, false, 80, 'default')).toBe(0);
     expect(calls).toHaveLength(0);
   });
 
@@ -260,7 +399,54 @@ describe('trigger.nodePowerChanged engine (#4558 Phase C)', () => {
     await engine.load();
 
     // previousPowered=false, powered=true → "restored"
-    await engine.onNodePowerChanged(222, false, true, 101, 'sourceZ');
+    await engine.onNodePowerChanged(222, null, false, true, 101, 'sourceZ');
     expect(calls[0].args.body).toBe('node=222 dir=restored prev=false now=true batt=101 src=sourceZ');
+  });
+
+  // ── MeshCore parity (#4558) ──────────────────────────────────────────────────
+
+  it('fires for a MeshCore node identified by pubkey (nodeNum null)', async () => {
+    const { calls, deps } = recorder();
+    // A rule that reads the MeshCore identity: nodeNum is null, publicKey is set.
+    await autos.createAutomation({
+      name: 'mc-power', enabled: true,
+      config: JSON.stringify({
+        version: 1,
+        nodes: [
+          { id: 't', type: 'trigger.nodePowerChanged', params: {} },
+          { id: 'n', type: 'action.notify', params: { title: 'p', body: 'node={{ trigger.nodeNum }} key={{ trigger.publicKey }} dir={{ trigger.direction }} batt={{ trigger.batteryLevel }}' } },
+        ],
+        edges: [{ from: 't', to: 'n' }],
+      }),
+    });
+    const engine = engineWith(deps);
+    await engine.load();
+
+    // previousPowered=true, powered=false → "lost"; batteryLevel is mV on MeshCore.
+    expect(await engine.onNodePowerChanged(null, 'ABCDEF0123', true, false, 3700, 'mc')).toBe(1);
+    // nodeNum interpolates empty (null); the pubkey carries the identity.
+    expect(calls[0].args.body).toBe('node= key=ABCDEF0123 dir=lost batt=3700');
+  });
+});
+
+// ─── context identity: pubkey vs nodeNum ─────────────────────────────────────
+
+describe('buildNodePowerChangedContext identity (#4558 MeshCore parity)', () => {
+  it('Meshtastic subject binds subjectNodeNum and leaves subjectNodeKey to derive', () => {
+    const ctx = buildNodePowerChangedContext(111, null, true, false, 80, 'default', 1_000);
+    expect(ctx.subjectNodeNum).toBe(111);
+    // undefined ⇒ derive from subjectNodeNum (a Meshtastic node), not an explicit key.
+    expect(ctx.subjectNodeKey).toBeUndefined();
+    expect(ctx.fields.nodeNum).toBe(111);
+    expect(ctx.fields.publicKey).toBeUndefined();
+  });
+
+  it('MeshCore subject binds subjectNodeKey to the pubkey with a null node number', () => {
+    const ctx = buildNodePowerChangedContext(null, 'ABCDEF0123', true, false, 3700, 'mc', 1_000);
+    expect(ctx.subjectNodeNum).toBeNull();
+    expect(ctx.subjectNodeKey).toBe('ABCDEF0123');
+    expect(ctx.fields.nodeNum).toBeNull();
+    expect(ctx.fields.publicKey).toBe('ABCDEF0123');
+    expect(ctx.fields.direction).toBe('lost');
   });
 });

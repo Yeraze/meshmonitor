@@ -280,7 +280,7 @@ export const TRIGGERS: BlockDef[] = [
   {
     type: 'trigger.nodePowerChanged',
     label: 'A node switches power source (mains ↔ battery)',
-    description: 'Fires when a node crosses between external/USB power and battery power. Detected from the battery-level telemetry a node already reports (the firmware reports a value above 100% when powered), by comparing each new reading against the last stored one; there is no extra polling and no packet is sent. Meshtastic only for now. It never fires on the first battery reading for a node (no prior to compare). Note: a reading above 100 conflates “on USB / no battery” with “charging”, so this is a powered-state signal, not a clean “on wall power” flag.',
+    description: 'Fires when a node crosses between external/USB power and battery power. Detected from the battery telemetry a node already reports, by comparing each new reading against the last stored one; there is no extra polling and no packet is sent. It never fires on the first battery reading for a node (no prior to compare). On Meshtastic this uses the firmware’s convention (a battery value above 100% means powered); note that above 100 conflates “on USB / no battery” with “charging”, so it is a powered-state signal, not a clean “on wall power” flag. EXPERIMENTAL on MeshCore: the firmware has no powered flag, so this is a heuristic derived from battery voltage (≥ 4.2 V is treated as powered). A full or charging battery reads ~4.2 V and looks identical to wall power, so false “lost”/“restored” alerts are expected on MeshCore.',
     fields: [
       {
         name: 'direction', label: 'Direction', kind: 'select',
