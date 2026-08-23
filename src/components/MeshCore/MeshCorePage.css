@@ -694,10 +694,24 @@
 .mc-message-delete:hover { color: var(--color-error); opacity: 1; }
 @media (hover: none) { .mc-message-delete { opacity: 1; } }
 /* Conversation / channel "clear" toolbar above the message stream (#3981). */
+/* Scope-override control and the conversation toolbar share one horizontal
+   row (#4888): scope on the left, toolbar on the right, wrapping on narrow
+   screens. The row owns the padding; the children no longer set their own. */
+.meshcore-toolbar-row {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.35rem 0.75rem 0;
+}
+
 .meshcore-conversation-toolbar {
   display: flex;
-  justify-content: flex-end;
-  padding: 0.35rem 0.5rem 0;
+  /* Stay right-aligned whether or not the scope control shares the row
+     (a lone flex child sits at the start under space-between). */
+  margin-left: auto;
 }
 .meshcore-clear-conversation-btn {
   background: none;
@@ -1714,7 +1728,11 @@
 
 /* --- Per-message scope override (#3701) ---------------------------------- */
 .mc-scope-override {
-  padding: 0.35rem 0.75rem 0;
+  /* Padding now lives on .meshcore-toolbar-row (#4888). Allow the expanded
+     scope row (label + input + buttons) to shrink so it wraps cleanly on
+     narrow screens instead of overflowing. */
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .mc-scope-override-toggle {
@@ -1736,6 +1754,9 @@
   display: flex;
   align-items: center;
   gap: 0.4rem;
+  /* Let the input (which already sets flex+min-width:0) shrink within the
+     flex row rather than overflow on narrow screens (#4888). */
+  min-width: 0;
 }
 
 .mc-scope-override-label {
