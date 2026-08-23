@@ -694,6 +694,8 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
             </span>
           </div>
         )}
+        {canSend && (connected || filtered.length > 0) && (
+        <div className="meshcore-toolbar-row">
         {canSend && connected && (
           <div className="mc-scope-override">
             {showScopeOverride ? (
@@ -764,6 +766,8 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
               <UiIcon name="delete" size={15} /> {t('meshcore.clear_channel', 'Clear channel messages')}
             </button>
           </div>
+        )}
+        </div>
         )}
         <MeshCoreMessageStream
           messages={filtered}

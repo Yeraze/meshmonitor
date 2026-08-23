@@ -957,6 +957,10 @@ describe('MeshCoreChannelsView — delete prunes the fetched backlog', () => {
     );
 
     await waitFor(() => expect(screen.getByText('first')).toBeTruthy());
+    // #4888: the conversation toolbar sits inside the shared horizontal row.
+    const toolbarRow = document.querySelector('.meshcore-toolbar-row');
+    expect(toolbarRow).toBeTruthy();
+    expect(toolbarRow?.querySelector('.meshcore-clear-conversation-btn')).toBeTruthy();
     await act(async () => {
       fireEvent.click(document.querySelector('.meshcore-clear-conversation-btn') as Element);
     });
