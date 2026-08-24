@@ -17,6 +17,19 @@ export const MESHCORE_DEVICE_TYPE_KEYS: Record<number, string> = {
   4: 'meshcore.device_type.sensor',
 };
 
+/**
+ * "Infrastructure" = MeshCore repeaters (advType 2) and room servers (3):
+ * fixed, always-on nodes that re-flood-advertise on a long interval and never
+ * send DMs, so their `lastHeard` staleness means something different from a
+ * mobile companion's. Used by the two-timeout age filter (#4899) to apply the
+ * separate `maxInfraNodeAgeHours` cutoff. Sensors (4) are deliberately NOT
+ * infrastructure here — they use the companion cutoff. Mirrors the inline
+ * advType 2/3 test in utils/meshcorePath.ts.
+ */
+export function isMeshCoreInfrastructureAdvType(advType: number | null | undefined): boolean {
+  return advType === 2 || advType === 3;
+}
+
 /** English fallbacks for the role label (used as the t() default + title text). */
 export const MESHCORE_DEVICE_TYPE_LABELS: Record<number, string> = {
   0: 'Unknown',

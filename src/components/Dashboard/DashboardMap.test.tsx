@@ -334,6 +334,7 @@ const defaultProps = {
   defaultCenter: { lat: 35.0, lng: -80.0 },
   sourceId: null,
   maxNodeAgeHours: NODE_DISPLAY_NUMERIC_DEFAULTS.maxNodeAgeHours,
+  maxInfraNodeAgeHours: 720, // #4899 infra window (30 days)
 };
 
 // ---------------------------------------------------------------------------
@@ -455,6 +456,59 @@ describe('DashboardMap', () => {
     // (newer = more transparent) slipping through, which `< fresh` alone would
     // miss for a node heard just inside a wide window.
     expect(staleOpacity).toBeLessThan(0.7);
+  });
+
+  // #4899: MeshCore infrastructure (advType 2/3) uses the separate infra
+  // window on the cross-source Dashboard map, so repeaters/room servers don't
+  // vanish between adverts even though they're past the companion window.
+  describe('MeshCore infrastructure age window (#4899)', () => {
+    const meshcoreRepeaterStale = {
+      user: { id: 'mc-rpt', shortName: 'RPT', longName: 'Repeater' },
+      position: { latitude: 36.1, longitude: -81.1 },
+      hopsAway: 0, role: 0, lastHeard: stale, isMeshCore: true, advType: 2,
+    };
+    const meshcoreCompanionStale = {
+      user: { id: 'mc-cmp', shortName: 'CMP', longName: 'Companion' },
+      position: { latitude: 36.3, longitude: -81.3 },
+      hopsAway: 0, role: 0, lastHeard: stale, isMeshCore: true, advType: 1,
+    };
+
+    it('keeps a stale repeater (past companion window, within infra window) but hides a stale companion', () => {
+      // Defaults: companion 24h, infra 720h. Both nodes are 48h old.
+      render(
+        <DashboardMap
+          {...defaultProps}
+          nodes={[meshcoreRepeaterStale, meshcoreCompanionStale]}
+        />,
+      );
+      expect(screen.getAllByTestId('map-marker')).toHaveLength(1);
+    });
+
+    it('hides even a repeater once it is past the infra window', () => {
+      render(
+        <DashboardMap
+          {...defaultProps}
+          maxInfraNodeAgeHours={24}
+          nodes={[meshcoreRepeaterStale]}
+        />,
+      );
+      expect(screen.queryAllByTestId('map-marker')).toHaveLength(0);
+    });
+
+    it('never hides infrastructure when the infra window is 0 (never)', () => {
+      const ancientRepeater = {
+        ...meshcoreRepeaterStale,
+        lastHeard: nowSeconds - 60 * 60 * 5000, // ~208 days old
+      };
+      render(
+        <DashboardMap
+          {...defaultProps}
+          maxInfraNodeAgeHours={0}
+          nodes={[ancientRepeater]}
+        />,
+      );
+      expect(screen.getAllByTestId('map-marker')).toHaveLength(1);
+    });
   });
 
   it('forwards the configured map pin style to createNodeIcon (issue #3364)', () => {

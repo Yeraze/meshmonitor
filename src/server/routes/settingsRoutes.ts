@@ -24,7 +24,7 @@ import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { validateFilterNameRegexOnSave } from '../utils/filterNameRegex.js';
 import { positionEstimationScheduler } from '../services/positionEstimationScheduler.js';
 import { autoDeleteByDistanceService } from '../services/autoDeleteByDistanceService.js';
-import { NODE_DISPLAY_RANGES, NODE_DISPLAY_SETTING_KEYS } from '../../constants/nodeDisplayDefaults.js';
+import { NODE_DISPLAY_RANGES, NODE_DISPLAY_SETTING_KEYS, MAX_INFRA_NODE_AGE_HOURS_RANGE } from '../../constants/nodeDisplayDefaults.js';
 import { resolveAppriseServerUrl } from '../services/appriseNotificationService.js';
 
 // ─── Tile URL validation ─────────────────────────────────────────────────
@@ -418,6 +418,17 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
       if (isNaN(hours) || hours < R.min || hours > R.max) {
         return fail(res, 400, 'INVALID_MAX_NODE_AGE_HOURS',
           `maxNodeAgeHours must be between ${R.min} and ${R.max} hours`);
+      }
+    }
+
+    // #4899: separate Infrastructure age window (MeshCore repeaters/room
+    // servers). 0 is valid and means "never expire", so the floor is 0 here.
+    if ('maxInfraNodeAgeHours' in filteredSettings) {
+      const hours = parseInt(filteredSettings.maxInfraNodeAgeHours, 10);
+      const R = MAX_INFRA_NODE_AGE_HOURS_RANGE;
+      if (isNaN(hours) || hours < R.min || hours > R.max) {
+        return fail(res, 400, 'INVALID_MAX_INFRA_NODE_AGE_HOURS',
+          `maxInfraNodeAgeHours must be between ${R.min} and ${R.max} hours (0 = never expire)`);
       }
     }
 

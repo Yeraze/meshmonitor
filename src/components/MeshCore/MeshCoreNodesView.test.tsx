@@ -84,7 +84,7 @@ function listedNames(): string[] {
 // are all within 3 hours, so they survive it. The per-source age filter
 // suite overrides this per-test where it needs a different cutoff.
 beforeEach(() => {
-  mockUseNodeDisplaySettings.mockReset().mockReturnValue({ maxNodeAgeHours: 24 });
+  mockUseNodeDisplaySettings.mockReset().mockReturnValue({ maxNodeAgeHours: 24, maxInfraNodeAgeHours: 720 });
   meshCoreMapProps.mockClear();
 });
 
@@ -341,6 +341,56 @@ describe('MeshCoreNodesView — per-source age filter (#4412 Phase 4)', () => {
     ];
     render(<MeshCoreNodesView nodes={testNodes} contacts={testContacts} />);
     expect(listedNames()).toEqual([]);
+  });
+
+  // #4899: repeaters (advType 2) and room servers (advType 3) get a SEPARATE,
+  // usually longer age window (`maxInfraNodeAgeHours`) than companions.
+  describe('infrastructure age window (#4899)', () => {
+    const PK_INFRA_REPEATER = '7'.repeat(64);
+    const PK_INFRA_ROOM = '8'.repeat(64);
+    const PK_COMPANION = '9'.repeat(64);
+
+    it('keeps a repeater that is past the companion cutoff but within the infra cutoff', () => {
+      // companion=24h, infra=720h (defaults). A 72h-old repeater would be aged
+      // off the companion window but survives on the infra window — the exact
+      // "repeaters vanish from the map" bug this fixes.
+      mockUseNodeDisplaySettings.mockReturnValue({ maxNodeAgeHours: 24, maxInfraNodeAgeHours: 720 });
+      const testNodes: MeshCoreNode[] = [
+        { publicKey: PK_INFRA_REPEATER, name: 'Repeater', advType: 2, lastHeard: NOW - 72 * HOUR_MS },
+        { publicKey: PK_INFRA_ROOM, name: 'RoomServer', advType: 3, lastHeard: NOW - 72 * HOUR_MS },
+      ];
+      render(<MeshCoreNodesView nodes={testNodes} contacts={[]} />);
+      expect(listedNames().sort()).toEqual(['Repeater', 'RoomServer']);
+    });
+
+    it('still hides a repeater older than the infra cutoff', () => {
+      mockUseNodeDisplaySettings.mockReturnValue({ maxNodeAgeHours: 24, maxInfraNodeAgeHours: 720 });
+      const testNodes: MeshCoreNode[] = [
+        { publicKey: PK_INFRA_REPEATER, name: 'DeadRepeater', advType: 2, lastHeard: NOW - 800 * HOUR_MS },
+      ];
+      render(<MeshCoreNodesView nodes={testNodes} contacts={[]} />);
+      expect(listedNames()).toEqual([]);
+    });
+
+    it('never hides infrastructure when the infra window is 0 (never expire)', () => {
+      mockUseNodeDisplaySettings.mockReturnValue({ maxNodeAgeHours: 24, maxInfraNodeAgeHours: 0 });
+      const testNodes: MeshCoreNode[] = [
+        { publicKey: PK_INFRA_REPEATER, name: 'AncientRepeater', advType: 2, lastHeard: NOW - 5000 * HOUR_MS },
+      ];
+      render(<MeshCoreNodesView nodes={testNodes} contacts={[]} />);
+      expect(listedNames()).toEqual(['AncientRepeater']);
+    });
+
+    it('applies the companion (not infra) window to a companion node', () => {
+      // A companion 72h old with companion=24h/infra=720h must still be hidden —
+      // the infra window must not leak onto advType 1.
+      mockUseNodeDisplaySettings.mockReturnValue({ maxNodeAgeHours: 24, maxInfraNodeAgeHours: 720 });
+      const testNodes: MeshCoreNode[] = [
+        { publicKey: PK_COMPANION, name: 'OldCompanion', advType: 1, lastHeard: NOW - 72 * HOUR_MS },
+      ];
+      render(<MeshCoreNodesView nodes={testNodes} contacts={[]} />);
+      expect(listedNames()).toEqual([]);
+    });
   });
 
   it('falls through a `lastHeard: 0` DB row to the contact\'s lastSeen (merge gap regression, #4433 review)', () => {

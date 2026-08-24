@@ -23,11 +23,17 @@ import {
   NODE_DISPLAY_STRING_DEFAULTS,
   parseNodeDisplayNumber,
   parseNodeDisplayBoolean,
+  parseMaxInfraNodeAgeHours,
+  MAX_INFRA_NODE_AGE_HOURS_DEFAULT,
 } from '../constants/nodeDisplayDefaults';
 import type { NodeHopsCalculation } from '../contexts/SettingsContext';
 
 export interface NodeDisplaySettings {
   maxNodeAgeHours: number;
+  /** #4899: separate age cutoff for MeshCore infrastructure (repeaters/room
+   *  servers, advType 2/3). `0` = never expire. Standalone per-source setting,
+   *  not one of the frozen ten Node Display keys. */
+  maxInfraNodeAgeHours: number;
   inactiveNodeThresholdHours: number;
   inactiveNodeCheckIntervalMinutes: number;
   inactiveNodeCooldownHours: number;
@@ -58,6 +64,7 @@ export function parseNodeDisplaySettings(
 ): NodeDisplaySettings {
   return {
     maxNodeAgeHours: parseNodeDisplayNumber('maxNodeAgeHours', raw?.maxNodeAgeHours),
+    maxInfraNodeAgeHours: parseMaxInfraNodeAgeHours(raw?.maxInfraNodeAgeHours),
     inactiveNodeThresholdHours: parseNodeDisplayNumber(
       'inactiveNodeThresholdHours',
       raw?.inactiveNodeThresholdHours,
@@ -126,6 +133,37 @@ export function useNodeDisplaySettings(sourceId: string | null): NodeDisplaySett
 export function maxAcross(values: number[]): number {
   if (values.length === 0) return NODE_DISPLAY_NUMERIC_DEFAULTS.maxNodeAgeHours;
   return Math.max(...values);
+}
+
+/**
+ * Most-permissive `maxInfraNodeAgeHours` across N sources (#4899), for the
+ * cross-source Dashboard map. `0` means "never expire" and is the MOST
+ * permissive value of all, so if ANY source in view sets 0 the combined
+ * window is 0 (never). Otherwise it's the max of the non-zero values. Empty
+ * list → the hardcoded infra default.
+ */
+export function maxInfraAcross(values: number[]): number {
+  if (values.length === 0) return MAX_INFRA_NODE_AGE_HOURS_DEFAULT;
+  if (values.some((v) => v <= 0)) return 0; // 0 = never = most permissive
+  return Math.max(...values);
+}
+
+/** Cross-source most-permissive infra window (#4899). Mirrors
+ *  `useMaxNodeAgeHoursAcross`; a still-loading source is excluded rather than
+ *  treated as its default. */
+export function useMaxInfraNodeAgeHoursAcross(sourceIds: string[]): number {
+  const stableIds = Array.from(new Set(sourceIds)).sort();
+  const results = useQueries({
+    queries: stableIds.map((id) => ({
+      queryKey: nodeDisplaySettingsQueryKey(id),
+      queryFn: () => fetchNodeDisplayRaw(id),
+      staleTime: 60_000,
+    })),
+  });
+  const loadedValues = results
+    .filter((r) => r.data !== undefined)
+    .map((r) => parseMaxInfraNodeAgeHours(r.data?.maxInfraNodeAgeHours));
+  return maxInfraAcross(loadedValues);
 }
 
 /**

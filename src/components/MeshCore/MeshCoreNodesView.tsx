@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { MeshCoreNode } from './hooks/useMeshCore';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { MeshCoreMap } from './MeshCoreMap';
-import { meshcoreRoleIconName, meshcoreRoleLabelKey, meshcoreRoleLabel } from './meshcoreRole';
+import { meshcoreRoleIconName, meshcoreRoleLabelKey, meshcoreRoleLabel, isMeshCoreInfrastructureAdvType } from './meshcoreRole';
 import { useToast } from '../ToastContainer';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useSource } from '../../contexts/SourceContext';
@@ -158,7 +158,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   const { showToast } = useToast();
   const { timeFormat, dateFormat } = useSettings();
   const { sourceId } = useSource();
-  const { maxNodeAgeHours } = useNodeDisplaySettings(sourceId);
+  const { maxNodeAgeHours, maxInfraNodeAgeHours } = useNodeDisplaySettings(sourceId);
   const [favoriteBusy, setFavoriteBusy] = useState<string | null>(null);
 
   const handleToggleFavorite = useCallback(async (publicKey: string, next: boolean) => {
@@ -307,8 +307,22 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
     // nodes/contacts poll (`merged` changes) rather than freezing at mount —
     // the same property useProcessedNodes relies on.
     const cutoffMs = meshcoreAgeCutoffMs(maxNodeAgeHours);
-    return merged.filter(r => isAgeExempt(r) || isWithinMeshcoreAge(r, cutoffMs));
-  }, [merged, maxNodeAgeHours, isAgeExempt]);
+    // #4899: repeaters and room servers (advType 2/3) get a SEPARATE, usually
+    // longer cutoff. They re-flood-advertise on a long, often multi-day
+    // interval and never send DMs, so a stale `lastHeard` doesn't mean the node
+    // left the mesh — aging them off the companion window just makes fixed
+    // infrastructure vanish while its DB row/position stay intact. A value of
+    // 0 means "never expire" (show regardless of age, like favorites).
+    const infraNever = maxInfraNodeAgeHours <= 0;
+    const infraCutoffMs = infraNever ? 0 : meshcoreAgeCutoffMs(maxInfraNodeAgeHours);
+    return merged.filter(r => {
+      if (isAgeExempt(r)) return true;
+      if (isMeshCoreInfrastructureAdvType(r.advType)) {
+        return infraNever || isWithinMeshcoreAge(r, infraCutoffMs);
+      }
+      return isWithinMeshcoreAge(r, cutoffMs);
+    });
+  }, [merged, maxNodeAgeHours, maxInfraNodeAgeHours, isAgeExempt]);
 
   const sorted = useMemo(
     () => sortRows(aged, sortField, sortDirection),
