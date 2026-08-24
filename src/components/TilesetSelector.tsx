@@ -10,6 +10,12 @@ import './TilesetSelector.css';
 interface TilesetSelectorProps {
   selectedTilesetId: TilesetId;
   onTilesetChange: (tilesetId: TilesetId) => void;
+  /**
+   * Render inline inside the unified map sidebar (#4909) instead of as a
+   * floating/draggable overlay: no drag wrapper, no mobile bottom-sheet, and
+   * the card grid reflows to fit the sidebar column width. Starts expanded.
+   */
+  embedded?: boolean;
 }
 
 // Default position: top-left, aligned with top of node list, shifted right past node list
@@ -22,12 +28,15 @@ const getDefaultPosition = () => ({
 
 export const TilesetSelector: React.FC<TilesetSelectorProps> = ({
   selectedTilesetId,
-  onTilesetChange
+  onTilesetChange,
+  embedded = false,
 }) => {
   const { t } = useTranslation();
   const { customTilesets, activeMapTilesetMode } = useSettings();
   const tilesets = getAllTilesets(customTilesets);
-  const [isCollapsed, setIsCollapsed] = useState(true);
+  // Floating overlay starts collapsed; embedded-in-sidebar starts expanded
+  // (the sidebar itself provides the outer collapse).
+  const [isCollapsed, setIsCollapsed] = useState(!embedded);
   const isMobile = useIsMobileViewport();
 
   const title =
@@ -81,6 +90,17 @@ export const TilesetSelector: React.FC<TilesetSelectorProps> = ({
       )}
     </div>
   );
+
+  // Embedded in the unified map sidebar (#4909): render the panel inline (the
+  // sidebar handles positioning + mobile full-screen), reflowed to fit the
+  // column. No drag overlay, no separate bottom-sheet.
+  if (embedded) {
+    return (
+      <div className="tileset-selector-wrapper tileset-selector-wrapper--embedded">
+        {panel}
+      </div>
+    );
+  }
 
   // Mobile: a full-width bottom sheet instead of the draggable overlay (#4380).
   // Dragging a floating panel around a phone screen is not useful, and the

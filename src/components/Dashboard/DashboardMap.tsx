@@ -1090,7 +1090,7 @@ export default function DashboardMap({
         {/* Hops legend + tileset picker now live in the same sidebar (#4909). */}
         {showLegend && <MapLegend />}
         {showTileSelector && (
-          <TilesetSelector selectedTilesetId={tilesetId} onTilesetChange={setMapTileset} />
+          <TilesetSelector selectedTilesetId={tilesetId} onTilesetChange={setMapTileset} embedded />
         )}
       </MapSidebar>
 
