@@ -152,6 +152,31 @@ function MapBoundsUpdater({ positions, sourceId, skip }: MapBoundsUpdaterProps) 
   return null;
 }
 
+/**
+ * One-tap "Zoom to fit" for the Dashboard / Unified map (#4898), mirroring the
+ * classic /nodes map (#4496). `MapBoundsUpdater` only auto-fits once on load
+ * (and not at all when a Default Map Center is set), so this gives an explicit
+ * re-frame that always works. `request` is a monotonic counter so repeated
+ * clicks re-fit even when the node set is unchanged.
+ */
+function FitAllNodesController({ request, positions }: { request: number; positions: Array<[number, number]> }) {
+  const map = useMap();
+  const lastHandled = useRef(0);
+
+  useEffect(() => {
+    if (request === 0 || request === lastHandled.current) return;
+    lastHandled.current = request;
+    if (positions.length === 0) return;
+    if (positions.length === 1) {
+      map.setView(positions[0], Math.max(map.getZoom(), 14), { animate: true });
+      return;
+    }
+    map.fitBounds(positions, { padding: [50, 50], animate: true, duration: 0.5, maxZoom: 15 });
+  }, [request, positions, map]);
+
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // DashboardMap
 // ---------------------------------------------------------------------------
@@ -224,6 +249,9 @@ export default function DashboardMap({
   const [isMapControlsCollapsed, setIsMapControlsCollapsed] = useState(
     () => localStorage.getItem('isMapControlsCollapsed') === 'true',
   );
+  // Monotonic counter driving the "Zoom to fit" button (#4898); each click
+  // increments it so a re-frame fires even when the node set is unchanged.
+  const [fitRequest, setFitRequest] = useState(0);
   useEffect(() => {
     localStorage.setItem('isMapControlsCollapsed', String(isMapControlsCollapsed));
   }, [isMapControlsCollapsed]);
@@ -749,6 +777,7 @@ export default function DashboardMap({
         )}
 
         <MapBoundsUpdater positions={nodePositions} sourceId={sourceId} skip={hasConfiguredDefaultCenter} />
+        <FitAllNodesController request={fitRequest} positions={nodePositions} />
 
         {showLegend && <MapLegend />}
 
@@ -837,6 +866,22 @@ export default function DashboardMap({
         <div className="map-controls-body">
           <div className="map-controls-header">
             <div className="map-controls-title">Features</div>
+            {/* Zoom to fit all nodes (#4898). In the header so it stays reachable
+                when the panel is collapsed — a one-tap re-frame. */}
+            <button
+              className="map-controls-fit-btn"
+              onClick={() => setFitRequest(n => n + 1)}
+              disabled={nodePositions.length === 0}
+              title={
+                nodePositions.length === 0
+                  ? 'No positioned nodes to zoom to'
+                  : `Zoom to fit all ${nodePositions.length} positioned nodes`
+              }
+              aria-label="Zoom to fit all nodes"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <UiIcon name="fitBounds" size={16} />
+            </button>
             <button
               className="map-controls-collapse-btn"
               onClick={() => setIsMapControlsCollapsed(!isMapControlsCollapsed)}
