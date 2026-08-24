@@ -70,7 +70,7 @@
     "jszip": "^3.10.1",
     "leaflet": "^1.9.4",
     "leaflet.heat": "^0.2.0",
-    "lucide-react": "^1.31.0",
+    "lucide-react": "^1.33.0",
     "maplibre-gl": "^6.4.1",
     "morgan": "^1.11.0",
     "mqtt": "^5.15.2",
