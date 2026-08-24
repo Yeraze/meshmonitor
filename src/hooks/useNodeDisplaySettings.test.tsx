@@ -17,6 +17,7 @@ import {
   NODE_DISPLAY_NUMERIC_DEFAULTS,
   NODE_DISPLAY_BOOLEAN_DEFAULTS,
   NODE_DISPLAY_STRING_DEFAULTS,
+  MAX_INFRA_NODE_AGE_HOURS_DEFAULT,
 } from '../constants/nodeDisplayDefaults';
 
 vi.mock('../services/api', () => ({
@@ -35,6 +36,7 @@ describe('parseNodeDisplaySettings', () => {
     const result = parseNodeDisplaySettings(undefined);
     expect(result).toEqual({
       maxNodeAgeHours: NODE_DISPLAY_NUMERIC_DEFAULTS.maxNodeAgeHours,
+      maxInfraNodeAgeHours: MAX_INFRA_NODE_AGE_HOURS_DEFAULT,
       inactiveNodeThresholdHours: NODE_DISPLAY_NUMERIC_DEFAULTS.inactiveNodeThresholdHours,
       inactiveNodeCheckIntervalMinutes:
         NODE_DISPLAY_NUMERIC_DEFAULTS.inactiveNodeCheckIntervalMinutes,
@@ -51,6 +53,7 @@ describe('parseNodeDisplaySettings', () => {
   it('parses stored string values through the shared parsers', () => {
     const result = parseNodeDisplaySettings({
       maxNodeAgeHours: '72',
+      maxInfraNodeAgeHours: '168',
       inactiveNodeThresholdHours: '48',
       inactiveNodeCheckIntervalMinutes: '30',
       inactiveNodeCooldownHours: '12',
@@ -63,6 +66,7 @@ describe('parseNodeDisplaySettings', () => {
     });
     expect(result).toEqual({
       maxNodeAgeHours: 72,
+      maxInfraNodeAgeHours: 168,
       inactiveNodeThresholdHours: 48,
       inactiveNodeCheckIntervalMinutes: 30,
       inactiveNodeCooldownHours: 12,

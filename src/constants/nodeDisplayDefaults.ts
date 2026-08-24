@@ -117,6 +117,39 @@ export function parseNodeDisplayNumber(
   return n;
 }
 
+/**
+ * Infrastructure age cutoff (#4899). A SECOND per-source age window, applied
+ * only to MeshCore repeaters and room servers (advType 2/3). Kept deliberately
+ * OUTSIDE the frozen ten-key Node Display seed (NODE_DISPLAY_SETTING_KEYS +
+ * migration 131) so those remain byte-identical — this is a later, standalone
+ * per-source setting that falls through to the default below when unstored
+ * (no seed migration needed; parity with the "no runtime global fallback"
+ * rule above).
+ *
+ * Default 720h = 30 days: repeaters re-flood-advertise on a long, often
+ * multi-day interval and never send DMs, so a stale `lastHeard` doesn't mean
+ * the node left the mesh. `0` = never expire (the escape hatch). Range allows
+ * up to a year so operators can pick anything between "same as companions"
+ * and "effectively forever".
+ */
+export const MAX_INFRA_NODE_AGE_HOURS_DEFAULT = 720;
+export const MAX_INFRA_NODE_AGE_HOURS_RANGE = { min: 0, max: 8760, integer: true } as const;
+
+/**
+ * Parse a stored `maxInfraNodeAgeHours` into a usable number. null/empty/NaN/
+ * out-of-range → the default. `0` is a valid stored value meaning "never
+ * expire" and is preserved (it is inside the [0, 8760] range).
+ */
+export function parseMaxInfraNodeAgeHours(raw: string | null | undefined): number {
+  if (raw === null || raw === undefined || raw === '') return MAX_INFRA_NODE_AGE_HOURS_DEFAULT;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return MAX_INFRA_NODE_AGE_HOURS_DEFAULT;
+  if (n < MAX_INFRA_NODE_AGE_HOURS_RANGE.min || n > MAX_INFRA_NODE_AGE_HOURS_RANGE.max) {
+    return MAX_INFRA_NODE_AGE_HOURS_DEFAULT;
+  }
+  return Math.trunc(n);
+}
+
 /** '1' | 'true' → true; '0' | 'false' → false; anything else → the default. */
 export function parseNodeDisplayBoolean(
   key: NodeDisplayBooleanKey,

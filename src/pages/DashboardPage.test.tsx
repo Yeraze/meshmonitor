@@ -30,6 +30,7 @@ const dashboardMapMocks = vi.hoisted(() => ({
 
 vi.mock('../hooks/useNodeDisplaySettings', () => ({
   useMaxNodeAgeHoursAcross: vi.fn(() => 24),
+  useMaxInfraNodeAgeHoursAcross: vi.fn(() => 720),
 }));
 
 vi.mock('../hooks/useDashboardData', () => ({

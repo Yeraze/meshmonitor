@@ -48,6 +48,7 @@ import { nodePassesTransportFilter } from '../../utils/nodeTransport';
 import { shouldDiscardPosition } from '../../utils/nullIsland';
 import { getDiscardInvalidPositions } from '../../utils/positionDisplayConfig';
 import { effectiveMapMaxAgeHours } from '../../utils/mapAge';
+import { isMeshCoreInfrastructureAdvType } from '../MeshCore/meshcoreRole';
 import { ageFilterStops, nearestAgeStopIndex, formatAgeStop } from '../../utils/mapAgeSteps';
 import { resolveMapEndpoint } from '../../utils/nodeHelpers';
 import api from '../../services/api';
@@ -90,6 +91,9 @@ export interface DashboardMapProps {
   sourceId: string | null;
   /** Hours since lastHeard to count a node as "active". Favorites bypass this gate. */
   maxNodeAgeHours: number;
+  /** #4899: separate (usually longer) window for MeshCore infrastructure
+   *  (repeaters/room servers, advType 2/3). `0` = never expire. */
+  maxInfraNodeAgeHours: number;
   /**
    * On the Unified map, called when a node popup's source row is clicked so the
    * page can navigate to that source's Node Details view for the node.
@@ -191,6 +195,7 @@ export default function DashboardMap({
   defaultCenter,
   sourceId,
   maxNodeAgeHours,
+  maxInfraNodeAgeHours,
   onNodeSourceSelect,
   isLoading = false,
 }: DashboardMapProps) {
@@ -302,6 +307,14 @@ export default function DashboardMap({
   // Effective map age cap from the Map Features age slider (#3322), clamped to
   // [1, maxNodeAgeHours]. null = follow the setting, so default is unchanged.
   const effectiveMaxAge = effectiveMapMaxAgeHours(mapMaxAgeHours, maxNodeAgeHours);
+  // #4899: MeshCore infrastructure (repeaters/room servers, advType 2/3) uses a
+  // separate, usually longer window so it doesn't vanish from the Dashboard map
+  // between its infrequent adverts. `0` = never expire. The Map Features age
+  // slider still narrows it when the operator explicitly sets one (an explicit
+  // "show younger than X" is meant to narrow every marker), but at its default
+  // (null → follow the setting) infra nodes get the full infra window.
+  const infraNever = maxInfraNodeAgeHours <= 0;
+  const effectiveInfraMaxAge = effectiveMapMaxAgeHours(mapMaxAgeHours, maxInfraNodeAgeHours);
 
   // GeoJSON overlay layers (global, file-based). Fetched here so the dashboard
   // map can render and toggle them, mirroring the per-source NodesTab map.
@@ -340,10 +353,22 @@ export default function DashboardMap({
   // reference instead of drifting per-node inside the marker map loop below.
   const nowMs = Date.now();
   const cutoffTime = nowMs / 1000 - effectiveMaxAge * 60 * 60;
+  const infraCutoffTime = nowMs / 1000 - effectiveInfraMaxAge * 60 * 60;
+  // #4899: per-node age gate — MeshCore infrastructure (advType 2/3) uses the
+  // infra window (or never expires when it's 0); everything else uses the
+  // companion window. Favorites bypass both, as before.
+  const passesAgeGate = (n: typeof nodes[number]): boolean => {
+    if (n.isFavorite) return true;
+    if (n.lastHeard == null) return false;
+    if (n.isMeshCore && isMeshCoreInfrastructureAdvType(n.advType)) {
+      return infraNever || n.lastHeard >= infraCutoffTime;
+    }
+    return n.lastHeard >= cutoffTime;
+  };
   const nodesWithTruePos = nodes
     .filter((n) => !n.isIgnored)
     .filter((n) => !n.hideFromMap) // #3549: per-node "Hide from Map" suppresses the marker only
-    .filter((n) => n.isFavorite || (n.lastHeard != null && n.lastHeard >= cutoffTime))
+    .filter(passesAgeGate)
     .filter((n) => nodePassesTransportFilter(n, { showRfNodes, showUdpNodes, showMqttNodes }, cutoffTime))
     .map((n) => ({ node: n, truePos: getNodeLatLng(n) }))
     .filter((e): e is { node: any; truePos: { lat: number; lng: number } } => e.truePos !== null);
@@ -374,19 +399,28 @@ export default function DashboardMap({
     // and pinning it to a dep-free `now` avoids re-setData churn (#4808).
     const now = Date.now();
     const cutoffMs = (now / 1000 - effectiveMaxAge * 60 * 60) * 1000;
-    return nodesWithPosition.map(({ node, pos }) => ({
-      key: unifiedNodeKey(node) ?? String(node.nodeNum ?? node.nodeId ?? node.user?.id),
-      lat: pos.lat,
-      lng: pos.lng,
-      label: node.shortName ?? node.user?.shortName ?? undefined,
-      // Match the 2D marker (#4808): hop color + glyph-family category + age dim.
-      color: getHopColor(node.hopsAway ?? 999),
-      category: categoryGlyphFamily(getNodeTypeCategory(node)),
-      opacity: node.isFavorite
+    const infraCutoffMs = (now / 1000 - effectiveInfraMaxAge * 60 * 60) * 1000;
+    return nodesWithPosition.map(({ node, pos }) => {
+      // #4899: dim infra survivors against the infra window (never fully faded
+      // when the window is "never"), so a shown-but-old repeater isn't rendered
+      // near-invisible on the globe.
+      const isInfra = node.isMeshCore && isMeshCoreInfrastructureAdvType(node.advType);
+      const lastHeardMs = node.lastHeard != null ? node.lastHeard * 1000 : null;
+      const opacity = node.isFavorite || (isInfra && infraNever)
         ? 1
-        : markerAgeOpacity(now, cutoffMs, node.lastHeard != null ? node.lastHeard * 1000 : null),
-    }));
-  }, [nodesWithPosition, effectiveMaxAge]);
+        : markerAgeOpacity(now, isInfra ? infraCutoffMs : cutoffMs, lastHeardMs);
+      return {
+        key: unifiedNodeKey(node) ?? String(node.nodeNum ?? node.nodeId ?? node.user?.id),
+        lat: pos.lat,
+        lng: pos.lng,
+        label: node.shortName ?? node.user?.shortName ?? undefined,
+        // Match the 2D marker (#4808): hop color + glyph-family category + age dim.
+        color: getHopColor(node.hopsAway ?? 999),
+        category: categoryGlyphFamily(getNodeTypeCategory(node)),
+        opacity,
+      };
+    });
+  }, [nodesWithPosition, effectiveMaxAge, effectiveInfraMaxAge, infraNever]);
 
   // Visible node numbers for gating the 3D neighbor/traceroute lines to the
   // rendered markers, matching 2D — also keeps a null-sourceId dashboard from

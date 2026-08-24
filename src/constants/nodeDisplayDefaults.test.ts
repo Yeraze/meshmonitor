@@ -18,6 +18,9 @@ import {
   NODE_DISPLAY_RANGES,
   parseNodeDisplayNumber,
   parseNodeDisplayBoolean,
+  MAX_INFRA_NODE_AGE_HOURS_DEFAULT,
+  MAX_INFRA_NODE_AGE_HOURS_RANGE,
+  parseMaxInfraNodeAgeHours,
 } from './nodeDisplayDefaults.js';
 import { NODE_DISPLAY_SEED } from '../server/migrations/131_seed_per_source_node_display.js';
 import {
@@ -149,5 +152,29 @@ describe('parseNodeDisplayBoolean', () => {
   it('both boolean defaults are false', () => {
     expect(NODE_DISPLAY_BOOLEAN_DEFAULTS.hideIncompleteNodes).toBe(false);
     expect(NODE_DISPLAY_BOOLEAN_DEFAULTS.nodeDimmingEnabled).toBe(false);
+  });
+});
+
+// #4899 — standalone Infrastructure age cutoff, kept OUT of the frozen ten.
+describe('maxInfraNodeAgeHours (#4899)', () => {
+  it('is NOT one of the frozen ten Node Display keys (decoupled from migration 131)', () => {
+    expect(NODE_DISPLAY_SETTING_KEYS as readonly string[]).not.toContain('maxInfraNodeAgeHours');
+  });
+
+  it('defaults to 720 (30 days) with a 0..8760 range where 0 = never', () => {
+    expect(MAX_INFRA_NODE_AGE_HOURS_DEFAULT).toBe(720);
+    expect(MAX_INFRA_NODE_AGE_HOURS_RANGE).toEqual({ min: 0, max: 8760, integer: true });
+  });
+
+  it('parses valid values, preserves 0 (never), and clamps invalid/out-of-range to the default', () => {
+    expect(parseMaxInfraNodeAgeHours('168')).toBe(168);
+    expect(parseMaxInfraNodeAgeHours('0')).toBe(0);            // never-expire, preserved
+    expect(parseMaxInfraNodeAgeHours('8760')).toBe(8760);      // max, inclusive
+    expect(parseMaxInfraNodeAgeHours(undefined)).toBe(720);
+    expect(parseMaxInfraNodeAgeHours('')).toBe(720);
+    expect(parseMaxInfraNodeAgeHours('garbage')).toBe(720);
+    expect(parseMaxInfraNodeAgeHours('-1')).toBe(720);         // below min → default
+    expect(parseMaxInfraNodeAgeHours('99999')).toBe(720);      // above max → default
+    expect(parseMaxInfraNodeAgeHours('48.9')).toBe(48);        // truncated to integer
   });
 });

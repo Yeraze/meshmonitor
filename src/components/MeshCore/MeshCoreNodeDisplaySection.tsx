@@ -9,6 +9,7 @@ import { useNodeDisplaySettings, nodeDisplaySettingsQueryKey } from '../../hooks
 import { writeNodeDisplayLocal } from '../../utils/nodeDisplayStorage';
 import {
   NODE_DISPLAY_RANGES,
+  MAX_INFRA_NODE_AGE_HOURS_RANGE,
   type NodeDisplaySettingKey,
 } from '../../constants/nodeDisplayDefaults';
 
@@ -37,7 +38,17 @@ const MESHCORE_NODE_DISPLAY_KEYS = [
   'inactiveNodeCooldownHours',
 ] as const satisfies readonly NodeDisplaySettingKey[];
 
-type MeshCoreNodeDisplayDraft = Record<typeof MESHCORE_NODE_DISPLAY_KEYS[number], number>;
+/**
+ * #4899: the Infrastructure age cutoff is a standalone per-source setting (NOT
+ * one of the frozen ten Node Display keys), so it rides alongside the four
+ * MeshCore keys in the draft and save body rather than in
+ * `MESHCORE_NODE_DISPLAY_KEYS`.
+ */
+type MeshCoreNodeDisplayDraft =
+  Record<typeof MESHCORE_NODE_DISPLAY_KEYS[number], number>
+  & { maxInfraNodeAgeHours: number };
+
+type MeshCoreNodeDisplayDraftKey = keyof MeshCoreNodeDisplayDraft;
 
 /**
  * MeshCore Node Display settings section (#4412 Phase 4 WP2).
@@ -67,11 +78,13 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
 
   const buildDraft = useCallback((): MeshCoreNodeDisplayDraft => ({
     maxNodeAgeHours: settings.maxNodeAgeHours,
+    maxInfraNodeAgeHours: settings.maxInfraNodeAgeHours,
     inactiveNodeThresholdHours: settings.inactiveNodeThresholdHours,
     inactiveNodeCheckIntervalMinutes: settings.inactiveNodeCheckIntervalMinutes,
     inactiveNodeCooldownHours: settings.inactiveNodeCooldownHours,
   }), [
     settings.maxNodeAgeHours,
+    settings.maxInfraNodeAgeHours,
     settings.inactiveNodeThresholdHours,
     settings.inactiveNodeCheckIntervalMinutes,
     settings.inactiveNodeCooldownHours,
@@ -91,10 +104,13 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
   }, [buildDraft]);
 
   useEffect(() => {
-    setHasChanges(MESHCORE_NODE_DISPLAY_KEYS.some((k) => draft[k] !== initial[k]));
+    setHasChanges(
+      MESHCORE_NODE_DISPLAY_KEYS.some((k) => draft[k] !== initial[k])
+      || draft.maxInfraNodeAgeHours !== initial.maxInfraNodeAgeHours,
+    );
   }, [draft, initial]);
 
-  const update = (key: typeof MESHCORE_NODE_DISPLAY_KEYS[number], value: number) => {
+  const update = (key: MeshCoreNodeDisplayDraftKey, value: number) => {
     // Clearing a number input yields `parseInt(...) === NaN` — fall back to
     // the current draft value rather than letting NaN reach state, where it
     // would render as the literal string "NaN" and serialize the same way
@@ -108,9 +124,11 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
       const res = await csrfFetch(`${baseUrl}/api/settings?sourceId=${encodeURIComponent(sourceId)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(Object.fromEntries(
-          MESHCORE_NODE_DISPLAY_KEYS.map((k) => [k, String(draft[k])]),
-        )),
+        body: JSON.stringify({
+          ...Object.fromEntries(MESHCORE_NODE_DISPLAY_KEYS.map((k) => [k, String(draft[k])])),
+          // #4899: standalone key, POSTed alongside the four frozen ones.
+          maxInfraNodeAgeHours: String(draft.maxInfraNodeAgeHours),
+        }),
       });
       if (!res.ok) {
         if (res.status === 403) {
@@ -151,6 +169,7 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
   });
 
   const maxNodeAgeRange = NODE_DISPLAY_RANGES.maxNodeAgeHours!;
+  const infraAgeRange = MAX_INFRA_NODE_AGE_HOURS_RANGE;
   const thresholdRange = NODE_DISPLAY_RANGES.inactiveNodeThresholdHours!;
   const checkIntervalRange = NODE_DISPLAY_RANGES.inactiveNodeCheckIntervalMinutes!;
   const cooldownRange = NODE_DISPLAY_RANGES.inactiveNodeCooldownHours!;
@@ -176,6 +195,28 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
           max={maxNodeAgeRange.max}
           value={draft.maxNodeAgeHours}
           onChange={(e) => update('maxNodeAgeHours', parseInt(e.target.value, 10))}
+          disabled={!canWrite}
+          className="setting-input"
+        />
+      </div>
+
+      <div className="setting-item">
+        <label htmlFor="maxInfraNodeAge">
+          {t('meshcore.settings.node_display.max_infra_age_label', 'Maximum Age of Infrastructure Nodes (hours)')}
+          <span className="setting-description">
+            {t(
+              'meshcore.settings.node_display.max_infra_age_description',
+              'A separate age window for Repeaters and Room Servers, which advertise infrequently (often days apart) and never send direct messages. Set higher than the companion window above so fixed infrastructure does not vanish from the Nodes list and map between adverts. Use 0 to never hide them.',
+            )}
+          </span>
+        </label>
+        <input
+          id="maxInfraNodeAge"
+          type="number"
+          min={infraAgeRange.min}
+          max={infraAgeRange.max}
+          value={draft.maxInfraNodeAgeHours}
+          onChange={(e) => update('maxInfraNodeAgeHours', parseInt(e.target.value, 10))}
           disabled={!canWrite}
           className="setting-input"
         />

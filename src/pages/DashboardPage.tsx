@@ -22,7 +22,7 @@ import {
   UNIFIED_SOURCE_ID,
 } from '../hooks/useDashboardData';
 import { useMeshCoreNeighbors } from '../hooks/useMapAnalysisData';
-import { useMaxNodeAgeHoursAcross } from '../hooks/useNodeDisplaySettings';
+import { useMaxNodeAgeHoursAcross, useMaxInfraNodeAgeHoursAcross } from '../hooks/useNodeDisplaySettings';
 import type { DashboardSource } from '../hooks/useDashboardData';
 import DashboardSidebar from '../components/Dashboard/DashboardSidebar';
 import DashboardMap from '../components/Dashboard/DashboardMap';
@@ -244,6 +244,9 @@ function DashboardInner() {
   // page would silently fall back to the hardcoded default (24h) since it
   // sits outside SettingsContext's per-source scoping.
   const maxNodeAgeHours = useMaxNodeAgeHoursAcross(sourceIds);
+  // #4899: cross-source Infrastructure window so MeshCore repeaters/room
+  // servers survive on the Dashboard map past the (shorter) companion window.
+  const maxInfraNodeAgeHours = useMaxInfraNodeAgeHoursAcross(sourceIds);
 
   // Apply admin-configured default landing page (issue #2917, expanded
   // for issue #3183 to allow cross-source unified pages). When the user
@@ -1122,6 +1125,7 @@ function DashboardInner() {
           defaultCenter={defaultCenter}
           sourceId={selectedSourceId}
           maxNodeAgeHours={maxNodeAgeHours}
+          maxInfraNodeAgeHours={maxInfraNodeAgeHours}
           onNodeSourceSelect={handleNodeSourceSelect}
           isLoading={sourceData.isLoading}
         />

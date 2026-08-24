@@ -8,6 +8,7 @@
  */
 export const VALID_SETTINGS_KEYS = [
   'maxNodeAgeHours',
+  'maxInfraNodeAgeHours', // #4899 — separate age window for MeshCore repeaters/room servers
   'tracerouteIntervalMinutes',
   'temperatureUnit',
   'distanceUnit',
@@ -497,6 +498,9 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   // the server reads to getSettingForSource(). `localStatsIntervalMinutes` is
   // already listed under "Misc per-source" below — do not duplicate it.
   'maxNodeAgeHours',
+  // #4899 — standalone per-source Infrastructure age cutoff (advType 2/3),
+  // NOT one of the frozen ten Node Display keys / migration-131 seed.
+  'maxInfraNodeAgeHours',
   'inactiveNodeThresholdHours',
   'inactiveNodeCheckIntervalMinutes',
   'inactiveNodeCooldownHours',
