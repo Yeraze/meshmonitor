@@ -35,6 +35,12 @@ interface MapLegendProps {
   /** Render the MeshCore node-type glyph legend (issue #3546). Opt-in so the
    *  Meshtastic maps that share this component are unaffected. */
   showNodeTypes?: boolean;
+  /**
+   * Render inline inside the unified map sidebar (#4909) instead of as a
+   * floating/draggable overlay: no drag wrapper, no mobile card, full column
+   * width, starts expanded (the sidebar provides the outer collapse).
+   */
+  embedded?: boolean;
 }
 
 // Default position: top-right, below the Features checkbox panel, right-aligned with it
@@ -45,11 +51,13 @@ const getDefaultPosition = () => ({
   y: 60 + 10 + 250 + 20 // header + features top + features height + gap = 340
 });
 
-const MapLegend: React.FC<MapLegendProps> = ({ positionHistory, unmappedCount, showNodeTypes }) => {
+const MapLegend: React.FC<MapLegendProps> = ({ positionHistory, unmappedCount, showNodeTypes, embedded = false }) => {
   const { t } = useTranslation();
   const { overlayColors } = useSettings();
   const isMobile = useIsMobileViewport();
   const [isCollapsed, setIsCollapsed] = useState(() => {
+    // Embedded in the sidebar: always start expanded (the sidebar collapses).
+    if (embedded) return false;
     const stored = localStorage.getItem('mapLegendCollapsed');
     if (stored !== null) return stored === 'true';
     // Desktop: expanded by default — the panel is draggable and sits clear of
@@ -239,6 +247,14 @@ const MapLegend: React.FC<MapLegendProps> = ({ positionHistory, unmappedCount, s
       {!isCollapsed && (isMobile ? <div className="legend-body">{legendBody}</div> : legendBody)}
     </div>
   );
+
+  // Embedded in the unified map sidebar (#4909): render inline, no drag
+  // overlay and no mobile card (the sidebar owns positioning + full-screen).
+  if (embedded) {
+    return (
+      <div className="map-legend-wrapper map-legend-wrapper--embedded">{panel}</div>
+    );
+  }
 
   // Mobile: a docked, tap-to-expand card instead of the draggable overlay
   // (#4389). `.map-legend-wrapper` used to be `display: none` here while the

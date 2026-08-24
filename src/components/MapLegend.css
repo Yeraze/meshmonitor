@@ -223,3 +223,17 @@
     max-width: 100%;
   }
 }
+
+/* Embedded in the unified map sidebar (#4909): inline, full column width,
+   no floating frame (the sidebar provides that). */
+.map-legend-wrapper--embedded {
+  position: static;
+  width: 100%;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+.map-legend-wrapper--embedded .map-legend {
+  width: 100%;
+  padding: 0;
+}
