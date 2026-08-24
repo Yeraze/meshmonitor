@@ -5,6 +5,7 @@ import { getTilesetById, DEFAULT_TILESET_ID, type TilesetId, type CustomTileset 
 import { VectorTileLayer } from '../VectorTileLayer';
 import { TilesetSelector } from '../TilesetSelector';
 import MapResizeHandler from '../MapResizeHandler';
+import { MapSidebar } from './MapSidebar';
 import './leafletDefaultIcon';
 import './BaseMap.css';
 
@@ -54,6 +55,16 @@ export interface BaseMapProps {
   /** Markers, draw handlers, overlays, useMap-based controllers. Rendered
    *  inside MapContainer, after the tile layer. */
   children?: ReactNode;
+
+  // ---- Unified controls sidebar (#4909) ----------------------------------
+  /** Map control panels (legend, feature toggles, tileset picker) to stack in
+   *  a single collapsible right-edge sidebar. Rendered as a sibling overlay
+   *  after MapContainer. Omit ⇒ no sidebar. */
+  sidebar?: ReactNode;
+  /** localStorage key for the sidebar's collapsed state (per surface). */
+  sidebarStorageKey?: string;
+  /** Sidebar header/accessible label. */
+  sidebarTitle?: string;
 }
 
 /**
@@ -106,6 +117,9 @@ export function BaseMap({
   resizeTrigger,
   mapRef,
   children,
+  sidebar,
+  sidebarStorageKey,
+  sidebarTitle,
 }: BaseMapProps) {
   const resolvedId = tilesetId ?? DEFAULT_TILESET_ID;
   const tileset = getTilesetById(resolvedId, customTilesets ?? []);
@@ -188,6 +202,11 @@ export function BaseMap({
           selectedTilesetId={resolvedId}
           onTilesetChange={onTilesetChange ?? (() => {})}
         />
+      )}
+      {sidebar && (
+        <MapSidebar storageKey={sidebarStorageKey} title={sidebarTitle}>
+          {sidebar}
+        </MapSidebar>
       )}
     </>
   );

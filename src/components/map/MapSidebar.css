@@ -1,0 +1,109 @@
+/* Unified map controls sidebar (#4909). Right-edge, collapsible, scrollable;
+   full-screen sheet on mobile. Absolutely positioned within the map wrapper
+   (each map pane is position:relative). */
+
+.map-sidebar {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  bottom: 10px;
+  z-index: 1000; /* above Leaflet panes (which top out ~700) */
+  width: 300px;
+  max-width: calc(100% - 20px);
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-hover);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+
+.map-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  background: var(--color-bg-raised, var(--color-surface));
+  border-bottom: 1px solid var(--color-surface-hover);
+  flex-shrink: 0;
+}
+
+.map-sidebar-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--color-text);
+}
+
+.map-sidebar-collapse-btn,
+.map-sidebar-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-surface-active);
+  color: var(--color-text);
+  border-radius: var(--radius-sm, 6px);
+  cursor: pointer;
+  padding: 0.25rem;
+  transition: background 0.15s, color 0.15s;
+}
+
+.map-sidebar-collapse-btn:hover,
+.map-sidebar-toggle:hover {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-text);
+}
+
+/* The collapsed affordance: a small floating button in the same corner. */
+.map-sidebar-toggle {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1000;
+  width: 34px;
+  height: 34px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+/* Scrollable stack of the control panels. Children (legend, features, tileset)
+   sit flush in the column, separated by a divider. */
+.map-sidebar-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.5rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Neutralize the absolute/floating positioning of legacy panels once they live
+   inside the sidebar column — they become normal stacked blocks. */
+.map-sidebar-body > * {
+  position: static !important;
+  inset: auto !important;
+  margin: 0 !important;
+  max-width: 100% !important;
+  box-shadow: none !important;
+}
+
+.map-sidebar-body > * + * {
+  border-top: 1px solid var(--color-surface-hover);
+  padding-top: 0.75rem;
+}
+
+/* Mobile: the open sidebar takes over the viewport as a full-screen sheet. */
+@media (max-width: 768px) {
+  .map-sidebar {
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    max-width: 100%;
+    border-radius: 0;
+    border: none;
+  }
+}
