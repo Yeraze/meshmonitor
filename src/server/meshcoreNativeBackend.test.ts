@@ -229,11 +229,25 @@ class MockConnection extends EventEmitter {
   public setContactPathCalls: Array<{ contact: any; path: Uint8Array }> = [];
   async setContactPath(contact: any, path: Uint8Array) {
     this.setContactPathCalls.push({ contact, path });
+    // Simulate a device that persists the write, so set_out_path's #4631
+    // read-back verification sees the stored path. Tests that want to model a
+    // lost ack / genuine reject override this method.
+    contact.outPathLen = path.length;
+    contact.outPath = new Uint8Array(64);
+    contact.outPath.set(path.subarray(0, 64));
   }
 
   public addOrUpdateContactCalls: Array<any[]> = [];
   async addOrUpdateContact(...args: any[]) {
     this.addOrUpdateContactCalls.push(args);
+    const [pk, , , outPathLen, outPath] = args;
+    const target = this.contactsResponse.find(
+      (ct: any) => ct.publicKey && Buffer.from(ct.publicKey).equals(Buffer.from(pk)),
+    );
+    if (target) {
+      if (typeof outPathLen === 'number') target.outPathLen = outPathLen;
+      if (outPath) target.outPath = outPath;
+    }
   }
 }
 
@@ -480,6 +494,78 @@ describe('MeshCoreNativeBackend', () => {
     expect(lastAdvert).toBe(42);
     expect(advLat).toBe(1);
     expect(advLon).toBe(2);
+  });
+
+  // #4631: set_out_path must trust the DEVICE read-back, not the tag-less
+  // Ok/Err ack that a concurrent command can cannibalise on a busy WiFi link.
+  describe('set_out_path read-back verification (#4631)', () => {
+    const KEY_HEX = 'abcdef' + '00'.repeat(29);
+    const KEY = Uint8Array.from([0xab, 0xcd, 0xef, ...new Array(29).fill(0)]);
+
+    async function makeBackendWithRepeater() {
+      const backend = new MeshCoreNativeBackend('src-1', {
+        connectionType: 'serial',
+        serialPort: '/dev/ttyUSB0',
+      });
+      await backend.connect();
+      const conn = lastInstanceRef.current as MockConnection;
+      conn.contactsResponse = [
+        { publicKey: KEY, type: AdvType.Repeater, flags: 0xa0, outPathLen: 0xff, outPath: new Uint8Array(64), advName: 'Rptr', lastAdvert: 42, advLat: 1, advLon: 2 },
+      ];
+      return { backend, conn };
+    }
+
+    // Simulate the device persisting the path (mutating the contact record the
+    // mock's getContacts hands back).
+    const storeOnContact = (contact: any, path: Uint8Array) => {
+      contact.outPathLen = path.length;
+      contact.outPath = new Uint8Array(64);
+      contact.outPath.set(path);
+    };
+
+    it('succeeds when the device stored the path AND the ack was clean', async () => {
+      const { backend, conn } = await makeBackendWithRepeater();
+      conn.setContactPath = async (contact: any, path: Uint8Array) => { storeOnContact(contact, path); };
+      const resp = await backend.sendCommand('set_out_path', { public_key: KEY_HEX, out_path: [0xa3, 0x7f], hash_bytes: 1 });
+      expect(resp.success).toBe(true);
+      expect(resp.data).toEqual(expect.objectContaining({ verified: true }));
+    });
+
+    it('succeeds when the write ack ERRORED but the device stored the path anyway (the #4631 bug)', async () => {
+      const { backend, conn } = await makeBackendWithRepeater();
+      // Device applied the write, but its Ok was lost / a foreign Err rejected
+      // the tag-less ack — the exact WiFi-companion failure. Read-back rescues it.
+      conn.setContactPath = async (contact: any, path: Uint8Array) => {
+        storeOnContact(contact, path);
+        throw new Error('Err');
+      };
+      const resp = await backend.sendCommand('set_out_path', { public_key: KEY_HEX, out_path: [0xa3, 0x7f], hash_bytes: 1 });
+      expect(resp.success).toBe(true);
+      expect(resp.data).toEqual(expect.objectContaining({ verified: true }));
+    });
+
+    it('fails honestly when the device did NOT store the path (genuine reject)', async () => {
+      const { backend, conn } = await makeBackendWithRepeater();
+      conn.setContactPath = async () => { throw new Error('Err'); }; // no store
+      const resp = await backend.sendCommand('set_out_path', { public_key: KEY_HEX, out_path: [0xa3, 0x7f], hash_bytes: 1 });
+      expect(resp.success).toBe(false);
+      expect(resp.error).toMatch(/not confirmed on device/i);
+    });
+
+    it('packs the length for a 2-byte hash width and verifies the stored value', async () => {
+      const { backend, conn } = await makeBackendWithRepeater();
+      // 2-byte hashes, 1 hop → packedLen = ((2-1)<<6) | 1 = 0x41. The mock stores
+      // exactly what addOrUpdateContact was handed.
+      conn.addOrUpdateContact = async (...args: any[]) => {
+        const [, , , outPathLen, outPath] = args;
+        const contact = conn.contactsResponse.find((ct: any) => Buffer.from(ct.publicKey).equals(Buffer.from(KEY)));
+        contact.outPathLen = outPathLen;
+        contact.outPath = outPath;
+      };
+      const resp = await backend.sendCommand('set_out_path', { public_key: KEY_HEX, out_path: [0xa3, 0x7f], hash_bytes: 2 });
+      expect(resp.success).toBe(true);
+      expect(resp.data).toEqual(expect.objectContaining({ verified: true }));
+    });
   });
 
   it('set_contact_favorite clears flags bit 0 while preserving the upper bits', async () => {

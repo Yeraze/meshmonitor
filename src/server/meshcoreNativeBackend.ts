@@ -1590,35 +1590,73 @@ export class MeshCoreNativeBackend extends EventEmitter {
         if (path.length % hashBytes !== 0) {
           throw new Error(`out_path length ${path.length} not a multiple of hash_bytes ${hashBytes}`);
         }
-        const contacts: any[] = await c.getContacts();
-        const contact = contacts.find((ct) => {
-          const hex = bytesToHex(ct.publicKey);
-          return hex === bytesToHex(publicKey);
+        // Expected stored `out_path_len` after the write. For hash_bytes===1
+        // the library writes a plain byte count, which equals the packed value
+        // (hash-size bits are 0). For 2/3-byte widths it's the packed encoding.
+        const hopCount = path.length / hashBytes;
+        const expectedLen = path.length === 0
+          ? 0
+          : hashBytes === 1
+            ? path.length
+            : (((hashBytes - 1) << 6) | (hopCount & 0x3f));
+
+        // #4631: CMD_ADD_UPDATE_CONTACT resolves on meshcore.js's tag-less,
+        // uncorrelated global `Ok`/`Err` ack. On a busy WiFi companion a
+        // concurrent command's `Err` cannibalises this write's ack and rejects
+        // it even though the device stored the path — the "always fails, path
+        // never set" symptom. So (a) serialize the whole read-modify-write on
+        // the shared-ack lock every other uncorrelated op uses, and (b) do NOT
+        // trust the ack: swallow a write rejection and confirm by re-reading the
+        // contact. The device's stored out_path is the ground truth — a genuine
+        // firmware reject leaves it empty and still surfaces as a failure.
+        const verified = await this.runExclusiveRadioOp(async () => {
+          const before = (await c.getContacts()) as RawDeviceContact[];
+          const contact = before.find((ct) => bytesToHex(ct.publicKey) === bytesToHex(publicKey));
+          if (!contact) throw new Error('Set-out-path target not in device contact list');
+
+          try {
+            if (hashBytes === 1) {
+              // Default width: keep the proven library path (its plain byte
+              // count == packed length when the hash-size bits are 0).
+              await c.setContactPath(contact, path);
+            } else {
+              // Multi-byte width: pack out_path_len ourselves.
+              const outPath = new Uint8Array(64);
+              outPath.set(path.subarray(0, Math.min(path.length, 64)));
+              await c.addOrUpdateContact(
+                contact.publicKey,
+                contact.type,
+                contact.flags,
+                expectedLen,
+                outPath,
+                contact.advName,
+                contact.lastAdvert,
+                contact.advLat,
+                contact.advLon,
+              );
+            }
+          } catch (writeErr) {
+            // The ack may have been a foreign `Err` (cannibalised) rather than a
+            // real device rejection — the read-back below is authoritative, so
+            // don't fail here.
+            logger.debug(
+              `[MeshCore] set_out_path write ack errored for ${bytesToHex(publicKey)} (${(writeErr as Error).message}); verifying via read-back`,
+            );
+          }
+
+          const after = (await c.getContacts()) as RawDeviceContact[];
+          const updated = after.find((ct) => bytesToHex(ct.publicKey) === bytesToHex(publicKey));
+          return !!updated
+            && updated.outPathLen === expectedLen
+            && bytesToHex(updated.outPath.subarray(0, path.length)) === bytesToHex(path);
         });
-        if (!contact) throw new Error('Set-out-path target not in device contact list');
-        if (hashBytes === 1) {
-          // Default width: keep the proven library path (its plain byte
-          // count == packed length when the hash-size bits are 0).
-          await c.setContactPath(contact, path);
-        } else {
-          // Multi-byte width: pack out_path_len ourselves.
-          const hopCount = path.length / hashBytes;
-          const packedLen = path.length === 0 ? 0 : (((hashBytes - 1) << 6) | (hopCount & 0x3f));
-          const outPath = new Uint8Array(64);
-          outPath.set(path.subarray(0, Math.min(path.length, 64)));
-          await c.addOrUpdateContact(
-            contact.publicKey,
-            contact.type,
-            contact.flags,
-            packedLen,
-            outPath,
-            contact.advName,
-            contact.lastAdvert,
-            contact.advLat,
-            contact.advLon,
-          );
+
+        if (!verified) {
+          // Read-back shows the device did not persist the path — a genuine
+          // failure (not a lost ack). Surfaced to the caller as a hard error.
+          throw new Error('set_out_path not confirmed on device: read-back shows the path was not stored');
         }
-        return { ok: true };
+        return { ok: true, verified: true };
       }
 
       case 'set_contact_favorite': {
