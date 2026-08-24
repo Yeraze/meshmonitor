@@ -4,14 +4,14 @@
   flex-direction: column;
   height: 100vh;
   height: 100dvh;
-  background: #111;
-  color: #eee;
+  background: var(--color-bg);
+  color: var(--color-text);
 }
 .map-analysis-toolbar {
   flex: 0 0 auto;
-  border-bottom: 1px solid #2a2a2a;
+  border-bottom: 1px solid var(--color-border-subtle);
   padding: 10px 16px;
-  background: #161616;
+  background: var(--color-bg-raised);
 }
 .map-analysis-body {
   flex: 1 1 auto;
@@ -40,9 +40,9 @@
   display: inline-block;
 }
 .map-analysis-pill {
-  background: #1e1e1e;
-  color: #eee;
-  border: 1px solid #3a3a3a;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
   border-radius: 999px;
   padding: 6px 14px;
   cursor: pointer;
@@ -51,15 +51,15 @@
   transition: background 0.12s, border-color 0.12s;
 }
 .map-analysis-pill:hover {
-  background: #262626;
-  border-color: #555;
+  background: var(--color-surface-hover);
+  border-color: var(--color-border-strong);
 }
 .map-analysis-source-popover {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  background: #1e1e1e;
-  border: 1px solid #3a3a3a;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 10px;
   min-width: 220px;
@@ -80,21 +80,21 @@
   font-size: 13px;
   user-select: none;
 }
-.map-analysis-source-row:hover { background: #262626; }
+.map-analysis-source-row:hover { background: var(--color-surface-hover); }
 .map-analysis-source-popover > button {
   align-self: flex-start;
   margin-top: 4px;
   background: transparent;
-  color: #aaa;
-  border: 1px solid #3a3a3a;
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
   padding: 4px 10px;
   border-radius: 4px;
   cursor: pointer;
   font-size: 12px;
 }
 .map-analysis-source-popover > button:hover {
-  color: #eee;
-  border-color: #555;
+  color: var(--color-text);
+  border-color: var(--color-border-strong);
 }
 
 /* ===== Layer toggle button ===== */
@@ -103,9 +103,9 @@
   display: inline-flex;
 }
 .map-analysis-layer-btn {
-  background: #1e1e1e;
-  color: #ddd;
-  border: 1px solid #3a3a3a;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
   padding: 6px 12px;
   cursor: pointer;
   font-size: 13px;
@@ -117,15 +117,15 @@
   /* When there's no chevron, full-rounded corners */
   border-radius: 6px;
 }
-.map-analysis-layer-btn:hover { background: #262626; border-color: #555; }
+.map-analysis-layer-btn:hover { background: var(--color-surface-hover); border-color: var(--color-border-strong); }
 .map-analysis-layer-btn.active {
-  background: #2563eb;
-  color: #fff;
-  border-color: #2563eb;
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+  border-color: var(--color-accent);
 }
 .map-analysis-layer-btn.active:hover {
-  background: #1d4ed8;
-  border-color: #1d4ed8;
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
 }
 /* Icon-only toolbar buttons (#4111 follow-up): the text label moves to the
    tooltip/aria-label, so center the icon and use a compact square-ish footprint
@@ -145,9 +145,9 @@
   display: block;
 }
 .map-analysis-layer-chevron {
-  background: #1e1e1e;
-  color: #aaa;
-  border: 1px solid #3a3a3a;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
   border-left: none;
   padding: 6px 8px;
   cursor: pointer;
@@ -155,13 +155,13 @@
   font-size: 12px;
   transition: background 0.12s, color 0.12s;
 }
-.map-analysis-layer-chevron:hover { background: #262626; color: #eee; }
+.map-analysis-layer-chevron:hover { background: var(--color-surface-hover); color: var(--color-text); }
 .map-analysis-layer-popover {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  background: #1e1e1e;
-  border: 1px solid #3a3a3a;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 10px;
   min-width: 140px;
@@ -172,7 +172,7 @@
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 .map-analysis-popover-label {
-  color: #888;
+  color: var(--color-text-subtle);
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -180,8 +180,8 @@
 }
 .map-analysis-layer-popover button {
   background: transparent;
-  color: #ddd;
-  border: 1px solid #3a3a3a;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
   padding: 5px 10px;
   cursor: pointer;
   border-radius: 4px;
@@ -190,13 +190,13 @@
   transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
 .map-analysis-layer-popover button:hover {
-  background: #262626;
-  border-color: #555;
+  background: var(--color-surface-hover);
+  border-color: var(--color-border-strong);
 }
 .map-analysis-layer-popover button.selected {
-  background: #2563eb;
-  border-color: #2563eb;
-  color: #fff;
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-text);
 }
 
 .map-analysis-layer-spinner {
@@ -204,21 +204,21 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #fbbf24;
+  background: var(--color-warning);
   margin-left: 8px;
   vertical-align: middle;
   animation: pulse 1s infinite;
 }
 @keyframes pulse { 50% { opacity: 0.35; } }
 .map-analysis-layer-btn-wrap.errored .map-analysis-layer-btn {
-  border-color: #ef4444;
+  border-color: var(--color-error);
 }
 
 /* ===== Reset button ===== */
 .map-analysis-reset {
   background: transparent;
-  color: #888;
-  border: 1px solid #333;
+  color: var(--color-text-subtle);
+  border: 1px solid var(--color-border-subtle);
   padding: 6px 12px;
   cursor: pointer;
   border-radius: 6px;
@@ -226,8 +226,8 @@
   transition: color 0.12s, border-color 0.12s;
 }
 .map-analysis-reset:hover {
-  color: #ddd;
-  border-color: #555;
+  color: var(--color-text);
+  border-color: var(--color-border-strong);
 }
 
 /* ===== Time slider ===== */
@@ -236,8 +236,8 @@
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
-  background: #1e1e1e;
-  border: 1px solid #3a3a3a;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 14px 18px;
   width: min(520px, calc(100vw - 24px));
@@ -245,7 +245,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  color: #eee;
+  color: var(--color-text);
   font-size: 12px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   box-sizing: border-box;
@@ -260,7 +260,7 @@
 .map-analysis-time-slider input[type="range"] { width: 100%; }
 .map-analysis-time-slider-label {
   text-align: center;
-  color: #aaa;
+  color: var(--color-text-muted);
 }
 
 /* ===== Progress bar ===== */
@@ -268,22 +268,22 @@
   flex: 1 1 80px;
   max-width: 200px;
   height: 6px;
-  background: #222;
+  background: var(--color-surface-inactive);
   border-radius: 3px;
   overflow: hidden;
   margin: 0 8px;
 }
 .map-analysis-progress > div {
   height: 100%;
-  background: #2563eb;
+  background: var(--color-accent);
   transition: width 0.2s;
 }
 
 /* ===== Inspector ===== */
 .map-analysis-inspector {
   flex: 0 0 340px;
-  border-left: 1px solid #2a2a2a;
-  background: #161616;
+  border-left: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-raised);
   overflow-y: auto;
   padding: 18px 20px;
   font-size: 13px;
@@ -302,7 +302,7 @@
   background: transparent;
   border: 1px solid transparent;
   border-radius: 4px;
-  color: #888;
+  color: var(--color-text-subtle);
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
@@ -311,19 +311,19 @@
 }
 .map-analysis-inspector-close:hover,
 .map-analysis-inspector-close:focus-visible {
-  background: #2a2a2a;
-  border-color: #3a3a3a;
-  color: #fff;
+  background: var(--color-border-subtle);
+  border-color: var(--color-border);
+  color: var(--color-text);
   outline: none;
 }
 .map-analysis-inspector-expand {
   flex: 0 0 auto;
   align-self: stretch;
   width: 22px;
-  background: #161616;
+  background: var(--color-bg-raised);
   border: none;
-  border-left: 1px solid #2a2a2a;
-  color: #888;
+  border-left: 1px solid var(--color-border-subtle);
+  color: var(--color-text-subtle);
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
@@ -335,12 +335,12 @@
 }
 .map-analysis-inspector-expand:hover,
 .map-analysis-inspector-expand:focus-visible {
-  background: #1e1e1e;
-  color: #fff;
+  background: var(--color-surface);
+  color: var(--color-text);
   outline: none;
 }
 .map-analysis-inspector .empty {
-  color: #666;
+  color: var(--color-text-faint);
   font-style: italic;
   text-align: center;
   margin-top: 24px;
@@ -348,19 +348,19 @@
 .map-analysis-inspector h3 {
   font-size: 18px;
   font-weight: 600;
-  color: #fff;
+  color: var(--color-text);
   margin: 0 0 4px;
   word-break: break-word;
 }
 .map-analysis-inspector .subtitle {
   font-size: 12px;
-  color: #888;
+  color: var(--color-text-subtle);
   margin-bottom: 14px;
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 .map-analysis-inspector hr {
   border: none;
-  border-top: 1px solid #2a2a2a;
+  border-top: 1px solid var(--color-border-subtle);
   margin: 12px 0;
 }
 .map-analysis-inspector dl {
@@ -370,14 +370,14 @@
   margin: 0;
 }
 .map-analysis-inspector dt {
-  color: #888;
+  color: var(--color-text-subtle);
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   align-self: center;
 }
 .map-analysis-inspector dd {
-  color: #ddd;
+  color: var(--color-text);
   margin: 0;
   word-break: break-word;
 }
@@ -389,9 +389,9 @@
   display: block;
   width: 100%;
   margin-top: 14px;
-  background: #1e3a8a;
-  color: #fff;
-  border: 1px solid #2563eb;
+  background: var(--color-accent-muted);
+  color: var(--color-accent-text);
+  border: 1px solid var(--color-accent);
   border-radius: 4px;
   padding: 8px 12px;
   font-size: 12px;
@@ -401,8 +401,8 @@
 }
 .map-analysis-link-profile-action:hover,
 .map-analysis-link-profile-action:focus-visible {
-  background: #2563eb;
-  border-color: #3b82f6;
+  background: var(--color-accent);
+  border-color: var(--color-accent);
   outline: none;
 }
 
@@ -413,9 +413,9 @@
   left: 50%;
   transform: translateX(-50%);
   z-index: 2000;
-  background: #2563eb;
-  color: #fff;
-  border: 1px solid #2563eb;
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+  border: 1px solid var(--color-accent);
   border-radius: 6px;
   padding: 6px 14px;
   font-size: 13px;
@@ -423,18 +423,18 @@
   cursor: pointer;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
 }
-.map-analysis-follow-resume:hover { background: #1d4ed8; border-color: #1d4ed8; }
+.map-analysis-follow-resume:hover { background: var(--color-accent-hover); border-color: var(--color-accent-hover); }
 
 /* ===== Legend ===== */
 .map-analysis-legend {
   position: absolute;
   bottom: 20px;
   left: 20px;
-  background: #1e1e1e;
-  border: 1px solid #3a3a3a;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   z-index: 1500;
-  color: #ddd;
+  color: var(--color-text);
   font-size: 12px;
   min-width: 180px;
   max-width: 240px;
@@ -446,24 +446,24 @@
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  border-bottom: 1px solid #2a2a2a;
+  border-bottom: 1px solid var(--color-border-subtle);
   font-weight: 600;
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #aaa;
+  color: var(--color-text-muted);
 }
 .map-analysis-legend.collapsed .map-analysis-legend-header { border-bottom: none; }
 .map-analysis-legend-header button {
   background: transparent;
-  color: #aaa;
+  color: var(--color-text-muted);
   border: none;
   cursor: pointer;
   font-size: 14px;
   padding: 0 4px;
   line-height: 1;
 }
-.map-analysis-legend-header button:hover { color: #fff; }
+.map-analysis-legend-header button:hover { color: var(--color-text); }
 .map-analysis-legend-body {
   padding: 10px 12px;
   display: flex;
@@ -479,17 +479,17 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #888;
+  color: var(--color-text-subtle);
 }
 .map-analysis-legend-body .row {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: #ddd;
+  color: var(--color-text);
 }
 .map-analysis-legend-body .row.caption {
-  color: #888;
+  color: var(--color-text-subtle);
   font-size: 11px;
   font-style: italic;
 }
@@ -498,7 +498,7 @@
   width: 14px;
   height: 14px;
   border-radius: 3px;
-  border: 1px solid #444;
+  border: 1px solid var(--color-border);
   flex: 0 0 auto;
 }
 .map-analysis-legend-bar {
@@ -506,7 +506,7 @@
   width: 100%;
   height: 10px;
   border-radius: 3px;
-  border: 1px solid #444;
+  border: 1px solid var(--color-border);
 }
 
 /* ===== Node search (issue #3399) ===== */
@@ -516,9 +516,9 @@
   align-items: center;
 }
 .map-analysis-node-search-input {
-  background: #1e1e1e;
-  color: #eee;
-  border: 1px solid #3a3a3a;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
   border-radius: 999px;
   padding: 6px 28px 6px 14px;
   font-size: 13px;
@@ -527,22 +527,22 @@
 }
 .map-analysis-node-search-input:focus {
   outline: none;
-  border-color: #2563eb;
+  border-color: var(--color-accent);
   width: 200px;
 }
-.map-analysis-node-search-input::placeholder { color: #777; }
+.map-analysis-node-search-input::placeholder { color: var(--color-text-faint); }
 .map-analysis-node-search-clear {
   position: absolute;
   right: 8px;
   background: transparent;
   border: none;
-  color: #888;
+  color: var(--color-text-subtle);
   font-size: 16px;
   line-height: 1;
   cursor: pointer;
   padding: 0;
 }
-.map-analysis-node-search-clear:hover { color: #fff; }
+.map-analysis-node-search-clear:hover { color: var(--color-text); }
 
 /* ===== Traceroute controls (issue #3399) ===== */
 .map-analysis-tr-controls {
@@ -553,8 +553,8 @@
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  background: #1e1e1e;
-  border: 1px solid #3a3a3a;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 12px;
   min-width: 200px;
@@ -566,45 +566,45 @@
 }
 .map-analysis-tr-seg {
   display: inline-flex;
-  border: 1px solid #3a3a3a;
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   overflow: hidden;
 }
 .map-analysis-tr-seg button {
   background: transparent;
-  color: #ddd;
+  color: var(--color-text);
   border: none;
-  border-right: 1px solid #3a3a3a;
+  border-right: 1px solid var(--color-border);
   padding: 5px 12px;
   cursor: pointer;
   font-size: 12px;
   transition: background 0.12s, color 0.12s;
 }
 .map-analysis-tr-seg button:last-child { border-right: none; }
-.map-analysis-tr-seg button:hover { background: #262626; }
+.map-analysis-tr-seg button:hover { background: var(--color-surface-hover); }
 .map-analysis-tr-seg button.selected {
-  background: #2563eb;
-  color: #fff;
+  background: var(--color-accent);
+  color: var(--color-accent-text);
 }
 .map-analysis-tr-check {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: #ddd;
+  color: var(--color-text);
   cursor: pointer;
   user-select: none;
 }
 .map-analysis-tr-num {
-  background: #161616;
-  color: #eee;
-  border: 1px solid #3a3a3a;
+  background: var(--color-bg-raised);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
   border-radius: 4px;
   padding: 4px 8px;
   font-size: 12px;
   width: 90px;
 }
-.map-analysis-tr-num:focus { outline: none; border-color: #2563eb; }
+.map-analysis-tr-num:focus { outline: none; border-color: var(--color-accent); }
 
 /* ===== Inspector: traceroute summary (issue #3399) ===== */
 .map-analysis-tr-summary-title {
@@ -612,15 +612,15 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #888;
+  color: var(--color-text-subtle);
   margin-bottom: 8px;
 }
 
 /* ===== Back to Sources ===== */
 .map-analysis-back {
   background: transparent;
-  color: #ddd;
-  border: 1px solid #3a3a3a;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
   padding: 6px 12px;
   cursor: pointer;
   border-radius: 6px;
@@ -629,9 +629,9 @@
   transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
 .map-analysis-back:hover {
-  background: #262626;
-  color: #fff;
-  border-color: #555;
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  border-color: var(--color-border-strong);
 }
 
 /* ===== Link Profile drawer (issue #4111 Phase 2, WP-B) ===== */
@@ -642,8 +642,8 @@
   bottom: 0;
   height: min(42vh, 340px);
   z-index: 1000;
-  background: #0f172a;
-  border-top: 1px solid #334155;
+  background: var(--color-bg-sunken);
+  border-top: 1px solid var(--color-border);
   display: flex;
   overflow: hidden;
   box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.45);
@@ -659,18 +659,18 @@
 .map-analysis-link-drawer-empty,
 .map-analysis-link-drawer-loading,
 .map-analysis-link-drawer-error {
-  color: #94a3b8;
+  color: var(--color-text-muted);
   font-size: 13px;
   text-align: center;
   padding: 0 24px;
 }
 .map-analysis-link-drawer-error {
-  color: #f87171;
+  color: var(--color-error);
 }
 .map-analysis-link-drawer-side {
   flex: 0 0 300px;
   width: 300px;
-  border-left: 1px solid #334155;
+  border-left: 1px solid var(--color-border);
   overflow-y: auto;
   padding: 10px 14px;
   display: flex;
@@ -685,14 +685,14 @@
 .map-analysis-link-drawer-title {
   font-size: 13px;
   font-weight: 600;
-  color: #e2e8f0;
+  color: var(--color-text);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 .map-analysis-link-drawer-close {
   background: transparent;
-  color: #94a3b8;
-  border: 1px solid #334155;
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   width: 24px;
   height: 24px;
@@ -701,12 +701,13 @@
   font-size: 12px;
 }
 .map-analysis-link-drawer-close:hover {
-  background: #1e293b;
-  color: #fff;
-  border-color: #475569;
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  border-color: var(--color-border-strong);
 }
 
-/* Verdict pill */
+/* Verdict pill — DATA colors (clear=green / marginal=amber / obstructed=red)
+   encode the link result and read the same in every theme; left hardcoded. */
 .link-verdict-pill {
   display: inline-block;
   padding: 4px 10px;
@@ -728,14 +729,15 @@
   font-size: 12px;
 }
 .map-analysis-link-drawer-statlist dt {
-  color: #94a3b8;
+  color: var(--color-text-muted);
 }
 .map-analysis-link-drawer-statlist dd {
   margin: 0;
-  color: #e2e8f0;
+  color: var(--color-text);
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+/* DATA: positive/negative link-budget margin — semantic red/green, left hardcoded. */
 .link-margin-positive { color: #22c55e; }
 .link-margin-negative { color: #ef4444; }
 
@@ -744,7 +746,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  border-top: 1px solid #334155;
+  border-top: 1px solid var(--color-border);
   padding-top: 10px;
 }
 .map-analysis-link-drawer-form label {
@@ -753,7 +755,7 @@
   justify-content: space-between;
   gap: 8px;
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--color-text-muted);
 }
 .map-analysis-link-drawer-form input.map-analysis-tr-num {
   width: 90px;
@@ -763,14 +765,15 @@
    input, only while the auto-seeded value hasn't been manually overridden. */
 .link-profile-provenance {
   font-size: 10px;
-  color: #64748b;
+  color: var(--color-text-faint);
   text-align: right;
   margin-top: -4px;
 }
 
 /* ===== 3D vector-basemap fallback note (#3826 Phase 2 WP-D) ===== */
 /* Non-blocking: sits above the 3D canvas but never intercepts pointer
-   events, so pan/rotate/zoom under it are unaffected. */
+   events, so pan/rotate/zoom under it are unaffected. Deliberate translucent
+   dark scrim over the map (theme-independent), so its text stays light. */
 .map-analysis-3d-fallback-note {
   position: absolute;
   top: 16px;
