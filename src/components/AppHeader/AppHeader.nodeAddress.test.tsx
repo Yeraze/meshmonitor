@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { AppHeader } from './AppHeader';
 import type { AuthStatus } from '../../contexts/AuthContext';
 
@@ -32,8 +32,6 @@ function baseProps(overrides: Partial<React.ComponentProps<typeof AppHeader>> = 
     webSocketConnected: false,
     hasPermission: () => false,
     onFetchSystemStatus: vi.fn(),
-    onDisconnect: vi.fn(),
-    onReconnect: vi.fn(),
     onShowLoginModal: vi.fn(),
     onLogout: vi.fn(),
     ...overrides,
@@ -81,5 +79,30 @@ describe('AppHeader — node identity hidden from unauthenticated users (#3729)'
       authStatus: { authenticated: true } as AuthStatus,
     })} />);
     expect(screen.getByText(/Test Node/)).toBeInTheDocument();
+  });
+});
+
+describe('AppHeader — source name is the clickable node-info entry (#4908)', () => {
+  it('shows only the source name (clickable), hiding the duplicate node-address box', () => {
+    const onNodeClick = vi.fn();
+    render(<AppHeader {...baseProps({
+      sourceName: 'Station G2',
+      deviceInfo: { localNodeInfo: { nodeId: '!a2e4ff4c', longName: 'Yeraze StationG2', shortName: 'Yrze' } },
+      authStatus: { authenticated: true } as AuthStatus,
+      onNodeClick,
+    })} />);
+    // Clicking the source name opens the node-info popup.
+    fireEvent.click(screen.getByText('Station G2'));
+    expect(onNodeClick).toHaveBeenCalledTimes(1);
+    // The redundant node identity box is not rendered alongside it.
+    expect(screen.queryByText(/Yeraze StationG2/)).toBeNull();
+  });
+
+  it('falls back to the node identity box when the source has no name', () => {
+    render(<AppHeader {...baseProps({
+      deviceInfo: { localNodeInfo: { nodeId: '!a2e4ff4c', longName: 'Yeraze StationG2', shortName: 'Yrze' } },
+      authStatus: { authenticated: true } as AuthStatus,
+    })} />);
+    expect(screen.getByText(/Yeraze StationG2/)).toBeTruthy();
   });
 });

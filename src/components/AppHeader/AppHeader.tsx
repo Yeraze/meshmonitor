@@ -108,6 +108,10 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
     return <span className="node-address">{nodeAddress}</span>;
   };
 
+  // Whether the source name / node identity opens the node-info popup (#4908):
+  // needs a handler, and honors the same auth/mqtt gate the node box used.
+  const canOpenNodeInfo = !!onNodeClick && !mqttReadOnly && !!authStatus?.authenticated;
+
   return (
     <header className="app-header">
       <div className="header-left">
@@ -123,11 +127,25 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         <div className="header-title">
           <img src={`${baseUrl}/logo.png`} alt="MeshMonitor Logo" className="header-logo" />
           <h1>MeshMonitor</h1>
+          {/* Show only the source name (#4908) — clickable to open the node-info
+              popup, which now carries the full node identity that used to be
+              duplicated in a separate gray box beside it. */}
           {sourceName && (
-            <span className="header-source-name">{sourceName}</span>
+            <span
+              className={`header-source-name${canOpenNodeInfo ? ' clickable' : ''}`}
+              title={canOpenNodeInfo ? t('header.clickForNodeInfo') : undefined}
+              style={{ cursor: canOpenNodeInfo ? 'pointer' : 'default' }}
+              onClick={canOpenNodeInfo ? onNodeClick : undefined}
+            >
+              {sourceName}
+            </span>
           )}
         </div>
-        {!mqttReadOnly && authStatus?.authenticated && <div className="node-info">{renderNodeInfo()}</div>}
+        {/* Fallback: when the source has no name, keep the node identity visible
+            (still clickable to the popup) so the header isn't blank (#4908). */}
+        {!sourceName && !mqttReadOnly && authStatus?.authenticated && (
+          <div className="node-info">{renderNodeInfo()}</div>
+        )}
       </div>
       <div className="header-right">
         <div className="connection-status-container">
