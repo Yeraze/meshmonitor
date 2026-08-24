@@ -21,6 +21,16 @@
   font-size: 1rem;
 }
 
+/* Connection control moved into this modal from the header (#4908). */
+.status-connection-control {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-surface-hover);
+}
+
 /* Responsive adjustments */
 @media (max-width: 600px) {
   .status-grid {
