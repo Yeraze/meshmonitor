@@ -1,5 +1,6 @@
-/* Grouped toolbar dropdown menu (#4871). Colors match the dark-only
-   Map Analysis workspace palette in src/styles/map-analysis.css. */
+/* Grouped toolbar dropdown menu (#4871). Uses the shared semantic --color-*
+   theme tokens so it follows the active theme (light/dark), same as
+   src/styles/map-analysis.css (#4911). */
 
 .wrap {
   position: relative;
@@ -10,9 +11,9 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: #1e1e1e;
-  color: #ddd;
-  border: 1px solid #3a3a3a;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
   border-radius: 999px;
   padding: 6px 12px;
   cursor: pointer;
@@ -21,12 +22,12 @@
   transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
 .trigger:hover {
-  background: #262626;
-  border-color: #555;
+  background: var(--color-surface-hover);
+  border-color: var(--color-border-strong);
 }
 .trigger.active {
-  border-color: #2563eb;
-  color: #fff;
+  border-color: var(--color-accent);
+  color: var(--color-text);
 }
 
 .icon {
@@ -47,8 +48,8 @@
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
-  background: #2563eb;
-  color: #fff;
+  background: var(--color-accent);
+  color: var(--color-accent-text);
   border-radius: 999px;
   font-size: 11px;
   font-weight: 600;
@@ -59,8 +60,8 @@
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  background: #1e1e1e;
-  border: 1px solid #3a3a3a;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 6px;
   min-width: 240px;
@@ -80,7 +81,7 @@
   border-radius: 6px;
   cursor: pointer;
   font-size: 13px;
-  color: #ddd;
+  color: var(--color-text);
   background: transparent;
   border: none;
   text-align: left;
@@ -88,10 +89,10 @@
   user-select: none;
 }
 .item:hover {
-  background: #262626;
+  background: var(--color-surface-hover);
 }
 .itemActive {
-  color: #fff;
+  color: var(--color-text);
 }
 .itemDisabled {
   opacity: 0.45;
@@ -119,13 +120,13 @@
   justify-content: center;
   width: 16px;
   flex: 0 0 auto;
-  color: #3b82f6;
+  color: var(--color-accent);
 }
 
 .lookback {
-  background: #161616;
-  color: #ddd;
-  border: 1px solid #3a3a3a;
+  background: var(--color-bg-raised);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   padding: 2px 4px;
   font-size: 12px;
@@ -135,8 +136,8 @@
 .spinner {
   width: 12px;
   height: 12px;
-  border: 2px solid rgba(255, 255, 255, 0.25);
-  border-top-color: #fff;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-text);
   border-radius: 50%;
   animation: toolbar-menu-spin 0.7s linear infinite;
   flex: 0 0 auto;
