@@ -3302,8 +3302,6 @@ function App() {
         webSocketConnected={webSocketConnected}
         hasPermission={hasPermission}
         onFetchSystemStatus={fetchSystemStatus}
-        onDisconnect={handleDisconnect}
-        onReconnect={handleReconnect}
         onShowLoginModal={() => setShowLoginModal(true)}
         onLogout={() => setActiveTab('nodes')}
         onNodeClick={handleNodeClick}
@@ -3888,6 +3886,10 @@ function App() {
         isOpen={showStatusModal}
         systemStatus={systemStatus}
         onClose={() => setShowStatusModal(false)}
+        connectionStatus={connectionStatus}
+        canManageConnection={hasPermission('connection', 'write')}
+        onDisconnect={handleDisconnect}
+        onReconnect={handleReconnect}
       />
 
       {/* Message Search Modal */}

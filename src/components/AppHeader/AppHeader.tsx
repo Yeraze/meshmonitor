@@ -23,8 +23,6 @@ interface AppHeaderProps {
   webSocketConnected: boolean;
   hasPermission: (resource: ResourceType, action: 'read' | 'write') => boolean;
   onFetchSystemStatus: () => void;
-  onDisconnect: () => void;
-  onReconnect: () => void;
   onShowLoginModal: () => void;
   onLogout: () => void;
   onNodeClick?: () => void;
@@ -49,10 +47,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   authStatus,
   connectionStatus,
   webSocketConnected,
-  hasPermission,
   onFetchSystemStatus,
-  onDisconnect,
-  onReconnect,
   onShowLoginModal,
   onLogout,
   onNodeClick,
@@ -154,18 +149,8 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
               <UiIcon name={webSocketConnected ? 'zap' : 'refresh'} size={15} />
             </span>
           </div>
-
-          {hasPermission('connection', 'write') && connectionStatus === 'connected' && (
-            <button onClick={onDisconnect} className="connection-control-btn" title={t('header.disconnectTitle')}>
-              {t('header.disconnect')}
-            </button>
-          )}
-
-          {hasPermission('connection', 'write') && connectionStatus === 'user-disconnected' && (
-            <button onClick={onReconnect} className="connection-control-btn reconnect" title={t('header.connectTitle')}>
-              {t('header.connect')}
-            </button>
-          )}
+          {/* Disconnect/Reconnect moved into the System Status popup that this
+              status indicator opens (#4908). */}
         </div>
         {authStatus?.authenticated ? (
           <UserMenu onLogout={onLogout} />

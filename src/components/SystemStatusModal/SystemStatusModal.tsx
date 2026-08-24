@@ -8,16 +8,33 @@ interface SystemStatusModalProps {
   isOpen: boolean;
   systemStatus: SystemStatus | null;
   onClose: () => void;
+  /** Current connection state — gates the disconnect/reconnect control (#4908). */
+  connectionStatus?: string;
+  /** Whether the viewer may manage the connection (connection:write). */
+  canManageConnection?: boolean;
+  /** Disconnect the current source (moved here from the header, #4908). */
+  onDisconnect?: () => void;
+  /** Reconnect after a user disconnect. */
+  onReconnect?: () => void;
 }
 
 export const SystemStatusModal: React.FC<SystemStatusModalProps> = ({
   isOpen,
   systemStatus,
   onClose,
+  connectionStatus,
+  canManageConnection = false,
+  onDisconnect,
+  onReconnect,
 }) => {
   const { t } = useTranslation();
 
   if (!systemStatus) return null;
+
+  // Connection control lives in this popup now (opened by clicking the header
+  // status indicator) instead of a standalone header button (#4908).
+  const canDisconnect = canManageConnection && connectionStatus === 'connected';
+  const canReconnect = canManageConnection && connectionStatus === 'user-disconnected';
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={t('system_status.title', 'System Status')}>
@@ -65,6 +82,30 @@ export const SystemStatusModal: React.FC<SystemStatusModalProps> = ({
           </div>
         )}
       </div>
+      {(canDisconnect || canReconnect) && (
+        <div className="status-connection-control">
+          {canDisconnect && (
+            <button
+              type="button"
+              className="connection-control-btn"
+              onClick={() => { onDisconnect?.(); onClose(); }}
+              title={t('header.disconnectTitle')}
+            >
+              {t('header.disconnect')}
+            </button>
+          )}
+          {canReconnect && (
+            <button
+              type="button"
+              className="connection-control-btn reconnect"
+              onClick={() => { onReconnect?.(); onClose(); }}
+              title={t('header.connectTitle')}
+            >
+              {t('header.connect')}
+            </button>
+          )}
+        </div>
+      )}
     </Modal>
   );
 };
