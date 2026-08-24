@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { UiIcon } from '../icons';
+import { useIsMobileViewport } from '../../hooks/useIsMobileViewport';
 import './MapSidebar.css';
 
 /**
@@ -30,12 +31,17 @@ export function MapSidebar({
   storageKey = 'mm-map-sidebar-collapsed',
   title = 'Map controls',
 }: MapSidebarProps) {
+  const isMobile = useIsMobileViewport();
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     try {
-      return localStorage.getItem(storageKey) === 'true';
+      const stored = localStorage.getItem(storageKey);
+      if (stored !== null) return stored === 'true';
     } catch {
-      return false;
+      /* storage unavailable — fall through to the viewport default */
     }
+    // No saved preference: mobile starts collapsed (the open panel is a
+    // full-screen sheet over the map), desktop starts expanded (#4909).
+    return isMobile;
   });
 
   const toggle = () =>
