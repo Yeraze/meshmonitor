@@ -24,7 +24,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 0.5rem 0.75rem;
-  background: var(--color-bg-raised, var(--color-surface));
+  background: var(--color-bg-raised);
   border-bottom: 1px solid var(--color-surface-hover);
   flex-shrink: 0;
 }
