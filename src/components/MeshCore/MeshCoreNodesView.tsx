@@ -294,13 +294,23 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
 
   const merged = useMemo(() => mergeNodesAndContacts(nodes, contacts), [nodes, contacts]);
 
-  /** Favorites and the operator's own node are never hidden by the age cutoff
-   *  (parity with useProcessedNodes.ts:194 + #4412 Phase 4 spec §2 D6). Uses
-   *  the `isLocal` flag (#4438), not a name/advName substring match — the
-   *  `(local)` suffix stays as display text, but is no longer the predicate,
-   *  so a stranger who names their device `Foo (local)` is not exempted. */
+  /** Favorites, the operator's own node, and static infrastructure (repeaters
+   *  and room servers, advType 2/3 — see meshcoreRole.ts) are never hidden by
+   *  the age cutoff (parity with useProcessedNodes.ts:194 + #4412 Phase 4 spec
+   *  §2 D6). Uses the `isLocal` flag (#4438), not a name/advName substring
+   *  match — the `(local)` suffix stays as display text, but is no longer the
+   *  predicate, so a stranger who names their device `Foo (local)` is not
+   *  exempted.
+   *
+   *  Repeaters/room servers only re-flood-advertise on a long interval
+   *  (frequently well over 24h, sometimes disabled entirely) and never send
+   *  DMs, so their `lastHeard` can go stale for reasons unrelated to whether
+   *  the node is still part of the mesh. Unlike mobile companion nodes,
+   *  they're fixed infrastructure — aging them off the map has no benefit
+   *  and just makes them vanish while their DB row/position stay intact and
+   *  they remain visible in Messages (#4899). */
   const isAgeExempt = useCallback((r: MergedRow): boolean =>
-    r.isFavorite || r.isLocal, []);
+    r.isFavorite || r.isLocal || r.advType === 2 || r.advType === 3, []);
 
   const aged = useMemo(() => {
     // Date.now() is read inside the memo, so the cutoff refreshes on every

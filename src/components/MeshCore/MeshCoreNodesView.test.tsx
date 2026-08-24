@@ -284,6 +284,8 @@ describe('MeshCoreNodesView — per-source age filter (#4412 Phase 4)', () => {
   const PK_NO_TIMESTAMP_CONTACT = '4'.repeat(64);
   const PK_ADVERT_ONLY = '5'.repeat(64);
   const PK_ZERO_LAST_HEARD = '6'.repeat(64);
+  const PK_OLD_REPEATER = '7'.repeat(64);
+  const PK_OLD_ROOM_SERVER = '8'.repeat(64);
 
   it('lists a node within the cutoff and excludes one outside it', () => {
     const testNodes: MeshCoreNode[] = [
@@ -330,6 +332,25 @@ describe('MeshCoreNodesView — per-source age filter (#4412 Phase 4)', () => {
     ];
     render(<MeshCoreNodesView nodes={[]} contacts={testContacts} />);
     expect(listedNames()).toEqual([]);
+  });
+
+  it('bypasses the cutoff for a repeater (advType 2), a static infrastructure node (#4899)', () => {
+    // Repeaters only re-flood-advertise on a long, often multi-day interval
+    // and never send DMs, so a stale lastHeard doesn't mean the node left
+    // the mesh — it should stay listed and on the map regardless of age.
+    const testNodes: MeshCoreNode[] = [
+      { publicKey: PK_OLD_REPEATER, name: 'OldRepeater', advType: 2, lastHeard: NOW - 72 * HOUR_MS },
+    ];
+    render(<MeshCoreNodesView nodes={testNodes} contacts={[]} />);
+    expect(listedNames()).toEqual(['OldRepeater']);
+  });
+
+  it('bypasses the cutoff for a room server (advType 3), a static infrastructure node (#4899)', () => {
+    const testNodes: MeshCoreNode[] = [
+      { publicKey: PK_OLD_ROOM_SERVER, name: 'OldRoomServer', advType: 3, lastHeard: NOW - 72 * HOUR_MS },
+    ];
+    render(<MeshCoreNodesView nodes={testNodes} contacts={[]} />);
+    expect(listedNames()).toEqual(['OldRoomServer']);
   });
 
   it('excludes rows with no resolvable timestamp', () => {
