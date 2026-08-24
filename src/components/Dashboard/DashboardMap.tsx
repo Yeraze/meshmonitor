@@ -54,6 +54,7 @@ import { resolveMapEndpoint } from '../../utils/nodeHelpers';
 import api from '../../services/api';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { BaseMap } from '../map/BaseMap';
+import { MapSidebar } from '../map/MapSidebar';
 import { Map3DView } from '../map/Map3DView';
 import type { Node3DFeature } from '../map/Base3DMap';
 import { TilesetSelector } from '../TilesetSelector';
@@ -251,15 +252,10 @@ export default function DashboardMap({
   // Collapse the Features panel — shares the NodesTab map's localStorage key
   // so the preference is unified across every map surface (issue #3912: on
   // mobile the panel's full checkbox list has no way to be dismissed).
-  const [isMapControlsCollapsed, setIsMapControlsCollapsed] = useState(
-    () => localStorage.getItem('isMapControlsCollapsed') === 'true',
-  );
+  // Collapse state now lives in MapSidebar (its own persisted toggle, #4909).
   // Monotonic counter driving the "Zoom to fit" button (#4898); each click
   // increments it so a re-frame fires even when the node set is unchanged.
   const [fitRequest, setFitRequest] = useState(0);
-  useEffect(() => {
-    localStorage.setItem('isMapControlsCollapsed', String(isMapControlsCollapsed));
-  }, [isMapControlsCollapsed]);
 
   // #3636: node-to-node LOS distance measurement tool.
   const [measureActive, setMeasureActive] = useState(false);
@@ -787,9 +783,6 @@ export default function DashboardMap({
             }}
             onUnsupported={() => setViewMode('2d')}
           />
-          {showTileSelector && (
-            <TilesetSelector selectedTilesetId={tilesetId} onTilesetChange={setMapTileset} />
-          )}
         </>
       ) : (
       <BaseMap
@@ -799,8 +792,6 @@ export default function DashboardMap({
         customTilesets={customTilesets}
         styleJson={activeStyleJson ?? undefined}
         zoomControl
-        showTilesetSelector={showTileSelector}
-        onTilesetChange={setMapTileset}
       >
         {measureActive && (
           <MeasureDistanceController
@@ -812,8 +803,6 @@ export default function DashboardMap({
 
         <MapBoundsUpdater positions={nodePositions} sourceId={sourceId} skip={hasConfiguredDefaultCenter} />
         <FitAllNodesController request={fitRequest} positions={nodePositions} />
-
-        {showLegend && <MapLegend />}
 
         {geoJsonLayers.length > 0 && <GeoJsonOverlay layers={geoJsonLayers} />}
 
@@ -894,9 +883,10 @@ export default function DashboardMap({
         </div>
       )}
 
-      {/* Map Features control panel — mirrors NodesTab's "Features" panel but
-          trimmed to the toggles meaningful on a cross-source map. */}
-      <div className={`map-controls dashboard-map-controls ${isMapControlsCollapsed ? 'collapsed' : ''}`}>
+      {/* Unified map controls sidebar (#4909): Features toggles + Hops legend +
+          tileset picker in one collapsible right-edge panel (full-screen on
+          mobile) instead of independently-floating, overlapping panels. */}
+      <MapSidebar storageKey="mm-dashboard-map-sidebar" title="Map controls">
         <div className="map-controls-body">
           <div className="map-controls-header">
             <div className="map-controls-title">Features</div>
@@ -916,15 +906,7 @@ export default function DashboardMap({
             >
               <UiIcon name="fitBounds" size={16} />
             </button>
-            <button
-              className="map-controls-collapse-btn"
-              onClick={() => setIsMapControlsCollapsed(!isMapControlsCollapsed)}
-              title={isMapControlsCollapsed ? 'Expand controls' : 'Collapse controls'}
-            >
-              <UiIcon name={isMapControlsCollapsed ? 'chevronDown' : 'chevronUp'} size={16} />
-            </button>
           </div>
-          {!isMapControlsCollapsed && (
           <>
           {/* #3636: node-to-node LOS distance measurement toggle. Needs at least
               two positioned nodes to be meaningful. */}
@@ -1104,9 +1086,13 @@ export default function DashboardMap({
             </label>
           ))}
           </>
-          )}
         </div>
-      </div>
+        {/* Hops legend + tileset picker now live in the same sidebar (#4909). */}
+        {showLegend && <MapLegend embedded />}
+        {showTileSelector && (
+          <TilesetSelector selectedTilesetId={tilesetId} onTilesetChange={setMapTileset} embedded />
+        )}
+      </MapSidebar>
 
       {isLoading && <MapLoadingOverlay />}
 

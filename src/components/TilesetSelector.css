@@ -209,3 +209,30 @@
     max-width: 70px;
   }
 }
+
+/* Embedded in the unified map sidebar (#4909): fit the column, drop the
+   floating panel's own frame (the sidebar provides that). */
+.tileset-selector-wrapper--embedded {
+  position: static;
+  width: 100%;
+}
+.tileset-selector-wrapper--embedded .tileset-selector {
+  width: 100%;
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+.tileset-selector-wrapper--embedded .tileset-buttons {
+  grid-template-columns: repeat(2, 1fr);
+}
+.tileset-selector-wrapper--embedded .tileset-button {
+  min-width: 0;
+}
+.tileset-selector-wrapper--embedded .tileset-preview {
+  width: 100%;
+  height: 48px;
+}
+.tileset-selector-wrapper--embedded .tileset-name {
+  max-width: 100%;
+}
