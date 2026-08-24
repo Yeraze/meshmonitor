@@ -147,7 +147,7 @@
     "gray-matter": "^4.0.3",
     "jsdom": "^30.0.1",
     "prismjs": "^1.30.0",
-    "puppeteer": "^25.7.0",
+    "puppeteer": "^25.8.0",
     "supertest": "^7.1.4",
     "tsx": "^4.23.12",
     "typescript": "^6.0.3",
