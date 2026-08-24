@@ -396,18 +396,19 @@ describe('DashboardMap', () => {
     expect(screen.getByText('Show Traceroute')).toBeInTheDocument();
   });
 
-  it('hides the Features panel toggles when the collapse button is clicked', () => {
+  it('collapses the map controls sidebar when the collapse button is clicked (#4909)', () => {
     render(<DashboardMap {...defaultProps} />);
-    fireEvent.click(screen.getByTitle('Collapse controls'));
+    fireEvent.click(screen.getByTitle('Hide Map controls'));
     expect(screen.queryByText('Show Traceroute')).not.toBeInTheDocument();
-    expect(screen.getByText('Features')).toBeInTheDocument();
+    // Collapsed → only the reopen toggle remains.
+    expect(screen.getByTitle('Show Map controls')).toBeInTheDocument();
   });
 
-  it('restores a collapsed Features panel from localStorage (shared with the NodesTab map)', () => {
-    localStorage.setItem('isMapControlsCollapsed', 'true');
+  it('restores the collapsed sidebar from localStorage (#4909)', () => {
+    localStorage.setItem('mm-dashboard-map-sidebar', 'true');
     render(<DashboardMap {...defaultProps} />);
     expect(screen.queryByText('Show Traceroute')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByTitle('Expand controls'));
+    fireEvent.click(screen.getByTitle('Show Map controls'));
     expect(screen.getByText('Show Traceroute')).toBeInTheDocument();
   });
 
