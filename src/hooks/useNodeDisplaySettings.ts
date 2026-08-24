@@ -23,11 +23,16 @@ import {
   NODE_DISPLAY_STRING_DEFAULTS,
   parseNodeDisplayNumber,
   parseNodeDisplayBoolean,
+  parseMaxInfraNodeAgeHours,
 } from '../constants/nodeDisplayDefaults';
 import type { NodeHopsCalculation } from '../contexts/SettingsContext';
 
 export interface NodeDisplaySettings {
   maxNodeAgeHours: number;
+  /** #4899: separate age cutoff for MeshCore infrastructure (repeaters/room
+   *  servers, advType 2/3). `0` = never expire. Standalone per-source setting,
+   *  not one of the frozen ten Node Display keys. */
+  maxInfraNodeAgeHours: number;
   inactiveNodeThresholdHours: number;
   inactiveNodeCheckIntervalMinutes: number;
   inactiveNodeCooldownHours: number;
@@ -58,6 +63,7 @@ export function parseNodeDisplaySettings(
 ): NodeDisplaySettings {
   return {
     maxNodeAgeHours: parseNodeDisplayNumber('maxNodeAgeHours', raw?.maxNodeAgeHours),
+    maxInfraNodeAgeHours: parseMaxInfraNodeAgeHours(raw?.maxInfraNodeAgeHours),
     inactiveNodeThresholdHours: parseNodeDisplayNumber(
       'inactiveNodeThresholdHours',
       raw?.inactiveNodeThresholdHours,

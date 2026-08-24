@@ -201,7 +201,7 @@ describe('MeshCoreNodeDisplaySection', () => {
     await waitFor(() => expect(saveBarCapture.current?.hasChanges).toBe(false));
   });
 
-  it('(6) onSave() POSTs to /api/settings?sourceId=<id> with exactly the four keys, as strings', async () => {
+  it('(6) onSave() POSTs to /api/settings?sourceId=<id> with exactly the five keys, as strings', async () => {
     renderSection(makeQueryClient());
     await waitForHydration();
 
@@ -216,6 +216,7 @@ describe('MeshCoreNodeDisplaySection', () => {
       'inactiveNodeCheckIntervalMinutes',
       'inactiveNodeCooldownHours',
       'inactiveNodeThresholdHours',
+      'maxInfraNodeAgeHours',
       'maxNodeAgeHours',
     ]);
     for (const v of Object.values(body)) {
