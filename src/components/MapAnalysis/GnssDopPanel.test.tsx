@@ -37,11 +37,27 @@ describe('GnssDopPanel', () => {
   });
 
   it('the time scrubber drives the timeMs param the layer consumes', () => {
+    // Anchor is the wall clock at mount (#4797(3)); pin it to BASE_TIME so the
+    // +3h offset resolves to BASE_TIME + 3h.
+    vi.spyOn(Date, 'now').mockReturnValue(BASE_TIME);
     render(<GnssDopPanel open params={params()} meta={null} onChange={onChange} onClose={onClose} />);
     fireEvent.change(screen.getByTestId('gnss-dop-time'), { target: { value: '3' } });
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ timeMs: BASE_TIME + 3 * HOUR_MS }),
     );
+    vi.restoreAllMocks();
+  });
+
+  it('anchors the offset to the real wall clock, not the preserved timeMs (#4797)', () => {
+    // Simulate remounting 2h after the preserved time was set: `Date.now()` is
+    // BASE_TIME + 2h but the param still holds BASE_TIME. The scrubber must read
+    // -2h (the true drift), NOT 0/"now" — the old `useRef(params.timeMs)`
+    // anchored to the stale time and always showed offset 0.
+    vi.spyOn(Date, 'now').mockReturnValue(BASE_TIME + 2 * HOUR_MS);
+    render(<GnssDopPanel open params={params({ timeMs: BASE_TIME })} meta={null} onChange={onChange} onClose={onClose} />);
+    const scrubber = screen.getByTestId('gnss-dop-time') as HTMLInputElement;
+    expect(scrubber.value).toBe('-2');
+    vi.restoreAllMocks();
   });
 
   it('the Now button re-anchors the time to the present', () => {

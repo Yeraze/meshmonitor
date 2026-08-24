@@ -69,17 +69,26 @@ export function parseTleText(text: string): Tle[] {
     .filter((l) => l.length > 0);
 
   const tles: Tle[] = [];
-  for (let i = 0; i + 2 < lines.length; i += 3) {
+  // #4797(2): resync on a misaligned triple instead of stopping. CelesTrak's
+  // 3-line format is `name / "1 …" / "2 …"`, but a stray header/comment line
+  // (or a blank the trim didn't catch) would shift every subsequent triple by
+  // one and, under the old `break`, silently drop the entire rest of the set.
+  // Here a line that isn't the start of a valid `1 …`/`2 …` pair is skipped and
+  // scanning resumes, so one stray line costs at most one satellite, not all of
+  // them.
+  let i = 0;
+  while (i + 2 < lines.length) {
     const name = lines[i];
     const line1 = lines[i + 1];
     const line2 = lines[i + 2];
-    // A well-formed TLE has line1 starting "1 " and line2 starting "2 ".
-    if (!line1 || !line2) break;
-    if (!line1.startsWith('1 ') || !line2.startsWith('2 ')) {
-      // Not a valid triple at this offset — stop rather than misalign.
-      break;
+    if (line1.startsWith('1 ') && line2.startsWith('2 ')) {
+      tles.push({ name: name.trim(), line1, line2 });
+      i += 3;
+    } else {
+      // Not a well-formed triple at this offset — drop the stray line at `i`
+      // and re-test from the next one.
+      i += 1;
     }
-    tles.push({ name: name.trim(), line1, line2 });
   }
   return tles;
 }
