@@ -48,7 +48,13 @@ class MockPacket {
     const payload_type = arr[0];
     const route_type = arr[1];
     const pathLen = arr[2];
-    const path = arr.subarray(3);
+    // path bytes = hopCount * hashSize (0 for a direct 0xff pathLen). Anything
+    // after the path is the payload (dest_hash, src_hash, MAC, ciphertext…) —
+    // empty for the older tests that append no payload, so their behavior is
+    // unchanged; the #4883 correlation tests append it to exercise the filter.
+    const pathBytesLen = pathLen === 0xff ? 0 : (pathLen & 0x3f) * (((pathLen >> 6) & 0x3) + 1);
+    const path = arr.subarray(3, 3 + pathBytesLen);
+    const payload = arr.subarray(3 + pathBytesLen);
     return {
       payload_type,
       payload_type_string: PAYLOAD_NAMES[payload_type] ?? 'OTHER',
@@ -56,6 +62,7 @@ class MockPacket {
       route_type_string: ROUTE_NAMES[route_type] ?? 'OTHER',
       pathLen,
       path,
+      payload,
     };
   }
   static extractPathHashSize(pathLen: number): number {
@@ -251,15 +258,18 @@ describe('MeshCoreNativeBackend — ota_packet capture', () => {
 
   // --- issue #3589: buffered-path mis-correlation guards ---------------------
 
-  it('does NOT attach a buffered path when the recv pathLen differs (different packet)', async () => {
+  it('does NOT attach a buffered DM path to a different sender (src_hash mismatch)', async () => {
     const { conn, events } = await connectedBackend();
-    // LogRxData buffers a 2-hop path with pathLen=0x02.
-    const raw = Uint8Array.from([0x02, 0x01, 0x02, 0xa3, 0x7f]);
-    conn.emit(PushCodes.LogRxData, { lastSnr: 9, lastRssi: -30, raw });
-    // The recv that follows is a DIFFERENT packet (direct, pathLen=0xff) whose
-    // own LogRxData never arrived. The buffered 0x02 path must NOT be attached.
+    // Buffered DM addressed to us (dest 0x00), sender src_hash 0x22, path a3,7f.
+    conn.emit(PushCodes.LogRxData, {
+      lastSnr: 9, lastRssi: -30, raw: Uint8Array.from([0x02, 0x01, 0x02, 0xa3, 0x7f, 0x00, 0x22]),
+    });
+    // A DM recv from a DIFFERENT sender (0x99) whose own LogRxData never
+    // arrived. Hop count is no longer a correlator (#4883); the src_hash
+    // discriminator rejects the mismatch, so we never attach another packet's
+    // route/SNR (the #3589 guarantee, now enforced by identity not hop count).
     conn.emit(ResponseCodes.ContactMsgRecv, {
-      pubKeyPrefix: Uint8Array.from([0xde, 0xad, 0xbe, 0xef, 0x00, 0x01]),
+      pubKeyPrefix: Uint8Array.from([0x99, 0, 0, 0, 0, 0]),
       text: 'hello',
       senderTimestamp: 1700,
       pathLen: 0xff,
@@ -301,14 +311,16 @@ describe('MeshCoreNativeBackend — ota_packet capture', () => {
     expect(msgs[1].data.raw_hex).toBe('050101aa');
   });
 
-  it('does NOT attach a stale buffered path (older than the freshness window)', async () => {
+  it('GCs a buffered path older than the age backstop (poison never consumed)', async () => {
     vi.useFakeTimers();
     try {
       const { conn, events } = await connectedBackend();
       const raw = Uint8Array.from([0x02, 0x01, 0x02, 0xa3, 0x7f]);
       conn.emit(PushCodes.LogRxData, { lastSnr: 7, lastRssi: -35, raw });
-      // Advance well past PENDING_PATH_MAX_AGE_MS (500ms) before the recv lands.
-      vi.advanceTimersByTime(1000);
+      // Age is now only a GC backstop (#4883): a buffered entry whose matching
+      // recv never arrives is reaped past PENDING_PATH_MAX_AGE_MS (2000ms) so it
+      // can't attach to a much-later unrelated message.
+      vi.advanceTimersByTime(2500);
       conn.emit(ResponseCodes.ContactMsgRecv, {
         pubKeyPrefix: Uint8Array.from([0xde, 0xad, 0xbe, 0xef, 0x00, 0x01]),
         text: 'late',
@@ -428,14 +440,15 @@ describe('MeshCoreNativeBackend — ota_packet capture', () => {
     expect(msg.data.snr).toBe(-2.0);
   });
 
-  it('still rejects a buffered 2-byte-hash path when hop counts differ (issue #3710 guard intact)', async () => {
+  it('rejects a buffered 2-byte-hash DM path when the recv sender differs (src_hash guard)', async () => {
     const { conn, events } = await connectedBackend();
-    // Buffered: 2-byte hashes, 2 hops (packed 0x42).
-    const raw = Uint8Array.from([0x02, 0x01, 0x42, 0xad, 0xb0, 0x12, 0x34]);
+    // Buffered: 2-byte hashes, 2 hops (packed 0x42), dest 0x00 (to us), src 0x55.
+    const raw = Uint8Array.from([0x02, 0x01, 0x42, 0xad, 0xb0, 0x12, 0x34, 0x00, 0x55]);
     conn.emit(PushCodes.LogRxData, { lastSnr: 9, lastRssi: -30, raw });
-    // Recv is a different packet: 3 hops. 3 !== decoded(0x42)=2 → reject.
+    // Different sender (0x66) — src_hash 0x55 != 0x66, so no attach. (Hop count
+    // is no longer used to correlate, #4883; identity is.)
     conn.emit(ResponseCodes.ContactMsgRecv, {
-      pubKeyPrefix: Uint8Array.from([0x11, 0x22, 0x33, 0x44, 0x55, 0x66]),
+      pubKeyPrefix: Uint8Array.from([0x66, 0x22, 0x33, 0x44, 0x55, 0x66]),
       text: 'different',
       senderTimestamp: 1900,
       pathLen: 3,
@@ -506,16 +519,16 @@ describe('MeshCoreNativeBackend — RSSI on received messages (#4504)', () => {
     expect(msg.data.snr).toBeUndefined();
   });
 
-  it('does not attach a mismatched packet\'s RSSI (the #3589 guard still holds)', async () => {
-    // Buffered packet is 2 hops; the message says direct. Different packets —
-    // attaching would report another node's signal strength as this sender's.
+  it('does not attach a mismatched packet\'s RSSI (wrong sender, #3589 guard via src_hash)', async () => {
+    // Buffered DM to us (dest 0x00) from sender src_hash 0x22; the recv is from
+    // a different sender. Attaching would report another node's signal strength.
     const { conn, events } = await connectedBackend();
     conn.emit(PushCodes.LogRxData, {
       lastSnr: 9, lastRssi: -20,
-      raw: Uint8Array.from([0x02, 0x01, 0x02, 0xa3, 0x7f]), // TXT_MSG, FLOOD, 2 hops
+      raw: Uint8Array.from([0x02, 0x01, 0x02, 0xa3, 0x7f, 0x00, 0x22]), // TXT_MSG, dest 0x00, src 0x22
     });
     conn.emit(ResponseCodes.ContactMsgRecv, {
-      pubKeyPrefix: Uint8Array.from([1, 2, 3, 4, 5, 6]),
+      pubKeyPrefix: Uint8Array.from([0x77, 2, 3, 4, 5, 6]), // different sender
       pathLen: 0xff, txtType: 0, senderTimestamp: 1700000004, text: 'direct',
     });
 
@@ -536,5 +549,75 @@ describe('MeshCoreNativeBackend — RSSI on received messages (#4504)', () => {
     const msgs = events.filter((e) => e.event_type === 'contact_message');
     expect(msgs[0].data.rssi).toBe(-70);
     expect(msgs[1].data.rssi).toBeUndefined();
+  });
+});
+
+describe('MeshCoreNativeBackend — LogRxData→recv correlation (#4883)', () => {
+  beforeEach(() => installMockModule());
+  afterEach(() => __setMeshCoreModule(null));
+
+  // Mock self pubkey is all-zeros, so our dest_hash byte is 0x00; a DM whose
+  // dest_hash != 0x00 is overheard relay traffic that never gets a recv.
+  // Raw layout (MockPacket): [payload_type, route_type, pathLen, ...path, ...payload]
+  // TXT_MSG payload = [dest_hash, src_hash, ...].
+
+  it('drops an overheard DM (dest_hash != self) so it cannot leak onto our next DM', async () => {
+    const { conn, events } = await connectedBackend();
+    // Overheard DM for another node (dest 0x99) — but same src (0x22) as the
+    // real one, so ONLY the poison filter (not the src_hash discriminator) can
+    // prevent the wrong attach. path=[aa].
+    conn.emit(PushCodes.LogRxData, {
+      lastSnr: 1, lastRssi: -80, raw: Uint8Array.from([0x02, 0x01, 0x01, 0xaa, 0x99, 0x22]),
+    });
+    // Real DM addressed to us (dest 0x00), src 0x22, path=[bb].
+    conn.emit(PushCodes.LogRxData, {
+      lastSnr: 9, lastRssi: -30, raw: Uint8Array.from([0x02, 0x01, 0x01, 0xbb, 0x00, 0x22]),
+    });
+    conn.emit(ResponseCodes.ContactMsgRecv, {
+      pubKeyPrefix: Uint8Array.from([0x22, 0, 0, 0, 0, 0]),
+      text: 'hi', senderTimestamp: 1, pathLen: 0x01, txtType: TxtTypes.Plain,
+    });
+
+    const msg = events.find((e) => e.event_type === 'contact_message');
+    expect(msg).toBeDefined();
+    // If the overheard packet had been buffered, oldest-src-match would attach
+    // its path ['aa']; the poison filter dropped it, so we get the real ['bb'].
+    expect(msg.data.path_hops).toEqual(['bb']);
+    expect(msg.data.snr).toBe(9);
+  });
+
+  it('matches a DM to the buffer whose src_hash equals the sender, not the oldest', async () => {
+    const { conn, events } = await connectedBackend();
+    // Two DMs to us (dest 0x00), different senders, same 0-hop-ish path length.
+    conn.emit(PushCodes.LogRxData, { // older, sender 0x22, path a1
+      lastSnr: 2, lastRssi: -60, raw: Uint8Array.from([0x02, 0x01, 0x01, 0xa1, 0x00, 0x22]),
+    });
+    conn.emit(PushCodes.LogRxData, { // newer, sender 0x33, path b2
+      lastSnr: 8, lastRssi: -35, raw: Uint8Array.from([0x02, 0x01, 0x01, 0xb2, 0x00, 0x33]),
+    });
+    conn.emit(ResponseCodes.ContactMsgRecv, {
+      pubKeyPrefix: Uint8Array.from([0x33, 0, 0, 0, 0, 0]), // sender 0x33
+      text: 'hi', senderTimestamp: 1, pathLen: 0x01, txtType: TxtTypes.Plain,
+    });
+
+    const msg = events.find((e) => e.event_type === 'contact_message');
+    expect(msg).toBeDefined();
+    // src_hash discriminator picks the 0x33 buffer even though 0x22 is older —
+    // the hop-count correlator this replaced would have taken the oldest.
+    expect(msg.data.path_hops).toEqual(['b2']);
+    expect(msg.data.snr).toBe(8);
+  });
+
+  it('correlates channel (GRP_TXT) messages FIFO oldest-first', async () => {
+    const { conn, events } = await connectedBackend();
+    conn.emit(PushCodes.LogRxData, { lastSnr: 4, lastRssi: -50, raw: Uint8Array.from([0x05, 0x01, 0x01, 0xc1]) });
+    conn.emit(PushCodes.LogRxData, { lastSnr: 5, lastRssi: -45, raw: Uint8Array.from([0x05, 0x01, 0x01, 0xc2]) });
+    conn.emit(ResponseCodes.ChannelMsgRecv, { channelIdx: 0, text: 'a', senderTimestamp: 1, pathLen: 0x01 });
+    conn.emit(ResponseCodes.ChannelMsgRecv, { channelIdx: 0, text: 'b', senderTimestamp: 2, pathLen: 0x01 });
+
+    const msgs = events.filter((e) => e.event_type === 'channel_message');
+    expect(msgs).toHaveLength(2);
+    expect(msgs[0].data.path_hops).toEqual(['c1']); // oldest buffer → first recv
+    expect(msgs[1].data.path_hops).toEqual(['c2']);
   });
 });
