@@ -80,6 +80,24 @@ describe('parseTleText', () => {
   it('returns [] for garbage input', () => {
     expect(parseTleText('not a tle at all\njust some text')).toEqual([]);
   });
+
+  it('resyncs past a stray header/comment line instead of dropping the rest (#4797)', () => {
+    // A leading header line AND a stray line between two valid triples. The old
+    // `break`-on-misalign parser stopped at the first offset misalignment and
+    // returned []; the resync parser skips the stray lines and keeps both sats.
+    const withStrays = [
+      '# CelesTrak GPS elements (retrieved ...)',
+      'GPS BIIR-5  (PRN 22)',
+      '1 26407U 00040A   26230.62233409  .00000059  00000+0  00000+0 0  9997',
+      '2 26407  54.8442 212.6831 0119403 303.2745  60.7622  2.00558203191204',
+      '--- unexpected divider ---',
+      'GPS BIIR-8  (PRN 16)',
+      '1 27663U 03005A   26229.94485694  .00000054  00000+0  00000+0 0  9999',
+      '2 27663  54.8743 212.5159 0149230  53.3719 317.7217  2.00557285172551',
+    ].join('\n');
+    const tles = parseTleText(withStrays);
+    expect(tles.map((t) => t.name)).toEqual(['GPS BIIR-5  (PRN 22)', 'GPS BIIR-8  (PRN 16)']);
+  });
 });
 
 describe('celestrakUrl', () => {

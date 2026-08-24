@@ -41,6 +41,14 @@ const DEFAULT_ELEVATION_MASK_DEG = 5;
  */
 const MAX_GRID_CELLS = 2500;
 
+/**
+ * #4797(1): yield to the event loop after this many computed DOP cells so a
+ * large grid can't monopolise the main thread. ~32 SGP4 propagations per cell,
+ * so 200 cells ≈ a few ms of blocking CPU between yields — small enough that
+ * other requests interleave, large enough that the yield overhead is noise.
+ */
+const DOP_GRID_YIELD_EVERY = 200;
+
 function isFiniteNumber(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v);
 }
@@ -270,6 +278,11 @@ router.post('/dop', optionalAuth(), gnssLimiter, async (req: Request, res: Respo
     const nLon = Math.floor(lonSpan / stepDeg) + 1;
     const points: Array<{ lat: number; lon: number; gdop: number | null }> = [];
 
+    // #4797(1): each cell runs SGP4 over the whole constellation synchronously,
+    // so a full grid is up to MAX_GRID_CELLS × ~32 propagations of blocking CPU.
+    // Yield to the event loop every DOP_GRID_YIELD_EVERY cells so a big grid
+    // can't stall other requests for a few hundred ms at a stretch.
+    let computed = 0;
     for (let i = 0; i < nLat; i++) {
       const lat = bbox.minLat + i * stepDeg;
       for (let j = 0; j < nLon; j++) {
@@ -281,6 +294,9 @@ router.post('/dop', optionalAuth(), gnssLimiter, async (req: Request, res: Respo
           elevationMaskDeg: mResult.mask,
         });
         points.push({ lat, lon, gdop: sky.dop ? sky.dop.gdop : null });
+        if (++computed % DOP_GRID_YIELD_EVERY === 0) {
+          await new Promise<void>((resolve) => setImmediate(resolve));
+        }
       }
     }
 

@@ -56,9 +56,13 @@ const LEGEND_STOPS: Array<{ gdop: number; label: string }> = [
 export default function GnssDopPanel({ open, params, meta, onChange, onClose }: GnssDopPanelProps) {
   const { t } = useTranslation();
 
-  // Anchor "now" once so dragging the scrubber is stable within a session; the
-  // Now button re-anchors and returns to offset 0.
-  const anchorRef = useRef<number>(params.timeMs);
+  // Anchor "now" to the real wall clock at mount, so the scrubber offset is
+  // measured from the actual current time and stays stable while dragging; the
+  // Now button re-anchors and returns to offset 0. #4797(3): anchoring to
+  // `params.timeMs` instead meant that on remount (leave Map Analysis and come
+  // back) the anchor became whatever time was preserved in context — so a stale
+  // preserved time read as offset 0 / "now" when it was actually in the past.
+  const anchorRef = useRef<number>(Date.now());
   const offsetHours = Math.round(((params.timeMs - anchorRef.current) / HOUR_MS) * 10) / 10;
 
   const setTimeOffset = (hours: number) => {
