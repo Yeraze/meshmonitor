@@ -373,6 +373,21 @@ describe('DashboardMap', () => {
     expect(mocks.fitBounds).not.toHaveBeenCalled();
   });
 
+  // --- Zoom to fit (#4898) ---------------------------------------------------
+
+  it('renders an enabled Zoom to fit button when nodes have positions (#4898)', () => {
+    render(<DashboardMap {...defaultProps} nodes={[nodeWithPosition]} />);
+    const btn = screen.getByLabelText('Zoom to fit all nodes') as HTMLButtonElement;
+    expect(btn).toBeTruthy();
+    expect(btn.disabled).toBe(false);
+  });
+
+  it('disables Zoom to fit when no nodes have positions (#4898)', () => {
+    render(<DashboardMap {...defaultProps} nodes={[]} />);
+    const btn = screen.getByLabelText('Zoom to fit all nodes') as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+  });
+
   // --- Features panel collapse (#3912) ---------------------------------------
 
   it('shows the Features panel toggles by default', () => {
