@@ -706,7 +706,7 @@ export const ACTIONS: BlockDef[] = [
     description: 'Reboot the physical device — e.g. reinitialize a flaky BLE bridge or MQTT proxy on a daily schedule.',
     fields: [
       { name: 'sourceIds', label: 'Reboot which node(s)', kind: 'sendSourceMulti', help: 'The connected node(s) to reboot. Leave none to use the source that triggered the automation — but a source IS required for source-less triggers like Schedules and System events. (MQTT sources have no physical device and are excluded.)' },
-      { name: 'targetNodeNum', label: 'Remote target node #', kind: 'nodeNum', advanced: true, placeholder: 'blank = locally-connected node; 1017730782 or !3ca956de', help: 'Meshtastic remote-admin reboot: leave blank to reboot the locally-connected node; set a node number to reboot a remote node over the mesh (uses the session-passkey admin mechanism — the target must have granted admin access). Accepts a decimal node number or a hex id (!3ca956de). Ignored by MeshCore.' },
+      { name: 'targetNodeNum', label: 'Remote target node #', kind: 'nodeNum', advanced: true, placeholder: 'blank = locally-connected node; 1017730782 or !3ca956de', help: 'Meshtastic remote-admin reboot: leave blank to reboot the locally-connected node; set a node number to reboot a remote node over the mesh (uses the session-passkey admin mechanism — the target must have granted admin access). Setting the connected node’s own number is treated as a local reboot, not a remote one. Accepts a decimal node number or a hex id (!3ca956de). Ignored by MeshCore.' },
       { name: 'seconds', label: 'Reboot delay (seconds)', kind: 'number', advanced: true, placeholder: '10', help: 'Meshtastic: how long the device waits before rebooting (default 10s). Ignored by MeshCore.' },
     ],
   },
