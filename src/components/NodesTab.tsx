@@ -1993,6 +1993,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
   // #4704: whether the 3D surface is actually on screen right now.
   const effective3D = viewMode === '3d' && canUse3D;
+  const unavailableIn3DTitle = effective3D ? 'Not available in 3D' : undefined;
 
   return (
     <div ref={splitViewRef} className="nodes-split-view nodes-anchored-view">
@@ -2439,11 +2440,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               </div>
                 <>
                   {/* #3636: node-to-node LOS distance measurement toggle. */}
-                  <label className="map-control-item" title="Measure straight-line distance between two nodes">
+                  <label className="map-control-item" title={unavailableIn3DTitle ?? 'Measure straight-line distance between two nodes'}>
                     <input
                       type="checkbox"
                       checked={measureActive}
-                      disabled={measurePoints.length < 2}
+                      disabled={effective3D || measurePoints.length < 2}
                       onChange={(e) => setMeasureActive(e.target.checked)}
                     />
                     <span>Measure Distance</span>
@@ -2558,18 +2559,20 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                     />
                     <span>{t('map.showMqtt')}</span>
                   </label>
-                  <label className="map-control-item">
+                  <label className="map-control-item" title={unavailableIn3DTitle}>
                     <input
                       type="checkbox"
                       checked={showWaypoints}
+                      disabled={effective3D}
                       onChange={(e) => setShowWaypoints(e.target.checked)}
                     />
                     <span>{t('map.showWaypoints', 'Show Waypoints')}</span>
                   </label>
-                  <label className="map-control-item">
+                  <label className="map-control-item" title={unavailableIn3DTitle}>
                     <input
                       type="checkbox"
                       checked={showAtakContacts}
+                      disabled={effective3D}
                       onChange={(e) => setShowAtakContacts(e.target.checked)}
                     />
                     <span>{t('map.showAtakContacts', 'Show ATAK Contacts')}</span>
@@ -2649,22 +2652,23 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                     />
                     <span>{t('map.showEstimatedPositions')}</span>
                   </label>
-                  <label className="map-control-item">
+                  <label className="map-control-item" title={unavailableIn3DTitle}>
                     <input
                       type="checkbox"
                       checked={showAccuracyRegions}
+                      disabled={effective3D}
                       onChange={(e) => setShowAccuracyRegions(e.target.checked)}
                     />
                     <span>{t('map.showAccuracyRegions')}</span>
                   </label>
-                  <label className="map-control-item">
+                  <label className="map-control-item" title={unavailableIn3DTitle}>
                     <input
                       type="checkbox"
                       checked={showPolarGrid}
                       onChange={(e) => setShowPolarGrid(e.target.checked)}
-                      disabled={!ownNodePosition}
+                      disabled={effective3D || !ownNodePosition}
                     />
-                    <span title={!ownNodePosition ? t('map.polarGridDisabledTooltip') : undefined}>
+                    <span title={unavailableIn3DTitle ?? (!ownNodePosition ? t('map.polarGridDisabledTooltip') : undefined)}>
                       {t('map.showPolarGrid')}
                     </span>
                   </label>
@@ -2676,19 +2680,21 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                     />
                     <span>Show Tile Selection</span>
                   </label>
-                  <label className="map-control-item">
+                  <label className="map-control-item" title={unavailableIn3DTitle}>
                     <input
                       type="checkbox"
                       checked={showLegend}
+                      disabled={effective3D}
                       onChange={(e) => setShowLegend(e.target.checked)}
                     />
                     <span>Show Legend</span>
                   </label>
                   {geoJsonLayers.map(layer => (
-                    <label key={layer.id} className="map-control-item">
+                    <label key={layer.id} className="map-control-item" title={unavailableIn3DTitle}>
                       <input
                         type="checkbox"
                         checked={layer.visible}
+                        disabled={effective3D}
                         onChange={(e) => {
                           const newLayers = geoJsonLayers.map(l =>
                             l.id === layer.id ? { ...l, visible: e.target.checked } : l
@@ -2755,7 +2761,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   )}
                 </>
               </div>
-              {showLegend && (
+              {!effective3D && showLegend && (
                 <MapLegend
                   positionHistory={positionHistoryLegendData}
                   unmappedCount={unmappedCount}

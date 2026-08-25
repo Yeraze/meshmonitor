@@ -30,6 +30,8 @@ const mocks = vi.hoisted(() => ({
   // #4704: terrain capabilities gate the 2D/3D toggle. Default unavailable so
   // existing tests stay on the 2D BaseMap; the 3D tests flip it on.
   terrainCaps: { enabled: false, terrainTiles: false, isLoading: false },
+  rendered3DNodes: [] as unknown[][],
+  geoJsonLayers: [] as Array<{ id: string; name: string; visible: boolean; style: { color: string } }>,
 }));
 
 // ---------------------------------------------------------------------------
@@ -47,15 +49,18 @@ const mocks = vi.hoisted(() => ({
 // assert on. Also short-circuit basemap3d/init so DashboardMap's unconditional
 // 3D-basemap derivation and `appBasename` import don't pull real modules.
 vi.mock('../map/Map3DView', () => ({
-  Map3DView: ({ nodes, sourceIds, showNeighbors, showTraceroutes }: any) => (
-    <div
-      data-testid="map-3d-view"
-      data-node-count={nodes.length}
-      data-source-ids={JSON.stringify(sourceIds)}
-      data-show-neighbors={String(showNeighbors)}
-      data-show-traceroutes={String(showTraceroutes)}
-    />
-  ),
+  Map3DView: ({ nodes, sourceIds, showNeighbors, showTraceroutes }: any) => {
+    mocks.rendered3DNodes.push(nodes);
+    return (
+      <div
+        data-testid="map-3d-view"
+        data-node-count={nodes.length}
+        data-source-ids={JSON.stringify(sourceIds)}
+        data-show-neighbors={String(showNeighbors)}
+        data-show-traceroutes={String(showTraceroutes)}
+      />
+    );
+  },
 }));
 vi.mock('../../config/basemap3d', () => ({
   resolve3DBasemap: () => ({ tiles: [], attribution: '', maxZoom: 19, usedFallback: false }),
@@ -147,7 +152,10 @@ vi.mock('../../hooks/useCsrfFetch', () => ({
   useCsrfFetch: () => vi.fn().mockResolvedValue({ ok: true }),
 }));
 vi.mock('../../services/api', () => ({
-  default: { getBaseUrl: vi.fn().mockResolvedValue('') },
+  default: {
+    getBaseUrl: vi.fn().mockResolvedValue(''),
+    get: vi.fn().mockImplementation(() => Promise.resolve(mocks.geoJsonLayers)),
+  },
 }));
 
 // The marker popup (DashboardNodePopup) reads time/date format from
@@ -355,6 +363,8 @@ describe('DashboardMap', () => {
     mocks.settings.activeStyleJson = null;
     // Default: terrain unavailable ⇒ no 3D toggle, stays on 2D BaseMap.
     mocks.terrainCaps = { enabled: false, terrainTiles: false, isLoading: false };
+    mocks.rendered3DNodes.length = 0;
+    mocks.geoJsonLayers.length = 0;
   });
 
   // --- Default Map Center vs auto-fit (issue #4125) ---------------------------
@@ -883,6 +893,52 @@ describe('DashboardMap', () => {
     fireEvent.click(toggle);
     expect(screen.getByTestId('map-3d-view')).toBeInTheDocument();
     expect(screen.queryByTestId('map-container')).not.toBeInTheDocument();
+  });
+
+  it('disables 2D-only controls with a clear tooltip while 3D is active (#4794)', async () => {
+    mocks.terrainCaps = { enabled: true, terrainTiles: true, isLoading: false };
+    mocks.geoJsonLayers.push({
+      id: 'coverage',
+      name: 'Coverage overlay',
+      visible: true,
+      style: { color: '#ff0000' },
+    });
+    const secondNode = {
+      ...nodeWithPosition,
+      user: { id: 'node-2', shortName: 'N2', longName: 'Node Two' },
+      position: { latitude: 35.1, longitude: -80.1 },
+    };
+    render(<DashboardMap {...defaultProps} nodes={[nodeWithPosition, secondNode]} />);
+
+    const controlNames = [
+      'Measure Distance',
+      'Show Accuracy Regions',
+      'Show Waypoints',
+      'Show ATAK Contacts',
+      'Show Polar Grid',
+      'Show Legend',
+      'Coverage overlay',
+    ];
+    await screen.findByLabelText('Coverage overlay');
+    fireEvent.click(screen.getByLabelText('3D Terrain'));
+
+    for (const name of controlNames) {
+      const control = screen.getByLabelText(name) as HTMLInputElement;
+      expect(control.disabled).toBe(true);
+      expect(control.closest('label')?.getAttribute('title')).toBe('Not available in 3D');
+    }
+  });
+
+  it('keeps the 3D node input stable across unrelated parent rerenders (#4794)', () => {
+    mocks.terrainCaps = { enabled: true, terrainTiles: true, isLoading: false };
+    const stableNodes = [nodeWithPosition];
+    const { rerender } = render(<DashboardMap {...defaultProps} nodes={stableNodes} />);
+    fireEvent.click(screen.getByLabelText('3D Terrain'));
+    const first3DNodes = mocks.rendered3DNodes.at(-1);
+
+    rerender(<DashboardMap {...defaultProps} nodes={stableNodes} isLoading />);
+
+    expect(mocks.rendered3DNodes.at(-1)).toBe(first3DNodes);
   });
 
   it('forces 2D when terrain capabilities are lost after selecting 3D', () => {

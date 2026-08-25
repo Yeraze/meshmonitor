@@ -267,6 +267,7 @@ export default function DashboardMap({
   const canUse3D = !terrainCaps.isLoading && terrainCaps.enabled && terrainCaps.terrainTiles;
   const [viewMode, setViewMode] = useState<'2d' | '3d'>('2d');
   const effective3D = viewMode === '3d' && canUse3D;
+  const unavailableIn3DTitle = effective3D ? 'Not available in 3D' : undefined;
   const basemap3D = useMemo(
     () => resolve3DBasemap(tilesetId, customTilesets),
     [tilesetId, customTilesets],
@@ -342,47 +343,51 @@ export default function DashboardMap({
     }).catch(err => console.error('Failed to get base URL:', err));
   };
 
-  // Build array of nodes that have valid positions, with their resolved lat/lng.
-  // Mirrors NodesTab's processedNodes pipeline (App.tsx): ignored hidden, age cutoff
-  // bypassed by favorites, transport-class filter from the Map Features panel.
-  // Single "now" for this render so every marker's age fade (#3886) shares one
-  // reference instead of drifting per-node inside the marker map loop below.
-  const nowMs = Date.now();
-  const cutoffTime = nowMs / 1000 - effectiveMaxAge * 60 * 60;
-  const infraCutoffTime = nowMs / 1000 - effectiveInfraMaxAge * 60 * 60;
-  // #4899: per-node age gate — MeshCore infrastructure (advType 2/3) uses the
-  // infra window (or never expires when it's 0); everything else uses the
-  // companion window. Favorites bypass both, as before.
-  const passesAgeGate = (n: typeof nodes[number]): boolean => {
-    if (n.isFavorite) return true;
-    if (n.lastHeard == null) return false;
-    if (n.isMeshCore && isMeshCoreInfrastructureAdvType(n.advType)) {
-      return infraNever || n.lastHeard >= infraCutoffTime;
-    }
-    return n.lastHeard >= cutoffTime;
-  };
-  const nodesWithTruePos = nodes
-    .filter((n) => !n.isIgnored)
-    .filter((n) => !n.hideFromMap) // #3549: per-node "Hide from Map" suppresses the marker only
-    .filter(passesAgeGate)
-    .filter((n) => nodePassesTransportFilter(n, { showRfNodes, showUdpNodes, showMqttNodes }, cutoffTime))
-    .map((n) => ({ node: n, truePos: getNodeLatLng(n) }))
-    .filter((e): e is { node: any; truePos: { lat: number; lng: number } } => e.truePos !== null);
+  // Build the positioned-node array only when one of its real inputs changes.
+  // Besides avoiding the filtering/precision-offset work on unrelated renders,
+  // this keeps every downstream 3D GeoJSON input referentially stable (#4794).
+  // The age reference advances whenever node polling or a filter setting changes,
+  // which is when the visible set can meaningfully change.
+  const { nodesWithPosition, nowMs, cutoffTime } = useMemo(() => {
+    const referenceNowMs = Date.now();
+    const ageCutoffTime = referenceNowMs / 1000 - effectiveMaxAge * 60 * 60;
+    const infraCutoffTime = referenceNowMs / 1000 - effectiveInfraMaxAge * 60 * 60;
+    // #4899: per-node age gate — MeshCore infrastructure (advType 2/3) uses the
+    // infra window (or never expires when it's 0); everything else uses the
+    // companion window. Favorites bypass both, as before.
+    const passesAgeGate = (n: typeof nodes[number]): boolean => {
+      if (n.isFavorite) return true;
+      if (n.lastHeard == null) return false;
+      if (n.isMeshCore && isMeshCoreInfrastructureAdvType(n.advType)) {
+        return infraNever || n.lastHeard >= infraCutoffTime;
+      }
+      return n.lastHeard >= ageCutoffTime;
+    };
+    const nodesWithTruePos = nodes
+      .filter((n) => !n.isIgnored)
+      .filter((n) => !n.hideFromMap) // #3549: per-node "Hide from Map" suppresses the marker only
+      .filter(passesAgeGate)
+      .filter((n) => nodePassesTransportFilter(n, { showRfNodes, showUdpNodes, showMqttNodes }, ageCutoffTime))
+      .map((n) => ({ node: n, truePos: getNodeLatLng(n) }))
+      .filter((e): e is { node: any; truePos: { lat: number; lng: number } } => e.truePos !== null);
 
-  // #4016/#4155: offset obscured low-precision markers within their accuracy cell
-  // via the shared occupancy-gated helper — lone nodes stay centered, 2+ same-cell
-  // nodes spread — identical to every other map surface. `pos` (used by the marker,
-  // neighbor/traceroute endpoints, and the measurement tool) thus declutters. The
-  // accuracy rectangle below recomputes the TRUE center from the node, so it stays put.
-  const nodesWithPosition = applyPrecisionCellOffsets(
-    nodesWithTruePos.map(({ node, truePos }) => ({
-      item: node,
-      id: unifiedNodeKey(node) ?? String(node.nodeNum),
-      latLng: [truePos.lat, truePos.lng] as [number, number],
-      bits: node.positionPrecisionBits,
-      isOverride: node.positionIsOverride,
-    })),
-  ).map(({ item: node, latLng }) => ({ node, pos: { lat: latLng[0], lng: latLng[1] } }));
+    // #4016/#4155: offset obscured low-precision markers within their accuracy cell
+    // via the shared occupancy-gated helper — lone nodes stay centered, 2+ same-cell
+    // nodes spread — identical to every other map surface. `pos` (used by the marker,
+    // neighbor/traceroute endpoints, and the measurement tool) thus declutters. The
+    // accuracy rectangle below recomputes the TRUE center from the node, so it stays put.
+    const positionedNodes = applyPrecisionCellOffsets(
+      nodesWithTruePos.map(({ node, truePos }) => ({
+        item: node,
+        id: unifiedNodeKey(node) ?? String(node.nodeNum),
+        latLng: [truePos.lat, truePos.lng] as [number, number],
+        bits: node.positionPrecisionBits,
+        isOverride: node.positionIsOverride,
+      })),
+    ).map(({ item: node, latLng }) => ({ node, pos: { lat: latLng[0], lng: latLng[1] } }));
+
+    return { nodesWithPosition: positionedNodes, nowMs: referenceNowMs, cutoffTime: ageCutoffTime };
+  }, [nodes, effectiveMaxAge, effectiveInfraMaxAge, infraNever, showRfNodes, showUdpNodes, showMqttNodes]);
 
   // Array form of node positions for MapBoundsUpdater (fit bounds).
   const nodePositions: [number, number][] = nodesWithPosition.map((e) => [e.pos.lat, e.pos.lng]);
@@ -910,11 +915,11 @@ export default function DashboardMap({
           <>
           {/* #3636: node-to-node LOS distance measurement toggle. Needs at least
               two positioned nodes to be meaningful. */}
-          <label className="map-control-item" title="Measure straight-line distance between two nodes">
+          <label className="map-control-item" title={unavailableIn3DTitle ?? 'Measure straight-line distance between two nodes'}>
             <input
               type="checkbox"
               checked={measureActive}
-              disabled={measurePoints.length < 2}
+              disabled={effective3D || measurePoints.length < 2}
               onChange={(e) => setMeasureActive(e.target.checked)}
             />
             <span>Measure Distance</span>
@@ -993,10 +998,11 @@ export default function DashboardMap({
             />
             <span>Show Neighbors</span>
           </label>
-          <label className="map-control-item">
+          <label className="map-control-item" title={unavailableIn3DTitle}>
             <input
               type="checkbox"
               checked={showAccuracyRegions}
+              disabled={effective3D}
               onChange={(e) => setShowAccuracyRegions(e.target.checked)}
             />
             <span>Show Accuracy Regions</span>
@@ -1025,30 +1031,32 @@ export default function DashboardMap({
             />
             <span>Show MQTT</span>
           </label>
-          <label className="map-control-item">
+          <label className="map-control-item" title={unavailableIn3DTitle}>
             <input
               type="checkbox"
               checked={showWaypoints}
+              disabled={effective3D}
               onChange={(e) => setShowWaypoints(e.target.checked)}
             />
             <span>Show Waypoints</span>
           </label>
-          <label className="map-control-item">
+          <label className="map-control-item" title={unavailableIn3DTitle}>
             <input
               type="checkbox"
               checked={showAtakContacts}
+              disabled={effective3D}
               onChange={(e) => setShowAtakContacts(e.target.checked)}
             />
             <span>Show ATAK Contacts</span>
           </label>
-          <label className="map-control-item">
+          <label className="map-control-item" title={unavailableIn3DTitle}>
             <input
               type="checkbox"
               checked={showPolarGrid && hasOwnNode}
-              disabled={!hasOwnNode}
+              disabled={effective3D || !hasOwnNode}
               onChange={(e) => setShowPolarGrid(e.target.checked)}
             />
-            <span title={!hasOwnNode ? 'No source has a known own-node position' : undefined}>
+            <span title={unavailableIn3DTitle ?? (!hasOwnNode ? 'No source has a known own-node position' : undefined)}>
               Show Polar Grid
             </span>
           </label>
@@ -1060,20 +1068,22 @@ export default function DashboardMap({
             />
             <span>Show Tile Selection</span>
           </label>
-          <label className="map-control-item">
+          <label className="map-control-item" title={unavailableIn3DTitle}>
             <input
               type="checkbox"
               checked={showLegend}
+              disabled={effective3D}
               onChange={(e) => setShowLegend(e.target.checked)}
             />
             <span>Show Legend</span>
           </label>
           {/* GeoJSON overlay layers — per-layer on/off, mirroring NodesTab. */}
           {geoJsonLayers.map(layer => (
-            <label key={layer.id} className="map-control-item">
+            <label key={layer.id} className="map-control-item" title={unavailableIn3DTitle}>
               <input
                 type="checkbox"
                 checked={layer.visible}
+                disabled={effective3D}
                 onChange={(e) => toggleGeoJsonLayer(layer.id, e.target.checked)}
               />
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
@@ -1088,7 +1098,7 @@ export default function DashboardMap({
           </>
         </div>
         {/* Hops legend + tileset picker now live in the same sidebar (#4909). */}
-        {showLegend && <MapLegend embedded />}
+        {!effective3D && showLegend && <MapLegend embedded />}
         {showTileSelector && (
           <TilesetSelector selectedTilesetId={tilesetId} onTilesetChange={setMapTileset} embedded />
         )}
