@@ -7,16 +7,31 @@ import type { ConnectionStatus } from '../../types/ui';
 import UserMenu from '../UserMenu';
 import './AppHeader.css';
 import { UiIcon } from '../icons';
+import { CyclingConnectionStatus } from './CyclingConnectionStatus';
 
 interface DeviceInfoProp {
   localNodeInfo?: LocalNodeInfo;
+}
+
+/**
+ * The header receives full node objects (DeviceInfo[]) from App.tsx even though
+ * only the identity + local-node telemetry is used here. Widen the minimal
+ * BasicNodeInfo with the metrics the cycling status badge reads (#4917).
+ */
+export interface HeaderNode extends BasicNodeInfo {
+  deviceMetrics?: {
+    batteryLevel?: number;
+    voltage?: number;
+    channelUtilization?: number;
+    airUtilTx?: number;
+  };
 }
 
 interface AppHeaderProps {
   baseUrl: string;
   nodeAddress: string;
   currentNodeId: string;
-  nodes: BasicNodeInfo[];
+  nodes: HeaderNode[];
   deviceInfo: DeviceInfoProp | null;
   authStatus: AuthStatus | null;
   connectionStatus: ConnectionStatus;
@@ -112,6 +127,12 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   // needs a handler, and honors the same auth/mqtt gate the node box used.
   const canOpenNodeInfo = !!onNodeClick && !mqttReadOnly && !!authStatus?.authenticated;
 
+  // Local-node telemetry for the cycling status badge (#4917). MQTT-bridge
+  // dashboards have no local device, so never surface metrics there.
+  const localNodeMetrics = mqttReadOnly
+    ? undefined
+    : (currentNodeId ? nodes.find(n => n.user?.id === currentNodeId) : undefined)?.deviceMetrics;
+
   return (
     <header className="app-header">
       <div className="header-left">
@@ -149,24 +170,18 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
       </div>
       <div className="header-right">
         <div className="connection-status-container">
-          <div
-            className="connection-status"
+          {/* The badge cycles through Connected → Battery → Airtime for the
+              local node when connected and telemetry is available (#4917). The
+              colored dot + update-method indicator stay fixed; only the middle
+              label rotates. */}
+          <CyclingConnectionStatus
+            connectionStatus={connectionStatus}
+            connectionStatusText={getConnectionStatusText()}
+            webSocketConnected={webSocketConnected}
+            metrics={localNodeMetrics}
             onClick={onFetchSystemStatus}
             title={`${t('header.clickForStatus')} | ${t('header.updateMethod')}: ${webSocketConnected ? 'WebSocket' : t('header.polling')}`}
-          >
-            <span
-              className={`status-indicator ${
-                connectionStatus === 'user-disconnected' ? 'disconnected' : connectionStatus
-              }`}
-            ></span>
-            <span>{getConnectionStatusText()}</span>
-            <span
-              className={`update-method-indicator ${webSocketConnected ? 'websocket' : 'polling'}`}
-              title={webSocketConnected ? 'Real-time via WebSocket' : 'Polling every 5 seconds'}
-            >
-              <UiIcon name={webSocketConnected ? 'zap' : 'refresh'} size={15} />
-            </span>
-          </div>
+          />
           {/* Disconnect/Reconnect moved into the System Status popup that this
               status indicator opens (#4908). */}
         </div>
