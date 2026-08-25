@@ -152,6 +152,7 @@ export default function NodeMarkersLayer() {
           shortName: n.shortName ?? undefined,
           showLabel: true,
           pinStyle: mapPinStyle,
+          nodeNum: Number.isFinite(Number(n.nodeNum)) ? Number(n.nodeNum) : undefined,
         }),
       opacity: finalOpacity,
       eventHandlers: {

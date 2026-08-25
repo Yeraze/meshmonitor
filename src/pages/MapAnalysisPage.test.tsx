@@ -9,6 +9,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MapAnalysisPage from './MapAnalysisPage';
 
 vi.mock('../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   SettingsProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 vi.mock('../components/ToastContainer', () => ({

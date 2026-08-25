@@ -52,6 +52,7 @@ vi.mock('react-leaflet', () => ({
 }));
 
 vi.mock('../../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   useSettings: () => ({ mapTileset: 'osm', customTilesets: [], setMapTileset: vi.fn(), activeStyleJson: null }),
 }));
 

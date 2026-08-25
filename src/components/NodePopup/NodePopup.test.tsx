@@ -30,6 +30,9 @@ import type { DbTraceroute } from '../../services/database';
 // src/components/map/popups/sections.test.tsx — so these assertions exercise
 // the same English copy a real render would produce.
 vi.mock('react-i18next', () => ({
+  // #4880: sections.tsx now value-imports SettingsContext (→ config/i18n),
+  // which references initReactI18next at load time.
+  initReactI18next: { type: '3rdParty', init: () => {} },
   useTranslation: () => ({
     t: (
       key: string,

@@ -13,6 +13,9 @@ import { calculateDistance, formatDistance } from '../../utils/distance';
 // override. This component calls `t(key, defaultEnglish, vars)`, so a smarter
 // local mock is needed to assert real rendered English text.
 vi.mock('react-i18next', () => ({
+  // #4880: sections.tsx now value-imports SettingsContext (→ config/i18n),
+  // which references initReactI18next at load time.
+  initReactI18next: { type: '3rdParty', init: () => {} },
   useTranslation: () => ({
     t: (
       key: string,

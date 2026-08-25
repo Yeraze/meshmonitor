@@ -69,6 +69,9 @@ export interface NodeCardModel {
   lastHeard?: number | null;
   sources?: NodeSourceRef[];
   meshcore?: NodeCardMeshCoreDetails;
+  /** Whether the node is favorited — used by the "importance" node-list color
+   *  style (#4880) to keep favorites vivid regardless of hop distance. */
+  isFavorite?: boolean;
 }
 
 export type NodeCardVariant = 'meshtastic' | 'meshcore';
@@ -162,6 +165,7 @@ function toMeshtasticModel(raw: unknown, opts?: ToNodeCardModelOptions): NodeCar
     position: opts?.pos,
     lastHeard,
     sources,
+    isFavorite: node.isFavorite === true,
   };
 }
 

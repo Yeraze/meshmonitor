@@ -11,6 +11,7 @@ import { logger } from '../utils/logger';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { getAllTilesets, type TilesetId } from '../config/tilesets';
+import { type NodeListStyle } from '../utils/nodeColor';
 import PacketMonitorSettings from './PacketMonitorSettings';
 import ChannelSoundPicker from './ChannelSoundPicker';
 import PkiDmGlobalToggle from './settings/PkiDmGlobalToggle';
@@ -84,6 +85,7 @@ interface SettingsDraft {
   mapTilesetLight: TilesetId;
   mapTilesetDark: TilesetId;
   mapPinStyle: MapPinStyle;
+  nodeListStyle: NodeListStyle;
   iconStyle: IconStyle;
   neighborInfoMinZoom: number;
   defaultMapCenterLat: number | null;
@@ -193,6 +195,7 @@ interface SettingsTabProps {
   mapTilesetLight: TilesetId;
   mapTilesetDark: TilesetId;
   mapPinStyle: MapPinStyle;
+  nodeListStyle: NodeListStyle;
   iconStyle: IconStyle;
   theme: Theme;
   language: string;
@@ -219,6 +222,7 @@ interface SettingsTabProps {
   onDateFormatChange: (format: DateFormat) => void;
   onMapTilesetsChange: (light: TilesetId, dark: TilesetId) => void;
   onMapPinStyleChange: (style: MapPinStyle) => void;
+  onNodeListStyleChange: (style: NodeListStyle) => void;
   onIconStyleChange: (style: IconStyle) => void;
   onLanguageChange: (language: string) => void;
   onSolarMonitoringEnabledChange: (enabled: boolean) => void;
@@ -264,6 +268,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   mapTilesetLight,
   mapTilesetDark,
   mapPinStyle,
+  nodeListStyle,
   iconStyle,
   language,
   solarMonitoringEnabled,
@@ -289,6 +294,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   onDateFormatChange,
   onMapTilesetsChange,
   onMapPinStyleChange,
+  onNodeListStyleChange,
   onIconStyleChange,
   onLanguageChange,
   onSolarMonitoringEnabledChange,
@@ -386,6 +392,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     mapTilesetLight,
     mapTilesetDark,
     mapPinStyle,
+    nodeListStyle,
     iconStyle,
     neighborInfoMinZoom,
     defaultMapCenterLat,
@@ -668,6 +675,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       mapTilesetLight,
       mapTilesetDark,
       mapPinStyle,
+      nodeListStyle,
       iconStyle,
       neighborInfoMinZoom,
       defaultMapCenterLat,
@@ -717,7 +725,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     };
   }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours,
       temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays,
-      preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTilesetLight, mapTilesetDark, mapPinStyle,
+      preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTilesetLight, mapTilesetDark, mapPinStyle, nodeListStyle,
       iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom, mapZoomGateThreshold,
       defaultLandingPage, appearanceMode, darkTheme, lightTheme, nodeHopsCalculation, preferredDashboardSortOption,
       linkPreviewsEnabled, discardInvalidPositions, noIndexEnabled, meshcoreChannelRetryEnabled, showIncompleteNodes,
@@ -761,6 +769,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         mapTilesetLight,
         mapTilesetDark,
         mapPinStyle,
+        nodeListStyle,
         iconStyle,
         neighborInfoMinZoom,
         defaultMapCenterLat,
@@ -791,7 +800,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     });
   }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours,
       temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays,
-      preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTilesetLight, mapTilesetDark, mapPinStyle,
+      preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTilesetLight, mapTilesetDark, mapPinStyle, nodeListStyle,
       iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom, mapZoomGateThreshold,
       defaultLandingPage, appearanceMode, darkTheme, lightTheme, nodeHopsCalculation, preferredDashboardSortOption,
       linkPreviewsEnabled, discardInvalidPositions, noIndexEnabled, meshcoreChannelRetryEnabled, showIncompleteNodes,
@@ -831,7 +840,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     onMaxNodeAgeChange, onInactiveNodeThresholdHoursChange, onInactiveNodeCheckIntervalMinutesChange,
     onInactiveNodeCooldownHoursChange, onTemperatureUnitChange, onDistanceUnitChange, onPositionHistoryLineStyleChange,
     onTelemetryVisualizationChange, onFavoriteTelemetryStorageDaysChange, onPreferredSortFieldChange,
-    onPreferredSortDirectionChange, onTimeFormatChange, onDateFormatChange, onMapTilesetsChange, onMapPinStyleChange,
+    onPreferredSortDirectionChange, onTimeFormatChange, onDateFormatChange, onMapTilesetsChange, onMapPinStyleChange, onNodeListStyleChange,
     onIconStyleChange, onSolarMonitoringEnabledChange, onSolarMonitoringLatitudeChange, onSolarMonitoringLongitudeChange,
     onSolarMonitoringAzimuthChange, onSolarMonitoringDeclinationChange,
   });
@@ -839,7 +848,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     onMaxNodeAgeChange, onInactiveNodeThresholdHoursChange, onInactiveNodeCheckIntervalMinutesChange,
     onInactiveNodeCooldownHoursChange, onTemperatureUnitChange, onDistanceUnitChange, onPositionHistoryLineStyleChange,
     onTelemetryVisualizationChange, onFavoriteTelemetryStorageDaysChange, onPreferredSortFieldChange,
-    onPreferredSortDirectionChange, onTimeFormatChange, onDateFormatChange, onMapTilesetsChange, onMapPinStyleChange,
+    onPreferredSortDirectionChange, onTimeFormatChange, onDateFormatChange, onMapTilesetsChange, onMapPinStyleChange, onNodeListStyleChange,
     onIconStyleChange, onSolarMonitoringEnabledChange, onSolarMonitoringLatitudeChange, onSolarMonitoringLongitudeChange,
     onSolarMonitoringAzimuthChange, onSolarMonitoringDeclinationChange,
   };
@@ -864,6 +873,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     cb.onDateFormatChange(d.dateFormat);
     cb.onMapTilesetsChange(d.mapTilesetLight, d.mapTilesetDark);
     cb.onMapPinStyleChange(d.mapPinStyle);
+    cb.onNodeListStyleChange(d.nodeListStyle);
     cb.onIconStyleChange(d.iconStyle);
     cb.onSolarMonitoringEnabledChange(d.solarMonitoringEnabled);
     cb.onSolarMonitoringLatitudeChange(d.solarMonitoringLatitude);
@@ -938,6 +948,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         mapTilesetLight: draft.mapTilesetLight,
         mapTilesetDark: draft.mapTilesetDark,
         mapPinStyle: draft.mapPinStyle,
+        nodeListStyle: draft.nodeListStyle,
         iconStyle: draft.iconStyle,
         neighborInfoMinZoom: draft.neighborInfoMinZoom.toString(),
         defaultMapCenterLat: draft.defaultMapCenterLat !== null ? draft.defaultMapCenterLat.toString() : '',
@@ -1202,6 +1213,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       updateField('mapTilesetLight', 'osm');
       updateField('mapTilesetDark', 'cartoDark');
       updateField('mapPinStyle', 'meshmonitor');
+      updateField('nodeListStyle', 'monochrome');
       updateField('appearanceMode', 'system');
       updateField('darkTheme', 'mocha');
       updateField('lightTheme', 'latte');
@@ -1232,6 +1244,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onDateFormatChange('MM/DD/YYYY');
       onMapTilesetsChange('osm', 'cartoDark');
       onMapPinStyleChange('meshmonitor');
+      onNodeListStyleChange('monochrome');
       setAppearanceMode('system');
       setDarkTheme('mocha');
       setLightTheme('latte');
@@ -1706,6 +1719,22 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             >
               <option value="meshmonitor">{t('settings.map_pin_meshmonitor')}</option>
               <option value="official">{t('settings.map_pin_official')}</option>
+            </select>
+          </div>
+          <div className="setting-item">
+            <label htmlFor="nodeListStyle">
+              {t('settings.node_list_style_label', 'Node List Style')}
+              <span className="setting-description">{t('settings.node_list_style_description', 'How node cards, message bubbles, and the popup node card are colored: Monochrome keeps the current theme look; Meshtastic Colors gives every node the same color the Android/iOS apps use (derived from its node ID); Importance shows direct and favorite nodes vividly and fades more distant hops.')}</span>
+            </label>
+            <select
+              id="nodeListStyle"
+              value={draft.nodeListStyle}
+              onChange={(e) => updateField('nodeListStyle', e.target.value as NodeListStyle)}
+              className="setting-input"
+            >
+              <option value="monochrome">{t('settings.node_list_style_monochrome', 'Monochrome (Default)')}</option>
+              <option value="meshtastic">{t('settings.node_list_style_meshtastic', 'Meshtastic Colors')}</option>
+              <option value="importance">{t('settings.node_list_style_importance', 'Importance')}</option>
             </select>
           </div>
           <div className="setting-item">

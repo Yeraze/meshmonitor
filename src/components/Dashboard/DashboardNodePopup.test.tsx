@@ -6,6 +6,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import DashboardNodePopup from './DashboardNodePopup';
 
 vi.mock('../../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   useDisplaySettings: () => ({ timeFormat: '24', dateFormat: 'MM/DD/YYYY' }),
 }));
 

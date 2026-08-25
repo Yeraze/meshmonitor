@@ -16,6 +16,7 @@ vi.mock('../services/api', () => ({
 
 // Mock the SettingsContext
 vi.mock('../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   useSettings: () => ({
     timeFormat: '24' as const,
     dateFormat: 'MM/DD/YYYY' as const,

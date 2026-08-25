@@ -33,6 +33,7 @@ vi.mock('../../contexts/AuthContext', () => ({
 }));
 
 vi.mock('../../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   useSettings: () => ({
     temperatureUnit: 'C',
     telemetryVisualizationHours: 48,

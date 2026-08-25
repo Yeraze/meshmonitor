@@ -92,6 +92,7 @@ vi.mock('../config/tilesets', () => ({
 // vi.mock factory is fine: it's invoked as an ordinary hook from inside
 // SettingsTab's own render, same call order every render.
 vi.mock('../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   getEffectiveTileset: () => 'osm',
   useSettings: () => {
     const [nodeDimmingEnabled, setNodeDimmingEnabled] = React.useState(false);
@@ -222,6 +223,7 @@ const baseProps = {
   mapTilesetLight: 'osm' as const,
   mapTilesetDark: 'osm' as const,
   mapPinStyle: 'meshmonitor' as const,
+  nodeListStyle: 'monochrome' as const,
   iconStyle: 'lucide' as const,
   theme: 'catppuccin' as const,
   language: 'en',
@@ -248,6 +250,7 @@ const baseProps = {
   onDateFormatChange: noop,
   onMapTilesetsChange: noop,
   onMapPinStyleChange: noop,
+  onNodeListStyleChange: noop,
   onIconStyleChange: noop,
   onLanguageChange: noop,
   onSolarMonitoringEnabledChange: noop,

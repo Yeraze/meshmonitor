@@ -55,6 +55,7 @@ vi.mock('recharts', () => ({
 
 let mockDistanceUnit: 'km' | 'mi' = 'km';
 vi.mock('../../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   useSettings: () => ({ distanceUnit: mockDistanceUnit }),
 }));
 

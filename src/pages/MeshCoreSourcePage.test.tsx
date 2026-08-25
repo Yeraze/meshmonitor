@@ -74,6 +74,7 @@ afterEach(() => {
 });
 
 vi.mock('../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   SettingsProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useSettings: () => ({}),
   useDisplaySettings: () => ({ timeFormat: '24', dateFormat: 'MM/DD/YYYY' }),

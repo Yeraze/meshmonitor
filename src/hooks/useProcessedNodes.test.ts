@@ -33,6 +33,7 @@ vi.mock('../contexts/UIContext', () => ({
 }));
 
 vi.mock('../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   useSettings: () => mockUseSettingsReturn(),
 }));
 

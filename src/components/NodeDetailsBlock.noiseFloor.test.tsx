@@ -19,6 +19,7 @@ vi.mock('../hooks/useServerData', () => ({
   useDeviceConfig: () => ({ currentNodeId: null }),
 }));
 vi.mock('../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   useSettings: () => ({ nodeHopsCalculation: 'client' }),
 }));
 vi.mock('../contexts/MapContext', () => ({

@@ -107,6 +107,7 @@ vi.mock('../contexts/CsrfContext', () => ({
 }));
 
 vi.mock('../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   SettingsProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useSettings: vi.fn(() => ({
     mapTileset: 'openstreetmap',
