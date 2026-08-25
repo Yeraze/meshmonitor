@@ -218,19 +218,34 @@ export function createMeshActionDeps(): ActionDeps {
       const raw = resolveManager(sourceId) as {
         rebootDevice?: (seconds?: number) => Promise<unknown>;
         sendRebootCommand?: (destinationNodeNum: number, seconds?: number) => Promise<unknown>;
+        getLocalNodeInfo?: () => { nodeNum: number } | null;
       } | undefined;
+
+      // #4847: a `targetNodeNum` that names the source's OWN connected node is not
+      // a remote-admin request — it's a local reboot the UI happened to fill in.
+      // The remote-admin path (`sendRebootCommand`) does a session-passkey handshake
+      // that stalls on a directly-connected (e.g. BLE-bridged) node, so the Run Now
+      // request hangs and the browser reports "Load failed". Collapse self-targets
+      // to the local path, which matches the per-source admin reboot button.
+      let effectiveTarget = targetNodeNum;
+      if (effectiveTarget != null && typeof raw?.getLocalNodeInfo === 'function') {
+        const ownNodeNum = raw.getLocalNodeInfo()?.nodeNum;
+        if (ownNodeNum != null && Number(ownNodeNum) === Number(effectiveTarget)) {
+          effectiveTarget = undefined;
+        }
+      }
 
       // #4126: remote-admin reboot. When a target node is specified, reboot that
       // node over the mesh via the Meshtastic session-passkey admin mechanism
       // (`sendRebootCommand`). This is Meshtastic-only — MeshCore managers have no
       // such method, so a target on a MeshCore source is a clear error.
-      if (targetNodeNum != null) {
+      if (effectiveTarget != null) {
         if (!raw || typeof raw.sendRebootCommand !== 'function') {
           throw new Error(`source "${sourceId}" cannot send a remote-admin reboot (Meshtastic sources only)`);
         }
         // sendRebootCommand defaults `seconds` to 10 when undefined.
-        await (seconds != null ? raw.sendRebootCommand(targetNodeNum, seconds) : raw.sendRebootCommand(targetNodeNum));
-        return { rebooted: true, targetNodeNum };
+        await (seconds != null ? raw.sendRebootCommand(effectiveTarget, seconds) : raw.sendRebootCommand(effectiveTarget));
+        return { rebooted: true, targetNodeNum: effectiveTarget };
       }
 
       if (!raw || typeof raw.rebootDevice !== 'function') {

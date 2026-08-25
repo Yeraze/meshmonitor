@@ -367,4 +367,35 @@ describe('createMeshActionDeps rebootDevice — device reboot action (#3995)', (
     await expect(deps.rebootDevice({ sourceId: 'mc', targetNodeNum: 42 }))
       .rejects.toThrow(/remote-admin reboot \(Meshtastic sources only\)/);
   });
+
+  // ── self-target collapses to the local path (#4847) ─────────────────────────
+  it('with a targetNodeNum equal to the source own node, uses the local rebootDevice not sendRebootCommand', async () => {
+    // A directly-connected (e.g. BLE-bridged) node targeted by its own nodeNum is a
+    // LOCAL reboot; the remote-admin passkey handshake would stall and hang Run Now.
+    const sendRebootCommand = vi.fn().mockResolvedValue(undefined);
+    const rebootDevice = vi.fn().mockResolvedValue(undefined);
+    const getLocalNodeInfo = vi.fn().mockReturnValue({ nodeNum: 123456789 });
+    getManager.mockReturnValue({ sendTextMessage: vi.fn(), sendRebootCommand, rebootDevice, getLocalNodeInfo });
+    const deps = createMeshActionDeps();
+
+    const result = await deps.rebootDevice({ sourceId: 'mt', seconds: 15, targetNodeNum: 123456789 });
+
+    expect(rebootDevice).toHaveBeenCalledWith(15);
+    expect(sendRebootCommand).not.toHaveBeenCalled();
+    expect(result).toEqual({ rebooted: true });
+  });
+
+  it('with a targetNodeNum for a DIFFERENT node, still uses the remote sendRebootCommand', async () => {
+    const sendRebootCommand = vi.fn().mockResolvedValue(undefined);
+    const rebootDevice = vi.fn().mockResolvedValue(undefined);
+    const getLocalNodeInfo = vi.fn().mockReturnValue({ nodeNum: 111 });
+    getManager.mockReturnValue({ sendTextMessage: vi.fn(), sendRebootCommand, rebootDevice, getLocalNodeInfo });
+    const deps = createMeshActionDeps();
+
+    const result = await deps.rebootDevice({ sourceId: 'mt', seconds: 20, targetNodeNum: 222 });
+
+    expect(sendRebootCommand).toHaveBeenCalledWith(222, 20);
+    expect(rebootDevice).not.toHaveBeenCalled();
+    expect(result).toEqual({ rebooted: true, targetNodeNum: 222 });
+  });
 });
