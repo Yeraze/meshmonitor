@@ -254,6 +254,16 @@
   color: var(--color-text-muted);
 }
 
+/* #4880/#4924: an incoming bubble tinted by the per-node color sets a
+   luminance-picked contrast `color` inline; its timestamp must inherit that
+   instead of the muted token, which would be illegible on the tint. Matches
+   the specificity of the `.theirs .message-time` rule above and follows it, so
+   it wins for colored bubbles only. The base `.message-time` opacity keeps it
+   appropriately subdued. */
+.message-bubble--colored.theirs .message-time {
+  color: inherit;
+}
+
 .message-bubble.mine .message-time {
   color: var(--color-chat-bubble-sent-text, var(--color-accent-text));
   opacity: 0.85;

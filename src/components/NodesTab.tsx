@@ -2183,7 +2183,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 return (
                 <div
                   key={node.nodeNum}
-                  className={`node-item ${selectedNodeId === node.user?.id ? 'selected' : ''}`}
+                  className={`node-item ${selectedNodeId === node.user?.id ? 'selected' : ''}${nc.background ? ' node-item--colored' : ''}`}
                   style={nc.background ? { background: nc.background, color: nc.text } : undefined}
                   onClick={handleNodeClick(node)}
                   /* Second path to Node Details, matching MeshCore's node list

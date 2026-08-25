@@ -1177,7 +1177,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     return (
                     <div
                       key={node.nodeNum}
-                      className={`node-item ${selectedDMNode === node.user?.id ? 'selected' : ''}`}
+                      className={`node-item ${selectedDMNode === node.user?.id ? 'selected' : ''}${nc.background ? ' node-item--colored' : ''}`}
                       style={nc.background ? { background: nc.background, color: nc.text } : undefined}
                       onClick={() => {
                         const nodeId = node.user?.id || '';
@@ -2051,7 +2051,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             </div>
                           )}
                           <div
-                            className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}
+                            className={`message-bubble ${isMine ? 'mine' : 'theirs'}${senderColor.background ? ' message-bubble--colored' : ''}`}
                             style={senderColor.background ? { background: senderColor.background, color: senderColor.text } : undefined}
                           >
                             <div className="message-text-row">
