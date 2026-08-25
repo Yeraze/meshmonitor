@@ -126,6 +126,33 @@
   cursor: pointer;
 }
 
+/* Cycling status label (#4917): fixed min-width so the badge doesn't jump as
+   it rotates between the connection text and telemetry faces. */
+.connection-status-label {
+  display: inline-flex;
+  align-items: center;
+  min-width: 5.5rem;
+  animation: connection-status-fade 0.35s ease;
+}
+
+.connection-status-label .status-metric {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  white-space: nowrap;
+}
+
+@keyframes connection-status-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .connection-status-label {
+    animation: none;
+  }
+}
+
 .status-indicator {
   width: 12px;
   height: 12px;
