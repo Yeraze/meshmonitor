@@ -26,7 +26,8 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string, fallback?: string) => fallback ?? key }),
 }));
 
-vi.mock('../contexts/SettingsContext', () => ({}));
+vi.mock('../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',}));
 
 const baseProps = {
   activeTab: 'nodes' as const,

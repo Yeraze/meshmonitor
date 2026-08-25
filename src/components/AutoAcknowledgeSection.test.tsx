@@ -28,6 +28,7 @@ vi.mock('../hooks/useSaveBar', () => ({
   useSaveBar: vi.fn()
 }));
 vi.mock('../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   useSettings: () => ({ timeFormat: '24h', dateFormat: 'YYYY-MM-DD' })
 }));
 

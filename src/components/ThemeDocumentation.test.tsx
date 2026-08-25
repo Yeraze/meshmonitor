@@ -29,6 +29,7 @@ const setDarkTheme = vi.fn();
 const setLightTheme = vi.fn();
 
 vi.mock('../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   useSettings: () => ({
     theme: 'mocha',
     appearanceMode: 'system',

@@ -7,6 +7,8 @@ import { NodeCard } from './NodeCard';
 import type { NodeCardModel } from './nodeCardModel';
 
 vi.mock('../../../contexts/SettingsContext', () => ({
+  // #4880: NodeCardHeader reads the node-list color style; default to monochrome.
+  useNodeListStyle: () => 'monochrome',
 }));
 
 // Always resolve to the key itself (ignoring any string/object default) so

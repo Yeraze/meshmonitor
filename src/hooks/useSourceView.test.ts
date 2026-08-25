@@ -27,7 +27,8 @@ const mockUseTraceroutePaths = vi.fn();
 vi.mock('../contexts/SourceContext', () => ({ useSource: () => mockUseSource() }));
 vi.mock('../contexts/DataContext', () => ({ useData: () => mockUseData() }));
 vi.mock('../contexts/MessagingContext', () => ({ useMessaging: () => mockUseMessaging() }));
-vi.mock('../contexts/SettingsContext', () => ({ useSettings: () => mockUseSettings() }));
+vi.mock('../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome', useSettings: () => mockUseSettings() }));
 vi.mock('../contexts/UIContext', () => ({ useUI: () => mockUseUI() }));
 vi.mock('../contexts/MapContext', () => ({ useMapContext: () => mockUseMapContext() }));
 // nodes now come from useNodes() (poll cache) instead of useData() (#3962

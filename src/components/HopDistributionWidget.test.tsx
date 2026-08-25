@@ -43,6 +43,7 @@ vi.mock('react-i18next', () => ({
 // file's partial i18n mock does not provide, and this test has no interest in
 // settings beyond the gradient.
 vi.mock('../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   useSettings: () => ({
     overlayColors: {
       hopColors: {

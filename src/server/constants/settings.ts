@@ -121,6 +121,7 @@ export const VALID_SETTINGS_KEYS = [
   'solarMonitoringAzimuth',
   'solarMonitoringDeclination',
   'mapPinStyle',
+  'nodeListStyle',
   'favoriteTelemetryStorageDays',
   'theme',
   'appearanceMode',

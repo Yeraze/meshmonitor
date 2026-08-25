@@ -23,6 +23,7 @@ vi.mock('../contexts/DataContext', () => ({ useData: () => mockUseData() }));
 vi.mock('../contexts/MessagingContext', () => ({ useMessaging: () => mockUseMessaging() }));
 vi.mock('../contexts/UIContext', () => ({ useUI: () => mockUseUI() }));
 vi.mock('../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   useSettings: () => mockUseSettings(),
   useNotificationMuteSettings: () => mockUseNotificationMuteSettings(),
 }));

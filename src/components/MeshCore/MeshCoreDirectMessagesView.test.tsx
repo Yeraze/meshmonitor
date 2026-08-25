@@ -24,6 +24,7 @@ vi.mock('../../contexts/AuthContext', () => ({
 }));
 
 vi.mock('../../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   useSettings: () => ({ timeFormat: '24', dateFormat: 'MM/DD/YYYY', temperatureUnit: 'F', telemetryVisualizationHours: 48 }),
 }));
 

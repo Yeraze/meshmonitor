@@ -286,6 +286,7 @@ function App() {
     mapTilesetLight,
     mapTilesetDark,
     mapPinStyle,
+    nodeListStyle,
     iconStyle,
     theme,
     language,
@@ -311,6 +312,7 @@ function App() {
     setDateFormat,
     setMapTilesets,
     setMapPinStyle,
+    setNodeListStyle,
     setIconStyle,
     setLanguage,
     setSolarMonitoringEnabled,
@@ -3648,6 +3650,7 @@ function App() {
                     mapTilesetLight={mapTilesetLight}
                     mapTilesetDark={mapTilesetDark}
                     mapPinStyle={mapPinStyle}
+                    nodeListStyle={nodeListStyle}
                     iconStyle={iconStyle}
                     theme={theme}
                     language={language}
@@ -3674,6 +3677,7 @@ function App() {
                     onDateFormatChange={setDateFormat}
                     onMapTilesetsChange={setMapTilesets}
                     onMapPinStyleChange={setMapPinStyle}
+                    onNodeListStyleChange={setNodeListStyle}
                     onIconStyleChange={setIconStyle}
                     onLanguageChange={setLanguage}
                     onSolarMonitoringEnabledChange={setSolarMonitoringEnabled}

@@ -7,6 +7,7 @@ import {
   getHopColor,
   unmessageableBadgeSvg,
 } from '../../utils/roleGlyphSvg.js';
+import { meshtasticNodeColor, readableTextColor } from '../../utils/nodeColor.js';
 
 // Relocated to `src/utils/roleGlyphSvg.ts` (Leaflet-free) so off-map surfaces
 // (the Node Details traceroute strip) can import the glyph builders without
@@ -37,6 +38,11 @@ export interface CreateNodeIconOptions {
   /** When true, overlay a "no direct messages" badge on the marker (issue
    *  #4295). Meshtastic variant only. */
   isUnmessagable?: boolean;
+  /** uint32 node number. When set on the 'official' (Meshtastic) pin style, the
+   *  circle is filled with the per-node Meshtastic app color (issue #4880)
+   *  instead of white, and the short name switches to a luminance-picked
+   *  black/white for contrast. Ignored by the meshmonitor pin style. */
+  nodeNum?: number;
   // --- new (source-tech parameters, Phase 4 #4047) ---
   /** Source-tech variant. Defaults to 'meshtastic' — every existing caller's
    *  code path is unchanged. */
@@ -76,6 +82,7 @@ export function createNodeIcon(options: CreateNodeIconOptions): L.DivIcon {
     variant = 'meshtastic',
     fixedColor,
     labelName,
+    nodeNum,
   } = options;
 
   // --- MeshCore badge (verbatim relocation of MeshCoreMap's `makeIcon`) ---
@@ -158,6 +165,18 @@ export function createNodeIcon(options: CreateNodeIconOptions): L.DivIcon {
     const circleSize = size;
     const emojiName = shortName && isEmoji(shortName);
 
+    // #4880: fill the circle with the per-node Meshtastic app color (low 24 bits
+    // of nodeNum) when a nodeNum is supplied, matching the Android/iOS apps. The
+    // short name switches to a luminance-picked black/white so it stays legible
+    // on any generated color; the halo takes the opposite tone. Without a nodeNum
+    // (or for the emoji-name case) we keep the original white circle + dark text.
+    const fillColor = nodeNum != null ? meshtasticNodeColor(nodeNum) : null;
+    const textFill = fillColor ? readableTextColor(fillColor) : '#333';
+    const textHalo = fillColor ? (textFill === '#ffffff' ? '#000000' : '#ffffff') : '#ffffff';
+    const circleFill = fillColor ?? 'white';
+    const circleFillOpacity = fillColor ? '1' : '0.95';
+    const circleStroke = fillColor ? '#ffffff' : color;
+
     // Issue #4154: the always-visible short-name text is the entire point of
     // this pin style, so it must render for every role — a role glyph must
     // NOT swap it out (that was the pre-#4154 behavior, and it hid
@@ -167,16 +186,17 @@ export function createNodeIcon(options: CreateNodeIconOptions): L.DivIcon {
     // the base circle.
     const markerSvg = emojiName ? `
       <svg width="${circleSize}" height="${circleSize}" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="24" cy="24" r="20" fill="white" fill-opacity="0.95" stroke="${color}" stroke-width="${strokeWidth}" />
+        <circle cx="24" cy="24" r="20" fill="${circleFill}" fill-opacity="${circleFillOpacity}" stroke="${circleStroke}" stroke-width="${strokeWidth}" />
       </svg>
     ` : `
       <svg width="${circleSize}" height="${circleSize}" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="24" cy="24" r="20" fill="white" fill-opacity="0.95" stroke="${color}" stroke-width="${strokeWidth}" />
-        <!-- White halo under the glyph so the short name stays legible over
-             satellite imagery even where the backing circle washes out against
-             bright terrain (snow/sand/cloud). paint-order draws the stroke first
-             so the dark fill sits on top of its own outline (#4860). -->
-        <text x="24" y="28" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#333" stroke="#ffffff" stroke-width="3" stroke-linejoin="round" paint-order="stroke">${shortName || '?'}</text>
+        <circle cx="24" cy="24" r="20" fill="${circleFill}" fill-opacity="${circleFillOpacity}" stroke="${circleStroke}" stroke-width="${strokeWidth}" />
+        <!-- Halo under the glyph so the short name stays legible over satellite
+             imagery even where the backing circle washes out against bright
+             terrain (snow/sand/cloud). paint-order draws the stroke first so the
+             text fill sits on top of its own outline (#4860). With a node-color
+             fill (#4880) both text and halo are luminance-picked for contrast. -->
+        <text x="24" y="28" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="${textFill}" stroke="${textHalo}" stroke-width="3" stroke-linejoin="round" paint-order="stroke">${shortName || '?'}</text>
       </svg>
     `;
 

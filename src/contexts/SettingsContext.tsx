@@ -16,6 +16,7 @@ import i18n from '../config/i18n';
 import { type TapbackEmoji, DEFAULT_TAPBACK_EMOJIS } from '../components/EmojiPickerModal/EmojiPickerModal.js';
 import { DEFAULT_TARGET_ZOOM, DEFAULT_ZOOM_GATE_THRESHOLD } from '../utils/mapZoomAnimation';
 import { setDiscardInvalidPositionsDisplay } from '../utils/positionDisplayConfig';
+import { type NodeListStyle } from '../utils/nodeColor';
 import { IconStyleProvider, type IconStyle } from './IconStyleContext';
 import { useSource } from './SourceContext';
 import {
@@ -122,6 +123,7 @@ interface SettingsContextType {
   overlayScheme: OverlayScheme;
   overlayColors: OverlayColors;
   mapPinStyle: MapPinStyle;
+  nodeListStyle: NodeListStyle;
   iconStyle: IconStyle;
   neighborInfoMinZoom: number;
   defaultMapCenterLat: number | null;
@@ -203,6 +205,7 @@ interface SettingsContextType {
   setMapTileset: (tilesetId: TilesetId) => void;
   setMapTilesets: (light: TilesetId, dark: TilesetId) => void;
   setMapPinStyle: (style: MapPinStyle) => void;
+  setNodeListStyle: (style: NodeListStyle) => void;
   setIconStyle: (style: IconStyle) => void;
   setNeighborInfoMinZoom: (zoom: number) => void;
   setDefaultMapCenterLat: (lat: number | null) => void;
@@ -481,6 +484,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const [mapPinStyle, setMapPinStyleState] = useState<MapPinStyle>(() => {
     const saved = localStorage.getItem('mapPinStyle');
     return (saved === 'official' ? 'official' : 'meshmonitor') as MapPinStyle;
+  });
+
+  const [nodeListStyle, setNodeListStyleState] = useState<NodeListStyle>(() => {
+    const saved = localStorage.getItem('nodeListStyle');
+    return (saved === 'meshtastic' || saved === 'importance' ? saved : 'monochrome') as NodeListStyle;
   });
 
   const [iconStyle, setIconStyleState] = useState<IconStyle>(() => {
@@ -809,6 +817,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const setMapPinStyle = React.useCallback((style: MapPinStyle) => {
     setMapPinStyleState(style);
     localStorage.setItem('mapPinStyle', style);
+  }, []);
+
+  const setNodeListStyle = React.useCallback((style: NodeListStyle) => {
+    setNodeListStyleState(style);
+    localStorage.setItem('nodeListStyle', style);
   }, []);
 
   const setIconStyle = React.useCallback((style: IconStyle) => {
@@ -1616,6 +1629,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             localStorage.setItem('mapPinStyle', settings.mapPinStyle);
           }
 
+          if (settings.nodeListStyle) {
+            setNodeListStyleState(settings.nodeListStyle as NodeListStyle);
+            localStorage.setItem('nodeListStyle', settings.nodeListStyle);
+          }
+
           if (settings.iconStyle) {
             setIconStyleState(settings.iconStyle as IconStyle);
             localStorage.setItem('iconStyle', settings.iconStyle);
@@ -1935,6 +1953,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     overlayScheme,
     overlayColors,
     mapPinStyle,
+    nodeListStyle,
     iconStyle,
     neighborInfoMinZoom,
     defaultMapCenterLat,
@@ -1995,6 +2014,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setMapTileset,
     setMapTilesets,
     setMapPinStyle,
+    setNodeListStyle,
     setIconStyle,
     setNeighborInfoMinZoom,
     setDefaultMapCenterLat,
@@ -2060,6 +2080,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     overlayScheme,
     overlayColors,
     mapPinStyle,
+    nodeListStyle,
     iconStyle,
     neighborInfoMinZoom,
     defaultMapCenterLat,
@@ -2119,6 +2140,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setMapTileset,
     setMapTilesets,
     setMapPinStyle,
+    setNodeListStyle,
     setIconStyle,
     setNeighborInfoMinZoom,
     setDefaultMapCenterLat,
@@ -2180,6 +2202,17 @@ export const useSettings = (): SettingsContextType => {
 };
 
 /**
+ * The active node-list coloring style (#4880), defaulting to `'monochrome'` when
+ * read outside a SettingsProvider (e.g. isolated component tests / storybook).
+ * Presentation-only, so a missing provider degrades to the pre-existing look
+ * rather than throwing.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- #4880 hook export, consistent with the sibling useSettings/useMapSettings hooks in this file
+export const useNodeListStyle = (): NodeListStyle => {
+  return useContext(SettingsContext)?.nodeListStyle ?? 'monochrome';
+};
+
+/**
  * Non-throwing variant: returns the settings context, or `undefined` when no
  * SettingsProvider is in scope. Use this in widely-reused leaf components (e.g.
  * LinkPreview) that may render in trees without a provider — they can fall back
@@ -2215,6 +2248,7 @@ export const useMapSettings = () => {
     setMapTilesets: s.setMapTilesets,
     activeMapTilesetMode: s.activeMapTilesetMode,
     mapPinStyle: s.mapPinStyle, setMapPinStyle: s.setMapPinStyle,
+    nodeListStyle: s.nodeListStyle, setNodeListStyle: s.setNodeListStyle,
     iconStyle: s.iconStyle, setIconStyle: s.setIconStyle,
     neighborInfoMinZoom: s.neighborInfoMinZoom, setNeighborInfoMinZoom: s.setNeighborInfoMinZoom,
     overlayScheme: s.overlayScheme, overlayColors: s.overlayColors,

@@ -664,6 +664,7 @@ export default function DashboardMap({
           shortName,
           showLabel: true,
           pinStyle: mapPinStyle,
+          nodeNum: Number.isFinite(Number(node.nodeNum)) ? Number(node.nodeNum) : undefined,
         }),
       opacity: ageOpacity,
       children: (

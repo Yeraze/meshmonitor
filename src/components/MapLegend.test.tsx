@@ -24,6 +24,7 @@ vi.mock('react-leaflet', () => ({
 
 // Mock SettingsContext to provide overlayColors
 vi.mock('../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   useSettings: () => ({
     overlayColors: {
       tracerouteForward: '#f5c2e7',

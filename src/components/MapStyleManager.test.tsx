@@ -27,6 +27,7 @@ const mockSetActiveMapStyleId = vi.fn();
 const mockLoadMapStyles = vi.fn();
 const settingsMock = vi.hoisted(() => ({ activeStyleId: null as string | null }));
 vi.mock('../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   useSettings: () => ({
     activeStyleId: settingsMock.activeStyleId,
     setActiveMapStyleId: mockSetActiveMapStyleId,

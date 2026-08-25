@@ -12,6 +12,7 @@ import LinkPreview from './LinkPreview';
 // Controllable setting value, hoisted so the mock factory can close over it.
 const { settingState } = vi.hoisted(() => ({ settingState: { linkPreviewsEnabled: true } }));
 vi.mock('../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   useSettingsOptional: () => ({ linkPreviewsEnabled: settingState.linkPreviewsEnabled }),
 }));
 
