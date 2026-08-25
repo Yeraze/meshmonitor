@@ -827,12 +827,15 @@
    status and metric text otherwise keep their muted design-token colors
    (--color-text-muted/subtle/disabled), which are illegible on a bright
    generated background. Force those text blocks to inherit the row's contrast
-   color. Scoped to the name/status block (.node-name-text) and the metrics
-   block (.node-details, .node-time) only — the action buttons, short-name pill
+   color. Scoped to the name/status block (.node-name / .node-name-text — the
+   former carries a global `color: var(--color-text)` that otherwise breaks the
+   inherit chain for the name) and the metrics block (.node-details,
+   .node-time) only — the action buttons, short-name pill
    and favorite star live in .node-actions / .favorite-wrapper and intentionally
    keep their own styling so they don't turn illegible on their own backgrounds.
    `.node-name-text *` reaches the CSS-module status line without depending on
    its hashed class name. */
+.node-item--colored .node-name,
 .node-item--colored .node-name-text,
 .node-item--colored .node-name-text *,
 .node-item--colored .node-details,
