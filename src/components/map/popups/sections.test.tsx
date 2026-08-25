@@ -18,6 +18,8 @@ import { toNodeCardModel, type NodeCardModel } from './nodeCardModel';
 import type { DbTraceroute } from '../../../services/database';
 
 vi.mock('../../../contexts/SettingsContext', () => ({
+  // #4880: NodeCardHeader reads the node-list color style; default to monochrome.
+  useNodeListStyle: () => 'monochrome',
 }));
 
 // Resolve to the (string or `options.defaultValue`) default — mirroring real

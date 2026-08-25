@@ -29,6 +29,7 @@ import { useTelemetryNodes, useDeviceConfig, useNodes, useChannels, setNodeField
 import { useQueryClient } from '@tanstack/react-query';
 import { useUI } from '../contexts/UIContext';
 import { useSettings } from '../contexts/SettingsContext';
+import { nodeColorStyle } from '../utils/nodeColor';
 import { useAuth } from '../contexts/AuthContext';
 import { useSource } from '../contexts/SourceContext';
 import DashboardWaypoints from './Dashboard/DashboardWaypoints';
@@ -541,6 +542,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     mapTileset,
     setMapTileset,
     mapPinStyle,
+    nodeListStyle,
     customTilesets,
     distanceUnit,
     positionHistoryLineStyle,
@@ -1635,6 +1637,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
             animate: shouldAnimate,
             highlightSelected: showRoute && isSelected,
             pinStyle: mapPinStyle,
+            nodeNum: node.nodeNum,
           }),
         opacity: markerOpacity,
         zIndexOffset: shouldAnimate ? 10000 : 0,
@@ -2169,10 +2172,19 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
             return sortedNodes.length > 0 ? (
               <>
               {/* Meshtastic nodes */}
-              {sortedNodes.map(node => (
+              {sortedNodes.map(node => {
+                // #4880: color the node box per the active Node List Style
+                // ({} for monochrome, keeping the theme look).
+                const nc = nodeColorStyle(nodeListStyle, {
+                  nodeNum: node.nodeNum,
+                  hopsAway: node.hopsAway,
+                  isFavorite: node.isFavorite,
+                });
+                return (
                 <div
                   key={node.nodeNum}
                   className={`node-item ${selectedNodeId === node.user?.id ? 'selected' : ''}`}
+                  style={nc.background ? { background: nc.background, color: nc.text } : undefined}
                   onClick={handleNodeClick(node)}
                   /* Second path to Node Details, matching MeshCore's node list
                      (#4379). Single-click is already taken — it selects the node
@@ -2379,7 +2391,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   </div>
 
                 </div>
-              ))}
+                );
+              })}
               </>
             ) : (
               <div className="no-data">

@@ -24,6 +24,7 @@ vi.mock('../hooks/useServerData', () => ({
 }));
 let mockDistanceUnit: 'km' | 'mi' = 'km';
 vi.mock('../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   useSettings: () => ({ nodeHopsCalculation: 'client', distanceUnit: mockDistanceUnit }),
 }));
 vi.mock('../contexts/MapContext', () => ({

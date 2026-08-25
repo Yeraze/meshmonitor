@@ -32,6 +32,7 @@ vi.mock('../hooks/useWidgetRange', () => ({
 }));
 
 vi.mock('../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   useSettings: () => ({ timeFormat: '24h' }),
 }));
 

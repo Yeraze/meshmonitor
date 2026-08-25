@@ -81,6 +81,7 @@ vi.mock('react-leaflet', () => ({
 // hook. Mutable so the precedence tests below can vary it.
 let mapZoomGateThresholdMock = 13;
 vi.mock('../../../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   useSettings: () => ({ mapCenterTargetZoom: 17, mapZoomGateThreshold: mapZoomGateThresholdMock }),
 }));
 

@@ -38,6 +38,7 @@ vi.mock('../../../hooks/useMapAnalysisData', () => ({
   useHopCounts: () => ({ data: undefined }),
 }));
 vi.mock('../../../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   useSettings: () => ({ mapPinStyle: 'pin' }),
 }));
 vi.mock('../../../hooks/useDashboardData', () => ({

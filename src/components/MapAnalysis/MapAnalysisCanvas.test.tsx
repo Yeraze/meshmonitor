@@ -132,6 +132,7 @@ let customTilesetsMock: Array<{
 }> = [];
 
 vi.mock('../../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   useSettings: () => ({
     defaultMapCenterLat: 30,
     defaultMapCenterLon: -90,

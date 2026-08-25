@@ -12,6 +12,7 @@ vi.mock('react-leaflet', () => ({
   Polyline: () => <div data-testid="polyline" />,
 }));
 vi.mock('../../../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   useSettings: () => ({
     overlayColors: {
       snrColors: {

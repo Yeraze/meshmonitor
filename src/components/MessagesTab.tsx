@@ -42,6 +42,7 @@ import { getEffectiveHops } from '../utils/nodeHops';
 import { scrollInputIntoView } from '../utils/scrollInputIntoView';
 import { useMapContext } from '../contexts/MapContext';
 import { useSettings } from '../contexts/SettingsContext';
+import { nodeColorStyle } from '../utils/nodeColor';
 import { useDeviceNodes, useTelemetryNodes, setNodeFieldInCache } from '../hooks/useServerData';
 import { useQueryClient } from '@tanstack/react-query';
 import HopCountDisplay from './HopCountDisplay';
@@ -347,7 +348,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   const { isDMMuted, muteDM, unmuteDM } = useNotificationMuteSettings();
 
   // Get settings and context for effective hops calculation
-  const { nodeHopsCalculation } = useSettings();
+  const { nodeHopsCalculation, nodeListStyle } = useSettings();
   const { traceroutes, neighborInfo, setNeighborInfo } = useMapContext();
   const deviceNodeNums = useDeviceNodes();
   const currentNodeNum = currentNodeId ? parseNodeId(currentNodeId) : null;
@@ -1164,10 +1165,20 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
             {shouldShowData() ? (
               processedNodes.length > 0 ? (
                 <>
-                  {filteredNodes.map(node => (
+                  {filteredNodes.map(node => {
+                    // #4880: color the node box per the active Node List Style.
+                    // `nodeColorStyle` returns {} for monochrome, keeping the
+                    // existing theme look.
+                    const nc = nodeColorStyle(nodeListStyle, {
+                      nodeNum: node.nodeNum,
+                      hopsAway: node.hopsAway,
+                      isFavorite: node.isFavorite,
+                    });
+                    return (
                     <div
                       key={node.nodeNum}
                       className={`node-item ${selectedDMNode === node.user?.id ? 'selected' : ''}`}
+                      style={nc.background ? { background: nc.background, color: nc.text } : undefined}
                       onClick={() => {
                         const nodeId = node.user?.id || '';
                         setSelectedDMNode(nodeId);
@@ -1315,7 +1326,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       </div>
 
                     </div>
-                  ))}
+                    );
+                  })}
                 </>
               ) : (
                 <div className="no-data">{t('messages.no_nodes')}</div>
@@ -1884,6 +1896,19 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                   const isMine = isMyMessage(msg);
                   const isReaction = msg.emoji === 1 || (msg.replyId != null && isEmoji(msg.text));
 
+                  // #4880: color an incoming ("theirs") bubble + sender dot by
+                  // the sender node under the active Node List Style. Own
+                  // messages keep the standard "mine" styling. Returns {} for
+                  // monochrome / unknown sender, leaving the theme look intact.
+                  const senderNode = isMine ? undefined : nodes.find(n => n.user?.id === msg.from);
+                  const senderColor = senderNode
+                    ? nodeColorStyle(nodeListStyle, {
+                        nodeNum: senderNode.nodeNum,
+                        hopsAway: senderNode.hopsAway,
+                        isFavorite: senderNode.isFavorite,
+                      })
+                    : {};
+
                   if (isReaction) return null;
 
                   const reactions = selectedDMMessages.filter(
@@ -1958,6 +1983,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             className={`sender-dot clickable ${isEmoji(getNodeShortName(msg.from)) ? 'is-emoji' : ''}`}
                             title={`Click for ${getNodeName(msg.from)} details`}
                             onClick={e => handleSenderClick(msg.from, e)}
+                            style={senderColor.background ? { background: senderColor.background, color: senderColor.text } : undefined}
                           >
                             {getNodeShortName(msg.from)}
                           </div>
@@ -2024,7 +2050,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               </button>
                             </div>
                           )}
-                          <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}>
+                          <div
+                            className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}
+                            style={senderColor.background ? { background: senderColor.background, color: senderColor.text } : undefined}
+                          >
                             <div className="message-text-row">
                               <div className="message-text" style={{ whiteSpace: 'pre-line' }}>
                                 {renderMessageWithLinks(msg.text)}

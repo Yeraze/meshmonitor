@@ -58,6 +58,7 @@ vi.mock('react-leaflet', () => ({
 
 let unit: 'km' | 'mi' = 'km';
 vi.mock('../../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   useSettings: () => ({ distanceUnit: unit }),
 }));
 

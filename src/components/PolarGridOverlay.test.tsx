@@ -30,6 +30,7 @@ vi.mock('leaflet', () => ({
 }));
 
 vi.mock('../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   useSettings: () => ({
     distanceUnit: 'km' as const,
     selectedTileset: 'osm',

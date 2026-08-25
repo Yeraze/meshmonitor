@@ -154,6 +154,7 @@ vi.mock('../../services/api', () => ({
 // SettingsContext; mock the display-settings hook so tests don't need a
 // SettingsProvider.
 vi.mock('../../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   useDisplaySettings: () => ({ timeFormat: '24', dateFormat: 'MM/DD/YYYY' }),
   useSettings: () => mocks.settings,
 }));

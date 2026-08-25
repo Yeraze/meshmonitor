@@ -37,6 +37,7 @@ function GlobalSettingsInner() {
     mapTilesetLight,
     mapTilesetDark,
     mapPinStyle,
+    nodeListStyle,
     iconStyle,
     theme,
     language,
@@ -60,6 +61,7 @@ function GlobalSettingsInner() {
     setDateFormat,
     setMapTilesets,
     setMapPinStyle,
+    setNodeListStyle,
     setIconStyle,
     setLanguage,
     setSolarMonitoringEnabled,
@@ -104,6 +106,7 @@ function GlobalSettingsInner() {
         mapTilesetLight={mapTilesetLight}
         mapTilesetDark={mapTilesetDark}
         mapPinStyle={mapPinStyle}
+        nodeListStyle={nodeListStyle}
         iconStyle={iconStyle}
         theme={theme}
         language={language}
@@ -130,6 +133,7 @@ function GlobalSettingsInner() {
         onDateFormatChange={setDateFormat}
         onMapTilesetsChange={setMapTilesets}
         onMapPinStyleChange={setMapPinStyle}
+        onNodeListStyleChange={setNodeListStyle}
         onIconStyleChange={setIconStyle}
         onLanguageChange={setLanguage}
         onSolarMonitoringEnabledChange={setSolarMonitoringEnabled}

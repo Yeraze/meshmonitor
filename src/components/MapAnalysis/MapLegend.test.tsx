@@ -19,6 +19,7 @@ vi.mock('./MapAnalysisContext', () => ({
 }));
 
 vi.mock('../../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   useSettings: () => ({
     overlayColors: {
       snrColors: {

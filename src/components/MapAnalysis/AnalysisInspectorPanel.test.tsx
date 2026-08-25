@@ -111,6 +111,7 @@ vi.mock('../../hooks/useElevationProfile', () => ({
 
 const mockDistanceUnit: 'km' | 'mi' = 'km';
 vi.mock('../../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   useSettings: () => ({ distanceUnit: mockDistanceUnit }),
 }));
 

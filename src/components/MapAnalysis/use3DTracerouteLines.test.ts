@@ -12,6 +12,7 @@ import { getSegmentSnrOpacity, weightByOccurrence } from '../../utils/mapHelpers
 const mockState: { segments: AnalyzedSegment[]; lastAnalysisArgs?: unknown } = { segments: [] };
 
 vi.mock('../../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   useSettings: () => ({
     overlayColors: {
       mqttSegment: '#b4befe',

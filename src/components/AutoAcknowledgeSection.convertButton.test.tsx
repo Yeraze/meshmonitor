@@ -30,6 +30,7 @@ vi.mock('../hooks/useSaveBar', () => ({
   useSaveBar: vi.fn(),
 }));
 vi.mock('../contexts/SettingsContext', () => ({
+  useNodeListStyle: () => 'monochrome',
   useSettings: () => ({ timeFormat: '24h', dateFormat: 'YYYY-MM-DD' }),
 }));
 const mockUseSource = vi.fn(() => ({ sourceId: 'source-1', sourceName: 'Test Source', sourceType: 'meshtastic_tcp' }));

@@ -21,6 +21,8 @@ import { formatTracerouteRoute } from '../../../utils/traceroute';
 import { formatPrecisionAccuracy } from '../../../utils/distance';
 import { formatLocationSource } from '../../../utils/nodeHelpers';
 import type { TimeFormat, DateFormat } from '../../../contexts/SettingsContext';
+import { useNodeListStyle } from '../../../contexts/SettingsContext';
+import { nodeColorStyle } from '../../../utils/nodeColor';
 import type { NodeCardModel, NodeSourceRef } from './nodeCardModel';
 import { UiIcon, type UiIconName } from '../../icons';
 
@@ -35,21 +37,46 @@ export interface NodeCardHeaderProps {
 /** `.node-popup-header` + title + optional shortName badge. Byte-identical
  *  to `MapNodePopupContent`/`DashboardNodePopup`'s header markup (the
  *  canonical chrome per D3 — `NodePopup`'s `<h4>` header loses). */
-export const NodeCardHeader: React.FC<NodeCardHeaderProps> = ({ model }) => (
-  <div className="node-popup-header" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-    <div
-      className="node-popup-title"
-      style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-    >
-      {model.longName}
-    </div>
-    {model.shortName && (
-      <div className="node-popup-subtitle" style={{ flexShrink: 0 }}>
-        {model.shortName}
+export const NodeCardHeader: React.FC<NodeCardHeaderProps> = ({ model }) => {
+  // #4880: tint the popup header with the node-list color when one is active.
+  // Only the header is colored (not the whole popup body) so the themed detail
+  // rows below stay readable. `nodeColorStyle` returns {} for monochrome / no
+  // node number, leaving the original chrome untouched.
+  const nodeListStyle = useNodeListStyle();
+  const color = nodeColorStyle(nodeListStyle, {
+    nodeNum: model.nodeNum ?? NaN,
+    hopsAway: model.hops ?? undefined,
+    isFavorite: model.isFavorite,
+  });
+  const headerStyle: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    ...(color.background
+      ? {
+          background: color.background,
+          color: color.text,
+          padding: '4px 8px',
+          borderRadius: '4px',
+        }
+      : {}),
+  };
+  return (
+    <div className="node-popup-header" style={headerStyle}>
+      <div
+        className="node-popup-title"
+        style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: color.text }}
+      >
+        {model.longName}
       </div>
-    )}
-  </div>
-);
+      {model.shortName && (
+        <div className="node-popup-subtitle" style={{ flexShrink: 0, color: color.text }}>
+          {model.shortName}
+        </div>
+      )}
+    </div>
+  );
+};
 
 /* ------------------------------------------------------------------ */
 /* Identity                                                            */

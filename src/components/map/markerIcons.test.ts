@@ -214,6 +214,40 @@ describe('createNodeIcon — variant:"meshtastic" (default) unchanged code paths
     expect(icon.html).toContain('stroke-width="3"');
   });
 
+  it('official pinStyle: fills the circle with the per-node color and luminance-picked text when nodeNum is set (#4880)', () => {
+    // low 24 bits of 0x11223344 = 0x223344 (dark) -> white text, black halo
+    const icon = createNodeIcon({
+      hops: 0,
+      isSelected: false,
+      isRouter: false,
+      shortName: 'ABCD',
+      showLabel: true,
+      pinStyle: 'official',
+      nodeNum: 0x11223344,
+    }) as unknown as FixtureDivIconOptions;
+
+    expect(icon.html).toContain('fill="#223344"'); // node-color circle fill
+    expect(icon.html).toContain('stroke="#ffffff"'); // white circle outline
+    expect(icon.html).toContain('fill="#ffffff"'); // white short-name text on dark fill
+    expect(icon.html).toContain('stroke="#000000"'); // dark text halo
+    // The hop color is NOT used for the circle when a node color is applied.
+    expect(icon.html).not.toContain(getHopColor(0));
+  });
+
+  it('official pinStyle without nodeNum keeps the original white circle + hop stroke (#4880 back-compat)', () => {
+    const icon = createNodeIcon({
+      hops: 0,
+      isSelected: false,
+      isRouter: false,
+      shortName: 'ABCD',
+      showLabel: true,
+      pinStyle: 'official',
+    }) as unknown as FixtureDivIconOptions;
+
+    expect(icon.html).toContain(getHopColor(0)); // hop-colored stroke
+    expect(icon.html).toContain('fill="white"');
+  });
+
   it('animate + highlightSelected classes are applied when requested', () => {
     const icon = createNodeIcon({
       hops: 2,
