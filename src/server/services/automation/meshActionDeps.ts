@@ -244,8 +244,8 @@ export function createMeshActionDeps(): ActionDeps {
           throw new Error(`source "${sourceId}" cannot send a remote-admin reboot (Meshtastic sources only)`);
         }
         // sendRebootCommand defaults `seconds` to 10 when undefined.
-        await (seconds != null ? raw.sendRebootCommand(targetNodeNum, seconds) : raw.sendRebootCommand(targetNodeNum));
-        return { rebooted: true, targetNodeNum };
+        await (seconds != null ? raw.sendRebootCommand(effectiveTarget, seconds) : raw.sendRebootCommand(effectiveTarget));
+        return { rebooted: true, targetNodeNum: effectiveTarget };
       }
 
       if (!raw || typeof raw.rebootDevice !== 'function') {
