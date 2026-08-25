@@ -364,24 +364,45 @@ export class MeshCoreNativeBackend extends EventEmitter {
     // Wire all push handlers BEFORE connect — meshcore.js may emit immediately.
     this.wirePushEvents();
 
-    await this.connection.connect();
-
-    // meshcore.js onConnected() does NOT send AppStart automatically —
-    // we must explicitly request SelfInfo after the transport is open.
-    const selfInfo = await this.connection.getSelfInfo(10_000);
-    this.cachedSelfInfo = {
-      ...selfInfo,
-      // Normalize wire kHz/Hz to MeshMonitor MHz/kHz so every downstream
-      // consumer (selfInfoToBridgeShape → manager → UI) sees consistent units.
-      radioFreq: libFreqToMhz(selfInfo?.radioFreq),
-      radioBw: libBwToKhz(selfInfo?.radioBw),
-    };
-
-    // Listen for connection-side disconnect so callers can react.
+    // Listen for connection-side disconnect BEFORE connecting so a link drop
+    // during or right after the transport opens (e.g. before the SelfInfo
+    // handshake completes) is still observed — not only drops after a fully
+    // established connection.
     this.connection.on('disconnected', () => {
       this.connected = false;
       this.emit('disconnected');
     });
+
+    try {
+      await this.connection.connect();
+
+      // meshcore.js onConnected() does NOT send AppStart automatically —
+      // we must explicitly request SelfInfo after the transport is open.
+      const selfInfo = await this.connection.getSelfInfo(10_000);
+      this.cachedSelfInfo = {
+        ...selfInfo,
+        // Normalize wire kHz/Hz to MeshMonitor MHz/kHz so every downstream
+        // consumer (selfInfoToBridgeShape → manager → UI) sees consistent units.
+        radioFreq: libFreqToMhz(selfInfo?.radioFreq),
+        radioBw: libBwToKhz(selfInfo?.radioBw),
+      };
+    } catch (err) {
+      // A failed connect (e.g. a SelfInfo handshake timeout right after a USB
+      // replug) MUST release the serial fd. Otherwise the OS-level handle
+      // lingers with the port held open and blocks every subsequent open on
+      // the same path with "Cannot lock port" until the process restarts
+      // (#4922). The library close() is best-effort — a port that never
+      // finished opening may throw "Port is not open"; swallow that.
+      try {
+        await this.connection?.close?.();
+      } catch (closeErr) {
+        logger.debug(
+          `[MeshCoreNative:${this.sourceId}] close after failed connect threw: ${(closeErr as Error).message}`,
+        );
+      }
+      this.connection = null;
+      throw err;
+    }
 
     this.connected = true;
     logger.info(`[MeshCoreNative:${this.sourceId}] Connected`);
