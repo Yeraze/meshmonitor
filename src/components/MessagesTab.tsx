@@ -136,7 +136,6 @@ const DistanceDisplay = React.memo<{
       title={t('nodes.distance')}
       style={{
         fontSize: '0.75rem',
-        color: 'var(--color-text-subtle)',
         marginLeft: '0.5rem',
       }}
     >
@@ -1177,7 +1176,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     return (
                     <div
                       key={node.nodeNum}
-                      className={`node-item ${selectedDMNode === node.user?.id ? 'selected' : ''}`}
+                      className={`node-item ${selectedDMNode === node.user?.id ? 'selected' : ''}${nc.background ? ' node-item--colored' : ''}`}
                       style={nc.background ? { background: nc.background, color: nc.text } : undefined}
                       onClick={() => {
                         const nodeId = node.user?.id || '';
@@ -1252,7 +1251,14 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             className="last-message-preview"
                             style={{
                               fontSize: '0.85rem',
-                              color: selectedDMNode === node.user?.id ? '#000000' : 'var(--color-text-subtle)',
+                              // #4924: on a per-node colored row, inherit the row's
+                              // luminance-picked contrast color instead of the muted
+                              // token (which is illegible on the tint). `inherit`
+                              // beats the CSS but must be set here because this is an
+                              // inline style; the selected-row case keeps its black.
+                              color: nc.background
+                                ? 'inherit'
+                                : selectedDMNode === node.user?.id ? '#000000' : 'var(--color-text-subtle)',
                               fontStyle: 'italic',
                               overflow: 'hidden',
                               textOverflow: 'ellipsis',
@@ -2051,7 +2057,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             </div>
                           )}
                           <div
-                            className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}
+                            className={`message-bubble ${isMine ? 'mine' : 'theirs'}${senderColor.background ? ' message-bubble--colored' : ''}`}
                             style={senderColor.background ? { background: senderColor.background, color: senderColor.text } : undefined}
                           >
                             <div className="message-text-row">
