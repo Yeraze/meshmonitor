@@ -26,6 +26,8 @@ import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import GeoJsonOverlay from '../GeoJsonOverlay';
 import type { GeoJsonLayer } from '../../server/services/geojsonService.js';
 import MapLegend from '../MapLegend';
+import { TilesetSelector } from '../TilesetSelector';
+import { MapSidebar } from '../map/MapSidebar';
 import MeasureDistanceController from '../MeasureDistanceController';
 import type { MeasurePoint } from '../../utils/measureDistance';
 import { NodeCard } from '../map/popups/NodeCard';
@@ -488,8 +490,6 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
         tilesetId={mapTileset}
         customTilesets={customTilesets}
         styleJson={activeStyleJson ?? undefined}
-        showTilesetSelector={showTileSelector}
-        onTilesetChange={setMapTileset}
         resizeTrigger={resizeTrigger}
       >
         {measureActive && (
@@ -499,7 +499,6 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
             onExit={() => setMeasureActive(false)}
           />
         )}
-        {showLegend && <MapLegend showNodeTypes />}
         {geoJsonLayers.length > 0 && <GeoJsonOverlay layers={geoJsonLayers} />}
         {showPolarGrid && localPos && (
           <PolarGridOverlay center={{ lat: localPos[0], lng: localPos[1] }} />
@@ -534,6 +533,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
 
       {isLoading && <MapLoadingOverlay />}
 
+      <MapSidebar storageKey="mm-meshcore-map-sidebar" title="Map controls">
       <div className="map-controls dashboard-map-controls">
         <div className="map-controls-body">
           <div className="map-controls-title">Features</div>
@@ -665,6 +665,15 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
           ))}
         </div>
       </div>
+      {showTileSelector && (
+        <TilesetSelector
+          selectedTilesetId={mapTileset}
+          onTilesetChange={setMapTileset}
+          embedded
+        />
+      )}
+      {showLegend && <MapLegend showNodeTypes embedded />}
+      </MapSidebar>
     </div>
   );
 };
