@@ -337,8 +337,12 @@ export default function MapAnalysisCanvas() {
         tilesetId={mapTileset}
         customTilesets={customTilesets}
         styleJson={activeStyleJson ?? undefined}
-        showTilesetSelector
-        onTilesetChange={setMapTileset}
+        sidebar={
+          <>
+            <MapLegend />
+            <TilesetSelector selectedTilesetId={mapTileset} onTilesetChange={setMapTileset} embedded />
+          </>
+        }
       >
         <MapViewStateController />
         <FollowController />
@@ -422,7 +426,6 @@ export default function MapAnalysisCanvas() {
         </Pane>
       </BaseMap>
       <TimeSliderControl />
-      <MapLegend />
       <FollowResumeButton />
       <LinkProfileDrawer />
       <SitePlannerPanel
