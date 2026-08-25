@@ -254,6 +254,22 @@
   color: var(--color-text-muted);
 }
 
+/* #4880/#4924: an incoming bubble tinted by the per-node color sets a
+   luminance-picked contrast `color` inline, but `.message-text` and
+   `.message-time` carry their own token colors (`--color-text` /
+   `--color-text-muted`) that otherwise win over the inherited value and stay
+   illegible on the tint. Force the text/meta/timestamp to inherit the bubble's
+   contrast color. Scoped to text only (not reaction chips, which have their own
+   backgrounds); links keep their more-specific accent rule and their underline.
+   The `.message-time` selector matches the specificity of the base
+   `.theirs .message-time` rule above and follows it, so it wins for colored
+   bubbles; `.message-time`'s own opacity keeps it appropriately subdued. */
+.message-bubble--colored.theirs .message-text,
+.message-bubble--colored.theirs .message-meta,
+.message-bubble--colored.theirs .message-time {
+  color: inherit;
+}
+
 .message-bubble.mine .message-time {
   color: var(--color-chat-bubble-sent-text, var(--color-accent-text));
   opacity: 0.85;
