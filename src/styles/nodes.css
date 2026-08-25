@@ -840,6 +840,8 @@
 .node-item--colored .node-name-text *,
 .node-item--colored .node-details,
 .node-item--colored .node-details *,
+.node-item--colored .node-stats,
+.node-item--colored .node-stats *,
 .node-item--colored .node-time {
   color: inherit;
 }

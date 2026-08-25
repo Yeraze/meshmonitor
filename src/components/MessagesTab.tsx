@@ -1252,7 +1252,14 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             className="last-message-preview"
                             style={{
                               fontSize: '0.85rem',
-                              color: selectedDMNode === node.user?.id ? '#000000' : 'var(--color-text-subtle)',
+                              // #4924: on a per-node colored row, inherit the row's
+                              // luminance-picked contrast color instead of the muted
+                              // token (which is illegible on the tint). `inherit`
+                              // beats the CSS but must be set here because this is an
+                              // inline style; the selected-row case keeps its black.
+                              color: nc.background
+                                ? 'inherit'
+                                : selectedDMNode === node.user?.id ? '#000000' : 'var(--color-text-subtle)',
                               fontStyle: 'italic',
                               overflow: 'hidden',
                               textOverflow: 'ellipsis',
