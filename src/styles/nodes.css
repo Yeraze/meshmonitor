@@ -846,6 +846,13 @@
   color: inherit;
 }
 
+/* The DM list's distance stat carries its base muted color here (moved off an
+   inline style) so the colored-row inherit rule above can win on tinted rows
+   while non-colored rows keep the subtle look (#4924). */
+.node-distance {
+  color: var(--color-text-subtle);
+}
+
 .node-header {
   display: flex;
   justify-content: space-between;

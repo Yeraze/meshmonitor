@@ -136,7 +136,6 @@ const DistanceDisplay = React.memo<{
       title={t('nodes.distance')}
       style={{
         fontSize: '0.75rem',
-        color: 'var(--color-text-subtle)',
         marginLeft: '0.5rem',
       }}
     >
