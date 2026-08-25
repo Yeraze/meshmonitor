@@ -18,6 +18,7 @@ import { getEffectivePosition, getRoleName, hasValidEffectivePosition, isNodeCom
 import { applyPrecisionCellOffsets, hasAccuracyCell, precisionCellBounds } from '../utils/precisionOffset';
 import { unifiedNodeKey } from '../utils/nodeIdentity';
 import MapLegend from './MapLegend';
+import { MapSidebar } from './map/MapSidebar';
 import { formatTime, formatDateTime } from '../utils/datetime';
 import { getDistanceToNode, calculateDistance, formatDistance } from '../utils/distance';
 import { getTilesetById } from '../config/tilesets';
@@ -952,13 +953,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // inside the map watches it.
   const [fitAllRequest, setFitAllRequest] = useState(0);
 
-  // Track if map controls are collapsed
-  const [isMapControlsCollapsed, setIsMapControlsCollapsed] = useState(() => {
-    // Load from localStorage
-    const saved = localStorage.getItem('isMapControlsCollapsed');
-    return saved === 'true';
-  });
-
   const [showTileSelector, setShowTileSelector] = useState(() => {
     const saved = localStorage.getItem('meshmonitor-showTileSelector');
     return saved === null ? false : saved === 'true';
@@ -991,10 +985,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     localStorage.setItem('showPacketMonitor', showPacketMonitor.toString());
   }, [showPacketMonitor]);
 
-  // Save map controls collapse state to localStorage
-  useEffect(() => {
-    localStorage.setItem('isMapControlsCollapsed', isMapControlsCollapsed.toString());
-  }, [isMapControlsCollapsed]);
 
   useEffect(() => {
     localStorage.setItem('meshmonitor-showTileSelector', showTileSelector.toString());
@@ -1007,85 +997,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
   // Map controls position state with localStorage persistence
   // Position is relative to the map container (absolute positioning)
-  // We use a special value of -1 to indicate "use CSS default (right: 10px)"
-  const MAP_CONTROLS_DEFAULT_POSITION = { x: -1, y: 10 };
-
-  const [mapControlsPosition, setMapControlsPosition] = useState(() => {
-    // Migration: clear old left-based positions (now right-based)
-    const oldSaved = localStorage.getItem('mapControlsPosition');
-    if (oldSaved && !localStorage.getItem('mapControlsPositionV2')) {
-      localStorage.removeItem('mapControlsPosition');
-      return MAP_CONTROLS_DEFAULT_POSITION;
-    }
-    const saved = localStorage.getItem('mapControlsPositionV2');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
-          if (parsed.x > 2000 || parsed.x < -100 || parsed.y > 2000 || parsed.y < -100) {
-            localStorage.removeItem('mapControlsPositionV2');
-            return MAP_CONTROLS_DEFAULT_POSITION;
-          }
-          return { x: parsed.x, y: parsed.y };
-        }
-      } catch {
-        // Ignore parse errors
-      }
-    }
-    return MAP_CONTROLS_DEFAULT_POSITION;
-  });
-
-  // Map controls drag state
-  const [isDraggingMapControls, setIsDraggingMapControls] = useState(false);
-  const [mapControlsDragStart, setMapControlsDragStart] = useState({ x: 0, y: 0 });
-  const mapControlsRef = useRef<HTMLDivElement>(null);
-
-  // Save map controls position to localStorage (only if not default)
-  useEffect(() => {
-    if (mapControlsPosition.x !== -1) {
-      localStorage.setItem('mapControlsPositionV2', JSON.stringify(mapControlsPosition));
-    }
-  }, [mapControlsPosition]);
-
-  // Constrain map controls position to stay within the map container on mount and window resize
-  useEffect(() => {
-    const constrainMapControlsPosition = () => {
-      // Skip constraint for default position (x = -1 means use CSS right: 10px)
-      if (mapControlsPosition.x === -1) return;
-
-      const mapContainer = document.querySelector('.map-container');
-      const controls = mapControlsRef.current;
-      if (!mapContainer || !controls) return;
-
-      const containerRect = mapContainer.getBoundingClientRect();
-      const controlsRect = controls.getBoundingClientRect();
-      const padding = 10;
-
-      // Calculate max bounds relative to container
-      const maxX = containerRect.width - controlsRect.width - padding;
-      const maxY = containerRect.height - controlsRect.height - padding;
-
-      // Check if current position is out of bounds
-      const constrainedX = Math.max(padding, Math.min(mapControlsPosition.x, maxX));
-      const constrainedY = Math.max(padding, Math.min(mapControlsPosition.y, maxY));
-
-      // Update position if it was out of bounds
-      if (constrainedX !== mapControlsPosition.x || constrainedY !== mapControlsPosition.y) {
-        setMapControlsPosition({ x: constrainedX, y: constrainedY });
-      }
-    };
-
-    // Run on mount after a short delay to ensure elements are rendered
-    const timeoutId = setTimeout(constrainMapControlsPosition, 100);
-
-    // Run on window resize
-    window.addEventListener('resize', constrainMapControlsPosition);
-
-    return () => {
-      clearTimeout(timeoutId);
-      window.removeEventListener('resize', constrainMapControlsPosition);
-    };
-  }, [mapControlsPosition]);
 
   // Check if user has permission to view packet monitor
   const canViewPacketMonitor = hasPermission('packetmonitor', 'read');
@@ -1313,84 +1224,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
 
 
-  // Map controls drag handlers — positions are stored as (right, top) relative to the map container
-  // so the controls stay anchored to the right edge when the sidebar resizes
-  const handleMapControlsDragStart = useCallback((e: React.MouseEvent) => {
-    if (isMapControlsCollapsed || isTouchDevice) return; // Disable drag on mobile
-    e.preventDefault();
-    e.stopPropagation();
-
-    const mapContainer = document.querySelector('.map-container');
-    if (!mapContainer) return;
-    const containerRect = mapContainer.getBoundingClientRect();
-
-    // If position is default (-1), calculate actual position from element
-    let currentRightOffset = mapControlsPosition.x;
-    let currentY = mapControlsPosition.y;
-
-    if (currentRightOffset === -1) {
-      // Convert from CSS right: 10px to explicit right-based coordinates
-      const controls = mapControlsRef.current;
-      if (controls) {
-        const controlsRect = controls.getBoundingClientRect();
-        currentRightOffset = containerRect.right - controlsRect.right;
-        currentY = controlsRect.top - containerRect.top;
-        setMapControlsPosition({ x: currentRightOffset, y: currentY });
-      }
-    }
-
-    setIsDraggingMapControls(true);
-    // Store offset: mouse position relative to the element's right-edge anchor
-    setMapControlsDragStart({
-      x: (containerRect.right - e.clientX) - currentRightOffset,
-      y: e.clientY - containerRect.top - currentY,
-    });
-  }, [isMapControlsCollapsed, mapControlsPosition, isTouchDevice]);
-
-  const handleMapControlsDragMove = useCallback((e: MouseEvent) => {
-    if (!isDraggingMapControls) return;
-
-    const mapContainer = document.querySelector('.map-container');
-    if (!mapContainer) return;
-
-    const rect = mapContainer.getBoundingClientRect();
-    const controls = mapControlsRef.current;
-    if (!controls) return;
-
-    const controlsRect = controls.getBoundingClientRect();
-    const maxRight = rect.width - controlsRect.width - 10;
-    const maxY = rect.height - controlsRect.height - 10;
-
-    const newRight = Math.max(10, Math.min(maxRight, (rect.right - e.clientX) - mapControlsDragStart.x));
-    const newY = Math.max(10, Math.min(maxY, e.clientY - rect.top - mapControlsDragStart.y));
-
-    setMapControlsPosition({ x: newRight, y: newY });
-  }, [isDraggingMapControls, mapControlsDragStart]);
-
-  const handleMapControlsDragEnd = useCallback(() => {
-    setIsDraggingMapControls(false);
-  }, []);
-
-  // Global mouse event listeners for map controls drag
-  useEffect(() => {
-    if (isDraggingMapControls) {
-      document.addEventListener('mousemove', handleMapControlsDragMove);
-      document.addEventListener('mouseup', handleMapControlsDragEnd);
-      document.body.style.cursor = 'grabbing';
-      document.body.style.userSelect = 'none';
-      
-      return () => {
-        document.removeEventListener('mousemove', handleMapControlsDragMove);
-        document.removeEventListener('mouseup', handleMapControlsDragEnd);
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-      };
-    }
-  }, [isDraggingMapControls, handleMapControlsDragMove, handleMapControlsDragEnd]);
-
-  const handleCollapseMapControls = useCallback(() => {
-    setIsMapControlsCollapsed(!isMapControlsCollapsed);
-  }, [isMapControlsCollapsed, setIsMapControlsCollapsed]);
 
   // Update refs when values change
   useEffect(() => {
@@ -2578,32 +2411,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         style={showPacketMonitor && canViewPacketMonitor ? { height: `calc(100% - ${packetMonitorHeight}px)` } : undefined}
       >
         {shouldShowData() && (
-            <div
-              ref={mapControlsRef}
-              className={`map-controls ${isMapControlsCollapsed ? 'collapsed' : ''}`}
-              style={isTouchDevice ? undefined : (
-                // If collapsed, don't apply any position styles (use CSS defaults)
-                // x = -1 means use CSS default (right: 10px); otherwise x is distance from right edge
-                isMapControlsCollapsed ? undefined : {
-                  right: mapControlsPosition.x === -1 ? undefined : `${mapControlsPosition.x}px`,
-                  top: `${mapControlsPosition.y}px`,
-                  left: mapControlsPosition.x === -1 ? undefined : 'auto',
-                }
-              )}
-            >
-              <div
-                className="map-controls-drag-handle"
-                style={{
-                  cursor: (isTouchDevice) ? 'default' : (isDraggingMapControls ? 'grabbing' : 'grab'),
-                }}
-                onMouseDown={handleMapControlsDragStart}
-              >
-                <span className="drag-handle-icon">
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                </span>
-              </div>
+            <MapSidebar storageKey="mm-nodes-map-sidebar" title="Map controls">
               <div className="map-controls-body">
               <div
                 className="map-controls-header"
@@ -2628,16 +2436,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 >
                   <UiIcon name="fitBounds" size={16} />
                 </button>
-                <button
-                  className="map-controls-collapse-btn"
-                  onClick={handleCollapseMapControls}
-                  title={isMapControlsCollapsed ? 'Expand controls' : 'Collapse controls'}
-                  onMouseDown={(e) => e.stopPropagation()}
-                >
-                  <UiIcon name={isMapControlsCollapsed ? 'chevronDown' : 'chevronUp'} />
-                </button>
               </div>
-              {!isMapControlsCollapsed && (
                 <>
                   {/* #3636: node-to-node LOS distance measurement toggle. */}
                   <label className="map-control-item" title="Measure straight-line distance between two nodes">
@@ -2955,9 +2754,18 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                     </button>
                   )}
                 </>
-              )}
               </div>
-            </div>
+              {showLegend && (
+                <MapLegend
+                  positionHistory={positionHistoryLegendData}
+                  unmappedCount={unmappedCount}
+                  embedded
+                />
+              )}
+              {shouldShowData() && showTileSelector && (
+                <TilesetSelector selectedTilesetId={activeTileset} onTilesetChange={setMapTileset} embedded />
+              )}
+            </MapSidebar>
         )}
             {/* #4326: "Show Traceroute" silently changes what clicking a node
                 does — for any node with a stored route the info popup is
@@ -3010,9 +2818,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   }}
                   onUnsupported={() => setViewMode('2d')}
                 />
-                {shouldShowData() && showTileSelector && (
-                  <TilesetSelector selectedTilesetId={activeTileset} onTilesetChange={setMapTileset} />
-                )}
               </>
             ) : (
             <BaseMap
@@ -3021,8 +2826,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               tilesetId={activeTileset}
               customTilesets={customTilesets}
               styleJson={activeStyleJson ?? undefined}
-              showTilesetSelector={shouldShowData() && showTileSelector}
-              onTilesetChange={setMapTileset}
               resizeTrigger={`${showPacketMonitor}-${isNodeListCollapsed}-${packetMonitorHeight}`}
             >
               <MapCenterController
@@ -3053,12 +2856,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               onExit={() => setMeasureActive(false)}
             />
           )}
-              {showLegend && (
-              <MapLegend
-                positionHistory={positionHistoryLegendData}
-                unmappedCount={unmappedCount}
-              />
-              )}
               <NodeMarkersLayer markers={nodeMarkers} onOmsClick={onOmsClick} />
 
               {/* Draw uncertainty circles for estimated positions. The "Show
