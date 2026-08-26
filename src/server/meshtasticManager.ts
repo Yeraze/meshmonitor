@@ -13870,6 +13870,13 @@ class MeshtasticManager implements ISourceManager {
   }
 
   /**
+   * Set bluetooth configuration (device config, used by backup restore #4926)
+   */
+  async setBluetoothConfig(config: unknown): Promise<void> {
+    return this.deviceAdminService.setBluetoothConfig(config);
+  }
+
+  /**
    * Set telemetry module configuration
    */
   async setTelemetryConfig(config: any): Promise<void> {
