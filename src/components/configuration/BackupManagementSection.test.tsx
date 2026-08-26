@@ -25,8 +25,9 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
+const mockShowToast = vi.hoisted(() => vi.fn());
 vi.mock('../ToastContainer', () => ({
-  useToast: () => ({ showToast: vi.fn() }),
+  useToast: () => ({ showToast: mockShowToast }),
 }));
 
 vi.mock('../../hooks/useSaveBar', () => ({
@@ -171,5 +172,21 @@ describe('BackupManagementSection — restore (issue #4926)', () => {
     await openBackupList();
     fireEvent.click(screen.getByText('backup_management.restore'));
     expect(apiService.post).not.toHaveBeenCalled();
+  });
+
+  it('shows the reboot toast when the backend reports requiresReboot', async () => {
+    asMock(apiService.post).mockResolvedValue({ data: { applied: ['config.lora'], failed: [], channels: 0, requiresReboot: true } });
+    await openBackupList();
+    fireEvent.click(screen.getByText('backup_management.restore'));
+    await waitFor(() =>
+      expect(mockShowToast).toHaveBeenCalledWith('backup_management.toast_restored_reboot', 'success'));
+  });
+
+  it('shows the plain restored toast (no reboot) when requiresReboot is false', async () => {
+    asMock(apiService.post).mockResolvedValue({ data: { applied: ['config.device'], failed: [], channels: 0, requiresReboot: false } });
+    await openBackupList();
+    fireEvent.click(screen.getByText('backup_management.restore'));
+    await waitFor(() =>
+      expect(mockShowToast).toHaveBeenCalledWith('backup_management.toast_restored', 'success'));
   });
 });
