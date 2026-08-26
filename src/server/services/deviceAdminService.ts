@@ -295,6 +295,30 @@ export class DeviceAdminService {
   }
 
   /**
+   * Set bluetooth configuration.
+   * Bluetooth is a *device* config (Config.bluetooth), so it uses the generic
+   * device-config builder like power/display — NOT setGenericModuleConfig, which
+   * only handles ModuleConfig sections. Added for backup restore (#4926).
+   */
+  async setBluetoothConfig(config: unknown): Promise<void> {
+    if (!this.mgr.isTransportReady()) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    try {
+      logger.debug('⚙️ Sending bluetooth config:', JSON.stringify(config));
+      const setConfigMsg = protobufService.createSetDeviceConfigMessageGeneric('bluetooth', config, new Uint8Array());
+      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.mgr.getLocalNodeInfo()?.nodeNum || 0, this.mgr.getLocalNodeInfo()?.nodeNum);
+
+      await this.mgr.sendLocalAdminPacket(adminPacket);
+      logger.debug('⚙️ Sent set_bluetooth_config admin message');
+    } catch (error) {
+      logger.error('❌ Error sending bluetooth config:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Set telemetry module configuration
    */
   async setTelemetryConfig(config: any): Promise<void> {

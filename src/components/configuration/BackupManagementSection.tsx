@@ -31,6 +31,7 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
   const [backupList, setBackupList] = useState<BackupFile[]>([]);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [isLoadingBackups, setIsLoadingBackups] = useState(false);
+  const [restoringFilename, setRestoringFilename] = useState<string | null>(null);
   const [saveCounter, setSaveCounter] = useState(0); // Triggers hasChanges recalculation
 
   // Track initial values loaded from API for change detection
@@ -178,6 +179,36 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
     } catch (error) {
       logger.error('Error downloading backup:', error);
       showToast(t('backup_management.toast_download_failed', { error: error instanceof Error ? error.message : 'Unknown error' }), 'error');
+    }
+  };
+
+  const handleRestoreBackup = async (filename: string) => {
+    if (!confirm(t('backup_management.confirm_restore', { filename }))) {
+      return;
+    }
+
+    try {
+      setRestoringFilename(filename);
+      showToast(t('backup_management.toast_restoring'), 'info');
+
+      // Server envelope: ok(res, result) => { success, data: { applied, failed, channels, requiresReboot } }.
+      // ApiService does not unwrap `data`, so read result off the `data` field.
+      const resp = await apiService.post<{ data?: { failed?: unknown[] } }>(
+        `/api/backup/restore/${encodeURIComponent(filename)}`,
+        sourceId ? { sourceId } : {}
+      );
+      const failedCount = resp?.data?.failed?.length ?? 0;
+
+      if (failedCount > 0) {
+        showToast(t('backup_management.toast_restored_partial', { failed: failedCount }), 'success');
+      } else {
+        showToast(t('backup_management.toast_restored'), 'success');
+      }
+    } catch (error) {
+      logger.error('Error restoring backup:', error);
+      showToast(t('backup_management.toast_restore_failed', { error: error instanceof Error ? error.message : 'Unknown error' }), 'error');
+    } finally {
+      setRestoringFilename(null);
     }
   };
 
@@ -396,7 +427,18 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
                               {t('backup_management.download')}
                             </button>
                             <button
+                              onClick={() => handleRestoreBackup(backup.filename)}
+                              disabled={restoringFilename !== null}
+                              className="backup-btn restore"
+                              style={restoringFilename !== null ? { opacity: 0.6, cursor: 'not-allowed' } : undefined}
+                            >
+                              {restoringFilename === backup.filename
+                                ? t('backup_management.restoring')
+                                : t('backup_management.restore')}
+                            </button>
+                            <button
                               onClick={() => handleDeleteBackup(backup.filename)}
+                              disabled={restoringFilename !== null}
                               className="backup-btn delete"
                             >
                               {t('backup_management.delete')}

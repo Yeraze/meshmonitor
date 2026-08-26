@@ -4,6 +4,9 @@ import { requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { backupFileService } from '../services/backupFileService.js';
 import { systemBackupService } from '../services/systemBackupService.js';
+import { deviceRestoreService } from '../services/deviceRestoreService.js';
+import { resolveSourceManager } from '../utils/resolveSourceManager.js';
+import { ok, fail } from '../utils/apiResponse.js';
 import { logger } from '../../utils/logger.js';
 
 /**
@@ -129,6 +132,44 @@ backupRouter.delete('/delete/:filename', requirePermission('configuration', 'wri
       error: 'Failed to delete backup',
       details: error instanceof Error ? error.message : 'Unknown error',
     });
+  }
+});
+
+// Restore a saved backup to the connected local device (#4926).
+// Writes each config section back via admin messages. Overwrites current
+// device config, so the frontend confirms before calling this.
+backupRouter.post('/restore/:filename', requirePermission('configuration', 'write'), async (req: Request, res: Response) => {
+  try {
+    const { filename } = req.params;
+
+    // Same directory-traversal guard as download/delete.
+    if (!/^[a-zA-Z0-9\-_]+\.yaml$/.test(filename)) {
+      return fail(res, 400, 'INVALID_FILENAME', 'Invalid filename format');
+    }
+
+    const sourceId = req.body?.sourceId as string | undefined;
+    const manager = resolveSourceManager(sourceId);
+
+    const content = await backupFileService.getBackup(filename);
+    const result = await deviceRestoreService.restoreBackup(manager, content);
+
+    void databaseService.auditLogAsync(
+      req.user!.id,
+      'device_backup_restored',
+      'device_backup',
+      JSON.stringify({ filename, sourceId: sourceId ?? null, applied: result.applied.length, failed: result.failed.length }),
+      req.ip || null
+    );
+
+    logger.debug(`♻️  Backup restored: ${filename} (${result.applied.length} applied, ${result.failed.length} failed)`);
+
+    return ok(res, result);
+  } catch (error) {
+    logger.error('❌ Error restoring backup:', error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    // Not-connected / transaction failures are operational, not server bugs.
+    const status = /not connected|transaction/i.test(message) ? 409 : 500;
+    return fail(res, status, 'RESTORE_FAILED', message);
   }
 });
 

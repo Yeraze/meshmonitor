@@ -175,6 +175,10 @@
   background-color: var(--color-success);
 }
 
+.backup-btn.restore {
+  background-color: var(--color-accent);
+}
+
 .backup-btn.delete {
   background-color: var(--color-error);
 }

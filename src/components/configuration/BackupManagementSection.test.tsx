@@ -58,6 +58,7 @@ vi.mock('../../services/api', () => {
       getBaseUrl: vi.fn().mockResolvedValue('http://test'),
       get: vi.fn().mockResolvedValue({ enabled: false, maxBackups: 7, backupTime: '02:00' }),
       download: vi.fn().mockResolvedValue(undefined),
+      post: vi.fn().mockResolvedValue({ data: { applied: [], failed: [], channels: 0, requiresReboot: true } }),
     },
   };
 });
@@ -118,5 +119,57 @@ describe('BackupManagementSection — issue #3711 source scoping', () => {
     const [endpoint] = (apiService.download as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(endpoint).toContain('/api/device/backup');
     expect(endpoint).not.toContain('sourceId=');
+  });
+});
+
+describe('BackupManagementSection — restore (issue #4926)', () => {
+  const asMock = <T,>(fn: T) => fn as unknown as ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    sourceState.sourceId = null;
+    sourceState.sourceName = null;
+    vi.clearAllMocks();
+    // Settings load on mount vs. the backup-list load on "Show Saved Backups"
+    // both go through apiService.get — branch on the URL.
+    asMock(apiService.get).mockImplementation((url: string) =>
+      url.includes('/list')
+        ? Promise.resolve([{ filename: 'backup_2026.yaml', timestamp: '2026-08-25T00:00:00Z', size: 100, type: 'manual' }])
+        : Promise.resolve({ enabled: false, maxBackups: 7, backupTime: '02:00' }),
+    );
+    asMock(apiService.post).mockResolvedValue({ data: { applied: ['config.lora'], failed: [], channels: 0, requiresReboot: true } });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+  });
+
+  async function openBackupList() {
+    render(<BackupManagementSection />);
+    fireEvent.click(screen.getByText('backup_management.show_backups'));
+    await waitFor(() => expect(screen.getByText('backup_2026.yaml')).toBeTruthy());
+  }
+
+  it('posts to the restore endpoint (no sourceId body when single-source)', async () => {
+    await openBackupList();
+    fireEvent.click(screen.getByText('backup_management.restore'));
+
+    await waitFor(() => expect(apiService.post).toHaveBeenCalled());
+    const [endpoint, body] = asMock(apiService.post).mock.calls[0];
+    expect(endpoint).toBe('/api/backup/restore/backup_2026.yaml');
+    expect(body).toEqual({});
+  });
+
+  it('includes sourceId in the restore body when a source is selected', async () => {
+    sourceState.sourceId = 'src-b';
+    await openBackupList();
+    fireEvent.click(screen.getByText('backup_management.restore'));
+
+    await waitFor(() => expect(apiService.post).toHaveBeenCalled());
+    const [, body] = asMock(apiService.post).mock.calls[0];
+    expect(body).toEqual({ sourceId: 'src-b' });
+  });
+
+  it('does not call the API when the user cancels the confirm dialog', async () => {
+    asMock(window.confirm).mockReturnValue(false);
+    await openBackupList();
+    fireEvent.click(screen.getByText('backup_management.restore'));
+    expect(apiService.post).not.toHaveBeenCalled();
   });
 });
