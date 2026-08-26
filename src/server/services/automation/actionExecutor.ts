@@ -303,11 +303,12 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
 
         if (destination != null || channelSel.length === 0) {
           // DM, or no unified-channel selection → single send on the fallback channel.
-          // A DM keeps inherit scope: MeshCore reply scope only applies to flooded
-          // channel broadcasts, so dropping the override on a DM is correct, not a leak.
-          // A channel-only fallback send (no `to`) still honors the scope override.
-          const fallbackScope = destination != null ? {} : scopeArg;
-          await pushOrSkipTxDisabled(results, () => deps.sendMessage({ sourceId: sid, text, channel: fallbackChannel, destination, replyId, ...fallbackScope, ...attemptsArg }));
+          // An EXPLICIT scope choice (unscoped / named / trigger) is honored on DMs
+          // too (#4932): MeshCore floods DMs under the device's global scope (path
+          // unknown), so the chosen scope governs a DM's propagation just as it does
+          // a channel broadcast — dropping it forced DMs onto the source default.
+          // 'inherit' still leaves scopeArg empty, so DMs default as before.
+          await pushOrSkipTxDisabled(results, () => deps.sendMessage({ sourceId: sid, text, channel: fallbackChannel, destination, replyId, ...scopeArg, ...attemptsArg }));
           continue;
         }
         const srcChannels = (await ctx.data.getChannels?.(sid)) ?? [];
