@@ -70,15 +70,12 @@ function ReticulumSourceInner() {
         >
           <UiIcon name="back" size={16} /> {t('unified.back_to_sources', 'Sources')}
         </button>
+        {/* #4939: the back-to-sources button already anchors the header, so the
+            MeshMonitor logo + wordmark are redundant on a per-source page — show
+            only the source name. */}
         <div className="dashboard-topbar-logo">
-          <img
-            src={`${appBasename}/logo.png`}
-            alt="MeshMonitor"
-            className="dashboard-topbar-logo-img"
-          />
-          <span className="dashboard-topbar-title dashboard-topbar-title-full">MeshMonitor — Reticulum</span>
           {sourceName && (
-            <span className="dashboard-topbar-title dashboard-topbar-title-short">{sourceName}</span>
+            <span className="dashboard-topbar-title">{sourceName}</span>
           )}
         </div>
         <div className="dashboard-topbar-actions">
