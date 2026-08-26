@@ -122,7 +122,7 @@ class YAMLGenerator {
  * Enum Mappings from Meshtastic Protobufs
  * These convert numeric enum values to their string names for YAML export
  */
-const EnumMappings: Record<string, Record<number, string>> = {
+export const EnumMappings: Record<string, Record<number, string>> = {
   Role: {
     0: 'CLIENT',
     1: 'CLIENT_MUTE',

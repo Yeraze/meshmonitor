@@ -19,12 +19,27 @@ const mockSystemBackupService = vi.hoisted(() => ({
   deleteBackup: vi.fn(),
 }));
 
+const mockDeviceRestoreService = vi.hoisted(() => ({
+  restoreBackup: vi.fn(),
+}));
+
+const mockManager = vi.hoisted(() => ({ sourceId: 'primary' }));
+const mockResolveSourceManager = vi.hoisted(() => vi.fn(() => mockManager));
+
 vi.mock('../services/backupFileService.js', () => ({
   backupFileService: mockBackupFileService,
 }));
 
 vi.mock('../services/systemBackupService.js', () => ({
   systemBackupService: mockSystemBackupService,
+}));
+
+vi.mock('../services/deviceRestoreService.js', () => ({
+  deviceRestoreService: mockDeviceRestoreService,
+}));
+
+vi.mock('../utils/resolveSourceManager.js', () => ({
+  resolveSourceManager: mockResolveSourceManager,
 }));
 
 vi.mock('../../services/database.js', () => ({
@@ -142,6 +157,39 @@ describe('backupRoutes - config backups', () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(mockBackupFileService.deleteBackup).toHaveBeenCalledWith('my_backup.yaml');
+  });
+
+  it('POST /backup/restore rejects invalid filename', async () => {
+    const res = await request(app).post('/backup/restore/bad.txt').send({});
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('INVALID_FILENAME');
+    expect(mockDeviceRestoreService.restoreBackup).not.toHaveBeenCalled();
+  });
+
+  it('POST /backup/restore reads the file, restores to the resolved source, and audits', async () => {
+    mockBackupFileService.getBackup.mockResolvedValue('yaml-content');
+    const result = { applied: ['config.lora'], failed: [], channels: 2, requiresReboot: true };
+    mockDeviceRestoreService.restoreBackup.mockResolvedValue(result);
+
+    const res = await request(app).post('/backup/restore/my_backup.yaml').send({ sourceId: 'src-b' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ success: true, data: result });
+    expect(mockResolveSourceManager).toHaveBeenCalledWith('src-b');
+    expect(mockDeviceRestoreService.restoreBackup).toHaveBeenCalledWith(mockManager, 'yaml-content');
+    expect(databaseService.auditLogAsync).toHaveBeenCalledWith(
+      1, 'device_backup_restored', 'device_backup', expect.any(String), expect.anything()
+    );
+  });
+
+  it('POST /backup/restore maps a not-connected failure to 409', async () => {
+    mockBackupFileService.getBackup.mockResolvedValue('yaml-content');
+    mockDeviceRestoreService.restoreBackup.mockRejectedValue(new Error('Not connected to Meshtastic node'));
+
+    const res = await request(app).post('/backup/restore/my_backup.yaml').send({});
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('RESTORE_FAILED');
   });
 });
 
