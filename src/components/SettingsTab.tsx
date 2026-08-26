@@ -1935,6 +1935,31 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </select>
           </div>
           <CustomTilesetManager />
+          {/* #4934: Carto basemap API key sits with the tileset pickers it
+              affects. Admin-only (server-global setting); the Map section
+              itself is visible to all users, so gate the input explicitly. */}
+          {isAdmin && (
+            <div className="setting-item">
+              <label htmlFor="cartoApiKey">
+                {t('settings.carto_api_key_label', 'Carto Basemap API Key')}
+                <span className="setting-description">
+                  {t('settings.carto_api_key_description', 'Removes the "API key required" watermark on the Dark/Light (Carto) basemaps. Free and instant — request one at ')}
+                  <a href="https://carto.com/basemaps/apikey/" target="_blank" rel="noopener noreferrer">carto.com/basemaps/apikey</a>
+                  {t('settings.carto_api_key_description_suffix', '. Leave empty to use Carto keyless (watermarked) or a non-Carto basemap.')}
+                </span>
+              </label>
+              <input
+                id="cartoApiKey"
+                type="text"
+                value={draft.cartoApiKey}
+                onChange={(e) => updateField('cartoApiKey', e.target.value)}
+                placeholder={t('settings.carto_api_key_placeholder', 'Carto API key')}
+                className="setting-input"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </div>
+          )}
           <div className="setting-item">
             <label htmlFor="positionHistoryLineStyle">
               {t('settings.position_history_line_style_label')}
@@ -2538,26 +2563,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             <span className="setting-description">
               {t('settings.elevation_enabled_description', 'Turns off the Link Profile tool\'s terrain chart when disabled.')}
             </span>
-          </div>
-          <div className="setting-item">
-            <label htmlFor="cartoApiKey">
-              {t('settings.carto_api_key_label', 'Carto Basemap API Key')}
-              <span className="setting-description">
-                {t('settings.carto_api_key_description', 'Removes the "API key required" watermark on the Dark/Light (Carto) basemaps. Free and instant — request one at ')}
-                <a href="https://carto.com/basemaps/apikey/" target="_blank" rel="noopener noreferrer">carto.com/basemaps/apikey</a>
-                {t('settings.carto_api_key_description_suffix', '. Leave empty to use Carto keyless (watermarked) or a non-Carto basemap.')}
-              </span>
-            </label>
-            <input
-              id="cartoApiKey"
-              type="text"
-              value={draft.cartoApiKey}
-              onChange={(e) => updateField('cartoApiKey', e.target.value)}
-              placeholder={t('settings.carto_api_key_placeholder', 'Carto API key')}
-              className="setting-input"
-              autoComplete="off"
-              spellCheck={false}
-            />
           </div>
           <div className="setting-item">
             <label htmlFor="elevationSourceUrl">
