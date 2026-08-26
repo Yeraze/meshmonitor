@@ -2543,7 +2543,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             <label htmlFor="cartoApiKey">
               {t('settings.carto_api_key_label', 'Carto Basemap API Key')}
               <span className="setting-description">
-                {t('settings.carto_api_key_description', 'Removes the "API key required" watermark on the Dark/Light (Carto) basemaps. Free and instant — request one at https://carto.com/basemaps/apikey/. Leave empty to use Carto keyless (watermarked) or a non-Carto basemap.')}
+                {t('settings.carto_api_key_description', 'Removes the "API key required" watermark on the Dark/Light (Carto) basemaps. Free and instant — request one at ')}
+                <a href="https://carto.com/basemaps/apikey/" target="_blank" rel="noopener noreferrer">carto.com/basemaps/apikey</a>
+                {t('settings.carto_api_key_description_suffix', '. Leave empty to use Carto keyless (watermarked) or a non-Carto basemap.')}
               </span>
             </label>
             <input

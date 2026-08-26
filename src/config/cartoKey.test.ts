@@ -51,6 +51,12 @@ describe('withCartoKey', () => {
     );
   });
 
+  it('handles an existing query string AND a fragment together', () => {
+    expect(withCartoKey('https://basemaps.cartocdn.com/x.json?v=2#hash', 'K')).toBe(
+      'https://basemaps.cartocdn.com/x.json?v=2&key=K#hash',
+    );
+  });
+
   it('is idempotent — does not double-append when a key is already present', () => {
     const keyed = 'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png?key=EXISTING';
     expect(withCartoKey(keyed, 'NEW')).toBe(keyed);

@@ -46,6 +46,10 @@ export function withCartoKey(url: string, key: string | null | undefined): strin
   if (!key) return url;
   if (!isCartoUrl(url)) return url;
 
+  // Unlike isCartoUrl (which must feed `new URL()`), the string surgery below
+  // needs no `{s}` substitution: `{s}`/`{z}`/`{x}`/`{y}` only ever appear in the
+  // path, never in a query or fragment, so `indexOf('#')`, `includes('?')`, and
+  // the `key=` probe operate on the raw template safely.
   // Split off any fragment first so the key lands before it.
   const hashIndex = url.indexOf('#');
   const fragment = hashIndex >= 0 ? url.slice(hashIndex) : '';
