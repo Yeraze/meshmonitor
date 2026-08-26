@@ -106,3 +106,24 @@ describe('AppHeader — source name is the clickable node-info entry (#4908)', (
     expect(screen.getByText(/Yeraze StationG2/)).toBeTruthy();
   });
 });
+
+describe('AppHeader — logo/wordmark only on the source-list view (#4939)', () => {
+  it('hides the MeshMonitor logo + wordmark on a per-source page (back button present)', () => {
+    render(<AppHeader {...baseProps({
+      onBackToSources: vi.fn(),
+      sourceName: 'Station G2',
+    })} />);
+    // Back-to-sources anchors the header; logo + wordmark are omitted.
+    expect(screen.getByText('Sources')).toBeTruthy();
+    expect(screen.queryByAltText('MeshMonitor Logo')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'MeshMonitor' })).toBeNull();
+    // The source name still renders.
+    expect(screen.getByText('Station G2')).toBeTruthy();
+  });
+
+  it('shows the MeshMonitor logo + wordmark on the source-list/root view (no back button)', () => {
+    render(<AppHeader {...baseProps()} />);
+    expect(screen.getByAltText('MeshMonitor Logo')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'MeshMonitor' })).toBeTruthy();
+  });
+});
