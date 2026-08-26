@@ -95,6 +95,7 @@ export const VALID_SETTINGS_KEYS = [
   'mapTileset',
   'mapTilesetLight',
   'mapTilesetDark',
+  'cartoApiKey',
   'packet_log_enabled',
   'packet_log_max_count',
   'packet_log_max_age_hours',
@@ -597,6 +598,11 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   // getSettingForSource does NOT fall back to the global row (removed in
   // #2839/#2840), so a per-source value here would be stored and never read.
   'externalUrl',
+  // Deployment-wide Carto basemap API key (#4934). One key per install, applied
+  // to Carto tiles for every client incl. anonymous embed viewers. It is a
+  // publishable, domain-restricted token (NOT a secret) so it is deliberately
+  // absent from SECRET_SETTINGS_KEYS — clients must receive it.
+  'cartoApiKey',
   // Documented "global" in this file's own inline comments:
   'pkiDmDecryptionGloballyEnabled',         // :82 master switch, gates every source
   'position_estimation_enabled',            // :141 global batch job (#3271)

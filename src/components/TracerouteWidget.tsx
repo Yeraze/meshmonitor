@@ -12,6 +12,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { MapContainer, TileLayer, Marker, Tooltip, useMap } from 'react-leaflet';
 import { useSettings } from '../contexts/SettingsContext';
 import { getTilesetById } from '../config/tilesets';
+import { withCartoKey } from '../config/cartoKey';
 import { useTraceroutes } from '../hooks/useTraceroutes';
 import { isUnknownSnr, tracerouteSegmentWeight } from '../utils/mapHelpers';
 import { TraceroutePathsLayer } from './map/layers/TraceroutePathsLayer';
@@ -73,7 +74,7 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
   canEdit = true,
 }) => {
   const { t } = useTranslation();
-  const { mapTileset, customTilesets, overlayColors } = useSettings();
+  const { mapTileset, customTilesets, overlayColors, cartoApiKey } = useSettings();
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [showMap, setShowMap] = useState(false); // Map hidden by default
@@ -489,8 +490,8 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
                     attributionControl={false}
                   >
                     <FitBounds bounds={mapData.bounds} />
-                    <TileLayer 
-                      url={tileset.url}
+                    <TileLayer
+                      url={withCartoKey(tileset.url, cartoApiKey)}
                       attribution={tileset.attribution}
                       maxZoom={tileset.maxZoom}
                     />

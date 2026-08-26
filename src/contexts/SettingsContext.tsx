@@ -119,6 +119,10 @@ interface SettingsContextType {
   mapTileset: TilesetId;
   mapTilesetLight: TilesetId;
   mapTilesetDark: TilesetId;
+  /** Deployment-wide Carto basemap API key (#4934), or null when unset. Loaded
+   *  from the server settings and applied to Carto tile URLs. Read-only here —
+   *  admins set it via SettingsTab / the settings API, not through this context. */
+  cartoApiKey: string | null;
   activeMapTilesetMode: ActiveAppearanceMode;
   overlayScheme: OverlayScheme;
   overlayColors: OverlayColors;
@@ -480,6 +484,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
 
   const [mapTilesetLight, setMapTilesetLightState] = useState<TilesetId>(initialMapTilesets.light);
   const [mapTilesetDark, setMapTilesetDarkState] = useState<TilesetId>(initialMapTilesets.dark);
+  // Server-global Carto API key (#4934). Not a per-user pref, so no localStorage
+  // seed — it is populated from the server settings response on load.
+  const [cartoApiKey, setCartoApiKeyState] = useState<string | null>(null);
 
   const [mapPinStyle, setMapPinStyleState] = useState<MapPinStyle>(() => {
     const saved = localStorage.getItem('mapPinStyle');
@@ -1624,6 +1631,13 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             localStorage.setItem('mapTilesetDark', nextDark);
           }
 
+          // Server-global Carto API key (#4934). Absent/blank ⇒ null (no key).
+          setCartoApiKeyState(
+            typeof settings.cartoApiKey === 'string' && settings.cartoApiKey.length > 0
+              ? settings.cartoApiKey
+              : null,
+          );
+
           if (settings.mapPinStyle) {
             setMapPinStyleState(settings.mapPinStyle as MapPinStyle);
             localStorage.setItem('mapPinStyle', settings.mapPinStyle);
@@ -1949,6 +1963,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     mapTileset,
     mapTilesetLight,
     mapTilesetDark,
+    cartoApiKey,
     activeMapTilesetMode,
     overlayScheme,
     overlayColors,
@@ -2076,6 +2091,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     mapTileset,
     mapTilesetLight,
     mapTilesetDark,
+    cartoApiKey,
     activeMapTilesetMode,
     overlayScheme,
     overlayColors,

@@ -203,6 +203,7 @@ export default function DashboardMap({
   const {
     mapPinStyle,
     setMapTileset,
+    cartoApiKey,
     overlayColors,
     defaultMapCenterLat,
     defaultMapCenterLon,
@@ -269,8 +270,8 @@ export default function DashboardMap({
   const effective3D = viewMode === '3d' && canUse3D;
   const unavailableIn3DTitle = effective3D ? 'Not available in 3D' : undefined;
   const basemap3D = useMemo(
-    () => resolve3DBasemap(tilesetId, customTilesets),
-    [tilesetId, customTilesets],
+    () => resolve3DBasemap(tilesetId, customTilesets, cartoApiKey),
+    [tilesetId, customTilesets, cartoApiKey],
   );
   // `appBasename` is the base-path prefix `ApiService` was seeded with at
   // startup — module-scope constant, never changes.
@@ -795,6 +796,7 @@ export default function DashboardMap({
         center={[defaultCenter.lat, defaultCenter.lng]}
         zoom={hasConfiguredDefaultCenter ? defaultMapCenterZoom : 10}
         tilesetId={tilesetId}
+        cartoApiKey={cartoApiKey}
         customTilesets={customTilesets}
         styleJson={activeStyleJson ?? undefined}
         zoomControl

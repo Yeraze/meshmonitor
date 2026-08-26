@@ -101,7 +101,7 @@ interface MeshCoreMapProps {
 
 export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPublicKey, localNodePosition, onNavigateToDm, isLoading = false, resizeTrigger }) => {
   const { t } = useTranslation();
-  const { mapTileset, customTilesets, setMapTileset, activeStyleJson } = useSettings();
+  const { mapTileset, customTilesets, setMapTileset, cartoApiKey, activeStyleJson } = useSettings();
   const { timeFormat, dateFormat } = useDisplaySettings();
   const { sourceId } = useSource();
   const csrfFetch = useCsrfFetch();
@@ -489,6 +489,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
         zoom={zoom}
         tilesetId={mapTileset}
         customTilesets={customTilesets}
+        cartoApiKey={cartoApiKey}
         styleJson={activeStyleJson ?? undefined}
         resizeTrigger={resizeTrigger}
       >

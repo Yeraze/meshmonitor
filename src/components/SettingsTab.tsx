@@ -130,6 +130,10 @@ interface SettingsDraft {
   externalUrl: string;
   elevationEnabled: boolean;
   elevationSourceUrl: string;
+  // Deployment-wide Carto basemap API key (#4934). Global, admin-set, publicly
+  // readable (NOT a secret) — publishable, domain-restricted token appended to
+  // Carto tile URLs. Mirrors the elevationSourceUrl admin-field pattern.
+  cartoApiKey: string;
   // ATAK/CoT Phase 3 (issue #3691): global singleton plaintext TCP CoT feed
   // server, not per-source — mirrors the elevation fields above.
   cotFeedEnabled: boolean;
@@ -432,6 +436,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     externalUrl: '',
     elevationEnabled: false,
     elevationSourceUrl: '',
+    cartoApiKey: '',
     cotFeedEnabled: false,
     cotFeedPort: 8088,
   }));
@@ -463,6 +468,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // `elevationSourceUrl` (stripSecretSettings returns the full map to admins).
   const [initialElevationEnabled, setInitialElevationEnabled] = useState(false);
   const [initialElevationSourceUrl, setInitialElevationSourceUrl] = useState('');
+  // #4934: deployment-wide Carto API key (no context/prop home, same admin-field
+  // pattern as elevationSourceUrl above). Default '' (unset).
+  const [initialCartoApiKey, setInitialCartoApiKey] = useState('');
   // ATAK/CoT feed server (#3691 Phase 3 WP2). Same pattern as elevation above:
   // global singleton, no context/prop home, default OFF / port 8088.
   const [initialCotFeedEnabled, setInitialCotFeedEnabled] = useState(false);
@@ -620,6 +628,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           updateField('elevationSourceUrl', elevationSourceUrl);
           setInitialElevationSourceUrl(elevationSourceUrl);
 
+          // #4934: deployment-wide Carto basemap API key. Admins receive the
+          // unmasked value (it is not secret-stripped).
+          const cartoApiKey = typeof settings.cartoApiKey === 'string' ? settings.cartoApiKey : '';
+          updateField('cartoApiKey', cartoApiKey);
+          setInitialCartoApiKey(cartoApiKey);
+
           // Load ATAK/CoT feed settings (#3691 Phase 3). Default OFF; absent
           // port key => 8088.
           const cotFeedEnabledOn = settings.cotFeedEnabled === '1' || settings.cotFeedEnabled === 'true';
@@ -720,6 +734,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       externalUrl: initialExternalUrl,
       elevationEnabled: initialElevationEnabled,
       elevationSourceUrl: initialElevationSourceUrl,
+      cartoApiKey: initialCartoApiKey,
       cotFeedEnabled: initialCotFeedEnabled,
       cotFeedPort: initialCotFeedPort,
     };
@@ -733,7 +748,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
       initialPacketMonitorSettings, initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialMeshcoreCliTimeoutSeconds, initialAdminRetryAttempts,
       initialAnalyticsProvider, initialAnalyticsConfig, initialAppriseApiServerUrl, initialExternalUrl, initialElevationEnabled, initialElevationSourceUrl,
-      initialCotFeedEnabled, initialCotFeedPort]);
+      initialCartoApiKey, initialCotFeedEnabled, initialCotFeedPort]);
 
   // Re-seed the draft's category-A/B fields whenever the upstream props/context values change.
   // PINNED BEHAVIOR (do not add a dirty-guard here — that would be a behavior change, out of
@@ -914,6 +929,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setInitialExternalUrl(d.externalUrl.trim());
     setInitialElevationEnabled(d.elevationEnabled);
     setInitialElevationSourceUrl(d.elevationSourceUrl.trim());
+    setInitialCartoApiKey(d.cartoApiKey.trim());
     setInitialCotFeedEnabled(d.cotFeedEnabled);
     setInitialCotFeedPort(d.cotFeedPort);
   }, [setNeighborInfoMinZoom, setDefaultMapCenterLat, setDefaultMapCenterLon, setDefaultMapCenterZoom,
@@ -988,6 +1004,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         externalUrl: draft.externalUrl.trim(),
         elevationEnabled: draft.elevationEnabled ? 'true' : 'false',
         elevationSourceUrl: draft.elevationSourceUrl.trim(),
+        cartoApiKey: draft.cartoApiKey.trim(),
         cotFeedEnabled: draft.cotFeedEnabled ? '1' : '0',
         cotFeedPort: String(draft.cotFeedPort),
       };
@@ -2521,6 +2538,24 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             <span className="setting-description">
               {t('settings.elevation_enabled_description', 'Turns off the Link Profile tool\'s terrain chart when disabled.')}
             </span>
+          </div>
+          <div className="setting-item">
+            <label htmlFor="cartoApiKey">
+              {t('settings.carto_api_key_label', 'Carto Basemap API Key')}
+              <span className="setting-description">
+                {t('settings.carto_api_key_description', 'Removes the "API key required" watermark on the Dark/Light (Carto) basemaps. Free and instant — request one at https://carto.com/basemaps/apikey/. Leave empty to use Carto keyless (watermarked) or a non-Carto basemap.')}
+              </span>
+            </label>
+            <input
+              id="cartoApiKey"
+              type="text"
+              value={draft.cartoApiKey}
+              onChange={(e) => updateField('cartoApiKey', e.target.value)}
+              placeholder={t('settings.carto_api_key_placeholder', 'Carto API key')}
+              className="setting-input"
+              autoComplete="off"
+              spellCheck={false}
+            />
           </div>
           <div className="setting-item">
             <label htmlFor="elevationSourceUrl">
