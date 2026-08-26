@@ -3358,8 +3358,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     }
   }
 
-  private static normalizeScopeOverride(scope: string | null | undefined): string | null | undefined {
-    if (scope === undefined || scope === null) return undefined;
+  private static normalizeScopeOverride(scope: string | null | undefined): string | undefined {
+    if (scope === undefined || scope === null) return undefined; // not provided → inherit
     const stripped = scope.trim().replace(/^#/, '');
     const normalized = stripped.replace(/[^0-9A-Za-z-]/g, '');
     if (normalized !== stripped) {
@@ -3368,7 +3368,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         `normalised to "${normalized || '(unscoped)'}"`,
       );
     }
-    return normalized || null;
+    // '' is a meaningful value here: an EXPLICIT "unscoped" choice. It must stay
+    // distinct from `undefined` (inherit) and from a named region so that
+    // applyFloodScope can force truly-unscoped (#4932) rather than collapse it
+    // to the node's default scope.
+    return normalized;
   }
 
   /**
@@ -3402,8 +3406,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   /**
    * Resolve the effective MeshCore region/scope for an outbound send (#3667):
    * a channel's own scope overrides the source default scope; otherwise the
-   * source default applies; otherwise unscoped. Returns the plain region name
-   * (no leading '#') or null for unscoped.
+   * source default applies. Returns the plain region name (no leading '#'), or
+   * null when MeshMonitor has no scope configured — in which case the flood
+   * scope is cleared and the node falls back to its OWN persistent default
+   * region (this is "inherit", not forced-unscoped; see applyFloodScope #4932).
    */
   private async resolveScopeForSend(channelIdx?: number): Promise<string | null> {
     if (channelIdx !== undefined) {
@@ -3416,15 +3422,22 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   }
 
   /**
-   * Ensure the device's global flood scope matches `region` (null = unscoped),
-   * sending a `set_flood_scope` bridge command only when it differs from the
-   * cached value. On failure the cached scope is invalidated so the next send
-   * re-asserts, and the error propagates.
+   * Ensure the device's global flood scope matches `region`, sending a
+   * `set_flood_scope` bridge command only when it differs from the cached value.
+   * Three intents (#4932):
+   *   • `''`   → force truly-unscoped (public flood), overriding the node's
+   *              persistent default region (`{ unscoped: true }` → v12+ command).
+   *   • name   → a named region (transport key derived from it).
+   *   • `null` → clear the transient override, i.e. fall back to the node's own
+   *              default region.
+   * On failure the cached scope is invalidated so the next send re-asserts, and
+   * the error propagates.
    */
   private async applyFloodScope(region: string | null): Promise<void> {
     if (this.activeFloodScope === region) return;
     try {
-      const resp = await this.sendBridgeCommand('set_flood_scope', { region });
+      const params = region === '' ? { unscoped: true } : { region };
+      const resp = await this.sendBridgeCommand('set_flood_scope', params);
       if (!resp.success) {
         throw new Error(resp.error || 'set_flood_scope failed');
       }
@@ -3508,7 +3521,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           // reconstructed post-send, and the UI gates the scope row on
           // `scopeName` presence (no magic-number sentinel needed). A normal
           // unscoped send leaves `scopeName` null, so it shows no scope row.
-          scopeName: region ?? null,
+          // `region` is '' for an explicit-unscoped send (#4932) — coalesce that
+          // (and null) to null so unscoped shows no scope row.
+          scopeName: region || null,
         };
         // An auto-retry resend (#3977) must NOT create a second message row or
         // re-emit a `message` event — that would produce a duplicate bubble in

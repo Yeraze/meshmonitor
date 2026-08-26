@@ -288,10 +288,23 @@ describe('executeAction', () => {
     expect(calls[0].args.scopeOverride).toBe('');
   });
 
-  it('sendMessage: DM send never carries a scope override', async () => {
+  it('sendMessage: DM send honors an explicit scope override (#4932)', async () => {
+    // MeshCore floods DMs under the device global scope, so an explicit
+    // "unscoped" choice must reach the DM send too — it used to be dropped,
+    // forcing the DM onto the source default region.
     const { calls, deps } = recorder();
     await executeAction(
       node('action.sendMessage', { text: 'hi', to: '{{ trigger.from }}', channel: 0, scopeMode: 'unscoped' }),
+      ctx({ from: 777, channel: 0, isDM: true }),
+      deps,
+    );
+    expect(calls[0].args.scopeOverride).toBe('');
+  });
+
+  it('sendMessage: DM send with inherit scope carries no override (unchanged)', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.sendMessage', { text: 'hi', to: '{{ trigger.from }}', channel: 0 }),
       ctx({ from: 777, channel: 0, isDM: true }),
       deps,
     );

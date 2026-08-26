@@ -65,8 +65,13 @@ function makeManager(opts: {
   return { manager: m, bridgeCalls };
 }
 
+// #4932: an explicit-unscoped send is now { unscoped: true } (forces public
+// flood, overriding the node default), distinct from { region: null } (clear /
+// inherit the node default). Map the former to the string 'unscoped'.
 const scopeOf = (calls: BridgeCall[]) =>
-  calls.filter(c => c.cmd === 'set_flood_scope').map(c => c.params.region);
+  calls
+    .filter(c => c.cmd === 'set_flood_scope')
+    .map(c => (c.params.unscoped ? 'unscoped' : (c.params.region ?? null)));
 
 function triggerMessage(overrides: Partial<MeshCoreMessage>): MeshCoreMessage {
   return {
@@ -88,14 +93,15 @@ describe('MeshCoreManager — Auto-Ack "trigger" scope mode (#3887)', () => {
     const { manager, bridgeCalls } = makeManager({ channelScopes: { 1: null }, defaultScope: 'berlin' });
     const msg = triggerMessage({ scopeCode: null, scopeName: null });
     await (manager as any).checkAutoAcknowledge(msg, false, 1, null, null);
-    expect(scopeOf(bridgeCalls)).toEqual([null]);
+    // #4932: truly-unscoped, NOT clear/inherit (which would revert to 'berlin').
+    expect(scopeOf(bridgeCalls)).toEqual(['unscoped']);
   });
 
   it('replies unscoped when the trigger arrived explicitly unscoped (scopeCode: 0)', async () => {
     const { manager, bridgeCalls } = makeManager({ channelScopes: { 1: null }, defaultScope: 'berlin' });
     const msg = triggerMessage({ scopeCode: 0, scopeName: null });
     await (manager as any).checkAutoAcknowledge(msg, false, 1, null, null);
-    expect(scopeOf(bridgeCalls)).toEqual([null]);
+    expect(scopeOf(bridgeCalls)).toEqual(['unscoped']);
   });
 
   it('replies on the trigger\'s named scope when resolved', async () => {
@@ -112,6 +118,6 @@ describe('MeshCoreManager — Auto-Ack "trigger" scope mode (#3887)', () => {
     const { manager, bridgeCalls } = makeManager({ channelScopes: { 1: null }, defaultScope: 'berlin' });
     const msg = triggerMessage({ scopeCode: 456, scopeName: null });
     await (manager as any).checkAutoAcknowledge(msg, false, 1, null, null);
-    expect(scopeOf(bridgeCalls)).toEqual([null]);
+    expect(scopeOf(bridgeCalls)).toEqual(['unscoped']);
   });
 });

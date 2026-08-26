@@ -142,6 +142,29 @@ class MockConnection extends EventEmitter {
     }, 1);
   }
 
+  // Flood-scope (#3667 / #4932). The [54][0x00][key] forms the library exposes:
+  public clearFloodScopeCalls = 0;
+  public setFloodScopeCalls: Uint8Array[] = [];
+  // Raw frames the backend sends itself (the truly-unscoped [54][0x01] form):
+  public rawFrames: Uint8Array[] = [];
+  public floodScopeErr = false;
+
+  async clearFloodScope() {
+    this.clearFloodScopeCalls++;
+  }
+
+  async setFloodScope(key: Uint8Array) {
+    this.setFloodScopeCalls.push(key);
+  }
+
+  sendToRadioFrame(bytes: Uint8Array) {
+    this.rawFrames.push(bytes);
+    // The backend awaits an Ok/Err after sending the raw unscoped frame.
+    setTimeout(() => {
+      this.emit(this.floodScopeErr ? ResponseCodes.Err : ResponseCodes.Ok, {});
+    }, 1);
+  }
+
   async setAdvertLocPolicy(policy: number) {
     this.setAdvertLocPolicyCalls.push(policy);
   }
@@ -278,6 +301,7 @@ function installMockModule(MockConn: typeof MockConnection): MockConnection {
       BinaryRequestTypes,
       AdvType,
       TxtTypes,
+      CommandCodes: { SetFloodScope: 54 },
     } as any,
     CayenneLpp: {
       parse: (bytes: Uint8Array | number[]) => {
@@ -1418,7 +1442,71 @@ describe('MeshCoreNativeBackend', () => {
     expect(resp.success).toBe(false);
     expect(resp.error).toMatch(/Set-out-path target not in device contact list/);
   });
+
+  // ---- flood scope (#3667 / #4932) ----
+
+  it('set_flood_scope with a named region derives the sha256 transport key', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', { connectionType: 'serial', serialPort: '/dev/ttyUSB0' });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+
+    const resp = await backend.sendCommand('set_flood_scope', { region: 'muenchen' });
+    expect(resp.success).toBe(true);
+    expect(conn.setFloodScopeCalls).toHaveLength(1);
+    expect(conn.setFloodScopeCalls[0]).toHaveLength(16);
+    expect(conn.clearFloodScopeCalls).toBe(0);
+    expect(conn.rawFrames).toHaveLength(0);
+  });
+
+  it('set_flood_scope with null region clears the scope (revert to node default)', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', { connectionType: 'serial', serialPort: '/dev/ttyUSB0' });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+
+    const resp = await backend.sendCommand('set_flood_scope', { region: null });
+    expect(resp.success).toBe(true);
+    expect(conn.clearFloodScopeCalls).toBe(1);
+    expect(conn.rawFrames).toHaveLength(0);
+  });
+
+  it('set_flood_scope unscoped degrades to clear on pre-v12 firmware (#4932)', async () => {
+    // Default mock firmwareVer is 4 — no transient-unscoped command exists, so
+    // it must fall back to clearFloodScope (node default) and report degraded.
+    const backend = new MeshCoreNativeBackend('src-1', { connectionType: 'serial', serialPort: '/dev/ttyUSB0' });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+
+    const resp = await backend.sendCommand('set_flood_scope', { unscoped: true });
+    expect(resp.success).toBe(true);
+    expect(resp.data?.degraded).toBe(true);
+    expect(conn.clearFloodScopeCalls).toBe(1);
+    expect(conn.rawFrames).toHaveLength(0); // no raw [54,1] on old firmware
+  });
+
+  it('set_flood_scope unscoped sends the raw [54,0x01] frame on v12+ firmware (#4932)', async () => {
+    lastInstanceRef = installMockModule(MockConnectionV12) as any;
+    const backend = new MeshCoreNativeBackend('src-1', { connectionType: 'serial', serialPort: '/dev/ttyUSB0' });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+
+    const resp = await backend.sendCommand('set_flood_scope', { unscoped: true });
+    expect(resp.success).toBe(true);
+    expect(resp.data?.unscoped).toBe(true);
+    expect(conn.rawFrames).toHaveLength(1);
+    expect(Array.from(conn.rawFrames[0])).toEqual([54, 0x01]); // CMD_SET_FLOOD_SCOPE, sub-command 1
+    expect(conn.clearFloodScopeCalls).toBe(0);
+    expect(conn.setFloodScopeCalls).toHaveLength(0);
+  });
 });
+
+/** Firmware new enough (companion protocol v12) for the transient unscoped command. */
+class MockConnectionV12 extends MockConnection {
+  public deviceQueryResponse: any = {
+    firmwareVer: 12,
+    firmware_build_date: '01 Jan 2026',
+    manufacturerModel: 'Heltec V3',
+  };
+}
 
 describe('formatOutPath', () => {
   it('returns nulls for the OUT_PATH_UNKNOWN sentinel (0xFF or -1)', () => {

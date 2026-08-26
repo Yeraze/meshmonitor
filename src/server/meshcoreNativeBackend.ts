@@ -247,6 +247,11 @@ export class MeshCoreNativeBackend extends EventEmitter {
   private connection: AnyConnection | null = null;
   private constants: MeshCoreJsModule['Constants'] | null = null;
   private cachedSelfInfo: any = null;
+  // Companion-protocol version of the connected node (DeviceInfo.firmwareVer),
+  // cached at connect. Gates the transient truly-unscoped flood-scope command
+  // (CMD_SET_FLOOD_SCOPE sub-command 0x01), which only exists on v12+ (#4932).
+  // null = unknown (treated as pre-v12).
+  private cachedFirmwareVer: number | null = null;
   private connected: boolean = false;
   private commandSeq: number = 0;
   private drainInFlight: boolean = false;
@@ -386,6 +391,17 @@ export class MeshCoreNativeBackend extends EventEmitter {
         radioFreq: libFreqToMhz(selfInfo?.radioFreq),
         radioBw: libBwToKhz(selfInfo?.radioBw),
       };
+
+      // Cache the companion-protocol version so the flood-scope path can gate
+      // the v12+ truly-unscoped command (#4932). Best-effort — a node/firmware
+      // that doesn't answer DeviceQuery just stays "unknown" (pre-v12).
+      try {
+        const info = await this.connection.deviceQuery(1);
+        this.cachedFirmwareVer = typeof info?.firmwareVer === 'number' ? info.firmwareVer : null;
+      } catch (verErr) {
+        this.cachedFirmwareVer = null;
+        logger.debug(`[MeshCoreNative:${this.sourceId}] deviceQuery for version failed: ${(verErr as Error).message}`);
+      }
     } catch (err) {
       // A failed connect (e.g. a SelfInfo handshake timeout right after a USB
       // replug) MUST release the serial fd. Otherwise the OS-level handle
@@ -419,6 +435,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
       this.connection = null;
     }
     this.cachedSelfInfo = null;
+    this.cachedFirmwareVer = null;
   }
 
   // ---------------- push event wiring ----------------
@@ -1776,8 +1793,49 @@ export class MeshCoreNativeBackend extends EventEmitter {
       case 'set_flood_scope': {
         // MeshCore region/scope (#3667). The device holds a single global flood
         // scope (CMD_SET_FLOOD_SCOPE=54); the manager asserts it before each
-        // send. The transport key is the first 16 bytes of sha256("#region").
-        // An empty/null region clears the scope (back to legacy null '*').
+        // send. Three distinct intents (#4932):
+        //   • unscoped:true  → force truly-unscoped (public flood, no region),
+        //     OVERRIDING the node's persistent default region. This needs the
+        //     v12+ sub-command [54][0x01] (send_unscoped=true); the empty-key
+        //     form below does NOT do this — firmware treats an empty key as
+        //     "revert to the persistent default region", which is exactly the
+        //     bug this fixes.
+        //   • region non-empty → a named region (transport key = first 16 bytes
+        //     of sha256("#region")).
+        //   • else → clear the transient override (revert to the node default).
+        if (params.unscoped === true) {
+          if (this.cachedFirmwareVer != null && this.cachedFirmwareVer >= 12) {
+            // meshcore.js only exposes the [54][0x00][key] form
+            // (setFloodScope/clearFloodScope), so build the truly-unscoped
+            // sub-command frame [54][0x01] (no key) by hand and await the same
+            // Ok/Err the library does. Frame: [CMD_SET_FLOOD_SCOPE=54, 0x01].
+            await new Promise<void>((resolve, reject) => {
+              const onOk = () => {
+                c.off(K.ResponseCodes.Ok, onOk);
+                c.off(K.ResponseCodes.Err, onErr);
+                resolve();
+              };
+              const onErr = () => {
+                c.off(K.ResponseCodes.Ok, onOk);
+                c.off(K.ResponseCodes.Err, onErr);
+                reject(new Error('Device rejected unscoped flood-scope command'));
+              };
+              c.once(K.ResponseCodes.Ok, onOk);
+              c.once(K.ResponseCodes.Err, onErr);
+              c.sendToRadioFrame(Uint8Array.from([K.CommandCodes.SetFloodScope, 0x01]));
+            });
+            return { ok: true, scope: null, unscoped: true };
+          }
+          // Pre-v12 firmware has no transient unscoped command, and the only
+          // alternative (rewriting the node's saved default region via CMD 63)
+          // is destructive, so degrade to the node default and warn (#4932).
+          logger.warn(
+            `[MeshCoreNative:${this.sourceId}] Per-message unscoped flood is unsupported on companion protocol ` +
+            `v${this.cachedFirmwareVer ?? '?'} (needs v12+); falling back to the node's default region.`,
+          );
+          await c.clearFloodScope();
+          return { ok: true, scope: null, unscoped: false, degraded: true };
+        }
         const regionRaw = params.region;
         const region = typeof regionRaw === 'string' ? regionRaw.trim() : '';
         if (!region) {
