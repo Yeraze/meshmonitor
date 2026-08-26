@@ -146,8 +146,15 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           </button>
         )}
         <div className="header-title">
-          <img src={`${baseUrl}/logo.png`} alt="MeshMonitor Logo" className="header-logo" />
-          <h1>MeshMonitor</h1>
+          {/* On a per-source page the back-to-sources button already anchors the
+              header, so the MeshMonitor logo + wordmark are redundant between it
+              and the source name — show them only on the source-list/root view. */}
+          {!onBackToSources && (
+            <>
+              <img src={`${baseUrl}/logo.png`} alt="MeshMonitor Logo" className="header-logo" />
+              <h1>MeshMonitor</h1>
+            </>
+          )}
           {/* Show only the source name (#4908) — clickable to open the node-info
               popup, which now carries the full node identity that used to be
               duplicated in a separate gray box beside it. */}
