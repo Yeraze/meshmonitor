@@ -147,6 +147,90 @@ export function knifeEdgeLossDb(v: number): number {
 }
 
 /**
+ * Spherical (smooth) earth diffraction loss, dB — ITU-R P.526-14 §3.1.1, the
+ * F(X) + G(Y) residue-series method (#4727 follow-up).
+ *
+ * **Why this exists.** Single knife-edge diffraction badly UNDER-models the
+ * earth's OWN curvature: it treats a smooth ~8,500 km-radius bulge as a sharp
+ * edge and charges only ~12 dB at 50 km where the true over-horizon loss is
+ * ~58 dB. Without it a low antenna over flat ground or water "reaches" 100 km+,
+ * ignoring the radio horizon entirely — the reported #4727 symptom over flat
+ * South Florida. `evaluateLink` takes the WORSE of this and the terrain
+ * knife-edge, so a real ridge still dominates where it should while the smooth
+ * earth is no longer free.
+ *
+ * **β = 1** for horizontal polarisation at any frequency, and vertical above
+ * 20 MHz over land / 300 MHz over sea (P.526 Eq. 16) — true for every LoRa
+ * band, so it is fixed. The surface-admittance K (~5e-4 at UHF) makes the
+ * height-gain floor `2 + 20·log10(K)` non-binding, so it is omitted.
+ *
+ * **Horizon gate.** Below the line-of-sight horizon (P.526 Eq. 21) the ray
+ * clears the bulge, so this returns 0. The §3.2 sub-horizon interpolation is
+ * deliberately not implemented: those paths are limited by free-space loss, and
+ * a coverage sweep's reach (first failure) always lands beyond the horizon, so
+ * the small step at the horizon is never the deciding sample.
+ *
+ * `txHeightM` / `rxHeightM` are heights above the smooth-earth datum (≈ mean
+ * sea level) — ground elevation PLUS antenna height, not the bare antenna
+ * height — so an endpoint on high terrain gets its correspondingly far horizon.
+ * Over flat ground at sea level they equal the antenna heights.
+ *
+ * Returns positive dB (>= 0). `distanceM` is the great-circle path length; the
+ * practical-unit constants (2.188, 9.575e-3) take d in km, f in MHz, a_e in km,
+ * h in m.
+ */
+export function sphericalEarthDiffractionLossDb(
+  distanceM: number,
+  frequencyHz: number,
+  txHeightM: number,
+  rxHeightM: number,
+  kFactor: number = DEFAULT_K_FACTOR,
+): number {
+  if (distanceM <= 0 || frequencyHz <= 0) return 0;
+  // Floor the effective heights at a small positive value. A literal 0 m makes
+  // the height-gain G(Y) diverge (Y=0 -> log(0) -> -Infinity -> Infinity loss),
+  // and a device sitting on the ground still has its antenna a few decimetres
+  // up. Flooring (rather than bailing to 0 loss) keeps the curvature limit
+  // active for ground-level receivers, which is the whole point of this term.
+  const MIN_EFFECTIVE_HEIGHT_M = 0.5;
+  const h1 = Math.max(txHeightM, MIN_EFFECTIVE_HEIGHT_M);
+  const h2 = Math.max(rxHeightM, MIN_EFFECTIVE_HEIGHT_M);
+
+  // Radio (LOS) horizon over the effective earth, P.526 Eq. 21 in SI metres:
+  // d_los = sqrt(2·a_e)·(sqrt(h1)+sqrt(h2)). Reduces to 4.12·(√h1+√h2) km for
+  // k=4/3. Below it, the direct ray clears the bulge → no curvature loss.
+  const dLosM = Math.sqrt(2 * kFactor * EARTH_RADIUS_M) * (Math.sqrt(h1) + Math.sqrt(h2));
+  if (distanceM <= dLosM) return 0;
+
+  const aeKm = (kFactor * EARTH_RADIUS_M) / 1000;
+  const fMHz = frequencyHz / 1e6;
+  const dKm = distanceM / 1000;
+
+  // X — normalized path length (Eq. 14a). Y — normalized height (Eq. 15a).
+  const X = 2.188 * Math.cbrt(fMHz) * Math.pow(aeKm, -2 / 3) * dKm;
+  const yOf = (h: number) => 9.575e-3 * Math.pow(fMHz, 2 / 3) * Math.pow(aeKm, -1 / 3) * h;
+
+  // F(X) — distance term (Eqs. 17a / 17b).
+  const F = X >= 1.6
+    ? 11 + 10 * Math.log10(X) - 17.6 * X
+    : -20 * Math.log10(X) - 5.6488 * Math.pow(X, 1.425);
+
+  // G(Y) — height-gain term (Eqs. 18 / 18a), β = 1 so B = Y.
+  const gainG = (h: number): number => {
+    const Y = yOf(h);
+    if (Y > 2) return 17.6 * Math.sqrt(Y - 1.1) - 5 * Math.log10(Y - 1.1) - 8;
+    const arg = Y + 0.1 * Y ** 3; // can be <= 0 for a zero-height antenna
+    return arg > 0 ? 20 * Math.log10(arg) : -Infinity;
+  };
+
+  // Eq. 13 gives the field relative to free space (dB, negative in shadow);
+  // attenuation is its negation (P.526-14 §3.1.2 Note 1). Clamp to >= 0: a
+  // positive bracket would mean "above free space", where the method is invalid.
+  const eDb = F + gainG(h1) + gainG(h2);
+  return Math.max(0, -eDb);
+}
+
+/**
  * Evaluate one point-to-point link over a terrain profile.
  *
  * `samples` must run from the transmitter (distance 0) to the receiver, with
@@ -209,7 +293,20 @@ export function evaluateLink(
     if (v > worstV) worstV = v;
   }
 
-  const diffractionLossDb = Number.isFinite(worstV) ? knifeEdgeLossDb(worstV) : 0;
+  // Diffraction is the WORSE of two mechanisms, never their sum: a sharp terrain
+  // ridge (single knife-edge over the worst interior sample) and the smooth
+  // earth's own curvature (ITU-R P.526 spherical earth). Max, not sum, so the
+  // two curvature models — the knife-edge's earth-bulge term and the spherical
+  // term — are not double-counted; whichever obstructs more wins (#4727).
+  const knifeEdge = Number.isFinite(worstV) ? knifeEdgeLossDb(worstV) : 0;
+  // Spherical-earth heights are measured above the smooth-earth datum (≈ MSL),
+  // i.e. ground elevation + antenna height — NOT the bare antenna height. An
+  // endpoint on a 1500 m peak has a far horizon and little curvature loss, which
+  // is what keeps a mountaintop-repeater link reachable.
+  const spherical = sphericalEarthDiffractionLossDb(
+    total, inputs.frequencyHz, txAlt, rxAlt, kFactor,
+  );
+  const diffractionLossDb = Math.max(knifeEdge, spherical);
   const fspl = freeSpaceLossDb(total, wavelength);
 
   const receivedPowerDbm =
