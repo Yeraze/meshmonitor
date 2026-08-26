@@ -14,6 +14,7 @@
  *    the 2D view is unaffected.
  */
 import { getTilesetById, TILESETS, type TilesetId, type CustomTileset } from './tilesets';
+import { withCartoKey } from './cartoKey';
 
 export interface Basemap3DSource {
   tiles: string[];
@@ -42,7 +43,11 @@ export function expandSubdomains(url: string): string[] {
  * custom) fall back to `TILESETS.osm` with `usedFallback: true` so callers
  * can surface a non-blocking note.
  */
-export function resolve3DBasemap(tilesetId: TilesetId, custom: CustomTileset[] = []): Basemap3DSource {
+export function resolve3DBasemap(
+  tilesetId: TilesetId,
+  custom: CustomTileset[] = [],
+  cartoApiKey?: string | null,
+): Basemap3DSource {
   const tileset = getTilesetById(tilesetId, custom);
 
   if (tileset.isVector) {
@@ -56,7 +61,9 @@ export function resolve3DBasemap(tilesetId: TilesetId, custom: CustomTileset[] =
   }
 
   return {
-    tiles: expandSubdomains(tileset.url),
+    // #4934: append the Carto key to each expanded subdomain URL (no-op for
+    // non-Carto hosts / empty key) so the 3D raster basemap is unwatermarked.
+    tiles: expandSubdomains(tileset.url).map((u) => withCartoKey(u, cartoApiKey)),
     attribution: tileset.attribution,
     maxZoom: tileset.maxZoom,
     usedFallback: false,

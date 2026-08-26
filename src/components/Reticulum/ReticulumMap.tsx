@@ -55,7 +55,7 @@ function shortHash(hash: string): string {
 
 export const ReticulumMap: React.FC<ReticulumMapProps> = ({ destinations, paths, loading = false, resizeTrigger }) => {
   const { t } = useTranslation();
-  const { mapTileset, customTilesets, setMapTileset, activeStyleJson } = useSettings();
+  const { mapTileset, customTilesets, setMapTileset, cartoApiKey, activeStyleJson } = useSettings();
 
   const positioned = useMemo(
     () => destinations.filter(d =>
@@ -146,6 +146,7 @@ export const ReticulumMap: React.FC<ReticulumMapProps> = ({ destinations, paths,
         zoom={zoom}
         tilesetId={mapTileset}
         customTilesets={customTilesets}
+        cartoApiKey={cartoApiKey}
         styleJson={activeStyleJson ?? undefined}
         onTilesetChange={setMapTileset}
         resizeTrigger={resizeTrigger}

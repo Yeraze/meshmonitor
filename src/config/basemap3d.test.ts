@@ -37,6 +37,26 @@ describe('resolve3DBasemap', () => {
     expect(result.tiles).toEqual([TILESETS.esriSatellite.url]);
   });
 
+  it('appends the Carto key to every expanded Carto tile URL (#4934)', () => {
+    const result = resolve3DBasemap('cartoDark', [], 'KEY123');
+    expect(result.usedFallback).toBe(false);
+    expect(result.tiles).toEqual([
+      'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png?key=KEY123',
+      'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png?key=KEY123',
+      'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png?key=KEY123',
+    ]);
+  });
+
+  it('leaves non-Carto tiles unkeyed even when a Carto key is supplied (#4934)', () => {
+    const result = resolve3DBasemap('osm', [], 'KEY123');
+    expect(result.tiles.every((u) => !u.includes('key='))).toBe(true);
+  });
+
+  it('does not key Carto tiles when no key is supplied (#4934)', () => {
+    const result = resolve3DBasemap('cartoDark', []);
+    expect(result.tiles.every((u) => !u.includes('key='))).toBe(true);
+  });
+
   it('falls back to osm for a custom vector-only tileset', () => {
     const custom: CustomTileset[] = [
       {

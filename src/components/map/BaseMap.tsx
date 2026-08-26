@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode, Ref } from 'react';
 import type { Map as LeafletMap } from 'leaflet';
 import { MapContainer, TileLayer } from 'react-leaflet';
 import { getTilesetById, DEFAULT_TILESET_ID, type TilesetId, type CustomTileset } from '../../config/tilesets';
+import { withCartoKey } from '../../config/cartoKey';
 import { VectorTileLayer } from '../VectorTileLayer';
 import { TilesetSelector } from '../TilesetSelector';
 import MapResizeHandler from '../MapResizeHandler';
@@ -25,6 +26,10 @@ export interface BaseMapProps {
   customTilesets?: CustomTileset[];
   /** MapLibre style JSON passthrough for vector tilesets (ignored for raster). */
   styleJson?: Record<string, unknown>;
+  /** Deployment-wide Carto basemap API key (#4934). When set, it is appended as
+   *  `?key=` to Carto CDN tile URLs (no-op for every other host). Omit/null ⇒
+   *  keyless (Carto tiles show the "API key required" watermark). */
+  cartoApiKey?: string | null;
 
   // ---- Optional tileset selector overlay ---------------------------------
   /** Render the TilesetSelector overlay. Default false. */
@@ -106,6 +111,7 @@ export function BaseMap({
   tilesetId,
   customTilesets,
   styleJson,
+  cartoApiKey,
   showTilesetSelector = false,
   onTilesetChange,
   scrollWheelZoom,
@@ -166,7 +172,7 @@ export function BaseMap({
             <>
               <TileLayer
                 key={`raster-${tileset.maxZoom}`}
-                url={tileset.url}
+                url={withCartoKey(tileset.url, cartoApiKey)}
                 attribution={tileset.attribution}
                 maxZoom={tileset.maxZoom}
                 // Damp ESRI World_Imagery's over-saturated synthetic water blue
@@ -186,7 +192,7 @@ export function BaseMap({
               {tileset.overlayUrl && (
                 <TileLayer
                   key={`raster-overlay-${tileset.maxZoom}`}
-                  url={tileset.overlayUrl}
+                  url={withCartoKey(tileset.overlayUrl, cartoApiKey)}
                   attribution={tileset.overlayAttribution ?? tileset.attribution}
                   maxZoom={tileset.maxZoom}
                   zIndex={10}

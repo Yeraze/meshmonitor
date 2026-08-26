@@ -95,6 +95,26 @@ describe('BaseMap', () => {
     expect(screen.queryByTestId('raster-tile')).not.toBeInTheDocument();
   });
 
+  // 2b. Carto API key (#4934)
+  it('appends the Carto API key to a Carto raster tile URL', () => {
+    vi.mocked(getTilesetById).mockReturnValueOnce({
+      id: 'cartoDark',
+      name: 'Dark',
+      url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+      attribution: '',
+      maxZoom: 19,
+    });
+    render(<BaseMap center={[0, 0]} zoom={3} tilesetId="cartoDark" cartoApiKey="KEY123" />);
+    expect(screen.getByTestId('raster-tile').getAttribute('data-url')).toBe(
+      'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png?key=KEY123',
+    );
+  });
+
+  it('leaves a non-Carto raster URL untouched even when a Carto key is set', () => {
+    render(<BaseMap center={[0, 0]} zoom={3} cartoApiKey="KEY123" />);
+    expect(screen.getByTestId('raster-tile').getAttribute('data-url')).toBe(OSM_URL);
+  });
+
   // 3. Unknown-id fallback
   it('falls back to raster osm when given an unknown tileset id', () => {
     render(<BaseMap center={[0, 0]} zoom={3} tilesetId="does-not-exist" />);

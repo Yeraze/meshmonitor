@@ -390,3 +390,35 @@ describe('GET /api/embed/:profileId/traceroutes', () => {
     expect(res.body.length).toBeLessThanOrEqual(500);
   }, 30000);
 });
+
+describe('GET /api/embed/:profileId/config — Carto API key (#4934)', () => {
+  let app: Express;
+
+  beforeAll(() => {
+    app = createApp();
+  });
+
+  it('includes the deployment-wide Carto API key so anonymous embeds are unwatermarked', async () => {
+    const sourceId = nextSourceId();
+    const profileId = `cfg-carto-${seq}`;
+    await createProfile({ id: profileId, sourceId });
+    databaseService.setSetting('cartoApiKey', 'EMBED_KEY_123');
+    try {
+      const res = await request(app).get(`/api/embed/${profileId}/config`);
+      expect(res.status).toBe(200);
+      expect(res.body.cartoApiKey).toBe('EMBED_KEY_123');
+    } finally {
+      databaseService.setSetting('cartoApiKey', '');
+    }
+  });
+
+  it('returns cartoApiKey: null when no key is configured', async () => {
+    const sourceId = nextSourceId();
+    const profileId = `cfg-carto-none-${seq}`;
+    await createProfile({ id: profileId, sourceId });
+    databaseService.setSetting('cartoApiKey', '');
+    const res = await request(app).get(`/api/embed/${profileId}/config`);
+    expect(res.status).toBe(200);
+    expect(res.body.cartoApiKey).toBeNull();
+  });
+});

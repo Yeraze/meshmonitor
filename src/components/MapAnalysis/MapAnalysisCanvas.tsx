@@ -65,6 +65,7 @@ export default function MapAnalysisCanvas() {
     mapTileset,
     customTilesets,
     setMapTileset,
+    cartoApiKey,
     activeStyleJson,
   } = useSettings();
   const {
@@ -218,8 +219,8 @@ export default function MapAnalysisCanvas() {
     [analysisNodes, hopByKey, config.layers.hopShading.enabled, config.selectedNodeIds, fadeByAge3D, windowStartMs3D, windowEndMs3D],
   );
   const basemap3D = useMemo(
-    () => resolve3DBasemap(mapTileset, customTilesets),
-    [mapTileset, customTilesets],
+    () => resolve3DBasemap(mapTileset, customTilesets, cartoApiKey),
+    [mapTileset, customTilesets, cartoApiKey],
   );
   // `appBasename` is the same base-path prefix `ApiService` was seeded with
   // at startup (`src/init.ts`) — module-scope constant, never changes.
@@ -335,6 +336,7 @@ export default function MapAnalysisCanvas() {
         center={center}
         zoom={zoom}
         tilesetId={mapTileset}
+        cartoApiKey={cartoApiKey}
         customTilesets={customTilesets}
         styleJson={activeStyleJson ?? undefined}
         sidebar={

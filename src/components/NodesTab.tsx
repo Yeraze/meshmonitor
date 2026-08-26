@@ -541,6 +541,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     dateFormat,
     mapTileset,
     setMapTileset,
+    cartoApiKey,
     mapPinStyle,
     nodeListStyle,
     customTilesets,
@@ -975,8 +976,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   const canUse3D = !terrainCaps.isLoading && terrainCaps.enabled && terrainCaps.terrainTiles;
   const [viewMode, setViewMode] = useState<'2d' | '3d'>('2d');
   const basemap3D = useMemo(
-    () => resolve3DBasemap(mapTileset, customTilesets),
-    [mapTileset, customTilesets],
+    () => resolve3DBasemap(mapTileset, customTilesets, cartoApiKey),
+    [mapTileset, customTilesets, cartoApiKey],
   );
   const terrainTileUrl = useMemo(() => buildTerrainTileUrl(appBasename), []);
 
@@ -2844,6 +2845,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               zoom={mapDefaults.zoom}
               tilesetId={activeTileset}
               customTilesets={customTilesets}
+              cartoApiKey={cartoApiKey}
               styleJson={activeStyleJson ?? undefined}
               resizeTrigger={`${showPacketMonitor}-${isNodeListCollapsed}-${packetMonitorHeight}`}
             >
