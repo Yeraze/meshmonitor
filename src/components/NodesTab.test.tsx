@@ -23,6 +23,36 @@ import {
 import type { DeviceInfo } from '../types/device';
 
 describe('NodesTab', () => {
+  // NodesTab's full map surface depends on Leaflet plus a large context stack,
+  // so this pins the control wiring at the source boundary (the same strategy
+  // used for the node-row contracts below). DashboardMap has the corresponding
+  // runtime DOM coverage for this shared 3D behavior.
+  describe('2D-only map controls are gated while 3D is active (#4794)', () => {
+    const src = readFileSync(resolve('src/components/NodesTab.tsx'), 'utf8');
+
+    const expectDisabledIn3D = (checkedExpression: string): void => {
+      const checkedAt = src.indexOf(`checked={${checkedExpression}}`);
+      expect(checkedAt, `${checkedExpression} control is missing`).toBeGreaterThan(-1);
+      const inputTail = src.slice(checkedAt, src.indexOf('/>', checkedAt));
+      expect(inputTail, `${checkedExpression} must be disabled in 3D`).toContain('disabled={effective3D');
+    };
+
+    it('gates every control whose layer is absent from the 3D surface', () => {
+      expectDisabledIn3D('measureActive');
+      expectDisabledIn3D('showWaypoints');
+      expectDisabledIn3D('showAtakContacts');
+      expectDisabledIn3D('showAccuracyRegions');
+      expectDisabledIn3D('showPolarGrid');
+      expectDisabledIn3D('showLegend');
+      expectDisabledIn3D('layer.visible');
+    });
+
+    it('uses the 3D-unavailable tooltip and suppresses the 2D legend content', () => {
+      expect(src).toContain("const unavailableIn3DTitle = effective3D ? 'Not available in 3D' : undefined;");
+      expect(src).toContain('{!effective3D && showLegend && (');
+    });
+  });
+
   // #4047 Phase 7 WP11 — pins NodesTab's neighbor-link adapter: the 4-tier
   // SNR→weight/opacity table (deliberately NOT the shared layer's continuous
   // snrToNeighborOpacity curve, see utils/neighborLinks.ts) and the
