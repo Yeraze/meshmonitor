@@ -158,4 +158,56 @@ describe('SitePlannerPanel', () => {
     renderPanel();
     await waitFor(() => expect(screen.getByText('site_planner.caveat')).toBeTruthy());
   });
+
+  const radial = (over: Record<string, unknown>) => ({
+    bearingDeg: 0, reachKm: 15, limitedByRadius: true, reachablePocketsBeyond: false, hasDataGaps: false, ...over,
+  });
+
+  it('explains a radius-limited (circular) result in the panel, not just the polygon popup', async () => {
+    // The whole point of this fix (#4727): a circle means "budget outran terrain
+    // within the radius", and that must be visible in the panel, not buried in a
+    // click-to-open polygon popup.
+    const user = userEvent.setup();
+    post.mockResolvedValue({ success: true, data: { radiusKm: 15, assumptions: [], radials: [
+      radial({ bearingDeg: 0 }), radial({ bearingDeg: 120 }), radial({ bearingDeg: 240 }),
+    ] } });
+    renderPanel();
+    await waitFor(() => expect(getCurrentConfig).toHaveBeenCalled());
+    await user.click(screen.getByTestId('site-planner-run'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('site-planner-notice-radius').textContent).toMatch(/result_radius_limited/));
+    // 100% radius-limited → the percentage travels in the message.
+    expect(screen.getByTestId('site-planner-notice-radius').textContent).toMatch(/"percent":100/);
+  });
+
+  it('warns when terrain data was missing (a circle that really is terrain-free)', async () => {
+    const user = userEvent.setup();
+    post.mockResolvedValue({ success: true, data: { radiusKm: 15, assumptions: [], radials: [
+      radial({ bearingDeg: 0, hasDataGaps: true }),
+      radial({ bearingDeg: 180, hasDataGaps: true }),
+      radial({ bearingDeg: 270, hasDataGaps: true }),
+    ] } });
+    renderPanel();
+    await waitFor(() => expect(getCurrentConfig).toHaveBeenCalled());
+    await user.click(screen.getByTestId('site-planner-run'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('site-planner-notice-gaps').textContent).toMatch(/result_data_gaps/));
+  });
+
+  it('shows no shape notice when terrain fully shaped the coverage', async () => {
+    const user = userEvent.setup();
+    post.mockResolvedValue({ success: true, data: { radiusKm: 15, assumptions: [], radials: [
+      radial({ bearingDeg: 0, reachKm: 7, limitedByRadius: false }),
+      radial({ bearingDeg: 180, reachKm: 9, limitedByRadius: false }),
+      radial({ bearingDeg: 270, reachKm: 5, limitedByRadius: false }),
+    ] } });
+    renderPanel();
+    await waitFor(() => expect(getCurrentConfig).toHaveBeenCalled());
+    await user.click(screen.getByTestId('site-planner-run'));
+
+    await waitFor(() => expect(post).toHaveBeenCalled());
+    expect(screen.queryByTestId('site-planner-notice')).toBeNull();
+  });
 });

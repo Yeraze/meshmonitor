@@ -17,6 +17,7 @@ import apiService from '../../services/api';
 import { UiIcon } from '../icons/UiIcon';
 import { buildSitePlannerDefaults, type SitePlannerDefaults, type LoraConfigLike } from './sitePlannerDefaults';
 import type { PredictedCoverage } from '../map/layers/predictedCoverageGeometry';
+import { radiusLimitedFraction, hasAnyDataGaps, hasAnyPockets } from '../map/layers/predictedCoverageGeometry';
 import type { SitePlannerOrigin } from './SitePlannerOriginController';
 import styles from './SitePlannerPanel.module.css';
 
@@ -43,6 +44,10 @@ export default function SitePlannerPanel({
   const seeded = seededFor === (sourceId ?? null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Keep the last result so the panel can explain the SHAPE — a circle usually
+  // means the link budget outran terrain within the radius, or terrain data was
+  // missing, not that terrain is ignored (#4727 follow-up).
+  const [result, setResult] = useState<PredictedCoverage | null>(null);
 
   // Seed once per source. Re-seeding on every open would discard edits the
   // user made deliberately.
@@ -89,9 +94,11 @@ export default function SitePlannerPanel({
           radiusKm: params.radiusKm,
         },
       );
+      setResult(res?.data ?? null);
       onCoverage(res?.data ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('site_planner.failed'));
+      setResult(null);
       onCoverage(null);
     } finally {
       setRunning(false);
@@ -177,10 +184,41 @@ export default function SitePlannerPanel({
         >
           {running ? t('site_planner.running') : t('site_planner.predict')}
         </button>
-        <button type="button" onClick={() => onCoverage(null)} data-testid="site-planner-clear">
+        <button
+          type="button"
+          onClick={() => { setResult(null); onCoverage(null); }}
+          data-testid="site-planner-clear"
+        >
           {t('site_planner.clear')}
         </button>
       </div>
+
+      {/* Explain the SHAPE right here in the panel — the per-polygon popup was
+          too easy to miss, so a circle read as "terrain ignored" (#4727). */}
+      {result && (() => {
+        const limited = radiusLimitedFraction(result);
+        const gaps = hasAnyDataGaps(result);
+        const pockets = hasAnyPockets(result);
+        if (!gaps && limited === 0 && !pockets) return null;
+        return (
+          <div className={styles.sitePlannerNotice} data-testid="site-planner-notice">
+            {gaps && (
+              <p className={styles.sitePlannerNoticeWarn} data-testid="site-planner-notice-gaps">
+                {t('site_planner.result_data_gaps')}
+              </p>
+            )}
+            {limited > 0 && (
+              <p data-testid="site-planner-notice-radius">
+                {t('site_planner.result_radius_limited', {
+                  percent: Math.round(limited * 100),
+                  radius: result.radiusKm,
+                })}
+              </p>
+            )}
+            {pockets && <p>{t('site_planner.result_pockets')}</p>}
+          </div>
+        );
+      })()}
 
       <p className={styles.sitePlannerCaveat}>{t('site_planner.caveat')}</p>
     </aside>
