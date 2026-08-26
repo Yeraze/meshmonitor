@@ -75,11 +75,17 @@ router.get('/:profileId/config', createEmbedCspMiddleware(), (req: Request, res:
     }
   }
 
+  // Deployment-wide Carto basemap API key (#4934). Publishable, domain-restricted
+  // token applied to Carto tiles so the embed map loads without the "API key
+  // required" watermark. Sent to anonymous embed viewers by design.
+  const cartoApiKey = databaseService.getSetting('cartoApiKey') || null;
+
   // Return only public-facing configuration (exclude admin-only fields like name, allowedOrigins)
   res.json({
     id: profile.id,
     channels: profile.channels,
     tileset: profile.tileset,
+    cartoApiKey,
     defaultLat,
     defaultLng,
     defaultZoom,

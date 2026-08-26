@@ -19,6 +19,8 @@ interface EmbedConfig {
   id: string;
   channels: number[];
   tileset: string;
+  /** Deployment-wide Carto basemap API key (#4934), or null when unset. */
+  cartoApiKey?: string | null;
   defaultLat: number;
   defaultLng: number;
   defaultZoom: number;
@@ -413,6 +415,7 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
         zoom={centerZoom}
         tilesetId={config.tileset}
         customTilesets={[]}
+        cartoApiKey={config.cartoApiKey ?? null}
         zoomControl
         attributionControl
       >
