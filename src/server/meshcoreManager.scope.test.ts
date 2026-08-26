@@ -115,8 +115,13 @@ function makeManager(opts: {
   return { manager: m, bridgeCalls, scopeUpdates };
 }
 
+// A set_flood_scope call is one of: force-unscoped ({ unscoped: true } → the
+// string 'unscoped'), a named region ({ region: 'x' } → 'x'), or clear/inherit
+// ({ region: null } → null). #4932 split explicit-unscoped from inherit.
 const scopeOf = (calls: BridgeCall[]) =>
-  calls.filter(c => c.cmd === 'set_flood_scope').map(c => c.params.region);
+  calls
+    .filter(c => c.cmd === 'set_flood_scope')
+    .map(c => (c.params.unscoped ? 'unscoped' : (c.params.region ?? null)));
 
 const cmdSeq = (calls: BridgeCall[]) =>
   calls.filter(c => c.cmd === 'set_flood_scope' || c.cmd === 'send_message').map(c => c.cmd);
@@ -227,10 +232,13 @@ describe('MeshCoreManager — per-message scope override (#3701)', () => {
     expect(scopeOf(bridgeCalls)).toEqual(['BadScope']);
   });
 
-  it('an empty/whitespace override is an explicit unscoped send (null)', async () => {
+  it('an empty/whitespace override forces truly-unscoped, overriding channel + default scope (#4932)', async () => {
     const { manager, bridgeCalls } = makeManager({ channelScopes: { 1: 'muenchen' }, defaultScope: 'berlin' });
     await manager.sendMessage('hi', undefined, 1, '   ');
-    expect(scopeOf(bridgeCalls)).toEqual([null]);
+    // Explicit unscoped must NOT collapse to clear/inherit (which would revert
+    // to the node's default region) — it forces send_unscoped on the device.
+    expect(scopeOf(bridgeCalls)).toEqual(['unscoped']);
+    expect(bridgeCalls.find(c => c.cmd === 'set_flood_scope')!.params).toEqual({ unscoped: true });
   });
 
   it('omitting the override falls back to the channel scope (unchanged behaviour)', async () => {
