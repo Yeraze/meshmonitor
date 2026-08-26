@@ -182,6 +182,15 @@ describe('sphericalEarthDiffractionLossDb', () => {
       expect(sphericalEarthDiffractionLossDb(d, MHZ_915, 10, 2)).toBeGreaterThanOrEqual(0);
     }
   });
+
+  it('stays finite for a ground-level (0 m) antenna instead of diverging to Infinity', () => {
+    // A 0 m height makes the raw G(Y) height-gain term diverge; the height floor
+    // must keep the loss finite (and large) so a ground-level RX doesn't produce
+    // Infinity loss that closes every link to false.
+    const l = sphericalEarthDiffractionLossDb(50_000, MHZ_915, 10, 0);
+    expect(Number.isFinite(l)).toBe(true);
+    expect(l).toBeGreaterThan(0);
+  });
 });
 
 describe('evaluateLink', () => {

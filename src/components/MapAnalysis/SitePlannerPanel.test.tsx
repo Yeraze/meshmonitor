@@ -196,6 +196,21 @@ describe('SitePlannerPanel', () => {
       expect(screen.getByTestId('site-planner-notice-gaps').textContent).toMatch(/result_data_gaps/));
   });
 
+  it('notes reachable pockets beyond the boundary', async () => {
+    const user = userEvent.setup();
+    post.mockResolvedValue({ success: true, data: { radiusKm: 15, assumptions: [], radials: [
+      radial({ bearingDeg: 0, reachKm: 8, limitedByRadius: false, reachablePocketsBeyond: true }),
+      radial({ bearingDeg: 180, reachKm: 9, limitedByRadius: false }),
+      radial({ bearingDeg: 270, reachKm: 7, limitedByRadius: false }),
+    ] } });
+    renderPanel();
+    await waitFor(() => expect(getCurrentConfig).toHaveBeenCalled());
+    await user.click(screen.getByTestId('site-planner-run'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('site-planner-notice-pockets').textContent).toMatch(/result_pockets/));
+  });
+
   it('shows no shape notice when terrain fully shaped the coverage', async () => {
     const user = userEvent.setup();
     post.mockResolvedValue({ success: true, data: { radiusKm: 15, assumptions: [], radials: [

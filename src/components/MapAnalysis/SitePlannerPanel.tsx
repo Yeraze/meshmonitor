@@ -215,7 +215,7 @@ export default function SitePlannerPanel({
                 })}
               </p>
             )}
-            {pockets && <p>{t('site_planner.result_pockets')}</p>}
+            {pockets && <p data-testid="site-planner-notice-pockets">{t('site_planner.result_pockets')}</p>}
           </div>
         );
       })()}

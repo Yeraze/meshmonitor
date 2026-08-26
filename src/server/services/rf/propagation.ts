@@ -187,8 +187,14 @@ export function sphericalEarthDiffractionLossDb(
   kFactor: number = DEFAULT_K_FACTOR,
 ): number {
   if (distanceM <= 0 || frequencyHz <= 0) return 0;
-  const h1 = Math.max(txHeightM, 0);
-  const h2 = Math.max(rxHeightM, 0);
+  // Floor the effective heights at a small positive value. A literal 0 m makes
+  // the height-gain G(Y) diverge (Y=0 -> log(0) -> -Infinity -> Infinity loss),
+  // and a device sitting on the ground still has its antenna a few decimetres
+  // up. Flooring (rather than bailing to 0 loss) keeps the curvature limit
+  // active for ground-level receivers, which is the whole point of this term.
+  const MIN_EFFECTIVE_HEIGHT_M = 0.5;
+  const h1 = Math.max(txHeightM, MIN_EFFECTIVE_HEIGHT_M);
+  const h2 = Math.max(rxHeightM, MIN_EFFECTIVE_HEIGHT_M);
 
   // Radio (LOS) horizon over the effective earth, P.526 Eq. 21 in SI metres:
   // d_los = sqrt(2·a_e)·(sqrt(h1)+sqrt(h2)). Reduces to 4.12·(√h1+√h2) km for
