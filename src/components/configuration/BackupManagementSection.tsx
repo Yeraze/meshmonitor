@@ -193,16 +193,26 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
 
       // Server envelope: ok(res, result) => { success, data: { applied, failed, channels, requiresReboot } }.
       // ApiService does not unwrap `data`, so read result off the `data` field.
-      const resp = await apiService.post<{ data?: { failed?: unknown[] } }>(
+      const resp = await apiService.post<{ data?: { failed?: unknown[]; requiresReboot?: boolean } }>(
         `/api/backup/restore/${encodeURIComponent(filename)}`,
         sourceId ? { sourceId } : {}
       );
       const failedCount = resp?.data?.failed?.length ?? 0;
+      // Only mention a reboot when the backend actually applied a change that
+      // needs one (a successful LoRa write) — over-warning confuses users, and
+      // silently dropping it left them unaware the device restarts.
+      const requiresReboot = resp?.data?.requiresReboot ?? false;
 
       if (failedCount > 0) {
-        showToast(t('backup_management.toast_restored_partial', { failed: failedCount }), 'success');
+        showToast(
+          t(requiresReboot ? 'backup_management.toast_restored_partial_reboot' : 'backup_management.toast_restored_partial', { failed: failedCount }),
+          'success'
+        );
       } else {
-        showToast(t('backup_management.toast_restored'), 'success');
+        showToast(
+          t(requiresReboot ? 'backup_management.toast_restored_reboot' : 'backup_management.toast_restored'),
+          'success'
+        );
       }
     } catch (error) {
       logger.error('Error restoring backup:', error);

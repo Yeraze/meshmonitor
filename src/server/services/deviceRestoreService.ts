@@ -263,7 +263,10 @@ class DeviceRestoreService {
         lora.txEnabled = manager.isTxEnabled();
       }
       await runSection('config.lora', () => manager.setLoRaConfig(lora), PACE_BEFORE_COMMIT_MS);
-      requiresReboot = true;
+      // Only claim a reboot is needed if the LoRa write actually landed — a
+      // failed setLoRaConfig (recorded in `failed`) changed nothing on the
+      // device, so reporting requiresReboot would be a misleading UX warning.
+      requiresReboot = applied.includes('config.lora');
     }
 
     // Commit (its own 2s flash-settle delay is built into the manager method).
