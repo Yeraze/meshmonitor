@@ -15,6 +15,7 @@ import {
   earthBulgeM,
   freeSpaceLossDb,
   knifeEdgeLossDb,
+  sphericalEarthDiffractionLossDb,
   evaluateLink,
   DEFAULT_K_FACTOR,
   type TerrainSample,
@@ -143,8 +144,58 @@ describe('knifeEdgeLossDb', () => {
   });
 });
 
+describe('sphericalEarthDiffractionLossDb', () => {
+  // Reference values computed from ITU-R P.526-14 §3.1.1 (F(X)+G(Y)) for
+  // f=915 MHz, k=4/3 (a_e=8495 km), h1=10 m, h2=2 m. Independently verified.
+  it('matches the ITU-R P.526 reference losses over flat earth (10 m / 2 m)', () => {
+    expect(sphericalEarthDiffractionLossDb(30_000, MHZ_915, 10, 2)).toBeCloseTo(42.03, 1);
+    expect(sphericalEarthDiffractionLossDb(50_000, MHZ_915, 10, 2)).toBeCloseTo(57.81, 1);
+    expect(sphericalEarthDiffractionLossDb(80_000, MHZ_915, 10, 2)).toBeCloseTo(82.71, 1);
+  });
+
+  it('returns 0 inside the line-of-sight horizon (the ray clears the bulge)', () => {
+    // Radio horizon for 10 m + 2 m antennas is ~18.86 km; below it, no
+    // smooth-earth diffraction loss.
+    expect(sphericalEarthDiffractionLossDb(5_000, MHZ_915, 10, 2)).toBe(0);
+    expect(sphericalEarthDiffractionLossDb(15_000, MHZ_915, 10, 2)).toBe(0);
+    // Just past the horizon it turns positive.
+    expect(sphericalEarthDiffractionLossDb(20_000, MHZ_915, 10, 2)).toBeGreaterThan(0);
+  });
+
+  it('grows monotonically with distance beyond the horizon', () => {
+    const losses = [25_000, 40_000, 60_000, 90_000].map((d) =>
+      sphericalEarthDiffractionLossDb(d, MHZ_915, 10, 2));
+    for (let i = 1; i < losses.length; i++) {
+      expect(losses[i]).toBeGreaterThan(losses[i - 1]);
+    }
+  });
+
+  it('pushes the horizon out for taller antennas (less loss at a fixed distance)', () => {
+    const low = sphericalEarthDiffractionLossDb(50_000, MHZ_915, 10, 2);
+    const tall = sphericalEarthDiffractionLossDb(50_000, MHZ_915, 100, 100);
+    expect(tall).toBeLessThan(low);
+  });
+
+  it('never returns a negative loss, and is 0 for a degenerate path', () => {
+    expect(sphericalEarthDiffractionLossDb(0, MHZ_915, 10, 2)).toBe(0);
+    for (const d of [1_000, 22_000, 50_000, 200_000]) {
+      expect(sphericalEarthDiffractionLossDb(d, MHZ_915, 10, 2)).toBeGreaterThanOrEqual(0);
+    }
+  });
+});
+
 describe('evaluateLink', () => {
   const inputs = { frequencyHz: MHZ_915, txHeightM: 10, rxHeightM: 2 };
+
+  it('applies spherical-earth diffraction over flat ground beyond the horizon (#4727)', () => {
+    // The reported bug: a low antenna over flat land "reached" 100 km+ because
+    // single knife-edge under-modelled the earth's curvature. Over flat ground a
+    // 50 km path now carries the ~58 dB spherical loss, so it must fail here
+    // where it previously (free-space + ~12 dB) closed.
+    const r = evaluateLink(flatProfile(50_000), inputs, budget);
+    expect(r.diffractionLossDb).toBeGreaterThan(50);
+    expect(r.closes).toBe(false);
+  });
 
   it('closes a short flat path', () => {
     const r = evaluateLink(flatProfile(2000), inputs, budget);
