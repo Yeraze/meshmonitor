@@ -162,6 +162,16 @@ describe('deviceRestoreService', () => {
     expect(mgr.commitEditSettings).toHaveBeenCalledTimes(1);
   });
 
+  it('reports requiresReboot=false when the LoRa write itself failed', async () => {
+    const mgr = makeManager();
+    mgr.setLoRaConfig.mockRejectedValue(new Error('device rejected lora'));
+    const result = await runRestore(mgr, sampleBackup());
+    expect(result.failed).toContainEqual({ section: 'config.lora', error: 'device rejected lora' });
+    // LoRa never landed, so no reboot is actually pending.
+    expect(result.requiresReboot).toBe(false);
+    expect(mgr.commitEditSettings).toHaveBeenCalledTimes(1);
+  });
+
   it('aborts when the edit transaction cannot be opened', async () => {
     const mgr = makeManager();
     mgr.beginEditSettings.mockRejectedValue(new Error('Not connected to Meshtastic node'));
