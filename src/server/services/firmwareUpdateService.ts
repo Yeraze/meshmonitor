@@ -55,6 +55,14 @@ export interface FirmwareRelease {
   publishedAt: string;
   htmlUrl: string;
   assets: FirmwareAsset[];
+  /**
+   * True for the single develop "nightly" build (2.8.x pre-tag), which is
+   * published as loose per-board files in the meshtastic.github.io
+   * `firmware-nightly/` folder rather than as a GitHub release with a
+   * per-platform zip. The install path resolves its `.bin` directly (no zip to
+   * extract) — see `startPreflight` / `executeDownload` / `executeExtract`.
+   */
+  isNightly?: boolean;
 }
 
 export interface FirmwareAsset {
@@ -68,7 +76,7 @@ export interface FirmwareManifest {
   targets: Array<{ board: string; platform: string }>;
 }
 
-export type FirmwareChannel = 'stable' | 'alpha' | 'custom';
+export type FirmwareChannel = 'stable' | 'alpha' | 'custom' | 'nightly';
 
 export type UpdateStep = 'preflight' | 'backup' | 'download' | 'extract' | 'flash' | 'verify';
 
@@ -116,6 +124,13 @@ interface GitHubRelease {
 // ---- Constants ----
 
 const GITHUB_RELEASES_URL = 'https://api.github.com/repos/meshtastic/firmware/releases?per_page=20';
+// The develop "nightly" build (2.8.x pre-tag) is NOT a GitHub release — it lives
+// in a single, stable folder in the meshtastic.github.io repo that always holds
+// the current develop build. `index.json` names the current version/id; the
+// per-board firmware files sit beside it. This is the same source the official
+// web flasher uses for its "Nightly" option.
+const NIGHTLY_BASE_URL = 'https://raw.githubusercontent.com/meshtastic/meshtastic.github.io/master/firmware-nightly';
+const NIGHTLY_INDEX_URL = `${NIGHTLY_BASE_URL}/index.json`;
 const DEFAULT_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const INITIAL_CHECK_DELAY_MS = 30 * 1000; // 30 seconds
 const DATA_DIR = process.env.DATA_DIR || '/data';
@@ -136,6 +151,18 @@ export class FirmwareUpdateService {
   private cachedReleases: FirmwareRelease[] = [];
   private lastFetchTime: number = 0;
   private etag: string | null = null;
+
+  // The current develop nightly build, fetched separately from GitHub releases
+  // (see NIGHTLY_BASE_URL). Null until fetchNightly() succeeds or when no
+  // nightly is published yet.
+  private cachedNightly: FirmwareRelease | null = null;
+  // Set during startPreflight when the target is the nightly build. The install
+  // path reads it to download the loose `.bin` directly instead of a
+  // per-platform zip, and to skip the unzip step.
+  private nightlyMode = false;
+  // Expected `firmware-<board>-<version>.bin` filename for the nightly build,
+  // set alongside nightlyMode so executeDownload/executeExtract agree on it.
+  private nightlyBinName: string | null = null;
 
   private status: UpdateStatus = createIdleStatus();
   private activeProcess: ChildProcess | null = null;
@@ -215,8 +242,80 @@ export class FirmwareUpdateService {
     if (channel === 'stable') {
       return releases.filter((r) => !r.prerelease);
     }
-    // 'alpha' and 'custom' return all
+    // 'alpha', 'custom' and 'nightly' return all. Nightly is sourced separately
+    // (see getReleasesForChannel); it never appears in the GitHub `releases`
+    // list this operates on, so there is nothing extra to filter here.
     return releases;
+  }
+
+  /**
+   * Fetch the current develop "nightly" build from the meshtastic.github.io
+   * `firmware-nightly/` folder and model it as a single synthetic release.
+   *
+   * Returns null when no nightly is published yet (index.json 404) or on error —
+   * best-effort, mirroring fetchReleases(). The result is one release flagged
+   * `isNightly: true`; its per-board `.bin` is resolved at install time from
+   * NIGHTLY_BASE_URL rather than enumerated here (the folder holds 500+ files).
+   */
+  async fetchNightly(): Promise<FirmwareRelease | null> {
+    try {
+      const response = await fetch(NIGHTLY_INDEX_URL, {
+        headers: { 'User-Agent': 'MeshMonitor' },
+      });
+      if (!response.ok) {
+        // 404 before the first nightly of a cycle is published — no section.
+        logger.debug(`[FirmwareUpdateService] Nightly index returned ${response.status}`);
+        this.cachedNightly = null;
+        return null;
+      }
+      const data = await response.json() as { version?: string; id?: string; title?: string };
+      const version = data.version ?? (data.id ? data.id.replace(/^v/, '') : undefined);
+      if (!version || !data.id) {
+        logger.warn('[FirmwareUpdateService] Nightly index.json missing id/version');
+        this.cachedNightly = null;
+        return null;
+      }
+      const release: FirmwareRelease = {
+        tagName: data.id,
+        version,
+        prerelease: true,
+        publishedAt: '',
+        htmlUrl: NIGHTLY_BASE_URL,
+        assets: [],
+        isNightly: true,
+      };
+      this.cachedNightly = release;
+      logger.debug(`[FirmwareUpdateService] Fetched nightly build ${version}`);
+      return release;
+    } catch (error) {
+      logger.error('[FirmwareUpdateService] Error fetching nightly:', error);
+      return this.cachedNightly;
+    }
+  }
+
+  /**
+   * Releases to present for a given channel. Nightly is a separate fetch (one
+   * synthetic release); every other channel filters the cached GitHub list.
+   */
+  async getReleasesForChannel(channel: FirmwareChannel): Promise<FirmwareRelease[]> {
+    if (channel === 'nightly') {
+      const nightly = await this.fetchNightly();
+      return nightly ? [nightly] : [];
+    }
+    return this.filterByChannel(this.cachedReleases, channel);
+  }
+
+  /**
+   * Resolve a release by its version/tag across BOTH the cached GitHub list and
+   * the cached nightly build. The `/update` route uses this so a nightly target
+   * (which never lives in cachedReleases) can still start a preflight.
+   */
+  findReleaseByVersion(version: string): FirmwareRelease | null {
+    const match = (r: FirmwareRelease) => r.version === version || r.tagName === `v${version}` || r.tagName === version;
+    const fromGithub = this.cachedReleases.find(match);
+    if (fromGithub) return fromGithub;
+    if (this.cachedNightly && match(this.cachedNightly)) return this.cachedNightly;
+    return null;
   }
 
   /**
@@ -292,7 +391,7 @@ export class FirmwareUpdateService {
    */
   async getChannel(): Promise<FirmwareChannel> {
     const stored = await databaseService.settings.getSetting('firmwareChannel');
-    if (stored === 'alpha' || stored === 'stable' || stored === 'custom') {
+    if (stored === 'alpha' || stored === 'stable' || stored === 'custom' || stored === 'nightly') {
       return stored;
     }
     return 'stable';
@@ -457,6 +556,19 @@ export class FirmwareUpdateService {
   // ---- Polling ----
 
   /**
+   * Refresh caches for a background poll. Always refreshes the GitHub list; also
+   * refreshes the nightly build when the nightly channel is selected, so the
+   * "update available" indicator tracks the develop build (which advances on
+   * every merge, not on a release cadence).
+   */
+  async refreshForActiveChannel(): Promise<void> {
+    await this.fetchReleases();
+    if ((await this.getChannel()) === 'nightly') {
+      await this.fetchNightly();
+    }
+  }
+
+  /**
    * Start background polling for new firmware releases.
    * Respects FIRMWARE_CHECK_ENABLED env var (defaults to enabled).
    * Interval configurable via FIRMWARE_CHECK_INTERVAL env var (ms).
@@ -474,7 +586,7 @@ export class FirmwareUpdateService {
     // Initial check after a short delay
     this.initialCheckTimeout = setTimeout(async () => {
       try {
-        await this.fetchReleases();
+        await this.refreshForActiveChannel();
       } catch (error) {
         logger.error('[FirmwareUpdateService] Initial release check failed:', error);
       }
@@ -483,7 +595,7 @@ export class FirmwareUpdateService {
     // Recurring check
     this.pollingInterval = setInterval(async () => {
       try {
-        await this.fetchReleases();
+        await this.refreshForActiveChannel();
       } catch (error) {
         logger.error('[FirmwareUpdateService] Periodic release check failed:', error);
       }
@@ -712,11 +824,28 @@ export class FirmwareUpdateService {
       }
     }
 
-    const zipAsset = this.findFirmwareZipAsset(params.targetRelease, platform);
-    if (!zipAsset) {
-      throw new Error(
-        `No firmware zip found for platform "${platform}" in release ${params.targetRelease.tagName}`
-      );
+    // Resolve the download. Nightly builds have no per-platform zip — the
+    // board's `.bin` sits loose in the firmware-nightly/ folder, so we point
+    // straight at it and flag nightlyMode so the download/extract steps skip
+    // the unzip. Every other channel keeps the zip-then-extract flow.
+    let downloadUrl: string;
+    if (params.targetRelease.isNightly) {
+      // The non-factory app-partition bin is the OTA artifact. Its name matches
+      // findFirmwareBinary's strict pattern (firmware-<board>-<x.y.z>.<sha>.bin),
+      // so the extract step can reuse that matcher unchanged.
+      this.nightlyBinName = `firmware-${boardName}-${params.targetVersion}.bin`;
+      this.nightlyMode = true;
+      downloadUrl = `${NIGHTLY_BASE_URL}/${this.nightlyBinName}`;
+    } else {
+      this.nightlyMode = false;
+      this.nightlyBinName = null;
+      const zipAsset = this.findFirmwareZipAsset(params.targetRelease, platform);
+      if (!zipAsset) {
+        throw new Error(
+          `No firmware zip found for platform "${platform}" in release ${params.targetRelease.tagName}`
+        );
+      }
+      downloadUrl = zipAsset.downloadUrl;
     }
 
     const displayName = getHardwareDisplayName(params.hwModel);
@@ -726,7 +855,7 @@ export class FirmwareUpdateService {
       step: 'preflight',
       message: `Preflight complete. Ready to update ${displayName} from ${params.currentVersion} to ${params.targetVersion}`,
       targetVersion: params.targetVersion,
-      downloadUrl: zipAsset.downloadUrl,
+      downloadUrl,
       preflightInfo: {
         currentVersion: params.currentVersion,
         targetVersion: params.targetVersion,
@@ -877,12 +1006,23 @@ export class FirmwareUpdateService {
         throw new Error(`Firmware download exceeds ${MAX_FIRMWARE_BYTES} byte limit (got ${downloadSize})`);
       }
 
-      const zipPath = path.resolve(path.join(tempDir, 'firmware.zip'));
       const resolvedTempDir = path.resolve(tempDir);
-      if (!zipPath.startsWith(resolvedTempDir + path.sep)) {
-        throw new Error('Refusing to write firmware zip outside of temp directory');
+      // Nightly downloads the loose board `.bin` directly — write it into the
+      // `extracted/` dir under its real name so executeExtract can skip the
+      // unzip and findFirmwareBinary still matches it. Every other channel
+      // downloads a zip to unpack.
+      let writePath: string;
+      if (this.nightlyMode && this.nightlyBinName) {
+        const extractDir = path.resolve(path.join(tempDir, 'extracted'));
+        fs.mkdirSync(extractDir, { recursive: true });
+        writePath = path.resolve(path.join(extractDir, this.nightlyBinName));
+      } else {
+        writePath = path.resolve(path.join(tempDir, 'firmware.zip'));
       }
-      fs.writeFileSync(zipPath, Buffer.from(arrayBuffer));
+      if (!writePath.startsWith(resolvedTempDir + path.sep)) {
+        throw new Error('Refusing to write firmware outside of temp directory');
+      }
+      fs.writeFileSync(writePath, Buffer.from(arrayBuffer));
 
       this.updateStatus({
         state: 'awaiting-confirm',
@@ -891,8 +1031,8 @@ export class FirmwareUpdateService {
         downloadSize,
       });
 
-      logger.debug(`[FirmwareUpdateService] Downloaded firmware: ${zipPath} (${downloadSize} bytes)`);
-      return zipPath;
+      logger.debug(`[FirmwareUpdateService] Downloaded firmware: ${writePath} (${downloadSize} bytes)`);
+      return writePath;
     } catch (error) {
       if (this.cancelling) throw error;
       const message = error instanceof Error ? error.message : String(error);
@@ -931,13 +1071,18 @@ export class FirmwareUpdateService {
       const extractDir = path.join(path.dirname(zipPath), 'extracted');
       fs.mkdirSync(extractDir, { recursive: true });
 
-      const result = await this.runCliCommand(
-        'unzip',
-        ['-o', zipPath, '-d', extractDir],
-        { timeoutMs: 60_000 }
-      );
-      if (result.exitCode !== 0) {
-        throw new Error(`Extraction failed with exit code ${result.exitCode}: ${result.stderr}`);
+      // Nightly already downloaded the loose board `.bin` straight into
+      // extractDir — there is no zip to unpack. Every other channel unzips the
+      // per-platform bundle here.
+      if (!this.nightlyMode) {
+        const result = await this.runCliCommand(
+          'unzip',
+          ['-o', zipPath, '-d', extractDir],
+          { timeoutMs: 60_000 }
+        );
+        if (result.exitCode !== 0) {
+          throw new Error(`Extraction failed with exit code ${result.exitCode}: ${result.stderr}`);
+        }
       }
 
       const extractedFiles = fs.readdirSync(extractDir);
