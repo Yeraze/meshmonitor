@@ -10,6 +10,8 @@ const {
   mockGetLastFetchTime,
   mockGetCachedReleases,
   mockFilterByChannel,
+  mockGetReleasesForChannel,
+  mockFindReleaseByVersion,
   mockFetchReleases,
   mockSetChannel,
   mockSetCustomUrl,
@@ -36,6 +38,8 @@ const {
   mockGetLastFetchTime: vi.fn(),
   mockGetCachedReleases: vi.fn(),
   mockFilterByChannel: vi.fn(),
+  mockGetReleasesForChannel: vi.fn(),
+  mockFindReleaseByVersion: vi.fn(),
   mockFetchReleases: vi.fn(),
   mockSetChannel: vi.fn(),
   mockSetCustomUrl: vi.fn(),
@@ -94,6 +98,8 @@ vi.mock('../services/firmwareUpdateService.js', () => ({
     getLastFetchTime: mockGetLastFetchTime,
     getCachedReleases: mockGetCachedReleases,
     filterByChannel: mockFilterByChannel,
+    getReleasesForChannel: mockGetReleasesForChannel,
+    findReleaseByVersion: mockFindReleaseByVersion,
     fetchReleases: mockFetchReleases,
     setChannel: mockSetChannel,
     setCustomUrl: mockSetCustomUrl,
@@ -209,8 +215,7 @@ describe('firmwareUpdateRoutes', () => {
       ];
       const filtered = [releases[0]];
       mockGetChannel.mockResolvedValue('stable');
-      mockGetCachedReleases.mockReturnValue(releases);
-      mockFilterByChannel.mockReturnValue(filtered);
+      mockGetReleasesForChannel.mockResolvedValue(filtered);
 
       const res = await request(app).get('/api/firmware/releases');
 
@@ -218,7 +223,7 @@ describe('firmwareUpdateRoutes', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.releases).toEqual(filtered);
       expect(res.body.channel).toBe('stable');
-      expect(mockFilterByChannel).toHaveBeenCalledWith(releases, 'stable');
+      expect(mockGetReleasesForChannel).toHaveBeenCalledWith('stable');
     });
   });
 
@@ -229,7 +234,7 @@ describe('firmwareUpdateRoutes', () => {
       ];
       mockFetchReleases.mockResolvedValue(releases);
       mockGetChannel.mockResolvedValue('stable');
-      mockFilterByChannel.mockReturnValue(releases);
+      mockGetReleasesForChannel.mockResolvedValue(releases);
 
       const res = await request(app).post('/api/firmware/check');
 
@@ -237,6 +242,7 @@ describe('firmwareUpdateRoutes', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.releases).toEqual(releases);
       expect(mockFetchReleases).toHaveBeenCalled();
+      expect(mockGetReleasesForChannel).toHaveBeenCalledWith('stable');
     });
   });
 
@@ -312,7 +318,7 @@ describe('firmwareUpdateRoutes', () => {
           assets: [],
         },
       ];
-      mockGetCachedReleases.mockReturnValue(releases);
+      mockFindReleaseByVersion.mockReturnValue(releases[0]);
       mockStartPreflight.mockReturnValue(undefined);
       mockGetStatus.mockReturnValue({
         state: 'awaiting-confirm',
@@ -374,7 +380,7 @@ describe('firmwareUpdateRoutes', () => {
     });
 
     it('should return 400 when target release not found', async () => {
-      mockGetCachedReleases.mockReturnValue([]);
+      mockFindReleaseByVersion.mockReturnValue(null);
 
       const res = await request(app)
         .post('/api/firmware/update')

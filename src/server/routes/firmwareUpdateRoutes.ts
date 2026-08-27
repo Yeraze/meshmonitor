@@ -46,8 +46,7 @@ router.get('/status', async (_req: Request, res: Response) => {
 router.get('/releases', async (_req: Request, res: Response) => {
   try {
     const channel = await firmwareUpdateService.getChannel();
-    const allReleases = firmwareUpdateService.getCachedReleases();
-    const releases = firmwareUpdateService.filterByChannel(allReleases, channel);
+    const releases = await firmwareUpdateService.getReleasesForChannel(channel);
 
     return res.json({ success: true, releases, channel });
   } catch (error) {
@@ -63,9 +62,9 @@ router.get('/releases', async (_req: Request, res: Response) => {
  */
 router.post('/check', async (_req: Request, res: Response) => {
   try {
-    const allReleases = await firmwareUpdateService.fetchReleases();
+    await firmwareUpdateService.fetchReleases();
     const channel = await firmwareUpdateService.getChannel();
-    const releases = firmwareUpdateService.filterByChannel(allReleases, channel);
+    const releases = await firmwareUpdateService.getReleasesForChannel(channel);
 
     return res.json({ success: true, releases, channel });
   } catch (error) {
@@ -83,10 +82,10 @@ router.post('/channel', async (req: Request, res: Response) => {
   try {
     const { channel, customUrl } = req.body;
 
-    if (!channel || !['stable', 'alpha', 'custom'].includes(channel)) {
+    if (!channel || !['stable', 'alpha', 'custom', 'nightly'].includes(channel)) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid channel. Must be one of: stable, alpha, custom',
+        error: 'Invalid channel. Must be one of: stable, alpha, custom, nightly',
       });
     }
 
@@ -144,9 +143,9 @@ router.post('/update', async (req: Request, res: Response) => {
       });
     }
 
-    // Find the target release in cached releases
-    const releases = firmwareUpdateService.getCachedReleases();
-    const targetRelease = releases.find((r) => r.version === targetVersion || r.tagName === `v${targetVersion}`);
+    // Find the target release across the cached GitHub list AND the cached
+    // nightly build (nightly never lives in the GitHub cache).
+    const targetRelease = firmwareUpdateService.findReleaseByVersion(targetVersion);
 
     if (!targetRelease) {
       return res.status(400).json({
