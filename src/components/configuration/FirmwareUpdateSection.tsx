@@ -48,6 +48,8 @@ interface FirmwareRelease {
   publishedAt: string;
   htmlUrl: string;
   assets: Array<{ name: string; downloadUrl: string; size: number }>;
+  /** True for the develop nightly build, which has no publish date and gets a "nightly" badge. */
+  isNightly?: boolean;
 }
 
 interface FirmwareStatusResponse {
@@ -555,8 +557,8 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
             marginTop: '0.5rem',
             padding: '0.75rem',
             borderRadius: '6px',
-            border: '1px solid var(--color-warning, #b8860b)',
-            color: 'var(--color-warning, #b8860b)',
+            border: '1px solid var(--color-warning)',
+            color: 'var(--color-warning)',
             fontSize: '0.85rem',
             lineHeight: 1.4,
           }}
@@ -997,12 +999,18 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
                           backgroundColor: 'var(--color-caution)',
                           color: 'var(--color-bg)',
                         }}>
-                          alpha
+                          {release.isNightly ? t('firmware.badge_nightly', 'nightly') : 'alpha'}
                         </span>
                       )}
                     </td>
                     <td style={{ padding: '0.5rem', color: 'var(--color-text)' }}>
-                      {new Date(release.publishedAt).toLocaleDateString()}
+                      {(() => {
+                        // Nightly builds carry no publish date; avoid rendering "Invalid Date".
+                        const d = new Date(release.publishedAt);
+                        return release.publishedAt && !Number.isNaN(d.getTime())
+                          ? d.toLocaleDateString()
+                          : '—';
+                      })()}
                     </td>
                     <td style={{ textAlign: 'center', padding: '0.5rem' }}>
                       <a

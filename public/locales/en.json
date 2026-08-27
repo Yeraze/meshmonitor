@@ -4727,6 +4727,7 @@
   "firmware.channel_stable": "Stable",
   "firmware.channel_alpha": "Alpha (Pre-release)",
   "firmware.channel_nightly": "Nightly (Develop)",
+  "firmware.badge_nightly": "nightly",
   "firmware.channel_nightly_warning": "Nightly builds are untested develop snapshots (the upcoming 2.8 release). They may be unstable or fail to boot — flash a spare node you can recover over USB, not your only gateway.",
   "firmware.channel_custom": "Custom URL",
   "firmware.custom_url_placeholder": "https://example.com/firmware.bin",
