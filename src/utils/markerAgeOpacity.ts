@@ -34,6 +34,9 @@ export function markerAgeOpacity(
   minOpacity: number = MIN_MARKER_OPACITY,
 ): number {
   if (valueMs == null || !Number.isFinite(valueMs)) return 1;
+  // A non-finite stale boundary means an unbounded ("never / show all", #4947)
+  // age window — nothing is ever "stale", so no fade.
+  if (!Number.isFinite(staleMs) || !Number.isFinite(freshMs)) return 1;
   if (!(freshMs > staleMs)) return 1;
   const frac = (valueMs - staleMs) / (freshMs - staleMs);
   const clamped = Math.max(0, Math.min(1, frac));

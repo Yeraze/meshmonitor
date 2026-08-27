@@ -392,6 +392,17 @@ describe('MeshCoreNodesView — per-source age filter (#4412 Phase 4)', () => {
       render(<MeshCoreNodesView nodes={testNodes} contacts={[]} />);
       expect(listedNames()).toEqual([]);
     });
+
+    it('never hides a companion when the companion window is 0 (show all, #4947)', () => {
+      // Stealthy MeshCore companions can go days/weeks between adverts. A
+      // companion window of 0 keeps even a very old companion visible.
+      mockUseNodeDisplaySettings.mockReturnValue({ maxNodeAgeHours: 0, maxInfraNodeAgeHours: 720 });
+      const testNodes: MeshCoreNode[] = [
+        { publicKey: PK_COMPANION, name: 'AncientCompanion', advType: 1, lastHeard: NOW - 5000 * HOUR_MS },
+      ];
+      render(<MeshCoreNodesView nodes={testNodes} contacts={[]} />);
+      expect(listedNames()).toEqual(['AncientCompanion']);
+    });
   });
 
   it('falls through a `lastHeard: 0` DB row to the contact\'s lastSeen (merge gap regression, #4433 review)', () => {

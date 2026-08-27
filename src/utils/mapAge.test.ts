@@ -23,9 +23,11 @@ describe('effectiveMapMaxAgeHours', () => {
     expect(effectiveMapMaxAgeHours(-5, 24)).toBe(1);
   });
 
-  it('never returns less than 1 even if settings max is invalid', () => {
-    expect(effectiveMapMaxAgeHours(null, 0)).toBe(1);
-    expect(effectiveMapMaxAgeHours(10, 0)).toBe(1);
+  it('treats a 0 settings max as "never / show all" -> unbounded (#4947)', () => {
+    // At the default slider position (null) the map follows the setting, which
+    // is now unbounded; a concrete slider value still narrows it.
+    expect(effectiveMapMaxAgeHours(null, 0)).toBe(Infinity);
+    expect(effectiveMapMaxAgeHours(10, 0)).toBe(10);
   });
 
   it('ignores non-finite slider values', () => {
