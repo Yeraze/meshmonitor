@@ -38,6 +38,7 @@ export const SERIAL_ONLY_BRIDGE_COMMANDS: ReadonlySet<string> = new Set([
   'export_private_key', 'import_private_key',
   'set_name', 'set_radio', 'set_tx_power', 'set_coords',
   'set_advert_loc_policy', 'set_other_params', 'set_flood_scope', 'set_out_path',
+  'set_path_hash_mode', // #4945: writes NodePrefs.path_hash_mode, no RF TX
   'set_telemetry_mode_base', 'set_telemetry_mode_loc', 'set_telemetry_mode_env',
   'get_stats', 'get_device_time', 'set_device_time', 'device_query',
   'reboot', 'shutdown', 'ping',
