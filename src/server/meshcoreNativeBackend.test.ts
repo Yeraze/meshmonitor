@@ -1497,6 +1497,34 @@ describe('MeshCoreNativeBackend', () => {
     expect(conn.clearFloodScopeCalls).toBe(0);
     expect(conn.setFloodScopeCalls).toHaveLength(0);
   });
+
+  // ---- default path hash size (#4945) ----
+
+  it('set_path_hash_mode sends the raw [61,0,size-1] frame', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', { connectionType: 'serial', serialPort: '/dev/ttyUSB0' });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+
+    for (const [size, mode] of [[1, 0], [2, 1], [3, 2]] as const) {
+      conn.rawFrames.length = 0;
+      const resp = await backend.sendCommand('set_path_hash_mode', { size });
+      expect(resp.success).toBe(true);
+      expect(resp.data?.size).toBe(size);
+      expect(conn.rawFrames).toHaveLength(1);
+      // CMD_SET_PATH_HASH_MODE=61, reserved 0, mode=size-1.
+      expect(Array.from(conn.rawFrames[0])).toEqual([61, 0, mode]);
+    }
+  });
+
+  it('set_path_hash_mode rejects an out-of-range size without sending a frame', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', { connectionType: 'serial', serialPort: '/dev/ttyUSB0' });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+
+    const resp = await backend.sendCommand('set_path_hash_mode', { size: 4 });
+    expect(resp.success).toBe(false);
+    expect(conn.rawFrames).toHaveLength(0);
+  });
 });
 
 /** Firmware new enough (companion protocol v12) for the transient unscoped command. */

@@ -1321,6 +1321,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // Safe to call for any device type — it no-ops for non-Companion.
       this.startDeviceTimeSync();
 
+      // Push the configured default path hash size to the companion's persistent
+      // NodePrefs (#4945). Best-effort and Companion-only; a reconnect re-asserts
+      // it so the device always matches the MeshMonitor setting.
+      void this.applyDefaultPathHashSize();
+
       // Start the Virtual Node server (opt-in) now that the local node identity
       // is known — the server synthesizes SelfInfo from it. Non-fatal on error.
       await this.startVirtualNodeServer();
@@ -4258,6 +4263,47 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     void this.refreshKnownScopes();
     logger.info(`[MeshCore:${this.sourceId}] Default scope set to ${normalized || '(unscoped)'}`);
     return normalized;
+  }
+
+  /**
+   * The per-source default MeshCore path hash size (#4945): 1, 2, or 3 bytes.
+   * Controls the width the companion firmware stamps on every outgoing flood's
+   * path. Wider hashes cut path/loop-table collisions on larger meshes. Default
+   * 1 (firmware default, backwards-compatible). Unset/invalid → 1.
+   */
+  async getDefaultPathHashSize(): Promise<1 | 2 | 3> {
+    const raw = await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreDefaultPathHashSize');
+    const n = Number(raw);
+    return n === 2 || n === 3 ? n : 1;
+  }
+
+  /**
+   * Set the per-source default path hash size AND push it to the companion's
+   * persistent NodePrefs (CMD_SET_PATH_HASH_MODE=61) so it takes effect at once.
+   */
+  async setDefaultPathHashSize(size: number): Promise<1 | 2 | 3> {
+    const clamped: 1 | 2 | 3 = size === 2 || size === 3 ? size : 1;
+    await databaseService.settings.setSourceSetting(this.sourceId, 'meshcoreDefaultPathHashSize', String(clamped));
+    await this.applyDefaultPathHashSize(clamped);
+    logger.info(`[MeshCore:${this.sourceId}] Default path hash size set to ${clamped} byte(s)`);
+    return clamped;
+  }
+
+  /**
+   * Push the configured default path hash size to the device (Companion/native
+   * only — it is a companion NodePrefs setting). Best-effort: a device that
+   * rejects it (e.g. firmware too old to know CMD 61) is logged, never thrown,
+   * so it can't block connect or a settings save.
+   */
+  private async applyDefaultPathHashSize(size?: 1 | 2 | 3): Promise<void> {
+    if (!this.nativeBackend) return;
+    const width = size ?? await this.getDefaultPathHashSize();
+    try {
+      const resp = await this.sendBridgeCommand('set_path_hash_mode', { size: width });
+      if (!resp.success) throw new Error(resp.error || 'set_path_hash_mode failed');
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] Could not apply default path hash size ${width}: ${(err as Error).message}`);
+    }
   }
 
   /**
