@@ -181,9 +181,14 @@ router.post(
       }
 
       // Refuse to clobber a configured slot unless that was said out loud.
-      // role 0 (DISABLED) with no name is an empty slot; anything else is in use.
+      // A slot is "in use" ONLY when its role is non-zero (PRIMARY/SECONDARY).
+      // role 0 (DISABLED) is an empty slot even though the device stores a
+      // default name for it ("Channel 6"), so the old `existing.name` clause
+      // false-flagged every empty slot as occupied and blocked the join. The
+      // client agrees: `/api/channels` returns only role>0 channels, so the
+      // panel treats disabled slots as free — this keeps the two consistent.
       const existing = await databaseService.channels.getChannelById(slot, sourceId);
-      const slotInUse = Boolean(existing && (existing.name || (existing.role ?? 0) !== 0));
+      const slotInUse = Boolean(existing && (existing.role ?? 0) !== 0);
       if (slotInUse && overwrite !== true) {
         return fail(res, 409, 'CHANNEL_SLOT_IN_USE',
           `Channel slot ${slot} already holds "${existing?.name || 'an unnamed channel'}". Re-send with overwrite to replace it.`, {

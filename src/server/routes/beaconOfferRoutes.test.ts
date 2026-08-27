@@ -211,6 +211,21 @@ describe('POST accept', () => {
     expect(setChannelConfig).toHaveBeenCalled();
   });
 
+  it('joins a DISABLED slot without overwrite even though it has a default name', async () => {
+    // Regression: the device stores a default name ("Channel 6") for every
+    // empty slot. The old guard counted that name as "in use" and blocked the
+    // join with CHANNEL_SLOT_IN_USE on a slot that is actually empty (role 0).
+    await seedOffer();
+    await harness.db.channels.upsertChannel(
+      { id: 6, name: 'Channel 6', psk: '', role: 0, uplinkEnabled: false, downlinkEnabled: false },
+      harness.sourceA, { allowBlankName: true },
+    );
+
+    const res = await accept({ slot: 6, confirm: true });
+    expect(res.status).toBe(200);
+    expect(setChannelConfig).toHaveBeenCalledWith(6, expect.objectContaining({ name: 'RegionMesh', role: 2 }));
+  });
+
   it('leaves the database untouched when the radio rejects the write', async () => {
     // Device first, DB second: the opposite order would leave the UI showing a
     // channel the node does not actually have.
