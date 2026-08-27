@@ -72,6 +72,9 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
   // persistent NodePrefs. Wider hashes cut path/loop-table collisions on
   // larger meshes.
   const [pathHashSize, setPathHashSizeState] = useState<1 | 2 | 3>(1);
+  // Draft selection; applied to the device only on an explicit Save so an
+  // accidental dropdown change doesn't write persistent firmware state.
+  const [pathHashInput, setPathHashInput] = useState<1 | 2 | 3>(1);
   const [savingPathHash, setSavingPathHash] = useState(false);
   // Region discovery (#3667 phase 3) — names served by nearby repeaters.
   const [discoveredRegions, setDiscoveredRegions] = useState<string[] | null>(null);
@@ -118,7 +121,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
     if (connected && isCompanion) {
       void getDiscoverable().then(setDiscoverableState);
       void getDefaultScope().then((s) => { setDefaultScopeState(s); setScopeInput(s); });
-      void getDefaultPathHashSize().then(setPathHashSizeState);
+      void getDefaultPathHashSize().then((s) => { setPathHashSizeState(s); setPathHashInput(s); });
     }
   }, [connected, isCompanion, getDiscoverable, getDefaultScope, getDefaultPathHashSize]);
 
@@ -131,6 +134,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
         return;
       }
       setPathHashSizeState(result);
+      setPathHashInput(result);
       showToast(t('meshcore.path_hash.saved', 'Default path hash size saved'), 'success');
     } finally {
       setSavingPathHash(false);
@@ -507,8 +511,8 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
           </p>
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <select
-              value={pathHashSize}
-              onChange={(e) => void handleSavePathHashSize(Number(e.target.value) as 1 | 2 | 3)}
+              value={pathHashInput}
+              onChange={(e) => setPathHashInput(Number(e.target.value) as 1 | 2 | 3)}
               disabled={!connected || loading || savingPathHash}
               aria-label={t('meshcore.path_hash.title', 'Default path hash size')}
             >
@@ -516,7 +520,13 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
               <option value={2}>{t('meshcore.path_hash.two', '2 bytes (recommended)')}</option>
               <option value={3}>{t('meshcore.path_hash.three', '3 bytes')}</option>
             </select>
-            {savingPathHash && <span className="hint">{t('common.saving', 'Saving…')}</span>}
+            <button
+              onClick={() => void handleSavePathHashSize(pathHashInput)}
+              disabled={!connected || loading || savingPathHash || pathHashInput === pathHashSize}
+              aria-label={t('meshcore.path_hash.save', 'Save path hash size')}
+            >
+              {savingPathHash ? t('common.saving', 'Saving…') : t('common.save', 'Save')}
+            </button>
           </div>
         </div>
       )}

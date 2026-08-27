@@ -154,6 +154,7 @@ router.post(
         return res.status(400).json({ success: false, error: 'size must be 1, 2, or 3' });
       }
       const applied = await managerFor(req, res).setDefaultPathHashSize(size);
+      auditMeshcoreEvent(req, 'meshcore_set_path_hash_size', 'configuration', { size: applied });
       res.json({ success: true, size: applied });
     } catch (error) {
       logger.error('[API] Error setting default path hash size:', error);
