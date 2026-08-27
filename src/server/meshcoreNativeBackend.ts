@@ -1848,6 +1848,36 @@ export class MeshCoreNativeBackend extends EventEmitter {
         return { ok: true, scope: region };
       }
 
+      case 'set_path_hash_mode': {
+        // MeshCore default path hash size (#4945). Persistent device preference
+        // (NodePrefs.path_hash_mode) set via CMD_SET_PATH_HASH_MODE=61; firmware
+        // then stamps every outgoing flood with this width. Wire value is
+        // size-1 (mode 0/1/2 → 1/2/3 bytes); mode 3 is rejected by firmware.
+        // meshcore.js has no wrapper, so hand-build [61][0x00][mode] and await
+        // Ok/Err. The reserved second byte MUST be 0 or the firmware ignores it.
+        const size = Number(params.size);
+        if (![1, 2, 3].includes(size)) {
+          throw new Error(`Invalid path hash size: ${params.size} (must be 1, 2, or 3)`);
+        }
+        const mode = size - 1;
+        await new Promise<void>((resolve, reject) => {
+          const onOk = () => {
+            c.off(K.ResponseCodes.Ok, onOk);
+            c.off(K.ResponseCodes.Err, onErr);
+            resolve();
+          };
+          const onErr = () => {
+            c.off(K.ResponseCodes.Ok, onOk);
+            c.off(K.ResponseCodes.Err, onErr);
+            reject(new Error('Device rejected set_path_hash_mode command'));
+          };
+          c.once(K.ResponseCodes.Ok, onOk);
+          c.once(K.ResponseCodes.Err, onErr);
+          c.sendToRadioFrame(Uint8Array.from([61, 0x00, mode]));
+        });
+        return { ok: true, size };
+      }
+
       case 'send_advert':
         await c.sendAdvert(K.SelfAdvertTypes.Flood);
         return { sent: true };

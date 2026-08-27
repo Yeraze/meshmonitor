@@ -119,6 +119,51 @@ router.post(
 );
 
 /**
+ * GET /api/sources/:id/meshcore/config/default-path-hash-size
+ * The per-source default MeshCore path hash size (#4945): 1, 2, or 3 bytes.
+ */
+router.get(
+  '/config/default-path-hash-size',
+  requireAuth(),
+  requirePermission('configuration', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const size = await managerFor(req, res).getDefaultPathHashSize();
+      res.json({ success: true, size });
+    } catch (error) {
+      logger.error('[API] Error reading default path hash size:', error);
+      res.status(500).json({ success: false, error: 'Failed to read setting' });
+    }
+  },
+);
+
+/**
+ * Per-source MeshCore default path hash size (#4945) — 1/2/3 bytes. Persists the
+ * setting and pushes it to the companion firmware's NodePrefs so it applies at
+ * once (and re-asserts on every reconnect).
+ */
+router.post(
+  '/config/default-path-hash-size',
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const size = Number(req.body?.size);
+      if (![1, 2, 3].includes(size)) {
+        return res.status(400).json({ success: false, error: 'size must be 1, 2, or 3' });
+      }
+      const applied = await managerFor(req, res).setDefaultPathHashSize(size);
+      auditMeshcoreEvent(req, 'meshcore_set_path_hash_size', 'configuration', { size: applied });
+      res.json({ success: true, size: applied });
+    } catch (error) {
+      logger.error('[API] Error setting default path hash size:', error);
+      res.status(500).json({ success: false, error: 'Failed to update setting' });
+    }
+  },
+);
+
+/**
  * Saved regions catalog (#3770) — a GLOBAL, user-maintained list of MeshCore
  * region names used to populate scope dropdowns (channel settings + per-message
  * override) so users don't have to type/remember scopes. The catalog is not

@@ -48,6 +48,8 @@ function makeActions(overrides: Record<string, unknown> = {}) {
     getDiscoverable: vi.fn().mockResolvedValue(false),
     setDiscoverable: vi.fn().mockResolvedValue(true),
     getDefaultScope: vi.fn().mockResolvedValue(''),
+    getDefaultPathHashSize: vi.fn().mockResolvedValue(1),
+    setDefaultPathHashSize: vi.fn().mockResolvedValue(1),
     setDefaultScope: vi.fn().mockResolvedValue('region-x'),
     discoverRegions: vi.fn().mockResolvedValue(null),
     fetchSavedRegions: vi.fn().mockResolvedValue([]),
