@@ -315,12 +315,15 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
     // 0 means "never expire" (show regardless of age, like favorites).
     const infraNever = maxInfraNodeAgeHours <= 0;
     const infraCutoffMs = infraNever ? 0 : meshcoreAgeCutoffMs(maxInfraNodeAgeHours);
+    // The companion window itself can be "never / show all" (#4947) — stealthy
+    // MeshCore companions may go days/weeks between adverts, so 0 keeps them all.
+    const companionNever = maxNodeAgeHours <= 0;
     return merged.filter(r => {
       if (isAgeExempt(r)) return true;
       if (isMeshCoreInfrastructureAdvType(r.advType)) {
         return infraNever || isWithinMeshcoreAge(r, infraCutoffMs);
       }
-      return isWithinMeshcoreAge(r, cutoffMs);
+      return companionNever || isWithinMeshcoreAge(r, cutoffMs);
     });
   }, [merged, maxNodeAgeHours, maxInfraNodeAgeHours, isAgeExempt]);
 

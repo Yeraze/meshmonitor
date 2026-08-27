@@ -14,7 +14,12 @@ export function effectiveMapMaxAgeHours(
   mapMaxAgeHours: number | null | undefined,
   settingsMaxAgeHours: number,
 ): number {
-  const settingsMax = Math.max(1, settingsMaxAgeHours);
+  // `maxNodeAgeHours` of 0 means "never / show all" (#4947). The effective cap
+  // is then unbounded (Infinity): the map slider can still narrow it to a finite
+  // value, but its default ("All") position follows the setting = no cutoff.
+  // Downstream cutoffs (`now - hours*3600`) evaluate to -Infinity, so every node
+  // passes without any per-site special-casing.
+  const settingsMax = settingsMaxAgeHours <= 0 ? Infinity : Math.max(1, settingsMaxAgeHours);
   if (mapMaxAgeHours == null || !Number.isFinite(mapMaxAgeHours)) return settingsMax;
   return Math.min(Math.max(1, mapMaxAgeHours), settingsMax);
 }

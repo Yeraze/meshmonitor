@@ -408,16 +408,16 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
       }
     }
 
-    // Range-validate the node-age window (client input is min=1 max=168 —
-    // SettingsTab.tsx:1882-1884). Prior to this there was no server-side check
-    // at all, so an API client could store 0 or a negative value and every
-    // consumer's `Date.now() - h*3600e3` window silently inverted.
+    // Range-validate the node-age window. The floor is now 0 (#4947): 0 = "never
+    // / show all", the escape hatch for stealthy MeshCore companions. A negative
+    // value is still rejected — it would invert every `Date.now() - h*3600e3`
+    // window.
     if ('maxNodeAgeHours' in filteredSettings) {
       const hours = parseInt(filteredSettings.maxNodeAgeHours, 10);
       const R = NODE_DISPLAY_RANGES.maxNodeAgeHours!;
       if (isNaN(hours) || hours < R.min || hours > R.max) {
         return fail(res, 400, 'INVALID_MAX_NODE_AGE_HOURS',
-          `maxNodeAgeHours must be between ${R.min} and ${R.max} hours`);
+          `maxNodeAgeHours must be between ${R.min} and ${R.max} hours (0 = show all)`);
       }
     }
 

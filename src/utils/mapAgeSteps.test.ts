@@ -24,10 +24,14 @@ describe('ageFilterStops', () => {
     expect(ageFilterStops(10)).toEqual([1, 3, 6, 10]);
   });
 
-  it('rounds and floors the cap to at least a single stop', () => {
+  it('rounds and floors a finite cap to at least a single stop', () => {
     expect(ageFilterStops(1)).toEqual([1]);
-    expect(ageFilterStops(0)).toEqual([1]);
     expect(ageFilterStops(2.6)).toEqual([1, 3]); // rounds to 3
+  });
+
+  it('offers every canonical stop plus an unlimited "All" top for a never/0 cap (#4947)', () => {
+    expect(ageFilterStops(0)).toEqual([1, 3, 6, 12, 24, 72, 168, 336, 720, Infinity]);
+    expect(ageFilterStops(Infinity)).toEqual([1, 3, 6, 12, 24, 72, 168, 336, 720, Infinity]);
   });
 });
 
@@ -78,6 +82,14 @@ describe('formatAgeStop', () => {
 
   it('appends trailing hours for non-whole-day stops', () => {
     expect(formatAgeStop(30, 720)).toBe('1d 6h');
+  });
+
+  it('labels the unlimited (Infinity) stop as All, and keeps finite stops labelled under a never/0 cap (#4947)', () => {
+    expect(formatAgeStop(Infinity, 0)).toBe('All');
+    expect(formatAgeStop(Infinity, Infinity, 'Alle')).toBe('Alle');
+    // With a "never" (0) cap, finite stops must NOT all collapse to "All".
+    expect(formatAgeStop(24, 0)).toBe('1d');
+    expect(formatAgeStop(6, 0)).toBe('6h');
   });
 });
 

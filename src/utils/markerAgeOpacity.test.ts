@@ -46,4 +46,11 @@ describe('markerAgeOpacity', () => {
     expect(markerAgeOpacity(stale, fresh, 50_000)).toBe(1);
     expect(markerAgeOpacity(fresh, fresh, 50_000)).toBe(1);
   });
+
+  it('returns 1 (no fade, not NaN) for an unbounded window (#4947)', () => {
+    // A "never / show all" setting makes the stale boundary -Infinity; the old
+    // linear math produced NaN. No node is ever stale, so no fade.
+    expect(markerAgeOpacity(fresh, -Infinity, 50_000)).toBe(1);
+    expect(markerAgeOpacity(Infinity, -Infinity, 50_000)).toBe(1);
+  });
 });

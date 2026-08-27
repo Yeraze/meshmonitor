@@ -2482,11 +2482,15 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                     // Non-linear discrete stops (1h..30d) instead of a linear
                     // per-hour tick — see mapAgeSteps (#4770). Bounded by the
                     // per-source maxNodeAgeHours setting.
-                    const maxHours = Math.max(1, Math.round(maxNodeAgeHours));
+                    // maxNodeAgeHours of 0 = "never / show all" (#4947): the
+                    // stops then include an unlimited ("All") top; keep it 0 so
+                    // ageFilterStops/formatAgeStop take their unlimited branch.
+                    const maxHours = maxNodeAgeHours <= 0 ? 0 : Math.max(1, Math.round(maxNodeAgeHours));
                     const stops = ageFilterStops(maxHours);
                     const topIndex = stops.length - 1;
-                    const currentHours = Math.min(Math.max(1, Math.round(effectiveMapMaxAge)), maxHours);
-                    const currentIndex = nearestAgeStopIndex(stops, currentHours);
+                    const currentIndex = !Number.isFinite(effectiveMapMaxAge)
+                      ? topIndex
+                      : nearestAgeStopIndex(stops, Math.max(1, Math.round(effectiveMapMaxAge)));
                     const label = (idx: number) =>
                       formatAgeStop(stops[idx], maxHours, t('map.maxAgeAll', 'All'));
                     return (
