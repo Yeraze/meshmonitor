@@ -18,13 +18,14 @@ const get = vi.fn();
 const post = vi.fn();
 
 vi.mock('../../services/api', () => ({ default: { get: (...a: unknown[]) => get(...a), post: (...a: unknown[]) => post(...a) } }));
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    // Echo key + params so assertions read against stable identifiers rather
-    // than translated copy.
-    t: (k: string, p?: Record<string, unknown>) => (p ? `${k}:${JSON.stringify(p)}` : k),
-  }),
-}));
+vi.mock('react-i18next', () => {
+  // A STABLE t reference across renders, like real react-i18next. Returning a
+  // fresh function each call would make any useCallback([..., t]) re-fire every
+  // render — an effect→setState→render loop the real hook never triggers.
+  // Echo key + params so assertions read against stable identifiers.
+  const t = (k: string, p?: Record<string, unknown>) => (p ? `${k}:${JSON.stringify(p)}` : k);
+  return { useTranslation: () => ({ t }) };
+});
 vi.mock('../icons/UiIcon', () => ({ UiIcon: ({ name }: { name: string }) => <i data-icon={name} /> }));
 
 import BeaconOffersPanel from './BeaconOffersPanel';
@@ -59,6 +60,23 @@ describe('BeaconOffersPanel', () => {
     expect(get).not.toHaveBeenCalled();
   });
 
+  it('loads offers from the /api/ path — #4946: a missing /api hit the SPA fallback and silently showed nothing', async () => {
+    renderPanel([offer()]);
+    await screen.findByTestId(`beacon-offer-${NODE}`);
+    expect(get).toHaveBeenCalledWith('/api/sources/src-a/beacon-offers');
+  });
+
+  it('surfaces a failed load instead of collapsing to a silent empty panel (#4946)', async () => {
+    // The old behaviour swallowed the error AND returned null on empty offers,
+    // so a broken fetch was indistinguishable from "no offers".
+    get.mockRejectedValue(new Error('boom'));
+    render(<BeaconOffersPanel sourceId="src-a" channels={[]} />);
+    await waitFor(() => expect(get).toHaveBeenCalled());
+    // Panel renders (not null) and shows the error, even with zero offers.
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.getByTestId('beacon-offers-panel')).toBeTruthy();
+  });
+
   it('shows an un-actionable offer WITH its reason instead of hiding it', async () => {
     // Maintainer decision: "show but with reason why they won't work."
     renderPanel([offer({ hasChannelKey: false })]);
@@ -82,7 +100,7 @@ describe('BeaconOffersPanel', () => {
     await user.click(screen.getByTestId('beacon-confirm-go'));
 
     await waitFor(() => expect(post).toHaveBeenCalledWith(
-      `/sources/src-a/beacon-offers/${NODE}/accept`,
+      `/api/sources/src-a/beacon-offers/${NODE}/accept`,
       expect.objectContaining({ confirm: true }),
     ));
   });
@@ -142,7 +160,7 @@ describe('BeaconOffersPanel', () => {
 
     await user.click(await screen.findByText('beacons.dismiss'));
 
-    await waitFor(() => expect(post).toHaveBeenCalledWith(`/sources/src-a/beacon-offers/${NODE}/dismiss`));
+    await waitFor(() => expect(post).toHaveBeenCalledWith(`/api/sources/src-a/beacon-offers/${NODE}/dismiss`));
     await waitFor(() => expect(screen.queryByTestId(`beacon-offer-${NODE}`)).toBeNull());
   });
 

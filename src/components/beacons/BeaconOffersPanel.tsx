@@ -73,15 +73,19 @@ export default function BeaconOffersPanel({
     if (!sourceId) { setOffers([]); return; }
     try {
       const res = await apiService.get<{ success: boolean; data: PublicBeaconOffer[] }>(
-        `/sources/${sourceId}/beacon-offers`,
+        `/api/sources/${encodeURIComponent(sourceId)}/beacon-offers`,
       );
       setOffers(res?.data ?? []);
-    } catch {
-      // A failed poll leaves the last good list in place. Beacons rebroadcast,
-      // so this self-heals; surfacing an error banner for a background refresh
-      // would be noisier than the information is worth.
-      }
-  }, [sourceId]);
+      setError(null);
+    } catch (e) {
+      // A failed background poll leaves the last good list in place (beacons
+      // rebroadcast, so it self-heals). But an outright failure with nothing to
+      // show must NOT render as a silent empty panel — otherwise a broken fetch
+      // is indistinguishable from "no offers" (#4946). Surface it so the render
+      // guard below shows the error instead of returning null.
+      setError(e instanceof Error ? e.message : t('beacons.load_failed', 'Failed to load beacon offers'));
+    }
+  }, [sourceId, t]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -96,7 +100,7 @@ export default function BeaconOffersPanel({
   const dismiss = async (offer: PublicBeaconOffer) => {
     setBusy(true);
     try {
-      await apiService.post(`/sources/${sourceId}/beacon-offers/${offer.nodeNum}/dismiss`);
+      await apiService.post(`/api/sources/${encodeURIComponent(sourceId!)}/beacon-offers/${offer.nodeNum}/dismiss`);
       setOffers((prev) => prev.filter((o) => o.nodeNum !== offer.nodeNum));
     } catch {
       setError(t('beacons.dismiss_failed'));
@@ -111,7 +115,7 @@ export default function BeaconOffersPanel({
     setError(null);
     try {
       await apiService.post(
-        `/sources/${sourceId}/beacon-offers/${pending.offer.nodeNum}/accept`,
+        `/api/sources/${encodeURIComponent(sourceId!)}/beacon-offers/${pending.offer.nodeNum}/accept`,
         { slot: pending.slot, confirm: true, overwrite },
       );
       setOffers((prev) => prev.filter((o) => o.nodeNum !== pending.offer.nodeNum));
@@ -123,7 +127,10 @@ export default function BeaconOffersPanel({
     }
   };
 
-  if (!sourceId || offers.length === 0) return null;
+  // Nothing to show only when there are genuinely no offers AND no error.
+  // A load failure must surface (below) rather than collapse to an empty panel.
+  if (!sourceId) return null;
+  if (offers.length === 0 && !error) return null;
 
   return (
     <section className={styles.beaconOffers} data-testid="beacon-offers-panel">

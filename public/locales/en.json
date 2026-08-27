@@ -159,6 +159,7 @@
   "beacons.join_channel": "Join channel",
   "beacons.dismiss": "Dismiss",
   "beacons.dismiss_failed": "Could not dismiss this invitation.",
+  "beacons.load_failed": "Could not load beacon invitations.",
   "beacons.accept_failed": "Could not join the offered channel.",
   "beacons.confirm_title": "Join this channel?",
   "beacons.confirm_body": "This writes the channel \"{{channel}}\" to slot {{slot}} on your radio. Your primary channel is not affected.",
