@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 import fs from 'fs';
@@ -62,6 +62,10 @@ afterAll(() => {
   fs.rmSync(tmpRoot, { recursive: true, force: true });
 });
 
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
 describe('GET /scripts/inventory', () => {
   it('reports usedBy for referenced scripts and empty for orphans', async () => {
     mockDb.sources.getAllSources.mockResolvedValue([{ id: 'src1', name: 'Node A', type: 'meshtastic_tcp' }]);
@@ -79,8 +83,9 @@ describe('GET /scripts/inventory', () => {
 
     const res = await request(app).get('/scripts/inventory');
     expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
 
-    const scripts: any[] = res.body.scripts;
+    const scripts: any[] = res.body.data.scripts;
     const weather = scripts.find(s => s.filename === 'weather.py');
     const orphan = scripts.find(s => s.filename === 'orphan.sh');
 
@@ -103,20 +108,22 @@ describe('GET /scripts/inventory', () => {
     expect(orphan.usedBy).toEqual([]);
   });
 
-  it('works with no sources configured', async () => {
+  it('works with no sources configured and skips the per-key query', async () => {
     mockDb.sources.getAllSources.mockResolvedValue([]);
     mockDb.settings.getSettingForSources.mockResolvedValue(new Map());
 
     const res = await request(app).get('/scripts/inventory');
     expect(res.status).toBe(200);
-    expect(res.body.scripts.every((s: any) => s.usedBy.length === 0)).toBe(true);
+    expect(res.body.data.scripts.every((s: any) => s.usedBy.length === 0)).toBe(true);
+    // The sourceIds.length guard must short-circuit the settings query.
+    expect(mockDb.settings.getSettingForSources).not.toHaveBeenCalled();
   });
 
-  it('returns 500 with an empty list when the DB throws', async () => {
+  it('returns a fail envelope when the DB throws', async () => {
     mockDb.sources.getAllSources.mockRejectedValue(new Error('boom'));
 
     const res = await request(app).get('/scripts/inventory');
     expect(res.status).toBe(500);
-    expect(res.body.scripts).toEqual([]);
+    expect(res.body).toMatchObject({ success: false, code: 'SCRIPT_INVENTORY_ERROR' });
   });
 });

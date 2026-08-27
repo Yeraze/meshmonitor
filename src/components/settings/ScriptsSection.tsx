@@ -4,6 +4,7 @@ import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useToast } from '../ToastContainer';
 import { UiIcon, type UiIconName } from '../icons';
 import ScriptDependenciesPanel from '../auto-responder/ScriptDependenciesPanel';
+import styles from './ScriptsSection.module.css';
 
 /**
  * Scripts inventory (issue #4942).
@@ -108,8 +109,10 @@ const ScriptsSection: React.FC<ScriptsSectionProps> = ({ baseUrl, canWrite = tru
 
   const fetchInventory = useCallback(async () => {
     try {
-      const data = await apiService.get<{ scripts?: InventoryScript[] }>('/api/scripts/inventory');
-      setScripts(data.scripts ?? []);
+      // The endpoint uses the shared envelope: { success, data: { scripts } }.
+      // apiService.get returns the raw body and does not unwrap `data`.
+      const body = await apiService.get<{ data?: { scripts?: InventoryScript[] } }>('/api/scripts/inventory');
+      setScripts(body.data?.scripts ?? []);
     } catch (error) {
       console.error('Failed to load script inventory:', error);
       showToast('Failed to load script inventory', 'error');
@@ -195,7 +198,7 @@ const ScriptsSection: React.FC<ScriptsSectionProps> = ({ baseUrl, canWrite = tru
   return (
     <div id="settings-scripts" className="settings-section">
       <h3><UiIcon name="list" size={18} style={{ marginRight: '0.4rem', verticalAlign: 'text-bottom' }} /> Scripts</h3>
-      <p style={{ color: 'var(--color-text-subtle)', fontSize: '0.85rem', marginTop: '-0.25rem' }}>
+      <p className={styles.description}>
         Scripts in <code>/data/scripts/</code> available to Auto Responders, Timers, and Geofences.
         {scripts.length > 0 && ` ${scripts.length} installed, ${usedCount} in use.`}
       </p>
@@ -208,57 +211,25 @@ const ScriptsSection: React.FC<ScriptsSectionProps> = ({ baseUrl, canWrite = tru
         onChange={handleFileSelected}
       />
 
-      <div style={{ display: 'flex', gap: '0.5rem', margin: '0.75rem 0', flexWrap: 'wrap', alignItems: 'center' }}>
+      <div className={styles.toolbar}>
         {canWrite && (
-          <button
-            onClick={handleImportClick}
-            disabled={isImporting}
-            style={{
-              padding: '0.5rem 1rem',
-              fontSize: '0.875rem',
-              background: isImporting ? 'var(--color-surface-active)' : 'var(--color-accent)',
-              color: isImporting ? 'var(--color-text-subtle)' : 'var(--color-bg)',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: isImporting ? 'not-allowed' : 'pointer',
-              fontWeight: 'bold',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.35rem',
-            }}
-          >
+          <button className={styles.importBtn} onClick={handleImportClick} disabled={isImporting}>
             {isImporting ? 'Importing…' : <><UiIcon name="import" size={15} /> Import Script</>}
           </button>
         )}
 
         <input
+          className={styles.searchInput}
           type="text"
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search scripts…"
-          style={{
-            flex: '1 1 160px',
-            minWidth: '140px',
-            padding: '0.45rem 0.6rem',
-            fontSize: '0.85rem',
-            background: 'var(--color-surface)',
-            color: 'var(--color-text)',
-            border: '1px solid var(--color-border-subtle)',
-            borderRadius: '4px',
-          }}
         />
 
         <select
+          className={styles.filterSelect}
           value={statusFilter}
           onChange={e => setStatusFilter(e.target.value as StatusFilter)}
-          style={{
-            padding: '0.45rem 0.6rem',
-            fontSize: '0.85rem',
-            background: 'var(--color-surface)',
-            color: 'var(--color-text)',
-            border: '1px solid var(--color-border-subtle)',
-            borderRadius: '4px',
-          }}
         >
           <option value="all">All</option>
           <option value="used">In use</option>
@@ -266,61 +237,37 @@ const ScriptsSection: React.FC<ScriptsSectionProps> = ({ baseUrl, canWrite = tru
         </select>
 
         <a
+          className={styles.galleryLink}
           href="https://meshmonitor.org/user-scripts.html"
           target="_blank"
           rel="noopener noreferrer"
-          style={{
-            padding: '0.5rem 1rem',
-            fontSize: '0.875rem',
-            background: 'var(--color-accent-alt)',
-            color: 'var(--color-bg)',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontWeight: 'bold',
-            textDecoration: 'none',
-            display: 'inline-flex',
-            alignItems: 'center',
-          }}
         >
           Script Gallery
         </a>
       </div>
 
       {loading ? (
-        <div style={{ padding: '1rem', color: 'var(--color-text-subtle)', fontStyle: 'italic' }}>Loading…</div>
+        <div className={styles.emptyState}>Loading…</div>
       ) : scripts.length === 0 ? (
-        <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--color-text-subtle)', fontStyle: 'italic' }}>
-          No scripts found in /data/scripts/
-        </div>
+        <div className={styles.emptyState}>No scripts found in /data/scripts/</div>
       ) : filtered.length === 0 ? (
-        <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--color-text-subtle)', fontStyle: 'italic' }}>
-          No scripts match the current filter.
-        </div>
+        <div className={styles.emptyState}>No scripts match the current filter.</div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        <div className={styles.list}>
           {filtered.map(script => {
             const inUse = script.usedBy.length > 0;
             const isConfirming = confirmDelete === script.filename;
             return (
-              <div
-                key={script.path}
-                style={{
-                  padding: '0.75rem',
-                  background: 'var(--color-surface)',
-                  border: '1px solid var(--color-border-subtle)',
-                  borderRadius: '4px',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ fontSize: '0.95rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+              <div key={script.path} className={styles.card}>
+                <div className={styles.cardHeader}>
+                  <span className={styles.scriptName}>
+                    <span className={styles.scriptTitle}>
                       {script.emoji
                         ? <span>{script.emoji}</span>
                         : <UiIcon name={getLanguageIcon(script.language)} size={15} />}
                       {script.name || script.filename}
                     </span>
-                    <div style={{ fontSize: '0.78rem', color: 'var(--color-text-subtle)', marginTop: '0.15rem' }}>
+                    <div className={styles.scriptMeta}>
                       <code>{script.filename}</code>
                       {' · '}{script.language}
                       {script.version ? ` · v${script.version}` : ''}
@@ -330,38 +277,15 @@ const ScriptsSection: React.FC<ScriptsSectionProps> = ({ baseUrl, canWrite = tru
                     </div>
                   </span>
 
-                  <span
-                    style={{
-                      flexShrink: 0,
-                      fontSize: '0.72rem',
-                      fontWeight: 700,
-                      padding: '0.15rem 0.5rem',
-                      borderRadius: '999px',
-                      background: inUse ? 'var(--color-success)' : 'var(--color-surface-active)',
-                      color: inUse ? 'var(--color-bg)' : 'var(--color-text-subtle)',
-                    }}
-                  >
+                  <span className={`${styles.badge} ${inUse ? styles.badgeInUse : styles.badgeUnused}`}>
                     {inUse ? 'In use' : 'Unused'}
                   </span>
 
                   {canWrite && !isConfirming && (
                     <button
+                      className={styles.deleteBtn}
                       onClick={() => setConfirmDelete(script.filename)}
                       disabled={isDeleting === script.filename}
-                      style={{
-                        flexShrink: 0,
-                        padding: '0.25rem 0.6rem',
-                        fontSize: '0.75rem',
-                        background: 'var(--color-error)',
-                        color: 'var(--color-bg)',
-                        border: 'none',
-                        borderRadius: '3px',
-                        cursor: 'pointer',
-                        fontWeight: 'bold',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.25rem',
-                      }}
                     >
                       <UiIcon name="delete" size={13} /> Delete
                     </button>
@@ -369,7 +293,7 @@ const ScriptsSection: React.FC<ScriptsSectionProps> = ({ baseUrl, canWrite = tru
                 </div>
 
                 {inUse && (
-                  <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.1rem', fontSize: '0.78rem', color: 'var(--color-text)' }}>
+                  <ul className={styles.usageList}>
                     {script.usedBy.map((ref, i) => (
                       <li key={`${ref.sourceId}-${ref.type}-${ref.triggerId ?? i}`}>{describeRef(ref)}</li>
                     ))}
@@ -377,16 +301,8 @@ const ScriptsSection: React.FC<ScriptsSectionProps> = ({ baseUrl, canWrite = tru
                 )}
 
                 {isConfirming && (
-                  <div
-                    style={{
-                      marginTop: '0.6rem',
-                      padding: '0.6rem',
-                      background: 'var(--color-surface-hover)',
-                      border: '1px solid var(--color-error)',
-                      borderRadius: '4px',
-                    }}
-                  >
-                    <div style={{ fontSize: '0.82rem', marginBottom: '0.5rem' }}>
+                  <div className={styles.confirmBox}>
+                    <div className={styles.confirmText}>
                       {inUse ? (
                         <>Delete <strong>{script.filename}</strong>? It is used by {script.usedBy.length}{' '}
                         automation{script.usedBy.length === 1 ? '' : 's'} listed above, which will break until reconfigured.</>
@@ -394,35 +310,18 @@ const ScriptsSection: React.FC<ScriptsSectionProps> = ({ baseUrl, canWrite = tru
                         <>Delete <strong>{script.filename}</strong>? This cannot be undone.</>
                       )}
                     </div>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <div className={styles.confirmActions}>
                       <button
+                        className={styles.confirmDeleteBtn}
                         onClick={() => handleDelete(script.filename)}
                         disabled={isDeleting === script.filename}
-                        style={{
-                          padding: '0.3rem 0.75rem',
-                          fontSize: '0.78rem',
-                          background: 'var(--color-error)',
-                          color: 'var(--color-bg)',
-                          border: 'none',
-                          borderRadius: '3px',
-                          cursor: 'pointer',
-                          fontWeight: 'bold',
-                        }}
                       >
                         {isDeleting === script.filename ? 'Deleting…' : inUse ? 'Delete Anyway' : 'Delete'}
                       </button>
                       <button
+                        className={styles.cancelBtn}
                         onClick={() => setConfirmDelete(null)}
                         disabled={isDeleting === script.filename}
-                        style={{
-                          padding: '0.3rem 0.75rem',
-                          fontSize: '0.78rem',
-                          background: 'var(--color-surface-hover)',
-                          color: 'var(--color-text)',
-                          border: '1px solid var(--color-border-subtle)',
-                          borderRadius: '3px',
-                          cursor: 'pointer',
-                        }}
                       >
                         Cancel
                       </button>

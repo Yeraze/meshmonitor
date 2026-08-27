@@ -1,0 +1,206 @@
+/* Scripts inventory section (issue #4942). CSS module — do not move these
+ * rules into the global sheets (CLAUDE.md CSS containment rule). Colors use
+ * the semantic var(--color-*) tokens with no fallback, per the theme system. */
+
+.description {
+  color: var(--color-text-subtle);
+  font-size: 0.85rem;
+  margin-top: -0.25rem;
+}
+
+.toolbar {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.importBtn {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  background: var(--color-accent);
+  color: var(--color-bg);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.importBtn:disabled {
+  background: var(--color-surface-active);
+  color: var(--color-text-subtle);
+  cursor: not-allowed;
+}
+
+.searchInput {
+  flex: 1 1 160px;
+  min-width: 140px;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.85rem;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+}
+
+.filterSelect {
+  padding: 0.45rem 0.6rem;
+  font-size: 0.85rem;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+}
+
+.galleryLink {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  background: var(--color-accent-alt);
+  color: var(--color-bg);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.emptyState {
+  padding: 1rem;
+  text-align: center;
+  color: var(--color-text-subtle);
+  font-style: italic;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.card {
+  padding: 0.75rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.scriptName {
+  flex: 1;
+  min-width: 0;
+}
+
+.scriptTitle {
+  font-size: 0.95rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.scriptMeta {
+  font-size: 0.78rem;
+  color: var(--color-text-subtle);
+  margin-top: 0.15rem;
+}
+
+.badge {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+}
+
+.badgeInUse {
+  background: var(--color-success);
+  color: var(--color-bg);
+}
+
+.badgeUnused {
+  background: var(--color-surface-active);
+  color: var(--color-text-subtle);
+}
+
+.deleteBtn {
+  flex-shrink: 0;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+  background: var(--color-error);
+  color: var(--color-bg);
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-weight: bold;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.deleteBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.usageList {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.78rem;
+  color: var(--color-text);
+}
+
+.confirmBox {
+  margin-top: 0.6rem;
+  padding: 0.6rem;
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-error);
+  border-radius: 4px;
+}
+
+.confirmText {
+  font-size: 0.82rem;
+  margin-bottom: 0.5rem;
+}
+
+.confirmActions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.confirmDeleteBtn {
+  padding: 0.3rem 0.75rem;
+  font-size: 0.78rem;
+  background: var(--color-error);
+  color: var(--color-bg);
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.cancelBtn {
+  padding: 0.3rem 0.75rem;
+  font-size: 0.78rem;
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.confirmDeleteBtn:disabled,
+.cancelBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}

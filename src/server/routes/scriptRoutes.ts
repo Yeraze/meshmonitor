@@ -12,6 +12,7 @@ import { safeFetch, SsrfBlockedError } from '../utils/ssrfGuard.js';
 import { getDependencyStatus, installDependencies } from '../services/scriptDependencyService.js';
 import databaseService from '../../services/database.js';
 import { computeScriptUsage, type SourceTriggers } from '../utils/scriptUsage.js';
+import { ok, fail } from '../utils/apiResponse.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -280,7 +281,11 @@ router.get('/scripts/inventory', requirePermission('settings', 'read'), async (_
     const sources = await databaseService.sources.getAllSources();
     const sourceIds = sources.map(s => s.id);
 
-    // One prefix-scoped query per key across all sources.
+    // One prefix-scoped query per key across all sources — a fixed 5 round
+    // trips (the USAGE_SETTING_KEYS count), NOT per-source, since each call
+    // fans out over every sourceId in a single IN query. Key order is
+    // irrelevant; results are merged into sourceTriggers regardless. If the
+    // key list grows large, batch these into one query instead.
     const perKey: Record<string, Map<string, string>> = {};
     for (const key of USAGE_SETTING_KEYS) {
       perKey[key] = sourceIds.length
@@ -305,10 +310,10 @@ router.get('/scripts/inventory', requirePermission('settings', 'read'), async (_
       usedBy: usage.get(script.filename) ?? [],
     }));
 
-    res.json({ scripts: enriched });
+    ok(res, { scripts: enriched });
   } catch (error) {
     logger.error('❌ Error building script inventory:', error);
-    res.status(500).json({ error: 'Failed to build script inventory', scripts: [] });
+    fail(res, 500, 'SCRIPT_INVENTORY_ERROR', 'Failed to build script inventory');
   }
 });
 

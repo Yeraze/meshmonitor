@@ -34,6 +34,7 @@ vi.mock('../auto-responder/ScriptDependenciesPanel', () => ({
 
 import ScriptsSection from './ScriptsSection';
 
+// Endpoint returns the shared envelope: { success, data: { scripts } }.
 const inventory = {
   scripts: [
     {
@@ -62,7 +63,7 @@ const inventory = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockApiGet.mockResolvedValue(inventory);
+  mockApiGet.mockResolvedValue({ success: true, data: inventory });
   mockCsrfFetch.mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
 });
 
