@@ -944,11 +944,14 @@ export default function DashboardMap({
           {(() => {
             // Non-linear discrete stops (1h..30d) via mapAgeSteps (#4770),
             // bounded by the per-source maxNodeAgeHours setting.
-            const maxHours = Math.max(1, Math.round(maxNodeAgeHours));
+            // maxNodeAgeHours of 0 = "never / show all" (#4947): keep it 0 so
+            // ageFilterStops/formatAgeStop take their unlimited ("All") branch.
+            const maxHours = maxNodeAgeHours <= 0 ? 0 : Math.max(1, Math.round(maxNodeAgeHours));
             const stops = ageFilterStops(maxHours);
             const topIndex = stops.length - 1;
-            const currentHours = Math.min(Math.max(1, Math.round(effectiveMaxAge)), maxHours);
-            const currentIndex = nearestAgeStopIndex(stops, currentHours);
+            const currentIndex = !Number.isFinite(effectiveMaxAge)
+              ? topIndex
+              : nearestAgeStopIndex(stops, Math.max(1, Math.round(effectiveMaxAge)));
             const label = (idx: number) => formatAgeStop(stops[idx], maxHours);
             return (
               <div className="map-control-item" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '0.25rem' }}>

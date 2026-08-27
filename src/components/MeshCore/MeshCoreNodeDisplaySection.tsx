@@ -184,7 +184,7 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
           <span className="setting-description">
             {t(
               'meshcore.settings.node_display.max_age_description',
-              'Nodes not heard within this window are hidden from the Nodes list and the map. Favorites and your own node are always shown. This does not change which nodes Auto-Pathfinding targets — see Automations → Target Filter.',
+              'Nodes not heard within this window are hidden from the Nodes list and the map. Favorites and your own node are always shown. Use 0 to show all nodes ever heard (useful for stealthy MeshCore companions that advertise rarely). This does not change which nodes Auto-Pathfinding targets — see Automations → Target Filter.',
             )}
           </span>
         </label>

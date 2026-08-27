@@ -893,7 +893,8 @@ describe('settingsRoutes', () => {
   describe('POST /api/settings — WP2 per-source route hardening (#4412 §6.2 a-g)', () => {
     // (a) maxNodeAgeHours range validation (§3.5)
     describe('(a) maxNodeAgeHours range validation', () => {
-      it.each([0, 721, 'abc', ''])('rejects %s with 400 INVALID_MAX_NODE_AGE_HOURS', async (value) => {
+      // #4947: 0 is now valid ("never / show all"); negatives still rejected.
+      it.each([-1, 721, 'abc', ''])('rejects %s with 400 INVALID_MAX_NODE_AGE_HOURS', async (value) => {
         const app = createApp(adminUser);
         const res = await request(app)
           .post('/api/settings')
@@ -904,7 +905,7 @@ describe('settingsRoutes', () => {
         expect(databaseService.settings.setSettings).not.toHaveBeenCalled();
       });
 
-      it.each([1, 24, 168, 720])('accepts %s with 200', async (value) => {
+      it.each([0, 1, 24, 168, 720])('accepts %s with 200', async (value) => {
         const app = createApp(adminUser);
         await request(app)
           .post('/api/settings')

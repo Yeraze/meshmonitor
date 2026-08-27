@@ -29,6 +29,11 @@ export const AGE_FILTER_STOP_HOURS: readonly number[] = [
  * stop.
  */
 export function ageFilterStops(maxHours: number): number[] {
+  // A "never / show all" setting (0 or non-finite, #4947) offers every canonical
+  // stop PLUS an unlimited top stop (Infinity), rendered "All".
+  if (!Number.isFinite(maxHours) || maxHours <= 0) {
+    return [...AGE_FILTER_STOP_HOURS, Infinity];
+  }
   const cap = Math.max(1, Math.round(maxHours));
   const stops = AGE_FILTER_STOP_HOURS.filter((h) => h < cap);
   stops.push(cap);
@@ -60,7 +65,11 @@ export function nearestAgeStopIndex(stops: number[], hours: number): number {
  * days).
  */
 export function formatAgeStop(hours: number, maxHours: number, allLabel = 'All'): string {
-  if (hours >= maxHours) return allLabel;
+  // The unlimited top stop (Infinity, #4947) is always "All". Otherwise the top
+  // stop is the one at/above a FINITE positive cap. Guarding `maxHours > 0` keeps
+  // a "never" cap (0) from labelling every finite stop as "All".
+  if (!Number.isFinite(hours)) return allLabel;
+  if (Number.isFinite(maxHours) && maxHours > 0 && hours >= maxHours) return allLabel;
   if (hours < 24) return `${hours}h`;
   const days = Math.floor(hours / 24);
   const remainingHours = hours % 24;

@@ -195,7 +195,10 @@ export function useProcessedNodes(options: UseProcessedNodesOptions = {}) {
     // keep browsing tidy — once you're explicitly looking for something
     // by name or id, finding it matters more than freshness.
     const isSearching = textFilter.trim().length > 0;
-    const ageFiltered = isSearching
+    // maxNodeAgeHours of 0 = "never / show all" (#4947): keep every node
+    // regardless of last-heard age, the same escape hatch searching provides.
+    const ageUnlimited = maxNodeAgeHours <= 0;
+    const ageFiltered = isSearching || ageUnlimited
       ? nodes
       : nodes.filter(node => {
           if (node.isFavorite) return true;

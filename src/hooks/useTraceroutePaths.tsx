@@ -291,11 +291,13 @@ export function useTraceroutePaths({
       nodeNums: [number, number];
     }> = [];
 
-    // Filter traceroutes by age using the same maxNodeAgeHours setting
+    // Filter traceroutes by age using the same maxNodeAgeHours setting.
+    // 0 = "never / show all" (#4947) → keep every traceroute regardless of age.
+    const ageUnlimited = maxNodeAgeHours <= 0;
     const cutoffTime = Date.now() - maxNodeAgeHours * 60 * 60 * 1000;
     const recentTraceroutes = traceroutesDigest.filter(tr => {
       const timestamp = tr.timestamp || tr.createdAt || 0;
-      return timestamp >= cutoffTime;
+      return ageUnlimited || timestamp >= cutoffTime;
     });
 
     // Deduplicate: keep only the most recent traceroute per node pair
