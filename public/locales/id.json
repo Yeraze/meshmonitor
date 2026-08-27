@@ -1,0 +1,5 @@
+{
+    "auto_favorite.max_neighbor_age": "Usia maksimum tetangga (jam)",
+    "auto_favorite.max_neighbor_age_desc": "Jika catatan NeighborInfo untuk node ini sudah tersimpan dan lebih baru dari nilai ini, catatan tersebut akan dipakai ulang daripada meminta yang baru — menghemat airtime. Atur ke 0 untuk selalu meminta data baru. Default 24 jam.",
+    "admin_commands.node_favorite_confirmed": "Node {{nodeNum}} mengonfirmasi favorit (ACK diterima)"
+}
