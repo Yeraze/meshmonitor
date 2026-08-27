@@ -57,7 +57,8 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
   // "Be discoverable" toggle — whether we answer inbound discovery requests.
   const [discoverable, setDiscoverableState] = useState(false);
   const {
-    getDiscoverable, setDiscoverable, getDefaultScope, setDefaultScope, discoverRegions,
+    getDiscoverable, setDiscoverable, getDefaultScope, setDefaultScope,
+    getDefaultPathHashSize, setDefaultPathHashSize, discoverRegions,
     fetchSavedRegions, addSavedRegion, deleteSavedRegion,
   } = actions;
 
@@ -66,6 +67,15 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
   const [defaultScope, setDefaultScopeState] = useState('');
   const [scopeInput, setScopeInput] = useState('');
   const [savingScope, setSavingScope] = useState(false);
+
+  // Default path hash size (#4945): 1/2/3 bytes, pushed to the companion's
+  // persistent NodePrefs. Wider hashes cut path/loop-table collisions on
+  // larger meshes.
+  const [pathHashSize, setPathHashSizeState] = useState<1 | 2 | 3>(1);
+  // Draft selection; applied to the device only on an explicit Save so an
+  // accidental dropdown change doesn't write persistent firmware state.
+  const [pathHashInput, setPathHashInput] = useState<1 | 2 | 3>(1);
+  const [savingPathHash, setSavingPathHash] = useState(false);
   // Region discovery (#3667 phase 3) — names served by nearby repeaters.
   const [discoveredRegions, setDiscoveredRegions] = useState<string[] | null>(null);
   const [discoveringRegions, setDiscoveringRegions] = useState(false);
@@ -111,8 +121,25 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
     if (connected && isCompanion) {
       void getDiscoverable().then(setDiscoverableState);
       void getDefaultScope().then((s) => { setDefaultScopeState(s); setScopeInput(s); });
+      void getDefaultPathHashSize().then((s) => { setPathHashSizeState(s); setPathHashInput(s); });
     }
-  }, [connected, isCompanion, getDiscoverable, getDefaultScope]);
+  }, [connected, isCompanion, getDiscoverable, getDefaultScope, getDefaultPathHashSize]);
+
+  const handleSavePathHashSize = async (size: 1 | 2 | 3) => {
+    setSavingPathHash(true);
+    try {
+      const result = await setDefaultPathHashSize(size);
+      if (result === null) {
+        showToast(t('meshcore.path_hash.save_failed', 'Failed to save default path hash size'), 'error');
+        return;
+      }
+      setPathHashSizeState(result);
+      setPathHashInput(result);
+      showToast(t('meshcore.path_hash.saved', 'Default path hash size saved'), 'success');
+    } finally {
+      setSavingPathHash(false);
+    }
+  };
 
   // Load the saved-regions catalog (global; not gated on connection).
   useEffect(() => {
@@ -469,6 +496,38 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
               'find this one when this is enabled. Replies are zero-hop (direct range) and rate-limited.')}
           </p>
           <MeshCoreReceiveOnlyNote receiveOnly={receiveOnly} />
+        </div>
+      )}
+
+      {isCompanion && (
+        <div className="form-section">
+          <h3>{t('meshcore.path_hash.title', 'Default path hash size')}</h3>
+          <p className="hint">
+            {t('meshcore.path_hash.hint',
+              'Number of bytes used for path/loop-detection hashes on outgoing messages. ' +
+              '1 byte (256 values) is enough for small meshes; 2 bytes (65,536 values) is recommended for ' +
+              'mid-to-large deployments to avoid path-table collisions that drop packets on valid routes. ' +
+              'Applied to the device immediately and re-asserted on reconnect.')}
+          </p>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <select
+              value={pathHashInput}
+              onChange={(e) => setPathHashInput(Number(e.target.value) as 1 | 2 | 3)}
+              disabled={!connected || loading || savingPathHash}
+              aria-label={t('meshcore.path_hash.title', 'Default path hash size')}
+            >
+              <option value={1}>{t('meshcore.path_hash.one', '1 byte')}</option>
+              <option value={2}>{t('meshcore.path_hash.two', '2 bytes (recommended)')}</option>
+              <option value={3}>{t('meshcore.path_hash.three', '3 bytes')}</option>
+            </select>
+            <button
+              onClick={() => void handleSavePathHashSize(pathHashInput)}
+              disabled={!connected || loading || savingPathHash || pathHashInput === pathHashSize}
+              aria-label={t('meshcore.path_hash.save', 'Save path hash size')}
+            >
+              {savingPathHash ? t('common.saving', 'Saving…') : t('common.save', 'Save')}
+            </button>
+          </div>
         </div>
       )}
 

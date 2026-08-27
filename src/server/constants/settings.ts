@@ -315,6 +315,10 @@ export const VALID_SETTINGS_KEYS = [
   // traffic (DMs, adverts, requests) unless a channel overrides it. Empty =
   // unscoped (legacy '*' / null region).
   'meshcoreDefaultScope',
+  // MeshCore default path hash size (#4945) — per source. 1/2/3 bytes; pushed
+  // to the companion firmware's persistent path_hash_mode (CMD 61). Wider hashes
+  // reduce path/loop-table collisions on larger meshes.
+  'meshcoreDefaultPathHashSize',
   // MeshCore strict receive-only mode (#4547) — per source. Blocks every
   // RF-transmitting command/scheduler on this MeshCore source when true.
   'meshcoreReceiveOnly',
@@ -493,6 +497,8 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'meshcoreTimerTriggers',
   // MeshCore default region/scope (#3667) — per source (per node)
   'meshcoreDefaultScope',
+  // MeshCore default path hash size (#4945) — per source (per node)
+  'meshcoreDefaultPathHashSize',
   // MeshCore strict receive-only mode (#4547) — per source (#4547 §2.1)
   'meshcoreReceiveOnly',
   // Node Display (#4412 / per-source node display epic). All ten keys in the

@@ -235,6 +235,10 @@ export interface MeshCoreActions {
   getDefaultScope: () => Promise<string>;
   /** Set the per-source default region/scope. Returns the normalized value, or null on error. */
   setDefaultScope: (scope: string) => Promise<string | null>;
+  /** Read the per-source default MeshCore path hash size (1/2/3 bytes) (#4945). */
+  getDefaultPathHashSize: () => Promise<1 | 2 | 3>;
+  /** Set the per-source default path hash size. Returns the applied value, or null on error. */
+  setDefaultPathHashSize: (size: 1 | 2 | 3) => Promise<1 | 2 | 3 | null>;
   /** Discover region/scope names served by nearby repeaters (#3667 phase 3). */
   discoverRegions: () => Promise<{ regions: string[]; perRepeater: Array<{ publicKey: string; name: string; regions: string[] }>; noZeroHopRepeaters?: boolean } | null>;
   /** Refresh the global saved-regions catalog (#3770). Returns the list, or null on error. */
@@ -1072,6 +1076,37 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       return typeof data.scope === 'string' ? data.scope : '';
     } catch (_err) {
       setError('Failed to update default scope');
+      return null;
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const getDefaultPathHashSize = useCallback(async (): Promise<1 | 2 | 3> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/config/default-path-hash-size`);
+      const data = await response.json();
+      const n = Number(data?.size);
+      return data?.success && (n === 2 || n === 3) ? n : 1;
+    } catch (_err) {
+      return 1;
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const setDefaultPathHashSize = useCallback(async (size: 1 | 2 | 3): Promise<1 | 2 | 3 | null> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/config/default-path-hash-size`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ size }),
+      });
+      const data = await response.json();
+      if (!data.success) {
+        setError(data.error || 'Failed to update default path hash size');
+        return null;
+      }
+      const n = Number(data.size);
+      return n === 2 || n === 3 ? n : 1;
+    } catch (_err) {
+      setError('Failed to update default path hash size');
       return null;
     }
   }, [mcPrefix, csrfFetch]);
@@ -1950,6 +1985,8 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       setDiscoverable,
       getDefaultScope,
       setDefaultScope,
+      getDefaultPathHashSize,
+      setDefaultPathHashSize,
       discoverRegions,
       fetchSavedRegions,
       addSavedRegion,
