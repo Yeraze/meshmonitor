@@ -14,7 +14,7 @@ interface FirmwareUpdateSectionProps {
 // Mirror the server-side types for the frontend
 type UpdateState = 'idle' | 'awaiting-confirm' | 'in-progress' | 'success' | 'error';
 type UpdateStep = 'preflight' | 'backup' | 'download' | 'extract' | 'flash' | 'verify' | null;
-type FirmwareChannel = 'stable' | 'alpha' | 'custom';
+type FirmwareChannel = 'stable' | 'alpha' | 'custom' | 'nightly';
 
 interface PreflightInfo {
   currentVersion: string;
@@ -48,6 +48,8 @@ interface FirmwareRelease {
   publishedAt: string;
   htmlUrl: string;
   assets: Array<{ name: string; downloadUrl: string; size: number }>;
+  /** True for the develop nightly build, which has no publish date and gets a "nightly" badge. */
+  isNightly?: boolean;
 }
 
 interface FirmwareStatusResponse {
@@ -532,6 +534,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
           >
             <option value="stable">{t('firmware.channel_stable', 'Stable')}</option>
             <option value="alpha">{t('firmware.channel_alpha', 'Alpha (Pre-release)')}</option>
+            <option value="nightly">{t('firmware.channel_nightly', 'Nightly (Develop)')}</option>
             <option value="custom">{t('firmware.channel_custom', 'Custom URL')}</option>
           </select>
           <button
@@ -544,6 +547,28 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
           </button>
         </div>
       </div>
+
+      {/* Nightly warning — develop builds are untested and can brick a node. */}
+      {channel === 'nightly' && (
+        <div
+          className="setting-item"
+          role="alert"
+          style={{
+            marginTop: '0.5rem',
+            padding: '0.75rem',
+            borderRadius: '6px',
+            border: '1px solid var(--color-warning)',
+            color: 'var(--color-warning)',
+            fontSize: '0.85rem',
+            lineHeight: 1.4,
+          }}
+        >
+          {t(
+            'firmware.channel_nightly_warning',
+            'Nightly builds are untested develop snapshots (the upcoming 2.8 release). They may be unstable or fail to boot — flash a spare node you can recover over USB, not your only gateway.',
+          )}
+        </div>
+      )}
 
       {/* Custom URL Input */}
       {channel === 'custom' && (
@@ -974,12 +999,18 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
                           backgroundColor: 'var(--color-caution)',
                           color: 'var(--color-bg)',
                         }}>
-                          alpha
+                          {release.isNightly ? t('firmware.badge_nightly', 'nightly') : 'alpha'}
                         </span>
                       )}
                     </td>
                     <td style={{ padding: '0.5rem', color: 'var(--color-text)' }}>
-                      {new Date(release.publishedAt).toLocaleDateString()}
+                      {(() => {
+                        // Nightly builds carry no publish date; avoid rendering "Invalid Date".
+                        const d = new Date(release.publishedAt);
+                        return release.publishedAt && !Number.isNaN(d.getTime())
+                          ? d.toLocaleDateString()
+                          : '—';
+                      })()}
                     </td>
                     <td style={{ textAlign: 'center', padding: '0.5rem' }}>
                       <a

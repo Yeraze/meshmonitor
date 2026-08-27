@@ -296,6 +296,103 @@ describe('FirmwareUpdateService', () => {
     });
   });
 
+  // ---- nightly channel (develop builds) ----
+  describe('nightly channel', () => {
+    const NIGHTLY_INDEX = {
+      version: '2.8.0.eb6df1c',
+      id: 'v2.8.0.eb6df1c',
+      title: 'Meshtastic Firmware 2.8.0.eb6df1c Nightly',
+      commit: 'eb6df1c649294747c94d6eb5e623b12160d136ba',
+    };
+
+    it('fetchNightly models the index.json build as one synthetic prerelease', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => NIGHTLY_INDEX });
+
+      const nightly = await service.fetchNightly();
+
+      expect(nightly).not.toBeNull();
+      expect(nightly!.version).toBe('2.8.0.eb6df1c');
+      expect(nightly!.tagName).toBe('v2.8.0.eb6df1c');
+      expect(nightly!.prerelease).toBe(true);
+      expect(nightly!.isNightly).toBe(true);
+      // The folder holds 500+ files; assets are resolved at install time, not enumerated here.
+      expect(nightly!.assets).toEqual([]);
+      // Fetched from the meshtastic.github.io firmware-nightly folder, not the GitHub API.
+      expect(mockFetch.mock.calls[0][0]).toContain('meshtastic.github.io');
+      expect(mockFetch.mock.calls[0][0]).toContain('firmware-nightly/index.json');
+    });
+
+    it('fetchNightly returns null before the first nightly of a cycle is published (404)', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({}) });
+      expect(await service.fetchNightly()).toBeNull();
+    });
+
+    it('getReleasesForChannel("nightly") returns just the nightly build', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => NIGHTLY_INDEX });
+      const releases = await service.getReleasesForChannel('nightly');
+      expect(releases).toHaveLength(1);
+      expect(releases[0].isNightly).toBe(true);
+      expect(releases[0].version).toBe('2.8.0.eb6df1c');
+    });
+
+    it('getReleasesForChannel("stable") filters the GitHub cache and never fetches nightly', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true, status: 200, headers: new Map(),
+        json: async () => [MOCK_RELEASE_STABLE, MOCK_RELEASE_ALPHA],
+      });
+      await service.fetchReleases();
+      mockFetch.mockClear();
+
+      const releases = await service.getReleasesForChannel('stable');
+
+      expect(releases).toHaveLength(1);
+      expect(releases[0].prerelease).toBe(false);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('findReleaseByVersion resolves a nightly target that never lives in the GitHub cache', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => NIGHTLY_INDEX });
+      await service.fetchNightly();
+
+      expect(service.findReleaseByVersion('2.8.0.eb6df1c')?.isNightly).toBe(true);
+      expect(service.findReleaseByVersion('does-not-exist')).toBeNull();
+    });
+
+    it('startPreflight points a nightly build at the loose board .bin (no platform zip)', () => {
+      (getBoardName as ReturnType<typeof vi.fn>).mockReturnValue('heltec-v3');
+      (getPlatformForBoard as ReturnType<typeof vi.fn>).mockReturnValue('esp32s3');
+      (isOtaCapable as ReturnType<typeof vi.fn>).mockReturnValue(true);
+      (getHardwareDisplayName as ReturnType<typeof vi.fn>).mockReturnValue('Heltec V3');
+
+      const nightlyRelease: FirmwareRelease = {
+        tagName: 'v2.8.0.eb6df1c',
+        version: '2.8.0.eb6df1c',
+        prerelease: true,
+        publishedAt: '',
+        htmlUrl: '',
+        assets: [],
+        isNightly: true,
+      };
+
+      service.startPreflight({
+        currentVersion: '2.7.18.111111',
+        targetVersion: '2.8.0.eb6df1c',
+        targetRelease: nightlyRelease,
+        gatewayIp: '192.168.1.100',
+        hwModel: 58,
+      });
+
+      const status = service.getStatus();
+      expect(status.state).toBe('awaiting-confirm');
+      // Direct .bin in the nightly folder, matching findFirmwareBinary's pattern —
+      // NOT a firmware-<platform>-*.zip.
+      expect(status.downloadUrl).toBe(
+        'https://raw.githubusercontent.com/meshtastic/meshtastic.github.io/master/firmware-nightly/firmware-heltec-v3-2.8.0.eb6df1c.bin',
+      );
+      expect(status.downloadUrl).not.toMatch(/\.zip$/);
+    });
+  });
+
   // ---- findFirmwareZipAsset ----
   describe('findFirmwareZipAsset', () => {
     const release: FirmwareRelease = {
