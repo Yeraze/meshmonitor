@@ -108,8 +108,9 @@ router.get('/', requirePacketPermissions, async (req, res) => {
     const transport_mechanism = req.query.transport_mechanism !== undefined ? parseInt(req.query.transport_mechanism as string, 10) : undefined;
     // Free-text search across decoded content (#4958). Trim and cap length to
     // keep the LIKE bounded; an empty string is treated as no filter.
-    const searchRaw = typeof req.query.search === 'string' ? req.query.search.trim().slice(0, 200) : undefined;
-    const search = searchRaw ? searchRaw : undefined;
+    const search = typeof req.query.search === 'string'
+      ? (req.query.search.trim().slice(0, 200) || undefined)
+      : undefined;
 
     const isAdmin = (req as any).isAdmin;
     const allowedChannels = (req as any).allowedChannels as Set<number>;

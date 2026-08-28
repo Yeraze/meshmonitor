@@ -130,8 +130,12 @@ describe('Packet Routes', () => {
         params.push(options.since);
       }
       if (options.search) {
-        sql += ' AND (payload_preview LIKE ? OR metadata LIKE ?)';
-        params.push(`%${options.search}%`, `%${options.search}%`);
+        // Mirror the repository's ~-escaping so the mock matches production
+        // behavior for %/_ in the term (escaping is authoritatively tested in
+        // packetLog.test.ts; this keeps the route-level test honest).
+        const escaped = String(options.search).replace(/[~%_]/g, (c: string) => `~${c}`);
+        sql += " AND (payload_preview LIKE ? ESCAPE '~' OR metadata LIKE ? ESCAPE '~')";
+        params.push(`%${escaped}%`, `%${escaped}%`);
       }
 
       sql += ' ORDER BY timestamp DESC, id DESC';
@@ -185,8 +189,12 @@ describe('Packet Routes', () => {
         params.push(options.since);
       }
       if (options.search) {
-        sql += ' AND (payload_preview LIKE ? OR metadata LIKE ?)';
-        params.push(`%${options.search}%`, `%${options.search}%`);
+        // Mirror the repository's ~-escaping so the mock matches production
+        // behavior for %/_ in the term (escaping is authoritatively tested in
+        // packetLog.test.ts; this keeps the route-level test honest).
+        const escaped = String(options.search).replace(/[~%_]/g, (c: string) => `~${c}`);
+        sql += " AND (payload_preview LIKE ? ESCAPE '~' OR metadata LIKE ? ESCAPE '~')";
+        params.push(`%${escaped}%`, `%${escaped}%`);
       }
 
       const result = db.prepare(sql).get(...params) as any;

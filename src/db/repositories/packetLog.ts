@@ -64,10 +64,13 @@ export class PacketLogRepository extends BaseRepository {
     if (search !== undefined && search !== '') {
       const escaped = search.replace(/[~%_]/g, (c: string) => `~${c}`);
       const like = `%${escaped}%`;
-      const op = this.isPostgres() ? sql`ILIKE` : sql`LIKE`;
-      conditions.push(
-        sql`(pl.payload_preview ${op} ${like} ESCAPE '~' OR pl.metadata ${op} ${like} ESCAPE '~')`
-      );
+      // Branch the whole condition per backend rather than interpolating the
+      // operator keyword, so the generated SQL is unambiguous to read.
+      if (this.isPostgres()) {
+        conditions.push(sql`(pl.payload_preview ILIKE ${like} ESCAPE '~' OR pl.metadata ILIKE ${like} ESCAPE '~')`);
+      } else {
+        conditions.push(sql`(pl.payload_preview LIKE ${like} ESCAPE '~' OR pl.metadata LIKE ${like} ESCAPE '~')`);
+      }
     }
 
     return { conditions };
