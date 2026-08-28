@@ -19,6 +19,7 @@ import {
   toMs,
   formatPacketDateColumn,
   formatPacketTimestamp,
+  PORTNUM_NAMES,
 } from '../utils/packetFormat';
 import RelayNodeModal from './RelayNodeModal';
 import SearchableSelect, { type SearchableSelectOption } from './common/SearchableSelect';
@@ -32,6 +33,15 @@ interface PacketMonitorPanelProps {
 }
 
 
+
+// Full portnum filter list, derived from the shared PORTNUM_NAMES map so the
+// dropdown covers every known type (incl. NODE_STATUS and MESH_BEACON) rather
+// than a hardcoded subset (#4958). Sorted by portnum; UNKNOWN(0) and MAX(511)
+// are dropped as they aren't meaningful capture filters.
+const PORTNUM_FILTER_OPTIONS: Array<{ value: number; label: string }> = Object.entries(PORTNUM_NAMES)
+  .map(([num, name]) => ({ value: Number(num), label: name }))
+  .filter(o => o.value !== 0 && o.value !== 511)
+  .sort((a, b) => a.value - b.value);
 
 // Safe JSON parse helper
 const safeJsonParse = <T,>(value: string | null, fallback: T): T => {
@@ -69,6 +79,21 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   const [hideOwnPackets, setHideOwnPackets] = useState(() =>
     safeJsonParse(localStorage.getItem('packetMonitor.hideOwnPackets'), true)
   );
+
+  // Free-text search across decoded content (#4958). `searchInput` tracks the
+  // field live; a debounced effect commits it to `filters.search` so we don't
+  // refetch on every keystroke. Because the list is virtualized, this
+  // server-side filter is what replaces the broken browser Ctrl+F workflow.
+  const [searchInput, setSearchInput] = useState<string>(() =>
+    safeJsonParse<PacketFilters>(localStorage.getItem('packetMonitor.filters'), {}).search ?? ''
+  );
+  useEffect(() => {
+    const next = searchInput.trim() || undefined;
+    const id = setTimeout(() => {
+      setFilters(f => (f.search === next ? f : { ...f, search: next }));
+    }, 300);
+    return () => clearTimeout(id);
+  }, [searchInput]);
 
   // Relay node filter options (distinct values from packet_log)
   const [relayNodeOptions, setRelayNodeOptions] = useState<RelayNodeOption[]>([]);
@@ -513,19 +538,23 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
 
         {showFilters && (
           <div className="packet-filters">
+            <input
+              type="search"
+              className="packet-search-input"
+              value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
+              placeholder={t('packet_monitor.filter.search_placeholder', 'Search content / JSON…')}
+              title={t('packet_monitor.filter.search_tooltip', 'Filters packets whose decoded content or metadata JSON contains this text (case-insensitive). Use this instead of the browser find, which cannot see off-screen rows.')}
+              aria-label={t('packet_monitor.filter.search_placeholder', 'Search content / JSON…')}
+            />
             <select
               value={filters.portnum ?? ''}
               onChange={e => setFilters({ ...filters, portnum: e.target.value ? parseInt(e.target.value) : undefined })}
             >
               <option value="">{t('packet_monitor.filter.all_types')}</option>
-              <option value="1">TEXT_MESSAGE</option>
-              <option value="3">POSITION</option>
-              <option value="4">NODEINFO</option>
-              <option value="5">ROUTING</option>
-              <option value="6">ADMIN</option>
-              <option value="67">TELEMETRY</option>
-              <option value="70">TRACEROUTE</option>
-              <option value="71">NEIGHBORINFO</option>
+              {PORTNUM_FILTER_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
             </select>
 
             <select
@@ -606,7 +635,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
               <span>{t('packet_monitor.filter.hide_own')}</span>
             </label>
 
-            <button onClick={() => setFilters({})} className="clear-filters-btn">
+            <button onClick={() => { setFilters({}); setSearchInput(''); }} className="clear-filters-btn">
               {t('packet_monitor.filter.clear')}
             </button>
           </div>

@@ -51,6 +51,9 @@ export const getPackets = async (
   if (filters?.sourceId !== undefined) {
     params.append('sourceId', filters.sourceId);
   }
+  if (filters?.search) {
+    params.append('search', filters.search);
+  }
 
   return api.get<PacketLogResponse>(`/api/packets?${params.toString()}`);
 };
