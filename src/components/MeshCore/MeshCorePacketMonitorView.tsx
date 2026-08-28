@@ -15,7 +15,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { Filter, Trash2, Pause, Play, RefreshCw, Download } from 'lucide-react';
+import { Filter, Trash2, Pause, Play, RefreshCw, Download, Circle, Square } from 'lucide-react';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useWebSocketContext } from '../../contexts/WebSocketContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -145,7 +145,7 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
     });
   }, [packets, payloadFilter, routeFilter]);
 
-  const saveSettings = useCallback(async (patch: Record<string, string>) => {
+  const saveSettings = useCallback(async (patch: Record<string, string>): Promise<boolean> => {
     setSavingSettings(true);
     try {
       const res = await csrfFetch(`${baseUrl}/api/settings`, {
@@ -154,17 +154,22 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
         body: JSON.stringify(patch),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save settings');
+      return false;
     } finally {
       setSavingSettings(false);
     }
   }, [csrfFetch, baseUrl]);
 
   const handleToggleEnabled = useCallback(async () => {
+    // Commit the toggle only after the save succeeds, so a failed POST leaves
+    // the control showing the real capture state instead of an optimistic lie.
     const next = !enabled;
-    setEnabled(next);
-    await saveSettings({ meshcore_packet_log_enabled: next ? '1' : '0' });
+    if (await saveSettings({ meshcore_packet_log_enabled: next ? '1' : '0' })) {
+      setEnabled(next);
+    }
   }, [enabled, saveSettings]);
 
   const handleClear = useCallback(async () => {
@@ -216,6 +221,18 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
         <h3>{t('meshcore.packets.title', 'Packet Monitor')}</h3>
         <span className="mcpm-count">{visiblePackets.length}</span>
         <div className="mcpm-header-controls">
+          {canWriteSettings && (
+            <button
+              className={`mcpm-btn ${enabled ? 'mcpm-btn-danger' : ''}`}
+              onClick={() => void handleToggleEnabled()}
+              disabled={savingSettings}
+              title={enabled
+                ? t('meshcore.packets.stopCapture', 'Stop capturing')
+                : t('meshcore.packets.startCapture', 'Start capturing')}
+            >
+              {enabled ? <Square size={14} /> : <Circle size={14} />}
+            </button>
+          )}
           <button
             className="mcpm-btn"
             onClick={() => setPaused(p => !p)}
