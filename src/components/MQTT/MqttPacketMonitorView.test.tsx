@@ -200,6 +200,31 @@ describe('MqttPacketMonitorView', () => {
     });
   });
 
+  it('keeps showing Stop when the stop POST fails — no optimistic flip (#4957)', async () => {
+    csrfFetchMock.mockImplementation(async (url: string, options?: RequestInit) => {
+      if (options?.method === 'POST') return jsonResponse({ error: 'boom' }, 500);
+      if (url.includes('/gateways')) return jsonResponse(gatewaysEnvelope([]));
+      return jsonResponse(packetsEnvelope([basePacket()], { enabled: true }));
+    });
+    hasPermissionImpl = () => true;
+
+    render(<MqttPacketMonitorView baseUrl={baseUrl} sourceId={sourceId} />);
+    await screen.findByText('hello world');
+
+    fireEvent.click(screen.getByTitle('Stop capturing'));
+
+    // The POST was attempted…
+    await waitFor(() => {
+      const postCall = csrfFetchMock.mock.calls.find(
+        ([, options]) => (options as RequestInit | undefined)?.method === 'POST'
+      );
+      expect(postCall).toBeTruthy();
+    });
+    // …but since it failed, the control must not flip to "Start capturing".
+    expect(screen.getByTitle('Stop capturing')).toBeTruthy();
+    expect(screen.queryByTitle('Start capturing')).toBeNull();
+  });
+
   it('hides the Stop button without settings:write (#4957)', async () => {
     installFetchRouter({ packets: [basePacket()], enabled: true });
     hasPermissionImpl = (resource) => resource !== 'settings';

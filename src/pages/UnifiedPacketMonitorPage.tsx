@@ -88,13 +88,15 @@ export default function UnifiedPacketMonitorPage() {
   const [togglingCapture, setTogglingCapture] = useState(false);
 
   useEffect(() => {
-    if (!canView) return;
+    // Fetch capture state whenever the user can either view packets or write
+    // the setting — a settings:write-only admin still needs the Stop control.
+    if (!canView && !canWriteSettings) return;
     let cancelled = false;
     getPacketStats()
       .then(stats => { if (!cancelled) setCaptureEnabled(stats.enabled); })
       .catch(() => { /* leave unknown; control stays hidden */ });
     return () => { cancelled = true; };
-  }, [canView]);
+  }, [canView, canWriteSettings]);
 
   const handleToggleCapture = useCallback(async () => {
     const next = !captureEnabled;

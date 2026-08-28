@@ -145,7 +145,7 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
     });
   }, [packets, payloadFilter, routeFilter]);
 
-  const saveSettings = useCallback(async (patch: Record<string, string>) => {
+  const saveSettings = useCallback(async (patch: Record<string, string>): Promise<boolean> => {
     setSavingSettings(true);
     try {
       const res = await csrfFetch(`${baseUrl}/api/settings`, {
@@ -154,17 +154,22 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
         body: JSON.stringify(patch),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save settings');
+      return false;
     } finally {
       setSavingSettings(false);
     }
   }, [csrfFetch, baseUrl]);
 
   const handleToggleEnabled = useCallback(async () => {
+    // Commit the toggle only after the save succeeds, so a failed POST leaves
+    // the control showing the real capture state instead of an optimistic lie.
     const next = !enabled;
-    setEnabled(next);
-    await saveSettings({ meshcore_packet_log_enabled: next ? '1' : '0' });
+    if (await saveSettings({ meshcore_packet_log_enabled: next ? '1' : '0' })) {
+      setEnabled(next);
+    }
   }, [enabled, saveSettings]);
 
   const handleClear = useCallback(async () => {

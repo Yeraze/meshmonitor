@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { Filter, Trash2, ExternalLink, Download, Pause, Play, Circle, Square } from 'lucide-react';
@@ -88,11 +88,13 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     return () => { cancelled = true; };
   }, [sourceId]);
 
-  const handleToggleCapture = async () => {
+  const handleToggleCapture = useCallback(async () => {
     const next = !captureEnabled;
     setTogglingCapture(true);
     try {
       // `packet_log_enabled` is global — POST with no sourceId query param.
+      // Commit local state only after the POST resolves, so a failed request
+      // doesn't leave the button showing a state the server never accepted.
       await apiService.post('/api/settings', { packet_log_enabled: next ? '1' : '0' });
       setCaptureEnabled(next);
     } catch (error) {
@@ -100,7 +102,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     } finally {
       setTogglingCapture(false);
     }
-  };
+  }, [captureEnabled]);
 
   /**
    * Filter options for the two node comboboxes (#4512). `keywords` carries the
@@ -466,7 +468,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
           <div className="header-controls">
             {canWriteSettings && captureEnabled !== null && (
               <button
-                className={`control-btn ${captureEnabled ? 'danger' : ''}`}
+                className={`control-btn${captureEnabled ? ' danger' : ''}`}
                 onClick={handleToggleCapture}
                 disabled={togglingCapture}
                 title={captureEnabled ? t('packet_monitor.stop_capture', 'Stop capturing') : t('packet_monitor.start_capture', 'Start capturing')}
