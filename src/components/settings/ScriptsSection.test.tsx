@@ -6,7 +6,7 @@
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 
 const mockShowToast = vi.hoisted(() => vi.fn());
 vi.mock('../ToastContainer', () => ({
@@ -94,9 +94,9 @@ describe('ScriptsSection', () => {
     render(<ScriptsSection baseUrl="" />);
     await waitFor(() => expect(screen.getByText('Weather')).toBeInTheDocument());
 
-    // Click the delete button on the in-use script's row.
-    const deleteButtons = screen.getAllByRole('button', { name: /delete/i });
-    fireEvent.click(deleteButtons[0]);
+    // Click Delete on weather.py's row specifically (order-independent).
+    const weatherCard = screen.getByText('Weather').closest('[class*="card"]') as HTMLElement;
+    fireEvent.click(within(weatherCard).getByRole('button', { name: /delete/i }));
 
     // Warning mentions it is in use, and no request has fired yet.
     expect(screen.getByText(/used by 1 automation/i)).toBeInTheDocument();
