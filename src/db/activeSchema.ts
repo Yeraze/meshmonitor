@@ -122,6 +122,11 @@ import {
   meshtasticHeardRepeatersSqlite, meshtasticHeardRepeatersPostgres, meshtasticHeardRepeatersMysql,
 } from './schema/meshtasticHeardRepeaters.js';
 
+// Mesh Issues findings (global — no sourceId) (epic #4964 Phase 1 WP1)
+import {
+  meshIssuesSqlite, meshIssuesPostgres, meshIssuesMysql,
+} from './schema/meshIssues.js';
+
 // Embed Profiles table
 import {
   embedProfilesSqlite, embedProfilesPostgres, embedProfilesMysql,
@@ -281,6 +286,10 @@ export interface ActiveSchema {
   // Meshtastic Heard-By (#4816 Phase 4 WP1)
   meshtasticHeardRepeaters: any;
 
+  // Mesh Issues findings (global — no sourceId) (epic #4964 Phase 1 WP1)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4964 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
+  meshIssues: any;
+
   // Embed Profiles
   embedProfiles: any;
 
@@ -397,6 +406,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreHeardRepeaters: meshcoreHeardRepeatersSqlite,
     messageEvents: messageEventsSqlite,
     meshtasticHeardRepeaters: meshtasticHeardRepeatersSqlite,
+    meshIssues: meshIssuesSqlite,
     embedProfiles: embedProfilesSqlite,
     automations: automationsSqlite,
     automationRuns: automationRunsSqlite,
@@ -468,6 +478,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreHeardRepeaters: meshcoreHeardRepeatersPostgres,
     messageEvents: messageEventsPostgres,
     meshtasticHeardRepeaters: meshtasticHeardRepeatersPostgres,
+    meshIssues: meshIssuesPostgres,
     embedProfiles: embedProfilesPostgres,
     automations: automationsPostgres,
     automationRuns: automationRunsPostgres,
@@ -539,6 +550,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreHeardRepeaters: meshcoreHeardRepeatersMysql,
     messageEvents: messageEventsMysql,
     meshtasticHeardRepeaters: meshtasticHeardRepeatersMysql,
+    meshIssues: meshIssuesMysql,
     embedProfiles: embedProfilesMysql,
     automations: automationsMysql,
     automationRuns: automationRunsMysql,

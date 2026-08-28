@@ -60,6 +60,7 @@ import {
   MeshCoreObserverCredentialsRepository,
   MessageEventsRepository,
   MeshtasticHeardRepeatersRepository,
+  MeshIssuesRepository,
   DeadDropRepository,
   AutomationsRepository,
   AutomationVariablesRepository,
@@ -82,7 +83,11 @@ import type {
   EstimatedPositionAnchor,
   EstimatedPositionAnchorInput,
   SourceScope,
+  DbMeshIssue,
+  UpsertOutcome as MeshIssueUpsertOutcome,
+  GetIssuesOptions as MeshIssuesGetIssuesOptions,
 } from '../db/repositories/index.js';
+import type { MeshIssueFinding } from '../server/services/meshIssues/types.js';
 import type { ConversationReadStateMap } from '../db/repositories/index.js';
 import type { ConversationKind } from '../db/schema/conversationReadState.js';
 import type { DatabaseType, DbPacketLog as DbTypesPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../db/types.js';
@@ -539,6 +544,7 @@ class DatabaseService {
   public meshcoreObserverCredentialsRepo: MeshCoreObserverCredentialsRepository | null = null;
   public messageEventsRepo: MessageEventsRepository | null = null;
   public meshtasticHeardRepeatersRepo: MeshtasticHeardRepeatersRepository | null = null;
+  public meshIssuesRepo: MeshIssuesRepository | null = null;
   public deadDropRepo: DeadDropRepository | null = null;
   public automationsRepo: AutomationsRepository | null = null;
   public automationVariablesRepo: AutomationVariablesRepository | null = null;
@@ -616,6 +622,11 @@ class DatabaseService {
   get meshtasticHeardRepeaters(): MeshtasticHeardRepeatersRepository {
     if (!this.meshtasticHeardRepeatersRepo) throw new Error('Database not initialized');
     return this.meshtasticHeardRepeatersRepo;
+  }
+
+  get meshIssues(): MeshIssuesRepository {
+    if (!this.meshIssuesRepo) throw new Error('Database not initialized');
+    return this.meshIssuesRepo;
   }
 
   get meshcoreObserverCredentials(): MeshCoreObserverCredentialsRepository {
@@ -1030,6 +1041,7 @@ class DatabaseService {
       this.meshcoreObserverCredentialsRepo = new MeshCoreObserverCredentialsRepository(drizzleDb, this.drizzleDbType);
       this.messageEventsRepo = new MessageEventsRepository(drizzleDb, this.drizzleDbType);
       this.meshtasticHeardRepeatersRepo = new MeshtasticHeardRepeatersRepository(drizzleDb, this.drizzleDbType);
+      this.meshIssuesRepo = new MeshIssuesRepository(drizzleDb, this.drizzleDbType);
       this.deadDropRepo = new DeadDropRepository(drizzleDb, this.drizzleDbType);
       this.automationsRepo = new AutomationsRepository(drizzleDb, this.drizzleDbType);
       this.automationVariablesRepo = new AutomationVariablesRepository(drizzleDb, this.drizzleDbType);
@@ -2007,6 +2019,42 @@ class DatabaseService {
   /** Get one node's recorded anchors, strongest contribution first (#4609). */
   async getEstimatedPositionAnchorsAsync(nodeNum: number, limit?: number): Promise<EstimatedPositionAnchor[]> {
     return this.estimatedPositions.getAnchorsByNodeNum(nodeNum, limit);
+  }
+
+  // ------------------------------------------------------------------
+  // Mesh Issues Analysis (epic #4964, Phase 1 WP1) — GLOBAL findings table.
+  // ------------------------------------------------------------------
+
+  /** Findings, newest-detected first. Default excludes closed and dismissed. */
+  async getMeshIssuesAsync(opts?: MeshIssuesGetIssuesOptions): Promise<DbMeshIssue[]> {
+    return this.meshIssues.getIssues(opts);
+  }
+
+  /** Insert or refresh one finding, keyed by (issueType, subjectKey). */
+  async upsertMeshIssueFindingAsync(
+    finding: MeshIssueFinding,
+    nowMs: number,
+  ): Promise<{ issue: DbMeshIssue; outcome: MeshIssueUpsertOutcome }> {
+    return this.meshIssues.upsertFinding(finding, nowMs);
+  }
+
+  /** Record one run in which a finding was not re-detected; may auto-close it. */
+  async bumpMeshIssueCleanRunAsync(
+    id: number,
+    autoCloseAfter: number,
+    nowMs: number,
+  ): Promise<{ cleanRuns: number; closed: boolean }> {
+    return this.meshIssues.bumpCleanRun(id, autoCloseAfter, nowMs);
+  }
+
+  /** Phase 3 UI; implemented now so no follow-up migration is needed. */
+  async setMeshIssueDismissedAsync(
+    id: number,
+    dismissed: boolean,
+    userId: number | null,
+    nowMs: number,
+  ): Promise<void> {
+    return this.meshIssues.setDismissed(id, dismissed, userId, nowMs);
   }
 
 
