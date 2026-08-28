@@ -114,3 +114,18 @@ LocalStats polling; "promote to ROUTER" recommendations.
 
 ### Phase 1
 - 2026-08-28: worktree `../meshmonitor-mesh-issues-p1` (`feature/mesh-issues-analysis-phase1`), epic issue #4964 filed.
+- 2026-08-28: implementation complete. Spec: `MESH_ISSUES_P1_SPEC.md` (§5 lists 16
+  spec-level decisions). 5 work packages (WP1 data layer, WP2 pure analysis core,
+  WP3 service/scheduler, WP4 routes, WP5 Reports card). Full suite 17502/17502
+  green incl. PG/MySQL containers.
+- Review findings fixed: A2b per-node fallback deliberately broadened beyond the
+  spec's literal gate (documented + tested); `nodeName` on GET now resolves only
+  from the caller's permitted sources (#3745 class); `mesh_issues` added to
+  migrate-db `TABLE_ORDER`; `/analysis/mesh-issues` must mount BEFORE the general
+  `/analysis` router (found in live-container validation — the isolated route
+  harness cannot catch mount-order bugs).
+- Browser-validated against live dev DB: 11 real findings (9× A1 deprecated
+  ROUTER_CLIENT, 1× A3 resets clause, 1× A2b congested node), run-now cycle works,
+  console clean.
+- Phase 3 polish backlog from validation: format `lastHeardAgeMs` as a duration
+  (raw ms renders poorly), map source UUIDs to source names in the evidence pills.
