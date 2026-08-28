@@ -106,6 +106,11 @@ router.get('/', requirePacketPermissions, async (req, res) => {
     const since = req.query.since ? normalizeSinceToMs(req.query.since as string) : undefined;
     const relay_node = req.query.relay_node === 'unknown' ? 'unknown' as const : req.query.relay_node ? parseInt(req.query.relay_node as string, 10) : undefined;
     const transport_mechanism = req.query.transport_mechanism !== undefined ? parseInt(req.query.transport_mechanism as string, 10) : undefined;
+    // Free-text search across decoded content (#4958). Trim and cap length to
+    // keep the LIKE bounded; an empty string is treated as no filter.
+    const search = typeof req.query.search === 'string'
+      ? (req.query.search.trim().slice(0, 200) || undefined)
+      : undefined;
 
     const isAdmin = (req as any).isAdmin;
     const allowedChannels = (req as any).allowedChannels as Set<number>;
@@ -123,7 +128,8 @@ router.get('/', requirePacketPermissions, async (req, res) => {
       since,
       relay_node,
       transport_mechanism,
-      sourceId
+      sourceId,
+      search
     });
 
     // Filter packets by channel and message permissions
@@ -138,7 +144,8 @@ router.get('/', requirePacketPermissions, async (req, res) => {
       since,
       relay_node,
       transport_mechanism,
-      sourceId
+      sourceId,
+      search
     });
 
     res.json({
