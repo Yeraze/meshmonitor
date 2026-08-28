@@ -76,6 +76,19 @@
   cursor: not-allowed;
 }
 
+/* Active server-side capture: the Stop button is outlined in the error color
+ * so a running capture is unmistakable (#4957). */
+.control-btn.danger {
+  border-color: var(--color-error);
+  color: var(--color-error);
+}
+
+.control-btn.danger:hover:not(:disabled) {
+  background: var(--color-bg-sunken);
+  border-color: var(--color-error);
+  color: var(--color-error);
+}
+
 .close-btn {
   background: transparent;
   border: none;

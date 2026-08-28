@@ -23,7 +23,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { Filter, Trash2, Pause, Play, RefreshCw, ChevronDown } from 'lucide-react';
+import { Filter, Trash2, Pause, Play, RefreshCw, ChevronDown, Circle, Square } from 'lucide-react';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNodes } from '../../hooks/useServerData';
@@ -225,7 +225,7 @@ export const MqttPacketMonitorView: React.FC<MqttPacketMonitorViewProps> = ({ ba
     return () => clearInterval(id);
   }, [load]);
 
-  const saveSettings = useCallback(async (patch: Record<string, string>) => {
+  const saveSettings = useCallback(async (patch: Record<string, string>): Promise<boolean> => {
     setSavingSettings(true);
     try {
       const res = await csrfFetch(`${baseUrl}/api/settings`, {
@@ -234,17 +234,22 @@ export const MqttPacketMonitorView: React.FC<MqttPacketMonitorViewProps> = ({ ba
         body: JSON.stringify(patch),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save settings');
+      return false;
     } finally {
       setSavingSettings(false);
     }
   }, [csrfFetch, baseUrl]);
 
   const handleToggleEnabled = useCallback(async () => {
+    // Commit the toggle only after the save succeeds, so a failed POST leaves
+    // the control showing the real capture state instead of an optimistic lie.
     const next = !enabled;
-    setEnabled(next);
-    await saveSettings({ mqtt_packet_log_enabled: next ? '1' : '0' });
+    if (await saveSettings({ mqtt_packet_log_enabled: next ? '1' : '0' })) {
+      setEnabled(next);
+    }
   }, [enabled, saveSettings]);
 
   const handleClear = useCallback(async () => {
@@ -310,6 +315,18 @@ export const MqttPacketMonitorView: React.FC<MqttPacketMonitorViewProps> = ({ ba
           {total > packets.length ? `${packets.length} / ${total}` : packets.length}
         </span>
         <div className="mqpm-header-controls">
+          {canWriteSettings && (
+            <button
+              className={`mqpm-btn ${enabled ? 'mqpm-btn-danger' : ''}`}
+              onClick={() => void handleToggleEnabled()}
+              disabled={savingSettings}
+              title={enabled
+                ? t('mqtt.packets.stopCapture', 'Stop capturing')
+                : t('mqtt.packets.startCapture', 'Start capturing')}
+            >
+              {enabled ? <Square size={14} /> : <Circle size={14} />}
+            </button>
+          )}
           <button
             className="mqpm-btn"
             onClick={() => setPaused(p => !p)}

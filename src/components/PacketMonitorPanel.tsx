@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { Filter, Trash2, ExternalLink, Download, Pause, Play } from 'lucide-react';
+import { Filter, Trash2, ExternalLink, Download, Pause, Play, Circle, Square } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { PacketLog, PacketFilters } from '../types/packet';
-import { clearPackets, exportPackets, getRelayNodes } from '../services/packetApi';
+import { clearPackets, exportPackets, getRelayNodes, getPacketStats } from '../services/packetApi';
 import { RelayNodeOption } from '../types/packet';
 import apiService from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -49,6 +49,9 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   const { hasPermission, authStatus } = useAuth();
   const { timeFormat, dateFormat } = useSettings();
   const { sourceId } = useSource();
+  // `packet_log_enabled` is a global (not per-source) setting, gated by
+  // settings:write. anySource mirrors the unscoped write it toggles.
+  const canWriteSettings = hasPermission('settings', 'write', { anySource: true });
   const { config: deviceInfo } = useDeviceConfig();
   const { nodes } = useNodes();
 
@@ -69,6 +72,37 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
 
   // Relay node filter options (distinct values from packet_log)
   const [relayNodeOptions, setRelayNodeOptions] = useState<RelayNodeOption[]>([]);
+
+  // Server-side capture state (`packet_log_enabled`). null while unknown so the
+  // Stop/Start control doesn't flash the wrong state before the first fetch.
+  // #4957: this control is the only way to stop a persisted server-side capture
+  // — "Pause" below is client-side auto-scroll only.
+  const [captureEnabled, setCaptureEnabled] = useState<boolean | null>(null);
+  const [togglingCapture, setTogglingCapture] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getPacketStats(sourceId ?? undefined)
+      .then(stats => { if (!cancelled) setCaptureEnabled(stats.enabled); })
+      .catch(() => { /* leave unknown; button stays hidden */ });
+    return () => { cancelled = true; };
+  }, [sourceId]);
+
+  const handleToggleCapture = useCallback(async () => {
+    const next = !captureEnabled;
+    setTogglingCapture(true);
+    try {
+      // `packet_log_enabled` is global — POST with no sourceId query param.
+      // Commit local state only after the POST resolves, so a failed request
+      // doesn't leave the button showing a state the server never accepted.
+      await apiService.post('/api/settings', { packet_log_enabled: next ? '1' : '0' });
+      setCaptureEnabled(next);
+    } catch (error) {
+      console.error('Failed to toggle packet capture:', error);
+    } finally {
+      setTogglingCapture(false);
+    }
+  }, [captureEnabled]);
 
   /**
    * Filter options for the two node comboboxes (#4512). `keywords` carries the
@@ -432,6 +466,17 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
             {t('packet_monitor.count', { shown: packets.length, total })}
           </div>
           <div className="header-controls">
+            {canWriteSettings && captureEnabled !== null && (
+              <button
+                className={`control-btn${captureEnabled ? ' danger' : ''}`}
+                onClick={handleToggleCapture}
+                disabled={togglingCapture}
+                title={captureEnabled ? t('packet_monitor.stop_capture', 'Stop capturing') : t('packet_monitor.start_capture', 'Start capturing')}
+                aria-label={captureEnabled ? t('packet_monitor.stop_capture', 'Stop capturing') : t('packet_monitor.start_capture', 'Start capturing')}
+              >
+                {captureEnabled ? <Square size={14} /> : <Circle size={14} />}
+              </button>
+            )}
             <button
               className="control-btn"
               onClick={() => setAutoScroll(!autoScroll)}

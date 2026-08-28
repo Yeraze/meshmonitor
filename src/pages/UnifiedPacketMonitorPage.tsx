@@ -17,11 +17,12 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
-import { Filter, BarChart3, Pause, Play } from 'lucide-react';
+import { Filter, BarChart3, Pause, Play, Circle, Square } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useAuth } from '../contexts/AuthContext';
 import { useUnifiedPackets } from '../hooks/useUnifiedPackets';
-import { getUnifiedPacketDistribution } from '../services/packetApi';
+import { getUnifiedPacketDistribution, getPacketStats } from '../services/packetApi';
+import apiService from '../services/api';
 import { PacketLog, UnifiedPacketFilters, UnifiedPacketDistribution } from '../types/packet';
 import PacketStatsChart, { DISTRIBUTION_COLORS, ChartDataEntry } from '../components/PacketStatsChart';
 import {
@@ -63,6 +64,9 @@ export default function UnifiedPacketMonitorPage() {
   })();
 
   const canView = hasPermission('packetmonitor', 'read', { anySource: true });
+  // `packet_log_enabled` is a global (cross-source) setting gated by
+  // settings:write — the same capture the single-source panel toggles.
+  const canWriteSettings = hasPermission('settings', 'write', { anySource: true });
 
   const [filters, setFilters] = useState<UnifiedPacketFilters>(() =>
     safeJsonParse<UnifiedPacketFilters>(localStorage.getItem('unifiedPacketMonitor.filters'), {})
@@ -76,6 +80,36 @@ export default function UnifiedPacketMonitorPage() {
   const [paused, setPaused] = useState(false);
   const [selectedPacket, setSelectedPacket] = useState<PacketLog | null>(null);
   const [rangeHours, setRangeHours] = useState<RangeHours>(24);
+
+  // Server-side capture state (#4957). null until the first stats fetch so the
+  // Stop/Start control doesn't flash the wrong label. This toggles the SAME
+  // global `packet_log_enabled` as the single-source panel.
+  const [captureEnabled, setCaptureEnabled] = useState<boolean | null>(null);
+  const [togglingCapture, setTogglingCapture] = useState(false);
+
+  useEffect(() => {
+    // Fetch capture state whenever the user can either view packets or write
+    // the setting — a settings:write-only admin still needs the Stop control.
+    if (!canView && !canWriteSettings) return;
+    let cancelled = false;
+    getPacketStats()
+      .then(stats => { if (!cancelled) setCaptureEnabled(stats.enabled); })
+      .catch(() => { /* leave unknown; control stays hidden */ });
+    return () => { cancelled = true; };
+  }, [canView, canWriteSettings]);
+
+  const handleToggleCapture = useCallback(async () => {
+    const next = !captureEnabled;
+    setTogglingCapture(true);
+    try {
+      await apiService.post('/api/settings', { packet_log_enabled: next ? '1' : '0' });
+      setCaptureEnabled(next);
+    } catch (error) {
+      console.error('Failed to toggle packet capture:', error);
+    } finally {
+      setTogglingCapture(false);
+    }
+  }, [captureEnabled]);
 
   const parentRef = useRef<HTMLDivElement>(null);
 
@@ -191,6 +225,17 @@ export default function UnifiedPacketMonitorPage() {
           {t('unified.packets.count', { shown: packets.length })}
         </div>
         <div className="unified-packets-controls">
+          {canWriteSettings && captureEnabled !== null && (
+            <button
+              className={`control-btn${captureEnabled ? ' danger' : ''}`}
+              onClick={handleToggleCapture}
+              disabled={togglingCapture}
+              title={captureEnabled ? t('packet_monitor.stop_capture', 'Stop capturing') : t('packet_monitor.start_capture', 'Start capturing')}
+              aria-label={captureEnabled ? t('packet_monitor.stop_capture', 'Stop capturing') : t('packet_monitor.start_capture', 'Start capturing')}
+            >
+              {captureEnabled ? <Square size={14} /> : <Circle size={14} />}
+            </button>
+          )}
           <button
             className={`control-btn${paused ? '' : ' active'}`}
             onClick={() => setPaused((p) => !p)}
