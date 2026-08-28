@@ -92,6 +92,8 @@ export interface TracerouteRow {
   snrBack: string | null;
   timestamp: number;
   createdAt: number;
+  /** Originating Meshtastic packet id (null = pre-migration row). Cross-source dedup key. */
+  packetId: number | null;
 }
 
 export interface PaginatedTraceroutes {
@@ -461,6 +463,7 @@ export class AnalysisRepository {
         snrBack: traceroutes.snrBack,
         timestamp: traceroutes.timestamp,
         createdAt: traceroutes.createdAt,
+        packetId: traceroutes.packetId,
       })
       .from(traceroutes)
       .where(and(...baseConditions))
@@ -479,6 +482,7 @@ export class AnalysisRepository {
       snrBack: r.snrBack ?? null,
       timestamp: Number(r.timestamp),
       createdAt: Number(r.createdAt),
+      packetId: r.packetId == null ? null : Number(r.packetId),
     }));
 
     const hasMore = mapped.length > pageSize;

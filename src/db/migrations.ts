@@ -168,6 +168,7 @@ import { migration as addRoutingErrorCodeMigration, runMigration150Postgres, run
 import { migration as createMessageEventsMigration, runMigration151Postgres, runMigration151Mysql } from '../server/migrations/151_create_message_events.js';
 import { migration as createMeshtasticHeardRepeatersMigration, runMigration152Postgres, runMigration152Mysql } from '../server/migrations/152_create_meshtastic_heard_repeaters.js';
 import { migration as meshcoreNodeNeighborsConfigMigration, runMigration153Postgres, runMigration153Mysql } from '../server/migrations/153_meshcore_node_neighbors_config.js';
+import { migration as createMeshIssuesMigration, runMigration154Postgres, runMigration154Mysql } from '../server/migrations/154_create_mesh_issues.js';
 
 // ============================================================================
 // Registry
@@ -2452,4 +2453,21 @@ registry.register({
   sqlite: (db) => meshcoreNodeNeighborsConfigMigration.up(db),
   postgres: (client) => runMigration153Postgres(client),
   mysql: (pool) => runMigration153Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 154: create `mesh_issues` — GLOBAL (no sourceId) store of
+// passively-detected mesh health findings (Mesh Issues Analysis epic #4964,
+// Phase 1 WP1). Keyed by (issueType, subjectKey); nodeNum is a denormalized
+// nullable column (null for area findings). Idempotent, no backfill — starts
+// empty; populated by the scheduled meshIssuesAnalysisService (WP3).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 154,
+  name: 'create_mesh_issues',
+  settingsKey: 'migration_154_create_mesh_issues',
+  sqlite: (db) => createMeshIssuesMigration.up(db),
+  postgres: (client) => runMigration154Postgres(client),
+  mysql: (pool) => runMigration154Mysql(pool),
 });
