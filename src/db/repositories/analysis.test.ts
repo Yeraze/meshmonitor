@@ -141,8 +141,23 @@ describe('AnalysisRepository.getTraceroutes', () => {
     const r = await repo.getTraceroutes({ sourceIds: ['src-a'], sinceMs: 0, pageSize: 10 });
     expect(r.items).toHaveLength(1);
     expect(r.items[0]).toMatchObject({ fromNodeNum: 1, toNodeNum: 2, sourceId: 'src-a' });
+    // No packetId was supplied on insert (pre-migration-style row) — must round-trip as null.
+    expect(r.items[0].packetId).toBeNull();
     expect(r.hasMore).toBe(false);
     expect(r.nextCursor).toBeNull();
+  });
+
+  it('returns packetId as a number when set (#4964 cross-source dedup key)', async () => {
+    const now = Date.now();
+    sqlite
+      .prepare(
+        'INSERT INTO traceroutes (fromNodeNum, toNodeNum, fromNodeId, toNodeId, sourceId, route, routeBack, snrTowards, snrBack, timestamp, createdAt, packetId) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+      )
+      .run(5, 6, '!00000005', '!00000006', 'src-a', '[]', '[]', '[]', '[]', now + 20, now + 20, 424242);
+    const r = await repo.getTraceroutes({ sourceIds: ['src-a'], sinceMs: 0, pageSize: 10 });
+    const withPacketId = r.items.find((i) => i.fromNodeNum === 5);
+    expect(withPacketId).toBeDefined();
+    expect(withPacketId?.packetId).toBe(424242);
   });
 
   it('returns empty when no sources given', async () => {

@@ -30,6 +30,39 @@ export interface MobilityUpdateResult {
 }
 
 /**
+ * Bounding-box span, in kilometers, of a set of position samples (the
+ * diagonal of the min/max lat-lon box, Haversine). Returns null with fewer
+ * than two latitude AND two longitude samples.
+ *
+ * Extracted from the body of {@link updateNodeMobility} (issue #4964, Phase 1
+ * WP2) so the mesh-issues A4 rule can apply a different threshold (500m) to
+ * the same underlying measurement this service uses at 100m — the two
+ * classifications read the exact same math and can never disagree about the
+ * geometry, only about where the line is drawn.
+ */
+export function positionSpanKm(latValues: number[], lonValues: number[]): number | null {
+  if (latValues.length < 2 || lonValues.length < 2) return null;
+
+  const minLat = Math.min(...latValues);
+  const maxLat = Math.max(...latValues);
+  const minLon = Math.min(...lonValues);
+  const maxLon = Math.max(...lonValues);
+
+  // Distance between min/max corners using the Haversine formula.
+  const R = 6371; // Earth's radius in km
+  const dLat = ((maxLat - minLat) * Math.PI) / 180;
+  const dLon = ((maxLon - minLon) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((minLat * Math.PI) / 180) *
+      Math.cos((maxLat * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+/**
  * Detect whether a node has moved more than 100 meters based on its last 500
  * position telemetry records, update the persisted mobile flag, patch the
  * in-memory cache, and return previous+current mobility status. Errors are
@@ -64,33 +97,16 @@ export async function updateNodeMobility(nodeId: string, deps: NodeMobilityDeps)
     let isMobile = 0;
 
     // Need at least 2 position records to detect movement
-    if (latitudes.length >= 2 && longitudes.length >= 2) {
-      const latValues = latitudes.map((t) => t.value);
-      const lonValues = longitudes.map((t) => t.value);
-
-      const minLat = Math.min(...latValues);
-      const maxLat = Math.max(...latValues);
-      const minLon = Math.min(...lonValues);
-      const maxLon = Math.max(...lonValues);
-
-      // Calculate distance between min/max corners using Haversine formula
-      const R = 6371; // Earth's radius in km
-      const dLat = ((maxLat - minLat) * Math.PI) / 180;
-      const dLon = ((maxLon - minLon) * Math.PI) / 180;
-      const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos((minLat * Math.PI) / 180) *
-          Math.cos((maxLat * Math.PI) / 180) *
-          Math.sin(dLon / 2) *
-          Math.sin(dLon / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      const distance = R * c;
-
+    const span = positionSpanKm(
+      latitudes.map((t) => t.value),
+      longitudes.map((t) => t.value)
+    );
+    if (span != null) {
       // If movement is greater than 100 meters (0.1 km), mark as mobile
-      isMobile = distance > 0.1 ? 1 : 0;
+      isMobile = span > 0.1 ? 1 : 0;
 
       logger.debug(
-        `Node ${nodeId} mobility check: ${latitudes.length} positions, distance=${distance.toFixed(3)}km, mobile=${isMobile}`
+        `Node ${nodeId} mobility check: ${latitudes.length} positions, distance=${span.toFixed(3)}km, mobile=${isMobile}`
       );
     }
 

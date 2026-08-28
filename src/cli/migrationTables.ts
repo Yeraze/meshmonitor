@@ -104,6 +104,9 @@ export const TABLE_ORDER = [
   // 4609: the anchors behind each estimate. Global like its parent, and copied
   // after it so the rationale never lands without the estimate it explains.
   'estimated_position_anchors',
+  // 4964: global mesh-health findings (no sourceId — keyed by issueType+subjectKey).
+  // Derived data, but firstDetected history and dismissed state are worth keeping.
+  'mesh_issues',
   // 2608: per-source automated remote favorites management config + ledger
   'auto_favorite_targets',
   'auto_favorite_assignments',

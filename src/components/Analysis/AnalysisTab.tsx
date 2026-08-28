@@ -9,9 +9,15 @@ import { useTranslation } from 'react-i18next';
 import SolarMonitoringReport from './SolarMonitoringReport';
 import NodeInfoEnrichmentReport from './NodeInfoEnrichmentReport';
 import MqttViolationsReport from './MqttViolationsReport';
+import MeshIssuesReport from './MeshIssuesReport';
 import { UiIcon, type UiIconName } from '../icons';
 
-type AnalysisType = 'solar-monitoring' | 'nodeinfo-enrichment' | 'mqtt-oktomqtt-violations' | null;
+type AnalysisType =
+  | 'solar-monitoring'
+  | 'nodeinfo-enrichment'
+  | 'mqtt-oktomqtt-violations'
+  | 'mesh-issues'
+  | null;
 
 interface AnalysisCard {
   id: Exclude<AnalysisType, null>;
@@ -51,6 +57,15 @@ const AnalysisTab: React.FC = () => {
         "Find MQTT gateways that uplinked other nodes' packets even though the sender did not opt in to MQTT (ok_to_mqtt = 0).",
       ),
       icon: 'securityAlert',
+    },
+    {
+      id: 'mesh-issues',
+      title: t('analysis.mesh_issues.title', 'Mesh Issues'),
+      description: t(
+        'analysis.mesh_issues.description',
+        'Flag wrongly-roled or poorly placed routers, airtime abusers, and infrastructure nodes on failing power — from passively collected data only.',
+      ),
+      icon: 'alert',
     },
   ];
 
@@ -95,6 +110,21 @@ const AnalysisTab: React.FC = () => {
           <UiIcon name="back" size={16} /> {t('analysis.back_to_reports', 'Back to reports')}
         </button>
         <MqttViolationsReport />
+      </div>
+    );
+  }
+
+  if (selected === 'mesh-issues') {
+    return (
+      <div className="reports-section">
+        <button
+          type="button"
+          className="reports-section__back"
+          onClick={() => setSelected(null)}
+        >
+          <UiIcon name="back" size={16} /> {t('analysis.back_to_reports', 'Back to reports')}
+        </button>
+        <MeshIssuesReport />
       </div>
     );
   }

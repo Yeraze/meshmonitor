@@ -107,6 +107,12 @@ export type {
   DbMeshtasticHeardRepeater,
   RecordMeshtasticHeardRepeaterParams,
 } from './meshtasticHeardRepeaters.js';
+export { MeshIssuesRepository } from './meshIssues.js';
+export type {
+  DbMeshIssue,
+  UpsertOutcome,
+  GetIssuesOptions,
+} from './meshIssues.js';
 export { DeadDropRepository } from './deadDrop.js';
 export type { DeadDropMessageInput } from './deadDrop.js';
 export { MqttPacketLogRepository } from './mqttPacketLog.js';

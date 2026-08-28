@@ -49,6 +49,9 @@ export * from './messageEvents.js';
 // Meshtastic Heard-By table (#4816 Phase 4 WP1)
 export * from './meshtasticHeardRepeaters.js';
 
+// Mesh Issues findings (global — no sourceId) (epic #4964 Phase 1 WP1)
+export * from './meshIssues.js';
+
 // Embed Profiles table
 export * from './embedProfiles.js';
 

@@ -29,6 +29,7 @@ import { appriseNotificationService } from './services/appriseNotificationServic
 import { backupSchedulerService } from './services/backupSchedulerService.js';
 import { databaseMaintenanceService } from './services/databaseMaintenanceService.js';
 import { positionEstimationScheduler } from './services/positionEstimationScheduler.js';
+import { meshIssuesScheduler } from './services/meshIssuesScheduler.js';
 import { autoFavoriteManagementScheduler } from './services/autoFavoriteManagementService.js';
 import { systemRestoreService } from './services/systemRestoreService.js';
 import { duplicateKeySchedulerService } from './services/duplicateKeySchedulerService.js';
@@ -363,6 +364,10 @@ setTimeout(async () => {
     positionEstimationScheduler.initialize();
     logger.debug('Position estimation scheduler initialized');
 
+    // Initialize mesh issues analysis scheduler (global, batch, passive — issue #4964)
+    meshIssuesScheduler.initialize();
+    logger.debug('Mesh issues scheduler initialized');
+
     // Initialize automated remote favorites management scheduler (issue #2608)
     autoFavoriteManagementScheduler.initialize();
     logger.debug('Auto-favorite management scheduler initialized');
@@ -644,6 +649,7 @@ import firmwareUpdateRoutes from './routes/firmwareUpdateRoutes.js';
 import sourceRoutes from './routes/sourceRoutes.js';
 import unifiedRoutes from './routes/unifiedRoutes.js';
 import analysisRoutes from './routes/analysisRoutes.js';
+import meshIssuesRoutes from './routes/meshIssuesRoutes.js';
 import elevationRoutes from './routes/elevationRoutes.js';
 import gnssRoutes from './routes/gnssRoutes.js';
 import rfCoverageRoutes from './routes/rfCoverageRoutes.js';
@@ -818,6 +824,12 @@ apiRouter.use('/sources', sourceRoutes);
 
 // Unified cross-source views
 apiRouter.use('/unified', unifiedRoutes);
+
+// Mesh issues analysis (#4964 Phase 1) — passive findings from data already
+// on disk. Separate router (analysisRoutes.ts is already 1000+ lines); see
+// meshIssuesRoutes.ts header for the cross-source permission filtering.
+// NOTE: More specific route must come BEFORE general /analysis router
+apiRouter.use('/analysis/mesh-issues', meshIssuesRoutes);
 
 // Cross-source analysis workspace
 apiRouter.use('/analysis', analysisRoutes);
