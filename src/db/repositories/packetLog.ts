@@ -22,7 +22,7 @@ export class PacketLogRepository extends BaseRepository {
    */
   private buildPacketLogWhere(options: PacketLogFilterOptions): { conditions: any[]; } {
     const conditions: any[] = [];
-    const { portnum, from_node, to_node, channel, encrypted, since, relay_node, transport_mechanism, sourceId, untilTs, untilId } = options;
+    const { portnum, from_node, to_node, channel, encrypted, since, relay_node, transport_mechanism, sourceId, untilTs, untilId, search } = options;
 
     if (sourceId !== undefined) conditions.push(sql`pl.${sql.identifier('sourceId')} = ${sourceId}`);
     // Keyset cursor — mirrors ORDER BY pl.timestamp DESC, pl.id DESC so paging never
@@ -49,6 +49,25 @@ export class PacketLogRepository extends BaseRepository {
     }
     if (transport_mechanism !== undefined) {
       conditions.push(sql`pl.transport_mechanism = ${transport_mechanism}`);
+    }
+    // Free-text search across the decoded content (#4958): the human-readable
+    // preview and the serialized-JSON metadata (both plain TEXT in every
+    // backend). Postgres LIKE is case-sensitive, so branch to ILIKE there;
+    // SQLite/MySQL LIKE are case-insensitive by default.
+    //
+    // The user's `%`/`_` must match literally, so they are escaped and an
+    // explicit ESCAPE char is declared (SQLite has no default escape char).
+    // The escape char is `~`, NOT `\`: a backslash escape clause (`ESCAPE '\'`)
+    // is fine for SQLite/Postgres but breaks MySQL, where `\` escapes the
+    // closing quote inside the string literal. `~` is a plain literal in all
+    // three backends.
+    if (search !== undefined && search !== '') {
+      const escaped = search.replace(/[~%_]/g, (c: string) => `~${c}`);
+      const like = `%${escaped}%`;
+      const op = this.isPostgres() ? sql`ILIKE` : sql`LIKE`;
+      conditions.push(
+        sql`(pl.payload_preview ${op} ${like} ESCAPE '~' OR pl.metadata ${op} ${like} ESCAPE '~')`
+      );
     }
 
     return { conditions };
@@ -660,6 +679,8 @@ export interface PacketLogFilterOptions {
   relay_node?: number | 'unknown';
   transport_mechanism?: number;
   sourceId?: string;
+  /** Free-text substring match across payload_preview + metadata (#4958). */
+  search?: string;
   /**
    * Keyset (composite) cursor for descending pagination. When both are provided,
    * only rows strictly "older" than (untilTs, untilId) in the

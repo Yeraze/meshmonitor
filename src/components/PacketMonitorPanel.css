@@ -147,6 +147,23 @@
   background: var(--color-surface-hover);
 }
 
+/* Free-text content/JSON search (#4958). Wider than the selects since it takes
+ * arbitrary text, and takes the full row so it reads as the primary control. */
+.packet-search-input {
+  flex: 1 1 100%;
+  min-width: 200px;
+  padding: 6px 10px;
+  border: 1px solid var(--color-surface-active);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.packet-search-input::placeholder {
+  color: var(--color-text-subtle);
+}
+
 .clear-filters-btn {
   padding: 6px 12px;
   background: var(--color-bg-sunken);

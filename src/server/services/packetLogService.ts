@@ -84,6 +84,7 @@ class PacketLogService {
     relay_node?: number | 'unknown';
     transport_mechanism?: number;
     sourceId?: string;
+    search?: string;
     untilTs?: number;
     untilId?: number;
   }): Promise<DbPacketLog[]> {
@@ -131,6 +132,7 @@ class PacketLogService {
     relay_node?: number | 'unknown';
     transport_mechanism?: number;
     sourceId?: string;
+    search?: string;
   }): Promise<number> {
     return databaseService.getPacketLogCountAsync(options || {});
   }

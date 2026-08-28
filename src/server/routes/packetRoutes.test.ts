@@ -129,6 +129,10 @@ describe('Packet Routes', () => {
         sql += ' AND timestamp >= ?';
         params.push(options.since);
       }
+      if (options.search) {
+        sql += ' AND (payload_preview LIKE ? OR metadata LIKE ?)';
+        params.push(`%${options.search}%`, `%${options.search}%`);
+      }
 
       sql += ' ORDER BY timestamp DESC, id DESC';
 
@@ -179,6 +183,10 @@ describe('Packet Routes', () => {
       if (options.since !== undefined) {
         sql += ' AND timestamp >= ?';
         params.push(options.since);
+      }
+      if (options.search) {
+        sql += ' AND (payload_preview LIKE ? OR metadata LIKE ?)';
+        params.push(`%${options.search}%`, `%${options.search}%`);
       }
 
       const result = db.prepare(sql).get(...params) as any;
@@ -368,6 +376,29 @@ describe('Packet Routes', () => {
 
       expect(response.body.packets.length).toBe(1);
       expect(response.body.packets[0].portnum).toBe(1);
+    });
+
+    it('should filter by free-text search across content (#4958)', async () => {
+      // Packet 1 has payload_preview 'Test message'; packet 2 does not.
+      const response = await request(app)
+        .get('/api/packets?search=' + encodeURIComponent('Test message'))
+        .set('Authorization', 'Bearer regular')
+        .expect(200);
+
+      expect(response.body.packets.length).toBe(1);
+      expect(response.body.packets[0].packet_id).toBe(1);
+      // The total must reflect the search filter too, not the unfiltered count.
+      expect(response.body.total).toBe(1);
+    });
+
+    it('should return an empty set when the search term matches nothing (#4958)', async () => {
+      const response = await request(app)
+        .get('/api/packets?search=' + encodeURIComponent('no-such-content-zzz'))
+        .set('Authorization', 'Bearer regular')
+        .expect(200);
+
+      expect(response.body.packets.length).toBe(0);
+      expect(response.body.total).toBe(0);
     });
 
     it('should filter by encrypted status', async () => {

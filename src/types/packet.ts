@@ -68,6 +68,8 @@ export interface PacketFilters {
   relay_node?: number | 'unknown';
   transport_mechanism?: number;
   sourceId?: string;
+  /** Free-text substring match across decoded content (payload + metadata JSON). */
+  search?: string;
 }
 
 /** Filters accepted by the unified packet stream (no offset — keyset cursor). */

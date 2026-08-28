@@ -123,6 +123,53 @@ describe('PacketLogRepository - Packet Log Queries', () => {
     });
   });
 
+  describe('getPacketLogs search filter (#4958)', () => {
+    beforeEach(() => {
+      const now = Date.now();
+      // Packet with searchable preview + metadata JSON.
+      db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, portnum, portnum_name, direction, created_at, sourceId, encrypted, payload_preview, metadata) VALUES (10, ${now}, 100, 67, 'TELEMETRY_APP', 'rx', ${now}, 'default', 0, 'Battery 87%', '{"voltage":4.1,"room":"Weather Station"}')`);
+      // A different packet that must NOT match the terms below.
+      db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, portnum, portnum_name, direction, created_at, sourceId, encrypted, payload_preview, metadata) VALUES (11, ${now}, 200, 3, 'POSITION_APP', 'rx', ${now}, 'default', 0, 'lat=37.77 lon=-122.41', '{"precision":32}')`);
+    });
+
+    it('matches a substring of payload_preview, case-insensitively', async () => {
+      const packets = await repo.getPacketLogs({ search: 'battery' });
+      expect(packets.map(p => p.packet_id)).toEqual([10]);
+    });
+
+    it('matches a substring of the metadata JSON', async () => {
+      const packets = await repo.getPacketLogs({ search: 'Weather' });
+      expect(packets.map(p => p.packet_id)).toEqual([10]);
+    });
+
+    it('returns nothing when no packet contains the term', async () => {
+      const packets = await repo.getPacketLogs({ search: 'nonexistent-zzz' });
+      expect(packets).toEqual([]);
+    });
+
+    it('treats % as a literal (escaped), not a wildcard', async () => {
+      // "87%" matches packet 10's literal "87%". A bare "%" matches ONLY the row
+      // that literally contains a "%" (packet 10) — an unescaped LIKE wildcard
+      // would instead match every row, so this pins the escaping.
+      expect((await repo.getPacketLogs({ search: '87%' })).map(p => p.packet_id)).toEqual([10]);
+      expect((await repo.getPacketLogs({ search: '%' })).map(p => p.packet_id)).toEqual([10]);
+    });
+
+    it('combines with other filters (portnum + search)', async () => {
+      // Only packet 10 is TELEMETRY (67) AND contains "voltage".
+      const packets = await repo.getPacketLogs({ portnum: 67, search: 'voltage' });
+      expect(packets.map(p => p.packet_id)).toEqual([10]);
+      // portnum mismatch → no rows even though the term exists.
+      expect(await repo.getPacketLogs({ portnum: 3, search: 'voltage' })).toEqual([]);
+    });
+
+    it('is ignored when empty', async () => {
+      const all = await repo.getPacketLogs({});
+      const withEmpty = await repo.getPacketLogs({ search: '' });
+      expect(withEmpty.length).toBe(all.length);
+    });
+  });
+
   describe('getPacketLogs keyset cursor (untilTs/untilId)', () => {
     // Insert a block of packets that all share the SAME millisecond timestamp,
     // straddling typical page boundaries. This is the case a bare `timestamp <`
