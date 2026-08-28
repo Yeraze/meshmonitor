@@ -32,6 +32,14 @@ import type {
   MeshIssueStatus,
 } from '../services/meshIssues/types.js';
 import type { DbMeshIssue } from '../../db/repositories/meshIssues.js';
+import type { DbNode } from '../../db/types.js';
+
+/**
+ * `getAllNodes(ALL_SOURCES)` rows carry a real `sourceId` column at runtime,
+ * but it is deliberately absent from the narrower `DbNode` interface — same
+ * precedent as `meshIssuesAnalysisService.ts`'s local `NodeRow` type.
+ */
+type NodeRow = DbNode & { sourceId: string };
 
 const router = Router();
 router.use(optionalAuth());
@@ -82,17 +90,25 @@ interface MeshIssueWire {
 /**
  * `longName ?? shortName ?? !hex`, resolved server-side from one
  * `getAllNodes(ALL_SOURCES)` call so the report needs no second round trip.
- * When multiple source rows exist for the same physical node, the first row
- * with a non-null name wins (deterministic given `getAllNodes`'s row order;
- * this is a display convenience, not the full newest-wins merge that
- * `nodeSnapshot.ts` does for rule evaluation).
+ *
+ * Rows are filtered to `permitted` BEFORE any name is picked — the same
+ * #3745 leak class the rest of this route guards against. Without this
+ * filter a sourceA-only user could be shown a `nodeName` that only ever
+ * appeared in a sourceB row: an implicit disclosure of sourceB data this
+ * route otherwise redacts. Among the surviving (permitted) rows for a node,
+ * the first row with a non-null name wins (deterministic given
+ * `getAllNodes`'s row order; a display convenience, not the full
+ * newest-wins merge that `nodeSnapshot.ts` does for rule evaluation). A node
+ * with no permitted row carrying a name falls back to `!hex` at the call
+ * site.
  */
-async function buildNodeNameMap(): Promise<Map<number, string>> {
+async function buildNodeNameMap(permitted: string[]): Promise<Map<number, string>> {
   // intentional cross-source: resolves a display name for a finding's node
-  // regardless of which source most recently reported it.
-  const nodes = await databaseService.nodes.getAllNodes(ALL_SOURCES);
+  // regardless of which permitted source most recently reported it.
+  const nodes = (await databaseService.nodes.getAllNodes(ALL_SOURCES)) as NodeRow[];
   const map = new Map<number, string>();
   for (const node of nodes) {
+    if (!permitted.includes(node.sourceId)) continue;
     if (map.has(node.nodeNum)) continue;
     const name = node.longName || node.shortName || null;
     if (name) map.set(node.nodeNum, name);
@@ -177,7 +193,7 @@ router.get('/', async (req: Request, res: Response) => {
     const includeClosed = req.query.includeClosed === 'true';
     const [rows, nodeNames] = await Promise.all([
       databaseService.getMeshIssuesAsync({ includeClosed, includeDismissed: false }),
-      buildNodeNameMap(),
+      buildNodeNameMap(permitted),
     ]);
 
     const issues: MeshIssueWire[] = [];

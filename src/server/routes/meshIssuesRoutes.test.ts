@@ -31,7 +31,6 @@ function makeFinding(overrides: Partial<MeshIssueFinding> & { nodeNum: number })
   return {
     issueType: MESH_ISSUE_TYPES.A1_DEPRECATED_ROLE,
     subjectKey: nodeSubjectKey(overrides.nodeNum),
-    nodeNum: overrides.nodeNum,
     severity: 'warning',
     confidence: 'high',
     evidence: { role: 4, roleName: 'REPEATER' },
@@ -53,6 +52,8 @@ describe('meshIssuesRoutes', () => {
 
   afterEach(async () => {
     await databaseService.meshIssues.deleteAll();
+    // Seeded by the nodeName leak-class test; harmless to attempt when absent.
+    await databaseService.deleteNodeAsync(500, harness.sourceB).catch(() => {});
     await harness.cleanup();
     vi.restoreAllMocks();
   });
@@ -106,6 +107,38 @@ describe('meshIssuesRoutes', () => {
       expect(issues[0].nodeNum).toBe(101);
       expect(issues[0].sourceIds).toEqual([harness.sourceA]);
       expect(issues.find((i: { nodeNum: number }) => i.nodeNum === 102)).toBeUndefined();
+    });
+
+    it('nodeName is never resolved from a source the caller cannot read (#3745 leak class)', async () => {
+      // The node row (and its longName) exists ONLY under sourceB.
+      await databaseService.upsertNodeAsync(
+        { nodeNum: 500, nodeId: '!000001f4', longName: 'Only In SourceB' },
+        harness.sourceB,
+      );
+      // The finding cites both sources, so a sourceA-only user still sees the
+      // row (sourceIds intersects to ['sourceA']) — but must not see the name.
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({ nodeNum: 500, sourceIds: [harness.sourceA, harness.sourceB] }),
+        Date.now(),
+      );
+
+      await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceA);
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.get('/api/analysis/mesh-issues');
+
+      expect(res.status).toBe(200);
+      const issue = res.body.data.issues.find((i: { nodeNum: number }) => i.nodeNum === 500);
+      expect(issue).toBeDefined();
+      expect(issue.sourceIds).toEqual([harness.sourceA]);
+      // Never the sourceB longName — falls back to the !hex form instead.
+      expect(issue.nodeName).not.toBe('Only In SourceB');
+      expect(issue.nodeName).toBe('!000001f4');
+
+      // Admin (permitted to both sources) still sees the real name.
+      const adminAgent = await harness.loginAs(harness.admin);
+      const adminRes = await adminAgent.get('/api/analysis/mesh-issues');
+      const adminIssue = adminRes.body.data.issues.find((i: { nodeNum: number }) => i.nodeNum === 500);
+      expect(adminIssue.nodeName).toBe('Only In SourceB');
     });
 
     it('counts matches the returned (post-filter) set', async () => {
