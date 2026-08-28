@@ -15,7 +15,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { Filter, Trash2, Pause, Play, RefreshCw, Download } from 'lucide-react';
+import { Filter, Trash2, Pause, Play, RefreshCw, Download, Circle, Square } from 'lucide-react';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useWebSocketContext } from '../../contexts/WebSocketContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -216,6 +216,18 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
         <h3>{t('meshcore.packets.title', 'Packet Monitor')}</h3>
         <span className="mcpm-count">{visiblePackets.length}</span>
         <div className="mcpm-header-controls">
+          {canWriteSettings && (
+            <button
+              className={`mcpm-btn ${enabled ? 'mcpm-btn-danger' : ''}`}
+              onClick={() => void handleToggleEnabled()}
+              disabled={savingSettings}
+              title={enabled
+                ? t('meshcore.packets.stopCapture', 'Stop capturing')
+                : t('meshcore.packets.startCapture', 'Start capturing')}
+            >
+              {enabled ? <Square size={14} /> : <Circle size={14} />}
+            </button>
+          )}
           <button
             className="mcpm-btn"
             onClick={() => setPaused(p => !p)}

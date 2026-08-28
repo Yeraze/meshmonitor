@@ -176,6 +176,41 @@ describe('MqttPacketMonitorView', () => {
     });
   });
 
+  it('shows a Stop button in the toolbar while capturing and POSTs 0 to stop (#4957)', async () => {
+    csrfFetchMock.mockImplementation(async (url: string, options?: RequestInit) => {
+      if (options?.method === 'POST') return jsonResponse({ success: true });
+      if (url.includes('/gateways')) return jsonResponse(gatewaysEnvelope([]));
+      return jsonResponse(packetsEnvelope([basePacket()], { enabled: true }));
+    });
+    hasPermissionImpl = () => true;
+
+    render(<MqttPacketMonitorView baseUrl={baseUrl} sourceId={sourceId} />);
+    await screen.findByText('hello world');
+
+    fireEvent.click(screen.getByTitle('Stop capturing'));
+
+    await waitFor(() => {
+      const postCall = csrfFetchMock.mock.calls.find(
+        ([, options]) => (options as RequestInit | undefined)?.method === 'POST'
+      );
+      expect(postCall).toBeTruthy();
+      const [url, options] = postCall!;
+      expect(url).toBe(`${baseUrl}/api/settings`);
+      expect(JSON.parse((options as RequestInit).body as string)).toEqual({ mqtt_packet_log_enabled: '0' });
+    });
+  });
+
+  it('hides the Stop button without settings:write (#4957)', async () => {
+    installFetchRouter({ packets: [basePacket()], enabled: true });
+    hasPermissionImpl = (resource) => resource !== 'settings';
+
+    render(<MqttPacketMonitorView baseUrl={baseUrl} sourceId={sourceId} />);
+    await screen.findByText('hello world');
+
+    expect(screen.queryByTitle('Stop capturing')).toBeNull();
+    expect(screen.queryByTitle('Start capturing')).toBeNull();
+  });
+
   it('hides the Clear button without packetmonitor:write', async () => {
     installFetchRouter({ packets: [basePacket()] });
     hasPermissionImpl = (resource) => resource !== 'packetmonitor';

@@ -23,7 +23,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { Filter, Trash2, Pause, Play, RefreshCw, ChevronDown } from 'lucide-react';
+import { Filter, Trash2, Pause, Play, RefreshCw, ChevronDown, Circle, Square } from 'lucide-react';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNodes } from '../../hooks/useServerData';
@@ -310,6 +310,18 @@ export const MqttPacketMonitorView: React.FC<MqttPacketMonitorViewProps> = ({ ba
           {total > packets.length ? `${packets.length} / ${total}` : packets.length}
         </span>
         <div className="mqpm-header-controls">
+          {canWriteSettings && (
+            <button
+              className={`mqpm-btn ${enabled ? 'mqpm-btn-danger' : ''}`}
+              onClick={() => void handleToggleEnabled()}
+              disabled={savingSettings}
+              title={enabled
+                ? t('mqtt.packets.stopCapture', 'Stop capturing')
+                : t('mqtt.packets.startCapture', 'Start capturing')}
+            >
+              {enabled ? <Square size={14} /> : <Circle size={14} />}
+            </button>
+          )}
           <button
             className="mqpm-btn"
             onClick={() => setPaused(p => !p)}
