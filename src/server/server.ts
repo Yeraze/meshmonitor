@@ -825,13 +825,14 @@ apiRouter.use('/sources', sourceRoutes);
 // Unified cross-source views
 apiRouter.use('/unified', unifiedRoutes);
 
-// Cross-source analysis workspace
-apiRouter.use('/analysis', analysisRoutes);
-
 // Mesh issues analysis (#4964 Phase 1) — passive findings from data already
 // on disk. Separate router (analysisRoutes.ts is already 1000+ lines); see
 // meshIssuesRoutes.ts header for the cross-source permission filtering.
+// NOTE: More specific route must come BEFORE general /analysis router
 apiRouter.use('/analysis/mesh-issues', meshIssuesRoutes);
+
+// Cross-source analysis workspace
+apiRouter.use('/analysis', analysisRoutes);
 
 // Terrain link elevation profile (#4111 Phase 1)
 apiRouter.use('/elevation', elevationRoutes);
