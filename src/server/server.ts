@@ -29,6 +29,7 @@ import { appriseNotificationService } from './services/appriseNotificationServic
 import { backupSchedulerService } from './services/backupSchedulerService.js';
 import { databaseMaintenanceService } from './services/databaseMaintenanceService.js';
 import { positionEstimationScheduler } from './services/positionEstimationScheduler.js';
+import { meshIssuesScheduler } from './services/meshIssuesScheduler.js';
 import { autoFavoriteManagementScheduler } from './services/autoFavoriteManagementService.js';
 import { systemRestoreService } from './services/systemRestoreService.js';
 import { duplicateKeySchedulerService } from './services/duplicateKeySchedulerService.js';
@@ -362,6 +363,10 @@ setTimeout(async () => {
     // Initialize position estimation scheduler (global, batch — issue #3271)
     positionEstimationScheduler.initialize();
     logger.debug('Position estimation scheduler initialized');
+
+    // Initialize mesh issues analysis scheduler (global, batch, passive — issue #4964)
+    meshIssuesScheduler.initialize();
+    logger.debug('Mesh issues scheduler initialized');
 
     // Initialize automated remote favorites management scheduler (issue #2608)
     autoFavoriteManagementScheduler.initialize();

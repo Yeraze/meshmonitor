@@ -148,6 +148,12 @@ export const VALID_SETTINGS_KEYS = [
   // Max acceptable uncertainty (km). Estimates whose computed radius exceeds
   // this are discarded rather than stored (issue #3271 follow-up). 0 = no limit.
   'position_estimation_max_uncertainty_km',
+  // Mesh Issues Analysis (global, batch, passive — issue #4964)
+  'mesh_issues_enabled',
+  'mesh_issues_frequency_hours',
+  'mesh_issues_lookback_hours',
+  'mesh_issues_pair_bucket_hours',
+  'mesh_issues_last_run',
   'autoKeyManagementEnabled',
   'autoKeyManagementIntervalMinutes',
   'autoKeyManagementMaxExchanges',
@@ -615,6 +621,11 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   'position_estimation_frequency_hours',    // :141
   'position_estimation_lookback_hours',     // :141
   'position_estimation_max_uncertainty_km', // :145
+  'mesh_issues_enabled',                    // global batch job (#4964)
+  'mesh_issues_frequency_hours',            // "
+  'mesh_issues_lookback_hours',             // "
+  'mesh_issues_pair_bucket_hours',          // "
+  'mesh_issues_last_run',                   // "
   'linkPreviewsEnabled',                    // :175 global privacy toggle (#3416)
   'discardInvalidPositions',                // :178 global ingest gate
   'noIndexEnabled',                         // :184 global robots gate (#4202)
