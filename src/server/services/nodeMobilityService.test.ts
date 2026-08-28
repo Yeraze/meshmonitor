@@ -7,7 +7,7 @@
  * plus the persist + cache-patch side effects.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { updateNodeMobility, NodeMobilityDeps } from './nodeMobilityService.js';
+import { updateNodeMobility, NodeMobilityDeps, positionSpanKm } from './nodeMobilityService.js';
 import { ALL_SOURCES } from '../../db/repositories/base.js';
 
 const NODE_ID = '!aabbccdd';
@@ -92,5 +92,21 @@ describe('nodeMobilityService.updateNodeMobility', () => {
 
     expect(result).toEqual({ previous: 0, current: 0 });
     expect(patchCache).not.toHaveBeenCalled();
+  });
+});
+
+describe('nodeMobilityService.positionSpanKm', () => {
+  it('returns null with fewer than 2 latitude AND 2 longitude samples', () => {
+    expect(positionSpanKm([], [])).toBeNull();
+    expect(positionSpanKm([30.0], [-90.0])).toBeNull();
+    expect(positionSpanKm([30.0, 30.002], [-90.0])).toBeNull(); // 2 lat, 1 lon
+  });
+
+  it('computes the bounding-box haversine span in km for >=2 samples each axis', () => {
+    // ~0.002 deg of latitude ~= 0.222 km
+    const span = positionSpanKm([30.0, 30.002], [-90.0, -90.0]);
+    expect(span).not.toBeNull();
+    expect(span as number).toBeGreaterThan(0.15);
+    expect(span as number).toBeLessThan(0.3);
   });
 });
