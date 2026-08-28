@@ -1285,3 +1285,10 @@ is flagged so the user can override before implementation starts.
     leak class, applied to a global table.
 15. **`MAX_CORPUS_PAGES = 25` (50 000 traceroutes) `[ours]`** bounds the run's
     memory on a large mesh; `stats.truncated` reports when it bit.
+16. **A2b's per-node fallback also fires inside a >=3-node bin whose *mean*
+    is under the ceiling but which contains one node individually over it**
+    (review finding, #4964) — broader than this section's literal "fewer
+    than `CONGESTED_AREA_MIN_NODES` qualifying nodes" wording. Implemented
+    as the `else` of the combined area condition (node count AND binMean),
+    so it naturally covers this case too; kept deliberately, since a single
+    hot node in an otherwise-quiet area is still real, low-confidence signal.

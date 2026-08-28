@@ -228,7 +228,17 @@ export function evaluateA2b(ctx: RuleContext): MeshIssueFinding[] {
           "This area's channel utilization is above the healthy 25% ceiling. Look for over-broadcasting nodes and redundant routers here rather than adding more infrastructure.",
       });
     } else {
-      // Single/pair node fallback — the guard's "single node = info".
+      // Fallback — the guard's "single node = info". Deliberately broader
+      // than spec §2.9's literal wording ("for a bin with fewer than
+      // CONGESTED_AREA_MIN_NODES qualifying nodes"): this branch is the
+      // `else` of the COMBINED area condition (node count AND binMean), so
+      // it also fires for a bin with >=3 qualifying nodes whose *binMean*
+      // sits at/under the 25% ceiling but which contains one node
+      // individually over it. Kept intentionally (review finding, #4964): a
+      // single hot node in an otherwise-quiet area is still real signal, and
+      // info severity (not the area finding's warning) correctly reflects
+      // that it isn't (yet) an area-wide problem. See spec §5 for the
+      // recorded refinement.
       for (const n of nodes) {
         if (!(n.meanChannelUtilization > CHANNEL_UTIL_PCT_THRESHOLD)) continue;
         findings.push({

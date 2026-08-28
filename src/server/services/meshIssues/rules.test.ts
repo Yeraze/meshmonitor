@@ -196,6 +196,31 @@ describe('evaluateA2b — congested area', () => {
     const findings = evaluateA2b(makeContext(nodes, telemetry));
     expect(findings).toHaveLength(1);
   });
+
+  it('emits a per-node info finding (not an area finding) for a hot node in a quiet bin — deliberate broadening beyond the spec\'s literal "fewer than 3 nodes" wording (review finding, #4964)', () => {
+    // 3 qualifying nodes -> satisfies the node-count clause, but the bin's
+    // MEAN stays under the 25% ceiling (60 + 5 + 5) / 3 = 23.33% -> the
+    // combined area condition does not fire. One node individually exceeds
+    // the threshold, so the fallback branch (the `else` of the combined
+    // condition) still surfaces it as a low-confidence, node-attributed
+    // signal instead of silently dropping it.
+    const nodes = [
+      makeNode({ nodeNum: 1, latitude: 10.01, longitude: 20.01 }),
+      makeNode({ nodeNum: 2, latitude: 10.02, longitude: 20.02 }),
+      makeNode({ nodeNum: 3, latitude: 10.03, longitude: 20.03 }),
+    ];
+    const telemetry = new Map<number, NodeTelemetrySeries>([
+      [1, channelUtilSeries(60)],
+      [2, channelUtilSeries(5)],
+      [3, channelUtilSeries(5)],
+    ]);
+    const findings = evaluateA2b(makeContext(nodes, telemetry));
+    expect(findings).toHaveLength(1);
+    expect(findings[0].issueType).toBe(MESH_ISSUE_TYPES.A2B_CONGESTED_NODE);
+    expect(findings[0].nodeNum).toBe(1);
+    expect(findings[0].severity).toBe('info');
+    expect(findings.some((f) => f.issueType === MESH_ISSUE_TYPES.A2B_CONGESTED_AREA)).toBe(false);
+  });
 });
 
 describe('evaluateA3 — infra role on failing power', () => {
