@@ -649,6 +649,7 @@ import firmwareUpdateRoutes from './routes/firmwareUpdateRoutes.js';
 import sourceRoutes from './routes/sourceRoutes.js';
 import unifiedRoutes from './routes/unifiedRoutes.js';
 import analysisRoutes from './routes/analysisRoutes.js';
+import meshIssuesRoutes from './routes/meshIssuesRoutes.js';
 import elevationRoutes from './routes/elevationRoutes.js';
 import gnssRoutes from './routes/gnssRoutes.js';
 import rfCoverageRoutes from './routes/rfCoverageRoutes.js';
@@ -826,6 +827,11 @@ apiRouter.use('/unified', unifiedRoutes);
 
 // Cross-source analysis workspace
 apiRouter.use('/analysis', analysisRoutes);
+
+// Mesh issues analysis (#4964 Phase 1) — passive findings from data already
+// on disk. Separate router (analysisRoutes.ts is already 1000+ lines); see
+// meshIssuesRoutes.ts header for the cross-source permission filtering.
+apiRouter.use('/analysis/mesh-issues', meshIssuesRoutes);
 
 // Terrain link elevation profile (#4111 Phase 1)
 apiRouter.use('/elevation', elevationRoutes);
