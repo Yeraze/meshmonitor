@@ -1,0 +1,105 @@
+/* MeshIssuesReport styling (#4964 Phase 1 WP5). CSS module — do not add
+ * these rules to the global sheets (CLAUDE.md CSS containment 5.6).
+ * Everything shared (panel/controls/banners/buttons/node cards/stats) comes
+ * from `.reports-*` in src/styles/analysis-reports.css instead. Colors use
+ * `var(--color-*)` tokens with no fallback value so themes apply (map
+ * sidebar lesson). */
+
+.severityGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.severityHeading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--color-text-subtle);
+}
+
+.severityHeadingIcon--critical {
+  color: var(--color-error);
+}
+
+.severityHeadingIcon--warning {
+  color: var(--color-warning);
+}
+
+.severityHeadingIcon--info {
+  color: var(--color-text-subtle);
+}
+
+.badgeRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.badge--critical {
+  background: color-mix(in srgb, var(--color-error) 18%, transparent);
+  color: var(--color-error);
+}
+
+.badge--warning {
+  background: color-mix(in srgb, var(--color-warning) 18%, transparent);
+  color: var(--color-warning);
+}
+
+.badge--info {
+  background: var(--color-surface);
+  color: var(--color-text-subtle);
+}
+
+.confidenceBadge {
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+}
+
+.recommendation {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--color-surface);
+  border-left: 3px solid var(--color-accent);
+  color: var(--color-text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.recommendationIcon {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--color-accent);
+}
+
+.lastRun {
+  font-size: 12px;
+  color: var(--color-text-subtle);
+}
+
+.runErrorBanner {
+  margin-top: 12px;
+}
