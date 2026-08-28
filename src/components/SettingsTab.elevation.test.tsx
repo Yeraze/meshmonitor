@@ -182,6 +182,7 @@ vi.mock('./ChannelSoundPicker', () => ({ default: () => null }));
 vi.mock('./PkiDmGlobalToggle', () => ({ default: () => null }));
 vi.mock('./configuration/SystemBackupSection', () => ({ default: () => null }));
 vi.mock('./configuration/DatabaseMaintenanceSection', () => ({ default: () => null }));
+vi.mock('./settings/ScriptsSection', () => ({ default: () => null }));
 vi.mock('./configuration/FirmwareUpdateSection', () => ({ default: () => null }));
 vi.mock('./configuration/ChannelDatabaseSection', () => ({ default: () => null }));
 vi.mock('./CustomThemeManagement', () => ({ CustomThemeManagement: () => null }));

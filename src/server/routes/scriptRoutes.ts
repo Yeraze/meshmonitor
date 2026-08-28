@@ -10,6 +10,9 @@ import { compileUserRegex } from '../../utils/safeRegex.js';
 import { normalizeTriggerPatterns } from '../../utils/autoResponderUtils.js';
 import { safeFetch, SsrfBlockedError } from '../utils/ssrfGuard.js';
 import { getDependencyStatus, installDependencies } from '../services/scriptDependencyService.js';
+import databaseService from '../../services/database.js';
+import { computeScriptUsage, type SourceTriggers } from '../utils/scriptUsage.js';
+import { ok, fail } from '../utils/apiResponse.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -77,6 +80,10 @@ interface ScriptMetadata {
   name?: string;          // Human-readable name from mm_meta
   emoji?: string;         // Emoji icon from mm_meta
   language: string;       // Inferred from extension or mm_meta
+  version?: string;       // Version string from mm_meta, when provided
+  author?: string;        // Author from mm_meta, when provided
+  sizeBytes?: number;     // File size on disk
+  lastModified?: number;  // mtime as unix ms (proxy for "last updated")
 }
 
 /**
@@ -132,6 +139,18 @@ const parseScriptMetadata = (content: string, _filename: string): Partial<Script
     if (langMatch) {
       metadata.language = sanitizeMetadataValue(langMatch[1], 20);
     }
+
+    // Parse version (sanitize, max 20 chars)
+    const versionMatch = metaBlock.match(/^[#/]{1,2}\s+version:\s*(.+)$/m);
+    if (versionMatch) {
+      metadata.version = sanitizeMetadataValue(versionMatch[1], 20);
+    }
+
+    // Parse author (sanitize, max 60 chars)
+    const authorMatch = metaBlock.match(/^[#/]{1,2}\s+author:\s*(.+)$/m);
+    if (authorMatch) {
+      metadata.author = sanitizeMetadataValue(authorMatch[1], 60);
+    }
   }
 
   return metadata;
@@ -151,68 +170,77 @@ const getLanguageFromExtension = (filename: string): string => {
   }
 };
 
+/**
+ * Enumerate the scripts on disk with their parsed mm_meta metadata plus size
+ * and mtime. Shared by the public listing endpoint and the authenticated
+ * inventory endpoint. Returns [] when the directory is absent.
+ */
+export const collectScripts = (): ScriptMetadata[] => {
+  const scriptsDir = getScriptsDirectory();
+
+  if (!fs.existsSync(scriptsDir)) {
+    logger.debug(`📁 Scripts directory does not exist: ${scriptsDir}`);
+    return [];
+  }
+
+  const files = fs.readdirSync(scriptsDir);
+  const validExtensions = ['.js', '.mjs', '.py', '.sh'];
+
+  const scriptFiles = files
+    .filter(file => validExtensions.includes(path.extname(file).toLowerCase()))
+    .sort();
+
+  return scriptFiles.map(file => {
+    const filePath = path.join(scriptsDir, file);
+    const scriptPath = `/data/scripts/${file}`;
+
+    const script: ScriptMetadata = {
+      path: scriptPath,
+      filename: file,
+      language: getLanguageFromExtension(file),
+    };
+
+    // Size + mtime for the inventory view. Errors leave the fields undefined.
+    try {
+      const stat = fs.statSync(filePath);
+      script.sizeBytes = stat.size;
+      script.lastModified = stat.mtimeMs;
+    } catch {
+      // ignore — fields stay undefined
+    }
+
+    // Parse mm_meta from the first 1KB (performance optimization).
+    try {
+      const fd = fs.openSync(filePath, 'r');
+      const buffer = Buffer.alloc(1024);
+      const bytesRead = fs.readSync(fd, buffer, 0, 1024, 0);
+      fs.closeSync(fd);
+
+      const content = buffer.toString('utf8', 0, bytesRead);
+      const metadata = parseScriptMetadata(content, file);
+
+      if (metadata.name) script.name = metadata.name;
+      if (metadata.emoji) script.emoji = metadata.emoji;
+      if (metadata.language) script.language = metadata.language;
+      if (metadata.version) script.version = metadata.version;
+      if (metadata.author) script.author = metadata.author;
+    } catch (readError) {
+      logger.debug(`📜 Could not read metadata from ${file}: ${readError}`);
+    }
+
+    return script;
+  });
+};
+
 // Public endpoint to list available scripts (no CSRF or auth required).
 // Exported so server.ts can mount it directly on the app (bypassing the
 // apiRouter's CSRF protection) at /api/scripts.
 export const scriptsEndpoint = (_req: any, res: any) => {
   try {
-    const scriptsDir = getScriptsDirectory();
-
-    // Check if directory exists
-    if (!fs.existsSync(scriptsDir)) {
-      logger.debug(`📁 Scripts directory does not exist: ${scriptsDir}`);
-      return res.json({ scripts: [] });
-    }
-
-    // Read directory and filter for valid script extensions
-    const files = fs.readdirSync(scriptsDir);
-    const validExtensions = ['.js', '.mjs', '.py', '.sh'];
-
-    const scriptFiles = files
-      .filter(file => {
-        const ext = path.extname(file).toLowerCase();
-        return validExtensions.includes(ext);
-      })
-      .sort();
-
-    // Build script metadata for each file
-    const scripts: ScriptMetadata[] = scriptFiles.map(file => {
-      const filePath = path.join(scriptsDir, file);
-      const scriptPath = `/data/scripts/${file}`;
-
-      // Start with defaults
-      const script: ScriptMetadata = {
-        path: scriptPath,
-        filename: file,
-        language: getLanguageFromExtension(file),
-      };
-
-      // Try to read and parse metadata from file
-      try {
-        // Only read first 1KB to find metadata block (performance optimization)
-        const fd = fs.openSync(filePath, 'r');
-        const buffer = Buffer.alloc(1024);
-        const bytesRead = fs.readSync(fd, buffer, 0, 1024, 0);
-        fs.closeSync(fd);
-
-        const content = buffer.toString('utf8', 0, bytesRead);
-        const metadata = parseScriptMetadata(content, file);
-
-        if (metadata.name) script.name = metadata.name;
-        if (metadata.emoji) script.emoji = metadata.emoji;
-        if (metadata.language) script.language = metadata.language;
-      } catch (readError) {
-        // Silently ignore read errors - script will just use defaults
-        logger.debug(`📜 Could not read metadata from ${file}: ${readError}`);
-      }
-
-      return script;
-    });
-
+    const scripts = collectScripts();
     if (env.isDevelopment && scripts.length > 0) {
-      logger.debug(`📜 Found ${scripts.length} script(s) in ${scriptsDir}`);
+      logger.debug(`📜 Found ${scripts.length} script(s)`);
     }
-
     res.json({ scripts });
   } catch (error) {
     logger.error('❌ Error listing scripts:', error);
@@ -221,6 +249,73 @@ export const scriptsEndpoint = (_req: any, res: any) => {
 };
 
 const router: Router = express.Router();
+
+// Trigger settings scanned for script usage. Meshtastic auto-responder/timer/
+// geofence plus the MeshCore auto-responder/timer variants (no MeshCore
+// geofence). All are stored per-source.
+const USAGE_SETTING_KEYS = [
+  'autoResponderTriggers',
+  'timerTriggers',
+  'geofenceTriggers',
+  'meshcoreAutoResponderTriggers',
+  'meshcoreTimerTriggers',
+] as const;
+
+const safeParseArray = (json: string | undefined): unknown => {
+  if (!json) return undefined;
+  try {
+    return JSON.parse(json);
+  } catch {
+    return undefined;
+  }
+};
+
+// Authenticated inventory endpoint (issue #4942): the scripts on disk enriched
+// with the automations that use each one, so orphaned/unused scripts are
+// obvious. Requires settings:read since it reads every source's automation
+// configuration.
+router.get('/scripts/inventory', requirePermission('settings', 'read'), async (_req: Request, res: Response) => {
+  try {
+    const scripts = collectScripts();
+
+    const sources = await databaseService.sources.getAllSources();
+    const sourceIds = sources.map(s => s.id);
+
+    // One prefix-scoped query per key across all sources — a fixed 5 round
+    // trips (the USAGE_SETTING_KEYS count), NOT per-source, since each call
+    // fans out over every sourceId in a single IN query. Key order is
+    // irrelevant; results are merged into sourceTriggers regardless. If the
+    // key list grows large, batch these into one query instead.
+    const perKey: Record<string, Map<string, string>> = {};
+    for (const key of USAGE_SETTING_KEYS) {
+      perKey[key] = sourceIds.length
+        ? await databaseService.settings.getSettingForSources(sourceIds, key)
+        : new Map();
+    }
+
+    const sourceTriggers: SourceTriggers[] = sources.map(s => ({
+      sourceId: s.id,
+      sourceName: s.name,
+      autoResponderTriggers: safeParseArray(perKey.autoResponderTriggers.get(s.id)),
+      timerTriggers: safeParseArray(perKey.timerTriggers.get(s.id)),
+      geofenceTriggers: safeParseArray(perKey.geofenceTriggers.get(s.id)),
+      meshcoreAutoResponderTriggers: safeParseArray(perKey.meshcoreAutoResponderTriggers.get(s.id)),
+      meshcoreTimerTriggers: safeParseArray(perKey.meshcoreTimerTriggers.get(s.id)),
+    }));
+
+    const usage = computeScriptUsage(sourceTriggers);
+
+    const enriched = scripts.map(script => ({
+      ...script,
+      usedBy: usage.get(script.filename) ?? [],
+    }));
+
+    ok(res, { scripts: enriched });
+  } catch (error) {
+    logger.error('❌ Error building script inventory:', error);
+    fail(res, 500, 'SCRIPT_INVENTORY_ERROR', 'Failed to build script inventory');
+  }
+});
 
 // Script test endpoint - allows testing script execution with sample parameters
 // Supports triggerType: 'auto-responder' (default), 'geofence', or 'timer'

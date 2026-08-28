@@ -37,6 +37,15 @@ vi.mock('../auth/authMiddleware.js', () => ({
   requirePermission: () => (req: any, _res: any, next: any) => { req.user = { id: 1, isAdmin: true }; next(); },
 }));
 
+// scriptRoutes imports the database singleton (for the inventory endpoint);
+// stub it so importing the router doesn't spin up the real DatabaseService.
+vi.mock('../../services/database.js', () => ({
+  default: {
+    sources: { getAllSources: vi.fn().mockResolvedValue([]) },
+    settings: { getSettingForSources: vi.fn().mockResolvedValue(new Map()) },
+  },
+}));
+
 // fs is exercised only by paths we don't reach in these validation-focused tests.
 import scriptRoutes, { scriptsEndpoint } from './scriptRoutes.js';
 

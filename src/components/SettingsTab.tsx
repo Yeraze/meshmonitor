@@ -17,6 +17,7 @@ import ChannelSoundPicker from './ChannelSoundPicker';
 import PkiDmGlobalToggle from './settings/PkiDmGlobalToggle';
 import SystemBackupSection from './configuration/SystemBackupSection';
 import DatabaseMaintenanceSection from './configuration/DatabaseMaintenanceSection';
+import ScriptsSection from './settings/ScriptsSection';
 import FirmwareUpdateSection from './configuration/FirmwareUpdateSection';
 import ChannelDatabaseSection from './configuration/ChannelDatabaseSection';
 import { CustomThemeManagement } from './CustomThemeManagement';
@@ -242,6 +243,7 @@ const GLOBAL_SECTIONS = new Set([
   'settings-security',
   'settings-remote-admin',
   'settings-apprise-server', 'settings-elevation', 'settings-atak-cot', 'settings-backup', 'settings-channel-database',
+  'settings-scripts',
   'settings-maintenance', 'settings-analytics',
   // Position estimation is a single global, cross-source batch job (issue
   // #3271) — it belongs in global Settings, not the per-source Automation tab.
@@ -2661,6 +2663,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         {show('settings-channel-database') && isAdmin && <div id="settings-channel-database">
           <ChannelDatabaseSection isAdmin={isAdmin} />
         </div>}
+
+        {show('settings-scripts') && isAdmin && <ScriptsSection baseUrl={baseUrl} canWrite={canWriteSettings} />}
 
         {show('settings-maintenance') && <DatabaseMaintenanceSection />}
 
