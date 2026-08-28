@@ -1521,6 +1521,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         ...(isAdmin ? [{ id: 'settings-elevation', label: t('settings.elevation_section', 'Elevation / Terrain') }] : []),
         { id: 'settings-backup', label: t('settings.system_backup', 'System Backup') },
         ...(isAdmin ? [{ id: 'settings-channel-database', label: t('channel_database.title', 'Channel Database') }] : []),
+        ...(isAdmin ? [{ id: 'settings-scripts', label: t('settings.scripts_section', 'Scripts') }] : []),
         // Only show Database Maintenance for SQLite - it uses SQLite-specific features like VACUUM
         ...(databaseType === 'sqlite' ? [{ id: 'settings-maintenance', label: t('maintenance.title', 'Database Maintenance') }] : []),
         ...(isAdmin && firmwareOtaEnabled ? [{ id: 'settings-firmware', label: t('firmware.title', 'Firmware Updates') }] : []),
