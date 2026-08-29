@@ -80,3 +80,78 @@ export const DEDICATED_ROUTER_ROLES: ReadonlySet<number> = new Set([
   DeviceRole.ROUTER,
   DeviceRole.ROUTER_LATE,
 ]);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Tier B — RF adjacency graph rules (#4964, Phase 2 WP1)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── B3 directional SNR ──────────────────────────────────────────────────────
+/** Minimum SNR samples in ONE direction before B3 may fire. [ours] */
+export const ASYMMETRY_MIN_SAMPLES_PER_DIRECTION = 3;
+/** Directional mean-SNR delta above which a link is asymmetric, dB. [ours] */
+export const ASYMMETRY_DELTA_DB = 6;
+
+// ── Gateway evidence (class 3) ──────────────────────────────────────────────
+/** Direct receptions at one gateway before a node counts as in its RF cell. [ours] */
+export const GATEWAY_DIRECT_MIN_RECEPTIONS = 3;
+/** Max nodes in one gateway cell before co-reception pairing is skipped for
+ *  that gateway. Bounds the O(k^2) pair expansion on a metro gateway. [ours] */
+export const GATEWAY_CELL_MAX_NODES = 64;
+/** Max directional SNR samples one gateway-direct edge may contribute, so a
+ *  chatty node cannot dominate an edge's SNR statistics. [ours] */
+export const GATEWAY_SNR_SAMPLE_CAP = 25;
+
+// ── B2 redundant router ─────────────────────────────────────────────────────
+/** Minimum known direct neighbours on BOTH routers before B2 may fire. [ours] */
+export const REDUNDANT_MIN_NEIGHBORS = 3;
+/** Share of the smaller router's neighbour set the larger must cover. [ours] */
+export const REDUNDANT_OVERLAP_RATIO = 0.9;
+
+// ── B4 idle router ──────────────────────────────────────────────────────────
+/** In-window corpus samples bracketing a router's area before B4 may fire. [ours] */
+export const IDLE_ROUTER_MIN_AREA_PATHS = 20;
+/** Hop share at/below which a router counts as idle. [ours] */
+export const IDLE_ROUTER_MAX_HOP_SHARE = 0.01;
+/** Peer hop share that must be EXCEEDED before idleness means anything. [ours] */
+export const IDLE_ROUTER_PEER_MIN_HOP_SHARE = 0.10;
+
+// ── B5 load-bearing CLIENT ──────────────────────────────────────────────────
+/** Corpus samples with the node as an intermediate hop. [ours] */
+export const LOAD_BEARING_MIN_TRACEROUTES = 10;
+/** Share of the area's paths the node must carry. [ours] */
+export const LOAD_BEARING_MIN_AREA_SHARE = 0.25;
+
+// ── B6 hop horizon ───────────────────────────────────────────────────────────
+/** Share of deduped observed packets arriving with hopLimit 0. [ours] */
+export const HOP_HORIZON_EXHAUSTED_RATIO = 0.5;
+/** Deduped observed packets before the ratio means anything. [ours] */
+export const HOP_HORIZON_MIN_PACKETS = 20;
+
+// ── B7 coverage shadow ──────────────────────────────────────────────────────
+/** Positioned direct edges before a router's observed-range estimate is usable. [ours] */
+export const COVERAGE_SHADOW_MIN_RANGE_SAMPLES = 3;
+/** Hard ceiling on a router's observed-range estimate, metres — one freak
+ *  tropo link must not swallow the whole mesh. [ours] */
+export const COVERAGE_SHADOW_MAX_RANGE_M = 25_000;
+
+// ── B1 router cluster ───────────────────────────────────────────────────────
+/** Cluster size at/above which B1 is a warning. [ours] */
+export const ROUTER_CLUSTER_WARNING_SIZE = 2;
+/** Cluster size at/above which B1 is critical. [ours] */
+export const ROUTER_CLUSTER_CRITICAL_SIZE = 4;
+
+// ── Evidence hygiene ────────────────────────────────────────────────────────
+/** Max entries in any evidence member/edge list. `mesh_issues.evidence` is
+ *  MySQL TEXT (64 KB); a 200-router cluster with names would overflow it. [ours] */
+export const EVIDENCE_MEMBER_LIST_CAP = 25;
+
+/**
+ * Roles that route at full priority and therefore form a B1 cluster.
+ * ROUTER_LATE is deliberately EXCLUDED: it is the recommended remedy, so
+ * counting it as a cluster member would make the fix re-raise the finding.
+ */
+export const CLUSTER_ROLES: ReadonlySet<number> = new Set([
+  DeviceRole.ROUTER,
+  DeviceRole.ROUTER_CLIENT,
+  DeviceRole.REPEATER,
+]);

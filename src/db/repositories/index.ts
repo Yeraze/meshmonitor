@@ -29,8 +29,8 @@ export type {
 } from './notifications.js';
 export { ConversationReadStateRepository, emptyReadStateMap, isConversationKind, readStateUserId } from './conversationReadState.js';
 export type { ConversationReadStateMap } from './conversationReadState.js';
-export { PacketLogRepository } from './packetLog.js';
-export type { PacketLogFilterOptions } from './packetLog.js';
+export { PacketLogRepository, HOP_ARRIVAL_MAX_ROWS } from './packetLog.js';
+export type { PacketLogFilterOptions, PacketHopArrivalRow } from './packetLog.js';
 export { KeyRepairRepository } from './keyRepair.js';
 export { AutoTracerouteRepository } from './autoTraceroute.js';
 export type { AutoTracerouteNode } from './autoTraceroute.js';
@@ -115,13 +115,14 @@ export type {
 } from './meshIssues.js';
 export { DeadDropRepository } from './deadDrop.js';
 export type { DeadDropMessageInput } from './deadDrop.js';
-export { MqttPacketLogRepository } from './mqttPacketLog.js';
+export { MqttPacketLogRepository, MQTT_DIRECT_RECEPTION_MAX_ROWS } from './mqttPacketLog.js';
 export type {
   DbMqttPacket,
   MqttIngestOutcome,
   MqttGroupedQuery,
   MqttGroupedPacket,
   MqttGateway,
+  MqttDirectReceptionRow,
 } from './mqttPacketLog.js';
 export { MqttOkToMqttViolationsRepository } from './mqttOkToMqttViolations.js';
 export type {

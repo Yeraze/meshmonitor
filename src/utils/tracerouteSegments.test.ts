@@ -13,6 +13,8 @@ import {
   hasReturnPath,
   decomposeTraceroute,
   tracerouteParticipationKind,
+  buildLegHopLinks,
+  decomposeTracerouteLinks,
   type TracerouteDecomposeInput,
 } from './tracerouteSegments';
 
@@ -527,5 +529,120 @@ describe('tracerouteParticipationKind (traceroute participation picker, phase 2 
     // naive LIKE '%1234%' implementation would have shipped this bug.
     const row = { fromNodeNum: 1, toNodeNum: 2, route: '[12345]', routeBack: null };
     expect(tracerouteParticipationKind(row, 1234)).toBeNull();
+  });
+});
+
+describe('buildLegHopLinks (Mesh Issues #4964 Phase 2 WP1 — position-free extraction)', () => {
+  it('pairs arrival SNR with the receiving end, including the trailing element for the final endpoint', () => {
+    // 3 hops: 100 -(40)-> 150 -(32)-> 200
+    const links = buildLegHopLinks('forward', 100, [150], 200, [40, 32]);
+    expect(links).toEqual([
+      { leg: 'forward', fromNodeNum: 100, toNodeNum: 150, snrDb: 10, snrUnknown: false },
+      { leg: 'forward', fromNodeNum: 150, toNodeNum: 200, snrDb: 8, snrUnknown: false },
+    ]);
+  });
+
+  it('drops an invalid intermediate hop and keeps the surviving link\'s correct arrival SNR (alignment invariant)', () => {
+    // 4 raw hops: 100->150, 150->65535 (placeholder, dropped), 65535->175, 175->200
+    const links = buildLegHopLinks('forward', 100, [150, 65535, 175], 200, [40, -128, 28, 20]);
+    expect(links.map((l) => [l.fromNodeNum, l.toNodeNum])).toEqual([
+      [100, 150],
+      [150, 175],
+      [175, 200],
+    ]);
+    // The joined link (150->175) keeps 175's OWN arrival SNR (28 raw = 7 dB),
+    // not the dropped placeholder's (-128 raw, index 1).
+    const joined = links.find((l) => l.fromNodeNum === 150 && l.toNodeNum === 175);
+    expect(joined).toMatchObject({ snrDb: 7, snrUnknown: false });
+  });
+
+  it('maps raw -128 to snrDb=null, snrUnknown=true; raw -30 to snrDb=-7.5, snrUnknown=false', () => {
+    const sentinelLinks = buildLegHopLinks('forward', 100, [], 200, [-128]);
+    expect(sentinelLinks).toEqual([
+      { leg: 'forward', fromNodeNum: 100, toNodeNum: 200, snrDb: null, snrUnknown: true },
+    ]);
+
+    const realLinks = buildLegHopLinks('forward', 100, [], 200, [-30]);
+    expect(realLinks).toEqual([
+      { leg: 'forward', fromNodeNum: 100, toNodeNum: 200, snrDb: -7.5, snrUnknown: false },
+    ]);
+  });
+
+  it('a missing SNR sample yields snrDb=null, snrUnknown=false (distinct from the sentinel)', () => {
+    const links = buildLegHopLinks('forward', 100, [], 200, []);
+    expect(links).toEqual([
+      { leg: 'forward', fromNodeNum: 100, toNodeNum: 200, snrDb: null, snrUnknown: false },
+    ]);
+  });
+});
+
+describe('decomposeTracerouteLinks (Mesh Issues #4964 Phase 2 WP1)', () => {
+  it('gates the forward leg on hasRouteData independently of the return leg', () => {
+    const tr: TracerouteDecomposeInput = {
+      fromNodeNum: 100,
+      toNodeNum: 200,
+      route: JSON.stringify([150]),
+      routeBack: '[]',
+      snrTowards: JSON.stringify([40, 32]),
+      snrBack: '[]',
+    };
+    const links = decomposeTracerouteLinks(tr);
+    expect(links.every((l) => l.leg === 'forward')).toBe(true);
+    expect(links.map((l) => [l.fromNodeNum, l.toNodeNum])).toEqual([
+      [100, 150],
+      [150, 200],
+    ]);
+  });
+
+  it('gates the return leg on hasReturnPath independently of the forward leg', () => {
+    const tr: TracerouteDecomposeInput = {
+      fromNodeNum: 100,
+      toNodeNum: 200,
+      route: null,
+      routeBack: JSON.stringify([150]),
+      snrBack: JSON.stringify([36, 24]),
+    };
+    const links = decomposeTracerouteLinks(tr);
+    expect(links.every((l) => l.leg === 'return')).toBe(true);
+    expect(links.map((l) => [l.fromNodeNum, l.toNodeNum])).toEqual([
+      [200, 150],
+      [150, 100],
+    ]);
+  });
+
+  it('returns both legs when both are present, and [] when neither is', () => {
+    const both: TracerouteDecomposeInput = {
+      fromNodeNum: 100,
+      toNodeNum: 200,
+      route: JSON.stringify([150]),
+      routeBack: JSON.stringify([150]),
+      snrTowards: JSON.stringify([40, 32]),
+      snrBack: JSON.stringify([36, 24]),
+    };
+    const links = decomposeTracerouteLinks(both);
+    expect(links.filter((l) => l.leg === 'forward')).toHaveLength(2);
+    expect(links.filter((l) => l.leg === 'return')).toHaveLength(2);
+
+    const neither: TracerouteDecomposeInput = {
+      fromNodeNum: 100,
+      toNodeNum: 200,
+      route: null,
+      routeBack: null,
+    };
+    expect(decomposeTracerouteLinks(neither)).toEqual([]);
+  });
+
+  it('is position-free — does not require or accept a resolvePosition option', () => {
+    const tr: TracerouteDecomposeInput = {
+      fromNodeNum: 100,
+      toNodeNum: 200,
+      route: '[]',
+      routeBack: '[]',
+      snrTowards: JSON.stringify([-128]),
+    };
+    const links = decomposeTracerouteLinks(tr);
+    expect(links).toEqual([
+      { leg: 'forward', fromNodeNum: 100, toNodeNum: 200, snrDb: null, snrUnknown: true },
+    ]);
   });
 });

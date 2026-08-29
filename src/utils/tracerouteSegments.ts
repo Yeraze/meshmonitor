@@ -320,21 +320,47 @@ interface HopEntry {
   snr: number | undefined;
 }
 
-function buildLegSegments(
+/**
+ * One hop of one traceroute leg, position-free (Mesh Issues epic #4964,
+ * Phase 2 WP1 — extracted from `buildLegSegments` so the RF adjacency graph
+ * can consume hop links without inventing positions).
+ *
+ * DIRECTION IS LOAD-BEARING: `snrDb` was measured **at `toNodeNum`** for a
+ * transmission from `fromNodeNum` — the firmware records arrival SNR at the
+ * receiving end of each hop. Callers doing directional statistics (Mesh Issues
+ * B3) must key by receiver, not by pair order.
+ */
+export interface TracerouteHopLink {
+  leg: 'forward' | 'return';
+  fromNodeNum: number;
+  toNodeNum: number;
+  /** `/4`-de-scaled dB, or null when unknown (no sample, or the sentinel). */
+  snrDb: number | null;
+  /** True when the arrival SNR was UNKNOWN_SNR_SENTINEL (-32 after /4). */
+  snrUnknown: boolean;
+}
+
+/**
+ * Pair hops with arrival SNR by index, then drop invalid intermediate hops —
+ * the exact rule `buildLegSegments` has always used (see its comment, and the
+ * module-level `HopEntry` doc). Position-free: callers needing render
+ * positions map the result through `resolvePosition` (see `buildLegSegments`
+ * below); callers needing RF-graph edges (Mesh Issues B-tier) consume the
+ * link directly.
+ */
+export function buildLegHopLinks(
   leg: 'forward' | 'return',
   startNum: number,
   intermediateHops: number[],
   endNum: number,
   snrRaw: number[],
-  timestamp: number | undefined,
-  resolvePosition: (nodeNum: number) => [number, number] | null,
-): TracerouteRenderSegment[] {
+): TracerouteHopLink[] {
   // Pair every raw hop (including the end endpoint) with its own arrival SNR
   // by index BEFORE filtering, then drop invalid/reserved intermediate hops.
   // Endpoints (index 0 and the last index) are never filtered — they're real
   // device node numbers, not raw route placeholders. This preserves index
   // alignment between a hop and its SNR sample even when hops in between are
-  // dropped: adjacent segments join across the removed hop, carrying the
+  // dropped: adjacent links join across the removed hop, carrying the
   // correct arrival SNR for the surviving side.
   const hops: HopEntry[] = [
     { nodeNum: startNum, snr: undefined },
@@ -351,30 +377,55 @@ function buildLegSegments(
     (h, idx) => idx === 0 || idx === hops.length - 1 || isValidRouteNode(h.nodeNum),
   );
 
-  const segments: TracerouteRenderSegment[] = [];
+  const links: TracerouteHopLink[] = [];
   for (let i = 0; i < filtered.length - 1; i++) {
     const fromNum = filtered[i].nodeNum;
     const toNum = filtered[i + 1].nodeNum;
-    const fromPos = resolvePosition(fromNum);
-    const toPos = resolvePosition(toNum);
-    if (!fromPos || !toPos) continue;
 
-    // SNR arriving at the segment's `to` end is what firmware recorded for
+    // SNR arriving at the link's `to` end is what firmware recorded for
     // this hop (see HopEntry above).
     const rawSnr = filtered[i + 1].snr;
     const scaledSnr = rawSnr === undefined ? undefined : rawSnr / 4;
-    const isMqtt = scaledSnr !== undefined && isUnknownSnr(scaledSnr);
-    const avgSnr = scaledSnr === undefined || isMqtt ? null : scaledSnr;
+    const snrUnknown = scaledSnr !== undefined && isUnknownSnr(scaledSnr);
+    const snrDb = scaledSnr === undefined || snrUnknown ? null : scaledSnr;
 
-    segments.push({
-      key: `${leg}:${fromNum}-${toNum}`,
-      from: fromPos,
-      to: toPos,
+    links.push({
+      leg,
       fromNodeNum: fromNum,
       toNodeNum: toNum,
+      snrDb,
+      snrUnknown,
+    });
+  }
+  return links;
+}
+
+function buildLegSegments(
+  leg: 'forward' | 'return',
+  startNum: number,
+  intermediateHops: number[],
+  endNum: number,
+  snrRaw: number[],
+  timestamp: number | undefined,
+  resolvePosition: (nodeNum: number) => [number, number] | null,
+): TracerouteRenderSegment[] {
+  const links = buildLegHopLinks(leg, startNum, intermediateHops, endNum, snrRaw);
+
+  const segments: TracerouteRenderSegment[] = [];
+  for (const link of links) {
+    const fromPos = resolvePosition(link.fromNodeNum);
+    const toPos = resolvePosition(link.toNodeNum);
+    if (!fromPos || !toPos) continue;
+
+    segments.push({
+      key: `${leg}:${link.fromNodeNum}-${link.toNodeNum}`,
+      from: fromPos,
+      to: toPos,
+      fromNodeNum: link.fromNodeNum,
+      toNodeNum: link.toNodeNum,
       leg,
-      avgSnr,
-      isMqtt,
+      avgSnr: link.snrDb,
+      isMqtt: link.snrUnknown,
       timestamp,
     });
   }
@@ -442,4 +493,39 @@ export function decomposeTraceroute(
   }
 
   return segments;
+}
+
+/**
+ * `decomposeTraceroute` without positions (Mesh Issues epic #4964, Phase 2
+ * WP1). Same leg gating as `decomposeTraceroute`: forward requires
+ * `hasRouteData(route)`, return requires `hasReturnPath(routeBack, snrBack)`
+ * — each leg independently, so a traceroute with only one leg's data still
+ * yields links for that leg alone.
+ *
+ * Consumers needing render positions should use `decomposeTraceroute`
+ * instead; this is for the RF adjacency graph (Mesh Issues B-tier), which
+ * needs hop identity + directional SNR only.
+ */
+export function decomposeTracerouteLinks(
+  traceroute: TracerouteDecomposeInput,
+): TracerouteHopLink[] {
+  const links: TracerouteHopLink[] = [];
+
+  if (hasRouteData(traceroute.route)) {
+    const route = parseHopArray(traceroute.route);
+    const snrTowards = parseHopArray(traceroute.snrTowards);
+    links.push(
+      ...buildLegHopLinks('forward', traceroute.fromNodeNum, route, traceroute.toNodeNum, snrTowards),
+    );
+  }
+
+  const routeBack = parseHopArray(traceroute.routeBack);
+  if (hasReturnPath(routeBack, traceroute.snrBack)) {
+    const snrBack = parseHopArray(traceroute.snrBack);
+    links.push(
+      ...buildLegHopLinks('return', traceroute.toNodeNum, routeBack, traceroute.fromNodeNum, snrBack),
+    );
+  }
+
+  return links;
 }

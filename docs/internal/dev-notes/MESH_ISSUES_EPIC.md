@@ -97,7 +97,7 @@ LocalStats polling; "promote to ROUTER" recommendations.
 
 ## Phases
 
-- [ ] **Phase 1 — Foundation + Tier A.** Migration for `mesh_issues` (3 backends),
+- [x] **Phase 1 — Foundation + Tier A.** Migration for `mesh_issues` (3 backends),
   traceroute corpus sampler (dedup + stratified cap), pooled node/telemetry snapshot
   builder, scheduler + service, rules A1–A5, findings repository, API route
   (envelope + `requirePermission`), minimal Reports card listing findings by severity.
@@ -129,3 +129,21 @@ LocalStats polling; "promote to ROUTER" recommendations.
   console clean.
 - Phase 3 polish backlog from validation: format `lastHeardAgeMs` as a duration
   (raw ms renders poorly), map source UUIDs to source names in the evidence pills.
+- Merged as PR #4966 (squash 29049f05) on 2026-08-28.
+
+### Phase 2
+- 2026-08-28: worktree `../meshmonitor-mesh-issues-p2` (`feature/mesh-issues-analysis-phase2`).
+  Spec: `MESH_ISSUES_P2_SPEC.md` (decisions D1–D14; B7 uses the observed-range
+  estimator, NOT `rf/propagation.ts` — full DEM link budget would rest on invented
+  RF parameters).
+- Implementation: WP1 tracerouteSegments extraction (`buildLegHopLinks`) + B1–B7
+  types/subject keys + shared `ruleRunner`; WP2 packet-log aggregates (direct
+  receptions per gateway, hop-arrival counts with MAX(hopLimit) dedup); WP3
+  `rfGraph.ts` (3 evidence classes, direct vs inferred); WP4 `rulesTierB.ts`;
+  WP5a service integration + coverage counters; WP5b report rendering for
+  edge/cluster/SNR evidence.
+- Full suite 17670/17670 green incl. PG/MySQL. Review pass: one gap (spec §4.7
+  route tests for `nodeNum: null` wire shape) fixed post-review.
+- Phase 3 backlog additions: truncation note has no "+N" count (no total-count
+  field in capped evidence lists); evidence node names not redacted per-source
+  inside evidence JSON (D12, deliberate deferral).
