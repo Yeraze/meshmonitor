@@ -62,7 +62,7 @@ but not an official number, and usually tunable (see [Settings](#settings)).
 | **A2b** Congested node | 1–2 nodes in a bin exceed the ceiling — not enough neighbors to confirm area-wide congestion | 25% `[official]`, tunable | info |
 | **A3** Infra node on failing power | Infrastructure role, not powered (battery ≠101), and either ≥2 uptime resets in 7 days or battery <20% | 20% battery floor `[MeshMonitor]` | warning (resets) / info (battery only) |
 | **A4** Mobile infra node | Infrastructure role whose observed position span exceeds the mobility distance | 500 m `[MeshMonitor]`, tunable | warning |
-| **A5** Cosplay router | ROUTER role with `isUnmessagable=false` (firmware ≥2.5.0) | — | info |
+| **A5** Cosplay router | ROUTER role with `isUnmessagable=false` (firmware ≥2.5.0), or broadcasting telemetry with a median interval under 2 hours (≥5 samples, needs the packet log) | 2 h median, 5 samples `[MeshMonitor]` | info |
 
 ### Tier B — RF adjacency graph
 
@@ -117,6 +117,8 @@ settings](#settings); the rest stay fixed in code, listed here for reference:
 | Power window | 168 h (7 days) | A3, A4 |
 | Minimum position precision | 17 bits (~305 m) | A4 |
 | Unmessagable-aware firmware floor | 2.5.0 | A5 |
+| Telemetry-cadence median ceiling | 2 h | A5 |
+| Telemetry-cadence minimum samples | 5 | A5 |
 | Directional-SNR minimum samples | 3 per direction | B3 |
 | Gateway-direct minimum receptions | 3 | evidence class 3 |
 | Gateway cell size cap | 64 nodes | evidence class 3 |
@@ -187,11 +189,13 @@ had and which rules went quiet for lack of it:
   final number shown is always a true median, but the initial gate uses a
   mean, which can miss a node that broadcasts in a tight burst and then goes
   silent for days. This is deliberately the safe direction to be wrong in.
-- **A5's telemetry-cadence clause is deferred.** The full "cosplay router"
-  check the epic describes also wants a solicited-vs-unsolicited telemetry
-  signal, which needs a join against the (opt-in, off-by-default) packet
-  log. Firing on a signal most installs don't have would just generate false
-  positives, so Phase 3 ships only the `isUnmessagable` clause.
+- **A5's telemetry-cadence clause needs the packet log.** The second
+  "cosplay router" signal — a ROUTER broadcasting telemetry far more often
+  than the 12-hour role default (median under 2 hours, at least 5 samples) —
+  reads broadcast `TELEMETRY_APP` receptions from the packet log, which is
+  opt-in and off by default. With the packet log disabled the clause reports
+  itself as unavailable and A5 falls back to the `isUnmessagable` clause
+  alone; it never fires on missing data.
 
 ## Dismissing and auto-close
 
@@ -201,13 +205,13 @@ Dismissing does not stop a finding's lifecycle: if the underlying condition
 is still there on the next run, a dismissed finding still gets its evidence
 refreshed; only its visibility changes.
 
-A finding that stops recurring **auto-closes** after 3 consecutive clean
-runs — about 3 days at the default 24-hour cadence. Disabling a tier or a
-rule doesn't delete its existing findings; they simply stop reappearing and
-auto-close the same honest way. If you set the analysis frequency much
-faster than 24 hours, the auto-close window shrinks along with it (a 1-hour
-cadence auto-closes in about 3 hours); much slower, and it lengthens
-correspondingly.
+A finding that stops recurring **auto-closes** after a number of consecutive
+clean runs — the "Auto-close after" setting, default 3 (about 3 days at the
+default 24-hour cadence), clamped to 1–20. Disabling a tier or a rule doesn't
+delete its existing findings; they simply stop reappearing and auto-close the
+same honest way. If you set the analysis frequency much faster than 24 hours,
+the auto-close window shrinks along with it (a 1-hour cadence auto-closes in
+about 3 hours); much slower, and it lengthens correspondingly.
 
 ## Settings
 
@@ -241,6 +245,7 @@ Issues Analysis**. The controls are global and require `settings:write`.
 | Mobile span | 500 m | 50–50,000 m | `[MeshMonitor]` |
 | Link SNR asymmetry | 6 dB | 1–30 dB | `[MeshMonitor]` |
 | Broadcast interval floor | 300 s | 30–3,600 s | `[MeshMonitor]` |
+| Auto-close after | 3 clean runs | 1–20 | `[MeshMonitor]` |
 
 Every value is **clamped when read**, not rejected on save: an out-of-range
 number you enter is silently pulled back to the nearer bound the next time

@@ -487,6 +487,13 @@ describe('evaluateA5 — cosplay router', () => {
       expect(evaluateA5(ctx)).toHaveLength(0);
     });
 
+    it('no finding when firmware is known, isUnmessagable is true, and cadence is clean (both clauses clean)', () => {
+      const node = makeNode({ nodeNum: 210, role: DeviceRole.ROUTER, firmwareVersion: '2.6.0', isUnmessagable: true });
+      const cadence = new Map([[210, { medianIntervalMs: A5_TELEMETRY_MEDIAN_MS, sampleCount: A5_CADENCE_MIN_SAMPLES }]]);
+      const ctx = makeContext([node], undefined, undefined, NOW_MS, DEFAULT_MESH_ISSUE_THRESHOLDS, cadence);
+      expect(evaluateA5(ctx)).toHaveLength(0);
+    });
+
     it('records telemetryCadenceClause "clean" in evidence when the isUnmessagable clause fires the finding', () => {
       const node = makeNode({
         nodeNum: 203,
