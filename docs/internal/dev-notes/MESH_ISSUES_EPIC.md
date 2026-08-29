@@ -147,3 +147,29 @@ LocalStats polling; "promote to ROUTER" recommendations.
 - Phase 3 backlog additions: truncation note has no "+N" count (no total-count
   field in capped evidence lists); evidence node names not redacted per-source
   inside evidence JSON (D12, deliberate deferral).
+
+### Phase 3
+- 2026-08-28: worktree `../meshmonitor-mesh-issues-p3`
+  (`feature/mesh-issues-analysis-phase3`). Spec: `MESH_ISSUES_P3_SPEC.md`
+  (decisions P3-D1..P3-D12). No new migration: `mesh_issues` already carries the
+  dismiss columns and Tier C only adds new `issueType` string values.
+- Scope: C3 coverage preface, dismiss/restore routes + UI, Tier C (C1 fold-ins,
+  C2 over-broadcasting), 10 new settings keys with a read-time clamped
+  `resolveThresholds` seam, the full UI polish backlog from both phase logs, a
+  `docs/features/mesh-issues.md` user page, and D12 implemented (evidence-level
+  redaction) rather than accepted.
+- Notifications stay out of scope (P1 §5.11): recorded as a post-epic follow-up.
+- WP5 (settings section + docs, depends only on WP1) delivered: new
+  `MeshIssuesSection.tsx` modeled on `PositionEstimationSection.tsx` (own
+  state, `useSaveBar`, plain `POST /api/settings`, status from
+  `GET /api/analysis/mesh-issues/status`), wired into `SettingsTab.tsx`
+  (`GLOBAL_SECTIONS`, nav array, render site — same three sites as position
+  estimation), a component test, and the `docs/features/mesh-issues.md` user
+  page (all 18 rule rows, the passive guarantee, threshold provenance table,
+  acting-on-findings guidance, and the C1/Security-tab overlap note), plus
+  the VitePress sidebar entry and an `analysis-reports.md` cross-link. Landed
+  independently of WP2/WP3/WP4 (Tier C, dismiss/redaction routes, report UI),
+  which were still in flight in this worktree at the time — the Phase 3
+  checkbox above stays unticked until all five work packages and the
+  phase-exit checklist (full suite incl. PG/MySQL, `lint:ci`, browser
+  validation) are done.
