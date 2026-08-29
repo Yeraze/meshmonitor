@@ -1,0 +1,27 @@
+.clusterMapSection {
+  margin-top: 8px;
+}
+
+.mapToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.clusterMap {
+  margin-top: 8px;
+  height: 260px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+}
+
+.markerLabel {
+  font-size: 11px;
+}
+
+.unpositionedNote {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--color-text-subtle);
+}

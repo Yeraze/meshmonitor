@@ -40,7 +40,9 @@ vi.mock('../../services/api', async (orig) => {
   const actual = await orig<typeof import('../../services/api')>();
   return {
     __esModule: true,
-    default: { get: vi.fn(), post: vi.fn() },
+    // setBaseUrl: RouterClusterMap (#4974) pulls BaseMap → TilesetSelector →
+    // SettingsContext → i18n → init.ts, which calls api.setBaseUrl at import.
+    default: { get: vi.fn(), post: vi.fn(), setBaseUrl: vi.fn() },
     ApiError: actual.ApiError,
   };
 });
