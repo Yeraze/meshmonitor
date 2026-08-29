@@ -229,6 +229,27 @@ describe('evaluateB1 — router cluster', () => {
     expect(findings[0].evidence.inferredOnly).toBe(false);
   });
 
+  it('includes each member position in evidence so the report can map the cluster (#4974)', () => {
+    const n1 = makeNode({ nodeNum: 1, role: DeviceRole.ROUTER, longName: 'R1', latitude: 26.1, longitude: -80.2 });
+    const n2 = makeNode({ nodeNum: 2, role: DeviceRole.ROUTER, longName: 'R2' }); // unpositioned
+    const graph = makeGraph([directEdge(1, 2)]);
+    const ctx = makeCtx({ nodes: nodeMap([n1, n2]), graph });
+
+    const findings = evaluateB1(ctx);
+
+    expect(findings).toHaveLength(1);
+    const members = findings[0].evidence.members as Array<{
+      nodeNum: number;
+      latitude: number | null;
+      longitude: number | null;
+    }>;
+    const byNum = new Map(members.map((m) => [m.nodeNum, m]));
+    expect(byNum.get(1)!.latitude).toBe(26.1);
+    expect(byNum.get(1)!.longitude).toBe(-80.2);
+    expect(byNum.get(2)!.latitude).toBeNull();
+    expect(byNum.get(2)!.longitude).toBeNull();
+  });
+
   it('fires critical for a 4-router cluster (chain, still >= ROUTER_CLUSTER_CRITICAL_SIZE)', () => {
     expect(ROUTER_CLUSTER_CRITICAL_SIZE).toBe(4);
     const nodes = [1, 2, 3, 4].map((n) => makeNode({ nodeNum: n, role: DeviceRole.ROUTER }));

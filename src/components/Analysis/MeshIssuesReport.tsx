@@ -56,6 +56,7 @@ import {
   type MeshIssuesStatus,
 } from './meshIssueTypes';
 import styles from './MeshIssuesReport.module.css';
+import RouterClusterMap from './RouterClusterMap';
 
 const ISSUES_BASE_KEY = 'mesh-issues';
 const STATUS_KEY = ['mesh-issues-status'] as const;
@@ -709,6 +710,15 @@ const FindingCard: React.FC<FindingCardProps> = ({
         )}
 
         {showSnrDirections && <SnrDirections issue={issue} />}
+
+        {issue.issueType === 'B1_router_cluster' && isEvidenceNodeRefArray(issue.evidence.members) && (
+          <RouterClusterMap
+            members={issue.evidence.members}
+            bestSitedNodeNum={
+              typeof issue.evidence.bestSitedNodeNum === 'number' ? issue.evidence.bestSitedNodeNum : null
+            }
+          />
+        )}
 
         {structuredEntries.map(([key, value]) => {
           // nodeA/nodeB/snrToA/snrToB/weakerDirection are consumed together

@@ -390,6 +390,10 @@ function evaluateB1Impl(ctx: TierBRuleContext, clusters: RouterCluster[]): MeshI
           role: node.role,
           roleName: roleName(node.role),
           directDegree: ctx.graph.directAdjacency.get(n)?.size ?? 0,
+          // Effective position from the pooled snapshot so the report can
+          // draw the cluster on a map (#4974). Null when unpositioned.
+          latitude: node.latitude,
+          longitude: node.longitude,
         };
       }),
     );
