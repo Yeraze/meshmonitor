@@ -317,8 +317,8 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
     fontWeight: 600,
     borderRadius: '4px',
     verticalAlign: 'middle',
-    background: kind === 'official' ? 'var(--color-info-bg, #e0ecff)' : 'var(--color-surface-active)',
-    color: kind === 'official' ? 'var(--color-info-text, #1d4ed8)' : 'var(--color-text-muted)',
+    background: 'var(--color-surface-active)',
+    color: kind === 'official' ? 'var(--color-info)' : 'var(--color-text-muted)',
   });
 
   return (
