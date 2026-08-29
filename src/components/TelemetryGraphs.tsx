@@ -57,11 +57,10 @@ interface TelemetryGraphsProps {
   /**
    * When true, render a row of time-range buttons (15m … 7d) above the graphs
    * that let the user choose how much history to load. The chosen range is
-   * remembered in localStorage. Used on the Device Info page for the locally
-   * connected node, where telemetry volume is high enough that a fixed window
-   * either truncates the history or floods the chart. Other usages (remote
-   * nodes in the Messages/MeshCore views) leave this off and keep the fixed
-   * `telemetryHours` window.
+   * remembered in localStorage and shared across all surfaces that show the
+   * selector: Device Info, Meshtastic node details, and MeshCore node details
+   * (#4969). Usages that leave this off keep the fixed `telemetryHours`
+   * window.
    */
   showTimeRangeSelector?: boolean;
 }
