@@ -15,6 +15,7 @@ import { ChartData } from '../types/ui';
 import { useWidgetMode } from '../hooks/useWidgetMode';
 import { useWidgetRange } from '../hooks/useWidgetRange';
 import { useSource } from '../contexts/SourceContext';
+import { useResolvedSourceId } from '../hooks/useResolvedSourceId';
 import { getLatestValue } from '../utils/telemetry';
 import { telemetryDisplayScale } from '../utils/telemetryFormat';
 import TelemetryGauge from './TelemetryGauge';
@@ -523,6 +524,10 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
     // matching the general unscoped gate used elsewhere in this component tree.
     const canEditSettings = hasPermission('settings', 'write', { anySource: true });
     const { sourceId } = useSource();
+    // The telemetry endpoints require a sourceId; mirror useTelemetry's
+    // fallback so purge targets the same source the charts read (#4963).
+    const fallbackSourceId = useResolvedSourceId();
+    const effectiveSourceId = sourceId ?? fallbackSourceId;
     const [openMenu, setOpenMenu] = useState<string | null>(null);
     const [menuPosition, setMenuPosition] = useState<{
       x: number;
@@ -725,9 +730,17 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
       }
 
       try {
-        const response = await csrfFetch(`${baseUrl}/api/telemetry/${nodeId}/${telemetryType}`, {
-          method: 'DELETE',
-        });
+        // The DELETE endpoint rejects requests without a sourceId (400
+        // MISSING_SOURCE_ID), which surfaced as "Failed to purge" on every
+        // purge attempt (#4963).
+        if (!effectiveSourceId) {
+          showToast(t('telemetry.purge_failed'), 'error');
+          return;
+        }
+        const response = await csrfFetch(
+          `${baseUrl}/api/telemetry/${nodeId}/${telemetryType}?sourceId=${encodeURIComponent(effectiveSourceId)}`,
+          { method: 'DELETE' },
+        );
 
         if (!response.ok) {
           if (response.status === 403) {
