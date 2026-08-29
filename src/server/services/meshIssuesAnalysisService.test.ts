@@ -16,10 +16,13 @@ const mockDb = vi.hoisted(() => ({
     getTelemetryByTypesSince: vi.fn(),
     getPositionTelemetryByNode: vi.fn(),
   },
-  analysis: { getTraceroutes: vi.fn() },
+  analysis: { getTraceroutes: vi.fn(), getNeighbors: vi.fn() },
   getMeshIssuesAsync: vi.fn(),
   upsertMeshIssueFindingAsync: vi.fn(),
   bumpMeshIssueCleanRunAsync: vi.fn(),
+  getMqttDirectReceptionsByGatewayAsync: vi.fn(),
+  getPacketHopArrivalCountsAsync: vi.fn(),
+  getMqttPacketHopArrivalCountsAsync: vi.fn(),
 }));
 vi.mock('../../services/database.js', () => ({ default: mockDb }));
 
@@ -28,9 +31,73 @@ const mockRules = vi.hoisted(() => ({
 }));
 vi.mock('./meshIssues/rules.js', () => mockRules);
 
+const mockRulesTierB = vi.hoisted(() => ({
+  evaluateAllTierB: vi.fn(),
+  tierBSkips: vi.fn(),
+}));
+vi.mock('./meshIssues/rulesTierB.js', () => mockRulesTierB);
+
+const mockRfGraph = vi.hoisted(() => ({
+  buildRfGraph: vi.fn(),
+}));
+vi.mock('./meshIssues/rfGraph.js', () => mockRfGraph);
+
+const mockPacketLogService = vi.hoisted(() => ({ isEnabled: vi.fn() }));
+vi.mock('./packetLogService.js', () => ({ default: mockPacketLogService }));
+
+const mockMqttPacketLogService = vi.hoisted(() => ({ isEnabled: vi.fn() }));
+vi.mock('./mqttPacketLogService.js', () => ({ default: mockMqttPacketLogService }));
+
 import { ALL_SOURCES } from '../../db/repositories/base.js';
 import { dataEventEmitter } from './dataEventEmitter.js';
+import { logger } from '../../utils/logger.js';
 import { meshIssuesAnalysisService, MAX_CORPUS_PAGES } from './meshIssuesAnalysisService.js';
+
+/** A fresh RfGraph-shaped stub each call — buildRfGraph is mocked, but the
+ *  service reads/mutates `graph.stats.availability.packetLog` in place, so
+ *  every test (and every call within a test) needs its own object. */
+function makeGraphStats(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    availability: { neighborInfo: true, traceroute: false, mqttGateway: false, packetLog: false },
+    neighborInfoRowCount: 0,
+    neighborInfoEdgeCount: 0,
+    tracerouteHopLinkCount: 0,
+    tracerouteEdgeCount: 0,
+    tracerouteSentinelHopsDropped: 0,
+    gatewayCount: 0,
+    gatewayDirectEdgeCount: 0,
+    gatewayCoReceptionEdgeCount: 0,
+    gatewayCellsSkipped: 0,
+    totalEdgeCount: 0,
+    directEdgeCount: 0,
+    nodeCount: 0,
+    snrDirectionsWithMinSamples: 0,
+    ...overrides,
+  };
+}
+
+function makeGraph(statsOverrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    edges: new Map(),
+    directAdjacency: new Map(),
+    adjacency: new Map(),
+    stats: makeGraphStats(statsOverrides),
+  };
+}
+
+/**
+ * Default `buildRfGraph` mock implementation: mirrors the real module's
+ * `stats.availability = opts.availability` pass-through (same object
+ * reference, so the service's later `graph.stats.availability.packetLog =
+ * ...` mutation is visible on `result.coverage.evidence` exactly as it is
+ * in production). Tests that only care about non-availability stats fields
+ * override with `mockRfGraph.buildRfGraph.mockImplementation(() => makeGraph({...}))`.
+ */
+function graphEchoingAvailability(opts: { availability: Record<string, unknown> }) {
+  const graph = makeGraph();
+  graph.stats.availability = opts.availability as typeof graph.stats.availability;
+  return graph;
+}
 
 const NOW = 1_700_000_000_000;
 
@@ -115,10 +182,19 @@ describe('meshIssuesAnalysisService.runAnalysis', () => {
     mockDb.analysis.getTraceroutes.mockResolvedValue({
       items: [], pageSize: 2000, hasMore: false, nextCursor: null,
     });
+    mockDb.analysis.getNeighbors.mockResolvedValue({ items: [] });
     mockDb.getMeshIssuesAsync.mockResolvedValue([]);
     mockDb.upsertMeshIssueFindingAsync.mockResolvedValue({ issue: {}, outcome: 'created' });
     mockDb.bumpMeshIssueCleanRunAsync.mockResolvedValue({ cleanRuns: 1, closed: false });
+    mockDb.getMqttDirectReceptionsByGatewayAsync.mockResolvedValue([]);
+    mockDb.getPacketHopArrivalCountsAsync.mockResolvedValue([]);
+    mockDb.getMqttPacketHopArrivalCountsAsync.mockResolvedValue([]);
     mockRules.evaluateAllTierA.mockReturnValue([]);
+    mockRulesTierB.evaluateAllTierB.mockReturnValue([]);
+    mockRulesTierB.tierBSkips.mockReturnValue([]);
+    mockRfGraph.buildRfGraph.mockImplementation(graphEchoingAvailability);
+    mockPacketLogService.isEnabled.mockResolvedValue(false);
+    mockMqttPacketLogService.isEnabled.mockResolvedValue(false);
   });
 
   describe('no Meshtastic-family sources', () => {
@@ -267,10 +343,22 @@ describe('meshIssuesAnalysisService.runAnalysis', () => {
   });
 
   describe('mesh-impact guarantees', () => {
-    it('sends no packets and never calls dataEventEmitter, even on a run that finds and closes issues', async () => {
-      mockDb.sources.getAllSources.mockResolvedValue([makeSource()]);
+    it('sends no packets and never calls dataEventEmitter, even on a full Tier A + Tier B run that finds and closes issues', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([makeSource(), makeSource({ id: 'src-b', type: 'mqtt_broker' })]);
       mockDb.nodes.getAllNodes.mockResolvedValue([makeNodeRow()]);
+      mockDb.analysis.getNeighbors.mockResolvedValue({
+        items: [{ id: 1, nodeNum: 100, neighborNum: 200, sourceId: 'src-a', snr: 5, timestamp: NOW }],
+      });
+      mockPacketLogService.isEnabled.mockResolvedValue(true);
+      mockDb.getPacketHopArrivalCountsAsync.mockResolvedValue([{ nodeNum: 100, totalPackets: 30, exhaustedPackets: 20 }]);
+      mockMqttPacketLogService.isEnabled.mockResolvedValue(true);
+      mockDb.getMqttDirectReceptionsByGatewayAsync.mockResolvedValue([
+        { gatewayNodeNum: 300, fromNode: 100, sourceId: 'src-b', receptionCount: 5, meanRxSnr: 3, firstSeen: NOW, lastSeen: NOW },
+      ]);
       mockRules.evaluateAllTierA.mockReturnValue([makeFinding()]);
+      mockRulesTierB.evaluateAllTierB.mockReturnValue([
+        makeFinding({ issueType: 'B6_hop_horizon', subjectKey: 'node:100', nodeNum: 100 }),
+      ]);
       mockDb.getMeshIssuesAsync.mockResolvedValue([
         { id: 9, issueType: 'A3_infra_power', subjectKey: 'node:900' },
       ]);
@@ -282,6 +370,245 @@ describe('meshIssuesAnalysisService.runAnalysis', () => {
 
       expect(emitSpy).not.toHaveBeenCalled();
       emitSpy.mockRestore();
+    });
+  });
+
+  describe('Tier B integration (WP5a)', () => {
+    beforeEach(() => {
+      mockDb.sources.getAllSources.mockResolvedValue([makeSource()]);
+      mockDb.nodes.getAllNodes.mockResolvedValue([makeNodeRow()]);
+    });
+
+    it('persists Tier B findings alongside Tier A findings', async () => {
+      mockRules.evaluateAllTierA.mockReturnValue([
+        makeFinding({ issueType: 'A1_deprecated_role', subjectKey: 'node:100' }),
+      ]);
+      mockRulesTierB.evaluateAllTierB.mockReturnValue([
+        makeFinding({ issueType: 'B1_router_cluster', subjectKey: 'cluster:2:abcd', nodeNum: null }),
+      ]);
+
+      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(mockDb.upsertMeshIssueFindingAsync).toHaveBeenCalledTimes(2);
+      expect(result.findingCount).toBe(2);
+      expect(result.byType).toEqual({ A1_deprecated_role: 1, B1_router_cluster: 1 });
+    });
+
+    it('passes the corpus samples (not just stats) through to buildRfGraph', async () => {
+      mockDb.analysis.getTraceroutes.mockResolvedValueOnce({
+        items: [makeTracerouteRow(1)], pageSize: 2000, hasMore: false, nextCursor: null,
+      });
+
+      await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(mockRfGraph.buildRfGraph).toHaveBeenCalledTimes(1);
+      const graphArgs = mockRfGraph.buildRfGraph.mock.calls[0][0];
+      expect(Array.isArray(graphArgs.samples)).toBe(true);
+    });
+
+    it('calls getNeighbors exactly once with the resolved sourceIds and sinceMs — no per-node loop', async () => {
+      await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(mockDb.analysis.getNeighbors).toHaveBeenCalledTimes(1);
+      expect(mockDb.analysis.getNeighbors).toHaveBeenCalledWith({
+        sourceIds: ['src-a'],
+        sinceMs: NOW - 168 * 3600_000,
+      });
+    });
+
+    it('does not call the gateway aggregate when mqttPacketLogService.isEnabled() is false', async () => {
+      mockMqttPacketLogService.isEnabled.mockResolvedValue(false);
+
+      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(mockDb.getMqttDirectReceptionsByGatewayAsync).not.toHaveBeenCalled();
+      expect(result.coverage.evidence.mqttGateway).toBe(false);
+    });
+
+    it('does not call the gateway aggregate when no MQTT source is resolved, even if the setting is enabled', async () => {
+      mockMqttPacketLogService.isEnabled.mockResolvedValue(true);
+      mockDb.sources.getAllSources.mockResolvedValue([makeSource()]); // meshtastic_tcp only
+
+      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(mockDb.getMqttDirectReceptionsByGatewayAsync).not.toHaveBeenCalled();
+      expect(result.coverage.evidence.mqttGateway).toBe(false);
+    });
+
+    it('calls the gateway aggregate and sets availability.mqttGateway true when enabled with an MQTT source', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([makeSource(), makeSource({ id: 'src-b', type: 'mqtt_broker' })]);
+      mockMqttPacketLogService.isEnabled.mockResolvedValue(true);
+      mockDb.getMqttDirectReceptionsByGatewayAsync.mockResolvedValue([
+        { gatewayNodeNum: 300, fromNode: 100, sourceId: 'src-b', receptionCount: 5, meanRxSnr: 3, firstSeen: NOW, lastSeen: NOW },
+      ]);
+
+      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(mockDb.getMqttDirectReceptionsByGatewayAsync).toHaveBeenCalledWith({
+        sourceIds: ['src-b'],
+        since: NOW - 168 * 3600_000,
+      });
+      expect(result.coverage.evidence.mqttGateway).toBe(true);
+    });
+
+    it('degrades (does not abort) when the neighbours query throws — Tier A findings still persist', async () => {
+      mockDb.analysis.getNeighbors.mockRejectedValue(new Error('neighbors boom'));
+      mockRules.evaluateAllTierA.mockReturnValue([makeFinding()]);
+      const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+
+      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(warnSpy).toHaveBeenCalled();
+      expect(result.coverage.evidence.neighborInfo).toBe(false);
+      expect(mockRfGraph.buildRfGraph).toHaveBeenCalledTimes(1);
+      expect(mockRfGraph.buildRfGraph.mock.calls[0][0].neighbors).toEqual([]);
+      expect(mockDb.upsertMeshIssueFindingAsync).toHaveBeenCalledTimes(1);
+      expect(result.findingCount).toBe(1);
+      warnSpy.mockRestore();
+    });
+
+    it('degrades (does not abort) when the gateway-receptions query throws', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([makeSource(), makeSource({ id: 'src-b', type: 'mqtt_broker' })]);
+      mockMqttPacketLogService.isEnabled.mockResolvedValue(true);
+      mockDb.getMqttDirectReceptionsByGatewayAsync.mockRejectedValue(new Error('gateway boom'));
+      const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+
+      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(warnSpy).toHaveBeenCalled();
+      expect(result.coverage.evidence.mqttGateway).toBe(false);
+      warnSpy.mockRestore();
+    });
+
+    it('degrades (does not abort) when the hop-horizon packet_log query throws', async () => {
+      mockPacketLogService.isEnabled.mockResolvedValue(true);
+      mockDb.getPacketHopArrivalCountsAsync.mockRejectedValue(new Error('hop-horizon boom'));
+      const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+
+      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(warnSpy).toHaveBeenCalled();
+      expect(result.coverage.hopHorizonSource).toBeNull();
+      expect(result.coverage.evidence.packetLog).toBe(false);
+      warnSpy.mockRestore();
+    });
+  });
+
+  describe('hop-horizon preference (spec §3.3, D8)', () => {
+    beforeEach(() => {
+      mockDb.sources.getAllSources.mockResolvedValue([makeSource(), makeSource({ id: 'src-b', type: 'mqtt_broker' })]);
+      mockDb.nodes.getAllNodes.mockResolvedValue([makeNodeRow()]);
+    });
+
+    it('prefers packet_log when it returns rows', async () => {
+      mockPacketLogService.isEnabled.mockResolvedValue(true);
+      mockDb.getPacketHopArrivalCountsAsync.mockResolvedValue([{ nodeNum: 100, totalPackets: 30, exhaustedPackets: 20 }]);
+      mockMqttPacketLogService.isEnabled.mockResolvedValue(true);
+      mockDb.getMqttPacketHopArrivalCountsAsync.mockResolvedValue([{ nodeNum: 100, totalPackets: 99, exhaustedPackets: 99 }]);
+
+      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(result.coverage.hopHorizonSource).toBe('packet_log');
+      expect(result.coverage.hopHorizonNodeCount).toBe(1);
+      expect(mockDb.getMqttPacketHopArrivalCountsAsync).not.toHaveBeenCalled();
+      const tierBArgs = mockRulesTierB.evaluateAllTierB.mock.calls[0][0];
+      expect(tierBArgs.hopHorizon.get(100)).toEqual({ totalPackets: 30, exhaustedPackets: 20, sourceIds: ['src-a', 'src-b'] });
+    });
+
+    it('falls back to mqtt_packet_log when packet_log is enabled but returns nothing', async () => {
+      mockPacketLogService.isEnabled.mockResolvedValue(true);
+      mockDb.getPacketHopArrivalCountsAsync.mockResolvedValue([]);
+      mockMqttPacketLogService.isEnabled.mockResolvedValue(true);
+      mockDb.getMqttPacketHopArrivalCountsAsync.mockResolvedValue([{ nodeNum: 100, totalPackets: 25, exhaustedPackets: 20 }]);
+
+      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(result.coverage.hopHorizonSource).toBe('mqtt_packet_log');
+      expect(result.coverage.hopHorizonNodeCount).toBe(1);
+      expect(mockDb.getMqttPacketHopArrivalCountsAsync).toHaveBeenCalledWith({
+        sourceIds: ['src-b'],
+        since: NOW - 168 * 3600_000,
+      });
+    });
+
+    it('falls back to mqtt_packet_log when packet_log is not enabled at all', async () => {
+      mockPacketLogService.isEnabled.mockResolvedValue(false);
+      mockMqttPacketLogService.isEnabled.mockResolvedValue(true);
+      mockDb.getMqttPacketHopArrivalCountsAsync.mockResolvedValue([{ nodeNum: 100, totalPackets: 25, exhaustedPackets: 20 }]);
+
+      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(mockDb.getPacketHopArrivalCountsAsync).not.toHaveBeenCalled();
+      expect(result.coverage.hopHorizonSource).toBe('mqtt_packet_log');
+    });
+
+    it('reports B6 in skippedRules and an empty hopHorizon when neither log is usable', async () => {
+      mockPacketLogService.isEnabled.mockResolvedValue(false);
+      mockMqttPacketLogService.isEnabled.mockResolvedValue(false);
+      mockRulesTierB.tierBSkips.mockReturnValue([{ rule: 'B6', reason: 'no packet log enabled' }]);
+
+      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(result.coverage.hopHorizonSource).toBeNull();
+      expect(result.coverage.hopHorizonNodeCount).toBe(0);
+      const tierBArgs = mockRulesTierB.evaluateAllTierB.mock.calls[0][0];
+      expect(tierBArgs.hopHorizon.size).toBe(0);
+      expect(result.coverage.skippedRules).toEqual([{ rule: 'B6', reason: 'no packet log enabled' }]);
+    });
+  });
+
+  describe('coverage (spec §2.9)', () => {
+    beforeEach(() => {
+      mockDb.sources.getAllSources.mockResolvedValue([makeSource()]);
+      mockDb.nodes.getAllNodes.mockResolvedValue([makeNodeRow()]);
+    });
+
+    it('is present on the result and arithmetically consistent with the RF graph stats', async () => {
+      mockRfGraph.buildRfGraph.mockImplementation(() =>
+        makeGraph({
+          neighborInfoRowCount: 4,
+          neighborInfoEdgeCount: 2,
+          tracerouteEdgeCount: 3,
+          tracerouteSentinelHopsDropped: 1,
+          gatewayCount: 1,
+          gatewayDirectEdgeCount: 1,
+          gatewayCoReceptionEdgeCount: 0,
+          gatewayCellsSkipped: 0,
+          directEdgeCount: 5,
+          totalEdgeCount: 6,
+          nodeCount: 7,
+          snrDirectionsWithMinSamples: 2,
+        }),
+      );
+
+      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(result.coverage).toMatchObject({
+        neighborInfoRowCount: 4,
+        neighborInfoEdgeCount: 2,
+        tracerouteEdgeCount: 3,
+        tracerouteSentinelHopsDropped: 1,
+        gatewayCount: 1,
+        gatewayDirectEdgeCount: 1,
+        gatewayCoReceptionEdgeCount: 0,
+        gatewayCellsSkipped: 0,
+        directEdgeCount: 5,
+        totalEdgeCount: 6,
+        graphNodeCount: 7,
+        snrDirectionsWithMinSamples: 2,
+      });
+      // directEdgeCount can never exceed totalEdgeCount.
+      expect(result.coverage.directEdgeCount).toBeLessThanOrEqual(result.coverage.totalEdgeCount);
+    });
+
+    it('is present (zeroed) on the no-sources short-circuit path', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([]);
+
+      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(result.coverage.totalEdgeCount).toBe(0);
+      expect(result.coverage.hopHorizonSource).toBeNull();
+      expect(result.coverage.skippedRules).toEqual([]);
     });
   });
 });

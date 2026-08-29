@@ -16,7 +16,9 @@ import { logger } from '../../utils/logger.js';
 import { ALL_SOURCES } from '../../db/repositories/base.js';
 import { isMqttSourceType } from '../../db/repositories/sources.js';
 import type { DbNode, DbTelemetry } from '../../db/types.js';
-import type { TracerouteRow } from '../../db/repositories/analysis.js';
+import type { TracerouteRow, NeighborRow } from '../../db/repositories/analysis.js';
+import packetLogService from './packetLogService.js';
+import mqttPacketLogService from './mqttPacketLogService.js';
 import {
   buildPooledNodeSnapshot,
   buildTelemetrySeries,
@@ -26,6 +28,19 @@ import {
   type TelemetryRowInput,
 } from './meshIssues/nodeSnapshot.js';
 import { evaluateAllTierA, type RuleContext } from './meshIssues/rules.js';
+import {
+  evaluateAllTierB,
+  tierBSkips,
+  type TierBRuleContext,
+  type HopHorizonStats,
+  type RuleSkip,
+} from './meshIssues/rulesTierB.js';
+import {
+  buildRfGraph,
+  type RfEvidenceAvailability,
+  type NeighborEdgeInput,
+  type GatewayDirectReceptionInput,
+} from './meshIssues/rfGraph.js';
 import { buildTracerouteCorpus, type TracerouteCorpusStats } from './meshIssues/tracerouteCorpus.js';
 import { INFRA_ROLES, AUTO_CLOSE_CLEAN_RUNS } from './meshIssues/thresholds.js';
 import { positionSpanKm } from './nodeMobilityService.js';
@@ -64,6 +79,32 @@ export interface MeshIssuesRunOptions {
   nowMs?: number;
 }
 
+/**
+ * Phase 2 RF-evidence coverage summary — surfaced on the run result and, via
+ * `meshIssuesScheduler`'s widened `lastRunResult` type, on
+ * `GET /api/analysis/mesh-issues/status` with no scheduler edit required
+ * (spec §2.9/§2.10).
+ */
+export interface MeshIssuesCoverage {
+  evidence: RfEvidenceAvailability;
+  neighborInfoRowCount: number;
+  neighborInfoEdgeCount: number;
+  tracerouteEdgeCount: number;
+  tracerouteSentinelHopsDropped: number;
+  gatewayCount: number;
+  gatewayDirectEdgeCount: number;
+  gatewayCoReceptionEdgeCount: number;
+  gatewayCellsSkipped: number;
+  directEdgeCount: number;
+  totalEdgeCount: number;
+  graphNodeCount: number;
+  snrDirectionsWithMinSamples: number;
+  /** Which log actually fed B6, or null when neither was usable. */
+  hopHorizonSource: 'packet_log' | 'mqtt_packet_log' | null;
+  hopHorizonNodeCount: number;
+  skippedRules: RuleSkip[];
+}
+
 export interface MeshIssuesRunResult {
   durationMs: number;
   sourceCount: number;
@@ -75,6 +116,7 @@ export interface MeshIssuesRunResult {
   closedCount: number;
   byType: Record<string, number>;
   corpusStats: TracerouteCorpusStats;
+  coverage: MeshIssuesCoverage;
 }
 
 interface PersistOutcome {
@@ -96,6 +138,27 @@ function zeroCorpusStats(): TracerouteCorpusStats {
   };
 }
 
+function zeroCoverage(): MeshIssuesCoverage {
+  return {
+    evidence: { neighborInfo: false, traceroute: false, mqttGateway: false, packetLog: false },
+    neighborInfoRowCount: 0,
+    neighborInfoEdgeCount: 0,
+    tracerouteEdgeCount: 0,
+    tracerouteSentinelHopsDropped: 0,
+    gatewayCount: 0,
+    gatewayDirectEdgeCount: 0,
+    gatewayCoReceptionEdgeCount: 0,
+    gatewayCellsSkipped: 0,
+    directEdgeCount: 0,
+    totalEdgeCount: 0,
+    graphNodeCount: 0,
+    snrDirectionsWithMinSamples: 0,
+    hopHorizonSource: null,
+    hopHorizonNodeCount: 0,
+    skippedRules: [],
+  };
+}
+
 function zeroResult(durationMs: number): MeshIssuesRunResult {
   return {
     durationMs,
@@ -108,6 +171,7 @@ function zeroResult(durationMs: number): MeshIssuesRunResult {
     closedCount: 0,
     byType: {},
     corpusStats: zeroCorpusStats(),
+    coverage: zeroCoverage(),
   };
 }
 
@@ -142,6 +206,14 @@ class MeshIssuesAnalysisService {
       return zeroResult(Date.now() - start);
     }
     const sourceIdSet = new Set(sourceIds);
+    // MQTT-type sources among the resolved set — feeds gateway-receptions
+    // evidence (5c) and B7's "heard only via MQTT" guard.
+    const mqttSourceIds = new Set(
+      allSources
+        .filter((s) => s.enabled !== false)
+        .filter((s) => isMqttSourceType(s.type))
+        .map((s) => s.id),
+    );
 
     // 2. Nodes — pool physical nodes across every resolved source.
     // intentional cross-source: findings pool physical nodes across every Meshtastic source
@@ -194,16 +266,130 @@ class MeshIssuesAnalysisService {
 
     // 5. Traceroute corpus — paginate up to MAX_CORPUS_PAGES, capped.
     const { rows: traceroutes, truncated } = await this.loadTracerouteCorpusRows(sourceIds, sinceMs);
-    const { stats: corpusStats } = buildTracerouteCorpus(traceroutes, {
+    const { samples, stats: corpusStats } = buildTracerouteCorpus(traceroutes, {
       pairBucketHours: opts.pairBucketHours,
       truncated,
     });
 
-    // 6. Evaluate — never throws; a rule that can't evaluate contributes no findings.
+    // 5b. Neighbours (RF evidence class 1) — always queried, one bounded
+    // call, no per-node loop. A throw degrades rather than aborts the run.
+    let neighborRows: NeighborRow[] = [];
+    let neighborInfoAvailable = true;
+    try {
+      const result = await databaseService.analysis.getNeighbors({ sourceIds, sinceMs });
+      neighborRows = result.items;
+    } catch (err) {
+      logger.warn(`[meshIssues] neighbors query failed, degrading: ${(err as Error)?.message ?? err}`);
+      neighborInfoAvailable = false;
+    }
+    const neighbors: NeighborEdgeInput[] = neighborRows.map((r) => ({
+      nodeNum: r.nodeNum,
+      neighborNum: r.neighborNum,
+      snr: r.snr,
+      timestamp: r.timestamp,
+      sourceId: r.sourceId,
+    }));
+
+    // 5c. MQTT gateway receptions (RF evidence class 3) — conditional on the
+    // global mqtt_packet_log_enabled setting AND at least one resolved MQTT
+    // source. Otherwise [] and availability.mqttGateway stays false.
+    let gatewayReceptions: GatewayDirectReceptionInput[] = [];
+    let mqttGatewayAvailable = false;
+    let mqttPacketLogEnabled: boolean;
+    try {
+      mqttPacketLogEnabled = await mqttPacketLogService.isEnabled();
+    } catch (err) {
+      logger.warn(`[meshIssues] mqttPacketLogService.isEnabled() failed, degrading: ${(err as Error)?.message ?? err}`);
+      mqttPacketLogEnabled = false;
+    }
+    if (mqttPacketLogEnabled && mqttSourceIds.size > 0) {
+      try {
+        const rows = await databaseService.getMqttDirectReceptionsByGatewayAsync({
+          sourceIds: [...mqttSourceIds],
+          since: sinceMs,
+        });
+        gatewayReceptions = rows;
+        mqttGatewayAvailable = true;
+      } catch (err) {
+        logger.warn(`[meshIssues] gateway-receptions query failed, degrading: ${(err as Error)?.message ?? err}`);
+        mqttGatewayAvailable = false;
+        gatewayReceptions = [];
+      }
+    }
+
+    // 5d. RF adjacency graph — pure, synchronous, no I/O.
+    const availability: RfEvidenceAvailability = {
+      neighborInfo: neighborInfoAvailable,
+      traceroute: samples.length > 0,
+      mqttGateway: mqttGatewayAvailable,
+      packetLog: false, // set below in 5e once packetLogService.isEnabled() is known
+    };
+    const graph = buildRfGraph({ samples, neighbors, gatewayReceptions, availability });
+
+    // 5e. Hop horizon (B6 evidence) — preference rule (spec §3.3, D8):
+    // packet_log (our own RF vantage) wins when non-empty; mqtt_packet_log
+    // is only a fallback when packet_log is enabled but returned nothing, or
+    // is not enabled at all. The two logs are never merged.
+    const hopHorizon = new Map<number, HopHorizonStats>();
+    let hopHorizonSource: 'packet_log' | 'mqtt_packet_log' | null = null;
+    let packetLogEnabled: boolean;
+    try {
+      packetLogEnabled = await packetLogService.isEnabled();
+    } catch (err) {
+      logger.warn(`[meshIssues] packetLogService.isEnabled() failed, degrading: ${(err as Error)?.message ?? err}`);
+      packetLogEnabled = false;
+    }
+    if (packetLogEnabled) {
+      try {
+        const rows = await databaseService.getPacketHopArrivalCountsAsync({ since: sinceMs, sourceIds });
+        if (rows.length > 0) {
+          hopHorizonSource = 'packet_log';
+          for (const r of rows) {
+            hopHorizon.set(r.nodeNum, {
+              totalPackets: r.totalPackets,
+              exhaustedPackets: r.exhaustedPackets,
+              sourceIds: [...sourceIds],
+            });
+          }
+        }
+      } catch (err) {
+        logger.warn(`[meshIssues] packet_log hop-arrival query failed, degrading: ${(err as Error)?.message ?? err}`);
+        packetLogEnabled = false;
+      }
+    }
+    if (hopHorizonSource === null && mqttPacketLogEnabled && mqttSourceIds.size > 0) {
+      try {
+        const rows = await databaseService.getMqttPacketHopArrivalCountsAsync({
+          since: sinceMs,
+          sourceIds: [...mqttSourceIds],
+        });
+        if (rows.length > 0) {
+          hopHorizonSource = 'mqtt_packet_log';
+          for (const r of rows) {
+            hopHorizon.set(r.nodeNum, {
+              totalPackets: r.totalPackets,
+              exhaustedPackets: r.exhaustedPackets,
+              sourceIds: [...mqttSourceIds],
+            });
+          }
+        }
+      } catch (err) {
+        logger.warn(`[meshIssues] mqtt_packet_log hop-arrival query failed, degrading: ${(err as Error)?.message ?? err}`);
+      }
+    }
+    graph.stats.availability.packetLog = packetLogEnabled;
+
+    // 6. Evaluate Tier A — never throws; a rule that can't evaluate contributes no findings.
     const ctx: RuleContext = { nodes, telemetry, positionSpanMeters, nowMs };
     const findings = evaluateAllTierA(ctx);
 
-    // 7. Persist.
+    // 6b. Evaluate Tier B — graph-based rules layered on top of Tier A.
+    const tierBCtx: TierBRuleContext = { nodes, graph, samples, hopHorizon, mqttSourceIds, nowMs };
+    findings.push(...evaluateAllTierB(tierBCtx));
+    const skippedRules = tierBSkips(tierBCtx);
+
+    // 7. Persist — issue-type agnostic; Tier B findings flow through the
+    // same upsert/clean-run bookkeeping as Tier A.
     const persistResult = await this.persistFindings(findings, nowMs);
 
     const durationMs = Date.now() - start;
@@ -214,6 +400,25 @@ class MeshIssuesAnalysisService {
       `${persistResult.closedCount} auto-closed), in ${durationMs}ms`
     );
 
+    const coverage: MeshIssuesCoverage = {
+      evidence: graph.stats.availability,
+      neighborInfoRowCount: graph.stats.neighborInfoRowCount,
+      neighborInfoEdgeCount: graph.stats.neighborInfoEdgeCount,
+      tracerouteEdgeCount: graph.stats.tracerouteEdgeCount,
+      tracerouteSentinelHopsDropped: graph.stats.tracerouteSentinelHopsDropped,
+      gatewayCount: graph.stats.gatewayCount,
+      gatewayDirectEdgeCount: graph.stats.gatewayDirectEdgeCount,
+      gatewayCoReceptionEdgeCount: graph.stats.gatewayCoReceptionEdgeCount,
+      gatewayCellsSkipped: graph.stats.gatewayCellsSkipped,
+      directEdgeCount: graph.stats.directEdgeCount,
+      totalEdgeCount: graph.stats.totalEdgeCount,
+      graphNodeCount: graph.stats.nodeCount,
+      snrDirectionsWithMinSamples: graph.stats.snrDirectionsWithMinSamples,
+      hopHorizonSource,
+      hopHorizonNodeCount: hopHorizon.size,
+      skippedRules,
+    };
+
     return {
       durationMs,
       sourceCount: sourceIds.length,
@@ -221,6 +426,7 @@ class MeshIssuesAnalysisService {
       findingCount: findings.length,
       ...persistResult,
       corpusStats,
+      coverage,
     };
   }
 
