@@ -596,6 +596,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                     temperatureUnit={temperatureUnit}
                     telemetryHours={telemetryVisualizationHours}
                     baseUrl={baseUrl}
+                    showTimeRangeSelector
                   />
                 </>
               )}

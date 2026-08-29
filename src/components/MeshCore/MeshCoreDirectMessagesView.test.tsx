@@ -45,13 +45,14 @@ vi.mock('../ToastContainer', () => ({
 // met. Stub the heavy graphs component with a sentinel so we don't need
 // ToastProvider / QueryClientProvider / SourceProvider in this test.
 vi.mock('../TelemetryGraphs', () => ({
-  default: (props: { nodeId: string; baseUrl?: string; temperatureUnit?: string; telemetryHours?: number }) => (
+  default: (props: { nodeId: string; baseUrl?: string; temperatureUnit?: string; telemetryHours?: number; showTimeRangeSelector?: boolean }) => (
     <div
       data-testid="telemetry-graphs"
       data-node-id={props.nodeId}
       data-base-url={props.baseUrl ?? ''}
       data-temp-unit={props.temperatureUnit ?? ''}
       data-telemetry-hours={props.telemetryHours ?? ''}
+      data-show-range-selector={props.showTimeRangeSelector ? 'true' : 'false'}
     />
   ),
 }));
@@ -225,6 +226,9 @@ describe('MeshCoreDirectMessagesView — per-node telemetry-config panel', () =>
     // forwarded so the graph isn't hardcoded to Celsius / 24h.
     expect(graphs.getAttribute('data-temp-unit')).toBe('F');
     expect(graphs.getAttribute('data-telemetry-hours')).toBe('48');
+    // #4969: MeshCore node details get the same time-window selector as
+    // Meshtastic node details.
+    expect(graphs.getAttribute('data-show-range-selector')).toBe('true');
   });
 
   it('does NOT mount TelemetryGraphs for a non-real-pubkey peer', () => {
