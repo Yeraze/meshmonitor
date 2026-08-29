@@ -185,7 +185,7 @@ class MeshIssuesScheduler {
     return clampPairBucketHours(raw);
   }
 
-  /** Resolved + clamped thresholds currently in force. Reads the same nine
+  /** Resolved + clamped thresholds currently in force. Reads the same
    *  keys `meshIssuesAnalysisService.runAnalysis()` resolves per-run, so
    *  `GET /status` can show "what would apply to the next run" without
    *  actually running analysis (#4964 Phase 3 WP1). */

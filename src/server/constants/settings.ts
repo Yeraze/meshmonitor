@@ -165,6 +165,9 @@ export const VALID_SETTINGS_KEYS = [
   'mesh_issues_mobile_span_meters',
   'mesh_issues_snr_asymmetry_db',
   'mesh_issues_over_broadcast_seconds',
+  // Consecutive clean runs before an open finding auto-closes (post-epic
+  // follow-up #4964) — default 3, clamp 1-20, resolved via resolveThresholds.
+  'mesh_issues_auto_close_runs',
   'mesh_issues_last_run_summary',
   'autoKeyManagementEnabled',
   'autoKeyManagementIntervalMinutes',
@@ -647,6 +650,7 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   'mesh_issues_mobile_span_meters',         // "
   'mesh_issues_snr_asymmetry_db',           // "
   'mesh_issues_over_broadcast_seconds',     // "
+  'mesh_issues_auto_close_runs',            // global batch job (#4964 post-epic follow-up)
   'mesh_issues_last_run_summary',           // "
   'linkPreviewsEnabled',                    // :175 global privacy toggle (#3416)
   'discardInvalidPositions',                // :178 global ingest gate

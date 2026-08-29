@@ -16,6 +16,7 @@ import {
   MOBILE_SPAN_METERS,
   ASYMMETRY_DELTA_DB,
   OVER_BROADCAST_INTERVAL_SECONDS,
+  AUTO_CLOSE_CLEAN_RUNS,
 } from './thresholds.js';
 
 describe('resolveThresholds — defaults', () => {
@@ -30,6 +31,7 @@ describe('resolveThresholds — defaults', () => {
     expect(DEFAULT_MESH_ISSUE_THRESHOLDS.mobileSpanMeters).toBe(MOBILE_SPAN_METERS);
     expect(DEFAULT_MESH_ISSUE_THRESHOLDS.snrAsymmetryDb).toBe(ASYMMETRY_DELTA_DB);
     expect(DEFAULT_MESH_ISSUE_THRESHOLDS.overBroadcastSeconds).toBe(OVER_BROADCAST_INTERVAL_SECONDS);
+    expect(DEFAULT_MESH_ISSUE_THRESHOLDS.autoCloseCleanRuns).toBe(AUTO_CLOSE_CLEAN_RUNS);
   });
 
   it('returns a fresh object each call — mutating the result never affects the shared default', () => {
@@ -55,6 +57,7 @@ describe('resolveThresholds — numeric clamps', () => {
     { key: 'mesh_issues_mobile_span_meters', field: 'mobileSpanMeters', min: 50, max: 50_000 },
     { key: 'mesh_issues_snr_asymmetry_db', field: 'snrAsymmetryDb', min: 1, max: 30 },
     { key: 'mesh_issues_over_broadcast_seconds', field: 'overBroadcastSeconds', min: 30, max: 3600 },
+    { key: 'mesh_issues_auto_close_runs', field: 'autoCloseCleanRuns', min: 1, max: 20 },
   ];
 
   for (const { key, field, min, max } of cases) {
@@ -132,8 +135,8 @@ describe('resolveThresholds — boolean default-ON toggles', () => {
 });
 
 describe('MESH_ISSUE_THRESHOLD_SETTINGS_KEYS', () => {
-  it('has exactly nine entries — one per user-tunable field', () => {
-    expect(MESH_ISSUE_THRESHOLD_SETTINGS_KEYS).toHaveLength(9);
+  it('has exactly ten entries — one per user-tunable field', () => {
+    expect(MESH_ISSUE_THRESHOLD_SETTINGS_KEYS).toHaveLength(10);
   });
 
   it('every key round-trips through resolveThresholds without throwing', () => {
