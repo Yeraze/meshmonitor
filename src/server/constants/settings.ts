@@ -154,6 +154,18 @@ export const VALID_SETTINGS_KEYS = [
   'mesh_issues_lookback_hours',
   'mesh_issues_pair_bucket_hours',
   'mesh_issues_last_run',
+  // Phase 3 (#4964): tier/rule toggles, tunable thresholds, and the
+  // server-written last-run summary (see thresholds.ts's resolveThresholds).
+  'mesh_issues_tier_a_enabled',
+  'mesh_issues_tier_b_enabled',
+  'mesh_issues_tier_c_enabled',
+  'mesh_issues_b7_enabled',
+  'mesh_issues_air_util_tx_pct',
+  'mesh_issues_channel_util_pct',
+  'mesh_issues_mobile_span_meters',
+  'mesh_issues_snr_asymmetry_db',
+  'mesh_issues_over_broadcast_seconds',
+  'mesh_issues_last_run_summary',
   'autoKeyManagementEnabled',
   'autoKeyManagementIntervalMinutes',
   'autoKeyManagementMaxExchanges',
@@ -626,6 +638,16 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   'mesh_issues_lookback_hours',             // "
   'mesh_issues_pair_bucket_hours',          // "
   'mesh_issues_last_run',                   // "
+  'mesh_issues_tier_a_enabled',             // global batch job (#4964 Phase 3)
+  'mesh_issues_tier_b_enabled',             // "
+  'mesh_issues_tier_c_enabled',             // "
+  'mesh_issues_b7_enabled',                 // "
+  'mesh_issues_air_util_tx_pct',            // "
+  'mesh_issues_channel_util_pct',           // "
+  'mesh_issues_mobile_span_meters',         // "
+  'mesh_issues_snr_asymmetry_db',           // "
+  'mesh_issues_over_broadcast_seconds',     // "
+  'mesh_issues_last_run_summary',           // "
   'linkPreviewsEnabled',                    // :175 global privacy toggle (#3416)
   'discardInvalidPositions',                // :178 global ingest gate
   'noIndexEnabled',                         // :184 global robots gate (#4202)

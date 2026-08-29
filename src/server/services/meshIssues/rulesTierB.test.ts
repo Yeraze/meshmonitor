@@ -27,6 +27,7 @@ import {
   COVERAGE_SHADOW_MAX_RANGE_M,
   MOBILE_MIN_PRECISION_BITS,
   EVIDENCE_MEMBER_LIST_CAP,
+  DEFAULT_MESH_ISSUE_THRESHOLDS,
 } from './thresholds.js';
 import { DeviceRole } from '../../../constants/index.js';
 import { calculateDistance } from '../../../utils/distance.js';
@@ -193,6 +194,7 @@ function makeCtx(overrides: Partial<TierBRuleContext> = {}): TierBRuleContext {
     hopHorizon: new Map(),
     mqttSourceIds: new Set(),
     nowMs: NOW_MS,
+    thresholds: DEFAULT_MESH_ISSUE_THRESHOLDS,
     ...overrides,
   };
 }
@@ -479,6 +481,30 @@ describe('evaluateB3 — asymmetric link', () => {
     const ctx = makeCtx({ nodes: nodeMap([n1, n2]), graph: makeGraph([edge]) });
 
     expect(evaluateB3(ctx)).toEqual([]);
+  });
+
+  it('honours ctx.thresholds.snrAsymmetryDb rather than the code constant (#4964 Phase 3 WP1)', () => {
+    const n1 = makeNode({ nodeNum: 1 });
+    const n2 = makeNode({ nodeNum: 2 });
+    const edge = makeEdge({ a: 1, b: 2, snrToA: snr(3, 0), snrToB: snr(3, 5) });
+    const lowDelta = { ...DEFAULT_MESH_ISSUE_THRESHOLDS, snrAsymmetryDb: 3 };
+    const highDelta = { ...DEFAULT_MESH_ISSUE_THRESHOLDS, snrAsymmetryDb: 20 };
+
+    const firesAt3 = makeCtx({ nodes: nodeMap([n1, n2]), graph: makeGraph([edge]), thresholds: lowDelta });
+    const suppressedAt20 = makeCtx({ nodes: nodeMap([n1, n2]), graph: makeGraph([edge]), thresholds: highDelta });
+
+    expect(evaluateB3(firesAt3)).toHaveLength(1);
+    expect(evaluateB3(suppressedAt20)).toEqual([]);
+  });
+
+  it('emits the effective thresholdUsed in evidence', () => {
+    const n1 = makeNode({ nodeNum: 1 });
+    const n2 = makeNode({ nodeNum: 2 });
+    const edge = makeEdge({ a: 1, b: 2, snrToA: snr(3, 0), snrToB: snr(3, 7) });
+    const thresholds = { ...DEFAULT_MESH_ISSUE_THRESHOLDS, snrAsymmetryDb: 3 };
+    const ctx = makeCtx({ nodes: nodeMap([n1, n2]), graph: makeGraph([edge]), thresholds });
+
+    expect(evaluateB3(ctx)[0].evidence.thresholdUsed).toBe(3);
   });
 });
 
@@ -896,6 +922,36 @@ describe('evaluateAllTierB', () => {
     const elapsed = Date.now() - start;
 
     expect(elapsed).toBeLessThan(3000);
+  });
+
+  it('B7 is absent from the evaluated set when ctx.thresholds.b7Enabled is false (#4964 Phase 3 WP1)', () => {
+    const router = makeNode({ nodeNum: 700, role: DeviceRole.ROUTER, latitude: 10.0, longitude: 20.0 });
+    const neighbors = [1, 2, 3].map((km, i) =>
+      makeNode({ nodeNum: 800 + i, latitude: 10.0 + km / 111, longitude: 20.0 }),
+    );
+    const candidate = makeNode({
+      nodeNum: 900,
+      latitude: 10.0 + 1.5 / 111,
+      longitude: 20.0,
+      sourceIds: ['mqtt-src'],
+    });
+    const edges = neighbors.map((n) => directEdge(router.nodeNum, n.nodeNum));
+    const nodes = nodeMap([router, ...neighbors, candidate]);
+    const graph = makeGraph(edges);
+    const mqttSourceIds = new Set(['mqtt-src']);
+
+    const enabledCtx = makeCtx({ nodes, graph, mqttSourceIds });
+    expect(evaluateAllTierB(enabledCtx).some((f) => f.issueType === MESH_ISSUE_TYPES.B7_COVERAGE_SHADOW)).toBe(true);
+
+    const disabledCtx = makeCtx({
+      nodes,
+      graph,
+      mqttSourceIds,
+      thresholds: { ...DEFAULT_MESH_ISSUE_THRESHOLDS, b7Enabled: false },
+    });
+    expect(evaluateAllTierB(disabledCtx).some((f) => f.issueType === MESH_ISSUE_TYPES.B7_COVERAGE_SHADOW)).toBe(
+      false,
+    );
   });
 });
 

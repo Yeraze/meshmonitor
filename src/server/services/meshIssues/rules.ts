@@ -30,22 +30,20 @@ import {
 import { runRulesIsolated } from './ruleRunner.js';
 import type { PooledNode, NodeTelemetrySeries } from './nodeSnapshot.js';
 import {
-  AIR_UTIL_TX_PCT_THRESHOLD,
   AIR_UTIL_TX_MIN_SAMPLES,
   UTILIZATION_WINDOW_HOURS,
-  CHANNEL_UTIL_PCT_THRESHOLD,
   CONGESTED_AREA_MIN_NODES,
   AREA_GRID_BIN_DEG,
   BATTERY_LOW_PCT,
   BATTERY_MIN_SAMPLES,
   UPTIME_RESET_MIN_COUNT,
   POWER_WINDOW_HOURS,
-  MOBILE_SPAN_METERS,
   MOBILE_MIN_PRECISION_BITS,
   UNMESSAGABLE_MIN_FIRMWARE,
   INFRA_ROLES,
   DEPRECATED_ROLES,
   DEDICATED_ROUTER_ROLES,
+  type ResolvedMeshIssueThresholds,
 } from './thresholds.js';
 
 export interface RuleContext {
@@ -54,6 +52,8 @@ export interface RuleContext {
   /** nodeNum -> bounding-box span in meters, present only for infra-role nodes (A4). */
   positionSpanMeters: Map<number, number>;
   nowMs: number;
+  /** User-tunable, clamp-on-read thresholds resolved once per run (#4964 Phase 3 WP1). */
+  thresholds: ResolvedMeshIssueThresholds;
 }
 
 function roleName(role: number | null): string {
@@ -116,7 +116,7 @@ export function evaluateA2a(ctx: RuleContext): MeshIssueFinding[] {
     if (samples.length < AIR_UTIL_TX_MIN_SAMPLES) continue;
 
     const meanAirUtilTx = samples.reduce((sum, s) => sum + s.value, 0) / samples.length;
-    if (!(meanAirUtilTx > AIR_UTIL_TX_PCT_THRESHOLD)) continue;
+    if (!(meanAirUtilTx > ctx.thresholds.airUtilTxPct)) continue;
 
     const maxAirUtilTx = Math.max(...samples.map((s) => s.value));
     const sources = sortedUnique(samples.map((s) => s.sourceId));
@@ -132,6 +132,7 @@ export function evaluateA2a(ctx: RuleContext): MeshIssueFinding[] {
         maxAirUtilTx,
         sampleCount: samples.length,
         windowHours: UTILIZATION_WINDOW_HOURS,
+        thresholdUsed: ctx.thresholds.airUtilTxPct,
         sources,
       },
       sourceIds: sources,
@@ -196,7 +197,7 @@ export function evaluateA2b(ctx: RuleContext): MeshIssueFinding[] {
     const { latBin, lonBin, nodes } = bin;
     const binMean = nodes.reduce((sum, n) => sum + n.meanChannelUtilization, 0) / nodes.length;
 
-    if (nodes.length >= CONGESTED_AREA_MIN_NODES && binMean > CHANNEL_UTIL_PCT_THRESHOLD) {
+    if (nodes.length >= CONGESTED_AREA_MIN_NODES && binMean > ctx.thresholds.channelUtilPct) {
       const allSources = sortedUnique(nodes.flatMap((n) => n.sources));
       const centerLat = (latBin + 0.5) * AREA_GRID_BIN_DEG;
       const centerLon = (lonBin + 0.5) * AREA_GRID_BIN_DEG;
@@ -221,6 +222,7 @@ export function evaluateA2b(ctx: RuleContext): MeshIssueFinding[] {
             meanChannelUtilization: n.meanChannelUtilization,
           })),
           windowHours: UTILIZATION_WINDOW_HOURS,
+          thresholdUsed: ctx.thresholds.channelUtilPct,
           sources: allSources,
         },
         sourceIds: allSources,
@@ -240,7 +242,7 @@ export function evaluateA2b(ctx: RuleContext): MeshIssueFinding[] {
       // that it isn't (yet) an area-wide problem. See spec §5 for the
       // recorded refinement.
       for (const n of nodes) {
-        if (!(n.meanChannelUtilization > CHANNEL_UTIL_PCT_THRESHOLD)) continue;
+        if (!(n.meanChannelUtilization > ctx.thresholds.channelUtilPct)) continue;
         findings.push({
           issueType: MESH_ISSUE_TYPES.A2B_CONGESTED_NODE,
           subjectKey: nodeSubjectKey(n.nodeNum),
@@ -252,6 +254,7 @@ export function evaluateA2b(ctx: RuleContext): MeshIssueFinding[] {
             sampleCount: n.sampleCount,
             windowHours: UTILIZATION_WINDOW_HOURS,
             binNodeCount: nodes.length,
+            thresholdUsed: ctx.thresholds.channelUtilPct,
             sources: n.sources,
           },
           sourceIds: n.sources,
@@ -346,7 +349,7 @@ export function evaluateA4(ctx: RuleContext): MeshIssueFinding[] {
 
     const spanMeters = ctx.positionSpanMeters.get(node.nodeNum);
     if (spanMeters == null) continue;
-    if (!(spanMeters > MOBILE_SPAN_METERS)) continue;
+    if (!(spanMeters > ctx.thresholds.mobileSpanMeters)) continue;
 
     findings.push({
       issueType: MESH_ISSUE_TYPES.A4_MOBILE_INFRA,
@@ -367,6 +370,7 @@ export function evaluateA4(ctx: RuleContext): MeshIssueFinding[] {
         // NOT a gate (see thresholds.ts / spec §5.8).
         mobileFlag: node.mobile,
         positionPrecisionBits: node.positionPrecisionBits,
+        thresholdUsed: ctx.thresholds.mobileSpanMeters,
         sources: node.sourceIds,
       },
       sourceIds: node.sourceIds,

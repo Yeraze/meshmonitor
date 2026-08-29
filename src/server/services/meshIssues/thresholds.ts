@@ -155,3 +155,141 @@ export const CLUSTER_ROLES: ReadonlySet<number> = new Set([
   DeviceRole.ROUTER_CLIENT,
   DeviceRole.REPEATER,
 ]);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Threshold resolution seam (#4964, Phase 3 WP1)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── C2 over-broadcasting ────────────────────────────────────────────────────
+/** C2: deduped position/telemetry median inter-arrival below which a
+ *  non-tracker node counts as over-broadcasting, seconds. [ours] */
+export const OVER_BROADCAST_INTERVAL_SECONDS = 300;
+
+/**
+ * The subset of thresholds a user can tune (#4964 Phase 3). Everything not in
+ * this interface stays a code constant, documented in docs/features/mesh-issues.md.
+ */
+export interface ResolvedMeshIssueThresholds {
+  tierAEnabled: boolean;
+  tierBEnabled: boolean;
+  tierCEnabled: boolean;
+  b7Enabled: boolean;
+  /** percent, [official] */ airUtilTxPct: number;
+  /** percent, [official] */ channelUtilPct: number;
+  /** metres, [ours] */ mobileSpanMeters: number;
+  /** dB, [ours] */ snrAsymmetryDb: number;
+  /** seconds, [ours] */ overBroadcastSeconds: number;
+}
+
+export const DEFAULT_MESH_ISSUE_THRESHOLDS: ResolvedMeshIssueThresholds = {
+  tierAEnabled: true,
+  tierBEnabled: true,
+  tierCEnabled: true,
+  b7Enabled: true,
+  airUtilTxPct: AIR_UTIL_TX_PCT_THRESHOLD,
+  channelUtilPct: CHANNEL_UTIL_PCT_THRESHOLD,
+  mobileSpanMeters: MOBILE_SPAN_METERS,
+  snrAsymmetryDb: ASYMMETRY_DELTA_DB,
+  overBroadcastSeconds: OVER_BROADCAST_INTERVAL_SECONDS,
+};
+
+/**
+ * Raw settings keys `resolveThresholds` consumes. Exported as a single source
+ * of truth for the key list, so `meshIssuesAnalysisService.ts` (resolves once
+ * per run) and `meshIssuesScheduler.ts` (resolves for `getStatus()`) never
+ * drift apart on which keys make up a threshold map. [ours]
+ */
+export const MESH_ISSUE_THRESHOLD_SETTINGS_KEYS = [
+  'mesh_issues_tier_a_enabled',
+  'mesh_issues_tier_b_enabled',
+  'mesh_issues_tier_c_enabled',
+  'mesh_issues_b7_enabled',
+  'mesh_issues_air_util_tx_pct',
+  'mesh_issues_channel_util_pct',
+  'mesh_issues_mobile_span_meters',
+  'mesh_issues_snr_asymmetry_db',
+  'mesh_issues_over_broadcast_seconds',
+] as const;
+
+/** Accepts both a raw settings string and a plain number (tests call this
+ *  directly). Mirrors `meshIssuesScheduler.ts`'s local `parseNumeric`. */
+function parseNumeric(raw: unknown): number {
+  if (typeof raw === 'number') return raw;
+  if (typeof raw === 'string') return parseFloat(raw);
+  return NaN;
+}
+
+/** Same clamp doctrine as `clampLookbackHours`: unparseable falls back to
+ *  `defaultValue` (NOT a bound), a finite out-of-range value clamps to the
+ *  nearer bound. */
+function resolveClampedNumber(
+  raw: Record<string, unknown>,
+  key: string,
+  defaultValue: number,
+  min: number,
+  max: number
+): number {
+  const value = parseNumeric(raw[key]);
+  if (!Number.isFinite(value)) return defaultValue;
+  return Math.min(max, Math.max(min, value));
+}
+
+/** Default-ON: only the exact string 'false' disables. Every other value
+ *  (including '', '0', a non-'false' string, undefined, or a non-string)
+ *  leaves the toggle enabled. */
+function resolveBooleanDefaultOn(raw: Record<string, unknown>, key: string): boolean {
+  return raw[key] !== 'false';
+}
+
+/**
+ * Pure. `raw` is a settings key -> raw value map (string | number | null),
+ * keyed by `MESH_ISSUE_THRESHOLD_SETTINGS_KEYS`. Unparseable or missing falls
+ * back to the default; a finite out-of-range value clamps to the nearer bound
+ * (same doctrine as `clampLookbackHours`). Booleans are default-ON: only the
+ * exact string 'false' disables. Always returns a fresh object — never the
+ * shared `DEFAULT_MESH_ISSUE_THRESHOLDS` instance — so a caller mutating the
+ * result cannot corrupt the default.
+ */
+export function resolveThresholds(raw: Record<string, unknown>): ResolvedMeshIssueThresholds {
+  return {
+    tierAEnabled: resolveBooleanDefaultOn(raw, 'mesh_issues_tier_a_enabled'),
+    tierBEnabled: resolveBooleanDefaultOn(raw, 'mesh_issues_tier_b_enabled'),
+    tierCEnabled: resolveBooleanDefaultOn(raw, 'mesh_issues_tier_c_enabled'),
+    b7Enabled: resolveBooleanDefaultOn(raw, 'mesh_issues_b7_enabled'),
+    airUtilTxPct: resolveClampedNumber(
+      raw,
+      'mesh_issues_air_util_tx_pct',
+      DEFAULT_MESH_ISSUE_THRESHOLDS.airUtilTxPct,
+      1,
+      50
+    ),
+    channelUtilPct: resolveClampedNumber(
+      raw,
+      'mesh_issues_channel_util_pct',
+      DEFAULT_MESH_ISSUE_THRESHOLDS.channelUtilPct,
+      5,
+      100
+    ),
+    mobileSpanMeters: resolveClampedNumber(
+      raw,
+      'mesh_issues_mobile_span_meters',
+      DEFAULT_MESH_ISSUE_THRESHOLDS.mobileSpanMeters,
+      50,
+      50_000
+    ),
+    snrAsymmetryDb: resolveClampedNumber(
+      raw,
+      'mesh_issues_snr_asymmetry_db',
+      DEFAULT_MESH_ISSUE_THRESHOLDS.snrAsymmetryDb,
+      1,
+      30
+    ),
+    overBroadcastSeconds: resolveClampedNumber(
+      raw,
+      'mesh_issues_over_broadcast_seconds',
+      DEFAULT_MESH_ISSUE_THRESHOLDS.overBroadcastSeconds,
+      30,
+      3600
+    ),
+  };
+}

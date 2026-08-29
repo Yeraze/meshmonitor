@@ -20,8 +20,17 @@
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { meshIssuesAnalysisService, type MeshIssuesRunResult } from './meshIssuesAnalysisService.js';
+import {
+  resolveThresholds,
+  MESH_ISSUE_THRESHOLD_SETTINGS_KEYS,
+  type ResolvedMeshIssueThresholds,
+} from './meshIssues/thresholds.js';
 
 const LAST_RUN_KEY = 'mesh_issues_last_run';
+/** Compact summary of the last successful run, persisted so the coverage
+ *  preface survives a restart (#4964 Phase 3 WP1, spec §2.4/P3-D1). Written
+ *  on SUCCESS ONLY — a failed run must never overwrite the last good summary. */
+const LAST_RUN_SUMMARY_KEY = 'mesh_issues_last_run_summary';
 
 export const DEFAULT_FREQUENCY_HOURS = 24;
 export const DEFAULT_LOOKBACK_HOURS = 168; // 7 days
@@ -91,6 +100,32 @@ export interface MeshIssuesStatus {
   pairBucketHours: number;
   lastRunTime: number | null;
   lastRunResult: MeshIssuesRunResult | null;
+  /** Resolved + clamped thresholds actually in force for the next run. */
+  thresholds: ResolvedMeshIssueThresholds;
+  /** True when `lastRunResult` was recovered from settings (a process
+   *  restart cleared the in-memory cache) rather than served from memory. */
+  lastRunResultFromStorage: boolean;
+}
+
+/** Shape persisted at `LAST_RUN_SUMMARY_KEY` — validated defensively on read
+ *  since the key is user-POSTable (it is in VALID_SETTINGS_KEYS so the
+ *  settings-allowlist round-trip test passes). */
+interface StoredRunSummary {
+  at: number;
+  result: MeshIssuesRunResult;
+}
+
+/** Narrow, non-throwing validation of a parsed `LAST_RUN_SUMMARY_KEY` value:
+ *  a non-array object whose `result` is itself a non-array object with a
+ *  numeric `durationMs`. Anything else (including a JSON parse failure, which
+ *  the caller catches) degrades to `null` rather than throwing — the key is
+ *  user-POSTable, so a malformed value must never break `getStatus()`. */
+function isValidStoredRunSummary(value: unknown): value is StoredRunSummary {
+  if (value == null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const result = (value as { result?: unknown }).result;
+  if (result == null || typeof result !== 'object' || Array.isArray(result)) return false;
+  const durationMs = (result as { durationMs?: unknown }).durationMs;
+  return typeof durationMs === 'number';
 }
 
 class MeshIssuesScheduler {
@@ -150,6 +185,37 @@ class MeshIssuesScheduler {
     return clampPairBucketHours(raw);
   }
 
+  /** Resolved + clamped thresholds currently in force. Reads the same nine
+   *  keys `meshIssuesAnalysisService.runAnalysis()` resolves per-run, so
+   *  `GET /status` can show "what would apply to the next run" without
+   *  actually running analysis (#4964 Phase 3 WP1). */
+  private async getThresholds(): Promise<ResolvedMeshIssueThresholds> {
+    const values = await Promise.all(
+      MESH_ISSUE_THRESHOLD_SETTINGS_KEYS.map((key) => databaseService.settings.getSetting(key)),
+    );
+    const raw: Record<string, unknown> = {};
+    MESH_ISSUE_THRESHOLD_SETTINGS_KEYS.forEach((key, i) => {
+      raw[key] = values[i];
+    });
+    return resolveThresholds(raw);
+  }
+
+  /** Recovers the last successful run's summary from settings — the restart
+   *  path: `lastRunResult` is only ever written on success (see `execute()`),
+   *  and malformed/missing JSON degrades to `null` rather than throwing. */
+  private async getLastRunResultFromStorage(): Promise<MeshIssuesRunResult | null> {
+    const raw = await databaseService.settings.getSetting(LAST_RUN_SUMMARY_KEY);
+    if (!raw) return null;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+    if (!isValidStoredRunSummary(parsed)) return null;
+    return parsed.result;
+  }
+
   /**
    * Prefers the in-memory cache; otherwise reads `mesh_issues_last_run` from
    * settings with an EMPTY in-memory cache — this is the restart-safety path
@@ -196,16 +262,19 @@ class MeshIssuesScheduler {
   /**
    * Records the run time in a `finally` — on success AND on failure — so a
    * failing run cannot become a retry storm and the last-run timestamp is
-   * always durable to a restart.
+   * always durable to a restart. The run SUMMARY, by contrast, is written
+   * only when `result` is non-null (success) — a failed run must not
+   * overwrite the last good summary (#4964 Phase 3 WP1, spec §2.4).
    */
   private async execute(): Promise<MeshIssuesRunResult> {
     this.inProgress = true;
+    let result: MeshIssuesRunResult | null = null;
     try {
       const [lookbackHours, pairBucketHours] = await Promise.all([
         this.getLookbackHours(),
         this.getPairBucketHours(),
       ]);
-      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours, pairBucketHours });
+      result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours, pairBucketHours });
       this.lastRunResult = result;
       return result;
     } finally {
@@ -216,17 +285,41 @@ class MeshIssuesScheduler {
       } catch (error) {
         logger.error('❌ Failed to record mesh_issues_last_run:', error);
       }
+      if (result !== null) {
+        try {
+          const summary: StoredRunSummary = { at: this.lastRunTime, result };
+          await databaseService.settings.setSetting(LAST_RUN_SUMMARY_KEY, JSON.stringify(summary));
+        } catch (error) {
+          logger.error('❌ Failed to record mesh_issues_last_run_summary:', error);
+        }
+      }
     }
   }
 
   async getStatus(): Promise<MeshIssuesStatus> {
-    const [enabled, frequencyHours, lookbackHours, pairBucketHours, lastRun] = await Promise.all([
+    const [enabled, frequencyHours, lookbackHours, pairBucketHours, lastRun, thresholds] = await Promise.all([
       this.getEnabled(),
       this.getFrequencyHours(),
       this.getLookbackHours(),
       this.getPairBucketHours(),
       this.getLastRun(),
+      this.getThresholds(),
     ]);
+
+    // Prefer the in-memory result (this process actually ran it); otherwise
+    // recover the last successful run's summary from settings — the restart
+    // path (mesh-impact checklist §3): the coverage preface must not go
+    // blank for a full frequency period just because the process restarted.
+    let lastRunResult = this.lastRunResult;
+    let lastRunResultFromStorage = false;
+    if (lastRunResult === null) {
+      const stored = await this.getLastRunResultFromStorage();
+      if (stored !== null) {
+        lastRunResult = stored;
+        lastRunResultFromStorage = true;
+      }
+    }
+
     return {
       running: this.isRunning,
       inProgress: this.inProgress,
@@ -235,7 +328,9 @@ class MeshIssuesScheduler {
       lookbackHours,
       pairBucketHours,
       lastRunTime: lastRun,
-      lastRunResult: this.lastRunResult,
+      lastRunResult,
+      thresholds,
+      lastRunResultFromStorage,
     };
   }
 }

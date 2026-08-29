@@ -17,6 +17,7 @@ const mockDb = vi.hoisted(() => ({
     getPositionTelemetryByNode: vi.fn(),
   },
   analysis: { getTraceroutes: vi.fn(), getNeighbors: vi.fn() },
+  settings: { getSetting: vi.fn() },
   getMeshIssuesAsync: vi.fn(),
   upsertMeshIssueFindingAsync: vi.fn(),
   bumpMeshIssueCleanRunAsync: vi.fn(),
@@ -177,6 +178,7 @@ function makeFinding(overrides: Partial<Record<string, unknown>> = {}) {
 describe('meshIssuesAnalysisService.runAnalysis', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDb.settings.getSetting.mockResolvedValue(null);
     mockDb.telemetry.getTelemetryByTypesSince.mockResolvedValue([]);
     mockDb.telemetry.getPositionTelemetryByNode.mockResolvedValue([]);
     mockDb.analysis.getTraceroutes.mockResolvedValue({
@@ -491,6 +493,69 @@ describe('meshIssuesAnalysisService.runAnalysis', () => {
       expect(result.coverage.hopHorizonSource).toBeNull();
       expect(result.coverage.evidence.packetLog).toBe(false);
       warnSpy.mockRestore();
+    });
+  });
+
+  describe('tier gating (#4964 Phase 3 WP1)', () => {
+    beforeEach(() => {
+      mockDb.sources.getAllSources.mockResolvedValue([makeSource()]);
+      mockDb.nodes.getAllNodes.mockResolvedValue([makeNodeRow()]);
+    });
+
+    it('does not evaluate Tier A, and produces no A findings, when mesh_issues_tier_a_enabled is false', async () => {
+      mockDb.settings.getSetting.mockImplementation(async (key: string) =>
+        key === 'mesh_issues_tier_a_enabled' ? 'false' : null,
+      );
+      mockRules.evaluateAllTierA.mockReturnValue([
+        makeFinding({ issueType: 'A1_deprecated_role', subjectKey: 'node:100' }),
+      ]);
+
+      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(mockRules.evaluateAllTierA).not.toHaveBeenCalled();
+      expect(result.findingCount).toBe(0);
+      expect(result.byType).toEqual({});
+    });
+
+    it('does not evaluate Tier B, and produces no B findings, when mesh_issues_tier_b_enabled is false', async () => {
+      mockDb.settings.getSetting.mockImplementation(async (key: string) =>
+        key === 'mesh_issues_tier_b_enabled' ? 'false' : null,
+      );
+      mockRulesTierB.evaluateAllTierB.mockReturnValue([
+        makeFinding({ issueType: 'B1_router_cluster', subjectKey: 'cluster:2:abcd', nodeNum: null }),
+      ]);
+
+      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(mockRulesTierB.evaluateAllTierB).not.toHaveBeenCalled();
+      expect(result.findingCount).toBe(0);
+    });
+
+    it('a disabled tier still bumps cleanRuns for its existing open findings (auto-close, no row deletion)', async () => {
+      mockDb.settings.getSetting.mockImplementation(async (key: string) =>
+        key === 'mesh_issues_tier_a_enabled' ? 'false' : null,
+      );
+      mockDb.getMeshIssuesAsync.mockResolvedValue([
+        { id: 42, issueType: 'A1_deprecated_role', subjectKey: 'node:100' },
+      ]);
+
+      await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(mockDb.bumpMeshIssueCleanRunAsync).toHaveBeenCalledWith(42, expect.any(Number), NOW);
+    });
+
+    it('resolves thresholds once and passes the same resolved values into both the Tier A and Tier B contexts', async () => {
+      mockDb.settings.getSetting.mockImplementation(async (key: string) =>
+        key === 'mesh_issues_air_util_tx_pct' ? '15' : null,
+      );
+
+      await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      const tierACtx = mockRules.evaluateAllTierA.mock.calls[0][0];
+      const tierBCtx = mockRulesTierB.evaluateAllTierB.mock.calls[0][0];
+      expect(tierACtx.thresholds.airUtilTxPct).toBe(15);
+      expect(tierBCtx.thresholds.airUtilTxPct).toBe(15);
+      expect(tierACtx.thresholds).toEqual(tierBCtx.thresholds);
     });
   });
 

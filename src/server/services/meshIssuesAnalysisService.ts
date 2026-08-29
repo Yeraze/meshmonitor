@@ -42,7 +42,13 @@ import {
   type GatewayDirectReceptionInput,
 } from './meshIssues/rfGraph.js';
 import { buildTracerouteCorpus, type TracerouteCorpusStats } from './meshIssues/tracerouteCorpus.js';
-import { INFRA_ROLES, AUTO_CLOSE_CLEAN_RUNS } from './meshIssues/thresholds.js';
+import {
+  INFRA_ROLES,
+  AUTO_CLOSE_CLEAN_RUNS,
+  resolveThresholds,
+  MESH_ISSUE_THRESHOLD_SETTINGS_KEYS,
+  type ResolvedMeshIssueThresholds,
+} from './meshIssues/thresholds.js';
 import { positionSpanKm } from './nodeMobilityService.js';
 import type { MeshIssueFinding } from './meshIssues/types.js';
 
@@ -192,6 +198,12 @@ class MeshIssuesAnalysisService {
     const start = Date.now();
     const nowMs = opts.nowMs ?? Date.now();
     const sinceMs = nowMs - opts.lookbackHours * 3600_000;
+
+    // 0. Thresholds — resolved ONCE per run (clamp-on-read, never reject) and
+    // threaded into every tier's RuleContext, plus the per-tier gate below
+    // (#4964 Phase 3 WP1). Rule modules stay pure: they read
+    // `ctx.thresholds.*`, never `databaseService`.
+    const thresholds = await this.resolveCurrentThresholds();
 
     // 1. Sources — Meshtastic TCP + MQTT only. MeshCore/Reticulum are
     // excluded: neither writes nodes/telemetry (MeshCore lives in
@@ -379,13 +391,18 @@ class MeshIssuesAnalysisService {
     }
     graph.stats.availability.packetLog = packetLogEnabled;
 
-    // 6. Evaluate Tier A — never throws; a rule that can't evaluate contributes no findings.
-    const ctx: RuleContext = { nodes, telemetry, positionSpanMeters, nowMs };
-    const findings = evaluateAllTierA(ctx);
+    // 6. Evaluate Tier A — never throws; a rule that can't evaluate contributes
+    // no findings. Gated by thresholds.tierAEnabled: a disabled tier
+    // contributes no findings THIS RUN, but does not delete any existing row
+    // — persistFindings' clean-run bookkeeping (step 7) closes them the
+    // honest way, after AUTO_CLOSE_CLEAN_RUNS runs with nothing detected.
+    const ctx: RuleContext = { nodes, telemetry, positionSpanMeters, nowMs, thresholds };
+    const findings: MeshIssueFinding[] = thresholds.tierAEnabled ? evaluateAllTierA(ctx) : [];
 
-    // 6b. Evaluate Tier B — graph-based rules layered on top of Tier A.
-    const tierBCtx: TierBRuleContext = { nodes, graph, samples, hopHorizon, mqttSourceIds, nowMs };
-    findings.push(...evaluateAllTierB(tierBCtx));
+    // 6b. Evaluate Tier B — graph-based rules layered on top of Tier A. B7's
+    // own toggle is handled inside evaluateAllTierB (ctx.thresholds.b7Enabled).
+    const tierBCtx: TierBRuleContext = { nodes, graph, samples, hopHorizon, mqttSourceIds, nowMs, thresholds };
+    if (thresholds.tierBEnabled) findings.push(...evaluateAllTierB(tierBCtx));
     const skippedRules = tierBSkips(tierBCtx);
 
     // 7. Persist — issue-type agnostic; Tier B findings flow through the
@@ -428,6 +445,24 @@ class MeshIssuesAnalysisService {
       corpusStats,
       coverage,
     };
+  }
+
+  /**
+   * Reads the nine user-tunable threshold/toggle settings and resolves them
+   * (clamp-on-read, never reject — see `resolveThresholds`'s own JSDoc).
+   * Exported indirectly via `MESH_ISSUE_THRESHOLD_SETTINGS_KEYS` so
+   * `meshIssuesScheduler.getStatus()` can report the thresholds that would be
+   * in force for the NEXT run, without running analysis (#4964 Phase 3 WP1).
+   */
+  private async resolveCurrentThresholds(): Promise<ResolvedMeshIssueThresholds> {
+    const values = await Promise.all(
+      MESH_ISSUE_THRESHOLD_SETTINGS_KEYS.map((key) => databaseService.settings.getSetting(key)),
+    );
+    const raw: Record<string, unknown> = {};
+    MESH_ISSUE_THRESHOLD_SETTINGS_KEYS.forEach((key, i) => {
+      raw[key] = values[i];
+    });
+    return resolveThresholds(raw);
   }
 
   /**

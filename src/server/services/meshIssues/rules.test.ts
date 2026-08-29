@@ -11,7 +11,7 @@ import {
 } from './rules.js';
 import type { PooledNode, NodeTelemetrySeries, TelemetrySample } from './nodeSnapshot.js';
 import { MESH_ISSUE_TYPES } from './types.js';
-import { UTILIZATION_WINDOW_HOURS, POWER_WINDOW_HOURS } from './thresholds.js';
+import { UTILIZATION_WINDOW_HOURS, POWER_WINDOW_HOURS, DEFAULT_MESH_ISSUE_THRESHOLDS } from './thresholds.js';
 import { DeviceRole } from '../../../constants/index.js';
 
 const NOW_MS = 2_000_000_000_000;
@@ -50,11 +50,12 @@ function makeContext(
   nodes: PooledNode[],
   telemetry: Map<number, NodeTelemetrySeries> = new Map(),
   positionSpanMeters: Map<number, number> = new Map(),
-  nowMs = NOW_MS
+  nowMs = NOW_MS,
+  thresholds = DEFAULT_MESH_ISSUE_THRESHOLDS
 ): RuleContext {
   const nodeMap = new Map<number, PooledNode>();
   for (const n of nodes) nodeMap.set(n.nodeNum, n);
-  return { nodes: nodeMap, telemetry, positionSpanMeters, nowMs };
+  return { nodes: nodeMap, telemetry, positionSpanMeters, nowMs, thresholds };
 }
 
 describe('evaluateA1 — deprecated role', () => {
@@ -126,6 +127,23 @@ describe('evaluateA2a — chatty node', () => {
     const outOfWindow = [{ timestamp: UTIL_WINDOW_START - 10_000, value: 100 }];
     const ctx = makeContext([makeNode()], seriesWithAirUtil([...inWindow, ...outOfWindow]));
     expect(evaluateA2a(ctx)).toHaveLength(0); // only 5 in-window samples, below AIR_UTIL_TX_MIN_SAMPLES
+  });
+
+  it('honours ctx.thresholds.airUtilTxPct rather than the code constant (#4964 Phase 3 WP1)', () => {
+    const samples = Array.from({ length: 6 }, (_, i) => ({ timestamp: UTIL_WINDOW_START + 1000 + i, value: 9 }));
+    const lowCeiling = { ...DEFAULT_MESH_ISSUE_THRESHOLDS, airUtilTxPct: 5 };
+    const highCeiling = { ...DEFAULT_MESH_ISSUE_THRESHOLDS, airUtilTxPct: 20 };
+    const firesAt5 = makeContext([makeNode()], seriesWithAirUtil(samples), new Map(), NOW_MS, lowCeiling);
+    const suppressedAt20 = makeContext([makeNode()], seriesWithAirUtil(samples), new Map(), NOW_MS, highCeiling);
+    expect(evaluateA2a(firesAt5)).toHaveLength(1);
+    expect(evaluateA2a(suppressedAt20)).toHaveLength(0);
+  });
+
+  it('emits the effective thresholdUsed in evidence', () => {
+    const samples = Array.from({ length: 6 }, (_, i) => ({ timestamp: UTIL_WINDOW_START + 1000 + i, value: 9 }));
+    const thresholds = { ...DEFAULT_MESH_ISSUE_THRESHOLDS, airUtilTxPct: 5 };
+    const ctx = makeContext([makeNode()], seriesWithAirUtil(samples), new Map(), NOW_MS, thresholds);
+    expect(evaluateA2a(ctx)[0].evidence.thresholdUsed).toBe(5);
   });
 });
 
@@ -221,6 +239,41 @@ describe('evaluateA2b — congested area', () => {
     expect(findings[0].severity).toBe('info');
     expect(findings.some((f) => f.issueType === MESH_ISSUE_TYPES.A2B_CONGESTED_AREA)).toBe(false);
   });
+
+  it('honours ctx.thresholds.channelUtilPct for the area branch (#4964 Phase 3 WP1)', () => {
+    const nodes = [
+      makeNode({ nodeNum: 1, latitude: 10.01, longitude: 20.01 }),
+      makeNode({ nodeNum: 2, latitude: 10.02, longitude: 20.02 }),
+      makeNode({ nodeNum: 3, latitude: 10.03, longitude: 20.03 }),
+    ];
+    const telemetry = new Map<number, NodeTelemetrySeries>([
+      [1, channelUtilSeries(30)],
+      [2, channelUtilSeries(30)],
+      [3, channelUtilSeries(30)],
+    ]);
+    const highCeiling = { ...DEFAULT_MESH_ISSUE_THRESHOLDS, channelUtilPct: 50 };
+    const suppressed = evaluateA2b(makeContext(nodes, telemetry, new Map(), NOW_MS, highCeiling));
+    expect(suppressed).toHaveLength(0);
+
+    const findings = evaluateA2b(makeContext(nodes, telemetry));
+    expect(findings[0].evidence.thresholdUsed).toBe(DEFAULT_MESH_ISSUE_THRESHOLDS.channelUtilPct);
+  });
+
+  it('honours ctx.thresholds.channelUtilPct for the per-node fallback branch', () => {
+    const nodes = [
+      makeNode({ nodeNum: 1, latitude: 10.01, longitude: 20.01 }),
+      makeNode({ nodeNum: 2, latitude: 10.02, longitude: 20.02 }),
+    ];
+    const telemetry = new Map<number, NodeTelemetrySeries>([
+      [1, channelUtilSeries(30)],
+      [2, channelUtilSeries(30)],
+    ]);
+    const highCeiling = { ...DEFAULT_MESH_ISSUE_THRESHOLDS, channelUtilPct: 50 };
+    expect(evaluateA2b(makeContext(nodes, telemetry, new Map(), NOW_MS, highCeiling))).toHaveLength(0);
+
+    const findings = evaluateA2b(makeContext(nodes, telemetry));
+    expect(findings[0].evidence.thresholdUsed).toBe(DEFAULT_MESH_ISSUE_THRESHOLDS.channelUtilPct);
+  });
 });
 
 describe('evaluateA3 — infra role on failing power', () => {
@@ -313,6 +366,39 @@ describe('evaluateA4 — mobile infra node', () => {
   it('never fires for a non-infra role', () => {
     const ctx = makeContext([makeNode({ role: DeviceRole.CLIENT })], new Map(), new Map([[100, 600]]));
     expect(evaluateA4(ctx)).toHaveLength(0);
+  });
+
+  it('honours ctx.thresholds.mobileSpanMeters rather than the code constant (#4964 Phase 3 WP1)', () => {
+    const lowSpan = { ...DEFAULT_MESH_ISSUE_THRESHOLDS, mobileSpanMeters: 300 };
+    const highSpan = { ...DEFAULT_MESH_ISSUE_THRESHOLDS, mobileSpanMeters: 900 };
+    const firesAt400 = makeContext(
+      [makeNode({ role: DeviceRole.ROUTER })],
+      new Map(),
+      new Map([[100, 400]]),
+      NOW_MS,
+      lowSpan
+    );
+    const suppressedAt400 = makeContext(
+      [makeNode({ role: DeviceRole.ROUTER })],
+      new Map(),
+      new Map([[100, 400]]),
+      NOW_MS,
+      highSpan
+    );
+    expect(evaluateA4(firesAt400)).toHaveLength(1);
+    expect(evaluateA4(suppressedAt400)).toHaveLength(0);
+  });
+
+  it('emits the effective thresholdUsed in evidence', () => {
+    const thresholds = { ...DEFAULT_MESH_ISSUE_THRESHOLDS, mobileSpanMeters: 300 };
+    const ctx = makeContext(
+      [makeNode({ role: DeviceRole.ROUTER })],
+      new Map(),
+      new Map([[100, 600]]),
+      NOW_MS,
+      thresholds
+    );
+    expect(evaluateA4(ctx)[0].evidence.thresholdUsed).toBe(300);
   });
 });
 
