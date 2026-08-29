@@ -103,10 +103,10 @@ LocalStats polling; "promote to ROUTER" recommendations.
   (envelope + `requirePermission`), minimal Reports card listing findings by severity.
   Exit: full suite green incl. PG/MySQL, report renders findings from live dev DB, PR
   merged.
-- [ ] **Phase 2 — Tier B.** RF adjacency union (3 evidence classes), per-edge directional
+- [x] **Phase 2 — Tier B.** RF adjacency union (3 evidence classes), per-edge directional
   SNR stats, rules B1–B7, evidence rendering in the report. Exit: suite green,
   graph rules validated against dev DB, PR merged.
-- [ ] **Phase 3 — Polish.** Coverage preface, dismiss/acknowledge + auto-close, Tier C
+- [x] **Phase 3 — Polish.** Coverage preface, dismiss/acknowledge + auto-close, Tier C
   fold-ins, threshold settings UI (SettingsDraft + VALID_SETTINGS_KEYS), user docs.
   Exit: suite green, browser-validated end-to-end, docs updated, PR merged.
 
@@ -169,7 +169,18 @@ LocalStats polling; "promote to ROUTER" recommendations.
   acting-on-findings guidance, and the C1/Security-tab overlap note), plus
   the VitePress sidebar entry and an `analysis-reports.md` cross-link. Landed
   independently of WP2/WP3/WP4 (Tier C, dismiss/redaction routes, report UI),
-  which were still in flight in this worktree at the time — the Phase 3
-  checkbox above stays unticked until all five work packages and the
-  phase-exit checklist (full suite incl. PG/MySQL, `lint:ci`, browser
-  validation) are done.
+  which were still in flight in this worktree at the time.
+- 2026-08-29: all five work packages landed. Review pass fixed: semantic-token
+  guard violation in the settings badges (fallback hexes on undefined tokens);
+  added the spec'd `meshIssueTypes.test.ts` boundary tests. Browser-validated
+  on the live dev DB: coverage funnel renders, INFO(813) collapses (DOM
+  bounded), dismiss→restore round-trips, Tier C fires (289 key-security,
+  238 time-offset, 55 over-broadcasting), settings section renders with
+  provenance badges. Phase 3 checkbox ticked; epic complete pending PR merge.
+- Post-epic follow-ups (recorded, not implemented): notifications for findings
+  (needs a user decision — event-bus fan-out is mesh-impact §2); server-side
+  pagination if findings exceed a few thousand; expose `AUTO_CLOSE_CLEAN_RUNS`;
+  extract `resolvePermittedSourceIds` from `analysisRoutes.ts`; A5 telemetry
+  cadence clause (still blocked on solicited/broadcast separability);
+  coverage-preface MQTT hint shows even with no MQTT source configured (wire
+  lacks a source-configured flag).
