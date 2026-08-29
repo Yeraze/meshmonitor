@@ -11,7 +11,14 @@ import {
 } from './rules.js';
 import type { PooledNode, NodeTelemetrySeries, TelemetrySample } from './nodeSnapshot.js';
 import { MESH_ISSUE_TYPES } from './types.js';
-import { UTILIZATION_WINDOW_HOURS, POWER_WINDOW_HOURS, DEFAULT_MESH_ISSUE_THRESHOLDS } from './thresholds.js';
+import {
+  UTILIZATION_WINDOW_HOURS,
+  POWER_WINDOW_HOURS,
+  DEFAULT_MESH_ISSUE_THRESHOLDS,
+  A5_CADENCE_MIN_SAMPLES,
+  A5_TELEMETRY_MEDIAN_MS,
+} from './thresholds.js';
+import type { RouterTelemetryCadenceStats } from './rules.js';
 import { DeviceRole } from '../../../constants/index.js';
 
 const NOW_MS = 2_000_000_000_000;
@@ -59,11 +66,12 @@ function makeContext(
   telemetry: Map<number, NodeTelemetrySeries> = new Map(),
   positionSpanMeters: Map<number, number> = new Map(),
   nowMs = NOW_MS,
-  thresholds = DEFAULT_MESH_ISSUE_THRESHOLDS
+  thresholds = DEFAULT_MESH_ISSUE_THRESHOLDS,
+  routerBroadcastTelemetryCadence: Map<number, RouterTelemetryCadenceStats> = new Map()
 ): RuleContext {
   const nodeMap = new Map<number, PooledNode>();
   for (const n of nodes) nodeMap.set(n.nodeNum, n);
-  return { nodes: nodeMap, telemetry, positionSpanMeters, nowMs, thresholds };
+  return { nodes: nodeMap, telemetry, positionSpanMeters, nowMs, thresholds, routerBroadcastTelemetryCadence };
 }
 
 describe('evaluateA1 — deprecated role', () => {
@@ -411,12 +419,15 @@ describe('evaluateA4 — mobile infra node', () => {
 });
 
 describe('evaluateA5 — cosplay router', () => {
-  it('fires info for ROUTER + firmware 2.6 + isUnmessagable=false', () => {
+  it('fires info for ROUTER + firmware 2.6 + isUnmessagable=false, cadence unavailable', () => {
     const ctx = makeContext([makeNode({ role: DeviceRole.ROUTER, firmwareVersion: '2.6.0', isUnmessagable: false })]);
     const findings = evaluateA5(ctx);
     expect(findings).toHaveLength(1);
     expect(findings[0].severity).toBe('info');
     expect(findings[0].confidence).toBe('low');
+    expect(findings[0].evidence.telemetryCadenceClause).toBe('unavailable');
+    expect(findings[0].evidence.medianIntervalMs).toBeNull();
+    expect(findings[0].evidence.sampleCount).toBeNull();
   });
 
   it('does not fire when isUnmessagable=true', () => {
@@ -444,6 +455,67 @@ describe('evaluateA5 — cosplay router', () => {
   it('does not fire for REPEATER', () => {
     const ctx = makeContext([makeNode({ role: DeviceRole.REPEATER, firmwareVersion: '2.6.0', isUnmessagable: false })]);
     expect(evaluateA5(ctx)).toHaveLength(0);
+  });
+
+  describe('telemetry-cadence clause (#4964 post-epic follow-up)', () => {
+    it('fires via the cadence clause alone (isUnmessagable=true, firmware irrelevant)', () => {
+      const node = makeNode({ nodeNum: 200, role: DeviceRole.ROUTER, firmwareVersion: null, isUnmessagable: true });
+      const cadence = new Map([[200, { medianIntervalMs: A5_TELEMETRY_MEDIAN_MS - 1, sampleCount: A5_CADENCE_MIN_SAMPLES }]]);
+      const ctx = makeContext([node], undefined, undefined, NOW_MS, DEFAULT_MESH_ISSUE_THRESHOLDS, cadence);
+      const findings = evaluateA5(ctx);
+      expect(findings).toHaveLength(1);
+      expect(findings[0].severity).toBe('info');
+      expect(findings[0].confidence).toBe('low');
+      expect(findings[0].evidence.telemetryCadenceClause).toBe('fired');
+      expect(findings[0].evidence.medianIntervalMs).toBe(A5_TELEMETRY_MEDIAN_MS - 1);
+      expect(findings[0].evidence.sampleCount).toBe(A5_CADENCE_MIN_SAMPLES);
+    });
+
+    it('does not fire below A5_CADENCE_MIN_SAMPLES', () => {
+      const node = makeNode({ nodeNum: 201, role: DeviceRole.ROUTER, firmwareVersion: null, isUnmessagable: true });
+      const cadence = new Map([
+        [201, { medianIntervalMs: A5_TELEMETRY_MEDIAN_MS - 1, sampleCount: A5_CADENCE_MIN_SAMPLES - 1 }],
+      ]);
+      const ctx = makeContext([node], undefined, undefined, NOW_MS, DEFAULT_MESH_ISSUE_THRESHOLDS, cadence);
+      expect(evaluateA5(ctx)).toHaveLength(0);
+    });
+
+    it('does not fire when the median is at/above A5_TELEMETRY_MEDIAN_MS ("clean")', () => {
+      const node = makeNode({ nodeNum: 202, role: DeviceRole.ROUTER, firmwareVersion: null, isUnmessagable: true });
+      const cadence = new Map([[202, { medianIntervalMs: A5_TELEMETRY_MEDIAN_MS, sampleCount: A5_CADENCE_MIN_SAMPLES }]]);
+      const ctx = makeContext([node], undefined, undefined, NOW_MS, DEFAULT_MESH_ISSUE_THRESHOLDS, cadence);
+      expect(evaluateA5(ctx)).toHaveLength(0);
+    });
+
+    it('records telemetryCadenceClause "clean" in evidence when the isUnmessagable clause fires the finding', () => {
+      const node = makeNode({
+        nodeNum: 203,
+        role: DeviceRole.ROUTER,
+        firmwareVersion: '2.6.0',
+        isUnmessagable: false,
+      });
+      const cadence = new Map([[203, { medianIntervalMs: A5_TELEMETRY_MEDIAN_MS, sampleCount: A5_CADENCE_MIN_SAMPLES }]]);
+      const ctx = makeContext([node], undefined, undefined, NOW_MS, DEFAULT_MESH_ISSUE_THRESHOLDS, cadence);
+      const findings = evaluateA5(ctx);
+      expect(findings).toHaveLength(1);
+      expect(findings[0].evidence.telemetryCadenceClause).toBe('clean');
+      expect(findings[0].evidence.medianIntervalMs).toBe(A5_TELEMETRY_MEDIAN_MS);
+    });
+
+    it('either clause independently produces exactly one finding — both firing does not duplicate', () => {
+      const node = makeNode({
+        nodeNum: 204,
+        role: DeviceRole.ROUTER,
+        firmwareVersion: '2.6.0',
+        isUnmessagable: false,
+      });
+      const cadence = new Map([[204, { medianIntervalMs: A5_TELEMETRY_MEDIAN_MS - 1, sampleCount: A5_CADENCE_MIN_SAMPLES }]]);
+      const ctx = makeContext([node], undefined, undefined, NOW_MS, DEFAULT_MESH_ISSUE_THRESHOLDS, cadence);
+      const findings = evaluateA5(ctx);
+      expect(findings).toHaveLength(1);
+      expect(findings[0].evidence.telemetryCadenceClause).toBe('fired');
+      expect(findings[0].evidence.isUnmessagable).toBe(false);
+    });
   });
 });
 

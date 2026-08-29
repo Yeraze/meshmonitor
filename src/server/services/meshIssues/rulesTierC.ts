@@ -81,7 +81,7 @@ function roleName(role: number | null): string {
 }
 
 // ---------------------------------------------------------------------------
-// Cadence aggregation (pure — shared by the service's two cadence paths)
+// Cadence aggregation (pure — shared by the service's cadence paths)
 // ---------------------------------------------------------------------------
 
 /**
@@ -89,11 +89,15 @@ function roleName(role: number | null): string {
  * unsorted) list of millisecond timestamps. Returns null when fewer than two
  * DISTINCT timestamps remain — no interval is computable from one point.
  *
- * Used by the service for BOTH cadence paths (spec §2.5):
- *  - telemetry: called once with the union of the four device-telemetry
- *    series' timestamps (already in memory, no query);
- *  - position stage 2: called once per stage-1 candidate with the exact
- *    timestamps `getTelemetryTimestampsAsync` returns.
+ * Used by the service for THREE cadence paths:
+ *  - telemetry (C2, spec §2.5): called once with the union of the four
+ *    device-telemetry series' timestamps (already in memory, no query);
+ *  - position stage 2 (C2, spec §2.5): called once per stage-1 candidate
+ *    with the exact timestamps `getTelemetryTimestampsAsync` returns;
+ *  - A5's telemetry-cadence clause (#4964 post-epic follow-up): called once
+ *    per dedicated-router node with the deduped broadcast-TELEMETRY_APP
+ *    timestamps `getBroadcastTelemetryTimestampsAsync` returns (see
+ *    `meshIssuesAnalysisService.buildRouterTelemetryCadenceMap`).
  */
 export function cadenceStatsFromTimestamps(
   timestampsMs: number[],

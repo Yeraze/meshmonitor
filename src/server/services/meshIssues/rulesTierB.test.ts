@@ -146,7 +146,7 @@ function makeGraph(edges: RfEdge[]): RfGraph {
     directAdjacency,
     adjacency,
     stats: {
-      availability: { neighborInfo: true, traceroute: true, mqttGateway: true, packetLog: true },
+      availability: { neighborInfo: true, traceroute: true, mqttGateway: true, packetLog: true, mqttSourceConfigured: true },
       neighborInfoRowCount: 0,
       neighborInfoEdgeCount: 0,
       tracerouteHopLinkCount: 0,
