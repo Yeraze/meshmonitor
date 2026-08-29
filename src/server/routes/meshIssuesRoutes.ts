@@ -16,8 +16,9 @@
  * each finding's stored `sourceIds` with the caller's permitted source set:
  * an empty intersection drops the row entirely; a non-empty intersection is
  * returned as the finding's `sourceIds` (never the full stored list). This
- * mirrors `resolvePermittedSourceIds()` in `analysisRoutes.ts`, copied below
- * rather than exported/refactored — see MESH_ISSUES_P1_SPEC.md §2.16 / §5.13.
+ * uses `resolvePermittedSourceIds()` from `../utils/permittedSources.js` —
+ * shared with `analysisRoutes.ts` (#4964 post-epic follow-ups; previously a
+ * near-identical private copy per MESH_ISSUES_P1_SPEC.md §2.16 / §5.13).
  */
 import { Router, Request, Response } from 'express';
 import databaseService from '../../services/database.js';
@@ -26,13 +27,13 @@ import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { meshIssuesScheduler } from '../services/meshIssuesScheduler.js';
+import { resolvePermittedSourceIds } from '../utils/permittedSources.js';
 import type {
   MeshIssueSeverity,
   MeshIssueConfidence,
   MeshIssueStatus,
 } from '../services/meshIssues/types.js';
 import type { DbMeshIssue } from '../../db/repositories/meshIssues.js';
-import type { Source } from '../../db/repositories/sources.js';
 import type { DbNode } from '../../db/types.js';
 
 /**
@@ -44,38 +45,6 @@ type NodeRow = DbNode & { sourceId: string };
 
 const router = Router();
 router.use(optionalAuth());
-
-// ── Copied from analysisRoutes.ts (module-private there; MESH_ISSUES_P1_SPEC.md
-// §2.16 explicitly directs copying rather than refactoring that 1000+ line file
-// in this phase) ─────────────────────────────────────────────────────────────
-
-/**
- * `allSourcesIn` lets a caller that already fetched `getAllSources()` (Phase 3
- * WP3's `sourceNames` map, §4.1) share that single query rather than paying
- * for a second round trip here.
- */
-async function resolvePermittedSourceIds(
-  req: Request,
-  resource: string = 'nodes',
-  allSourcesIn?: Source[],
-): Promise<string[]> {
-  const user = req.user;
-  const isAdmin = user?.isAdmin ?? false;
-  const allSources = allSourcesIn ?? (await databaseService.sources.getAllSources());
-  const enabled = allSources.filter((s) => s.enabled !== false);
-
-  if (isAdmin) return enabled.map((s) => s.id);
-
-  const checks = await Promise.all(
-    enabled.map(async (s) => {
-      const ok = user
-        ? await databaseService.checkPermissionAsync(user.id, resource, 'read', s.id)
-        : await databaseService.checkPermissionAsync(0, resource, 'read', s.id);
-      return ok ? s.id : null;
-    }),
-  );
-  return checks.filter((id): id is string => id !== null);
-}
 
 // ── Wire shape (frozen — MESH_ISSUES_P1_SPEC.md §2.16; WP5 codes against this) ─
 
@@ -285,17 +254,73 @@ function toWireIssue(
   };
 }
 
+// ── Wire-level pagination (#4964 post-epic follow-ups) ─────────────────────
+
+const DEFAULT_PAGE_LIMIT = 500;
+const MIN_PAGE_LIMIT = 50;
+const MAX_PAGE_LIMIT = 2000;
+
+/** `limit` query param: default 500, clamped to [50, 2000]. A missing or
+ * non-finite value falls back to the default rather than clamping NaN. */
+function parsePageLimit(raw: unknown): number {
+  const n = parseInt(String(raw ?? DEFAULT_PAGE_LIMIT), 10);
+  if (!Number.isFinite(n)) return DEFAULT_PAGE_LIMIT;
+  return Math.min(Math.max(n, MIN_PAGE_LIMIT), MAX_PAGE_LIMIT);
+}
+
+/** `offset` query param: default 0, floored at 0. A missing or non-finite
+ * value falls back to 0 rather than propagating NaN. */
+function parsePageOffset(raw: unknown): number {
+  const n = parseInt(String(raw ?? 0), 10);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
+/** critical -> warning -> info, matching `SEVERITY_ORDER` on the frontend
+ * (`meshIssueTypes.ts`). */
+const SEVERITY_RANK: Record<MeshIssueSeverity, number> = {
+  critical: 0,
+  warning: 1,
+  info: 2,
+};
+
+/**
+ * Sorts the FULL filtered set by severity rank, then `lastDetected` desc,
+ * then `id` desc as a final tiebreak — the last field is what makes ordering
+ * deterministic across identical requests (two findings can share a
+ * `lastDetected` millisecond), which in turn is what makes offset-based
+ * pagination stable page-to-page.
+ */
+function sortIssues(issues: MeshIssueWire[]): MeshIssueWire[] {
+  return [...issues].sort((a, b) => {
+    const severityDelta = SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity];
+    if (severityDelta !== 0) return severityDelta;
+    const lastDetectedDelta = b.lastDetected - a.lastDetected;
+    if (lastDetectedDelta !== 0) return lastDetectedDelta;
+    return b.id - a.id;
+  });
+}
+
 // ── Routes ──────────────────────────────────────────────────────────────────
 
 /**
- * GET /api/analysis/mesh-issues?includeClosed=true&includeDismissed=true
+ * GET /api/analysis/mesh-issues?includeClosed=true&includeDismissed=true&limit=500&offset=0
  *
  * Dismissed findings are excluded by default; `includeDismissed=true` (Phase
  * 3 WP3) includes them, styled/actioned client-side via the `dismissed` /
- * `dismissedAt` wire fields. `counts` is computed over the returned
- * (post-filter) set and gains `dismissed` — the count of returned rows with
- * `dismissed === true` (spec §4.1 / P3-D12: the other three counters keep
- * their Phase 1 meaning).
+ * `dismissedAt` wire fields. `counts` and the new `total` are computed over
+ * the FULL filtered (post-permission) set — not the page — so a client can
+ * render accurate severity totals while only holding one page of cards
+ * (spec: #4964 post-epic follow-ups). `counts.dismissed` keeps its Phase 3
+ * meaning: the count of matching rows with `dismissed === true` (P3-D12: the
+ * other three counters keep their Phase 1 meaning).
+ *
+ * `issues` is `sortIssues(full set).slice(offset, offset + limit)` —
+ * deterministic ordering (severity, then `lastDetected` desc, then `id` desc)
+ * makes repeated/paginated requests stable even when two findings tie on
+ * `lastDetected`. `limit` defaults to 500 and clamps to [50, 2000]; `offset`
+ * defaults to 0 and floors at 0; an offset past the end of the full set
+ * returns an empty `issues` array with `total` still reporting the full
+ * count.
  *
  * `sourceNames` is built from the single `getAllSources()` call this handler
  * already needs for `resolvePermittedSourceIds` (hoisted and shared — no
@@ -311,31 +336,35 @@ router.get('/', async (req: Request, res: Response) => {
 
     const includeClosed = req.query.includeClosed === 'true';
     const includeDismissed = req.query.includeDismissed === 'true';
+    const limit = parsePageLimit(req.query.limit);
+    const offset = parsePageOffset(req.query.offset);
     const [rows, nodeNames] = await Promise.all([
       databaseService.getMeshIssuesAsync({ includeClosed, includeDismissed }),
       buildNodeNameMap(permitted),
     ]);
 
-    const issues: MeshIssueWire[] = [];
+    const fullSet: MeshIssueWire[] = [];
     for (const row of rows) {
       const wire = toWireIssue(row, permitted, nodeNames);
-      if (wire) issues.push(wire);
+      if (wire) fullSet.push(wire);
     }
 
     const counts = {
-      critical: issues.filter((i) => i.severity === 'critical').length,
-      warning: issues.filter((i) => i.severity === 'warning').length,
-      info: issues.filter((i) => i.severity === 'info').length,
-      total: issues.length,
-      dismissed: issues.filter((i) => i.dismissed).length,
+      critical: fullSet.filter((i) => i.severity === 'critical').length,
+      warning: fullSet.filter((i) => i.severity === 'warning').length,
+      info: fullSet.filter((i) => i.severity === 'info').length,
+      total: fullSet.length,
+      dismissed: fullSet.filter((i) => i.dismissed).length,
     };
+
+    const issues = sortIssues(fullSet).slice(offset, offset + limit);
 
     const sourceNames: Record<string, string> = {};
     for (const s of allSources) {
       if (permitted.includes(s.id)) sourceNames[s.id] = s.name;
     }
 
-    ok(res, { issues, counts, sourceNames });
+    ok(res, { issues, counts, sourceNames, total: fullSet.length, limit, offset });
   } catch (error) {
     logger.error('[API] Error fetching mesh issues:', error);
     fail(res, 500, 'MESH_ISSUES_FETCH_FAILED', 'Failed to fetch mesh issues');
