@@ -40,11 +40,21 @@ import {
   POWER_WINDOW_HOURS,
   MOBILE_MIN_PRECISION_BITS,
   UNMESSAGABLE_MIN_FIRMWARE,
+  A5_CADENCE_MIN_SAMPLES,
+  A5_TELEMETRY_MEDIAN_MS,
   INFRA_ROLES,
   DEPRECATED_ROLES,
   DEDICATED_ROUTER_ROLES,
   type ResolvedMeshIssueThresholds,
 } from './thresholds.js';
+
+/** Per-node median broadcast-TELEMETRY_APP interval, dedicated routers only
+ *  (A5's telemetry-cadence clause, post-epic follow-up #4964). Built by the
+ *  service from `packet_log` — empty whenever packet_log is disabled. */
+export interface RouterTelemetryCadenceStats {
+  medianIntervalMs: number;
+  sampleCount: number;
+}
 
 export interface RuleContext {
   nodes: Map<number, PooledNode>;
@@ -54,6 +64,9 @@ export interface RuleContext {
   nowMs: number;
   /** User-tunable, clamp-on-read thresholds resolved once per run (#4964 Phase 3 WP1). */
   thresholds: ResolvedMeshIssueThresholds;
+  /** A5's telemetry-cadence clause input — dedicated-router nodes only,
+   *  populated only when packet_log is enabled (#4964 post-epic follow-up). */
+  routerBroadcastTelemetryCadence: Map<number, RouterTelemetryCadenceStats>;
 }
 
 function roleName(role: number | null): string {
@@ -381,7 +394,10 @@ export function evaluateA4(ctx: RuleContext): MeshIssueFinding[] {
 }
 
 // ---------------------------------------------------------------------------
-// A5 — Cosplay router (Phase 1: isUnmessagable clause only)
+// A5 — Cosplay router: ROUTER/ROUTER_LATE with isUnmessagable=false, OR an
+// unsolicited-telemetry median interval far below the ~12h ROUTER default
+// (#4964 post-epic follow-up unblocks the cadence clause the Phase 1 spec
+// deferred — see §5.1 there for why it waited on packet_log).
 // ---------------------------------------------------------------------------
 
 export function evaluateA5(ctx: RuleContext): MeshIssueFinding[] {
@@ -393,12 +409,31 @@ export function evaluateA5(ctx: RuleContext): MeshIssueFinding[] {
     if (node.role == null || !DEDICATED_ROUTER_ROLES.has(node.role)) continue;
 
     // is_unmessagable didn't exist before firmware 2.5 (defaults false there,
-    // meaning "unknown" not "messagable") — without this guard the rule fires
-    // on every pre-2.5 node.
-    if (node.firmwareVersion == null) continue;
-    if (compareVersions(node.firmwareVersion, UNMESSAGABLE_MIN_FIRMWARE) < 0) continue;
+    // meaning "unknown" not "messagable") — without this guard the clause
+    // fires on every pre-2.5 node. Only gates the isUnmessagable clause; the
+    // cadence clause below is independent of firmware version.
+    const firmwareKnown =
+      node.firmwareVersion != null && compareVersions(node.firmwareVersion, UNMESSAGABLE_MIN_FIRMWARE) >= 0;
+    const unmessagableClauseFired = firmwareKnown && node.isUnmessagable === false;
 
-    if (node.isUnmessagable !== false) continue;
+    const cadence = ctx.routerBroadcastTelemetryCadence.get(node.nodeNum);
+    let telemetryCadenceClause: 'fired' | 'clean' | 'unavailable' = 'unavailable';
+    let medianIntervalMs: number | null = null;
+    let sampleCount: number | null = null;
+    let cadenceClauseFired = false;
+    if (cadence && cadence.sampleCount >= A5_CADENCE_MIN_SAMPLES) {
+      medianIntervalMs = cadence.medianIntervalMs;
+      sampleCount = cadence.sampleCount;
+      if (cadence.medianIntervalMs < A5_TELEMETRY_MEDIAN_MS) {
+        telemetryCadenceClause = 'fired';
+        cadenceClauseFired = true;
+      } else {
+        telemetryCadenceClause = 'clean';
+      }
+    }
+
+    // Either clause alone fires the finding.
+    if (!unmessagableClauseFired && !cadenceClauseFired) continue;
 
     const lastHeardAgeMs = node.lastHeardMs == null ? null : ctx.nowMs - node.lastHeardMs;
 
@@ -406,19 +441,18 @@ export function evaluateA5(ctx: RuleContext): MeshIssueFinding[] {
       issueType: MESH_ISSUE_TYPES.A5_COSPLAY_ROUTER,
       subjectKey: nodeSubjectKey(node.nodeNum),
       nodeNum: node.nodeNum,
+      // Locked by the epic: both clauses stay info/low regardless of which fired.
       severity: 'info',
       confidence: 'low',
       evidence: {
         role: node.role,
         roleName: roleName(node.role),
-        isUnmessagable: false,
+        isUnmessagable: node.isUnmessagable,
         firmwareVersion: node.firmwareVersion,
         lastHeardAgeMs,
-        // The telemetry-cadence clause is deferred to Phase 3 — see spec §5.1:
-        // the only durable solicited/unsolicited discriminator requires
-        // packet_log, which is opt-in/off-by-default/pruned, so a cadence
-        // heuristic here would be a false-positive generator.
-        telemetryCadenceClause: 'deferred',
+        telemetryCadenceClause,
+        medianIntervalMs,
+        sampleCount,
         sources: node.sourceIds,
       },
       sourceIds: node.sourceIds,

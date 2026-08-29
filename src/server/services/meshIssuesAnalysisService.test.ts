@@ -26,6 +26,7 @@ const mockDb = vi.hoisted(() => ({
   getMqttPacketHopArrivalCountsAsync: vi.fn(),
   getTelemetryCadenceAggregatesAsync: vi.fn(),
   getTelemetryTimestampsAsync: vi.fn(),
+  getBroadcastTelemetryTimestampsAsync: vi.fn(),
 }));
 vi.mock('../../services/database.js', () => ({ default: mockDb }));
 
@@ -73,6 +74,7 @@ import { ALL_SOURCES } from '../../db/repositories/base.js';
 import { dataEventEmitter } from './dataEventEmitter.js';
 import { logger } from '../../utils/logger.js';
 import { meshIssuesAnalysisService, MAX_CORPUS_PAGES } from './meshIssuesAnalysisService.js';
+import { DeviceRole } from '../../constants/index.js';
 
 /** A fresh RfGraph-shaped stub each call — buildRfGraph is mocked, but the
  *  service reads/mutates `graph.stats.availability.packetLog` in place, so
@@ -221,6 +223,7 @@ describe('meshIssuesAnalysisService.runAnalysis', () => {
     mockDb.getMqttPacketHopArrivalCountsAsync.mockResolvedValue([]);
     mockDb.getTelemetryCadenceAggregatesAsync.mockResolvedValue([]);
     mockDb.getTelemetryTimestampsAsync.mockResolvedValue([]);
+    mockDb.getBroadcastTelemetryTimestampsAsync.mockResolvedValue([]);
     mockRules.evaluateAllTierA.mockReturnValue([]);
     mockRulesTierB.evaluateAllTierB.mockReturnValue([]);
     mockRulesTierB.tierBSkips.mockReturnValue([]);
@@ -883,6 +886,178 @@ describe('meshIssuesAnalysisService.runAnalysis', () => {
       expect(posCadence).toBeTruthy();
       expect(posCadence.sampleCount).toBe(3);
       expect(posCadence.medianIntervalSeconds).toBe(10); // two 10s gaps -> median 10s
+    });
+  });
+
+  describe('A5 telemetry-cadence clause (#4964 post-epic follow-up)', () => {
+    beforeEach(() => {
+      mockDb.sources.getAllSources.mockResolvedValue([makeSource()]);
+    });
+
+    it('does not query when packet_log is not enabled, even with dedicated-router nodes present', async () => {
+      mockPacketLogService.isEnabled.mockResolvedValue(false);
+      mockDb.nodes.getAllNodes.mockResolvedValue([
+        makeNodeRow({ nodeNum: 100, role: DeviceRole.ROUTER }),
+      ]);
+
+      await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(mockDb.getBroadcastTelemetryTimestampsAsync).not.toHaveBeenCalled();
+      const ctx = mockRules.evaluateAllTierA.mock.calls[0][0];
+      expect(ctx.routerBroadcastTelemetryCadence.size).toBe(0);
+    });
+
+    it('does not query when there are no dedicated-router nodes, even with packet_log enabled', async () => {
+      mockPacketLogService.isEnabled.mockResolvedValue(true);
+      mockDb.nodes.getAllNodes.mockResolvedValue([
+        makeNodeRow({ nodeNum: 100, role: DeviceRole.CLIENT }),
+      ]);
+
+      await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(mockDb.getBroadcastTelemetryTimestampsAsync).not.toHaveBeenCalled();
+    });
+
+    it('queries only ROUTER/ROUTER_LATE nodeNums when packet_log is enabled', async () => {
+      mockPacketLogService.isEnabled.mockResolvedValue(true);
+      mockDb.nodes.getAllNodes.mockResolvedValue([
+        makeNodeRow({ nodeNum: 100, role: DeviceRole.ROUTER }),
+        makeNodeRow({ nodeNum: 200, role: DeviceRole.ROUTER_LATE }),
+        makeNodeRow({ nodeNum: 300, role: DeviceRole.CLIENT }),
+        makeNodeRow({ nodeNum: 400, role: DeviceRole.ROUTER_CLIENT }),
+        makeNodeRow({ nodeNum: 500, role: DeviceRole.REPEATER }),
+      ]);
+
+      await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(mockDb.getBroadcastTelemetryTimestampsAsync).toHaveBeenCalledTimes(1);
+      const call = mockDb.getBroadcastTelemetryTimestampsAsync.mock.calls[0][0];
+      expect(call.nodeNums.sort((a: number, b: number) => a - b)).toEqual([100, 200]);
+      expect(call.since).toBe(NOW - 168 * 3600_000);
+    });
+
+    it('builds routerBroadcastTelemetryCadence from the deduped timestamps and threads it into the Tier A context', async () => {
+      mockPacketLogService.isEnabled.mockResolvedValue(true);
+      mockDb.nodes.getAllNodes.mockResolvedValue([
+        makeNodeRow({ nodeNum: 100, role: DeviceRole.ROUTER }),
+      ]);
+      mockDb.getBroadcastTelemetryTimestampsAsync.mockResolvedValue([
+        { nodeNum: 100, timestamp: 0 },
+        { nodeNum: 100, timestamp: 10_000 },
+        { nodeNum: 100, timestamp: 20_000 },
+      ]);
+
+      await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      const ctx = mockRules.evaluateAllTierA.mock.calls[0][0];
+      const cadence = ctx.routerBroadcastTelemetryCadence.get(100);
+      expect(cadence).toEqual({ medianIntervalMs: 10_000, sampleCount: 3 });
+    });
+
+    it('degrades (does not abort) when the query throws', async () => {
+      mockPacketLogService.isEnabled.mockResolvedValue(true);
+      mockDb.nodes.getAllNodes.mockResolvedValue([
+        makeNodeRow({ nodeNum: 100, role: DeviceRole.ROUTER }),
+      ]);
+      mockDb.getBroadcastTelemetryTimestampsAsync.mockRejectedValue(new Error('broadcast-telemetry boom'));
+      const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+
+      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(warnSpy).toHaveBeenCalled();
+      const ctx = mockRules.evaluateAllTierA.mock.calls[0][0];
+      expect(ctx.routerBroadcastTelemetryCadence.size).toBe(0);
+      expect(result.findingCount).toBe(0); // did not abort the run
+      warnSpy.mockRestore();
+    });
+  });
+
+  describe('mqttSourceConfigured coverage hint (#4964 post-epic follow-up)', () => {
+    beforeEach(() => {
+      mockDb.nodes.getAllNodes.mockResolvedValue([makeNodeRow()]);
+    });
+
+    it('is true when an enabled MQTT-family source resolved this run', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([
+        makeSource(),
+        makeSource({ id: 'src-b', type: 'mqtt_broker' }),
+      ]);
+
+      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(result.coverage.evidence.mqttSourceConfigured).toBe(true);
+    });
+
+    it('is false when no MQTT-family source resolved', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([makeSource()]);
+
+      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(result.coverage.evidence.mqttSourceConfigured).toBe(false);
+    });
+
+    it('is false when the only MQTT source is disabled', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([
+        makeSource(),
+        makeSource({ id: 'src-b', type: 'mqtt_broker', enabled: false }),
+      ]);
+
+      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(result.coverage.evidence.mqttSourceConfigured).toBe(false);
+    });
+
+    it('is false (zeroed) on the no-sources short-circuit path', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([]);
+
+      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(result.coverage.evidence.mqttSourceConfigured).toBe(false);
+    });
+  });
+
+  describe('AUTO_CLOSE_CLEAN_RUNS as a setting (#4964 post-epic follow-up)', () => {
+    beforeEach(() => {
+      mockDb.sources.getAllSources.mockResolvedValue([makeSource()]);
+      mockDb.nodes.getAllNodes.mockResolvedValue([makeNodeRow()]);
+    });
+
+    it('defaults to 3 when the setting is unset', async () => {
+      mockDb.getMeshIssuesAsync.mockResolvedValue([
+        { id: 1, issueType: 'A3_infra_power', subjectKey: 'node:300' },
+      ]);
+
+      await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(mockDb.bumpMeshIssueCleanRunAsync).toHaveBeenCalledWith(1, 3, NOW);
+    });
+
+    it('honors a resolved override — set to 1, auto-closes after a single clean run', async () => {
+      mockDb.settings.getSetting.mockImplementation(async (key: string) =>
+        key === 'mesh_issues_auto_close_runs' ? '1' : null
+      );
+      mockDb.getMeshIssuesAsync.mockResolvedValue([
+        { id: 1, issueType: 'A3_infra_power', subjectKey: 'node:300' },
+      ]);
+      mockDb.bumpMeshIssueCleanRunAsync.mockResolvedValue({ cleanRuns: 1, closed: true });
+
+      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(mockDb.bumpMeshIssueCleanRunAsync).toHaveBeenCalledWith(1, 1, NOW);
+      expect(result.closedCount).toBe(1);
+    });
+
+    it('clamps an out-of-range override (0 -> 1)', async () => {
+      mockDb.settings.getSetting.mockImplementation(async (key: string) =>
+        key === 'mesh_issues_auto_close_runs' ? '0' : null
+      );
+      mockDb.getMeshIssuesAsync.mockResolvedValue([
+        { id: 1, issueType: 'A3_infra_power', subjectKey: 'node:300' },
+      ]);
+
+      await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(mockDb.bumpMeshIssueCleanRunAsync).toHaveBeenCalledWith(1, 1, NOW);
     });
   });
 });

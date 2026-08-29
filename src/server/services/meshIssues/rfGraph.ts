@@ -98,6 +98,17 @@ export interface RfEvidenceAvailability {
   mqttGateway: boolean;
   /** packet_log_enabled. Not a graph input — carried for B6/coverage. */
   packetLog: boolean;
+  /**
+   * True when at least one enabled MQTT-family source resolved this run
+   * (independent of whether `mqtt_packet_log_enabled` is on). Post-epic
+   * follow-up (#4964): distinguishes "no MQTT source configured at all" from
+   * "MQTT source configured but its packet log is off" — the coverage
+   * preface previously showed the same MQTT hint in both cases because the
+   * wire lacked a source-configured flag. FROZEN wire contract: the frontend
+   * (`meshIssueTypes.ts` / the coverage-preface UI) reads
+   * `coverage.evidence.mqttSourceConfigured` directly.
+   */
+  mqttSourceConfigured: boolean;
 }
 
 export interface RfGraphStats {

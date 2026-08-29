@@ -35,36 +35,10 @@ import {
   type NodeNameLookup,
 } from '../services/solarAnalysis.js';
 import { parseGatewayNodeNum } from '../utils/okToMqtt.js';
+import { resolvePermittedSourceIds, parseSourcesParam } from '../utils/permittedSources.js';
 
 const router = Router();
 router.use(optionalAuth());
-
-async function resolvePermittedSourceIds(
-  req: Request,
-  resource: string = 'nodes',
-): Promise<string[]> {
-  const user = (req as any).user;
-  const isAdmin = user?.isAdmin ?? false;
-  const allSources = await databaseService.sources.getAllSources();
-  const enabled = allSources.filter((s: any) => s.enabled !== false);
-
-  if (isAdmin) return enabled.map((s: any) => s.id);
-
-  const checks = await Promise.all(
-    enabled.map(async (s: any) => {
-      const ok = user
-        ? await databaseService.checkPermissionAsync(user.id, resource, 'read', s.id)
-        : await databaseService.checkPermissionAsync(0, resource, 'read', s.id);
-      return ok ? s.id : null;
-    }),
-  );
-  return checks.filter((id): id is string => id !== null);
-}
-
-function parseSourcesParam(raw: unknown): string[] | null {
-  if (typeof raw !== 'string' || raw.trim() === '') return null;
-  return raw.split(',').map((s) => s.trim()).filter(Boolean);
-}
 
 function clampPageSize(raw: unknown): number {
   const n = parseInt(String(raw ?? '500'), 10);

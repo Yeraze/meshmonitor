@@ -183,6 +183,43 @@ describe('coverageNotes', () => {
     expect(notes.some((n) => n.rule === 'B1-B5')).toBe(false);
   });
 
+  describe('mqttSourceConfigured gating on the MQTT packet-log hint (#4964 post-epic follow-ups)', () => {
+    function coverageWithoutGateway(mqttSourceConfigured?: boolean): MeshIssuesCoverageWire {
+      return fullyAvailableCoverage({
+        evidence: {
+          neighborInfo: true,
+          traceroute: true,
+          mqttGateway: false,
+          packetLog: true,
+          ...(mqttSourceConfigured === undefined ? {} : { mqttSourceConfigured }),
+        },
+      });
+    }
+
+    it('fires the hint when mqttSourceConfigured is explicitly true', () => {
+      const notes = coverageNotes(coverageWithoutGateway(true));
+      expect(notes).toContainEqual({
+        rule: 'B3, B7',
+        note: 'the MQTT packet log is off, so gateway receptions are not contributing RF evidence',
+        severity: 'hint',
+      });
+    });
+
+    it('suppresses the hint when mqttSourceConfigured is explicitly false (no MQTT source to enable)', () => {
+      const notes = coverageNotes(coverageWithoutGateway(false));
+      expect(notes.some((n) => n.rule === 'B3, B7')).toBe(false);
+    });
+
+    it('falls back to firing the hint when mqttSourceConfigured is absent (older stored summary, pre-#4964-follow-up behavior)', () => {
+      const notes = coverageNotes(coverageWithoutGateway(undefined));
+      expect(notes).toContainEqual({
+        rule: 'B3, B7',
+        note: 'the MQTT packet log is off, so gateway receptions are not contributing RF evidence',
+        severity: 'hint',
+      });
+    });
+  });
+
   it('returns every applicable note together when multiple flags are degraded at once', () => {
     const notes = coverageNotes(
       fullyAvailableCoverage({

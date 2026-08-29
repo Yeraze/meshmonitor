@@ -325,6 +325,124 @@ describe('meshIssuesRoutes', () => {
     });
   });
 
+  describe('GET /api/analysis/mesh-issues — wire-level pagination (#4964 post-epic follow-ups)', () => {
+    it('total/counts reflect the FULL filtered set while issues is only the requested page', async () => {
+      for (let i = 0; i < 5; i++) {
+        await databaseService.upsertMeshIssueFindingAsync(
+          makeFinding({
+            nodeNum: 700 + i,
+            subjectKey: nodeSubjectKey(700 + i),
+            severity: i < 2 ? 'critical' : i < 4 ? 'warning' : 'info',
+            sourceIds: [harness.sourceA],
+          }),
+          Date.now(),
+        );
+      }
+
+      const agent = await harness.loginAs(harness.admin);
+
+      const full = await agent.get('/api/analysis/mesh-issues');
+      expect(full.body.data.issues).toHaveLength(5);
+      const fullIds = full.body.data.issues.map((i: { id: number }) => i.id);
+
+      const page = await agent.get('/api/analysis/mesh-issues?offset=3');
+      expect(page.status).toBe(200);
+      // Same deterministic ordering, just sliced from offset 3.
+      expect(page.body.data.issues.map((i: { id: number }) => i.id)).toEqual(fullIds.slice(3));
+      // total/counts come from the FULL set, not the 2-row page.
+      expect(page.body.data.total).toBe(5);
+      expect(page.body.data.counts).toEqual(full.body.data.counts);
+      expect(page.body.data.counts).toEqual({ critical: 2, warning: 2, info: 1, total: 5, dismissed: 0 });
+      expect(page.body.data.limit).toBe(500);
+      expect(page.body.data.offset).toBe(3);
+    });
+
+    it('an offset past the end of the full set returns an empty issues array with the correct total', async () => {
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({ nodeNum: 705, sourceIds: [harness.sourceA] }),
+        Date.now(),
+      );
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get('/api/analysis/mesh-issues?offset=1000');
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.issues).toEqual([]);
+      expect(res.body.data.total).toBe(1);
+      expect(res.body.data.offset).toBe(1000);
+    });
+
+    it('clamps limit to [50, 2000] and floors/defaults offset at 0', async () => {
+      const agent = await harness.loginAs(harness.admin);
+
+      const tooSmall = await agent.get('/api/analysis/mesh-issues?limit=1');
+      expect(tooSmall.body.data.limit).toBe(50);
+
+      const tooBig = await agent.get('/api/analysis/mesh-issues?limit=999999');
+      expect(tooBig.body.data.limit).toBe(2000);
+
+      const negativeOffset = await agent.get('/api/analysis/mesh-issues?offset=-5');
+      expect(negativeOffset.body.data.offset).toBe(0);
+
+      const nonNumeric = await agent.get('/api/analysis/mesh-issues?limit=abc&offset=xyz');
+      expect(nonNumeric.body.data.limit).toBe(500);
+      expect(nonNumeric.body.data.offset).toBe(0);
+
+      const missing = await agent.get('/api/analysis/mesh-issues');
+      expect(missing.body.data.limit).toBe(500);
+      expect(missing.body.data.offset).toBe(0);
+    });
+
+    it('returns identical, deterministic ordering across two identical requests, tiebreaking equal lastDetected by id desc', async () => {
+      const now = Date.now();
+      for (let i = 0; i < 4; i++) {
+        await databaseService.upsertMeshIssueFindingAsync(
+          makeFinding({
+            nodeNum: 710 + i,
+            subjectKey: nodeSubjectKey(710 + i),
+            severity: 'warning',
+            sourceIds: [harness.sourceA],
+          }),
+          now,
+        );
+      }
+
+      const agent = await harness.loginAs(harness.admin);
+      const res1 = await agent.get('/api/analysis/mesh-issues');
+      const res2 = await agent.get('/api/analysis/mesh-issues');
+
+      const isSeeded = (i: { nodeNum: number }) => i.nodeNum >= 710 && i.nodeNum < 714;
+      const ids1 = res1.body.data.issues.filter(isSeeded).map((i: { id: number }) => i.id);
+      const ids2 = res2.body.data.issues.filter(isSeeded).map((i: { id: number }) => i.id);
+
+      expect(ids1).toHaveLength(4);
+      expect(ids1).toEqual(ids2);
+      // Same severity + same lastDetected -> the id-desc tiebreak decides order.
+      expect(ids1).toEqual([...ids1].sort((a, b) => b - a));
+    });
+
+    it('a source-filtered-out finding is excluded from both counts/total and the page (#3745 leak class + pagination)', async () => {
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({ nodeNum: 720, sourceIds: [harness.sourceA] }),
+        Date.now(),
+      );
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({ nodeNum: 721, subjectKey: nodeSubjectKey(721), sourceIds: [harness.sourceB] }),
+        Date.now(),
+      );
+
+      await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceA);
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.get('/api/analysis/mesh-issues');
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.total).toBe(1);
+      expect(res.body.data.counts.total).toBe(1);
+      expect(res.body.data.issues).toHaveLength(1);
+      expect(res.body.data.issues[0].nodeNum).toBe(720);
+    });
+  });
+
   describe('GET /api/analysis/mesh-issues/status', () => {
     it('returns 403 NO_PERMITTED_SOURCES for a user with zero grants', async () => {
       const agent = await harness.loginAs(harness.limited);

@@ -92,19 +92,40 @@ function issueRow(overrides: Partial<MeshIssueRow> = {}): MeshIssueRow {
   };
 }
 
+/**
+ * Builds a page-1 `MeshIssuesResponse` fixture. `total` defaults to
+ * `issues.length` (i.e. everything fits on one page — the common case for
+ * these tests, which keeps `remaining` at 0 and the "Load more" control
+ * hidden). Pass an explicit `total` greater than `issues.length` to
+ * exercise pagination (#4964 post-epic follow-ups).
+ */
 function issuesResponse(
   issues: MeshIssueRow[],
   sourceNames: Record<string, string> = {},
+  overrides: Partial<Pick<MeshIssuesResponse, 'total' | 'limit' | 'offset' | 'counts'>> = {},
 ): { success: true; data: MeshIssuesResponse } {
-  const counts = {
+  const total = overrides.total ?? issues.length;
+  const counts = overrides.counts ?? {
     critical: 0,
     warning: 0,
     info: 0,
-    total: issues.length,
+    total,
     dismissed: issues.filter((i) => i.dismissed).length,
   };
-  for (const issue of issues) counts[issue.severity]++;
-  return { success: true, data: { issues, counts, sourceNames } };
+  if (!overrides.counts) {
+    for (const issue of issues) counts[issue.severity]++;
+  }
+  return {
+    success: true,
+    data: {
+      issues,
+      counts,
+      sourceNames,
+      total,
+      limit: overrides.limit ?? 500,
+      offset: overrides.offset ?? 0,
+    },
+  };
 }
 
 const DEFAULT_THRESHOLDS: ResolvedMeshIssueThresholds = {
@@ -701,6 +722,49 @@ describe('MeshIssuesReport', () => {
     await waitFor(() => expect(screen.getByText(/DismissMe/)).toBeInTheDocument());
     expect(screen.getByRole('button', { name: 'Restore' })).toBeInTheDocument();
     expect(screen.getByText('Dismissed')).toBeInTheDocument();
+  });
+
+  it('shows "Load more" when total > loaded issues, fetches the next page on click, appends results, and the group heading reflects the full count once fully loaded (#4964 post-epic follow-ups)', async () => {
+    const page1Issues = [
+      issueRow({ id: 1, severity: 'warning', nodeName: 'WarnNode1' }),
+      issueRow({ id: 2, severity: 'warning', nodeName: 'WarnNode2' }),
+    ];
+    const page2Issues = [
+      issueRow({ id: 3, severity: 'warning', nodeName: 'WarnNode3' }),
+      issueRow({ id: 4, severity: 'warning', nodeName: 'WarnNode4' }),
+      issueRow({ id: 5, severity: 'warning', nodeName: 'WarnNode5' }),
+    ];
+    const total = page1Issues.length + page2Issues.length;
+    const fullCounts = { critical: 0, warning: total, info: 0, total, dismissed: 0 };
+
+    (apiService.get as Mocked).mockImplementation((endpoint: string) => {
+      if (endpoint.includes('/status')) return Promise.resolve(statusResponse());
+      if (endpoint.includes('offset=2')) {
+        return Promise.resolve(
+          issuesResponse(page2Issues, {}, { total, counts: fullCounts, offset: 2 }),
+        );
+      }
+      return Promise.resolve(
+        issuesResponse(page1Issues, {}, { total, counts: fullCounts, offset: 0 }),
+      );
+    });
+
+    renderReport();
+
+    await waitFor(() => expect(screen.getByText(/WarnNode2/)).toBeInTheDocument());
+    expect(screen.queryByText(/WarnNode3/)).not.toBeInTheDocument();
+    // Partially loaded: the group heading says so rather than showing the
+    // loaded count alone.
+    expect(screen.getByText(/Warning \(2 of 5 loaded\)/)).toBeInTheDocument();
+
+    const loadMoreBtn = screen.getByRole('button', { name: /Load more \(3 remaining\)/i });
+    fireEvent.click(loadMoreBtn);
+
+    await waitFor(() => expect(screen.getByText(/WarnNode5/)).toBeInTheDocument());
+    // Page 1's cards are still present — appended, not replaced.
+    expect(screen.getByText(/WarnNode1/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Load more/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/Warning \(5\)/)).toBeInTheDocument();
   });
 
   it('hides dismiss/restore controls once a mutation comes back 401/403', async () => {

@@ -58,8 +58,21 @@ export const MOBILE_MIN_PRECISION_BITS = 17;
 /** Firmware version at/after which `is_unmessagable` is meaningful. [ours] */
 export const UNMESSAGABLE_MIN_FIRMWARE = '2.5.0';
 
-/** Consecutive clean runs before an open finding auto-closes. [ours] */
+/** Consecutive clean runs before an open finding auto-closes. [ours]
+ *  Default for `ResolvedMeshIssueThresholds.autoCloseCleanRuns` — the
+ *  constant stays exported for callers/tests that want the default without
+ *  resolving a full threshold set. */
 export const AUTO_CLOSE_CLEAN_RUNS = 3;
+
+// ── A5 telemetry-cadence clause (post-epic follow-up #4964) ────────────────
+/** Minimum deduped broadcast TELEMETRY_APP samples in-window before A5's
+ *  cadence clause may fire. [ours] */
+export const A5_CADENCE_MIN_SAMPLES = 5;
+/** Median broadcast-telemetry interval below which a dedicated router's
+ *  cadence looks hand-edited, milliseconds. Real ROUTER/ROUTER_LATE defaults
+ *  broadcast telemetry roughly every 12 h; anything under 2 h means someone
+ *  shortened the interval. [ours] */
+export const A5_TELEMETRY_MEDIAN_MS = 2 * 3600_000;
 
 /** Roles that carry routing responsibility. Built from DeviceRole. */
 export const INFRA_ROLES: ReadonlySet<number> = new Set([
@@ -201,6 +214,7 @@ export interface ResolvedMeshIssueThresholds {
   /** metres, [ours] */ mobileSpanMeters: number;
   /** dB, [ours] */ snrAsymmetryDb: number;
   /** seconds, [ours] */ overBroadcastSeconds: number;
+  /** count, [ours] */ autoCloseCleanRuns: number;
 }
 
 export const DEFAULT_MESH_ISSUE_THRESHOLDS: ResolvedMeshIssueThresholds = {
@@ -213,6 +227,7 @@ export const DEFAULT_MESH_ISSUE_THRESHOLDS: ResolvedMeshIssueThresholds = {
   mobileSpanMeters: MOBILE_SPAN_METERS,
   snrAsymmetryDb: ASYMMETRY_DELTA_DB,
   overBroadcastSeconds: OVER_BROADCAST_INTERVAL_SECONDS,
+  autoCloseCleanRuns: AUTO_CLOSE_CLEAN_RUNS,
 };
 
 /**
@@ -231,6 +246,7 @@ export const MESH_ISSUE_THRESHOLD_SETTINGS_KEYS = [
   'mesh_issues_mobile_span_meters',
   'mesh_issues_snr_asymmetry_db',
   'mesh_issues_over_broadcast_seconds',
+  'mesh_issues_auto_close_runs',
 ] as const;
 
 /** Accepts both a raw settings string and a plain number (tests call this
@@ -312,6 +328,13 @@ export function resolveThresholds(raw: Record<string, unknown>): ResolvedMeshIss
       DEFAULT_MESH_ISSUE_THRESHOLDS.overBroadcastSeconds,
       30,
       3600
+    ),
+    autoCloseCleanRuns: resolveClampedNumber(
+      raw,
+      'mesh_issues_auto_close_runs',
+      DEFAULT_MESH_ISSUE_THRESHOLDS.autoCloseCleanRuns,
+      1,
+      20
     ),
   };
 }

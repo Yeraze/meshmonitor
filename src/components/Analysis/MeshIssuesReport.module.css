@@ -300,3 +300,13 @@
 .showMoreButton {
   align-self: flex-start;
 }
+
+.loadMoreRow {
+  display: flex;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+.loadMoreButton {
+  align-self: center;
+}

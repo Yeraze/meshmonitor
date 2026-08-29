@@ -4,11 +4,12 @@
  * Handles packet log database operations including analytics.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, asc, and, or, inArray, sql, isNull, gte, gt, isNotNull, max, type SQL } from 'drizzle-orm';
+import { eq, asc, and, or, inArray, sql, isNull, gte, gt, isNotNull, max, min, type SQL } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../types.js';
 import { logger } from '../../utils/logger.js';
-import { getPortNumName } from '../../server/constants/meshtastic.js';
+import { getPortNumName, PortNum } from '../../server/constants/meshtastic.js';
+import { BROADCAST_ADDR } from '../../utils/tracerouteSegments.js';
 
 /**
  * Per-node hop-arrival aggregate row — Mesh Issues B6 "hop horizon" evidence
@@ -35,6 +36,26 @@ export interface PacketHopArrivalRow {
  * re-declaring it, and so its test can assert against it directly. `[ours]`.
  */
 export const HOP_ARRIVAL_MAX_ROWS = 20_000;
+
+/**
+ * One deduped broadcast-telemetry timestamp for a node — Mesh Issues A5's
+ * telemetry-cadence clause (#4964, post-epic follow-up, epic issue #4964).
+ * `timestamp` is the earliest observed timestamp for the `(from_node,
+ * packet_id)` pair (a retransmission/relay copy of the same originating
+ * packet must not count as a second broadcast).
+ */
+export interface BroadcastTelemetryTimestampRow {
+  nodeNum: number;
+  timestamp: number;
+}
+
+/**
+ * Row cap for {@link PacketLogRepository.getBroadcastTelemetryTimestamps}.
+ * The caller (Mesh Issues analysis service) only ever queries the small set
+ * of dedicated-router nodes (ROUTER/ROUTER_LATE), so this bound is a safety
+ * net, not an expected limit. `[ours]`.
+ */
+export const BROADCAST_TELEMETRY_TIMESTAMPS_MAX_ROWS = 20_000;
 
 export class PacketLogRepository extends BaseRepository {
   constructor(db: DrizzleDatabase, dbType: DatabaseType) {
@@ -777,6 +798,73 @@ export class PacketLogRepository extends BaseRepository {
       }));
     } catch (error) {
       logger.error('[PacketLogRepository] Failed to get hop arrival counts:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Deduped broadcast TELEMETRY_APP receive timestamps for a bounded set of
+   * nodes since `since` — Mesh Issues A5's telemetry-cadence clause
+   * (#4964, post-epic follow-up). Only rows with `to_node = BROADCAST_ADDR`
+   * count (a directed/solicited reply is a DM, not a broadcast); `direction
+   * = 'rx'` is required for the same reason as
+   * {@link getHopArrivalCountsSince} — this is our own RF vantage's log, and
+   * a row we transmitted ourselves is not a reception.
+   *
+   * Deduped by `(from_node, packet_id)`, taking the earliest observed
+   * timestamp — the same originating packet can be logged more than once
+   * (retransmission/relay copies) and must count as one broadcast, not one
+   * per copy. Results are ordered `(nodeNum, timestamp)` ascending, so
+   * timestamps come back ascending WITHIN each node's own subsequence, and
+   * capped at `limit` (default {@link BROADCAST_TELEMETRY_TIMESTAMPS_MAX_ROWS}).
+   *
+   * Returns `[]` immediately for an empty `nodeNums` (mirrors the empty
+   * `sourceIds` short-circuit above) rather than issuing an unbounded scan.
+   */
+  async getBroadcastTelemetryTimestamps(q: {
+    nodeNums: number[];
+    since: number;
+    limit?: number;
+  }): Promise<BroadcastTelemetryTimestampRow[]> {
+    if (q.nodeNums.length === 0) return [];
+
+    const { packetLog } = this.tables;
+    const conditions: SQL[] = [
+      inArray(packetLog.from_node, q.nodeNums),
+      eq(packetLog.to_node, BROADCAST_ADDR),
+      eq(packetLog.portnum, PortNum.TELEMETRY_APP),
+      eq(packetLog.direction, 'rx'),
+      gte(packetLog.timestamp, q.since),
+      isNotNull(packetLog.packet_id),
+    ];
+
+    try {
+      const deduped = this.db
+        .select({
+          nodeNum: packetLog.from_node,
+          pid: packetLog.packet_id,
+          timestamp: min(packetLog.timestamp).as('timestamp'),
+        })
+        .from(packetLog)
+        .where(and(...conditions))
+        .groupBy(packetLog.from_node, packetLog.packet_id)
+        .as('deduped');
+
+      const rows = await this.db
+        .select({
+          nodeNum: deduped.nodeNum,
+          timestamp: deduped.timestamp,
+        })
+        .from(deduped)
+        .orderBy(asc(deduped.nodeNum), asc(deduped.timestamp))
+        .limit(q.limit ?? BROADCAST_TELEMETRY_TIMESTAMPS_MAX_ROWS);
+
+      return (rows as Array<{ nodeNum: unknown; timestamp: unknown }>).map((r) => ({
+        nodeNum: Number(r.nodeNum),
+        timestamp: Number(r.timestamp),
+      }));
+    } catch (error) {
+      logger.error('[PacketLogRepository] Failed to get broadcast telemetry timestamps:', error);
       return [];
     }
   }

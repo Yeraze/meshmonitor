@@ -63,6 +63,13 @@ const SHARED_DB_TESTS = [
   // telemetry.multidb.test.ts — both must join the serial group together.
   'src/server/services/reticulumTelemetry.test.ts',
   'src/db/repositories/telemetry.multidb.test.ts',
+  // Mesh Issues B6/A5 evidence queries (#4964 Phase 2 / post-epic follow-up):
+  // both DROP/CREATE the shared `packet_log` table against the same PG/MySQL
+  // test DB at import time. Confirmed empirically once a second file joined
+  // the first — "table doesn't exist" / dropped-rows races on both backends
+  // when run concurrently.
+  'src/db/repositories/packetLog.hopArrival.multiBackend.test.ts',
+  'src/db/repositories/packetLog.broadcastTelemetry.multiBackend.test.ts',
 ];
 
 const COMMON_EXCLUDE = [
