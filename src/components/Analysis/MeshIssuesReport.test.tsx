@@ -192,6 +192,179 @@ describe('MeshIssuesReport', () => {
     expect(screen.queryByText('Recommendation')).not.toBeInTheDocument();
   });
 
+  it('renders a B1 router-cluster finding with member names and severity, not [object Object]', async () => {
+    const issue = issueRow({
+      id: 10,
+      issueType: 'B1_router_cluster',
+      subjectKey: 'cluster:3:1a2b3c',
+      nodeNum: null,
+      nodeName: null,
+      severity: 'critical',
+      confidence: 'medium',
+      evidence: {
+        size: 3,
+        members: [
+          { nodeNum: 111, name: 'RouterAlpha', role: 3, roleName: 'ROUTER', directDegree: 2 },
+          { nodeNum: 222, name: null, role: 3, roleName: 'ROUTER', directDegree: 1 },
+          { nodeNum: 333, name: 'RouterGamma', role: 6, roleName: 'REPEATER', directDegree: 2 },
+        ],
+        membersTruncated: false,
+        edges: [{ a: 111, b: 222, evidenceClasses: ['neighborInfo'], observationCount: 4 }],
+        edgesTruncated: false,
+        inferredOnly: false,
+        bestSitedNodeNum: 111,
+        bestSitedName: 'RouterAlpha',
+        sources: ['sourceA'],
+        recommendation: 'Keep RouterAlpha as the router and move the others to ROUTER_LATE.',
+      },
+    });
+    (apiService.get as ReturnType<typeof vi.fn>).mockImplementation((endpoint: string) => {
+      if (endpoint.includes('/status')) return Promise.resolve(statusResponse());
+      return Promise.resolve(issuesResponse([issue]));
+    });
+
+    renderReport();
+
+    await waitFor(() => expect(screen.getAllByText('RouterAlpha').length).toBeGreaterThan(0));
+    // Nameless member falls back to !hex, never [object Object].
+    expect(screen.getByText('!000000de')).toBeInTheDocument();
+    expect(screen.getByText('RouterGamma')).toBeInTheDocument();
+    expect(screen.queryByText(/\[object Object\]/)).not.toBeInTheDocument();
+    expect(screen.getByText('Critical')).toBeInTheDocument();
+  });
+
+  it('renders a B3 asymmetric-link finding with both directional SNR rows', async () => {
+    const issue = issueRow({
+      id: 11,
+      issueType: 'B3_asymmetric_link',
+      subjectKey: 'edge:100-200',
+      nodeNum: 100,
+      nodeName: null,
+      severity: 'warning',
+      confidence: 'medium',
+      evidence: {
+        nodeA: { nodeNum: 100, name: 'NodeA', role: 3, roleName: 'ROUTER' },
+        nodeB: { nodeNum: 200, name: 'NodeB', role: null, roleName: 'Unknown' },
+        snrToA: { count: 5, meanDb: -2.5, minDb: -6, maxDb: 1 },
+        snrToB: { count: 4, meanDb: -10.3, minDb: -14, maxDb: -8 },
+        deltaDb: 7.8,
+        weakerDirection: 'a->b',
+        evidenceClasses: ['traceroute'],
+        observationCount: 9,
+        sources: ['sourceA'],
+        recommendation: 'One end of this link hears the other much better than the reverse.',
+      },
+    });
+    (apiService.get as ReturnType<typeof vi.fn>).mockImplementation((endpoint: string) => {
+      if (endpoint.includes('/status')) return Promise.resolve(statusResponse());
+      return Promise.resolve(issuesResponse([issue]));
+    });
+
+    renderReport();
+
+    await waitFor(() => expect(screen.getByText('SNR by direction')).toBeInTheDocument());
+    // NodeA -> NodeB row shows the SNR measured AT B (snrToB); the reverse
+    // row shows the SNR measured AT A (snrToA) — see rfGraph.ts's convention.
+    expect(screen.getByText('NodeA -> NodeB')).toBeInTheDocument();
+    expect(screen.getByText('-10.3 dB (n=4)')).toBeInTheDocument();
+    expect(screen.getByText('NodeB -> NodeA')).toBeInTheDocument();
+    expect(screen.getByText('-2.5 dB (n=5)')).toBeInTheDocument();
+  });
+
+  it('shows a truncation affordance for a capped member list instead of a raw Yes/No pill', async () => {
+    const issue = issueRow({
+      id: 12,
+      issueType: 'B1_router_cluster',
+      subjectKey: 'cluster:2:deadbeef',
+      nodeNum: null,
+      nodeName: null,
+      severity: 'warning',
+      confidence: 'low',
+      evidence: {
+        size: 2,
+        members: [{ nodeNum: 1, name: 'One', role: 3, roleName: 'ROUTER', directDegree: 1 }],
+        membersTruncated: true,
+        edges: [],
+        edgesTruncated: false,
+        inferredOnly: true,
+        bestSitedNodeNum: 1,
+        bestSitedName: 'One',
+        sources: ['sourceA'],
+        recommendation: 'Keep One as the router.',
+      },
+    });
+    (apiService.get as ReturnType<typeof vi.fn>).mockImplementation((endpoint: string) => {
+      if (endpoint.includes('/status')) return Promise.resolve(statusResponse());
+      return Promise.resolve(issuesResponse([issue]));
+    });
+
+    renderReport();
+
+    await waitFor(() => expect(screen.getAllByText('One').length).toBeGreaterThan(0));
+    expect(screen.getByText(/more not shown/i)).toBeInTheDocument();
+    // The truncated flag itself must never render as a raw boolean pill.
+    expect(screen.queryByText('Members Truncated')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the generic field instead of throwing when structured evidence is malformed', async () => {
+    const issue = issueRow({
+      id: 13,
+      issueType: 'B1_router_cluster',
+      subjectKey: 'cluster:2:baadf00d',
+      nodeNum: null,
+      nodeName: null,
+      severity: 'warning',
+      confidence: 'medium',
+      evidence: {
+        size: 2,
+        // Malformed: a string where an EvidenceNodeRef[] is expected.
+        members: 'not-an-array',
+        edges: [],
+        inferredOnly: false,
+        bestSitedNodeNum: 1,
+        bestSitedName: 'One',
+        sources: ['sourceA'],
+        recommendation: 'Keep One as the router.',
+      },
+    });
+    (apiService.get as ReturnType<typeof vi.fn>).mockImplementation((endpoint: string) => {
+      if (endpoint.includes('/status')) return Promise.resolve(statusResponse());
+      return Promise.resolve(issuesResponse([issue]));
+    });
+
+    renderReport();
+
+    // Falls back to the generic pill rendering the raw string, not a crash.
+    await waitFor(() => expect(screen.getByText('not-an-array')).toBeInTheDocument());
+  });
+
+  it('still renders Tier A findings via the plain evidence grid unchanged', async () => {
+    const issue = issueRow({
+      id: 14,
+      issueType: 'A3_infra_power',
+      nodeName: 'InfraNode',
+      severity: 'critical',
+      evidence: {
+        role: 3,
+        roleName: 'ROUTER',
+        resetCount: 4,
+        sources: ['sourceA'],
+        recommendation: 'Check this node’s power supply.',
+      },
+    });
+    (apiService.get as ReturnType<typeof vi.fn>).mockImplementation((endpoint: string) => {
+      if (endpoint.includes('/status')) return Promise.resolve(statusResponse());
+      return Promise.resolve(issuesResponse([issue]));
+    });
+
+    renderReport();
+
+    await waitFor(() => expect(screen.getByText(/InfraNode/)).toBeInTheDocument());
+    expect(screen.getByText('ROUTER')).toBeInTheDocument();
+    expect(screen.getByText('4')).toBeInTheDocument();
+    expect(screen.getByText('Check this node’s power supply.')).toBeInTheDocument();
+  });
+
   it('formats non-integer evidence numbers to at most 2 decimal places', async () => {
     const issue = issueRow({
       id: 9,

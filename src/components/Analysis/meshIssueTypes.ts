@@ -74,6 +74,13 @@ export const ISSUE_TYPE_LABELS: Record<string, string> = {
   A3_infra_power: 'Infrastructure node on failing power',
   A4_mobile_infra: 'Mobile infrastructure node',
   A5_cosplay_router: 'Router not advertised as unmessagable',
+  B1_router_cluster: 'Router cluster',
+  B2_redundant_router: 'Redundant router',
+  B3_asymmetric_link: 'Asymmetric link',
+  B4_idle_router: 'Idle router',
+  B5_load_bearing_client: 'Load-bearing client',
+  B6_hop_horizon: 'At the hop horizon',
+  B7_coverage_shadow: 'Coverage shadow',
 };
 
 export const ISSUE_TYPE_BLURBS: Record<string, string> = {
@@ -84,7 +91,86 @@ export const ISSUE_TYPE_BLURBS: Record<string, string> = {
   A3_infra_power: 'An infrastructure-role node is resetting or deep-discharging on battery power.',
   A4_mobile_infra: 'A node running a routing role is moving, which routing roles assume it will not do.',
   A5_cosplay_router: 'A dedicated router role is not advertising itself as unmessagable.',
+  B1_router_cluster: 'Several routers in one spot hear each other, so each one re-floods the same packets.',
+  B2_redundant_router: 'This router reaches almost the same neighbours as another one nearby.',
+  B3_asymmetric_link: 'One end of this link hears the other far better than the reverse.',
+  B4_idle_router: 'This router is heard directly but carries almost none of its area’s traffic.',
+  B5_load_bearing_client: 'A client node is carrying a large share of the paths through its area.',
+  B6_hop_horizon: 'Traffic from this node arrives with no hops left, so nodes further out cannot hear it.',
+  B7_coverage_shadow: 'This node only reaches us over MQTT despite sitting inside a router’s demonstrated RF range.',
 };
+
+/** A node reference embedded in evidence (cluster members, shared neighbours). */
+export interface EvidenceNodeRef {
+  nodeNum: number;
+  name?: string | null;
+  role?: number | null;
+  roleName?: string | null;
+  directDegree?: number | null;
+}
+
+/**
+ * Runtime guard for `EvidenceNodeRef[]` — evidence is parsed JSON from the
+ * database, so shape is never guaranteed. Only requires a numeric `nodeNum`;
+ * the remaining fields are optional in the interface and are simply absent
+ * on some shapes (e.g. B2's `otherCoveringRouters`).
+ */
+export function isEvidenceNodeRefArray(v: unknown): v is EvidenceNodeRef[] {
+  return (
+    Array.isArray(v) &&
+    v.every(
+      (item) =>
+        item !== null && typeof item === 'object' && typeof (item as Record<string, unknown>).nodeNum === 'number',
+    )
+  );
+}
+
+export interface EvidenceDirectionalSnr {
+  count: number;
+  meanDb: number | null;
+  minDb: number | null;
+  maxDb: number | null;
+}
+
+/** Runtime guard for `EvidenceDirectionalSnr` — same defensive rationale as
+ * `isEvidenceNodeRefArray`. */
+export function isEvidenceDirectionalSnr(v: unknown): v is EvidenceDirectionalSnr {
+  if (v === null || typeof v !== 'object') return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o.count === 'number' &&
+    (o.meanDb === null || typeof o.meanDb === 'number') &&
+    (o.minDb === null || typeof o.minDb === 'number') &&
+    (o.maxDb === null || typeof o.maxDb === 'number')
+  );
+}
+
+/** `-7.5 dB (n=6)`, or an em dash when there is no usable mean. */
+export function formatSnrDirection(v: EvidenceDirectionalSnr): string {
+  if (v.meanDb == null) return '—';
+  const rounded = Math.round(v.meanDb * 10) / 10;
+  return `${rounded} dB (n=${v.count})`;
+}
+
+/** `!hex` fallback for a node with no name in evidence. Mirrors the server
+ * helper (`displayName` in `rulesTierB.ts`). */
+export function hexNodeId(nodeNum: number): string {
+  return `!${(nodeNum >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+/** Evidence keys rendered by dedicated components (`MemberList`/`SnrDirections`
+ * in `MeshIssuesReport.tsx`), excluded from the generic evidence-pill grid. */
+export const STRUCTURED_EVIDENCE_KEYS: ReadonlySet<string> = new Set([
+  'members',
+  'edges',
+  'sharedNeighbors',
+  'otherCoveringRouters',
+  'clusterMembers',
+  'nodeA',
+  'nodeB',
+  'snrToA',
+  'snrToB',
+]);
 
 /**
  * Human label for an evidence object key. Generic camelCase -> Title Case

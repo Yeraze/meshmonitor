@@ -103,3 +103,60 @@
 .runErrorBanner {
   margin-top: 12px;
 }
+
+/* Tier B structured evidence (#4964 Phase 2 WP5b): member/edge chip lists
+ * and per-direction SNR tables. Same token-only rule as the rest of this
+ * module — no fallback values (CLAUDE.md map-sidebar lesson). */
+
+.memberList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.memberChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.memberChipRole {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--color-text-subtle);
+}
+
+.snrTable {
+  margin-top: 4px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.snrRow td {
+  padding: 3px 12px 3px 0;
+}
+
+.snrLabel {
+  color: var(--color-text-subtle);
+}
+
+.snrValue {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.truncationNote {
+  margin-top: 4px;
+  font-size: 11px;
+  font-style: italic;
+  color: var(--color-text-subtle);
+}
