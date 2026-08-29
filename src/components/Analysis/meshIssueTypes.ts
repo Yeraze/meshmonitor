@@ -42,11 +42,22 @@ export interface MeshIssueCounts {
 }
 
 export interface MeshIssuesResponse {
+  /** One PAGE of the full filtered set — `sortIssues(fullSet).slice(offset,
+   *  offset + limit)` server-side. Use `total`/`counts` for full-set totals,
+   *  not `issues.length` (#4964 post-epic follow-ups: wire-level pagination). */
   issues: MeshIssueRow[];
+  /** Computed over the FULL filtered (post-permission) set, not the page. */
   counts: MeshIssueCounts;
   /** Permitted-source id -> display name (Phase 3 WP3, spec §4.1). Only
    *  sources the caller can read appear here. */
   sourceNames: Record<string, string>;
+  /** Size of the full filtered set — equals `counts.total`. Compare against
+   *  `issues.length` to know whether more pages remain. */
+  total: number;
+  /** The `limit` actually applied (after clamping to [50, 2000]). */
+  limit: number;
+  /** The `offset` actually applied (floored at 0). */
+  offset: number;
 }
 
 /** RF-evidence availability flags (Phase 2/3, `rfGraph.ts`'s `RfEvidenceAvailability`). */
@@ -55,6 +66,16 @@ export interface MeshIssuesEvidenceAvailability {
   traceroute: boolean;
   mqttGateway: boolean;
   packetLog: boolean;
+  /**
+   * Whether an MQTT source exists at all (#4964 post-epic follow-ups —
+   * frozen contract). Distinct from `mqttGateway`: a mesh can have an MQTT
+   * source configured but producing no usable gateway evidence (e.g. the
+   * packet log is off), or no MQTT source at all — those are different
+   * situations for the "enable MQTT packet log" hint below. Optional/absent
+   * on older stored `lastRunResult` summaries persisted before this field
+   * existed (see `coverageNotes`'s gating).
+   */
+  mqttSourceConfigured?: boolean;
 }
 
 /** A rule the run skipped entirely, and why (`rulesTierB.ts`'s `RuleSkip`). */
@@ -366,12 +387,16 @@ export interface CoverageNote {
  * note covers several rules, `rule` carries the comma-separated list, exactly
  * as the spec's table does.
  *
- * Deviation from the spec table: the `!evidence.mqttGateway` note is not
- * additionally gated on "an MQTT source exists" — the wire's `coverage`
- * object does not currently carry whether an MQTT source is configured
- * (only whether it produced usable gateway evidence), and adding that field
- * is a server change outside this frontend-only work package. The note's
- * wording ("the MQTT packet log is off") stays accurate either way.
+ * `evidence.mqttSourceConfigured` (#4964 post-epic follow-ups) gates the
+ * `!evidence.mqttGateway` hint: it only makes sense to tell an operator to
+ * "enable the MQTT packet log" when an MQTT source actually exists to enable
+ * it on. The hint fires when `mqttSourceConfigured === true`; it is
+ * suppressed when `mqttSourceConfigured === false` (no MQTT source at all —
+ * the hint would be actionless). When the field is absent — an older stored
+ * `lastRunResult` summary persisted before this field existed — the hint
+ * falls back to the pre-#4964-follow-up behavior of firing on
+ * `!evidence.mqttGateway` alone, so a stale summary does not silently lose
+ * the hint it used to show.
  */
 export function coverageNotes(coverage: MeshIssuesCoverageWire): CoverageNote[] {
   const notes: CoverageNote[] = [];
@@ -397,7 +422,7 @@ export function coverageNotes(coverage: MeshIssuesCoverageWire): CoverageNote[] 
       severity: 'blocked',
     });
   }
-  if (!coverage.evidence.mqttGateway) {
+  if (!coverage.evidence.mqttGateway && (coverage.evidence.mqttSourceConfigured ?? true)) {
     notes.push({
       rule: 'B3, B7',
       note: 'the MQTT packet log is off, so gateway receptions are not contributing RF evidence',
