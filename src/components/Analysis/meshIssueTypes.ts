@@ -223,6 +223,10 @@ export interface EvidenceNodeRef {
   role?: number | null;
   roleName?: string | null;
   directDegree?: number | null;
+  /** Effective position at analysis time (#4974). Absent on rows persisted
+   *  before the field existed; null when the node has no usable position. */
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 /**
