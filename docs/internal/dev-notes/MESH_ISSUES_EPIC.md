@@ -177,10 +177,19 @@ LocalStats polling; "promote to ROUTER" recommendations.
   bounded), dismiss→restore round-trips, Tier C fires (289 key-security,
   238 time-offset, 55 over-broadcasting), settings section renders with
   provenance badges. Phase 3 checkbox ticked; epic complete pending PR merge.
-- Post-epic follow-ups (recorded, not implemented): notifications for findings
-  (needs a user decision — event-bus fan-out is mesh-impact §2); server-side
-  pagination if findings exceed a few thousand; expose `AUTO_CLOSE_CLEAN_RUNS`;
-  extract `resolvePermittedSourceIds` from `analysisRoutes.ts`; A5 telemetry
-  cadence clause (still blocked on solicited/broadcast separability);
-  coverage-preface MQTT hint shows even with no MQTT source configured (wire
-  lacks a source-configured flag).
+- Post-epic follow-ups, 2026-08-29 batch (`feature/mesh-issues-followups`) —
+  ALL IMPLEMENTED except notifications (user declined: "No notifications"):
+  - Server-side (wire-level) pagination on GET findings: `limit` 50–2000
+    default 500, `offset`; full-set `counts`/`total`; deterministic sort;
+    `useInfiniteQuery` "Load more" in the report.
+  - `mesh_issues_auto_close_runs` setting (default 3, clamp 1–20) replaces
+    the `AUTO_CLOSE_CLEAN_RUNS` code constant; field in the settings section.
+  - `resolvePermittedSourceIds`/`parseSourcesParam` extracted to
+    `src/server/utils/permittedSources.ts`; both routers consume it.
+  - A5 telemetry-cadence clause implemented via packet_log broadcast
+    TELEMETRY_APP receptions (median < 2h, ≥5 samples, `[ours]`); reports
+    `'unavailable'` when the packet log is off — never fires on missing data.
+  - `mqttSourceConfigured` on `RfEvidenceAvailability`; the coverage-preface
+    MQTT hint is suppressed when no MQTT source is configured (absent field =
+    legacy summaries, hint still shows).
+  - Notifications for findings remain NOT implemented, per user decision.
