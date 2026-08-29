@@ -21,13 +21,13 @@ import { isUptimeReboot } from '../../utils/rebootDetection.js';
 import { isPowered } from '../../utils/poweredState.js';
 import { isBogusPosition } from '../../../utils/nullIsland.js';
 import { compareVersions } from '../../utils/systemInfo.js';
-import { logger } from '../../../utils/logger.js';
 import {
   MESH_ISSUE_TYPES,
   nodeSubjectKey,
   areaSubjectKey,
   type MeshIssueFinding,
 } from './types.js';
+import { runRulesIsolated } from './ruleRunner.js';
 import type { PooledNode, NodeTelemetrySeries } from './nodeSnapshot.js';
 import {
   AIR_UTIL_TX_PCT_THRESHOLD,
@@ -440,13 +440,5 @@ const ALL_RULES: Array<[string, (ctx: RuleContext) => MeshIssueFinding[]]> = [
 
 /** A1..A5 in order. Never throws — a rule that cannot evaluate returns []. */
 export function evaluateAllTierA(ctx: RuleContext): MeshIssueFinding[] {
-  const findings: MeshIssueFinding[] = [];
-  for (const [name, rule] of ALL_RULES) {
-    try {
-      findings.push(...rule(ctx));
-    } catch (error) {
-      logger.warn(`[meshIssues] Tier A rule ${name} threw during evaluation, skipping:`, error);
-    }
-  }
-  return findings;
+  return runRulesIsolated('Tier A', ALL_RULES, ctx);
 }
