@@ -24,6 +24,8 @@ const mockDb = vi.hoisted(() => ({
   getMqttDirectReceptionsByGatewayAsync: vi.fn(),
   getPacketHopArrivalCountsAsync: vi.fn(),
   getMqttPacketHopArrivalCountsAsync: vi.fn(),
+  getTelemetryCadenceAggregatesAsync: vi.fn(),
+  getTelemetryTimestampsAsync: vi.fn(),
 }));
 vi.mock('../../services/database.js', () => ({ default: mockDb }));
 
@@ -37,6 +39,24 @@ const mockRulesTierB = vi.hoisted(() => ({
   tierBSkips: vi.fn(),
 }));
 vi.mock('./meshIssues/rulesTierB.js', () => mockRulesTierB);
+
+// `cadenceStatsFromTimestamps` stays REAL (via importOriginal) — the WP2
+// hard-acceptance test below ("stage-2 query is called only for candidate
+// nodes, chunked") exercises the service's real buildCadenceMap
+// orchestration. Only the two "evaluate" entry points are mocked, matching
+// the evaluateAllTierA/evaluateAllTierB precedent above.
+const mockRulesTierC = vi.hoisted(() => ({
+  evaluateAllTierC: vi.fn(),
+  tierCSkips: vi.fn(),
+}));
+vi.mock('./meshIssues/rulesTierC.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./meshIssues/rulesTierC.js')>();
+  return {
+    ...actual,
+    evaluateAllTierC: mockRulesTierC.evaluateAllTierC,
+    tierCSkips: mockRulesTierC.tierCSkips,
+  };
+});
 
 const mockRfGraph = vi.hoisted(() => ({
   buildRfGraph: vi.fn(),
@@ -141,6 +161,14 @@ function makeNodeRow(overrides: Partial<Record<string, unknown>> = {}) {
     mobile: null,
     lastHeard: Math.floor(NOW / 1000),
     updatedAt: NOW,
+    isExcessivePackets: null,
+    packetRatePerHour: null,
+    keyIsLowEntropy: null,
+    duplicateKeyDetected: null,
+    keyMismatchDetected: null,
+    keySecurityIssueDetails: null,
+    isTimeOffsetIssue: null,
+    timeOffsetSeconds: null,
     ...overrides,
   };
 }
@@ -191,9 +219,13 @@ describe('meshIssuesAnalysisService.runAnalysis', () => {
     mockDb.getMqttDirectReceptionsByGatewayAsync.mockResolvedValue([]);
     mockDb.getPacketHopArrivalCountsAsync.mockResolvedValue([]);
     mockDb.getMqttPacketHopArrivalCountsAsync.mockResolvedValue([]);
+    mockDb.getTelemetryCadenceAggregatesAsync.mockResolvedValue([]);
+    mockDb.getTelemetryTimestampsAsync.mockResolvedValue([]);
     mockRules.evaluateAllTierA.mockReturnValue([]);
     mockRulesTierB.evaluateAllTierB.mockReturnValue([]);
     mockRulesTierB.tierBSkips.mockReturnValue([]);
+    mockRulesTierC.evaluateAllTierC.mockReturnValue([]);
+    mockRulesTierC.tierCSkips.mockReturnValue([]);
     mockRfGraph.buildRfGraph.mockImplementation(graphEchoingAvailability);
     mockPacketLogService.isEnabled.mockResolvedValue(false);
     mockMqttPacketLogService.isEnabled.mockResolvedValue(false);
@@ -674,6 +706,183 @@ describe('meshIssuesAnalysisService.runAnalysis', () => {
       expect(result.coverage.totalEdgeCount).toBe(0);
       expect(result.coverage.hopHorizonSource).toBeNull();
       expect(result.coverage.skippedRules).toEqual([]);
+    });
+  });
+
+  describe('Tier C integration (#4964 Phase 3 WP2)', () => {
+    beforeEach(() => {
+      mockDb.sources.getAllSources.mockResolvedValue([makeSource()]);
+      mockDb.nodes.getAllNodes.mockResolvedValue([makeNodeRow()]);
+    });
+
+    it('does not evaluate Tier C, and produces no C findings, when mesh_issues_tier_c_enabled is false', async () => {
+      mockDb.settings.getSetting.mockImplementation(async (key: string) =>
+        key === 'mesh_issues_tier_c_enabled' ? 'false' : null,
+      );
+      mockRulesTierC.evaluateAllTierC.mockReturnValue([
+        makeFinding({ issueType: 'C1_excessive_packets', subjectKey: 'node:100' }),
+      ]);
+
+      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(mockRulesTierC.evaluateAllTierC).not.toHaveBeenCalled();
+      expect(result.findingCount).toBe(0);
+    });
+
+    it('a disabled Tier C still bumps cleanRuns for its existing open findings (auto-close, no row deletion)', async () => {
+      mockDb.settings.getSetting.mockImplementation(async (key: string) =>
+        key === 'mesh_issues_tier_c_enabled' ? 'false' : null,
+      );
+      mockDb.getMeshIssuesAsync.mockResolvedValue([
+        { id: 55, issueType: 'C1_excessive_packets', subjectKey: 'node:100' },
+      ]);
+
+      await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(mockDb.bumpMeshIssueCleanRunAsync).toHaveBeenCalledWith(55, expect.any(Number), NOW);
+    });
+
+    it('resolves thresholds once and passes the same resolved thresholds into the Tier C context too', async () => {
+      mockDb.settings.getSetting.mockImplementation(async (key: string) =>
+        key === 'mesh_issues_over_broadcast_seconds' ? '120' : null,
+      );
+
+      await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      const tierACtx = mockRules.evaluateAllTierA.mock.calls[0][0];
+      const tierCCtx = mockRulesTierC.evaluateAllTierC.mock.calls[0][0];
+      expect(tierCCtx.thresholds.overBroadcastSeconds).toBe(120);
+      expect(tierCCtx.thresholds).toEqual(tierACtx.thresholds);
+    });
+
+    it('passes opts.lookbackHours through as windowHours on the Tier C context', async () => {
+      await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 72, pairBucketHours: 6, nowMs: NOW });
+
+      const tierCCtx = mockRulesTierC.evaluateAllTierC.mock.calls[0][0];
+      expect(tierCCtx.windowHours).toBe(72);
+    });
+
+    it('maps the eight Tier C node columns from NodeRow into the pooled snapshot', async () => {
+      mockDb.nodes.getAllNodes.mockResolvedValue([
+        makeNodeRow({
+          isExcessivePackets: true,
+          packetRatePerHour: 42,
+          keyIsLowEntropy: true,
+          duplicateKeyDetected: false,
+          keyMismatchDetected: false,
+          keySecurityIssueDetails: 'low-entropy key',
+          isTimeOffsetIssue: true,
+          timeOffsetSeconds: -90,
+        }),
+      ]);
+
+      await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      const tierCCtx = mockRulesTierC.evaluateAllTierC.mock.calls[0][0];
+      const node = tierCCtx.nodes.get(100);
+      expect(node.isExcessivePackets).toBe(true);
+      expect(node.packetRatePerHour).toBe(42);
+      expect(node.keyIsLowEntropy).toBe(true);
+      expect(node.keySecurityIssueDetails).toBe('low-entropy key');
+      expect(node.isTimeOffsetIssue).toBe(true);
+      expect(node.timeOffsetSeconds).toBe(-90);
+    });
+
+    it('includes tierCSkips in coverage.skippedRules alongside tierBSkips', async () => {
+      mockRulesTierB.tierBSkips.mockReturnValue([{ rule: 'B6', reason: 'no packet log enabled' }]);
+      mockRulesTierC.tierCSkips.mockReturnValue([{ rule: 'C2', reason: 'no position or telemetry cadence data' }]);
+
+      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(result.coverage.skippedRules).toEqual([
+        { rule: 'B6', reason: 'no packet log enabled' },
+        { rule: 'C2', reason: 'no position or telemetry cadence data' },
+      ]);
+    });
+
+    it('persists Tier C findings alongside Tier A findings', async () => {
+      mockRulesTierC.evaluateAllTierC.mockReturnValue([
+        makeFinding({ issueType: 'C1_excessive_packets', subjectKey: 'node:100' }),
+      ]);
+
+      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(result.findingCount).toBe(1);
+      expect(result.byType).toEqual({ C1_excessive_packets: 1 });
+    });
+  });
+
+  describe('C2 cadence — real buildCadenceMap orchestration (#4964 Phase 3 WP2 hard acceptance)', () => {
+    beforeEach(() => {
+      mockDb.sources.getAllSources.mockResolvedValue([makeSource()]);
+      mockDb.nodes.getAllNodes.mockResolvedValue([makeNodeRow()]);
+    });
+
+    function makeAggregate(overrides: Partial<Record<string, unknown>> = {}) {
+      return {
+        nodeNum: 1,
+        telemetryType: 'latitude',
+        sampleCount: 10,
+        firstTimestamp: 0,
+        lastTimestamp: 9000, // mean = 9000/1000/9 = 1s -> well under any threshold*factor gate
+        ...overrides,
+      };
+    }
+
+    it('does not call the stage-2 timestamps query at all when the candidate set is empty', async () => {
+      // sampleCount below OVER_BROADCAST_MIN_SAMPLES (6) -> never a candidate.
+      mockDb.getTelemetryCadenceAggregatesAsync.mockResolvedValue([makeAggregate({ sampleCount: 3 })]);
+
+      await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(mockDb.getTelemetryTimestampsAsync).not.toHaveBeenCalled();
+    });
+
+    it('does not call the stage-2 timestamps query when the stage-1 mean is above the candidate gate', async () => {
+      // mean = (last-first)/1000/(sampleCount-1). thresholds default
+      // overBroadcastSeconds=300, candidate factor=2 -> gate is 600s.
+      // (5990*1000)/1000/(10-1) ~ 665s, above the gate.
+      mockDb.getTelemetryCadenceAggregatesAsync.mockResolvedValue([
+        makeAggregate({ sampleCount: 10, firstTimestamp: 0, lastTimestamp: 5_990_000 }),
+      ]);
+
+      await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(mockDb.getTelemetryTimestampsAsync).not.toHaveBeenCalled();
+    });
+
+    it('calls stage-2 only for candidate nodeNums, in chunks of 25', async () => {
+      const aggregates = Array.from({ length: 30 }, (_, i) => makeAggregate({ nodeNum: i + 1 }));
+      mockDb.getTelemetryCadenceAggregatesAsync.mockResolvedValue(aggregates);
+      mockDb.getTelemetryTimestampsAsync.mockResolvedValue([]);
+
+      await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(mockDb.getTelemetryTimestampsAsync).toHaveBeenCalledTimes(2);
+      const firstCall = mockDb.getTelemetryTimestampsAsync.mock.calls[0][0];
+      const secondCall = mockDb.getTelemetryTimestampsAsync.mock.calls[1][0];
+      expect(firstCall.nodeNums).toHaveLength(25);
+      expect(secondCall.nodeNums).toHaveLength(5);
+      expect([...firstCall.nodeNums, ...secondCall.nodeNums].sort((a: number, b: number) => a - b)).toEqual(
+        Array.from({ length: 30 }, (_, i) => i + 1),
+      );
+    });
+
+    it('builds an exact median position CadenceStats from the stage-2 timestamps and threads it into the Tier C context', async () => {
+      mockDb.getTelemetryCadenceAggregatesAsync.mockResolvedValue([makeAggregate({ nodeNum: 100 })]);
+      mockDb.getTelemetryTimestampsAsync.mockResolvedValue([
+        { nodeNum: 100, telemetryType: 'latitude', timestamp: 0 },
+        { nodeNum: 100, telemetryType: 'latitude', timestamp: 10_000 },
+        { nodeNum: 100, telemetryType: 'latitude', timestamp: 20_000 },
+      ]);
+
+      await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      const tierCCtx = mockRulesTierC.evaluateAllTierC.mock.calls[0][0];
+      const posCadence = tierCCtx.cadence.get(100)?.position;
+      expect(posCadence).toBeTruthy();
+      expect(posCadence.sampleCount).toBe(3);
+      expect(posCadence.medianIntervalSeconds).toBe(10); // two 10s gaps -> median 10s
     });
   });
 });

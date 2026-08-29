@@ -28,6 +28,12 @@ export const MESH_ISSUE_TYPES = {
   B5_LOAD_BEARING_CLIENT: 'B5_load_bearing_client',
   B6_HOP_HORIZON: 'B6_hop_horizon',
   B7_COVERAGE_SHADOW: 'B7_coverage_shadow',
+  // Tier C (#4964 Phase 3 WP2). Values stay <= 64 chars —
+  // `mesh_issues.issueType` is `varchar(64)` on MySQL.
+  C1_EXCESSIVE_PACKETS: 'C1_excessive_packets',
+  C1_KEY_SECURITY: 'C1_key_security',
+  C1_TIME_OFFSET: 'C1_time_offset',
+  C2_OVER_BROADCASTING: 'C2_over_broadcasting',
 } as const;
 export type MeshIssueType = typeof MESH_ISSUE_TYPES[keyof typeof MESH_ISSUE_TYPES];
 

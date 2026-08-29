@@ -38,6 +38,14 @@ function makeNode(overrides: Partial<PooledNode> = {}): PooledNode {
     mobile: false,
     lastHeardMs: null,
     sourceIds: ['src-a'],
+    isExcessivePackets: false,
+    packetRatePerHour: null,
+    keyIsLowEntropy: false,
+    duplicateKeyDetected: false,
+    keyMismatchDetected: false,
+    keySecurityIssueDetails: null,
+    isTimeOffsetIssue: false,
+    timeOffsetSeconds: null,
     ...overrides,
   };
 }

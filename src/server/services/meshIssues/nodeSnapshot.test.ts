@@ -133,6 +133,112 @@ describe('buildPooledNodeSnapshot', () => {
     const node = snapshot.get(100)!;
     expect(node.isUnmessagable).toBe(false);
   });
+
+  // -------------------------------------------------------------------------
+  // Tier C fold-in flags (#4964 Phase 3 WP2)
+  // -------------------------------------------------------------------------
+
+  it('takes isExcessivePackets, keyIsLowEntropy, duplicateKeyDetected, keyMismatchDetected, isTimeOffsetIssue as a logical OR across rows', () => {
+    const rows = [
+      makeInput({
+        sourceId: 'src-a',
+        updatedAt: 1000,
+        isExcessivePackets: false,
+        keyIsLowEntropy: false,
+        duplicateKeyDetected: false,
+        keyMismatchDetected: false,
+        isTimeOffsetIssue: false,
+      }),
+      makeInput({
+        sourceId: 'src-b',
+        updatedAt: 2000,
+        isExcessivePackets: true,
+        keyIsLowEntropy: true,
+        duplicateKeyDetected: true,
+        keyMismatchDetected: true,
+        isTimeOffsetIssue: true,
+      }),
+    ];
+    const snapshot = buildPooledNodeSnapshot(rows);
+    const node = snapshot.get(100)!;
+    expect(node.isExcessivePackets).toBe(true);
+    expect(node.keyIsLowEntropy).toBe(true);
+    expect(node.duplicateKeyDetected).toBe(true);
+    expect(node.keyMismatchDetected).toBe(true);
+    expect(node.isTimeOffsetIssue).toBe(true);
+  });
+
+  it('defaults every Tier C boolean flag to false when no row reports one', () => {
+    const rows = [makeInput({ sourceId: 'src-a', updatedAt: 1000 })];
+    const snapshot = buildPooledNodeSnapshot(rows);
+    const node = snapshot.get(100)!;
+    expect(node.isExcessivePackets).toBe(false);
+    expect(node.keyIsLowEntropy).toBe(false);
+    expect(node.duplicateKeyDetected).toBe(false);
+    expect(node.keyMismatchDetected).toBe(false);
+    expect(node.isTimeOffsetIssue).toBe(false);
+  });
+
+  it('takes packetRatePerHour as the MAX across non-null sources, never the SUM (#4964 Phase 3 WP2 hard acceptance)', () => {
+    // Same physical node heard on TCP + 2 MQTT gateways: the same packets
+    // land on all three vantages. Summing would multiply this node's
+    // apparent traffic by 3x; MAX gives the dedup-corrected reading.
+    const rows = [
+      makeInput({ sourceId: 'src-a', updatedAt: 1000, packetRatePerHour: 40 }),
+      makeInput({ sourceId: 'src-b', updatedAt: 2000, packetRatePerHour: 55 }),
+      makeInput({ sourceId: 'src-c', updatedAt: 3000, packetRatePerHour: 20 }),
+    ];
+    const snapshot = buildPooledNodeSnapshot(rows);
+    const node = snapshot.get(100)!;
+    expect(node.packetRatePerHour).toBe(55);
+    // Explicitly assert this is NOT the sum (115) — the regression this test guards against.
+    expect(node.packetRatePerHour).not.toBe(115);
+  });
+
+  it('takes packetRatePerHour as null when no row reports a value', () => {
+    const rows = [makeInput({ sourceId: 'src-a', updatedAt: 1000, packetRatePerHour: null })];
+    const snapshot = buildPooledNodeSnapshot(rows);
+    const node = snapshot.get(100)!;
+    expect(node.packetRatePerHour).toBeNull();
+  });
+
+  it('takes keySecurityIssueDetails as newest-wins (firstNonNull over freshness-sorted rows)', () => {
+    const rows = [
+      makeInput({ sourceId: 'src-a', updatedAt: 1000, keySecurityIssueDetails: 'old detail' }),
+      makeInput({ sourceId: 'src-b', updatedAt: 2000, keySecurityIssueDetails: 'new detail' }),
+    ];
+    const snapshot = buildPooledNodeSnapshot(rows);
+    const node = snapshot.get(100)!;
+    expect(node.keySecurityIssueDetails).toBe('new detail');
+  });
+
+  it('falls back to the older row for keySecurityIssueDetails when the freshest row has none', () => {
+    const rows = [
+      makeInput({ sourceId: 'src-a', updatedAt: 1000, keySecurityIssueDetails: 'old detail' }),
+      makeInput({ sourceId: 'src-b', updatedAt: 2000, keySecurityIssueDetails: null }),
+    ];
+    const snapshot = buildPooledNodeSnapshot(rows);
+    const node = snapshot.get(100)!;
+    expect(node.keySecurityIssueDetails).toBe('old detail');
+  });
+
+  it('takes timeOffsetSeconds as the value with the greatest absolute magnitude, including a negative one', () => {
+    const rows = [
+      makeInput({ sourceId: 'src-a', updatedAt: 1000, timeOffsetSeconds: 45 }),
+      makeInput({ sourceId: 'src-b', updatedAt: 2000, timeOffsetSeconds: -600 }),
+      makeInput({ sourceId: 'src-c', updatedAt: 3000, timeOffsetSeconds: 300 }),
+    ];
+    const snapshot = buildPooledNodeSnapshot(rows);
+    const node = snapshot.get(100)!;
+    expect(node.timeOffsetSeconds).toBe(-600);
+  });
+
+  it('takes timeOffsetSeconds as null when no row reports a value', () => {
+    const rows = [makeInput({ sourceId: 'src-a', updatedAt: 1000, timeOffsetSeconds: null })];
+    const snapshot = buildPooledNodeSnapshot(rows);
+    const node = snapshot.get(100)!;
+    expect(node.timeOffsetSeconds).toBeNull();
+  });
 });
 
 describe('buildTelemetrySeries', () => {

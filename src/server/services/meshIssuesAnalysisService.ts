@@ -26,6 +26,7 @@ import {
   type PooledNode,
   type PooledNodeInput,
   type TelemetryRowInput,
+  type NodeTelemetrySeries,
 } from './meshIssues/nodeSnapshot.js';
 import { evaluateAllTierA, type RuleContext } from './meshIssues/rules.js';
 import {
@@ -36,6 +37,13 @@ import {
   type RuleSkip,
 } from './meshIssues/rulesTierB.js';
 import {
+  evaluateAllTierC,
+  tierCSkips,
+  cadenceStatsFromTimestamps,
+  type TierCRuleContext,
+  type NodeCadence,
+} from './meshIssues/rulesTierC.js';
+import {
   buildRfGraph,
   type RfEvidenceAvailability,
   type NeighborEdgeInput,
@@ -45,6 +53,8 @@ import { buildTracerouteCorpus, type TracerouteCorpusStats } from './meshIssues/
 import {
   INFRA_ROLES,
   AUTO_CLOSE_CLEAN_RUNS,
+  OVER_BROADCAST_MIN_SAMPLES,
+  OVER_BROADCAST_CANDIDATE_FACTOR,
   resolveThresholds,
   MESH_ISSUE_THRESHOLD_SETTINGS_KEYS,
   type ResolvedMeshIssueThresholds,
@@ -255,6 +265,16 @@ class MeshIssuesAnalysisService {
         mobile: n.mobile ?? null,
         lastHeard: n.lastHeard ?? null,
         updatedAt: n.updatedAt ?? null,
+        // Tier C fold-in flags (#4964 Phase 3 WP2) — see nodeSnapshot.ts's
+        // PooledNode JSDoc for the per-field merge rule.
+        isExcessivePackets: n.isExcessivePackets ?? null,
+        packetRatePerHour: n.packetRatePerHour ?? null,
+        keyIsLowEntropy: n.keyIsLowEntropy ?? null,
+        duplicateKeyDetected: n.duplicateKeyDetected ?? null,
+        keyMismatchDetected: n.keyMismatchDetected ?? null,
+        keySecurityIssueDetails: n.keySecurityIssueDetails ?? null,
+        isTimeOffsetIssue: n.isTimeOffsetIssue ?? null,
+        timeOffsetSeconds: n.timeOffsetSeconds ?? null,
       }));
     const nodes = buildPooledNodeSnapshot(nodeInputs);
 
@@ -391,6 +411,12 @@ class MeshIssuesAnalysisService {
     }
     graph.stats.availability.packetLog = packetLogEnabled;
 
+    // 5f. Tier C cadence (position + telemetry broadcast cadence, #4964
+    // Phase 3 WP2) — built unconditionally (same precedent as the RF graph
+    // in 5d), so tierCSkips/coverage stay accurate even when Tier C is
+    // toggled off; only the EVALUATION below is gated.
+    const cadence = await this.buildCadenceMap(telemetry, sourceIds, sinceMs, thresholds);
+
     // 6. Evaluate Tier A — never throws; a rule that can't evaluate contributes
     // no findings. Gated by thresholds.tierAEnabled: a disabled tier
     // contributes no findings THIS RUN, but does not delete any existing row
@@ -403,7 +429,18 @@ class MeshIssuesAnalysisService {
     // own toggle is handled inside evaluateAllTierB (ctx.thresholds.b7Enabled).
     const tierBCtx: TierBRuleContext = { nodes, graph, samples, hopHorizon, mqttSourceIds, nowMs, thresholds };
     if (thresholds.tierBEnabled) findings.push(...evaluateAllTierB(tierBCtx));
-    const skippedRules = tierBSkips(tierBCtx);
+
+    // 6c. Evaluate Tier C — node-flag fold-ins (C1) + over-broadcasting (C2).
+    const tierCCtx: TierCRuleContext = {
+      nodes,
+      cadence,
+      thresholds,
+      nowMs,
+      windowHours: opts.lookbackHours,
+    };
+    if (thresholds.tierCEnabled) findings.push(...evaluateAllTierC(tierCCtx));
+
+    const skippedRules = [...tierBSkips(tierBCtx), ...tierCSkips(tierCCtx)];
 
     // 7. Persist — issue-type agnostic; Tier B findings flow through the
     // same upsert/clean-run bookkeeping as Tier A.
@@ -499,6 +536,90 @@ class MeshIssuesAnalysisService {
     }
 
     return result;
+  }
+
+  /**
+   * Build per-node position + telemetry broadcast-cadence stats for C2 (Mesh
+   * Issues Tier C, #4964 Phase 3 WP2, spec §2.5).
+   *
+   * Telemetry cadence is free — no query: `telemetry` (already fetched for
+   * Tier A) already dedupes by `(nodeNum, type, timestamp)`, and one
+   * device-metrics packet writes several rows sharing one timestamp, so the
+   * union of distinct timestamps across the four series is a faithful count
+   * of device-telemetry broadcasts.
+   *
+   * Position cadence is two-stage and bounded: stage 1 is one portable
+   * GROUP BY aggregate for the whole mesh, giving a MEAN inter-arrival that
+   * gates which nodes are worth an exact-median stage 2 — run only for those
+   * candidates, in chunks of `POSITION_SPAN_CHUNK_SIZE` (mirrors
+   * `buildPositionSpans`). A node offline for part of the window has an
+   * inflated stage-1 mean, so the gate under-selects — the safe direction
+   * (P3-D2).
+   */
+  private async buildCadenceMap(
+    telemetry: Map<number, NodeTelemetrySeries>,
+    sourceIds: string[],
+    sinceMs: number,
+    thresholds: ResolvedMeshIssueThresholds,
+  ): Promise<Map<number, NodeCadence>> {
+    const cadence = new Map<number, NodeCadence>();
+
+    for (const [nodeNum, series] of telemetry) {
+      const samples = [
+        ...series.airUtilTx,
+        ...series.channelUtilization,
+        ...series.batteryLevel,
+        ...series.uptimeSeconds,
+      ];
+      if (samples.length === 0) continue;
+      const stats = cadenceStatsFromTimestamps(
+        samples.map((s) => s.timestamp),
+        samples.map((s) => s.sourceId),
+      );
+      if (!stats) continue;
+      cadence.set(nodeNum, { position: null, telemetry: stats });
+    }
+
+    const aggregates = await databaseService.getTelemetryCadenceAggregatesAsync({
+      telemetryTypes: ['latitude'],
+      sinceMs,
+      sourceIds,
+    });
+
+    const candidateNodeNums: number[] = [];
+    for (const agg of aggregates) {
+      if (agg.sampleCount < OVER_BROADCAST_MIN_SAMPLES) continue;
+      const meanIntervalSeconds = (agg.lastTimestamp - agg.firstTimestamp) / 1000 / (agg.sampleCount - 1);
+      if (meanIntervalSeconds < thresholds.overBroadcastSeconds * OVER_BROADCAST_CANDIDATE_FACTOR) {
+        candidateNodeNums.push(Number(agg.nodeNum));
+      }
+    }
+
+    for (let i = 0; i < candidateNodeNums.length; i += POSITION_SPAN_CHUNK_SIZE) {
+      const chunk = candidateNodeNums.slice(i, i + POSITION_SPAN_CHUNK_SIZE);
+      const rows = await databaseService.getTelemetryTimestampsAsync({
+        nodeNums: chunk,
+        telemetryTypes: ['latitude'],
+        sinceMs,
+        sourceIds,
+      });
+      const timestampsByNode = new Map<number, number[]>();
+      for (const row of rows) {
+        const nodeNum = Number(row.nodeNum);
+        const list = timestampsByNode.get(nodeNum);
+        if (list) list.push(row.timestamp);
+        else timestampsByNode.set(nodeNum, [row.timestamp]);
+      }
+      for (const nodeNum of chunk) {
+        const stats = cadenceStatsFromTimestamps(timestampsByNode.get(nodeNum) ?? []);
+        if (!stats) continue;
+        const entry = cadence.get(nodeNum) ?? { position: null, telemetry: null };
+        entry.position = stats;
+        cadence.set(nodeNum, entry);
+      }
+    }
+
+    return cadence;
   }
 
   /**

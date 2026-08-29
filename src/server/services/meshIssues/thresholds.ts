@@ -164,6 +164,28 @@ export const CLUSTER_ROLES: ReadonlySet<number> = new Set([
 /** C2: deduped position/telemetry median inter-arrival below which a
  *  non-tracker node counts as over-broadcasting, seconds. [ours] */
 export const OVER_BROADCAST_INTERVAL_SECONDS = 300;
+/** C2: minimum deduped broadcasts in-window before a median means anything. [ours] */
+export const OVER_BROADCAST_MIN_SAMPLES = 6;
+/** C2: candidate gate multiplier for the stage-2 exact median (spec §2.5) —
+ *  a node whose stage-1 MEAN inter-arrival is below
+ *  `overBroadcastSeconds * OVER_BROADCAST_CANDIDATE_FACTOR` gets the exact
+ *  (stage-2) median computed; a node offline for part of the window has an
+ *  inflated mean, so this gate under-selects (safe direction, P3-D2). [ours] */
+export const OVER_BROADCAST_CANDIDATE_FACTOR = 2;
+/** Roles for which frequent position/telemetry broadcast is the intended
+ *  behaviour and C2 must never fire. TAK_TRACKER joins TRACKER/SENSOR
+ *  (P3-D6) — it is a tracker by design and excluding it would fire on every
+ *  correctly configured ATAK node. */
+export const OVER_BROADCAST_EXEMPT_ROLES: ReadonlySet<number> = new Set([
+  DeviceRole.TRACKER,
+  DeviceRole.SENSOR,
+  DeviceRole.TAK_TRACKER,
+]);
+/** C2 severity multiplier: a median under
+ *  `overBroadcastSeconds * OVER_BROADCAST_WARNING_SEVERITY_FACTOR` is a
+ *  warning regardless of power state (spec §3.4 "under half the
+ *  threshold"). [ours] */
+export const OVER_BROADCAST_WARNING_SEVERITY_FACTOR = 0.5;
 
 /**
  * The subset of thresholds a user can tune (#4964 Phase 3). Everything not in
