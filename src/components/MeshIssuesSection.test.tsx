@@ -101,7 +101,34 @@ describe('MeshIssuesSection', () => {
     // [MeshMonitor] provenance tag (spec §9 WP5 hard acceptance).
     expect(screen.getByText(/12 finding/)).toBeInTheDocument();
     expect(screen.getAllByText('[official]').length).toBe(2);
-    expect(screen.getAllByText('[MeshMonitor]').length).toBe(3);
+    // 3 pre-existing MeshMonitor-judgement thresholds + auto-close (#4964
+    // post-epic follow-ups).
+    expect(screen.getAllByText('[MeshMonitor]').length).toBe(4);
+  });
+
+  it('defaults auto-close runs to 3 when the field is absent from status (older server, #4964 post-epic follow-ups)', async () => {
+    render(<MeshIssuesSection baseUrl="" />);
+
+    await waitFor(() => expect(screen.getByDisplayValue('8')).toBeInTheDocument());
+    expect(screen.getByDisplayValue('3')).toBeInTheDocument(); // autoCloseRuns fallback
+  });
+
+  it('reads a non-default auto-close runs value from status.thresholds.autoCloseCleanRuns (#4964 post-epic follow-ups)', async () => {
+    mockCsrfFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        success: true,
+        data: {
+          ...statusResponse.data,
+          thresholds: { ...statusThresholds, autoCloseCleanRuns: 9 },
+        },
+      }),
+    });
+
+    render(<MeshIssuesSection baseUrl="" />);
+
+    await waitFor(() => expect(screen.getByDisplayValue('9')).toBeInTheDocument());
   });
 
   it('marks the save bar dirty when a field changes', async () => {
@@ -153,8 +180,32 @@ describe('MeshIssuesSection', () => {
       mesh_issues_mobile_span_meters: '500',
       mesh_issues_snr_asymmetry_db: '6',
       mesh_issues_over_broadcast_seconds: '300',
+      mesh_issues_auto_close_runs: '3',
     });
     expect(mockShowToast).toHaveBeenCalledWith('Settings saved', 'success');
+  });
+
+  it('posts a changed auto-close runs value (#4964 post-epic follow-ups)', async () => {
+    render(<MeshIssuesSection baseUrl="" />);
+    await waitFor(() => expect(screen.getByDisplayValue('3')).toBeInTheDocument());
+
+    fireEvent.change(screen.getByDisplayValue('3'), { target: { value: '7' } });
+    await waitFor(() => {
+      const lastCall = mockUseSaveBar.mock.calls[mockUseSaveBar.mock.calls.length - 1][0];
+      expect(lastCall.hasChanges).toBe(true);
+    });
+
+    mockCsrfFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ success: true }) });
+
+    const { onSave } = mockUseSaveBar.mock.calls[mockUseSaveBar.mock.calls.length - 1][0];
+    await onSave();
+
+    const postCall = mockCsrfFetch.mock.calls.find(
+      (call) => call[0] === '/api/settings' && call[1]?.method === 'POST'
+    );
+    expect(postCall).toBeDefined();
+    const body = JSON.parse(postCall![1].body as string);
+    expect(body.mesh_issues_auto_close_runs).toBe('7');
   });
 
   it('shows an "already running" toast on a 409 from run-now', async () => {
