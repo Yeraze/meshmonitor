@@ -86,6 +86,8 @@ import type {
   DbMeshIssue,
   UpsertOutcome as MeshIssueUpsertOutcome,
   GetIssuesOptions as MeshIssuesGetIssuesOptions,
+  MqttDirectReceptionRow,
+  PacketHopArrivalRow,
 } from '../db/repositories/index.js';
 import type { MeshIssueFinding } from '../server/services/meshIssues/types.js';
 import type { ConversationReadStateMap } from '../db/repositories/index.js';
@@ -4430,6 +4432,50 @@ class DatabaseService {
 
   async getPacketCountsByPortnumAsync(options?: { since?: number; from_node?: number; sourceId?: string }): Promise<DbPacketCountByPortnum[]> {
     return this.packetLog.getPacketCountsByPortnum(options);
+  }
+
+  /**
+   * Mesh Issues RF evidence class 3 (Phase 2 §3.1) — per-`(gateway, node)`
+   * DIRECT receptions from `mqtt_packet_log` since `since`. See
+   * {@link MqttPacketLogRepository.getDirectReceptionsByGateway} for the
+   * predicate and caveats.
+   */
+  async getMqttDirectReceptionsByGatewayAsync(q: {
+    sourceIds: string[];
+    since: number;
+    limit?: number;
+  }): Promise<MqttDirectReceptionRow[]> {
+    return this.mqttPacketLog.getDirectReceptionsByGateway(q);
+  }
+
+  /**
+   * Mesh Issues B6 "hop horizon" evidence (Phase 2 §3.2/§3.3) — per-node
+   * deduped hop-arrival stats from `packet_log` (our own RF vantage) since
+   * `since`. See {@link PacketLogRepository.getHopArrivalCountsSince} for the
+   * dedup rule. The caller (Mesh Issues analysis service) prefers this over
+   * {@link getMqttPacketHopArrivalCountsAsync} when both are available —
+   * `packet_log` is what "hop horizon" means (D8, MESH_ISSUES_P2_SPEC.md).
+   */
+  async getPacketHopArrivalCountsAsync(q: {
+    since: number;
+    sourceIds?: string[];
+    limit?: number;
+  }): Promise<PacketHopArrivalRow[]> {
+    return this.packetLog.getHopArrivalCountsSince(q);
+  }
+
+  /**
+   * Mesh Issues B6 "hop horizon" evidence (Phase 2 §3.2/§3.3), MQTT variant —
+   * per-node deduped hop-arrival stats from `mqtt_packet_log` since `since`.
+   * Fallback source when `packet_log` is enabled but empty, or not enabled
+   * at all; see {@link getPacketHopArrivalCountsAsync}.
+   */
+  async getMqttPacketHopArrivalCountsAsync(q: {
+    since: number;
+    sourceIds: string[];
+    limit?: number;
+  }): Promise<PacketHopArrivalRow[]> {
+    return this.mqttPacketLog.getHopArrivalCountsSince(q);
   }
 
 

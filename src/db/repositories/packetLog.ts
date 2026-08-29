@@ -4,11 +4,37 @@
  * Handles packet log database operations including analytics.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, asc, and, or, inArray, sql, isNull } from 'drizzle-orm';
+import { eq, asc, and, or, inArray, sql, isNull, gte, gt, isNotNull, max, type SQL } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../types.js';
 import { logger } from '../../utils/logger.js';
 import { getPortNumName } from '../../server/constants/meshtastic.js';
+
+/**
+ * Per-node hop-arrival aggregate row — Mesh Issues B6 "hop horizon" evidence
+ * (Phase 2 §3.2). `totalPackets` is the number of distinct `(from_node,
+ * packet_id)` observations after dedup; `exhaustedPackets` is how many of
+ * those had a best-observed `hopLimit` of exactly 0. Shared shape between
+ * {@link PacketLogRepository.getHopArrivalCountsSince} and
+ * `MqttPacketLogRepository.getHopArrivalCountsSince` — the two queries
+ * differ only in table/columns and the `direction = 'rx'` clause, which
+ * applies to `packet_log` only (every `mqtt_packet_log` row is already a
+ * reception).
+ */
+export interface PacketHopArrivalRow {
+  nodeNum: number;
+  totalPackets: number;
+  exhaustedPackets: number;
+}
+
+/**
+ * Row cap for {@link PacketLogRepository.getHopArrivalCountsSince} and
+ * `MqttPacketLogRepository.getHopArrivalCountsSince` (Mesh Issues Phase 2
+ * §2.9's `HOP_ARRIVAL_MAX_ROWS`). Exported so callers — including the Mesh
+ * Issues analysis service — can reference the same bound rather than
+ * re-declaring it, and so its test can assert against it directly. `[ours]`.
+ */
+export const HOP_ARRIVAL_MAX_ROWS = 20_000;
 
 export class PacketLogRepository extends BaseRepository {
   constructor(db: DrizzleDatabase, dbType: DatabaseType) {
@@ -664,6 +690,93 @@ export class PacketLogRepository extends BaseRepository {
       }));
     } catch (error) {
       logger.error('[PacketLogRepository] Failed to get packet counts by portnum:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Per-node hop-arrival stats since `since` — Mesh Issues B6 "hop horizon"
+   * evidence (Phase 2 §3.2). A two-level aggregate:
+   *
+   * 1. Inner (deduplication): group by `(from_node, packet_id)` and take
+   *    `MAX(hop_limit)`. The same originating packet can be logged more than
+   *    once (retransmission/relay copies), and the epic's dedup rule takes
+   *    the maximum observed hopLimit — a packet that still had life at ANY
+   *    vantage does not count as exhausted (the conservative tie-break,
+   *    D9 in MESH_ISSUES_P2_SPEC.md — keeps B6 from firing on one unlucky
+   *    capture).
+   * 2. Outer: per node, count total deduped packets and how many of those
+   *    had a best-observed `hopLimit` of exactly 0.
+   *
+   * `direction = 'rx'` is required here (and only here — the MQTT sibling
+   * query has no such column, because every `mqtt_packet_log` row is already
+   * a reception): this is our own RF vantage's log, and a row we ourselves
+   * transmitted is not an "arrival". `hop_start > 0` excludes packets whose
+   * hop budget is unknown — `hop_start = 0` is the unknown sentinel, never a
+   * genuine reading.
+   *
+   * `sourceIds` is optional here (unlike the MQTT variant, where it is
+   * required) — omitting it runs the aggregate unscoped. When provided and
+   * empty, returns `[]` immediately rather than issuing an unbounded scan.
+   *
+   * Results are capped at `limit` (default {@link HOP_ARRIVAL_MAX_ROWS}),
+   * ordered by `totalPackets` descending so a cap that bites keeps the
+   * best-evidenced nodes.
+   */
+  async getHopArrivalCountsSince(q: {
+    since: number;
+    sourceIds?: string[];
+    limit?: number;
+  }): Promise<PacketHopArrivalRow[]> {
+    if (q.sourceIds && q.sourceIds.length === 0) return [];
+
+    const { packetLog } = this.tables;
+    const conditions: SQL[] = [
+      gte(packetLog.timestamp, q.since),
+      eq(packetLog.direction, 'rx'),
+      isNotNull(packetLog.packet_id),
+      isNotNull(packetLog.hop_limit),
+      isNotNull(packetLog.hop_start),
+      gt(packetLog.hop_start, 0),
+    ];
+    if (q.sourceIds) {
+      conditions.push(inArray(packetLog.sourceId, q.sourceIds));
+    }
+
+    try {
+      const deduped = this.db
+        .select({
+          nodeNum: packetLog.from_node,
+          pid: packetLog.packet_id,
+          maxHopLimit: max(packetLog.hop_limit).as('maxHopLimit'),
+        })
+        .from(packetLog)
+        .where(and(...conditions))
+        .groupBy(packetLog.from_node, packetLog.packet_id)
+        .as('deduped');
+
+      const rows = await this.db
+        .select({
+          nodeNum: deduped.nodeNum,
+          totalPackets: sql<number>`COUNT(*)`,
+          exhaustedPackets: sql<number>`SUM(CASE WHEN ${deduped.maxHopLimit} = 0 THEN 1 ELSE 0 END)`,
+        })
+        .from(deduped)
+        .groupBy(deduped.nodeNum)
+        .orderBy(sql`COUNT(*) DESC`)
+        .limit(q.limit ?? HOP_ARRIVAL_MAX_ROWS);
+
+      // Explicit Number() coercion, not just normalizeBigInts: PostgreSQL's
+      // driver returns BIGINT-derived aggregates (COUNT/SUM) as strings by
+      // default, which normalizeBigInts (typeof 'bigint' only) would not
+      // catch — the same reason getGroupedPacketCount coerces explicitly.
+      return (rows as Array<{ nodeNum: unknown; totalPackets: unknown; exhaustedPackets: unknown }>).map((r) => ({
+        nodeNum: Number(r.nodeNum),
+        totalPackets: Number(r.totalPackets),
+        exhaustedPackets: Number(r.exhaustedPackets),
+      }));
+    } catch (error) {
+      logger.error('[PacketLogRepository] Failed to get hop arrival counts:', error);
       return [];
     }
   }
