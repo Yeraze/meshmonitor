@@ -103,10 +103,10 @@ LocalStats polling; "promote to ROUTER" recommendations.
   (envelope + `requirePermission`), minimal Reports card listing findings by severity.
   Exit: full suite green incl. PG/MySQL, report renders findings from live dev DB, PR
   merged.
-- [ ] **Phase 2 — Tier B.** RF adjacency union (3 evidence classes), per-edge directional
+- [x] **Phase 2 — Tier B.** RF adjacency union (3 evidence classes), per-edge directional
   SNR stats, rules B1–B7, evidence rendering in the report. Exit: suite green,
   graph rules validated against dev DB, PR merged.
-- [ ] **Phase 3 — Polish.** Coverage preface, dismiss/acknowledge + auto-close, Tier C
+- [x] **Phase 3 — Polish.** Coverage preface, dismiss/acknowledge + auto-close, Tier C
   fold-ins, threshold settings UI (SettingsDraft + VALID_SETTINGS_KEYS), user docs.
   Exit: suite green, browser-validated end-to-end, docs updated, PR merged.
 
@@ -147,3 +147,40 @@ LocalStats polling; "promote to ROUTER" recommendations.
 - Phase 3 backlog additions: truncation note has no "+N" count (no total-count
   field in capped evidence lists); evidence node names not redacted per-source
   inside evidence JSON (D12, deliberate deferral).
+
+### Phase 3
+- 2026-08-28: worktree `../meshmonitor-mesh-issues-p3`
+  (`feature/mesh-issues-analysis-phase3`). Spec: `MESH_ISSUES_P3_SPEC.md`
+  (decisions P3-D1..P3-D12). No new migration: `mesh_issues` already carries the
+  dismiss columns and Tier C only adds new `issueType` string values.
+- Scope: C3 coverage preface, dismiss/restore routes + UI, Tier C (C1 fold-ins,
+  C2 over-broadcasting), 10 new settings keys with a read-time clamped
+  `resolveThresholds` seam, the full UI polish backlog from both phase logs, a
+  `docs/features/mesh-issues.md` user page, and D12 implemented (evidence-level
+  redaction) rather than accepted.
+- Notifications stay out of scope (P1 §5.11): recorded as a post-epic follow-up.
+- WP5 (settings section + docs, depends only on WP1) delivered: new
+  `MeshIssuesSection.tsx` modeled on `PositionEstimationSection.tsx` (own
+  state, `useSaveBar`, plain `POST /api/settings`, status from
+  `GET /api/analysis/mesh-issues/status`), wired into `SettingsTab.tsx`
+  (`GLOBAL_SECTIONS`, nav array, render site — same three sites as position
+  estimation), a component test, and the `docs/features/mesh-issues.md` user
+  page (all 18 rule rows, the passive guarantee, threshold provenance table,
+  acting-on-findings guidance, and the C1/Security-tab overlap note), plus
+  the VitePress sidebar entry and an `analysis-reports.md` cross-link. Landed
+  independently of WP2/WP3/WP4 (Tier C, dismiss/redaction routes, report UI),
+  which were still in flight in this worktree at the time.
+- 2026-08-29: all five work packages landed. Review pass fixed: semantic-token
+  guard violation in the settings badges (fallback hexes on undefined tokens);
+  added the spec'd `meshIssueTypes.test.ts` boundary tests. Browser-validated
+  on the live dev DB: coverage funnel renders, INFO(813) collapses (DOM
+  bounded), dismiss→restore round-trips, Tier C fires (289 key-security,
+  238 time-offset, 55 over-broadcasting), settings section renders with
+  provenance badges. Phase 3 checkbox ticked; epic complete pending PR merge.
+- Post-epic follow-ups (recorded, not implemented): notifications for findings
+  (needs a user decision — event-bus fan-out is mesh-impact §2); server-side
+  pagination if findings exceed a few thousand; expose `AUTO_CLOSE_CLEAN_RUNS`;
+  extract `resolvePermittedSourceIds` from `analysisRoutes.ts`; A5 telemetry
+  cadence clause (still blocked on solicited/broadcast separability);
+  coverage-preface MQTT hint shows even with no MQTT source configured (wire
+  lacks a source-configured flag).

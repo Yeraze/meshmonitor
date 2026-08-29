@@ -88,6 +88,7 @@ import type {
   GetIssuesOptions as MeshIssuesGetIssuesOptions,
   MqttDirectReceptionRow,
   PacketHopArrivalRow,
+  TelemetryCadenceAggregate,
 } from '../db/repositories/index.js';
 import type { MeshIssueFinding } from '../server/services/meshIssues/types.js';
 import type { ConversationReadStateMap } from '../db/repositories/index.js';
@@ -2059,6 +2060,11 @@ class DatabaseService {
     return this.meshIssues.setDismissed(id, dismissed, userId, nowMs);
   }
 
+  /** One finding by id, or null (Phase 3 WP3 — dismiss/restore visibility check). */
+  async getMeshIssueByIdAsync(id: number): Promise<DbMeshIssue | null> {
+    return this.meshIssues.getIssueById(id);
+  }
+
 
 
   /**
@@ -2093,6 +2099,35 @@ class DatabaseService {
     sourceId?: SourceScope
   ): Promise<Array<{ timestamp: number; quality: number }>> {
     return this.telemetry.getLinkQualityHistory(nodeId, sinceTimestamp, sourceId);
+  }
+
+  /**
+   * Stage 1 of Mesh Issues C2's two-stage cadence computation (#4964, Phase 3
+   * WP2): one portable GROUP BY aggregate per (nodeNum, telemetryType), used
+   * to gate which nodes need the exact-median stage 2
+   * (`getTelemetryTimestampsAsync`). See
+   * `TelemetryRepository.getTelemetryCadenceAggregates`.
+   */
+  async getTelemetryCadenceAggregatesAsync(opts: {
+    telemetryTypes: string[];
+    sinceMs: number;
+    sourceIds: string[];
+  }): Promise<TelemetryCadenceAggregate[]> {
+    return this.telemetry.getTelemetryCadenceAggregates(opts);
+  }
+
+  /**
+   * Stage 2 of Mesh Issues C2's cadence computation: exact deduped
+   * timestamps for a bounded candidate set already filtered by stage 1's
+   * mean gate, called in chunks of 25 node numbers by the analysis service.
+   */
+  async getTelemetryTimestampsAsync(opts: {
+    nodeNums: number[];
+    telemetryTypes: string[];
+    sinceMs: number;
+    sourceIds: string[];
+  }): Promise<Array<{ nodeNum: number; telemetryType: string; timestamp: number }>> {
+    return this.telemetry.getTelemetryTimestamps(opts);
   }
 
 

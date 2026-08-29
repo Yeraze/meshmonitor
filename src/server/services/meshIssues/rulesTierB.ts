@@ -52,7 +52,6 @@ import {
   REDUNDANT_MIN_NEIGHBORS,
   REDUNDANT_OVERLAP_RATIO,
   ASYMMETRY_MIN_SAMPLES_PER_DIRECTION,
-  ASYMMETRY_DELTA_DB,
   IDLE_ROUTER_MIN_AREA_PATHS,
   IDLE_ROUTER_MAX_HOP_SHARE,
   IDLE_ROUTER_PEER_MIN_HOP_SHARE,
@@ -65,6 +64,7 @@ import {
   MOBILE_MIN_PRECISION_BITS,
   AREA_GRID_BIN_DEG,
   EVIDENCE_MEMBER_LIST_CAP,
+  type ResolvedMeshIssueThresholds,
 } from './thresholds.js';
 
 // ---------------------------------------------------------------------------
@@ -86,6 +86,8 @@ export interface TierBRuleContext {
   /** Source ids whose type is an MQTT source (B7's "heard only via MQTT"). */
   mqttSourceIds: ReadonlySet<string>;
   nowMs: number;
+  /** User-tunable, clamp-on-read thresholds resolved once per run (#4964 Phase 3 WP1). */
+  thresholds: ResolvedMeshIssueThresholds;
 }
 
 export interface RuleSkip {
@@ -132,10 +134,13 @@ function displayName(name: string | null, nodeNum: number): string {
 
 /** Caps an evidence list at EVIDENCE_MEMBER_LIST_CAP, returning a sibling
  *  truncated flag per spec §2.6 ("every member/edge list ... capped ... with
- *  a sibling `<field>Truncated: boolean`"). */
-function capList<T>(items: T[]): { items: T[]; truncated: boolean } {
-  if (items.length <= EVIDENCE_MEMBER_LIST_CAP) return { items, truncated: false };
-  return { items: items.slice(0, EVIDENCE_MEMBER_LIST_CAP), truncated: true };
+ *  a sibling `<field>Truncated: boolean`"), plus the pre-cap `total` length
+ *  (Phase 3 WP3 §4.2 — the "+N more" backlog item; each call site also emits
+ *  a sibling `<field>Total: n`). */
+function capList<T>(items: T[]): { items: T[]; truncated: boolean; total: number } {
+  const total = items.length;
+  if (total <= EVIDENCE_MEMBER_LIST_CAP) return { items, truncated: false, total };
+  return { items: items.slice(0, EVIDENCE_MEMBER_LIST_CAP), truncated: true, total };
 }
 
 /** "Where edge/graph evidence yields nothing, fall back to the union of the
@@ -412,8 +417,10 @@ function evaluateB1Impl(ctx: TierBRuleContext, clusters: RouterCluster[]): MeshI
         size: members.length,
         members: membersCapped.items,
         membersTruncated: membersCapped.truncated,
+        membersTotal: membersCapped.total,
         edges: edgesCapped.items,
         edgesTruncated: edgesCapped.truncated,
+        edgesTotal: edgesCapped.total,
         inferredOnly,
         bestSitedNodeNum: bestSited.nodeNum,
         bestSitedName: bestSited.longName,
@@ -505,8 +512,10 @@ export function evaluateB2(ctx: TierBRuleContext): MeshIssueFinding[] {
         overlapRatio: best.ratio,
         sharedNeighbors: sharedCapped.items,
         sharedNeighborsTruncated: sharedCapped.truncated,
+        sharedNeighborsTotal: sharedCapped.total,
         otherCoveringRouters: othersCapped.items,
         otherCoveringRoutersTruncated: othersCapped.truncated,
+        otherCoveringRoutersTotal: othersCapped.total,
         sources: sourceIds,
       },
       sourceIds,
@@ -530,7 +539,7 @@ export function evaluateB3(ctx: TierBRuleContext): MeshIssueFinding[] {
     if (edge.snrToA.meanDb == null || edge.snrToB.meanDb == null) continue;
 
     const deltaDb = edge.snrToA.meanDb - edge.snrToB.meanDb;
-    if (!(Math.abs(deltaDb) > ASYMMETRY_DELTA_DB)) continue;
+    if (!(Math.abs(deltaDb) > ctx.thresholds.snrAsymmetryDb)) continue;
 
     const nodeA = ctx.nodes.get(edge.a) ?? null;
     const nodeB = ctx.nodes.get(edge.b) ?? null;
@@ -560,6 +569,7 @@ export function evaluateB3(ctx: TierBRuleContext): MeshIssueFinding[] {
         weakerDirection,
         evidenceClasses: edge.evidenceClasses,
         observationCount: edge.observationCount,
+        thresholdUsed: ctx.thresholds.snrAsymmetryDb,
         sources: sourceIds,
       },
       sourceIds,
@@ -772,6 +782,7 @@ function evaluateB6Impl(ctx: TierBRuleContext, clusters: RouterCluster[]): MeshI
         behindRouterCluster,
         clusterMembers: clusterMembersCapped.items,
         clusterMembersTruncated: clusterMembersCapped.truncated,
+        clusterMembersTotal: clusterMembersCapped.total,
         // 2.7+ zero-cost favourite-router hops skip the decrement, so
         // hopStart - hopLimit under-counts real hop consumption (D9/§7.3).
         hopDeltaIsLowerBound: true,
@@ -908,7 +919,7 @@ interface TierBRunState {
   index: ParticipationIndex;
 }
 
-const ALL_RULES: Array<[string, (state: TierBRunState) => MeshIssueFinding[]]> = [
+const ALL_RULES_WITH_B7: Array<[string, (state: TierBRunState) => MeshIssueFinding[]]> = [
   ['B1', (s) => evaluateB1Impl(s.ctx, s.clusters)],
   ['B2', (s) => evaluateB2(s.ctx)],
   ['B3', (s) => evaluateB3(s.ctx)],
@@ -918,16 +929,33 @@ const ALL_RULES: Array<[string, (state: TierBRunState) => MeshIssueFinding[]]> =
   ['B7', (s) => evaluateB7(s.ctx)],
 ];
 
-/** B1..B7 in order. Never throws — a rule that cannot evaluate returns [].
- *  Builds the shared cluster/participation indices exactly once (see the
- *  module header) and threads them into the rules that need them. */
+/** Same as {@link ALL_RULES_WITH_B7} minus B7 — used when
+ *  `ctx.thresholds.b7Enabled` is false (#4964 Phase 3 WP1, spec §2.1: B7 is
+ *  the one rule observed firing at pathological volume on a real mesh). A
+ *  disabled B7 contributes no findings this run; its existing open findings
+ *  auto-close naturally after AUTO_CLOSE_CLEAN_RUNS clean runs — the service
+ *  must not delete rows to honour this toggle. */
+const ALL_RULES_WITHOUT_B7: Array<[string, (state: TierBRunState) => MeshIssueFinding[]]> = [
+  ['B1', (s) => evaluateB1Impl(s.ctx, s.clusters)],
+  ['B2', (s) => evaluateB2(s.ctx)],
+  ['B3', (s) => evaluateB3(s.ctx)],
+  ['B4', (s) => evaluateB4Impl(s.ctx, s.index)],
+  ['B5', (s) => evaluateB5Impl(s.ctx, s.index)],
+  ['B6', (s) => evaluateB6Impl(s.ctx, s.clusters)],
+];
+
+/** B1..B7 in order (B7 governed by `ctx.thresholds.b7Enabled`). Never throws —
+ *  a rule that cannot evaluate returns []. Builds the shared
+ *  cluster/participation indices exactly once (see the module header) and
+ *  threads them into the rules that need them. */
 export function evaluateAllTierB(ctx: TierBRuleContext): MeshIssueFinding[] {
   const state: TierBRunState = {
     ctx,
     clusters: findRouterClustersCore(ctx),
     index: buildParticipationIndex(ctx),
   };
-  return runRulesIsolated('Tier B', ALL_RULES, state);
+  const rules = ctx.thresholds.b7Enabled ? ALL_RULES_WITH_B7 : ALL_RULES_WITHOUT_B7;
+  return runRulesIsolated('Tier B', rules, state);
 }
 
 /**
