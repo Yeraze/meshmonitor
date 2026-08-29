@@ -52,7 +52,7 @@ import {
 import { buildTracerouteCorpus, type TracerouteCorpusStats } from './meshIssues/tracerouteCorpus.js';
 import {
   INFRA_ROLES,
-  AUTO_CLOSE_CLEAN_RUNS,
+  DEDICATED_ROUTER_ROLES,
   OVER_BROADCAST_MIN_SAMPLES,
   OVER_BROADCAST_CANDIDATE_FACTOR,
   resolveThresholds,
@@ -156,7 +156,7 @@ function zeroCorpusStats(): TracerouteCorpusStats {
 
 function zeroCoverage(): MeshIssuesCoverage {
   return {
-    evidence: { neighborInfo: false, traceroute: false, mqttGateway: false, packetLog: false },
+    evidence: { neighborInfo: false, traceroute: false, mqttGateway: false, packetLog: false, mqttSourceConfigured: false },
     neighborInfoRowCount: 0,
     neighborInfoEdgeCount: 0,
     tracerouteEdgeCount: 0,
@@ -355,6 +355,10 @@ class MeshIssuesAnalysisService {
       traceroute: samples.length > 0,
       mqttGateway: mqttGatewayAvailable,
       packetLog: false, // set below in 5e once packetLogService.isEnabled() is known
+      // Independent of mqttGateway/mqttPacketLogEnabled — true whenever at
+      // least one enabled MQTT-family source resolved in step 1, regardless
+      // of whether its packet log is on (post-epic follow-up #4964).
+      mqttSourceConfigured: mqttSourceIds.size > 0,
     };
     const graph = buildRfGraph({ samples, neighbors, gatewayReceptions, availability });
 
@@ -417,12 +421,34 @@ class MeshIssuesAnalysisService {
     // toggled off; only the EVALUATION below is gated.
     const cadence = await this.buildCadenceMap(telemetry, sourceIds, sinceMs, thresholds);
 
+    // 5g. A5 telemetry-cadence clause (post-epic follow-up #4964, the P1
+    // deferral) — dedicated-router nodes only (ROUTER/ROUTER_LATE, a small
+    // set), and ONLY when packet_log is enabled (`packetLogEnabled`'s FINAL
+    // value, after 5e's degrade-on-throw). packet_log is opt-in/off-by-default,
+    // so this map is empty on most installs — A5's `isUnmessagable` clause is
+    // unaffected either way. No `tierASkips`-style mechanism exists (Tier A
+    // has no per-rule skip list, unlike Tier B/C) — unavailability is
+    // recorded per-node in each A5 finding's `evidence.telemetryCadenceClause`
+    // instead of a run-level coverage entry.
+    const routerBroadcastTelemetryCadence = await this.buildRouterTelemetryCadenceMap(
+      nodes,
+      sinceMs,
+      packetLogEnabled,
+    );
+
     // 6. Evaluate Tier A — never throws; a rule that can't evaluate contributes
     // no findings. Gated by thresholds.tierAEnabled: a disabled tier
     // contributes no findings THIS RUN, but does not delete any existing row
     // — persistFindings' clean-run bookkeeping (step 7) closes them the
-    // honest way, after AUTO_CLOSE_CLEAN_RUNS runs with nothing detected.
-    const ctx: RuleContext = { nodes, telemetry, positionSpanMeters, nowMs, thresholds };
+    // honest way, after thresholds.autoCloseCleanRuns runs with nothing detected.
+    const ctx: RuleContext = {
+      nodes,
+      telemetry,
+      positionSpanMeters,
+      nowMs,
+      thresholds,
+      routerBroadcastTelemetryCadence,
+    };
     const findings: MeshIssueFinding[] = thresholds.tierAEnabled ? evaluateAllTierA(ctx) : [];
 
     // 6b. Evaluate Tier B — graph-based rules layered on top of Tier A. B7's
@@ -444,7 +470,7 @@ class MeshIssuesAnalysisService {
 
     // 7. Persist — issue-type agnostic; Tier B findings flow through the
     // same upsert/clean-run bookkeeping as Tier A.
-    const persistResult = await this.persistFindings(findings, nowMs);
+    const persistResult = await this.persistFindings(findings, nowMs, thresholds.autoCloseCleanRuns);
 
     const durationMs = Date.now() - start;
     logger.debug(
@@ -485,7 +511,7 @@ class MeshIssuesAnalysisService {
   }
 
   /**
-   * Reads the nine user-tunable threshold/toggle settings and resolves them
+   * Reads the user-tunable threshold/toggle settings (`MESH_ISSUE_THRESHOLD_SETTINGS_KEYS`) and resolves them
    * (clamp-on-read, never reject — see `resolveThresholds`'s own JSDoc).
    * Exported indirectly via `MESH_ISSUE_THRESHOLD_SETTINGS_KEYS` so
    * `meshIssuesScheduler.getStatus()` can report the thresholds that would be
@@ -623,6 +649,65 @@ class MeshIssuesAnalysisService {
   }
 
   /**
+   * A5's telemetry-cadence clause (post-epic follow-up #4964, the Phase 1
+   * deferral this unblocks): per-node median broadcast-telemetry interval
+   * for dedicated-router nodes only (ROUTER/ROUTER_LATE — `DEDICATED_ROUTER_ROLES`,
+   * the same set A5's `isUnmessagable` clause already gates on), and ONLY
+   * when `packetLogEnabled` (packet_log is opt-in/off-by-default — most
+   * installs never call the query at all).
+   *
+   * One bounded query (`getBroadcastTelemetryTimestampsAsync`, deduped by
+   * `(from_node, packet_id)` at the repository) — no per-node loop, since the
+   * candidate set is already small. Falls back to an empty map (never
+   * throws) so a query failure degrades A5 to its `isUnmessagable`-only
+   * behaviour rather than aborting the run.
+   */
+  private async buildRouterTelemetryCadenceMap(
+    nodes: Map<number, PooledNode>,
+    sinceMs: number,
+    packetLogEnabled: boolean,
+  ): Promise<Map<number, { medianIntervalMs: number; sampleCount: number }>> {
+    const cadence = new Map<number, { medianIntervalMs: number; sampleCount: number }>();
+    if (!packetLogEnabled) return cadence;
+
+    const routerNodeNums = [...nodes.values()]
+      .filter((n) => n.role != null && DEDICATED_ROUTER_ROLES.has(n.role))
+      .map((n) => n.nodeNum);
+    if (routerNodeNums.length === 0) return cadence;
+
+    let rows: Array<{ nodeNum: number; timestamp: number }>;
+    try {
+      rows = await databaseService.getBroadcastTelemetryTimestampsAsync({
+        nodeNums: routerNodeNums,
+        since: sinceMs,
+      });
+    } catch (err) {
+      logger.warn(
+        `[meshIssues] broadcast-telemetry-timestamps query failed, degrading A5's cadence clause: ${(err as Error)?.message ?? err}`,
+      );
+      return cadence;
+    }
+
+    const timestampsByNode = new Map<number, number[]>();
+    for (const row of rows) {
+      const list = timestampsByNode.get(row.nodeNum);
+      if (list) list.push(row.timestamp);
+      else timestampsByNode.set(row.nodeNum, [row.timestamp]);
+    }
+
+    for (const [nodeNum, timestamps] of timestampsByNode) {
+      const stats = cadenceStatsFromTimestamps(timestamps);
+      if (!stats || stats.medianIntervalSeconds == null) continue;
+      cadence.set(nodeNum, {
+        medianIntervalMs: stats.medianIntervalSeconds * 1000,
+        sampleCount: stats.sampleCount,
+      });
+    }
+
+    return cadence;
+  }
+
+  /**
    * Paginate `analysis.getTraceroutes` until exhausted or `MAX_CORPUS_PAGES`
    * is reached. `truncated` is set only when the page cap — not the natural
    * end of the result set — is what stopped the loop.
@@ -656,9 +741,15 @@ class MeshIssuesAnalysisService {
    * (including dismissed) issue that was NOT re-detected — the auto-close
    * bookkeeping. `upsertFinding` never clears `dismissed` on re-detection, so
    * a dismissed issue is never un-dismissed here; it still accumulates clean
-   * runs toward auto-close when it stops recurring.
+   * runs toward auto-close when it stops recurring. `autoCloseCleanRuns` is
+   * the resolved, user-tunable threshold for THIS run (`mesh_issues_auto_close_runs`,
+   * post-epic follow-up #4964) — not the `AUTO_CLOSE_CLEAN_RUNS` code default.
    */
-  private async persistFindings(findings: MeshIssueFinding[], nowMs: number): Promise<PersistOutcome> {
+  private async persistFindings(
+    findings: MeshIssueFinding[],
+    nowMs: number,
+    autoCloseCleanRuns: number,
+  ): Promise<PersistOutcome> {
     let newCount = 0;
     let reopenedCount = 0;
     let updatedCount = 0;
@@ -680,7 +771,7 @@ class MeshIssuesAnalysisService {
     for (const issue of openIssues) {
       const key = identityKey(issue.issueType, issue.subjectKey);
       if (detectedKeys.has(key)) continue;
-      const { closed } = await databaseService.bumpMeshIssueCleanRunAsync(issue.id, AUTO_CLOSE_CLEAN_RUNS, nowMs);
+      const { closed } = await databaseService.bumpMeshIssueCleanRunAsync(issue.id, autoCloseCleanRuns, nowMs);
       if (closed) closedCount++;
     }
 

@@ -21,6 +21,7 @@ const AVAILABILITY: RfEvidenceAvailability = {
   traceroute: true,
   mqttGateway: true,
   packetLog: false,
+  mqttSourceConfigured: true,
 };
 
 function opts(overrides: Partial<BuildRfGraphOptions> = {}): BuildRfGraphOptions {

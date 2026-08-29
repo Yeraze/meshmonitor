@@ -88,6 +88,7 @@ import type {
   GetIssuesOptions as MeshIssuesGetIssuesOptions,
   MqttDirectReceptionRow,
   PacketHopArrivalRow,
+  BroadcastTelemetryTimestampRow,
   TelemetryCadenceAggregate,
 } from '../db/repositories/index.js';
 import type { MeshIssueFinding } from '../server/services/meshIssues/types.js';
@@ -4511,6 +4512,23 @@ class DatabaseService {
     limit?: number;
   }): Promise<PacketHopArrivalRow[]> {
     return this.mqttPacketLog.getHopArrivalCountsSince(q);
+  }
+
+  /**
+   * Mesh Issues A5 telemetry-cadence clause (#4964, post-epic follow-up) —
+   * deduped broadcast TELEMETRY_APP receive timestamps for a bounded set of
+   * (dedicated-router) node numbers since `since`. See
+   * {@link PacketLogRepository.getBroadcastTelemetryTimestamps} for the
+   * dedup rule and ordering. Only called when `packetLogService.isEnabled()`
+   * — packet_log is opt-in/off-by-default, so the caller must not assume
+   * this returns anything on most installs.
+   */
+  async getBroadcastTelemetryTimestampsAsync(q: {
+    nodeNums: number[];
+    since: number;
+    limit?: number;
+  }): Promise<BroadcastTelemetryTimestampRow[]> {
+    return this.packetLog.getBroadcastTelemetryTimestamps(q);
   }
 
 

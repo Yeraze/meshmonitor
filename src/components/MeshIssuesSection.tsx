@@ -25,6 +25,15 @@ interface MeshIssuesThresholds {
   mobileSpanMeters: number;
   snrAsymmetryDb: number;
   overBroadcastSeconds: number;
+  /**
+   * #4964 post-epic follow-ups. Named `autoCloseCleanRuns` to match the
+   * server's `ResolvedMeshIssueThresholds` (`thresholds.ts`) — NOT
+   * `autoCloseRuns`. Optional here — absent on a status response from a
+   * server that hasn't registered the setting yet, in which case the form
+   * falls back to the same default (3, `AUTO_CLOSE_CLEAN_RUNS`) the server
+   * uses.
+   */
+  autoCloseCleanRuns?: number;
 }
 
 interface MeshIssuesRunResult {
@@ -96,6 +105,7 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
   const [mobileSpanMeters, setMobileSpanMeters] = useState(500);
   const [snrAsymmetryDb, setSnrAsymmetryDb] = useState(6);
   const [overBroadcastSeconds, setOverBroadcastSeconds] = useState(300);
+  const [autoCloseRuns, setAutoCloseRuns] = useState(3);
 
   // Local (dirty) mirrors
   const [localEnabled, setLocalEnabled] = useState(true);
@@ -111,6 +121,7 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
   const [localMobileSpanMeters, setLocalMobileSpanMeters] = useState(500);
   const [localSnrAsymmetryDb, setLocalSnrAsymmetryDb] = useState(6);
   const [localOverBroadcastSeconds, setLocalOverBroadcastSeconds] = useState(300);
+  const [localAutoCloseRuns, setLocalAutoCloseRuns] = useState(3);
 
   const [status, setStatus] = useState<MeshIssuesStatus | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -131,6 +142,7 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
     setMobileSpanMeters(data.thresholds.mobileSpanMeters);
     setSnrAsymmetryDb(data.thresholds.snrAsymmetryDb);
     setOverBroadcastSeconds(data.thresholds.overBroadcastSeconds);
+    setAutoCloseRuns(data.thresholds.autoCloseCleanRuns ?? 3);
 
     setLocalEnabled(data.enabled);
     setLocalFrequencyHours(data.frequencyHours);
@@ -145,6 +157,7 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
     setLocalMobileSpanMeters(data.thresholds.mobileSpanMeters);
     setLocalSnrAsymmetryDb(data.thresholds.snrAsymmetryDb);
     setLocalOverBroadcastSeconds(data.thresholds.overBroadcastSeconds);
+    setLocalAutoCloseRuns(data.thresholds.autoCloseCleanRuns ?? 3);
   }, []);
 
   const fetchStatus = useCallback(async () => {
@@ -178,7 +191,8 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
     localChannelUtilPct !== channelUtilPct ||
     localMobileSpanMeters !== mobileSpanMeters ||
     localSnrAsymmetryDb !== snrAsymmetryDb ||
-    localOverBroadcastSeconds !== overBroadcastSeconds;
+    localOverBroadcastSeconds !== overBroadcastSeconds ||
+    localAutoCloseRuns !== autoCloseRuns;
 
   const handleSave = useCallback(async () => {
     setIsSaving(true);
@@ -200,6 +214,7 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
           mesh_issues_mobile_span_meters: String(localMobileSpanMeters),
           mesh_issues_snr_asymmetry_db: String(localSnrAsymmetryDb),
           mesh_issues_over_broadcast_seconds: String(localOverBroadcastSeconds),
+          mesh_issues_auto_close_runs: String(localAutoCloseRuns),
         }),
       });
       if (response.ok) {
@@ -230,6 +245,7 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
     localMobileSpanMeters,
     localSnrAsymmetryDb,
     localOverBroadcastSeconds,
+    localAutoCloseRuns,
     csrfFetch,
     baseUrl,
     showToast,
@@ -251,6 +267,7 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
     setLocalMobileSpanMeters(mobileSpanMeters);
     setLocalSnrAsymmetryDb(snrAsymmetryDb);
     setLocalOverBroadcastSeconds(overBroadcastSeconds);
+    setLocalAutoCloseRuns(autoCloseRuns);
   }, [
     enabled,
     frequencyHours,
@@ -265,6 +282,7 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
     mobileSpanMeters,
     snrAsymmetryDb,
     overBroadcastSeconds,
+    autoCloseRuns,
   ]);
 
   useSaveBar({
@@ -607,6 +625,30 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
           <p style={{ fontSize: '12px', color: 'var(--color-text-subtle)', margin: '0.35rem 0 0 0' }}>
             {t('automation.mesh_issues.over_broadcast_help',
               'Median position/telemetry inter-arrival below which a non-tracker node counts as over-broadcasting. MeshMonitor\'s own judgement, not an official figure.')}
+          </p>
+        </div>
+
+        <div className="setting-item" style={{ marginTop: '1rem' }}>
+          <label>
+            {t('automation.mesh_issues.auto_close_runs', 'Auto-close after')}
+            <span style={badgeStyle('ours')}>{t('automation.mesh_issues.badge_meshmonitor', '[MeshMonitor]')}</span>
+          </label>
+          <input
+            type="number"
+            min={1}
+            max={20}
+            step={1}
+            value={localAutoCloseRuns}
+            onChange={(e) => {
+              const v = parseFloat(e.target.value);
+              setLocalAutoCloseRuns(Number.isFinite(v) ? v : 3);
+            }}
+            disabled={!localEnabled}
+            className="setting-input"
+          />
+          <p style={{ fontSize: '12px', color: 'var(--color-text-subtle)', margin: '0.35rem 0 0 0' }}>
+            {t('automation.mesh_issues.auto_close_runs_help',
+              'Runs without re-detection before an issue auto-closes.')}
           </p>
         </div>
 

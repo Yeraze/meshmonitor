@@ -29,8 +29,8 @@ export type {
 } from './notifications.js';
 export { ConversationReadStateRepository, emptyReadStateMap, isConversationKind, readStateUserId } from './conversationReadState.js';
 export type { ConversationReadStateMap } from './conversationReadState.js';
-export { PacketLogRepository, HOP_ARRIVAL_MAX_ROWS } from './packetLog.js';
-export type { PacketLogFilterOptions, PacketHopArrivalRow } from './packetLog.js';
+export { PacketLogRepository, HOP_ARRIVAL_MAX_ROWS, BROADCAST_TELEMETRY_TIMESTAMPS_MAX_ROWS } from './packetLog.js';
+export type { PacketLogFilterOptions, PacketHopArrivalRow, BroadcastTelemetryTimestampRow } from './packetLog.js';
 export { KeyRepairRepository } from './keyRepair.js';
 export { AutoTracerouteRepository } from './autoTraceroute.js';
 export type { AutoTracerouteNode } from './autoTraceroute.js';
