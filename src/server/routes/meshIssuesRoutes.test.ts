@@ -11,7 +11,13 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import meshIssuesRoutes from './meshIssuesRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 import databaseService from '../../services/database.js';
-import { MESH_ISSUE_TYPES, nodeSubjectKey, type MeshIssueFinding } from '../services/meshIssues/types.js';
+import {
+  MESH_ISSUE_TYPES,
+  nodeSubjectKey,
+  edgeSubjectKey,
+  clusterSubjectKey,
+  type MeshIssueFinding,
+} from '../services/meshIssues/types.js';
 import type { MeshIssuesRunResult } from '../services/meshIssuesAnalysisService.js';
 import type { MeshIssuesStatus } from '../services/meshIssuesScheduler.js';
 
@@ -36,6 +42,27 @@ function makeFinding(overrides: Partial<MeshIssueFinding> & { nodeNum: number })
     evidence: { role: 4, roleName: 'REPEATER' },
     sourceIds: [],
     recommendation: 'Consider CLIENT_BASE (fixed, powered) or ROUTER_LATE.',
+    ...overrides,
+  };
+}
+
+/**
+ * Variant of `makeFinding` for Tier B graph-attributed findings (edge/cluster,
+ * #4964 Phase 2 §4.7) — `nodeNum` is always `null` and `subjectKey` cannot be
+ * derived from it (`edgeSubjectKey`/`clusterSubjectKey` take a member list,
+ * not a single node), so the caller must always supply `subjectKey`.
+ */
+function makeGraphFinding(
+  overrides: Partial<MeshIssueFinding> & { subjectKey: string },
+): MeshIssueFinding {
+  return {
+    issueType: MESH_ISSUE_TYPES.B3_ASYMMETRIC_LINK,
+    nodeNum: null,
+    severity: 'warning',
+    confidence: 'medium',
+    evidence: { deltaDb: 9.1 },
+    sourceIds: [],
+    recommendation: 'One end of this link hears the other much better than the reverse.',
     ...overrides,
   };
 }
@@ -107,6 +134,70 @@ describe('meshIssuesRoutes', () => {
       expect(issues[0].nodeNum).toBe(101);
       expect(issues[0].sourceIds).toEqual([harness.sourceA]);
       expect(issues.find((i: { nodeNum: number }) => i.nodeNum === 102)).toBeUndefined();
+    });
+
+    it('an edge finding (nodeNum: null, B3) round-trips through GET with nodeName: null (#4964 Phase 2 §4.7)', async () => {
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeGraphFinding({
+          issueType: MESH_ISSUE_TYPES.B3_ASYMMETRIC_LINK,
+          subjectKey: edgeSubjectKey(1, 2),
+          sourceIds: [harness.sourceA],
+        }),
+        Date.now(),
+      );
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get('/api/analysis/mesh-issues');
+
+      expect(res.status).toBe(200);
+      const issue = res.body.data.issues.find((i: { subjectKey: string }) => i.subjectKey === 'edge:1-2');
+      expect(issue).toBeDefined();
+      expect(issue.issueType).toBe(MESH_ISSUE_TYPES.B3_ASYMMETRIC_LINK);
+      expect(issue.nodeNum).toBeNull();
+      expect(issue.nodeName).toBeNull();
+      expect(issue.sourceIds).toEqual([harness.sourceA]);
+    });
+
+    it('a cluster finding (nodeNum: null, B1) round-trips through GET with nodeName: null (#4964 Phase 2 §4.7)', async () => {
+      const subjectKey = clusterSubjectKey([10, 11, 12]);
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeGraphFinding({
+          issueType: MESH_ISSUE_TYPES.B1_ROUTER_CLUSTER,
+          subjectKey,
+          severity: 'critical',
+          sourceIds: [harness.sourceA],
+        }),
+        Date.now(),
+      );
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get('/api/analysis/mesh-issues');
+
+      expect(res.status).toBe(200);
+      const issue = res.body.data.issues.find((i: { subjectKey: string }) => i.subjectKey === subjectKey);
+      expect(issue).toBeDefined();
+      expect(issue.issueType).toBe(MESH_ISSUE_TYPES.B1_ROUTER_CLUSTER);
+      expect(issue.nodeNum).toBeNull();
+      expect(issue.nodeName).toBeNull();
+      expect(issue.severity).toBe('critical');
+    });
+
+    it('a sourceB-only Tier B edge finding is absent for a sourceA-only user (#3745 leak class, #4964 Phase 2 §4.7)', async () => {
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeGraphFinding({
+          issueType: MESH_ISSUE_TYPES.B3_ASYMMETRIC_LINK,
+          subjectKey: edgeSubjectKey(3, 4),
+          sourceIds: [harness.sourceB],
+        }),
+        Date.now(),
+      );
+
+      await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceA);
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.get('/api/analysis/mesh-issues');
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.issues.find((i: { subjectKey: string }) => i.subjectKey === 'edge:3-4')).toBeUndefined();
     });
 
     it('nodeName is never resolved from a source the caller cannot read (#3745 leak class)', async () => {
@@ -290,6 +381,24 @@ describe('meshIssuesRoutes', () => {
           sampledCount: 0,
           distinctPairCount: 0,
           truncated: false,
+        },
+        coverage: {
+          evidence: { neighborInfo: false, traceroute: false, mqttGateway: false, packetLog: false },
+          neighborInfoRowCount: 0,
+          neighborInfoEdgeCount: 0,
+          tracerouteEdgeCount: 0,
+          tracerouteSentinelHopsDropped: 0,
+          gatewayCount: 0,
+          gatewayDirectEdgeCount: 0,
+          gatewayCoReceptionEdgeCount: 0,
+          gatewayCellsSkipped: 0,
+          directEdgeCount: 0,
+          totalEdgeCount: 0,
+          graphNodeCount: 0,
+          snrDirectionsWithMinSamples: 0,
+          hopHorizonSource: null,
+          hopHorizonNodeCount: 0,
+          skippedRules: [],
         },
       };
       mockedRunNow.mockResolvedValue(result);
