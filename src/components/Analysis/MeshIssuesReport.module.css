@@ -160,3 +160,143 @@
   font-style: italic;
   color: var(--color-text-subtle);
 }
+
+.weakerTag {
+  font-size: 11px;
+  font-style: italic;
+  color: var(--color-text-subtle);
+}
+
+/* Coverage preface (#4964 Phase 3 WP4, spec §5.1) — corpus funnel, evidence
+ * pills, and degradation notes rendered above the severity groups. */
+
+.coveragePreface {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-surface);
+  font-size: 12px;
+}
+
+.corpusFunnel {
+  color: var(--color-text-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+.evidencePills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.evidencePill {
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.evidencePillAvailable {
+  background: color-mix(in srgb, var(--color-success) 18%, transparent);
+  color: var(--color-success);
+}
+
+.evidencePillUnavailable {
+  background: var(--color-surface);
+  color: var(--color-text-subtle);
+}
+
+.degradationNotes {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--color-text-subtle);
+}
+
+.degradationNote {
+  line-height: 1.4;
+}
+
+.degradationNoteBlocked {
+  color: var(--color-text-subtle);
+}
+
+.degradationNoteHint {
+  color: var(--color-text-subtle);
+  opacity: 0.85;
+}
+
+.fromStorageNote {
+  font-style: italic;
+  opacity: 0.85;
+}
+
+.showDismissedToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-text-subtle);
+  cursor: pointer;
+}
+
+/* Dismiss/restore (#4964 Phase 3 WP4, spec §5.2). */
+
+.cardActions {
+  display: flex;
+  align-items: flex-start;
+  flex-shrink: 0;
+}
+
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  line-height: 0;
+}
+
+.dismissedCard {
+  opacity: 0.6;
+}
+
+.dismissedBadge {
+  background: var(--color-surface);
+  color: var(--color-text-subtle);
+}
+
+.sourcesRow {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--color-text-subtle);
+}
+
+/* Info-group collapse + incremental rendering (#4964 Phase 3 WP4, spec §5.6,
+ * P3-D5). */
+
+.severityHeadingToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.infoTally {
+  font-size: 11px;
+  color: var(--color-text-subtle);
+}
+
+.showMoreButton {
+  align-self: flex-start;
+}

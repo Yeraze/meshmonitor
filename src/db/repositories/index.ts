@@ -10,7 +10,7 @@ export { SettingsRepository } from './settings.js';
 export { ChannelsRepository, type ChannelInput } from './channels.js';
 export { NodesRepository, type NodesCacheHook } from './nodes.js';
 export { MessagesRepository } from './messages.js';
-export { TelemetryRepository } from './telemetry.js';
+export { TelemetryRepository, type TelemetryCadenceAggregate } from './telemetry.js';
 export { AuthRepository } from './auth.js';
 export type {
   DbUser, CreateUserInput, UpdateUserInput,

@@ -27,6 +27,7 @@ import { type SortOption as DashboardSortOption } from './Dashboard/types';
 import { LanguageSelector } from './LanguageSelector';
 import SectionNav from './SectionNav';
 import PositionEstimationSection from './PositionEstimationSection';
+import MeshIssuesSection from './MeshIssuesSection';
 import TapbackEmojiSettings from './TapbackEmojiSettings';
 import EmbedSettings from './settings/EmbedSettings';
 import { DefaultMapCenterPicker } from './configuration/DefaultMapCenterPicker';
@@ -248,6 +249,9 @@ const GLOBAL_SECTIONS = new Set([
   // Position estimation is a single global, cross-source batch job (issue
   // #3271) — it belongs in global Settings, not the per-source Automation tab.
   'settings-position-estimation',
+  // Mesh Issues Analysis is a single global, cross-source batch job (#4964)
+  // — same reasoning as position estimation above.
+  'settings-mesh-issues',
 ]);
 
 const SOURCE_SECTIONS = new Set([
@@ -1528,6 +1532,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         { id: 'settings-reset-ui', label: t('settings.reset_ui_positions') },
         ...(isAdmin ? [{ id: 'settings-analytics', label: t('settings.analytics') }] : []),
         ...(canWriteSettings ? [{ id: 'settings-position-estimation', label: t('automation.position_estimation.title', 'Position Estimation') }] : []),
+        ...(canWriteSettings ? [{ id: 'settings-mesh-issues', label: t('automation.mesh_issues.title', 'Mesh Issues Analysis') }] : []),
         { id: 'settings-management', label: t('settings.settings_management') },
         { id: 'settings-danger', label: t('settings.danger_zone') },
       ].filter(item => show(item.id))} />
@@ -2694,6 +2699,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         {show('settings-position-estimation') && canWriteSettings && (
         <div id="settings-position-estimation" className="settings-section">
           <PositionEstimationSection baseUrl={baseUrl} />
+        </div>
+        )}
+
+        {show('settings-mesh-issues') && canWriteSettings && (
+        <div id="settings-mesh-issues" className="settings-section">
+          <MeshIssuesSection baseUrl={baseUrl} />
         </div>
         )}
 

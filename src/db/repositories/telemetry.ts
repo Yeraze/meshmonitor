@@ -57,6 +57,19 @@ export interface TelemetryFavorite {
 }
 
 /**
+ * One (nodeNum, telemetryType) broadcast-cadence aggregate (#4964, Phase 3
+ * WP2). See `TelemetryRepository.getTelemetryCadenceAggregates`.
+ */
+export interface TelemetryCadenceAggregate {
+  nodeNum: number;
+  telemetryType: string;
+  /** COUNT(DISTINCT timestamp) — the epic's "deduped" broadcast count, done in SQL. */
+  sampleCount: number;
+  firstTimestamp: number;
+  lastTimestamp: number;
+}
+
+/**
  * Repository for telemetry operations
  */
 export class TelemetryRepository extends BaseRepository {
@@ -377,6 +390,101 @@ export class TelemetryRepository extends BaseRepository {
       .where(and(...conditions))
       .orderBy(telemetry.timestamp);
     return this.normalizeBigInts(result) as DbTelemetry[];
+  }
+
+  /**
+   * Portable per-node, per-type broadcast-cadence aggregate (#4964, Phase 3
+   * WP2 — Mesh Issues C2 "over-broadcasting"). `sampleCount` is
+   * `COUNT(DISTINCT timestamp)` — the epic's "deduped" broadcast count, done
+   * in SQL rather than pulled into memory. This is stage 1 of C2's two-stage
+   * mean-gate-then-exact-median approach (spec §2.5): the caller derives a
+   * MEAN inter-arrival from `(lastTimestamp - firstTimestamp) /
+   * (sampleCount - 1)` to gate which nodes are worth an exact-median stage 2
+   * query (`getTelemetryTimestamps`).
+   *
+   * Drizzle query builders only — `COUNT(DISTINCT ...)`, `MIN`, `MAX` and
+   * `GROUP BY` are identical on SQLite, PostgreSQL and MySQL, so there is no
+   * dialect branch. Empty `telemetryTypes`/`sourceIds` short-circuits to []
+   * rather than issuing a query with a vacuous `IN ()` clause.
+   */
+  async getTelemetryCadenceAggregates(opts: {
+    telemetryTypes: string[];
+    sinceMs: number;
+    sourceIds: string[];
+  }): Promise<TelemetryCadenceAggregate[]> {
+    const { telemetryTypes, sinceMs, sourceIds } = opts;
+    if (telemetryTypes.length === 0 || sourceIds.length === 0) return [];
+    const { telemetry } = this.tables;
+    const conditions: SQL[] = [
+      inArray(telemetry.telemetryType, telemetryTypes),
+      gte(telemetry.timestamp, sinceMs),
+      inArray(telemetry.sourceId, sourceIds),
+    ];
+
+    const rows = await this.db
+      .select({
+        nodeNum: telemetry.nodeNum,
+        telemetryType: telemetry.telemetryType,
+        sampleCount: sql<number>`COUNT(DISTINCT ${telemetry.timestamp})`,
+        firstTimestamp: sql<number>`MIN(${telemetry.timestamp})`,
+        lastTimestamp: sql<number>`MAX(${telemetry.timestamp})`,
+      })
+      .from(telemetry)
+      .where(and(...conditions))
+      .groupBy(telemetry.nodeNum, telemetry.telemetryType);
+
+    return this.normalizeBigInts(rows).map(
+      (r: { nodeNum: number | bigint; telemetryType: string; sampleCount: number | bigint; firstTimestamp: number | bigint; lastTimestamp: number | bigint }) => ({
+        nodeNum: Number(r.nodeNum),
+        telemetryType: r.telemetryType,
+        sampleCount: Number(r.sampleCount),
+        firstTimestamp: Number(r.firstTimestamp),
+        lastTimestamp: Number(r.lastTimestamp),
+      }),
+    );
+  }
+
+  /**
+   * Stage 2 of C2's cadence computation (spec §2.5): exact deduped
+   * timestamps for a bounded set of candidate nodes already filtered by the
+   * stage-1 mean gate, so the caller can compute a true median inter-arrival
+   * (`cadenceStatsFromTimestamps` in `meshIssues/rulesTierC.ts`). The
+   * service calls this in chunks of 25 node numbers, mirroring
+   * `meshIssuesAnalysisService`'s `POSITION_SPAN_CHUNK_SIZE` loop — never
+   * for the whole mesh in one call.
+   */
+  async getTelemetryTimestamps(opts: {
+    nodeNums: number[];
+    telemetryTypes: string[];
+    sinceMs: number;
+    sourceIds: string[];
+  }): Promise<Array<{ nodeNum: number; telemetryType: string; timestamp: number }>> {
+    const { nodeNums, telemetryTypes, sinceMs, sourceIds } = opts;
+    if (nodeNums.length === 0 || telemetryTypes.length === 0 || sourceIds.length === 0) return [];
+    const { telemetry } = this.tables;
+    const conditions: SQL[] = [
+      inArray(telemetry.nodeNum, nodeNums),
+      inArray(telemetry.telemetryType, telemetryTypes),
+      gte(telemetry.timestamp, sinceMs),
+      inArray(telemetry.sourceId, sourceIds),
+    ];
+
+    const rows = await this.db
+      .select({
+        nodeNum: telemetry.nodeNum,
+        telemetryType: telemetry.telemetryType,
+        timestamp: telemetry.timestamp,
+      })
+      .from(telemetry)
+      .where(and(...conditions));
+
+    return this.normalizeBigInts(rows).map(
+      (r: { nodeNum: number | bigint; telemetryType: string; timestamp: number | bigint }) => ({
+        nodeNum: Number(r.nodeNum),
+        telemetryType: r.telemetryType,
+        timestamp: Number(r.timestamp),
+      }),
+    );
   }
 
   /**

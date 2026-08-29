@@ -27,6 +27,7 @@ import {
   COVERAGE_SHADOW_MAX_RANGE_M,
   MOBILE_MIN_PRECISION_BITS,
   EVIDENCE_MEMBER_LIST_CAP,
+  DEFAULT_MESH_ISSUE_THRESHOLDS,
 } from './thresholds.js';
 import { DeviceRole } from '../../../constants/index.js';
 import { calculateDistance } from '../../../utils/distance.js';
@@ -62,6 +63,14 @@ function makeNode(overrides: Partial<PooledNode> = {}): PooledNode {
     mobile: false,
     lastHeardMs: null,
     sourceIds: ['src-a'],
+    isExcessivePackets: false,
+    packetRatePerHour: null,
+    keyIsLowEntropy: false,
+    duplicateKeyDetected: false,
+    keyMismatchDetected: false,
+    keySecurityIssueDetails: null,
+    isTimeOffsetIssue: false,
+    timeOffsetSeconds: null,
     ...overrides,
   };
 }
@@ -193,6 +202,7 @@ function makeCtx(overrides: Partial<TierBRuleContext> = {}): TierBRuleContext {
     hopHorizon: new Map(),
     mqttSourceIds: new Set(),
     nowMs: NOW_MS,
+    thresholds: DEFAULT_MESH_ISSUE_THRESHOLDS,
     ...overrides,
   };
 }
@@ -309,6 +319,36 @@ describe('evaluateB1 — router cluster', () => {
     expect(findings[0].recommendation.toLowerCase()).not.toContain('promote');
     expect(findings[0].recommendation).not.toMatch(/\bROUTER\b/);
   });
+
+  it('membersTotal / edgesTotal equal the pre-cap length, not the (untruncated) items length (#4964 Phase 3 WP3 §4.2)', () => {
+    const n1 = makeNode({ nodeNum: 1, role: DeviceRole.ROUTER });
+    const n2 = makeNode({ nodeNum: 2, role: DeviceRole.ROUTER });
+    const ctx = makeCtx({ nodes: nodeMap([n1, n2]), graph: makeGraph([directEdge(1, 2)]) });
+    const findings = evaluateB1(ctx);
+    expect(findings[0].evidence.membersTruncated).toBe(false);
+    expect(findings[0].evidence.membersTotal).toBe(2);
+    expect(findings[0].evidence.edgesTruncated).toBe(false);
+    expect(findings[0].evidence.edgesTotal).toBe(1);
+  });
+
+  it('caps members/edges at EVIDENCE_MEMBER_LIST_CAP and reports the true pre-cap total (#4964 Phase 3 WP3 §4.2)', () => {
+    // A 30-router chain: 30 members, 29 internal edges — both over the cap.
+    const nodes = Array.from({ length: 30 }, (_, i) => makeNode({ nodeNum: i + 1, role: DeviceRole.ROUTER }));
+    const edges = Array.from({ length: 29 }, (_, i) => directEdge(i + 1, i + 2));
+    const ctx = makeCtx({ nodes: nodeMap(nodes), graph: makeGraph(edges) });
+
+    const findings = evaluateB1(ctx);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].evidence.size).toBe(30);
+
+    expect(findings[0].evidence.membersTruncated).toBe(true);
+    expect(findings[0].evidence.membersTotal).toBe(30);
+    expect((findings[0].evidence.members as unknown[]).length).toBe(EVIDENCE_MEMBER_LIST_CAP);
+
+    expect(findings[0].evidence.edgesTruncated).toBe(true);
+    expect(findings[0].evidence.edgesTotal).toBe(29);
+    expect((findings[0].evidence.edges as unknown[]).length).toBe(EVIDENCE_MEMBER_LIST_CAP);
+  });
 });
 
 describe('findRouterClusters — shared by B1 and B6', () => {
@@ -398,6 +438,24 @@ describe('evaluateB2 — redundant router', () => {
     expect(findings[0].recommendation.toLowerCase()).not.toContain('promote');
     expect(findings[0].recommendation).not.toMatch(/\bROUTER\b/);
   });
+
+  it('sharedNeighborsTotal / otherCoveringRoutersTotal are the pre-cap length (#4964 Phase 3 WP3 §4.2)', () => {
+    // 30 shared neighbours (over the cap) + 1 aOnly keeps the overlap ratio
+    // at 30/31 ≈ 0.968, comfortably above REDUNDANT_OVERLAP_RATIO (0.9).
+    const { graph, nodes } = buildOverlapFixture(30, 1, 2);
+    const ctx = makeCtx({ nodes: nodeMap(nodes), graph });
+    const findings = evaluateB2(ctx);
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0].evidence.sharedNeighborsTruncated).toBe(true);
+    expect(findings[0].evidence.sharedNeighborsTotal).toBe(30);
+    expect((findings[0].evidence.sharedNeighbors as unknown[]).length).toBe(EVIDENCE_MEMBER_LIST_CAP);
+
+    // Only one candidate (node 2) qualifies here, so "rest" (other covering
+    // routers) is empty — total is still present and is the pre-cap length (0).
+    expect(findings[0].evidence.otherCoveringRoutersTruncated).toBe(false);
+    expect(findings[0].evidence.otherCoveringRoutersTotal).toBe(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -479,6 +537,30 @@ describe('evaluateB3 — asymmetric link', () => {
     const ctx = makeCtx({ nodes: nodeMap([n1, n2]), graph: makeGraph([edge]) });
 
     expect(evaluateB3(ctx)).toEqual([]);
+  });
+
+  it('honours ctx.thresholds.snrAsymmetryDb rather than the code constant (#4964 Phase 3 WP1)', () => {
+    const n1 = makeNode({ nodeNum: 1 });
+    const n2 = makeNode({ nodeNum: 2 });
+    const edge = makeEdge({ a: 1, b: 2, snrToA: snr(3, 0), snrToB: snr(3, 5) });
+    const lowDelta = { ...DEFAULT_MESH_ISSUE_THRESHOLDS, snrAsymmetryDb: 3 };
+    const highDelta = { ...DEFAULT_MESH_ISSUE_THRESHOLDS, snrAsymmetryDb: 20 };
+
+    const firesAt3 = makeCtx({ nodes: nodeMap([n1, n2]), graph: makeGraph([edge]), thresholds: lowDelta });
+    const suppressedAt20 = makeCtx({ nodes: nodeMap([n1, n2]), graph: makeGraph([edge]), thresholds: highDelta });
+
+    expect(evaluateB3(firesAt3)).toHaveLength(1);
+    expect(evaluateB3(suppressedAt20)).toEqual([]);
+  });
+
+  it('emits the effective thresholdUsed in evidence', () => {
+    const n1 = makeNode({ nodeNum: 1 });
+    const n2 = makeNode({ nodeNum: 2 });
+    const edge = makeEdge({ a: 1, b: 2, snrToA: snr(3, 0), snrToB: snr(3, 7) });
+    const thresholds = { ...DEFAULT_MESH_ISSUE_THRESHOLDS, snrAsymmetryDb: 3 };
+    const ctx = makeCtx({ nodes: nodeMap([n1, n2]), graph: makeGraph([edge]), thresholds });
+
+    expect(evaluateB3(ctx)[0].evidence.thresholdUsed).toBe(3);
   });
 });
 
@@ -673,6 +755,9 @@ describe('evaluateB6 — hop horizon', () => {
     expect(findings[0].evidence.behindRouterCluster).toBe(true);
     expect(findings[0].recommendation).toContain('router cluster');
     expect((findings[0].evidence.clusterMembers as number[]).sort()).toEqual([1]);
+    // clusterMembersTotal is the pre-cap length (#4964 Phase 3 WP3 §4.2).
+    expect(findings[0].evidence.clusterMembersTruncated).toBe(false);
+    expect(findings[0].evidence.clusterMembersTotal).toBe(1);
   });
 
   it('recommendation never contains "promote" or suggests bare ROUTER', () => {
@@ -896,6 +981,36 @@ describe('evaluateAllTierB', () => {
     const elapsed = Date.now() - start;
 
     expect(elapsed).toBeLessThan(3000);
+  });
+
+  it('B7 is absent from the evaluated set when ctx.thresholds.b7Enabled is false (#4964 Phase 3 WP1)', () => {
+    const router = makeNode({ nodeNum: 700, role: DeviceRole.ROUTER, latitude: 10.0, longitude: 20.0 });
+    const neighbors = [1, 2, 3].map((km, i) =>
+      makeNode({ nodeNum: 800 + i, latitude: 10.0 + km / 111, longitude: 20.0 }),
+    );
+    const candidate = makeNode({
+      nodeNum: 900,
+      latitude: 10.0 + 1.5 / 111,
+      longitude: 20.0,
+      sourceIds: ['mqtt-src'],
+    });
+    const edges = neighbors.map((n) => directEdge(router.nodeNum, n.nodeNum));
+    const nodes = nodeMap([router, ...neighbors, candidate]);
+    const graph = makeGraph(edges);
+    const mqttSourceIds = new Set(['mqtt-src']);
+
+    const enabledCtx = makeCtx({ nodes, graph, mqttSourceIds });
+    expect(evaluateAllTierB(enabledCtx).some((f) => f.issueType === MESH_ISSUE_TYPES.B7_COVERAGE_SHADOW)).toBe(true);
+
+    const disabledCtx = makeCtx({
+      nodes,
+      graph,
+      mqttSourceIds,
+      thresholds: { ...DEFAULT_MESH_ISSUE_THRESHOLDS, b7Enabled: false },
+    });
+    expect(evaluateAllTierB(disabledCtx).some((f) => f.issueType === MESH_ISSUE_TYPES.B7_COVERAGE_SHADOW)).toBe(
+      false,
+    );
   });
 });
 

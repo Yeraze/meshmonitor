@@ -185,6 +185,23 @@ describe('meshIssuesScheduler.runNow', () => {
     expect(keys).toContain('mesh_issues_last_run');
   });
 
+  it('writes mesh_issues_last_run_summary on a successful run', async () => {
+    await meshIssuesScheduler.runNow();
+    const calls = mockDb.settings.setSetting.mock.calls as any[];
+    const summaryCall = calls.find((c) => c[0] === 'mesh_issues_last_run_summary');
+    expect(summaryCall).toBeDefined();
+    const parsed = JSON.parse(summaryCall[1]);
+    expect(typeof parsed.at).toBe('number');
+    expect(parsed.result.durationMs).toBe(1);
+  });
+
+  it('does NOT write mesh_issues_last_run_summary when runAnalysis rejects', async () => {
+    mockService.meshIssuesAnalysisService.runAnalysis.mockRejectedValueOnce(new Error('boom'));
+    await expect(meshIssuesScheduler.runNow()).rejects.toThrow('boom');
+    const keys = mockDb.settings.setSetting.mock.calls.map((c: any[]) => c[0]);
+    expect(keys).not.toContain('mesh_issues_last_run_summary');
+  });
+
   it('runLock is cleared after a rejected run, allowing a subsequent run', async () => {
     mockService.meshIssuesAnalysisService.runAnalysis.mockRejectedValueOnce(new Error('boom'));
     await expect(meshIssuesScheduler.runNow()).rejects.toThrow('boom');
@@ -239,6 +256,93 @@ describe('meshIssuesScheduler restart safety (getStatus / getLastRun)', () => {
     // getLastRun short-circuits on the in-memory cache and never re-reads the key.
     const readKeys = mockDb.settings.getSetting.mock.calls.map((c: any[]) => c[0]);
     expect(readKeys).not.toContain('mesh_issues_last_run');
+  });
+});
+
+describe('meshIssuesScheduler restart safety (lastRunResult recovery, #4964 Phase 3 WP1)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetSchedulerState();
+    mockDb.settings.setSetting.mockResolvedValue(undefined);
+  });
+
+  it('with an empty in-memory lastRunResult, recovers it from mesh_issues_last_run_summary and sets lastRunResultFromStorage', async () => {
+    const storedResult = {
+      durationMs: 42, sourceCount: 1, nodeCount: 5, findingCount: 3,
+      newCount: 1, reopenedCount: 0, updatedCount: 2, closedCount: 0,
+      byType: { A1_deprecated_role: 3 },
+      corpusStats: { rawCount: 0, validCount: 0, dedupedCount: 0, sampledCount: 0, distinctPairCount: 0, truncated: false },
+    };
+    mockDb.settings.getSetting.mockImplementation(async (key: string) => {
+      if (key === 'mesh_issues_last_run_summary') {
+        return JSON.stringify({ at: 123, result: storedResult });
+      }
+      return null;
+    });
+
+    const status = await meshIssuesScheduler.getStatus();
+
+    expect(status.lastRunResult).toEqual(storedResult);
+    expect(status.lastRunResultFromStorage).toBe(true);
+  });
+
+  it('prefers the in-memory lastRunResult over storage, and reports lastRunResultFromStorage: false', async () => {
+    mockService.meshIssuesAnalysisService.runAnalysis.mockResolvedValue({
+      durationMs: 1, sourceCount: 1, nodeCount: 0, findingCount: 0,
+      newCount: 0, reopenedCount: 0, updatedCount: 0, closedCount: 0,
+      byType: {}, corpusStats: {
+        rawCount: 0, validCount: 0, dedupedCount: 0, sampledCount: 0,
+        distinctPairCount: 0, truncated: false,
+      },
+    });
+    mockDb.settings.getSetting.mockResolvedValue(null);
+    await meshIssuesScheduler.runNow();
+
+    const status = await meshIssuesScheduler.getStatus();
+    expect(status.lastRunResultFromStorage).toBe(false);
+    expect(status.lastRunResult).not.toBeNull();
+  });
+
+  it('malformed JSON in mesh_issues_last_run_summary degrades to lastRunResult: null without throwing', async () => {
+    mockDb.settings.getSetting.mockImplementation(async (key: string) => {
+      if (key === 'mesh_issues_last_run_summary') return '{not valid json';
+      return null;
+    });
+
+    const status = await meshIssuesScheduler.getStatus();
+
+    expect(status.lastRunResult).toBeNull();
+    expect(status.lastRunResultFromStorage).toBe(false);
+  });
+
+  it('a well-formed-JSON-but-wrong-shape value (e.g. an array, or missing durationMs) degrades to null', async () => {
+    mockDb.settings.getSetting.mockImplementation(async (key: string) => {
+      if (key === 'mesh_issues_last_run_summary') return JSON.stringify([1, 2, 3]);
+      return null;
+    });
+    const status1 = await meshIssuesScheduler.getStatus();
+    expect(status1.lastRunResult).toBeNull();
+
+    mockDb.settings.getSetting.mockImplementation(async (key: string) => {
+      if (key === 'mesh_issues_last_run_summary') return JSON.stringify({ at: 1, result: { findingCount: 1 } });
+      return null;
+    });
+    const status2 = await meshIssuesScheduler.getStatus();
+    expect(status2.lastRunResult).toBeNull();
+  });
+
+  it('getStatus() returns resolved + clamped thresholds', async () => {
+    mockDb.settings.getSetting.mockImplementation(async (key: string) => {
+      if (key === 'mesh_issues_air_util_tx_pct') return '9999'; // out of range, clamps to 50
+      if (key === 'mesh_issues_tier_c_enabled') return 'false';
+      return null;
+    });
+
+    const status = await meshIssuesScheduler.getStatus();
+
+    expect(status.thresholds.airUtilTxPct).toBe(50);
+    expect(status.thresholds.tierCEnabled).toBe(false);
+    expect(status.thresholds.tierAEnabled).toBe(true);
   });
 });
 

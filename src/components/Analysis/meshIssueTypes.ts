@@ -27,6 +27,9 @@ export interface MeshIssueRow {
   firstDetected: number;
   lastDetected: number;
   status: MeshIssueStatusValue;
+  /** #4964 Phase 3 WP3 — dismiss/restore. */
+  dismissed: boolean;
+  dismissedAt: number | null;
 }
 
 export interface MeshIssueCounts {
@@ -34,15 +37,93 @@ export interface MeshIssueCounts {
   warning: number;
   info: number;
   total: number;
+  /** Count of RETURNED rows with `dismissed === true` (Phase 3 WP3, spec §4.1). */
+  dismissed: number;
 }
 
 export interface MeshIssuesResponse {
   issues: MeshIssueRow[];
   counts: MeshIssueCounts;
+  /** Permitted-source id -> display name (Phase 3 WP3, spec §4.1). Only
+   *  sources the caller can read appear here. */
+  sourceNames: Record<string, string>;
 }
 
-/** GET /api/analysis/mesh-issues/status. `lastRunResult` shape is server-internal;
- * the report only reads the fields below. */
+/** RF-evidence availability flags (Phase 2/3, `rfGraph.ts`'s `RfEvidenceAvailability`). */
+export interface MeshIssuesEvidenceAvailability {
+  neighborInfo: boolean;
+  traceroute: boolean;
+  mqttGateway: boolean;
+  packetLog: boolean;
+}
+
+/** A rule the run skipped entirely, and why (`rulesTierB.ts`'s `RuleSkip`). */
+export interface MeshIssueRuleSkip {
+  rule: string;
+  reason: string;
+}
+
+/** Phase 2/3 RF-evidence coverage summary (`meshIssuesAnalysisService.ts`'s `MeshIssuesCoverage`). */
+export interface MeshIssuesCoverageWire {
+  evidence: MeshIssuesEvidenceAvailability;
+  neighborInfoRowCount: number;
+  neighborInfoEdgeCount: number;
+  tracerouteEdgeCount: number;
+  tracerouteSentinelHopsDropped: number;
+  gatewayCount: number;
+  gatewayDirectEdgeCount: number;
+  gatewayCoReceptionEdgeCount: number;
+  gatewayCellsSkipped: number;
+  directEdgeCount: number;
+  totalEdgeCount: number;
+  graphNodeCount: number;
+  snrDirectionsWithMinSamples: number;
+  /** Which log actually fed B6, or null when neither was usable. */
+  hopHorizonSource: 'packet_log' | 'mqtt_packet_log' | null;
+  hopHorizonNodeCount: number;
+  skippedRules: MeshIssueRuleSkip[];
+}
+
+/** Traceroute corpus funnel (`tracerouteCorpus.ts`'s `TracerouteCorpusStats`). */
+export interface MeshIssuesCorpusStats {
+  rawCount: number;
+  validCount: number;
+  dedupedCount: number;
+  sampledCount: number;
+  distinctPairCount: number;
+  /** True when the caller stopped paginating at the page cap. */
+  truncated: boolean;
+}
+
+/** The subset of thresholds a user can tune (`thresholds.ts`'s `ResolvedMeshIssueThresholds`). */
+export interface ResolvedMeshIssueThresholds {
+  tierAEnabled: boolean;
+  tierBEnabled: boolean;
+  tierCEnabled: boolean;
+  b7Enabled: boolean;
+  airUtilTxPct: number;
+  channelUtilPct: number;
+  mobileSpanMeters: number;
+  snrAsymmetryDb: number;
+  overBroadcastSeconds: number;
+}
+
+/** The last completed run's summary (`meshIssuesAnalysisService.ts`'s `MeshIssuesRunResult`). */
+export interface MeshIssuesLastRunResult {
+  durationMs: number;
+  sourceCount: number;
+  nodeCount: number;
+  findingCount: number;
+  newCount: number;
+  reopenedCount: number;
+  updatedCount: number;
+  closedCount: number;
+  byType: Record<string, number>;
+  corpusStats: MeshIssuesCorpusStats;
+  coverage: MeshIssuesCoverageWire;
+}
+
+/** GET /api/analysis/mesh-issues/status. */
 export interface MeshIssuesStatus {
   running: boolean;
   inProgress: boolean;
@@ -51,7 +132,12 @@ export interface MeshIssuesStatus {
   lookbackHours: number;
   pairBucketHours: number;
   lastRunTime: number | null;
-  lastRunResult: { findingCount?: number; durationMs?: number } | null;
+  lastRunResult: MeshIssuesLastRunResult | null;
+  /** Resolved + clamped thresholds actually in force for the next run. */
+  thresholds: ResolvedMeshIssueThresholds;
+  /** True when `lastRunResult` was recovered from settings (a process
+   *  restart cleared the in-memory cache) rather than served from memory. */
+  lastRunResultFromStorage: boolean;
 }
 
 /** POST /api/analysis/mesh-issues/run-now response payload (result object;
@@ -81,6 +167,11 @@ export const ISSUE_TYPE_LABELS: Record<string, string> = {
   B5_load_bearing_client: 'Load-bearing client',
   B6_hop_horizon: 'At the hop horizon',
   B7_coverage_shadow: 'Coverage shadow',
+  // Tier C (#4964 Phase 3 WP4).
+  C1_excessive_packets: 'Excessive packet rate',
+  C1_key_security: 'Key security issue',
+  C1_time_offset: 'Clock offset',
+  C2_over_broadcasting: 'Broadcasting too often',
 };
 
 export const ISSUE_TYPE_BLURBS: Record<string, string> = {
@@ -98,6 +189,10 @@ export const ISSUE_TYPE_BLURBS: Record<string, string> = {
   B5_load_bearing_client: 'A client node is carrying a large share of the paths through its area.',
   B6_hop_horizon: 'Traffic from this node arrives with no hops left, so nodes further out cannot hear it.',
   B7_coverage_shadow: 'This node only reaches us over MQTT despite sitting inside a router’s demonstrated RF range.',
+  C1_excessive_packets: 'This node is putting more packets on the channel than the mesh can comfortably absorb.',
+  C1_key_security: "This node's public key looks weak, duplicated, or mismatched, which undermines its encryption.",
+  C1_time_offset: "This node's reported clock has drifted from the rest of the mesh.",
+  C2_over_broadcasting: 'This node is sending position or telemetry updates far more often than the mesh needs.',
 };
 
 /** A node reference embedded in evidence (cluster members, shared neighbours). */
@@ -170,18 +265,55 @@ export const STRUCTURED_EVIDENCE_KEYS: ReadonlySet<string> = new Set([
   'nodeB',
   'snrToA',
   'snrToB',
+  // Folded into the SnrDirections table as a "weaker" row tag rather than
+  // rendered as its own raw `a->b` pill (#4964 Phase 3 WP4, spec §5.5).
+  'weakerDirection',
 ]);
+
+/** Evidence keys ending in this suffix hold an elapsed-milliseconds duration
+ * (e.g. `lastHeardAgeMs`) and render through `formatDurationMs`, not
+ * `formatEvidenceValue` (spec §5.3). */
+const AGE_MS_KEY_PATTERN = /AgeMs$/;
 
 /**
  * Human label for an evidence object key. Generic camelCase -> Title Case
  * splitter; there is no per-rule override list to keep in sync as rules are
- * added in later phases.
+ * added in later phases. A key matching `/AgeMs$/` drops the trailing "Ms"
+ * before splitting, since `formatDurationMs` already renders a unit
+ * ("Last Heard Age" reads better than "Last Heard Age Ms").
  */
 export function formatEvidenceKey(key: string): string {
-  const spaced = key
+  const base = AGE_MS_KEY_PATTERN.test(key) ? key.slice(0, -2) : key;
+  const spaced = base
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
     .replace(/^./, (c) => c.toUpperCase());
   return spaced;
+}
+
+/** `${n} ${unit}` / `${n} ${unit}s` — no i18n plural rules needed for this
+ * coarse a scale (English-only report, matching the rest of this module). */
+function pluralize(n: number, unit: string): string {
+  return `${n} ${unit}${n === 1 ? '' : 's'}`;
+}
+
+/**
+ * Coarse human duration for an elapsed-milliseconds evidence value (spec
+ * §5.3): "just now", "17 minutes", "3 hours", "6 days", "3 weeks". Rounds to
+ * the nearest whole unit at each scale; a non-finite or negative input
+ * degrades to an em dash rather than throwing (evidence is parsed JSON —
+ * never trust the shape).
+ */
+export function formatDurationMs(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return '—';
+  if (ms < 60_000) return 'just now';
+  const minutes = ms / 60_000;
+  if (minutes < 60) return pluralize(Math.round(minutes), 'minute');
+  const hours = ms / 3_600_000;
+  if (hours < 24) return pluralize(Math.round(hours), 'hour');
+  const days = ms / 86_400_000;
+  if (days < 7) return pluralize(Math.round(days), 'day');
+  const weeks = ms / (7 * 86_400_000);
+  return pluralize(Math.round(weeks), 'week');
 }
 
 /**
@@ -203,4 +335,92 @@ export function formatEvidenceValue(value: unknown): string {
   }
   if (typeof value === 'object') return JSON.stringify(value);
   return String(value);
+}
+
+/** First 8 chars of a source id — the fallback used wherever a `sourceNames`
+ * map lookup misses (spec §5.4). */
+export function shortSourceId(id: string): string {
+  return id.slice(0, 8);
+}
+
+/** `sources` evidence array (source ids) -> comma-separated display names,
+ * falling back to `shortSourceId` for anything `sourceNames` does not
+ * contain (spec §5.4). Non-string entries fall back to `String(v)` rather
+ * than throwing — evidence is parsed JSON. */
+export function formatSourceIds(ids: unknown, sourceNames: Record<string, string>): string {
+  if (!Array.isArray(ids) || ids.length === 0) return '—';
+  return ids
+    .map((id) => (typeof id === 'string' ? (sourceNames[id] ?? shortSourceId(id)) : String(id)))
+    .join(', ');
+}
+
+export interface CoverageNote {
+  rule: string;
+  note: string;
+  severity: 'hint' | 'blocked';
+}
+
+/**
+ * Pure, unit-tested. Turns a coverage object into per-rule plain-English
+ * notes about degraded evidence (spec §5.1). One entry per condition — when a
+ * note covers several rules, `rule` carries the comma-separated list, exactly
+ * as the spec's table does.
+ *
+ * Deviation from the spec table: the `!evidence.mqttGateway` note is not
+ * additionally gated on "an MQTT source exists" — the wire's `coverage`
+ * object does not currently carry whether an MQTT source is configured
+ * (only whether it produced usable gateway evidence), and adding that field
+ * is a server change outside this frontend-only work package. The note's
+ * wording ("the MQTT packet log is off") stays accurate either way.
+ */
+export function coverageNotes(coverage: MeshIssuesCoverageWire): CoverageNote[] {
+  const notes: CoverageNote[] = [];
+
+  if (!coverage.evidence.traceroute) {
+    notes.push({
+      rule: 'B1, B4, B5, B7',
+      note: 'needs traceroutes; none were collected in the window',
+      severity: 'blocked',
+    });
+  }
+  if (coverage.snrDirectionsWithMinSamples === 0) {
+    notes.push({
+      rule: 'B3',
+      note: 'needs traceroutes or the MQTT packet log: no link has 3 or more SNR samples in one direction',
+      severity: 'blocked',
+    });
+  }
+  if (coverage.hopHorizonSource === null) {
+    notes.push({
+      rule: 'B6',
+      note: 'needs a packet monitor: enable the Meshtastic packet log or the MQTT packet log',
+      severity: 'blocked',
+    });
+  }
+  if (!coverage.evidence.mqttGateway) {
+    notes.push({
+      rule: 'B3, B7',
+      note: 'the MQTT packet log is off, so gateway receptions are not contributing RF evidence',
+      severity: 'hint',
+    });
+  }
+  if (!coverage.evidence.packetLog) {
+    notes.push({
+      rule: 'B6',
+      note: 'the Meshtastic packet log is off',
+      severity: 'blocked',
+    });
+  }
+  for (const skip of coverage.skippedRules) {
+    notes.push({ rule: skip.rule, note: skip.reason, severity: 'blocked' });
+  }
+  if (coverage.tracerouteSentinelHopsDropped > 0) {
+    notes.push({
+      rule: 'B1-B5',
+      note: `${coverage.tracerouteSentinelHopsDropped} traceroute hops were dropped as MQTT-injected (SNR sentinel)`,
+      severity: 'hint',
+    });
+  }
+
+  return notes;
 }

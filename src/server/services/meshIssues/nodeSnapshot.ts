@@ -46,6 +46,16 @@ export interface PooledNodeInput {
   mobile?: number | null;
   lastHeard?: number | null;
   updatedAt?: number | null;
+  // Tier C fold-in flags (#4964 Phase 3 WP2) — see PooledNode's JSDoc for the
+  // per-field merge rule; all eight map 1:1 off `DbNode` (`src/db/types.ts`).
+  isExcessivePackets?: boolean | number | null;
+  packetRatePerHour?: number | null;
+  keyIsLowEntropy?: boolean | number | null;
+  duplicateKeyDetected?: boolean | number | null;
+  keyMismatchDetected?: boolean | number | null;
+  keySecurityIssueDetails?: string | null;
+  isTimeOffsetIssue?: boolean | number | null;
+  timeOffsetSeconds?: number | null;
 }
 
 export interface PooledNode {
@@ -68,6 +78,26 @@ export interface PooledNode {
   /** max across rows — the freshness proxy; see module header. */
   lastHeardMs: number | null;
   sourceIds: string[]; // sorted, deduped
+  // Tier C fold-in flags (#4964 Phase 3 WP2). See buildPooledNodeSnapshot's
+  // JSDoc for the merge rule table; the short version:
+  //  - isExcessivePackets / keyIsLowEntropy / duplicateKeyDetected /
+  //    keyMismatchDetected / isTimeOffsetIssue: logical OR across rows
+  //    (flagged on any vantage means flagged).
+  //  - packetRatePerHour: MAX across non-null rows — NEVER SUM. The same
+  //    packet lands on TCP plus N MQTT gateways; summing per-source rates
+  //    would multiply one node's traffic by its vantage count.
+  //  - keySecurityIssueDetails: newest-wins (firstNonNull over freshness-sorted rows).
+  //  - timeOffsetSeconds: the non-null value with the greatest ABSOLUTE
+  //    magnitude — worst-case wins for a gating field, same spirit as
+  //    positionPrecisionBits' MIN and mobile's OR.
+  isExcessivePackets: boolean;
+  packetRatePerHour: number | null;
+  keyIsLowEntropy: boolean;
+  duplicateKeyDetected: boolean;
+  keyMismatchDetected: boolean;
+  keySecurityIssueDetails: string | null;
+  isTimeOffsetIssue: boolean;
+  timeOffsetSeconds: number | null;
 }
 
 /** `lastHeard` is unix seconds in this schema; below 1e12 it must be *1000. */
@@ -114,6 +144,20 @@ function effectivePositionPair(row: PooledNodeInput): { latitude: number; longit
   return { latitude: eff.latitude, longitude: eff.longitude };
 }
 
+/** The non-null value with the greatest ABSOLUTE magnitude, or null when
+ *  `values` is empty. Used for `timeOffsetSeconds` (#4964 Phase 3 WP2) — a
+ *  worst-case-wins merge for a gating field, ties broken by iteration order
+ *  (first encountered wins a tie, matching this module's other deterministic
+ *  merges). */
+function maxAbsValue(values: number[]): number | null {
+  if (values.length === 0) return null;
+  let best = values[0];
+  for (let i = 1; i < values.length; i++) {
+    if (Math.abs(values[i]) > Math.abs(best)) best = values[i];
+  }
+  return best;
+}
+
 /**
  * Merge N per-source `nodes` rows for the same physical node into one
  * `PooledNode`. Grouping key is `Number(row.nodeNum)` — PostgreSQL/MySQL hand
@@ -156,6 +200,13 @@ export function buildPooledNodeSnapshot(rows: PooledNodeInput[]): Map<number, Po
     const freshnessValues = groupRows
       .map(rowFreshnessOrNull)
       .filter((v): v is number => v != null);
+    // Tier C (#4964 Phase 3 WP2) — see PooledNode's JSDoc for the merge rules.
+    const packetRateValues = groupRows
+      .map((r) => r.packetRatePerHour)
+      .filter((v): v is number => v != null);
+    const timeOffsetValues = groupRows
+      .map((r) => r.timeOffsetSeconds)
+      .filter((v): v is number => v != null);
 
     result.set(nodeNum, {
       nodeNum,
@@ -180,6 +231,14 @@ export function buildPooledNodeSnapshot(rows: PooledNodeInput[]): Map<number, Po
       mobile: groupRows.some((r) => !!r.mobile),
       lastHeardMs: freshnessValues.length > 0 ? Math.max(...freshnessValues) : null,
       sourceIds: Array.from(new Set(groupRows.map((r) => r.sourceId))).sort(),
+      isExcessivePackets: groupRows.some((r) => !!r.isExcessivePackets),
+      packetRatePerHour: packetRateValues.length > 0 ? Math.max(...packetRateValues) : null,
+      keyIsLowEntropy: groupRows.some((r) => !!r.keyIsLowEntropy),
+      duplicateKeyDetected: groupRows.some((r) => !!r.duplicateKeyDetected),
+      keyMismatchDetected: groupRows.some((r) => !!r.keyMismatchDetected),
+      keySecurityIssueDetails: firstNonNull(sorted, (r) => r.keySecurityIssueDetails),
+      isTimeOffsetIssue: groupRows.some((r) => !!r.isTimeOffsetIssue),
+      timeOffsetSeconds: maxAbsValue(timeOffsetValues),
     });
   }
   return result;
