@@ -2060,6 +2060,11 @@ class DatabaseService {
     return this.meshIssues.setDismissed(id, dismissed, userId, nowMs);
   }
 
+  /** One finding by id, or null (Phase 3 WP3 — dismiss/restore visibility check). */
+  async getMeshIssueByIdAsync(id: number): Promise<DbMeshIssue | null> {
+    return this.meshIssues.getIssueById(id);
+  }
+
 
 
   /**

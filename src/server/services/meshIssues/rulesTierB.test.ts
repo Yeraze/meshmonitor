@@ -319,6 +319,36 @@ describe('evaluateB1 — router cluster', () => {
     expect(findings[0].recommendation.toLowerCase()).not.toContain('promote');
     expect(findings[0].recommendation).not.toMatch(/\bROUTER\b/);
   });
+
+  it('membersTotal / edgesTotal equal the pre-cap length, not the (untruncated) items length (#4964 Phase 3 WP3 §4.2)', () => {
+    const n1 = makeNode({ nodeNum: 1, role: DeviceRole.ROUTER });
+    const n2 = makeNode({ nodeNum: 2, role: DeviceRole.ROUTER });
+    const ctx = makeCtx({ nodes: nodeMap([n1, n2]), graph: makeGraph([directEdge(1, 2)]) });
+    const findings = evaluateB1(ctx);
+    expect(findings[0].evidence.membersTruncated).toBe(false);
+    expect(findings[0].evidence.membersTotal).toBe(2);
+    expect(findings[0].evidence.edgesTruncated).toBe(false);
+    expect(findings[0].evidence.edgesTotal).toBe(1);
+  });
+
+  it('caps members/edges at EVIDENCE_MEMBER_LIST_CAP and reports the true pre-cap total (#4964 Phase 3 WP3 §4.2)', () => {
+    // A 30-router chain: 30 members, 29 internal edges — both over the cap.
+    const nodes = Array.from({ length: 30 }, (_, i) => makeNode({ nodeNum: i + 1, role: DeviceRole.ROUTER }));
+    const edges = Array.from({ length: 29 }, (_, i) => directEdge(i + 1, i + 2));
+    const ctx = makeCtx({ nodes: nodeMap(nodes), graph: makeGraph(edges) });
+
+    const findings = evaluateB1(ctx);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].evidence.size).toBe(30);
+
+    expect(findings[0].evidence.membersTruncated).toBe(true);
+    expect(findings[0].evidence.membersTotal).toBe(30);
+    expect((findings[0].evidence.members as unknown[]).length).toBe(EVIDENCE_MEMBER_LIST_CAP);
+
+    expect(findings[0].evidence.edgesTruncated).toBe(true);
+    expect(findings[0].evidence.edgesTotal).toBe(29);
+    expect((findings[0].evidence.edges as unknown[]).length).toBe(EVIDENCE_MEMBER_LIST_CAP);
+  });
 });
 
 describe('findRouterClusters — shared by B1 and B6', () => {
@@ -407,6 +437,24 @@ describe('evaluateB2 — redundant router', () => {
     const findings = evaluateB2(ctx);
     expect(findings[0].recommendation.toLowerCase()).not.toContain('promote');
     expect(findings[0].recommendation).not.toMatch(/\bROUTER\b/);
+  });
+
+  it('sharedNeighborsTotal / otherCoveringRoutersTotal are the pre-cap length (#4964 Phase 3 WP3 §4.2)', () => {
+    // 30 shared neighbours (over the cap) + 1 aOnly keeps the overlap ratio
+    // at 30/31 ≈ 0.968, comfortably above REDUNDANT_OVERLAP_RATIO (0.9).
+    const { graph, nodes } = buildOverlapFixture(30, 1, 2);
+    const ctx = makeCtx({ nodes: nodeMap(nodes), graph });
+    const findings = evaluateB2(ctx);
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0].evidence.sharedNeighborsTruncated).toBe(true);
+    expect(findings[0].evidence.sharedNeighborsTotal).toBe(30);
+    expect((findings[0].evidence.sharedNeighbors as unknown[]).length).toBe(EVIDENCE_MEMBER_LIST_CAP);
+
+    // Only one candidate (node 2) qualifies here, so "rest" (other covering
+    // routers) is empty — total is still present and is the pre-cap length (0).
+    expect(findings[0].evidence.otherCoveringRoutersTruncated).toBe(false);
+    expect(findings[0].evidence.otherCoveringRoutersTotal).toBe(0);
   });
 });
 
@@ -707,6 +755,9 @@ describe('evaluateB6 — hop horizon', () => {
     expect(findings[0].evidence.behindRouterCluster).toBe(true);
     expect(findings[0].recommendation).toContain('router cluster');
     expect((findings[0].evidence.clusterMembers as number[]).sort()).toEqual([1]);
+    // clusterMembersTotal is the pre-cap length (#4964 Phase 3 WP3 §4.2).
+    expect(findings[0].evidence.clusterMembersTruncated).toBe(false);
+    expect(findings[0].evidence.clusterMembersTotal).toBe(1);
   });
 
   it('recommendation never contains "promote" or suggests bare ROUTER', () => {

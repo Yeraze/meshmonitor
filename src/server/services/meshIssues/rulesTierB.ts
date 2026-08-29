@@ -134,10 +134,13 @@ function displayName(name: string | null, nodeNum: number): string {
 
 /** Caps an evidence list at EVIDENCE_MEMBER_LIST_CAP, returning a sibling
  *  truncated flag per spec §2.6 ("every member/edge list ... capped ... with
- *  a sibling `<field>Truncated: boolean`"). */
-function capList<T>(items: T[]): { items: T[]; truncated: boolean } {
-  if (items.length <= EVIDENCE_MEMBER_LIST_CAP) return { items, truncated: false };
-  return { items: items.slice(0, EVIDENCE_MEMBER_LIST_CAP), truncated: true };
+ *  a sibling `<field>Truncated: boolean`"), plus the pre-cap `total` length
+ *  (Phase 3 WP3 §4.2 — the "+N more" backlog item; each call site also emits
+ *  a sibling `<field>Total: n`). */
+function capList<T>(items: T[]): { items: T[]; truncated: boolean; total: number } {
+  const total = items.length;
+  if (total <= EVIDENCE_MEMBER_LIST_CAP) return { items, truncated: false, total };
+  return { items: items.slice(0, EVIDENCE_MEMBER_LIST_CAP), truncated: true, total };
 }
 
 /** "Where edge/graph evidence yields nothing, fall back to the union of the
@@ -414,8 +417,10 @@ function evaluateB1Impl(ctx: TierBRuleContext, clusters: RouterCluster[]): MeshI
         size: members.length,
         members: membersCapped.items,
         membersTruncated: membersCapped.truncated,
+        membersTotal: membersCapped.total,
         edges: edgesCapped.items,
         edgesTruncated: edgesCapped.truncated,
+        edgesTotal: edgesCapped.total,
         inferredOnly,
         bestSitedNodeNum: bestSited.nodeNum,
         bestSitedName: bestSited.longName,
@@ -507,8 +512,10 @@ export function evaluateB2(ctx: TierBRuleContext): MeshIssueFinding[] {
         overlapRatio: best.ratio,
         sharedNeighbors: sharedCapped.items,
         sharedNeighborsTruncated: sharedCapped.truncated,
+        sharedNeighborsTotal: sharedCapped.total,
         otherCoveringRouters: othersCapped.items,
         otherCoveringRoutersTruncated: othersCapped.truncated,
+        otherCoveringRoutersTotal: othersCapped.total,
         sources: sourceIds,
       },
       sourceIds,
@@ -775,6 +782,7 @@ function evaluateB6Impl(ctx: TierBRuleContext, clusters: RouterCluster[]): MeshI
         behindRouterCluster,
         clusterMembers: clusterMembersCapped.items,
         clusterMembersTruncated: clusterMembersCapped.truncated,
+        clusterMembersTotal: clusterMembersCapped.total,
         // 2.7+ zero-cost favourite-router hops skip the decrement, so
         // hopStart - hopLimit under-counts real hop consumption (D9/§7.3).
         hopDeltaIsLowerBound: true,

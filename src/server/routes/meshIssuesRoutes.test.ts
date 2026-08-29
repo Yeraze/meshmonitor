@@ -8,7 +8,7 @@
  * non-DB `meshIssuesScheduler` singleton is `vi.mock`ed.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import meshIssuesRoutes from './meshIssuesRoutes.js';
+import meshIssuesRoutes, { redactEvidence } from './meshIssuesRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 import databaseService from '../../services/database.js';
 import {
@@ -275,7 +275,7 @@ describe('meshIssuesRoutes', () => {
       const res = await agent.get('/api/analysis/mesh-issues');
 
       expect(res.status).toBe(200);
-      expect(res.body.data.counts).toEqual({ critical: 1, warning: 1, info: 1, total: 3 });
+      expect(res.body.data.counts).toEqual({ critical: 1, warning: 1, info: 1, total: 3, dismissed: 0 });
     });
 
     it('includeClosed=true includes closed findings; default excludes them', async () => {
@@ -439,5 +439,218 @@ describe('meshIssuesRoutes', () => {
       expect(res.status).toBe(500);
       expect(res.body.code).toBe('MESH_ISSUES_RUN_FAILED');
     });
+  });
+
+  describe('GET /api/analysis/mesh-issues — includeDismissed and sourceNames (#4964 Phase 3 WP3)', () => {
+    it('default excludes dismissed rows; includeDismissed=true returns them with dismissed/dismissedAt set', async () => {
+      const { issue } = await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({ nodeNum: 600, sourceIds: [harness.sourceA] }),
+        Date.now(),
+      );
+      await databaseService.setMeshIssueDismissedAsync(issue.id, true, harness.admin.id, Date.now());
+
+      const agent = await harness.loginAs(harness.admin);
+
+      const defaultRes = await agent.get('/api/analysis/mesh-issues');
+      expect(defaultRes.body.data.issues.find((i: { nodeNum: number }) => i.nodeNum === 600)).toBeUndefined();
+
+      const includeRes = await agent.get('/api/analysis/mesh-issues?includeDismissed=true');
+      const found = includeRes.body.data.issues.find((i: { nodeNum: number }) => i.nodeNum === 600);
+      expect(found).toBeDefined();
+      expect(found.dismissed).toBe(true);
+      expect(typeof found.dismissedAt).toBe('number');
+      expect(includeRes.body.data.counts.dismissed).toBe(1);
+    });
+
+    it('a non-dismissed row reports dismissed: false and dismissedAt: null', async () => {
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({ nodeNum: 601, sourceIds: [harness.sourceA] }),
+        Date.now(),
+      );
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get('/api/analysis/mesh-issues');
+      const found = res.body.data.issues.find((i: { nodeNum: number }) => i.nodeNum === 601);
+      expect(found.dismissed).toBe(false);
+      expect(found.dismissedAt).toBeNull();
+      expect(res.body.data.counts.dismissed).toBe(0);
+    });
+
+    it('sourceNames contains only permitted sources, resolved from a single getAllSources() call', async () => {
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({ nodeNum: 602, sourceIds: [harness.sourceA] }),
+        Date.now(),
+      );
+      const getAllSourcesSpy = vi.spyOn(databaseService.sources, 'getAllSources');
+
+      await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceA);
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.get('/api/analysis/mesh-issues');
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.sourceNames[harness.sourceA]).toBeDefined();
+      expect(res.body.data.sourceNames[harness.sourceB]).toBeUndefined();
+      expect(getAllSourcesSpy).toHaveBeenCalledTimes(1);
+
+      getAllSourcesSpy.mockRestore();
+    });
+  });
+
+  describe('POST /:id/dismiss and /:id/restore (#4964 Phase 3 WP3, P3-D7)', () => {
+    it('403s a user without settings:write', async () => {
+      const { issue } = await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({ nodeNum: 610, sourceIds: [harness.sourceA] }),
+        Date.now(),
+      );
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.post(`/api/analysis/mesh-issues/${issue.id}/dismiss`);
+      expect(res.status).toBe(403);
+    });
+
+    it('200s for admin, flips the dismissed column, and writes an audit log entry', async () => {
+      const { issue } = await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({ nodeNum: 611, sourceIds: [harness.sourceA] }),
+        Date.now(),
+      );
+      const auditSpy = vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post(`/api/analysis/mesh-issues/${issue.id}/dismiss`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      const row = await databaseService.getMeshIssueByIdAsync(issue.id);
+      expect(row?.dismissed).toBe(true);
+      expect(row?.dismissedAt).toEqual(expect.any(Number));
+      expect(auditSpy).toHaveBeenCalledWith(
+        harness.admin.id,
+        'mesh_issue_dismiss',
+        'settings',
+        expect.stringContaining(String(issue.id)),
+        expect.anything(),
+        null,
+        null,
+      );
+
+      // Restore flips it back.
+      const restoreRes = await agent.post(`/api/analysis/mesh-issues/${issue.id}/restore`);
+      expect(restoreRes.status).toBe(200);
+      const restoredRow = await databaseService.getMeshIssueByIdAsync(issue.id);
+      expect(restoredRow?.dismissed).toBe(false);
+      expect(restoredRow?.dismissedAt).toBeNull();
+    });
+
+    it('404s an unknown id', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post('/api/analysis/mesh-issues/999999999/dismiss');
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe('MESH_ISSUE_NOT_FOUND');
+    });
+
+    it('400s a non-numeric id', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post('/api/analysis/mesh-issues/not-a-number/dismiss');
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('INVALID_ISSUE_ID');
+    });
+
+    it('404s for a finding whose sourceIds do not intersect the caller\'s permitted set (#3745 leak class), and does not mutate the row', async () => {
+      const { issue } = await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({ nodeNum: 612, sourceIds: [harness.sourceB] }),
+        Date.now(),
+      );
+
+      // Real limited user: settings:write (global admin action) but only
+      // nodes:read on sourceA — the finding is entirely sourceB.
+      await harness.grant(harness.limited.id, 'settings', 'write', harness.sourceA);
+      await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceA);
+      const agent = await harness.loginAs(harness.limited);
+
+      const res = await agent.post(`/api/analysis/mesh-issues/${issue.id}/dismiss`);
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe('MESH_ISSUE_NOT_FOUND');
+
+      const row = await databaseService.getMeshIssueByIdAsync(issue.id);
+      expect(row?.dismissed).toBe(false);
+    });
+  });
+});
+
+describe('redactEvidence (#4964 Phase 3 WP3 §4.3, D12)', () => {
+  const permitted = ['sourceA'];
+  const nodeNames = new Map<number, string>([
+    [1, 'Permitted Node 1'],
+    [2, 'Permitted Node 2'],
+  ]);
+
+  it('intersects a top-level sources array with permitted', () => {
+    const out = redactEvidence({ sources: ['sourceA', 'sourceB'] }, permitted, nodeNames);
+    expect(out.sources).toEqual(['sourceA']);
+  });
+
+  it('intersects a sources array nested inside an array of objects', () => {
+    const out = redactEvidence(
+      { members: [{ nodeNum: 1, sources: ['sourceA', 'sourceB'] }] },
+      permitted,
+      nodeNames,
+    );
+    const members = out.members as Array<{ sources: string[] }>;
+    expect(members[0].sources).toEqual(['sourceA']);
+  });
+
+  it('replaces members[].name with the permitted name, and null when the node has no permitted name', () => {
+    const out = redactEvidence(
+      {
+        members: [
+          { nodeNum: 1, name: 'Leaked SourceB Name' },
+          { nodeNum: 99, name: 'Also Leaked' },
+        ],
+      },
+      permitted,
+      nodeNames,
+    );
+    const members = out.members as Array<{ nodeNum: number; name: string | null }>;
+    expect(members[0].name).toBe('Permitted Node 1');
+    expect(members[1].name).toBeNull();
+  });
+
+  it('rewrites the bestSitedNodeNum/bestSitedName pair (B1)', () => {
+    const out = redactEvidence(
+      { bestSitedNodeNum: 2, bestSitedName: 'Leaked Best Sited Name' },
+      permitted,
+      nodeNames,
+    );
+    expect(out.bestSitedName).toBe('Permitted Node 2');
+  });
+
+  it('rewrites A2b-style nodes[].longName', () => {
+    const out = redactEvidence(
+      { nodes: [{ nodeNum: 1, longName: 'Leaked Long Name' }] },
+      permitted,
+      nodeNames,
+    );
+    const nodes = out.nodes as Array<{ longName: string | null }>;
+    expect(nodes[0].longName).toBe('Permitted Node 1');
+  });
+
+  it('leaves a non-node name field alone (no sibling nodeNum, and roleName is not a node label)', () => {
+    const out = redactEvidence(
+      { name: 'Not A Node', members: [{ nodeNum: 1, name: 'X', role: 2, roleName: 'ROUTER' }] },
+      permitted,
+      nodeNames,
+    );
+    // Top-level `name` has no sibling `nodeNum` at this object level -> untouched.
+    expect(out.name).toBe('Not A Node');
+    const members = out.members as Array<{ roleName: string }>;
+    // roleName has no matching `roleNodeNum` sibling -> untouched even though
+    // the object also carries a `nodeNum` field.
+    expect(members[0].roleName).toBe('ROUTER');
+  });
+
+  it('does not throw on a pathologically deep structure and stops walking past the depth cap', () => {
+    let deep: Record<string, unknown> = { nodeNum: 1, name: 'leaf' };
+    for (let i = 0; i < 20; i++) {
+      deep = { child: deep };
+    }
+    expect(() => redactEvidence(deep, permitted, nodeNames)).not.toThrow();
   });
 });
