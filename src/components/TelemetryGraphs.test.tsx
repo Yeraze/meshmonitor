@@ -155,6 +155,30 @@ describe('TelemetryGraphs Component', () => {
     });
   });
 
+  it('purges telemetry with the resolved sourceId in the DELETE URL (#4963)', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('telemetry.title')).toBeInTheDocument();
+    });
+
+    // Open the first widget's context menu and click Purge Data.
+    fireEvent.click(screen.getAllByLabelText('telemetry.more_options')[0]);
+    fireEvent.click(screen.getByText('telemetry.purge_data'));
+
+    // The DELETE endpoint requires a sourceId; omitting it 400s and every
+    // purge fails with the generic error toast (#4963).
+    await waitFor(() => {
+      const deleteCall = (global.fetch as Mock).mock.calls.find(
+        ([, init]: [string, RequestInit?]) => init?.method === 'DELETE'
+      );
+      expect(deleteCall).toBeDefined();
+      expect(deleteCall![0]).toContain(`/api/telemetry/${mockNodeId}/`);
+      expect(deleteCall![0]).toContain('sourceId=src-test');
+    });
+  });
+
   it('should display telemetry title when data is available', async () => {
     renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
 
