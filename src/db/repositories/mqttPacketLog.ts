@@ -9,8 +9,9 @@
  * (`getGateways`). See docs/internal/dev-notes/MQTT_PACKET_MONITOR_PHASE1_SPEC.md
  * §2.6/§3 for the design this file implements verbatim.
  */
-import { eq, and, gte, lte, lt, asc, desc, isNull, isNotNull, inArray, sql, type SQL } from 'drizzle-orm';
+import { eq, ne, and, gte, gt, lte, lt, asc, desc, isNull, isNotNull, inArray, max, sql, type SQL } from 'drizzle-orm';
 import { BaseRepository } from './base.js';
+import { HOP_ARRIVAL_MAX_ROWS, type PacketHopArrivalRow } from './packetLog.js';
 
 export type MqttIngestOutcome =
   | 'ingested'
@@ -95,6 +96,30 @@ export interface MqttGateway {
   receptionCount: number;
   lastHeard: number;
 }
+
+/**
+ * Per-`(gateway, node)` DIRECT-reception aggregate — Mesh Issues RF evidence
+ * class 3 (Phase 2 §3.1). `gatewayNodeNum`/`fromNode` are the parsed node
+ * numbers (not the `!hex` id strings), because `buildRfGraph` keys its graph
+ * by numeric nodeNum.
+ */
+export interface MqttDirectReceptionRow {
+  gatewayNodeNum: number;
+  fromNode: number;
+  sourceId: string;
+  receptionCount: number;
+  meanRxSnr: number | null;
+  firstSeen: number;
+  lastSeen: number;
+}
+
+/**
+ * Row cap for {@link MqttPacketLogRepository.getDirectReceptionsByGateway}
+ * (Mesh Issues Phase 2 §2.9's `MQTT_DIRECT_RECEPTION_MAX_ROWS`). Exported so
+ * callers — including the Mesh Issues analysis service — can reference the
+ * same bound rather than re-declaring it. `[ours]`.
+ */
+export const MQTT_DIRECT_RECEPTION_MAX_ROWS = 20_000;
 
 /**
  * Repository for the MQTT packet monitor's reception log.
@@ -448,5 +473,142 @@ export class MqttPacketLogRepository extends BaseRepository {
       await this.db.delete(mqttPacketLog);
     }
     return count;
+  }
+
+  /**
+   * Per-`(gateway, node)` DIRECT receptions in-window — Mesh Issues RF
+   * evidence class 3 (Phase 2 §3.1). "Direct" is `hopLimit = hopStart AND
+   * hopStart > 0`: no hop was consumed, and `hopStart = 0` means UNKNOWN,
+   * never direct (the epic's hop-delta guard). This is the same predicate
+   * `NeighborsRepository.getDirectNeighborRssiAsync` uses against
+   * `packet_log` — reused as the precedent, not as the query, because that
+   * one is RSSI-oriented, single-source, and not grouped by gateway.
+   *
+   * CAVEAT for the caller: `hopStart - hopLimit` is a LOWER bound, because
+   * firmware 2.7+ zero-cost favourite-router hops skip the decrement. So a
+   * small number of genuinely multi-hop packets will look direct. This
+   * over-counts adjacency slightly; rules treat gateway evidence as weaker
+   * than `neighbor_info` for exactly this reason.
+   *
+   * Grouped by `(sourceId, gatewayNodeNum, fromNode)` — every non-aggregated
+   * selected column is in the GROUP BY, so this is safe under MySQL's
+   * `ONLY_FULL_GROUP_BY`. Ordered by `receptionCount` descending before the
+   * cap is applied, so if the cap bites, the strongest evidence survives.
+   */
+  async getDirectReceptionsByGateway(q: {
+    sourceIds: string[];
+    since: number;
+    limit?: number;
+  }): Promise<MqttDirectReceptionRow[]> {
+    if (q.sourceIds.length === 0) return [];
+
+    const t = this.tables.mqttPacketLog;
+    const rows = await this.db
+      .select({
+        gatewayNodeNum: t.gatewayNodeNum,
+        fromNode: t.fromNode,
+        sourceId: t.sourceId,
+        receptionCount: sql<number>`COUNT(*)`,
+        meanRxSnr: sql<number | null>`AVG(${t.rxSnr})`,
+        firstSeen: sql<number>`MIN(${t.timestamp})`,
+        lastSeen: sql<number>`MAX(${t.timestamp})`,
+      })
+      .from(t)
+      .where(
+        and(
+          inArray(t.sourceId, q.sourceIds),
+          gte(t.timestamp, q.since),
+          isNotNull(t.gatewayNodeNum),
+          isNotNull(t.fromNode),
+          ne(t.gatewayNodeNum, t.fromNode),
+          eq(t.hopLimit, t.hopStart),
+          gt(t.hopStart, 0),
+        ),
+      )
+      .groupBy(t.sourceId, t.gatewayNodeNum, t.fromNode)
+      .orderBy(sql`COUNT(*) DESC`)
+      .limit(q.limit ?? MQTT_DIRECT_RECEPTION_MAX_ROWS);
+
+    // Explicit Number() coercion, not just normalizeBigInts: PostgreSQL's
+    // driver returns BIGINT-derived aggregates (COUNT/MIN/MAX on a bigint
+    // column) as strings by default, which normalizeBigInts (typeof
+    // 'bigint' only) would not catch. meanRxSnr is AVG() over a real/double
+    // column, which some drivers also stringify — coerced the same way,
+    // preserving null.
+    return (
+      rows as Array<{
+        gatewayNodeNum: unknown;
+        fromNode: unknown;
+        sourceId: string;
+        receptionCount: unknown;
+        meanRxSnr: unknown;
+        firstSeen: unknown;
+        lastSeen: unknown;
+      }>
+    ).map((r) => ({
+      gatewayNodeNum: Number(r.gatewayNodeNum),
+      fromNode: Number(r.fromNode),
+      sourceId: r.sourceId,
+      receptionCount: Number(r.receptionCount),
+      meanRxSnr: r.meanRxSnr == null ? null : Number(r.meanRxSnr),
+      firstSeen: Number(r.firstSeen),
+      lastSeen: Number(r.lastSeen),
+    }));
+  }
+
+  /**
+   * Per-node hop-arrival stats since `since` — Mesh Issues B6 "hop horizon"
+   * evidence (Phase 2 §3.2), MQTT variant. Mirrors
+   * `PacketLogRepository.getHopArrivalCountsSince` exactly, except: every
+   * `mqtt_packet_log` row is already a reception (there is no `direction`
+   * column to filter), and `sourceIds` is required here rather than
+   * optional. See that method's doc comment for the dedup rationale (D9 —
+   * `MAX(hopLimit)` per `(fromNode, packetId)`, the conservative tie-break).
+   */
+  async getHopArrivalCountsSince(q: {
+    since: number;
+    sourceIds: string[];
+    limit?: number;
+  }): Promise<PacketHopArrivalRow[]> {
+    if (q.sourceIds.length === 0) return [];
+
+    const t = this.tables.mqttPacketLog;
+    const conditions: SQL[] = [
+      inArray(t.sourceId, q.sourceIds),
+      gte(t.timestamp, q.since),
+      isNotNull(t.fromNode),
+      isNotNull(t.packetId),
+      isNotNull(t.hopLimit),
+      isNotNull(t.hopStart),
+      gt(t.hopStart, 0),
+    ];
+
+    const deduped = this.db
+      .select({
+        nodeNum: t.fromNode,
+        pid: t.packetId,
+        maxHopLimit: max(t.hopLimit).as('maxHopLimit'),
+      })
+      .from(t)
+      .where(and(...conditions))
+      .groupBy(t.fromNode, t.packetId)
+      .as('deduped');
+
+    const rows = await this.db
+      .select({
+        nodeNum: deduped.nodeNum,
+        totalPackets: sql<number>`COUNT(*)`,
+        exhaustedPackets: sql<number>`SUM(CASE WHEN ${deduped.maxHopLimit} = 0 THEN 1 ELSE 0 END)`,
+      })
+      .from(deduped)
+      .groupBy(deduped.nodeNum)
+      .orderBy(sql`COUNT(*) DESC`)
+      .limit(q.limit ?? HOP_ARRIVAL_MAX_ROWS);
+
+    return (rows as Array<{ nodeNum: unknown; totalPackets: unknown; exhaustedPackets: unknown }>).map((r) => ({
+      nodeNum: Number(r.nodeNum),
+      totalPackets: Number(r.totalPackets),
+      exhaustedPackets: Number(r.exhaustedPackets),
+    }));
   }
 }
