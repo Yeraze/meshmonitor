@@ -52,6 +52,9 @@ const statusThresholds = {
   mobileSpanMeters: 500,
   snrAsymmetryDb: 6,
   overBroadcastSeconds: 300,
+  // Non-default on purpose (#4976 review): proves the saved POST body carries
+  // the SERVER-provided value, not the client-side ?? 30 fallback.
+  routerClusterMaxLinkKm: 15,
 };
 
 const statusResponse = {
@@ -181,7 +184,7 @@ describe('MeshIssuesSection', () => {
       mesh_issues_snr_asymmetry_db: '6',
       mesh_issues_over_broadcast_seconds: '300',
       mesh_issues_auto_close_runs: '3',
-      mesh_issues_router_cluster_max_link_km: '30',
+      mesh_issues_router_cluster_max_link_km: '15',
     });
     expect(mockShowToast).toHaveBeenCalledWith('Settings saved', 'success');
   });
