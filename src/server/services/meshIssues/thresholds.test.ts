@@ -135,8 +135,8 @@ describe('resolveThresholds — boolean default-ON toggles', () => {
 });
 
 describe('MESH_ISSUE_THRESHOLD_SETTINGS_KEYS', () => {
-  it('has exactly ten entries — one per user-tunable field', () => {
-    expect(MESH_ISSUE_THRESHOLD_SETTINGS_KEYS).toHaveLength(10);
+  it('has exactly eleven entries — one per user-tunable field', () => {
+    expect(MESH_ISSUE_THRESHOLD_SETTINGS_KEYS).toHaveLength(11);
   });
 
   it('every key round-trips through resolveThresholds without throwing', () => {

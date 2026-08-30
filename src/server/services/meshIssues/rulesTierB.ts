@@ -191,16 +191,17 @@ function extractCliques(
   candidates: ReadonlySet<number>,
   adjacency: Map<number, Set<number>>,
   assigned: Set<number>,
+  edgeAllowed: (a: number, b: number) => boolean,
 ): number[][] {
   const restrictedNeighbors = (n: number): number[] => {
     const nbs = adjacency.get(n);
     if (!nbs) return [];
-    return Array.from(nbs).filter((nb) => candidates.has(nb));
+    return Array.from(nbs).filter((nb) => candidates.has(nb) && edgeAllowed(n, nb));
   };
   const degree = new Map<number, number>();
   for (const n of candidates) degree.set(n, restrictedNeighbors(n).length);
   const byPriority = (a: number, b: number) => degree.get(b)! - degree.get(a)! || a - b;
-  const adjacent = (a: number, b: number) => adjacency.get(a)?.has(b) ?? false;
+  const adjacent = (a: number, b: number) => (adjacency.get(a)?.has(b) ?? false) && edgeAllowed(a, b);
 
   const cliques: number[][] = [];
   for (const seed of Array.from(candidates).sort(byPriority)) {
@@ -233,14 +234,29 @@ function findRouterClustersCore(ctx: TierBRuleContext): RouterCluster[] {
   }
   if (clusterNodeNums.size === 0) return [];
 
+  // Distance guard (#4976): MQTT-bridged firmwares record traceroute "hops"
+  // between repeaters 100+ km apart that never happened over RF, and B1
+  // claims redundant same-spot coverage — so an edge between two POSITIONED
+  // nodes farther apart than routerClusterMaxLinkKm never counts toward
+  // cluster adjacency. Unpositioned endpoints keep the edge (fail-open).
+  const maxLinkKm = ctx.thresholds.routerClusterMaxLinkKm;
+  const edgeAllowed = (a: number, b: number): boolean => {
+    const na = ctx.nodes.get(a);
+    const nb = ctx.nodes.get(b);
+    if (!na || !nb) return true;
+    if (na.latitude == null || na.longitude == null || isBogusPosition(na.latitude, na.longitude, na.positionPrecisionBits)) return true;
+    if (nb.latitude == null || nb.longitude == null || isBogusPosition(nb.latitude, nb.longitude, nb.positionPrecisionBits)) return true;
+    return calculateDistance(na.latitude, na.longitude, nb.latitude, nb.longitude) <= maxLinkKm;
+  };
+
   const assigned = new Set<number>();
   const clusters: RouterCluster[] = [];
-  for (const members of extractCliques(clusterNodeNums, ctx.graph.directAdjacency, assigned)) {
+  for (const members of extractCliques(clusterNodeNums, ctx.graph.directAdjacency, assigned, edgeAllowed)) {
     clusters.push({ members, inferredOnly: false });
   }
   // Any direct pair among the leftovers would have formed a pass-1 clique
   // (WARNING_SIZE is 2), so pass-2 groups are inferred-glued by construction.
-  for (const members of extractCliques(clusterNodeNums, ctx.graph.adjacency, assigned)) {
+  for (const members of extractCliques(clusterNodeNums, ctx.graph.adjacency, assigned, edgeAllowed)) {
     clusters.push({ members, inferredOnly: true });
   }
 

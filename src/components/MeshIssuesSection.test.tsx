@@ -102,8 +102,8 @@ describe('MeshIssuesSection', () => {
     expect(screen.getByText(/12 finding/)).toBeInTheDocument();
     expect(screen.getAllByText('[official]').length).toBe(2);
     // 3 pre-existing MeshMonitor-judgement thresholds + auto-close (#4964
-    // post-epic follow-ups).
-    expect(screen.getAllByText('[MeshMonitor]').length).toBe(4);
+    // post-epic follow-ups) + router-cluster max link km (#4976).
+    expect(screen.getAllByText('[MeshMonitor]').length).toBe(5);
   });
 
   it('defaults auto-close runs to 3 when the field is absent from status (older server, #4964 post-epic follow-ups)', async () => {
@@ -181,6 +181,7 @@ describe('MeshIssuesSection', () => {
       mesh_issues_snr_asymmetry_db: '6',
       mesh_issues_over_broadcast_seconds: '300',
       mesh_issues_auto_close_runs: '3',
+      mesh_issues_router_cluster_max_link_km: '30',
     });
     expect(mockShowToast).toHaveBeenCalledWith('Settings saved', 'success');
   });

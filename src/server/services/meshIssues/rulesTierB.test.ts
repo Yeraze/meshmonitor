@@ -290,6 +290,35 @@ describe('evaluateB1 — router cluster', () => {
     expect(findings.every((f) => f.severity !== 'critical')).toBe(true);
   });
 
+  it('ignores edges between positioned nodes farther apart than routerClusterMaxLinkKm (#4976)', () => {
+    // A and B sit together; C is ~110 km north but has a recorded "direct"
+    // traceroute edge to both (MQTT-bridged hop that never happened over
+    // RF). The distance guard must keep C out of the cluster.
+    const A = makeNode({ nodeNum: 1, role: DeviceRole.ROUTER, latitude: 26.0, longitude: -80.2 });
+    const B = makeNode({ nodeNum: 2, role: DeviceRole.ROUTER, latitude: 26.01, longitude: -80.21 });
+    const C = makeNode({ nodeNum: 3, role: DeviceRole.ROUTER, latitude: 27.0, longitude: -80.2 });
+    const graph = makeGraph([directEdge(1, 2), directEdge(1, 3), directEdge(2, 3)]);
+    const ctx = makeCtx({ nodes: nodeMap([A, B, C]), graph });
+
+    const findings = evaluateB1(ctx);
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0].evidence.size).toBe(2);
+    const members = (findings[0].evidence.members as Array<{ nodeNum: number }>).map((m) => m.nodeNum);
+    expect(members).toEqual([1, 2]);
+  });
+
+  it('keeps edges with an unpositioned endpoint regardless of the distance guard (fail-open, #4976)', () => {
+    const A = makeNode({ nodeNum: 1, role: DeviceRole.ROUTER, latitude: 26.0, longitude: -80.2 });
+    const B = makeNode({ nodeNum: 2, role: DeviceRole.ROUTER }); // unpositioned
+    const ctx = makeCtx({ nodes: nodeMap([A, B]), graph: makeGraph([directEdge(1, 2)]) });
+
+    const findings = evaluateB1(ctx);
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0].evidence.size).toBe(2);
+  });
+
   it('co-reception edges never inflate a direct clique nor form a warning/critical one (#4976)', () => {
     // A-B genuinely hear each other (direct). C, D, E are only glued to
     // everything by co-reception (one MQTT gateway heard them all) — a full

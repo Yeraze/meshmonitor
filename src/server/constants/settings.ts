@@ -168,6 +168,9 @@ export const VALID_SETTINGS_KEYS = [
   // Consecutive clean runs before an open finding auto-closes (post-epic
   // follow-up #4964) — default 3, clamp 1-20, resolved via resolveThresholds.
   'mesh_issues_auto_close_runs',
+  // Max km between positioned nodes for B1/B6 cluster adjacency (#4976) —
+  // default 30, clamp 1-500, resolved via resolveThresholds.
+  'mesh_issues_router_cluster_max_link_km',
   'mesh_issues_last_run_summary',
   'autoKeyManagementEnabled',
   'autoKeyManagementIntervalMinutes',
