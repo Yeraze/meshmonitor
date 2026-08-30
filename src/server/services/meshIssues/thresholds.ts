@@ -153,7 +153,8 @@ export const ROUTER_CLUSTER_WARNING_SIZE = 2;
 /** Cluster size at/above which B1 is critical. [ours] */
 export const ROUTER_CLUSTER_CRITICAL_SIZE = 4;
 /** Max km between two POSITIONED nodes for their edge to count toward B1/B6
- *  cluster adjacency (#4976). B1 claims redundant same-spot coverage, and
+ *  cluster adjacency, or for B2 to call one router covered by another
+ *  (#4976). B1 claims redundant same-spot coverage, and
  *  MQTT-bridged firmwares (TRON) record traceroute "hops" between repeaters
  *  100+ km apart that never happened over RF — carrying plausible SNR, so the
  *  sentinel filter cannot catch them. Distance is the only robust guard.

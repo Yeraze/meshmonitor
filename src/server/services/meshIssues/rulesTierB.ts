@@ -159,6 +159,18 @@ function sourceIdsWithFallback(primary: Iterable<string>, fallbackNodes: Array<P
   return sortedUnique(fallbackNodes.flatMap((n) => n?.sourceIds ?? []));
 }
 
+/** True unless BOTH nodes carry usable positions farther apart than
+ *  `routerClusterMaxLinkKm` (#4976). Shared by B1/B6 cluster adjacency and
+ *  B2's covered-by pairing: MQTT-bridged firmwares fabricate direct edges
+ *  between repeaters 100+ km apart, and both rules assert same-area
+ *  redundancy. Unpositioned endpoints fail open. */
+function withinClusterRange(na: PooledNode | undefined, nb: PooledNode | undefined, maxLinkKm: number): boolean {
+  if (!na || !nb) return true;
+  if (na.latitude == null || na.longitude == null || isBogusPosition(na.latitude, na.longitude, na.positionPrecisionBits)) return true;
+  if (nb.latitude == null || nb.longitude == null || isBogusPosition(nb.latitude, nb.longitude, nb.positionPrecisionBits)) return true;
+  return calculateDistance(na.latitude, na.longitude, nb.latitude, nb.longitude) <= maxLinkKm;
+}
+
 function countPositionedDirectNeighbors(ctx: TierBRuleContext, nodeNum: number): number {
   const neighbors = ctx.graph.directAdjacency.get(nodeNum);
   if (!neighbors) return 0;
@@ -240,14 +252,8 @@ function findRouterClustersCore(ctx: TierBRuleContext): RouterCluster[] {
   // nodes farther apart than routerClusterMaxLinkKm never counts toward
   // cluster adjacency. Unpositioned endpoints keep the edge (fail-open).
   const maxLinkKm = ctx.thresholds.routerClusterMaxLinkKm;
-  const edgeAllowed = (a: number, b: number): boolean => {
-    const na = ctx.nodes.get(a);
-    const nb = ctx.nodes.get(b);
-    if (!na || !nb) return true;
-    if (na.latitude == null || na.longitude == null || isBogusPosition(na.latitude, na.longitude, na.positionPrecisionBits)) return true;
-    if (nb.latitude == null || nb.longitude == null || isBogusPosition(nb.latitude, nb.longitude, nb.positionPrecisionBits)) return true;
-    return calculateDistance(na.latitude, na.longitude, nb.latitude, nb.longitude) <= maxLinkKm;
-  };
+  const edgeAllowed = (a: number, b: number): boolean =>
+    withinClusterRange(ctx.nodes.get(a), ctx.nodes.get(b), maxLinkKm);
 
   const assigned = new Set<number>();
   const clusters: RouterCluster[] = [];
@@ -509,6 +515,10 @@ export function evaluateB2(ctx: TierBRuleContext): MeshIssueFinding[] {
     const candidates: Candidate[] = [];
     for (const nodeB of infraNodes) {
       if (nodeB.nodeNum === nodeA.nodeNum) continue;
+      // "Covered by" asserts same-area redundancy; two positioned routers
+      // beyond the cluster range cannot cover the same area no matter how
+      // similar their (possibly MQTT-fabricated) neighbor sets look (#4976).
+      if (!withinClusterRange(nodeA, nodeB, ctx.thresholds.routerClusterMaxLinkKm)) continue;
       const rawB = ctx.graph.directAdjacency.get(nodeB.nodeNum);
       if (!rawB) continue;
 

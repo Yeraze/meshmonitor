@@ -494,6 +494,20 @@ describe('evaluateB2 — redundant router', () => {
     return { graph, nodes };
   }
 
+  it('does NOT report a router as covered by one beyond routerClusterMaxLinkKm (#4976)', () => {
+    // Identical (MQTT-fabricated) neighbor sets, but the routers sit ~110 km
+    // apart — they cannot cover the same area, so B2 must stay silent.
+    const { graph, nodes } = buildOverlapFixture(9, 1, 2);
+    const positioned = nodes.map((n) => {
+      if (n.nodeNum === 1) return { ...n, latitude: 26.0, longitude: -80.2 };
+      if (n.nodeNum === 2) return { ...n, latitude: 27.0, longitude: -80.2 };
+      return n;
+    });
+    const ctx = makeCtx({ nodes: nodeMap(positioned), graph });
+
+    expect(evaluateB2(ctx)).toHaveLength(0);
+  });
+
   it('fires on the smaller router at 90% overlap', () => {
     // A: 9 shared + 1 aOnly = 10. B: 9 shared + 2 bOnly = 11 (strictly larger
     // than A so B itself does not also qualify as a candidate).

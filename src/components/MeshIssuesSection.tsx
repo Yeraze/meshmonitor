@@ -684,7 +684,7 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
           />
           <p style={{ fontSize: '12px', color: 'var(--color-text-subtle)', margin: '0.35rem 0 0 0' }}>
             {t('automation.mesh_issues.cluster_max_link_km_help',
-              'Positioned routers farther apart than this never count as one Router Cluster. Filters MQTT-bridged "hops" that never happened over RF.')}
+              'Positioned routers farther apart than this never count as one Router Cluster or as redundant coverage. Filters MQTT-bridged "hops" that never happened over RF.')}
           </p>
         </div>
 
