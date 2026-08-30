@@ -127,6 +127,8 @@ export interface ResolvedMeshIssueThresholds {
   mobileSpanMeters: number;
   snrAsymmetryDb: number;
   overBroadcastSeconds: number;
+  /** km, B1/B6 cluster-adjacency distance guard (#4976). */
+  routerClusterMaxLinkKm: number;
 }
 
 /** The last completed run's summary (`meshIssuesAnalysisService.ts`'s `MeshIssuesRunResult`). */

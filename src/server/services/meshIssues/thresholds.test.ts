@@ -17,6 +17,7 @@ import {
   ASYMMETRY_DELTA_DB,
   OVER_BROADCAST_INTERVAL_SECONDS,
   AUTO_CLOSE_CLEAN_RUNS,
+  ROUTER_CLUSTER_MAX_LINK_KM,
 } from './thresholds.js';
 
 describe('resolveThresholds — defaults', () => {
@@ -32,6 +33,7 @@ describe('resolveThresholds — defaults', () => {
     expect(DEFAULT_MESH_ISSUE_THRESHOLDS.snrAsymmetryDb).toBe(ASYMMETRY_DELTA_DB);
     expect(DEFAULT_MESH_ISSUE_THRESHOLDS.overBroadcastSeconds).toBe(OVER_BROADCAST_INTERVAL_SECONDS);
     expect(DEFAULT_MESH_ISSUE_THRESHOLDS.autoCloseCleanRuns).toBe(AUTO_CLOSE_CLEAN_RUNS);
+    expect(DEFAULT_MESH_ISSUE_THRESHOLDS.routerClusterMaxLinkKm).toBe(ROUTER_CLUSTER_MAX_LINK_KM);
   });
 
   it('returns a fresh object each call — mutating the result never affects the shared default', () => {
@@ -58,6 +60,7 @@ describe('resolveThresholds — numeric clamps', () => {
     { key: 'mesh_issues_snr_asymmetry_db', field: 'snrAsymmetryDb', min: 1, max: 30 },
     { key: 'mesh_issues_over_broadcast_seconds', field: 'overBroadcastSeconds', min: 30, max: 3600 },
     { key: 'mesh_issues_auto_close_runs', field: 'autoCloseCleanRuns', min: 1, max: 20 },
+    { key: 'mesh_issues_router_cluster_max_link_km', field: 'routerClusterMaxLinkKm', min: 1, max: 500 },
   ];
 
   for (const { key, field, min, max } of cases) {
@@ -135,8 +138,8 @@ describe('resolveThresholds — boolean default-ON toggles', () => {
 });
 
 describe('MESH_ISSUE_THRESHOLD_SETTINGS_KEYS', () => {
-  it('has exactly ten entries — one per user-tunable field', () => {
-    expect(MESH_ISSUE_THRESHOLD_SETTINGS_KEYS).toHaveLength(10);
+  it('has exactly eleven entries — one per user-tunable field', () => {
+    expect(MESH_ISSUE_THRESHOLD_SETTINGS_KEYS).toHaveLength(11);
   });
 
   it('every key round-trips through resolveThresholds without throwing', () => {

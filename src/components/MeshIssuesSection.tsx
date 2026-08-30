@@ -34,6 +34,9 @@ interface MeshIssuesThresholds {
    * uses.
    */
   autoCloseCleanRuns?: number;
+  /** km, B1/B6 cluster-adjacency distance guard (#4976). Optional for the
+   *  same server-drift reason as `autoCloseCleanRuns`; falls back to 30. */
+  routerClusterMaxLinkKm?: number;
 }
 
 interface MeshIssuesRunResult {
@@ -106,6 +109,7 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
   const [snrAsymmetryDb, setSnrAsymmetryDb] = useState(6);
   const [overBroadcastSeconds, setOverBroadcastSeconds] = useState(300);
   const [autoCloseRuns, setAutoCloseRuns] = useState(3);
+  const [clusterMaxLinkKm, setClusterMaxLinkKm] = useState(30);
 
   // Local (dirty) mirrors
   const [localEnabled, setLocalEnabled] = useState(true);
@@ -122,6 +126,7 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
   const [localSnrAsymmetryDb, setLocalSnrAsymmetryDb] = useState(6);
   const [localOverBroadcastSeconds, setLocalOverBroadcastSeconds] = useState(300);
   const [localAutoCloseRuns, setLocalAutoCloseRuns] = useState(3);
+  const [localClusterMaxLinkKm, setLocalClusterMaxLinkKm] = useState(30);
 
   const [status, setStatus] = useState<MeshIssuesStatus | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -143,6 +148,7 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
     setSnrAsymmetryDb(data.thresholds.snrAsymmetryDb);
     setOverBroadcastSeconds(data.thresholds.overBroadcastSeconds);
     setAutoCloseRuns(data.thresholds.autoCloseCleanRuns ?? 3);
+    setClusterMaxLinkKm(data.thresholds.routerClusterMaxLinkKm ?? 30);
 
     setLocalEnabled(data.enabled);
     setLocalFrequencyHours(data.frequencyHours);
@@ -158,6 +164,7 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
     setLocalSnrAsymmetryDb(data.thresholds.snrAsymmetryDb);
     setLocalOverBroadcastSeconds(data.thresholds.overBroadcastSeconds);
     setLocalAutoCloseRuns(data.thresholds.autoCloseCleanRuns ?? 3);
+    setLocalClusterMaxLinkKm(data.thresholds.routerClusterMaxLinkKm ?? 30);
   }, []);
 
   const fetchStatus = useCallback(async () => {
@@ -192,7 +199,8 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
     localMobileSpanMeters !== mobileSpanMeters ||
     localSnrAsymmetryDb !== snrAsymmetryDb ||
     localOverBroadcastSeconds !== overBroadcastSeconds ||
-    localAutoCloseRuns !== autoCloseRuns;
+    localAutoCloseRuns !== autoCloseRuns ||
+    localClusterMaxLinkKm !== clusterMaxLinkKm;
 
   const handleSave = useCallback(async () => {
     setIsSaving(true);
@@ -215,6 +223,7 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
           mesh_issues_snr_asymmetry_db: String(localSnrAsymmetryDb),
           mesh_issues_over_broadcast_seconds: String(localOverBroadcastSeconds),
           mesh_issues_auto_close_runs: String(localAutoCloseRuns),
+          mesh_issues_router_cluster_max_link_km: String(localClusterMaxLinkKm),
         }),
       });
       if (response.ok) {
@@ -246,6 +255,7 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
     localSnrAsymmetryDb,
     localOverBroadcastSeconds,
     localAutoCloseRuns,
+    localClusterMaxLinkKm,
     csrfFetch,
     baseUrl,
     showToast,
@@ -268,6 +278,7 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
     setLocalSnrAsymmetryDb(snrAsymmetryDb);
     setLocalOverBroadcastSeconds(overBroadcastSeconds);
     setLocalAutoCloseRuns(autoCloseRuns);
+    setLocalClusterMaxLinkKm(clusterMaxLinkKm);
   }, [
     enabled,
     frequencyHours,
@@ -283,6 +294,7 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
     snrAsymmetryDb,
     overBroadcastSeconds,
     autoCloseRuns,
+    clusterMaxLinkKm,
   ]);
 
   useSaveBar({
@@ -649,6 +661,30 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
           <p style={{ fontSize: '12px', color: 'var(--color-text-subtle)', margin: '0.35rem 0 0 0' }}>
             {t('automation.mesh_issues.auto_close_runs_help',
               'Runs without re-detection before an issue auto-closes.')}
+          </p>
+        </div>
+
+        <div className="setting-item" style={{ marginTop: '1rem' }}>
+          <label>
+            {t('automation.mesh_issues.cluster_max_link_km', 'Router cluster max link (km)')}
+            <span style={badgeStyle('ours')}>{t('automation.mesh_issues.badge_meshmonitor', '[MeshMonitor]')}</span>
+          </label>
+          <input
+            type="number"
+            min={1}
+            max={500}
+            step={1}
+            value={localClusterMaxLinkKm}
+            onChange={(e) => {
+              const v = parseFloat(e.target.value);
+              setLocalClusterMaxLinkKm(Number.isFinite(v) ? v : 30);
+            }}
+            disabled={!localEnabled}
+            className="setting-input"
+          />
+          <p style={{ fontSize: '12px', color: 'var(--color-text-subtle)', margin: '0.35rem 0 0 0' }}>
+            {t('automation.mesh_issues.cluster_max_link_km_help',
+              'Positioned routers farther apart than this never count as one Router Cluster or as redundant coverage. Filters MQTT-bridged "hops" that never happened over RF.')}
           </p>
         </div>
 

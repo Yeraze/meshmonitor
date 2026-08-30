@@ -95,13 +95,20 @@ export interface RuleSkip {
   reason: string;
 }
 
-/** A connected component of `CLUSTER_ROLES` nodes over the RF graph. Shared
- *  by B1 (fires on it) and B6 (checks adjacency to it) — see spec §2.6. */
+/** A MUTUALLY-AUDIBLE group of `CLUSTER_ROLES` nodes over the RF graph:
+ *  every member is adjacent to every other member (a clique). Shared by B1
+ *  (fires on it) and B6 (checks adjacency to it). Amends spec §2.6's
+ *  connected-component definition (#4976): components are transitive, so a
+ *  chain of genuine short links merged far-apart routers into one statewide
+ *  "cluster" whose endpoints never hear each other — invalidating both the
+ *  finding's claim and its demote-all-but-one recommendation. */
 export interface RouterCluster {
-  /** Sorted, deduped. Size >= ROUTER_CLUSTER_WARNING_SIZE. */
+  /** Sorted, deduped. Size >= ROUTER_CLUSTER_WARNING_SIZE. Pairwise
+   *  adjacent: over DIRECT edges when `inferredOnly` is false, over the
+   *  full graph otherwise. */
   members: number[];
-  /** True when the component only stays connected via inferred
-   *  (co-reception) edges — direct-only recomputation splits it (D2). */
+  /** True when the clique only holds together via inferred (co-reception)
+   *  edges — extracted in the second, full-graph pass (D2). */
   inferredOnly: boolean;
 }
 
@@ -152,6 +159,18 @@ function sourceIdsWithFallback(primary: Iterable<string>, fallbackNodes: Array<P
   return sortedUnique(fallbackNodes.flatMap((n) => n?.sourceIds ?? []));
 }
 
+/** True unless BOTH nodes carry usable positions farther apart than
+ *  `routerClusterMaxLinkKm` (#4976). Shared by B1/B6 cluster adjacency and
+ *  B2's covered-by pairing: MQTT-bridged firmwares fabricate direct edges
+ *  between repeaters 100+ km apart, and both rules assert same-area
+ *  redundancy. Unpositioned endpoints fail open. */
+function withinClusterRange(na: PooledNode | undefined, nb: PooledNode | undefined, maxLinkKm: number): boolean {
+  if (!na || !nb) return true;
+  if (na.latitude == null || na.longitude == null || isBogusPosition(na.latitude, na.longitude, na.positionPrecisionBits)) return true;
+  if (nb.latitude == null || nb.longitude == null || isBogusPosition(nb.latitude, nb.longitude, nb.positionPrecisionBits)) return true;
+  return calculateDistance(na.latitude, na.longitude, nb.latitude, nb.longitude) <= maxLinkKm;
+}
+
 function countPositionedDirectNeighbors(ctx: TierBRuleContext, nodeNum: number): number {
   const neighbors = ctx.graph.directAdjacency.get(nodeNum);
   if (!neighbors) return 0;
@@ -169,37 +188,57 @@ function countPositionedDirectNeighbors(ctx: TierBRuleContext, nodeNum: number):
 // Router-cluster components (shared by B1 and B6)
 // ---------------------------------------------------------------------------
 
-/** BFS connected components of `nodeSet`, following only edges in
- *  `adjacency` whose OTHER endpoint is also in `nodeSet`. Deterministic:
- *  both the start-node order and each node's neighbour order are irrelevant
- *  to the final (sorted) membership of each component. */
-function computeComponents(nodeSet: ReadonlySet<number>, adjacency: Map<number, Set<number>>): number[][] {
-  const visited = new Set<number>();
-  const components: number[][] = [];
-  const startNodes = sortNumbers(nodeSet);
+/**
+ * Greedy, deterministic, DISJOINT clique extraction over one adjacency map.
+ * Seeds are processed by (restricted degree desc, nodeNum asc); each seed
+ * grows a clique by admitting, in the same priority order, every unassigned
+ * candidate adjacent to ALL current members. Greedy rather than exact
+ * maximum-clique: exact is exponential in the worst case, while this is
+ * O(n · d²), order-stable across runs, and each emitted group still
+ * satisfies the property the finding asserts — every member is adjacent to
+ * every other member. Disjointness keeps one router from being
+ * demote-recommended in two findings at once. Mutates `assigned`.
+ */
+function extractCliques(
+  candidates: ReadonlySet<number>,
+  adjacency: Map<number, Set<number>>,
+  assigned: Set<number>,
+  edgeAllowed: (a: number, b: number) => boolean,
+): number[][] {
+  const restrictedNeighbors = (n: number): number[] => {
+    const nbs = adjacency.get(n);
+    if (!nbs) return [];
+    return Array.from(nbs).filter((nb) => candidates.has(nb) && edgeAllowed(n, nb));
+  };
+  const degree = new Map<number, number>();
+  for (const n of candidates) degree.set(n, restrictedNeighbors(n).length);
+  const byPriority = (a: number, b: number) => degree.get(b)! - degree.get(a)! || a - b;
+  const adjacent = (a: number, b: number) => (adjacency.get(a)?.has(b) ?? false) && edgeAllowed(a, b);
 
-  for (const start of startNodes) {
-    if (visited.has(start)) continue;
-    const comp: number[] = [];
-    const queue: number[] = [start];
-    visited.add(start);
-    while (queue.length > 0) {
-      const cur = queue.shift()!;
-      comp.push(cur);
-      const neighbors = adjacency.get(cur);
-      if (!neighbors) continue;
-      for (const nb of neighbors) {
-        if (nodeSet.has(nb) && !visited.has(nb)) {
-          visited.add(nb);
-          queue.push(nb);
-        }
-      }
+  const cliques: number[][] = [];
+  for (const seed of Array.from(candidates).sort(byPriority)) {
+    if (assigned.has(seed)) continue;
+    const clique: number[] = [seed];
+    for (const cand of restrictedNeighbors(seed).filter((n) => !assigned.has(n)).sort(byPriority)) {
+      if (clique.every((m) => adjacent(cand, m))) clique.push(cand);
     }
-    components.push(comp);
+    if (clique.length < ROUTER_CLUSTER_WARNING_SIZE) continue;
+    for (const m of clique) assigned.add(m);
+    cliques.push(sortNumbers(clique));
   }
-  return components;
+  return cliques;
 }
 
+/**
+ * Two passes (#4976): DIRECT-evidence cliques first (mutual audibility a
+ * device actually reported — neighborInfo/traceroute/gateway-direct), then
+ * full-graph cliques among the leftovers, which by construction hold
+ * together only via inferred co-reception edges ("the same MQTT gateway
+ * heard both") and are flagged `inferredOnly` so B1 downgrades them to
+ * info/low (D2). Co-reception is NOT mutual audibility — one gateway on a
+ * hill hears routers 150 km apart — so it must never inflate a
+ * warning/critical cluster's membership.
+ */
 function findRouterClustersCore(ctx: TierBRuleContext): RouterCluster[] {
   const clusterNodeNums = new Set<number>();
   for (const node of ctx.nodes.values()) {
@@ -207,18 +246,24 @@ function findRouterClustersCore(ctx: TierBRuleContext): RouterCluster[] {
   }
   if (clusterNodeNums.size === 0) return [];
 
-  const allComponents = computeComponents(clusterNodeNums, ctx.graph.adjacency);
-  const clusters: RouterCluster[] = [];
+  // Distance guard (#4976): MQTT-bridged firmwares record traceroute "hops"
+  // between repeaters 100+ km apart that never happened over RF, and B1
+  // claims redundant same-spot coverage — so an edge between two POSITIONED
+  // nodes farther apart than routerClusterMaxLinkKm never counts toward
+  // cluster adjacency. Unpositioned endpoints keep the edge (fail-open).
+  const maxLinkKm = ctx.thresholds.routerClusterMaxLinkKm;
+  const edgeAllowed = (a: number, b: number): boolean =>
+    withinClusterRange(ctx.nodes.get(a), ctx.nodes.get(b), maxLinkKm);
 
-  for (const comp of allComponents) {
-    if (comp.length < ROUTER_CLUSTER_WARNING_SIZE) continue;
-    const memberSet = new Set(comp);
-    // Recompute over DIRECT-only edges (D2): if this same member set no
-    // longer forms a single connected component, it was glued together by
-    // inferred (co-reception) evidence alone.
-    const directComponents = computeComponents(memberSet, ctx.graph.directAdjacency);
-    const inferredOnly = !(directComponents.length === 1 && directComponents[0].length === memberSet.size);
-    clusters.push({ members: sortNumbers(memberSet), inferredOnly });
+  const assigned = new Set<number>();
+  const clusters: RouterCluster[] = [];
+  for (const members of extractCliques(clusterNodeNums, ctx.graph.directAdjacency, assigned, edgeAllowed)) {
+    clusters.push({ members, inferredOnly: false });
+  }
+  // Any direct pair among the leftovers would have formed a pass-1 clique
+  // (WARNING_SIZE is 2), so pass-2 groups are inferred-glued by construction.
+  for (const members of extractCliques(clusterNodeNums, ctx.graph.adjacency, assigned, edgeAllowed)) {
+    clusters.push({ members, inferredOnly: true });
   }
 
   clusters.sort((a, b) => a.members[0] - b.members[0]);
@@ -470,6 +515,10 @@ export function evaluateB2(ctx: TierBRuleContext): MeshIssueFinding[] {
     const candidates: Candidate[] = [];
     for (const nodeB of infraNodes) {
       if (nodeB.nodeNum === nodeA.nodeNum) continue;
+      // "Covered by" asserts same-area redundancy; two positioned routers
+      // beyond the cluster range cannot cover the same area no matter how
+      // similar their (possibly MQTT-fabricated) neighbor sets look (#4976).
+      if (!withinClusterRange(nodeA, nodeB, ctx.thresholds.routerClusterMaxLinkKm)) continue;
       const rawB = ctx.graph.directAdjacency.get(nodeB.nodeNum);
       if (!rawB) continue;
 

@@ -250,10 +250,14 @@ describe('evaluateB1 — router cluster', () => {
     expect(byNum.get(2)!.longitude).toBeNull();
   });
 
-  it('fires critical for a 4-router cluster (chain, still >= ROUTER_CLUSTER_CRITICAL_SIZE)', () => {
+  it('fires critical for a 4-router clique (>= ROUTER_CLUSTER_CRITICAL_SIZE, all mutually audible)', () => {
     expect(ROUTER_CLUSTER_CRITICAL_SIZE).toBe(4);
     const nodes = [1, 2, 3, 4].map((n) => makeNode({ nodeNum: n, role: DeviceRole.ROUTER }));
-    const graph = makeGraph([directEdge(1, 2), directEdge(2, 3), directEdge(3, 4)]);
+    // K4: every pair adjacent.
+    const graph = makeGraph([
+      directEdge(1, 2), directEdge(1, 3), directEdge(1, 4),
+      directEdge(2, 3), directEdge(2, 4), directEdge(3, 4),
+    ]);
     const ctx = makeCtx({ nodes: nodeMap(nodes), graph });
 
     const findings = evaluateB1(ctx);
@@ -261,6 +265,84 @@ describe('evaluateB1 — router cluster', () => {
     expect(findings).toHaveLength(1);
     expect(findings[0].evidence.size).toBe(4);
     expect(findings[0].severity).toBe('critical');
+  });
+
+  it('does NOT merge a chain of routers into one cluster — clusters are mutually-audible cliques (#4976)', () => {
+    // 1-2-3-4-5-6 path: each link is a genuine RF observation, but the
+    // endpoints never hear each other. Component semantics reported one
+    // 6-router "cluster" spanning the whole chain; clique semantics must
+    // report only mutually-audible pairs, and never a group of 3+.
+    const nodes = [1, 2, 3, 4, 5, 6].map((n) => makeNode({ nodeNum: n, role: DeviceRole.ROUTER }));
+    const graph = makeGraph([
+      directEdge(1, 2), directEdge(2, 3), directEdge(3, 4), directEdge(4, 5), directEdge(5, 6),
+    ]);
+    const ctx = makeCtx({ nodes: nodeMap(nodes), graph });
+
+    const findings = evaluateB1(ctx);
+
+    expect(findings.length).toBeGreaterThan(0);
+    for (const f of findings) {
+      expect(f.evidence.size).toBe(2);
+      const members = (f.evidence.members as Array<{ nodeNum: number }>).map((m) => m.nodeNum);
+      // Every reported pair must actually be adjacent.
+      expect(Math.abs(members[0] - members[1])).toBe(1);
+    }
+    expect(findings.every((f) => f.severity !== 'critical')).toBe(true);
+  });
+
+  it('ignores edges between positioned nodes farther apart than routerClusterMaxLinkKm (#4976)', () => {
+    // A and B sit together; C is ~110 km north but has a recorded "direct"
+    // traceroute edge to both (MQTT-bridged hop that never happened over
+    // RF). The distance guard must keep C out of the cluster.
+    const A = makeNode({ nodeNum: 1, role: DeviceRole.ROUTER, latitude: 26.0, longitude: -80.2 });
+    const B = makeNode({ nodeNum: 2, role: DeviceRole.ROUTER, latitude: 26.01, longitude: -80.21 });
+    const C = makeNode({ nodeNum: 3, role: DeviceRole.ROUTER, latitude: 27.0, longitude: -80.2 });
+    const graph = makeGraph([directEdge(1, 2), directEdge(1, 3), directEdge(2, 3)]);
+    const ctx = makeCtx({ nodes: nodeMap([A, B, C]), graph });
+
+    const findings = evaluateB1(ctx);
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0].evidence.size).toBe(2);
+    const members = (findings[0].evidence.members as Array<{ nodeNum: number }>).map((m) => m.nodeNum);
+    expect(members).toEqual([1, 2]);
+  });
+
+  it('keeps edges with an unpositioned endpoint regardless of the distance guard (fail-open, #4976)', () => {
+    const A = makeNode({ nodeNum: 1, role: DeviceRole.ROUTER, latitude: 26.0, longitude: -80.2 });
+    const B = makeNode({ nodeNum: 2, role: DeviceRole.ROUTER }); // unpositioned
+    const ctx = makeCtx({ nodes: nodeMap([A, B]), graph: makeGraph([directEdge(1, 2)]) });
+
+    const findings = evaluateB1(ctx);
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0].evidence.size).toBe(2);
+  });
+
+  it('co-reception edges never inflate a direct clique nor form a warning/critical one (#4976)', () => {
+    // A-B genuinely hear each other (direct). C, D, E are only glued to
+    // everything by co-reception (one MQTT gateway heard them all) — a full
+    // inferred clique among {A..E}. Direct pass must report exactly {A,B};
+    // the leftovers {C,D,E} form an inferred-only info group.
+    const nodes = [1, 2, 3, 4, 5].map((n) => makeNode({ nodeNum: n, role: DeviceRole.ROUTER }));
+    const inferred = (a: number, b: number) =>
+      makeEdge({ a, b, direct: false, evidenceClasses: ['gatewayCoReception'] });
+    const edges = [directEdge(1, 2)];
+    for (let a = 1; a <= 5; a++) for (let b = a + 1; b <= 5; b++) {
+      if (!(a === 1 && b === 2)) edges.push(inferred(a, b));
+    }
+    const ctx = makeCtx({ nodes: nodeMap(nodes), graph: makeGraph(edges) });
+
+    const findings = evaluateB1(ctx);
+
+    expect(findings).toHaveLength(2);
+    const direct = findings.find((f) => f.evidence.inferredOnly === false)!;
+    const inferredGroup = findings.find((f) => f.evidence.inferredOnly === true)!;
+    expect((direct.evidence.members as Array<{ nodeNum: number }>).map((m) => m.nodeNum)).toEqual([1, 2]);
+    expect(direct.severity).toBe('warning');
+    expect((inferredGroup.evidence.members as Array<{ nodeNum: number }>).map((m) => m.nodeNum)).toEqual([3, 4, 5]);
+    expect(inferredGroup.severity).toBe('info');
+    expect(inferredGroup.confidence).toBe('low');
   });
 
   it('downgrades an inferred-only-glued cluster to info/low (D2) and falls back sourceIds to the member union', () => {
@@ -317,7 +399,8 @@ describe('evaluateB1 — router cluster', () => {
     const n1 = makeNode({ nodeNum: 1, role: DeviceRole.ROUTER });
     const n2 = makeNode({ nodeNum: 2, role: DeviceRole.ROUTER });
     const n3 = makeNode({ nodeNum: 3, role: DeviceRole.ROUTER });
-    const graph = makeGraph([directEdge(1, 2), directEdge(2, 3)]);
+    // Triangle so all three land in one clique under #4976 semantics.
+    const graph = makeGraph([directEdge(1, 2), directEdge(2, 3), directEdge(1, 3)]);
 
     const ctxForward = makeCtx({ nodes: nodeMap([n1, n2, n3]), graph });
     const ctxReversed = makeCtx({ nodes: nodeMap([n3, n2, n1]), graph });
@@ -353,9 +436,11 @@ describe('evaluateB1 — router cluster', () => {
   });
 
   it('caps members/edges at EVIDENCE_MEMBER_LIST_CAP and reports the true pre-cap total (#4964 Phase 3 WP3 §4.2)', () => {
-    // A 30-router chain: 30 members, 29 internal edges — both over the cap.
-    const nodes = Array.from({ length: 30 }, (_, i) => makeNode({ nodeNum: i + 1, role: DeviceRole.ROUTER }));
-    const edges = Array.from({ length: 29 }, (_, i) => directEdge(i + 1, i + 2));
+    // A 30-router CLIQUE (every pair adjacent, #4976): 30 members, 435
+    // internal edges — both over the cap.
+    const nums = Array.from({ length: 30 }, (_, i) => i + 1);
+    const nodes = nums.map((n) => makeNode({ nodeNum: n, role: DeviceRole.ROUTER }));
+    const edges = nums.flatMap((a) => nums.filter((b) => b > a).map((b) => directEdge(a, b)));
     const ctx = makeCtx({ nodes: nodeMap(nodes), graph: makeGraph(edges) });
 
     const findings = evaluateB1(ctx);
@@ -367,7 +452,7 @@ describe('evaluateB1 — router cluster', () => {
     expect((findings[0].evidence.members as unknown[]).length).toBe(EVIDENCE_MEMBER_LIST_CAP);
 
     expect(findings[0].evidence.edgesTruncated).toBe(true);
-    expect(findings[0].evidence.edgesTotal).toBe(29);
+    expect(findings[0].evidence.edgesTotal).toBe(435);
     expect((findings[0].evidence.edges as unknown[]).length).toBe(EVIDENCE_MEMBER_LIST_CAP);
   });
 });
@@ -408,6 +493,20 @@ describe('evaluateB2 — redundant router', () => {
     );
     return { graph, nodes };
   }
+
+  it('does NOT report a router as covered by one beyond routerClusterMaxLinkKm (#4976)', () => {
+    // Identical (MQTT-fabricated) neighbor sets, but the routers sit ~110 km
+    // apart — they cannot cover the same area, so B2 must stay silent.
+    const { graph, nodes } = buildOverlapFixture(9, 1, 2);
+    const positioned = nodes.map((n) => {
+      if (n.nodeNum === 1) return { ...n, latitude: 26.0, longitude: -80.2 };
+      if (n.nodeNum === 2) return { ...n, latitude: 27.0, longitude: -80.2 };
+      return n;
+    });
+    const ctx = makeCtx({ nodes: nodeMap(positioned), graph });
+
+    expect(evaluateB2(ctx)).toHaveLength(0);
+  });
 
   it('fires on the smaller router at 90% overlap', () => {
     // A: 9 shared + 1 aOnly = 10. B: 9 shared + 2 bOnly = 11 (strictly larger

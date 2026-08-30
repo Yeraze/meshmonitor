@@ -140,6 +140,7 @@ const DEFAULT_THRESHOLDS: ResolvedMeshIssueThresholds = {
   mobileSpanMeters: 500,
   snrAsymmetryDb: 6,
   overBroadcastSeconds: 300,
+  routerClusterMaxLinkKm: 30,
 };
 
 function lastRunResultFixture(overrides: Partial<MeshIssuesLastRunResult> = {}): MeshIssuesLastRunResult {
