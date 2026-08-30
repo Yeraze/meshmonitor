@@ -290,6 +290,32 @@ describe('evaluateB1 — router cluster', () => {
     expect(findings.every((f) => f.severity !== 'critical')).toBe(true);
   });
 
+  it('co-reception edges never inflate a direct clique nor form a warning/critical one (#4976)', () => {
+    // A-B genuinely hear each other (direct). C, D, E are only glued to
+    // everything by co-reception (one MQTT gateway heard them all) — a full
+    // inferred clique among {A..E}. Direct pass must report exactly {A,B};
+    // the leftovers {C,D,E} form an inferred-only info group.
+    const nodes = [1, 2, 3, 4, 5].map((n) => makeNode({ nodeNum: n, role: DeviceRole.ROUTER }));
+    const inferred = (a: number, b: number) =>
+      makeEdge({ a, b, direct: false, evidenceClasses: ['gatewayCoReception'] });
+    const edges = [directEdge(1, 2)];
+    for (let a = 1; a <= 5; a++) for (let b = a + 1; b <= 5; b++) {
+      if (!(a === 1 && b === 2)) edges.push(inferred(a, b));
+    }
+    const ctx = makeCtx({ nodes: nodeMap(nodes), graph: makeGraph(edges) });
+
+    const findings = evaluateB1(ctx);
+
+    expect(findings).toHaveLength(2);
+    const direct = findings.find((f) => f.evidence.inferredOnly === false)!;
+    const inferredGroup = findings.find((f) => f.evidence.inferredOnly === true)!;
+    expect((direct.evidence.members as Array<{ nodeNum: number }>).map((m) => m.nodeNum)).toEqual([1, 2]);
+    expect(direct.severity).toBe('warning');
+    expect((inferredGroup.evidence.members as Array<{ nodeNum: number }>).map((m) => m.nodeNum)).toEqual([3, 4, 5]);
+    expect(inferredGroup.severity).toBe('info');
+    expect(inferredGroup.confidence).toBe('low');
+  });
+
   it('downgrades an inferred-only-glued cluster to info/low (D2) and falls back sourceIds to the member union', () => {
     const n1 = makeNode({ nodeNum: 1, role: DeviceRole.ROUTER, sourceIds: ['src-x'] });
     const n2 = makeNode({ nodeNum: 2, role: DeviceRole.ROUTER, sourceIds: ['src-y'] });

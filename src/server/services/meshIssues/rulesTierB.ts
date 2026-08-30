@@ -104,10 +104,11 @@ export interface RuleSkip {
  *  finding's claim and its demote-all-but-one recommendation. */
 export interface RouterCluster {
   /** Sorted, deduped. Size >= ROUTER_CLUSTER_WARNING_SIZE. Pairwise
-   *  adjacent over the full (direct + inferred) RF graph. */
+   *  adjacent: over DIRECT edges when `inferredOnly` is false, over the
+   *  full graph otherwise. */
   members: number[];
   /** True when the clique only holds together via inferred (co-reception)
-   *  edges — direct-only recomputation disconnects it (D2). */
+   *  edges — extracted in the second, full-graph pass (D2). */
   inferredOnly: boolean;
 }
 
@@ -175,47 +176,55 @@ function countPositionedDirectNeighbors(ctx: TierBRuleContext, nodeNum: number):
 // Router-cluster components (shared by B1 and B6)
 // ---------------------------------------------------------------------------
 
-/** BFS connected components of `nodeSet`, following only edges in
- *  `adjacency` whose OTHER endpoint is also in `nodeSet`. Deterministic:
- *  both the start-node order and each node's neighbour order are irrelevant
- *  to the final (sorted) membership of each component. */
-function computeComponents(nodeSet: ReadonlySet<number>, adjacency: Map<number, Set<number>>): number[][] {
-  const visited = new Set<number>();
-  const components: number[][] = [];
-  const startNodes = sortNumbers(nodeSet);
+/**
+ * Greedy, deterministic, DISJOINT clique extraction over one adjacency map.
+ * Seeds are processed by (restricted degree desc, nodeNum asc); each seed
+ * grows a clique by admitting, in the same priority order, every unassigned
+ * candidate adjacent to ALL current members. Greedy rather than exact
+ * maximum-clique: exact is exponential in the worst case, while this is
+ * O(n · d²), order-stable across runs, and each emitted group still
+ * satisfies the property the finding asserts — every member is adjacent to
+ * every other member. Disjointness keeps one router from being
+ * demote-recommended in two findings at once. Mutates `assigned`.
+ */
+function extractCliques(
+  candidates: ReadonlySet<number>,
+  adjacency: Map<number, Set<number>>,
+  assigned: Set<number>,
+): number[][] {
+  const restrictedNeighbors = (n: number): number[] => {
+    const nbs = adjacency.get(n);
+    if (!nbs) return [];
+    return Array.from(nbs).filter((nb) => candidates.has(nb));
+  };
+  const degree = new Map<number, number>();
+  for (const n of candidates) degree.set(n, restrictedNeighbors(n).length);
+  const byPriority = (a: number, b: number) => degree.get(b)! - degree.get(a)! || a - b;
+  const adjacent = (a: number, b: number) => adjacency.get(a)?.has(b) ?? false;
 
-  for (const start of startNodes) {
-    if (visited.has(start)) continue;
-    const comp: number[] = [];
-    const queue: number[] = [start];
-    visited.add(start);
-    while (queue.length > 0) {
-      const cur = queue.shift()!;
-      comp.push(cur);
-      const neighbors = adjacency.get(cur);
-      if (!neighbors) continue;
-      for (const nb of neighbors) {
-        if (nodeSet.has(nb) && !visited.has(nb)) {
-          visited.add(nb);
-          queue.push(nb);
-        }
-      }
+  const cliques: number[][] = [];
+  for (const seed of Array.from(candidates).sort(byPriority)) {
+    if (assigned.has(seed)) continue;
+    const clique: number[] = [seed];
+    for (const cand of restrictedNeighbors(seed).filter((n) => !assigned.has(n)).sort(byPriority)) {
+      if (clique.every((m) => adjacent(cand, m))) clique.push(cand);
     }
-    components.push(comp);
+    if (clique.length < ROUTER_CLUSTER_WARNING_SIZE) continue;
+    for (const m of clique) assigned.add(m);
+    cliques.push(sortNumbers(clique));
   }
-  return components;
+  return cliques;
 }
 
 /**
- * Greedy, deterministic, DISJOINT clique extraction (#4976). Seeds are
- * processed by (restricted degree desc, nodeNum asc); each seed grows a
- * clique by admitting, in the same priority order, every unassigned
- * cluster-role neighbour adjacent to ALL current members. Greedy rather than
- * exact maximum-clique: exact is exponential in the worst case, while this
- * is O(n · d²), order-stable across runs, and each emitted group still
- * satisfies the property the finding asserts — every member hears every
- * other member. Disjointness keeps one router from being demote-recommended
- * in two findings at once.
+ * Two passes (#4976): DIRECT-evidence cliques first (mutual audibility a
+ * device actually reported — neighborInfo/traceroute/gateway-direct), then
+ * full-graph cliques among the leftovers, which by construction hold
+ * together only via inferred co-reception edges ("the same MQTT gateway
+ * heard both") and are flagged `inferredOnly` so B1 downgrades them to
+ * info/low (D2). Co-reception is NOT mutual audibility — one gateway on a
+ * hill hears routers 150 km apart — so it must never inflate a
+ * warning/critical cluster's membership.
  */
 function findRouterClustersCore(ctx: TierBRuleContext): RouterCluster[] {
   const clusterNodeNums = new Set<number>();
@@ -224,33 +233,15 @@ function findRouterClustersCore(ctx: TierBRuleContext): RouterCluster[] {
   }
   if (clusterNodeNums.size === 0) return [];
 
-  const restrictedNeighbors = (n: number): number[] => {
-    const nbs = ctx.graph.adjacency.get(n);
-    if (!nbs) return [];
-    return Array.from(nbs).filter((nb) => clusterNodeNums.has(nb));
-  };
-  const degree = new Map<number, number>();
-  for (const n of clusterNodeNums) degree.set(n, restrictedNeighbors(n).length);
-  const byPriority = (a: number, b: number) => degree.get(b)! - degree.get(a)! || a - b;
-  const adjacent = (a: number, b: number) => ctx.graph.adjacency.get(a)?.has(b) ?? false;
-
   const assigned = new Set<number>();
   const clusters: RouterCluster[] = [];
-  for (const seed of Array.from(clusterNodeNums).sort(byPriority)) {
-    if (assigned.has(seed)) continue;
-    const clique: number[] = [seed];
-    for (const cand of restrictedNeighbors(seed).filter((n) => !assigned.has(n)).sort(byPriority)) {
-      if (clique.every((m) => adjacent(cand, m))) clique.push(cand);
-    }
-    if (clique.length < ROUTER_CLUSTER_WARNING_SIZE) continue;
-    for (const m of clique) assigned.add(m);
-    const memberSet = new Set(clique);
-    // Recompute over DIRECT-only edges (D2): if this same member set no
-    // longer forms a single connected component, it was glued together by
-    // inferred (co-reception) evidence alone.
-    const directComponents = computeComponents(memberSet, ctx.graph.directAdjacency);
-    const inferredOnly = !(directComponents.length === 1 && directComponents[0].length === memberSet.size);
-    clusters.push({ members: sortNumbers(memberSet), inferredOnly });
+  for (const members of extractCliques(clusterNodeNums, ctx.graph.directAdjacency, assigned)) {
+    clusters.push({ members, inferredOnly: false });
+  }
+  // Any direct pair among the leftovers would have formed a pass-1 clique
+  // (WARNING_SIZE is 2), so pass-2 groups are inferred-glued by construction.
+  for (const members of extractCliques(clusterNodeNums, ctx.graph.adjacency, assigned)) {
+    clusters.push({ members, inferredOnly: true });
   }
 
   clusters.sort((a, b) => a.members[0] - b.members[0]);
