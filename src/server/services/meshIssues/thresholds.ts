@@ -152,6 +152,14 @@ export const COVERAGE_SHADOW_MAX_RANGE_M = 25_000;
 export const ROUTER_CLUSTER_WARNING_SIZE = 2;
 /** Cluster size at/above which B1 is critical. [ours] */
 export const ROUTER_CLUSTER_CRITICAL_SIZE = 4;
+/** Max km between two POSITIONED nodes for their edge to count toward B1/B6
+ *  cluster adjacency, or for B2 to call one router covered by another
+ *  (#4976). B1 claims redundant same-spot coverage, and
+ *  MQTT-bridged firmwares (TRON) record traceroute "hops" between repeaters
+ *  100+ km apart that never happened over RF — carrying plausible SNR, so the
+ *  sentinel filter cannot catch them. Distance is the only robust guard.
+ *  Edges with an unpositioned endpoint are kept (fail-open). [ours] */
+export const ROUTER_CLUSTER_MAX_LINK_KM = 30;
 
 // ── Evidence hygiene ────────────────────────────────────────────────────────
 /** Max entries in any evidence member/edge list. `mesh_issues.evidence` is
@@ -215,6 +223,7 @@ export interface ResolvedMeshIssueThresholds {
   /** dB, [ours] */ snrAsymmetryDb: number;
   /** seconds, [ours] */ overBroadcastSeconds: number;
   /** count, [ours] */ autoCloseCleanRuns: number;
+  /** km, [ours] */ routerClusterMaxLinkKm: number;
 }
 
 export const DEFAULT_MESH_ISSUE_THRESHOLDS: ResolvedMeshIssueThresholds = {
@@ -228,6 +237,7 @@ export const DEFAULT_MESH_ISSUE_THRESHOLDS: ResolvedMeshIssueThresholds = {
   snrAsymmetryDb: ASYMMETRY_DELTA_DB,
   overBroadcastSeconds: OVER_BROADCAST_INTERVAL_SECONDS,
   autoCloseCleanRuns: AUTO_CLOSE_CLEAN_RUNS,
+  routerClusterMaxLinkKm: ROUTER_CLUSTER_MAX_LINK_KM,
 };
 
 /**
@@ -247,6 +257,7 @@ export const MESH_ISSUE_THRESHOLD_SETTINGS_KEYS = [
   'mesh_issues_snr_asymmetry_db',
   'mesh_issues_over_broadcast_seconds',
   'mesh_issues_auto_close_runs',
+  'mesh_issues_router_cluster_max_link_km',
 ] as const;
 
 /** Accepts both a raw settings string and a plain number (tests call this
@@ -335,6 +346,13 @@ export function resolveThresholds(raw: Record<string, unknown>): ResolvedMeshIss
       DEFAULT_MESH_ISSUE_THRESHOLDS.autoCloseCleanRuns,
       1,
       20
+    ),
+    routerClusterMaxLinkKm: resolveClampedNumber(
+      raw,
+      'mesh_issues_router_cluster_max_link_km',
+      DEFAULT_MESH_ISSUE_THRESHOLDS.routerClusterMaxLinkKm,
+      1,
+      500
     ),
   };
 }
