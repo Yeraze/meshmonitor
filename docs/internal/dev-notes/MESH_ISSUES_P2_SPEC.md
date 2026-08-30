@@ -511,10 +511,15 @@ sibling `<field>Truncated: boolean`.
 
 **B1 — Router cluster.** *(≥2 ROUTER/REPEATER mutually audible)*
 
-Subgraph over nodes whose `role ∈ CLUSTER_ROLES`. Connected components over
-**all** edges (direct + inferred), size ≥ `ROUTER_CLUSTER_WARNING_SIZE`.
-Recompute components over **direct-only** edges: if the component splits, it was
-glued by inferred evidence — `inferredOnly = true`.
+Subgraph over nodes whose `role ∈ CLUSTER_ROLES`.
+
+> **Amended by #4976:** clusters are now mutually-audible CLIQUES (greedy,
+> deterministic, disjoint) over all edges (direct + inferred), not connected
+> components — components are transitive, so a chain of genuine short links
+> merged far-apart routers into one statewide "cluster" whose endpoints never
+> hear each other. Size ≥ `ROUTER_CLUSTER_WARNING_SIZE` unchanged.
+> Recompute the clique's member set over **direct-only** edges: if it
+> disconnects, it was glued by inferred evidence — `inferredOnly = true`.
 
 - severity: `inferredOnly` → `info`; else size ≥ `ROUTER_CLUSTER_CRITICAL_SIZE` → `critical`; else `warning`.
 - confidence: `inferredOnly` → `low`; every internal link has `neighborInfo` or `traceroute` evidence → `high`; else `medium`.

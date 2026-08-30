@@ -95,13 +95,19 @@ export interface RuleSkip {
   reason: string;
 }
 
-/** A connected component of `CLUSTER_ROLES` nodes over the RF graph. Shared
- *  by B1 (fires on it) and B6 (checks adjacency to it) — see spec §2.6. */
+/** A MUTUALLY-AUDIBLE group of `CLUSTER_ROLES` nodes over the RF graph:
+ *  every member is adjacent to every other member (a clique). Shared by B1
+ *  (fires on it) and B6 (checks adjacency to it). Amends spec §2.6's
+ *  connected-component definition (#4976): components are transitive, so a
+ *  chain of genuine short links merged far-apart routers into one statewide
+ *  "cluster" whose endpoints never hear each other — invalidating both the
+ *  finding's claim and its demote-all-but-one recommendation. */
 export interface RouterCluster {
-  /** Sorted, deduped. Size >= ROUTER_CLUSTER_WARNING_SIZE. */
+  /** Sorted, deduped. Size >= ROUTER_CLUSTER_WARNING_SIZE. Pairwise
+   *  adjacent over the full (direct + inferred) RF graph. */
   members: number[];
-  /** True when the component only stays connected via inferred
-   *  (co-reception) edges — direct-only recomputation splits it (D2). */
+  /** True when the clique only holds together via inferred (co-reception)
+   *  edges — direct-only recomputation disconnects it (D2). */
   inferredOnly: boolean;
 }
 
@@ -200,6 +206,17 @@ function computeComponents(nodeSet: ReadonlySet<number>, adjacency: Map<number, 
   return components;
 }
 
+/**
+ * Greedy, deterministic, DISJOINT clique extraction (#4976). Seeds are
+ * processed by (restricted degree desc, nodeNum asc); each seed grows a
+ * clique by admitting, in the same priority order, every unassigned
+ * cluster-role neighbour adjacent to ALL current members. Greedy rather than
+ * exact maximum-clique: exact is exponential in the worst case, while this
+ * is O(n · d²), order-stable across runs, and each emitted group still
+ * satisfies the property the finding asserts — every member hears every
+ * other member. Disjointness keeps one router from being demote-recommended
+ * in two findings at once.
+ */
 function findRouterClustersCore(ctx: TierBRuleContext): RouterCluster[] {
   const clusterNodeNums = new Set<number>();
   for (const node of ctx.nodes.values()) {
@@ -207,12 +224,27 @@ function findRouterClustersCore(ctx: TierBRuleContext): RouterCluster[] {
   }
   if (clusterNodeNums.size === 0) return [];
 
-  const allComponents = computeComponents(clusterNodeNums, ctx.graph.adjacency);
-  const clusters: RouterCluster[] = [];
+  const restrictedNeighbors = (n: number): number[] => {
+    const nbs = ctx.graph.adjacency.get(n);
+    if (!nbs) return [];
+    return Array.from(nbs).filter((nb) => clusterNodeNums.has(nb));
+  };
+  const degree = new Map<number, number>();
+  for (const n of clusterNodeNums) degree.set(n, restrictedNeighbors(n).length);
+  const byPriority = (a: number, b: number) => degree.get(b)! - degree.get(a)! || a - b;
+  const adjacent = (a: number, b: number) => ctx.graph.adjacency.get(a)?.has(b) ?? false;
 
-  for (const comp of allComponents) {
-    if (comp.length < ROUTER_CLUSTER_WARNING_SIZE) continue;
-    const memberSet = new Set(comp);
+  const assigned = new Set<number>();
+  const clusters: RouterCluster[] = [];
+  for (const seed of Array.from(clusterNodeNums).sort(byPriority)) {
+    if (assigned.has(seed)) continue;
+    const clique: number[] = [seed];
+    for (const cand of restrictedNeighbors(seed).filter((n) => !assigned.has(n)).sort(byPriority)) {
+      if (clique.every((m) => adjacent(cand, m))) clique.push(cand);
+    }
+    if (clique.length < ROUTER_CLUSTER_WARNING_SIZE) continue;
+    for (const m of clique) assigned.add(m);
+    const memberSet = new Set(clique);
     // Recompute over DIRECT-only edges (D2): if this same member set no
     // longer forms a single connected component, it was glued together by
     // inferred (co-reception) evidence alone.

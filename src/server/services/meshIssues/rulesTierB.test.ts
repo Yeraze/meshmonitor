@@ -250,10 +250,14 @@ describe('evaluateB1 — router cluster', () => {
     expect(byNum.get(2)!.longitude).toBeNull();
   });
 
-  it('fires critical for a 4-router cluster (chain, still >= ROUTER_CLUSTER_CRITICAL_SIZE)', () => {
+  it('fires critical for a 4-router clique (>= ROUTER_CLUSTER_CRITICAL_SIZE, all mutually audible)', () => {
     expect(ROUTER_CLUSTER_CRITICAL_SIZE).toBe(4);
     const nodes = [1, 2, 3, 4].map((n) => makeNode({ nodeNum: n, role: DeviceRole.ROUTER }));
-    const graph = makeGraph([directEdge(1, 2), directEdge(2, 3), directEdge(3, 4)]);
+    // K4: every pair adjacent.
+    const graph = makeGraph([
+      directEdge(1, 2), directEdge(1, 3), directEdge(1, 4),
+      directEdge(2, 3), directEdge(2, 4), directEdge(3, 4),
+    ]);
     const ctx = makeCtx({ nodes: nodeMap(nodes), graph });
 
     const findings = evaluateB1(ctx);
@@ -261,6 +265,29 @@ describe('evaluateB1 — router cluster', () => {
     expect(findings).toHaveLength(1);
     expect(findings[0].evidence.size).toBe(4);
     expect(findings[0].severity).toBe('critical');
+  });
+
+  it('does NOT merge a chain of routers into one cluster — clusters are mutually-audible cliques (#4976)', () => {
+    // 1-2-3-4-5-6 path: each link is a genuine RF observation, but the
+    // endpoints never hear each other. Component semantics reported one
+    // 6-router "cluster" spanning the whole chain; clique semantics must
+    // report only mutually-audible pairs, and never a group of 3+.
+    const nodes = [1, 2, 3, 4, 5, 6].map((n) => makeNode({ nodeNum: n, role: DeviceRole.ROUTER }));
+    const graph = makeGraph([
+      directEdge(1, 2), directEdge(2, 3), directEdge(3, 4), directEdge(4, 5), directEdge(5, 6),
+    ]);
+    const ctx = makeCtx({ nodes: nodeMap(nodes), graph });
+
+    const findings = evaluateB1(ctx);
+
+    expect(findings.length).toBeGreaterThan(0);
+    for (const f of findings) {
+      expect(f.evidence.size).toBe(2);
+      const members = (f.evidence.members as Array<{ nodeNum: number }>).map((m) => m.nodeNum);
+      // Every reported pair must actually be adjacent.
+      expect(Math.abs(members[0] - members[1])).toBe(1);
+    }
+    expect(findings.every((f) => f.severity !== 'critical')).toBe(true);
   });
 
   it('downgrades an inferred-only-glued cluster to info/low (D2) and falls back sourceIds to the member union', () => {
@@ -317,7 +344,8 @@ describe('evaluateB1 — router cluster', () => {
     const n1 = makeNode({ nodeNum: 1, role: DeviceRole.ROUTER });
     const n2 = makeNode({ nodeNum: 2, role: DeviceRole.ROUTER });
     const n3 = makeNode({ nodeNum: 3, role: DeviceRole.ROUTER });
-    const graph = makeGraph([directEdge(1, 2), directEdge(2, 3)]);
+    // Triangle so all three land in one clique under #4976 semantics.
+    const graph = makeGraph([directEdge(1, 2), directEdge(2, 3), directEdge(1, 3)]);
 
     const ctxForward = makeCtx({ nodes: nodeMap([n1, n2, n3]), graph });
     const ctxReversed = makeCtx({ nodes: nodeMap([n3, n2, n1]), graph });
@@ -353,9 +381,11 @@ describe('evaluateB1 — router cluster', () => {
   });
 
   it('caps members/edges at EVIDENCE_MEMBER_LIST_CAP and reports the true pre-cap total (#4964 Phase 3 WP3 §4.2)', () => {
-    // A 30-router chain: 30 members, 29 internal edges — both over the cap.
-    const nodes = Array.from({ length: 30 }, (_, i) => makeNode({ nodeNum: i + 1, role: DeviceRole.ROUTER }));
-    const edges = Array.from({ length: 29 }, (_, i) => directEdge(i + 1, i + 2));
+    // A 30-router CLIQUE (every pair adjacent, #4976): 30 members, 435
+    // internal edges — both over the cap.
+    const nums = Array.from({ length: 30 }, (_, i) => i + 1);
+    const nodes = nums.map((n) => makeNode({ nodeNum: n, role: DeviceRole.ROUTER }));
+    const edges = nums.flatMap((a) => nums.filter((b) => b > a).map((b) => directEdge(a, b)));
     const ctx = makeCtx({ nodes: nodeMap(nodes), graph: makeGraph(edges) });
 
     const findings = evaluateB1(ctx);
@@ -367,7 +397,7 @@ describe('evaluateB1 — router cluster', () => {
     expect((findings[0].evidence.members as unknown[]).length).toBe(EVIDENCE_MEMBER_LIST_CAP);
 
     expect(findings[0].evidence.edgesTruncated).toBe(true);
-    expect(findings[0].evidence.edgesTotal).toBe(29);
+    expect(findings[0].evidence.edgesTotal).toBe(435);
     expect((findings[0].evidence.edges as unknown[]).length).toBe(EVIDENCE_MEMBER_LIST_CAP);
   });
 });
