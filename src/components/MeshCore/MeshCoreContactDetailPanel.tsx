@@ -225,16 +225,20 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
     try {
       const resp = await api.get<{
         success: boolean;
-        data: { items: Array<{ neighborPublicKey: string; neighborName: string | null; snr: number | null; timestamp: number }> };
+        data: { items: Array<{ neighborPublicKey: string; neighborName: string | null; snr: number | null; lastHeardSecs: number | null; timestamp: number }> };
       }>(`/api/sources/${sourceId}/meshcore/neighbors?since=0&node=${encodeURIComponent(publicKey)}`);
       if (resp.success && resp.data.items.length > 0) {
         const ts = resp.data.items[0].timestamp;
+        const nowMs = Date.now();
         setNeighboursData({
           total: resp.data.items.length,
           neighbours: resp.data.items.map((n) => ({
             publicKeyPrefix: n.neighborPublicKey.substring(0, 8),
             name: n.neighborName,
-            heardSecondsAgo: 0,
+            // lastHeardSecs is the repeater-reported age as of `timestamp`
+            // (when we polled it); add elapsed time since then so the value
+            // keeps counting up rather than freezing at the poll-time age.
+            heardSecondsAgo: (n.lastHeardSecs ?? 0) + Math.max(0, Math.floor((nowMs - n.timestamp) / 1000)),
             snr: n.snr ?? 0,
           })),
           fetchedAt: ts,
