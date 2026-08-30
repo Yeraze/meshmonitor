@@ -1,0 +1,58 @@
+/* IssueTypeSection styling (#4964 report reorganization, WP4). CSS module —
+ * do not add these rules to the global sheets (CLAUDE.md CSS containment).
+ * `var(--color-*)` tokens only, no fallback value, so themes apply. */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.heading {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sectionIcon--critical {
+  color: var(--color-error);
+}
+
+.sectionIcon--warning {
+  color: var(--color-warning);
+}
+
+.sectionIcon--info {
+  color: var(--color-text-subtle);
+}
+
+.breakdown {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--color-text-subtle);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.runChip {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  color: var(--color-accent);
+}

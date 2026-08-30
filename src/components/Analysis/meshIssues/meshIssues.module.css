@@ -310,3 +310,22 @@
 .loadMoreButton {
   align-self: center;
 }
+
+/* Dashboard shell additions (#4964 report reorganization, WP4). */
+
+.badge--new {
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  color: var(--color-accent);
+}
+
+.viewSwitch {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 0.75rem;
+}
+
+.viewToggleActive {
+  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
