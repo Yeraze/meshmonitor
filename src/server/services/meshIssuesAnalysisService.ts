@@ -133,6 +133,14 @@ export interface MeshIssuesRunResult {
   byType: Record<string, number>;
   corpusStats: TracerouteCorpusStats;
   coverage: MeshIssuesCoverage;
+  /** issueType -> findings CREATED by this run (report reorg #4964 WP2,
+   *  spec §4.6). Optional: `mesh_issues_last_run_summary` may hold a summary
+   *  persisted before this field existed — absent means the dashboard
+   *  renders no "new" chip rather than a zero. */
+  newByType?: Record<string, number>;
+  /** issueType -> findings REOPENED by this run. Same optionality as
+   *  `newByType` and for the same reason. */
+  reopenedByType?: Record<string, number>;
 }
 
 interface PersistOutcome {
@@ -141,6 +149,8 @@ interface PersistOutcome {
   updatedCount: number;
   closedCount: number;
   byType: Record<string, number>;
+  newByType: Record<string, number>;
+  reopenedByType: Record<string, number>;
 }
 
 function zeroCorpusStats(): TracerouteCorpusStats {
@@ -194,6 +204,15 @@ function zeroResult(durationMs: number): MeshIssuesRunResult {
 /** Stable identity key for a finding/issue, matching the (issueType, subjectKey) UNIQUE index. */
 function identityKey(issueType: string, subjectKey: string): string {
   return JSON.stringify([issueType, subjectKey]);
+}
+
+/** `B7_coverage_shadow` -> `B7`. Same derivation the frontend's
+ *  `ruleShortId` (`meshIssues/meshIssueRuleIds.ts`) uses, and the same shape
+ *  as the existing `RuleSkip.rule` values ('B2', 'B6', 'C2', ...) tierBSkips
+ *  / tierCSkips already emit — kept local rather than imported from the
+ *  frontend module, which the server never imports from. */
+function ruleShortId(issueType: string): string {
+  return issueType.split('_')[0];
 }
 
 class MeshIssuesAnalysisService {
@@ -466,15 +485,29 @@ class MeshIssuesAnalysisService {
     };
     if (thresholds.tierCEnabled) findings.push(...evaluateAllTierC(tierCCtx));
 
-    const skippedRules = [...tierBSkips(tierBCtx), ...tierCSkips(tierCCtx)];
+    // 6d. Muted rules (mesh_issues_disabled_rules, report reorg #4964 WP2,
+    // spec §5.2) contribute no findings this run. Existing rows are NOT
+    // deleted — persistFindings' clean-run bookkeeping (step 7) closes them
+    // after thresholds.autoCloseCleanRuns runs, exactly as the tier toggles
+    // above already do. The gate filters EMITTED findings rather than
+    // skipping rule evaluation, so it is exact for A2b/C1 (one rule function,
+    // multiple issue types) without any surgery on the tier arrays.
+    const disabled = new Set(thresholds.disabledRules);
+    const kept = disabled.size === 0 ? findings : findings.filter((f) => !disabled.has(f.issueType));
+    const mutedSkips: RuleSkip[] = thresholds.disabledRules.map((issueType) => ({
+      rule: ruleShortId(issueType),
+      reason: 'muted in settings',
+    }));
+
+    const skippedRules = [...tierBSkips(tierBCtx), ...tierCSkips(tierCCtx), ...mutedSkips];
 
     // 7. Persist — issue-type agnostic; Tier B findings flow through the
     // same upsert/clean-run bookkeeping as Tier A.
-    const persistResult = await this.persistFindings(findings, nowMs, thresholds.autoCloseCleanRuns);
+    const persistResult = await this.persistFindings(kept, nowMs, thresholds.autoCloseCleanRuns);
 
     const durationMs = Date.now() - start;
     logger.debug(
-      `[meshIssues] Analysis run: ${findings.length} finding(s) from ${nodes.size} node(s) ` +
+      `[meshIssues] Analysis run: ${kept.length} finding(s) from ${nodes.size} node(s) ` +
       `across ${sourceIds.length} source(s) (${persistResult.newCount} new, ` +
       `${persistResult.reopenedCount} reopened, ${persistResult.updatedCount} updated, ` +
       `${persistResult.closedCount} auto-closed), in ${durationMs}ms`
@@ -503,7 +536,7 @@ class MeshIssuesAnalysisService {
       durationMs,
       sourceCount: sourceIds.length,
       nodeCount: nodes.size,
-      findingCount: findings.length,
+      findingCount: kept.length,
       ...persistResult,
       corpusStats,
       coverage,
@@ -755,6 +788,8 @@ class MeshIssuesAnalysisService {
     let updatedCount = 0;
     let closedCount = 0;
     const byType: Record<string, number> = {};
+    const newByType: Record<string, number> = {};
+    const reopenedByType: Record<string, number> = {};
     const detectedKeys = new Set<string>();
 
     for (const finding of findings) {
@@ -762,9 +797,15 @@ class MeshIssuesAnalysisService {
       detectedKeys.add(identityKey(finding.issueType, finding.subjectKey));
 
       const { outcome } = await databaseService.upsertMeshIssueFindingAsync(finding, nowMs);
-      if (outcome === 'created') newCount++;
-      else if (outcome === 'reopened') reopenedCount++;
-      else updatedCount++;
+      if (outcome === 'created') {
+        newCount++;
+        newByType[finding.issueType] = (newByType[finding.issueType] ?? 0) + 1;
+      } else if (outcome === 'reopened') {
+        reopenedCount++;
+        reopenedByType[finding.issueType] = (reopenedByType[finding.issueType] ?? 0) + 1;
+      } else {
+        updatedCount++;
+      }
     }
 
     const openIssues = await databaseService.getMeshIssuesAsync({ includeClosed: false, includeDismissed: true });
@@ -775,7 +816,7 @@ class MeshIssuesAnalysisService {
       if (closed) closedCount++;
     }
 
-    return { newCount, reopenedCount, updatedCount, closedCount, byType };
+    return { newCount, reopenedCount, updatedCount, closedCount, byType, newByType, reopenedByType };
   }
 }
 

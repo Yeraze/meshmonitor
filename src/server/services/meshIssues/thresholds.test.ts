@@ -19,6 +19,7 @@ import {
   AUTO_CLOSE_CLEAN_RUNS,
   ROUTER_CLUSTER_MAX_LINK_KM,
 } from './thresholds.js';
+import { MESH_ISSUE_TYPES } from './types.js';
 
 describe('resolveThresholds — defaults', () => {
   it('returns every default when given an empty map', () => {
@@ -138,13 +139,91 @@ describe('resolveThresholds — boolean default-ON toggles', () => {
 });
 
 describe('MESH_ISSUE_THRESHOLD_SETTINGS_KEYS', () => {
-  it('has exactly eleven entries — one per user-tunable field', () => {
-    expect(MESH_ISSUE_THRESHOLD_SETTINGS_KEYS).toHaveLength(11);
+  it('has exactly twelve entries — one per user-tunable field', () => {
+    expect(MESH_ISSUE_THRESHOLD_SETTINGS_KEYS).toHaveLength(12);
   });
 
   it('every key round-trips through resolveThresholds without throwing', () => {
     const raw: Record<string, unknown> = {};
     for (const key of MESH_ISSUE_THRESHOLD_SETTINGS_KEYS) raw[key] = null;
     expect(() => resolveThresholds(raw)).not.toThrow();
+  });
+});
+
+// ── mesh_issues_disabled_rules (report reorg #4964 WP2, spec §5.2/§9.6) ─────
+describe('resolveThresholds — disabledRules', () => {
+  it('resolves to [] when the key is absent', () => {
+    expect(resolveThresholds({}).disabledRules).toEqual([]);
+  });
+
+  it('resolves to [] for a non-string value', () => {
+    expect(resolveThresholds({ mesh_issues_disabled_rules: 42 }).disabledRules).toEqual([]);
+    expect(resolveThresholds({ mesh_issues_disabled_rules: null }).disabledRules).toEqual([]);
+    expect(resolveThresholds({ mesh_issues_disabled_rules: ['B7_coverage_shadow'] }).disabledRules).toEqual([]);
+  });
+
+  it('resolves to [] for an empty string', () => {
+    expect(resolveThresholds({ mesh_issues_disabled_rules: '' }).disabledRules).toEqual([]);
+  });
+
+  it('parses a CSV, trimming whitespace around each id', () => {
+    const resolved = resolveThresholds({
+      mesh_issues_disabled_rules: ' B7_coverage_shadow ,  C1_time_offset  ',
+    });
+    expect(resolved.disabledRules).toEqual(['B7_coverage_shadow', 'C1_time_offset']);
+  });
+
+  it('tolerates a trailing comma', () => {
+    const resolved = resolveThresholds({ mesh_issues_disabled_rules: 'B7_coverage_shadow,' });
+    expect(resolved.disabledRules).toEqual(['B7_coverage_shadow']);
+  });
+
+  it('dedupes repeated ids', () => {
+    const resolved = resolveThresholds({
+      mesh_issues_disabled_rules: 'B7_coverage_shadow,B7_coverage_shadow,C1_time_offset',
+    });
+    expect(resolved.disabledRules).toEqual(['B7_coverage_shadow', 'C1_time_offset']);
+  });
+
+  it('silently drops ids not in MESH_ISSUE_RULE_IDS', () => {
+    const resolved = resolveThresholds({
+      mesh_issues_disabled_rules: 'B7_coverage_shadow,NOT_A_REAL_RULE,C1_time_offset',
+    });
+    expect(resolved.disabledRules).toEqual(['B7_coverage_shadow', 'C1_time_offset']);
+  });
+
+  it('resolves to [] when every id is unknown', () => {
+    const resolved = resolveThresholds({ mesh_issues_disabled_rules: 'NOT_A_REAL_RULE,ALSO_FAKE' });
+    expect(resolved.disabledRules).toEqual([]);
+  });
+
+  it('returns a sorted result regardless of input order', () => {
+    const resolved = resolveThresholds({
+      mesh_issues_disabled_rules: 'C2_over_broadcasting,A1_deprecated_role,B3_asymmetric_link',
+    });
+    expect(resolved.disabledRules).toEqual(['A1_deprecated_role', 'B3_asymmetric_link', 'C2_over_broadcasting']);
+  });
+
+  it("folds in B7_coverage_shadow when the legacy mesh_issues_b7_enabled key is 'false', even with an empty CSV", () => {
+    const resolved = resolveThresholds({ mesh_issues_b7_enabled: 'false' });
+    expect(resolved.disabledRules).toEqual([MESH_ISSUE_TYPES.B7_COVERAGE_SHADOW]);
+    expect(resolved.b7Enabled).toBe(false);
+  });
+
+  it("legacy mesh_issues_b7_enabled: 'false' folds in alongside other CSV-muted rules", () => {
+    const resolved = resolveThresholds({
+      mesh_issues_disabled_rules: 'C1_time_offset',
+      mesh_issues_b7_enabled: 'false',
+    });
+    expect(resolved.disabledRules).toEqual(['B7_coverage_shadow', 'C1_time_offset']);
+  });
+
+  it("does not remove B7 from disabledRules when mesh_issues_b7_enabled is 'true' and the CSV names it (CSV is authoritative when the legacy key is not 'false')", () => {
+    const resolved = resolveThresholds({
+      mesh_issues_disabled_rules: 'B7_coverage_shadow',
+      mesh_issues_b7_enabled: 'true',
+    });
+    expect(resolved.disabledRules).toEqual(['B7_coverage_shadow']);
+    expect(resolved.b7Enabled).toBe(true);
   });
 });

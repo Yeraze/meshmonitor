@@ -37,6 +37,14 @@ export const MESH_ISSUE_TYPES = {
 } as const;
 export type MeshIssueType = typeof MESH_ISSUE_TYPES[keyof typeof MESH_ISSUE_TYPES];
 
+/**
+ * Every issue type, as the canonical per-rule mute id (report reorg #4964
+ * WP2, spec §5.2). Derived from `MESH_ISSUE_TYPES` so a newly added rule
+ * cannot be forgotten from the mute allowlist. Used by
+ * `thresholds.ts`'s `resolveDisabledRules` to drop unknown ids on read.
+ */
+export const MESH_ISSUE_RULE_IDS: readonly MeshIssueType[] = Object.values(MESH_ISSUE_TYPES);
+
 /** What a rule emits. No persistence fields — the repository owns those. */
 export interface MeshIssueFinding {
   issueType: MeshIssueType;
