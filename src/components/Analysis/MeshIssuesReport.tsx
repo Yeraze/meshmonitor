@@ -34,29 +34,17 @@ import {
   ISSUE_TYPE_BLURBS,
   ISSUE_TYPE_LABELS,
   SEVERITY_ORDER,
-  STRUCTURED_EVIDENCE_KEYS,
-  coverageNotes,
-  formatDurationMs,
-  formatEvidenceKey,
-  formatEvidenceValue,
-  formatSnrDirection,
   formatSourceIds,
-  hexNodeId,
-  isEvidenceDirectionalSnr,
-  isEvidenceNodeRefArray,
-  type CoverageNote,
-  type EvidenceDirectionalSnr,
-  type EvidenceNodeRef,
   type MeshIssueConfidence,
   type MeshIssueRow,
   type MeshIssueSeverity,
-  type MeshIssuesLastRunResult,
   type MeshIssuesResponse,
   type MeshIssuesRunNowResult,
   type MeshIssuesStatus,
 } from './meshIssueTypes';
-import styles from './MeshIssuesReport.module.css';
-import RouterClusterMap from './RouterClusterMap';
+import { CoveragePreface } from './meshIssues/CoveragePreface';
+import FindingDetail from './meshIssues/FindingDetail';
+import styles from './meshIssues/meshIssues.module.css';
 
 const ISSUES_BASE_KEY = 'mesh-issues';
 const STATUS_KEY = ['mesh-issues-status'] as const;
@@ -365,106 +353,6 @@ const MeshIssuesReport: React.FC = () => {
   );
 };
 
-/** Corpus funnel, evidence-class pills, and degradation notes rendered above
- * the severity groups (spec §5.1, C3). Renders nothing — not a broken shell
- * — when there is no last-run result to summarize (e.g. right after a fresh
- * install with a scheduler that hasn't completed a run yet). */
-const CoveragePreface: React.FC<{ result: MeshIssuesLastRunResult | null }> = ({ result }) => {
-  const { t } = useTranslation();
-  const notes = useMemo<CoverageNote[]>(
-    () => (result ? coverageNotes(result.coverage) : []),
-    [result],
-  );
-
-  if (!result) return null;
-
-  const { corpusStats, coverage } = result;
-  const funnel = [
-    corpusStats.rawCount,
-    corpusStats.validCount,
-    corpusStats.dedupedCount,
-    corpusStats.sampledCount,
-  ]
-    .map((n) => n.toLocaleString())
-    .join(' -> ');
-
-  const pills: Array<{ key: string; label: string; count: number; available: boolean }> = [
-    {
-      key: 'neighborInfo',
-      label: t('analysis.mesh_issues.coverage.neighbor_info', 'NeighborInfo'),
-      count: coverage.neighborInfoEdgeCount,
-      available: coverage.evidence.neighborInfo,
-    },
-    {
-      key: 'traceroute',
-      label: t('analysis.mesh_issues.coverage.traceroutes', 'Traceroutes'),
-      count: coverage.tracerouteEdgeCount,
-      available: coverage.evidence.traceroute,
-    },
-    {
-      key: 'mqttGateway',
-      label: t('analysis.mesh_issues.coverage.mqtt_gateway', 'MQTT gateway'),
-      count: coverage.gatewayDirectEdgeCount + coverage.gatewayCoReceptionEdgeCount,
-      available: coverage.evidence.mqttGateway,
-    },
-    {
-      key: 'packetLog',
-      label: t('analysis.mesh_issues.coverage.packet_log', 'Packet log'),
-      count: coverage.hopHorizonNodeCount,
-      available: coverage.evidence.packetLog,
-    },
-  ];
-
-  return (
-    <div className={styles.coveragePreface}>
-      <div className={styles.corpusFunnel}>
-        {t('analysis.mesh_issues.coverage.funnel', '{{funnel}} sampled, {{pairs}} distinct pairs{{capped}}', {
-          funnel,
-          pairs: corpusStats.distinctPairCount.toLocaleString(),
-          capped: corpusStats.truncated ? ` ${t('analysis.mesh_issues.coverage.capped', '(capped)')}` : '',
-        })}
-      </div>
-      <div className={styles.evidencePills}>
-        {pills.map((pill) => (
-          <span
-            key={pill.key}
-            className={`${styles.evidencePill} ${
-              pill.available ? styles.evidencePillAvailable : styles.evidencePillUnavailable
-            }`}
-          >
-            {pill.label} ({pill.count.toLocaleString()})
-          </span>
-        ))}
-      </div>
-      {notes.length > 0 && (
-        <ul className={styles.degradationNotes}>
-          {notes.map((note, i) => (
-            <li
-              key={`${note.rule}-${i}`}
-              className={`${styles.degradationNote} ${
-                note.severity === 'blocked' ? styles.degradationNoteBlocked : styles.degradationNoteHint
-              }`}
-            >
-              <strong>{note.rule}</strong>: {note.note}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-};
-
-/** Node-list evidence keys (§2.12/§2.13, WP5b) rendered as member chips via
- * `MemberList` rather than the generic pill grid. Some carry `EvidenceNodeRef`
- * objects (`members`, `otherCoveringRouters`); others carry plain nodeNums
- * (`sharedNeighbors`, `clusterMembers`) — `normalizeMemberList` handles both. */
-const NODE_LIST_EVIDENCE_KEYS: ReadonlySet<string> = new Set([
-  'members',
-  'sharedNeighbors',
-  'otherCoveringRouters',
-  'clusterMembers',
-]);
-
 interface SeverityGroupSectionProps {
   severity: MeshIssueSeverity;
   issues: MeshIssueRow[];
@@ -605,16 +493,6 @@ interface FindingCardProps {
   restorePending: boolean;
 }
 
-/** Evidence keys ending in this suffix hold an elapsed-milliseconds duration
- * (spec §5.3) and render through `formatDurationMs`. */
-const AGE_MS_KEY_PATTERN = /AgeMs$/;
-
-function formatFieldValue(key: string, value: unknown, sourceNames: Record<string, string>): string {
-  if (key === 'sources') return formatSourceIds(value, sourceNames);
-  if (AGE_MS_KEY_PATTERN.test(key) && typeof value === 'number') return formatDurationMs(value);
-  return formatEvidenceValue(value);
-}
-
 const FindingCard: React.FC<FindingCardProps> = ({
   issue,
   sourceNames,
@@ -628,21 +506,6 @@ const FindingCard: React.FC<FindingCardProps> = ({
   const title = ISSUE_TYPE_LABELS[issue.issueType] ?? issue.issueType;
   const blurb = ISSUE_TYPE_BLURBS[issue.issueType];
   const subtitle = issue.nodeName ?? issue.subjectKey;
-  const recommendation =
-    typeof issue.evidence.recommendation === 'string' ? issue.evidence.recommendation : null;
-
-  const entries = Object.entries(issue.evidence).filter(([key]) => key !== 'recommendation');
-  // `<field>Truncated`/`<field>Total` sibling flags are surfaced as the
-  // "+ more" note inside the matching structured component, never as a raw
-  // pill of their own.
-  const plainEntries = entries.filter(
-    ([key]) =>
-      !STRUCTURED_EVIDENCE_KEYS.has(key) && !key.endsWith('Truncated') && !key.endsWith('Total'),
-  );
-  const structuredEntries = entries.filter(([key]) => STRUCTURED_EVIDENCE_KEYS.has(key));
-
-  const showSnrDirections =
-    isEvidenceDirectionalSnr(issue.evidence.snrToA) && isEvidenceDirectionalSnr(issue.evidence.snrToB);
 
   return (
     <div className={`reports-node ${issue.dismissed ? styles.dismissedCard : ''}`}>
@@ -701,222 +564,9 @@ const FindingCard: React.FC<FindingCardProps> = ({
         )}
       </div>
 
-      <div className="reports-node__body">
-        {recommendation && (
-          <p className={styles.recommendation}>
-            <UiIcon name="sparkles" size={14} className={styles.recommendationIcon} />
-            {recommendation}
-          </p>
-        )}
-
-        {showSnrDirections && <SnrDirections issue={issue} />}
-
-        {issue.issueType === 'B1_router_cluster' && isEvidenceNodeRefArray(issue.evidence.members) && (
-          <RouterClusterMap
-            members={issue.evidence.members}
-            bestSitedNodeNum={
-              typeof issue.evidence.bestSitedNodeNum === 'number' ? issue.evidence.bestSitedNodeNum : null
-            }
-          />
-        )}
-
-        {structuredEntries.map(([key, value]) => {
-          // nodeA/nodeB/snrToA/snrToB/weakerDirection are consumed together
-          // by SnrDirections above, not rendered as their own pills/lists.
-          if (['nodeA', 'nodeB', 'snrToA', 'snrToB', 'weakerDirection'].includes(key)) return null;
-          const truncated = issue.evidence[`${key}Truncated`] === true;
-          const totalRaw = issue.evidence[`${key}Total`];
-          const total = typeof totalRaw === 'number' ? totalRaw : undefined;
-          if (key === 'edges') {
-            return (
-              <EdgeList key={key} label={formatEvidenceKey(key)} value={value} truncated={truncated} total={total} />
-            );
-          }
-          if (NODE_LIST_EVIDENCE_KEYS.has(key)) {
-            return (
-              <MemberList
-                key={key}
-                label={formatEvidenceKey(key)}
-                value={value}
-                truncated={truncated}
-                total={total}
-              />
-            );
-          }
-          return null;
-        })}
-
-        {plainEntries.length > 0 && (
-          <div className="reports-node__fields">
-            {plainEntries.map(([key, value]) => (
-              <Field key={key} label={formatEvidenceKey(key)} value={formatFieldValue(key, value, sourceNames)} />
-            ))}
-          </div>
-        )}
-      </div>
+      <FindingDetail issue={issue} sourceNames={sourceNames} />
     </div>
   );
 };
-
-/** `{ nodeNum: number }` items, either plain numbers (`sharedNeighbors`,
- * `clusterMembers`) normalized to a bare node ref, or full `EvidenceNodeRef`
- * objects. Returns null for anything else so the caller can fall back to the
- * generic pill instead of throwing on malformed evidence. */
-function normalizeMemberList(value: unknown): EvidenceNodeRef[] | null {
-  if (Array.isArray(value) && value.every((v) => typeof v === 'number')) {
-    return (value as number[]).map((nodeNum) => ({ nodeNum }));
-  }
-  if (isEvidenceNodeRefArray(value)) return value;
-  return null;
-}
-
-/** `+{total - items.length} more not shown` when a pre-cap `total` is known
- * (spec §4.2); falls back to the pre-Phase-3 wording for a row persisted
- * before the `*Total` field existed. */
-function truncationLabel(itemsShown: number, total: number | undefined): string {
-  if (total != null) {
-    const remainder = total - itemsShown;
-    return `+${remainder} more not shown`;
-  }
-  return '+ more not shown (list truncated)';
-}
-
-const MemberList: React.FC<{ label: string; value: unknown; truncated: boolean; total?: number }> = ({
-  label,
-  value,
-  truncated,
-  total,
-}) => {
-  const items = normalizeMemberList(value);
-  if (items === null) {
-    return <Field label={label} value={formatEvidenceValue(value)} />;
-  }
-  return (
-    <div>
-      <div className="reports-node__field-label">{label}</div>
-      <div className={styles.memberList}>
-        {items.length === 0 && <span className="reports-node__field-value">—</span>}
-        {items.map((item, i) => (
-          <span key={`${item.nodeNum}-${i}`} className={styles.memberChip}>
-            {item.name ?? hexNodeId(item.nodeNum)}
-            {item.roleName && <span className={styles.memberChipRole}>{item.roleName}</span>}
-          </span>
-        ))}
-      </div>
-      {truncated && <div className={styles.truncationNote}>{truncationLabel(items.length, total)}</div>}
-    </div>
-  );
-};
-
-interface EvidenceEdgeRef {
-  a: number;
-  b: number;
-  evidenceClasses?: unknown;
-}
-
-function isEvidenceEdgeRefArray(v: unknown): v is EvidenceEdgeRef[] {
-  return (
-    Array.isArray(v) &&
-    v.every((item) => {
-      if (item === null || typeof item !== 'object') return false;
-      const o = item as Record<string, unknown>;
-      return typeof o.a === 'number' && typeof o.b === 'number';
-    })
-  );
-}
-
-const EdgeList: React.FC<{ label: string; value: unknown; truncated: boolean; total?: number }> = ({
-  label,
-  value,
-  truncated,
-  total,
-}) => {
-  if (!isEvidenceEdgeRefArray(value)) {
-    return <Field label={label} value={formatEvidenceValue(value)} />;
-  }
-  return (
-    <div>
-      <div className="reports-node__field-label">{label}</div>
-      <div className={styles.memberList}>
-        {value.length === 0 && <span className="reports-node__field-value">—</span>}
-        {value.map((edge, i) => (
-          <span key={`${edge.a}-${edge.b}-${i}`} className={styles.memberChip}>
-            {hexNodeId(edge.a)} ↔ {hexNodeId(edge.b)}
-            {Array.isArray(edge.evidenceClasses) && edge.evidenceClasses.length > 0 && (
-              <span className={styles.memberChipRole}>{edge.evidenceClasses.join(', ')}</span>
-            )}
-          </span>
-        ))}
-      </div>
-      {truncated && <div className={styles.truncationNote}>{truncationLabel(value.length, total)}</div>}
-    </div>
-  );
-};
-
-/** Reads `nodeA`/`nodeB`/`snrToA`/`snrToB`/`weakerDirection` off the issue's
- * evidence directly (rather than taking them as props) since the first four
- * must agree to render at all — see the `showSnrDirections` guard in
- * `FindingCard`. `weakerDirection` is optional; when absent or malformed the
- * table renders exactly as before (spec §5.5).
- *
- * DIRECTION CONVENTION (rfGraph.ts §2.5, load-bearing): `snrToA` is SNR
- * measured AT `a` (i.e. the b -> a direction); `snrToB` is measured AT `b`
- * (i.e. a -> b). So the "A -> B" row displays `snrToB` and the "B -> A" row
- * displays `snrToA`. */
-const SnrDirections: React.FC<{ issue: MeshIssueRow }> = ({ issue }) => {
-  const { t } = useTranslation();
-  const nodeA = asNodeRef(issue.evidence.nodeA);
-  const nodeB = asNodeRef(issue.evidence.nodeB);
-  const snrToA = issue.evidence.snrToA as EvidenceDirectionalSnr;
-  const snrToB = issue.evidence.snrToB as EvidenceDirectionalSnr;
-  const nameA = nodeA ? (nodeA.name ?? hexNodeId(nodeA.nodeNum)) : '?';
-  const nameB = nodeB ? (nodeB.name ?? hexNodeId(nodeB.nodeNum)) : '?';
-  const weakerDirection = issue.evidence.weakerDirection;
-  const weakerTag = () => (
-    <span className={styles.weakerTag}> {t('analysis.mesh_issues.weaker', '(weaker)')}</span>
-  );
-
-  return (
-    <div>
-      <div className="reports-node__field-label">SNR by direction</div>
-      <table className={styles.snrTable}>
-        <tbody>
-          <tr className={styles.snrRow}>
-            {/* ASCII "->", not the unicode arrow glyph — no-hardcoded-ui-glyph
-             * flags a leading unicode arrow, and the codebase's own directional
-             * convention (RfEdge.weakerDirection: 'a->b' | 'b->a') already uses
-             * ASCII here. */}
-            <td className={styles.snrLabel}>
-              {`${nameA} -> ${nameB}`}
-              {weakerDirection === 'a->b' && weakerTag()}
-            </td>
-            <td className={styles.snrValue}>{formatSnrDirection(snrToB)}</td>
-          </tr>
-          <tr className={styles.snrRow}>
-            <td className={styles.snrLabel}>
-              {`${nameB} -> ${nameA}`}
-              {weakerDirection === 'b->a' && weakerTag()}
-            </td>
-            <td className={styles.snrValue}>{formatSnrDirection(snrToA)}</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  );
-};
-
-function asNodeRef(v: unknown): EvidenceNodeRef | null {
-  if (v !== null && typeof v === 'object' && typeof (v as Record<string, unknown>).nodeNum === 'number') {
-    return v as EvidenceNodeRef;
-  }
-  return null;
-}
-
-const Field: React.FC<{ label: string; value: string }> = ({ label, value }) => (
-  <div>
-    <div className="reports-node__field-label">{label}</div>
-    <div className="reports-node__field-value">{value}</div>
-  </div>
-);
 
 export default MeshIssuesReport;
