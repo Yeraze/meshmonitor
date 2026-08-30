@@ -26,6 +26,11 @@ vi.mock('../../contexts/SourceContext', () => ({
   useSource: () => ({ sourceId: 'test-source', sourceName: 'Test' }),
 }));
 
+vi.mock('../../services/api', () => ({
+  default: { get: vi.fn().mockRejectedValue(new Error('no stub configured')) },
+}));
+import api from '../../services/api';
+
 const PK = 'a'.repeat(64);
 
 describe('MeshCoreContactDetailPanel', () => {
@@ -571,6 +576,37 @@ describe('MeshCoreContactDetailPanel', () => {
         .map((m) => m[1]);
       expect(unguarded, `unguarded handlers: ${unguarded.join(', ')}`).toEqual([]);
     });
+  });
+
+  /**
+   * #4978 — the auto-loaded neighbours table always showed "0s ago" because
+   * `loadStoredNeighbors` hardcoded `heardSecondsAgo: 0` instead of aging the
+   * stored `lastHeardSecs` (the repeater-reported age as of the poll) by the
+   * time elapsed since that poll (`timestamp`).
+   */
+  it('ages stored neighbour data by time elapsed since the poll instead of showing "0s ago"', async () => {
+    const now = Date.now();
+    vi.mocked(api.get).mockResolvedValue({
+      success: true,
+      data: {
+        items: [
+          {
+            neighborPublicKey: 'ff'.repeat(32),
+            neighborName: 'Neighbor One',
+            snr: 4,
+            lastHeardSecs: 30,
+            timestamp: now - 90_000, // polled 90s ago
+          },
+        ],
+      },
+    });
+
+    const contact: MeshCoreContact = { publicKey: PK, advType: 2 };
+    render(<MeshCoreContactDetailPanel contact={contact} publicKey={PK} />);
+
+    // 30s (age at poll time) + 90s (elapsed since poll) = 120s -> "2m ago".
+    await waitFor(() => expect(screen.getByText('2m ago')).toBeInTheDocument());
+    expect(screen.queryByText('0s ago')).toBeNull();
   });
 
 });

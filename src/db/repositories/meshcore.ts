@@ -1404,7 +1404,7 @@ export class MeshCoreRepository extends BaseRepository {
   async getNeighbors(
     sourceIds: string[],
     sinceMs: number = 0,
-  ): Promise<Array<{ id: number; sourceId: string; publicKey: string; neighborPublicKey: string; snr: number | null; timestamp: number; nodeName: string | null; neighborName: string | null }>> {
+  ): Promise<Array<{ id: number; sourceId: string; publicKey: string; neighborPublicKey: string; snr: number | null; lastHeardSecs: number | null; timestamp: number; nodeName: string | null; neighborName: string | null }>> {
     const { meshcoreNeighbors, meshcoreNodes } = this.tables;
     if (sourceIds.length === 0) return [];
 
@@ -1422,6 +1422,7 @@ export class MeshCoreRepository extends BaseRepository {
         publicKey: meshcoreNeighbors.publicKey,
         neighborPublicKey: meshcoreNeighbors.neighborPublicKey,
         snr: meshcoreNeighbors.snr,
+        lastHeardSecs: meshcoreNeighbors.lastHeardSecs,
         timestamp: meshcoreNeighbors.timestamp,
       })
       .from(meshcoreNeighbors)
