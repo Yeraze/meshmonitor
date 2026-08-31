@@ -190,6 +190,13 @@ docker compose logs mqtt-proxy -f
 - If your mesh is quiet, the proxy sends periodic probes
 - Check `HEALTH_CHECK_ACTIVITY_TIMEOUT` setting
 
+#### TLS ignored, proxy connects on port 1883 instead of 8883
+- Known issue in mqtt-proxy v1.6.6: the proxy reads the node's TLS flag as `tlsEnabled`, but the Meshtastic MQTT module config field is `tls_enabled`
+- Since the attribute is never found, TLS is treated as disabled and the proxy falls back to port 1883 even when your broker requires TLS on 8883
+- This is a bug in the upstream proxy, not in MeshMonitor — MeshMonitor forwards the node's MQTT config to the proxy unchanged, and there is no MeshMonitor-side setting that works around it
+- Track/report this upstream: [LN4CY/mqtt-proxy issues](https://github.com/LN4CY/mqtt-proxy/issues)
+- If your broker requires TLS, consider the [Embedded MQTT Broker](/features/mqtt-broker) source type instead until the sidecar is fixed
+
 ### Health Status
 
 The proxy writes a health file at `/tmp/healthy` that Docker uses for health checks. The container will restart automatically if the health check fails.
@@ -210,7 +217,7 @@ The proxy writes a health file at `/tmp/healthy` that Docker uses for health che
 
 - The MQTT Proxy runs inside your Docker network
 - It inherits your node's MQTT credentials (stored on the node)
-- TLS/SSL for MQTT is configured on the node, not the proxy
+- TLS/SSL for MQTT is configured on the node, not the proxy (note: TLS support in the proxy sidecar has a known issue — see [Common Issues](#common-issues))
 - The proxy only forwards messages; it doesn't store or modify them
 
 ## Related Documentation
