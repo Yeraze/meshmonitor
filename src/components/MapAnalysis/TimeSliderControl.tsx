@@ -1,13 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMapAnalysisCtx } from './MapAnalysisContext';
 import { UiIcon } from '../icons';
 
-/**
- * Floating time-window slider that overlays the map. When enabled, drives the
- * `timeSlider.windowStartMs` / `windowEndMs` in MapAnalysisContext so timed
- * layers can filter their already-loaded data client-side. Hidden when
- * `timeSlider.enabled` is false.
- */
+const LIVE_THRESHOLD_MS = 60_000;
+const LIVE_TICK_MS = 10_000;
+
 export default function TimeSliderControl() {
   const { config, setTimeSlider } = useMapAnalysisCtx();
   const [start, setStart] = useState<number>(
@@ -16,10 +13,18 @@ export default function TimeSliderControl() {
   const [end, setEnd] = useState<number>(
     config.timeSlider.windowEndMs ?? Date.now(),
   );
+  const liveRef = useRef(true);
+
+  useEffect(() => {
+    if (!liveRef.current) return;
+    const id = setInterval(() => {
+      setEnd(Date.now());
+    }, LIVE_TICK_MS);
+    return () => clearInterval(id);
+  }, [liveRef.current]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setTimeSlider({ windowStartMs: start, windowEndMs: end });
-    // intentionally not depending on setTimeSlider — referential stability via useCallback
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [start, end]);
 
@@ -32,6 +37,7 @@ export default function TimeSliderControl() {
     <div className="map-analysis-time-slider" data-testid="time-slider">
       <div className="map-analysis-time-slider-label">
         Window: {new Date(start).toLocaleString()} <UiIcon name="forward" size={14} /> {new Date(end).toLocaleString()}
+        {liveRef.current && <span style={{ marginLeft: 8, fontSize: 11, opacity: 0.7 }}>(live)</span>}
       </div>
       <input
         aria-label="Window start"
@@ -47,7 +53,11 @@ export default function TimeSliderControl() {
         min={min}
         max={max}
         value={end}
-        onChange={(e) => setEnd(Math.max(start, Number(e.target.value)))}
+        onChange={(e) => {
+          const v = Math.max(start, Number(e.target.value));
+          setEnd(v);
+          liveRef.current = (max - v) < LIVE_THRESHOLD_MS;
+        }}
       />
     </div>
   );

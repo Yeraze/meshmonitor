@@ -8,9 +8,10 @@ import { MapAnalysisProvider } from '../MapAnalysisContext';
 import PositionTrailsLayer from './PositionTrailsLayer';
 
 vi.mock('react-leaflet', () => ({
-  Polyline: (p: { pathOptions?: { opacity?: number } }) => (
-    <div data-testid="poly" data-opacity={p.pathOptions?.opacity} />
+  Polyline: (p: { pathOptions?: { opacity?: number; color?: string } }) => (
+    <div data-testid="poly" data-opacity={p.pathOptions?.opacity} data-color={p.pathOptions?.color} />
   ),
+  CircleMarker: () => <div data-testid="dot" />,
 }));
 vi.mock('../../../hooks/useMapAnalysisData', () => ({
   usePositions: () => ({
@@ -31,7 +32,7 @@ vi.mock('../../../hooks/useDashboardData', () => ({
 describe('PositionTrailsLayer', () => {
   beforeEach(() => localStorage.clear());
 
-  it('renders one polyline per node with 2+ position fixes', () => {
+  it('renders outline + colored polyline per node with 2+ position fixes', () => {
     const qc = new QueryClient();
     render(
       <QueryClientProvider client={qc}>
@@ -40,14 +41,26 @@ describe('PositionTrailsLayer', () => {
         </MapAnalysisProvider>
       </QueryClientProvider>,
     );
-    expect(screen.getAllByTestId('poly')).toHaveLength(2);
+    const polys = screen.getAllByTestId('poly');
+    expect(polys).toHaveLength(4);
+    const outlines = polys.filter((p) => p.getAttribute('data-color') === 'rgba(0,0,0,0.4)');
+    expect(outlines).toHaveLength(2);
+  });
+
+  it('renders position dots at each fix point', () => {
+    const qc = new QueryClient();
+    render(
+      <QueryClientProvider client={qc}>
+        <MapAnalysisProvider>
+          <PositionTrailsLayer />
+        </MapAnalysisProvider>
+      </QueryClientProvider>,
+    );
+    const dots = screen.getAllByTestId('dot');
+    expect(dots).toHaveLength(4);
   });
 
   it('excludes points outside the time slider window when slider is enabled', () => {
-    // Window [2, 3] keeps only timestamps == 2. The mock has 4 points with
-    // timestamps [1, 2, 1, 2] — after filter, each node has exactly 1 fix
-    // (timestamp 2), which is below the 2-fix minimum for a trail. Result:
-    // zero polylines.
     localStorage.setItem(
       'mapAnalysis.config.v1',
       JSON.stringify({
@@ -75,6 +88,7 @@ describe('PositionTrailsLayer', () => {
       </QueryClientProvider>,
     );
     expect(screen.queryAllByTestId('poly')).toHaveLength(0);
+    expect(screen.queryAllByTestId('dot')).toHaveLength(0);
   });
 
   it('dims trails for nodes not in selectedNodeIds', () => {
@@ -106,9 +120,11 @@ describe('PositionTrailsLayer', () => {
       </QueryClientProvider>,
     );
     const polys = screen.getAllByTestId('poly');
-    expect(polys).toHaveLength(2);
-    const opacities = polys.map((p) => p.getAttribute('data-opacity'));
-    expect(opacities).toContain('0.7');
-    expect(opacities).toContain(String(0.7 * 0.3));
+    expect(polys).toHaveLength(4);
+    const coloredPolys = polys.filter((p) => p.getAttribute('data-color') !== 'rgba(0,0,0,0.4)');
+    expect(coloredPolys).toHaveLength(2);
+    const opacities = coloredPolys.map((p) => Number(p.getAttribute('data-opacity')));
+    expect(opacities).toContain(0.7);
+    expect(opacities).toContain(0.7 * 0.3);
   });
 });
