@@ -1,0 +1,26 @@
+/* Promoted verbatim from MqttViolationsReport.module.css (#4964 report
+ * reorganization, WP3, spec §3.1). Scoped to this component only — CSS
+ * containment (CLAUDE.md) — MqttViolationsReport keeps its own local copy of
+ * these rules untouched. */
+
+.sortHeader {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  color: var(--color-text-subtle);
+}
+
+.sortHeaderActive {
+  color: var(--color-text);
+}
+
+.sortIcon {
+  flex-shrink: 0;
+}

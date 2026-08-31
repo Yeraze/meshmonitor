@@ -14,6 +14,7 @@
  * acceptance gate.
  */
 import { DeviceRole } from '../../../constants/index.js';
+import { MESH_ISSUE_RULE_IDS, MESH_ISSUE_TYPES } from './types.js';
 
 /** Mean airUtilTx above which a node is "chatty", percent. [official] */
 export const AIR_UTIL_TX_PCT_THRESHOLD = 8;
@@ -216,6 +217,15 @@ export interface ResolvedMeshIssueThresholds {
   tierAEnabled: boolean;
   tierBEnabled: boolean;
   tierCEnabled: boolean;
+  /**
+   * @deprecated legacy; folded into `disabledRules` (report reorg #4964 WP2,
+   * spec §5.2/§4.5). Kept on the wire so existing consumers/tests do not
+   * break. `resolveThresholds` still honors `mesh_issues_b7_enabled ===
+   * 'false'` by OR-ing `B7_coverage_shadow` into `disabledRules` — writing
+   * the CSV key alone does not un-mute B7 while this legacy key says
+   * 'false'. Use `buildRuleMuteSettingsPatch` (frontend
+   * `meshIssueRuleIds.ts`) to keep both in step.
+   */
   b7Enabled: boolean;
   /** percent, [official] */ airUtilTxPct: number;
   /** percent, [official] */ channelUtilPct: number;
@@ -224,6 +234,11 @@ export interface ResolvedMeshIssueThresholds {
   /** seconds, [ours] */ overBroadcastSeconds: number;
   /** count, [ours] */ autoCloseCleanRuns: number;
   /** km, [ours] */ routerClusterMaxLinkKm: number;
+  /** Resolved, validated, sorted `MESH_ISSUE_RULE_IDS` subset (report reorg
+   *  #4964 WP2, spec §4.5/§5.2). Unknown ids from the raw CSV are dropped.
+   *  Includes `B7_coverage_shadow` when the legacy `mesh_issues_b7_enabled`
+   *  key is `'false'`, even if the CSV itself doesn't name it. */
+  disabledRules: string[];
 }
 
 export const DEFAULT_MESH_ISSUE_THRESHOLDS: ResolvedMeshIssueThresholds = {
@@ -238,6 +253,7 @@ export const DEFAULT_MESH_ISSUE_THRESHOLDS: ResolvedMeshIssueThresholds = {
   overBroadcastSeconds: OVER_BROADCAST_INTERVAL_SECONDS,
   autoCloseCleanRuns: AUTO_CLOSE_CLEAN_RUNS,
   routerClusterMaxLinkKm: ROUTER_CLUSTER_MAX_LINK_KM,
+  disabledRules: [],
 };
 
 /**
@@ -258,6 +274,7 @@ export const MESH_ISSUE_THRESHOLD_SETTINGS_KEYS = [
   'mesh_issues_over_broadcast_seconds',
   'mesh_issues_auto_close_runs',
   'mesh_issues_router_cluster_max_link_km',
+  'mesh_issues_disabled_rules',
 ] as const;
 
 /** Accepts both a raw settings string and a plain number (tests call this
@@ -291,6 +308,25 @@ function resolveBooleanDefaultOn(raw: Record<string, unknown>, key: string): boo
 }
 
 /**
+ * Clamp-never-reject (same doctrine as `resolveClampedNumber`): splits the
+ * raw `mesh_issues_disabled_rules` CSV on commas, trims, drops empties and
+ * ids not in `MESH_ISSUE_RULE_IDS`, dedupes, sorts. A non-string value or an
+ * all-unknown list resolves to `[]` — a garbage setting mutes nothing rather
+ * than breaking the run (report reorg #4964 WP2, spec §5.2).
+ */
+function resolveDisabledRules(raw: Record<string, unknown>): string[] {
+  const value = raw['mesh_issues_disabled_rules'];
+  if (typeof value !== 'string' || value.trim() === '') return [];
+  const known = new Set<string>(MESH_ISSUE_RULE_IDS);
+  const ids = new Set<string>();
+  for (const token of value.split(',')) {
+    const trimmed = token.trim();
+    if (trimmed !== '' && known.has(trimmed)) ids.add(trimmed);
+  }
+  return Array.from(ids).sort();
+}
+
+/**
  * Pure. `raw` is a settings key -> raw value map (string | number | null),
  * keyed by `MESH_ISSUE_THRESHOLD_SETTINGS_KEYS`. Unparseable or missing falls
  * back to the default; a finite out-of-range value clamps to the nearer bound
@@ -300,11 +336,27 @@ function resolveBooleanDefaultOn(raw: Record<string, unknown>, key: string): boo
  * result cannot corrupt the default.
  */
 export function resolveThresholds(raw: Record<string, unknown>): ResolvedMeshIssueThresholds {
+  const b7Enabled = resolveBooleanDefaultOn(raw, 'mesh_issues_b7_enabled');
+
+  // Legacy fold-in (spec §5.2 TRAP): mesh_issues_b7_enabled === 'false' OR-ed
+  // into the canonical mute set for installs that set it before the CSV key
+  // existed. buildRuleMuteSettingsPatch (frontend meshIssueRuleIds.ts) always
+  // writes both keys together so a mute-list edit cannot silently re-mute or
+  // fail to un-mute B7 via this fold-in.
+  const disabledRules = resolveDisabledRules(raw);
+  if (!b7Enabled) {
+    const withB7 = new Set(disabledRules);
+    withB7.add(MESH_ISSUE_TYPES.B7_COVERAGE_SHADOW);
+    disabledRules.length = 0;
+    disabledRules.push(...Array.from(withB7).sort());
+  }
+
   return {
     tierAEnabled: resolveBooleanDefaultOn(raw, 'mesh_issues_tier_a_enabled'),
     tierBEnabled: resolveBooleanDefaultOn(raw, 'mesh_issues_tier_b_enabled'),
     tierCEnabled: resolveBooleanDefaultOn(raw, 'mesh_issues_tier_c_enabled'),
-    b7Enabled: resolveBooleanDefaultOn(raw, 'mesh_issues_b7_enabled'),
+    b7Enabled,
+    disabledRules,
     airUtilTxPct: resolveClampedNumber(
       raw,
       'mesh_issues_air_util_tx_pct',

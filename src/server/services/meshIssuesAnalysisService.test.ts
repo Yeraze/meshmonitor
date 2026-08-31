@@ -594,6 +594,104 @@ describe('meshIssuesAnalysisService.runAnalysis', () => {
     });
   });
 
+  describe('rule mute (mesh_issues_disabled_rules, report reorg #4964 WP2, spec §5.2/§9.8)', () => {
+    beforeEach(() => {
+      mockDb.sources.getAllSources.mockResolvedValue([makeSource()]);
+      mockDb.nodes.getAllNodes.mockResolvedValue([makeNodeRow()]);
+    });
+
+    it('a muted type produces zero findings of that type while another type is unaffected', async () => {
+      mockDb.settings.getSetting.mockImplementation(async (key: string) =>
+        key === 'mesh_issues_disabled_rules' ? 'A1_deprecated_role' : null,
+      );
+      mockRules.evaluateAllTierA.mockReturnValue([
+        makeFinding({ issueType: 'A1_deprecated_role', subjectKey: 'node:100' }),
+        makeFinding({ issueType: 'A2a_chatty_node', subjectKey: 'node:200', nodeNum: 200 }),
+      ]);
+
+      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(result.findingCount).toBe(1);
+      expect(result.byType).toEqual({ A2a_chatty_node: 1 });
+      expect(mockDb.upsertMeshIssueFindingAsync).toHaveBeenCalledTimes(1);
+      expect(mockDb.upsertMeshIssueFindingAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ issueType: 'A2a_chatty_node' }),
+        NOW,
+      );
+    });
+
+    it("muting A2b_congested_area leaves A2b_congested_node firing (the rule-function isn't 1:1 with issueType)", async () => {
+      mockDb.settings.getSetting.mockImplementation(async (key: string) =>
+        key === 'mesh_issues_disabled_rules' ? 'A2b_congested_area' : null,
+      );
+      mockRules.evaluateAllTierA.mockReturnValue([
+        makeFinding({ issueType: 'A2b_congested_area', subjectKey: 'area:1:2', nodeNum: null }),
+        makeFinding({ issueType: 'A2b_congested_node', subjectKey: 'node:100' }),
+      ]);
+
+      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(result.byType).toEqual({ A2b_congested_node: 1 });
+    });
+
+    it('a muted rule is listed in coverage.skippedRules with reason "muted in settings"', async () => {
+      mockDb.settings.getSetting.mockImplementation(async (key: string) =>
+        key === 'mesh_issues_disabled_rules' ? 'B7_coverage_shadow,C1_time_offset' : null,
+      );
+
+      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(result.coverage.skippedRules).toContainEqual({ rule: 'B7', reason: 'muted in settings' });
+      expect(result.coverage.skippedRules).toContainEqual({ rule: 'C1', reason: 'muted in settings' });
+    });
+
+    it("a muted type's existing open row is not deleted — it accumulates cleanRuns and closes after autoCloseCleanRuns, exactly like a disabled tier", async () => {
+      mockDb.settings.getSetting.mockImplementation(async (key: string) =>
+        key === 'mesh_issues_disabled_rules' ? 'A1_deprecated_role' : null,
+      );
+      mockRules.evaluateAllTierA.mockReturnValue([
+        makeFinding({ issueType: 'A1_deprecated_role', subjectKey: 'node:100' }),
+      ]);
+      mockDb.getMeshIssuesAsync.mockResolvedValue([
+        { id: 42, issueType: 'A1_deprecated_role', subjectKey: 'node:100' },
+      ]);
+
+      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      // The muted finding was never re-detected this run, so persistFindings'
+      // clean-run bookkeeping treats row 42 as absent and bumps it — no
+      // upsert (no re-detection), no deletion.
+      expect(mockDb.upsertMeshIssueFindingAsync).not.toHaveBeenCalled();
+      expect(mockDb.bumpMeshIssueCleanRunAsync).toHaveBeenCalledWith(42, expect.any(Number), NOW);
+      expect(result.findingCount).toBe(0);
+    });
+
+    it('newByType / reopenedByType sum to newCount / reopenedCount for the same run', async () => {
+      mockDb.settings.getSetting.mockResolvedValue(null);
+      const findings = [
+        makeFinding({ issueType: 'A1_deprecated_role', subjectKey: 'node:100' }),
+        makeFinding({ issueType: 'A1_deprecated_role', subjectKey: 'node:200', nodeNum: 200 }),
+        makeFinding({ issueType: 'A2a_chatty_node', subjectKey: 'node:300', nodeNum: 300 }),
+      ];
+      mockRules.evaluateAllTierA.mockReturnValue(findings);
+      mockDb.upsertMeshIssueFindingAsync.mockImplementation(async (finding: any) => ({
+        issue: {},
+        outcome: finding.subjectKey === 'node:300' ? 'reopened' : 'created',
+      }));
+
+      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(result.newCount).toBe(2);
+      expect(result.reopenedCount).toBe(1);
+      expect(result.newByType).toEqual({ A1_deprecated_role: 2 });
+      expect(result.reopenedByType).toEqual({ A2a_chatty_node: 1 });
+      const newByTypeSum = Object.values(result.newByType ?? {}).reduce((a, b) => a + b, 0);
+      const reopenedByTypeSum = Object.values(result.reopenedByType ?? {}).reduce((a, b) => a + b, 0);
+      expect(newByTypeSum).toBe(result.newCount);
+      expect(reopenedByTypeSum).toBe(result.reopenedCount);
+    });
+  });
+
   describe('hop-horizon preference (spec §3.3, D8)', () => {
     beforeEach(() => {
       mockDb.sources.getAllSources.mockResolvedValue([makeSource(), makeSource({ id: 'src-b', type: 'mqtt_broker' })]);

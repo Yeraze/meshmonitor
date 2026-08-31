@@ -140,6 +140,33 @@ settings](#settings); the rest stay fixed in code, listed here for reference:
 | Auto-close clean-run count | 3 | all rules |
 | Evidence list cap | 25 entries | all list-shaped evidence |
 
+## Reading the report
+
+The report opens with **summary tiles** — one per issue type present, showing
+the count, worst severity, and how many findings are new or reopened since the
+last run. Click a tile to filter to that type. A filter bar (severity, tier,
+type, source, node-name search) and a "Show dismissed" toggle apply to
+everything below.
+
+Two views share those filters:
+
+- **By issue** — one collapsible section per issue type, each a compact,
+  sortable table with columns chosen for that rule (SNR per direction for
+  asymmetric links, resets and battery floor for power findings, and so on).
+  Sections stay collapsed until you expand them — nothing loads until you ask —
+  except a section holding a critical finding, which opens itself. Click a row
+  for the full evidence.
+- **By node** — findings grouped by node, worst first, with one badge per
+  issue type. A node with four findings is one row here; this is the view to
+  work from when deciding which node to fix. Findings not tied to a single
+  node (clusters, links, congested areas) sit in a pinned "Mesh-wide" group
+  at the top.
+
+Each type section and node row carries a **bulk-actions menu**: dismiss or
+restore everything in that group at once, or mute the rule outright (see
+[Muting a rule](#muting-a-rule)). Bulk actions only ever touch findings your
+account can see.
+
 ## Acting on findings
 
 The recommendations in this report never suggest ROUTER, and never say
@@ -213,6 +240,30 @@ same honest way. If you set the analysis frequency much faster than 24 hours,
 the auto-close window shrinks along with it (a 1-hour cadence auto-closes in
 about 3 hours); much slower, and it lengthens correspondingly.
 
+## Muting a rule
+
+Each rule (all 18 issue types, one row per rule, grouped by tier) has its own
+mute checkbox under **Global Settings → Mesh Issues Analysis → Individual
+rules**, alongside the coarser Tier A/B/C toggles. Uncheck one to stop
+detecting it without touching anything else.
+
+Muting is not deleting. A muted rule contributes no new findings starting
+with the next run, but it **does not delete or hide** the findings it already
+raised — the report still lists them, with everything (dismiss, restore,
+evidence) working normally. They stop being re-detected, accumulate clean
+runs the same way a finding does when its underlying condition genuinely goes
+away, and **auto-close after the "Auto-close after" run count** (default 3 —
+see [Dismissing and auto-close](#dismissing-and-auto-close) above). There is
+no separate "close muted findings now" action: the honest signal that a
+mute took effect is the same clean-run counter every other rule already uses.
+
+Saving the mute list only writes settings — like every other control on this
+page, it never triggers a run and never resets the schedule's last-run timer.
+
+If you decide a rule was worth keeping after all, re-check it. The next run
+picks it back up immediately; nothing needs to be restored, since findings
+that hadn't yet auto-closed were never touched.
+
 ## Settings
 
 Open **Global Settings** (the gear icon in the dashboard sidebar) → **Mesh
@@ -234,7 +285,7 @@ Issues Analysis**. The controls are global and require `settings:write`.
 | Tier A | on | Node health rules (A1–A5). |
 | Tier B | on | RF adjacency graph rules (B1–B7). |
 | Tier C | on | Node-flag rules (C1, C2). |
-| Coverage shadow (B7) | on | Separate toggle inside Tier B — this is the one rule observed firing at pathological volume (500+ findings) on a busy mesh, so it can be turned off without disabling the rest of Tier B. |
+| Individual rules | all on | Below the tier toggles, one checkbox per rule (grouped by tier) mutes just that rule — see [Muting a rule](#muting-a-rule). Coverage shadow (B7) lives here now; it's the one rule observed firing at pathological volume (500+ findings) on a busy mesh. |
 
 **Thresholds**
 

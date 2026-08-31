@@ -1,0 +1,49 @@
+/* IssueTable styling (#4964 report reorganization, WP4). CSS module — do not
+ * add these rules to the global sheets (CLAUDE.md CSS containment).
+ * `.reports-table`/`.reports-table-wrap` (src/styles/analysis-reports.css)
+ * supply the base table chrome; this module only adds what's specific to the
+ * expandable-row idiom (`MqttViolationsReport.module.css` precedent) and
+ * numeric-column alignment. `var(--color-*)` tokens only, no fallback. */
+
+.expandHeader {
+  width: 32px;
+}
+
+.expandButton {
+  width: 32px;
+}
+
+.expandButtonControl {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  color: var(--color-text-subtle);
+}
+
+.numericCell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.actionsCell {
+  display: flex;
+  gap: 4px;
+}
+
+/* Mandatory: without this, the nested `.reports-node__body` inside the
+ * detail row can never scroll/wrap — the inherited `.reports-table td
+ * { white-space: nowrap }` forces the cell wide (MqttViolationsReport
+ * Phase 2 overflow lesson). */
+.detailCell {
+  padding: 0;
+  white-space: normal;
+}
+
+.detailInner {
+  padding: 0.75rem 1rem;
+  background: var(--color-bg-raised);
+}

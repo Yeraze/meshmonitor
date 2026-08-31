@@ -1,0 +1,110 @@
+/* NodeGroupSection styling (#4964 report reorganization, WP5). CSS module —
+ * do not add these rules to the global sheets (CLAUDE.md CSS containment).
+ * The card shell itself reuses the global `.reports-node`/`.reports-node
+ * (analysis-reports.css)` family for visual parity with the rest of the
+ * reports surface; this module only covers the header row layout (which
+ * needs a toggle button PLUS a sibling `BulkActionMenu`, so it cannot reuse
+ * the frozen `.reports-node__header` button-shaped class) and the compact
+ * finding-row list. `var(--color-*)` tokens only, no fallback, so themes
+ * apply (map sidebar lesson). */
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 18px;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.meshWideTag {
+  font-size: 11px;
+  font-style: italic;
+  color: var(--color-text-subtle);
+}
+
+.meta {
+  font-size: 12px;
+  color: var(--color-text-subtle);
+}
+
+.typeBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.typeBadge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text-subtle);
+}
+
+.body {
+  padding: 0 18px 18px;
+  border-top: 1px solid var(--color-surface);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.findingRow {
+  border: 1px solid var(--color-surface);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-top: 12px;
+}
+
+.findingRowHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  flex-wrap: wrap;
+  background: var(--color-bg-raised);
+}
+
+.findingRowTitle {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.findingRowMeta {
+  font-size: 12px;
+  color: var(--color-text-subtle);
+}
+
+.findingRowActions {
+  margin-left: auto;
+  display: inline-flex;
+}
+
+.findingRowBody {
+  padding: 10px 12px;
+  background: var(--color-bg);
+}

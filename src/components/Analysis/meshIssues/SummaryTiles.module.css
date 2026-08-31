@@ -1,0 +1,81 @@
+/* SummaryTiles styling (#4964 report reorganization, WP4). CSS module — do
+ * not add these rules to the global sheets (CLAUDE.md CSS containment).
+ * `var(--color-*)` tokens only, no fallback value, so themes apply. */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px;
+  margin-bottom: 0.75rem;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--color-bg-raised);
+  border: 1px solid var(--color-surface);
+  border-left: 3px solid var(--color-text-subtle);
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.tile[aria-pressed='true'] {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -1px;
+}
+
+.tile--critical {
+  border-left-color: var(--color-error);
+}
+
+.tile--warning {
+  border-left-color: var(--color-warning);
+}
+
+.tile--info {
+  border-left-color: var(--color-text-subtle);
+}
+
+.tileHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-subtle);
+}
+
+.tileTotal {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.tileBreakdown {
+  font-size: 11px;
+  color: var(--color-text-subtle);
+}
+
+.tileChips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.tileChip {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  color: var(--color-accent);
+}
