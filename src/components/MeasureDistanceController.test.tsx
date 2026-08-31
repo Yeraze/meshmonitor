@@ -50,6 +50,12 @@ function clickAt(x: number, y: number, target: EventTarget = container) {
   });
 }
 
+function pointerAt(type: 'pointerdown' | 'pointermove', x: number, y: number) {
+  act(() => {
+    container.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: x, clientY: y }));
+  });
+}
+
 describe('MeasureDistanceController', () => {
   beforeEach(() => {
     container.style.cursor = '';
@@ -106,6 +112,28 @@ describe('MeasureDistanceController', () => {
     container.appendChild(zoom);
     clickAt(110, 100, zoom);
     expect(screen.queryByTestId('measure-ring')).toBeNull();
+  });
+
+  it('does not select a node when a click follows a map drag', () => {
+    render(<MeasureDistanceController active points={POINTS} />);
+    pointerAt('pointerdown', 110, 100);
+    pointerAt('pointermove', 130, 100);
+    clickAt(130, 100);
+
+    expect(screen.queryByTestId('measure-ring')).toBeNull();
+
+    // Suppression applies only to the drag-generated click.
+    clickAt(110, 100);
+    expect(screen.getAllByTestId('measure-ring')).toHaveLength(1);
+  });
+
+  it('still selects a node after pointer jitter below the drag threshold', () => {
+    render(<MeasureDistanceController active points={POINTS} />);
+    pointerAt('pointerdown', 110, 100);
+    pointerAt('pointermove', 111, 101);
+    clickAt(111, 101);
+
+    expect(screen.getAllByTestId('measure-ring')).toHaveLength(1);
   });
 
   it('honors the miles preference', () => {
