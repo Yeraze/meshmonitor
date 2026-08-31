@@ -208,6 +208,15 @@ deliberate attempt to bypass a node's opt-out. Treat a violation as a configurat
 flagging to the gateway operator, not as evidence of hostile intent.
 :::
 
+The other side of that same private-broker check also produces **false positives**, not just
+missed detections: when the gateway's broker genuinely *is* private, firmware skips the drop
+entirely and relays every packet regardless of the `ok_to_mqtt` bit — by design, not a bug. Every
+row MeshMonitor records still looks the same at capture time (a relayed opt-out), so the
+**ok_to_mqtt Violations** report annotates each one with what can be determined about the
+*observing source's* own configured broker (private / public / unverified) so an expected
+private-broker relay isn't mistaken for a confirmed violation. See [Private-broker false
+positives](/features/analysis-reports#private-broker-false-positives) for details.
+
 #### Settings
 
 Violation detection is controlled by three settings, all with working defaults out of the box —

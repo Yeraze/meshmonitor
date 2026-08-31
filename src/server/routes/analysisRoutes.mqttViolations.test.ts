@@ -651,3 +651,201 @@ describe('analysisRoutes — GET /mqtt-violations/packets — pagination beyond 
     expect(res.body.data.scanCap).toBe(2000);
   });
 });
+
+// ── #4982: broker-class annotation ──────────────────────────────────────────
+//
+// Private-broker gateways upload ok_to_mqtt=0 packets BY DESIGN (firmware
+// only gates the drop on public brokers) — these tests prove the response
+// annotates each row/gateway with the observing source's brokerClass instead
+// of reporting every relay identically as a "violation". Three extra MQTT
+// sources (private / public / hostname-configured) are seeded on top of the
+// harness's plain `meshtastic_tcp` sourceA/sourceB, which stay 'unknown'
+// (they have no broker of their own) — see the "non-MQTT source" case below.
+describe('analysisRoutes — GET /mqtt-violations/gateways & /packets — broker classification (#4982)', () => {
+  let harness: RouteTestHarness;
+  const SOURCE_PRIVATE = 'rt-source-mqtt-private';
+  const SOURCE_PUBLIC = 'rt-source-mqtt-public';
+  const SOURCE_HOSTNAME = 'rt-source-mqtt-hostname';
+
+  beforeEach(async () => {
+    harness = await createRouteTestApp({ mount: (app) => app.use('/', analysisRoutes) });
+
+    for (const id of [SOURCE_PRIVATE, SOURCE_PUBLIC, SOURCE_HOSTNAME]) {
+      await harness.db.sources.deleteSource(id).catch(() => {});
+    }
+    await harness.db.sources.createSource({
+      id: SOURCE_PRIVATE,
+      name: 'MQTT bridge — private broker',
+      type: 'mqtt_bridge',
+      config: { upstream: { url: 'mqtt://192.168.1.5:1883' }, subscriptions: [] },
+      enabled: true,
+    });
+    await harness.db.sources.createSource({
+      id: SOURCE_PUBLIC,
+      name: 'MQTT bridge — public broker',
+      type: 'mqtt_bridge',
+      config: { upstream: { url: 'mqtt://mqtt.meshtastic.org' }, subscriptions: [] },
+      enabled: true,
+    });
+    await harness.db.sources.createSource({
+      id: SOURCE_HOSTNAME,
+      name: 'MQTT bridge — hostname broker',
+      type: 'mqtt_bridge',
+      config: { upstream: { url: 'mqtt://mqtt.example.com' }, subscriptions: [] },
+      enabled: true,
+    });
+
+    await harness.grant(harness.admin.id, 'packetmonitor', 'read', SOURCE_PRIVATE);
+    await harness.grant(harness.admin.id, 'packetmonitor', 'read', SOURCE_PUBLIC);
+    await harness.grant(harness.admin.id, 'packetmonitor', 'read', SOURCE_HOSTNAME);
+
+    // sourceA (plain meshtastic_tcp, no broker of its own): gateway !aaaaaaaa.
+    await harness.db.mqttOkToMqttViolations.insertViolation(
+      makeViolation({
+        sourceId: harness.sourceA,
+        packetId: 5001,
+        gatewayId: '!aaaaaaaa',
+        gatewayNodeNum: 0xaaaaaaaa,
+        timestamp: T0,
+      }),
+    );
+    // Private broker: gateway !bbbbbbbb, seen ONLY on the private source.
+    await harness.db.mqttOkToMqttViolations.insertViolation(
+      makeViolation({
+        sourceId: SOURCE_PRIVATE,
+        packetId: 5002,
+        gatewayId: '!bbbbbbbb',
+        gatewayNodeNum: 0xbbbbbbbb,
+        timestamp: T0,
+      }),
+    );
+    // Public broker: gateway !cccccccc, seen ONLY on the public source.
+    await harness.db.mqttOkToMqttViolations.insertViolation(
+      makeViolation({
+        sourceId: SOURCE_PUBLIC,
+        packetId: 5003,
+        gatewayId: '!cccccccc',
+        gatewayNodeNum: 0xcccccccc,
+        timestamp: T0,
+      }),
+    );
+    // Hostname broker (unclassifiable): gateway !dddddddd.
+    await harness.db.mqttOkToMqttViolations.insertViolation(
+      makeViolation({
+        sourceId: SOURCE_HOSTNAME,
+        packetId: 5004,
+        gatewayId: '!dddddddd',
+        gatewayNodeNum: 0xdddddddd,
+        timestamp: T0,
+      }),
+    );
+    // Same gatewayId relayed via BOTH the private and the public source —
+    // combineBrokerClasses must resolve this to 'public' (any public wins).
+    await harness.db.mqttOkToMqttViolations.insertViolation(
+      makeViolation({
+        sourceId: SOURCE_PRIVATE,
+        packetId: 5005,
+        gatewayId: '!eeeeeeee',
+        gatewayNodeNum: 0xeeeeeeee,
+        timestamp: T0,
+      }),
+    );
+    await harness.db.mqttOkToMqttViolations.insertViolation(
+      makeViolation({
+        sourceId: SOURCE_PUBLIC,
+        packetId: 5006,
+        gatewayId: '!eeeeeeee',
+        gatewayNodeNum: 0xeeeeeeee,
+        timestamp: T0 + 10,
+      }),
+    );
+  });
+
+  afterEach(async () => {
+    await harness.db.mqttOkToMqttViolations.deleteAllViolations(harness.sourceA);
+    await harness.db.mqttOkToMqttViolations.deleteAllViolations(SOURCE_PRIVATE);
+    await harness.db.mqttOkToMqttViolations.deleteAllViolations(SOURCE_PUBLIC);
+    await harness.db.mqttOkToMqttViolations.deleteAllViolations(SOURCE_HOSTNAME);
+    for (const id of [SOURCE_PRIVATE, SOURCE_PUBLIC, SOURCE_HOSTNAME]) {
+      await harness.db.sources.deleteSource(id).catch(() => {});
+    }
+    await harness.cleanup();
+  });
+
+  function gatewayRow(body: any, gatewayId: string) {
+    return body.data.gateways.find((g: any) => g.gatewayId === gatewayId);
+  }
+
+  it('gateways: a plain meshtastic_tcp source (no broker of its own) classifies as unknown', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    await harness.grant(harness.admin.id, 'packetmonitor', 'read', harness.sourceA);
+    const res = await agent.get(
+      `/mqtt-violations/gateways?since=0&sources=${harness.sourceA},${SOURCE_PRIVATE},${SOURCE_PUBLIC},${SOURCE_HOSTNAME}`,
+    );
+    expect(res.status).toBe(200);
+    expect(gatewayRow(res.body, '!aaaaaaaa').brokerClass).toBe('unknown');
+  });
+
+  it('gateways: a source configured with a literal private IPv4 upstream classifies as private', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get(`/mqtt-violations/gateways?since=0&sources=${SOURCE_PRIVATE}`);
+    expect(res.status).toBe(200);
+    expect(gatewayRow(res.body, '!bbbbbbbb').brokerClass).toBe('private');
+  });
+
+  it('gateways: a source configured with the default public server classifies as public', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get(`/mqtt-violations/gateways?since=0&sources=${SOURCE_PUBLIC}`);
+    expect(res.status).toBe(200);
+    expect(gatewayRow(res.body, '!cccccccc').brokerClass).toBe('public');
+  });
+
+  it('gateways: a source configured with a hostname classifies as unknown', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get(`/mqtt-violations/gateways?since=0&sources=${SOURCE_HOSTNAME}`);
+    expect(res.status).toBe(200);
+    expect(gatewayRow(res.body, '!dddddddd').brokerClass).toBe('unknown');
+  });
+
+  it('gateways: a gateway seen via both a private and a public source combines to public', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get(
+      `/mqtt-violations/gateways?since=0&sources=${SOURCE_PRIVATE},${SOURCE_PUBLIC}`,
+    );
+    expect(res.status).toBe(200);
+    const row = gatewayRow(res.body, '!eeeeeeee');
+    expect(row.sourceIds.sort()).toEqual([SOURCE_PRIVATE, SOURCE_PUBLIC].sort());
+    expect(row.brokerClass).toBe('public');
+  });
+
+  it('gateways: brokerClass is still present (unknown) on the includeUnknown=true merge path', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get(
+      `/mqtt-violations/gateways?since=0&includeUnknown=true&sources=${SOURCE_PRIVATE}`,
+    );
+    expect(res.status).toBe(200);
+    expect(gatewayRow(res.body, '!bbbbbbbb').brokerClass).toBe('private');
+  });
+
+  it('packets: each row carries its own sourceId brokerClass, independent of other sources', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get(
+      `/mqtt-violations/packets?since=0&sources=${SOURCE_PRIVATE},${SOURCE_PUBLIC},${SOURCE_HOSTNAME}`,
+    );
+    expect(res.status).toBe(200);
+    const byPacketId = new Map(res.body.data.violations.map((v: any) => [v.packetId, v]));
+    expect((byPacketId.get(5002) as any).brokerClass).toBe('private');
+    expect((byPacketId.get(5003) as any).brokerClass).toBe('public');
+    expect((byPacketId.get(5004) as any).brokerClass).toBe('unknown');
+  });
+
+  it('packets: brokerClass is present on the includeUnknown=true merge path too', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get(
+      `/mqtt-violations/packets?since=0&includeUnknown=true&sources=${SOURCE_PUBLIC}`,
+    );
+    expect(res.status).toBe(200);
+    const row = res.body.data.violations.find((v: any) => v.packetId === 5003);
+    expect(row.brokerClass).toBe('public');
+  });
+});

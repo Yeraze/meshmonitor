@@ -36,6 +36,11 @@ import {
 } from '../services/solarAnalysis.js';
 import { parseGatewayNodeNum } from '../utils/okToMqtt.js';
 import { resolvePermittedSourceIds, parseSourcesParam } from '../utils/permittedSources.js';
+import {
+  classifySourceBrokerAddress,
+  combineBrokerClasses,
+  type BrokerAddressClass,
+} from '../utils/privateBrokerAddress.js';
 
 const router = Router();
 router.use(optionalAuth());
@@ -97,6 +102,8 @@ interface ViolationGatewayRow extends MqttViolationGateway {
   sourceIds: string[];
   gatewayLongName: string | null;
   gatewayShortName: string | null;
+  /** See {@link attachBrokerClass} — additive, computed from `sourceIds`. */
+  brokerClass: BrokerAddressClass;
 }
 
 /** Row shape for the merged `/mqtt-violations/packets` response. */
@@ -120,16 +127,20 @@ interface ViolationPacketRow {
   topic: string | null;
   rxTime: number | null;
   timestamp: number;
+  /** See {@link attachBrokerClass} — additive, computed from `sourceId`. */
+  brokerClass: BrokerAddressClass;
 }
 
 function toViolationPacketRow(
   kind: 'confirmed' | 'suspected',
   row: DbMqttOkToMqttViolation | DbMqttPacket,
+  brokerClass: BrokerAddressClass,
 ): ViolationPacketRow {
   return {
     id: row.id,
     kind,
     sourceId: row.sourceId,
+    brokerClass,
     packetId: row.packetId ?? null,
     fromNode: row.fromNode ?? null,
     fromNodeId: row.fromNodeId ?? null,
@@ -224,6 +235,47 @@ async function attachNodeNames<
         : {}),
     };
   });
+}
+
+/**
+ * Build a `sourceId -> brokerClass` map for one request (#4982), classifying
+ * each source's configured broker address (see `privateBrokerAddress.ts`).
+ * One `getAllSources()` scan regardless of row count — deliberately not a
+ * per-row lookup, mirroring `attachNodeNames`'s batching rationale.
+ *
+ * A source not on record (deleted between the violation being recorded and
+ * this request) is simply absent from the returned map; callers fall back to
+ * `'unknown'` via `?? 'unknown'` when reading it.
+ */
+async function buildBrokerClassMap(sourceIds: string[]): Promise<Map<string, BrokerAddressClass>> {
+  const map = new Map<string, BrokerAddressClass>();
+  if (sourceIds.length === 0) return map;
+
+  const wanted = new Set(sourceIds);
+  let sources: Awaited<ReturnType<typeof databaseService.sources.getAllSources>>;
+  try {
+    sources = await databaseService.sources.getAllSources();
+  } catch (error) {
+    // Broker classification is a display nicety; a lookup failure must not
+    // take down a report that is otherwise fully populated. Every row simply
+    // falls back to 'unknown' via the caller's `?? 'unknown'`.
+    logger.warn('mqtt-violations: source lookup failed, broker class unknown for all rows:', error);
+    return map;
+  }
+
+  for (const source of sources) {
+    if (!wanted.has(source.id)) continue;
+    map.set(source.id, classifySourceBrokerAddress(source.type, source.config));
+  }
+  return map;
+}
+
+/** Combine a gateway row's per-source classes into one — see `combineBrokerClasses`. */
+function gatewayBrokerClass(
+  map: Map<string, BrokerAddressClass>,
+  sourceIds: string[],
+): BrokerAddressClass {
+  return combineBrokerClasses(sourceIds.map((id) => map.get(id) ?? 'unknown'));
 }
 
 /**
@@ -686,10 +738,11 @@ router.get('/mqtt-violations/gateways', async (req: Request, res: Response) => {
       // Only the confirmed table is involved, so there is nothing to merge:
       // push sort/dir/limit/offset straight into SQL. `total` is an exact
       // COUNT and every row at every offset is reachable — no cap, ever.
-      const [gatewayRows, total, sourceIdPairs] = await Promise.all([
+      const [gatewayRows, total, sourceIdPairs, brokerClassMap] = await Promise.all([
         databaseService.mqttOkToMqttViolations.getGatewaySummary({ ...rangeQuery, sort, dir, limit, offset }),
         databaseService.mqttOkToMqttViolations.getGatewaySummaryCount(rangeQuery),
         databaseService.mqttOkToMqttViolations.getGatewaySourceIds(rangeQuery),
+        buildBrokerClassMap(sourceIds),
       ]);
 
       const sourceIdsByGateway = new Map<string, Set<string>>();
@@ -704,13 +757,17 @@ router.get('/mqtt-violations/gateways', async (req: Request, res: Response) => {
       // (every row would come back with sourceIds: []).
       const gatewayPage: ViolationGatewayRow[] = gatewayRows
         .filter((g): g is MqttViolationGateway & { gatewayId: string } => g.gatewayId != null)
-        .map((g) => ({
-          ...g,
-          suspectedCount: 0,
-          sourceIds: Array.from(sourceIdsByGateway.get(g.gatewayId) ?? []),
-          gatewayLongName: null,
-          gatewayShortName: null,
-        }));
+        .map((g) => {
+          const gatewaySourceIds = Array.from(sourceIdsByGateway.get(g.gatewayId) ?? []);
+          return {
+            ...g,
+            suspectedCount: 0,
+            sourceIds: gatewaySourceIds,
+            gatewayLongName: null,
+            gatewayShortName: null,
+            brokerClass: gatewayBrokerClass(brokerClassMap, gatewaySourceIds),
+          };
+        });
       // Named after paging: this slice is already the page being returned.
       const gateways = await attachNodeNames(gatewayPage, sourceIds);
 
@@ -737,9 +794,10 @@ router.get('/mqtt-violations/gateways', async (req: Request, res: Response) => {
     // tables — a SQL UNION was considered and declined for this PR. The
     // confirmed fetch below is capped at API_SCAN_CAP; capApplied reports
     // whether that cap actually dropped rows before the merge.
-    const [confirmedRows, sourceIdPairs] = await Promise.all([
+    const [confirmedRows, sourceIdPairs, brokerClassMap] = await Promise.all([
       databaseService.mqttOkToMqttViolations.getGatewaySummary({ ...rangeQuery, limit: API_SCAN_CAP, offset: 0 }),
       databaseService.mqttOkToMqttViolations.getGatewaySourceIds(rangeQuery),
+      buildBrokerClassMap(sourceIds),
     ]);
 
     // Seeded from the confirmed side; the suspected side (below) unions its
@@ -801,6 +859,7 @@ router.get('/mqtt-violations/gateways', async (req: Request, res: Response) => {
       // row fetched here is counted by both.
       if (!g.gatewayId) continue;
       const suspected = suspectedByGateway.get(g.gatewayId);
+      const gatewaySourceIds = Array.from(sourceIdsByGateway.get(g.gatewayId) ?? []);
       mergedByGateway.set(g.gatewayId, {
         ...g,
         suspectedCount: suspected?.suspectedCount ?? 0,
@@ -809,14 +868,16 @@ router.get('/mqtt-violations/gateways', async (req: Request, res: Response) => {
         // confirmed side's (#4114 code review).
         firstSeen: suspected ? Math.min(g.firstSeen, suspected.firstSeen) : g.firstSeen,
         lastSeen: suspected ? Math.max(g.lastSeen, suspected.lastSeen) : g.lastSeen,
-        sourceIds: Array.from(sourceIdsByGateway.get(g.gatewayId) ?? []),
+        sourceIds: gatewaySourceIds,
         gatewayLongName: null,
         gatewayShortName: null,
+        brokerClass: gatewayBrokerClass(brokerClassMap, gatewaySourceIds),
       });
     }
     // Gateways present only in the suspected set appear with violationCount: 0.
     for (const [gatewayId, suspected] of suspectedByGateway) {
       if (mergedByGateway.has(gatewayId)) continue;
+      const gatewaySourceIds = Array.from(sourceIdsByGateway.get(gatewayId) ?? []);
       mergedByGateway.set(gatewayId, {
         gatewayId,
         gatewayNodeNum: suspected.gatewayNodeNum,
@@ -825,9 +886,10 @@ router.get('/mqtt-violations/gateways', async (req: Request, res: Response) => {
         firstSeen: suspected.firstSeen,
         lastSeen: suspected.lastSeen,
         suspectedCount: suspected.suspectedCount,
-        sourceIds: Array.from(sourceIdsByGateway.get(gatewayId) ?? []),
+        sourceIds: gatewaySourceIds,
         gatewayLongName: null,
         gatewayShortName: null,
+        brokerClass: gatewayBrokerClass(brokerClassMap, gatewaySourceIds),
       });
     }
 
@@ -941,13 +1003,14 @@ router.get('/mqtt-violations/packets', async (req: Request, res: Response) => {
       // Only the confirmed table is involved, so there is nothing to merge:
       // push sort/dir/limit/offset straight into SQL. `total` is an exact
       // COUNT and every row at every offset is reachable — no cap, ever.
-      const [confirmedRows, total] = await Promise.all([
+      const [confirmedRows, total, brokerClassMap] = await Promise.all([
         databaseService.mqttOkToMqttViolations.getViolations({ ...rangeQuery, sort, dir, limit, offset }),
         databaseService.mqttOkToMqttViolations.getViolationCount(rangeQuery),
+        buildBrokerClassMap(sourceIds),
       ]);
 
       const violations = await attachNodeNames(
-        confirmedRows.map((r) => toViolationPacketRow('confirmed', r)),
+        confirmedRows.map((r) => toViolationPacketRow('confirmed', r, brokerClassMap.get(r.sourceId) ?? 'unknown')),
         sourceIds,
       );
 
@@ -977,13 +1040,14 @@ router.get('/mqtt-violations/packets', async (req: Request, res: Response) => {
     // whether either cap actually dropped rows before the merge.
     // The confirmed fetch and the suspectedAvailable check have no data
     // dependency on each other — run them concurrently (#4330 review).
-    const [confirmedRows, suspectedAvailable] = await Promise.all([
+    const [confirmedRows, suspectedAvailable, brokerClassMap] = await Promise.all([
       databaseService.mqttOkToMqttViolations.getViolations({
         ...rangeQuery,
         limit: API_SCAN_CAP,
         offset: 0,
       }),
       mqttPacketLogService.isEnabled(),
+      buildBrokerClassMap(sourceIds),
     ]);
 
     let suspectedWindowMs = 0;
@@ -1000,8 +1064,8 @@ router.get('/mqtt-violations/packets', async (req: Request, res: Response) => {
     }
 
     const merged = [
-      ...confirmedRows.map((r) => toViolationPacketRow('confirmed', r)),
-      ...suspectedRows.map((r) => toViolationPacketRow('suspected', r)),
+      ...confirmedRows.map((r) => toViolationPacketRow('confirmed', r, brokerClassMap.get(r.sourceId) ?? 'unknown')),
+      ...suspectedRows.map((r) => toViolationPacketRow('suspected', r, brokerClassMap.get(r.sourceId) ?? 'unknown')),
     ];
     const dirMultiplier = dir === 'asc' ? 1 : -1;
     merged.sort((a, b) => {

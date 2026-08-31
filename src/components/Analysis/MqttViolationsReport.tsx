@@ -49,14 +49,17 @@ import '../MQTT/MqttPacketMonitor.css';
 import {
   API_SCAN_CAP,
   DEFAULT_VIOLATION_FILTERS,
+  brokerClassMeta,
   buildViolationParams,
   formatNodeDisplay,
   formatSuspectedWindow,
+  type BrokerAddressClass,
   type SortDir,
   type ViolationFilters,
   type ViolationGatewayRow,
   type ViolationGatewaySortField,
   type ViolationGatewaysResponse,
+  type ViolationPacketRow,
   type ViolationPacketSortField,
   type ViolationPacketsResponse,
 } from './mqttViolationTypes';
@@ -189,6 +192,12 @@ const MqttViolationsReport: React.FC = () => {
   const [gatewayExportPending, setGatewayExportPending] = useState(false);
   const [drillExportWarning, setDrillExportWarning] = useState<string | null>(null);
   const [drillExportPending, setDrillExportPending] = useState(false);
+  // Pure client-side render filter (#4982) — never sent to the server (not
+  // part of ViolationFilters/buildViolationParams), applies immediately like
+  // sort/page/page-size. Hides rows the server already annotated as
+  // brokerClass 'private': relays that are EXPECTED per firmware's
+  // private-broker exemption, not proven violations.
+  const [hidePrivateBroker, setHidePrivateBroker] = useState(false);
 
   const { data, isLoading, error, refetch } = useQuery<ViolationGatewaysResponse>({
     queryKey: ['mqtt-violations-gateways', applied],
@@ -210,6 +219,16 @@ const MqttViolationsReport: React.FC = () => {
   // every render (whenever `data` is undefined), which react-hooks/exhaustive-deps
   // correctly flags as unstable when used as a dependency below.
   const gateways = useMemo(() => data?.gateways ?? [], [data]);
+
+  // #4982: the rows actually rendered/summed — `gateways` minus any hidden by
+  // hidePrivateBroker. Deliberately NOT what pagination/totals are based on
+  // (those stay server-truth from `data`, unaffected by this client-only
+  // filter) — see the hiddenPrivateGatewayCount hint rendered alongside it.
+  const visibleGateways = useMemo(
+    () => (hidePrivateBroker ? gateways.filter((g) => g.brokerClass !== 'private') : gateways),
+    [gateways, hidePrivateBroker],
+  );
+  const hiddenPrivateGatewayCount = gateways.length - visibleGateways.length;
 
   // The one gateway currently expanded, if any — looked up by the same key
   // the row map uses, so the drill-down query always scopes to the actual
@@ -410,13 +429,17 @@ const MqttViolationsReport: React.FC = () => {
         ? t('analysis.mqtt_violations.window_days', '{{days}} days', { days: windowFmt.days })
         : '';
 
-  const columnCount = 7 + (suspectedShown ? 1 : 0);
+  // +1 for the Broker column (#4982), always present regardless of suspectedShown.
+  const columnCount = 8 + (suspectedShown ? 1 : 0);
 
+  // #4982: sums reflect what's actually visible (i.e. respect hidePrivateBroker),
+  // same page-scoped-not-global-total convention this block already used before
+  // brokerClass existed — only `gatewayCount` below is the server's true total.
   const stats = {
     gatewayCount: data?.total ?? 0,
-    confirmed: gateways.reduce((sum, g) => sum + g.violationCount, 0),
-    suspected: gateways.reduce((sum, g) => sum + g.suspectedCount, 0),
-    originators: gateways.reduce((sum, g) => sum + g.distinctOriginators, 0),
+    confirmed: visibleGateways.reduce((sum, g) => sum + g.violationCount, 0),
+    suspected: visibleGateways.reduce((sum, g) => sum + g.suspectedCount, 0),
+    originators: visibleGateways.reduce((sum, g) => sum + g.distinctOriginators, 0),
   };
 
   const confirmedColTitle = t(
@@ -444,6 +467,12 @@ const MqttViolationsReport: React.FC = () => {
     ? Math.floor(packetsQuery.data.offset / drillLimit) + 1
     : 1;
   const drillViolations = packetsQuery.data?.violations ?? [];
+  // #4982: same client-only filter as the summary table, applied to the
+  // drill-down's own rows.
+  const visibleDrillViolations = hidePrivateBroker
+    ? drillViolations.filter((v: ViolationPacketRow) => v.brokerClass !== 'private')
+    : drillViolations;
+  const hiddenPrivateDrillCount = drillViolations.length - visibleDrillViolations.length;
   const drillHasData = drillViolations.length > 0;
 
   return (
@@ -531,6 +560,24 @@ const MqttViolationsReport: React.FC = () => {
             {t(
               'analysis.mqtt_violations.include_unknown_help',
               'Also count receptions where the ok_to_mqtt bit could not be read. These are not proven violations and come from a much shorter retention window.',
+            )}
+          </span>
+
+          <label className={`reports-controls__field ${styles.brokerFilterField}`}>
+            <input
+              type="checkbox"
+              checked={hidePrivateBroker}
+              onChange={(e) => setHidePrivateBroker(e.target.checked)}
+            />
+            {t(
+              'analysis.mqtt_violations.hide_private_broker',
+              'Hide expected (private broker)',
+            )}
+          </label>
+          <span className={styles.hint}>
+            {t(
+              'analysis.mqtt_violations.hide_private_broker_help',
+              "Hide rows where every observing source is configured with a private broker — firmware relays those regardless of ok_to_mqtt, by design. Applies immediately; doesn't need Run report.",
             )}
           </span>
 
@@ -664,6 +711,46 @@ const MqttViolationsReport: React.FC = () => {
       )}
 
       {run && !isLoading && !error && data && hasData && (
+        <div className={`reports-banner ${styles.brokerBanner}`}>
+          <strong>
+            {t(
+              'analysis.mqtt_violations.broker_banner_title',
+              'Not every relay here is a proven violation',
+            )}
+          </strong>
+          <ul className={styles.brokerBannerList}>
+            <li>
+              {t(
+                'analysis.mqtt_violations.broker_banner_private',
+                'Firmware only drops an ok_to_mqtt=0 packet when uplinking to a PUBLIC broker. A gateway whose broker is a private address (10/8, 172.16/12, 192.168/16, 169.254/16, 100.64/10, or 127.0.0.1 exactly) relays every packet regardless of the bit — that is expected behavior, not a violation, and is badged "Expected — private broker" below.',
+              )}
+            </li>
+            <li>
+              {t(
+                'analysis.mqtt_violations.broker_banner_hostname',
+                "A source configured with a hostname (rather than a literal IP) can't be classified from the address string alone, so those rows are badged \"Unverified — hostname broker\" — not proven either way.",
+              )}
+            </li>
+            <li>
+              {t(
+                'analysis.mqtt_violations.broker_banner_old_firmware',
+                'Firmware before 2.7.20 essentially never enforced this drop at all, on any broker — a relay from an old-firmware gateway can look like a violation here even on a public broker.',
+              )}
+            </li>
+          </ul>
+          {hiddenPrivateGatewayCount > 0 && (
+            <span className={styles.hint}>
+              {t(
+                'analysis.mqtt_violations.broker_banner_hidden_count',
+                '{{count}} private-broker gateway(s) hidden on this page by the "Hide expected" filter.',
+                { count: hiddenPrivateGatewayCount },
+              )}
+            </span>
+          )}
+        </div>
+      )}
+
+      {run && !isLoading && !error && data && hasData && (
         <>
           {capApplied && (
             <div className="reports-banner reports-banner--warning">
@@ -738,6 +825,7 @@ const MqttViolationsReport: React.FC = () => {
                     t={t}
                   />
                   <th>{t('analysis.mqtt_violations.col_sources', 'Sources')}</th>
+                  <th>{t('analysis.mqtt_violations.col_broker', 'Broker')}</th>
                   <th>{t('analysis.mqtt_violations.col_first_seen', 'First seen')}</th>
                   <SortableTh
                     label={t('analysis.mqtt_violations.col_last_seen', 'Last seen')}
@@ -749,7 +837,17 @@ const MqttViolationsReport: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {gateways.map((row) => {
+                {visibleGateways.length === 0 && hiddenPrivateGatewayCount > 0 && (
+                  <tr>
+                    <td colSpan={columnCount} className="reports-banner--empty">
+                      {t(
+                        'analysis.mqtt_violations.all_hidden_by_filter',
+                        'Every gateway on this page is a private-broker relay hidden by the "Hide expected" filter.',
+                      )}
+                    </td>
+                  </tr>
+                )}
+                {visibleGateways.map((row) => {
                   const rowKey = rowKeyOf(row);
                   const isExpanded = expandedGateway === rowKey;
                   const isSuspectedOnly = row.violationCount === 0 && row.suspectedCount > 0;
@@ -835,6 +933,9 @@ const MqttViolationsReport: React.FC = () => {
                                   '{{count}} sources',
                                   { count: row.sourceIds.length },
                                 )}
+                        </td>
+                        <td className={styles.brokerCell}>
+                          <BrokerClassBadge brokerClass={row.brokerClass} t={t} />
                         </td>
                         <td>{new Date(row.firstSeen).toLocaleString()}</td>
                         <td>{new Date(row.lastSeen).toLocaleString()}</td>
@@ -983,10 +1084,21 @@ const MqttViolationsReport: React.FC = () => {
                                             <th>
                                               {t('analysis.mqtt_violations.dcol_rx_time', 'RX time')}
                                             </th>
+                                            <th>{t('analysis.mqtt_violations.col_broker', 'Broker')}</th>
                                           </tr>
                                         </thead>
                                         <tbody>
-                                          {drillViolations.map((v) => {
+                                          {visibleDrillViolations.length === 0 && hiddenPrivateDrillCount > 0 && (
+                                            <tr>
+                                              <td colSpan={11} className="reports-banner--empty">
+                                                {t(
+                                                  'analysis.mqtt_violations.all_hidden_by_filter',
+                                                  'Every gateway on this page is a private-broker relay hidden by the "Hide expected" filter.',
+                                                )}
+                                              </td>
+                                            </tr>
+                                          )}
+                                          {visibleDrillViolations.map((v) => {
                                             const vState = okToMqttState({
                                               okToMqttViolation: v.kind === 'confirmed' ? 1 : 0,
                                               bitfield: v.bitfield,
@@ -1028,6 +1140,9 @@ const MqttViolationsReport: React.FC = () => {
                                                 </td>
                                                 <td>
                                                   {v.rxTime ? new Date(v.rxTime).toLocaleString() : '—'}
+                                                </td>
+                                                <td className={styles.brokerCell}>
+                                                  <BrokerClassBadge brokerClass={v.brokerClass} t={t} />
                                                 </td>
                                               </tr>
                                             );
@@ -1178,6 +1293,32 @@ const SortableTh: React.FC<{
         )}
       </button>
     </th>
+  );
+};
+
+/**
+ * Badge for a row/gateway's {@link BrokerAddressClass} (#4982). Pure
+ * presentation over `brokerClassMeta` — translates its keys/fallbacks and
+ * maps `tone` to the matching CSS module class.
+ */
+const BrokerClassBadge: React.FC<{ brokerClass: BrokerAddressClass; t: TFn }> = ({
+  brokerClass,
+  t,
+}) => {
+  const meta = brokerClassMeta(brokerClass);
+  const toneClass =
+    meta.tone === 'ok'
+      ? styles.brokerBadgeOk
+      : meta.tone === 'warn'
+        ? styles.brokerBadgeWarn
+        : styles.brokerBadgeNeutral;
+  return (
+    <span
+      className={`${styles.brokerBadge} ${toneClass}`}
+      title={t(meta.descriptionKey, meta.descriptionFallback)}
+    >
+      {t(meta.labelKey, meta.labelFallback)}
+    </span>
   );
 };
 
