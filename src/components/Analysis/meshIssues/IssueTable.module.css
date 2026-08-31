@@ -47,3 +47,16 @@
   padding: 0.75rem 1rem;
   background: var(--color-bg-raised);
 }
+
+/* Opt-in wrap for cells holding long free-text values (C1 `details`, the
+ * source-name list, subject cells whose node name is long). Without this
+ * the base `.reports-table td { white-space: nowrap }` forces a cell to
+ * be as wide as its content and pushes the whole table into horizontal
+ * scroll (a single "Key shared with nodes: X, Y, Z, …" ran ~2500px in
+ * the wild). The max-width caps a runaway cell; `overflow-wrap` breaks
+ * inside long unbroken tokens like a bare hex node id. */
+.wrapCell {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  max-width: 28rem;
+}

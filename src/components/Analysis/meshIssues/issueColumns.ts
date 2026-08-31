@@ -44,6 +44,14 @@ export interface IssueColumn {
   primary?: boolean;
   /** Default direction when this column is first selected. Default 'desc'. */
   defaultDir?: 'asc' | 'desc';
+  /** Allow the cell to wrap long text and cap its width. The base
+   * `.reports-table td` rule pins `white-space: nowrap`, which forces a
+   * cell holding a long free-text field (e.g. C1 `details`, or a
+   * comma-separated node/source list) to be as wide as its content and
+   * pushes the whole table into horizontal scroll. Set `wrap: true` on
+   * those columns to enable word-break and a max-width; short numeric /
+   * badge columns stay on the nowrap default. */
+  wrap?: boolean;
 }
 
 // ── Defensive evidence accessors (spec §8.3) ────────────────────────────────
@@ -86,7 +94,7 @@ const EM_DASH = '—';
 function simpleColumn(
   key: string,
   label: string,
-  opts: Partial<Pick<IssueColumn, 'primary' | 'defaultDir' | 'align' | 'numeric'>> = {},
+  opts: Partial<Pick<IssueColumn, 'primary' | 'defaultDir' | 'align' | 'numeric' | 'wrap'>> = {},
 ): IssueColumn {
   return {
     key,
@@ -441,7 +449,7 @@ const COLUMNS_BY_TYPE: Record<string, () => IssueColumn[]> = {
     simpleColumn('roleName', 'Role'),
     simpleColumn('packetRatePerHour', 'Packets/hr', { primary: true, align: 'right', numeric: true }),
   ],
-  C1_key_security: () => [clausesColumn(), simpleColumn('details', 'Details')],
+  C1_key_security: () => [clausesColumn(), simpleColumn('details', 'Details', { wrap: true })],
   C1_time_offset: () => [timeOffsetColumn()],
   C2_over_broadcasting: () => [
     simpleColumn('roleName', 'Role'),

@@ -125,6 +125,8 @@
 .findingRowMeta {
   font-size: 12px;
   color: var(--color-text-subtle);
+  overflow-wrap: anywhere;
+  min-width: 0;
 }
 
 .findingRowActions {
