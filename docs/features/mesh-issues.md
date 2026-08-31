@@ -72,7 +72,7 @@ matters, and what to do about it — see the
 
 | Rule | Fires when | Threshold | Severity |
 | --- | --- | --- | --- |
-| **B1** Router cluster | ≥2 ROUTER/REPEATER-role nodes are mutually audible | cluster size 2 `[MeshMonitor]` | warning (≥2), critical (≥4), info (inferred-only evidence) |
+| **B1** Router cluster | ≥2 ROUTER/REPEATER-role nodes are mutually audible **and** their non-cluster client neighbors overlap significantly (≥90%) | cluster size 2, 90% client overlap `[MeshMonitor]` | warning (≥2), critical (≥4), info (inferred-only evidence) |
 | **B2** Redundant router | One infra node's direct-neighbor set is ≥90% covered by another's, both with ≥3 neighbors | 90% overlap `[MeshMonitor]` | warning |
 | **B3** Asymmetric link | Directional mean SNR between two nodes differs by more than the ceiling, ≥3 samples per direction | 6 dB `[MeshMonitor]`, tunable | warning (infra endpoint involved) / info |
 | **B4** Idle router | An infra node is heard direct but carries <1% of its area's traceroute hops while a peer carries >10% | 1%/10% split `[MeshMonitor]` | info always |

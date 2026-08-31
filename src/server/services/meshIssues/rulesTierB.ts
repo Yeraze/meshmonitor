@@ -403,6 +403,39 @@ function evaluateB1Impl(ctx: TierBRuleContext, clusters: RouterCluster[]): MeshI
         ? 'critical'
         : 'warning';
 
+    // Pairwise client-overlap check: suppress findings where cluster members
+    // serve distinct coverage areas. A backbone of well-sited routers that
+    // each covers unique local nodes is healthy infrastructure, not
+    // redundancy. Only suppresses when we have enough neighbor data on at
+    // least one pair to make the call; insufficient data keeps the finding.
+    const memberClientSets = new Map<number, Set<number>>();
+    for (const m of members) {
+      const allNbs = ctx.graph.directAdjacency.get(m);
+      const clients = new Set<number>();
+      if (allNbs) {
+        for (const nb of allNbs) {
+          if (!memberSet.has(nb)) clients.add(nb);
+        }
+      }
+      memberClientSets.set(m, clients);
+    }
+    let maxClientOverlap = 0;
+    let overlapComputable = false;
+    for (let i = 0; i < members.length; i++) {
+      for (let j = i + 1; j < members.length; j++) {
+        const cA = memberClientSets.get(members[i])!;
+        const cB = memberClientSets.get(members[j])!;
+        if (cA.size < REDUNDANT_MIN_NEIGHBORS || cB.size < REDUNDANT_MIN_NEIGHBORS) continue;
+        overlapComputable = true;
+        const [smaller, larger] = cA.size <= cB.size ? [cA, cB] : [cB, cA];
+        let shared = 0;
+        for (const x of smaller) if (larger.has(x)) shared++;
+        const ratio = shared / smaller.size;
+        if (ratio > maxClientOverlap) maxClientOverlap = ratio;
+      }
+    }
+    if (overlapComputable && maxClientOverlap < REDUNDANT_OVERLAP_RATIO) continue;
+
     // Best-sited member: highest direct-adjacency degree; ties -> most
     // positioned direct edges; ties -> lowest nodeNum.
     let best: PooledNode | null = null;
