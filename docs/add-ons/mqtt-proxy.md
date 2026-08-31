@@ -222,7 +222,7 @@ The proxy writes a health file at `/tmp/healthy` that Docker uses for health che
 
 - The MQTT Proxy runs inside your Docker network
 - It inherits your node's MQTT credentials (stored on the node)
-- TLS/SSL for MQTT is configured on the node, not the proxy
+- TLS/SSL for MQTT is configured on the node, not the proxy (note: TLS support in the proxy sidecar has a known issue — see [Common Issues](#common-issues))
 - The proxy only forwards messages; it doesn't store or modify them
 
 ## Related Documentation
