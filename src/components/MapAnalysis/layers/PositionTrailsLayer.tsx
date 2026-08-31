@@ -10,12 +10,18 @@
  * `docs/internal/dev-notes/MAP_CONSOLIDATION_P2_SPEC.md` (§1.4, epic #4047
  * Phase 2) for the full comparison.
  */
-import { Polyline } from 'react-leaflet';
-import { useMemo } from 'react';
+import { CircleMarker, Polyline } from 'react-leaflet';
+import { useEffect, useMemo, useRef } from 'react';
 import { useDashboardSources } from '../../../hooks/useDashboardData';
 import { usePositions } from '../../../hooks/useMapAnalysisData';
 import { useMapAnalysisCtx } from '../MapAnalysisContext';
 import { isNodeEmphasized, selectionOpacity } from '../../../utils/nodeIdentity';
+
+const TRAIL_WEIGHT = 4;
+const OUTLINE_WEIGHT = 7;
+const OUTLINE_COLOR = 'rgba(0,0,0,0.4)';
+const DOT_RADIUS = 4;
+const DOT_FILL_OPACITY = 0.9;
 
 function colorForKey(key: string): string {
   let h = 0;
@@ -31,13 +37,8 @@ interface PositionRecord {
   timestamp: number;
 }
 
-/**
- * Renders a polyline per node connecting that node's recent position fixes
- * (sorted by timestamp). Color is deterministic per (sourceId, nodeNum) key.
- * Nodes with fewer than 2 fixes are skipped.
- */
 export default function PositionTrailsLayer() {
-  const { config, setSelected } = useMapAnalysisCtx();
+  const { config, setSelected, setTrailBounds } = useMapAnalysisCtx();
   const layer = config.layers.trails;
   const { data: sources = [] } = useDashboardSources();
   const sourceIds =
@@ -97,33 +98,95 @@ export default function PositionTrailsLayer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, tsCfg.enabled, tsCfg.windowStartMs, tsCfg.windowEndMs]);
 
+  const selectedSet = useMemo(() => new Set(config.selectedNodeIds), [config.selectedNodeIds]);
+
+  const prevBoundsSig = useRef('');
+  useEffect(() => {
+    if (!layer.enabled || trails.length === 0 || selectedSet.size === 0) {
+      if (prevBoundsSig.current !== '') {
+        prevBoundsSig.current = '';
+        setTrailBounds(null);
+      }
+      return;
+    }
+    let minLat = Infinity, minLng = Infinity, maxLat = -Infinity, maxLng = -Infinity;
+    let found = false;
+    for (const t of trails) {
+      if (!isNodeEmphasized(`mt:${t.nodeNum}`, config.selectedNodeIds)) continue;
+      for (const [lat, lng] of t.positions) {
+        if (lat < minLat) minLat = lat;
+        if (lat > maxLat) maxLat = lat;
+        if (lng < minLng) minLng = lng;
+        if (lng > maxLng) maxLng = lng;
+        found = true;
+      }
+    }
+    const sig = found ? `${minLat},${minLng},${maxLat},${maxLng}` : '';
+    if (sig === prevBoundsSig.current) return;
+    prevBoundsSig.current = sig;
+    setTrailBounds(found ? [[minLat, minLng], [maxLat, maxLng]] : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trails, config.selectedNodeIds]);
+
   return (
     <>
-      {trails.map((t) => (
-        <Polyline
-          key={t.key}
-          positions={t.positions}
-          pathOptions={{
-            color: t.color,
-            weight: 2,
-            opacity: selectionOpacity(
-              0.7,
-              isNodeEmphasized(`mt:${t.nodeNum}`, config.selectedNodeIds),
-            ),
-          }}
-          eventHandlers={{
-            click: () =>
-              setSelected({
-                type: 'trail',
-                sourceId: t.sourceId,
-                nodeNum: t.nodeNum,
-                pointCount: t.pointCount,
-                startMs: t.startMs,
-                endMs: t.endMs,
-              }),
-          }}
-        />
-      ))}
+      {trails.map((t) => {
+        const opacity = selectionOpacity(
+          0.7,
+          isNodeEmphasized(`mt:${t.nodeNum}`, config.selectedNodeIds),
+        );
+        return (
+          <span key={t.key}>
+            <Polyline
+              positions={t.positions}
+              pathOptions={{
+                color: OUTLINE_COLOR,
+                weight: OUTLINE_WEIGHT,
+                opacity: opacity * 0.6,
+                lineCap: 'round',
+                lineJoin: 'round',
+              }}
+              interactive={false}
+            />
+            <Polyline
+              positions={t.positions}
+              pathOptions={{
+                color: t.color,
+                weight: TRAIL_WEIGHT,
+                opacity,
+                lineCap: 'round',
+                lineJoin: 'round',
+              }}
+              eventHandlers={{
+                click: () =>
+                  setSelected({
+                    type: 'trail',
+                    sourceId: t.sourceId,
+                    nodeNum: t.nodeNum,
+                    pointCount: t.pointCount,
+                    startMs: t.startMs,
+                    endMs: t.endMs,
+                  }),
+              }}
+            />
+            {t.positions.map(([lat, lng], i) => (
+              <CircleMarker
+                key={i}
+                center={[lat, lng]}
+                radius={DOT_RADIUS}
+                pathOptions={{
+                  color: OUTLINE_COLOR,
+                  weight: 1,
+                  fillColor: t.color,
+                  fillOpacity: DOT_FILL_OPACITY * opacity,
+                  opacity: opacity * 0.6,
+                }}
+                interactive={false}
+              />
+            ))}
+          </span>
+        );
+      })}
     </>
   );
 }

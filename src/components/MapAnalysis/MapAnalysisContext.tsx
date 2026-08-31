@@ -4,6 +4,7 @@ import type { LinkEndpoint, LinkVerdict } from '../../utils/linkProfile';
 import type { SitePlannerOrigin } from './SitePlannerOriginController';
 import type { PredictedCoverage } from '../map/layers/predictedCoverageGeometry';
 import type { GnssDopMeta, GnssDopUiParams } from '../map/layers/gnssDopGeometry';
+import type { LatLng } from './followMath';
 
 export interface SelectedTarget {
   type: 'node' | 'segment' | 'neighbor' | 'trail';
@@ -97,6 +98,9 @@ type CtxShape = ReturnType<typeof useMapAnalysisConfig> & {
    */
   hoverPoint: { lat: number; lng: number } | null;
   setHoverPoint: (p: { lat: number; lng: number } | null) => void;
+  /** Bounding box of trails for selected/followed nodes; consumed by FollowController to include trails in autozoom. */
+  trailBounds: [LatLng, LatLng] | null;
+  setTrailBounds: (b: [LatLng, LatLng] | null) => void;
   /**
    * Live camera state of the mounted map, republished on every `moveend` by
    * `MapViewStateController` (2D) / `Base3DMap`'s `onViewChange` (3D), and
@@ -147,6 +151,7 @@ export function MapAnalysisProvider({ children }: { children: ReactNode }) {
   const [linkEndpoints, setLinkEndpoints] = useState<LinkEndpoint[]>([]);
   const [linkVerdict, setLinkVerdict] = useState<LinkVerdict | null>(null);
   const [hoverPoint, setHoverPoint] = useState<{ lat: number; lng: number } | null>(null);
+  const [trailBounds, setTrailBounds] = useState<[LatLng, LatLng] | null>(null);
   const mapViewRef = useRef<MapViewState | null>(null);
   return (
     <Ctx.Provider
@@ -180,6 +185,8 @@ export function MapAnalysisProvider({ children }: { children: ReactNode }) {
         setLinkVerdict,
         hoverPoint,
         setHoverPoint,
+        trailBounds,
+        setTrailBounds,
         mapViewRef,
       }}
     >

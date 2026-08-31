@@ -13,6 +13,7 @@ interface PaginatedHookArgs {
   enabled: boolean;
   sources: string[];
   lookbackHours: number;
+  refetchIntervalMs?: number;
 }
 
 export interface PaginatedHookResult<T> {
@@ -47,9 +48,15 @@ function useAggregatedPaginated<T>(
     () => lookbackToSinceMs(args.lookbackHours),
     [args.lookbackHours],
   );
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!args.refetchIntervalMs || args.refetchIntervalMs <= 0) return;
+    const id = setInterval(() => setTick((t) => t + 1), args.refetchIntervalMs);
+    return () => clearInterval(id);
+  }, [args.refetchIntervalMs]);
   const argsKey = useMemo(
-    () => JSON.stringify([args.enabled, args.sources, args.lookbackHours, ...key]),
-    [args.enabled, args.sources, args.lookbackHours, key],
+    () => JSON.stringify([args.enabled, args.sources, args.lookbackHours, tick, ...key]),
+    [args.enabled, args.sources, args.lookbackHours, tick, key],
   );
 
   useEffect(() => {
@@ -112,8 +119,13 @@ function useAggregatedPaginated<T>(
   return { items, isLoading, isError: error !== null, error, progress };
 }
 
+const POSITION_REFETCH_MS = 60_000;
+
 export function usePositions(args: PaginatedHookArgs) {
-  return useAggregatedPaginated(['positions'], fetchPositionsPage, args);
+  return useAggregatedPaginated(['positions'], fetchPositionsPage, {
+    ...args,
+    refetchIntervalMs: args.refetchIntervalMs ?? POSITION_REFETCH_MS,
+  });
 }
 
 export function useTraceroutes(args: PaginatedHookArgs) {
