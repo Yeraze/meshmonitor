@@ -106,6 +106,7 @@ export default defineConfig({
             { text: 'Analytics', link: '/features/analytics' },
             { text: 'Analysis & Reports', link: '/features/analysis-reports' },
             { text: 'Mesh Issues Analysis', link: '/features/mesh-issues' },
+            { text: 'Mesh Issues Test Reference', link: '/features/mesh-issues-test-reference' },
             { text: 'Link Quality & Smart Hops', link: '/features/link-quality' },
             { text: 'Telemetry Widgets', link: '/features/telemetry-widgets' },
             { text: 'Traffic Management', link: '/features/traffic-management' },
