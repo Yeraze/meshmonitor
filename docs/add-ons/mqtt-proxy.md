@@ -191,16 +191,11 @@ docker compose logs mqtt-proxy -f
 - Check `HEALTH_CHECK_ACTIVITY_TIMEOUT` setting
 
 #### TLS ignored, proxy connects on port 1883 instead of 8883
-- Known issue in mqtt-proxy v1.6.6: the proxy reads the node's TLS flag as
-  `tlsEnabled`, but the Meshtastic MQTT module config field is `tls_enabled`.
-  Since the attribute is never found, TLS is treated as disabled and the
-  proxy falls back to the default port 1883 even when your broker requires
-  TLS on 8883. This is a bug in the upstream proxy, not in MeshMonitor —
-  MeshMonitor forwards the node's MQTT config to the proxy unchanged, and
-  there is no MeshMonitor-side setting that works around it.
-- Track/report this upstream: [LN4CY/mqtt-proxy issues](https://github.com/LN4CY/mqtt-proxy/issues).
-  If your broker requires TLS, consider the [Embedded MQTT Broker](/features/mqtt-broker)
-  source type instead until the sidecar is fixed.
+- Known issue in mqtt-proxy v1.6.6: the proxy reads the node's TLS flag as `tlsEnabled`, but the Meshtastic MQTT module config field is `tls_enabled`
+- Since the attribute is never found, TLS is treated as disabled and the proxy falls back to port 1883 even when your broker requires TLS on 8883
+- This is a bug in the upstream proxy, not in MeshMonitor — MeshMonitor forwards the node's MQTT config to the proxy unchanged, and there is no MeshMonitor-side setting that works around it
+- Track/report this upstream: [LN4CY/mqtt-proxy issues](https://github.com/LN4CY/mqtt-proxy/issues)
+- If your broker requires TLS, consider the [Embedded MQTT Broker](/features/mqtt-broker) source type instead until the sidecar is fixed
 
 ### Health Status
 
