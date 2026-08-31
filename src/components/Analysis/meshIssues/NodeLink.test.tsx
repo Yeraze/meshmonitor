@@ -24,15 +24,21 @@ const mockGet = apiService.get as unknown as ReturnType<typeof vi.fn>;
 
 function LocationReporter() {
   const loc = useLocation();
-  return <div data-testid="location">{loc.pathname}</div>;
+  const state = loc.state as { focusDmNodeId?: string } | null;
+  return (
+    <>
+      <div data-testid="location">{loc.pathname}</div>
+      <div data-testid="focusDmNodeId">{state?.focusDmNodeId ?? ''}</div>
+    </>
+  );
 }
 
 function renderNodeLink(props: React.ComponentProps<typeof NodeLink>) {
   return render(
-    <MemoryRouter initialEntries={['/source/existing/nodes']}>
+    <MemoryRouter initialEntries={['/source/existing/reports']}>
       <Routes>
         <Route
-          path="/source/:sid/nodes"
+          path="/source/:sid/*"
           element={
             <>
               <NodeLink {...props} />
@@ -62,8 +68,11 @@ describe('NodeLink', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Alpha' }));
 
     await waitFor(() => {
-      expect(screen.getByTestId('location').textContent).toBe('/source/src-solo/nodes');
+      expect(screen.getByTestId('location').textContent).toBe('/source/src-solo/messages');
     });
+    // The messages route is opened with a focusDmNodeId state payload so
+    // the App-level effect can auto-select the DM thread.
+    expect(screen.getByTestId('focusDmNodeId').textContent).toBe('!11223344');
     expect(sessionStorage.getItem(PENDING_SELECTED_NODE_STORAGE_KEY)).toBe('!11223344');
     expect(mockGet).toHaveBeenCalledWith('/api/nodes/287454020/sources');
   });
@@ -89,12 +98,12 @@ describe('NodeLink', () => {
     expect(screen.getByRole('menuitem', { name: /Source B/ })).toBeTruthy();
 
     // Nothing has navigated yet — waiting on user choice.
-    expect(screen.getByTestId('location').textContent).toBe('/source/existing/nodes');
+    expect(screen.getByTestId('location').textContent).toBe('/source/existing/reports');
 
     fireEvent.click(screen.getByRole('menuitem', { name: /Source B/ }));
 
     await waitFor(() => {
-      expect(screen.getByTestId('location').textContent).toBe('/source/src-b/nodes');
+      expect(screen.getByTestId('location').textContent).toBe('/source/src-b/messages');
     });
     expect(sessionStorage.getItem(PENDING_SELECTED_NODE_STORAGE_KEY)).toBe('!0000002a');
   });
@@ -107,7 +116,7 @@ describe('NodeLink', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Bravo' }));
 
     await waitFor(() => {
-      expect(screen.getByTestId('location').textContent).toBe('/source/fallback-src/nodes');
+      expect(screen.getByTestId('location').textContent).toBe('/source/fallback-src/messages');
     });
     expect(sessionStorage.getItem(PENDING_SELECTED_NODE_STORAGE_KEY)).toBe('!00000063');
   });
@@ -121,7 +130,7 @@ describe('NodeLink', () => {
 
     // Give the promise a chance to settle.
     await new Promise((r) => setTimeout(r, 5));
-    expect(screen.getByTestId('location').textContent).toBe('/source/existing/nodes');
+    expect(screen.getByTestId('location').textContent).toBe('/source/existing/reports');
     expect(sessionStorage.getItem(PENDING_SELECTED_NODE_STORAGE_KEY)).toBeNull();
   });
 

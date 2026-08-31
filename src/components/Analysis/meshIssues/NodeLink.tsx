@@ -47,19 +47,32 @@ interface NodeLinkProps {
 }
 
 /**
- * Navigate to `/source/<sourceId>/nodes` and prime NodesTab to auto-select
- * this node. Exported so callers that already know the exact source can
- * bypass the picker entirely.
+ * Navigate to `/source/<sourceId>/messages` with a `focusDmNodeId` state
+ * payload — the App-level effect (`focusDmFromNavRef` in App.tsx) picks
+ * that up on mount, switches to the messages tab, selects the DM
+ * channel, and opens the DM thread for this node. Exported so callers
+ * that already know the exact source can bypass the picker entirely.
+ *
+ * `sessionStorage` is still written for the NodesTab handoff (a viewer
+ * who navigates back to Nodes in the same tab expects it to be
+ * highlighted there too — cheap belt-and-suspenders).
  */
 // eslint-disable-next-line react-refresh/only-export-components -- pure helper co-located with NodeLink; used by NodeLink and other callers that already know the source
-export function openNodeOnSource(navigate: (path: string) => void, sourceId: string, nodeNum: number): void {
+export function openNodeOnSource(
+  navigate: (path: string, opts?: { state?: unknown }) => void,
+  sourceId: string,
+  nodeNum: number,
+): void {
+  const nodeId = hexNodeId(nodeNum);
   try {
-    sessionStorage.setItem(PENDING_SELECTED_NODE_STORAGE_KEY, hexNodeId(nodeNum));
+    sessionStorage.setItem(PENDING_SELECTED_NODE_STORAGE_KEY, nodeId);
   } catch {
     // Private-browsing / storage-quota — the destination just won't
     // auto-select; that's fine, better than a hard failure.
   }
-  navigate(`/source/${encodeURIComponent(sourceId)}/nodes`);
+  navigate(`/source/${encodeURIComponent(sourceId)}/messages`, {
+    state: { focusDmNodeId: nodeId },
+  });
 }
 
 const NodeLink: React.FC<NodeLinkProps> = ({
