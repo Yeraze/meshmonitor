@@ -51,6 +51,7 @@ interface NodeLinkProps {
  * this node. Exported so callers that already know the exact source can
  * bypass the picker entirely.
  */
+// eslint-disable-next-line react-refresh/only-export-components -- pure helper co-located with NodeLink; used by NodeLink and other callers that already know the source
 export function openNodeOnSource(navigate: (path: string) => void, sourceId: string, nodeNum: number): void {
   try {
     sessionStorage.setItem(PENDING_SELECTED_NODE_STORAGE_KEY, hexNodeId(nodeNum));
@@ -109,7 +110,7 @@ const NodeLink: React.FC<NodeLinkProps> = ({
       ev.stopPropagation();
       if (loading) return;
       setLoading(true);
-      let sources: NodeSourceEntry[] = [];
+      let sources: NodeSourceEntry[];
       try {
         const res = await apiService.get<{ success: boolean; data?: { sources: NodeSourceEntry[] } }>(
           `/api/nodes/${nodeNum}/sources`,
