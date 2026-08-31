@@ -28,12 +28,20 @@ const FindingDetail: React.FC<FindingDetailProps> = ({ issue, sourceNames }) => 
     typeof issue.evidence.recommendation === 'string' ? issue.evidence.recommendation : null;
 
   const entries = Object.entries(issue.evidence).filter(([key]) => key !== 'recommendation');
+  // When C1_key_security emits the structured `sharedWithNodes` list, hide the
+  // raw `details` string pill — it repeats the same information as unclickable
+  // node numbers. Rows persisted before this field existed keep the string.
+  const hasSharedWithNodes = Array.isArray(issue.evidence.sharedWithNodes)
+    && issue.evidence.sharedWithNodes.length > 0;
   // `<field>Truncated`/`<field>Total` sibling flags are surfaced as the
   // "+ more" note inside the matching structured component, never as a raw
   // pill of their own.
   const plainEntries = entries.filter(
     ([key]) =>
-      !STRUCTURED_EVIDENCE_KEYS.has(key) && !key.endsWith('Truncated') && !key.endsWith('Total'),
+      !STRUCTURED_EVIDENCE_KEYS.has(key)
+      && !key.endsWith('Truncated')
+      && !key.endsWith('Total')
+      && !(hasSharedWithNodes && key === 'details'),
   );
   const structuredEntries = entries.filter(([key]) => STRUCTURED_EVIDENCE_KEYS.has(key));
 
@@ -80,6 +88,7 @@ const FindingDetail: React.FC<FindingDetailProps> = ({ issue, sourceNames }) => 
               value={value}
               truncated={truncated}
               total={total}
+              fallbackSourceIds={issue.sourceIds}
             />
           );
         }

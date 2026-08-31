@@ -135,6 +135,86 @@
   color: var(--color-text-subtle);
 }
 
+/* NodeLink — clickable node reference. Renders inline; styles the text as a
+ * subtle link but keeps the surrounding chip's background. */
+.nodeLink {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: var(--color-accent);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.nodeLink:hover,
+.nodeLink:focus-visible {
+  color: var(--color-accent-hover);
+  text-decoration-thickness: 2px;
+}
+
+/* Source picker popover — anchored inline below the trigger. */
+.pickerAnchor {
+  position: relative;
+  display: inline-block;
+}
+
+.picker {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  min-width: 220px;
+  max-width: 320px;
+  background: var(--color-bg-raised);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pickerHeader {
+  padding: 6px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-subtle);
+}
+
+.pickerItem {
+  background: transparent;
+  border: none;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 4px;
+  color: var(--color-text);
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pickerItem:hover,
+.pickerItem:focus-visible {
+  background: var(--color-surface);
+}
+
+.pickerItemName {
+  font-weight: 500;
+}
+
+.pickerItemSource {
+  font-size: 11px;
+  color: var(--color-text-subtle);
+}
+
 .snrTable {
   margin-top: 4px;
   border-collapse: collapse;

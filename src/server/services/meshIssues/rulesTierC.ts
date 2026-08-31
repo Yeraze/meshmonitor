@@ -156,6 +156,27 @@ export function evaluateC1ExcessivePackets(ctx: TierCRuleContext): MeshIssueFind
   return findings;
 }
 
+/**
+ * Extract the "Key shared with nodes: N, M, ..." numeric list from the
+ * details string `duplicateKeySchedulerService` writes. Returns [] when the
+ * details are absent or shaped differently (e.g. a mismatch-path details
+ * string). Robust to whitespace and trailing text.
+ *
+ * Exported for the frontend renderer test parity — the shape it produces
+ * must match `sharedWithNodes` items.
+ */
+export function parseSharedWithNodeNums(details: string | null | undefined): number[] {
+  if (!details) return [];
+  const match = /Key shared with nodes?:\s*([\d,\s]+)/i.exec(details);
+  if (!match) return [];
+  const out: number[] = [];
+  for (const part of match[1].split(',')) {
+    const n = Number(part.trim());
+    if (Number.isFinite(n) && n > 0) out.push(n);
+  }
+  return out;
+}
+
 export function evaluateC1KeySecurity(ctx: TierCRuleContext): MeshIssueFinding[] {
   const findings: MeshIssueFinding[] = [];
   for (const node of ctx.nodes.values()) {
@@ -170,17 +191,34 @@ export function evaluateC1KeySecurity(ctx: TierCRuleContext): MeshIssueFinding[]
     // key has benign causes (notably a re-flashed node), so medium otherwise.
     const confidence: MeshIssueConfidence = clauses.includes('keyIsLowEntropy') ? 'high' : 'medium';
 
+    // Structured "shared with" list — only populated when `duplicateKeyDetected`
+    // is one of the clauses, since that's the only path where the details
+    // string carries the nodeNum list. Names come from `ctx.nodes` (the same
+    // pooled snapshot this rule iterates); a shared node absent from the
+    // snapshot appears with a null name and the frontend falls back to !hex.
+    const evidence: Record<string, unknown> = {
+      clauses,
+      details: node.keySecurityIssueDetails,
+      sources: node.sourceIds,
+    };
+    if (clauses.includes('duplicateKeyDetected')) {
+      const sharedNums = parseSharedWithNodeNums(node.keySecurityIssueDetails);
+      if (sharedNums.length > 0) {
+        evidence.sharedWithNodes = sharedNums.map((num) => {
+          const other = ctx.nodes.get(num);
+          const name = other?.longName || other?.shortName || null;
+          return { nodeNum: num, name };
+        });
+      }
+    }
+
     findings.push({
       issueType: MESH_ISSUE_TYPES.C1_KEY_SECURITY,
       subjectKey: nodeSubjectKey(node.nodeNum),
       nodeNum: node.nodeNum,
       severity: 'warning',
       confidence,
-      evidence: {
-        clauses,
-        details: node.keySecurityIssueDetails,
-        sources: node.sourceIds,
-      },
+      evidence,
       sourceIds: node.sourceIds,
       // Deliberately "channel", not DM: a PKI-encrypted DM uses the stored
       // key, which is the thing in question (CLAUDE.md key-repair routing).

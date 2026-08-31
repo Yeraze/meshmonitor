@@ -236,6 +236,41 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
+   * List every (sourceId, longName, shortName) row that carries this nodeNum.
+   *
+   * Used by the "which source should I open this node on?" picker in the Mesh
+   * Issues report — a nodeNum can exist on multiple sources with independent
+   * NodeInfo, and the caller needs to disambiguate.
+   *
+   * Unscoped by design: the picker's whole purpose is to enumerate every
+   * source where the node exists. The route wrapper is responsible for the
+   * permission gate (`nodes:read`); nothing here filters by user.
+   */
+  async getSourcesForNode(
+    nodeNum: number,
+  ): Promise<Array<{ sourceId: string; longName: string | null; shortName: string | null }>> {
+    if (!isValidNodeNum(nodeNum)) {
+      logger.warn(`NodesRepository.getSourcesForNode: rejecting out-of-range nodeNum ${nodeNum}`);
+      return [];
+    }
+    const { nodes } = this.tables;
+    const result = await this.db
+      .select({ sourceId: nodes.sourceId, longName: nodes.longName, shortName: nodes.shortName })
+      .from(nodes)
+      .where(eq(nodes.nodeNum, nodeNum));
+
+    const out: Array<{ sourceId: string; longName: string | null; shortName: string | null }> = [];
+    for (const row of result) {
+      out.push({
+        sourceId: row.sourceId,
+        longName: row.longName ?? null,
+        shortName: row.shortName ?? null,
+      });
+    }
+    return out;
+  }
+
+  /**
    * Get a node by nodeId, optionally scoped to a source.
    *
    * After migration 029, (nodeId, sourceId) is the composite unique key. When

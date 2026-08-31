@@ -50,6 +50,7 @@ import { MapCenterController } from './MapCenterController';
 import PacketMonitorPanel from './PacketMonitorPanel';
 import { getPacketStats } from '../services/packetApi';
 
+import { PENDING_SELECTED_NODE_STORAGE_KEY } from './Analysis/meshIssues/NodeLink';
 import { BaseMap } from './map/BaseMap';
 import { Map3DView } from './map/Map3DView';
 import DashboardNodePopup from './Dashboard/DashboardNodePopup';
@@ -1237,6 +1238,31 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     traceroutesRef.current = traceroutes;
     nodePositionsRef.current = nodePositions;
   });
+
+  // NodeLink handoff (Mesh Issues → Source Node Details): a click in the
+  // Mesh Issues report drops the target nodeId into sessionStorage and
+  // navigates. When NodesTab mounts on the destination source with its
+  // nodes loaded, consume the key: select the pending node if it exists
+  // here, and CLEAR the key unconditionally so it can't leak into a
+  // future navigation on a different tab/source.
+  useEffect(() => {
+    if (processedNodes.length === 0) return;
+    let pending: string | null = null;
+    try {
+      pending = sessionStorage.getItem(PENDING_SELECTED_NODE_STORAGE_KEY);
+    } catch {
+      return;
+    }
+    if (!pending) return;
+    // Clear FIRST — even if the node isn't present here, we consumed our
+    // one shot; leaving the key set would auto-select on the next Nodes
+    // tab mount (different source, or a stale visit later).
+    try {
+      sessionStorage.removeItem(PENDING_SELECTED_NODE_STORAGE_KEY);
+    } catch { /* ignore */ }
+    const exists = processedNodes.some((n) => (n.user?.id ?? String(n.nodeNum)) === pending);
+    if (exists) setSelectedNodeId(pending);
+  }, [processedNodes, setSelectedNodeId]);
 
   // Track previous nodes to detect updates and trigger animations
   const prevNodesRef = useRef<Map<string, number>>(new Map());

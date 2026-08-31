@@ -397,6 +397,12 @@
   color: var(--color-text);
   font-weight: 600;
   font-size: 13px;
+  /* Long free-text evidence values (mesh-issues C1 `details`, key security
+   * strings, comma-separated node lists) can otherwise overflow their grid
+   * cell horizontally. The grid columns are `minmax(180px, 1fr)`, so
+   * break-anywhere lets a long token — including bare hex node ids — wrap
+   * to the next line instead of stretching the card. */
+  overflow-wrap: anywhere;
 }
 
 .reports-node__chart {

@@ -7,6 +7,7 @@ import {
   evaluateAllTierC,
   tierCSkips,
   cadenceStatsFromTimestamps,
+  parseSharedWithNodeNums,
   type TierCRuleContext,
   type CadenceStats,
   type NodeCadence,
@@ -160,6 +161,90 @@ describe('evaluateC1KeySecurity', () => {
     const ctx = makeContext([makeNode({ nodeNum: 1, keyMismatchDetected: true })]);
     expect(evaluateC1KeySecurity(ctx)[0].recommendation).toMatch(/channel/i);
     expect(evaluateC1KeySecurity(ctx)[0].recommendation).not.toMatch(/\bDM\b/i);
+  });
+
+  it('emits sharedWithNodes with resolved names when duplicateKeyDetected is a clause', () => {
+    const ctx = makeContext([
+      makeNode({
+        nodeNum: 1,
+        longName: 'Alpha',
+        duplicateKeyDetected: true,
+        keySecurityIssueDetails: 'Key shared with nodes: 2, 3',
+      }),
+      makeNode({ nodeNum: 2, longName: 'Bravo', shortName: null }),
+      // longName null → falls back to shortName
+      makeNode({ nodeNum: 3, longName: null, shortName: 'CHR' }),
+    ]);
+    const finding = evaluateC1KeySecurity(ctx).find((f) => f.nodeNum === 1)!;
+    expect(finding.evidence.sharedWithNodes).toEqual([
+      { nodeNum: 2, name: 'Bravo' },
+      { nodeNum: 3, name: 'CHR' },
+    ]);
+    // Keep the original string too so old renderers still work.
+    expect(finding.evidence.details).toBe('Key shared with nodes: 2, 3');
+  });
+
+  it('populates sharedWithNodes even when the shared node is absent from the snapshot (name null)', () => {
+    const ctx = makeContext([
+      makeNode({
+        nodeNum: 1,
+        duplicateKeyDetected: true,
+        keySecurityIssueDetails: 'Key shared with nodes: 9999',
+      }),
+    ]);
+    const finding = evaluateC1KeySecurity(ctx)[0];
+    expect(finding.evidence.sharedWithNodes).toEqual([{ nodeNum: 9999, name: null }]);
+  });
+
+  it('does NOT emit sharedWithNodes when only keyMismatchDetected fires', () => {
+    const ctx = makeContext([
+      makeNode({
+        nodeNum: 1,
+        keyMismatchDetected: true,
+        keySecurityIssueDetails: 'Key mismatch: node broadcast NEW... but device has OLD...',
+      }),
+    ]);
+    const finding = evaluateC1KeySecurity(ctx)[0];
+    expect(finding.evidence.sharedWithNodes).toBeUndefined();
+  });
+
+  it('does NOT emit sharedWithNodes when details is missing or malformed', () => {
+    const ctx = makeContext([
+      makeNode({ nodeNum: 1, duplicateKeyDetected: true, keySecurityIssueDetails: null }),
+    ]);
+    const finding = evaluateC1KeySecurity(ctx)[0];
+    expect(finding.evidence.sharedWithNodes).toBeUndefined();
+  });
+});
+
+describe('parseSharedWithNodeNums', () => {
+  it('extracts a comma-separated list', () => {
+    expect(parseSharedWithNodeNums('Key shared with nodes: 100, 200, 300')).toEqual([100, 200, 300]);
+  });
+
+  it('accepts singular "node:"', () => {
+    expect(parseSharedWithNodeNums('Key shared with node: 42')).toEqual([42]);
+  });
+
+  it('accepts the low-entropy prefix that duplicateKeySchedulerService prepends', () => {
+    expect(parseSharedWithNodeNums('Known low-entropy key; Key shared with nodes: 1, 2')).toEqual([1, 2]);
+  });
+
+  it('returns [] on unrelated or empty strings', () => {
+    expect(parseSharedWithNodeNums('unrelated message')).toEqual([]);
+    expect(parseSharedWithNodeNums(null)).toEqual([]);
+    expect(parseSharedWithNodeNums(undefined)).toEqual([]);
+    expect(parseSharedWithNodeNums('')).toEqual([]);
+  });
+
+  it('drops non-positive parts within the numeric run', () => {
+    expect(parseSharedWithNodeNums('Key shared with nodes: 5, 0, 7')).toEqual([5, 7]);
+  });
+
+  it('stops at the first non-numeric token (documented truncation semantics)', () => {
+    // The regex captures the leading digit/comma/space run only. A stray
+    // "foo" ends the match; nothing after it is parsed.
+    expect(parseSharedWithNodeNums('Key shared with nodes: 5, foo, 7')).toEqual([5]);
   });
 });
 

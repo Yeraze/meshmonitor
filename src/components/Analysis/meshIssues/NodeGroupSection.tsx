@@ -31,6 +31,7 @@ import { fetchIssuesForNode, nodeIssuesKey } from './meshIssuesApi';
 import { renderSubject } from './IssueTable';
 import FindingDetail from './FindingDetail';
 import BulkActionMenu from './BulkActionMenu';
+import NodeLink from './NodeLink';
 import { SEVERITY_LABEL } from './severityUi';
 import sharedStyles from './meshIssues.module.css';
 import styles from './NodeGroupSection.module.css';
@@ -86,9 +87,26 @@ const NodeGroupSection: React.FC<NodeGroupSectionProps> = ({
   return (
     <div className="reports-node">
       <div className={styles.header}>
-        <button type="button" className={styles.toggle} onClick={onToggleExpand} aria-expanded={expanded}>
+        {/* Chevron toggles expansion. Name is a sibling NodeLink so it can be
+         *  its own real button — nested buttons are invalid HTML, and the
+         *  name click means "navigate to node", not "expand this row". */}
+        <button
+          type="button"
+          className={styles.toggleChevron}
+          onClick={onToggleExpand}
+          aria-expanded={expanded}
+          aria-label={expanded ? 'Collapse' : 'Expand'}
+        >
           <UiIcon name={expanded ? 'chevronUp' : 'chevronDown'} size={14} />
-          <span className={styles.name}>{label}</span>
+        </button>
+        <div className={styles.headerBody}>
+          {isMeshWide ? (
+            <span className={styles.name}>{label}</span>
+          ) : (
+            <span className={styles.name}>
+              <NodeLink nodeNum={nodeNum as number} name={label} />
+            </span>
+          )}
           {isMeshWide && (
             <span className={styles.meshWideTag}>
               {t('analysis.mesh_issues.by_node.mesh_wide_hint', 'findings not tied to a single node')}
@@ -107,7 +125,7 @@ const NodeGroupSection: React.FC<NodeGroupSectionProps> = ({
               </span>
             ))}
           </span>
-        </button>
+        </div>
 
         <BulkActionMenu
           canAct={canAct}
