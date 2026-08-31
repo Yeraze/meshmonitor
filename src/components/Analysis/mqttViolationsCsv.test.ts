@@ -20,6 +20,7 @@ function gatewayRow(overrides: Partial<ViolationGatewayRow> = {}): ViolationGate
     sourceIds: ['mqtt-a'],
     firstSeen: 1753300000000,
     lastSeen: 1753386400000,
+    brokerClass: 'unknown',
     ...overrides,
   };
 }
@@ -41,6 +42,7 @@ function packetRow(overrides: Partial<ViolationPacketRow> = {}): ViolationPacket
     topic: 'msh/US/2/e/LongFast/!433e0f28',
     rxTime: 1753386400,
     timestamp: 1753386400000,
+    brokerClass: 'unknown',
     ...overrides,
   };
 }
@@ -97,6 +99,14 @@ describe('mqttViolationsCsv', () => {
       expect(zeroCells[firstSeenIdx]).toBe('');
       expect(zeroCells[lastSeenIdx]).toBe('');
     });
+
+    it('#4982: emits brokerClass as its own column', () => {
+      const csv = buildGatewaysCsv([gatewayRow({ brokerClass: 'private' })]);
+      const cells = csv.split('\r\n')[1].split(',');
+      const idx = GATEWAY_CSV_COLUMNS.findIndex((c) => c.key === 'brokerClass');
+      expect(idx).toBeGreaterThanOrEqual(0);
+      expect(cells[idx]).toBe('private');
+    });
   });
 
   describe('buildPacketsCsv', () => {
@@ -117,6 +127,14 @@ describe('mqttViolationsCsv', () => {
       const rxTimeIdx = PACKET_CSV_COLUMNS.findIndex((c) => c.key === 'rxTime');
       expect(cells[timestampIdx]).toBe(new Date(1753386400000).toISOString());
       expect(cells[rxTimeIdx]).toBe('');
+    });
+
+    it('#4982: emits brokerClass as its own column', () => {
+      const csv = buildPacketsCsv([packetRow({ brokerClass: 'public' })]);
+      const cells = csv.split('\r\n')[1].split(',');
+      const idx = PACKET_CSV_COLUMNS.findIndex((c) => c.key === 'brokerClass');
+      expect(idx).toBeGreaterThanOrEqual(0);
+      expect(cells[idx]).toBe('public');
     });
   });
 

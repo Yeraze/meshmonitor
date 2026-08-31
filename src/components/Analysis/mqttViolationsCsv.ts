@@ -22,6 +22,11 @@ export const GATEWAY_CSV_COLUMNS: ReadonlyArray<{ key: string; label: string }> 
   { key: 'suspectedCount', label: 'Suspected Count' },
   { key: 'distinctOriginators', label: 'Distinct Originators' },
   { key: 'sourceIds', label: 'Source IDs' },
+  // See ViolationGatewayRow.brokerClass (#4982) — 'private' means every
+  // observing source's broker is private (expected relay, not a proven
+  // violation); 'public' means at least one is public (confirmed); 'unknown'
+  // means at least one is a hostname MeshMonitor can't classify.
+  { key: 'brokerClass', label: 'Broker Class' },
   { key: 'firstSeen', label: 'First Seen' },
   { key: 'lastSeen', label: 'Last Seen' },
 ];
@@ -43,6 +48,8 @@ export const PACKET_CSV_COLUMNS: ReadonlyArray<{ key: string; label: string }> =
   { key: 'portnum', label: 'Port Num' },
   { key: 'portnumName', label: 'Port Num Name' },
   { key: 'bitfield', label: 'Bitfield' },
+  // See ViolationPacketRow.brokerClass (#4982) — this row's own sourceId only.
+  { key: 'brokerClass', label: 'Broker Class' },
   { key: 'topic', label: 'Topic' },
   { key: 'rxTime', label: 'RX Time' },
 ];
@@ -76,6 +83,7 @@ export function buildGatewaysCsv(rows: ViolationGatewayRow[]): string {
       formatCell(row.suspectedCount),
       formatCell(row.distinctOriginators),
       row.sourceIds.join('; '),
+      formatCell(row.brokerClass),
       formatMs(row.firstSeen),
       formatMs(row.lastSeen),
     ]),
@@ -104,6 +112,7 @@ export function buildPacketsCsv(rows: ViolationPacketRow[]): string {
       formatCell(row.portnum),
       formatCell(row.portnumName),
       formatCell(row.bitfield),
+      formatCell(row.brokerClass),
       formatCell(row.topic),
       formatMs(row.rxTime),
     ]),
