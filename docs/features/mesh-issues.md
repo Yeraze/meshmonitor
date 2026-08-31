@@ -140,6 +140,33 @@ settings](#settings); the rest stay fixed in code, listed here for reference:
 | Auto-close clean-run count | 3 | all rules |
 | Evidence list cap | 25 entries | all list-shaped evidence |
 
+## Reading the report
+
+The report opens with **summary tiles** — one per issue type present, showing
+the count, worst severity, and how many findings are new or reopened since the
+last run. Click a tile to filter to that type. A filter bar (severity, tier,
+type, source, node-name search) and a "Show dismissed" toggle apply to
+everything below.
+
+Two views share those filters:
+
+- **By issue** — one collapsible section per issue type, each a compact,
+  sortable table with columns chosen for that rule (SNR per direction for
+  asymmetric links, resets and battery floor for power findings, and so on).
+  Sections stay collapsed until you expand them — nothing loads until you ask —
+  except a section holding a critical finding, which opens itself. Click a row
+  for the full evidence.
+- **By node** — findings grouped by node, worst first, with one badge per
+  issue type. A node with four findings is one row here; this is the view to
+  work from when deciding which node to fix. Findings not tied to a single
+  node (clusters, links, congested areas) sit in a pinned "Mesh-wide" group
+  at the top.
+
+Each type section and node row carries a **bulk-actions menu**: dismiss or
+restore everything in that group at once, or mute the rule outright (see
+[Muting a rule](#muting-a-rule)). Bulk actions only ever touch findings your
+account can see.
+
 ## Acting on findings
 
 The recommendations in this report never suggest ROUTER, and never say
