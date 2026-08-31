@@ -7510,8 +7510,13 @@ class MeshtasticManager implements ISourceManager {
           nodeData.keySecurityIssueDetails = null;
         }
 
-        // Check if this node had a key mismatch that is now fixed
-        const existingNode = await databaseService.nodes.getNode(fromNum);
+        // Check if this node had a key mismatch that is now fixed.
+        // MUST scope to this.sourceId — `keyMismatchDetected` is per-source
+        // (writes below use `upsertNodeAsync(..., this.sourceId)`). An
+        // unscoped read returns whichever row Drizzle picks first (often
+        // an MQTT-ingested row with a different snapshot), producing both
+        // false-positive mismatches AND stuck flags that never clear.
+        const existingNode = await databaseService.nodes.getNode(fromNum, this.sourceId);
 
         // --- Proactive key mismatch detection ---
         let newMismatchDetected = false;
@@ -8745,7 +8750,9 @@ class MeshtasticManager implements ISourceManager {
           // NO_CHANNEL from the target node (it couldn't decrypt our request)
           // Skip if the target is our own local node — we can't have a key mismatch with ourselves
           if (errorReason === RoutingError.NO_CHANNEL && fromNodeId === toNodeId && toNodeId !== localNodeId) {
-            const existingNode = await databaseService.nodes.getNode(toNum);
+            // Scope to this.sourceId — the write below is per-source, and an
+            // unscoped read of `keyMismatchDetected` returns the wrong source's row.
+            const existingNode = await databaseService.nodes.getNode(toNum, this.sourceId);
             if (!existingNode?.keyMismatchDetected) {
               const errorDescription = 'NO_CHANNEL error on request - target node rejected the message. ' +
                 'Possible key or channel mismatch. Use "Exchange Node Info" or purge node data to refresh keys.';
@@ -8807,8 +8814,9 @@ class MeshtasticManager implements ISourceManager {
 
           logger.warn(`🔐 NO_CHANNEL on DM detected for node ${targetNodeId}: ${errorDescription}`);
 
-          // Flag the node with the key security issue (if not already flagged)
-          const existingNode = await databaseService.nodes.getNode(targetNodeNum);
+          // Flag the node with the key security issue (if not already flagged).
+          // Scope to this.sourceId — the write below is per-source.
+          const existingNode = await databaseService.nodes.getNode(targetNodeNum, this.sourceId);
           if (!existingNode?.keyMismatchDetected) {
             await databaseService.upsertNodeAsync({
               nodeNum: targetNodeNum,

@@ -169,6 +169,7 @@ import { migration as createMessageEventsMigration, runMigration151Postgres, run
 import { migration as createMeshtasticHeardRepeatersMigration, runMigration152Postgres, runMigration152Mysql } from '../server/migrations/152_create_meshtastic_heard_repeaters.js';
 import { migration as meshcoreNodeNeighborsConfigMigration, runMigration153Postgres, runMigration153Mysql } from '../server/migrations/153_meshcore_node_neighbors_config.js';
 import { migration as createMeshIssuesMigration, runMigration154Postgres, runMigration154Mysql } from '../server/migrations/154_create_mesh_issues.js';
+import { migration as clearStaleKeyMismatchMigration, runMigration155Postgres, runMigration155Mysql } from '../server/migrations/155_clear_stale_key_mismatch.js';
 
 // ============================================================================
 // Registry
@@ -2470,4 +2471,21 @@ registry.register({
   sqlite: (db) => createMeshIssuesMigration.up(db),
   postgres: (client) => runMigration154Postgres(client),
   mysql: (pool) => runMigration154Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 155: clear stale `keyMismatchDetected` flags left behind by the
+// source-blind read bug in `meshtasticManager.ts` (fixed in this branch).
+// Only clears flags on rows whose fingerprint matches the PKI-error path
+// (`lastMeshReceivedKey IS NULL`); a legitimate current PKI failure re-sets
+// the flag on the next failed DM.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 155,
+  name: 'clear_stale_key_mismatch',
+  settingsKey: 'migration_155_clear_stale_key_mismatch',
+  sqlite: (db) => clearStaleKeyMismatchMigration.up(db),
+  postgres: (client) => runMigration155Postgres(client),
+  mysql: (pool) => runMigration155Mysql(pool),
 });
