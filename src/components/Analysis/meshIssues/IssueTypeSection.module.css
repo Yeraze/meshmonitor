@@ -12,6 +12,10 @@
   margin: 0;
   font-size: 14px;
   font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .toggle {
@@ -26,6 +30,7 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
+  min-width: 0;
 }
 
 .sectionIcon--critical {

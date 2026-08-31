@@ -129,6 +129,13 @@ export interface ResolvedMeshIssueThresholds {
   mobileSpanMeters: number;
   snrAsymmetryDb: number;
   overBroadcastSeconds: number;
+  /** count, #4964 post-epic follow-ups. How many consecutive clean analysis
+   *  runs a finding survives before it auto-closes. Mirrors the server's
+   *  `ResolvedMeshIssueThresholds.autoCloseCleanRuns` (`thresholds.ts`) — WP5
+   *  wire-type gap fix: this field existed server-side and in
+   *  `MeshIssuesSection.tsx`'s locally-declared mirror but was missing here,
+   *  which `MuteRuleDialog` needs for its auto-close copy (spec §6.4). */
+  autoCloseCleanRuns: number;
   /** km, B1/B6 cluster-adjacency distance guard (#4976). */
   routerClusterMaxLinkKm: number;
   /** Resolved, validated, sorted `mesh_issues_disabled_rules` (#4964 report

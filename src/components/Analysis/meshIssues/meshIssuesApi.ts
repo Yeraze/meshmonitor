@@ -10,6 +10,8 @@
  */
 import apiService from '../../../services/api';
 import type {
+  MeshIssueBulkScope,
+  MeshIssuesBulkResult,
   MeshIssuesFilters,
   MeshIssuesResponse,
   MeshIssuesRunNowResult,
@@ -120,4 +122,26 @@ export async function postDismiss(id: number): Promise<void> {
 
 export async function postRestore(id: number): Promise<void> {
   await apiService.post(`/api/analysis/mesh-issues/${id}/restore`);
+}
+
+/**
+ * Bulk dismiss/restore (#4964 report reorganization, WP5, spec §4.4) — a
+ * declarative `MeshIssueBulkScope`, NOT an id array (see the wire type's own
+ * doc comment for why). Response carries only `affected`, deliberately no
+ * `skipped` count (the #3745 leak class).
+ */
+export async function postBulkDismiss(scope: MeshIssueBulkScope): Promise<MeshIssuesBulkResult> {
+  const body = await apiService.post<{ success: boolean; data: MeshIssuesBulkResult }>(
+    '/api/analysis/mesh-issues/bulk/dismiss',
+    scope,
+  );
+  return body.data;
+}
+
+export async function postBulkRestore(scope: MeshIssueBulkScope): Promise<MeshIssuesBulkResult> {
+  const body = await apiService.post<{ success: boolean; data: MeshIssuesBulkResult }>(
+    '/api/analysis/mesh-issues/bulk/restore',
+    scope,
+  );
+  return body.data;
 }

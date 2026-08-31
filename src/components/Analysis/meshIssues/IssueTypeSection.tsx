@@ -7,6 +7,7 @@
  * `IssueTable` — expanding the biggest section never issues a second
  * request just to re-sort it.
  */
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { UiIcon } from '../../icons';
@@ -14,6 +15,7 @@ import {
   ISSUE_TYPE_LABELS,
   SEVERITY_ORDER,
   ruleShortId,
+  type MeshIssueBulkScope,
   type MeshIssueTypeSummary,
   type MeshIssuesFilters,
   type MeshIssuesResponse,
@@ -22,6 +24,8 @@ import { fetchIssuesForType, typeIssuesKey } from './meshIssuesApi';
 import type { MeshIssuesSortState } from './useMeshIssuesViewState';
 import { SEVERITY_ICON, SEVERITY_LABEL } from './severityUi';
 import IssueTable from './IssueTable';
+import BulkActionMenu from './BulkActionMenu';
+import MuteRuleDialog from './MuteRuleDialog';
 import styles from './IssueTypeSection.module.css';
 
 interface IssueTypeSectionProps {
@@ -42,6 +46,15 @@ interface IssueTypeSectionProps {
   onRestore: (id: number) => void;
   dismissPendingId: number | null;
   restorePendingId: number | null;
+  /** `status.thresholds.disabledRules` (#4964 report reorg, WP5, spec §6.4) —
+   *  drives the "Mute this rule" item and the muted marker. */
+  disabledRules: string[];
+  autoCloseCleanRuns: number;
+  frequencyHours: number;
+  onBulkDismiss: (scope: MeshIssueBulkScope) => void;
+  onBulkRestore: (scope: MeshIssueBulkScope) => void;
+  bulkPending: boolean;
+  onForbidden: () => void;
 }
 
 const IssueTypeSection: React.FC<IssueTypeSectionProps> = ({
@@ -60,9 +73,17 @@ const IssueTypeSection: React.FC<IssueTypeSectionProps> = ({
   onRestore,
   dismissPendingId,
   restorePendingId,
+  disabledRules,
+  autoCloseCleanRuns,
+  frequencyHours,
+  onBulkDismiss,
+  onBulkRestore,
+  bulkPending,
+  onForbidden,
 }) => {
   const { t } = useTranslation();
-  const { issueType, total, bySeverity, worstSeverity } = typeSummary;
+  const { issueType, total, bySeverity, worstSeverity, dismissed } = typeSummary;
+  const [muteOpen, setMuteOpen] = useState(false);
 
   const query = useQuery<MeshIssuesResponse>({
     queryKey: typeIssuesKey(issueType, filters),
@@ -75,13 +96,15 @@ const IssueTypeSection: React.FC<IssueTypeSectionProps> = ({
     .map((s) => `${bySeverity[s]} ${SEVERITY_LABEL[s].toLowerCase()}`)
     .join(', ');
 
+  const label = `${ruleShortId(issueType)} ${ISSUE_TYPE_LABELS[issueType] ?? issueType}`;
+
   return (
     <section className={styles.section}>
       <h3 className={styles.heading}>
         <button type="button" className={styles.toggle} onClick={onToggleExpand} aria-expanded={expanded}>
           <UiIcon name={expanded ? 'chevronUp' : 'chevronDown'} size={14} />
           <UiIcon name={SEVERITY_ICON[worstSeverity]} size={14} className={styles[`sectionIcon--${worstSeverity}`]} />
-          {ruleShortId(issueType)} {ISSUE_TYPE_LABELS[issueType] ?? issueType}
+          {label}
           <span className={styles.breakdown}>
             — {total} · {breakdown}
           </span>
@@ -96,7 +119,32 @@ const IssueTypeSection: React.FC<IssueTypeSectionProps> = ({
             </span>
           )}
         </button>
+
+        <BulkActionMenu
+          canAct={canAct}
+          subjectLabel={label}
+          openCount={total - dismissed}
+          dismissedCount={dismissed}
+          onDismissAll={() => onBulkDismiss({ scope: 'issueType', issueType })}
+          onRestoreAll={() => onBulkRestore({ scope: 'issueType', issueType })}
+          bulkPending={bulkPending}
+          mute={{
+            muted: disabledRules.includes(issueType),
+            onMute: () => setMuteOpen(true),
+          }}
+        />
       </h3>
+
+      {muteOpen && (
+        <MuteRuleDialog
+          issueType={issueType}
+          disabledRules={disabledRules}
+          autoCloseCleanRuns={autoCloseCleanRuns}
+          frequencyHours={frequencyHours}
+          onClose={() => setMuteOpen(false)}
+          onForbidden={onForbidden}
+        />
+      )}
 
       {expanded && (
         <>

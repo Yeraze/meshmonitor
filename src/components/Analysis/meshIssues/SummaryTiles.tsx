@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../../icons';
 import { ISSUE_TYPE_LABELS, SEVERITY_ORDER, ruleShortId, type MeshIssueTypeSummary } from '../meshIssueTypes';
 import { SEVERITY_ICON, SEVERITY_LABEL } from './severityUi';
+import sharedStyles from './meshIssues.module.css';
 import styles from './SummaryTiles.module.css';
 
 interface SummaryTilesProps {
@@ -22,6 +23,10 @@ interface SummaryTilesProps {
    *  zero hides the chip rather than showing a stale/zero count. */
   newByType?: Record<string, number>;
   reopenedByType?: Record<string, number>;
+  /** `status.thresholds.disabledRules` (#4964 report reorg, WP5, spec §6.4) —
+   *  a muted type's tile carries a small "Muted" marker. Optional/defaults to
+   *  `[]` so this component keeps working before the status query resolves. */
+  disabledRules?: string[];
   /** `null` == the "All" tile (clear the issueType filter). */
   onSelect: (issueType: string | null) => void;
 }
@@ -32,6 +37,7 @@ const SummaryTiles: React.FC<SummaryTilesProps> = ({
   activeIssueTypes,
   newByType,
   reopenedByType,
+  disabledRules = [],
   onSelect,
 }) => {
   const { t } = useTranslation();
@@ -63,6 +69,12 @@ const SummaryTiles: React.FC<SummaryTilesProps> = ({
             <div className={styles.tileHeader}>
               <UiIcon name={SEVERITY_ICON[type.worstSeverity]} size={14} />
               {ruleShortId(type.issueType)} {ISSUE_TYPE_LABELS[type.issueType] ?? type.issueType}
+              {disabledRules.includes(type.issueType) && (
+                <span className={sharedStyles.mutedMarker}>
+                  <UiIcon name="muted" size={10} />
+                  {t('analysis.mesh_issues.bulk.muted_marker', 'Muted')}
+                </span>
+              )}
             </div>
             <div className={styles.tileTotal}>{type.total}</div>
             <div className={styles.tileBreakdown}>{breakdown}</div>

@@ -40,8 +40,12 @@ interface IssueTableProps {
 
 /** Subject cell, per subject-key prefix (spec §6.5). Every branch is
  *  defensive: `evidence` is parsed JSON and can be malformed or redacted, so
- *  every path falls back to the raw `subjectKey` rather than throwing. */
-function renderSubject(row: MeshIssueRow): React.ReactNode {
+ *  every path falls back to the raw `subjectKey` rather than throwing.
+ *  Exported for reuse by `NodeGroupSection` (#4964 report reorg, WP5) — a
+ *  by-node finding row needs the same per-prefix rendering the By-issue
+ *  table uses, and duplicating ~30 lines here would drift. */
+// eslint-disable-next-line react-refresh/only-export-components -- #4964 WP5 reuse by NodeGroupSection; a pure render helper, not a component
+export function renderSubject(row: MeshIssueRow): React.ReactNode {
   const key = row.subjectKey;
   if (key.startsWith('node:')) {
     return row.nodeName ?? (row.nodeNum != null ? hexNodeId(row.nodeNum) : key);

@@ -109,4 +109,20 @@ describe('SummaryTiles', () => {
     expect(screen.getByText('12 new this run')).toBeInTheDocument();
     expect(screen.queryByText(/reopened/)).not.toBeInTheDocument();
   });
+
+  it('shows a Muted marker on a tile whose type is in disabledRules (#4964 WP5, spec §6.4)', () => {
+    render(
+      <SummaryTiles
+        byType={[typeSummary(), typeSummary({ issueType: 'B3_asymmetric_link', total: 53 })]}
+        total={635}
+        activeIssueTypes={[]}
+        disabledRules={['B7_coverage_shadow']}
+        onSelect={vi.fn()}
+      />,
+    );
+    const coverageTile = screen.getByRole('button', { name: /Coverage shadow/ });
+    expect(coverageTile).toHaveTextContent('Muted');
+    const asymmetricTile = screen.getByRole('button', { name: /Asymmetric link/ });
+    expect(asymmetricTile).not.toHaveTextContent('Muted');
+  });
 });

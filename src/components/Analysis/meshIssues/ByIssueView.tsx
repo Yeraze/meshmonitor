@@ -11,7 +11,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { MeshIssuesFilters, MeshIssuesSummary } from '../meshIssueTypes';
+import type { MeshIssueBulkScope, MeshIssuesFilters, MeshIssuesSummary } from '../meshIssueTypes';
 import type { MeshIssuesSortState, MeshIssuesViewState } from './useMeshIssuesViewState';
 import IssueTypeSection from './IssueTypeSection';
 
@@ -29,6 +29,14 @@ interface ByIssueViewProps {
   onRestore: (id: number) => void;
   dismissPendingId: number | null;
   restorePendingId: number | null;
+  /** `status.thresholds.disabledRules` (#4964 report reorg, WP5, spec §6.4). */
+  disabledRules: string[];
+  autoCloseCleanRuns: number;
+  frequencyHours: number;
+  onBulkDismiss: (scope: MeshIssueBulkScope) => void;
+  onBulkRestore: (scope: MeshIssueBulkScope) => void;
+  bulkPending: boolean;
+  onForbidden: () => void;
 }
 
 const ByIssueView: React.FC<ByIssueViewProps> = ({
@@ -45,6 +53,13 @@ const ByIssueView: React.FC<ByIssueViewProps> = ({
   onRestore,
   dismissPendingId,
   restorePendingId,
+  disabledRules,
+  autoCloseCleanRuns,
+  frequencyHours,
+  onBulkDismiss,
+  onBulkRestore,
+  bulkPending,
+  onForbidden,
 }) => {
   const { t } = useTranslation();
   // Types this component has already applied the critical-default seed to —
@@ -108,6 +123,13 @@ const ByIssueView: React.FC<ByIssueViewProps> = ({
           onRestore={onRestore}
           dismissPendingId={dismissPendingId}
           restorePendingId={restorePendingId}
+          disabledRules={disabledRules}
+          autoCloseCleanRuns={autoCloseCleanRuns}
+          frequencyHours={frequencyHours}
+          onBulkDismiss={onBulkDismiss}
+          onBulkRestore={onBulkRestore}
+          bulkPending={bulkPending}
+          onForbidden={onForbidden}
         />
       ))}
     </div>

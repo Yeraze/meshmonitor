@@ -329,3 +329,125 @@
   color: var(--color-accent);
   border-color: var(--color-accent);
 }
+
+/* Bulk action menu + mute/confirm dialogs (#4964 report reorganization, WP5,
+ * spec §6.4). Shared between `BulkActionMenu.tsx` and `MuteRuleDialog.tsx` —
+ * both are the same "small popover" / "confirm overlay" family, so their
+ * chrome lives here rather than being duplicated across two modules
+ * (CLAUDE.md CSS containment: genuinely new/shared surfaces get one home).
+ * `var(--color-*)` tokens only, no fallback, so themes apply. */
+
+.menuWrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.menuTrigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  line-height: 0;
+}
+
+.menuPanel {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  background: var(--color-bg-raised);
+  border: 1px solid var(--color-surface);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--color-bg) 60%, transparent);
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  background: none;
+  border: none;
+  color: var(--color-text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.menuItem:hover:not(:disabled) {
+  background: var(--color-surface);
+}
+
+.menuItem:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.menuItemDanger {
+  color: var(--color-error);
+}
+
+.mutedMarker {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  background: var(--color-surface);
+  color: var(--color-text-subtle);
+}
+
+.confirmOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--color-bg) 55%, transparent);
+  padding: 16px;
+}
+
+.confirmDialog {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  border-radius: 12px;
+  background: var(--color-bg-raised);
+  border: 1px solid var(--color-surface);
+  box-shadow: 0 12px 40px color-mix(in srgb, var(--color-bg) 70%, transparent);
+}
+
+.confirmTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.confirmBody {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-text-subtle);
+}
+
+.confirmActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}

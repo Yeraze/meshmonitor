@@ -17,6 +17,9 @@
  *  - POST /api/analysis/mesh-issues/run-now          -> { success, data: MeshIssuesRunNowResult }
  *  - POST /api/analysis/mesh-issues/:id/dismiss      -> { success }
  *  - POST /api/analysis/mesh-issues/:id/restore      -> { success }
+ *  - POST /api/analysis/mesh-issues/bulk/dismiss     -> { success, data: MeshIssuesBulkResult } (WP5, spec §4.4)
+ *  - POST /api/analysis/mesh-issues/bulk/restore     -> { success, data: MeshIssuesBulkResult } (WP5, spec §4.4)
+ *  - POST /api/settings (mesh_issues_disabled_rules + mesh_issues_b7_enabled) — mute, via `MuteRuleDialog` (WP5, spec §6.4)
  * `ApiService.request()` returns the raw envelope and does NOT unwrap `data`
  * (CLAUDE.md gotcha) — every fetcher in `meshIssues/meshIssuesApi.ts` reads
  * `body.data` explicitly.
@@ -25,29 +28,38 @@
  * the status call has succeeded (a 401/403 there means the caller cannot
  * even read findings) and hide themselves permanently if a mutating call
  * later comes back 401/403 — `settings:write` is a narrower grant than the
- * read permission that gates the list/status/summary endpoints.
- *
- * By-node view (WP5) is not yet implemented; selecting it shows a
- * placeholder banner rather than importing a component that doesn't exist
- * yet.
+ * read permission that gates the list/status/summary endpoints. The same
+ * `actionsForbidden` flag also gates the WP5 bulk-action and mute-rule
+ * controls (`BulkActionMenu`, `MuteRuleDialog`) — one forbidden-hiding flag
+ * for every `settings:write`-gated mutation this report makes.
  */
 import { useCallback, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '../../services/api';
 import { UiIcon } from '../icons';
-import type { MeshIssuesFilters, MeshIssuesRunNowResult, MeshIssuesStatus, MeshIssuesSummary } from './meshIssueTypes';
+import type {
+  MeshIssueBulkScope,
+  MeshIssuesBulkResult,
+  MeshIssuesFilters,
+  MeshIssuesRunNowResult,
+  MeshIssuesStatus,
+  MeshIssuesSummary,
+} from './meshIssueTypes';
 import { CoveragePreface } from './meshIssues/CoveragePreface';
 import { useMeshIssuesViewState } from './meshIssues/useMeshIssuesViewState';
 import SummaryTiles from './meshIssues/SummaryTiles';
 import FilterBar from './meshIssues/FilterBar';
 import ByIssueView from './meshIssues/ByIssueView';
+import ByNodeView from './meshIssues/ByNodeView';
 import {
   ISSUES_BASE_KEY,
   STATUS_KEY,
   SUMMARY_BASE_KEY,
   fetchStatus,
   fetchSummary,
+  postBulkDismiss,
+  postBulkRestore,
   postDismiss,
   postRestore,
   postRunNow,
@@ -110,6 +122,7 @@ const MeshIssuesReport: React.FC = () => {
     onSuccess: () => {
       invalidateIssues();
       invalidateSummary();
+      void qc.invalidateQueries({ queryKey: STATUS_KEY });
     },
     onError: (err) => {
       if (isForbidden(err)) setActionsForbidden(true);
@@ -121,6 +134,36 @@ const MeshIssuesReport: React.FC = () => {
     onSuccess: () => {
       invalidateIssues();
       invalidateSummary();
+      void qc.invalidateQueries({ queryKey: STATUS_KEY });
+    },
+    onError: (err) => {
+      if (isForbidden(err)) setActionsForbidden(true);
+    },
+  });
+
+  /** Bulk dismiss/restore (WP5, spec §4.4/§6.4/§7.4) — one shared mutation
+   *  pair reused by every `IssueTypeSection`/`NodeGroupSection`'s
+   *  `BulkActionMenu`, keyed by the declarative `MeshIssueBulkScope` each
+   *  caller passes in. Refreshes tiles + sections + status on success, per
+   *  the WP5 acceptance bullet. */
+  const bulkDismissMutation = useMutation<MeshIssuesBulkResult, unknown, MeshIssueBulkScope>({
+    mutationFn: postBulkDismiss,
+    onSuccess: () => {
+      invalidateIssues();
+      invalidateSummary();
+      void qc.invalidateQueries({ queryKey: STATUS_KEY });
+    },
+    onError: (err) => {
+      if (isForbidden(err)) setActionsForbidden(true);
+    },
+  });
+
+  const bulkRestoreMutation = useMutation<MeshIssuesBulkResult, unknown, MeshIssueBulkScope>({
+    mutationFn: postBulkRestore,
+    onSuccess: () => {
+      invalidateIssues();
+      invalidateSummary();
+      void qc.invalidateQueries({ queryKey: STATUS_KEY });
     },
     onError: (err) => {
       if (isForbidden(err)) setActionsForbidden(true);
@@ -134,6 +177,18 @@ const MeshIssuesReport: React.FC = () => {
   const handleRunNow = useCallback(() => runNowMutation.mutate(), [runNowMutation]);
   const handleDismiss = useCallback((id: number) => dismissMutation.mutate(id), [dismissMutation]);
   const handleRestore = useCallback((id: number) => restoreMutation.mutate(id), [restoreMutation]);
+  const handleBulkDismiss = useCallback(
+    (scope: MeshIssueBulkScope) => bulkDismissMutation.mutate(scope),
+    [bulkDismissMutation],
+  );
+  const handleBulkRestore = useCallback(
+    (scope: MeshIssueBulkScope) => bulkRestoreMutation.mutate(scope),
+    [bulkRestoreMutation],
+  );
+  /** Passed to `MuteRuleDialog` (self-contained mutation) so a 401/403 there
+   *  hides the report's mutating controls the same as every other mutation. */
+  const handleForbidden = useCallback(() => setActionsForbidden(true), []);
+  const bulkPending = bulkDismissMutation.isPending || bulkRestoreMutation.isPending;
 
   const handleFiltersChange = useCallback(
     (next: MeshIssuesFilters) => setViewState((vs) => ({ ...vs, filters: next })),
@@ -161,6 +216,13 @@ const MeshIssuesReport: React.FC = () => {
   const total = summary?.total ?? 0;
   const lastRunResult = statusQuery.data?.lastRunResult ?? null;
   const lastRunTime = statusQuery.data?.lastRunTime ?? null;
+  // Mute (WP5, spec §6.4) — the current mute set + the values MuteRuleDialog
+  // needs for its auto-close copy. Fallbacks match the server's own defaults
+  // (`DEFAULT_MESH_ISSUE_THRESHOLDS`, `thresholds.ts`) for the brief window
+  // before `/status` resolves.
+  const disabledRules = statusQuery.data?.thresholds.disabledRules ?? [];
+  const autoCloseCleanRuns = statusQuery.data?.thresholds.autoCloseCleanRuns ?? 3;
+  const frequencyHours = statusQuery.data?.frequencyHours ?? 24;
 
   return (
     <>
@@ -221,6 +283,7 @@ const MeshIssuesReport: React.FC = () => {
             activeIssueTypes={filters.issueTypes}
             newByType={lastRunResult?.newByType}
             reopenedByType={lastRunResult?.reopenedByType}
+            disabledRules={disabledRules}
             onSelect={handleTileSelect}
           />
 
@@ -268,11 +331,31 @@ const MeshIssuesReport: React.FC = () => {
                   onRestore={handleRestore}
                   dismissPendingId={dismissMutation.isPending ? (dismissMutation.variables ?? null) : null}
                   restorePendingId={restoreMutation.isPending ? (restoreMutation.variables ?? null) : null}
+                  disabledRules={disabledRules}
+                  autoCloseCleanRuns={autoCloseCleanRuns}
+                  frequencyHours={frequencyHours}
+                  onBulkDismiss={handleBulkDismiss}
+                  onBulkRestore={handleBulkRestore}
+                  bulkPending={bulkPending}
+                  onForbidden={handleForbidden}
                 />
               ) : (
-                <div className="reports-banner">
-                  {t('analysis.mesh_issues.view.by_node_pending', 'The By-node view is not available yet.')}
-                </div>
+                <ByNodeView
+                  summary={summary}
+                  filters={filters}
+                  viewState={viewState}
+                  setViewState={setViewState}
+                  sourceNames={summary.sourceNames}
+                  lastRunTime={lastRunTime}
+                  canAct={canAct}
+                  onDismiss={handleDismiss}
+                  onRestore={handleRestore}
+                  dismissPendingId={dismissMutation.isPending ? (dismissMutation.variables ?? null) : null}
+                  restorePendingId={restoreMutation.isPending ? (restoreMutation.variables ?? null) : null}
+                  onBulkDismiss={handleBulkDismiss}
+                  onBulkRestore={handleBulkRestore}
+                  bulkPending={bulkPending}
+                />
               )}
             </>
           )}

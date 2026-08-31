@@ -80,6 +80,13 @@ describe('IssueTypeSection', () => {
         onRestore={noop}
         dismissPendingId={null}
         restorePendingId={null}
+        disabledRules={[]}
+        autoCloseCleanRuns={3}
+        frequencyHours={24}
+        onBulkDismiss={noop}
+        onBulkRestore={noop}
+        bulkPending={false}
+        onForbidden={noop}
       />,
     );
     expect(apiService.get).not.toHaveBeenCalled();
@@ -107,6 +114,13 @@ describe('IssueTypeSection', () => {
         onRestore={noop}
         dismissPendingId={null}
         restorePendingId={null}
+        disabledRules={[]}
+        autoCloseCleanRuns={3}
+        frequencyHours={24}
+        onBulkDismiss={noop}
+        onBulkRestore={noop}
+        bulkPending={false}
+        onForbidden={noop}
       />,
     );
 
@@ -135,6 +149,13 @@ describe('IssueTypeSection', () => {
           onRestore={noop}
           dismissPendingId={null}
           restorePendingId={null}
+          disabledRules={[]}
+          autoCloseCleanRuns={3}
+          frequencyHours={24}
+          onBulkDismiss={noop}
+          onBulkRestore={noop}
+          bulkPending={false}
+          onForbidden={noop}
         />
       </QueryClientProvider>,
     );

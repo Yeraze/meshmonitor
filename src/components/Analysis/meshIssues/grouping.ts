@@ -5,7 +5,13 @@
  * `MeshIssuesFilters` and `tierOf` are WP1's frozen wire/shared types
  * (`meshIssueTypes.ts`, spec §9.4) — read from there, never redefined here.
  */
-import { tierOf, type MeshIssueRow, type MeshIssuesFilters, type MeshIssueSeverity } from '../meshIssueTypes';
+import {
+  tierOf,
+  type MeshIssueNodeSummary,
+  type MeshIssueRow,
+  type MeshIssuesFilters,
+  type MeshIssueSeverity,
+} from '../meshIssueTypes';
 
 export const DEFAULT_MESH_ISSUES_FILTERS: MeshIssuesFilters = {
   severities: [],
@@ -154,6 +160,34 @@ export function worstSeverityOf(issues: MeshIssueRow[]): MeshIssueSeverity {
     }
   }
   return worst;
+}
+
+/**
+ * Same worst-first/Mesh-wide-pinned-first ranking as `rankNodeGroups`, but
+ * applied directly to the `/summary` endpoint's `MeshIssueNodeSummary[]`
+ * shape (#4964 report reorganization, WP5, spec §6.3) rather than to raw
+ * `MeshIssueRow[]` grouped client-side. `buildSummary` (server) already
+ * returns `byNode` in this order — `ByNodeView` re-sorts anyway so its
+ * ordering is correct and independently testable regardless of the server's
+ * own sort, mirroring `rankNodeGroups`'s comparator rule-for-rule so the two
+ * can never drift apart.
+ */
+export function rankNodeSummaries(nodes: MeshIssueNodeSummary[]): MeshIssueNodeSummary[] {
+  return [...nodes].sort((a, b) => {
+    if (a.nodeNum === null && b.nodeNum === null) return 0;
+    if (a.nodeNum === null) return -1;
+    if (b.nodeNum === null) return 1;
+
+    const aWorst = SEVERITY_RANK[a.worstSeverity];
+    const bWorst = SEVERITY_RANK[b.worstSeverity];
+    if (aWorst !== bWorst) return aWorst - bWorst;
+
+    if (a.total !== b.total) return b.total - a.total;
+
+    if (a.latestDetected !== b.latestDetected) return b.latestDetected - a.latestDetected;
+
+    return a.nodeNum - b.nodeNum;
+  });
 }
 
 /** Distinct issue types under a group, ordered worst-severity-first then

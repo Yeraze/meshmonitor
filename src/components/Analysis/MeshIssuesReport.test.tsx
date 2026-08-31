@@ -146,6 +146,7 @@ const DEFAULT_THRESHOLDS: ResolvedMeshIssueThresholds = {
   mobileSpanMeters: 500,
   snrAsymmetryDb: 6,
   overBroadcastSeconds: 300,
+  autoCloseCleanRuns: 3,
   routerClusterMaxLinkKm: 30,
   disabledRules: [],
 };
@@ -383,10 +384,26 @@ describe('MeshIssuesReport', () => {
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Dismiss' })).not.toBeInTheDocument());
   });
 
-  it('the By-node view placeholder renders instead of crashing when selected', async () => {
+  it('selecting the By-node view renders a NodeGroupSection row per summary.byNode entry (WP5 shell integration)', async () => {
     (apiService.get as Mocked).mockImplementation((endpoint: string) => {
       if (endpoint.includes('/status')) return Promise.resolve(statusResponse());
-      if (endpoint.includes('/summary')) return Promise.resolve(summaryResponse([typeSummary()]));
+      if (endpoint.includes('/summary')) {
+        return Promise.resolve(
+          summaryResponse([typeSummary()], {
+            byNode: [
+              {
+                nodeNum: 555,
+                nodeName: 'NodeFive55',
+                total: 2,
+                bySeverity: { critical: 0, warning: 2, info: 0 },
+                worstSeverity: 'warning',
+                issueTypes: ['A1_deprecated_role'],
+                latestDetected: Date.UTC(2026, 7, 20),
+              },
+            ],
+          }),
+        );
+      }
       return Promise.resolve(issuesResponse([]));
     });
 
@@ -395,7 +412,68 @@ describe('MeshIssuesReport', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /By node/ })).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: /By node/ }));
 
-    await waitFor(() => expect(screen.getByText(/By-node view is not available yet/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('NodeFive55')).toBeInTheDocument());
+    expect(screen.queryByText(/By-node view is not available yet/)).not.toBeInTheDocument();
+  });
+
+  it('bulk-dismissing a type from its header confirms first, POSTs the declarative scope, and refreshes tiles + sections + status (WP5)', async () => {
+    let statusCalls = 0;
+    (apiService.get as Mocked).mockImplementation((endpoint: string) => {
+      if (endpoint.includes('/status')) {
+        statusCalls++;
+        return Promise.resolve(statusResponse());
+      }
+      if (endpoint.includes('/summary')) return Promise.resolve(summaryResponse([typeSummary({ total: 3, dismissed: 0 })]));
+      return Promise.resolve(issuesResponse([]));
+    });
+
+    renderReport();
+
+    await waitFor(() => expect(screen.getAllByText(/Deprecated role/)).toHaveLength(2));
+
+    fireEvent.click(screen.getByRole('button', { name: /Bulk actions/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Dismiss all 3' }));
+    // Confirm required before the mutation fires.
+    expect(apiService.post).not.toHaveBeenCalledWith('/api/analysis/mesh-issues/bulk/dismiss', expect.anything());
+    fireEvent.click(screen.getByTestId('bulk-confirm-go'));
+
+    await waitFor(() =>
+      expect(apiService.post).toHaveBeenCalledWith('/api/analysis/mesh-issues/bulk/dismiss', {
+        scope: 'issueType',
+        issueType: 'A1_deprecated_role',
+      }),
+    );
+    // Refreshes summary (tiles/sections) + status.
+    await waitFor(() => expect(statusCalls).toBeGreaterThanOrEqual(2));
+  });
+
+  it('bulk-action and mute-rule controls are absent for a user without settings:write (WP5)', async () => {
+    (apiService.get as Mocked).mockImplementation((endpoint: string) => {
+      if (endpoint.includes('/status')) return Promise.resolve(statusResponse());
+      if (endpoint.includes('/summary')) return Promise.resolve(summaryResponse([typeSummary()]));
+      return Promise.resolve(issuesResponse([issueRow({ id: 22, nodeName: 'ForbidNode' })]));
+    });
+    (apiService.post as Mocked).mockImplementation((endpoint: string) => {
+      if (endpoint.endsWith('/dismiss')) {
+        return Promise.reject(new ApiError('Forbidden', 403, { code: 'FORBIDDEN' }));
+      }
+      return Promise.resolve({ success: true });
+    });
+
+    renderReport();
+
+    await waitFor(() => expect(screen.getAllByText(/Deprecated role/)).toHaveLength(2));
+    // Bulk menu is visible while canAct is true.
+    expect(screen.getByRole('button', { name: /Bulk actions/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole('button', { name: /Deprecated role/ })[1]);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Dismiss' })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+
+    // A 403 on ANY settings:write mutation hides every such control, bulk
+    // actions included — one shared forbidden-hiding flag (spec §11 WP5:
+    // "bulk/mute controls are absent for a user without settings:write").
+    await waitFor(() => expect(screen.queryByRole('button', { name: /Bulk actions/ })).not.toBeInTheDocument());
   });
 
   it('a filter change (search box) narrows the summary request', async () => {
