@@ -77,7 +77,7 @@
     "mysql2": "^3.23.4",
     "node-notifier": "^10.0.1",
     "openid-client": "^6.8.7",
-    "otplib": "^13.4.1",
+    "otplib": "^13.5.0",
     "pg": "^8.23.0",
     "pngjs": "^7.0.0",
     "prom-client": "^15.1.3",
