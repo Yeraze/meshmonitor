@@ -11,7 +11,7 @@
  * `MeshtasticHeardRepeatersRepository.recordHeardRepeater` uses) — portable
  * across all three dialects with no `ON CONFLICT` branching.
  */
-import { and, eq, desc } from 'drizzle-orm';
+import { and, eq, desc, inArray } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 import type {
@@ -196,6 +196,51 @@ export class MeshIssuesRepository extends BaseRepository {
         updatedAt: nowMs,
       })
       .where(eq(meshIssues.id, id));
+  }
+
+  /**
+   * Bulk dismiss/restore by explicit id list (#4964 report reorg WP1, spec
+   * §9.2/§4.4). The route resolves ids that are already visibility-checked
+   * (each id's `sourceIds` was intersected with the caller's permitted set
+   * via `toWireIssue` before being passed here) — this method does no
+   * further authorization, matching `setDismissed`'s column semantics
+   * exactly: `dismissedAt`/`dismissedBy` are set on dismiss and NULLed on
+   * restore; `firstDetected`, `status`, `cleanRuns` and `closedAt` are never
+   * touched.
+   *
+   * Drizzle-only, portable across all three dialects via `inArray`. Ids are
+   * chunked so no single statement exceeds a backend's bound-parameter limit
+   * (PostgreSQL 65535, MySQL max_prepared_stmt_count / packet size, SQLite
+   * SQLITE_MAX_VARIABLE_NUMBER) — same `ID_CHUNK_SIZE` precedent as
+   * `MeshCoreRepository.deleteMessagesByIds`. Returns the summed
+   * affected-row count via `getAffectedRows`, which already normalizes the
+   * three drivers' differing result shapes. An empty `ids` array is a no-op
+   * that issues no statement and returns 0.
+   */
+  async setDismissedForIds(
+    ids: number[],
+    dismissed: boolean,
+    userId: number | null,
+    nowMs: number,
+  ): Promise<number> {
+    if (ids.length === 0) return 0;
+    const { meshIssues } = this.tables;
+    const ID_CHUNK_SIZE = 500;
+    let affected = 0;
+    for (let i = 0; i < ids.length; i += ID_CHUNK_SIZE) {
+      const batch = ids.slice(i, i + ID_CHUNK_SIZE);
+      const result = await this.db
+        .update(meshIssues)
+        .set({
+          dismissed,
+          dismissedAt: dismissed ? nowMs : null,
+          dismissedBy: dismissed ? userId : null,
+          updatedAt: nowMs,
+        })
+        .where(inArray(meshIssues.id, batch));
+      affected += this.getAffectedRows(result);
+    }
+    return affected;
   }
 
   async deleteAll(): Promise<number> {

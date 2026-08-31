@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useSaveBar } from '../hooks/useSaveBar';
+import { ISSUE_TYPE_LABELS, ruleIdsByTier, ruleShortId, buildRuleMuteSettingsPatch } from './Analysis/meshIssueRuleIds';
 
 interface MeshIssuesSectionProps {
   baseUrl: string;
@@ -19,7 +20,14 @@ interface MeshIssuesThresholds {
   tierAEnabled: boolean;
   tierBEnabled: boolean;
   tierCEnabled: boolean;
+  /** @deprecated legacy; folded into `disabledRules` server-side (report
+   *  reorg #4964 WP2, spec §4.5/§5.2). Kept on the wire; the UI no longer
+   *  reads it directly — see `disabledRules` and `buildRuleMuteSettingsPatch`. */
   b7Enabled: boolean;
+  /** Resolved, validated, sorted per-rule mute list (report reorg #4964 WP2,
+   *  spec §4.5). Optional here for the same server-drift reason as
+   *  `autoCloseCleanRuns` below — falls back to `[]` (nothing muted). */
+  disabledRules?: string[];
   airUtilTxPct: number;
   channelUtilPct: number;
   mobileSpanMeters: number;
@@ -100,7 +108,9 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
   const [tierAEnabled, setTierAEnabled] = useState(true);
   const [tierBEnabled, setTierBEnabled] = useState(true);
   const [tierCEnabled, setTierCEnabled] = useState(true);
-  const [b7Enabled, setB7Enabled] = useState(true);
+  /** Per-rule mute list (report reorg #4964 WP2). Baseline mirror, per the
+   *  same local/dirty split every other field here uses. */
+  const [disabledRules, setDisabledRules] = useState<string[]>([]);
 
   // Thresholds
   const [airUtilTxPct, setAirUtilTxPct] = useState(8);
@@ -119,7 +129,7 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
   const [localTierAEnabled, setLocalTierAEnabled] = useState(true);
   const [localTierBEnabled, setLocalTierBEnabled] = useState(true);
   const [localTierCEnabled, setLocalTierCEnabled] = useState(true);
-  const [localB7Enabled, setLocalB7Enabled] = useState(true);
+  const [localDisabledRules, setLocalDisabledRules] = useState<string[]>([]);
   const [localAirUtilTxPct, setLocalAirUtilTxPct] = useState(8);
   const [localChannelUtilPct, setLocalChannelUtilPct] = useState(25);
   const [localMobileSpanMeters, setLocalMobileSpanMeters] = useState(500);
@@ -141,7 +151,7 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
     setTierAEnabled(data.thresholds.tierAEnabled);
     setTierBEnabled(data.thresholds.tierBEnabled);
     setTierCEnabled(data.thresholds.tierCEnabled);
-    setB7Enabled(data.thresholds.b7Enabled);
+    setDisabledRules(data.thresholds.disabledRules ?? []);
     setAirUtilTxPct(data.thresholds.airUtilTxPct);
     setChannelUtilPct(data.thresholds.channelUtilPct);
     setMobileSpanMeters(data.thresholds.mobileSpanMeters);
@@ -157,7 +167,7 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
     setLocalTierAEnabled(data.thresholds.tierAEnabled);
     setLocalTierBEnabled(data.thresholds.tierBEnabled);
     setLocalTierCEnabled(data.thresholds.tierCEnabled);
-    setLocalB7Enabled(data.thresholds.b7Enabled);
+    setLocalDisabledRules(data.thresholds.disabledRules ?? []);
     setLocalAirUtilTxPct(data.thresholds.airUtilTxPct);
     setLocalChannelUtilPct(data.thresholds.channelUtilPct);
     setLocalMobileSpanMeters(data.thresholds.mobileSpanMeters);
@@ -185,6 +195,11 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
     void fetchStatus();
   }, [fetchStatus]);
 
+  /** Order-independent set comparison — `localDisabledRules` accumulates in
+   *  checkbox-click order, not the server's sorted order. */
+  const sameRuleSet = (a: string[], b: string[]): boolean =>
+    [...new Set(a)].sort().join(',') === [...new Set(b)].sort().join(',');
+
   const hasChanges =
     localEnabled !== enabled ||
     localFrequencyHours !== frequencyHours ||
@@ -193,7 +208,7 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
     localTierAEnabled !== tierAEnabled ||
     localTierBEnabled !== tierBEnabled ||
     localTierCEnabled !== tierCEnabled ||
-    localB7Enabled !== b7Enabled ||
+    !sameRuleSet(localDisabledRules, disabledRules) ||
     localAirUtilTxPct !== airUtilTxPct ||
     localChannelUtilPct !== channelUtilPct ||
     localMobileSpanMeters !== mobileSpanMeters ||
@@ -216,7 +231,11 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
           mesh_issues_tier_a_enabled: String(localTierAEnabled),
           mesh_issues_tier_b_enabled: String(localTierBEnabled),
           mesh_issues_tier_c_enabled: String(localTierCEnabled),
-          mesh_issues_b7_enabled: String(localB7Enabled),
+          // Writes BOTH mesh_issues_disabled_rules and the legacy
+          // mesh_issues_b7_enabled together — see buildRuleMuteSettingsPatch's
+          // TRAP comment (spec §5.2): writing the CSV key alone cannot
+          // un-mute B7 while the legacy key still says 'false'.
+          ...buildRuleMuteSettingsPatch(localDisabledRules),
           mesh_issues_air_util_tx_pct: String(localAirUtilTxPct),
           mesh_issues_channel_util_pct: String(localChannelUtilPct),
           mesh_issues_mobile_span_meters: String(localMobileSpanMeters),
@@ -248,7 +267,7 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
     localTierAEnabled,
     localTierBEnabled,
     localTierCEnabled,
-    localB7Enabled,
+    localDisabledRules,
     localAirUtilTxPct,
     localChannelUtilPct,
     localMobileSpanMeters,
@@ -271,7 +290,7 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
     setLocalTierAEnabled(tierAEnabled);
     setLocalTierBEnabled(tierBEnabled);
     setLocalTierCEnabled(tierCEnabled);
-    setLocalB7Enabled(b7Enabled);
+    setLocalDisabledRules(disabledRules);
     setLocalAirUtilTxPct(airUtilTxPct);
     setLocalChannelUtilPct(channelUtilPct);
     setLocalMobileSpanMeters(mobileSpanMeters);
@@ -287,7 +306,7 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
     tierAEnabled,
     tierBEnabled,
     tierCEnabled,
-    b7Enabled,
+    disabledRules,
     airUtilTxPct,
     channelUtilPct,
     mobileSpanMeters,
@@ -338,6 +357,15 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
     if (hours % 24 === 0) return t('automation.position_estimation.lookback_days', { count: hours / 24, defaultValue: `${hours / 24} day(s)` });
     return t('automation.position_estimation.lookback_hours', { count: hours, defaultValue: `${hours} hour(s)` });
   };
+
+  /** Rule ids grouped by tier, computed once (report reorg #4964 WP2). */
+  const tierGroups = useMemo(() => ruleIdsByTier(), []);
+
+  const toggleRule = useCallback((ruleId: string, ruleEnabled: boolean) => {
+    setLocalDisabledRules((prev) =>
+      ruleEnabled ? prev.filter((id) => id !== ruleId) : Array.from(new Set([...prev, ruleId]))
+    );
+  }, []);
 
   const badgeStyle = (kind: 'official' | 'ours'): React.CSSProperties => ({
     display: 'inline-block',
@@ -484,23 +512,6 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
           </p>
         </div>
 
-        <div className="setting-item" style={{ marginTop: '0.75rem', marginLeft: '1.75rem' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <input
-              type="checkbox"
-              checked={localB7Enabled}
-              onChange={(e) => setLocalB7Enabled(e.target.checked)}
-              disabled={!localEnabled || !localTierBEnabled}
-              style={{ width: 'auto', margin: 0 }}
-            />
-            {t('automation.mesh_issues.b7', 'Coverage shadow (B7)')}
-          </label>
-          <p style={{ fontSize: '12px', color: 'var(--color-text-subtle)', margin: '0.35rem 0 0 1.75rem' }}>
-            {t('automation.mesh_issues.b7_help',
-              'The highest-volume rule observed in practice (500+ findings on a busy mesh). Disable it independently of the rest of Tier B if it buries the report.')}
-          </p>
-        </div>
-
         <div className="setting-item" style={{ marginTop: '1rem' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <input
@@ -516,6 +527,51 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
             {t('automation.mesh_issues.tier_c_help',
               'Excessive packet rate, key security (low-entropy/duplicate/mismatched keys), clock offset, and over-broadcasting — folded in from flags other services already compute.')}
           </p>
+        </div>
+
+        <h3 style={{ marginLeft: '1.75rem', marginTop: '1.5rem' }}>{t('automation.mesh_issues.rule_mute_heading', 'Individual rules')}</h3>
+        <p style={{ marginLeft: '1.75rem', fontSize: '12px', color: 'var(--color-text-subtle)' }}>
+          {t('automation.mesh_issues.rule_mute_help',
+            'Uncheck a rule to stop detecting it. Muting does not delete anything: its existing open findings stay as they are and auto-close on their own after {{runs}} analysis run(s) in a row with nothing re-detected — the same way a disabled tier already behaves.',
+            { runs: localAutoCloseRuns })}
+        </p>
+
+        <div className="setting-item" style={{ marginTop: '0.75rem', marginLeft: '1.75rem', display: 'flex', flexWrap: 'wrap', gap: '1.5rem' }}>
+          {(['A', 'B', 'C'] as const).map((tier) => (
+            <div key={tier} style={{ minWidth: '220px' }}>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: '0.4rem' }}>
+                {t(`automation.mesh_issues.tier_${tier.toLowerCase()}_short`, `Tier ${tier}`)}
+              </div>
+              {tierGroups[tier].map((ruleId) => {
+                const ruleEnabled = !localDisabledRules.includes(ruleId);
+                return (
+                  <label
+                    key={ruleId}
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.4rem' }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={ruleEnabled}
+                      onChange={(e) => toggleRule(ruleId, e.target.checked)}
+                      disabled={!localEnabled}
+                      style={{ width: 'auto', margin: 0 }}
+                    />
+                    <span
+                      style={{
+                        fontFamily: 'var(--font-mono, monospace)',
+                        fontSize: '11px',
+                        color: 'var(--color-text-subtle)',
+                        minWidth: '2.25rem',
+                      }}
+                    >
+                      {ruleShortId(ruleId)}
+                    </span>
+                    <span style={{ fontSize: '13px' }}>{ISSUE_TYPE_LABELS[ruleId] ?? ruleId}</span>
+                  </label>
+                );
+              })}
+            </div>
+          ))}
         </div>
 
         <h3 style={{ marginLeft: '1.75rem', marginTop: '1.5rem' }}>{t('automation.mesh_issues.thresholds_heading', 'Thresholds')}</h3>

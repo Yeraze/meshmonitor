@@ -27,7 +27,8 @@ import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { meshIssuesScheduler } from '../services/meshIssuesScheduler.js';
-import { resolvePermittedSourceIds } from '../utils/permittedSources.js';
+import { resolvePermittedSourceIds, parseSourcesParam } from '../utils/permittedSources.js';
+import { MESH_ISSUE_TYPES } from '../services/meshIssues/types.js';
 import type {
   MeshIssueSeverity,
   MeshIssueConfidence,
@@ -300,6 +301,364 @@ function sortIssues(issues: MeshIssueWire[]): MeshIssueWire[] {
   });
 }
 
+interface MeshIssueCounts {
+  critical: number;
+  warning: number;
+  info: number;
+  total: number;
+  /** Count of the matching set with `dismissed === true`. */
+  dismissed: number;
+}
+
+/** Computed over whatever set is passed in — the caller decides full vs. filtered. */
+function computeCounts(issues: MeshIssueWire[]): MeshIssueCounts {
+  return {
+    critical: issues.filter((i) => i.severity === 'critical').length,
+    warning: issues.filter((i) => i.severity === 'warning').length,
+    info: issues.filter((i) => i.severity === 'info').length,
+    total: issues.length,
+    dismissed: issues.filter((i) => i.dismissed).length,
+  };
+}
+
+// ── Shared filter parsing (#4964 report reorg WP1, spec §4.1) ──────────────
+
+const ALL_ISSUE_TYPES: readonly string[] = Object.values(MESH_ISSUE_TYPES);
+const VALID_SEVERITIES: readonly MeshIssueSeverity[] = ['critical', 'warning', 'info'];
+const VALID_TIERS: readonly string[] = ['A', 'B', 'C'];
+
+interface IssueFilterSpec {
+  severities: MeshIssueSeverity[] | null;
+  tiers: string[] | null; // 'A' | 'B' | 'C'
+  issueTypes: string[] | null;
+  nodeNum: number | 'none' | null;
+  sourceIds: string[] | null; // already intersected with `permitted`
+  q: string | null; // lowercased
+  includeClosed: boolean;
+  includeDismissed: boolean;
+}
+
+/** Clamp-never-reject: splits on commas, trims, keeps only tokens present in
+ * `valid`. An absent/blank param, or a param whose tokens are ALL unknown,
+ * resolves to `null` ("no constraint") rather than an empty-but-present
+ * array or a 400. */
+function parseCsvFilter<T extends string>(raw: unknown, valid: readonly T[]): T[] | null {
+  if (typeof raw !== 'string' || raw.trim() === '') return null;
+  const tokens = raw.split(',').map((s) => s.trim()).filter(Boolean);
+  const kept = tokens.filter((t): t is T => (valid as readonly string[]).includes(t));
+  return kept.length > 0 ? [...new Set(kept)] : null;
+}
+
+/** Clamp-never-reject: unknown tokens dropped; an all-unknown list == null
+ * (spec §4.1). Applies to both `GET /` and `GET /summary` — the caller is
+ * responsible for nulling out the `GET /`-only fields (`issueTypes`,
+ * `nodeNum`) before filtering with a `/summary` request's parse result. */
+function parseIssueFilters(query: Request['query'], permitted: string[]): IssueFilterSpec {
+  const severities = parseCsvFilter(query.severity, VALID_SEVERITIES);
+  const tiers = parseCsvFilter(query.tier, VALID_TIERS);
+  const issueTypes = parseCsvFilter(query.issueType, ALL_ISSUE_TYPES);
+
+  let nodeNum: number | 'none' | null = null;
+  if (typeof query.nodeNum === 'string') {
+    if (query.nodeNum === 'none') {
+      nodeNum = 'none';
+    } else {
+      const n = Number(query.nodeNum);
+      if (Number.isInteger(n)) nodeNum = n;
+    }
+  }
+
+  const requestedSources = parseSourcesParam(query.sources);
+  let sourceIds: string[] | null = null;
+  if (requestedSources) {
+    const intersected = requestedSources.filter((s) => permitted.includes(s));
+    sourceIds = intersected.length > 0 ? intersected : null;
+  }
+
+  const q = typeof query.q === 'string' && query.q.trim() !== '' ? query.q.trim().toLowerCase() : null;
+
+  return {
+    severities,
+    tiers,
+    issueTypes,
+    nodeNum,
+    sourceIds,
+    q,
+    includeClosed: query.includeClosed === 'true',
+    includeDismissed: query.includeDismissed === 'true',
+  };
+}
+
+/**
+ * Applied AFTER `toWireIssue` (so it sees redacted sourceIds and the
+ * resolved `nodeName`), BEFORE counts/total/sort/slice. Every dimension with
+ * a `null` value in `f` is "no constraint" — matches everything.
+ */
+function matchesFilters(issue: MeshIssueWire, f: IssueFilterSpec): boolean {
+  if (f.severities && !f.severities.includes(issue.severity)) return false;
+  if (f.tiers && !f.tiers.includes(issue.issueType.charAt(0))) return false;
+  if (f.issueTypes && !f.issueTypes.includes(issue.issueType)) return false;
+  if (f.nodeNum === 'none') {
+    if (issue.nodeNum !== null) return false;
+  } else if (typeof f.nodeNum === 'number') {
+    if (issue.nodeNum !== f.nodeNum) return false;
+  }
+  if (f.sourceIds && !issue.sourceIds.some((s) => f.sourceIds!.includes(s))) return false;
+  if (f.q) {
+    const nodeNameLower = issue.nodeName?.toLowerCase() ?? '';
+    const subjectKeyLower = issue.subjectKey.toLowerCase();
+    if (!nodeNameLower.includes(f.q) && !subjectKeyLower.includes(f.q)) return false;
+  }
+  return true;
+}
+
+// ── Summary (#4964 report reorg WP1, spec §4.3) ─────────────────────────────
+
+export interface MeshIssueTypeSummary {
+  issueType: string;
+  total: number;
+  bySeverity: { critical: number; warning: number; info: number };
+  /** Highest severity present. `null` only if total === 0 (never emitted). */
+  worstSeverity: MeshIssueSeverity;
+  dismissed: number;
+  /** Newest `lastDetected` across this type's findings. */
+  latestDetected: number;
+}
+
+export interface MeshIssueNodeSummary {
+  /** `null` == the Mesh-wide pseudo-group (spec §6.3). */
+  nodeNum: number | null;
+  /** `longName ?? shortName ?? !hex`; `null` for the Mesh-wide group. */
+  nodeName: string | null;
+  total: number;
+  bySeverity: { critical: number; warning: number; info: number };
+  worstSeverity: MeshIssueSeverity;
+  /** Distinct issue types under this node, ordered worst-severity-first then
+   *  lexicographic. Drives the badge row. */
+  issueTypes: string[];
+  latestDetected: number;
+}
+
+export interface MeshIssuesSummary {
+  byType: MeshIssueTypeSummary[]; // only types with total > 0
+  byNode: MeshIssueNodeSummary[]; // ranked; see spec §6.3
+  counts: MeshIssueCounts; // same shape as GET /
+  total: number; // === counts.total
+  sourceNames: Record<string, string>;
+}
+
+function worstSeverityOf(bySeverity: { critical: number; warning: number; info: number }): MeshIssueSeverity {
+  if (bySeverity.critical > 0) return 'critical';
+  if (bySeverity.warning > 0) return 'warning';
+  return 'info';
+}
+
+/**
+ * Pure aggregation, unit-tested directly (`meshIssuesRoutes.test.ts`). Never
+ * touches `evidence` — the summary payload has no field for it.
+ *
+ * `byType` ordering: worst-severity rank, then `total` desc, then `issueType`
+ * asc. `byNode` ordering: the Mesh-wide (`nodeNum: null`) group pinned first,
+ * then worst-severity rank, then `total` desc, then `latestDetected` desc,
+ * then `nodeNum` asc as a deterministic tiebreak (spec §6.3).
+ */
+export function buildSummary(issues: MeshIssueWire[], sourceNames: Record<string, string>): MeshIssuesSummary {
+  const byTypeAgg = new Map<
+    string,
+    { bySeverity: { critical: number; warning: number; info: number }; dismissed: number; latestDetected: number }
+  >();
+  const byNodeAgg = new Map<
+    number | null,
+    {
+      nodeName: string | null;
+      bySeverity: { critical: number; warning: number; info: number };
+      typeWorst: Map<string, MeshIssueSeverity>;
+      latestDetected: number;
+    }
+  >();
+
+  for (const issue of issues) {
+    let t = byTypeAgg.get(issue.issueType);
+    if (!t) {
+      t = { bySeverity: { critical: 0, warning: 0, info: 0 }, dismissed: 0, latestDetected: 0 };
+      byTypeAgg.set(issue.issueType, t);
+    }
+    t.bySeverity[issue.severity]++;
+    if (issue.dismissed) t.dismissed++;
+    if (issue.lastDetected > t.latestDetected) t.latestDetected = issue.lastDetected;
+
+    let n = byNodeAgg.get(issue.nodeNum);
+    if (!n) {
+      n = {
+        nodeName: issue.nodeNum === null ? null : issue.nodeName,
+        bySeverity: { critical: 0, warning: 0, info: 0 },
+        typeWorst: new Map(),
+        latestDetected: 0,
+      };
+      byNodeAgg.set(issue.nodeNum, n);
+    }
+    n.bySeverity[issue.severity]++;
+    const existingWorst = n.typeWorst.get(issue.issueType);
+    if (!existingWorst || SEVERITY_RANK[issue.severity] < SEVERITY_RANK[existingWorst]) {
+      n.typeWorst.set(issue.issueType, issue.severity);
+    }
+    if (issue.lastDetected > n.latestDetected) n.latestDetected = issue.lastDetected;
+  }
+
+  const byType: MeshIssueTypeSummary[] = Array.from(byTypeAgg.entries()).map(([issueType, v]) => {
+    const total = v.bySeverity.critical + v.bySeverity.warning + v.bySeverity.info;
+    return {
+      issueType,
+      total,
+      bySeverity: v.bySeverity,
+      worstSeverity: worstSeverityOf(v.bySeverity),
+      dismissed: v.dismissed,
+      latestDetected: v.latestDetected,
+    };
+  });
+  byType.sort((a, b) => {
+    const rankDelta = SEVERITY_RANK[a.worstSeverity] - SEVERITY_RANK[b.worstSeverity];
+    if (rankDelta !== 0) return rankDelta;
+    const totalDelta = b.total - a.total;
+    if (totalDelta !== 0) return totalDelta;
+    return a.issueType.localeCompare(b.issueType);
+  });
+
+  const byNode: MeshIssueNodeSummary[] = Array.from(byNodeAgg.entries()).map(([nodeNum, v]) => {
+    const total = v.bySeverity.critical + v.bySeverity.warning + v.bySeverity.info;
+    const issueTypes = Array.from(v.typeWorst.entries())
+      .sort(([aType, aSev], [bType, bSev]) => {
+        const rankDelta = SEVERITY_RANK[aSev] - SEVERITY_RANK[bSev];
+        if (rankDelta !== 0) return rankDelta;
+        return aType.localeCompare(bType);
+      })
+      .map(([type]) => type);
+    return {
+      nodeNum,
+      nodeName: v.nodeName,
+      total,
+      bySeverity: v.bySeverity,
+      worstSeverity: worstSeverityOf(v.bySeverity),
+      issueTypes,
+      latestDetected: v.latestDetected,
+    };
+  });
+  byNode.sort((a, b) => {
+    if (a.nodeNum === null && b.nodeNum !== null) return -1;
+    if (a.nodeNum !== null && b.nodeNum === null) return 1;
+    const rankDelta = SEVERITY_RANK[a.worstSeverity] - SEVERITY_RANK[b.worstSeverity];
+    if (rankDelta !== 0) return rankDelta;
+    const totalDelta = b.total - a.total;
+    if (totalDelta !== 0) return totalDelta;
+    const latestDelta = b.latestDetected - a.latestDetected;
+    if (latestDelta !== 0) return latestDelta;
+    return (a.nodeNum ?? 0) - (b.nodeNum ?? 0);
+  });
+
+  const counts = computeCounts(issues);
+  return { byType, byNode, counts, total: counts.total, sourceNames };
+}
+
+// ── Bulk dismiss/restore scope parsing (#4964 report reorg WP1, spec §4.4) ──
+
+export type MeshIssueBulkScope =
+  | { scope: 'issueType'; issueType: string }
+  | { scope: 'node'; nodeNum: number | null };
+
+function parseBulkScope(
+  body: unknown,
+): { ok: true; scope: MeshIssueBulkScope } | { ok: false; code: 'INVALID_BULK_SCOPE' | 'INVALID_ISSUE_TYPE' } {
+  if (!body || typeof body !== 'object') return { ok: false, code: 'INVALID_BULK_SCOPE' };
+  const b = body as Record<string, unknown>;
+
+  if (b.scope === 'issueType') {
+    if (typeof b.issueType !== 'string') return { ok: false, code: 'INVALID_BULK_SCOPE' };
+    if (!ALL_ISSUE_TYPES.includes(b.issueType)) return { ok: false, code: 'INVALID_ISSUE_TYPE' };
+    return { ok: true, scope: { scope: 'issueType', issueType: b.issueType } };
+  }
+
+  if (b.scope === 'node') {
+    if (b.nodeNum === null) return { ok: true, scope: { scope: 'node', nodeNum: null } };
+    if (typeof b.nodeNum === 'number' && Number.isInteger(b.nodeNum)) {
+      return { ok: true, scope: { scope: 'node', nodeNum: b.nodeNum } };
+    }
+    return { ok: false, code: 'INVALID_BULK_SCOPE' };
+  }
+
+  return { ok: false, code: 'INVALID_BULK_SCOPE' };
+}
+
+/**
+ * Shared body for `/bulk/dismiss` and `/bulk/restore` (spec §4.4).
+ *
+ * Flow: resolve `permitted` -> 403 if empty -> parse scope -> read every row
+ * (`getMeshIssuesAsync({includeClosed:true, includeDismissed:true})`, the
+ * same read `GET /` already does, bounded by the finding count) -> keep rows
+ * matching the scope AND passing the `toWireIssue` visibility test AND whose
+ * current `dismissed !== target` -> `setMeshIssueDismissedForIdsAsync` ->
+ * audit (awaited — the count matters) -> `ok(res, { affected })`.
+ *
+ * No new repository *read* method: reusing the existing full read keeps one
+ * visibility code path and cannot drift from `GET /`. The response never
+ * reports a `skipped` count — see spec §4.4/§12.2 (the #3745 leak class).
+ */
+async function handleBulkDismissOrRestore(
+  req: Request,
+  res: Response,
+  dismissed: boolean,
+  auditAction: 'mesh_issue_bulk_dismiss' | 'mesh_issue_bulk_restore',
+): Promise<void> {
+  const allSources = await databaseService.sources.getAllSources();
+  const permitted = await resolvePermittedSourceIds(req, 'nodes', allSources);
+  if (permitted.length === 0) {
+    fail(res, 403, 'NO_PERMITTED_SOURCES', 'No sources readable by this user');
+    return;
+  }
+
+  const parsed = parseBulkScope(req.body);
+  if (!parsed.ok) {
+    fail(
+      res,
+      400,
+      parsed.code,
+      parsed.code === 'INVALID_ISSUE_TYPE' ? 'Unknown issue type' : 'Invalid bulk scope',
+    );
+    return;
+  }
+  const { scope } = parsed;
+
+  const [rows, nodeNames] = await Promise.all([
+    databaseService.getMeshIssuesAsync({ includeClosed: true, includeDismissed: true }),
+    buildNodeNameMap(permitted),
+  ]);
+
+  const ids: number[] = [];
+  for (const row of rows) {
+    if (scope.scope === 'issueType' && row.issueType !== scope.issueType) continue;
+    if (scope.scope === 'node' && row.nodeNum !== scope.nodeNum) continue;
+    if (row.dismissed === dismissed) continue; // already at target state — idempotent no-op
+    const wire = toWireIssue(row, permitted, nodeNames);
+    if (!wire) continue; // not visible to this caller (empty sourceIds intersection)
+    ids.push(row.id);
+  }
+
+  const affected = await databaseService.setMeshIssueDismissedForIdsAsync(ids, dismissed, req.user!.id, Date.now());
+
+  const scopeLabel =
+    scope.scope === 'issueType' ? scope.issueType : scope.nodeNum === null ? 'Mesh-wide' : `node ${scope.nodeNum}`;
+  await databaseService.auditLogAsync(
+    req.user!.id,
+    auditAction,
+    'settings',
+    `${dismissed ? 'Dismissed' : 'Restored'} ${affected} mesh issue(s) (${scopeLabel})`,
+    req.ip || null,
+    null,
+    JSON.stringify({ scope, affected }),
+  );
+
+  ok(res, { affected });
+}
+
 // ── Routes ──────────────────────────────────────────────────────────────────
 
 /**
@@ -334,12 +693,14 @@ router.get('/', async (req: Request, res: Response) => {
       return fail(res, 403, 'NO_PERMITTED_SOURCES', 'No sources readable by this user');
     }
 
-    const includeClosed = req.query.includeClosed === 'true';
-    const includeDismissed = req.query.includeDismissed === 'true';
+    const filters = parseIssueFilters(req.query, permitted);
     const limit = parsePageLimit(req.query.limit);
     const offset = parsePageOffset(req.query.offset);
     const [rows, nodeNames] = await Promise.all([
-      databaseService.getMeshIssuesAsync({ includeClosed, includeDismissed }),
+      databaseService.getMeshIssuesAsync({
+        includeClosed: filters.includeClosed,
+        includeDismissed: filters.includeDismissed,
+      }),
       buildNodeNameMap(permitted),
     ]);
 
@@ -349,25 +710,70 @@ router.get('/', async (req: Request, res: Response) => {
       if (wire) fullSet.push(wire);
     }
 
-    const counts = {
-      critical: fullSet.filter((i) => i.severity === 'critical').length,
-      warning: fullSet.filter((i) => i.severity === 'warning').length,
-      info: fullSet.filter((i) => i.severity === 'info').length,
-      total: fullSet.length,
-      dismissed: fullSet.filter((i) => i.dismissed).length,
-    };
+    const filteredSet = fullSet.filter((issue) => matchesFilters(issue, filters));
+    const counts = computeCounts(filteredSet);
 
-    const issues = sortIssues(fullSet).slice(offset, offset + limit);
+    const issues = sortIssues(filteredSet).slice(offset, offset + limit);
 
     const sourceNames: Record<string, string> = {};
     for (const s of allSources) {
       if (permitted.includes(s.id)) sourceNames[s.id] = s.name;
     }
 
-    ok(res, { issues, counts, sourceNames, total: fullSet.length, limit, offset });
+    ok(res, { issues, counts, sourceNames, total: filteredSet.length, limit, offset });
   } catch (error) {
     logger.error('[API] Error fetching mesh issues:', error);
     fail(res, 500, 'MESH_ISSUES_FETCH_FAILED', 'Failed to fetch mesh issues');
+  }
+});
+
+/**
+ * GET /api/analysis/mesh-issues/summary
+ *
+ * Same `403 NO_PERMITTED_SOURCES` gate as `GET /`. Accepts the shared §4.1
+ * filters EXCEPT `issueType`/`nodeNum` — those are the dimensions the tiles
+ * and node groups themselves represent, so filtering by them would be
+ * circular and would empty the dashboard the moment a tile is clicked
+ * (spec §4.3). `issueTypes`/`nodeNum` are explicitly nulled out of the
+ * parsed filter spec below even if a client sends them. Never returns
+ * `evidence` anywhere in the payload.
+ */
+router.get('/summary', async (req: Request, res: Response) => {
+  try {
+    const allSources = await databaseService.sources.getAllSources();
+    const permitted = await resolvePermittedSourceIds(req, 'nodes', allSources);
+    if (permitted.length === 0) {
+      return fail(res, 403, 'NO_PERMITTED_SOURCES', 'No sources readable by this user');
+    }
+
+    const filters = parseIssueFilters(req.query, permitted);
+    filters.issueTypes = null;
+    filters.nodeNum = null;
+
+    const [rows, nodeNames] = await Promise.all([
+      databaseService.getMeshIssuesAsync({
+        includeClosed: filters.includeClosed,
+        includeDismissed: filters.includeDismissed,
+      }),
+      buildNodeNameMap(permitted),
+    ]);
+
+    const fullSet: MeshIssueWire[] = [];
+    for (const row of rows) {
+      const wire = toWireIssue(row, permitted, nodeNames);
+      if (wire) fullSet.push(wire);
+    }
+    const filteredSet = fullSet.filter((issue) => matchesFilters(issue, filters));
+
+    const sourceNames: Record<string, string> = {};
+    for (const s of allSources) {
+      if (permitted.includes(s.id)) sourceNames[s.id] = s.name;
+    }
+
+    ok(res, buildSummary(filteredSet, sourceNames));
+  } catch (error) {
+    logger.error('[API] Error building mesh issues summary:', error);
+    fail(res, 500, 'MESH_ISSUES_SUMMARY_FAILED', 'Failed to build mesh issues summary');
   }
 });
 
@@ -486,6 +892,37 @@ async function handleDismissOrRestore(
   );
   ok(res);
 }
+
+/**
+ * POST /api/analysis/mesh-issues/bulk/dismiss
+ * POST /api/analysis/mesh-issues/bulk/restore
+ *
+ * Declarative-scope bulk mutation (spec §4.4) — NOT an id array. See
+ * `handleBulkDismissOrRestore` above for the full flow and the partial-
+ * visibility semantics (#3745 leak class: a caller only ever affects
+ * findings they can see; the response never discloses how many more exist).
+ *
+ * MUST be registered before `/:id/dismiss` and `/:id/restore` below —
+ * `/bulk/dismiss` would otherwise match `/:id/dismiss` first with
+ * `id: 'bulk'` and 400 on `INVALID_ISSUE_ID`.
+ */
+router.post('/bulk/dismiss', requirePermission('settings', 'write'), async (req: Request, res: Response) => {
+  try {
+    await handleBulkDismissOrRestore(req, res, true, 'mesh_issue_bulk_dismiss');
+  } catch (error) {
+    logger.error('[API] Error bulk dismissing mesh issues:', error);
+    fail(res, 500, 'MESH_ISSUE_BULK_DISMISS_FAILED', 'Failed to bulk dismiss mesh issues');
+  }
+});
+
+router.post('/bulk/restore', requirePermission('settings', 'write'), async (req: Request, res: Response) => {
+  try {
+    await handleBulkDismissOrRestore(req, res, false, 'mesh_issue_bulk_restore');
+  } catch (error) {
+    logger.error('[API] Error bulk restoring mesh issues:', error);
+    fail(res, 500, 'MESH_ISSUE_BULK_RESTORE_FAILED', 'Failed to bulk restore mesh issues');
+  }
+});
 
 /**
  * POST /api/analysis/mesh-issues/:id/dismiss

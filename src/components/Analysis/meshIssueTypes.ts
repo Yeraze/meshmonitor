@@ -121,14 +121,26 @@ export interface ResolvedMeshIssueThresholds {
   tierAEnabled: boolean;
   tierBEnabled: boolean;
   tierCEnabled: boolean;
+  /** @deprecated legacy; folded into `disabledRules` (spec §5.2). Kept on the
+   *  wire so existing consumers/tests do not break. */
   b7Enabled: boolean;
   airUtilTxPct: number;
   channelUtilPct: number;
   mobileSpanMeters: number;
   snrAsymmetryDb: number;
   overBroadcastSeconds: number;
+  /** count, #4964 post-epic follow-ups. How many consecutive clean analysis
+   *  runs a finding survives before it auto-closes. Mirrors the server's
+   *  `ResolvedMeshIssueThresholds.autoCloseCleanRuns` (`thresholds.ts`) — WP5
+   *  wire-type gap fix: this field existed server-side and in
+   *  `MeshIssuesSection.tsx`'s locally-declared mirror but was missing here,
+   *  which `MuteRuleDialog` needs for its auto-close copy (spec §6.4). */
+  autoCloseCleanRuns: number;
   /** km, B1/B6 cluster-adjacency distance guard (#4976). */
   routerClusterMaxLinkKm: number;
+  /** Resolved, validated, sorted `mesh_issues_disabled_rules` (#4964 report
+   *  reorg, spec §4.5/§5.2). Unknown ids dropped. */
+  disabledRules: string[];
 }
 
 /** The last completed run's summary (`meshIssuesAnalysisService.ts`'s `MeshIssuesRunResult`). */
@@ -144,6 +156,13 @@ export interface MeshIssuesLastRunResult {
   byType: Record<string, number>;
   corpusStats: MeshIssuesCorpusStats;
   coverage: MeshIssuesCoverageWire;
+  /** issueType -> findings CREATED by the last run (#4964 report reorg,
+   *  spec §4.6). Optional: absent on summaries persisted before this field
+   *  existed — same doctrine as `mqttSourceConfigured`. Absent means the
+   *  dashboard renders no "new this run" chip rather than a zero. */
+  newByType?: Record<string, number>;
+  /** issueType -> findings REOPENED by the last run. Same optionality. */
+  reopenedByType?: Record<string, number>;
 }
 
 /** GET /api/analysis/mesh-issues/status. */
@@ -171,6 +190,85 @@ export interface MeshIssuesRunNowResult {
   reopenedCount: number;
   updatedCount: number;
   closedCount: number;
+}
+
+// ── Summary dashboard + bulk mutation wire types (#4964 report reorg, spec §4.3/§4.4) ──
+
+/** One tile in the by-type summary dashboard. Never carries `evidence`. */
+export interface MeshIssueTypeSummary {
+  issueType: string;
+  total: number;
+  bySeverity: { critical: number; warning: number; info: number };
+  /** Highest severity present. `null` only if total === 0 (never emitted). */
+  worstSeverity: MeshIssueSeverity;
+  dismissed: number;
+  /** Newest `lastDetected` across this type's findings. */
+  latestDetected: number;
+}
+
+/** One row in the by-node summary view. Never carries `evidence`. */
+export interface MeshIssueNodeSummary {
+  /** `null` == the Mesh-wide pseudo-group (spec §6.3). */
+  nodeNum: number | null;
+  /** `longName ?? shortName ?? !hex`; `null` for the Mesh-wide group. */
+  nodeName: string | null;
+  total: number;
+  bySeverity: { critical: number; warning: number; info: number };
+  worstSeverity: MeshIssueSeverity;
+  /** Distinct issue types under this node, ordered worst-severity-first then
+   *  lexicographic. Drives the badge row. */
+  issueTypes: string[];
+  latestDetected: number;
+}
+
+/** GET /api/analysis/mesh-issues/summary response. */
+export interface MeshIssuesSummary {
+  byType: MeshIssueTypeSummary[];
+  byNode: MeshIssueNodeSummary[];
+  counts: MeshIssueCounts;
+  total: number;
+  sourceNames: Record<string, string>;
+}
+
+/** Body of POST /api/analysis/mesh-issues/bulk/{dismiss,restore} (spec §4.4). */
+export type MeshIssueBulkScope =
+  | { scope: 'issueType'; issueType: string }
+  /** `nodeNum: null` == the Mesh-wide group. */
+  | { scope: 'node'; nodeNum: number | null };
+
+/** Response of the bulk dismiss/restore endpoints. Deliberately carries no
+ *  `skipped` count — see spec §4.4 / §12.2 (a skipped count would disclose
+ *  findings the caller cannot read, the #3745 leak class). */
+export interface MeshIssuesBulkResult {
+  affected: number;
+}
+
+/** Client-side filter state shared by the By-issue and By-node views (spec
+ *  §4.1, §6.1). An empty array means "no constraint" on that dimension.
+ *  `nodeNum` is deliberately NOT a member here: it is not a general filter
+ *  facet, only a direct per-node fetch parameter the By-node view uses when
+ *  expanding one node (spec §6.3). */
+export interface MeshIssuesFilters {
+  severities: MeshIssueSeverity[];
+  /** 'A' | 'B' | 'C', matched against `tierOf(issueType)`. */
+  tiers: string[];
+  issueTypes: string[];
+  sources: string[];
+  /** Substring match against `nodeName` or `subjectKey`, case-insensitive. */
+  q: string;
+  includeClosed: boolean;
+  includeDismissed: boolean;
+}
+
+/** `issueType.split('_')[0]` -> 'A1', 'A2a', 'A2b', 'B3', 'C1', 'C2' (spec §6.2). */
+export function ruleShortId(issueType: string): string {
+  return issueType.split('_')[0];
+}
+
+/** First character of `issueType` -> the 'A' | 'B' | 'C' tier used by the
+ *  `tier` filter param (spec §4.1). */
+export function tierOf(issueType: string): string {
+  return issueType.charAt(0);
 }
 
 export const SEVERITY_ORDER: readonly MeshIssueSeverity[] = ['critical', 'warning', 'info'] as const;

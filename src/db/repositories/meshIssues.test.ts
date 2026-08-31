@@ -324,6 +324,113 @@ function runMeshIssuesTests(getBackend: () => TestBackend) {
     expect(deleted).toBe(2);
     expect(await repo.getIssues({ includeClosed: true, includeDismissed: true })).toHaveLength(0);
   });
+
+  // ── setDismissedForIds (#4964 report reorg WP1, spec §9.2/§10.3) ─────────
+
+  it('setDismissedForIds — an empty id array is a no-op returning 0', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    const affected = await repo.setDismissedForIds([], true, 1, Date.now());
+    expect(affected).toBe(0);
+  });
+
+  it('setDismissedForIds(true) — sets dismissed/dismissedAt/dismissedBy on every listed id and leaves others untouched', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    const a = await repo.upsertFinding(makeFinding({ subjectKey: 'node:1' }), Date.now());
+    const b = await repo.upsertFinding(makeFinding({ subjectKey: 'node:2' }), Date.now());
+    const c = await repo.upsertFinding(makeFinding({ subjectKey: 'node:3' }), Date.now());
+
+    const nowMs = Date.now();
+    const affected = await repo.setDismissedForIds([a.issue.id, b.issue.id], true, 9, nowMs);
+    expect(affected).toBe(2);
+
+    const rowA = await repo.getIssueById(a.issue.id);
+    const rowB = await repo.getIssueById(b.issue.id);
+    const rowC = await repo.getIssueById(c.issue.id);
+    expect(rowA?.dismissed).toBe(true);
+    expect(rowA?.dismissedAt).toBe(nowMs);
+    expect(rowA?.dismissedBy).toBe(9);
+    expect(rowB?.dismissed).toBe(true);
+    expect(rowB?.dismissedAt).toBe(nowMs);
+    expect(rowB?.dismissedBy).toBe(9);
+    // untouched
+    expect(rowC?.dismissed).toBe(false);
+    expect(rowC?.dismissedAt).toBeNull();
+    expect(rowC?.dismissedBy).toBeNull();
+  });
+
+  it('setDismissedForIds(false) — clears dismissedAt/dismissedBy back to null', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    const { issue } = await repo.upsertFinding(makeFinding({ subjectKey: 'node:1' }), Date.now());
+    await repo.setDismissedForIds([issue.id], true, 5, Date.now());
+    const affected = await repo.setDismissedForIds([issue.id], false, null, Date.now());
+    expect(affected).toBe(1);
+
+    const row = await repo.getIssueById(issue.id);
+    expect(row?.dismissed).toBe(false);
+    expect(row?.dismissedAt).toBeNull();
+    expect(row?.dismissedBy).toBeNull();
+  });
+
+  it('setDismissedForIds — leaves firstDetected/status/cleanRuns/closedAt untouched', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    const t1 = Date.now() - 60_000;
+    const { issue } = await repo.upsertFinding(makeFinding({ subjectKey: 'node:1' }), t1);
+    await repo.bumpCleanRun(issue.id, 1, Date.now());
+    const closed = await repo.getIssueById(issue.id);
+    expect(closed?.status).toBe('closed');
+    expect(closed?.cleanRuns).toBe(1);
+    expect(closed?.closedAt).not.toBeNull();
+
+    await repo.setDismissedForIds([issue.id], true, 3, Date.now());
+    const row = await repo.getIssueById(issue.id);
+    expect(row?.firstDetected).toBe(t1);
+    expect(row?.status).toBe('closed');
+    expect(row?.cleanRuns).toBe(1);
+    expect(row?.closedAt).toBe(closed?.closedAt);
+  });
+
+  it('setDismissedForIds — a >500-id list chunks correctly and returns the summed affected count', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    const ids: number[] = [];
+    // 520 rows -> two chunks (500 + 20) under the repository's ID_CHUNK_SIZE.
+    for (let i = 0; i < 520; i++) {
+      const { issue } = await repo.upsertFinding(makeFinding({ subjectKey: `node:${i}` }), Date.now());
+      ids.push(issue.id);
+    }
+
+    const nowMs = Date.now();
+    const affected = await repo.setDismissedForIds(ids, true, 11, nowMs);
+    expect(affected).toBe(520);
+
+    const all = await repo.getIssues({ includeClosed: true, includeDismissed: true });
+    const dismissedCount = all.filter((i) => i.dismissed && ids.includes(i.id)).length;
+    expect(dismissedCount).toBe(520);
+  }, 30_000);
 }
 
 // --- SQLite Backend ---

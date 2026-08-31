@@ -8,7 +8,7 @@
  * non-DB `meshIssuesScheduler` singleton is `vi.mock`ed.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import meshIssuesRoutes, { redactEvidence } from './meshIssuesRoutes.js';
+import meshIssuesRoutes, { redactEvidence, buildSummary } from './meshIssuesRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 import databaseService from '../../services/database.js';
 import {
@@ -691,6 +691,568 @@ describe('meshIssuesRoutes', () => {
       expect(row?.dismissed).toBe(false);
     });
   });
+
+  describe('GET /api/analysis/mesh-issues — filters (#4964 report reorg WP1, spec §4.1)', () => {
+    it('severity narrows issues, counts and total together', async () => {
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({ nodeNum: 800, severity: 'critical', sourceIds: [harness.sourceA] }),
+        Date.now(),
+      );
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({
+          nodeNum: 801,
+          issueType: MESH_ISSUE_TYPES.A2A_CHATTY_NODE,
+          subjectKey: nodeSubjectKey(801),
+          severity: 'warning',
+          sourceIds: [harness.sourceA],
+        }),
+        Date.now(),
+      );
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get('/api/analysis/mesh-issues?severity=critical');
+      expect(res.status).toBe(200);
+      expect(res.body.data.issues).toHaveLength(1);
+      expect(res.body.data.issues[0].nodeNum).toBe(800);
+      expect(res.body.data.counts).toEqual({ critical: 1, warning: 0, info: 0, total: 1, dismissed: 0 });
+      expect(res.body.data.total).toBe(1);
+    });
+
+    it('tier narrows to issueType[0] match', async () => {
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({
+          nodeNum: 810,
+          issueType: MESH_ISSUE_TYPES.A1_DEPRECATED_ROLE,
+          subjectKey: nodeSubjectKey(810),
+          sourceIds: [harness.sourceA],
+        }),
+        Date.now(),
+      );
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({
+          nodeNum: 811,
+          issueType: MESH_ISSUE_TYPES.B2_REDUNDANT_ROUTER,
+          subjectKey: nodeSubjectKey(811),
+          sourceIds: [harness.sourceA],
+        }),
+        Date.now(),
+      );
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get('/api/analysis/mesh-issues?tier=B');
+      expect(res.status).toBe(200);
+      expect(res.body.data.issues).toHaveLength(1);
+      expect(res.body.data.issues[0].nodeNum).toBe(811);
+    });
+
+    it('issueType narrows to an exact match (GET / only)', async () => {
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({
+          nodeNum: 820,
+          issueType: MESH_ISSUE_TYPES.A1_DEPRECATED_ROLE,
+          subjectKey: nodeSubjectKey(820),
+          sourceIds: [harness.sourceA],
+        }),
+        Date.now(),
+      );
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({
+          nodeNum: 821,
+          issueType: MESH_ISSUE_TYPES.A2A_CHATTY_NODE,
+          subjectKey: nodeSubjectKey(821),
+          sourceIds: [harness.sourceA],
+        }),
+        Date.now(),
+      );
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get(`/api/analysis/mesh-issues?issueType=${MESH_ISSUE_TYPES.A2A_CHATTY_NODE}`);
+      expect(res.body.data.issues).toHaveLength(1);
+      expect(res.body.data.issues[0].nodeNum).toBe(821);
+    });
+
+    it('nodeNum=none matches only nodeNum IS NULL rows', async () => {
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({ nodeNum: 830, sourceIds: [harness.sourceA] }),
+        Date.now(),
+      );
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeGraphFinding({ subjectKey: edgeSubjectKey(5, 6), sourceIds: [harness.sourceA] }),
+        Date.now(),
+      );
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get('/api/analysis/mesh-issues?nodeNum=none');
+      expect(res.status).toBe(200);
+      expect(res.body.data.issues.length).toBeGreaterThan(0);
+      expect(res.body.data.issues.every((i: { nodeNum: number | null }) => i.nodeNum === null)).toBe(true);
+    });
+
+    it('nodeNum=<n> matches exactly that node', async () => {
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({ nodeNum: 840, sourceIds: [harness.sourceA] }),
+        Date.now(),
+      );
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({
+          nodeNum: 841,
+          issueType: MESH_ISSUE_TYPES.A2A_CHATTY_NODE,
+          subjectKey: nodeSubjectKey(841),
+          sourceIds: [harness.sourceA],
+        }),
+        Date.now(),
+      );
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get('/api/analysis/mesh-issues?nodeNum=840');
+      expect(res.body.data.issues).toHaveLength(1);
+      expect(res.body.data.issues[0].nodeNum).toBe(840);
+    });
+
+    it('unknown severity/tier/issueType tokens are dropped, never a 400 (clamp-never-reject)', async () => {
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({ nodeNum: 850, sourceIds: [harness.sourceA] }),
+        Date.now(),
+      );
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get('/api/analysis/mesh-issues?severity=bogus&tier=Z&issueType=not_a_real_type');
+      expect(res.status).toBe(200);
+      // all-unknown tokens -> filter treated as absent -> no narrowing
+      expect(res.body.data.issues.some((i: { nodeNum: number }) => i.nodeNum === 850)).toBe(true);
+    });
+
+    it('q matches the resolved nodeName, case-insensitively', async () => {
+      await databaseService.upsertNodeAsync(
+        { nodeNum: 860, nodeId: '!00000360', longName: 'Mountain Ridge Repeater' },
+        harness.sourceA,
+      );
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({ nodeNum: 860, sourceIds: [harness.sourceA] }),
+        Date.now(),
+      );
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({
+          nodeNum: 861,
+          issueType: MESH_ISSUE_TYPES.A2A_CHATTY_NODE,
+          subjectKey: nodeSubjectKey(861),
+          sourceIds: [harness.sourceA],
+        }),
+        Date.now(),
+      );
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get('/api/analysis/mesh-issues?q=ridge');
+      expect(res.body.data.issues).toHaveLength(1);
+      expect(res.body.data.issues[0].nodeNum).toBe(860);
+
+      await databaseService.deleteNodeAsync(860, harness.sourceA).catch(() => {});
+    });
+
+    it("sources is intersected with the caller's permitted set — an unreadable source is dropped, not a 403", async () => {
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({ nodeNum: 870, sourceIds: [harness.sourceA] }),
+        Date.now(),
+      );
+
+      await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceA);
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.get(`/api/analysis/mesh-issues?sources=${harness.sourceA},${harness.sourceB}`);
+      expect(res.status).toBe(200);
+      expect(res.body.data.issues.some((i: { nodeNum: number }) => i.nodeNum === 870)).toBe(true);
+    });
+
+    it('sources filter narrows out a finding whose visible sourceIds do not intersect the requested set', async () => {
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({ nodeNum: 880, sourceIds: [harness.sourceA] }),
+        Date.now(),
+      );
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({
+          nodeNum: 881,
+          issueType: MESH_ISSUE_TYPES.A2A_CHATTY_NODE,
+          subjectKey: nodeSubjectKey(881),
+          sourceIds: [harness.sourceB],
+        }),
+        Date.now(),
+      );
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get(`/api/analysis/mesh-issues?sources=${harness.sourceA}`);
+      const nodeNums = res.body.data.issues.map((i: { nodeNum: number }) => i.nodeNum);
+      expect(nodeNums).toContain(880);
+      expect(nodeNums).not.toContain(881);
+    });
+
+    it('filters compose with limit/offset and the sort stays deterministic', async () => {
+      for (let i = 0; i < 4; i++) {
+        await databaseService.upsertMeshIssueFindingAsync(
+          makeFinding({
+            nodeNum: 890 + i,
+            subjectKey: nodeSubjectKey(890 + i),
+            severity: 'warning',
+            sourceIds: [harness.sourceA],
+          }),
+          Date.now(),
+        );
+      }
+      const agent = await harness.loginAs(harness.admin);
+      const isSeeded = (i: { nodeNum: number }) => i.nodeNum >= 890 && i.nodeNum < 894;
+
+      const full = await agent.get('/api/analysis/mesh-issues?severity=warning');
+      const fullIds = full.body.data.issues.filter(isSeeded).map((i: { id: number }) => i.id);
+      expect(fullIds).toHaveLength(4);
+
+      const page = await agent.get('/api/analysis/mesh-issues?severity=warning&limit=50&offset=0');
+      const pageIds = page.body.data.issues.filter(isSeeded).map((i: { id: number }) => i.id);
+      expect(pageIds).toEqual(fullIds);
+    });
+  });
+
+  describe('GET /api/analysis/mesh-issues/summary (#4964 report reorg WP1, spec §4.3)', () => {
+    it('returns 403 NO_PERMITTED_SOURCES for a user with zero grants', async () => {
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.get('/api/analysis/mesh-issues/summary');
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe('NO_PERMITTED_SOURCES');
+    });
+
+    it('aggregates match a hand-computed fixture: byType worst-first, byNode with the Mesh-wide group first, no evidence anywhere', async () => {
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({
+          nodeNum: 900,
+          issueType: MESH_ISSUE_TYPES.A1_DEPRECATED_ROLE,
+          subjectKey: nodeSubjectKey(900),
+          severity: 'warning',
+          sourceIds: [harness.sourceA],
+        }),
+        Date.now(),
+      );
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({
+          nodeNum: 900,
+          issueType: MESH_ISSUE_TYPES.A2A_CHATTY_NODE,
+          subjectKey: nodeSubjectKey(900),
+          severity: 'critical',
+          sourceIds: [harness.sourceA],
+        }),
+        Date.now(),
+      );
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeGraphFinding({
+          issueType: MESH_ISSUE_TYPES.B1_ROUTER_CLUSTER,
+          subjectKey: clusterSubjectKey([901, 902]),
+          severity: 'info',
+          sourceIds: [harness.sourceA],
+        }),
+        Date.now(),
+      );
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get('/api/analysis/mesh-issues/summary');
+      expect(res.status).toBe(200);
+      const data = res.body.data;
+
+      expect(data.byType[0].issueType).toBe(MESH_ISSUE_TYPES.A2A_CHATTY_NODE);
+      expect(data.byType[0].worstSeverity).toBe('critical');
+
+      // Mesh-wide group (nodeNum: null, from the B1 cluster finding) pinned first.
+      expect(data.byNode[0].nodeNum).toBeNull();
+      expect(data.byNode[0].nodeName).toBeNull();
+
+      const node900 = data.byNode.find((n: { nodeNum: number | null }) => n.nodeNum === 900);
+      expect(node900).toBeDefined();
+      expect(node900.total).toBe(2);
+      expect(node900.issueTypes).toEqual([MESH_ISSUE_TYPES.A2A_CHATTY_NODE, MESH_ISSUE_TYPES.A1_DEPRECATED_ROLE]);
+
+      expect(JSON.stringify(data)).not.toMatch(/"evidence"/);
+    });
+
+    it('honours severity/tier/sources/q; ignores issueType/nodeNum (spec §4.3)', async () => {
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({
+          nodeNum: 910,
+          issueType: MESH_ISSUE_TYPES.A1_DEPRECATED_ROLE,
+          subjectKey: nodeSubjectKey(910),
+          severity: 'critical',
+          sourceIds: [harness.sourceA],
+        }),
+        Date.now(),
+      );
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({
+          nodeNum: 911,
+          issueType: MESH_ISSUE_TYPES.A2A_CHATTY_NODE,
+          subjectKey: nodeSubjectKey(911),
+          severity: 'warning',
+          sourceIds: [harness.sourceA],
+        }),
+        Date.now(),
+      );
+
+      const agent = await harness.loginAs(harness.admin);
+
+      const filtered = await agent.get('/api/analysis/mesh-issues/summary?severity=critical');
+      expect(filtered.body.data.byType.map((t: { issueType: string }) => t.issueType)).toEqual([
+        MESH_ISSUE_TYPES.A1_DEPRECATED_ROLE,
+      ]);
+
+      const ignored = await agent.get(
+        `/api/analysis/mesh-issues/summary?issueType=${MESH_ISSUE_TYPES.A1_DEPRECATED_ROLE}&nodeNum=910`,
+      );
+      const ignoredTypes = ignored.body.data.byType.map((t: { issueType: string }) => t.issueType);
+      expect(ignoredTypes).toContain(MESH_ISSUE_TYPES.A1_DEPRECATED_ROLE);
+      expect(ignoredTypes).toContain(MESH_ISSUE_TYPES.A2A_CHATTY_NODE);
+    });
+
+    it("a limited user's summary counts only their visible findings (#3745 leak class)", async () => {
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({ nodeNum: 920, sourceIds: [harness.sourceA] }),
+        Date.now(),
+      );
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({
+          nodeNum: 921,
+          issueType: MESH_ISSUE_TYPES.A2A_CHATTY_NODE,
+          subjectKey: nodeSubjectKey(921),
+          sourceIds: [harness.sourceB],
+        }),
+        Date.now(),
+      );
+
+      await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceA);
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.get('/api/analysis/mesh-issues/summary');
+      expect(res.body.data.total).toBe(1);
+      expect(res.body.data.counts.total).toBe(1);
+    });
+  });
+
+  describe('POST /api/analysis/mesh-issues/bulk/dismiss and /bulk/restore (#4964 report reorg WP1, spec §4.4)', () => {
+    it('403s a user without settings:write', async () => {
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent
+        .post('/api/analysis/mesh-issues/bulk/dismiss')
+        .send({ scope: 'issueType', issueType: MESH_ISSUE_TYPES.A1_DEPRECATED_ROLE });
+      expect(res.status).toBe(403);
+    });
+
+    it('a user with settings:write but no readable source gets 403 NO_PERMITTED_SOURCES', async () => {
+      await harness.grant(harness.limited.id, 'settings', 'write', harness.sourceA);
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent
+        .post('/api/analysis/mesh-issues/bulk/dismiss')
+        .send({ scope: 'issueType', issueType: MESH_ISSUE_TYPES.A1_DEPRECATED_ROLE });
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe('NO_PERMITTED_SOURCES');
+    });
+
+    it('400s INVALID_BULK_SCOPE for a missing/unknown scope, or a nodeNum that is neither an integer nor null', async () => {
+      const agent = await harness.loginAs(harness.admin);
+
+      const res1 = await agent.post('/api/analysis/mesh-issues/bulk/dismiss').send({});
+      expect(res1.status).toBe(400);
+      expect(res1.body.code).toBe('INVALID_BULK_SCOPE');
+
+      const res2 = await agent.post('/api/analysis/mesh-issues/bulk/dismiss').send({ scope: 'bogus' });
+      expect(res2.status).toBe(400);
+      expect(res2.body.code).toBe('INVALID_BULK_SCOPE');
+
+      const res3 = await agent
+        .post('/api/analysis/mesh-issues/bulk/dismiss')
+        .send({ scope: 'node', nodeNum: 'not-a-number' });
+      expect(res3.status).toBe(400);
+      expect(res3.body.code).toBe('INVALID_BULK_SCOPE');
+    });
+
+    it('400s INVALID_ISSUE_TYPE for an unknown issue type', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent
+        .post('/api/analysis/mesh-issues/bulk/dismiss')
+        .send({ scope: 'issueType', issueType: 'not_a_real_type' });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('INVALID_ISSUE_TYPE');
+    });
+
+    it('admin, {scope: issueType} flips every visible finding of that type in one call, leaves other types untouched, and audit-logs the affected count', async () => {
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({
+          nodeNum: 930,
+          issueType: MESH_ISSUE_TYPES.A5_COSPLAY_ROUTER,
+          subjectKey: nodeSubjectKey(930),
+          sourceIds: [harness.sourceA],
+        }),
+        Date.now(),
+      );
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({
+          nodeNum: 931,
+          issueType: MESH_ISSUE_TYPES.A5_COSPLAY_ROUTER,
+          subjectKey: nodeSubjectKey(931),
+          sourceIds: [harness.sourceA],
+        }),
+        Date.now(),
+      );
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({
+          nodeNum: 932,
+          issueType: MESH_ISSUE_TYPES.A1_DEPRECATED_ROLE,
+          subjectKey: nodeSubjectKey(932),
+          sourceIds: [harness.sourceA],
+        }),
+        Date.now(),
+      );
+
+      const auditSpy = vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent
+        .post('/api/analysis/mesh-issues/bulk/dismiss')
+        .send({ scope: 'issueType', issueType: MESH_ISSUE_TYPES.A5_COSPLAY_ROUTER });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toEqual({ affected: 2 });
+
+      const rows = await databaseService.getMeshIssuesAsync({ includeDismissed: true });
+      expect(rows.find((r) => r.nodeNum === 930)?.dismissed).toBe(true);
+      expect(rows.find((r) => r.nodeNum === 931)?.dismissed).toBe(true);
+      expect(rows.find((r) => r.nodeNum === 932)?.dismissed).toBe(false);
+
+      expect(auditSpy).toHaveBeenCalledWith(
+        harness.admin.id,
+        'mesh_issue_bulk_dismiss',
+        'settings',
+        expect.stringContaining('Dismissed 2 mesh issue'),
+        expect.anything(),
+        null,
+        expect.stringContaining('"affected":2'),
+      );
+    });
+
+    it('partial visibility: a sourceA-only user dismisses only sourceA-visible findings; the sourceB-only row stays dismissed: false and the response has no skipped field (#3745 leak class)', async () => {
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({
+          nodeNum: 940,
+          issueType: MESH_ISSUE_TYPES.B2_REDUNDANT_ROUTER,
+          subjectKey: nodeSubjectKey(940),
+          sourceIds: [harness.sourceA],
+        }),
+        Date.now(),
+      );
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({
+          nodeNum: 941,
+          issueType: MESH_ISSUE_TYPES.B2_REDUNDANT_ROUTER,
+          subjectKey: nodeSubjectKey(941),
+          sourceIds: [harness.sourceA],
+        }),
+        Date.now(),
+      );
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({
+          nodeNum: 942,
+          issueType: MESH_ISSUE_TYPES.B2_REDUNDANT_ROUTER,
+          subjectKey: nodeSubjectKey(942),
+          sourceIds: [harness.sourceB],
+        }),
+        Date.now(),
+      );
+
+      await harness.grant(harness.limited.id, 'settings', 'write', harness.sourceA);
+      await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceA);
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent
+        .post('/api/analysis/mesh-issues/bulk/dismiss')
+        .send({ scope: 'issueType', issueType: MESH_ISSUE_TYPES.B2_REDUNDANT_ROUTER });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.affected).toBe(2);
+      expect('skipped' in res.body.data).toBe(false);
+      expect(JSON.stringify(res.body)).not.toMatch(/skipped/i);
+
+      const rows = await databaseService.getMeshIssuesAsync({ includeDismissed: true });
+      expect(rows.find((r) => r.nodeNum === 942)?.dismissed).toBe(false);
+    });
+
+    it('{scope: node, nodeNum: null} hits only nodeNum IS NULL rows', async () => {
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({ nodeNum: 950, sourceIds: [harness.sourceA] }),
+        Date.now(),
+      );
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeGraphFinding({
+          issueType: MESH_ISSUE_TYPES.B3_ASYMMETRIC_LINK,
+          subjectKey: edgeSubjectKey(7, 8),
+          sourceIds: [harness.sourceA],
+        }),
+        Date.now(),
+      );
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post('/api/analysis/mesh-issues/bulk/dismiss').send({ scope: 'node', nodeNum: null });
+      expect(res.status).toBe(200);
+      expect(res.body.data.affected).toBe(1);
+
+      const rows = await databaseService.getMeshIssuesAsync({ includeDismissed: true });
+      expect(rows.find((r) => r.nodeNum === 950)?.dismissed).toBe(false);
+      expect(rows.find((r) => r.subjectKey === 'edge:7-8')?.dismissed).toBe(true);
+    });
+
+    it('a second identical call is idempotent: affected: 0', async () => {
+      await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({
+          nodeNum: 960,
+          issueType: MESH_ISSUE_TYPES.A4_MOBILE_INFRA,
+          subjectKey: nodeSubjectKey(960),
+          sourceIds: [harness.sourceA],
+        }),
+        Date.now(),
+      );
+
+      const agent = await harness.loginAs(harness.admin);
+      const first = await agent
+        .post('/api/analysis/mesh-issues/bulk/dismiss')
+        .send({ scope: 'issueType', issueType: MESH_ISSUE_TYPES.A4_MOBILE_INFRA });
+      expect(first.body.data.affected).toBe(1);
+
+      const second = await agent
+        .post('/api/analysis/mesh-issues/bulk/dismiss')
+        .send({ scope: 'issueType', issueType: MESH_ISSUE_TYPES.A4_MOBILE_INFRA });
+      expect(second.body.data.affected).toBe(0);
+    });
+
+    it('restore is the inverse and only touches dismissed === true rows', async () => {
+      const { issue: issueDismissed } = await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({
+          nodeNum: 970,
+          issueType: MESH_ISSUE_TYPES.B4_IDLE_ROUTER,
+          subjectKey: nodeSubjectKey(970),
+          sourceIds: [harness.sourceA],
+        }),
+        Date.now(),
+      );
+      const { issue: issueOpen } = await databaseService.upsertMeshIssueFindingAsync(
+        makeFinding({
+          nodeNum: 971,
+          issueType: MESH_ISSUE_TYPES.B4_IDLE_ROUTER,
+          subjectKey: nodeSubjectKey(971),
+          sourceIds: [harness.sourceA],
+        }),
+        Date.now(),
+      );
+      await databaseService.setMeshIssueDismissedAsync(issueDismissed.id, true, 1, Date.now());
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent
+        .post('/api/analysis/mesh-issues/bulk/restore')
+        .send({ scope: 'issueType', issueType: MESH_ISSUE_TYPES.B4_IDLE_ROUTER });
+      expect(res.status).toBe(200);
+      expect(res.body.data.affected).toBe(1);
+
+      const rows = await databaseService.getMeshIssuesAsync({ includeDismissed: true });
+      expect(rows.find((r) => r.id === issueDismissed.id)?.dismissed).toBe(false);
+      expect(rows.find((r) => r.id === issueOpen.id)?.dismissed).toBe(false);
+    });
+  });
 });
 
 describe('redactEvidence (#4964 Phase 3 WP3 §4.3, D12)', () => {
@@ -770,5 +1332,152 @@ describe('redactEvidence (#4964 Phase 3 WP3 §4.3, D12)', () => {
       deep = { child: deep };
     }
     expect(() => redactEvidence(deep, permitted, nodeNames)).not.toThrow();
+  });
+});
+
+describe('buildSummary (#4964 report reorg WP1, spec §4.3, §10.1)', () => {
+  type WireIssue = Parameters<typeof buildSummary>[0][number];
+
+  function makeWire(overrides: Partial<WireIssue> & { id: number; issueType: string }): WireIssue {
+    return {
+      subjectKey: `node:${overrides.id}`,
+      nodeNum: null,
+      nodeName: null,
+      severity: 'info',
+      confidence: 'medium',
+      evidence: {},
+      sourceIds: ['sourceA'],
+      firstDetected: 1000,
+      lastDetected: 1000,
+      status: 'open',
+      dismissed: false,
+      dismissedAt: null,
+      ...overrides,
+    };
+  }
+
+  it('byType: worst-severity rank first, then total desc, then issueType asc', () => {
+    const issues: WireIssue[] = [
+      makeWire({ id: 1, issueType: 'A1_deprecated_role', severity: 'info' }),
+      makeWire({ id: 2, issueType: 'A1_deprecated_role', severity: 'info' }),
+      makeWire({ id: 3, issueType: 'B7_coverage_shadow', severity: 'info' }),
+      makeWire({ id: 4, issueType: 'B7_coverage_shadow', severity: 'info' }),
+      makeWire({ id: 5, issueType: 'B7_coverage_shadow', severity: 'info' }),
+      makeWire({ id: 6, issueType: 'C1_key_security', severity: 'critical' }),
+    ];
+    const summary = buildSummary(issues, {});
+    expect(summary.byType.map((t) => t.issueType)).toEqual([
+      'C1_key_security',
+      'B7_coverage_shadow',
+      'A1_deprecated_role',
+    ]);
+    const b7 = summary.byType.find((t) => t.issueType === 'B7_coverage_shadow')!;
+    expect(b7.total).toBe(3);
+    expect(b7.worstSeverity).toBe('info');
+    expect(b7.bySeverity).toEqual({ critical: 0, warning: 0, info: 3 });
+  });
+
+  it('byType tie on worstSeverity + total falls back to issueType asc', () => {
+    const issues: WireIssue[] = [
+      makeWire({ id: 1, issueType: 'B7_coverage_shadow', severity: 'warning' }),
+      makeWire({ id: 2, issueType: 'A5_cosplay_router', severity: 'warning' }),
+    ];
+    const summary = buildSummary(issues, {});
+    expect(summary.byType.map((t) => t.issueType)).toEqual(['A5_cosplay_router', 'B7_coverage_shadow']);
+  });
+
+  it('byType.dismissed counts dismissed rows of that type; latestDetected is the max lastDetected; only types with total > 0 appear', () => {
+    const issues: WireIssue[] = [
+      makeWire({ id: 1, issueType: 'A1_deprecated_role', lastDetected: 1000, dismissed: true }),
+      makeWire({ id: 2, issueType: 'A1_deprecated_role', lastDetected: 5000, dismissed: false }),
+    ];
+    const summary = buildSummary(issues, {});
+    expect(summary.byType).toHaveLength(1);
+    const a1 = summary.byType[0];
+    expect(a1.dismissed).toBe(1);
+    expect(a1.latestDetected).toBe(5000);
+  });
+
+  it('byNode: the Mesh-wide (nodeNum: null) group is pinned first regardless of severity/count', () => {
+    const issues: WireIssue[] = [
+      makeWire({ id: 1, issueType: 'C1_key_security', nodeNum: 200, severity: 'critical' }),
+      makeWire({ id: 2, issueType: 'A2b_congested_area', nodeNum: null, severity: 'info' }),
+    ];
+    const summary = buildSummary(issues, {});
+    expect(summary.byNode[0].nodeNum).toBeNull();
+    expect(summary.byNode[1].nodeNum).toBe(200);
+  });
+
+  it('byNode: worst-severity rank beats total, which beats latestDetected, which beats the nodeNum tiebreak', () => {
+    const issues: WireIssue[] = [
+      makeWire({ id: 1, issueType: 'A1_deprecated_role', nodeNum: 100, severity: 'warning', lastDetected: 1000 }),
+      makeWire({ id: 2, issueType: 'A2a_chatty_node', nodeNum: 100, severity: 'warning', lastDetected: 1000 }),
+      makeWire({ id: 3, issueType: 'A3_infra_power', nodeNum: 100, severity: 'warning', lastDetected: 1000 }),
+      makeWire({ id: 4, issueType: 'C1_key_security', nodeNum: 200, severity: 'critical', lastDetected: 500 }),
+      makeWire({ id: 5, issueType: 'A1_deprecated_role', nodeNum: 300, severity: 'warning', lastDetected: 1000 }),
+      makeWire({ id: 6, issueType: 'A1_deprecated_role', nodeNum: 400, severity: 'warning', lastDetected: 2000 }),
+    ];
+    const summary = buildSummary(issues, {});
+    const order = summary.byNode.map((n) => n.nodeNum);
+    // 200 (critical, total 1) beats 100 (warning, total 3) on severity alone;
+    // 100 (total 3) beats 400/300 (total 1 each) on total; 400 beats 300 on
+    // more-recent latestDetected.
+    expect(order).toEqual([200, 100, 400, 300]);
+  });
+
+  it('byNode: nodeNum asc breaks a full tie (severity, total, latestDetected all equal)', () => {
+    const issues: WireIssue[] = [
+      makeWire({ id: 1, issueType: 'A1_deprecated_role', nodeNum: 500, severity: 'warning', lastDetected: 1000 }),
+      makeWire({ id: 2, issueType: 'A1_deprecated_role', nodeNum: 100, severity: 'warning', lastDetected: 1000 }),
+    ];
+    const summary = buildSummary(issues, {});
+    expect(summary.byNode.map((n) => n.nodeNum)).toEqual([100, 500]);
+  });
+
+  it('byNode.issueTypes: ordered worst-severity-first for THAT node, then lexicographic', () => {
+    const issues: WireIssue[] = [
+      makeWire({ id: 1, issueType: 'B7_coverage_shadow', nodeNum: 100, severity: 'info' }),
+      makeWire({ id: 2, issueType: 'A1_deprecated_role', nodeNum: 100, severity: 'critical' }),
+      makeWire({ id: 3, issueType: 'A5_cosplay_router', nodeNum: 100, severity: 'warning' }),
+      makeWire({ id: 4, issueType: 'A2a_chatty_node', nodeNum: 100, severity: 'warning' }),
+    ];
+    const summary = buildSummary(issues, {});
+    const node = summary.byNode.find((n) => n.nodeNum === 100)!;
+    expect(node.issueTypes).toEqual([
+      'A1_deprecated_role', // critical
+      'A2a_chatty_node', // warning, alpha before A5
+      'A5_cosplay_router', // warning
+      'B7_coverage_shadow', // info
+    ]);
+  });
+
+  it("byNode.nodeName resolves from the group's findings; null for the Mesh-wide group", () => {
+    const issues: WireIssue[] = [
+      makeWire({ id: 1, issueType: 'A1_deprecated_role', nodeNum: 100, nodeName: 'Node A' }),
+      makeWire({ id: 2, issueType: 'A2b_congested_area', nodeNum: null, nodeName: null }),
+    ];
+    const summary = buildSummary(issues, {});
+    expect(summary.byNode.find((n) => n.nodeNum === 100)!.nodeName).toBe('Node A');
+    expect(summary.byNode.find((n) => n.nodeNum === null)!.nodeName).toBeNull();
+  });
+
+  it('counts/total mirror the full input set, sourceNames passes through, and no evidence field appears anywhere in the output', () => {
+    const issues: WireIssue[] = [
+      makeWire({ id: 1, issueType: 'A1_deprecated_role', severity: 'critical', evidence: { secretSquirrel: true } }),
+      makeWire({ id: 2, issueType: 'A1_deprecated_role', severity: 'warning' }),
+    ];
+    const summary = buildSummary(issues, { sourceA: 'Source A' });
+    expect(summary.counts).toEqual({ critical: 1, warning: 1, info: 0, total: 2, dismissed: 0 });
+    expect(summary.total).toBe(2);
+    expect(summary.sourceNames).toEqual({ sourceA: 'Source A' });
+    expect(JSON.stringify(summary)).not.toContain('secretSquirrel');
+  });
+
+  it('an empty input produces empty byType/byNode and zeroed counts', () => {
+    const summary = buildSummary([], {});
+    expect(summary.byType).toEqual([]);
+    expect(summary.byNode).toEqual([]);
+    expect(summary.counts).toEqual({ critical: 0, warning: 0, info: 0, total: 0, dismissed: 0 });
+    expect(summary.total).toBe(0);
   });
 });

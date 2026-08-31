@@ -2066,6 +2066,20 @@ class DatabaseService {
     return this.meshIssues.getIssueById(id);
   }
 
+  /**
+   * Bulk dismiss/restore by explicit id list (#4964 report reorg WP1, spec
+   * §9.3/§4.4). Ids are expected to be already visibility-checked by the
+   * caller (route). Returns the number of rows actually updated.
+   */
+  async setMeshIssueDismissedForIdsAsync(
+    ids: number[],
+    dismissed: boolean,
+    userId: number | null,
+    nowMs: number,
+  ): Promise<number> {
+    return this.meshIssues.setDismissedForIds(ids, dismissed, userId, nowMs);
+  }
+
 
 
   /**

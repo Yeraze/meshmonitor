@@ -47,6 +47,8 @@ const statusThresholds = {
   tierBEnabled: true,
   tierCEnabled: true,
   b7Enabled: true,
+  // Report reorg #4964 WP2 — resolved, sorted per-rule mute list.
+  disabledRules: [] as string[],
   airUtilTxPct: 8,
   channelUtilPct: 25,
   mobileSpanMeters: 500,
@@ -177,6 +179,7 @@ describe('MeshIssuesSection', () => {
       mesh_issues_tier_a_enabled: 'true',
       mesh_issues_tier_b_enabled: 'true',
       mesh_issues_tier_c_enabled: 'true',
+      mesh_issues_disabled_rules: '',
       mesh_issues_b7_enabled: 'true',
       mesh_issues_air_util_tx_pct: '12',
       mesh_issues_channel_util_pct: '25',
@@ -223,6 +226,120 @@ describe('MeshIssuesSection', () => {
     await waitFor(() => {
       expect(mockShowToast).toHaveBeenCalledWith('Mesh issues analysis already running', 'warning');
     });
+  });
+
+  it('renders a checkbox per rule, checked (enabled) when nothing is muted (report reorg #4964 WP2)', async () => {
+    render(<MeshIssuesSection baseUrl="" />);
+    await waitFor(() => expect(screen.getByDisplayValue('8')).toBeInTheDocument());
+
+    // Short id + label, e.g. "B7" + "Coverage shadow" (spec §9.10).
+    const b7Checkbox = screen.getByRole('checkbox', { name: /Coverage shadow/i });
+    expect(b7Checkbox).toBeChecked();
+    const a1Checkbox = screen.getByRole('checkbox', { name: /Deprecated role/i });
+    expect(a1Checkbox).toBeChecked();
+    const c2Checkbox = screen.getByRole('checkbox', { name: /Broadcasting too often/i });
+    expect(c2Checkbox).toBeChecked();
+  });
+
+  it('shows a muted rule unchecked when status.thresholds.disabledRules names it', async () => {
+    mockCsrfFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        success: true,
+        data: {
+          ...statusResponse.data,
+          thresholds: { ...statusThresholds, disabledRules: ['B7_coverage_shadow'] },
+        },
+      }),
+    });
+
+    render(<MeshIssuesSection baseUrl="" />);
+    await waitFor(() => expect(screen.getByDisplayValue('8')).toBeInTheDocument());
+
+    expect(screen.getByRole('checkbox', { name: /Coverage shadow/i })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /Deprecated role/i })).toBeChecked();
+  });
+
+  it('unchecking a rule mutes it: save posts it in mesh_issues_disabled_rules', async () => {
+    render(<MeshIssuesSection baseUrl="" />);
+    await waitFor(() => expect(screen.getByDisplayValue('8')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /Coverage shadow/i }));
+    await waitFor(() => {
+      const lastCall = mockUseSaveBar.mock.calls[mockUseSaveBar.mock.calls.length - 1][0];
+      expect(lastCall.hasChanges).toBe(true);
+    });
+
+    mockCsrfFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ success: true }) });
+    const { onSave } = mockUseSaveBar.mock.calls[mockUseSaveBar.mock.calls.length - 1][0];
+    await onSave();
+
+    const postCall = mockCsrfFetch.mock.calls.find(
+      (call) => call[0] === '/api/settings' && call[1]?.method === 'POST'
+    );
+    const body = JSON.parse(postCall![1].body as string);
+    expect(body.mesh_issues_disabled_rules).toBe('B7_coverage_shadow');
+    // TRAP (spec §5.2): muting B7 through the CSV must also flip the legacy
+    // key, or resolveThresholds would never observe the mute for a fresh
+    // install that has no mesh_issues_b7_enabled row at all... but more
+    // importantly, un-muting later requires both keys to move together —
+    // asserted in the next test.
+    expect(body.mesh_issues_b7_enabled).toBe('false');
+  });
+
+  it('re-checking a muted B7 un-mutes it: save writes BOTH keys (spec §5.2 TRAP)', async () => {
+    mockCsrfFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        success: true,
+        data: {
+          ...statusResponse.data,
+          thresholds: { ...statusThresholds, b7Enabled: false, disabledRules: ['B7_coverage_shadow'] },
+        },
+      }),
+    });
+
+    render(<MeshIssuesSection baseUrl="" />);
+    await waitFor(() => expect(screen.getByDisplayValue('8')).toBeInTheDocument());
+    expect(screen.getByRole('checkbox', { name: /Coverage shadow/i })).not.toBeChecked();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /Coverage shadow/i }));
+    await waitFor(() => {
+      const lastCall = mockUseSaveBar.mock.calls[mockUseSaveBar.mock.calls.length - 1][0];
+      expect(lastCall.hasChanges).toBe(true);
+    });
+
+    mockCsrfFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ success: true }) });
+    const { onSave } = mockUseSaveBar.mock.calls[mockUseSaveBar.mock.calls.length - 1][0];
+    await onSave();
+
+    const postCall = mockCsrfFetch.mock.calls.find(
+      (call) => call[0] === '/api/settings' && call[1]?.method === 'POST'
+    );
+    const body = JSON.parse(postCall![1].body as string);
+    expect(body.mesh_issues_disabled_rules).toBe('');
+    expect(body.mesh_issues_b7_enabled).toBe('true');
+  });
+
+  it('defaults to nothing muted when disabledRules is absent from status (older server)', async () => {
+    mockCsrfFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        success: true,
+        data: {
+          ...statusResponse.data,
+          thresholds: { ...statusThresholds, disabledRules: undefined },
+        },
+      }),
+    });
+
+    render(<MeshIssuesSection baseUrl="" />);
+    await waitFor(() => expect(screen.getByDisplayValue('8')).toBeInTheDocument());
+
+    expect(screen.getByRole('checkbox', { name: /Coverage shadow/i })).toBeChecked();
   });
 
   it('greys the inputs when the feature is disabled', async () => {
