@@ -147,6 +147,20 @@ export function nodeNumFromPublicKey(publicKey: string | null | undefined): numb
  */
 const RENUMBER_STALE_WINDOW_SEC = 3 * 24 * 60 * 60;
 
+/**
+ * Minimum gap (seconds) between the OLD and NEW NodeNums' last-heard values
+ * for the temporal-handoff signal to fire. Motivating case: MQTT gateways
+ * often replay cached NodeInfo for a node's pre-2.8 identity long after the
+ * physical node has stopped transmitting under that NodeNum, keeping
+ * `oldHeard` "recent" and defeating the 3-day stale-window path. A physical
+ * node CANNOT transmit under two NodeNums simultaneously, so a clear
+ * one-way ordering (`newHeard - oldHeard >= HANDOFF_MIN_SEC`) is direct
+ * evidence of a handoff. 1 hour is well past any plausible MQTT-replay
+ * jitter while still catching real handoffs (upgrade timings are hours,
+ * not seconds).
+ */
+const HANDOFF_MIN_SEC = 60 * 60;
+
 /** One member of a duplicate-key group, for the 2.8-renumber classifier. */
 export interface DuplicateGroupNode {
   nodeNum: number;
@@ -163,17 +177,27 @@ export interface DuplicateGroupNode {
  * The 2.8 firmware bug (unmerged fix meshtastic/firmware#10820) renumbers a
  * node to `crc32(publicKey)` on first 2.8 boot while keeping its key, orphaning
  * the old MAC-derived NodeNum — so MeshMonitor sees ONE physical node under two
- * NodeNums sharing a key. The **benign** fingerprint is:
+ * NodeNums sharing a key. The **benign** fingerprint requires:
  *   1. exactly two NodeNums in the group,
  *   2. exactly one of them equals `crc32(publicKey)` (the live new identity),
- *   3. the other (old) NodeNum has gone stale AND was last heard no more
- *      recently than the new one — i.e. a one-way handoff, not two live nodes.
+ *   3. the NEW NodeNum is currently active,
+ *   4. the NEW NodeNum was last heard no more recently than the OLD, AND
+ *   5. one of:
+ *      (a) OLD is stale (unheard for RENUMBER_STALE_WINDOW_SEC or never
+ *          heard), OR
+ *      (b) a clear temporal handoff: OLD was last heard at least
+ *          HANDOFF_MIN_SEC BEFORE NEW. A physical node cannot transmit
+ *          under two NodeNums simultaneously, so a meaningful one-way gap
+ *          rules out two live parties. This covers the MQTT-replay case
+ *          where a gateway keeps rebroadcasting cached pre-2.8 NodeInfo
+ *          and defeats path (a) alone.
  *
  * A real impersonation of a 2.8 victim ALSO has one NodeNum == crc32(key), so
  * the crc32 signal alone is insufficient; the load-bearing discriminator is
- * that in an attack **both** nodes are still transmitting, whereas in an
- * upgrade the old identity never speaks again. When in doubt we return false
- * (keep the security warning) — this only suppresses the clear handoff case.
+ * that in an attack **both** nodes are still transmitting concurrently,
+ * whereas in an upgrade the old identity never speaks again. When in doubt
+ * we return false (keep the security warning) — this only suppresses the
+ * clear handoff case.
  *
  * @param nowSec Current time in unix seconds (injected for testability).
  */
@@ -201,8 +225,9 @@ export function isBenign28UpgradeRenumber(
   const newIsActive = newHeard > 0 && nowSec - newHeard <= RENUMBER_STALE_WINDOW_SEC;
   const oldIsStale = oldHeard === 0 || nowSec - oldHeard > RENUMBER_STALE_WINDOW_SEC;
   const handoffOrder = newHeard >= oldHeard;
+  const clearTemporalHandoff = oldHeard > 0 && newHeard - oldHeard >= HANDOFF_MIN_SEC;
 
-  return newIsActive && oldIsStale && handoffOrder;
+  return newIsActive && handoffOrder && (oldIsStale || clearTemporalHandoff);
 }
 
 /**
