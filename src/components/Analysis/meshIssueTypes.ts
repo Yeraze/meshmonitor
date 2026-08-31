@@ -386,6 +386,10 @@ export const STRUCTURED_EVIDENCE_KEYS: ReadonlySet<string> = new Set([
   'sharedNeighbors',
   'otherCoveringRouters',
   'clusterMembers',
+  // C1_key_security's structured duplicate-key list. Rendered by MemberList
+  // (with clickable NodeLink chips), not as a raw "Key shared with nodes: N"
+  // string pill.
+  'sharedWithNodes',
   'nodeA',
   'nodeB',
   'snrToA',

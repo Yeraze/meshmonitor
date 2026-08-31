@@ -235,6 +235,54 @@ router.get(
   },
 );
 
+/**
+ * GET /api/nodes/:nodeNum/sources
+ *
+ * Enumerate every source that has a row for this nodeNum. Used by the "Source
+ * Node Details" picker on the Mesh Issues report: a click on a node name
+ * needs to jump to that node in a specific source's view, and a node may
+ * exist on 1..N sources.
+ *
+ * Returns one entry per source with the node's per-source `longName`/
+ * `shortName` (so the picker can label each row with what THAT source
+ * knows about the node — a node may be nameless on one MQTT feed but named
+ * on the direct TCP source). Empty array when the node isn't on any source.
+ *
+ * Unscoped by design: the picker's job is enumeration; the caller decides
+ * which source to open. `nodes:read` is still required.
+ */
+router.get('/nodes/:nodeNum/sources', requirePermission('nodes', 'read'), async (req, res) => {
+  try {
+    const nodeNum = parseNodeNumParam(req.params.nodeNum);
+    if (nodeNum === null) {
+      return fail(res, 400, 'INVALID_NODE_NUM', 'nodeNum must be a decimal node number or a !hex node id');
+    }
+
+    const [nodeRows, sources] = await Promise.all([
+      databaseService.nodes.getSourcesForNode(nodeNum),
+      databaseService.sources.getAllSources(),
+    ]);
+
+    const sourceNameById = new Map(sources.map((s) => [s.id, s.name] as const));
+
+    // Preserve the same ordering the sources sidebar uses (displayOrder,
+    // then createdAt) so the picker matches the rest of the UI.
+    const sourceOrder = new Map(sources.map((s, i) => [s.id, i] as const));
+    nodeRows.sort((a, b) => (sourceOrder.get(a.sourceId) ?? 1e9) - (sourceOrder.get(b.sourceId) ?? 1e9));
+
+    const result = nodeRows.map((r) => ({
+      sourceId: r.sourceId,
+      sourceName: sourceNameById.get(r.sourceId) ?? r.sourceId,
+      nodeName: r.longName || r.shortName || null,
+    }));
+
+    return ok(res, { sources: result });
+  } catch (error) {
+    logger.error('Error getting sources for node:', error);
+    return fail(res, 500, 'INTERNAL_ERROR', 'Failed to enumerate sources for node');
+  }
+});
+
 // Copy NodeInfo from another source
 import {
   findCopyCandidates, getNodeInfoSnapshot, copyNodeInfo, isNodeInfoField, NODE_INFO_FIELDS,

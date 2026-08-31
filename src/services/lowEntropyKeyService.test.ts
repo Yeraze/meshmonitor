@@ -348,6 +348,40 @@ describe('Low-Entropy Key Service', () => {
       ];
       expect(isBenign28UpgradeRenumber(group, NOW)).toBe(false);
     });
+
+    it('is TRUE when the OLD node is recently heard but with a clear 1h+ handoff gap (MQTT-replay case #5002 follow-up)', () => {
+      // Reproduces the MobileBcoN case: old lastHeard 30h ago (would fail
+      // the 3-day stale window) but new was heard ~32h later — physically
+      // one-way, so an MQTT gateway replay of pre-2.8 NodeInfo does not
+      // defeat suppression.
+      const HOUR = 60 * 60;
+      const group = [
+        { nodeNum: NEW_NUM, publicKey: KEY, lastHeard: NOW - HOUR },        // new is fresh
+        { nodeNum: OLD_NUM, publicKey: KEY, lastHeard: NOW - 30 * HOUR },   // old within 3d window
+      ];
+      expect(isBenign28UpgradeRenumber(group, NOW)).toBe(true);
+    });
+
+    it('is FALSE when the temporal-handoff gap is under 1h (still ambiguous)', () => {
+      // 30-minute gap is inside HANDOFF_MIN_SEC — could be simultaneous.
+      const HOUR = 60 * 60;
+      const group = [
+        { nodeNum: NEW_NUM, publicKey: KEY, lastHeard: NOW - 10 },
+        { nodeNum: OLD_NUM, publicKey: KEY, lastHeard: NOW - HOUR / 2 },
+      ];
+      expect(isBenign28UpgradeRenumber(group, NOW)).toBe(false);
+    });
+
+    it('is FALSE when the temporal-handoff signal fires but new is stale', () => {
+      // Even a 5-day gap doesn't rescue a stale new node — an inactive
+      // "current" identity is not a live handoff.
+      const HOUR = 60 * 60;
+      const group = [
+        { nodeNum: NEW_NUM, publicKey: KEY, lastHeard: NOW - 10 * DAY },     // new is stale
+        { nodeNum: OLD_NUM, publicKey: KEY, lastHeard: NOW - 15 * DAY - HOUR },
+      ];
+      expect(isBenign28UpgradeRenumber(group, NOW)).toBe(false);
+    });
   });
 
 });

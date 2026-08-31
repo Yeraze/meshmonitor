@@ -12,6 +12,7 @@ import React, { useState } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -87,10 +88,14 @@ function Harness({ summary }: { summary: MeshIssuesSummary }) {
 
 function renderHarness(summary: MeshIssuesSummary) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  // MemoryRouter needed because NodeGroupSection now renders NodeLink, which
+  // calls useNavigate() (#5002 node-links epic).
   return render(
-    <QueryClientProvider client={qc}>
-      <Harness summary={summary} />
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={qc}>
+        <Harness summary={summary} />
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -139,7 +144,9 @@ describe('ByNodeView', () => {
   it('expanding a node row fetches its findings by nodeNum exactly once', async () => {
     renderHarness(summaryWith([nodeSummary({ nodeNum: 42, nodeName: 'Alpha' })]));
 
-    fireEvent.click(screen.getByRole('button', { name: /Alpha/ }));
+    // Chevron button expands; the name is a separate NodeLink for
+    // Source-Node navigation.
+    fireEvent.click(screen.getByRole('button', { name: 'Expand' }));
 
     await waitFor(() => expect(apiService.get).toHaveBeenCalledTimes(1));
     const url = (apiService.get as Mocked).mock.calls[0][0] as string;
@@ -149,7 +156,7 @@ describe('ByNodeView', () => {
   it('expanding the Mesh-wide row fetches nodeNum=none', async () => {
     renderHarness(summaryWith([nodeSummary({ nodeNum: null, nodeName: null, issueTypes: ['A2b_congested_area'] })]));
 
-    fireEvent.click(screen.getByRole('button', { name: /Mesh-wide/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Expand' }));
 
     await waitFor(() => expect(apiService.get).toHaveBeenCalledTimes(1));
     const url = (apiService.get as Mocked).mock.calls[0][0] as string;

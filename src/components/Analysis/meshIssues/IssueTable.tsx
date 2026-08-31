@@ -230,13 +230,19 @@ const IssueTable: React.FC<IssueTableProps> = ({
                       </span>
                     )}
                   </td>
-                  <td>{renderSubject(row)}</td>
-                  {typeColumns.map((col) => (
-                    <td key={col.key} className={col.numeric ? styles.numericCell : undefined}>
-                      {col.render(row, { sourceNames })}
-                    </td>
-                  ))}
-                  {showSources && <td>{formatSourceIds(row.sourceIds, sourceNames)}</td>}
+                  <td className={styles.wrapCell}>{renderSubject(row)}</td>
+                  {typeColumns.map((col) => {
+                    const cls = [
+                      col.numeric ? styles.numericCell : null,
+                      col.wrap ? styles.wrapCell : null,
+                    ].filter(Boolean).join(' ') || undefined;
+                    return (
+                      <td key={col.key} className={cls}>
+                        {col.render(row, { sourceNames })}
+                      </td>
+                    );
+                  })}
+                  {showSources && <td className={styles.wrapCell}>{formatSourceIds(row.sourceIds, sourceNames)}</td>}
                   <td>{severityColumn.render(row, { sourceNames })}</td>
                   <td>{lastDetectedColumn.render(row, { sourceNames })}</td>
                   {canAct && (

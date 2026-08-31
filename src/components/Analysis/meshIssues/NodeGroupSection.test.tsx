@@ -12,6 +12,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -81,6 +82,7 @@ function renderSection(props: Partial<React.ComponentProps<typeof NodeGroupSecti
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const noop = () => {};
   return render(
+    <MemoryRouter>
     <QueryClientProvider client={qc}>
       <NodeGroupSection
         nodeSummary={nodeSummary()}
@@ -99,7 +101,8 @@ function renderSection(props: Partial<React.ComponentProps<typeof NodeGroupSecti
         bulkPending={false}
         {...props}
       />
-    </QueryClientProvider>,
+    </QueryClientProvider>
+    </MemoryRouter>,
   );
 }
 
