@@ -54,8 +54,13 @@
  * be as wide as its content and pushes the whole table into horizontal
  * scroll (a single "Key shared with nodes: X, Y, Z, …" ran ~2500px in
  * the wild). The max-width caps a runaway cell; `overflow-wrap` breaks
- * inside long unbroken tokens like a bare hex node id. */
-.wrapCell {
+ * inside long unbroken tokens like a bare hex node id.
+ *
+ * SPECIFICITY: `.reports-table td { white-space: nowrap }` in
+ * analysis-reports.css has specificity (0,1,1). A bare `.wrapCell` (0,1,0)
+ * loses even though the module loads later, so we scope through the
+ * global table class to get (0,2,1) and beat it. */
+:global(.reports-table) td.wrapCell {
   white-space: normal;
   overflow-wrap: anywhere;
   max-width: 28rem;
