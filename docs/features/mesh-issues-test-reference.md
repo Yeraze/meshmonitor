@@ -104,11 +104,121 @@ evaluate the structure of that graph.
 
 | | |
 | --- | --- |
-| **Fires when** | 2 or more ROUTER/REPEATER-role nodes are mutually audible (within the cluster distance limit) |
+| **Fires when** | 2 or more ROUTER/REPEATER-role nodes are mutually audible (within the cluster distance limit) **and** their non-cluster client neighbors overlap significantly |
 | **Severity** | warning (2–3 nodes) / critical (4+ nodes) / info (inferred-only evidence) |
-| **Threshold** | Cluster size 2 (warning), 4 (critical). Distance guard: **30 km** default, tunable. `[MeshMonitor]` |
-| **Why it matters** | Routers that can hear each other compete for the same traffic. Each one rebroadcasts the same packets, multiplying airtime without improving coverage. A cluster of 4 routers turns one packet into 4+ transmissions in the same RF neighborhood. |
+| **Threshold** | Cluster size 2 (warning), 4 (critical). Distance guard: **30 km** default, tunable. Client overlap: **90%** (same as B2). `[MeshMonitor]` |
+| **Why it matters** | Routers that can hear each other **and serve the same clients** compete for the same traffic. Each one rebroadcasts the same packets, multiplying airtime without improving coverage. |
 | **What to do** | Keep one router in the area and change the others to CLIENT_BASE (if they need to stay powered and connected) or CLIENT. Spread routers so each one covers a distinct area the others can't reach. |
+
+#### How the detection works
+
+B1 is the most involved rule in the report. It builds on an **RF adjacency
+graph** shared with several other Tier B rules, then runs a two-pass clique
+extraction to find clusters of routers that can all hear each other.
+
+**Step 1 — Build the RF graph.** The graph records which nodes can hear
+which, assembled from three evidence sources:
+
+| Source | Evidence class | Type |
+| --- | --- | --- |
+| **NeighborInfo** | `neighborInfo` | Direct |
+| **Traceroute adjacent-hop links** | `traceroute` | Direct |
+| **MQTT gateway heard a node at 0 hops with real SNR** | `gatewayDirect` | Direct |
+| **Two nodes both directly heard by the same MQTT gateway** | `gatewayCoReception` | Inferred |
+
+The graph maintains two adjacency maps: one with only **direct** edges
+(the first three classes), and one with **all** edges including inferred
+co-reception. NeighborInfo rows are deduped by `(nodeNum, neighborNum,
+timestamp)` to collapse cross-source duplicates (the same packet arriving
+via TCP and via N MQTT gateways).
+
+**Step 2 — Filter to cluster-eligible roles.** Only nodes with role
+ROUTER, ROUTER_CLIENT, or REPEATER are candidates. ROUTER_LATE is
+deliberately excluded — it is the recommended fix, so including it would
+make the remedy re-raise the finding.
+
+**Step 3 — Apply the distance guard.** Before clustering, every edge is
+checked against the `routerClusterMaxLinkKm` threshold (default **30 km**,
+tunable 1–500 km). If both nodes have known positions, the great-circle
+distance must be within the limit. If either node lacks a usable position
+the edge is kept (fail-open). This guard exists because MQTT-bridged
+firmwares can record traceroute "hops" between repeaters 100+ km apart
+that never happened over RF, carrying plausible SNR that no other filter
+can catch.
+
+**Step 4 — Extract cliques (two passes).** The algorithm finds **cliques**,
+not connected components — every member of a cluster must be adjacent to
+every other member. This avoids the transitivity problem where a chain of
+genuine short links could merge far-apart routers into one finding whose
+endpoints never actually hear each other.
+
+The extraction is greedy and deterministic:
+
+1. Compute each candidate's "restricted degree" (count of neighbors also
+   in the candidate set that pass the distance guard).
+2. Sort candidates by restricted degree descending, then by node number
+   ascending (for determinism).
+3. For each unassigned seed in priority order, grow a clique by admitting
+   every unassigned candidate (in the same order) that is adjacent to ALL
+   current members.
+4. Emit cliques of size 2 or larger. Mark all members as assigned — each
+   router appears in at most one finding.
+
+This runs in **two passes**:
+
+- **Pass 1 (direct evidence only):** Extracts cliques over the
+  direct-adjacency map (neighborInfo, traceroute, gatewayDirect edges).
+  These clusters have strong evidence of mutual audibility.
+- **Pass 2 (inferred evidence, leftovers only):** Extracts cliques among
+  nodes not assigned in pass 1, using the full adjacency map (including
+  gatewayCoReception). These clusters are marked `inferredOnly` — the
+  evidence only proves a shared gateway heard both routers, not that the
+  routers hear each other.
+
+**Step 5 — Check client overlap.** Mutual audibility alone does not make a
+cluster redundant. A backbone of well-sited routers that each covers a
+different set of local clients is healthy infrastructure. Before emitting a
+finding, B1 computes the pairwise overlap of each member's **non-cluster
+direct neighbors** (their "clients"):
+
+1. For each member, collect their direct neighbors minus other cluster
+   members.
+2. For each pair where both members have at least 3 clients (the same
+   minimum B2 uses), compute the overlap ratio: shared clients divided by
+   the smaller set's size.
+3. Take the maximum pairwise overlap across all computable pairs.
+
+The outcome depends on this overlap:
+
+- **Max overlap ≥ 90%** (at least one pair serves nearly identical
+  clients): the finding proceeds — this cluster is genuinely redundant.
+- **Max overlap < 90%** and at least one pair was computable: the finding
+  is **suppressed entirely** — the members serve distinct coverage areas.
+- **No pair computable** (not enough non-cluster neighbor data): the
+  finding proceeds as-is — we can't prove the cluster is harmless, so it
+  stays visible.
+
+**Step 6 — Assign severity and confidence.**
+
+| Condition | Severity | Confidence |
+| --- | --- | --- |
+| `inferredOnly` (pass 2 cluster) | info | low |
+| Direct evidence, 4+ members | critical | high or medium |
+| Direct evidence, 2–3 members | warning | high or medium |
+
+Confidence is **high** when every internal edge has neighborInfo or
+traceroute evidence, **medium** when some edges rely only on gatewayDirect.
+
+**Step 7 — Select the best-sited member.** For the recommendation text, the
+rule picks one member to keep as the router — the one with the highest
+direct-adjacency degree (most RF neighbors), ties broken by most positioned
+direct edges, then lowest node number. The others are recommended for
+demotion to CLIENT_BASE or CLIENT.
+
+**Lifecycle:** A cluster's identity key includes its size and a hash of its
+members. If a router is removed or added, the old finding auto-closes after
+the configured clean-run count and a new finding is created for the changed
+cluster.
 
 ### B2 — Redundant router
 

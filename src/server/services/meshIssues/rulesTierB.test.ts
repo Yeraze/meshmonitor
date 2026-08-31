@@ -455,6 +455,86 @@ describe('evaluateB1 — router cluster', () => {
     expect(findings[0].evidence.edgesTotal).toBe(435);
     expect((findings[0].evidence.edges as unknown[]).length).toBe(EVIDENCE_MEMBER_LIST_CAP);
   });
+
+  it('suppresses a cluster whose members serve distinct non-cluster clients (backbone, not redundancy)', () => {
+    // Two routers hear each other but each serves 4 unique clients —
+    // no overlap at all. This is a backbone link, not redundancy.
+    const r1 = makeNode({ nodeNum: 1, role: DeviceRole.ROUTER });
+    const r2 = makeNode({ nodeNum: 2, role: DeviceRole.ROUTER });
+    const c1 = makeNode({ nodeNum: 10 });
+    const c2 = makeNode({ nodeNum: 11 });
+    const c3 = makeNode({ nodeNum: 12 });
+    const c4 = makeNode({ nodeNum: 13 });
+    const c5 = makeNode({ nodeNum: 20 });
+    const c6 = makeNode({ nodeNum: 21 });
+    const c7 = makeNode({ nodeNum: 22 });
+    const c8 = makeNode({ nodeNum: 23 });
+    const graph = makeGraph([
+      directEdge(1, 2),
+      // R1's unique clients
+      directEdge(1, 10), directEdge(1, 11), directEdge(1, 12), directEdge(1, 13),
+      // R2's unique clients
+      directEdge(2, 20), directEdge(2, 21), directEdge(2, 22), directEdge(2, 23),
+    ]);
+    const ctx = makeCtx({ nodes: nodeMap([r1, r2, c1, c2, c3, c4, c5, c6, c7, c8]), graph });
+
+    const findings = evaluateB1(ctx);
+
+    expect(findings).toHaveLength(0);
+  });
+
+  it('fires on a cluster whose members have high client overlap (true redundancy)', () => {
+    // Two routers hear each other AND serve mostly the same clients.
+    const r1 = makeNode({ nodeNum: 1, role: DeviceRole.ROUTER });
+    const r2 = makeNode({ nodeNum: 2, role: DeviceRole.ROUTER });
+    // 4 shared clients, 0 unique to either → 100% overlap.
+    const shared = [10, 11, 12, 13].map((n) => makeNode({ nodeNum: n }));
+    const graph = makeGraph([
+      directEdge(1, 2),
+      directEdge(1, 10), directEdge(1, 11), directEdge(1, 12), directEdge(1, 13),
+      directEdge(2, 10), directEdge(2, 11), directEdge(2, 12), directEdge(2, 13),
+    ]);
+    const ctx = makeCtx({ nodes: nodeMap([r1, r2, ...shared]), graph });
+
+    const findings = evaluateB1(ctx);
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0].severity).toBe('warning');
+  });
+
+  it('still fires when members lack enough non-cluster clients to compute overlap (fail-closed)', () => {
+    // Two routers hear each other but have no other known neighbors —
+    // insufficient data to prove distinct coverage, so the finding stands.
+    const r1 = makeNode({ nodeNum: 1, role: DeviceRole.ROUTER });
+    const r2 = makeNode({ nodeNum: 2, role: DeviceRole.ROUTER });
+    const graph = makeGraph([directEdge(1, 2)]);
+    const ctx = makeCtx({ nodes: nodeMap([r1, r2]), graph });
+
+    const findings = evaluateB1(ctx);
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0].severity).toBe('warning');
+  });
+
+  it('suppresses a large cluster (4+ routers) when all pairs have low client overlap', () => {
+    // 4 routers forming a K4 clique, but each serves 4 unique clients.
+    const routers = [1, 2, 3, 4].map((n) => makeNode({ nodeNum: n, role: DeviceRole.ROUTER }));
+    const clients = Array.from({ length: 16 }, (_, i) => makeNode({ nodeNum: 100 + i }));
+    const edges = [
+      // K4 internal edges
+      directEdge(1, 2), directEdge(1, 3), directEdge(1, 4),
+      directEdge(2, 3), directEdge(2, 4), directEdge(3, 4),
+      // Each router's 4 unique clients
+      ...([1, 2, 3, 4] as number[]).flatMap((r, ri) =>
+        [0, 1, 2, 3].map((ci) => directEdge(r, 100 + ri * 4 + ci)),
+      ),
+    ];
+    const ctx = makeCtx({ nodes: nodeMap([...routers, ...clients]), graph: makeGraph(edges) });
+
+    const findings = evaluateB1(ctx);
+
+    expect(findings).toHaveLength(0);
+  });
 });
 
 describe('findRouterClusters — shared by B1 and B6', () => {
