@@ -4,6 +4,8 @@ import { useSettings } from '../contexts/SettingsContext';
 import { nearestPoint, measureLabel, type MeasurePoint } from '../utils/measureDistance';
 import './MeasureDistanceController.css';
 
+const DRAG_THRESHOLD_PX = 3;
+
 export interface MeasureDistanceControllerProps {
   /** When false the tool is inert (no cursor change, no listeners fire visibly). */
   active: boolean;
@@ -45,6 +47,8 @@ const MeasureDistanceController: React.FC<MeasureDistanceControllerProps> = ({
   // re-subscribing on every poll that returns a fresh array.
   const pointsRef = useRef(points);
   pointsRef.current = points;
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const draggedRef = useRef(false);
 
   // Crosshair affordance while measuring; always restore on cleanup.
   useEffect(() => {
@@ -64,11 +68,33 @@ const MeasureDistanceController: React.FC<MeasureDistanceControllerProps> = ({
 
   // Capture-phase click interception. Registered on the map container so it
   // fires before Leaflet's marker/map click handlers — letting a click land on
-  // a node marker without opening its popup.
+  // a node marker without opening its popup. Track pointer movement separately
+  // because a native DOM click can still follow Leaflet's map-drag gesture.
   useEffect(() => {
     if (!enabled) return;
     const container = map.getContainer();
+    const onPointerDown = (e: PointerEvent) => {
+      pointerStartRef.current = { x: e.clientX, y: e.clientY };
+      draggedRef.current = false;
+    };
+    const onPointerMove = (e: PointerEvent) => {
+      const start = pointerStartRef.current;
+      if (!start) return;
+      const dx = e.clientX - start.x;
+      const dy = e.clientY - start.y;
+      if (dx * dx + dy * dy > DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) {
+        draggedRef.current = true;
+      }
+    };
+    const onPointerCancel = () => {
+      pointerStartRef.current = null;
+      draggedRef.current = false;
+    };
     const onClick = (e: MouseEvent) => {
+      const followedDrag = draggedRef.current;
+      pointerStartRef.current = null;
+      draggedRef.current = false;
+      if (followedDrag) return;
       // Let map controls (zoom, attribution, tileset toggle) work normally.
       const target = e.target as HTMLElement | null;
       if (target && target.closest('.leaflet-control')) return;
@@ -87,8 +113,16 @@ const MeasureDistanceController: React.FC<MeasureDistanceControllerProps> = ({
         return [picked]; // completed pair -> restart from a new A
       });
     };
+    container.addEventListener('pointerdown', onPointerDown, true);
+    container.addEventListener('pointermove', onPointerMove, true);
+    container.addEventListener('pointercancel', onPointerCancel, true);
     container.addEventListener('click', onClick, true);
-    return () => container.removeEventListener('click', onClick, true);
+    return () => {
+      container.removeEventListener('pointerdown', onPointerDown, true);
+      container.removeEventListener('pointermove', onPointerMove, true);
+      container.removeEventListener('pointercancel', onPointerCancel, true);
+      container.removeEventListener('click', onClick, true);
+    };
   }, [enabled, map]);
 
   // Escape clears / exits.

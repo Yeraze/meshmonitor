@@ -135,13 +135,42 @@ One row per offending gateway, identified by its raw `!hexid` rather than a frie
 resolving names would mean an extra request per source for a cosmetic label, so the report
 doesn't do it. Columns: **Gateway**, **Confirmed** violation count, **Suspected** count (only
 shown when the unproven toggle is on), distinct **Originators** affected, which **Sources** saw
-the gateway, and **First seen** / **Last seen** timestamps. The table is sortable by gateway,
-confirmed count, originators, and last seen, and paginated.
+the gateway, a **Broker** badge (see below), and **First seen** / **Last seen** timestamps. The
+table is sortable by gateway, confirmed count, originators, and last seen, and paginated.
+
+### Private-broker false positives
+
+Meshtastic firmware only drops a relayed packet whose `ok_to_mqtt` bit is clear when the
+gateway's configured broker is a **public** address — a broker on a private network
+(`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16`, `100.64.0.0/10`, or
+`127.0.0.1` exactly) relays every packet regardless of the bit, by design. Firmware also
+essentially never enforced this drop at all, on any broker, before version 2.7.20.
+
+Because MeshMonitor sees the relay either way, every row here used to look like the same kind of
+violation whether the gateway's broker was private (expected), public (a real violation), or
+unknowable (a hostname-configured broker, which can't be classified from the address string
+alone). Each row and gateway is now badged with what can actually be determined about the
+**observing source's** configured broker:
+
+- **Expected — private broker**: every source that saw this gateway relay the packet is
+  configured against a literal private address. Not a violation — this is firmware behaving
+  correctly.
+- **Confirmed — public broker**: at least one observing source is the public default server or
+  another literal non-private address. No legitimate reason for that broker to have relayed an
+  opted-out packet — this is a genuine violation.
+- **Unverified — hostname broker**: at least one observing source is configured with a hostname
+  rather than a literal IP, which MeshMonitor can't classify from the address string the way
+  firmware's own address parser can't either. Not proven either way.
+
+A **Hide expected (private broker)** filter on the report hides the `Expected` rows and updates
+the on-screen counts accordingly; it's a client-side toggle over already-loaded results, so it
+takes effect immediately without re-running the scan.
 
 ### Drill-down
 
 Click a gateway row to expand it into that gateway's individual violating packets — time,
-source, originator, channel, port, packet ID, bitfield, and MQTT topic — sortable and paginated
+source, originator, channel, port, packet ID, bitfield, MQTT topic, and the same **Broker**
+badge described above (per-packet, not combined across sources) — sortable and paginated
 independently of the summary table.
 
 ### Result caps

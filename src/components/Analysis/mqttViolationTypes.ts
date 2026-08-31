@@ -10,6 +10,23 @@ export type ViolationGatewaySortField =
 export type ViolationPacketSortField = 'timestamp' | 'fromNode' | 'gatewayId';
 export type SortDir = 'asc' | 'desc';
 
+/**
+ * Classification of the observing MQTT source's configured broker address
+ * (#4982), mirrored from `src/server/utils/privateBrokerAddress.ts`.
+ *
+ * Firmware only gates the `ok_to_mqtt` drop on a PUBLIC broker — a private
+ * broker relays every packet regardless of the bit, by design. So:
+ *  - `'private'` — every source that observed this row is a literal private
+ *    IPv4 (or 127.0.0.1 exactly). The relay is EXPECTED, not a violation.
+ *  - `'public'` — at least one observing source is the public default
+ *    server or another literal non-private IPv4. Confirmed: no legitimate
+ *    reason for that broker to have relayed this packet.
+ *  - `'unknown'` — at least one observing source is configured with a
+ *    hostname (or IPv6), which firmware can't classify deterministically
+ *    from the address string alone. Not proven either way.
+ */
+export type BrokerAddressClass = 'private' | 'public' | 'unknown';
+
 export interface ViolationGatewayRow {
   gatewayId: string | null;
   gatewayNodeNum: number | null;
@@ -26,6 +43,8 @@ export interface ViolationGatewayRow {
   sourceIds: string[];
   firstSeen: number;
   lastSeen: number;
+  /** See {@link BrokerAddressClass}. Combined across every source in `sourceIds`. */
+  brokerClass: BrokerAddressClass;
 }
 
 export interface ViolationPacketRow {
@@ -49,6 +68,8 @@ export interface ViolationPacketRow {
   topic: string | null;
   rxTime: number | null;
   timestamp: number;
+  /** See {@link BrokerAddressClass}. This row's own `sourceId` only — no combining. */
+  brokerClass: BrokerAddressClass;
 }
 
 /** Common tail present on BOTH responses. */
@@ -230,6 +251,56 @@ export function formatNodeDisplay(
     secondary: ref || (num != null ? String(num) : null),
     title: titleParts.join(' '),
   };
+}
+
+/** Visual/semantic weight for a {@link BrokerAddressClass} badge — see {@link brokerClassMeta}. */
+export type BrokerClassTone = 'ok' | 'warn' | 'neutral';
+
+/** i18n key + fallback pair, translated by the caller via `t(key, fallback)`. */
+export interface BrokerClassMeta {
+  tone: BrokerClassTone;
+  labelKey: string;
+  labelFallback: string;
+  descriptionKey: string;
+  descriptionFallback: string;
+}
+
+/**
+ * Badge copy + tone for a {@link BrokerAddressClass} (#4982). Pure — returns
+ * i18n keys/fallbacks for the caller to translate, never a translated string
+ * itself, so it stays testable without a react-i18next context.
+ */
+export function brokerClassMeta(cls: BrokerAddressClass): BrokerClassMeta {
+  switch (cls) {
+    case 'private':
+      return {
+        tone: 'ok',
+        labelKey: 'analysis.mqtt_violations.broker_private',
+        labelFallback: 'Expected — private broker',
+        descriptionKey: 'analysis.mqtt_violations.broker_private_desc',
+        descriptionFallback:
+          "This gateway was only observed via source(s) configured with a private broker address. Firmware only drops ok_to_mqtt=0 packets when uplinking to a PUBLIC broker — a private broker relays every packet by design, so this is expected, not a violation.",
+      };
+    case 'public':
+      return {
+        tone: 'warn',
+        labelKey: 'analysis.mqtt_violations.broker_public',
+        labelFallback: 'Confirmed — public broker',
+        descriptionKey: 'analysis.mqtt_violations.broker_public_desc',
+        descriptionFallback:
+          'At least one observing source is configured with a public broker address (the default server, or another non-private address). Firmware should have dropped this ok_to_mqtt=0 packet there, so this relay is a genuine violation.',
+      };
+    case 'unknown':
+    default:
+      return {
+        tone: 'neutral',
+        labelKey: 'analysis.mqtt_violations.broker_unknown',
+        labelFallback: 'Unverified — hostname broker',
+        descriptionKey: 'analysis.mqtt_violations.broker_unknown_desc',
+        descriptionFallback:
+          "At least one observing source is configured with a hostname (or another address MeshMonitor can't classify from the string alone). It may or may not resolve to a private address, so this relay is not proven either way.",
+      };
+  }
 }
 
 /**

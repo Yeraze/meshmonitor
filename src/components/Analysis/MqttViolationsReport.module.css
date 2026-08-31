@@ -133,3 +133,53 @@
   cursor: pointer;
   color: inherit;
 }
+
+/* Broker-class badge (#4982) — see BrokerClassBadge in MqttViolationsReport.tsx.
+ * Three tones mirroring BrokerClassTone ('ok' | 'warn' | 'neutral'); 'neutral'
+ * has no shared `.reports-pill--*` equivalent so it's defined here rather
+ * than added to the frozen-by-convention shared sheet. */
+.brokerBadge {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.brokerBadgeOk {
+  background: color-mix(in srgb, var(--color-success) 18%, transparent);
+  color: var(--color-success);
+}
+
+.brokerBadgeWarn {
+  background: color-mix(in srgb, var(--color-error) 18%, transparent);
+  color: var(--color-error);
+}
+
+.brokerBadgeNeutral {
+  background: color-mix(in srgb, var(--color-text-subtle) 18%, transparent);
+  color: var(--color-text-subtle);
+}
+
+.brokerCell {
+  white-space: nowrap;
+}
+
+.brokerFilterField {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.brokerBanner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.brokerBannerList {
+  margin: 0;
+  padding-left: 1.1rem;
+}

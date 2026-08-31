@@ -825,7 +825,7 @@ describe('MqttViolationsReport', () => {
     expect(mimeType).toBe('text/csv');
     // Name columns sit next to the id they describe, which shifts every later
     // column's position — intentional, see GATEWAY_CSV_COLUMNS.
-    expect(csv.split('\r\n')[0]).toBe('Gateway ID,Gateway Node Num,Gateway Long Name,Gateway Short Name,Violation Count,Suspected Count,Distinct Originators,Source IDs,First Seen,Last Seen');
+    expect(csv.split('\r\n')[0]).toBe('Gateway ID,Gateway Node Num,Gateway Long Name,Gateway Short Name,Violation Count,Suspected Count,Distinct Originators,Source IDs,Broker Class,First Seen,Last Seen');
     expect(csv).toContain('!00000000');
   });
 
@@ -1246,5 +1246,152 @@ describe('MqttViolationsReport', () => {
       // ...and its id remains available beneath the name.
       expect(screen.getByText('!11223344')).toBeInTheDocument();
     });
+  });
+});
+
+// ── #4982: private-broker false-positive annotation ────────────────────────
+describe('MqttViolationsReport — broker classification (#4982)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('badges each gateway row with its brokerClass label', async () => {
+    const user = userEvent.setup();
+    routeApiGet(
+      () =>
+        baseResponse({
+          gateways: [
+            gatewayRow({ gatewayId: '!11111111', brokerClass: 'private' }),
+            gatewayRow({ gatewayId: '!22222222', brokerClass: 'public' }),
+            gatewayRow({ gatewayId: '!33333333', brokerClass: 'unknown' }),
+          ],
+          total: 3,
+        }),
+      () => packetsResponse({ violations: [], total: 0 }),
+    );
+    renderReport();
+    await user.click(screen.getByRole('button', { name: /Run report/i }));
+
+    expect(await screen.findByText('Expected — private broker')).toBeInTheDocument();
+    expect(screen.getByText('Confirmed — public broker')).toBeInTheDocument();
+    expect(screen.getByText('Unverified — hostname broker')).toBeInTheDocument();
+  });
+
+  it('shows the non-dismissible explanatory banner whenever there are results', async () => {
+    const user = userEvent.setup();
+    routeApiGet(
+      () => baseResponse({ gateways: [gatewayRow({ brokerClass: 'public' })], total: 1 }),
+      () => packetsResponse({ violations: [], total: 0 }),
+    );
+    renderReport();
+    await user.click(screen.getByRole('button', { name: /Run report/i }));
+
+    expect(
+      await screen.findByText('Not every relay here is a proven violation'),
+    ).toBeInTheDocument();
+    // No dismiss/close control on this banner — it's explanatory, not a warning to ack.
+    expect(
+      screen.queryByRole('button', { name: /dismiss/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('"Hide expected" filter hides private-broker rows and updates the visible stats, without an extra fetch', async () => {
+    const user = userEvent.setup();
+    routeApiGet(
+      () =>
+        baseResponse({
+          gateways: [
+            gatewayRow({
+              gatewayId: '!11111111',
+              brokerClass: 'private',
+              violationCount: 5,
+            }),
+            gatewayRow({
+              gatewayId: '!22222222',
+              brokerClass: 'public',
+              violationCount: 3,
+            }),
+          ],
+          total: 2,
+        }),
+      () => packetsResponse({ violations: [], total: 0 }),
+    );
+    const { container } = renderReport();
+    await user.click(screen.getByRole('button', { name: /Run report/i }));
+    await screen.findByText('!11111111');
+    expect(screen.getByText('!22222222')).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledTimes(1);
+
+    const statValues = () =>
+      Array.from(container.querySelectorAll('.reports-stat__value')).map((el) => el.textContent);
+    // Before filtering: Gateways=2, Confirmed=8 (5+3), Originators=4 (2+2).
+    expect(statValues()).toEqual(['2', '8', '4']);
+
+    await user.click(
+      screen.getByRole('checkbox', { name: /Hide expected \(private broker\)/i }),
+    );
+
+    // Purely client-side — no second request fired by toggling the filter.
+    expect(api.get).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('!11111111')).not.toBeInTheDocument();
+    expect(screen.getByText('!22222222')).toBeInTheDocument();
+    // "Gateways" stays the server total (unaffected); Confirmed/Originators
+    // now sum only the visible (public) row: violationCount 3, originators 2.
+    expect(statValues()).toEqual(['2', '3', '2']);
+
+    // Toggling back off restores the hidden row.
+    await user.click(
+      screen.getByRole('checkbox', { name: /Hide expected \(private broker\)/i }),
+    );
+    expect(screen.getByText('!11111111')).toBeInTheDocument();
+    expect(statValues()).toEqual(['2', '8', '4']);
+  });
+
+  it('shows an explanatory empty row when the filter hides every row on the page', async () => {
+    const user = userEvent.setup();
+    routeApiGet(
+      () =>
+        baseResponse({
+          gateways: [gatewayRow({ gatewayId: '!11111111', brokerClass: 'private' })],
+          total: 1,
+        }),
+      () => packetsResponse({ violations: [], total: 0 }),
+    );
+    renderReport();
+    await user.click(screen.getByRole('button', { name: /Run report/i }));
+    await screen.findByText('!11111111');
+
+    await user.click(
+      screen.getByRole('checkbox', { name: /Hide expected \(private broker\)/i }),
+    );
+
+    expect(screen.queryByText('!11111111')).not.toBeInTheDocument();
+    expect(
+      await screen.findByText(/Every gateway on this page is a private-broker relay hidden/i),
+    ).toBeInTheDocument();
+  });
+
+  it('drill-down packet rows are badged with their own brokerClass', async () => {
+    const user = userEvent.setup();
+    routeApiGet(
+      // Gateway row itself is 'unknown' so its own badge can't collide with
+      // the drill-down packet rows' 'private'/'public' badges below.
+      () => baseResponse({ gateways: [gatewayRow({ brokerClass: 'unknown' })], total: 1 }),
+      () =>
+        packetsResponse({
+          violations: [
+            packetRow({ id: 1, packetId: 1, sourceId: 'mqtt-private', brokerClass: 'private' }),
+            packetRow({ id: 2, packetId: 2, sourceId: 'mqtt-public', brokerClass: 'public' }),
+          ],
+          total: 2,
+        }),
+    );
+    renderReport();
+    await user.click(screen.getByRole('button', { name: /Run report/i }));
+    const row = (await screen.findByText('!433e0f28')).closest('tr')!;
+    await user.click(row);
+
+    expect(await screen.findByText('Expected — private broker')).toBeInTheDocument();
+    expect(screen.getByText('Confirmed — public broker')).toBeInTheDocument();
   });
 });
