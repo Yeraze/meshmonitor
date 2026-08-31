@@ -16,6 +16,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 // Override the global i18n mock (src/test/setup.ts) — that mock's `t(key, options)`
@@ -66,9 +67,11 @@ type Mocked = ReturnType<typeof vi.fn>;
 function renderReport() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <QueryClientProvider client={qc}>
-      <MeshIssuesReport />
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={qc}>
+        <MeshIssuesReport />
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
 }
 

@@ -142,7 +142,7 @@
   border: none;
   padding: 0;
   margin: 0;
-  color: var(--color-primary);
+  color: var(--color-accent);
   cursor: pointer;
   font: inherit;
   text-decoration: underline;
@@ -151,7 +151,7 @@
 
 .nodeLink:hover,
 .nodeLink:focus-visible {
-  color: var(--color-primary-hover);
+  color: var(--color-accent-hover);
   text-decoration-thickness: 2px;
 }
 
@@ -168,7 +168,7 @@
   z-index: 20;
   min-width: 220px;
   max-width: 320px;
-  background: var(--color-surface-raised);
+  background: var(--color-bg-raised);
   border: 1px solid var(--color-border);
   border-radius: 6px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
