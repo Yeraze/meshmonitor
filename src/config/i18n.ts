@@ -34,6 +34,7 @@ export const AVAILABLE_LANGUAGES = [
   { code: 'zh_Hans', name: 'Chinese (Simplified)', nativeName: '简体中文' },
   { code: 'zh_Hant', name: 'Chinese (Traditional)', nativeName: '繁體中文' },
   { code: 'pl', name: 'Polish', nativeName: 'Polski' },
+  { code: 'id', name: 'Indonesian', nativeName: 'Bahasa Indonesia' },
 ];
 
 void i18n
