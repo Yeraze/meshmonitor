@@ -1238,6 +1238,27 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     nodePositionsRef.current = nodePositions;
   });
 
+  // NodeLink handoff (Mesh Issues → Source Node Details): a click in the Mesh
+  // Issues report drops the target nodeId into sessionStorage and navigates
+  // to /source/<sid>/nodes. When we mount here, auto-select the pending node
+  // (once processedNodes is populated) and clear the key.
+  useEffect(() => {
+    if (processedNodes.length === 0) return;
+    let pending: string | null = null;
+    try {
+      pending = sessionStorage.getItem('meshmonitor.pendingSelectedNodeId');
+    } catch {
+      return;
+    }
+    if (!pending) return;
+    const exists = processedNodes.some((n) => (n.user?.id ?? String(n.nodeNum)) === pending);
+    if (!exists) return;
+    try {
+      sessionStorage.removeItem('meshmonitor.pendingSelectedNodeId');
+    } catch { /* ignore */ }
+    setSelectedNodeId(pending);
+  }, [processedNodes, setSelectedNodeId]);
+
   // Track previous nodes to detect updates and trigger animations
   const prevNodesRef = useRef<Map<string, number>>(new Map());
 

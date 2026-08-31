@@ -18,6 +18,7 @@ import {
   type EvidenceNodeRef,
   type MeshIssueRow,
 } from '../meshIssueTypes';
+import NodeLink from './NodeLink';
 import styles from './meshIssues.module.css';
 
 /** Node-list evidence keys (§2.12/§2.13, WP5b) rendered as member chips via
@@ -30,6 +31,7 @@ export const NODE_LIST_EVIDENCE_KEYS: ReadonlySet<string> = new Set([
   'sharedNeighbors',
   'otherCoveringRouters',
   'clusterMembers',
+  'sharedWithNodes',
 ]);
 
 /** Evidence keys ending in this suffix hold an elapsed-milliseconds duration
@@ -68,12 +70,16 @@ export function truncationLabel(itemsShown: number, total: number | undefined): 
   return '+ more not shown (list truncated)';
 }
 
-export const MemberList: React.FC<{ label: string; value: unknown; truncated: boolean; total?: number }> = ({
-  label,
-  value,
-  truncated,
-  total,
-}) => {
+export const MemberList: React.FC<{
+  label: string;
+  value: unknown;
+  truncated: boolean;
+  total?: number;
+  /** Parent finding's `sourceIds` — used by NodeLink as the source-picker
+   *  fallback when the /api/nodes/:nodeNum/sources call is unavailable
+   *  (offline / permission failure). */
+  fallbackSourceIds?: string[];
+}> = ({ label, value, truncated, total, fallbackSourceIds }) => {
   const items = normalizeMemberList(value);
   if (items === null) {
     return <Field label={label} value={formatEvidenceValue(value)} />;
@@ -85,7 +91,11 @@ export const MemberList: React.FC<{ label: string; value: unknown; truncated: bo
         {items.length === 0 && <span className="reports-node__field-value">—</span>}
         {items.map((item, i) => (
           <span key={`${item.nodeNum}-${i}`} className={styles.memberChip}>
-            {item.name ?? hexNodeId(item.nodeNum)}
+            <NodeLink
+              nodeNum={item.nodeNum}
+              name={item.name ?? null}
+              fallbackSourceIds={fallbackSourceIds}
+            />
             {item.roleName && <span className={styles.memberChipRole}>{item.roleName}</span>}
           </span>
         ))}
