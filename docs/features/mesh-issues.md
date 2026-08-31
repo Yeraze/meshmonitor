@@ -52,6 +52,10 @@ seen again), **updated** (still open, evidence refreshed), or **closed**
 guidance. `[MeshMonitor]` marks MeshMonitor's own judgement — reasonable,
 but not an official number, and usually tunable (see [Settings](#settings)).
 
+For a detailed explanation of every test ID — what it checks, why it
+matters, and what to do about it — see the
+[Test Reference](./mesh-issues-test-reference).
+
 ### Tier A — Node health
 
 | Rule | Fires when | Threshold | Severity |
