@@ -86,6 +86,39 @@ The login replay-protection check is a timestamp in the request, so
 clocks must be roughly aligned. The companion firmware doesn't sync
 clocks automatically — that's what `clock sync` is for.
 
+### Scheduled clock pushes (#4916)
+
+`MeshCoreTimeSyncScheduler` (`src/server/services/meshcoreTimeSyncScheduler.ts`)
+does the above on a per-node cadence instead of waiting for someone to press
+the button. Points worth knowing before touching it:
+
+- **It needs a SAVED ADMIN password.** `time` is a mutating verb, so it goes
+  through `ensureSavedLogin()`, not `ensureGuestLogin()`. A node with time sync
+  enabled but no stored credential fails every cycle; the config panel warns
+  about this up front (`hasSavedCredential` on the GET) rather than leaving it
+  to the logs.
+- **One sync is FOUR packets, not one.** `ensureSavedLogin()` deliberately does
+  not cache the way `guestLoggedInNodes` does, so every sync is a login DM plus
+  its reply, then the CLI command plus its reply — and each floods when the
+  target's `out_path` is unknown. That is the whole reason the default cadence
+  is 12h with a 1h floor, versus the 15 minutes Meshtastic's equivalent uses.
+  Do not "harmonise" the two numbers; they are not measuring the same thing.
+- **`rewriteClockSync()` still does the real work.** The scheduler passes the
+  `clock sync` spelling into `sendCliCommand` rather than building
+  `time <epoch>` itself, so the epoch is stamped at the chokepoint — after the
+  login round-trip has already elapsed.
+- **Firmware refuses to move a clock BACKWARDS** (`secs > curr`). A repeater
+  whose RTC runs ahead of the server rejects every push until it is corrected
+  or reboots. `syncNodeTime` reports that as `rejected`, distinct from a
+  timeout, and the scheduler logs it at warn because it is persistent.
+- **Cadence lives in a third column set** (`timeSyncEnabled` /
+  `timeSyncIntervalMinutes` / `lastTimeSyncAt`, migration 156), separate from
+  the telemetry-060 and neighbours-153 trios, so none of the three schedulers
+  resets another's timer. The stamp is written BEFORE the send and to the
+  DATABASE — an in-memory stamp would be cleared by a restart, and a
+  success-only stamp would retry an offline or clock-ahead repeater on every
+  tick forever.
+
 Permission levels (from `setperm <pubkey-hex> <level>`):
 
 | Level | Name        | What it lets you do                                |

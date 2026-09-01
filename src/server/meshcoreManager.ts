@@ -5110,6 +5110,71 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   }
 
   /**
+   * Push the server's wall clock to a remote repeater's RTC (#4916).
+   *
+   * Shared by the MeshCoreTimeSyncScheduler and the manual per-node
+   * time-sync route so both paths behave identically. Mirrors
+   * `pollNeighborsAndStore`'s division of labour: this does NOT own the
+   * per-source 60s TX gate or the `lastTimeSyncAt` stamp — callers enforce
+   * those.
+   *
+   * Two round-trips on the air, which is why the scheduler's default cadence
+   * is 12h rather than the 15 min Meshtastic uses:
+   *   1. `ensureSavedLogin()` — `time` is a mutating verb, so a guest session
+   *      is not enough. This deliberately does not cache, so it re-logs in on
+   *      every sync.
+   *   2. `sendCliCommand(publicKey, 'clock sync')` — rewritten at the
+   *      chokepoint by `rewriteClockSync()` into the absolute
+   *      `time <epoch>` verb (#3954). We pass the `clock sync` spelling
+   *      rather than building `time <epoch>` here so the epoch is stamped as
+   *      late as possible, after the login round-trip has already elapsed.
+   *
+   * Returns a discriminated result rather than a bare boolean because the
+   * failure modes need to be told apart in the UI:
+   *   - `no-credential` — nothing saved for this node, or it was rotated.
+   *     Retrying will never help until the user saves a password.
+   *   - `rejected` — firmware refused. Almost always its `secs > curr`
+   *     guard: MeshCore will not let a clock move BACKWARDS, so a repeater
+   *     whose RTC runs ahead of the server rejects every push until it is
+   *     manually corrected or reboots.
+   *   - `failed` — no reply (timeout / offline / lossy path). Worth retrying
+   *     on the next cadence.
+   */
+  async syncNodeTime(
+    publicKey: string,
+  ): Promise<
+    | { status: 'ok'; reply: string; elapsedMs: number }
+    | { status: 'rejected'; reply: string }
+    | { status: 'no-credential' }
+    | { status: 'failed'; error: string }
+  > {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
+      return { status: 'failed', error: 'Remote time sync requires Companion firmware' };
+    }
+    if (!this.connected) {
+      return { status: 'failed', error: 'MeshCore source not connected' };
+    }
+
+    if (!(await this.ensureSavedLogin(publicKey))) {
+      return { status: 'no-credential' };
+    }
+
+    try {
+      // 'clock sync' is rewritten to `time <epoch>` inside sendCliCommand.
+      const { reply, elapsedMs } = await this.sendCliCommand(publicKey, 'clock sync');
+      // Firmware answers an accepted `time` with an OK/ack line and a refused
+      // one with an "ERR: ..." line — most commonly "clock cannot go
+      // backwards" when the target's RTC is ahead of ours.
+      if (/^\s*err\b/i.test(reply) || /cannot go backwards/i.test(reply)) {
+        return { status: 'rejected', reply: reply.trim() };
+      }
+      return { status: 'ok', reply: reply.trim(), elapsedMs };
+    } catch (error) {
+      return { status: 'failed', error: (error as Error).message };
+    }
+  }
+
+  /**
    * Reboot the locally connected device. Companion only. This is a
    * destructive operation — the device will disconnect and restart.
    */

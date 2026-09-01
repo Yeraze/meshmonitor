@@ -78,6 +78,15 @@ export interface DbMeshCoreNode {
   neighborsIntervalMinutes?: number | null;
   lastNeighborsRequestAt?: number | null;
   /**
+   * Per-node time-sync config (migration 156, #4916). Controls whether the
+   * MeshCoreTimeSyncScheduler periodically pushes the server's wall clock to
+   * this repeater's RTC and at what cadence — independent of both trios above
+   * so none of the three schedulers resets another's timer.
+   */
+  timeSyncEnabled?: boolean | null;
+  timeSyncIntervalMinutes?: number | null;
+  lastTimeSyncAt?: number | null;
+  /**
    * MeshCore per-contact forwarding route (migration 068). `outPath` is a
    * comma-separated hex chain of hop hashes ("a3,7f,02"); `pathLen` is the
    * hop count. Both null means the firmware's OUT_PATH_UNKNOWN (0xFF)
@@ -490,6 +499,48 @@ export class MeshCoreRepository extends BaseRepository {
   }
 
   /**
+   * Persist the per-node time-sync config (migration 156, #4916). Direct
+   * mirror of `setNodeNeighborsConfig` — inserts a stub row when the node has
+   * only been seen in-memory, idempotent on (publicKey, sourceId). Passing
+   * `undefined` for either field leaves the existing value intact (on update)
+   * or applies the column default (on insert). Caller validates
+   * `intervalMinutes` against the scheduler's 1h floor.
+   */
+  async setNodeTimeSyncConfig(
+    sourceId: string,
+    publicKey: string,
+    cfg: { enabled?: boolean; intervalMinutes?: number },
+  ): Promise<void> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.setNodeTimeSyncConfig requires a sourceId');
+    }
+    const now = this.now();
+    const { meshcoreNodes } = this.tables;
+    const existing = await this.getNodeByPublicKeyAndSource(publicKey, sourceId);
+
+    if (existing) {
+      const patch: Record<string, unknown> = { updatedAt: now };
+      if (cfg.enabled !== undefined) patch.timeSyncEnabled = cfg.enabled;
+      if (cfg.intervalMinutes !== undefined) patch.timeSyncIntervalMinutes = cfg.intervalMinutes;
+      await this.db
+        .update(meshcoreNodes)
+        .set(patch)
+        .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
+      return;
+    }
+
+    const seed: Record<string, unknown> = {
+      publicKey,
+      sourceId,
+      createdAt: now,
+      updatedAt: now,
+    };
+    if (cfg.enabled !== undefined) seed.timeSyncEnabled = cfg.enabled;
+    if (cfg.intervalMinutes !== undefined) seed.timeSyncIntervalMinutes = cfg.intervalMinutes;
+    await this.db.insert(meshcoreNodes).values(seed);
+  }
+
+  /**
    * Set the local favorite flag for a (sourceId, publicKey) node
    * (migration 094). This repository method only writes local state; syncing
    * the firmware favourite bit to the device (#4838) is handled separately by
@@ -568,6 +619,35 @@ export class MeshCoreRepository extends BaseRepository {
     await this.db
       .update(meshcoreNodes)
       .set({ lastNeighborsRequestAt: when, updatedAt: when })
+      .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
+  }
+
+  /**
+   * Mark a node as having just had a time-sync push attempted. Stamps
+   * `lastTimeSyncAt` so the scheduler waits at least
+   * `timeSyncIntervalMinutes` before picking it again.
+   *
+   * Stamped in the DATABASE, not on the scheduler instance, and stamped
+   * BEFORE the send rather than after it succeeds. Both are deliberate: an
+   * in-memory stamp would be wiped by a restart (re-triggering a sync burst
+   * across the mesh), and stamping only on success would let a repeater that
+   * is offline or rejecting the push be retried every single tick.
+   *
+   * Separate from `markNeighborsRequested` / `markTelemetryRequested` so a
+   * time-sync never resets either of those cadences (#4916).
+   */
+  async markTimeSyncRequested(
+    sourceId: string,
+    publicKey: string,
+    when: number = this.now(),
+  ): Promise<void> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.markTimeSyncRequested requires a sourceId');
+    }
+    const { meshcoreNodes } = this.tables;
+    await this.db
+      .update(meshcoreNodes)
+      .set({ lastTimeSyncAt: when, updatedAt: when })
       .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
   }
 
@@ -789,6 +869,26 @@ export class MeshCoreRepository extends BaseRepository {
       .select()
       .from(meshcoreNodes)
       .where(and(eq(meshcoreNodes.sourceId, sourceId), eq(meshcoreNodes.neighborsEnabled, true)));
+    return this.normalizeBigInts(result) as unknown as DbMeshCoreNode[];
+  }
+
+  /**
+   * Return every node in a source that currently has time-sync enabled. Like
+   * `getNeighborsEnabledNodes`, per-node eligibility (interval vs
+   * `lastTimeSyncAt`) is decided in memory by the scheduler so the query
+   * stays engine-portable (#4916).
+   *
+   * Note this does NOT filter on `adminCredential` — a node can be enabled
+   * before its password is saved. The scheduler checks for a usable
+   * credential at send time via `ensureSavedLogin`, which is the only place
+   * that can tell a rotated or unreadable credential from a missing one.
+   */
+  async getTimeSyncEnabledNodes(sourceId: string): Promise<DbMeshCoreNode[]> {
+    const { meshcoreNodes } = this.tables;
+    const result = await this.db
+      .select()
+      .from(meshcoreNodes)
+      .where(and(eq(meshcoreNodes.sourceId, sourceId), eq(meshcoreNodes.timeSyncEnabled, true)));
     return this.normalizeBigInts(result) as unknown as DbMeshCoreNode[];
   }
 

@@ -580,6 +580,29 @@ setTimeout(async () => {
   }
 }, 9000); // After telemetry scheduler, before room-sync.
 
+// MeshCore Time-Sync Scheduler (#4916) — periodically pushes the server's wall
+// clock to each opt-in remote repeater's RTC via the absolute `time <epoch>`
+// verb. The most expensive of the MeshCore schedulers: one sync is FOUR
+// packets (login + reply, then the CLI command + reply), because
+// `ensureSavedLogin` deliberately does not cache. It therefore honours the
+// same per-source 60s minimum through the shared `MeshCoreManager.lastMeshTxAt`
+// primitive, and its per-node cadence defaults to 12h with a 1h floor. That
+// cadence lives in a THIRD separate column set (`lastTimeSyncAt`, migration
+// 156) so time-sync, telemetry, and neighbours never reset one another.
+const meshcoreTimeSyncScheduler = new MeshCoreTimeSyncScheduler({
+  registry: sourceManagerRegistry,
+  database: databaseService,
+});
+setMeshCoreTimeSyncScheduler(meshcoreTimeSyncScheduler);
+setTimeout(async () => {
+  try {
+    await databaseService.waitForReady();
+    meshcoreTimeSyncScheduler.start();
+  } catch (error) {
+    logger.error('Failed to start MeshCore time-sync scheduler:', error);
+  }
+}, 11000); // Last of the MeshCore schedulers — after room-sync.
+
 // ==========================================
 // Version Check (detection / notification only)
 // ==========================================
@@ -642,6 +665,10 @@ import {
   MeshCoreNeighboursScheduler,
   setMeshCoreNeighboursScheduler,
 } from './services/meshcoreNeighboursScheduler.js';
+import {
+  MeshCoreTimeSyncScheduler,
+  setMeshCoreTimeSyncScheduler,
+} from './services/meshcoreTimeSyncScheduler.js';
 import { getMeshCoreCredentialStore } from './services/meshcoreCredentialStore.js';
 import embedProfileRoutes from './routes/embedProfileRoutes.js';
 import embedPublicRoutes from './routes/embedPublicRoutes.js';

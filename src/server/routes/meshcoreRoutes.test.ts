@@ -81,6 +81,7 @@ const meshcoreManager = {
   recordMeshTx: vi.fn(),
   // Shared request→resolve→store used by the manual neighbours-poll route (#4618).
   pollNeighborsAndStore: vi.fn().mockResolvedValue({ total: 2, written: 2 }),
+  syncNodeTime: vi.fn().mockResolvedValue({ status: 'ok', reply: 'OK', elapsedMs: 1200 }),
   // Fire-and-forget scope-cache refresh invoked by the saved-regions routes (#3829).
   notifySavedRegionsChanged: vi.fn(),
   // Receive-only TX guard (#4547) — requireMeshcoreTx() calls this unconditionally
@@ -1895,6 +1896,216 @@ describe('MeshCore Routes', () => {
       expect(res.body.retryAfterSecs).toBeGreaterThan(0);
       expect(res.headers['retry-after']).toBeDefined();
       expect(meshcoreManager.pollNeighborsAndStore).not.toHaveBeenCalled();
+      expect(meshcoreManager.recordMeshTx).not.toHaveBeenCalled();
+    });
+  });
+
+  // ============ Time-sync config + manual sync (#4916) ============
+
+  describe('PATCH /api/sources/test-source/meshcore/nodes/:publicKey/time-sync-config', () => {
+    const TS_PUBKEY = 'f'.repeat(64);
+    const upsertNode = vi.fn().mockResolvedValue(undefined);
+    const setNodeTimeSyncConfig = vi.fn().mockResolvedValue(undefined);
+    const getNodeByPublicKeyAndSource = vi.fn().mockResolvedValue({
+      publicKey: TS_PUBKEY,
+      timeSyncEnabled: true,
+      timeSyncIntervalMinutes: 720,
+      lastTimeSyncAt: null,
+      adminCredential: 'cipher',
+    });
+
+    beforeEach(() => {
+      (DatabaseService as any).meshcore = {
+        upsertNode,
+        setNodeTimeSyncConfig,
+        getNodeByPublicKeyAndSource,
+      };
+      upsertNode.mockClear();
+      setNodeTimeSyncConfig.mockClear();
+      getNodeByPublicKeyAndSource.mockClear();
+      meshcoreManager.getContact.mockReset();
+    });
+
+    it('requires authentication', async () => {
+      const res = await request(app)
+        .patch(`/api/sources/test-source/meshcore/nodes/${TS_PUBKEY}/time-sync-config`)
+        .send({ enabled: true });
+      expect(res.status).toBe(401);
+    });
+
+    it('rejects a sub-floor interval — the 1-hour floor is server-enforced', async () => {
+      // A time-sync costs four packets on the air, so a mistyped small value
+      // must not be accepted just because the UI happened to allow it.
+      const res = await authenticatedAgent
+        .patch(`/api/sources/test-source/meshcore/nodes/${TS_PUBKEY}/time-sync-config`)
+        .send({ intervalMinutes: 5 });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/between 60 and/);
+      expect(setNodeTimeSyncConfig).not.toHaveBeenCalled();
+    });
+
+    it('rejects an interval above the 7-day ceiling', async () => {
+      const res = await authenticatedAgent
+        .patch(`/api/sources/test-source/meshcore/nodes/${TS_PUBKEY}/time-sync-config`)
+        .send({ intervalMinutes: 999_999 });
+      expect(res.status).toBe(400);
+      expect(setNodeTimeSyncConfig).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-integer interval', async () => {
+      const res = await authenticatedAgent
+        .patch(`/api/sources/test-source/meshcore/nodes/${TS_PUBKEY}/time-sync-config`)
+        .send({ intervalMinutes: 90.5 });
+      expect(res.status).toBe(400);
+      expect(setNodeTimeSyncConfig).not.toHaveBeenCalled();
+    });
+
+    it('accepts the 60-minute floor exactly', async () => {
+      meshcoreManager.getContact.mockReturnValueOnce(undefined);
+      const res = await authenticatedAgent
+        .patch(`/api/sources/test-source/meshcore/nodes/${TS_PUBKEY}/time-sync-config`)
+        .send({ intervalMinutes: 60 });
+      expect(res.status).toBe(200);
+      expect(setNodeTimeSyncConfig).toHaveBeenCalledWith(
+        'test-source',
+        TS_PUBKEY,
+        { intervalMinutes: 60 },
+      );
+    });
+
+    it('persists enabled + interval and echoes the stored config', async () => {
+      meshcoreManager.getContact.mockReturnValueOnce(undefined);
+      const res = await authenticatedAgent
+        .patch(`/api/sources/test-source/meshcore/nodes/${TS_PUBKEY}/time-sync-config`)
+        .send({ enabled: true, intervalMinutes: 1440 });
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(setNodeTimeSyncConfig).toHaveBeenCalledWith(
+        'test-source',
+        TS_PUBKEY,
+        { enabled: true, intervalMinutes: 1440 },
+      );
+      expect(res.body.data).toMatchObject({
+        enabled: true,
+        intervalMinutes: 720,
+        minIntervalMinutes: 60,
+        hasSavedCredential: true,
+      });
+    });
+
+    it('reports hasSavedCredential=false so the UI can warn before the schedule silently no-ops', async () => {
+      getNodeByPublicKeyAndSource.mockResolvedValueOnce({
+        publicKey: TS_PUBKEY,
+        timeSyncEnabled: true,
+        timeSyncIntervalMinutes: 720,
+        lastTimeSyncAt: null,
+        adminCredential: null,
+      });
+      meshcoreManager.getContact.mockReturnValueOnce(undefined);
+      const res = await authenticatedAgent
+        .patch(`/api/sources/test-source/meshcore/nodes/${TS_PUBKEY}/time-sync-config`)
+        .send({ enabled: true });
+      expect(res.status).toBe(200);
+      expect(res.body.data.hasSavedCredential).toBe(false);
+    });
+
+    it('rejects a request with no updatable fields', async () => {
+      const res = await authenticatedAgent
+        .patch(`/api/sources/test-source/meshcore/nodes/${TS_PUBKEY}/time-sync-config`)
+        .send({});
+      expect(res.status).toBe(400);
+      expect(setNodeTimeSyncConfig).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /api/sources/test-source/meshcore/nodes/:publicKey/time-sync', () => {
+    const TS_PUBKEY = 'b'.repeat(64);
+    const MALFORMED = 'abcd1234';
+    const markTimeSyncRequested = vi.fn();
+
+    beforeEach(() => {
+      (DatabaseService as any).meshcore = { markTimeSyncRequested };
+      markTimeSyncRequested.mockReset().mockResolvedValue(undefined);
+      meshcoreManager.isConnected.mockReturnValue(true);
+      meshcoreManager.getLastMeshTxAt.mockReturnValue(0);
+      meshcoreManager.recordMeshTx.mockReset();
+      meshcoreManager.syncNodeTime.mockReset().mockResolvedValue({
+        status: 'ok', reply: 'OK', elapsedMs: 1200,
+      });
+    });
+
+    afterEach(() => {
+      meshcoreManager.isConnected.mockReturnValue(false);
+      meshcoreManager.getLastMeshTxAt.mockReturnValue(0);
+    });
+
+    it('requires authentication', async () => {
+      const res = await request(app)
+        .post(`/api/sources/test-source/meshcore/nodes/${TS_PUBKEY}/time-sync`);
+      expect(res.status).toBe(401);
+    });
+
+    it('rejects a malformed public key', async () => {
+      const res = await authenticatedAgent
+        .post(`/api/sources/test-source/meshcore/nodes/${MALFORMED}/time-sync`);
+      expect(res.status).toBe(400);
+    });
+
+    it('syncs: stamps the gate before sending and returns the reply', async () => {
+      const res = await authenticatedAgent
+        .post(`/api/sources/test-source/meshcore/nodes/${TS_PUBKEY}/time-sync`);
+      expect(res.status).toBe(200);
+      expect(res.body.data).toMatchObject({ reply: 'OK', elapsedMs: 1200 });
+      expect(meshcoreManager.syncNodeTime).toHaveBeenCalledWith(TS_PUBKEY);
+      expect(meshcoreManager.recordMeshTx).toHaveBeenCalledTimes(1);
+      expect(markTimeSyncRequested).toHaveBeenCalledWith('test-source', TS_PUBKEY, expect.any(Number));
+    });
+
+    it('returns 409 NO_SAVED_CREDENTIAL when no admin password is stored', async () => {
+      meshcoreManager.syncNodeTime.mockResolvedValueOnce({ status: 'no-credential' });
+      const res = await authenticatedAgent
+        .post(`/api/sources/test-source/meshcore/nodes/${TS_PUBKEY}/time-sync`);
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe('NO_SAVED_CREDENTIAL');
+      // Still stamped — this failure is persistent, not transient.
+      expect(markTimeSyncRequested).toHaveBeenCalled();
+    });
+
+    it('returns 409 CLOCK_PUSH_REJECTED when the repeater refuses (clock ahead)', async () => {
+      meshcoreManager.syncNodeTime.mockResolvedValueOnce({
+        status: 'rejected', reply: 'ERR: clock cannot go backwards',
+      });
+      const res = await authenticatedAgent
+        .post(`/api/sources/test-source/meshcore/nodes/${TS_PUBKEY}/time-sync`);
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe('CLOCK_PUSH_REJECTED');
+      expect(res.body.reply).toMatch(/cannot go backwards/);
+    });
+
+    it('returns 504 CLOCK_PUSH_NO_REPLY on timeout', async () => {
+      meshcoreManager.syncNodeTime.mockResolvedValueOnce({ status: 'failed', error: 'timeout' });
+      const res = await authenticatedAgent
+        .post(`/api/sources/test-source/meshcore/nodes/${TS_PUBKEY}/time-sync`);
+      expect(res.status).toBe(504);
+      expect(res.body.code).toBe('CLOCK_PUSH_NO_REPLY');
+    });
+
+    it('returns 409 when the source is not connected', async () => {
+      meshcoreManager.isConnected.mockReturnValue(false);
+      const res = await authenticatedAgent
+        .post(`/api/sources/test-source/meshcore/nodes/${TS_PUBKEY}/time-sync`);
+      expect(res.status).toBe(409);
+      expect(meshcoreManager.syncNodeTime).not.toHaveBeenCalled();
+    });
+
+    it('enforces the shared 60s mesh-TX gate with 429 + Retry-After', async () => {
+      meshcoreManager.getLastMeshTxAt.mockReturnValue(Date.now() - 5_000);
+      const res = await authenticatedAgent
+        .post(`/api/sources/test-source/meshcore/nodes/${TS_PUBKEY}/time-sync`);
+      expect(res.status).toBe(429);
+      expect(res.body.retryAfterSecs).toBeGreaterThan(0);
+      expect(res.headers['retry-after']).toBeDefined();
+      expect(meshcoreManager.syncNodeTime).not.toHaveBeenCalled();
       expect(meshcoreManager.recordMeshTx).not.toHaveBeenCalled();
     });
   });
