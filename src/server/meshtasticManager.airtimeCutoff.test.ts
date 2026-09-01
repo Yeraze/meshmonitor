@@ -73,7 +73,7 @@ describe('MeshtasticManager - airtime cutoff gate', () => {
       expect(manager.localChannelUtilization).toBeNull();
       expect(await manager.isAutomationAirtimeGated()).toBe(false);
       expect(await manager.getAirtimeCutoffStatus()).toEqual({
-        threshold: 30, source: 'local', channelUtilization: null, sampleCount: 0, contributors: [], gated: false,
+        threshold: 30, source: 'local', neighborMaxHops: 0, channelUtilization: null, sampleCount: 0, contributors: [], gated: false,
       });
     });
 
@@ -82,7 +82,7 @@ describe('MeshtasticManager - airtime cutoff gate', () => {
       manager.localChannelUtilization = 42;
       expect(await manager.isAutomationAirtimeGated()).toBe(true);
       expect(await manager.getAirtimeCutoffStatus()).toEqual({
-        threshold: 30, source: 'local', channelUtilization: 42, sampleCount: 1, contributors: [], gated: true,
+        threshold: 30, source: 'local', neighborMaxHops: 0, channelUtilization: 42, sampleCount: 1, contributors: [], gated: true,
       });
     });
 
