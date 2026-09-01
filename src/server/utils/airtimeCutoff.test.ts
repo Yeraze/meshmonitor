@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   shouldGateAutomations,
   DEFAULT_AIRTIME_CUTOFF_THRESHOLD,
+  DEFAULT_NEIGHBOR_UTIL_MAX_HOPS,
+  MAX_NEIGHBOR_UTIL_MAX_HOPS,
   averageStrongestNeighborUtilization,
   INFRASTRUCTURE_ROLES,
   type NeighborUtilCandidate,
@@ -87,7 +89,7 @@ describe('averageStrongestNeighborUtilization', () => {
     expect(r.value).toBe(20);
   });
 
-  it('excludes nodes that are not directly heard (hopsAway != 0)', () => {
+  it('excludes nodes beyond the default maxHops of 0 (directly heard only)', () => {
     const r = averageStrongestNeighborUtilization([
       n({ hopsAway: 1, channelUtilization: 99 }),
       n({ hopsAway: null, channelUtilization: 99 }),
@@ -95,6 +97,79 @@ describe('averageStrongestNeighborUtilization', () => {
     ]);
     expect(r.sampleCount).toBe(1);
     expect(r.value).toBe(25);
+  });
+
+  it('admits hopsAway=1 candidates when maxHops is 1 (issue #4801)', () => {
+    // The reporter's setup: a CLIENT_BASE node relays to routers, so the
+    // routers arrive at the MeshMonitor-connected node as hopsAway=1.
+    const r = averageStrongestNeighborUtilization(
+      [
+        n({ hopsAway: 1, rssi: -50, channelUtilization: 60 }),
+        n({ hopsAway: 0, rssi: -70, channelUtilization: 30 }),
+      ],
+      3,
+      1,
+    );
+    expect(r.sampleCount).toBe(2);
+    expect(r.value).toBe(45);
+  });
+
+  it('rejects hopsAway=2 when maxHops is 1', () => {
+    const r = averageStrongestNeighborUtilization(
+      [
+        n({ hopsAway: 2, rssi: -50, channelUtilization: 99 }),
+        n({ hopsAway: 1, rssi: -70, channelUtilization: 30 }),
+      ],
+      3,
+      1,
+    );
+    expect(r.sampleCount).toBe(1);
+    expect(r.value).toBe(30);
+  });
+
+  it('rejects negative hopsAway even when maxHops is high', () => {
+    const r = averageStrongestNeighborUtilization(
+      [
+        n({ hopsAway: -1, rssi: -50, channelUtilization: 99 }),
+        n({ hopsAway: 0, rssi: -70, channelUtilization: 30 }),
+      ],
+      3,
+      7,
+    );
+    expect(r.sampleCount).toBe(1);
+    expect(r.value).toBe(30);
+  });
+
+  it('rejects undefined / null hopsAway regardless of maxHops', () => {
+    const r = averageStrongestNeighborUtilization(
+      [
+        n({ hopsAway: undefined, rssi: -50, channelUtilization: 99 }),
+        n({ hopsAway: null, rssi: -55, channelUtilization: 99 }),
+        n({ hopsAway: 0, rssi: -70, channelUtilization: 30 }),
+      ],
+      3,
+      7,
+    );
+    expect(r.sampleCount).toBe(1);
+    expect(r.value).toBe(30);
+  });
+
+  it('does not clamp maxHops internally: caller may pass values above the UI cap', () => {
+    // The UI clamps to [0, MAX_NEIGHBOR_UTIL_MAX_HOPS]; the utility trusts
+    // whatever it receives, so a hopsAway=10 candidate with maxHops=10 must
+    // still qualify.
+    const r = averageStrongestNeighborUtilization(
+      [n({ hopsAway: 10, rssi: -60, channelUtilization: 42 })],
+      3,
+      10,
+    );
+    expect(r.sampleCount).toBe(1);
+    expect(r.value).toBe(42);
+  });
+
+  it('exports sane defaults for the max-hops setting', () => {
+    expect(DEFAULT_NEIGHBOR_UTIL_MAX_HOPS).toBe(0);
+    expect(MAX_NEIGHBOR_UTIL_MAX_HOPS).toBe(7);
   });
 
   it('excludes nodes missing rssi or channelUtilization', () => {

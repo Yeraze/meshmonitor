@@ -254,6 +254,15 @@ Navigate to **Automation → Auto Remote LocalStats**.
 
 Built-in guards keep it polite to the mesh: per-tick **jitter**, a **schedule window**, an **airtime gate**, and a **minimum-interval rate limit** per target.
 
+#### Airtime gate: measurement source
+
+The airtime gate reads Channel Utilization from one of two sources, set on the Automation page:
+
+- **Local node** (default): the connected node's own self-reported ChUtil.
+- **Nearby infrastructure**: the average ChUtil of the strongest-RSSI router or repeater neighbours the local node has heard. Useful when the local node is well placed and its own reading under-represents the wider mesh.
+
+**Maximum hops for neighbour candidates** (`0`-`7`, default `0`): only reached when the source is Nearby infrastructure. `0` is strict, only directly heard routers count. Raise to `1` if a `CLIENT_BASE` (or similar) node relays routers into your local node, so those routers arrive as one hop away. If the "waiting for neighbours" banner persists after several minutes on a setup you expect to work, try `1` first. See [issue #4801](https://github.com/Yeraze/meshmonitor/issues/4801) for the details.
+
 ### Side Effects
 
 - **Airtime Usage**: each request and reply consumes LoRa airtime; the airtime gate and round-robin pacing keep this bounded.

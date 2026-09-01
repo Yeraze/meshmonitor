@@ -141,6 +141,7 @@ export interface SettingsCallbacks {
   restartGeofenceEngine?: (sourceId?: string | null) => void;
   setAutomationAirtimeCutoffThreshold?: (threshold: number, sourceId?: string | null) => void;
   setAutomationAirtimeCutoffSource?: (source: string, sourceId?: string | null) => void;
+  setAutomationAirtimeCutoffNeighborMaxHops?: (hops: number, sourceId?: string | null) => void;
   handleAutoWelcomeEnabled?: () => number;
   invalidateHtmlCache?: () => void;
   // Global (default ON): push the new discard-invalid-positions value into the
@@ -503,6 +504,16 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
         return res
           .status(400)
           .json({ error: "automationAirtimeCutoffSource must be 'local' or 'neighbors'" });
+      }
+    }
+
+    // Validate airtime cutoff neighbour max hops (0-7). 0 = directly heard only.
+    if ('automationAirtimeCutoffNeighborMaxHops' in filteredSettings) {
+      const hops = parseInt(filteredSettings.automationAirtimeCutoffNeighborMaxHops, 10);
+      if (isNaN(hops) || hops < 0 || hops > 7) {
+        return res
+          .status(400)
+          .json({ error: 'automationAirtimeCutoffNeighborMaxHops must be between 0 and 7' });
       }
     }
 
@@ -871,6 +882,12 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
       if ('automationAirtimeCutoffSource' in filteredSettings) {
         callbacks.setAutomationAirtimeCutoffSource?.(filteredSettings.automationAirtimeCutoffSource, sourceId);
       }
+      if ('automationAirtimeCutoffNeighborMaxHops' in filteredSettings) {
+        const hops = parseInt(filteredSettings.automationAirtimeCutoffNeighborMaxHops, 10);
+        if (!isNaN(hops)) {
+          callbacks.setAutomationAirtimeCutoffNeighborMaxHops?.(hops, sourceId);
+        }
+      }
 
       // #4412: localStatsIntervalMinutes is read per-source by
       // applyManagerSettings.ts:42, but this branch never told the source's own
@@ -1011,6 +1028,13 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
 
     if ('automationAirtimeCutoffSource' in filteredSettings) {
       callbacks.setAutomationAirtimeCutoffSource?.(filteredSettings.automationAirtimeCutoffSource, sourceId);
+    }
+
+    if ('automationAirtimeCutoffNeighborMaxHops' in filteredSettings) {
+      const hops = parseInt(filteredSettings.automationAirtimeCutoffNeighborMaxHops, 10);
+      if (!isNaN(hops) && hops >= 0 && hops <= 7) {
+        callbacks.setAutomationAirtimeCutoffNeighborMaxHops?.(hops, sourceId);
+      }
     }
 
     const keyRepairSettings = [

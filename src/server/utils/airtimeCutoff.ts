@@ -29,6 +29,22 @@ export const DEFAULT_AIRTIME_CUTOFF_SOURCE: AirtimeCutoffSource = 'local';
 export const NEIGHBOR_UTIL_SAMPLE_COUNT = 3;
 
 /**
+ * Default maximum `hopsAway` a router may be reached at and still qualify as
+ * a neighbour candidate. 0 means "directly heard only" — the strict behaviour
+ * that shipped originally. Raise via settings to include routers reached
+ * through a relay (issue #4801, Scenario A: a CLIENT_BASE node relays to
+ * routers, so at the MeshMonitor-connected node they arrive as hopsAway=1).
+ */
+export const DEFAULT_NEIGHBOR_UTIL_MAX_HOPS = 0;
+
+/**
+ * Firmware-side hop cap; matches Meshtastic's default `hop_limit` ceiling.
+ * The UI clamps user input to this range. The pure utility does not clamp,
+ * so tests can pass any value.
+ */
+export const MAX_NEIGHBOR_UTIL_MAX_HOPS = 7;
+
+/**
  * Device roles considered routing "infrastructure" (Meshtastic
  * Config.DeviceConfig.Role): Router (2), Router Client (3, deprecated),
  * Repeater (4, deprecated), Router Late (11), Client Base (12). Client Base
@@ -59,10 +75,19 @@ export interface NeighborUtilContributor {
 }
 
 /**
- * Average the Channel Utilization of the strongest-RSSI 0-hop infrastructure
- * neighbours. Candidates must be an infrastructure role, directly heard
- * (`hopsAway === 0`), and have both an RSSI and a Channel Utilization reading.
- * The strongest `count` (highest/least-negative RSSI) are averaged.
+ * Average the Channel Utilization of the strongest-RSSI infrastructure
+ * neighbours. Candidates must be an infrastructure role, reached within
+ * `maxHops` (default 0, i.e. directly heard), and have both an RSSI and a
+ * Channel Utilization reading. The strongest `count` (highest / least-negative
+ * RSSI) are averaged.
+ *
+ * @param nodes Candidate neighbours.
+ * @param count How many top candidates to average. Defaults to
+ *   `NEIGHBOR_UTIL_SAMPLE_COUNT`.
+ * @param maxHops Highest `hopsAway` that still qualifies. Defaults to
+ *   `DEFAULT_NEIGHBOR_UTIL_MAX_HOPS` (0). Set to 1 or more via user setting
+ *   to admit relayed routers (issue #4801). The utility itself does not
+ *   clamp; the UI enforces the `[0, MAX_NEIGHBOR_UTIL_MAX_HOPS]` range.
  *
  * @returns the averaged ChUtil (or null if no candidate qualifies), how many
  *   neighbours contributed to the average, and the contributing nodes
@@ -70,13 +95,17 @@ export interface NeighborUtilContributor {
  */
 export function averageStrongestNeighborUtilization(
   nodes: NeighborUtilCandidate[],
-  count: number = NEIGHBOR_UTIL_SAMPLE_COUNT
+  count: number = NEIGHBOR_UTIL_SAMPLE_COUNT,
+  maxHops: number = DEFAULT_NEIGHBOR_UTIL_MAX_HOPS
 ): { value: number | null; sampleCount: number; contributors: NeighborUtilContributor[] } {
   const candidates = nodes.filter(
     (n) =>
       n.role != null &&
       INFRASTRUCTURE_ROLES.has(n.role) &&
-      n.hopsAway === 0 &&
+      typeof n.hopsAway === 'number' &&
+      Number.isFinite(n.hopsAway) &&
+      n.hopsAway >= 0 &&
+      n.hopsAway <= maxHops &&
       typeof n.rssi === 'number' &&
       Number.isFinite(n.rssi) &&
       typeof n.channelUtilization === 'number' &&

@@ -62,6 +62,7 @@ export const VALID_SETTINGS_KEYS = [
   'customTapbackEmojis',
   'automationAirtimeCutoffThreshold',
   'automationAirtimeCutoffSource',
+  'automationAirtimeCutoffNeighborMaxHops',
   'autoAnnounceEnabled',
   'autoAnnounceIntervalHours',
   'autoAnnounceMessage',
@@ -426,6 +427,7 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   // Automation airtime cutoff (pauses all automations above channel-utilization threshold)
   'automationAirtimeCutoffThreshold',
   'automationAirtimeCutoffSource',
+  'automationAirtimeCutoffNeighborMaxHops',
   // Auto-announce
   'autoAnnounceChannelIndexes',
   'autoAnnounceEnabled',
