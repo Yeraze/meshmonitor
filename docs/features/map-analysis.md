@@ -32,6 +32,14 @@ The toolbar is now icon-based rather than text-labeled — every button carries 
 
 ## Toolbar
 
+::: tip Grouped toolbar menus (New in 4.15.2)
+The toolbar's per-category controls are now organised into **four labelled dropdown menus** — Filters, Layers, View, and Tools — instead of a long, wrap-happy row of buttons. Everything below is still there; open the matching menu to reach it. The Layer buttons live inside **Layers**, the 2D/3D/Follow controls under **View**, Measure and Link Profile under **Tools**, and every filter (source, node type, transport, node search, node multi-select) under **Filters**.
+:::
+
+::: tip Unified controls sidebar (New in 4.15.2)
+Layer-specific popovers now dock into the shared **map controls sidebar** on the right (the same sidebar the Dashboard, Nodes tab, and MeshCore maps use) instead of floating over the canvas. Click a layer's row in the sidebar to expand its options in place. Collapse the whole sidebar with the edge tab to work at full canvas width.
+:::
+
 The toolbar runs across the top of the canvas. From left to right:
 
 | Control | Purpose |
@@ -244,6 +252,17 @@ For a node seen by several sources (say, a Meshtastic radio *and* an MQTT bridge
 ### Limitations
 
 The terrain data (SRTM-derived, roughly 90 m per pixel) is a bare-earth elevation model — it does **not** account for buildings, trees, or other vegetation, so a "Clear" verdict is a first-pass estimate of geometric line-of-sight, not a guarantee of a working RF link. Node GPS altitude is not factored into antenna height; only the DEM terrain height plus your entered AGL value is used.
+
+## Site Planner
+
+The **Site Planner** panel projects a single node's terrain-aware coverage as a swept ring rather than a flat circle, using the same Fresnel and link-budget math as [Terrain Link Profile](#terrain-link-profile). Pick an origin node (or an arbitrary map point), and the panel draws the reachable envelope in every direction the DEM supports.
+
+When the result comes back as a **plain circle** rather than a terrain-shaped ring, the panel's banner explains why:
+
+- **Budget outran radius** — the link budget stayed clear beyond the search radius in every direction MeshMonitor tested, so the ring degenerates to a circle at the search radius itself. Raise the search radius to see the terrain-shaped envelope.
+- **DEM gap** — the elevation source didn't return a tile for part of the search area (usually a coastline, ocean, or a region outside your DEM's coverage). MeshMonitor falls back to a plain circle rather than half-drawing an envelope with a jagged missing edge.
+
+Both are user-actionable states, not failures — the banner tells you which one you're looking at instead of leaving the circle unexplained.
 
 ## 3D terrain view
 

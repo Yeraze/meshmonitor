@@ -78,7 +78,7 @@ The node will reboot and return to normal Meshtastic operation. You can now disc
 
 Once the prerequisites are met, updating firmware through MeshMonitor follows these steps:
 
-1. **Select a version** — Choose a firmware version from the list in Configuration > Firmware Updates. Stable and alpha channels are available, or you can specify a custom URL.
+1. **Select a version** — Choose a firmware version from the list in Configuration > Firmware Updates. Stable, alpha, and **Nightly** channels are available, or you can specify a custom URL. The Nightly channel tracks the firmware `develop` branch (2.8.x pre-release builds) for testers who want early access to fixes before they land in an alpha or stable release. Nightly builds change quickly and can regress; use the Config backup step below and keep a known-good binary handy before flashing a Nightly onto an infrastructure node.
 
 2. **Preflight check** — MeshMonitor verifies your hardware is OTA-capable, identifies the correct firmware binary for your board, and checks version compatibility.
 

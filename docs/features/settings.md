@@ -29,13 +29,13 @@ See [Multi-Source → Connection Types](/features/multi-source) for the full lis
 
 **Description**: Controls which nodes appear in the Node List based on their last activity.
 
-**Range**: 1-168 hours
+**Range**: 0-168 hours (`0` = show all, no age cap)
 
 **Default**: 24 hours
 
-**Effect**: Nodes that haven't been heard from in longer than this period will not appear in the Node List. This helps keep the list focused on currently active nodes in your mesh network.
+**Effect**: Nodes that haven't been heard from in longer than this period will not appear in the Node List. This helps keep the list focused on currently active nodes in your mesh network. Setting the value to `0` disables the cap entirely so every node stays visible, useful for post-mortem review of a mesh you don't intend to prune.
 
-**Side Effects**: Setting this too low may cause frequently-active nodes to disappear from the list temporarily. Setting it too high may clutter the list with offline nodes.
+**Side Effects**: Setting this too low may cause frequently-active nodes to disappear from the list temporarily. Setting it too high (or `0`) may clutter the list with offline nodes.
 
 ### Hide Incomplete Nodes
 

@@ -344,6 +344,7 @@ Five thresholds are tunable in **Global Settings > Mesh Issues Analysis**:
 | Mobile span | 500 m | A4 |
 | Link SNR asymmetry | 6 dB | B3 |
 | Broadcast interval floor | 300 s | C2 |
+| Router cluster max link | 30 km | B1 (distance guard) |
 
 All other thresholds are fixed in code. See the
 [Mesh Issues Analysis](./mesh-issues#where-the-thresholds-come-from)

@@ -12,6 +12,10 @@ MeshMonitor is currently available in:
 | German | `de` | Community contributed |
 | Spanish | `es` | Community contributed |
 | French | `fr` | Community contributed |
+| Indonesian | `id` | Community contributed |
+| Norwegian Bokmål | `nb_NO` | Community contributed |
+| Polish | `pl` | Community contributed |
+| Portuguese (Brazil) | `pt_BR` | Community contributed |
 | Russian | `ru` | Community contributed |
 
 ## How to Contribute Translations

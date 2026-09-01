@@ -1218,6 +1218,10 @@ The `lorem` examples demonstrate the **multiple responses** feature where a scri
 
 See the [examples/auto-responder-scripts/README.md](https://github.com/MeshAddicts/meshmonitor/tree/main/examples/auto-responder-scripts) for detailed documentation.
 
+### Installed Scripts inventory
+
+**Global Settings → Scripts** lists every user script that MeshMonitor can see on disk, alongside which Auto Responder triggers reference it. A script that shows up here but has zero `usedBy` entries is a candidate to remove; a trigger that references a script name no longer present is easy to spot the other way. The `computeScriptUsage` helper does the same accounting that Auto Responder uses internally, so the inventory and the trigger picker stay in agreement.
+
 ### Managing Triggers
 
 **Adding Triggers**:
