@@ -79,7 +79,9 @@ This is by design - the Packet Monitor shows mesh network traffic, not MeshMonit
 
 ## Filtering Packets
 
-Use the packet type dropdown to filter by specific packet types (portnums). Common filters include:
+Use the packet type dropdown to filter by specific packet types (portnums). The dropdown lists the **full set** of Meshtastic portnums, not just the common ones, so filters like `ADMIN`, `NEIGHBORINFO`, `WAYPOINT`, `ATAK_PLUGIN`, and every other named port are directly selectable.
+
+Common filters include:
 
 - **All Types** - Show all received packets
 - **TEXT_MESSAGE** - Show only text messages
@@ -87,6 +89,10 @@ Use the packet type dropdown to filter by specific packet types (portnums). Comm
 - **TELEMETRY** - Show only telemetry data
 - **TRACEROUTE** - Show only traceroute responses
 - **NODEINFO** - Show only node information packets
+
+Alongside the type dropdown, a **free-text search** field matches against decoded packet content and metadata (node names, node IDs, message text, evidence). The type filter and the search field combine with AND, so you can narrow a single portnum down to only rows that mention a specific node or word.
+
+Every packet monitor view, the main Meshtastic one, the per-source MQTT gateway monitor, and the MeshCore over-the-air monitor, exposes the same **Stop capturing** control at the top so a run does not need to be left open to sample a short window.
 
 ::: tip Traceroute Filter
 If you filter on TRACEROUTE and see no results, this likely means no traceroute operations have been performed on your mesh recently. Traceroute packets only appear when:

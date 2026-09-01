@@ -38,6 +38,9 @@ Each node is represented on the map with a marker that provides visual informati
   - Solid marker: Active node (heard recently)
   - Faded marker: Inactive node (not heard within configured time window)
 
+- **Per-node color** *(New in 4.15.2)*:
+  - Every node gets a deterministic color derived from its NodeNum using the same algorithm the official Meshtastic app uses. The color is applied to the map pin and to the matching node's row in the sidebar list, so a node is easy to pick out at a glance across the map and the list. Signal-quality color coding above still applies where the underlying color is used as a fill — the per-node color drives the pin's outline / accent so the two signals don't collide.
+
 #### Node Popups
 
 Click any node marker to view detailed information:
@@ -86,6 +89,11 @@ MeshMonitor remembers a **separate tileset preference for light and dark appeara
 - **Pan**: Click and drag to move the map
 - **Center on Node**: Click a node in the sidebar to center the map on that node. The map zooms in to a configurable target level (default 17, adjustable in **Settings → Map**) when the node is far away, but never zooms *out* below your current zoom level.
 - **Fit to Network**: Automatically adjusts zoom to show all active nodes
+- **Zoom to Fit**: A dedicated control in the map sidebar frames all currently-visible nodes in one click, honouring the active age and source filters (so a Zoom to Fit while you have "Only stationary" or "Last 24 h" on frames only that subset, not everything the mesh has ever heard).
+
+::: tip Unified map controls sidebar (New in 4.15.2)
+Every map surface, the Dashboard map, the Nodes tab map, MeshCore, and Map Analysis, now shares one **collapsible sidebar** on the right instead of individual floating panels stacked in the map corners. Layer toggles, filters, tileset controls, and per-surface controls all live in one place, in the same order, so muscle memory carries between views. Click the tab handle to collapse the sidebar back to a thin edge when you want the map full-width.
+:::
 
 ### Traceroute Visualization
 
@@ -166,6 +174,8 @@ last heard before the window it defines. Rather than one linear hour-per-tick
 narrowing to the last hour or reaching out to a month. The top stop always
 matches your **Max Node Age** setting, so the slider can never select an age
 the setting would filter out anyway.
+
+**Show all** (0) — the **Maximum Age of Active Nodes** setting in **Settings → Nodes** accepts `0` to mean "no age cap". At `0` the slider tops out at an unbounded "All" stop and MeshMonitor never hides a node for being stale. Useful for post-mortem review of a mesh you don't intend to prune.
 
 ### GNSS Satellite Overlay
 
@@ -248,6 +258,10 @@ MeshMonitor includes several pre-configured map styles:
 - **Use Cases**: Clean, minimal map display
 - **URL**: `https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/{z}/{x}/{y}.png`
 - **Attribution**: © OpenStreetMap contributors, © CartoDB
+
+::: tip Carto API key (New in 4.15.2)
+Both CartoDB tilesets accept a personal API key from a free [carto.com](https://carto.com/) account for higher rate limits than the anonymous public endpoint. Paste your **publishable** key into **Settings → Map → Carto API key**; MeshMonitor appends it as `?key=...` on every Carto tile request. The key is publishable by design (it lives in the browser), so treat it like any other public API token and rotate it if abused. Leave the field blank to keep using the anonymous endpoint.
+:::
 
 ### Custom Tile Servers
 

@@ -1520,6 +1520,17 @@ owner: My Node Name
 owner_short: MNN
 ```
 
+### Restoring Configuration from Device Backup Management
+
+*New in 4.15.2.* Every backup listed under **Device → Backups** carries a **Restore** button. Restore is a local, per-source, verbatim replay of the saved YAML back onto whichever device this source is currently connected to. MeshMonitor sends each config chunk in the same order it exported them (device, module, channels), then asks the device to reboot to apply the changes; a banner in the panel surfaces the reboot notice directly from the "did-reboot" flag on the response, so the UI never claims a reboot happened that the device didn't do.
+
+Behavior:
+
+- **Local device only** — restore targets the device on the current source, not another node on the mesh. Cross-node config transfers still need the Meshtastic CLI recipe below.
+- **Verbatim replay** — every field in the backup is sent, including the encryption keys, WiFi passwords, and channel URLs. Restore does not merge or diff.
+- **Bluetooth is handled separately** — Bluetooth configuration has its own setter path, so the panel offers a Bluetooth restore too.
+- **`settings:write` required** — the button is hidden without it.
+
 ### Restoring Configuration with Meshtastic CLI
 
 You can restore a MeshMonitor backup to any Meshtastic device using the official Meshtastic CLI tools.

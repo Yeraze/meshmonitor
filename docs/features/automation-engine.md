@@ -67,6 +67,11 @@ Every automation has exactly one trigger (the **WHEN**). Each trigger exposes a 
 | **A node enters/leaves a region** | A node crosses a geofence | `Enters` / `Leaves` / `Moves while inside (dwell)`, plus a map region editor |
 | **A watched node becomes mobile** | A hand-selected node flips from stationary → mobile | Multi-select of nodes (stationary candidates highlighted); MeshMonitor’s >100 m position-history heuristic |
 | **A watched node leaves its home position** | A hand-selected node moves farther than a threshold from its home/anchor | Multi-select of nodes, threshold in metres (default 300). Home is seeded from position-history inliers when available (else first live fix); while within half the threshold, home is gently averaged. Saved automations can **Reset homes from history** |
+| **A watched node's heartbeat is lost** | A hand-selected node stops being heard for longer than a per-node deadline | Multi-select of nodes; per-node timeout minutes (default 60); MeshCore parity |
+| **A watched node comes back after a heartbeat loss** | A watched node is heard again after its own lost-heartbeat alert fired | Pairs one-to-one with the loss trigger so a recovery automation only fires for nodes that had actually gone silent |
+| **A watched node rebooted** | An uptime reset is detected (uptime decreases without a matching graceful reboot) | Multi-select of nodes; suppresses matched self-triggered reboots so an automation-initiated `deviceReboot` doesn't re-fire the alert |
+| **A watched node's external power changed** | A node reports losing or restoring external power (voltage / power-source telemetry) | Multi-select of nodes; separate `lost` vs `restored` fires, both exposed as `{{ trigger.event }}` |
+| **A watched node's battery is trending down** | A node's battery drops through a threshold with a sustained negative slope over the window | Multi-select of nodes; threshold percent (default 25); window hours (default 24). Doubles as a solar underperformance proxy on nodes that normally recharge each day |
 
 ### Became mobile & left home (tamper / theft monitoring)
 
@@ -453,7 +458,7 @@ of prebuilt automations. Pick one, fill in a small wizard (which sources/channel
 it installs — **disabled**, for review, the same as any imported automation — ready to open in the
 visual builder, check over, and enable.
 
-The gallery ships with two templates today:
+The gallery ships with these templates today:
 
 - **Auto-Ack** — acknowledges direct, zero-hop text messages with a tapback or a reply, reproducing
   the common "answer range testers who hit me directly" pattern as an editable automation instead of
@@ -462,6 +467,11 @@ The gallery ships with two templates today:
   channel, tagged with its protocol of origin. See [Recipe — Meshtastic ↔ MeshCore
   bridge](#recipe-—-meshtastic-↔-meshcore-bridge) below for the full walkthrough, including the
   flood-safety guidance you should read before enabling it.
+- **Device Health** — a one-click starter for the device-health trigger family (heartbeat lost /
+  recovered, node rebooted, external power changed, battery trending down). Pick the nodes you want
+  to watch and the wizard installs one automation per event, each pre-wired to send an Apprise
+  notification. Automations land disabled for review, so you can tune thresholds and add channels
+  before flipping them on. Works for both Meshtastic and MeshCore nodes.
 
 Every template installs through the same [JSON import](#overview) path as a hand-exported automation
 (`POST /api/automations/import`), so it lands disabled, and a template that installs a **pair** of

@@ -263,7 +263,7 @@ There are three layers, resolved most-specific-first (**channel scope → source
 
 - **Per-channel Region / Scope** — each channel's settings has a **Region / Scope** field. Traffic on that channel is stamped with this scope.
 - **Per-source default scope** — the MeshCore **Settings** view has a default-scope section backed by the `meshcoreDefaultScope` setting. Channels without their own scope fall back to this, so you can scope a whole source with one value.
-- **Unscoped** — leave both blank and traffic goes out with no scope (the legacy behavior).
+- **Unscoped** — leave both blank and MeshMonitor asserts a **truly unscoped** flood (companion firmware v12+ accepts a raw `SetFloodScope` payload that clears the device's default), so the packet leaves your radio with no region tag regardless of any default the device itself has configured. On older firmware that lacks the raw form, MeshMonitor falls back to the node's default; upgrade the companion firmware if you rely on unscoped sends from a source whose device is set to a default region.
 
 Channel-settings and the per-message override both offer a region-picker **datalist** drawn from your saved + discovered regions (see below); free typing is still allowed. Region names are normalized (leading `#` stripped; letters, digits, and hyphens kept).
 
@@ -532,6 +532,20 @@ MeshMonitor enforces this in software; it cannot stop link-layer acknowledgement
 on-device advert schedule configured outside MeshMonitor. See
 [MeshCore Receive-Only Mode](/features/meshcore-receive-only) for the full picture, including
 Virtual Node behavior and the firmware limitation.
+
+## Per-Source Settings
+
+Alongside the receive-only toggle, MeshCore **Settings** exposes a small set of per-source controls that shape how MeshMonitor talks to the mesh through that specific source:
+
+- **Default Path Hash Size** — how many bytes of a route's next-hop identity to include when sending direct messages that carry a cached route. The default matches the companion firmware default; lower values shave a byte or two off each direct send, higher values reduce ambiguity on very dense networks. Leave it alone unless you have a specific reason to tune it.
+- **Maximum infrastructure node age (hours)** — a separate age window for repeaters and room servers. The main **Maximum Age of Active Nodes** setting applies to all MeshCore nodes; this second slider lets you keep infrastructure nodes on the map for longer than mobile companions. Two views honor it: the map's node-list, and the neighbours summary. Set it to `0` to inherit the main age window.
+- **Telemetry time window** — the telemetry panel in a MeshCore node's details view exposes a time-window selector so you can flip the charts between the last hour, day, or week without leaving the panel.
+
+## Autopoll Neighbours
+
+Beyond the periodic **Auto-Pathfinding** neighbours cycle (see above), MeshMonitor also runs a **per-node retrieval scheduler** that keeps a specific repeater's neighbour list fresh on its own schedule instead of waiting for the next global cycle. This is helpful when you care about one link's health more than the full mesh and want its neighbours refreshed every few minutes.
+
+The scheduler shares the global 60-second minimum spacing between mesh operations on the same source, so a per-node autopoll never overlaps a hand-triggered send or an Auto-Pathfinding cycle. Enable it per contact from the contact detail panel.
 
 ## Radio Configuration
 

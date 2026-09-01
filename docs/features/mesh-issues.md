@@ -140,6 +140,8 @@ settings](#settings); the rest stay fixed in code, listed here for reference:
 | Coverage-shadow range cap | 25 km | B7 |
 | Router-cluster warning size | 2 | B1 |
 | Router-cluster critical size | 4 | B1 |
+| Router-cluster client-overlap ratio | 90% | B1 (shared with B2) |
+| Router-cluster minimum non-cluster neighbours | 3 | B1 (shared with B2) |
 | Over-broadcast minimum samples | 6 | C2 |
 | Auto-close clean-run count | 3 | all rules |
 | Evidence list cap | 25 entries | all list-shaped evidence |
@@ -170,6 +172,17 @@ Each type section and node row carries a **bulk-actions menu**: dismiss or
 restore everything in that group at once, or mute the rule outright (see
 [Muting a rule](#muting-a-rule)). Bulk actions only ever touch findings your
 account can see.
+
+### Clickable node references
+
+Every place a node's name shows up in a finding, the By Node group headers,
+the member and "shared with" chips inside evidence, is a clickable link.
+Click one to jump straight to a DM thread with that node on its source's
+Messages tab. When the same node exists on more than one source, a small
+picker opens so you can choose which source to open the thread on. Cell
+contents that used to overflow the table into a horizontal scrollbar (the
+C1 Details column and the multi-source list, in particular) now wrap
+within their cell instead.
 
 ## Acting on findings
 
@@ -300,6 +313,7 @@ Issues Analysis**. The controls are global and require `settings:write`.
 | Mobile span | 500 m | 50–50,000 m | `[MeshMonitor]` |
 | Link SNR asymmetry | 6 dB | 1–30 dB | `[MeshMonitor]` |
 | Broadcast interval floor | 300 s | 30–3,600 s | `[MeshMonitor]` |
+| Router cluster max link | 30 km | 1–500 km | `[MeshMonitor]`, B1 distance guard |
 | Auto-close after | 3 clean runs | 1–20 | `[MeshMonitor]` |
 
 Every value is **clamped when read**, not rejected on save: an out-of-range
