@@ -48,7 +48,7 @@ import { normalizeTriggerPatterns, normalizeTriggerChannels } from '../utils/aut
 import { matchAutoResponderPattern } from './utils/autoResponderMatcher.js';
 import { isWithinTimeWindow } from './utils/timeWindow.js';
 import { compileUserRegex } from '../utils/safeRegex.js';
-import { shouldGateAutomations, averageStrongestNeighborUtilization, DEFAULT_AIRTIME_CUTOFF_THRESHOLD, DEFAULT_AIRTIME_CUTOFF_SOURCE, NEIGHBOR_UTIL_SAMPLE_COUNT, type AirtimeCutoffSource, type NeighborUtilContributor } from './utils/airtimeCutoff.js';
+import { shouldGateAutomations, averageStrongestNeighborUtilization, DEFAULT_AIRTIME_CUTOFF_THRESHOLD, DEFAULT_AIRTIME_CUTOFF_SOURCE, DEFAULT_NEIGHBOR_UTIL_MAX_HOPS, MAX_NEIGHBOR_UTIL_MAX_HOPS, NEIGHBOR_UTIL_SAMPLE_COUNT, type AirtimeCutoffSource, type NeighborUtilContributor } from './utils/airtimeCutoff.js';
 import { resolveLastHopName } from './utils/lastHop.js';
 import { isRelayedReception } from './utils/packetHops.js';
 import { resolveLastHeardSec } from './utils/replayGuard.js';
@@ -760,8 +760,11 @@ class MeshtasticManager implements ISourceManager {
   // Outstanding auto-retry timers, so they can be cancelled on disconnect/teardown.
   private telemetryRetryTimers = new Set<ReturnType<typeof setTimeout>>();
   // Where the cutoff reads ChUtil from: the local node, or the averaged
-  // strongest-RSSI 0-hop infrastructure neighbours.
+  // strongest-RSSI infrastructure neighbours reached within maxHops.
   private automationAirtimeCutoffSource: AirtimeCutoffSource = DEFAULT_AIRTIME_CUTOFF_SOURCE;
+  // Highest hopsAway a router may be reached at and still count as a
+  // neighbour candidate (issue #4801). 0 = directly heard only.
+  private automationAirtimeCutoffNeighborMaxHops: number = DEFAULT_NEIGHBOR_UTIL_MAX_HOPS;
   // Short-lived cache for the neighbour-averaged ChUtil so the per-fire gate
   // doesn't hit the database on every automation in `neighbors` mode.
   private neighborUtilCache: { value: number | null; sampleCount: number; contributors: NeighborUtilContributor[]; at: number } | null = null;
@@ -2649,6 +2652,22 @@ class MeshtasticManager implements ISourceManager {
   }
 
   /**
+   * Set the highest hopsAway that qualifies a router as a neighbour candidate
+   * for the neighbour-averaged Channel Utilization source (issue #4801).
+   * Clamps to [0, MAX_NEIGHBOR_UTIL_MAX_HOPS]. 0 keeps the original strict
+   * "directly heard" behaviour.
+   */
+  setAutomationAirtimeCutoffNeighborMaxHops(hops: number): void {
+    if (!Number.isFinite(hops)) {
+      throw new Error('Airtime cutoff neighbour maxHops must be a finite number');
+    }
+    const clamped = Math.max(0, Math.min(MAX_NEIGHBOR_UTIL_MAX_HOPS, Math.floor(hops)));
+    this.automationAirtimeCutoffNeighborMaxHops = clamped;
+    this.neighborUtilCache = null; // force a fresh computation on the next check
+    logger.debug(`📡 Airtime cutoff neighbour maxHops set to ${clamped} for ${this.sourceId}`);
+  }
+
+  /**
    * Load the persisted airtime cutoff settings (threshold + source) for this
    * source. Falls back to defaults when unset or invalid.
    */
@@ -2661,17 +2680,25 @@ class MeshtasticManager implements ISourceManager {
 
       const savedSource = await databaseService.settings.getSettingForSource(this.sourceId, 'automationAirtimeCutoffSource');
       this.automationAirtimeCutoffSource = savedSource === 'neighbors' ? 'neighbors' : DEFAULT_AIRTIME_CUTOFF_SOURCE;
+
+      const savedHops = await databaseService.settings.getSettingForSource(this.sourceId, 'automationAirtimeCutoffNeighborMaxHops');
+      const parsedHops = savedHops != null ? parseInt(savedHops, 10) : NaN;
+      this.automationAirtimeCutoffNeighborMaxHops =
+        Number.isFinite(parsedHops) && parsedHops >= 0 && parsedHops <= MAX_NEIGHBOR_UTIL_MAX_HOPS
+          ? parsedHops
+          : DEFAULT_NEIGHBOR_UTIL_MAX_HOPS;
       this.neighborUtilCache = null;
 
       logger.debug(
         `📡 Airtime cutoff for ${this.sourceId}: ${this.automationAirtimeCutoffThreshold}% ` +
-          `(source: ${this.automationAirtimeCutoffSource})` +
+          `(source: ${this.automationAirtimeCutoffSource}, maxHops: ${this.automationAirtimeCutoffNeighborMaxHops})` +
           (this.automationAirtimeCutoffThreshold === 0 ? ' (disabled)' : '')
       );
     } catch (error) {
       logger.error(`Failed to load airtime cutoff settings for ${this.sourceId}:`, error);
       this.automationAirtimeCutoffThreshold = DEFAULT_AIRTIME_CUTOFF_THRESHOLD;
       this.automationAirtimeCutoffSource = DEFAULT_AIRTIME_CUTOFF_SOURCE;
+      this.automationAirtimeCutoffNeighborMaxHops = DEFAULT_NEIGHBOR_UTIL_MAX_HOPS;
     }
   }
 
@@ -2715,7 +2742,11 @@ class MeshtasticManager implements ISourceManager {
           rssi: n.rssi,
           channelUtilization: n.channelUtilization,
         }));
-      result = averageStrongestNeighborUtilization(candidates, NEIGHBOR_UTIL_SAMPLE_COUNT);
+      result = averageStrongestNeighborUtilization(
+        candidates,
+        NEIGHBOR_UTIL_SAMPLE_COUNT,
+        this.automationAirtimeCutoffNeighborMaxHops,
+      );
     } catch (error) {
       logger.error(`Failed to compute neighbour airtime utilization for ${this.sourceId}:`, error);
     }
@@ -2755,6 +2786,7 @@ class MeshtasticManager implements ISourceManager {
   async getAirtimeCutoffStatus(): Promise<{
     threshold: number;
     source: AirtimeCutoffSource;
+    neighborMaxHops: number;
     channelUtilization: number | null;
     sampleCount: number;
     contributors: NeighborUtilContributor[];
@@ -2764,6 +2796,7 @@ class MeshtasticManager implements ISourceManager {
     return {
       threshold: this.automationAirtimeCutoffThreshold,
       source: this.automationAirtimeCutoffSource,
+      neighborMaxHops: this.automationAirtimeCutoffNeighborMaxHops,
       channelUtilization: value,
       sampleCount,
       contributors,

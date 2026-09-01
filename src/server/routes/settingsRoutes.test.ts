@@ -914,6 +914,30 @@ describe('settingsRoutes', () => {
       });
     });
 
+    // (a2) automationAirtimeCutoffNeighborMaxHops range validation (#4801):
+    // 0-7 inclusive is accepted; anything else 400s and the setter callback
+    // must not run.
+    describe('(a2) automationAirtimeCutoffNeighborMaxHops range validation (#4801)', () => {
+      it.each([-1, 8, 'abc'])('rejects %s with 400', async (value) => {
+        const app = createApp(adminUser);
+        const res = await request(app)
+          .post('/api/settings')
+          .send({ automationAirtimeCutoffNeighborMaxHops: value as any })
+          .expect(400);
+
+        expect(res.body.error).toMatch(/automationAirtimeCutoffNeighborMaxHops/);
+        expect(databaseService.settings.setSettings).not.toHaveBeenCalled();
+      });
+
+      it.each([0, 1, 2, 7])('accepts %s with 200', async (value) => {
+        const app = createApp(adminUser);
+        await request(app)
+          .post('/api/settings')
+          .send({ automationAirtimeCutoffNeighborMaxHops: String(value) })
+          .expect(200);
+      });
+    });
+
     // (b) a global-only key is dropped (never 400) under ?sourceId= and
     // reported in ignoredKeys (§2.3).
     it('(b) drops a global-only key under ?sourceId= and reports it in ignoredKeys', async () => {

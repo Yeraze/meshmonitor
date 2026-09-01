@@ -24,6 +24,7 @@ interface AirtimeContributor {
 interface AirtimeStatus {
   threshold: number;
   source: AirtimeSource;
+  neighborMaxHops?: number;
   channelUtilization: number | null;
   sampleCount: number;
   contributors?: AirtimeContributor[];
@@ -35,6 +36,8 @@ const formatPercent = (value: number): number => parseFloat(value.toFixed(2));
 
 const DEFAULT_THRESHOLD = 30;
 const DEFAULT_SOURCE: AirtimeSource = 'local';
+const DEFAULT_MAX_HOPS = 0;
+const MAX_HOPS_CAP = 7;
 const STATUS_POLL_MS = 15000;
 
 /**
@@ -53,6 +56,8 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
   const [initialThreshold, setInitialThreshold] = useState<number | null>(null);
   const [localSource, setLocalSource] = useState<AirtimeSource>(DEFAULT_SOURCE);
   const [initialSource, setInitialSource] = useState<AirtimeSource | null>(null);
+  const [localMaxHops, setLocalMaxHops] = useState(DEFAULT_MAX_HOPS);
+  const [initialMaxHops, setInitialMaxHops] = useState<number | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [status, setStatus] = useState<AirtimeStatus | null>(null);
@@ -65,10 +70,14 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
         const raw = parseInt(settings.automationAirtimeCutoffThreshold ?? String(DEFAULT_THRESHOLD), 10);
         const threshold = Number.isFinite(raw) && raw >= 0 && raw <= 100 ? raw : DEFAULT_THRESHOLD;
         const source: AirtimeSource = settings.automationAirtimeCutoffSource === 'neighbors' ? 'neighbors' : DEFAULT_SOURCE;
+        const rawHops = parseInt(settings.automationAirtimeCutoffNeighborMaxHops ?? String(DEFAULT_MAX_HOPS), 10);
+        const maxHops = Number.isFinite(rawHops) && rawHops >= 0 && rawHops <= MAX_HOPS_CAP ? rawHops : DEFAULT_MAX_HOPS;
         setLocalThreshold(threshold);
         setInitialThreshold(threshold);
         setLocalSource(source);
         setInitialSource(source);
+        setLocalMaxHops(maxHops);
+        setInitialMaxHops(maxHops);
       }
     } catch (error) {
       console.error('Failed to fetch airtime cutoff settings:', error);
@@ -98,9 +107,13 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
   }, [fetchStatus]);
 
   useEffect(() => {
-    if (initialThreshold === null || initialSource === null) return;
-    setHasChanges(localThreshold !== initialThreshold || localSource !== initialSource);
-  }, [localThreshold, initialThreshold, localSource, initialSource]);
+    if (initialThreshold === null || initialSource === null || initialMaxHops === null) return;
+    setHasChanges(
+      localThreshold !== initialThreshold ||
+      localSource !== initialSource ||
+      localMaxHops !== initialMaxHops,
+    );
+  }, [localThreshold, initialThreshold, localSource, initialSource, localMaxHops, initialMaxHops]);
 
   const handleSave = useCallback(async () => {
     setIsSaving(true);
@@ -111,11 +124,13 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
         body: JSON.stringify({
           automationAirtimeCutoffThreshold: String(localThreshold),
           automationAirtimeCutoffSource: localSource,
+          automationAirtimeCutoffNeighborMaxHops: String(localMaxHops),
         }),
       });
       if (response.ok) {
         setInitialThreshold(localThreshold);
         setInitialSource(localSource);
+        setInitialMaxHops(localMaxHops);
         setHasChanges(false);
         showToast(t('automation.airtime_cutoff.saved', 'Airtime cutoff settings saved'), 'success');
         void fetchStatus();
@@ -127,12 +142,13 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
     } finally {
       setIsSaving(false);
     }
-  }, [baseUrl, csrfFetch, sourceQuery, localThreshold, localSource, showToast, t, fetchStatus]);
+  }, [baseUrl, csrfFetch, sourceQuery, localThreshold, localSource, localMaxHops, showToast, t, fetchStatus]);
 
   const resetChanges = useCallback(() => {
     if (initialThreshold !== null) setLocalThreshold(initialThreshold);
     if (initialSource !== null) setLocalSource(initialSource);
-  }, [initialThreshold, initialSource]);
+    if (initialMaxHops !== null) setLocalMaxHops(initialMaxHops);
+  }, [initialThreshold, initialSource, initialMaxHops]);
 
   useSaveBar({
     id: 'airtime-cutoff',
@@ -202,7 +218,16 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
             ? t('automation.airtime_cutoff.status_disabled', 'Airtime cutoff is disabled (threshold 0).')
             : util == null
               ? (statusSource === 'neighbors'
-                  ? t('automation.airtime_cutoff.status_unknown_neighbors', 'Waiting for 0-hop infrastructure (router) neighbours to report Channel Utilization…')
+                  ? ((status?.neighborMaxHops ?? localMaxHops) > 0
+                      ? t(
+                          'automation.airtime_cutoff.status_unknown_neighbors_hops',
+                          'Waiting for infrastructure (router) neighbours within {{hops}} hop(s) to report Channel Utilization…',
+                          { hops: status?.neighborMaxHops ?? localMaxHops },
+                        )
+                      : t(
+                          'automation.airtime_cutoff.status_unknown_neighbors',
+                          'Waiting for 0-hop infrastructure (router) neighbours to report Channel Utilization…',
+                        ))
                   : t('automation.airtime_cutoff.status_unknown', 'Waiting for the connected node to report Channel Utilization…'))
               : gated
                 ? t('automation.airtime_cutoff.status_paused', 'Automations paused — {{source}} Channel Utilization {{util}}% exceeds {{threshold}}%.', { source: sourceLabel, util: utilDisplay, threshold: status?.threshold ?? localThreshold })
@@ -270,6 +295,34 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
             <option value="neighbors">{t('automation.airtime_cutoff.source_neighbors_option', 'Nearby infrastructure (avg of 3 strongest routers)')}</option>
           </select>
         </div>
+
+        {/* Neighbour candidate max-hops (only visible when the source is 'neighbors') */}
+        {localSource === 'neighbors' && (
+          <div className="setting-item">
+            <label htmlFor="airtimeCutoffNeighborMaxHops">
+              {t('automation.airtime_cutoff.max_hops_label', 'Maximum hops for neighbour candidates')}
+              <span className="setting-description">
+                {t(
+                  'automation.airtime_cutoff.max_hops_hint',
+                  '0 means directly heard only (default). Raise to 1 if a CLIENT_BASE or similar node relays routers to your local node. Try 1 first when the "waiting" message persists after several minutes (issue #4801).',
+                )}
+              </span>
+            </label>
+            <input
+              id="airtimeCutoffNeighborMaxHops"
+              type="number"
+              min={0}
+              max={MAX_HOPS_CAP}
+              value={localMaxHops}
+              onChange={(e) => {
+                const raw = parseInt(e.target.value, 10);
+                const clamped = Number.isNaN(raw) ? 0 : Math.max(0, Math.min(MAX_HOPS_CAP, raw));
+                setLocalMaxHops(clamped);
+              }}
+              className="setting-input"
+            />
+          </div>
+        )}
 
         {/* Threshold input */}
         <div className="setting-item">
