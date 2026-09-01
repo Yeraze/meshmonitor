@@ -1195,6 +1195,16 @@ router.patch(
  * mutating verb, so a guest session is not enough. Surfacing it here lets the
  * UI warn at configuration time instead of leaving the user to discover the
  * failure in the logs 12 hours later.
+ *
+ * CAVEAT on what that flag actually means: it reports that a credential BLOB
+ * EXISTS, not that the blob still decrypts. `adminCredential` is AES-256-GCM
+ * ciphertext keyed on SESSION_SECRET, and only `ensureSavedLogin` — via the
+ * credential store's `load()` — can tell a usable credential from a rotated
+ * or corrupted one. So rotating SESSION_SECRET leaves this reporting `true`
+ * while every scheduled sync fails `no-credential`. Deliberately not
+ * decrypting here: this is a read-only display endpoint on a hot path, and a
+ * false positive in a warning is cheaper than doing crypto per request. The
+ * scheduler logs the real answer at warn level when it happens.
  */
 router.get(
   '/nodes/:publicKey/time-sync-config',

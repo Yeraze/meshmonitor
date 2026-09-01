@@ -16,6 +16,10 @@
  *    so unlike a telemetry or neighbours read it cannot fall back to a guest
  *    session. The GET reports `hasSavedCredential`; without one, enabling the
  *    schedule would quietly do nothing every cycle, so we warn up front.
+ *    That flag only proves a credential BLOB EXISTS, not that it still
+ *    decrypts — rotating SESSION_SECRET leaves it `true` while every sync
+ *    fails. The manual "Sync Now" path is what surfaces the real answer, so
+ *    its no-credential error names rotation as a possible cause.
  *  - The interval floor is 60 minutes, not 1. One sync costs four packets on
  *    the air (login + reply, then the CLI command + reply), so the cheap-looking
  *    small numbers the other panels accept would be genuinely harmful here.
@@ -207,6 +211,19 @@ export const MeshCoreNodeTimeSyncConfig: React.FC<MeshCoreNodeTimeSyncConfigProp
           ),
           'warning',
         );
+      } else if (data.code === 'NO_SAVED_CREDENTIAL') {
+        // This is the one case the up-front banner can miss: the blob exists
+        // (so hasSavedCredential was true and no warning showed) but no longer
+        // decrypts, which is what rotating SESSION_SECRET does. Say so, rather
+        // than leaving the user staring at a node they know they saved a
+        // password for.
+        setSyncMsg({
+          kind: 'err',
+          text: t(
+            'meshcore.time_sync_config.sync_no_credential',
+            'No usable admin password for this node. If you did save one, it may have been invalidated by a SESSION_SECRET change — log in again and re-save it.',
+          ),
+        });
       } else {
         setSyncMsg({
           kind: 'err',
@@ -248,6 +265,10 @@ export const MeshCoreNodeTimeSyncConfig: React.FC<MeshCoreNodeTimeSyncConfigProp
         </div>
       )}
 
+      {/*
+        Blob-existence check only — see the header doc. A saved-then-invalidated
+        credential still reports true here and is caught by "Sync Now" instead.
+      */}
       {!loading && !cfg.hasSavedCredential && (
         <div
           className="meshcore-empty-state"

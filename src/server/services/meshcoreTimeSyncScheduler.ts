@@ -96,9 +96,25 @@ export function resolveTickMs(envValue: string | undefined): number {
 
 /**
  * Clamp a user-supplied interval to [MIN_INTERVAL_MINUTES, MAX_INTERVAL_MINUTES].
- * Exported so the route and the scheduler cannot disagree about the floor.
+ * Exported so the route and the scheduler cannot disagree about the bounds.
  * Returns null for values that aren't a positive finite number, letting the
  * caller reject rather than silently substitute something.
+ *
+ * NOTE — this CLAMPS a sub-floor value up to the floor, whereas the PATCH
+ * route REJECTS one with a 400. That difference is deliberate, not an
+ * oversight, because the two are answering different questions:
+ *
+ *   - The route is talking to a person. Someone who types `5` probably meant
+ *     seconds, or did not realise a sync is four packets; silently storing 60
+ *     would hide their mistake. So it refuses and names the floor.
+ *   - This helper is the last line of defence for a value that is ALREADY in
+ *     the database — written before the floor existed, or edited by hand. At
+ *     that point rejecting achieves nothing (there is no one to tell), so the
+ *     safe move is to clamp and carry on. `isNodeEligible` re-floors for the
+ *     same reason.
+ *
+ * So `clampIntervalMinutes(5) === 60` while `PATCH { intervalMinutes: 5 }`
+ * returns 400. Both protect the same bound, from different directions.
  */
 export function clampIntervalMinutes(value: unknown): number | null {
   const n = typeof value === 'number' ? value : Number(value);
@@ -211,6 +227,14 @@ export class MeshCoreTimeSyncScheduler {
       logger.debug(`[MeshCoreTimeSync:${manager.sourceId}] Skipping - receive-only mode`);
       return;
     }
+
+    // Companion-only is NOT checked here, unlike receive-only above. The two
+    // look similar but are not: receive-only must short-circuit before any
+    // send primitive, because `requireTransmit()` would throw and be caught
+    // only by tick()'s per-manager handler. A non-Companion device instead
+    // gets a clean `{ status: 'failed' }` out of `syncNodeTime`, which the
+    // switch below already handles — so the guard is deliberately delegated
+    // there rather than duplicated.
 
     const now = this.nowFn();
     const sinceLastTx = now - manager.getLastMeshTxAt();

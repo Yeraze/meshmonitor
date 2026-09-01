@@ -145,6 +145,32 @@ describe('MeshCoreNodeTimeSyncConfig', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/cannot go backwards/);
   });
 
+  it('names SESSION_SECRET rotation when a sync reports NO_SAVED_CREDENTIAL', async () => {
+    // The up-front banner cannot catch this: `hasSavedCredential` only proves
+    // the ciphertext blob exists, so a credential invalidated by a rotated
+    // SESSION_SECRET shows no warning yet fails every sync. The manual path is
+    // where the user finds out, so it must say something actionable.
+    csrfFetchMock.mockImplementation((_url: string, opts?: { method?: string }) => {
+      if (opts?.method === 'POST') {
+        return Promise.resolve(
+          errResponse(409, {
+            success: false,
+            code: 'NO_SAVED_CREDENTIAL',
+            error: 'No usable saved admin password for this node. Save one, then retry.',
+          }),
+        );
+      }
+      // Note hasSavedCredential: true — the blob is there, it just won't decrypt.
+      return Promise.resolve(okResponse(defaultGet({ hasSavedCredential: true })));
+    });
+    renderPanel();
+    // No up-front banner, because the blob exists.
+    expect(screen.queryByText(/No admin password is saved/)).toBeNull();
+
+    fireEvent.click(await screen.findByText('Sync Clock'));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/SESSION_SECRET/);
+  });
+
   it('warns when no admin password is saved — the schedule would silently no-op', async () => {
     csrfFetchMock.mockImplementation(() =>
       Promise.resolve(okResponse(defaultGet({ hasSavedCredential: false }))),
