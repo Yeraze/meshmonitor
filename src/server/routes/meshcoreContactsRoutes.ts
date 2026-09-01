@@ -21,6 +21,14 @@ import {
   MAX_INTERVAL_MINUTES as NEIGHBOURS_MAX_INTERVAL_MINUTES,
   MIN_INTERVAL_BETWEEN_REQUESTS_MS as NEIGHBOURS_MIN_INTERVAL_BETWEEN_REQUESTS_MS,
 } from '../services/meshcoreNeighboursScheduler.js';
+// Likewise the time-sync routes gate against the time-sync scheduler's own
+// constants, so the route floor and the scheduler floor can never drift (#4916).
+import {
+  DEFAULT_INTERVAL_MINUTES as TIME_SYNC_DEFAULT_INTERVAL_MINUTES,
+  MIN_INTERVAL_MINUTES as TIME_SYNC_MIN_INTERVAL_MINUTES,
+  MAX_INTERVAL_MINUTES as TIME_SYNC_MAX_INTERVAL_MINUTES,
+  MIN_INTERVAL_BETWEEN_REQUESTS_MS as TIME_SYNC_MIN_INTERVAL_BETWEEN_REQUESTS_MS,
+} from '../services/meshcoreTimeSyncScheduler.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { requireAuth, optionalAuth, requirePermission } from '../auth/authMiddleware.js';
@@ -1170,6 +1178,241 @@ router.patch(
     } catch (error) {
       logger.error('[API] Error setting per-node neighbours-config:', error);
       res.status(500).json({ success: false, error: 'Failed to update neighbours-config' });
+    }
+  },
+);
+
+/**
+ * GET /api/sources/:id/meshcore/nodes/:publicKey/time-sync-config
+ *
+ * Read the per-node time-sync config (issue #4916). Returns the persisted
+ * (timeSyncEnabled, timeSyncIntervalMinutes, lastTimeSyncAt) triple, or
+ * defaults if the node has never been written. Mirror of the
+ * neighbours-config GET.
+ *
+ * `hasSavedCredential` is included because time sync is the one per-node
+ * scheduler that CANNOT work without a saved admin password — `time` is a
+ * mutating verb, so a guest session is not enough. Surfacing it here lets the
+ * UI warn at configuration time instead of leaving the user to discover the
+ * failure in the logs 12 hours later.
+ */
+router.get(
+  '/nodes/:publicKey/time-sync-config',
+  optionalAuth(),
+  requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id: string }).id;
+      const { publicKey } = req.params;
+      if (!isValidPublicKey(publicKey)) {
+        return res.status(400).json({ success: false, error: 'Invalid public key format (expected 64-character hex string)' });
+      }
+      const node = await databaseService.meshcore.getNodeByPublicKeyAndSource(publicKey, sourceId);
+      res.json({
+        success: true,
+        data: {
+          publicKey,
+          sourceId,
+          enabled: Boolean(node?.timeSyncEnabled),
+          intervalMinutes: node?.timeSyncIntervalMinutes ?? TIME_SYNC_DEFAULT_INTERVAL_MINUTES,
+          lastSyncAt: node?.lastTimeSyncAt ?? null,
+          minIntervalMinutes: TIME_SYNC_MIN_INTERVAL_MINUTES,
+          hasSavedCredential: Boolean(node?.adminCredential),
+        },
+      });
+    } catch (error) {
+      logger.error('[API] Error getting per-node time-sync-config:', error);
+      res.status(500).json({ success: false, error: 'Failed to read time-sync-config' });
+    }
+  },
+);
+
+/**
+ * PATCH /api/sources/:id/meshcore/nodes/:publicKey/time-sync-config
+ *
+ * Update the per-node time-sync config. Body:
+ *   { enabled?: boolean, intervalMinutes?: number }
+ *
+ * `intervalMinutes` is rejected below TIME_SYNC_MIN_INTERVAL_MINUTES (60)
+ * rather than silently clamped, so an API caller learns the floor exists.
+ * One sync is four packets on the air, so a mistyped small value would be
+ * genuinely harmful to the mesh.
+ *
+ * Gated by `configuration:write`, mirroring the neighbours-config PATCH.
+ */
+router.patch(
+  '/nodes/:publicKey/time-sync-config',
+  requireAuth(),
+  requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id: string }).id;
+      const { publicKey } = req.params;
+      if (!isValidPublicKey(publicKey)) {
+        return res.status(400).json({ success: false, error: 'Invalid public key format (expected 64-character hex string)' });
+      }
+
+      const { enabled, intervalMinutes } = req.body ?? {};
+
+      const patch: { enabled?: boolean; intervalMinutes?: number } = {};
+      if (enabled !== undefined) {
+        if (typeof enabled !== 'boolean') {
+          return res.status(400).json({ success: false, error: 'enabled must be a boolean' });
+        }
+        patch.enabled = enabled;
+      }
+      if (intervalMinutes !== undefined) {
+        const n = Number(intervalMinutes);
+        if (
+          !Number.isInteger(n)
+          || n < TIME_SYNC_MIN_INTERVAL_MINUTES
+          || n > TIME_SYNC_MAX_INTERVAL_MINUTES
+        ) {
+          return res.status(400).json({
+            success: false,
+            error: `intervalMinutes must be an integer between ${TIME_SYNC_MIN_INTERVAL_MINUTES} and ${TIME_SYNC_MAX_INTERVAL_MINUTES}`,
+          });
+        }
+        patch.intervalMinutes = n;
+      }
+      if (patch.enabled === undefined && patch.intervalMinutes === undefined) {
+        return res.status(400).json({ success: false, error: 'No fields to update' });
+      }
+
+      // Backfill advType/advName/position from the in-memory contact before
+      // seeding the stub row, mirroring the neighbours-config PATCH.
+      const manager = managerFor(req, res);
+      const contact = manager.getContact(publicKey);
+      if (contact) {
+        try {
+          await databaseService.meshcore.upsertNode(
+            {
+              publicKey,
+              name: contact.advName ?? contact.name ?? null,
+              advType: contact.advType ?? null,
+              latitude: contact.latitude ?? null,
+              longitude: contact.longitude ?? null,
+              positionSource: (typeof contact.latitude === 'number'
+                && typeof contact.longitude === 'number'
+                && !isBogusPosition(contact.latitude, contact.longitude))
+                ? 'contact'
+                : undefined,
+              lastHeard: contact.lastSeen ?? null,
+            },
+            sourceId,
+          );
+        } catch (err) {
+          logger.warn(
+            `[API] time-sync-config: contact backfill for ${publicKey.substring(0, 16)}… failed: ${(err as Error).message}`,
+          );
+        }
+      }
+      await databaseService.meshcore.setNodeTimeSyncConfig(sourceId, publicKey, patch);
+      const node = await databaseService.meshcore.getNodeByPublicKeyAndSource(publicKey, sourceId);
+      res.json({
+        success: true,
+        data: {
+          publicKey,
+          sourceId,
+          enabled: Boolean(node?.timeSyncEnabled),
+          intervalMinutes: node?.timeSyncIntervalMinutes ?? TIME_SYNC_DEFAULT_INTERVAL_MINUTES,
+          lastSyncAt: node?.lastTimeSyncAt ?? null,
+          minIntervalMinutes: TIME_SYNC_MIN_INTERVAL_MINUTES,
+          hasSavedCredential: Boolean(node?.adminCredential),
+        },
+      });
+    } catch (error) {
+      logger.error('[API] Error setting per-node time-sync-config:', error);
+      res.status(500).json({ success: false, error: 'Failed to update time-sync-config' });
+    }
+  },
+);
+
+/**
+ * POST /api/sources/:id/meshcore/nodes/:publicKey/time-sync
+ *
+ * Push the server clock to this repeater immediately, outside the scheduler's
+ * cadence (#4916). Honours the same per-source 60s mesh-TX gate as the
+ * scheduler and the other manual polls, so the button can't be spammed onto
+ * the air.
+ *
+ * Gated by `configuration:write` rather than `nodes:read` — unlike the
+ * telemetry and neighbours polls, this MUTATES the remote device (it sets its
+ * RTC), so it is a configuration action that happens to transmit rather than
+ * a read that happens to transmit.
+ */
+router.post(
+  '/nodes/:publicKey/time-sync',
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }),
+  requireMeshcoreTx(),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id: string }).id;
+      const { publicKey } = req.params;
+      if (!isValidPublicKey(publicKey)) {
+        return res.status(400).json({ success: false, error: 'Invalid public key format (expected 64-character hex string)' });
+      }
+
+      const manager = managerFor(req, res);
+      if (!manager.isConnected()) {
+        return res.status(409).json({ success: false, error: 'MeshCore source is not connected' });
+      }
+
+      // Per-source 60s mesh-TX gate — the same primitive the scheduler uses.
+      const lastTx = manager.getLastMeshTxAt();
+      const sinceLastTx = Date.now() - lastTx;
+      if (lastTx > 0 && sinceLastTx < TIME_SYNC_MIN_INTERVAL_BETWEEN_REQUESTS_MS) {
+        const retryAfterSecs = Math.ceil((TIME_SYNC_MIN_INTERVAL_BETWEEN_REQUESTS_MS - sinceLastTx) / 1000);
+        res.set('Retry-After', String(retryAfterSecs));
+        return res.status(429).json({
+          success: false,
+          error: `Too soon since last mesh transmission; retry in ${retryAfterSecs}s`,
+          retryAfterSecs,
+        });
+      }
+
+      // Stamp before issuing so the gate applies regardless of result and the
+      // scheduler's fair-rotation clock advances too.
+      const now = Date.now();
+      manager.recordMeshTx(now);
+      await databaseService.meshcore.markTimeSyncRequested(sourceId, publicKey, now);
+
+      const result = await manager.syncNodeTime(publicKey);
+      if (result.status === 'no-credential') {
+        return res.status(409).json({
+          success: false,
+          error: 'No usable saved admin password for this node. Save one, then retry.',
+          code: 'NO_SAVED_CREDENTIAL',
+        });
+      }
+      if (result.status === 'rejected') {
+        // Not a server error — the firmware answered, and said no. Almost
+        // always its "clock cannot go backwards" guard.
+        return res.status(409).json({
+          success: false,
+          error: `Repeater refused the clock push (it may be running ahead of server time): ${result.reply}`,
+          code: 'CLOCK_PUSH_REJECTED',
+          reply: result.reply,
+        });
+      }
+      if (result.status === 'failed') {
+        return res.status(504).json({
+          success: false,
+          error: `No reply from repeater: ${result.error}`,
+          code: 'CLOCK_PUSH_NO_REPLY',
+        });
+      }
+
+      res.json({
+        success: true,
+        data: { reply: result.reply, elapsedMs: result.elapsedMs, syncedAt: now },
+      });
+    } catch (error) {
+      if (failIfTxDisabled(res, error)) return;
+      logger.error('[API] Error pushing node time sync:', error);
+      res.status(500).json({ success: false, error: 'Time sync failed' });
     }
   },
 );

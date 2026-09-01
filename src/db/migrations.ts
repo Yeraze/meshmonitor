@@ -170,6 +170,7 @@ import { migration as createMeshtasticHeardRepeatersMigration, runMigration152Po
 import { migration as meshcoreNodeNeighborsConfigMigration, runMigration153Postgres, runMigration153Mysql } from '../server/migrations/153_meshcore_node_neighbors_config.js';
 import { migration as createMeshIssuesMigration, runMigration154Postgres, runMigration154Mysql } from '../server/migrations/154_create_mesh_issues.js';
 import { migration as clearStaleKeyMismatchMigration, runMigration155Postgres, runMigration155Mysql } from '../server/migrations/155_clear_stale_key_mismatch.js';
+import { migration as meshcoreNodeTimeSyncConfigMigration, runMigration156Postgres, runMigration156Mysql } from '../server/migrations/156_meshcore_node_time_sync_config.js';
 
 // ============================================================================
 // Registry
@@ -2488,4 +2489,22 @@ registry.register({
   sqlite: (db) => clearStaleKeyMismatchMigration.up(db),
   postgres: (client) => runMigration155Postgres(client),
   mysql: (pool) => runMigration155Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 156: per-node time-sync config on `meshcore_nodes`, read by the
+// MeshCoreTimeSyncScheduler each tick (#4916). A THIRD separate column set,
+// independent of the migration-060 telemetry trio and the migration-153
+// neighbours trio, so none of the three schedulers resets another's cadence.
+// Default interval is 720 minutes (12h) because one repeater sync costs four
+// packets on the air. Idempotent across SQLite / PostgreSQL / MySQL.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 156,
+  name: 'meshcore_node_time_sync_config',
+  settingsKey: 'migration_156_meshcore_node_time_sync_config',
+  sqlite: (db) => meshcoreNodeTimeSyncConfigMigration.up(db),
+  postgres: (client) => runMigration156Postgres(client),
+  mysql: (pool) => runMigration156Mysql(pool),
 });

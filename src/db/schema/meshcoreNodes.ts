@@ -89,6 +89,16 @@ export const meshcoreNodesSqlite = sqliteTable('meshcore_nodes', {
   neighborsIntervalMinutes: integer('neighborsIntervalMinutes').default(60),
   lastNeighborsRequestAt: integer('lastNeighborsRequestAt'),
 
+  // Per-node time-sync config (migration 156, #4916). Read by the
+  // MeshCoreTimeSyncScheduler; a THIRD separate column set so time-sync,
+  // telemetry, and neighbours each keep an independent per-node cadence.
+  // Default 720 min (12h) — one sync costs four packets on the air (login +
+  // reply, then `time <epoch>` + reply), so this is far slower than the
+  // 15-min Meshtastic auto time-sync default.
+  timeSyncEnabled: integer('timeSyncEnabled', { mode: 'boolean' }).default(false),
+  timeSyncIntervalMinutes: integer('timeSyncIntervalMinutes').default(720),
+  lastTimeSyncAt: integer('lastTimeSyncAt'),
+
   // Per-room-server sync config (migration 072).
   roomSyncEnabled: integer('roomSyncEnabled', { mode: 'boolean' }).default(false),
   roomSyncIntervalMinutes: integer('roomSyncIntervalMinutes').default(60),
@@ -155,6 +165,16 @@ export const meshcoreNodesPostgres = pgTable('meshcore_nodes', {
   neighborsIntervalMinutes: pgInteger('neighborsIntervalMinutes').default(60),
   lastNeighborsRequestAt: pgBigint('lastNeighborsRequestAt', { mode: 'number' }),
 
+  // Per-node time-sync config (migration 156, #4916). Read by the
+  // MeshCoreTimeSyncScheduler; a THIRD separate column set so time-sync,
+  // telemetry, and neighbours each keep an independent per-node cadence.
+  // Default 720 min (12h) — one sync costs four packets on the air (login +
+  // reply, then `time <epoch>` + reply), so this is far slower than the
+  // 15-min Meshtastic auto time-sync default.
+  timeSyncEnabled: pgBoolean('timeSyncEnabled').default(false),
+  timeSyncIntervalMinutes: pgInteger('timeSyncIntervalMinutes').default(720),
+  lastTimeSyncAt: pgBigint('lastTimeSyncAt', { mode: 'number' }),
+
   roomSyncEnabled: pgBoolean('roomSyncEnabled').default(false),
   roomSyncIntervalMinutes: pgInteger('roomSyncIntervalMinutes').default(60),
   lastRoomSyncAt: pgBigint('lastRoomSyncAt', { mode: 'number' }),
@@ -214,6 +234,16 @@ export const meshcoreNodesMysql = mysqlTable('meshcore_nodes', {
   neighborsEnabled: myBoolean('neighborsEnabled').default(false),
   neighborsIntervalMinutes: myInt('neighborsIntervalMinutes').default(60),
   lastNeighborsRequestAt: myBigint('lastNeighborsRequestAt', { mode: 'number' }),
+
+  // Per-node time-sync config (migration 156, #4916). Read by the
+  // MeshCoreTimeSyncScheduler; a THIRD separate column set so time-sync,
+  // telemetry, and neighbours each keep an independent per-node cadence.
+  // Default 720 min (12h) — one sync costs four packets on the air (login +
+  // reply, then `time <epoch>` + reply), so this is far slower than the
+  // 15-min Meshtastic auto time-sync default.
+  timeSyncEnabled: myBoolean('timeSyncEnabled').default(false),
+  timeSyncIntervalMinutes: myInt('timeSyncIntervalMinutes').default(720),
+  lastTimeSyncAt: myBigint('lastTimeSyncAt', { mode: 'number' }),
 
   roomSyncEnabled: myBoolean('roomSyncEnabled').default(false),
   roomSyncIntervalMinutes: myInt('roomSyncIntervalMinutes').default(60),

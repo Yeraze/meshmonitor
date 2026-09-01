@@ -10,6 +10,7 @@ import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import { MeshCoreContactDetailPanel } from './MeshCoreContactDetailPanel';
 import { MeshCoreNodeTelemetryConfig } from './MeshCoreNodeTelemetryConfig';
 import { MeshCoreNodeNeighboursConfig } from './MeshCoreNodeNeighboursConfig';
+import { MeshCoreNodeTimeSyncConfig } from './MeshCoreNodeTimeSyncConfig';
 import TelemetryGraphs from '../TelemetryGraphs';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSettings } from '../../contexts/SettingsContext';
@@ -586,6 +587,12 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                     receiveOnly={receiveOnly}
                   />
                   <MeshCoreNodeNeighboursConfig
+                    baseUrl={baseUrl}
+                    sourceId={sourceId}
+                    publicKey={selected}
+                    receiveOnly={receiveOnly}
+                  />
+                  <MeshCoreNodeTimeSyncConfig
                     baseUrl={baseUrl}
                     sourceId={sourceId}
                     publicKey={selected}

@@ -230,6 +230,9 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         neighborsEnabled INTEGER DEFAULT 0,
         neighborsIntervalMinutes INTEGER DEFAULT 60,
         lastNeighborsRequestAt INTEGER,
+        timeSyncEnabled INTEGER DEFAULT 0,
+        timeSyncIntervalMinutes INTEGER DEFAULT 720,
+        lastTimeSyncAt INTEGER,
         out_path TEXT,
         path_len INTEGER,
         adminCredential TEXT,
@@ -480,6 +483,9 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         neighborsEnabled INTEGER DEFAULT 0,
         neighborsIntervalMinutes INTEGER DEFAULT 60,
         lastNeighborsRequestAt INTEGER,
+        timeSyncEnabled INTEGER DEFAULT 0,
+        timeSyncIntervalMinutes INTEGER DEFAULT 720,
+        lastTimeSyncAt INTEGER,
         out_path TEXT,
         path_len INTEGER,
         adminCredential TEXT,
@@ -620,6 +626,92 @@ describe('MeshCoreRepository — sourceId stamping', () => {
     ).rejects.toThrow(/requires a sourceId/);
   });
 
+  // ============ Time-sync config (#4916) ============
+
+  it('getTimeSyncEnabledNodes only returns rows with timeSyncEnabled=true and matching sourceId', async () => {
+    await repo.upsertNode({ publicKey: 'pk-1' }, 'src-a');
+    await repo.upsertNode({ publicKey: 'pk-2' }, 'src-a');
+    await repo.upsertNode({ publicKey: 'pk-3' }, 'src-b');
+    await repo.setNodeTimeSyncConfig('src-a', 'pk-1', { enabled: true });
+    await repo.setNodeTimeSyncConfig('src-a', 'pk-2', { enabled: false });
+    await repo.setNodeTimeSyncConfig('src-b', 'pk-3', { enabled: true });
+
+    const aResult = await repo.getTimeSyncEnabledNodes('src-a');
+    expect(aResult.map((n) => n.publicKey)).toEqual(['pk-1']);
+
+    const bResult = await repo.getTimeSyncEnabledNodes('src-b');
+    expect(bResult.map((n) => n.publicKey)).toEqual(['pk-3']);
+  });
+
+  it('markTimeSyncRequested stamps lastTimeSyncAt WITHOUT touching the other two cadences', async () => {
+    await repo.upsertNode({ publicKey: 'pk-1' }, 'src-a');
+    await repo.setNodeTimeSyncConfig('src-a', 'pk-1', { enabled: true });
+    await repo.markTelemetryRequested('src-a', 'pk-1', 111_111);
+    await repo.markNeighborsRequested('src-a', 'pk-1', 222_222);
+    await repo.markTimeSyncRequested('src-a', 'pk-1', 999_999);
+
+    const row = db
+      .prepare(
+        `SELECT lastTimeSyncAt, lastNeighborsRequestAt, lastTelemetryRequestAt
+         FROM meshcore_nodes WHERE publicKey = 'pk-1'`,
+      )
+      .get() as {
+      lastTimeSyncAt: number;
+      lastNeighborsRequestAt: number;
+      lastTelemetryRequestAt: number;
+    };
+    // All three cadences must stay independent — a time-sync must never reset
+    // the telemetry or neighbours timer (#4916).
+    expect(row.lastTimeSyncAt).toBe(999_999);
+    expect(row.lastNeighborsRequestAt).toBe(222_222);
+    expect(row.lastTelemetryRequestAt).toBe(111_111);
+  });
+
+  it('setNodeTimeSyncConfig seeds a stub row with the 12-hour default interval', async () => {
+    await repo.setNodeTimeSyncConfig('src-a', 'pk-new', { enabled: true });
+    const row = db
+      .prepare(`SELECT timeSyncEnabled, timeSyncIntervalMinutes FROM meshcore_nodes WHERE publicKey = 'pk-new'`)
+      .get() as { timeSyncEnabled: number; timeSyncIntervalMinutes: number };
+    expect(row.timeSyncEnabled).toBe(1);
+    expect(row.timeSyncIntervalMinutes).toBe(720);
+  });
+
+  it('setNodeTimeSyncConfig is scoped by sourceId — same publicKey on two sources is independent', async () => {
+    await repo.upsertNode({ publicKey: 'pk-1' }, 'src-a');
+    await repo.upsertNode({ publicKey: 'pk-1' }, 'src-b');
+    await repo.setNodeTimeSyncConfig('src-a', 'pk-1', { enabled: true, intervalMinutes: 720 });
+    await repo.setNodeTimeSyncConfig('src-b', 'pk-1', { enabled: false, intervalMinutes: 1440 });
+
+    const a = await repo.getTimeSyncEnabledNodes('src-a');
+    expect(a.map((n) => n.publicKey)).toEqual(['pk-1']);
+    const b = await repo.getTimeSyncEnabledNodes('src-b');
+    expect(b).toHaveLength(0);
+  });
+
+  it('setNodeTimeSyncConfig leaves the unspecified field intact on update', async () => {
+    await repo.upsertNode({ publicKey: 'pk-1' }, 'src-a');
+    await repo.setNodeTimeSyncConfig('src-a', 'pk-1', { enabled: true, intervalMinutes: 1440 });
+    await repo.setNodeTimeSyncConfig('src-a', 'pk-1', { enabled: false });
+
+    const row = db
+      .prepare(`SELECT timeSyncEnabled, timeSyncIntervalMinutes FROM meshcore_nodes WHERE publicKey = 'pk-1'`)
+      .get() as { timeSyncEnabled: number; timeSyncIntervalMinutes: number };
+    expect(row.timeSyncEnabled).toBe(0);
+    expect(row.timeSyncIntervalMinutes).toBe(1440);
+  });
+
+  it('setNodeTimeSyncConfig throws without a sourceId', async () => {
+    await expect(
+      repo.setNodeTimeSyncConfig('', 'pk-1', { enabled: true }),
+    ).rejects.toThrow(/requires a sourceId/);
+  });
+
+  it('markTimeSyncRequested throws without a sourceId', async () => {
+    await expect(
+      repo.markTimeSyncRequested('', 'pk-1', 1),
+    ).rejects.toThrow(/requires a sourceId/);
+  });
+
   // ============ Composite-PK regression (issue: UNIQUE constraint failed) ============
 
   it('setNodeTelemetryConfig succeeds for the same publicKey under two sources on the composite-PK schema', async () => {
@@ -659,6 +751,9 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         neighborsEnabled INTEGER DEFAULT 0,
         neighborsIntervalMinutes INTEGER DEFAULT 60,
         lastNeighborsRequestAt INTEGER,
+        timeSyncEnabled INTEGER DEFAULT 0,
+        timeSyncIntervalMinutes INTEGER DEFAULT 720,
+        lastTimeSyncAt INTEGER,
         out_path TEXT,
         path_len INTEGER,
         adminCredential TEXT,
@@ -732,6 +827,9 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         neighborsEnabled INTEGER DEFAULT 0,
         neighborsIntervalMinutes INTEGER DEFAULT 60,
         lastNeighborsRequestAt INTEGER,
+        timeSyncEnabled INTEGER DEFAULT 0,
+        timeSyncIntervalMinutes INTEGER DEFAULT 720,
+        lastTimeSyncAt INTEGER,
         out_path TEXT,
         path_len INTEGER,
         adminCredential TEXT,
