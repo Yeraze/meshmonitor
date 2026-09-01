@@ -22,6 +22,12 @@ import TelemetryGauge from './TelemetryGauge';
 import TelemetryNumericLabel from './TelemetryNumericLabel';
 import { getTelemetryLabel } from './TelemetryChart';
 import { compareTelemetryGraphs } from '../utils/telemetryGraphOrder';
+import {
+  TELEMETRY_CATEGORY_LABELS,
+  TELEMETRY_CATEGORY_ORDER,
+  getTelemetryCategory,
+  type TelemetryCategory,
+} from '../utils/telemetryCategory';
 import { buildTelemetryFilename, telemetrySeriesToCsv } from '../utils/telemetryChartCsv';
 import { downloadTextFile } from '../utils/nodeExport';
 import { UiIcon } from './icons';
@@ -1013,10 +1019,33 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
       // Stable, deterministic order (#3436): favorited metrics first, then
       // alphabetical by display label. Previously the order came from the
       // grouping Map's insertion order, which reshuffled on almost every
-      // telemetry update — making it hard to track a specific graph. New
+      // telemetry update, making it hard to track a specific graph. New
       // metrics now slot into their alphabetical position instead of jumping
       // around.
       .sort(([typeA], [typeB]) => compareTelemetryGraphs(typeA, typeB, favorites, getTelemetryLabel));
+
+    // Group by category (#4930) so weather graphs sit next to weather
+    // graphs, power next to power, and so on. `Favorites` is a pinned
+    // pseudo-category built from the same underlying entries; favorited
+    // graphs also stay in their natural category below.
+    const categoryBuckets = new Map<TelemetryCategory, Array<[string, TelemetryData[]]>>();
+    for (const entry of filteredData) {
+      const [type] = entry;
+      const cat = getTelemetryCategory(type);
+      const bucket = categoryBuckets.get(cat);
+      if (bucket) bucket.push(entry);
+      else categoryBuckets.set(cat, [entry]);
+    }
+    const favoriteEntries = filteredData.filter(([type]) => favorites.has(type));
+    if (favoriteEntries.length > 0) {
+      categoryBuckets.set('favorites', favoriteEntries);
+    }
+    const sectionedData: Array<{ category: TelemetryCategory; entries: Array<[string, TelemetryData[]]> }> = [];
+    for (const cat of TELEMETRY_CATEGORY_ORDER) {
+      const entries = categoryBuckets.get(cat);
+      if (!entries || entries.length === 0) continue;
+      sectionedData.push({ category: cat, entries });
+    }
 
     // Sub-hour windows (e.g. the 15-minute preset) read awkwardly as
     // fractional hours, so render those with a minutes-based title instead.
@@ -1048,40 +1077,54 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
             </div>
           )}
         </div>
-        <div className="graphs-grid">
-          {filteredData.map(([type, data]) => (
-            <TelemetryGraphWidget
-              key={type}
-              nodeId={nodeId}
-              type={type}
-              baseUrl={baseUrl}
-              data={data}
-              isPaxcounterCombined={type === 'paxcounterWifi'}
-              bleData={groupedData.get('paxcounterBle')}
-              temperatureUnit={temperatureUnit}
-              globalTimeRange={globalTimeRange}
-              globalMinTime={globalMinTime}
-              solarEstimates={solarEstimates}
-              solarMonitoringEnabled={solarMonitoringEnabled}
-              getSolarVisibility={getSolarVisibility}
-              handleToggleSolar={handleToggleSolar}
-              favorites={favorites}
-              createToggleFavorite={createToggleFavorite}
-              handleMenuClick={handleMenuClick}
-              openMenu={openMenu}
-              menuPosition={menuPosition}
-              handlePurgeData={handlePurgeData}
-              chartColors={chartColors}
-              getTelemetryLabel={getTelemetryLabel}
-              getColor={getColor}
-              prepareChartData={prepareChartData}
-              timeFormat={timeFormat}
-              hours={effectiveHours}
-              t={t as (key: string, opts?: Record<string, unknown>) => string}
-              canEditSettings={canEditSettings}
-            />
-          ))}
-        </div>
+        {sectionedData.map(({ category, entries }) => (
+          <section
+            key={category}
+            className="telemetry-category"
+            aria-labelledby={`telemetry-cat-${category}`}
+          >
+            <h4 id={`telemetry-cat-${category}`} className="telemetry-category-title">
+              {t(
+                `telemetry.category.${category}`,
+                TELEMETRY_CATEGORY_LABELS[category],
+              )}
+            </h4>
+            <div className="graphs-grid">
+              {entries.map(([type, data]) => (
+                <TelemetryGraphWidget
+                  key={`${category}-${type}`}
+                  nodeId={nodeId}
+                  type={type}
+                  baseUrl={baseUrl}
+                  data={data}
+                  isPaxcounterCombined={type === 'paxcounterWifi'}
+                  bleData={groupedData.get('paxcounterBle')}
+                  temperatureUnit={temperatureUnit}
+                  globalTimeRange={globalTimeRange}
+                  globalMinTime={globalMinTime}
+                  solarEstimates={solarEstimates}
+                  solarMonitoringEnabled={solarMonitoringEnabled}
+                  getSolarVisibility={getSolarVisibility}
+                  handleToggleSolar={handleToggleSolar}
+                  favorites={favorites}
+                  createToggleFavorite={createToggleFavorite}
+                  handleMenuClick={handleMenuClick}
+                  openMenu={openMenu}
+                  menuPosition={menuPosition}
+                  handlePurgeData={handlePurgeData}
+                  chartColors={chartColors}
+                  getTelemetryLabel={getTelemetryLabel}
+                  getColor={getColor}
+                  prepareChartData={prepareChartData}
+                  timeFormat={timeFormat}
+                  hours={effectiveHours}
+                  t={t as (key: string, opts?: Record<string, unknown>) => string}
+                  canEditSettings={canEditSettings}
+                />
+              ))}
+            </div>
+          </section>
+        ))}
       </div>
     );
   }
