@@ -183,10 +183,18 @@ export function BaseMap({
                 // Damp ESRI World_Imagery's over-saturated synthetic water blue
                 // on our provided satellite tilesets (#4860). Base tiles only —
                 // the hybrid label overlay below is left untouched.
+                // Per-tileset base-layer tone adjustments. Both are BASE-only:
+                // each tileset's label overlay is a separate TileLayer below
+                // and must stay unfiltered to remain legible.
+                //   - satellite: damp ESRI World_Imagery's synthetic water blue (#4860)
+                //   - dark gray: darken ESRI's mid-gray "Dark Gray" canvas so it
+                //     actually reads as dark in a dark-themed UI (#5015)
                 className={
                   tileset.id === 'esriSatellite' || tileset.id === 'esriHybrid'
                     ? 'mm-satellite-base-tile'
-                    : undefined
+                    : tileset.id === 'esriDarkGray'
+                      ? 'mm-dark-gray-base-tile'
+                      : undefined
                 }
               />
               {/* Optional transparent label/road overlay drawn on top of the

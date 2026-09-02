@@ -23,11 +23,12 @@ vi.mock('react-leaflet', () => ({
       {children}
     </div>
   ),
-  TileLayer: (props: { url?: string; maxZoom?: number; zIndex?: number; attribution?: string; className?: string }) => (
+  TileLayer: (props: { url?: string; maxZoom?: number; maxNativeZoom?: number; zIndex?: number; attribution?: string; className?: string }) => (
     <div
       data-testid="raster-tile"
       data-url={props.url}
       data-maxzoom={String(props.maxZoom)}
+      data-maxnativezoom={props.maxNativeZoom === undefined ? '' : String(props.maxNativeZoom)}
       data-zindex={props.zIndex === undefined ? '' : String(props.zIndex)}
       data-attribution={props.attribution}
       data-classname={props.className ?? ''}
@@ -164,6 +165,45 @@ describe('BaseMap', () => {
   it('does not damp non-satellite raster tilesets (#4860)', () => {
     render(<BaseMap center={[0, 0]} zoom={3} tilesetId="osm" />);
     expect(screen.getByTestId('raster-tile').getAttribute('data-classname')).toBe('');
+  });
+
+  // #5015: the keyless dark basemap. Two distinct concerns, both base-only.
+  it('darkens only the base of esriDarkGray, not its label overlay (#5015)', () => {
+    render(<BaseMap center={[0, 0]} zoom={3} tilesetId="esriDarkGray" />);
+    const [base, overlay] = screen.getAllByTestId('raster-tile');
+    expect(base.getAttribute('data-url')).toContain('World_Dark_Gray_Base');
+    expect(base.getAttribute('data-classname')).toBe('mm-dark-gray-base-tile');
+    // Labels must NOT be dimmed, or they stop being readable against the
+    // darkened ground the filter just created.
+    expect(overlay.getAttribute('data-url')).toContain('World_Dark_Gray_Reference');
+    expect(overlay.getAttribute('data-classname')).toBe('');
+  });
+
+  it('passes maxNativeZoom through on both base and overlay for esriDarkGray (#5015)', () => {
+    render(<BaseMap center={[0, 0]} zoom={3} tilesetId="esriDarkGray" />);
+    const [base, overlay] = screen.getAllByTestId('raster-tile');
+    // The service advertises maxLOD 23 but has no real tiles past 16; without
+    // this Leaflet requests blank levels and the map goes empty when zoomed in.
+    expect(base.getAttribute('data-maxnativezoom')).toBe('16');
+    expect(overlay.getAttribute('data-maxnativezoom')).toBe('16');
+    // The ceiling still matches the other tilesets — Leaflet upscales past 16.
+    expect(base.getAttribute('data-maxzoom')).toBe('19');
+  });
+
+  it('leaves maxNativeZoom unset for tilesets with tiles all the way up (#5015)', () => {
+    render(<BaseMap center={[0, 0]} zoom={3} tilesetId="osm" />);
+    expect(screen.getByTestId('raster-tile').getAttribute('data-maxnativezoom')).toBe('');
+  });
+
+  it('remounts the raster layer when only maxNativeZoom differs (#5015)', () => {
+    // osm and esriDarkGray share maxZoom 19, so a maxZoom-only key would reuse
+    // the layer and leave it requesting blank z17+ tiles after the swap.
+    const { rerender } = render(<BaseMap center={[0, 0]} zoom={3} tilesetId="osm" />);
+    const before = screen.getByTestId('raster-tile');
+    rerender(<BaseMap center={[0, 0]} zoom={3} tilesetId="esriDarkGray" />);
+    const after = screen.getAllByTestId('raster-tile')[0];
+    expect(after).not.toBe(before);
+    expect(after.getAttribute('data-maxnativezoom')).toBe('16');
   });
 
   // 3b. Raster tile-layer keying (tile-loading regression fix): the raster
