@@ -562,6 +562,20 @@ describe('adminRoutes — setSecurityConfig private key (#4632)', () => {
     } as unknown as ISourceManager;
   }
 
+  // Remote commands return 202 and settle in the background (#4482 moved mesh
+  // round-trips out of the request path), so assertions on what was SENT have
+  // to wait for the operation rather than read straight off the response.
+  async function waitForSettled(agent: any, operationId: string, attempts = 80) {
+    const { isTerminal } = await import('../services/adminOperationService.js');
+    for (let i = 0; i < attempts; i++) {
+      const res = await agent.get(`/operations/${operationId}`);
+      const op = res.body?.data;
+      if (op && isTerminal(op.status)) return op;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    throw new Error(`operation ${operationId} never settled`);
+  }
+
   beforeEach(async () => {
     const { generateKeyPairSync } = await import('node:crypto');
     const kp = generateKeyPairSync('x25519');
@@ -651,6 +665,127 @@ describe('adminRoutes — setSecurityConfig private key (#4632)', () => {
     // Preserved from the existing pair, not re-derived from a "changed" key.
     expect(sentConfig.publicKey).toBe(pair.pub);
     expect(sentConfig.privateKey).toBe(pair.priv);
+  });
+
+  // --- #4736: remote-node saves merge the keypair SERVER-side ---
+  //
+  // Why this matters: firmware's handleSetConfig assigns the incoming security
+  // struct wholesale and then, seeing a private key that is not 32 bytes, calls
+  // crypto->generateKeyPair(). A save that omits the keypair therefore does not
+  // "leave it alone" — it gives the node a NEW IDENTITY that every peer has to
+  // re-learn. These pin the read-then-merge that prevents that.
+
+  it('reads the remote node config and sends back its existing keypair (#4736)', async () => {
+    const requestRemoteConfig = vi.fn().mockResolvedValue({
+      publicKey: Buffer.from(pair.pub, 'base64'),
+      privateKey: Buffer.from(pair.priv, 'base64'),
+      packetSignaturePolicy: 2, // STRICT
+      adminKey: [],
+    });
+    await sourceManagerRegistry.addManager(makeManager({ requestRemoteConfig }));
+    const agent = await harness.loginAs(harness.admin);
+
+    const res = await agent.post('/commands').send({
+      command: 'setSecurityConfig',
+      sourceId: harness.sourceA,
+      nodeNum: 999, // remote
+      config: { isManaged: true, serialEnabled: false, debugLogApiEnabled: false, adminChannelEnabled: false },
+    });
+
+    expect(res.status).toBe(202);
+    await waitForSettled(agent, res.body.operationId);
+    expect(requestRemoteConfig).toHaveBeenCalled();
+    const sentConfig = (protobufService.createSetSecurityConfigMessage as unknown as import('vitest').Mock).mock.calls[0][0];
+    // The node's OWN keys, read off the device — not absent, not the local node's.
+    expect(sentConfig.privateKey).toBe(pair.priv);
+    expect(sentConfig.publicKey).toBe(pair.pub);
+    // STRICT must survive: omitted, it silently resets to COMPATIBLE (0).
+    expect(sentConfig.packetSignaturePolicy).toBe(2);
+    // The user's edit still applies.
+    expect(sentConfig.isManaged).toBe(true);
+  });
+
+  it('does NOT take the local node keys when targeting a remote node (#4736)', async () => {
+    // The regression this guards: falling back to getSecurityKeys() would push
+    // the LOCAL node's identity onto the remote one.
+    const requestRemoteConfig = vi.fn().mockResolvedValue({
+      publicKey: Buffer.from(pair.pub, 'base64'),
+      privateKey: Buffer.from(pair.priv, 'base64'),
+      adminKey: [],
+    });
+    await sourceManagerRegistry.addManager(makeManager({ requestRemoteConfig }));
+    const agent = await harness.loginAs(harness.admin);
+
+    const res = await agent.post('/commands').send({
+      command: 'setSecurityConfig',
+      sourceId: harness.sourceA,
+      nodeNum: 999,
+      config: { isManaged: false, serialEnabled: false, debugLogApiEnabled: false, adminChannelEnabled: false },
+    });
+    await waitForSettled(agent, res.body.operationId);
+
+    const sentConfig = (protobufService.createSetSecurityConfigMessage as unknown as import('vitest').Mock).mock.calls[0][0];
+    expect(sentConfig.publicKey).not.toMatch(/^OLDPUBLIC/);
+    expect(sentConfig.privateKey).not.toMatch(/^OLDPRIVATE/);
+  });
+
+  it('fails CLOSED with 409 when the remote node cannot be read (#4736)', async () => {
+    // An unreachable node must abort the save. Proceeding would send a keyless
+    // struct, which is the destructive case.
+    const requestRemoteConfig = vi.fn().mockResolvedValue(null);
+    const sendAdminCommand = vi.fn().mockResolvedValue(undefined);
+    await sourceManagerRegistry.addManager(makeManager({ requestRemoteConfig, sendAdminCommand }));
+    const agent = await harness.loginAs(harness.admin);
+
+    const res = await agent.post('/commands').send({
+      command: 'setSecurityConfig',
+      sourceId: harness.sourceA,
+      nodeNum: 999,
+      config: { isManaged: false, serialEnabled: false, debugLogApiEnabled: false, adminChannelEnabled: false },
+    });
+
+    expect(res.status).toBe(202);
+    const op = await waitForSettled(agent, res.body.operationId);
+    expect(op.status).not.toBe('succeeded');
+    expect(JSON.stringify(op)).toContain('SECURITY_CONFIG_READBACK_FAILED');
+    // The whole point of failing closed: nothing was built, nothing was sent.
+    expect(protobufService.createSetSecurityConfigMessage).not.toHaveBeenCalled();
+    expect(sendAdminCommand).not.toHaveBeenCalled();
+  });
+
+  it('fails CLOSED with 409 when the remote read throws (#4736)', async () => {
+    const requestRemoteConfig = vi.fn().mockRejectedValue(new Error('timeout'));
+    await sourceManagerRegistry.addManager(makeManager({ requestRemoteConfig }));
+    const agent = await harness.loginAs(harness.admin);
+
+    const res = await agent.post('/commands').send({
+      command: 'setSecurityConfig',
+      sourceId: harness.sourceA,
+      nodeNum: 999,
+      config: { isManaged: false, serialEnabled: false, debugLogApiEnabled: false, adminChannelEnabled: false },
+    });
+
+    expect(res.status).toBe(202);
+    const op = await waitForSettled(agent, res.body.operationId);
+    expect(op.status).not.toBe('succeeded');
+    expect(protobufService.createSetSecurityConfigMessage).not.toHaveBeenCalled();
+  });
+
+  it('never reads the remote node when the target IS the local node (#4736)', async () => {
+    const requestRemoteConfig = vi.fn();
+    await sourceManagerRegistry.addManager(makeManager({ requestRemoteConfig }));
+    const agent = await harness.loginAs(harness.admin);
+
+    const res = await agent.post('/commands').send({
+      command: 'setSecurityConfig',
+      sourceId: harness.sourceA,
+      nodeNum: 1, // local
+      config: { isManaged: false, serialEnabled: false, debugLogApiEnabled: false, adminChannelEnabled: false },
+    });
+
+    expect(res.status).toBe(200);
+    // Local keys come from the manager cache; no extra mesh round-trip.
+    expect(requestRemoteConfig).not.toHaveBeenCalled();
   });
 
   it('preserves both keys unchanged when no private key is supplied', async () => {

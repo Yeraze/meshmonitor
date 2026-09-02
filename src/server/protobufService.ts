@@ -1196,8 +1196,21 @@ class ProtobufService {
       if (config.debugLogApiEnabled !== undefined) securityConfigData.debugLogApiEnabled = config.debugLogApiEnabled;
       if (config.adminChannelEnabled !== undefined) securityConfigData.adminChannelEnabled = config.adminChannelEnabled;
 
-      // IMPORTANT: Include public_key and private_key to preserve them when updating other settings
-      // If we don't include them, the firmware may reset them to empty/random values
+      // #4736: packet_signature_policy (field 9) must round-trip too. Firmware
+      // wholesale-replaces the security struct, so omitting this silently
+      // resets the node from STRICT/BALANCED back to COMPATIBLE (0) — a
+      // security downgrade with no user-visible signal, which the firmware's
+      // own bug report called out as worse than losing the admin keys.
+      if (config.packetSignaturePolicy !== undefined) {
+        securityConfigData.packetSignaturePolicy = config.packetSignaturePolicy;
+      }
+
+      // IMPORTANT: include public_key and private_key to preserve them when
+      // updating other settings. Not "may reset them to empty/random values" —
+      // firmware assigns the incoming struct wholesale and then, seeing a
+      // private key that is not 32 bytes, calls crypto->generateKeyPair(),
+      // giving the node a NEW IDENTITY that every peer must re-learn
+      // (AdminModule.cpp handleSetConfig, meshtastic_Config_security_tag).
       if (config.publicKey) {
         try {
           securityConfigData.publicKey = Buffer.from(config.publicKey, 'base64');
