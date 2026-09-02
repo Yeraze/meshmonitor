@@ -41,7 +41,7 @@ wardrive ingestion via MeshMapper's third-party endpoint API.
 
 ## Phases
 
-### Phase 1 — Multi-broker observer backend ✅ status: [ ] not started
+### Phase 1 — Multi-broker observer backend ✅ status: [x] implemented (PR pending)
 
 - `MeshCoreObserverConfig` gains `brokers[]` (url, authMode, tokenAudience,
   label); legacy single `brokerUrl` block normalized transparently at read
@@ -69,4 +69,21 @@ wardrive ingestion via MeshMapper's third-party endpoint API.
 
 ## Deviations / notes
 
-(record per phase)
+### Phase 1 (implemented 2026-09-02)
+
+- Spec: `MESHMAPPER_OBSERVER_PHASE1_SPEC.md`. Work packages WP1–WP4 as planned.
+- No whole-config size guard — a universal 4096-byte cap would have made
+  existing >4KB SQLite/PG configs uneditable. Instead: observer-block-only cap
+  (`MAX_OBSERVER_CONFIG_BYTES` = 1536, `OBSERVER_CONFIG_TOO_LARGE`) plus a
+  non-rejecting MySQL `logger.warn` when a whole blob exceeds 4096.
+- `MISSING_BROKER` fires only when `brokers` was explicitly provided but
+  yields no usable entry AND no legacy `brokerUrl` exists; a fully-absent
+  `brokers` runs the exact pre-#5014 path (`INVALID_PARAMETER`), preserving
+  every pre-existing assertion.
+- Review fix: token renewal now excludes hard-stopped connections
+  (`hardStoppedKeys`) — without it, the hourly renewal resurrected a
+  connection that hard-stopped on auth failure and disabled its latch forever.
+- `MAX_OBSERVER_BROKERS = 8` — above the three named brokers, keeps the blob
+  small. Flag to project owner at PR review.
+- Behaviour change (deliberate, in PR body): `MAX_AUTH_FAILURES` hard-stops
+  only the offending connection, not the whole observer.
