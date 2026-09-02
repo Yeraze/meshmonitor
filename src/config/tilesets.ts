@@ -99,12 +99,15 @@ export const TILESETS: Readonly<Record<PredefinedTilesetId, TilesetConfig>> = {
     overlayUrl: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
     attribution: 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ',
     overlayAttribution: 'Labels &copy; Esri &mdash; Esri, DeLorme, NAVTEQ',
-    // The service ADVERTISES maxLOD 23 in its ?f=json metadata, but that is
-    // not where its data stops: from z17 up every tile is the same 2521-byte
-    // blank placeholder (verified against central London — z14/15/16 return
-    // distinct imagery, z17-z20 return one identical md5). Trusting the
-    // advertised number would give a map that silently goes blank when you
-    // zoom in on a node.
+    // Both services ADVERTISE maxLOD 23 in their ?f=json metadata, but that is
+    // not where their data stops: from z17 up every tile is the same blank
+    // placeholder. Verified against central London for BOTH layers — the Base
+    // returns distinct imagery at z14/15/16 then one identical 2521-byte tile
+    // from z17, and the Reference (labels) layer stops at exactly the same
+    // level, returning one identical 875-byte tile from z17. So a single cap
+    // of 16 is right for the pair, and no label resolution is being thrown
+    // away. Trusting the advertised number would give a map that silently
+    // goes blank when you zoom in on a node.
     //
     // So keep maxZoom at 19 to match the other tilesets — switching basemaps
     // must not yank the zoom ceiling out from under the user — and set

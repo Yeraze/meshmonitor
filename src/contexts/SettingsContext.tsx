@@ -346,6 +346,31 @@ export const getActiveAppearanceMode = (
 );
 
 /**
+ * Has anyone actually CHOSEN a dark basemap, as opposed to inheriting a
+ * default? (#5015)
+ *
+ * Shared by the localStorage path and the /api/settings path, which is the
+ * point: they previously each derived this by hand and disagreed. The server
+ * path used a bare `Boolean(settings.mapTileset)`, so a stored legacy
+ * `mapTileset: 'osm'` — the DEFAULT, chosen by nobody — counted as a
+ * deliberate dark choice, suppressed the keyless resolver, and let `cartoDark`
+ * through anyway. That is the same mistake as the original bug (treating a
+ * default as a decision), one layer down.
+ *
+ * A legacy single-tileset value only implies a dark choice when it is
+ * something other than DEFAULT_TILESET_ID, matching `resolveLegacyMapTilesets`,
+ * which only substitutes a dark default in exactly that case.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- #4096 pure helper exported for focused tests
+export const wasDarkTilesetChosen = (
+  storedDark: string | null | undefined,
+  legacyTileset: string | null | undefined,
+): boolean => {
+  if (storedDark) return true;
+  return Boolean(legacyTileset) && legacyTileset !== DEFAULT_TILESET_ID;
+};
+
+/**
  * Pick the dark-mode default for the Carto key we actually have (#5015).
  * Pure; exported for focused tests.
  *
@@ -378,7 +403,7 @@ const getInitialMapTilesets = (): MapTilesetPreferences & { darkIsDefault: boole
   // explicit `mapTilesetDark`, and no legacy `mapTileset` that would have
   // implied one. We cannot resolve the right default yet, because it depends
   // on the Carto key, which only arrives with the /api/settings response.
-  const darkIsDefault = !storedDark && (!storedLegacy || storedLegacy === DEFAULT_TILESET_ID);
+  const darkIsDefault = !wasDarkTilesetChosen(storedDark, storedLegacy);
 
   localStorage.setItem('mapTilesetLight', light);
   // Deliberately NOT persisting a merely-defaulted dark. Writing it here is
@@ -1692,9 +1717,10 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
           if (settings.mapTileset || settings.mapTilesetLight || settings.mapTilesetDark) {
             const legacyTilesets = resolveLegacyMapTilesets(settings.mapTileset);
             const nextLight = settings.mapTilesetLight || legacyTilesets.light;
-            // A server-stored dark preference is a real choice; a value that
-            // only came from the legacy single-tileset fallback is not.
-            const darkWasChosen = Boolean(settings.mapTilesetDark || settings.mapTileset);
+            // A server-stored dark preference is a real choice; a legacy
+            // `mapTileset` that is merely DEFAULT_TILESET_ID is not — see
+            // wasDarkTilesetChosen for why that distinction is load-bearing.
+            const darkWasChosen = wasDarkTilesetChosen(settings.mapTilesetDark, settings.mapTileset);
             const nextDark = settings.mapTilesetDark || legacyTilesets.dark;
             setMapTilesetLightState(nextLight);
             setMapTilesetDarkState(nextDark);
