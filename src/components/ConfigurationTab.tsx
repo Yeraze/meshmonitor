@@ -75,7 +75,11 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   const [buzzerGpio, setBuzzerGpio] = useState(0);
 
   // LoRa Config State
-  const [usePreset, setUsePreset] = useState(true);
+  // proto3 elides zero values from the wire, so a bool field the user set
+  // to `false` arrives as `undefined` here. The initial state MUST be the
+  // proto3 zero (`false`) so the UI reflects reality when a load skips or
+  // the guard fails (#5028 class).
+  const [usePreset, setUsePreset] = useState(false);
   const [modemPreset, setModemPreset] = useState<number>(0);
   const [bandwidth, setBandwidth] = useState<number>(250);
   const [spreadFactor, setSpreadFactor] = useState<number>(11);
@@ -97,13 +101,13 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
 
   // Position Config State
   const [positionBroadcastSecs, setPositionBroadcastSecs] = useState(900);
-  const [positionSmartEnabled, setPositionSmartEnabled] = useState(true);
+  const [positionSmartEnabled, setPositionSmartEnabled] = useState(false);
   const [fixedPosition, setFixedPosition] = useState(false);
   const [fixedLatitude, setFixedLatitude] = useState<number>(0);
   const [fixedLongitude, setFixedLongitude] = useState<number>(0);
   const [fixedAltitude, setFixedAltitude] = useState<number>(0);
   const [gpsUpdateInterval, setGpsUpdateInterval] = useState(0);
-  const [gpsMode, setGpsMode] = useState(1);
+  const [gpsMode, setGpsMode] = useState(0);
   const [broadcastSmartMinimumDistance, setBroadcastSmartMinimumDistance] = useState(0);
   const [broadcastSmartMinimumIntervalSecs, setBroadcastSmartMinimumIntervalSecs] = useState(0);
   const [positionFlags, setPositionFlags] = useState(0);
@@ -116,7 +120,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   const [mqttAddress, setMqttAddress] = useState('');
   const [mqttUsername, setMqttUsername] = useState('');
   const [mqttPassword, setMqttPassword] = useState('');
-  const [mqttEncryptionEnabled, setMqttEncryptionEnabled] = useState(true);
+  const [mqttEncryptionEnabled, setMqttEncryptionEnabled] = useState(false);
   const [mqttJsonEnabled, setMqttJsonEnabled] = useState(false);
   const [mqttRoot, setMqttRoot] = useState('');
   const [mqttTlsEnabled, setMqttTlsEnabled] = useState(false);
@@ -325,7 +329,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   const loadedSecurityPrivateKeyRef = useRef('');
   const [securityAdminKeys, setSecurityAdminKeys] = useState<string[]>(['']);
   const [securityIsManaged, setSecurityIsManaged] = useState(false);
-  const [securitySerialEnabled, setSecuritySerialEnabled] = useState(true);
+  const [securitySerialEnabled, setSecuritySerialEnabled] = useState(false);
   const [securityDebugLogApiEnabled, setSecurityDebugLogApiEnabled] = useState(false);
   const [securityAdminChannelEnabled, setSecurityAdminChannelEnabled] = useState(false);
 
@@ -400,9 +404,9 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
 
         // Populate LoRa config
         if (config.deviceConfig?.lora) {
-          if (config.deviceConfig.lora.usePreset !== undefined) {
-            setUsePreset(config.deviceConfig.lora.usePreset);
-          }
+          // proto3 elides `false` from the wire, so treat missing as false
+          // rather than skipping the update (#5028 class).
+          setUsePreset(config.deviceConfig.lora.usePreset === true);
           if (config.deviceConfig.lora.modemPreset !== undefined) {
             const presetValue = typeof config.deviceConfig.lora.modemPreset === 'string'
               ? PRESET_MAP[config.deviceConfig.lora.modemPreset] || 0
@@ -468,18 +472,16 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           if (config.deviceConfig.position.positionBroadcastSecs !== undefined) {
             setPositionBroadcastSecs(config.deviceConfig.position.positionBroadcastSecs);
           }
-          if (config.deviceConfig.position.positionBroadcastSmartEnabled !== undefined) {
-            setPositionSmartEnabled(config.deviceConfig.position.positionBroadcastSmartEnabled);
-          }
+          setPositionSmartEnabled(config.deviceConfig.position.positionBroadcastSmartEnabled === true);
           if (config.deviceConfig.position.fixedPosition !== undefined) {
             setFixedPosition(config.deviceConfig.position.fixedPosition);
           }
           if (config.deviceConfig.position.gpsUpdateInterval !== undefined) {
             setGpsUpdateInterval(config.deviceConfig.position.gpsUpdateInterval);
           }
-          if (config.deviceConfig.position.gpsMode !== undefined) {
-            setGpsMode(config.deviceConfig.position.gpsMode);
-          }
+          // GpsMode.DISABLED = 0 is a real enum value and proto3 elides it
+          // from the wire; fall through to 0 rather than keeping the init (#5028).
+          setGpsMode(config.deviceConfig.position.gpsMode ?? 0);
           if (config.deviceConfig.position.broadcastSmartMinimumDistance !== undefined) {
             setBroadcastSmartMinimumDistance(config.deviceConfig.position.broadcastSmartMinimumDistance);
           }
@@ -506,7 +508,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           setMqttAddress(config.moduleConfig.mqtt.address || '');
           setMqttUsername(config.moduleConfig.mqtt.username || '');
           setMqttPassword(config.moduleConfig.mqtt.password || '');
-          setMqttEncryptionEnabled(config.moduleConfig.mqtt.encryptionEnabled !== false);
+          // proto3 elides `false`; `!== false` misreads elided-false as true (#5028 class).
+          setMqttEncryptionEnabled(config.moduleConfig.mqtt.encryptionEnabled === true);
           setMqttJsonEnabled(config.moduleConfig.mqtt.jsonEnabled || false);
           setMqttRoot(config.moduleConfig.mqtt.root || '');
           setMqttTlsEnabled(config.moduleConfig.mqtt.tlsEnabled || false);
@@ -796,7 +799,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             setSecurityAdminKeys(keys.length > 0 ? keys : ['']);
           }
           setSecurityIsManaged(sec.isManaged || false);
-          setSecuritySerialEnabled(sec.serialEnabled !== false); // Default to true
+          // proto3 elides `false`; only trust a wire-present `true` (#5028 class).
+          setSecuritySerialEnabled(sec.serialEnabled === true);
           setSecurityDebugLogApiEnabled(sec.debugLogApiEnabled || false);
           setSecurityAdminChannelEnabled(sec.adminChannelEnabled || false);
         }
@@ -1712,9 +1716,11 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
       // Update LoRa Config
       if (config.deviceConfig?.lora) {
         const lora = config.deviceConfig.lora;
-        if (lora.usePreset !== undefined && lora.usePreset !== usePreset) {
-          changes.push({ field: 'LoRa: Use Preset', oldValue: formatValue(usePreset), newValue: formatValue(lora.usePreset) });
-          setUsePreset(lora.usePreset);
+        // proto3 elides `false`; normalize to bool before comparing (#5028 class).
+        const newUsePreset = lora.usePreset === true;
+        if (newUsePreset !== usePreset) {
+          changes.push({ field: 'LoRa: Use Preset', oldValue: formatValue(usePreset), newValue: formatValue(newUsePreset) });
+          setUsePreset(newUsePreset);
         }
         if (lora.modemPreset !== undefined) {
           const newPreset = typeof lora.modemPreset === 'string' ? PRESET_MAP[lora.modemPreset] || 0 : lora.modemPreset;
@@ -1764,17 +1770,21 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           changes.push({ field: 'Position: Broadcast Interval (s)', oldValue: formatValue(positionBroadcastSecs), newValue: formatValue(pos.positionBroadcastSecs) });
           setPositionBroadcastSecs(pos.positionBroadcastSecs);
         }
-        if (pos.positionBroadcastSmartEnabled !== undefined && pos.positionBroadcastSmartEnabled !== positionSmartEnabled) {
-          changes.push({ field: 'Position: Smart Enabled', oldValue: formatValue(positionSmartEnabled), newValue: formatValue(pos.positionBroadcastSmartEnabled) });
-          setPositionSmartEnabled(pos.positionBroadcastSmartEnabled);
+        // proto3 elides `false` (#5028 class).
+        const newPositionSmartEnabled = pos.positionBroadcastSmartEnabled === true;
+        if (newPositionSmartEnabled !== positionSmartEnabled) {
+          changes.push({ field: 'Position: Smart Enabled', oldValue: formatValue(positionSmartEnabled), newValue: formatValue(newPositionSmartEnabled) });
+          setPositionSmartEnabled(newPositionSmartEnabled);
         }
         if (pos.fixedPosition !== undefined && pos.fixedPosition !== fixedPosition) {
           changes.push({ field: 'Position: Fixed Position', oldValue: formatValue(fixedPosition), newValue: formatValue(pos.fixedPosition) });
           setFixedPosition(pos.fixedPosition);
         }
-        if (pos.gpsMode !== undefined && pos.gpsMode !== gpsMode) {
-          changes.push({ field: 'Position: GPS Mode', oldValue: formatValue(gpsMode), newValue: formatValue(pos.gpsMode) });
-          setGpsMode(pos.gpsMode);
+        // GpsMode.DISABLED = 0 is a real enum value and proto3 elides it (#5028).
+        const newGpsMode = pos.gpsMode ?? 0;
+        if (newGpsMode !== gpsMode) {
+          changes.push({ field: 'Position: GPS Mode', oldValue: formatValue(gpsMode), newValue: formatValue(newGpsMode) });
+          setGpsMode(newGpsMode);
         }
         // Update remaining position fields
         if (pos.gpsUpdateInterval !== undefined) setGpsUpdateInterval(pos.gpsUpdateInterval);
@@ -1797,9 +1807,11 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           changes.push({ field: 'MQTT: Address', oldValue: formatValue(mqttAddress), newValue: formatValue(mqtt.address) });
           setMqttAddress(mqtt.address);
         }
-        if (mqtt.encryptionEnabled !== undefined && mqtt.encryptionEnabled !== mqttEncryptionEnabled) {
-          changes.push({ field: 'MQTT: Encryption Enabled', oldValue: formatValue(mqttEncryptionEnabled), newValue: formatValue(mqtt.encryptionEnabled) });
-          setMqttEncryptionEnabled(mqtt.encryptionEnabled);
+        // proto3 elides `false` (#5028 class).
+        const newMqttEncryptionEnabled = mqtt.encryptionEnabled === true;
+        if (newMqttEncryptionEnabled !== mqttEncryptionEnabled) {
+          changes.push({ field: 'MQTT: Encryption Enabled', oldValue: formatValue(mqttEncryptionEnabled), newValue: formatValue(newMqttEncryptionEnabled) });
+          setMqttEncryptionEnabled(newMqttEncryptionEnabled);
         }
         if (mqtt.tlsEnabled !== undefined && mqtt.tlsEnabled !== mqttTlsEnabled) {
           changes.push({ field: 'MQTT: TLS Enabled', oldValue: formatValue(mqttTlsEnabled), newValue: formatValue(mqtt.tlsEnabled) });
