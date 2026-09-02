@@ -75,6 +75,23 @@ export interface SecurityConfigState {
   serialEnabled: boolean;
   debugLogApiEnabled: boolean;
   adminChannelEnabled: boolean;
+
+  // --- Load gate (#4736) ---
+  //
+  // The node's keypair and packet_signature_policy are deliberately NOT held
+  // here. Firmware wholesale-replaces the security struct and mints a new
+  // keypair when the incoming private key is absent, so those fields must
+  // survive a save — but they are merged SERVER-side from a fresh read of the
+  // node, so a remote node's PRIVATE KEY never reaches the browser. That also
+  // keeps the #4632 guard intact: a client-supplied private key aimed at a
+  // remote node stays rejected, because an honest echo and an identity hijack
+  // are indistinguishable at the server.
+  //
+  // What the UI still owes the user is the editable half. adminKeys and the
+  // flags below are sent wholesale, so saving without having LOADED them would
+  // overwrite admin keys the user never saw.
+
+  loadedForNodeNum: number | null;
 }
 
 // Bluetooth Config State
@@ -510,6 +527,7 @@ const initialState: AdminCommandsState = {
     serialEnabled: false,
     debugLogApiEnabled: false,
     adminChannelEnabled: false,
+    loadedForNodeNum: null,
   },
   bluetooth: {
     enabled: false,

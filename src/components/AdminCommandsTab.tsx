@@ -339,7 +339,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     setNodeManagementNodeNum(null);
     // Clear passkey status when switching nodes
     setPasskeyStatus(null);
-  }, [selectedNodeNum]);
+    // #4736: invalidate the security load gate — the values on screen belong
+    // to the node we just navigated away from.
+    setSecurityConfig({ loadedForNodeNum: null });
+  }, [selectedNodeNum, setSecurityConfig]);
 
   // Fetch and update passkey status for remote nodes
   const fetchPasskeyStatus = useCallback(async () => {
@@ -596,6 +599,12 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         if (config.serialEnabled !== undefined) securityUpdates.serialEnabled = config.serialEnabled;
         if (config.debugLogApiEnabled !== undefined) securityUpdates.debugLogApiEnabled = config.debugLogApiEnabled;
         if (config.adminChannelEnabled !== undefined) securityUpdates.adminChannelEnabled = config.adminChannelEnabled;
+
+        // #4736: stamp WHICH node these values came from. Save is gated on this
+        // matching the current selection, so the admin keys and flags being
+        // written are always the ones the user actually saw for that node.
+        securityUpdates.loadedForNodeNum = selectedNodeNum;
+
         if (Object.keys(securityUpdates).length > 0) {
           setSecurityConfig(securityUpdates);
         }
@@ -1820,16 +1829,60 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     }
   };
 
+  /**
+   * True when the security config currently in state was loaded FROM the node
+   * currently selected (#4736).
+   *
+   * Saving without this is destructive, not merely incomplete: firmware
+   * wholesale-replaces the security struct and mints a new keypair when the
+   * incoming private key is absent, so a blind save changes the target node's
+   * identity mesh-wide. Comparing node numbers rather than tracking a boolean
+   * also blocks the subtler version — load node A, switch to node B, save —
+   * which would push A's private key onto B.
+   */
+  const securityConfigLoadedForSelectedNode = useMemo(
+    () =>
+      selectedNodeNum !== null &&
+      configState.security.loadedForNodeNum === selectedNodeNum,
+    [selectedNodeNum, configState.security.loadedForNodeNum],
+  );
+
   const handleSetSecurityConfig = useCallback(async () => {
+    // Refuse rather than trust the button's disabled state — this is the guard
+    // that actually protects the node, and a disabled attribute is a hint, not
+    // an enforcement.
+    if (!securityConfigLoadedForSelectedNode) {
+      console.error('Refusing to save security config: not loaded for the selected node');
+      return;
+    }
+
+    const targetNode = nodeOptions.find(n => n.nodeNum === selectedNodeNum);
+    // Name the node the way the picker does, so the dialog is unambiguous about
+    // WHICH device is about to be overwritten.
+    const nodeLabel = targetNode
+      ? `${targetNode.longName || targetNode.shortName || targetNode.nodeId} (${targetNode.nodeId})`
+      : String(selectedNodeNum);
+    const confirmed = window.confirm(
+      t(
+        'admin_commands.security_save_confirm',
+        'Save security config to {{node}}?\n\nThis overwrites the entire security configuration on that node, including its identity keypair and admin keys. If anything is wrong, the node can be locked out of remote admin or given a new identity that every other node on the mesh will have to re-learn.\n\nOnly proceed if the values shown were loaded from this node.',
+        { node: nodeLabel },
+      ),
+    );
+    if (!confirmed) return;
+
     // Filter out empty admin keys
     const validAdminKeys = configState.security.adminKeys.filter(key => key && key.trim().length > 0);
-    
+
     const config: any = {
       adminKeys: validAdminKeys,
       isManaged: configState.security.isManaged,
       serialEnabled: configState.security.serialEnabled,
       debugLogApiEnabled: configState.security.debugLogApiEnabled,
-      adminChannelEnabled: configState.security.adminChannelEnabled
+      adminChannelEnabled: configState.security.adminChannelEnabled,
+      // No keypair or packetSignaturePolicy here on purpose: the server merges
+      // those from its own fresh read of the node (#4736), so the private key
+      // never crosses this boundary and the #4632 guard stays intact.
     };
 
     try {
@@ -1838,7 +1891,14 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       // Error already handled by executeCommand (toast shown)
       console.error('Set security config command failed:', error);
     }
-  }, [configState.security, executeCommand]);
+  }, [
+    configState.security,
+    executeCommand,
+    securityConfigLoadedForSelectedNode,
+    selectedNodeNum,
+    nodeOptions,
+    t,
+  ]);
 
   const handleSetBluetoothConfig = useCallback(async () => {
     const config: any = {
@@ -3139,14 +3199,41 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             </div>
           </label>
         </div>
+        {/*
+          #4736: re-enabled after being hard-disabled since #1602. The standard
+          dynamic condition every other save button uses, PLUS the requirement
+          that this node's security config has actually been loaded — without
+          the loaded keypair to echo back, saving would regenerate the node's
+          identity rather than just update its admin keys.
+        */}
+        {!securityConfigLoadedForSelectedNode && (
+          <div className="setting-description" style={{ marginBottom: '0.5rem', color: 'var(--color-warning)' }}>
+            {t(
+              'admin_commands.security_save_needs_load',
+              'Load this node\u2019s configuration first. Saving without it would replace the node\u2019s identity keypair rather than preserve it.',
+            )}
+          </div>
+        )}
         <button
           className="save-button"
           onClick={handleSetSecurityConfig}
-          disabled={true}
-          title={t('admin_commands.security_save_disabled')}
+          disabled={
+            isLoadingDeviceMetadata ||
+            selectedNodeNum === null ||
+            remoteAdminBlocked ||
+            !securityConfigLoadedForSelectedNode
+          }
+          title={
+            !securityConfigLoadedForSelectedNode
+              ? t(
+                  'admin_commands.security_save_needs_load',
+                  'Load this node\u2019s configuration first. Saving without it would replace the node\u2019s identity keypair rather than preserve it.',
+                )
+              : undefined
+          }
           style={{
-            opacity: 0.5,
-            cursor: 'not-allowed'
+            opacity: (isLoadingDeviceMetadata || selectedNodeNum === null || remoteAdminBlocked || !securityConfigLoadedForSelectedNode) ? 0.5 : 1,
+            cursor: (isLoadingDeviceMetadata || selectedNodeNum === null || remoteAdminBlocked || !securityConfigLoadedForSelectedNode) ? 'not-allowed' : 'pointer'
           }}
         >
           {t('admin_commands.save_security_config')}
