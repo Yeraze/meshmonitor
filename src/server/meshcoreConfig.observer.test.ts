@@ -76,13 +76,29 @@ describe('observerConfigFromSource', () => {
     const observer = observerConfigFromSource({
       observer: { enabled: true, brokerUrl: 'mqtts://host:8883', iataCode: 'MCO', tokenAudience: 'my-aud' },
     });
+    // #5014 Phase 1: brokers[] now carries the (single, legacy-synthesized)
+    // broker, and the flat fields remain a mirror of brokers[0].
     expect(observer).toEqual({
       enabled: true,
+      iataCode: 'MCO',
+      brokers: [
+        {
+          key: 'mqtts://host:8883',
+          url: 'mqtts://host:8883',
+          authMode: 'token',
+          tokenAudience: 'my-aud',
+          legacy: true,
+        },
+      ],
       authMode: 'token',
       brokerUrl: 'mqtts://host:8883',
-      iataCode: 'MCO',
       tokenAudience: 'my-aud',
     });
+    // Flat mirrors equal brokers[0] exactly (#5014 §2.2 contract).
+    expect(observer?.brokers?.[0]).toBeDefined();
+    expect(observer?.brokerUrl).toBe(observer?.brokers?.[0]?.url);
+    expect(observer?.authMode).toBe(observer?.brokers?.[0]?.authMode);
+    expect(observer?.tokenAudience).toBe(observer?.brokers?.[0]?.tokenAudience);
   });
 
   it('normalizes a bare host:port brokerUrl using normalizeBrokerUrl (mqtts for 8883)', () => {
@@ -127,13 +143,20 @@ describe('meshcoreConfigFromSource — observer plumbing', () => {
       }),
     );
     expect(cfg?.connectionType).toBe(ConnectionType.SERIAL);
+    // #5014 Phase 1: brokers[] mirrors the flat legacy fields.
     expect(cfg?.observer).toEqual({
       enabled: true,
+      iataCode: 'MCO',
+      brokers: [
+        { key: 'mqtts://host:8883', url: 'mqtts://host:8883', authMode: 'token', tokenAudience: 'aud', legacy: true },
+      ],
       authMode: 'token',
       brokerUrl: 'mqtts://host:8883',
-      iataCode: 'MCO',
       tokenAudience: 'aud',
     });
+    expect(cfg?.observer?.brokerUrl).toBe(cfg?.observer?.brokers?.[0]?.url);
+    expect(cfg?.observer?.authMode).toBe(cfg?.observer?.brokers?.[0]?.authMode);
+    expect(cfg?.observer?.tokenAudience).toBe(cfg?.observer?.brokers?.[0]?.tokenAudience);
   });
 
   it('carries observer through the TCP branch', () => {
@@ -148,13 +171,20 @@ describe('meshcoreConfigFromSource — observer plumbing', () => {
       }),
     );
     expect(cfg?.connectionType).toBe(ConnectionType.TCP);
+    // #5014 Phase 1: brokers[] mirrors the flat legacy fields.
     expect(cfg?.observer).toEqual({
       enabled: true,
+      iataCode: 'MCO',
+      brokers: [
+        { key: 'mqtts://host:8883', url: 'mqtts://host:8883', authMode: 'token', tokenAudience: 'aud', legacy: true },
+      ],
       authMode: 'token',
       brokerUrl: 'mqtts://host:8883',
-      iataCode: 'MCO',
       tokenAudience: 'aud',
     });
+    expect(cfg?.observer?.brokerUrl).toBe(cfg?.observer?.brokers?.[0]?.url);
+    expect(cfg?.observer?.authMode).toBe(cfg?.observer?.brokers?.[0]?.authMode);
+    expect(cfg?.observer?.tokenAudience).toBe(cfg?.observer?.brokers?.[0]?.tokenAudience);
   });
 
   it('leaves observer undefined on both branches when not configured', () => {

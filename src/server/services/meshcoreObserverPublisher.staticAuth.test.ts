@@ -75,16 +75,39 @@ const PUBKEY = 'AB'.repeat(32);
 const TOKEN_STRING = 'headerpart1234567890abcdef.payloadpart1234567890abcdef.' + 'a'.repeat(128);
 const BROKER_USER = 'meshcore';
 const BROKER_PASS = 'meshcore';
+const BROKER_URL = 'mqtt://meshcoretel.test:1883';
+const BROKER_KEY = BROKER_URL.toLowerCase();
 
+/** Legacy single (password-mode) broker, expressed as `NormalizedObserverConfig` (#5014 Phase 1 WP3). */
 function makeConfig(
   overrides: Partial<MeshCoreObserverPublisherOptions['config']> = {},
 ): MeshCoreObserverPublisherOptions['config'] {
   return {
     enabled: true,
-    authMode: 'password',
-    brokerUrl: 'mqtt://meshcoretel.test:1883',
     iataCode: 'ALA',
+    brokers: [{ key: BROKER_KEY, url: BROKER_URL, authMode: 'password', legacy: true }],
+    authMode: 'password',
+    brokerUrl: BROKER_URL,
     ...overrides,
+  };
+}
+
+/** Legacy single token-mode broker config, matching `meshcoreObserverPublisher.test.ts`'s shape. */
+function makeTokenConfig(
+  overrides: { tokenAudience?: string } = { tokenAudience: 'aud.test' },
+): MeshCoreObserverPublisherOptions['config'] {
+  const url = 'mqtt://broker.test:1883';
+  const key = url.toLowerCase();
+  const tokenAudience = overrides.tokenAudience;
+  return {
+    enabled: true,
+    iataCode: 'TEST',
+    brokers: tokenAudience
+      ? [{ key, url, authMode: 'token', tokenAudience, legacy: true }]
+      : [], // token-mode entry with no audience is dropped by normalizeObserverBrokers
+    authMode: 'token',
+    brokerUrl: url,
+    ...(tokenAudience ? { tokenAudience } : {}),
   };
 }
 
@@ -107,14 +130,16 @@ function makeToken(): ObserverToken {
 
 function loader(
   result: ObserverCredentialLoadResult,
-): MockedFunction<(sourceId: string) => Promise<ObserverCredentialLoadResult>> {
-  const fn = vi.fn() as MockedFunction<(sourceId: string) => Promise<ObserverCredentialLoadResult>>;
+): MockedFunction<(sourceId: string, brokerKey: string, legacy: boolean) => Promise<ObserverCredentialLoadResult>> {
+  const fn = vi.fn() as MockedFunction<
+    (sourceId: string, brokerKey: string, legacy: boolean) => Promise<ObserverCredentialLoadResult>
+  >;
   fn.mockResolvedValue(result);
   return fn;
 }
 
-function minter(): MockedFunction<(sourceId: string) => Promise<ObserverTokenResult>> {
-  const fn = vi.fn() as MockedFunction<(sourceId: string) => Promise<ObserverTokenResult>>;
+function minter(): MockedFunction<(sourceId: string, audience: string) => Promise<ObserverTokenResult>> {
+  const fn = vi.fn() as MockedFunction<(sourceId: string, audience: string) => Promise<ObserverTokenResult>>;
   fn.mockResolvedValue({ kind: 'ok', token: makeToken() });
   return fn;
 }
@@ -125,7 +150,7 @@ async function flushMicrotasks(times = 10): Promise<void> {
 
 async function startAndConnect(publisher: MeshCoreObserverPublisher): Promise<FakeMqttClient> {
   const startPromise = publisher.start();
-  await flushMicrotasks(3);
+  await flushMicrotasks(30);
   const client = lastFakeClient();
   client.emit('connect');
   await startPromise;
@@ -160,7 +185,7 @@ describe('MeshCoreObserverPublisher — static credentials (#4595)', () => {
     expect(opts.password).toBe(BROKER_PASS);
     expect(opts.username).not.toMatch(/^v1_/);
     expect(mintToken).not.toHaveBeenCalled();
-    expect(loadCredentials).toHaveBeenCalledWith(SOURCE_ID);
+    expect(loadCredentials).toHaveBeenCalledWith(SOURCE_ID, BROKER_KEY, true);
 
     const status = publisher.getStatus();
     expect(status).toMatchObject({
@@ -318,7 +343,7 @@ describe('MeshCoreObserverPublisher — static credentials (#4595)', () => {
       const loadCredentials = loader({ kind: 'ok', username: BROKER_USER, password: BROKER_PASS });
       const publisher = new MeshCoreObserverPublisher({
         sourceId: SOURCE_ID,
-        config: { enabled: true, brokerUrl: 'mqtt://broker.test:1883', iataCode: 'TEST', tokenAudience: 'aud.test' },
+        config: makeTokenConfig(),
         device: makeDevice(PUBKEY),
         mintToken,
         loadCredentials,
@@ -330,7 +355,7 @@ describe('MeshCoreObserverPublisher — static credentials (#4595)', () => {
       expect(opts.username).toBe(`v1_${PUBKEY}`);
       expect(opts.password).toBe(TOKEN_STRING);
       expect(loadCredentials).not.toHaveBeenCalled();
-      expect(mintToken).toHaveBeenCalledWith(SOURCE_ID);
+      expect(mintToken).toHaveBeenCalledWith(SOURCE_ID, 'aud.test');
 
       const status = publisher.getStatus();
       expect(status.authMode).toBe('token');
@@ -340,13 +365,7 @@ describe('MeshCoreObserverPublisher — static credentials (#4595)', () => {
     it('an explicit authMode:token behaves identically to an absent one', async () => {
       const publisher = new MeshCoreObserverPublisher({
         sourceId: SOURCE_ID,
-        config: {
-          enabled: true,
-          authMode: 'token',
-          brokerUrl: 'mqtt://broker.test:1883',
-          iataCode: 'TEST',
-          tokenAudience: 'aud.test',
-        },
+        config: makeTokenConfig(),
         device: makeDevice(PUBKEY),
         mintToken: minter(),
         loadCredentials: loader({ kind: 'none' }),
@@ -358,9 +377,13 @@ describe('MeshCoreObserverPublisher — static credentials (#4595)', () => {
     });
 
     it('still requires a tokenAudience to count as configured', async () => {
+      // No audience -> normalizeObserverBrokers drops the (only) broker
+      // entirely, leaving `brokers: []` — exactly what a hand-built
+      // NormalizedObserverConfig looks like for "nothing usable configured"
+      // (§2.3 rule 6 / §5.1's `configured: ANY broker configured`).
       const publisher = new MeshCoreObserverPublisher({
         sourceId: SOURCE_ID,
-        config: { enabled: true, authMode: 'token', brokerUrl: 'mqtt://broker.test:1883', iataCode: 'TEST' },
+        config: makeTokenConfig({ tokenAudience: undefined }),
         device: makeDevice(PUBKEY),
         mintToken: minter(),
         loadCredentials: loader({ kind: 'none' }),

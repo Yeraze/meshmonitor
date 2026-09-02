@@ -84,11 +84,22 @@ function makeToken(overrides: Partial<ObserverToken> = {}): ObserverToken {
   };
 }
 
+const BROKER_URL = 'mqtt://broker.test:1883';
+const BROKER_KEY = BROKER_URL.toLowerCase();
+
+/**
+ * Legacy single-broker config, expressed in the new `NormalizedObserverConfig`
+ * shape (#5014 Phase 1 WP3) — this is exactly what `observerConfigFromSource`
+ * produces for the pre-#5014 `{enabled, brokerUrl, iataCode, tokenAudience}`
+ * block, i.e. one `legacy: true` broker plus the retained flat mirrors.
+ */
 function makeConfig(): MeshCoreObserverPublisherOptions['config'] {
   return {
     enabled: true,
-    brokerUrl: 'mqtt://broker.test:1883',
     iataCode: 'TEST',
+    brokers: [{ key: BROKER_KEY, url: BROKER_URL, authMode: 'token', tokenAudience: 'aud.test', legacy: true }],
+    authMode: 'token',
+    brokerUrl: BROKER_URL,
     tokenAudience: 'aud.test',
   };
 }
@@ -104,22 +115,22 @@ function makeDevice(): MeshCoreObserverPublisherOptions['device'] {
 
 function makeMintToken(
   ...results: ObserverTokenResult[]
-): MockedFunction<(sourceId: string) => Promise<ObserverTokenResult>> {
-  const fn = vi.fn() as MockedFunction<(sourceId: string) => Promise<ObserverTokenResult>>;
+): MockedFunction<(sourceId: string, audience: string) => Promise<ObserverTokenResult>> {
+  const fn = vi.fn() as MockedFunction<(sourceId: string, audience: string) => Promise<ObserverTokenResult>>;
   for (const r of results) fn.mockResolvedValueOnce(r);
   return fn;
 }
 
 function makeMintTokenAlwaysOk(
   token: ObserverToken = makeToken(),
-): MockedFunction<(sourceId: string) => Promise<ObserverTokenResult>> {
-  const fn = vi.fn() as MockedFunction<(sourceId: string) => Promise<ObserverTokenResult>>;
+): MockedFunction<(sourceId: string, audience: string) => Promise<ObserverTokenResult>> {
+  const fn = vi.fn() as MockedFunction<(sourceId: string, audience: string) => Promise<ObserverTokenResult>>;
   fn.mockResolvedValue({ kind: 'ok', token });
   return fn;
 }
 
 function makePublisher(
-  mintToken: MockedFunction<(sourceId: string) => Promise<ObserverTokenResult>> = makeMintTokenAlwaysOk(),
+  mintToken: MockedFunction<(sourceId: string, audience: string) => Promise<ObserverTokenResult>> = makeMintTokenAlwaysOk(),
   sourceId: string = SOURCE_ID,
   extra: Partial<MeshCoreObserverPublisherOptions> = {},
 ): { publisher: MeshCoreObserverPublisher; mintToken: typeof mintToken } {
@@ -144,7 +155,7 @@ async function flushMicrotasks(times = 10): Promise<void> {
  */
 async function startAndConnect(publisher: MeshCoreObserverPublisher): Promise<FakeMqttClient> {
   const startPromise = publisher.start();
-  await flushMicrotasks(3);
+  await flushMicrotasks(30);
   const client = lastFakeClient();
   client.emit('connect');
   await startPromise;
@@ -228,7 +239,7 @@ describe('MeshCoreObserverPublisher', () => {
   it('drops packets and counts them when the socket is down (never queues via mqtt.js)', async () => {
     const { publisher } = makePublisher();
     const startPromise = publisher.start();
-    await flushMicrotasks(3);
+    await flushMicrotasks(30);
     const client = lastFakeClient();
     // Deliberately do NOT emit 'connect' — the socket stays down.
 
@@ -539,5 +550,31 @@ describe('MeshCoreObserverPublisher', () => {
     expect(lastError).not.toBeNull();
     expect(lastError).not.toContain(embeddedToken);
     expect(lastError).toContain('[REDACTED]');
+  });
+
+  describe('single-broker back-compat (#5014 Phase 1 WP3 — spec test 40)', () => {
+    it('getStatus() reports brokers.length === 1 whose per-broker fields equal the aggregate fields', async () => {
+      const { publisher } = makePublisher();
+      const client = await startAndConnect(publisher);
+      client.publish.mockClear();
+
+      publisher.handleOtaPacket({ snr: 1, rssi: -1, raw_hex: '0900aa' });
+      await flushMicrotasks();
+
+      const status = publisher.getStatus();
+      expect(status.brokers).toHaveLength(1);
+      const broker = status.brokers[0]!;
+      expect(broker.key).toBe(BROKER_KEY);
+      expect(broker.url).toBe(BROKER_URL);
+      expect(broker.authMode).toBe(status.authMode);
+      expect(broker.configured).toBe(status.configured);
+      expect(broker.keyStored).toBe(status.keyStored);
+      expect(broker.connected).toBe(status.connected);
+      expect(broker.publishes).toBe(status.publishes);
+      expect(broker.dropped).toBe(status.dropped);
+      expect(broker.lastPublishAt).toBe(status.lastPublishAt);
+      expect(broker.lastError).toBe(status.lastError);
+      expect(broker.tokenExpiresAt).toBe(status.tokenExpiresAt);
+    });
   });
 });

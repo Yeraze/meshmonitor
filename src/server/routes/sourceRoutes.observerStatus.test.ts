@@ -27,6 +27,7 @@ vi.mock('../sourceManagerRegistry.js', () => ({
 
 const SOURCE_ID = 'obs-status-source';
 const NO_OBSERVER_SOURCE_ID = 'obs-status-source-none';
+const BROKERS_SOURCE_ID = 'obs-status-source-brokers';
 
 const FULL_OBSERVER_STATUS = {
   configured: true,
@@ -37,6 +38,31 @@ const FULL_OBSERVER_STATUS = {
   lastPublishAt: 1700000000000,
   lastError: 'Broker rejected the observer auth token (mqtt://internal-broker.example:8883)',
   tokenExpiresAt: 1700086400,
+};
+
+// #5014 Phase 1: a status shaped with `brokers[]`, whose `url` is the exact
+// leak this strip must prevent (spec §5.4 — the implementer must verify the
+// `!canReadNodes` branch drops the WHOLE `observer` object, brokers included,
+// and pin it with an assertion if one is missing).
+const MULTI_BROKER_OBSERVER_STATUS = {
+  ...FULL_OBSERVER_STATUS,
+  brokers: [
+    {
+      key: 'wss://mqtt.meshmapper.net:443',
+      url: 'wss://mqtt.meshmapper.net:443',
+      label: 'MeshMapper',
+      authMode: 'token',
+      tokenAudience: 'mqtt.meshmapper.net',
+      configured: true,
+      keyStored: true,
+      connected: true,
+      publishes: 210,
+      dropped: 0,
+      lastPublishAt: 1756800000000,
+      lastError: null,
+      tokenExpiresAt: 1756880000,
+    },
+  ],
 };
 
 function fakeMeshCoreManager(observer: typeof FULL_OBSERVER_STATUS | undefined) {
@@ -80,10 +106,20 @@ describe('GET /:id/status — Analyzer Observer visibility (#4457 Phase 2)', () 
       enabled: true,
     });
 
+    await harness.db.sources.deleteSource(BROKERS_SOURCE_ID).catch(() => {});
+    await harness.db.sources.createSource({
+      id: BROKERS_SOURCE_ID,
+      name: 'Brokers Source',
+      type: 'meshcore',
+      config: { transport: 'usb', port: '/dev/ttyACM2', deviceType: 'companion' },
+      enabled: true,
+    });
+
     mockSourceRegistry.getManager.mockReset();
     mockSourceRegistry.getManager.mockImplementation((id: string) => {
       if (id === SOURCE_ID) return fakeMeshCoreManager(FULL_OBSERVER_STATUS);
       if (id === NO_OBSERVER_SOURCE_ID) return fakeMeshCoreManager(undefined);
+      if (id === BROKERS_SOURCE_ID) return fakeMeshCoreManager(MULTI_BROKER_OBSERVER_STATUS);
       return undefined;
     });
   });
@@ -91,6 +127,7 @@ describe('GET /:id/status — Analyzer Observer visibility (#4457 Phase 2)', () 
   afterEach(async () => {
     await harness.db.sources.deleteSource(SOURCE_ID).catch(() => {});
     await harness.db.sources.deleteSource(NO_OBSERVER_SOURCE_ID).catch(() => {});
+    await harness.db.sources.deleteSource(BROKERS_SOURCE_ID).catch(() => {});
     await harness.cleanup();
   });
 
@@ -131,6 +168,27 @@ describe('GET /:id/status — Analyzer Observer visibility (#4457 Phase 2)', () 
     const res = await agent.get(`/${SOURCE_ID}/status`);
     expect(res.status).toBe(200);
     expect(JSON.stringify(res.body)).not.toContain('internal-broker.example');
+  });
+
+  // #5014 Phase 1, spec §5.4: the implementer must verify the `!canReadNodes`
+  // strip drops the WHOLE `observer` object — brokers[] included — because
+  // `brokers[].url` exposes the broker hostname outright, the very leak this
+  // strip exists to prevent. If the strip were ever narrowed to `lastError`
+  // alone, this test pins the regression.
+  it('strips the entire observer object, including brokers[].url, for a non-privileged caller', async () => {
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.get(`/${BROKERS_SOURCE_ID}/status`);
+    expect(res.status).toBe(200);
+    expect(res.body).not.toHaveProperty('observer');
+    expect(JSON.stringify(res.body)).not.toContain('mqtt.meshmapper.net');
+  });
+
+  it('includes the full observer shape with brokers[] for a user granted nodes:read', async () => {
+    await harness.grant(harness.limited.id, 'nodes', 'read', BROKERS_SOURCE_ID);
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.get(`/${BROKERS_SOURCE_ID}/status`);
+    expect(res.status).toBe(200);
+    expect(res.body.observer).toEqual(MULTI_BROKER_OBSERVER_STATUS);
   });
 
   describe('a source with no observer configured', () => {

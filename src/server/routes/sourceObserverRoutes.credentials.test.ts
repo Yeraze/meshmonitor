@@ -285,3 +285,211 @@ describe('sourceObserverRoutes — /credentials (#4595)', () => {
     await harness.db.sources.deleteSource('obs-creds-b').catch(() => {});
   });
 });
+
+/**
+ * Per-broker `brokerKey` support (#5014 Phase 1 WP4, spec §5.3, tests 50-54).
+ * A dedicated source carrying a real `brokers[]` config, so `brokerKey`
+ * validation has something to bound against (`UNKNOWN_BROKER`).
+ */
+describe('sourceObserverRoutes — /credentials brokerKey (#5014 Phase 1)', () => {
+  let harness: RouteTestHarness;
+
+  const MULTI_SOURCE_ID = 'obs-creds-multi';
+  const LEGACY_BROKER_KEY = 'wss://legacy.example:443';
+  const SECOND_BROKER_KEY = 'wss://second.example:443';
+  const UNKNOWN_KEY = 'wss://never-configured.example:443';
+
+  beforeEach(async () => {
+    harness = await createRouteTestApp({
+      mount: (app) => app.use('/api/sources', sourceRoutes),
+    });
+    await harness.db.sources.deleteSource(MULTI_SOURCE_ID).catch(() => {});
+    await harness.db.sources.createSource({
+      id: MULTI_SOURCE_ID,
+      name: 'Obs Creds Multi',
+      type: 'meshcore',
+      config: {
+        observer: {
+          enabled: true,
+          iataCode: 'TST',
+          brokerUrl: LEGACY_BROKER_KEY,
+          tokenAudience: 'legacy-aud',
+          brokers: [
+            { url: LEGACY_BROKER_KEY, authMode: 'token', tokenAudience: 'legacy-aud', label: 'Legacy' },
+            { url: SECOND_BROKER_KEY, authMode: 'password', label: 'Second' },
+          ],
+        },
+      },
+      enabled: true,
+    });
+    await grantReadWrite(harness, harness.limited.id, MULTI_SOURCE_ID);
+    // Credentials are keyed by sourceId in a table independent of `sources`,
+    // so re-creating the source above does NOT clear a prior test's row for
+    // the same id — clear it explicitly for test isolation.
+    await new MeshCoreObserverCredentialStore('test-secret', true).clear(MULTI_SOURCE_ID);
+
+    mockSourceRegistry.getManager.mockReset();
+    mockSourceRegistry.getManager.mockReturnValue(undefined);
+    mockSourceRegistry.reconfigureObserver.mockReset();
+    mockSourceRegistry.reconfigureObserver.mockResolvedValue(true);
+    setMeshCoreObserverCredentialStoreForTesting(new MeshCoreObserverCredentialStore('test-secret', true));
+  });
+
+  afterEach(async () => {
+    setMeshCoreObserverCredentialStoreForTesting(null);
+    await new MeshCoreObserverCredentialStore('test-secret', true).clear(MULTI_SOURCE_ID);
+    await harness.db.sources.deleteSource(MULTI_SOURCE_ID).catch(() => {});
+    await harness.cleanup();
+  });
+
+  function multiAgent() {
+    return harness.loginAs(harness.limited);
+  }
+
+  it('PUT with no brokerKey behaves exactly as today (legacy path) even when brokers[] is configured', async () => {
+    const agent = await multiAgent();
+    const res = await agent
+      .put(`/api/sources/${MULTI_SOURCE_ID}/observer/credentials`)
+      .send({ username: 'meshcore', password: PASSWORD });
+    expect(res.status).toBe(200);
+    expect(res.body.data).toMatchObject({ stored: true, username: 'meshcore' });
+    expect(mockSourceRegistry.reconfigureObserver).toHaveBeenCalled();
+
+    const loaded = await new MeshCoreObserverCredentialStore('test-secret', true).load(MULTI_SOURCE_ID);
+    expect(loaded).toEqual({ kind: 'ok', username: 'meshcore', password: PASSWORD });
+  });
+
+  it('PUT with a brokerKey matching a configured broker stores per-broker; GET lists it under brokers[]', async () => {
+    const agent = await multiAgent();
+    const putRes = await agent
+      .put(`/api/sources/${MULTI_SOURCE_ID}/observer/credentials`)
+      .send({ username: 'second-user', password: PASSWORD, brokerKey: SECOND_BROKER_KEY });
+    expect(putRes.status).toBe(200);
+    expect(putRes.body.data.brokers).toEqual([{ brokerKey: SECOND_BROKER_KEY, username: 'second-user' }]);
+    // `stored`/`username` reflect "a row exists at all" (computeClearUsername
+    // falls back to the lexicographically-first broker when there is no
+    // legacy entry) — NOT the legacy single-credential slot specifically.
+    expect(putRes.body.data.stored).toBe(true);
+    expect(putRes.body.data.username).toBe('second-user');
+
+    const getRes = await agent.get(`/api/sources/${MULTI_SOURCE_ID}/observer/credentials`);
+    expect(getRes.body.data.brokers).toEqual([{ brokerKey: SECOND_BROKER_KEY, username: 'second-user' }]);
+    // Never a password anywhere in the response.
+    expect(JSON.stringify(getRes.body)).not.toContain(PASSWORD);
+
+    const loaded = await new MeshCoreObserverCredentialStore('test-secret', true).loadForBroker(
+      MULTI_SOURCE_ID,
+      SECOND_BROKER_KEY,
+    );
+    expect(loaded).toEqual({ kind: 'ok', username: 'second-user', password: PASSWORD });
+  });
+
+  it('PUT with an unconfigured brokerKey -> 400 UNKNOWN_BROKER', async () => {
+    const agent = await multiAgent();
+    const res = await agent
+      .put(`/api/sources/${MULTI_SOURCE_ID}/observer/credentials`)
+      .send({ username: 'x', password: PASSWORD, brokerKey: UNKNOWN_KEY });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('UNKNOWN_BROKER');
+  });
+
+  it('PUT rejects a non-string / over-long brokerKey before checking it is configured', async () => {
+    const agent = await multiAgent();
+    const nonString = await agent
+      .put(`/api/sources/${MULTI_SOURCE_ID}/observer/credentials`)
+      .send({ username: 'x', password: PASSWORD, brokerKey: 12345 });
+    expect(nonString.status).toBe(400);
+    expect(nonString.body.code).toBe('INVALID_PARAMETER_TYPE');
+
+    const tooLong = await agent
+      .put(`/api/sources/${MULTI_SOURCE_ID}/observer/credentials`)
+      .send({ username: 'x', password: PASSWORD, brokerKey: 'k'.repeat(256) });
+    expect(tooLong.status).toBe(400);
+    expect(tooLong.body.code).toBe('INVALID_PARAMETER');
+  });
+
+  it('DELETE ?brokerKey= removes one entry, leaving the others and the legacy entry', async () => {
+    const agent = await multiAgent();
+    await agent
+      .put(`/api/sources/${MULTI_SOURCE_ID}/observer/credentials`)
+      .send({ username: 'legacy-user', password: PASSWORD });
+    await agent
+      .put(`/api/sources/${MULTI_SOURCE_ID}/observer/credentials`)
+      .send({ username: 'legacy-broker-user', password: PASSWORD, brokerKey: LEGACY_BROKER_KEY });
+    await agent
+      .put(`/api/sources/${MULTI_SOURCE_ID}/observer/credentials`)
+      .send({ username: 'second-user', password: PASSWORD, brokerKey: SECOND_BROKER_KEY });
+
+    const delRes = await agent.delete(
+      `/api/sources/${MULTI_SOURCE_ID}/observer/credentials?brokerKey=${encodeURIComponent(SECOND_BROKER_KEY)}`,
+    );
+    expect(delRes.status).toBe(200);
+    expect(delRes.body.data.brokers).toEqual([{ brokerKey: LEGACY_BROKER_KEY, username: 'legacy-broker-user' }]);
+    // The legacy credential (store()) survives a per-broker delete.
+    expect(delRes.body.data.stored).toBe(true);
+    expect(delRes.body.data.username).toBe('legacy-user');
+
+    const store = new MeshCoreObserverCredentialStore('test-secret', true);
+    expect(await store.loadForBroker(MULTI_SOURCE_ID, SECOND_BROKER_KEY)).toEqual({ kind: 'none' });
+    expect(await store.load(MULTI_SOURCE_ID)).toEqual({ kind: 'ok', username: 'legacy-user', password: PASSWORD });
+  });
+
+  it('DELETE with no param still wipes everything (legacy + all brokers)', async () => {
+    const agent = await multiAgent();
+    await agent
+      .put(`/api/sources/${MULTI_SOURCE_ID}/observer/credentials`)
+      .send({ username: 'legacy-user', password: PASSWORD });
+    await agent
+      .put(`/api/sources/${MULTI_SOURCE_ID}/observer/credentials`)
+      .send({ username: 'second-user', password: PASSWORD, brokerKey: SECOND_BROKER_KEY });
+
+    const delRes = await agent.delete(`/api/sources/${MULTI_SOURCE_ID}/observer/credentials`);
+    expect(delRes.status).toBe(200);
+    expect(delRes.body.data.stored).toBe(false);
+    expect(delRes.body.data.brokers).toEqual([]);
+  });
+
+  it('DELETE with an unconfigured brokerKey -> 400 UNKNOWN_BROKER', async () => {
+    const agent = await multiAgent();
+    const res = await agent.delete(
+      `/api/sources/${MULTI_SOURCE_ID}/observer/credentials?brokerKey=${encodeURIComponent(UNKNOWN_KEY)}`,
+    );
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('UNKNOWN_BROKER');
+  });
+
+  it('both the PUT and DELETE per-broker paths audit with brokerKey in the detail, and hot-swap the publisher', async () => {
+    const agent = await multiAgent();
+
+    mockSourceRegistry.reconfigureObserver.mockClear();
+    await agent
+      .put(`/api/sources/${MULTI_SOURCE_ID}/observer/credentials`)
+      .send({ username: 'second-user', password: PASSWORD, brokerKey: SECOND_BROKER_KEY });
+    expect(mockSourceRegistry.reconfigureObserver).toHaveBeenCalled();
+
+    mockSourceRegistry.reconfigureObserver.mockClear();
+    await agent.delete(
+      `/api/sources/${MULTI_SOURCE_ID}/observer/credentials?brokerKey=${encodeURIComponent(SECOND_BROKER_KEY)}`,
+    );
+    expect(mockSourceRegistry.reconfigureObserver).toHaveBeenCalled();
+
+    const entries = await harness.db.auth.getAuditLogEntries(20, 0);
+    const setEntry = entries.find(
+      (e) => e.action === 'meshcore_observer_credentials_set' && e.details?.includes(SECOND_BROKER_KEY),
+    );
+    const clearEntry = entries.find(
+      (e) => e.action === 'meshcore_observer_credentials_clear' && e.details?.includes(SECOND_BROKER_KEY),
+    );
+    expect(setEntry).toBeDefined();
+    expect(clearEntry).toBeDefined();
+    expect(JSON.parse(setEntry!.details!)).toMatchObject({ sourceId: MULTI_SOURCE_ID, brokerKey: SECOND_BROKER_KEY });
+    expect(JSON.parse(clearEntry!.details!)).toMatchObject({
+      sourceId: MULTI_SOURCE_ID,
+      brokerKey: SECOND_BROKER_KEY,
+    });
+    // Never a secret in the audit trail.
+    for (const e of entries) {
+      expect(e.details ?? '').not.toContain(PASSWORD);
+    }
+  });
+});

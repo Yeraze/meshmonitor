@@ -89,20 +89,23 @@ function makeToken(fixture: SourceFixture): ObserverToken {
 
 function makeMintToken(
   fixture: SourceFixture,
-): MockedFunction<(sourceId: string) => Promise<ObserverTokenResult>> {
-  const fn = vi.fn() as MockedFunction<(sourceId: string) => Promise<ObserverTokenResult>>;
+): MockedFunction<(sourceId: string, audience: string) => Promise<ObserverTokenResult>> {
+  const fn = vi.fn() as MockedFunction<(sourceId: string, audience: string) => Promise<ObserverTokenResult>>;
   fn.mockResolvedValue({ kind: 'ok', token: makeToken(fixture) });
   return fn;
 }
 
 function makePublisher(
   fixture: SourceFixture,
-  mintToken: MockedFunction<(sourceId: string) => Promise<ObserverTokenResult>>,
+  mintToken: MockedFunction<(sourceId: string, audience: string) => Promise<ObserverTokenResult>>,
 ): MeshCoreObserverPublisher {
+  const url = 'mqtt://broker.test:1883';
   const config: MeshCoreObserverPublisherOptions['config'] = {
     enabled: true,
-    brokerUrl: 'mqtt://broker.test:1883',
     iataCode: fixture.iataCode,
+    brokers: [{ key: url.toLowerCase(), url, authMode: 'token', tokenAudience: 'aud.test', legacy: true }],
+    authMode: 'token',
+    brokerUrl: url,
     tokenAudience: 'aud.test',
   };
   return new MeshCoreObserverPublisher({
@@ -119,7 +122,7 @@ async function flushMicrotasks(times = 10): Promise<void> {
 
 async function startAndConnect(publisher: MeshCoreObserverPublisher): Promise<FakeMqttClient> {
   const startPromise = publisher.start();
-  await flushMicrotasks(3);
+  await flushMicrotasks(30);
   const client = lastFakeClient();
   client.emit('connect');
   await startPromise;
@@ -163,10 +166,10 @@ describe('MeshCoreObserverPublisher — per-source isolation (#4457 §7.4)', () 
     await startAndConnect(pubA);
     await startAndConnect(pubB);
 
-    expect(mintA).toHaveBeenCalledWith(SOURCE_A.sourceId);
-    expect(mintB).toHaveBeenCalledWith(SOURCE_B.sourceId);
-    expect(mintA).not.toHaveBeenCalledWith(SOURCE_B.sourceId);
-    expect(mintB).not.toHaveBeenCalledWith(SOURCE_A.sourceId);
+    expect(mintA).toHaveBeenCalledWith(SOURCE_A.sourceId, 'aud.test');
+    expect(mintB).toHaveBeenCalledWith(SOURCE_B.sourceId, 'aud.test');
+    expect(mintA).not.toHaveBeenCalledWith(SOURCE_B.sourceId, 'aud.test');
+    expect(mintB).not.toHaveBeenCalledWith(SOURCE_A.sourceId, 'aud.test');
   });
 
   it('never cross-delivers a packet handed to A onto B\'s client, and keeps counters independent', async () => {
@@ -216,7 +219,7 @@ describe('MeshCoreObserverPublisher — per-source isolation (#4457 §7.4)', () 
     // B started but never connected — its socket stays down.
     const pubB = makePublisher(SOURCE_B, mintB);
     const startPromiseB = pubB.start();
-    await flushMicrotasks(3);
+    await flushMicrotasks(30);
     const clientB = lastFakeClient();
 
     pubB.handleOtaPacket({ snr: 1, rssi: -1, raw_hex: '0900aa' });

@@ -69,23 +69,213 @@ export interface MeshCoreObserverConfig {
    *   brokers (e.g. meshcoretel.ru) that don't verify the signature. The
    *   password is NEVER in this block — it lives encrypted in
    *   `meshcore_observer_credentials` (see meshcoreObserverCredentialStore).
+   *
+   * When `brokers[]` is present and non-empty, this is only the DEFAULT
+   * auth mode for an entry that omits its own `authMode` — see
+   * `MeshCoreObserverBrokerConfig.authMode`.
    */
   authMode?: 'token' | 'password';
-  /** Broker URL. ws/wss/mqtt/mqtts; bare host:port is normalized by normalizeBrokerUrl. */
+  /**
+   * LEGACY single broker (pre-#5014). Kept and still honoured: when
+   * `brokers` is absent or empty, this (plus `authMode` / `tokenAudience`)
+   * is synthesized into a single-entry broker list — see the precedence
+   * rule in `normalizeObserverBrokers`.
+   */
   brokerUrl?: string;
-  /** 3-letter IATA region code, or the literal 'test' for local validation. */
+  /**
+   * 3-letter IATA region code, or the literal 'test' for local validation.
+   * Shared across every broker on purpose (#5014): it is the REGION segment
+   * of the topic (`meshcore/{IATA}/{PUBKEY}/packets`), not a broker property.
+   */
   iataCode?: string;
   /**
    * Must equal the broker's AUTH_EXPECTED_AUDIENCE, or auth is rejected.
    * Only meaningful in `token` mode — a static-credential broker signs
    * nothing, so there is no audience to match.
+   *
+   * LEGACY: applies only to the synthesized legacy broker entry. A
+   * `brokers[]` entry needs its own `tokenAudience` — this value is
+   * deliberately NOT inherited by other entries, since two brokers with
+   * different audiences is the normal multi-broker case (#5014).
    */
+  tokenAudience?: string;
+  /**
+   * Multi-broker list (#5014 Phase 1). When present and non-empty this is
+   * authoritative: the legacy `brokerUrl` above is NOT unioned in as an
+   * extra entry (see `normalizeObserverBrokers` rule 1 — unioning risks
+   * double-publishing the same broker under two spellings).
+   */
+  brokers?: MeshCoreObserverBrokerConfig[];
+}
+
+/** One Analyzer broker this source publishes to (#5014 Phase 1). */
+export interface MeshCoreObserverBrokerConfig {
+  /** ws/wss/mqtt/mqtts URL, or a bare host:port that normalizeBrokerUrl accepts. */
+  url: string;
+  /** Defaults to the block-level `authMode`, which itself defaults to 'token'. */
+  authMode?: 'token' | 'password';
+  /**
+   * Required in token mode. NOT inherited from the block-level
+   * `tokenAudience`: two brokers with different audiences are the normal
+   * case, and silently inheriting one would mint tokens the other broker
+   * rejects. The only exception is the legacy synthesized entry — see the
+   * precedence rule in `normalizeObserverBrokers`.
+   */
+  tokenAudience?: string;
+  /** Free-text display label, e.g. "MeshMapper". UI only, never on the wire. */
+  label?: string;
+}
+
+/**
+ * One normalized, validated broker entry, as produced by
+ * `normalizeObserverBrokers` and consumed by the publisher (#5014 Phase 1).
+ */
+export interface NormalizedObserverBroker {
+  /** Stable identity: normalizeBrokerUrl(url).toLowerCase(). Non-secret. */
+  key: string;
+  /** normalizeBrokerUrl(url). */
+  url: string;
+  authMode: 'token' | 'password';
+  /** Present iff authMode === 'token' (normalization drops token brokers without one). */
+  tokenAudience?: string;
+  label?: string;
+  /**
+   * True iff this entry corresponds to the block-level legacy `brokerUrl`.
+   * The publisher uses it, and only it, to fall back to the pre-#5014
+   * single-credential row. At most one entry can carry it (dedupe
+   * guarantees key uniqueness).
+   */
+  legacy: boolean;
+}
+
+/**
+ * Superset of the pre-#5014 runtime shape: the flat brokerUrl / authMode /
+ * tokenAudience fields are RETAINED as mirrors of brokers[0] so every
+ * existing reader (and every existing test) keeps compiling and keeps
+ * observing the same values for a single-broker source (#5014 Phase 1).
+ */
+export interface NormalizedObserverConfig {
+  enabled: true;
+  iataCode: string;
+  brokers: NormalizedObserverBroker[];
+  authMode: 'token' | 'password';
+  brokerUrl: string;
   tokenAudience?: string;
 }
 
 /** Normalize the (optional, back-compatible) observer auth mode. */
 export function observerAuthMode(o: MeshCoreObserverConfig | undefined | null): 'token' | 'password' {
   return o?.authMode === 'password' ? 'password' : 'token';
+}
+
+/**
+ * Stable, case-insensitive broker identity. The one place this is derived —
+ * credentials, status and dedupe all key off this value (#5014 Phase 1).
+ * Throws only if `normalizeBrokerUrl` throws (unnormalizable input).
+ */
+export function observerBrokerKey(url: string): string {
+  return normalizeBrokerUrl(url).toLowerCase();
+}
+
+/**
+ * Pure: turns the persisted (legacy or multi) observer block into the
+ * ordered, deduped, validated broker list the publisher consumes. Never
+ * throws. Returns `[]` when nothing usable is configured (#5014 Phase 1).
+ *
+ * Semantics, in order (see MESHMAPPER_OBSERVER_PHASE1_SPEC.md §2.3 for the
+ * full rationale on each rule):
+ *  1. Source list selection: `o.brokers` wins outright when it is a
+ *     non-empty array — `o.brokerUrl` is NOT unioned in as an extra entry,
+ *     which would risk double-publishing the same broker under two
+ *     spellings once the Phase 2 UI migrates it into `brokers[0]`.
+ *     Otherwise, synthesize a single entry from `o.brokerUrl` (when present).
+ *  2. Per-entry auth mode: `entry.authMode ?? o.authMode ?? 'token'`.
+ *  3. Per-entry audience: `entry.tokenAudience?.trim()`. Only the
+ *     synthesized legacy entry falls back to `o.tokenAudience?.trim()`.
+ *  4. Per-entry URL: `normalizeBrokerUrl(entry.url)`. On throw, warn naming
+ *     the index and skip that entry only — one malformed broker must not
+ *     disable the others.
+ *  5. Dedupe by `key`, first wins.
+ *  6. Completeness: drop a token-mode entry with no `tokenAudience`. A
+ *     password-mode entry needs no audience.
+ *  7. Legacy flag: true when the entry was synthesized from `o.brokerUrl`,
+ *     OR when `o.brokerUrl` is present and its key matches this entry's key
+ *     (keeps the pre-#5014 stored credential reachable after the Phase 2 UI
+ *     moves that broker into `brokers[]`).
+ */
+export function normalizeObserverBrokers(
+  o: MeshCoreObserverConfig | undefined | null,
+): NormalizedObserverBroker[] {
+  if (!o) return [];
+  const blockAuthMode = observerAuthMode(o);
+  const brokersProvided = Array.isArray(o.brokers) && o.brokers.length > 0;
+  const rawList: MeshCoreObserverBrokerConfig[] = brokersProvided
+    ? (o.brokers as MeshCoreObserverBrokerConfig[])
+    : o.brokerUrl
+      ? [{ url: o.brokerUrl, authMode: o.authMode, tokenAudience: o.tokenAudience }]
+      : [];
+  // True only for the single entry synthesized from the legacy field above —
+  // NOT for a real brokers[] entry that merely happens to match it (rule 7's
+  // second clause handles that case, without the audience fallback).
+  const synthesizedFromLegacy = !brokersProvided && !!o.brokerUrl;
+
+  const seen = new Map<string, NormalizedObserverBroker>();
+  const order: string[] = [];
+
+  for (let i = 0; i < rawList.length; i++) {
+    const raw = rawList[i];
+    if (!raw || typeof raw.url !== 'string' || raw.url.length === 0) {
+      logger.warn(`[MeshCoreConfig] observer.brokers[${i}] has no url; skipping`);
+      continue;
+    }
+    let url: string;
+    try {
+      url = normalizeBrokerUrl(raw.url);
+    } catch {
+      logger.warn(`[MeshCoreConfig] observer.brokers[${i}].url failed to normalize; skipping`);
+      continue;
+    }
+    const key = url.toLowerCase();
+    const isSynthesizedLegacyEntry = synthesizedFromLegacy && i === 0;
+    const authMode: 'token' | 'password' =
+      raw.authMode === 'password' ? 'password' : raw.authMode === 'token' ? 'token' : blockAuthMode;
+    const tokenAudience = isSynthesizedLegacyEntry
+      ? raw.tokenAudience?.trim() || o.tokenAudience?.trim() || undefined
+      : raw.tokenAudience?.trim() || undefined;
+
+    if (authMode === 'token' && !tokenAudience) {
+      logger.warn(`[MeshCoreConfig] observer.brokers[${i}] (${key}) is token-mode with no tokenAudience; skipping`);
+      continue;
+    }
+
+    if (seen.has(key)) {
+      logger.debug(`[MeshCoreConfig] observer.brokers[${i}] (${key}) duplicates an earlier broker; discarding`);
+      continue;
+    }
+
+    // At most one entry can carry legacy: true (dedupe guarantees key
+    // uniqueness, and o.brokerUrl can match at most one normalized key).
+    let legacy = isSynthesizedLegacyEntry;
+    if (!legacy && o.brokerUrl) {
+      try {
+        legacy = observerBrokerKey(o.brokerUrl) === key;
+      } catch {
+        // o.brokerUrl itself fails to normalize — can't match; leave legacy false.
+      }
+    }
+
+    seen.set(key, {
+      key,
+      url,
+      authMode,
+      ...(tokenAudience ? { tokenAudience } : {}),
+      ...(raw.label ? { label: raw.label } : {}),
+      legacy,
+    });
+    order.push(key);
+  }
+
+  return order.map((k) => seen.get(k)!);
 }
 
 /** Default TCP port the Virtual Node server listens on when none is given. */
@@ -109,39 +299,37 @@ export function virtualNodeConfigFromSource(cfg: MeshCoreSourceConfig): MeshCore
 
 /**
  * Build the runtime Analyzer Observer config from a source's saved config, or
- * undefined when disabled/absent or missing a required field.
+ * undefined when disabled/absent or missing a required field (#5014 Phase 1:
+ * now multi-broker aware via `normalizeObserverBrokers`).
  *
- * Required fields depend on the auth mode (#4595): `token` mode needs
- * brokerUrl + iataCode + tokenAudience; `password` mode needs only brokerUrl
- * + iataCode, because the broker verifies no signature and therefore has no
- * audience. The username/password themselves are NOT config — they live
- * encrypted in `meshcore_observer_credentials`.
+ * "Incomplete block disables the observer" contract, preserved: returns
+ * `undefined` when `!o.enabled`, when `iataCode` is missing, or when
+ * `normalizeObserverBrokers` yields no usable broker at all (a bad
+ * `brokerUrl`, or a token-mode broker with no `tokenAudience`, are each
+ * warned-and-skipped there rather than throwing).
+ *
+ * The flat `authMode` / `brokerUrl` / `tokenAudience` fields on the returned
+ * value are mirrors of `brokers[0]` — kept so every pre-#5014 reader (and
+ * every pre-#5014 test) keeps observing the same values for a single-broker
+ * source. `NormalizedObserverConfig` (the richer, multi-broker-aware type)
+ * documents the full shape; `MeshCoreConfig['observer']` itself is not
+ * retyped to it here — that is #5014 Phase 1 WP3.
  */
 export function observerConfigFromSource(cfg: MeshCoreSourceConfig): MeshCoreConfig['observer'] {
   const o = cfg.observer;
-  if (!o?.enabled) return undefined;
-  const authMode = observerAuthMode(o);
-  if (!o.brokerUrl || !o.iataCode) return undefined;
-  if (authMode === 'token' && !o.tokenAudience) return undefined;
-  // The stored URL was validated at write time, but normalize can still throw
-  // on a row written by an older version or edited out-of-band. Silently
-  // returning undefined here would disable the observer with no trace — warn
-  // so the operator can see why it never started.
-  let brokerUrl: string;
-  try {
-    brokerUrl = normalizeBrokerUrl(o.brokerUrl);
-  } catch {
-    logger.warn('[MeshCoreConfig] observer.brokerUrl failed to normalize; observer disabled for this source');
-    return undefined;
-  }
+  if (!o?.enabled || !o.iataCode) return undefined;
+  const brokers = normalizeObserverBrokers(o);
+  if (brokers.length === 0) return undefined;
+  const primary = brokers[0];
   return {
     enabled: true,
-    authMode,
-    brokerUrl,
     iataCode: o.iataCode.trim().toUpperCase(),
+    brokers,
+    authMode: primary.authMode,
+    brokerUrl: primary.url,
     // Carried through in password mode only when the operator happened to
     // leave a value behind; the publisher ignores it in that mode.
-    tokenAudience: o.tokenAudience?.trim(),
+    ...(primary.tokenAudience ? { tokenAudience: primary.tokenAudience } : {}),
   };
 }
 

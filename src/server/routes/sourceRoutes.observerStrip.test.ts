@@ -123,3 +123,74 @@ describe('sourceRoutes — stripSourceSecrets omits observer key material (#4457
     });
   });
 });
+
+// Test 15 (#5014 Phase 1 WP1): the same strip must also reach into
+// observer.brokers[] entries, not just the block itself.
+describe('sourceRoutes — stripSourceSecrets omits observer.brokers[] key material (#5014)', () => {
+  let harness: RouteTestHarness;
+
+  const BROKERS_SOURCE_ID = 'obs-strip-brokers-source';
+  // Distinct "leaked" password so we can assert it never survives, for a
+  // second broker entry (index 1) specifically — the pattern the spec test
+  // calls out.
+  const LEAKED_BROKER_PASSWORD = 'super-secret-broker-password';
+
+  beforeEach(async () => {
+    harness = await createRouteTestApp({
+      mount: (app) => app.use('/', sourceRoutes),
+    });
+
+    await harness.db.sources.deleteSource(BROKERS_SOURCE_ID).catch(() => {});
+    await harness.db.sources.createSource({
+      id: BROKERS_SOURCE_ID,
+      name: 'Observer Brokers Strip Source',
+      type: 'meshcore',
+      config: {
+        transport: 'usb',
+        port: '/dev/ttyACM0',
+        deviceType: 'companion',
+        observer: {
+          enabled: true,
+          iataCode: 'MCO',
+          brokers: [
+            { url: 'wss://mqtt.meshmapper.net:443', tokenAudience: 'mqtt.meshmapper.net' },
+            { url: 'wss://mqtt-us-v1.letsmesh.net:443', password: LEAKED_BROKER_PASSWORD },
+          ],
+        },
+      },
+      enabled: true,
+    });
+
+    await harness.grant(harness.limited.id, 'sources', 'read');
+  });
+
+  afterEach(async () => {
+    await harness.db.sources.deleteSource(BROKERS_SOURCE_ID).catch(() => {});
+    await harness.cleanup();
+  });
+
+  it('strips observer.brokers[1].password for admins and non-admins alike, keeping the non-secret broker fields', async () => {
+    for (const user of ['admin', 'limited'] as const) {
+      const agent = await harness.loginAs(harness[user]);
+      const res = await agent.get(`/${BROKERS_SOURCE_ID}`);
+      expect(res.status).toBe(200);
+      const brokers = res.body.config.observer.brokers;
+      expect(brokers).toHaveLength(2);
+      expect(brokers[1].password).toBeUndefined();
+      expect(JSON.stringify(res.body)).not.toContain(LEAKED_BROKER_PASSWORD);
+      // Non-secret fields still round-trip.
+      expect(brokers[0].url).toBe('wss://mqtt.meshmapper.net:443');
+      expect(brokers[1].url).toBe('wss://mqtt-us-v1.letsmesh.net:443');
+    }
+  });
+
+  it('strips observer.brokers[1].password from the sources list too', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get('/');
+    expect(res.status).toBe(200);
+    const row = res.body.find((s: any) => s.id === BROKERS_SOURCE_ID);
+    expect(row).toBeDefined();
+    expect(row.config.observer.brokers[1].password).toBeUndefined();
+    expect(JSON.stringify(row)).not.toContain(LEAKED_BROKER_PASSWORD);
+  });
+});
