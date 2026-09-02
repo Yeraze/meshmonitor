@@ -277,6 +277,37 @@ router.post('/', canWrite, async (req: Request, res: Response) => {
   }
 });
 
+router.post('/:id/duplicate', canWrite, async (req: Request, res: Response) => {
+  try {
+    const source = await databaseService.automations.getAutomation(req.params.id);
+    if (!source) return fail(res, 404, 'AUTOMATION_NOT_FOUND', 'automation not found');
+    const rawName = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+    if (rawName.length > 200) {
+      return fail(res, 400, 'INVALID_NAME', 'name must be 200 characters or fewer');
+    }
+    const name = rawName.length > 0 ? rawName : `${source.name} (copy)`;
+    // Duplicates land DISABLED so the user reviews before flipping them on
+    // (mirrors the /import path). Uniqueness on `name` is not enforced by the
+    // table, matching the plain POST / handler, so no collision check here.
+    const created = await databaseService.automations.createAutomation({
+      name,
+      description: source.description,
+      enabled: false,
+      config: source.config,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5024 matches the sibling create/import handlers; a typed AuthenticatedRequest cleanup is out of scope for this PR
+      createdByUserId: (req as any).user?.id ?? null,
+    });
+    // The clone is disabled, so the running engine has nothing to pick up, but
+    // reload so a follow-up enable via the toggle sees the new row without a
+    // separate refresh cycle.
+    await reloadAutomations();
+    res.status(201).json(created);
+  } catch (error) {
+    logger.error('Error duplicating automation:', error);
+    return fail(res, 500, 'INTERNAL_ERROR', 'Failed to duplicate automation');
+  }
+});
+
 router.post('/import', canWrite, async (req: Request, res: Response) => {
   try {
     const { name, description, config } = req.body ?? {};
