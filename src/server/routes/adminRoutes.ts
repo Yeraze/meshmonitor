@@ -1993,11 +1993,20 @@ router.post('/commands', requireAdmin(), async (req, res) => {
             // the server cannot tell an honest echo from an identity hijack.
             // Merging server-side keeps that guard intact AND keeps the remote
             // node's private key out of the browser entirely.
-            // Non-null by construction: the block above returns 409 unless it
-            // populated this, and it always runs when !isLocalNode. TS cannot
-            // see that across the IIFE boundary.
+            // Non-null by construction, and the construction is an ORDERING
+            // invariant worth stating: `executeAdminCommand` always awaits
+            // `preSend` before calling `buildAdminMessage` (see its "2. Build
+            // and send" step). preSend is what populates `remoteSecurity`, and
+            // it throws rather than returning when the node cannot be read.
+            //
+            // So if this ever trips, the cause is that call order changing —
+            // not a missing key. Failing loudly here is deliberate: silently
+            // sending a config without the keypair is the destructive outcome
+            // this whole change exists to prevent.
             if (!remoteSecurity) {
-              throw new Error('internal: remote security keys unresolved');
+              throw new Error(
+                'internal: remote security keys unresolved — preSend must run before buildAdminMessage',
+              );
             }
             return {
               ...params.config,
