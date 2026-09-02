@@ -90,9 +90,13 @@ export interface BaseMapProps {
  *   `mapTileset` flip — which tore the layer down and left the in-flight tile
  *   batch `net::ERR_ABORTED`, i.e. a blank/flickering map while loading
  *   (regression vs NodesTab's pre-BaseMap keyless `TileLayer`). The only
- *   option `updateGridLayer`/`setUrl` do NOT patch is `maxZoom`, so we remount
- *   only when the zoom ceiling genuinely changes; same-`maxZoom` swaps (the
- *   common case, e.g. osm↔carto↔osmHot, all 19) refresh in place.
+ *   options `updateGridLayer`/`setUrl` do NOT patch are `maxZoom` and
+ *   `maxNativeZoom`, so we remount only when a zoom ceiling genuinely
+ *   changes; same-ceiling swaps (the common case, e.g. osm↔carto↔osmHot, all
+ *   19 with no native cap) refresh in place. `maxNativeZoom` is part of the
+ *   key because esriDarkGray shares maxZoom 19 with the rest but caps native
+ *   tiles at 16 (#5015) — keying on maxZoom alone would leave a stale
+ *   uncapped layer requesting blank z17+ tiles after switching to it.
  * - **Vector `VectorTileLayer`** is keyed by the resolved tileset id: a
  *   MapLibre style/url change needs a clean remount, and raster↔vector swaps
  *   remount anyway (different component type).
@@ -171,17 +175,26 @@ export function BaseMap({
           : (
             <>
               <TileLayer
-                key={`raster-${tileset.maxZoom}`}
+                key={`raster-${tileset.maxZoom}-${tileset.maxNativeZoom ?? ''}`}
                 url={withCartoKey(tileset.url, cartoApiKey)}
                 attribution={tileset.attribution}
                 maxZoom={tileset.maxZoom}
+                maxNativeZoom={tileset.maxNativeZoom}
                 // Damp ESRI World_Imagery's over-saturated synthetic water blue
                 // on our provided satellite tilesets (#4860). Base tiles only —
                 // the hybrid label overlay below is left untouched.
+                // Per-tileset base-layer tone adjustments. Both are BASE-only:
+                // each tileset's label overlay is a separate TileLayer below
+                // and must stay unfiltered to remain legible.
+                //   - satellite: damp ESRI World_Imagery's synthetic water blue (#4860)
+                //   - dark gray: darken ESRI's mid-gray "Dark Gray" canvas so it
+                //     actually reads as dark in a dark-themed UI (#5015)
                 className={
                   tileset.id === 'esriSatellite' || tileset.id === 'esriHybrid'
                     ? 'mm-satellite-base-tile'
-                    : undefined
+                    : tileset.id === 'esriDarkGray'
+                      ? 'mm-dark-gray-base-tile'
+                      : undefined
                 }
               />
               {/* Optional transparent label/road overlay drawn on top of the
@@ -191,10 +204,11 @@ export function BaseMap({
                   tileset defines no overlayUrl. */}
               {tileset.overlayUrl && (
                 <TileLayer
-                  key={`raster-overlay-${tileset.maxZoom}`}
+                  key={`raster-overlay-${tileset.maxZoom}-${tileset.maxNativeZoom ?? ''}`}
                   url={withCartoKey(tileset.overlayUrl, cartoApiKey)}
                   attribution={tileset.overlayAttribution ?? tileset.attribution}
                   maxZoom={tileset.maxZoom}
+                  maxNativeZoom={tileset.maxNativeZoom}
                   zIndex={10}
                 />
               )}

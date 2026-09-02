@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from './icons';
 import { getAllTilesets, type TilesetId } from '../config/tilesets';
+import { isCartoUrl, withCartoKey } from '../config/cartoKey';
 import { useSettings } from '../contexts/SettingsContext';
 import { DraggableOverlay } from './DraggableOverlay';
 import { useIsMobileViewport } from '../hooks/useIsMobileViewport';
@@ -32,8 +33,22 @@ export const TilesetSelector: React.FC<TilesetSelectorProps> = ({
   embedded = false,
 }) => {
   const { t } = useTranslation();
-  const { customTilesets, activeMapTilesetMode } = useSettings();
+  const { customTilesets, activeMapTilesetMode, cartoApiKey } = useSettings();
   const tilesets = getAllTilesets(customTilesets);
+
+  // #5015: Carto retired its free keyless rasters. An unkeyed request still
+  // returns a valid HTTP 200 PNG — with "API KEY REQUIRED" painted across it —
+  // so there is no load error to react to and nothing downstream can notice.
+  // The only place a user can be told is here, where they pick the tileset.
+  //
+  // We warn rather than silently substituting a different basemap: the user
+  // may be choosing Carto precisely because they are about to add a key, and a
+  // picker that shows one tileset selected while rendering another is worse
+  // than a watermark.
+  const selectedTileset = tilesets.find((ts) => ts.id === selectedTilesetId);
+  const selectedNeedsCartoKey = Boolean(
+    selectedTileset && isCartoUrl(selectedTileset.url) && !cartoApiKey,
+  );
   // Floating overlay starts collapsed; embedded-in-sidebar starts expanded
   // (the sidebar itself provides the outer collapse).
   const [isCollapsed, setIsCollapsed] = useState(!embedded);
@@ -65,6 +80,17 @@ export const TilesetSelector: React.FC<TilesetSelectorProps> = ({
           <UiIcon name={isCollapsed ? 'chevronDown' : 'chevronUp'} />
         </button>
       </div>
+      {!isCollapsed && selectedNeedsCartoKey && (
+        <div className="tileset-carto-warning" role="status">
+          <UiIcon name="alert" />
+          <span>
+            {t(
+              'tileset.carto_key_required',
+              'This basemap needs a CARTO API key. Without one CARTO returns tiles watermarked "API KEY REQUIRED". Add a free key in Settings, or pick a keyless basemap such as Dark Gray.',
+            )}
+          </span>
+        </div>
+      )}
       {!isCollapsed && (
         <div className="tileset-buttons">
           {tilesets.map((tileset) => (
@@ -77,7 +103,7 @@ export const TilesetSelector: React.FC<TilesetSelectorProps> = ({
               <div
                 className="tileset-preview"
                 style={{
-                  backgroundImage: `url(${getTilePreviewUrl(tileset.url)})`
+                  backgroundImage: `url(${withCartoKey(getTilePreviewUrl(tileset.url), cartoApiKey)})`
                 }}
               />
               <div className="tileset-name">

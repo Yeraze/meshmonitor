@@ -3,7 +3,7 @@
  */
 
 // Type-safe tileset IDs using string literal union (predefined only)
-export type PredefinedTilesetId = 'osm' | 'osmHot' | 'cartoDark' | 'cartoLight' | 'openTopo' | 'esriSatellite' | 'esriHybrid';
+export type PredefinedTilesetId = 'osm' | 'osmHot' | 'cartoDark' | 'cartoLight' | 'esriDarkGray' | 'openTopo' | 'esriSatellite' | 'esriHybrid';
 
 // Custom tilesets can have any string ID (must start with 'custom-')
 export type TilesetId = PredefinedTilesetId | string;
@@ -29,6 +29,12 @@ export interface TilesetConfig {
   readonly url: string;
   readonly attribution: string;
   readonly maxZoom: number;
+  /** Highest zoom the provider actually has TILES for, when that is lower than
+   *  `maxZoom`. Leaflet then upscales the deepest real tile instead of
+   *  requesting levels that do not exist, so the user can keep zooming without
+   *  the map going blank. Omit when the provider has tiles all the way to
+   *  `maxZoom` (every tileset here except esriDarkGray, see #5015). */
+  readonly maxNativeZoom?: number;
   readonly description: string;
   readonly isCustom?: boolean;
   readonly isVector?: boolean;
@@ -74,6 +80,42 @@ export const TILESETS: Readonly<Record<PredefinedTilesetId, TilesetConfig>> = {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
     maxZoom: 19,
     description: 'Clean light theme map'
+  },
+  // The only KEYLESS dark basemap we ship (#5015). Carto retired its free
+  // keyless rasters, so `cartoDark` now serves an "API KEY REQUIRED"
+  // watermark to anyone without a `cartoApiKey` — and serves it as a
+  // perfectly valid HTTP 200 PNG, so nothing downstream can detect it. This
+  // is therefore the dark default when no key is configured; see
+  // DEFAULT_DARK_TILESET_ID / resolveDefaultDarkTileset in SettingsContext.
+  //
+  // Same `server.arcgisonline.com` host as esriSatellite/esriHybrid, so it
+  // adds no new origin (nothing to change in CSP or connect-src). Base tiles
+  // are label-free, so the companion Dark Gray Reference layer rides along as
+  // `overlayUrl` — the same mechanism esriHybrid uses for its place names.
+  esriDarkGray: {
+    id: 'esriDarkGray',
+    name: 'Dark Gray',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    overlayUrl: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+    attribution: 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ',
+    overlayAttribution: 'Labels &copy; Esri &mdash; Esri, DeLorme, NAVTEQ',
+    // Both services ADVERTISE maxLOD 23 in their ?f=json metadata, but that is
+    // not where their data stops: from z17 up every tile is the same blank
+    // placeholder. Verified against central London for BOTH layers — the Base
+    // returns distinct imagery at z14/15/16 then one identical 2521-byte tile
+    // from z17, and the Reference (labels) layer stops at exactly the same
+    // level, returning one identical 875-byte tile from z17. So a single cap
+    // of 16 is right for the pair, and no label resolution is being thrown
+    // away. Trusting the advertised number would give a map that silently
+    // goes blank when you zoom in on a node.
+    //
+    // So keep maxZoom at 19 to match the other tilesets — switching basemaps
+    // must not yank the zoom ceiling out from under the user — and set
+    // maxNativeZoom to the real 16, which makes Leaflet upscale the z16 tile
+    // rather than fetch nonexistent levels.
+    maxZoom: 19,
+    maxNativeZoom: 16,
+    description: 'Dark theme map, no API key required'
   },
   openTopo: {
     id: 'openTopo',

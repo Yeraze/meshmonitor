@@ -302,6 +302,60 @@ describe('per-theme map tileset helpers', () => {
     expect(resolveLegacyMapTilesets('custom-7')).toEqual({ light: 'custom-7', dark: 'custom-7' });
   });
 
+  it('picks the dark default from the CARTO key, not unconditionally (#5015)', async () => {
+    const { resolveDefaultDarkTileset } = await import('./SettingsContext');
+    // Keyed deployments keep Carto's dark raster — it is the nicest one we have.
+    expect(resolveDefaultDarkTileset('pk_abc123')).toBe('cartoDark');
+    // Unkeyed ones must NOT: Carto answers an unkeyed request with a valid
+    // HTTP 200 PNG that has "API KEY REQUIRED" painted across it, which no
+    // amount of downstream error handling can detect.
+    expect(resolveDefaultDarkTileset(null)).toBe('esriDarkGray');
+    expect(resolveDefaultDarkTileset(undefined)).toBe('esriDarkGray');
+    // A blank string is "no key", not a key.
+    expect(resolveDefaultDarkTileset('')).toBe('esriDarkGray');
+  });
+
+  it('treats a legacy mapTileset of "osm" as NOT a dark choice (#5015 review)', async () => {
+    const { wasDarkTilesetChosen } = await import('./SettingsContext');
+
+    // An explicit dark preference is always a choice.
+    expect(wasDarkTilesetChosen('cartoDark', null)).toBe(true);
+    expect(wasDarkTilesetChosen('esriDarkGray', 'osm')).toBe(true);
+
+    // Nothing stored at all: not a choice.
+    expect(wasDarkTilesetChosen(null, null)).toBe(false);
+    expect(wasDarkTilesetChosen(undefined, undefined)).toBe(false);
+
+    // THE REGRESSION. A legacy single-tileset value of 'osm' is the DEFAULT,
+    // picked by nobody. Counting it as a deliberate dark choice suppressed the
+    // keyless resolver and let cartoDark through on installs that had the
+    // legacy setting stored server-side — the original bug one layer down.
+    expect(wasDarkTilesetChosen(null, 'osm')).toBe(false);
+    expect(wasDarkTilesetChosen(undefined, 'osm')).toBe(false);
+
+    // A legacy value that is NOT the default did imply a dark selection,
+    // because resolveLegacyMapTilesets mirrors it into both slots.
+    expect(wasDarkTilesetChosen(null, 'openTopo')).toBe(true);
+    expect(wasDarkTilesetChosen(null, 'custom-7')).toBe(true);
+  });
+
+  it('keeps wasDarkTilesetChosen consistent with resolveLegacyMapTilesets (#5015 review)', async () => {
+    const { wasDarkTilesetChosen, resolveLegacyMapTilesets, DEFAULT_DARK_TILESET_ID } =
+      await import('./SettingsContext');
+
+    // The invariant that ties the two together: whenever resolveLegacyMapTilesets
+    // SUBSTITUTES a dark default (rather than mirroring the legacy value), the
+    // dark slot must count as unchosen — otherwise that substituted default
+    // never gets re-resolved against the CARTO key.
+    for (const legacy of [null, undefined, 'osm', 'openTopo', 'custom-7']) {
+      const substituted = resolveLegacyMapTilesets(legacy).dark === DEFAULT_DARK_TILESET_ID
+        && legacy !== DEFAULT_DARK_TILESET_ID;
+      if (substituted) {
+        expect(wasDarkTilesetChosen(null, legacy)).toBe(false);
+      }
+    }
+  });
+
   it('resolves explicit and system appearance modes', async () => {
     const { getActiveAppearanceMode, getEffectiveTileset } = await import('./SettingsContext');
     expect(getEffectiveTileset('light', 'cartoDark', 'osm', true)).toBe('osm');
@@ -1374,7 +1428,13 @@ describe('SettingsProvider', () => {
     expect(contextValue.overlayColors).toBeDefined();
   });
 
-  it('uses the new defaults for an untouched legacy OSM preference', async () => {
+  it('uses the KEYLESS dark default for an untouched legacy OSM preference (#5015)', async () => {
+    // Was asserting 'cartoDark'. That expectation encoded the bug: a stored
+    // legacy `mapTileset: 'osm'` is the DEFAULT, chosen by nobody, but the
+    // server-settings path counted it as a deliberate dark choice via a bare
+    // `Boolean(settings.mapTileset)`. That suppressed the keyless resolver and
+    // let cartoDark through — watermarked, since no key is configured here.
+    // This test passing was itself evidence of the bug.
     localStorage.setItem('mapTileset', 'osm');
     mockFetch.mockReset();
     createFetchMock({ appearanceMode: 'system', mapTileset: 'osm' });
@@ -1386,9 +1446,43 @@ describe('SettingsProvider', () => {
     await waitFor(() => expect(contextValue.isLoading).toBe(false));
 
     expect(contextValue.mapTilesetLight).toBe('osm');
-    expect(contextValue.mapTilesetDark).toBe('cartoDark');
-    expect(contextValue.mapTileset).toBe('cartoDark');
+    expect(contextValue.mapTilesetDark).toBe('esriDarkGray');
+    expect(contextValue.mapTileset).toBe('esriDarkGray');
     expect(contextValue.activeMapTilesetMode).toBe('dark');
+  });
+
+  it('still prefers cartoDark for that same install once a CARTO key exists (#5015)', async () => {
+    // The mirror of the test above, and the reason the resolution is deferred
+    // to /api/settings rather than decided at init: identical stored state,
+    // opposite outcome, decided purely by the key.
+    localStorage.setItem('mapTileset', 'osm');
+    mockFetch.mockReset();
+    createFetchMock({ appearanceMode: 'system', mapTileset: 'osm', cartoApiKey: 'pk_abc123' });
+    const { SettingsProvider, useSettings } = await import('./SettingsContext');
+    let contextValue: any;
+    const Consumer = () => { contextValue = useSettings(); return <div />; };
+
+    await act(async () => { render(<SettingsProvider><Consumer /></SettingsProvider>); });
+    await waitFor(() => expect(contextValue.isLoading).toBe(false));
+
+    expect(contextValue.cartoApiKey).toBe('pk_abc123');
+    expect(contextValue.mapTilesetDark).toBe('cartoDark');
+  });
+
+  it('never overrides an explicit dark choice, keyed or not (#5015)', async () => {
+    // A user who deliberately selected cartoDark may be about to paste a key.
+    // The picker warning covers them; silently swapping their basemap does not.
+    localStorage.setItem('mapTilesetDark', 'cartoDark');
+    mockFetch.mockReset();
+    createFetchMock({ appearanceMode: 'system', mapTilesetDark: 'cartoDark' });
+    const { SettingsProvider, useSettings } = await import('./SettingsContext');
+    let contextValue: any;
+    const Consumer = () => { contextValue = useSettings(); return <div />; };
+
+    await act(async () => { render(<SettingsProvider><Consumer /></SettingsProvider>); });
+    await waitFor(() => expect(contextValue.isLoading).toBe(false));
+
+    expect(contextValue.mapTilesetDark).toBe('cartoDark');
   });
 
   it('preserves a customized legacy tileset in both slots', async () => {

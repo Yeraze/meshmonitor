@@ -17,3 +17,28 @@
 .leaflet-tile.mm-satellite-base-tile {
   filter: saturate(0.8);
 }
+
+/*
+ * Keyless dark basemap tone adjustment (#5015).
+ *
+ * ESRI's "Dark Gray Canvas" is the only keyless DARK raster we ship, but its
+ * name oversells it: measured against the tile CARTO's dark_all serves for the
+ * same view, it comes in at mean luma 76 versus 17 — mid-gray, not dark. Left
+ * raw it reads as washed-out inside a dark-themed UI, which is not what someone
+ * choosing dark mode is asking for.
+ *
+ * There is no way to restyle a raster's features, so the whole base layer is
+ * dimmed. 0.6 lands at luma ~46: clearly dark, while roads and coastline stay
+ * readable. Deliberately NOT chased all the way down to CARTO's 17 — past about
+ * 0.45 the road network starts sinking into the background at low zoom, and a
+ * dark map you cannot navigate is a worse trade than a slightly lighter one.
+ *
+ * Applied to the BASE tiles only. The Dark Gray Reference labels are a separate
+ * TileLayer and stay at full brightness, so place names remain legible against
+ * the darkened ground — the same split the satellite rule above relies on.
+ *
+ * `brightness()` is per-pixel, so it introduces no tile seams. Easy to tune.
+ */
+.leaflet-tile.mm-dark-gray-base-tile {
+  filter: brightness(0.6);
+}
