@@ -436,6 +436,83 @@ describe('MeshCoreObserverPublisher — multi-broker (#5014 Phase 1 WP3)', () =>
     expect(newestOpts.password).toBe(renewedA.token);
   });
 
+  it('test 33b: a hard-stopped connection is excluded from renewal and never resurrected (review fix)', async () => {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const brokerA = broker({ url: 'wss://mqtt-a.test:443', tokenAudience: 'aud-a' });
+    const brokerB = broker({ url: 'wss://mqtt-b.test:443', tokenAudience: 'aud-b' });
+    // Both tokens are near expiry, so BOTH audiences would normally be due
+    // for renewal on the next tick.
+    const tokenA = makeToken({ publicKey: pubkeyFor('AA'), expiresAt: nowSeconds + 120 });
+    const tokenB = makeToken({ publicKey: pubkeyFor('BB'), expiresAt: nowSeconds + 120 });
+    const renewedA = makeToken({
+      publicKey: pubkeyFor('AA'),
+      token: 'renewedA.payload.' + 'a'.repeat(128),
+      expiresAt: nowSeconds + 86_400 + 120,
+    });
+
+    let mintCallsForA = 0;
+    let mintCallsForB = 0;
+    const mintToken = vi.fn(async (_sourceId: string, audience: string): Promise<ObserverTokenResult> => {
+      if (audience === 'aud-a') {
+        mintCallsForA++;
+        return { kind: 'ok', token: mintCallsForA === 1 ? tokenA : renewedA };
+      }
+      mintCallsForB++;
+      return { kind: 'ok', token: tokenB };
+    });
+
+    const publisher = new MeshCoreObserverPublisher({
+      sourceId: SOURCE_ID,
+      config: makeConfig([brokerA, brokerB]),
+      device: makeDevice(),
+      mintToken,
+    });
+    const [, clientB] = await startAndConnectAll(publisher, 2);
+    expect(mintCallsForA).toBe(1);
+    expect(mintCallsForB).toBe(1);
+    const connectCountBeforeHardStop = mockConnect.mock.calls.length;
+
+    // Drive B to hard-stop via MAX_AUTH_FAILURES permission-denied events —
+    // same mechanism as test 32.
+    for (let i = 0; i < MAX_AUTH_FAILURES; i++) {
+      clientB!.emit('error', Object.assign(new Error('bad creds'), { code: 4 }));
+    }
+    await flushMicrotasks();
+    expect(publisher.getStatus().brokers[1]!.connected).toBe(false);
+    // Hard-stopping disconnects the existing socket; it does not open a new one.
+    expect(mockConnect.mock.calls.length).toBe(connectCountBeforeHardStop);
+
+    // Advance past the renewal window. Both audiences are "due", but B's
+    // connection is hard-stopped.
+    vi.advanceTimersByTime(RENEWAL_CHECK_MS);
+    await flushMicrotasks();
+
+    // A renews normally...
+    expect(mintCallsForA).toBe(2);
+    // ...but B's audience is never even re-minted (no live connection to use it).
+    expect(mintCallsForB).toBe(1);
+    // Exactly one NEW socket total — A's rebuild. B's socket count is unchanged.
+    expect(mockConnect.mock.calls.length).toBe(connectCountBeforeHardStop + 1);
+    // Bring A's rebuilt socket up so its `connected` status reflects reality.
+    fakeClientAt(connectCountBeforeHardStop).emit('connect');
+    await flushMicrotasks();
+
+    const status = publisher.getStatus();
+    expect(status.brokers[1]!.connected).toBe(false);
+    expect(status.brokers[0]!.connected).toBe(true);
+    // B stays down permanently — isRunning() reflects A only.
+    expect(publisher.isRunning()).toBe(true);
+
+    // A's token is now fresh (just renewed to a 24h expiry), so a further
+    // tick renews nothing at all — confirming B's exclusion isn't a one-tick
+    // fluke and no connect is attempted for either broker.
+    vi.advanceTimersByTime(RENEWAL_CHECK_MS);
+    await flushMicrotasks();
+    expect(mockConnect.mock.calls.length).toBe(connectCountBeforeHardStop + 1);
+    expect(mintCallsForB).toBe(1);
+    expect(publisher.getStatus().brokers[1]!.connected).toBe(false);
+  });
+
   it('test 34: a failed renewal mint does not tear down the working socket', async () => {
     const nowSeconds = Math.floor(Date.now() / 1000);
     const brokerA = broker({ url: 'wss://mqtt-a.test:443', tokenAudience: 'aud-a' });

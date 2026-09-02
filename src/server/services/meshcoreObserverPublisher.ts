@@ -925,9 +925,24 @@ export class MeshCoreObserverPublisher {
   }
 
   private async renewAudience(audience: string): Promise<void> {
+    // Exclude hard-stopped connections: a connection that hit
+    // MAX_AUTH_FAILURES is disconnected on purpose and its `authStopping`
+    // latch stays set until an operator-driven config change / reconnect
+    // (start()). Renewing its token and calling rebuildWithToken() would
+    // resurrect the socket and, because the latch is already set,
+    // hardStopOnAuthFailure() would early-return forever after -- the
+    // connection would then retry via mqtt.js's own backoff with NO way to
+    // hard-stop again. Skip it entirely, and skip minting altogether when
+    // every connection on this audience is dead (no point burning an hourly
+    // WASM signature for a token nothing will use).
     const affected = this.connections.filter(
-      (c) => c.broker.authMode === 'token' && c.broker.tokenAudience === audience,
+      (c) =>
+        c.broker.authMode === 'token' &&
+        c.broker.tokenAudience === audience &&
+        !this.hardStoppedKeys.has(c.key),
     );
+    if (affected.length === 0) return;
+
     const result = await this.mintTokenFn(this.options.sourceId, audience);
     if (result.kind !== 'ok') {
       // Old sockets untouched — a transient mint failure must not tear down
