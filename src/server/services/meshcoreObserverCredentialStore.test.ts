@@ -361,4 +361,50 @@ describe('MeshCoreObserverCredentialStore', () => {
     await store.store(SOURCE, 'u3', '{"hello":"world"}');
     expect(await store.load(SOURCE)).toEqual({ kind: 'ok', username: 'u3', password: '{"hello":"world"}' });
   });
+
+  // ---------------------------------------------------------------------
+  // CodeQL "remote property injection" hardening (PR #5022 follow-up):
+  // brokerKey is request-body-derived. The route layer already bounds it
+  // against configured broker keys, but the store defends independently.
+  // ---------------------------------------------------------------------
+
+  const POLLUTION_KEYS = ['__proto__', 'constructor', 'prototype'];
+
+  for (const key of POLLUTION_KEYS) {
+    it(`storeForBroker('${key}', ...) is rejected and pollutes nothing`, async () => {
+      const store = new MeshCoreObserverCredentialStore(SECRET_A, true);
+
+      await expect(store.storeForBroker(SOURCE, key, 'evil-user', 'evil-pw')).rejects.toThrow(/reserved/i);
+
+      expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+      expect(Object.prototype).not.toHaveProperty('polluted');
+      expect(Object.prototype.hasOwnProperty.call(Object.prototype, 'username')).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(Object.prototype, 'password')).toBe(false);
+    });
+
+    it(`loadForBroker('${key}') is a safe no-op`, async () => {
+      const store = new MeshCoreObserverCredentialStore(SECRET_A, true);
+      await store.storeForBroker(SOURCE, BROKER_A, 'user-a', 'pw-a');
+
+      await expect(store.loadForBroker(SOURCE, key)).resolves.toEqual({ kind: 'none' });
+      expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+
+      // The real, non-malicious data is untouched.
+      expect(await store.loadForBroker(SOURCE, BROKER_A)).toEqual({ kind: 'ok', username: 'user-a', password: 'pw-a' });
+    });
+
+    it(`clearForBroker('${key}') is a safe no-op`, async () => {
+      const store = new MeshCoreObserverCredentialStore(SECRET_A, true);
+      await store.storeForBroker(SOURCE, BROKER_A, 'user-a', 'pw-a');
+
+      await expect(store.clearForBroker(SOURCE, key)).resolves.toBeUndefined();
+      expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+      expect(Object.prototype).not.toHaveProperty('polluted');
+
+      // A stored doc round-trips unchanged afterward.
+      expect(await store.loadForBroker(SOURCE, BROKER_A)).toEqual({ kind: 'ok', username: 'user-a', password: 'pw-a' });
+      expect(await store.listBrokers(SOURCE)).toEqual([{ brokerKey: BROKER_A, username: 'user-a' }]);
+    });
+  }
+
 });

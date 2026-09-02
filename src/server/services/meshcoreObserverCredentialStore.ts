@@ -188,7 +188,7 @@ export class MeshCoreObserverCredentialStore {
     // A row we cannot decrypt (key_rotated) has an unrecoverable brokers map
     // regardless of what we do here, so there is nothing to preserve; start
     // fresh rather than blocking the operator's write.
-    const brokers = existing.kind === 'ok' ? existing.doc.brokers : {};
+    const brokers = toNullProtoBrokers(existing.kind === 'ok' ? existing.doc.brokers : undefined);
     const doc: StoredCredentialDoc = { v: 2, brokers, legacy: { username, password } };
     await this.persistDoc(sourceId, doc);
   }
@@ -227,20 +227,30 @@ export class MeshCoreObserverCredentialStore {
    * operator-driven admin-route calls against a single source, and the loss
    * is recoverable by re-entering the credential. If a future UI ever
    * batch-saves N brokers in one gesture, it MUST serialize those PUTs.
+   *
+   * PROTOTYPE-POLLUTION GUARD (CodeQL): `brokerKey` is attacker-influenced
+   * (request body). Reject `FORBIDDEN_BROKER_KEYS` outright, and build the
+   * broker map as a null-prototype object (`toNullProtoBrokers`) before the
+   * keyed write below, so even an unexpected key can never reach
+   * `Object.prototype`.
    */
   async storeForBroker(sourceId: string, brokerKey: string, username: string, password: string): Promise<void> {
     if (!this._capability.canStore) {
       throw new Error('Cannot persist Analyzer Observer broker password: SESSION_SECRET is auto-generated');
+    }
+    if (isForbiddenBrokerKey(brokerKey)) {
+      throw new Error(`Cannot store credentials for broker "${brokerKey}": reserved broker key`);
     }
     const existing = await this.readDoc(sourceId);
     // See store()'s comment: a key-rotated row's brokers map is already
     // unrecoverable, so we start fresh rather than blocking the write.
     const doc: StoredCredentialDoc =
       existing.kind === 'ok'
-        ? { v: 2, brokers: { ...existing.doc.brokers }, legacy: existing.doc.legacy }
-        : { v: 2, brokers: {} };
+        ? { v: 2, brokers: toNullProtoBrokers(existing.doc.brokers), legacy: existing.doc.legacy }
+        : { v: 2, brokers: toNullProtoBrokers() };
 
-    if (!(brokerKey in doc.brokers) && Object.keys(doc.brokers).length >= OBSERVER_MAX_BROKER_CREDENTIALS) {
+    const alreadyPresent = Object.prototype.hasOwnProperty.call(doc.brokers, brokerKey);
+    if (!alreadyPresent && Object.keys(doc.brokers).length >= OBSERVER_MAX_BROKER_CREDENTIALS) {
       throw new Error(
         `Cannot store credentials for broker "${brokerKey}": the maximum of ` +
           `${OBSERVER_MAX_BROKER_CREDENTIALS} distinct broker credentials has been reached`,
@@ -256,13 +266,17 @@ export class MeshCoreObserverCredentialStore {
    * fallback is a publisher-level policy decision (`resolveBrokerCredential`
    * in `meshcoreObserverPublisher.ts`), not a store-level one, so that a
    * non-legacy broker can never observe the legacy credential.
+   *
+   * `brokerKey` is attacker-influenced; a reserved key (`FORBIDDEN_BROKER_KEYS`)
+   * is treated as simply absent rather than looked up.
    */
   async loadForBroker(sourceId: string, brokerKey: string): Promise<ObserverCredentialLoadResult> {
+    if (isForbiddenBrokerKey(brokerKey)) return { kind: 'none' };
     const result = await this.readDoc(sourceId);
     if (result.kind === 'none') return { kind: 'none' };
     if (result.kind === 'key_rotated') return { kind: 'key_rotated', storedKid: result.storedKid };
+    if (!Object.prototype.hasOwnProperty.call(result.doc.brokers, brokerKey)) return { kind: 'none' };
     const entry = result.doc.brokers[brokerKey];
-    if (!entry) return { kind: 'none' };
     return { kind: 'ok', username: entry.username, password: entry.password };
   }
 
@@ -274,13 +288,17 @@ export class MeshCoreObserverCredentialStore {
    * read). Deletes the whole row once the resulting document has neither
    * broker entries nor a legacy entry, matching `clear()`'s row-deletion
    * behaviour instead of leaving an empty husk envelope behind.
+   *
+   * `brokerKey` is attacker-influenced; a reserved key (`FORBIDDEN_BROKER_KEYS`)
+   * is a safe no-op rather than being looked up or deleted.
    */
   async clearForBroker(sourceId: string, brokerKey: string): Promise<void> {
+    if (isForbiddenBrokerKey(brokerKey)) return;
     const existing = await this.readDoc(sourceId);
-    if (existing.kind !== 'ok' || !(brokerKey in existing.doc.brokers)) {
+    if (existing.kind !== 'ok' || !Object.prototype.hasOwnProperty.call(existing.doc.brokers, brokerKey)) {
       return;
     }
-    const brokers = { ...existing.doc.brokers };
+    const brokers = toNullProtoBrokers(existing.doc.brokers);
     delete brokers[brokerKey];
     const doc: StoredCredentialDoc = { v: 2, brokers, legacy: existing.doc.legacy };
     if (Object.keys(doc.brokers).length === 0 && !doc.legacy) {
@@ -433,6 +451,40 @@ function hkdfBytes(ikm: Buffer, info: string, length: number): Buffer {
 }
 
 /**
+ * Prototype-pollution guard (CodeQL "remote property injection"): `brokerKey`
+ * ultimately originates from a request body (the credential PUT/DELETE
+ * routes), even though the route layer already bounds it against the
+ * source's *configured* broker keys (normalized URLs — `__proto__` etc.
+ * cannot match one). This store hardens itself independently rather than
+ * relying solely on that upstream check.
+ */
+const FORBIDDEN_BROKER_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+function isForbiddenBrokerKey(key: string): boolean {
+  return FORBIDDEN_BROKER_KEYS.has(key);
+}
+
+/**
+ * Build a null-prototype copy of a broker map (dropping any of
+ * `FORBIDDEN_BROKER_KEYS`), so every keyed write (`doc.brokers[brokerKey] =
+ * ...`) or delete lands on a plain data map that has no `Object.prototype`
+ * chain to pollute — belt-and-braces alongside the `isForbiddenBrokerKey`
+ * checks at each call site. Called with no argument, it just returns a fresh
+ * empty null-prototype map.
+ */
+function toNullProtoBrokers(
+  src?: Record<string, { username: string; password: string }>,
+): Record<string, { username: string; password: string }> {
+  const out: Record<string, { username: string; password: string }> = Object.create(null);
+  if (!src) return out;
+  for (const key of Object.keys(src)) {
+    if (isForbiddenBrokerKey(key)) continue;
+    out[key] = src[key];
+  }
+  return out;
+}
+
+/**
  * Decode the AEAD plaintext into a `StoredCredentialDoc` (#5014).
  *
  * ```
@@ -448,6 +500,12 @@ function hkdfBytes(ikm: Buffer, info: string, length: number): Buffer {
  * `clearUsername` is the row's clear `username` column, which — for a v1 row
  * — IS the legacy username (that column has held exactly the legacy username
  * since before #5014).
+ *
+ * The `brokers` map on the returned document is always a sanitized,
+ * null-prototype copy (`toNullProtoBrokers`) — even in the v2-as-is path —
+ * so a maliciously-crafted stored envelope (or one written by a future bug)
+ * can never carry a `__proto__`/`constructor`/`prototype` key back into a
+ * live object that later gets a keyed write.
  *
  * MISPARSE CAVEAT (accepted, documented per spec §4.2): a v1 password that
  * happens to be *exactly* a JSON object shaped like `{"v":2,"brokers":{...}}`
@@ -468,12 +526,17 @@ function decodeDoc(plaintext: string, clearUsername: string): StoredCredentialDo
       typeof (parsed as Record<string, unknown>).brokers === 'object' &&
       (parsed as Record<string, unknown>).brokers !== null
     ) {
-      return parsed as StoredCredentialDoc;
+      const p = parsed as {
+        v: 2;
+        brokers: Record<string, { username: string; password: string }>;
+        legacy?: { username: string; password: string };
+      };
+      return { v: 2, brokers: toNullProtoBrokers(p.brokers), legacy: p.legacy };
     }
   } catch {
     // Not JSON at all — definitely a v1 plaintext password. Fall through.
   }
-  return { v: 2, brokers: {}, legacy: { username: clearUsername, password: plaintext } };
+  return { v: 2, brokers: toNullProtoBrokers(), legacy: { username: clearUsername, password: plaintext } };
 }
 
 /**
