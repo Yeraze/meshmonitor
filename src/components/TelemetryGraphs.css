@@ -278,6 +278,29 @@
   color: var(--color-text-subtle);
 }
 
+/* Category sections (#4930): panels grouped by module (weather, power,
+ * network, ...) with a pinned Favorites section on top. */
+.telemetry-category {
+  margin-top: 20px;
+}
+
+.telemetry-category:first-of-type {
+  margin-top: 12px;
+}
+
+.telemetry-category-title {
+  margin: 0 0 10px 0;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-subtle);
+  background: var(--color-surface);
+  border-left: 3px solid var(--color-accent);
+  border-radius: 4px;
+}
+
 @media (max-width: 768px) {
   .graphs-grid {
     grid-template-columns: 1fr;
@@ -285,5 +308,9 @@
 
   .telemetry-graphs {
     padding: 10px;
+  }
+
+  .telemetry-category-title {
+    font-size: 0.8rem;
   }
 }
