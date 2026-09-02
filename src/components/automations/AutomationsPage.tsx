@@ -131,6 +131,22 @@ function AutomationsList() {
     await navigator.clipboard?.writeText(JSON.stringify(data, null, 2));
     alert('Exported JSON copied to clipboard.');
   };
+  // TODO(#5024): component test for the duplicate handler.
+  const duplicate = async (a: Automation) => {
+    const suggested = `${a.name} (copy)`;
+    const name = window.prompt('Name for the duplicate:', suggested);
+    if (name === null) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    try {
+      const created = await apiService.post<Automation>(`/api/automations/${a.id}/duplicate`, { name: trimmed });
+      await load();
+      // Open the disabled clone in the editor so the user can review before enabling.
+      setEditing(created);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to duplicate');
+    }
+  };
 
   if (editing) return <AutomationEditor automation={editing} onClose={() => { setEditing(null); void load(); }} />;
   if (browsing) return (
@@ -187,6 +203,7 @@ function AutomationsList() {
               <button className="ae-btn" onClick={() => setRunsFor(a)}>Runs</button>
               <button className="ae-btn" onClick={() => setTraceFor(a)} title="Live debug trace of this rule">Trace</button>
               <button className="ae-btn" onClick={() => exportOne(a)}>Export</button>
+              <button className="ae-btn" onClick={() => duplicate(a)} title="Create a disabled copy of this rule">Duplicate</button>
               <button className="ae-btn ae-btn--danger" onClick={() => remove(a)}>Delete</button>
             </div>
           </div>
