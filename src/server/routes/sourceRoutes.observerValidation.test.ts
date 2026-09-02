@@ -466,4 +466,173 @@ describe('validateObserverConfig', () => {
       validateObserverConfig('meshcore', { deviceType: 'companion', observer: VALID_OBSERVER }),
     ).toBeNull();
   });
+
+  // ── Multi-broker (#5014 Phase 1) ───────────────────────────────────────────
+  describe('brokers[] (#5014 Phase 1)', () => {
+    const TWO_BROKERS = {
+      enabled: true,
+      iataCode: 'MCO',
+      brokers: [
+        { url: 'wss://mqtt.meshmapper.net:443', tokenAudience: 'mqtt.meshmapper.net', label: 'MeshMapper' },
+        { url: 'wss://mqtt-us-v1.letsmesh.net:443', tokenAudience: 'mqtt-us-v1.letsmesh.net', label: 'LetsMesh US' },
+      ],
+    };
+
+    // ── Test 10 ───────────────────────────────────────────────────────────
+    it('accepts a valid two-broker config', () => {
+      expect(validateObserverConfig('meshcore', { observer: TWO_BROKERS })).toBeNull();
+    });
+
+    // ── Test 11 ───────────────────────────────────────────────────────────
+    it('rejects a non-array brokers value', () => {
+      const err = validateObserverConfig('meshcore', {
+        observer: { ...TWO_BROKERS, brokers: 'nope' },
+      });
+      expect(err).toEqual({ status: 400, error: 'observer.brokers must be an array', code: 'INVALID_PARAMETER_TYPE' });
+    });
+
+    it('rejects 9 brokers with TOO_MANY_BROKERS', () => {
+      const nine = Array.from({ length: 9 }, () => ({}));
+      const err = validateObserverConfig('meshcore', {
+        observer: { enabled: true, iataCode: 'MCO', brokers: nine },
+      });
+      expect(err?.code).toBe('TOO_MANY_BROKERS');
+    });
+
+    it('rejects a non-object entry', () => {
+      const err = validateObserverConfig('meshcore', {
+        observer: { ...TWO_BROKERS, brokers: [TWO_BROKERS.brokers[0], 'nope'] },
+      });
+      expect(err?.code).toBe('INVALID_PARAMETER_TYPE');
+    });
+
+    it('rejects an http:// entry URL with INVALID_BROKER_URL, proving the scheme pre-check survived the extraction', () => {
+      const err = validateObserverConfig('meshcore', {
+        observer: {
+          enabled: true,
+          iataCode: 'MCO',
+          brokers: [{ url: 'http://broker.example', tokenAudience: 'aud' }],
+        },
+      });
+      expect(err).toEqual({
+        status: 400,
+        error: 'observer.brokers[0].url must be a ws/wss/mqtt/mqtts URL',
+        code: 'INVALID_BROKER_URL',
+      });
+    });
+
+    it('rejects a token-mode entry with no audience', () => {
+      const err = validateObserverConfig('meshcore', {
+        observer: { enabled: true, iataCode: 'MCO', brokers: [{ url: 'mqtt://broker.test:1883' }] },
+      });
+      expect(err?.code).toBe('INVALID_PARAMETER');
+    });
+
+    it('rejects a label over 64 chars', () => {
+      const err = validateObserverConfig('meshcore', {
+        observer: {
+          enabled: true,
+          iataCode: 'MCO',
+          brokers: [{ url: 'mqtt://broker.test:1883', tokenAudience: 'aud', label: 'x'.repeat(65) }],
+        },
+      });
+      expect(err?.code).toBe('INVALID_PARAMETER');
+    });
+
+    it('rejects two entries with the same normalized URL', () => {
+      const err = validateObserverConfig('meshcore', {
+        observer: {
+          enabled: true,
+          iataCode: 'MCO',
+          brokers: [
+            { url: 'broker.test:1883', tokenAudience: 'a' },
+            { url: 'mqtt://broker.test:1883', tokenAudience: 'b' },
+          ],
+        },
+      });
+      expect(err?.code).toBe('DUPLICATE_BROKER_URL');
+    });
+
+    it('rejects an entry carrying a password, and fires even when enabled is false', () => {
+      const err = validateObserverConfig('meshcore', {
+        observer: {
+          enabled: false,
+          iataCode: 'MCO',
+          brokers: [{ url: 'mqtt://broker.test:1883', password: 'meshcore' }],
+        },
+      });
+      expect(err?.code).toBe('OBSERVER_KEY_IN_CONFIG');
+    });
+
+    // ── Test 12 ───────────────────────────────────────────────────────────
+    it('accepts enabled:true with brokers[] and no brokerUrl (the MISSING_BROKER relaxation)', () => {
+      expect(validateObserverConfig('meshcore', { observer: TWO_BROKERS })).toBeNull();
+    });
+
+    it('rejects enabled:true with neither a usable brokerUrl nor a non-empty brokers[] (MISSING_BROKER)', () => {
+      const err = validateObserverConfig('meshcore', {
+        observer: { enabled: true, iataCode: 'MCO', brokers: [] },
+      });
+      expect(err).toEqual({
+        status: 400,
+        error: 'observer requires either brokerUrl or a non-empty brokers array',
+        code: 'MISSING_BROKER',
+      });
+    });
+
+    // ── Test 13: every pre-existing assertion in this file still passes ────
+    // (asserted implicitly — this whole file is that regression suite; see
+    // the rows above this describe block, all unmodified.)
+
+    // ── Test 14: observer block size cap ────────────────────────────────────
+    describe('observer block size cap (MAX_OBSERVER_CONFIG_BYTES)', () => {
+      it('rejects an observer block over the byte cap, including when disabled', () => {
+        const err = validateObserverConfig('meshcore', {
+          observer: { enabled: false, padding: 'x'.repeat(2000) },
+        });
+        expect(err?.code).toBe('OBSERVER_CONFIG_TOO_LARGE');
+      });
+
+      it('rejects an observer block over the byte cap when enabled', () => {
+        const err = validateObserverConfig('meshcore', {
+          observer: { ...TWO_BROKERS, padding: 'x'.repeat(2000) },
+        });
+        expect(err?.code).toBe('OBSERVER_CONFIG_TOO_LARGE');
+      });
+
+      it('accepts an observer block at exactly the byte limit', () => {
+        const base = { enabled: false } as Record<string, unknown>;
+        const baseBytes = Buffer.byteLength(JSON.stringify(base), 'utf8');
+        // Account for the extra `"padding":"..."`, key/quote/comma overhead.
+        const overhead = Buffer.byteLength(JSON.stringify({ ...base, padding: '' }), 'utf8') - baseBytes;
+        const paddingLen = 1536 - baseBytes - overhead;
+        const withPadding = { ...base, padding: 'x'.repeat(paddingLen) };
+        expect(Buffer.byteLength(JSON.stringify(withPadding), 'utf8')).toBe(1536);
+        expect(validateObserverConfig('meshcore', { observer: withPadding })).toBeNull();
+      });
+
+      it('accepts a valid 8-broker observer block, which fits comfortably under the cap', () => {
+        const eight = Array.from({ length: 8 }, (_, i) => ({
+          url: `mqtt://b${i}.example:1883`,
+          tokenAudience: `aud${i}`,
+          label: `B${i}`,
+        }));
+        const observer = { enabled: true, iataCode: 'MCO', brokers: eight };
+        expect(Buffer.byteLength(JSON.stringify(observer), 'utf8')).toBeLessThanOrEqual(1536);
+        expect(validateObserverConfig('meshcore', { observer })).toBeNull();
+      });
+
+      it('pins the decision NOT to guard the whole config: a non-observer config well over 4096 bytes is accepted', () => {
+        const fatMqttBridgeConfig = {
+          upstream: { url: 'mqtt://broker.test:1883' },
+          topicRewrites: Array.from({ length: 50 }, (_, i) => ({
+            from: `from/topic/${i}/${'x'.repeat(50)}`,
+            to: `to/topic/${i}/${'y'.repeat(50)}`,
+          })),
+        };
+        expect(Buffer.byteLength(JSON.stringify(fatMqttBridgeConfig), 'utf8')).toBeGreaterThan(4096);
+        expect(validateObserverConfig('mqtt_bridge', fatMqttBridgeConfig)).toBeNull();
+      });
+    });
+  });
 });
