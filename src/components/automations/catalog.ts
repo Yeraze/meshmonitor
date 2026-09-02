@@ -764,6 +764,9 @@ export const ACTIONS: BlockDef[] = [
     description: 'Run a script from the server’s scripts folder. The trigger context is passed as MM_* environment variables; the script’s JSON output can be stored in a variable.',
     fields: [
       { name: 'scriptPath', label: 'Script', kind: 'scriptselect', help: 'A script file in the server’s scripts directory ($DATA_DIR/scripts).' },
+      { name: 'args', label: 'Arguments', kind: 'text', tokens: true, advanced: true,
+        placeholder: 'e.g. --from {{ trigger.from }} --text "{{ trigger.text }}"',
+        help: 'Optional CLI arguments. Supports {{ var.x }} and {{ trigger.field }} templates. Shell-style quoting is honored, so "hello world" stays one arg.' },
       { name: 'resultVariable', label: 'Store result in', kind: 'variable', advanced: true, help: 'Optional. Stores the script’s JSON output in this variable — use a "json" variable and index it later as {{ var.name.field }}.' },
       { name: 'timeoutSeconds', label: 'Timeout (seconds)', kind: 'number', advanced: true, placeholder: '30' },
     ],

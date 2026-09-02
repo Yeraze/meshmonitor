@@ -267,10 +267,10 @@ export function createMeshActionDeps(): ActionDeps {
       return r;
     },
 
-    async runScript({ scriptPath, env, timeoutMs }) {
+    async runScript({ scriptPath, scriptArgs, env, timeoutMs }) {
       // runUserScript resolves the path under $DATA_DIR/scripts (traversal-safe),
       // picks the interpreter, and never throws — returns { success, ... }.
-      return runUserScript({ scriptPath, env, timeoutMs });
+      return runUserScript({ scriptPath, scriptArgs, env, timeoutMs });
     },
   };
 }

@@ -10,6 +10,7 @@ import { type AutomationNode, AUTOMATION_DELAY_MAX_SECONDS, parseSendMaxAttempts
 import { type EngineEvalContext, interpolateAsync, resolveOperand } from './engineContext.js';
 import { isTxDisabledError } from '../../errors/txDisabledError.js';
 import { hopCountEmoji } from '../../../utils/hopEmoji.js';
+import { tokenizeArgv } from '../../utils/argvTokenizer.js';
 
 export type NodeManageOp = 'favorite' | 'unfavorite' | 'ignore' | 'unignore' | 'delete';
 
@@ -61,8 +62,11 @@ export interface ActionDeps {
    *  Throws on an unreachable/unsupported source so the run-log records a failed step. */
   rebootDevice(a: { sourceId: string | null; seconds?: number; targetNodeNum?: number }): Promise<unknown>;
   notify(a: { sourceId: string | null; title: string; body: string; type?: string; urls?: string[] }): Promise<unknown>;
-  /** Run a user script file (in $DATA_DIR/scripts) with the given env. Never throws — returns the outcome. */
-  runScript(a: { scriptPath: string; env: Record<string, string>; timeoutMs?: number }):
+  /** Run a user script file (in $DATA_DIR/scripts) with the given env. Never throws — returns the outcome.
+   *  `scriptArgs` is the already-tokenized argv the executor built from the
+   *  action's Arguments field. Omitted or empty means the script runs with no
+   *  argv beyond the interpreter + script path. */
+  runScript(a: { scriptPath: string; scriptArgs?: string[]; env: Record<string, string>; timeoutMs?: number }):
     Promise<{ success: boolean; returnValue?: unknown; stdout: string; error?: string }>;
   /** Pause for `ms` (action.delay). Optional/injectable so tests don't wait in real time. */
   sleep?(ms: number): Promise<void>;
@@ -186,7 +190,25 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
       if (!scriptPath) throw new Error('action.runScript: no scriptPath');
       const timeoutMs = p.timeoutSeconds != null && Number.isFinite(Number(p.timeoutSeconds))
         ? Math.max(1, Number(p.timeoutSeconds)) * 1000 : undefined;
-      const result = await deps.runScript({ scriptPath, env: triggerEnv(ctx), timeoutMs });
+
+      // Arguments field: interpolate {{ var.x }} / {{ trigger.field }} templates,
+      // then split the result with shell-style quote handling into argv. An
+      // unterminated quote fails the action cleanly so the run-log records why
+      // rather than silently truncating argv.
+      const rawArgs = typeof p.args === 'string' ? p.args : '';
+      let scriptArgs: string[] | undefined;
+      if (rawArgs.trim().length > 0) {
+        const interpolated = await interpolateAsync(rawArgs, ctx);
+        try {
+          const tokens = tokenizeArgv(interpolated);
+          if (tokens.length > 0) scriptArgs = tokens;
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : String(err);
+          throw new Error(`action.runScript: invalid arguments — ${reason}`, { cause: err });
+        }
+      }
+
+      const result = await deps.runScript({ scriptPath, scriptArgs, env: triggerEnv(ctx), timeoutMs });
       if (!result.success) throw new Error(`script "${scriptPath}" failed: ${result.error ?? 'non-zero exit'}`);
       // Store the script's JSON result into a variable (usable later as
       // {{ var.NAME.a.b }}); fall back to trimmed stdout when there's no JSON.
