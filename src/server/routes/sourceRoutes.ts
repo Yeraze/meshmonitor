@@ -27,6 +27,7 @@ import { mqttGeoSweepService, type GeoSweepStatsSink } from '../services/mqttGeo
 import type { MqttFilterConfig } from '../mqttPacketFilter.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { normalizeBrokerUrl } from '../transports/mqttBrokerClient.js';
+import { observerBrokerKey } from '../meshcoreConfig.js';
 
 const router = Router();
 
@@ -90,6 +91,65 @@ function observerConfigContainsKeyMaterial(observer: Record<string, unknown>): b
   return OBSERVER_KEY_MATERIAL_FIELDS.some((f) => Object.prototype.hasOwnProperty.call(observer, f));
 }
 
+// Multi-broker limits (#5014 Phase 1). Chosen together — see the budget
+// arithmetic in MESHMAPPER_OBSERVER_PHASE1_SPEC.md §2.5: a fully-populated
+// 8-broker block sits comfortably under the byte cap, and neither constant
+// should be raised without re-checking the other.
+export const MAX_OBSERVER_BROKERS = 8;
+
+/**
+ * Serialized-byte ceiling for the `observer` block alone.
+ *
+ * `sources.config` is `varchar(4096)` on MySQL (TEXT on SQLite/PostgreSQL), so
+ * the blob as a whole has a hard limit on ONE backend. We deliberately do not
+ * police the whole blob (that would reject pre-existing oversized configs on
+ * the backends where they are legal — e.g. a big `mqtt_bridge` block with many
+ * subscriptions/filters/rewrites — making that source uneditable after
+ * upgrade), only the part #5014 adds. 1536 bytes is ~37% of the MySQL column,
+ * which keeps a fully-populated 8-broker observer comfortably clear of
+ * transport + virtualNode config in the same blob.
+ */
+export const MAX_OBSERVER_CONFIG_BYTES = 1536;
+
+// Broker-URL shape check, shared by the legacy `observer.brokerUrl` field and
+// every `observer.brokers[i].url` entry (#5014 Phase 1). `field` names the
+// JSON path in the error message (e.g. 'observer.brokerUrl' or
+// 'observer.brokers[2].url'). Handles the "not even a string" case too, so
+// every call site can just forward the raw value.
+function validateBrokerUrlValue(
+  value: unknown,
+  field: string,
+): { status: number; error: string; code: string } | null {
+  if (typeof value !== 'string' || value.length === 0) {
+    return { status: 400, error: `${field} must be a non-empty string`, code: 'INVALID_PARAMETER' };
+  }
+  // Reject an explicit disallowed scheme BEFORE normalization. normalizeBrokerUrl
+  // (shared with the Phase 2 MQTT client — must not be modified here) only
+  // recognizes mqtt/mqtts/ws/wss/tcp/tls as an explicit passthrough scheme; any
+  // other explicit scheme (http://, https://, ftp://, ...) falls through its
+  // "bare host" branch and gets silently prefixed with mqtt://, laundering a bad
+  // scheme into an apparently-valid URL (e.g. "http://broker.example" would
+  // otherwise normalize to a parseable "mqtt://http://broker.example" whose
+  // hostname is "http"). Catch it here on the raw input instead.
+  const schemeSepIdx = value.indexOf('://');
+  if (schemeSepIdx !== -1) {
+    const scheme = value.slice(0, schemeSepIdx).toLowerCase();
+    if (!['ws', 'wss', 'mqtt', 'mqtts'].includes(scheme)) {
+      return { status: 400, error: `${field} must be a ws/wss/mqtt/mqtts URL`, code: 'INVALID_BROKER_URL' };
+    }
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(normalizeBrokerUrl(value));
+  } catch {
+    return { status: 400, error: `${field} must be a ws/wss/mqtt/mqtts URL`, code: 'INVALID_BROKER_URL' };
+  }
+  if (!['ws:', 'wss:', 'mqtt:', 'mqtts:'].includes(parsed.protocol) || parsed.hostname.length === 0) {
+    return { status: 400, error: `${field} must be a ws/wss/mqtt/mqtts URL`, code: 'INVALID_BROKER_URL' };
+  }
+  return null;
+}
+
 // Validate the `observer` (Analyzer Observer, #4457) config block nested
 // inside a source config blob. Returns null on success/absent, or
 // { status, error, code } on failure. Synchronous — unlike
@@ -118,6 +178,45 @@ export function validateObserverConfig(
       code: 'OBSERVER_KEY_IN_CONFIG',
     };
   }
+
+  // brokers[] structural shape + per-entry key-material scan (#5014 Phase 1).
+  // Regardless of `enabled`/`type`, mirroring the block-level key-material
+  // check above — a hostile client must not be able to smuggle a password
+  // into a brokers[] entry via a disabled block or an unrelated source type
+  // either. Full per-broker semantic validation (URL shape, auth mode,
+  // audience, label, dedupe) happens later, only once `enabled === true` on a
+  // meshcore source — see the `hasBrokersList` branch below.
+  const brokersRaw = observerObj.brokers;
+  let brokersArr: Record<string, unknown>[] | undefined;
+  if (brokersRaw !== undefined) {
+    if (!Array.isArray(brokersRaw)) {
+      return { status: 400, error: 'observer.brokers must be an array', code: 'INVALID_PARAMETER_TYPE' };
+    }
+    if (brokersRaw.length > MAX_OBSERVER_BROKERS) {
+      return {
+        status: 400,
+        error: `observer.brokers must contain at most ${MAX_OBSERVER_BROKERS} entries`,
+        code: 'TOO_MANY_BROKERS',
+      };
+    }
+    for (let i = 0; i < brokersRaw.length; i++) {
+      const entry = brokersRaw[i];
+      if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+        return { status: 400, error: `observer.brokers[${i}] must be an object`, code: 'INVALID_PARAMETER_TYPE' };
+      }
+      if (observerConfigContainsKeyMaterial(entry as Record<string, unknown>)) {
+        return {
+          status: 400,
+          error:
+            'observer config must not contain key material or a broker password; use ' +
+            'PUT /api/sources/:id/observer/key or PUT /api/sources/:id/observer/credentials',
+          code: 'OBSERVER_KEY_IN_CONFIG',
+        };
+      }
+    }
+    brokersArr = brokersRaw as Record<string, unknown>[];
+  }
+
   if (type !== 'meshcore') {
     return { status: 400, error: 'observer config is only supported on meshcore sources', code: 'INVALID_PARAMETER' };
   }
@@ -131,6 +230,21 @@ export function validateObserverConfig(
     };
   }
   const authMode: 'token' | 'password' = authModeRaw === 'password' ? 'password' : 'token';
+
+  // Observer block size guard (#5014 Phase 1 §2.5), regardless of `enabled`
+  // (a disabled-but-huge block would still be persisted). Deliberately scoped
+  // to the observer block alone — see MAX_OBSERVER_CONFIG_BYTES above. There
+  // is NO whole-config guard, and no non-observer source type gains a
+  // rejection path from this check.
+  const observerBytes = Buffer.byteLength(JSON.stringify(observerObj), 'utf8');
+  if (observerBytes > MAX_OBSERVER_CONFIG_BYTES) {
+    return {
+      status: 400,
+      error: `observer config must not exceed ${MAX_OBSERVER_CONFIG_BYTES} serialized bytes`,
+      code: 'OBSERVER_CONFIG_TOO_LARGE',
+    };
+  }
+
   if (observerObj.enabled !== true) return null;
   // Companion-only in BOTH modes. In password mode the reason is no longer
   // "a repeater can't export a signing key" but the harder one: the
@@ -144,34 +258,97 @@ export function validateObserverConfig(
       code: 'OBSERVER_REQUIRES_COMPANION',
     };
   }
-  const brokerUrl = observerObj.brokerUrl;
-  if (typeof brokerUrl !== 'string' || brokerUrl.length === 0) {
-    return { status: 400, error: 'observer.brokerUrl must be a non-empty string', code: 'INVALID_PARAMETER' };
-  }
-  // Reject an explicit disallowed scheme BEFORE normalization. normalizeBrokerUrl
-  // (shared with the Phase 2 MQTT client — must not be modified here) only
-  // recognizes mqtt/mqtts/ws/wss/tcp/tls as an explicit passthrough scheme; any
-  // other explicit scheme (http://, https://, ftp://, ...) falls through its
-  // "bare host" branch and gets silently prefixed with mqtt://, laundering a bad
-  // scheme into an apparently-valid URL (e.g. "http://broker.example" would
-  // otherwise normalize to a parseable "mqtt://http://broker.example" whose
-  // hostname is "http"). Catch it here on the raw input instead.
-  const schemeSepIdx = brokerUrl.indexOf('://');
-  if (schemeSepIdx !== -1) {
-    const scheme = brokerUrl.slice(0, schemeSepIdx).toLowerCase();
-    if (!['ws', 'wss', 'mqtt', 'mqtts'].includes(scheme)) {
-      return { status: 400, error: 'observer.brokerUrl must be a ws/wss/mqtt/mqtts URL', code: 'INVALID_BROKER_URL' };
+
+  // Broker requirement + validation (#5014 Phase 1). `brokers[]`, when a
+  // non-empty array, is authoritative: it is validated in full here and the
+  // legacy `brokerUrl` — if also present — is still shape-checked (existing
+  // rule preserved) but not required. When `brokers[]` is absent entirely,
+  // this is the EXACT pre-#5014 code path (brokerUrl required), so an
+  // existing config's error codes/messages are unchanged. Only when `brokers`
+  // was explicitly given but has no usable entry, and there is no legacy
+  // brokerUrl either, is the relaxed MISSING_BROKER case reached.
+  const hasBrokersList = brokersArr !== undefined && brokersArr.length > 0;
+  const legacyBrokerUrlRaw = observerObj.brokerUrl;
+  const legacyBrokerUrlProvided = legacyBrokerUrlRaw !== undefined;
+
+  if (!hasBrokersList) {
+    if (brokersArr !== undefined && !legacyBrokerUrlProvided) {
+      return {
+        status: 400,
+        error: 'observer requires either brokerUrl or a non-empty brokers array',
+        code: 'MISSING_BROKER',
+      };
+    }
+    const urlErr = validateBrokerUrlValue(legacyBrokerUrlRaw, 'observer.brokerUrl');
+    if (urlErr) return urlErr;
+  } else {
+    if (legacyBrokerUrlProvided) {
+      const urlErr = validateBrokerUrlValue(legacyBrokerUrlRaw, 'observer.brokerUrl');
+      if (urlErr) return urlErr;
+    }
+    const seenKeys = new Set<string>();
+    for (let i = 0; i < brokersArr!.length; i++) {
+      const entry = brokersArr![i];
+      const urlErr = validateBrokerUrlValue(entry.url, `observer.brokers[${i}].url`);
+      if (urlErr) return urlErr;
+
+      const entryAuthModeRaw = entry.authMode;
+      if (entryAuthModeRaw !== undefined && entryAuthModeRaw !== 'token' && entryAuthModeRaw !== 'password') {
+        return {
+          status: 400,
+          error: `observer.brokers[${i}].authMode must be 'token' or 'password'`,
+          code: 'INVALID_OBSERVER_AUTH_MODE',
+        };
+      }
+      // Defaults to the block-level authMode, matching normalizeObserverBrokers.
+      const entryAuthMode: 'token' | 'password' =
+        entryAuthModeRaw === 'password' ? 'password' : entryAuthModeRaw === 'token' ? 'token' : authMode;
+
+      if (entryAuthMode === 'token') {
+        const aud = entry.tokenAudience;
+        const isValidAud =
+          typeof aud === 'string' && aud.length > 0 && aud.length <= 255 && !/\s/.test(aud);
+        if (!isValidAud) {
+          return {
+            status: 400,
+            error: `observer.brokers[${i}].tokenAudience must be a non-empty string with no whitespace`,
+            code: 'INVALID_PARAMETER',
+          };
+        }
+      }
+
+      const label = entry.label;
+      if (label !== undefined && (typeof label !== 'string' || label.length > 64)) {
+        return {
+          status: 400,
+          error: `observer.brokers[${i}].label must be a string of at most 64 characters`,
+          code: 'INVALID_PARAMETER',
+        };
+      }
+
+      // validateBrokerUrlValue above already proved entry.url normalizes, so
+      // this cannot throw in practice; the catch is defence-in-depth only.
+      let key: string;
+      try {
+        key = observerBrokerKey(entry.url as string);
+      } catch {
+        return {
+          status: 400,
+          error: `observer.brokers[${i}].url must be a ws/wss/mqtt/mqtts URL`,
+          code: 'INVALID_BROKER_URL',
+        };
+      }
+      if (seenKeys.has(key)) {
+        return {
+          status: 400,
+          error: `observer.brokers[${i}].url duplicates another broker's normalized URL`,
+          code: 'DUPLICATE_BROKER_URL',
+        };
+      }
+      seenKeys.add(key);
     }
   }
-  let parsed: URL;
-  try {
-    parsed = new URL(normalizeBrokerUrl(brokerUrl));
-  } catch {
-    return { status: 400, error: 'observer.brokerUrl must be a ws/wss/mqtt/mqtts URL', code: 'INVALID_BROKER_URL' };
-  }
-  if (!['ws:', 'wss:', 'mqtt:', 'mqtts:'].includes(parsed.protocol) || parsed.hostname.length === 0) {
-    return { status: 400, error: 'observer.brokerUrl must be a ws/wss/mqtt/mqtts URL', code: 'INVALID_BROKER_URL' };
-  }
+
   const iataCode = observerObj.iataCode;
   const isValidIata = typeof iataCode === 'string' && (/^[A-Za-z]{3}$/.test(iataCode) || iataCode.toLowerCase() === 'test');
   if (!isValidIata) {
@@ -181,27 +358,35 @@ export function validateObserverConfig(
       code: 'INVALID_IATA_CODE',
     };
   }
-  const tokenAudience = observerObj.tokenAudience;
-  // Password mode signs nothing, so the broker has no audience to match.
-  // An empty/absent audience is fine there; a present one is still shape-
-  // checked so a later switch back to token mode can't inherit garbage.
-  if (
-    authMode === 'password' &&
-    (tokenAudience === undefined || tokenAudience === null || tokenAudience === '')
-  ) {
-    return null;
-  }
-  const isValidAudience =
-    typeof tokenAudience === 'string' &&
-    tokenAudience.length > 0 &&
-    tokenAudience.length <= 255 &&
-    !/\s/.test(tokenAudience);
-  if (!isValidAudience) {
-    return {
-      status: 400,
-      error: 'observer.tokenAudience must be a non-empty string with no whitespace',
-      code: 'INVALID_PARAMETER',
-    };
+
+  // Legacy tokenAudience requirement — meaningful only for the single/legacy
+  // broker path. When brokers[] is authoritative each entry validates its own
+  // audience above (with no block-level fallback, by design); the top-level
+  // field becomes a vestigial mirror once brokers[] wins, and must not be
+  // require-checked here (#5014).
+  if (!hasBrokersList) {
+    const tokenAudience = observerObj.tokenAudience;
+    // Password mode signs nothing, so the broker has no audience to match.
+    // An empty/absent audience is fine there; a present one is still shape-
+    // checked so a later switch back to token mode can't inherit garbage.
+    if (
+      authMode === 'password' &&
+      (tokenAudience === undefined || tokenAudience === null || tokenAudience === '')
+    ) {
+      return null;
+    }
+    const isValidAudience =
+      typeof tokenAudience === 'string' &&
+      tokenAudience.length > 0 &&
+      tokenAudience.length <= 255 &&
+      !/\s/.test(tokenAudience);
+    if (!isValidAudience) {
+      return {
+        status: 400,
+        error: 'observer.tokenAudience must be a non-empty string with no whitespace',
+        code: 'INVALID_PARAMETER',
+      };
+    }
   }
   return null;
 }
@@ -394,6 +579,15 @@ function preserveSourceCredentials(
   return merged;
 }
 
+// Shared by stripObserverKeyMaterial for both the block itself and every
+// brokers[] entry (#5014 Phase 1) — same field list as
+// observerConfigContainsKeyMaterial above.
+function stripKeyMaterialFields(obj: Record<string, unknown>): Record<string, unknown> {
+  const result = { ...obj };
+  for (const field of OBSERVER_KEY_MATERIAL_FIELDS) delete result[field];
+  return result;
+}
+
 // Analyzer Observer (#4457) defence-in-depth: the observer block itself
 // carries no secrets by design (brokerUrl/iataCode/tokenAudience are all
 // public-by-nature, and the signing key is never in `config` because
@@ -404,14 +598,18 @@ function preserveSourceCredentials(
 function stripObserverKeyMaterial<T extends Record<string, unknown>>(cfg: T): T {
   const obs = cfg?.observer;
   if (!obs || typeof obs !== 'object' || Array.isArray(obs)) return cfg;
-  const { privateKey, privateKeyHex, signingKey, key, secret, password, ...safeObserver } =
-    obs as Record<string, unknown>;
-  void privateKey;
-  void privateKeyHex;
-  void signingKey;
-  void key;
-  void secret;
-  void password; // #4595 static-credential password — same rule as key material.
+  const observerObj = obs as Record<string, unknown>;
+  const safeObserver = stripKeyMaterialFields(observerObj);
+  // #5014 Phase 1: the same key-material fields (in particular the #4595
+  // static-credential `password`) must never survive inside a brokers[]
+  // entry either.
+  if (Array.isArray(observerObj.brokers)) {
+    safeObserver.brokers = observerObj.brokers.map((entry) =>
+      entry && typeof entry === 'object' && !Array.isArray(entry)
+        ? stripKeyMaterialFields(entry as Record<string, unknown>)
+        : entry,
+    );
+  }
   return { ...cfg, observer: safeObserver } as T;
 }
 
@@ -695,6 +893,14 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
       createdBy: req.user?.id,
     });
 
+    // MySQL diagnostic only (#5014 Phase 1 §2.5) — never rejects, never
+    // changes the status code. `sources.config` is varchar(4096) on MySQL
+    // (unbounded TEXT on SQLite/PostgreSQL); this just names the cause when a
+    // write silently fails or truncates on that one backend.
+    if (databaseService.drizzleDbType === 'mysql' && Buffer.byteLength(JSON.stringify(config), 'utf8') > 4096) {
+      logger.warn(`Source ${source.id} config exceeds the MySQL varchar(4096) column width; the write may fail or truncate`);
+    }
+
     // Start manager if source is enabled and autoConnect is not explicitly false.
     // autoConnect=false means the source is registered but won't start monitoring
     // until a user explicitly clicks Connect (issue #2773).
@@ -840,6 +1046,18 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
     const source = await databaseService.sources.updateSource(req.params.id, updates);
     if (!source) {
       return res.status(404).json({ error: 'Source not found' });
+    }
+
+    // MySQL diagnostic only (#5014 Phase 1 §2.5) — never rejects, never
+    // changes the status code. `sources.config` is varchar(4096) on MySQL
+    // (unbounded TEXT on SQLite/PostgreSQL); this just names the cause when a
+    // write silently fails or truncates on that one backend.
+    if (
+      updates.config !== undefined &&
+      databaseService.drizzleDbType === 'mysql' &&
+      Buffer.byteLength(JSON.stringify(updates.config), 'utf8') > 4096
+    ) {
+      logger.warn(`Source ${source.id} config exceeds the MySQL varchar(4096) column width; the write may fail or truncate`);
     }
 
     // Propagate name change to the live MeshCore/Reticulum manager so
