@@ -41,6 +41,8 @@ import {
   OBSERVER_USERNAME_MAX_LENGTH,
 } from '../services/meshcoreObserverCredentialStore.js';
 import { deriveObserverPublicKey, isValidObserverPrivateKey } from '../services/meshcoreObserverToken.js';
+import { observerConfigFromSource, type MeshCoreSourceConfig, type NormalizedObserverConfig } from '../meshcoreConfig.js';
+import type { MeshCoreObserverStatus, MeshCoreObserverBrokerStatus } from '../services/meshcoreObserverStatus.js';
 import type { Source } from '../../db/repositories/sources.js';
 
 const router = Router({ mergeParams: true });
@@ -91,6 +93,123 @@ async function resolveMeshCoreSource(req: Request, res: Response): Promise<Sourc
   }
   return source;
 }
+
+/**
+ * Re-derive the normalized, multi-broker-aware observer config from a
+ * source's saved `config` blob (#5014 Phase 1). `observerConfigFromSource`'s
+ * declared return type (`MeshCoreConfig['observer']`) is not yet retyped to
+ * `NormalizedObserverConfig` here (that retyping is WP3, in
+ * `meshcoreManager.ts`, and runs in parallel) — but the object it actually
+ * constructs, when the observer is enabled and has at least one usable
+ * broker, always has the richer shape (see `normalizeObserverBrokers`). This
+ * cast is the one place that gap is bridged for the route layer; it never
+ * imports the publisher.
+ */
+function resolveNormalizedObserverConfig(source: Source): NormalizedObserverConfig | undefined {
+  return observerConfigFromSource(source.config as MeshCoreSourceConfig) as NormalizedObserverConfig | undefined;
+}
+
+/**
+ * Validate the optional `brokerKey` accepted by the credential PUT/DELETE
+ * routes (#5014 Phase 1, spec §5.3). Absent -> `{}` (legacy single-credential
+ * path, byte-compatible with pre-#5014 behaviour). Present -> type/length
+ * checked, then bounded against the source's currently CONFIGURED brokers —
+ * this is what stops an operator (or a stale client) from accumulating
+ * credentials for a broker that was removed from the config, or that was
+ * never configured at all.
+ */
+function validateBrokerKeyParam(
+  raw: unknown,
+  observer: NormalizedObserverConfig | undefined,
+): { brokerKey?: string; error?: { status: number; code: string; message: string } } {
+  if (raw === undefined) return {};
+  if (typeof raw !== 'string') {
+    return { error: { status: 400, code: 'INVALID_PARAMETER_TYPE', message: 'brokerKey must be a string' } };
+  }
+  if (raw.length === 0 || raw.length > 255) {
+    return {
+      error: {
+        status: 400,
+        code: 'INVALID_PARAMETER',
+        message: 'brokerKey must be a non-empty string of at most 255 characters',
+      },
+    };
+  }
+  const known = observer?.brokers.some((broker) => broker.key === raw) ?? false;
+  if (!known) {
+    return { error: { status: 400, code: 'UNKNOWN_BROKER', message: `Unknown or unconfigured broker: ${raw}` } };
+  }
+  return { brokerKey: raw };
+}
+
+/**
+ * Build the "not running" Analyzer Observer status snapshot from a source's
+ * saved config (#5014 Phase 1, spec §5.2 step 4) — used when no manager is
+ * registered for the source, or a registered manager reports no running
+ * publisher (`getObserverStatus()` returns `undefined`). Every counter is
+ * zeroed and every broker is `configured: true, keyStored: false,
+ * connected: false` so the UI gets a meaningful, config-derived answer
+ * instead of a 404.
+ */
+function synthesizeNotRunningStatus(source: Source): MeshCoreObserverStatus {
+  const observer = resolveNormalizedObserverConfig(source);
+  const brokers: MeshCoreObserverBrokerStatus[] = (observer?.brokers ?? []).map((broker) => ({
+    key: broker.key,
+    url: broker.url,
+    label: broker.label ?? null,
+    authMode: broker.authMode,
+    tokenAudience: broker.tokenAudience ?? null,
+    configured: true,
+    keyStored: false,
+    connected: false,
+    publishes: 0,
+    dropped: 0,
+    lastPublishAt: null,
+    lastError: null,
+    tokenExpiresAt: null,
+  }));
+  return {
+    configured: !!observer,
+    authMode: observer?.authMode ?? 'token',
+    keyStored: false,
+    connected: false,
+    publishes: 0,
+    dropped: 0,
+    lastPublishAt: null,
+    lastError: null,
+    tokenExpiresAt: null,
+    brokers,
+  };
+}
+
+// GET /api/sources/:id/observer/status — running publisher status (from the
+// registered manager) or a config-derived "not running" snapshot (#5014
+// Phase 1, spec §5.2). Depends only on the manager's `getObserverStatus()`
+// duck-type and the types-only `meshcoreObserverStatus.js` module — never
+// imports the publisher, so this route can be built in parallel with WP3.
+router.get(
+  '/status',
+  requirePermission('configuration', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const source = await resolveMeshCoreSource(req, res);
+      if (!source) return;
+
+      const mgr = sourceManagerRegistry.getManager(source.id);
+      const status = mgr && isMeshCoreManager(mgr) ? mgr.getObserverStatus() : undefined;
+
+      if (status) {
+        ok(res, { running: true, ...status });
+        return;
+      }
+
+      ok(res, { running: false, ...synthesizeNotRunningStatus(source) });
+    } catch (error) {
+      logger.error(`[API] Observer status error for ${req.params.id}:`, error);
+      fail(res, 500, 'INTERNAL_ERROR', 'Failed to get Analyzer Observer status');
+    }
+  },
+);
 
 // GET /api/sources/:id/observer/key — status only, never the key.
 router.get(
@@ -264,8 +383,14 @@ router.get(
     try {
       const source = await resolveMeshCoreSource(req, res);
       if (!source) return;
-      const status = await getMeshCoreObserverCredentialStore().status(source.id);
-      ok(res, status);
+      const store = getMeshCoreObserverCredentialStore();
+      const [status, brokers] = await Promise.all([store.status(source.id), store.listBrokers(source.id)]);
+      // `brokers` is always present here (even `[]`), sourced from
+      // `listBrokers()` directly — unlike `status()`'s own conditional
+      // `brokers` field (kept omitted-when-empty there for its pre-#5014
+      // `Object.keys` back-compat contract), the route response always
+      // carries the array so the UI never has to special-case its absence.
+      ok(res, { ...status, brokers });
     } catch (error) {
       logger.error(`[API] Observer credential status error for ${req.params.id}:`, error);
       fail(res, 500, 'INTERNAL_ERROR', 'Failed to get Analyzer Observer credential status');
@@ -292,6 +417,15 @@ router.put(
         );
         return;
       }
+
+      // Optional per-broker targeting (#5014 Phase 1). Absent -> the
+      // pre-#5014 legacy single-credential path below, byte-compatible.
+      const brokerKeyResult = validateBrokerKeyParam(req.body?.brokerKey, resolveNormalizedObserverConfig(source));
+      if (brokerKeyResult.error) {
+        fail(res, brokerKeyResult.error.status, brokerKeyResult.error.code, brokerKeyResult.error.message);
+        return;
+      }
+      const brokerKey = brokerKeyResult.brokerKey;
 
       const rawUsername = req.body?.username;
       const rawPassword = req.body?.password;
@@ -322,12 +456,20 @@ router.put(
         return;
       }
 
-      await store.store(source.id, username, rawPassword);
-      // Audit records THAT credentials changed, never the values.
-      auditMeshcoreEvent(req, 'meshcore_observer_credentials_set', 'configuration', { sourceId: source.id });
+      if (brokerKey) {
+        await store.storeForBroker(source.id, brokerKey, username, rawPassword);
+      } else {
+        await store.store(source.id, username, rawPassword);
+      }
+      // Audit records THAT credentials changed, never the values. `brokerKey`
+      // is a URL identity, not a secret, so it is safe to include verbatim.
+      auditMeshcoreEvent(req, 'meshcore_observer_credentials_set', 'configuration', {
+        sourceId: source.id,
+        ...(brokerKey ? { brokerKey } : {}),
+      });
       await refreshObserverPublisher(source);
-      const status = await store.status(source.id);
-      ok(res, status);
+      const [status, brokers] = await Promise.all([store.status(source.id), store.listBrokers(source.id)]);
+      ok(res, { ...status, brokers });
     } catch (error) {
       logger.error(`[API] Observer credential set error for ${req.params.id}:`, error);
       fail(res, 500, 'INTERNAL_ERROR', 'Failed to set Analyzer Observer broker credentials');
@@ -346,12 +488,31 @@ router.delete(
       const source = await resolveMeshCoreSource(req, res);
       if (!source) return;
 
+      // Optional per-broker targeting (#5014 Phase 1). Absent -> the
+      // pre-#5014 "wipe everything" path below, byte-compatible. Deliberately
+      // NOT gated on `capability.canStore`, for the same reason as the
+      // single-credential path: forgetting an unrecoverable secret must
+      // always be possible.
+      const brokerKeyResult = validateBrokerKeyParam(req.query.brokerKey, resolveNormalizedObserverConfig(source));
+      if (brokerKeyResult.error) {
+        fail(res, brokerKeyResult.error.status, brokerKeyResult.error.code, brokerKeyResult.error.message);
+        return;
+      }
+      const brokerKey = brokerKeyResult.brokerKey;
+
       const store = getMeshCoreObserverCredentialStore();
-      await store.clear(source.id);
-      auditMeshcoreEvent(req, 'meshcore_observer_credentials_clear', 'configuration', { sourceId: source.id });
+      if (brokerKey) {
+        await store.clearForBroker(source.id, brokerKey);
+      } else {
+        await store.clear(source.id);
+      }
+      auditMeshcoreEvent(req, 'meshcore_observer_credentials_clear', 'configuration', {
+        sourceId: source.id,
+        ...(brokerKey ? { brokerKey } : {}),
+      });
       await refreshObserverPublisher(source);
-      const status = await store.status(source.id);
-      ok(res, status);
+      const [status, brokers] = await Promise.all([store.status(source.id), store.listBrokers(source.id)]);
+      ok(res, { ...status, brokers });
     } catch (error) {
       logger.error(`[API] Observer credential clear error for ${req.params.id}:`, error);
       fail(res, 500, 'INTERNAL_ERROR', 'Failed to clear Analyzer Observer broker credentials');
