@@ -391,4 +391,120 @@ describe('meshcoreObserverToken', () => {
       expect(await mintObserverTokenForSource('missing')).toBeNull();
     });
   });
+
+  describe('mintObserverTokenForSourceDetailed — audienceOverride (#5014 Phase 1 WP3)', () => {
+    beforeEach(() => {
+      sourceRows.clear();
+      observerRows.clear();
+      setMeshCoreObserverKeyStoreForTesting(null);
+    });
+
+    it('with no override, behaves exactly as before (uses observer.tokenAudience)', async () => {
+      const keyStore = new MeshCoreObserverKeyStore('secretH'.repeat(8), true);
+      setMeshCoreObserverKeyStoreForTesting(keyStore);
+      const pub = await deriveObserverPublicKey(PRIV);
+      await keyStore.store('src-h', PRIV, pub, 'device');
+      sourceRows.set('src-h', {
+        id: 'src-h',
+        type: 'meshcore',
+        config: {
+          observer: { enabled: true, brokerUrl: 'mqtts://broker:8883', iataCode: 'MCO', tokenAudience: 'config-aud' },
+        },
+      });
+
+      const result = await mintObserverTokenForSourceDetailed('src-h');
+      expect(result.kind).toBe('ok');
+      if (result.kind === 'ok') {
+        const verified = await verifyAuthToken(result.token.token, pub);
+        expect(verified!.aud).toBe('config-aud');
+      }
+    });
+
+    it('an override audience wins over the config tokenAudience', async () => {
+      const keyStore = new MeshCoreObserverKeyStore('secretI'.repeat(8), true);
+      setMeshCoreObserverKeyStoreForTesting(keyStore);
+      const pub = await deriveObserverPublicKey(PRIV);
+      await keyStore.store('src-i', PRIV, pub, 'device');
+      sourceRows.set('src-i', {
+        id: 'src-i',
+        type: 'meshcore',
+        config: {
+          observer: { enabled: true, brokerUrl: 'mqtts://broker:8883', iataCode: 'MCO', tokenAudience: 'config-aud' },
+        },
+      });
+
+      const result = await mintObserverTokenForSourceDetailed('src-i', 'override-aud');
+      expect(result.kind).toBe('ok');
+      if (result.kind === 'ok') {
+        const verified = await verifyAuthToken(result.token.token, pub);
+        expect(verified!.aud).toBe('override-aud');
+      }
+    });
+
+    it('mints successfully with an override even when the config has no tokenAudience at all', async () => {
+      const keyStore = new MeshCoreObserverKeyStore('secretJ'.repeat(8), true);
+      setMeshCoreObserverKeyStoreForTesting(keyStore);
+      const pub = await deriveObserverPublicKey(PRIV);
+      await keyStore.store('src-j', PRIV, pub, 'device');
+      // Multi-broker config with brokers[] but no block-level tokenAudience —
+      // the per-broker publisher supplies each broker's own audience as the
+      // override.
+      sourceRows.set('src-j', {
+        id: 'src-j',
+        type: 'meshcore',
+        config: {
+          observer: {
+            enabled: true,
+            iataCode: 'MCO',
+            brokers: [{ url: 'mqtts://broker-a:8883', tokenAudience: 'broker-a-aud' }],
+          },
+        },
+      });
+
+      const result = await mintObserverTokenForSourceDetailed('src-j', 'broker-a-aud');
+      expect(result.kind).toBe('ok');
+      if (result.kind === 'ok') {
+        const verified = await verifyAuthToken(result.token.token, pub);
+        expect(verified!.aud).toBe('broker-a-aud');
+      }
+    });
+
+    it("still 'not_configured' for a missing source even with an override", async () => {
+      expect(await mintObserverTokenForSourceDetailed('missing', 'some-aud')).toEqual({ kind: 'not_configured' });
+    });
+
+    it("still 'not_configured' for a non-meshcore source even with an override", async () => {
+      sourceRows.set('src-mt2', { id: 'src-mt2', type: 'meshtastic_tcp', config: {} });
+      expect(await mintObserverTokenForSourceDetailed('src-mt2', 'some-aud')).toEqual({ kind: 'not_configured' });
+    });
+
+    it("still 'not_configured' when the observer block is absent/disabled even with an override", async () => {
+      sourceRows.set('src-k', { id: 'src-k', type: 'meshcore', config: {} });
+      expect(await mintObserverTokenForSourceDetailed('src-k', 'some-aud')).toEqual({ kind: 'not_configured' });
+
+      sourceRows.set('src-l', {
+        id: 'src-l',
+        type: 'meshcore',
+        config: { observer: { enabled: false, brokerUrl: 'mqtts://broker:8883', iataCode: 'MCO' } },
+      });
+      expect(await mintObserverTokenForSourceDetailed('src-l', 'some-aud')).toEqual({ kind: 'not_configured' });
+    });
+
+    it("still 'no_key' with an override when no key is stored", async () => {
+      const keyStore = new MeshCoreObserverKeyStore('secretM'.repeat(8), true);
+      setMeshCoreObserverKeyStoreForTesting(keyStore);
+      sourceRows.set('src-m', {
+        id: 'src-m',
+        type: 'meshcore',
+        // tokenAudience present so the block normalizes at all (a legacy
+        // token-mode entry with no audience is dropped by
+        // `normalizeObserverBrokers`, which would make this "not_configured"
+        // regardless of the override) — the override still wins over it.
+        config: {
+          observer: { enabled: true, brokerUrl: 'mqtts://broker:8883', iataCode: 'MCO', tokenAudience: 'config-aud' },
+        },
+      });
+      expect(await mintObserverTokenForSourceDetailed('src-m', 'some-aud')).toEqual({ kind: 'no_key' });
+    });
+  });
 });

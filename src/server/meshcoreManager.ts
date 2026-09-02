@@ -49,7 +49,7 @@ import {
 // a static value import of it here would make the cycle real (meshcoreConfig.ts
 // already imports the MeshCoreManager class by value), so it is resolved with a
 // dynamic import() at call time instead — see reconfigureObserver() below.
-import type { MeshCoreObserverConfig, MeshCoreSourceConfig } from './meshcoreConfig.js';
+import type { MeshCoreObserverConfig, MeshCoreSourceConfig, NormalizedObserverConfig } from './meshcoreConfig.js';
 import meshcorePacketLogService from './services/meshcorePacketLogService.js';
 import { notificationService } from './services/notificationService.js';
 import { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
@@ -409,8 +409,14 @@ export interface MeshCoreConfig {
   // See docs/internal/dev-notes/MESHCORE_VIRTUAL_NODE_DESIGN.md.
   virtualNode?: MeshCoreVirtualNodeConfig;
 
-  /** Analyzer Observer MQTT output (#4457). Consumed by the Phase 2 publisher. */
-  observer?: MeshCoreObserverConfig;
+  /**
+   * Analyzer Observer MQTT output (#4457), normalized and multi-broker-aware
+   * (#5014 Phase 1 WP3). Consumed by the publisher. This is a NARROWING of
+   * the field's pre-#5014 type (`MeshCoreObserverConfig`) — the manager only
+   * ever assigns it from `observerConfigFromSource`, which now returns the
+   * richer `NormalizedObserverConfig` shape.
+   */
+  observer?: NormalizedObserverConfig;
 }
 
 /**

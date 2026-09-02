@@ -122,31 +122,47 @@ export type ObserverTokenResult =
   | { kind: 'mint_failed'; message: string };
 
 /**
- * Mint a token for a configured source: loads the stored signing key, reads
- * `observer.tokenAudience` from the source's saved config, derives the
- * public key, and signs. Unlike {@link mintObserverTokenForSource}, the
+ * Mint a token for a configured source: loads the stored signing key, derives
+ * the public key, and signs. Unlike {@link mintObserverTokenForSource}, the
  * failure reason is distinguishable — see {@link ObserverTokenResult}.
+ *
+ * `audienceOverride` (#5014 Phase 1 WP3): when supplied, THIS audience is
+ * used instead of `observer.tokenAudience` from the source's saved config,
+ * and the "no tokenAudience -> not_configured" gate is skipped — the source
+ * still needs to exist, be `meshcore`, and have an ENABLED observer block,
+ * but need not carry a top-level `tokenAudience` at all. This is what lets
+ * the multi-broker publisher mint one token per broker's own audience
+ * (`brokers[i].tokenAudience`), which is not necessarily the block-level
+ * mirror value. With no override, behaviour is byte-identical to before
+ * `audienceOverride` existed.
  *
  * Not exposed via any route — this is the publisher's (Phase 2) seam.
  */
-export async function mintObserverTokenForSourceDetailed(sourceId: string): Promise<ObserverTokenResult> {
+export async function mintObserverTokenForSourceDetailed(
+  sourceId: string,
+  audienceOverride?: string,
+): Promise<ObserverTokenResult> {
   const source = await databaseService.sources.getSource(sourceId);
   if (!source || source.type !== 'meshcore') return { kind: 'not_configured' };
 
   const cfg = (source.config ?? {}) as MeshCoreSourceConfig;
   const observer = observerConfigFromSource(cfg);
+  if (!observer) return { kind: 'not_configured' };
   // `observerConfigFromSource` only ever returns non-undefined once brokerUrl/
-  // iataCode/tokenAudience are all present (see its own definition of
-  // "incomplete"), but its declared type still marks tokenAudience optional —
-  // narrow explicitly so this stays type-safe if that contract ever loosens.
-  if (!observer || !observer.tokenAudience) return { kind: 'not_configured' };
+  // iataCode/tokenAudience are all present for `brokers[0]` (see its own
+  // definition of "incomplete"), but its declared type still marks
+  // `tokenAudience` optional — narrow explicitly so this stays type-safe if
+  // that contract ever loosens. An explicit override bypasses this gate
+  // entirely, since it supplies its own audience.
+  const audience = audienceOverride ?? observer.tokenAudience;
+  if (!audience) return { kind: 'not_configured' };
 
   const keyResult = await getMeshCoreObserverKeyStore().load(sourceId);
   if (keyResult.kind === 'none') return { kind: 'no_key' };
   if (keyResult.kind === 'key_rotated') return { kind: 'key_rotated' };
 
   try {
-    const token = await mintObserverToken(keyResult.privateKeyHex, observer.tokenAudience);
+    const token = await mintObserverToken(keyResult.privateKeyHex, audience);
     return { kind: 'ok', token };
   } catch (err) {
     // Never let a thrown error carry key material into the log at anything
