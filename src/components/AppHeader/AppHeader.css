@@ -21,12 +21,20 @@
   display: flex;
   align-items: center;
   gap: 1rem;
+  /* Let this side shrink (and its badge truncate) before it pushes
+     header-right's action buttons off-screen on narrow viewports. */
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
 }
 
 .header-right {
   display: flex;
   align-items: center;
   gap: 16px;
+  /* Connection status + login/user menu are always-visible controls — never
+     let header-left's content shrink them off the right edge (#5016). */
+  flex-shrink: 0;
 }
 
 .header-title {
@@ -76,6 +84,10 @@
   font-size: 0.8rem;
   font-weight: 500;
   padding: 0.2rem 0.6rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 /* Node info */
@@ -271,10 +283,34 @@
 
 /* Mobile responsive */
 @media (max-width: 768px) {
+  .app-header {
+    /* Portrait phones are much narrower than the 2rem side padding assumes
+       (#5016) — the full desktop padding alone can eat ~15% of the viewport
+       width before any header content is laid out. */
+    padding: 1rem;
+    padding-top: max(1rem, env(safe-area-inset-top));
+  }
+
   .app-header .header-logo,
   .app-header .node-info,
   .app-header h1 {
     display: none;
+  }
+
+  .header-left {
+    gap: 0.5rem;
+  }
+
+  .header-right {
+    gap: 8px;
+  }
+
+  .back-to-sources-btn {
+    padding: 0.25rem 0.5rem;
+  }
+
+  .header-source-name {
+    max-width: 30vw;
   }
 
   .connection-status {
