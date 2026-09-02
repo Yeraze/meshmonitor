@@ -29,6 +29,22 @@
  * and §4 of `docs/internal/dev-notes/MESHMAPPER_OBSERVER_PHASE1_SPEC.md` for
  * the full trade-off against a per-broker table + migration (rejected).
  *
+ * IN-MEMORY REPRESENTATION (PR #5022 CodeQL follow-up): although the on-disk
+ * JSON shape keys brokers by a plain object (`StoredCredentialDoc.brokers:
+ * Record<string, ...>`), every in-memory read/mutation path holds brokers as
+ * a `DecodedDoc.brokers: Map<string, ...>` instead. `brokerKey` is
+ * request-body-derived (the credential PUT/DELETE routes), and CodeQL's
+ * "remote property injection" query flags ANY dynamic property
+ * read/write/delete keyed by tainted input — `obj[brokerKey]` — regardless of
+ * null-prototype objects or reserved-key guards layered on top. `Map.get` /
+ * `.set` / `.has` / `.delete` are method calls, not property accesses, so the
+ * query has nothing to flag. `decodeDoc` converts the on-disk object into a
+ * Map on read; `persistDoc` converts the Map back to a plain object
+ * (`Object.fromEntries`) on write, so the stored JSON shape — and therefore
+ * every existing row — is unchanged. `FORBIDDEN_BROKER_KEYS` filtering is
+ * kept as belt-and-braces even though a `Map` has no `Object.prototype` chain
+ * to pollute in the first place.
+ *
  * WHERE THE SECRET LIVES (security summary):
  *   - `meshcore_observer_credentials.encryptedPassword` — AES-256-GCM
  *     envelope JSON. Nothing else in the process, the DB, or `sources.config`
@@ -86,11 +102,15 @@ interface StoredEnvelope {
 }
 
 /**
- * The AEAD plaintext shape (#5014). `brokerKey` is `observerBrokerKey(url)`
- * (case-insensitive normalized URL) — see `meshcoreConfig.ts`. This module
- * never derives or validates a `brokerKey`; it is an opaque string handed in
- * by the caller (route or publisher), by design (this store must not import
- * `meshcoreConfig.ts`).
+ * The ON-DISK (AEAD plaintext) JSON shape (#5014). `brokerKey` is
+ * `observerBrokerKey(url)` (case-insensitive normalized URL) — see
+ * `meshcoreConfig.ts`. This module never derives or validates a `brokerKey`;
+ * it is an opaque string handed in by the caller (route or publisher), by
+ * design (this store must not import `meshcoreConfig.ts`).
+ *
+ * This interface describes ONLY the serialized form. See the file-header
+ * "IN-MEMORY REPRESENTATION" note — every live read/write path uses
+ * `DecodedDoc` instead, whose `brokers` is a `Map`.
  */
 interface StoredCredentialDoc {
   v: 2;
@@ -103,6 +123,19 @@ interface StoredCredentialDoc {
    * lives in `meshcoreObserverPublisher.ts`, NOT in this store — this store
    * has no notion of which broker "is" the legacy one).
    */
+  legacy?: { username: string; password: string };
+}
+
+/**
+ * The IN-MEMORY decoded document. Same information as `StoredCredentialDoc`,
+ * but `brokers` is a `Map` rather than a plain object, specifically so that
+ * `brokerKey`-keyed reads/writes/deletes are `Map` method calls rather than
+ * dynamic property accesses — see the file-header "IN-MEMORY REPRESENTATION"
+ * note.
+ */
+interface DecodedDoc {
+  v: 2;
+  brokers: Map<string, { username: string; password: string }>;
   legacy?: { username: string; password: string };
 }
 
@@ -142,7 +175,7 @@ export interface ObserverCredentialStatus {
 type DecodedDocResult =
   | { kind: 'none' }
   | { kind: 'key_rotated'; storedKid: string; row: { username: string; updatedAt: number } }
-  | { kind: 'ok'; doc: StoredCredentialDoc; row: { username: string; updatedAt: number } };
+  | { kind: 'ok'; doc: DecodedDoc; row: { username: string; updatedAt: number } };
 
 export class MeshCoreObserverCredentialStore {
   private readonly aeadKey: Buffer;
@@ -188,8 +221,8 @@ export class MeshCoreObserverCredentialStore {
     // A row we cannot decrypt (key_rotated) has an unrecoverable brokers map
     // regardless of what we do here, so there is nothing to preserve; start
     // fresh rather than blocking the operator's write.
-    const brokers = toNullProtoBrokers(existing.kind === 'ok' ? existing.doc.brokers : undefined);
-    const doc: StoredCredentialDoc = { v: 2, brokers, legacy: { username, password } };
+    const brokers = existing.kind === 'ok' ? new Map(existing.doc.brokers) : new Map<string, { username: string; password: string }>();
+    const doc: DecodedDoc = { v: 2, brokers, legacy: { username, password } };
     await this.persistDoc(sourceId, doc);
   }
 
@@ -228,11 +261,13 @@ export class MeshCoreObserverCredentialStore {
    * is recoverable by re-entering the credential. If a future UI ever
    * batch-saves N brokers in one gesture, it MUST serialize those PUTs.
    *
-   * PROTOTYPE-POLLUTION GUARD (CodeQL): `brokerKey` is attacker-influenced
-   * (request body). Reject `FORBIDDEN_BROKER_KEYS` outright, and build the
-   * broker map as a null-prototype object (`toNullProtoBrokers`) before the
-   * keyed write below, so even an unexpected key can never reach
-   * `Object.prototype`.
+   * PROTOTYPE-POLLUTION / INJECTION GUARD (CodeQL, PR #5022): `brokerKey` is
+   * attacker-influenced (request body). `FORBIDDEN_BROKER_KEYS` is still
+   * rejected outright as belt-and-braces, but the load-bearing defense is
+   * that `brokers` is a `Map` (see the file-header "IN-MEMORY REPRESENTATION"
+   * note) — `Map.set`/`.get`/`.has`/`.delete` are method calls, not dynamic
+   * property accesses, so there is no `obj[brokerKey]` for a "remote property
+   * injection" query to flag, and no `Object.prototype` chain to pollute.
    */
   async storeForBroker(sourceId: string, brokerKey: string, username: string, password: string): Promise<void> {
     if (!this._capability.canStore) {
@@ -244,21 +279,20 @@ export class MeshCoreObserverCredentialStore {
     const existing = await this.readDoc(sourceId);
     // See store()'s comment: a key-rotated row's brokers map is already
     // unrecoverable, so we start fresh rather than blocking the write.
-    const doc: StoredCredentialDoc =
-      existing.kind === 'ok'
-        ? { v: 2, brokers: toNullProtoBrokers(existing.doc.brokers), legacy: existing.doc.legacy }
-        : { v: 2, brokers: toNullProtoBrokers() };
+    const brokers =
+      existing.kind === 'ok' ? new Map(existing.doc.brokers) : new Map<string, { username: string; password: string }>();
+    const legacy = existing.kind === 'ok' ? existing.doc.legacy : undefined;
 
-    const alreadyPresent = Object.prototype.hasOwnProperty.call(doc.brokers, brokerKey);
-    if (!alreadyPresent && Object.keys(doc.brokers).length >= OBSERVER_MAX_BROKER_CREDENTIALS) {
+    const alreadyPresent = brokers.has(brokerKey);
+    if (!alreadyPresent && brokers.size >= OBSERVER_MAX_BROKER_CREDENTIALS) {
       throw new Error(
         `Cannot store credentials for broker "${brokerKey}": the maximum of ` +
           `${OBSERVER_MAX_BROKER_CREDENTIALS} distinct broker credentials has been reached`,
       );
     }
 
-    doc.brokers[brokerKey] = { username, password };
-    await this.persistDoc(sourceId, doc);
+    brokers.set(brokerKey, { username, password });
+    await this.persistDoc(sourceId, { v: 2, brokers, legacy });
   }
 
   /**
@@ -268,15 +302,16 @@ export class MeshCoreObserverCredentialStore {
    * non-legacy broker can never observe the legacy credential.
    *
    * `brokerKey` is attacker-influenced; a reserved key (`FORBIDDEN_BROKER_KEYS`)
-   * is treated as simply absent rather than looked up.
+   * is treated as simply absent rather than looked up. The lookup itself
+   * (`Map.get`) is not a dynamic property access — see the file-header note.
    */
   async loadForBroker(sourceId: string, brokerKey: string): Promise<ObserverCredentialLoadResult> {
     if (isForbiddenBrokerKey(brokerKey)) return { kind: 'none' };
     const result = await this.readDoc(sourceId);
     if (result.kind === 'none') return { kind: 'none' };
     if (result.kind === 'key_rotated') return { kind: 'key_rotated', storedKid: result.storedKid };
-    if (!Object.prototype.hasOwnProperty.call(result.doc.brokers, brokerKey)) return { kind: 'none' };
-    const entry = result.doc.brokers[brokerKey];
+    const entry = result.doc.brokers.get(brokerKey);
+    if (!entry) return { kind: 'none' };
     return { kind: 'ok', username: entry.username, password: entry.password };
   }
 
@@ -290,22 +325,22 @@ export class MeshCoreObserverCredentialStore {
    * behaviour instead of leaving an empty husk envelope behind.
    *
    * `brokerKey` is attacker-influenced; a reserved key (`FORBIDDEN_BROKER_KEYS`)
-   * is a safe no-op rather than being looked up or deleted.
+   * is a safe no-op rather than being looked up or deleted. The delete itself
+   * (`Map.delete`) is not a dynamic property access — see the file-header note.
    */
   async clearForBroker(sourceId: string, brokerKey: string): Promise<void> {
     if (isForbiddenBrokerKey(brokerKey)) return;
     const existing = await this.readDoc(sourceId);
-    if (existing.kind !== 'ok' || !Object.prototype.hasOwnProperty.call(existing.doc.brokers, brokerKey)) {
+    if (existing.kind !== 'ok' || !existing.doc.brokers.has(brokerKey)) {
       return;
     }
-    const brokers = toNullProtoBrokers(existing.doc.brokers);
-    delete brokers[brokerKey];
-    const doc: StoredCredentialDoc = { v: 2, brokers, legacy: existing.doc.legacy };
-    if (Object.keys(doc.brokers).length === 0 && !doc.legacy) {
+    const brokers = new Map(existing.doc.brokers);
+    brokers.delete(brokerKey);
+    if (brokers.size === 0 && !existing.doc.legacy) {
       await databaseService.meshcoreObserverCredentials.deleteBySourceId(sourceId);
       return;
     }
-    await this.persistDoc(sourceId, doc);
+    await this.persistDoc(sourceId, { v: 2, brokers, legacy: existing.doc.legacy });
   }
 
   /**
@@ -317,7 +352,10 @@ export class MeshCoreObserverCredentialStore {
   async listBrokers(sourceId: string): Promise<Array<{ brokerKey: string; username: string }>> {
     const result = await this.readDoc(sourceId);
     if (result.kind !== 'ok') return [];
-    return Object.entries(result.doc.brokers).map(([brokerKey, cred]) => ({ brokerKey, username: cred.username }));
+    return Array.from(result.doc.brokers.entries()).map(([brokerKey, cred]) => ({
+      brokerKey,
+      username: cred.username,
+    }));
   }
 
   /** Clear any stored credentials for a source. No-op if none exists. */
@@ -358,7 +396,7 @@ export class MeshCoreObserverCredentialStore {
       };
     }
 
-    const brokerEntries = Object.entries(result.doc.brokers).map(([brokerKey, cred]) => ({
+    const brokerEntries = Array.from(result.doc.brokers.entries()).map(([brokerKey, cred]) => ({
       brokerKey,
       username: cred.username,
     }));
@@ -417,12 +455,23 @@ export class MeshCoreObserverCredentialStore {
     }
   }
 
-  /** Encrypt `doc` and upsert it, deriving the clear `username` column via
-   *  `computeClearUsername`. The one write path every mutator funnels through. */
-  private async persistDoc(sourceId: string, doc: StoredCredentialDoc): Promise<void> {
+  /**
+   * Encrypt `doc` and upsert it, deriving the clear `username` column via
+   * `computeClearUsername`. The one write path every mutator funnels through.
+   * Converts the in-memory `Map` back to the on-disk `Record` shape
+   * (`Object.fromEntries`) so the stored JSON is byte-for-byte what
+   * `StoredCredentialDoc` describes, regardless of the in-memory
+   * representation — see the file-header "IN-MEMORY REPRESENTATION" note.
+   */
+  private async persistDoc(sourceId: string, doc: DecodedDoc): Promise<void> {
+    const serializable: StoredCredentialDoc = {
+      v: 2,
+      brokers: Object.fromEntries(doc.brokers),
+      legacy: doc.legacy,
+    };
     const iv = crypto.randomBytes(12);
     const cipher = crypto.createCipheriv('aes-256-gcm', this.aeadKey, iv);
-    const ct = Buffer.concat([cipher.update(Buffer.from(JSON.stringify(doc), 'utf8')), cipher.final()]);
+    const ct = Buffer.concat([cipher.update(Buffer.from(JSON.stringify(serializable), 'utf8')), cipher.final()]);
     const tag = cipher.getAuthTag();
     const envelope: StoredEnvelope = {
       v: KDF_VERSION,
@@ -451,12 +500,15 @@ function hkdfBytes(ikm: Buffer, info: string, length: number): Buffer {
 }
 
 /**
- * Prototype-pollution guard (CodeQL "remote property injection"): `brokerKey`
- * ultimately originates from a request body (the credential PUT/DELETE
- * routes), even though the route layer already bounds it against the
- * source's *configured* broker keys (normalized URLs — `__proto__` etc.
- * cannot match one). This store hardens itself independently rather than
- * relying solely on that upstream check.
+ * Injection guard (CodeQL "remote property injection" / prototype-pollution
+ * belt-and-braces): `brokerKey` ultimately originates from a request body
+ * (the credential PUT/DELETE routes), even though the route layer already
+ * bounds it against the source's *configured* broker keys (normalized URLs —
+ * `__proto__` etc. cannot match one), and even though `brokers` is a `Map`
+ * with no `Object.prototype` chain to pollute in the first place (see the
+ * file-header "IN-MEMORY REPRESENTATION" note, which is the load-bearing
+ * defense). This filter is kept anyway so these three names can never appear
+ * as a broker identity at all.
  */
 const FORBIDDEN_BROKER_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
@@ -465,47 +517,28 @@ function isForbiddenBrokerKey(key: string): boolean {
 }
 
 /**
- * Build a null-prototype copy of a broker map (dropping any of
- * `FORBIDDEN_BROKER_KEYS`), so every keyed write (`doc.brokers[brokerKey] =
- * ...`) or delete lands on a plain data map that has no `Object.prototype`
- * chain to pollute — belt-and-braces alongside the `isForbiddenBrokerKey`
- * checks at each call site. Called with no argument, it just returns a fresh
- * empty null-prototype map.
- */
-function toNullProtoBrokers(
-  src?: Record<string, { username: string; password: string }>,
-): Record<string, { username: string; password: string }> {
-  const out: Record<string, { username: string; password: string }> = Object.create(null);
-  if (!src) return out;
-  for (const key of Object.keys(src)) {
-    if (isForbiddenBrokerKey(key)) continue;
-    out[key] = src[key];
-  }
-  return out;
-}
-
-/**
- * Decode the AEAD plaintext into a `StoredCredentialDoc` (#5014).
+ * Decode the AEAD plaintext into a `DecodedDoc` (#5014).
  *
  * ```
  * try p = JSON.parse(plaintext)
  * if (p && typeof p === 'object' && !Array.isArray(p) && p.v === 2
  *     && p.brokers && typeof p.brokers === 'object')
- *     -> v2 document, used as-is
+ *     -> v2 document: brokers = new Map(Object.entries(p.brokers)
+ *                                          .filter(([k]) => !isForbiddenBrokerKey(k)))
  * else
  *     -> v1: wrap the plaintext (the bare legacy password) as
- *        { v: 2, brokers: {}, legacy: { username: clearUsername, password: plaintext } }
+ *        { v: 2, brokers: new Map(), legacy: { username: clearUsername, password: plaintext } }
  * ```
  *
  * `clearUsername` is the row's clear `username` column, which — for a v1 row
  * — IS the legacy username (that column has held exactly the legacy username
  * since before #5014).
  *
- * The `brokers` map on the returned document is always a sanitized,
- * null-prototype copy (`toNullProtoBrokers`) — even in the v2-as-is path —
- * so a maliciously-crafted stored envelope (or one written by a future bug)
- * can never carry a `__proto__`/`constructor`/`prototype` key back into a
- * live object that later gets a keyed write.
+ * The `brokers` Map built here always excludes `FORBIDDEN_BROKER_KEYS`, even
+ * on the v2-as-is path, so a maliciously-crafted or otherwise unexpected
+ * stored envelope can never reintroduce one of those names as a broker
+ * identity (belt-and-braces — see `FORBIDDEN_BROKER_KEYS`'s comment for why
+ * a `Map` already closes the underlying injection class).
  *
  * MISPARSE CAVEAT (accepted, documented per spec §4.2): a v1 password that
  * happens to be *exactly* a JSON object shaped like `{"v":2,"brokers":{...}}`
@@ -515,7 +548,7 @@ function toNullProtoBrokers(
  * existing row to migrate, which is exactly the migration this design set
  * out to avoid.
  */
-function decodeDoc(plaintext: string, clearUsername: string): StoredCredentialDoc {
+function decodeDoc(plaintext: string, clearUsername: string): DecodedDoc {
   try {
     const parsed: unknown = JSON.parse(plaintext);
     if (
@@ -531,12 +564,16 @@ function decodeDoc(plaintext: string, clearUsername: string): StoredCredentialDo
         brokers: Record<string, { username: string; password: string }>;
         legacy?: { username: string; password: string };
       };
-      return { v: 2, brokers: toNullProtoBrokers(p.brokers), legacy: p.legacy };
+      return {
+        v: 2,
+        brokers: new Map(Object.entries(p.brokers).filter(([key]) => !isForbiddenBrokerKey(key))),
+        legacy: p.legacy,
+      };
     }
   } catch {
     // Not JSON at all — definitely a v1 plaintext password. Fall through.
   }
-  return { v: 2, brokers: toNullProtoBrokers(), legacy: { username: clearUsername, password: plaintext } };
+  return { v: 2, brokers: new Map(), legacy: { username: clearUsername, password: plaintext } };
 }
 
 /**
@@ -552,10 +589,12 @@ function decodeDoc(plaintext: string, clearUsername: string): StoredCredentialDo
  *     unreachable from any public method today, since `clearForBroker`
  *     deletes the row instead of persisting a fully-empty document.
  */
-function computeClearUsername(doc: StoredCredentialDoc): string {
+function computeClearUsername(doc: DecodedDoc): string {
   if (doc.legacy) return doc.legacy.username;
-  const keys = Object.keys(doc.brokers).sort();
-  return keys.length > 0 ? doc.brokers[keys[0]].username : '';
+  const keys = Array.from(doc.brokers.keys()).sort();
+  if (keys.length === 0) return '';
+  const first = doc.brokers.get(keys[0]);
+  return first ? first.username : '';
 }
 
 // ---------------------------------------------------------------------------
