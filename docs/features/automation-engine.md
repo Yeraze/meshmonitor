@@ -418,6 +418,14 @@ Runs a script file from the server's **`$DATA_DIR/scripts`** folder (the same di
 Responder uses) when the automation fires.
 
 - **Script** — picked from a dropdown of files in the scripts directory.
+- **Arguments** *(optional)* — CLI arguments passed to the script after its file path. Supports
+  `{{ var.x }}` and `{{ trigger.field }}` templates, resolved before the string is tokenized.
+  Splitting is shell-style: whitespace separates tokens, but a double-quoted phrase such as
+  `--text "hello world"` stays one arg, and `\"` inside double quotes emits a literal
+  double-quote. Single quotes preserve their contents verbatim. This is a splitter, not a shell:
+  `$var`, backticks, `$(...)`, globs, and pipes are passed through unchanged. An unterminated
+  quote fails the action cleanly, recorded as `invalid arguments` on the run log. The legacy
+  `{IP}` / `{PORT}` tokens from Timer Triggers are **not** available here — use `{{ }}` templates.
 - The trigger context is passed to the script as **`MM_*` environment variables**:
   `MM_TRIGGER_TYPE`, `MM_SOURCE_ID`, `MM_NODE_NUM`, `MM_TIMESTAMP`, and each trigger field as
   `MM_<UPPER_SNAKE_NAME>` (object values are JSON-stringified). Message-style aliases (`MESSAGE`,

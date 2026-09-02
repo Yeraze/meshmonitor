@@ -949,6 +949,56 @@ describe('executeAction', () => {
     await expect(executeAction(node('action.runScript', {}), ctx({}), deps)).rejects.toThrow(/no scriptPath/);
   });
 
+  it('runScript: no args field means the dep is called without scriptArgs', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(node('action.runScript', { scriptPath: 'foo.sh' }), ctx({}), deps);
+    const call = calls.find((x) => x.fn === 'runScript')!;
+    expect(call.args.scriptArgs).toBeUndefined();
+  });
+
+  it('runScript: an empty/whitespace-only args field is treated as no args', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(node('action.runScript', { scriptPath: 'foo.sh', args: '   ' }), ctx({}), deps);
+    const call = calls.find((x) => x.fn === 'runScript')!;
+    expect(call.args.scriptArgs).toBeUndefined();
+  });
+
+  it('runScript: whitespace-separated args become an argv array', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(node('action.runScript', { scriptPath: 'foo.sh', args: '--foo bar' }), ctx({}), deps);
+    const call = calls.find((x) => x.fn === 'runScript')!;
+    expect(call.args.scriptArgs).toEqual(['--foo', 'bar']);
+  });
+
+  it('runScript: {{ trigger.field }} templates interpolate before tokenization', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.runScript', { scriptPath: 'foo.sh', args: '--text {{ trigger.text }}' }),
+      ctx({ text: 'hello' }),
+      deps,
+    );
+    const call = calls.find((x) => x.fn === 'runScript')!;
+    expect(call.args.scriptArgs).toEqual(['--text', 'hello']);
+  });
+
+  it('runScript: shell-style quotes keep a spaced value as one arg', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.runScript', { scriptPath: 'foo.sh', args: '--x "hello world"' }),
+      ctx({}),
+      deps,
+    );
+    const call = calls.find((x) => x.fn === 'runScript')!;
+    expect(call.args.scriptArgs).toEqual(['--x', 'hello world']);
+  });
+
+  it('runScript: an unterminated quote fails the action with a clean error', async () => {
+    const { deps } = recorder();
+    await expect(
+      executeAction(node('action.runScript', { scriptPath: 'foo.sh', args: '--x "unterminated' }), ctx({}), deps),
+    ).rejects.toThrow(/invalid arguments/);
+  });
+
   it('delay: waits the requested seconds via the injected sleep', async () => {
     const { deps } = recorder();
     const slept: number[] = [];
