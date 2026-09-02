@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, ReactNode } from 'react';
 import api from '../services/api';
 import { type TemperatureUnit } from '../utils/temperature';
 import { type SortField, type SortDirection } from '../types/ui';
@@ -85,7 +85,27 @@ interface MapTilesetPreferences {
   dark: TilesetId;
 }
 
+/**
+ * Dark-mode basemap default when a Carto API key IS configured. Carto's dark
+ * raster is the nicest dark basemap we have, so a keyed deployment keeps it.
+ */
 export const DEFAULT_DARK_TILESET_ID: TilesetId = 'cartoDark';
+
+/**
+ * Dark-mode basemap default when NO Carto API key is configured (#5015).
+ *
+ * Carto retired its free keyless rasters, so an unkeyed request to
+ * `basemaps.cartocdn.com/dark_all` comes back as a valid HTTP 200 PNG with
+ * "API KEY REQUIRED" painted diagonally across it. Nothing downstream can
+ * detect that — it is a successful image load by every measure available to
+ * the browser — so the only fix is to not pick Carto in the first place.
+ *
+ * Esri's Dark Gray Canvas is keyless, on a host we already use, and actually
+ * dark, which OSM (the issue's original suggestion) is not; a dark-mode user
+ * handed a bright basemap is arguably worse off than one looking at a
+ * watermark.
+ */
+export const KEYLESS_DARK_TILESET_ID: TilesetId = 'esriDarkGray';
 
 // Custom theme definition from the API
 export interface CustomTheme {
@@ -325,6 +345,20 @@ export const getActiveAppearanceMode = (
   mode === 'dark' || (mode === 'system' && systemIsDark) ? 'dark' : 'light'
 );
 
+/**
+ * Pick the dark-mode default for the Carto key we actually have (#5015).
+ * Pure; exported for focused tests.
+ *
+ * Note this decides a DEFAULT only. An explicit user selection of `cartoDark`
+ * is never rewritten by this — the user may be mid-way through pasting a key,
+ * and silently swapping their basemap out from under them would make the
+ * tileset picker lie about what is on screen. The unkeyed-Carto warning in the
+ * picker covers that case instead.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- #4096 pure helper exported for focused tests
+export const resolveDefaultDarkTileset = (cartoApiKey: string | null | undefined): TilesetId =>
+  (cartoApiKey && cartoApiKey.length > 0) ? DEFAULT_DARK_TILESET_ID : KEYLESS_DARK_TILESET_ID;
+
 // eslint-disable-next-line react-refresh/only-export-components -- #4096 pure helper exported for focused tests
 export const resolveLegacyMapTilesets = (legacyTileset: string | null | undefined): MapTilesetPreferences => {
   if (!legacyTileset || legacyTileset === DEFAULT_TILESET_ID) {
@@ -333,13 +367,27 @@ export const resolveLegacyMapTilesets = (legacyTileset: string | null | undefine
   return { light: legacyTileset, dark: legacyTileset };
 };
 
-const getInitialMapTilesets = (): MapTilesetPreferences => {
-  const legacy = resolveLegacyMapTilesets(localStorage.getItem('mapTileset'));
+const getInitialMapTilesets = (): MapTilesetPreferences & { darkIsDefault: boolean } => {
+  const storedDark = localStorage.getItem('mapTilesetDark');
+  const storedLegacy = localStorage.getItem('mapTileset');
+  const legacy = resolveLegacyMapTilesets(storedLegacy);
   const light = localStorage.getItem('mapTilesetLight') || legacy.light;
-  const dark = localStorage.getItem('mapTilesetDark') || legacy.dark;
+  const dark = storedDark || legacy.dark;
+
+  // #5015: "defaulted" means nothing has ever chosen a dark basemap — no
+  // explicit `mapTilesetDark`, and no legacy `mapTileset` that would have
+  // implied one. We cannot resolve the right default yet, because it depends
+  // on the Carto key, which only arrives with the /api/settings response.
+  const darkIsDefault = !storedDark && (!storedLegacy || storedLegacy === DEFAULT_TILESET_ID);
+
   localStorage.setItem('mapTilesetLight', light);
-  localStorage.setItem('mapTilesetDark', dark);
-  return { light, dark };
+  // Deliberately NOT persisting a merely-defaulted dark. Writing it here is
+  // what made this bug sticky: the very first render of a fresh install would
+  // stamp `cartoDark` into localStorage, and every later load would then read
+  // it back as a deliberate user choice that must be respected.
+  if (!darkIsDefault) localStorage.setItem('mapTilesetDark', dark);
+
+  return { light, dark, darkIsDefault };
 };
 
 const getInitialThemePreferences = (): ThemePreferences => {
@@ -375,7 +423,14 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const { sourceId } = useSource();
   const [isLoading, setIsLoading] = useState(true);
   const [initialThemePreferences] = useState<ThemePreferences>(() => getInitialThemePreferences());
-  const [initialMapTilesets] = useState<MapTilesetPreferences>(() => getInitialMapTilesets());
+  const [initialMapTilesets] = useState<MapTilesetPreferences & { darkIsDefault: boolean }>(
+    () => getInitialMapTilesets(),
+  );
+  // #5015: true while no one has chosen a dark basemap, so the /api/settings
+  // handler below may still resolve the default against the Carto key. Cleared
+  // the moment a stored or user-set value appears. A ref, not state — flipping
+  // it must not itself trigger a render.
+  const darkTilesetIsDefaultRef = useRef(initialMapTilesets.darkIsDefault);
   const [systemIsDark, setSystemIsDark] = useState<boolean>(() => prefersDarkMode());
 
   // The ten Node Display keys (#4412 Phase 3) read through the namespaced
@@ -782,6 +837,10 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setMapTilesetDarkState(dark);
     localStorage.setItem('mapTilesetLight', light);
     localStorage.setItem('mapTilesetDark', dark);
+    // #5015: this is a deliberate choice, so the keyless-default resolver must
+    // never revisit dark again — including a choice OF cartoDark, which the
+    // user may be making because they are about to paste a key.
+    darkTilesetIsDefaultRef.current = false;
 
     const effective = getEffectiveTileset(appearanceMode, dark, light, systemIsDark);
     localStorage.setItem('mapTileset', effective);
@@ -1621,22 +1680,38 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             localStorage.setItem('dateFormat', settings.dateFormat);
           }
 
+          // Server-global Carto API key (#4934). Absent/blank ⇒ null (no key).
+          // Read BEFORE the tileset block below, which needs it to resolve the
+          // dark default (#5015).
+          const nextCartoApiKey =
+            typeof settings.cartoApiKey === 'string' && settings.cartoApiKey.length > 0
+              ? settings.cartoApiKey
+              : null;
+          setCartoApiKeyState(nextCartoApiKey);
+
           if (settings.mapTileset || settings.mapTilesetLight || settings.mapTilesetDark) {
             const legacyTilesets = resolveLegacyMapTilesets(settings.mapTileset);
             const nextLight = settings.mapTilesetLight || legacyTilesets.light;
+            // A server-stored dark preference is a real choice; a value that
+            // only came from the legacy single-tileset fallback is not.
+            const darkWasChosen = Boolean(settings.mapTilesetDark || settings.mapTileset);
             const nextDark = settings.mapTilesetDark || legacyTilesets.dark;
             setMapTilesetLightState(nextLight);
             setMapTilesetDarkState(nextDark);
             localStorage.setItem('mapTilesetLight', nextLight);
             localStorage.setItem('mapTilesetDark', nextDark);
+            if (darkWasChosen) darkTilesetIsDefaultRef.current = false;
           }
 
-          // Server-global Carto API key (#4934). Absent/blank ⇒ null (no key).
-          setCartoApiKeyState(
-            typeof settings.cartoApiKey === 'string' && settings.cartoApiKey.length > 0
-              ? settings.cartoApiKey
-              : null,
-          );
+          // #5015: nobody has chosen a dark basemap, so pick the default that
+          // actually works with the key this deployment has. Runs here rather
+          // than at init because the key is only known once this response
+          // lands. Not persisted — leaving it unwritten means adding a Carto
+          // key later promotes the user back to cartoDark on next load,
+          // instead of pinning them to the fallback forever.
+          if (darkTilesetIsDefaultRef.current) {
+            setMapTilesetDarkState(resolveDefaultDarkTileset(nextCartoApiKey));
+          }
 
           if (settings.mapPinStyle) {
             setMapPinStyleState(settings.mapPinStyle as MapPinStyle);

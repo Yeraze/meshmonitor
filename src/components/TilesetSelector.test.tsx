@@ -9,6 +9,7 @@ import { TilesetSelector } from './TilesetSelector';
 const settings = {
   activeMapTilesetMode: 'light' as 'light' | 'dark',
   customTilesets: [],
+  cartoApiKey: null as string | null,
 };
 
 vi.mock('react-i18next', () => ({
@@ -29,6 +30,7 @@ vi.mock('./DraggableOverlay', () => ({
 describe('TilesetSelector', () => {
   beforeEach(() => {
     settings.activeMapTilesetMode = 'light';
+    settings.cartoApiKey = null;
   });
 
   it('identifies the light-mode slot edited by the in-map selector', () => {
@@ -129,5 +131,52 @@ describe('TilesetSelector — mobile bottom sheet (#4380)', () => {
 
     expect(onTilesetChange).toHaveBeenCalledTimes(1);
     expect(container.querySelector('.tileset-selector.collapsed')).toBeNull();
+  });
+});
+
+/**
+ * #5015: CARTO retired its free keyless rasters. An unkeyed tile request comes
+ * back as a perfectly valid HTTP 200 PNG with "API KEY REQUIRED" painted
+ * across it — there is no load error, no broken image, nothing any downstream
+ * code can react to. The picker is the only place the user can be told, so
+ * these guard that it actually tells them.
+ */
+describe('TilesetSelector — unkeyed CARTO warning (#5015)', () => {
+  const WARNING = /needs a CARTO API key/i;
+
+  beforeEach(() => {
+    settings.activeMapTilesetMode = 'dark';
+    settings.cartoApiKey = null;
+  });
+
+  it('warns when a CARTO tileset is selected and no key is configured', () => {
+    render(<TilesetSelector selectedTilesetId="cartoDark" onTilesetChange={vi.fn()} embedded />);
+    expect(screen.getByText(WARNING)).toBeDefined();
+  });
+
+  it('stays silent once a key is configured', () => {
+    settings.cartoApiKey = 'pk_abc123';
+    render(<TilesetSelector selectedTilesetId="cartoDark" onTilesetChange={vi.fn()} embedded />);
+    expect(screen.queryByText(WARNING)).toBeNull();
+  });
+
+  it('stays silent for a keyless tileset even with no key', () => {
+    render(<TilesetSelector selectedTilesetId="esriDarkGray" onTilesetChange={vi.fn()} embedded />);
+    expect(screen.queryByText(WARNING)).toBeNull();
+  });
+
+  it('warns for cartoLight too, not just the dark one', () => {
+    settings.activeMapTilesetMode = 'light';
+    render(<TilesetSelector selectedTilesetId="cartoLight" onTilesetChange={vi.fn()} embedded />);
+    expect(screen.getByText(WARNING)).toBeDefined();
+  });
+
+  it('does not remove the CARTO options — it warns, it does not substitute', () => {
+    // Silently swapping the basemap would make the picker lie about what is on
+    // screen, and the user may be picking CARTO precisely because a key is
+    // about to be added.
+    render(<TilesetSelector selectedTilesetId="cartoDark" onTilesetChange={vi.fn()} embedded />);
+    expect(screen.getByText('Dark Mode')).toBeDefined();
+    expect(screen.getByText('Dark Gray')).toBeDefined();
   });
 });

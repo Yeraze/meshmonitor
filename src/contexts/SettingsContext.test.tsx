@@ -302,6 +302,19 @@ describe('per-theme map tileset helpers', () => {
     expect(resolveLegacyMapTilesets('custom-7')).toEqual({ light: 'custom-7', dark: 'custom-7' });
   });
 
+  it('picks the dark default from the CARTO key, not unconditionally (#5015)', async () => {
+    const { resolveDefaultDarkTileset } = await import('./SettingsContext');
+    // Keyed deployments keep Carto's dark raster — it is the nicest one we have.
+    expect(resolveDefaultDarkTileset('pk_abc123')).toBe('cartoDark');
+    // Unkeyed ones must NOT: Carto answers an unkeyed request with a valid
+    // HTTP 200 PNG that has "API KEY REQUIRED" painted across it, which no
+    // amount of downstream error handling can detect.
+    expect(resolveDefaultDarkTileset(null)).toBe('esriDarkGray');
+    expect(resolveDefaultDarkTileset(undefined)).toBe('esriDarkGray');
+    // A blank string is "no key", not a key.
+    expect(resolveDefaultDarkTileset('')).toBe('esriDarkGray');
+  });
+
   it('resolves explicit and system appearance modes', async () => {
     const { getActiveAppearanceMode, getEffectiveTileset } = await import('./SettingsContext');
     expect(getEffectiveTileset('light', 'cartoDark', 'osm', true)).toBe('osm');
