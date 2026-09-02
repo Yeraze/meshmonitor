@@ -1,0 +1,35 @@
+/* MeshCoreObserverBrokerPanel (#5014 Phase 2 WP3). CSS module — do not add
+ * these rules to the global sheets (CLAUDE.md CSS containment rule). This
+ * file owns only the per-card frame; the label/value grid (`.statusGrid`,
+ * `.statusLabel`, `.statusValue`, `.warning`, `.error`, `.hint`) is imported
+ * from MeshCoreObserverSection.module.css so both surfaces stay visually
+ * consistent (see that file's own header for the semantic-token rule).
+ */
+
+.brokerList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.brokerCard {
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.75rem;
+  background: var(--color-surface);
+}
+
+.brokerTitle {
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 0.15rem;
+}
+
+.brokerUrl {
+  font-family: var(--font-mono, monospace);
+  word-break: break-all;
+  font-size: 0.85em;
+  color: var(--color-text-subtle);
+  margin-bottom: 0.5rem;
+}

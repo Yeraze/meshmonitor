@@ -107,6 +107,15 @@ vi.mock('./hooks/useObserverCredentials', () => ({
   }),
 }));
 
+// --- useObserverStatus (#5014 Phase 2 WP3) ----------------------------------
+// The per-broker panel mounted by this section has its own dedicated test
+// file (MeshCoreObserverBrokerPanel.test.tsx). Stubbed here to a null status
+// (renders nothing) so this file's existing no-QueryClientProvider render()
+// calls keep working and its assertions stay about the aggregate blocks only.
+vi.mock('./hooks/useObserverStatus', () => ({
+  useObserverStatus: () => ({ status: null, loading: false, error: null, refetch: vi.fn() }),
+}));
+
 import type { ObserverCredentialStatus } from './hooks/useObserverCredentials';
 import { MeshCoreObserverSection } from './MeshCoreObserverSection';
 
