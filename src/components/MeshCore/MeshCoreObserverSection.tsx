@@ -26,6 +26,7 @@ import { UiIcon } from '../icons';
 import { CollapsibleSection } from './CollapsibleSection';
 import { useObserverKey, type ObserverKeyError, type ObserverKeyAction } from './hooks/useObserverKey';
 import { useObserverCredentials } from './hooks/useObserverCredentials';
+import { MeshCoreObserverBrokerPanel } from './MeshCoreObserverBrokerPanel';
 import styles from './MeshCoreObserverSection.module.css';
 
 interface MeshCoreObserverSectionProps {
@@ -377,6 +378,9 @@ export const MeshCoreObserverSection: React.FC<MeshCoreObserverSectionProps> = (
           )}
         </div>
       )}
+
+      {/* Per-broker breakdown of the aggregate block above (#5014 Phase 2 WP3). */}
+      <MeshCoreObserverBrokerPanel sourceId={sourceId} enabled={canRead} />
 
       {/* [B] Key status — token mode (or unknown mode) only. */}
       {showKeyBlock && (

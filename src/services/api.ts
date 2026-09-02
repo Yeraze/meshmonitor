@@ -2122,6 +2122,81 @@ class ApiService {
     );
     return res.data;
   }
+
+  /**
+   * MeshCore Analyzer Observer status (#5014 Phase 2 WP1). Unwraps the
+   * `{ success, data }` envelope — `get()` returns the raw body, so `.data`
+   * is read explicitly here (see the MQTT-monitor unwrap gotcha in
+   * CLAUDE.md). Gated server-side on `configuration:read`; an absent
+   * `observer` slice elsewhere in the app (e.g. the source-status poll) is
+   * not an error and should render nothing (D-6 silence convention) — this
+   * method itself always resolves the full envelope or throws via
+   * `ApiError`.
+   */
+  async getObserverStatus(sourceId: string): Promise<ObserverStatusResponse> {
+    const body = await this.get<{ success: boolean; data: ObserverStatusResponse }>(
+      `/api/sources/${sourceId}/observer/status`,
+    );
+    return body.data;
+  }
+
+  /**
+   * Store one broker's static MQTT credential (#5014 Phase 2 WP1). `brokerKey`
+   * MUST come from `getObserverStatus()` and the source config MUST already
+   * be saved, or the server replies `UNKNOWN_BROKER`. Callers MUST serialize
+   * these calls — `meshcoreObserverCredentialStore.storeForBroker` is
+   * read-modify-write and explicitly requires it.
+   */
+  async putObserverCredentials(
+    sourceId: string,
+    payload: { brokerKey?: string; username: string; password: string },
+  ): Promise<void> {
+    await this.put(`/api/sources/${sourceId}/observer/credentials`, payload);
+  }
+}
+
+/**
+ * One broker's Analyzer Observer status (#5014 Phase 2 WP1). Mirrors
+ * `MeshCoreObserverBrokerStatus` in
+ * `src/server/services/meshcoreObserverStatus.ts`; re-declared here because
+ * the boundary between frontend and backend is plain JSON.
+ */
+export interface ObserverBrokerStatus {
+  key: string;
+  url: string;
+  label: string | null;
+  authMode: 'token' | 'password';
+  tokenAudience: string | null;
+  configured: boolean;
+  keyStored: boolean;
+  connected: boolean;
+  publishes: number;
+  dropped: number;
+  /** milliseconds */
+  lastPublishAt: number | null;
+  lastError: string | null;
+  /** unix SECONDS */
+  tokenExpiresAt: number | null;
+}
+
+/**
+ * `GET /api/sources/:id/observer/status` response payload (#5014 Phase 2
+ * WP1). Mirrors `{ running: boolean } & MeshCoreObserverStatus` from
+ * `src/server/services/meshcoreObserverStatus.ts` / `sourceObserverRoutes.ts`.
+ */
+export interface ObserverStatusResponse {
+  /** false = no publisher running; the rest is a config-derived snapshot. */
+  running: boolean;
+  configured: boolean;
+  authMode: 'token' | 'password';
+  keyStored: boolean;
+  connected: boolean;
+  publishes: number;
+  dropped: number;
+  lastPublishAt: number | null;
+  lastError: string | null;
+  tokenExpiresAt: number | null;
+  brokers: ObserverBrokerStatus[];
 }
 
 /** Verdict returned by {@link ApiService.runAutomationNow} (#4827). */

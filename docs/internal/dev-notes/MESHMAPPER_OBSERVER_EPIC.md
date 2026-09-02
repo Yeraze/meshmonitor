@@ -56,7 +56,7 @@ wardrive ingestion via MeshMapper's third-party endpoint API.
   2+ mock brokers concurrently, legacy config back-compat, per-broker
   credential isolation.
 
-### Phase 2 — UI: broker list, presets, status ✅ status: [ ] not started
+### Phase 2 — UI: broker list, presets, status ✅ status: [x] implemented (WP1-WP4)
 
 - Observer fieldset on `DashboardPage.tsx` → broker-list editor with one-click
   presets: MeshMapper, LetsMesh US, LetsMesh EU, custom. Form↔config mapping
@@ -87,3 +87,23 @@ wardrive ingestion via MeshMapper's third-party endpoint API.
   small. Flag to project owner at PR review.
 - Behaviour change (deliberate, in PR body): `MAX_AUTH_FAILURES` hard-stops
   only the offending connection, not the whole observer.
+
+### Phase 2 (implemented 2026-09-02)
+
+- Spec: `MESHMAPPER_OBSERVER_PHASE2_SPEC.md`. Work packages WP1-WP4 landed as
+  four commits on `feature/observer-multibroker-ui`: WP1 (mapping module +
+  `ApiService` methods), WP2 (fieldset editor + credential save path, plus its
+  own test/i18n commit), WP3 (per-broker status panel + Dashboard badge), WP4
+  (this doc pass).
+- Presets verified against the upstream reference implementation
+  (`agessaman/meshcore-packet-capture`), not assumed: MeshMapper
+  `wss://mqtt.meshmapper.net:443` / audience `mqtt.meshmapper.net`; LetsMesh US
+  `wss://mqtt-us-v1.letsmesh.net:443` / `mqtt-us-v1.letsmesh.net`; LetsMesh EU
+  `wss://mqtt-eu-v1.letsmesh.net:443` / `mqtt-eu-v1.letsmesh.net`. All three are
+  signed-token mode.
+- No deviations from the spec's WP1-WP3 file-by-file plan found while writing
+  docs (WP4). User docs at `docs/features/meshcore-analyzer-observer.md` now
+  cover: multi-broker editor + presets, the legacy-config migration-on-save,
+  per-broker credentials and save-order requirement, a new "Contribute to
+  MeshMapper" walkthrough, a "Multiple brokers" behaviour section, the
+  per-broker status panel, and the Dashboard `OBS c/N` badge.

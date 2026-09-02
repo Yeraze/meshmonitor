@@ -1,0 +1,124 @@
+/* DashboardPage — MeshCore Analyzer Observer broker-list editor
+ * (#5014 Phase 2 WP2). CSS module — owns ONLY the repeating broker-row
+ * layout; everything that already worked as an inline style in the
+ * surrounding fieldset stays inline (CLAUDE.md CSS containment rule,
+ * MESHMAPPER_OBSERVER_PHASE2_SPEC.md §4.3). Do not add these rules to
+ * src/styles/dashboard.css (frozen).
+ *
+ * Colors: semantic `var(--color-*)` tokens only, with NO fallback value
+ * (map-sidebar rule, issue #4909) — a fallback silently masks a missing
+ * token in a way that only shows up as a theme bug later.
+ */
+
+.brokerList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.brokerRow {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 8px 12px 12px;
+}
+
+.brokerHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 4px;
+}
+
+.brokerFields {
+  display: flex;
+  flex-direction: column;
+}
+
+.presetBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.presetButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  color: var(--color-accent);
+  border: 1px solid var(--color-accent);
+  border-radius: 4px;
+  font-size: 11px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.presetButton:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+.presetButton:disabled {
+  color: var(--color-text-disabled);
+  border-color: var(--color-border);
+  cursor: not-allowed;
+}
+
+.removeButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  color: var(--color-error);
+  font-size: 11px;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.removeButton:hover {
+  background: var(--color-surface-hover);
+}
+
+.credRow {
+  display: flex;
+  flex-direction: column;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--color-border);
+}
+
+.rowError {
+  color: var(--color-error);
+  font-size: 11px;
+  margin: 4px 0 0;
+}
+
+/* Standard clip-based sr-only pattern (never `display: none`, which would
+ * drop it from the a11y tree) — see TracerouteStrip.module.css precedent. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 480px) {
+  .brokerHead {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

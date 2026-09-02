@@ -398,6 +398,102 @@ describe('DashboardSidebar', () => {
     });
   });
 
+  describe('Analyzer Observer badge (#5014 Phase 2 WP3)', () => {
+    const observerSource = (config: Record<string, unknown>): DashboardSource[] => [
+      { id: 'obs-1', name: 'Observer Source', type: 'meshcore', enabled: true, config },
+    ];
+
+    it('shows OBS c/N + statusOn when the status poll reports some brokers connected', () => {
+      renderSidebar({
+        sources: observerSource({
+          observer: {
+            enabled: true,
+            brokers: [{ url: 'wss://a.example.com:443' }, { url: 'wss://b.example.com:443' }],
+          },
+        }),
+        statusMap: new Map([
+          [
+            'obs-1',
+            {
+              sourceId: 'obs-1',
+              connected: true,
+              observer: {
+                brokers: [{ connected: true }, { connected: false }],
+              },
+            } as SourceStatus,
+          ],
+        ]),
+        nodeCounts: new Map([['obs-1', 0]]),
+      });
+      const badge = document.querySelector('.dashboard-source-card-badge[title*="observer_badge_title"]');
+      expect(badge).not.toBeNull();
+      expect(badge!.textContent).toContain('OBS 1/2');
+      expect(badge!.querySelector('[data-ui-icon="statusOn"]')).not.toBeNull();
+    });
+
+    it('shows OBS N (config count) + statusOff + "status unavailable" title when status.observer is absent', () => {
+      renderSidebar({
+        sources: observerSource({
+          observer: {
+            enabled: true,
+            brokers: [{ url: 'wss://a.example.com:443' }, { url: 'wss://b.example.com:443' }],
+          },
+        }),
+        statusMap: new Map([['obs-1', { sourceId: 'obs-1', connected: true } as SourceStatus]]),
+        nodeCounts: new Map([['obs-1', 0]]),
+      });
+      const badge = document.querySelector('.dashboard-source-card-badge[title*="observer_badge_unknown"]');
+      expect(badge).not.toBeNull();
+      expect(badge!.textContent).toContain('OBS 2');
+      expect(badge!.textContent).not.toMatch(/OBS \d+\/\d+/);
+      expect(badge!.querySelector('[data-ui-icon="statusOff"]')).not.toBeNull();
+    });
+
+    it('counts a legacy brokerUrl-only config as 1 broker', () => {
+      renderSidebar({
+        sources: observerSource({
+          observer: { enabled: true, brokerUrl: 'wss://legacy.example.com:443' },
+        }),
+        statusMap: new Map([['obs-1', { sourceId: 'obs-1', connected: true } as SourceStatus]]),
+        nodeCounts: new Map([['obs-1', 0]]),
+      });
+      const badge = document.querySelector('.dashboard-source-card-badge[title*="observer_badge_unknown"]');
+      expect(badge).not.toBeNull();
+      expect(badge!.textContent).toContain('OBS 1');
+    });
+
+    it('renders no badge when observer.enabled is false', () => {
+      renderSidebar({
+        sources: observerSource({ observer: { enabled: false, brokers: [{ url: 'wss://a.example.com:443' }] } }),
+        statusMap: new Map([['obs-1', { sourceId: 'obs-1', connected: true } as SourceStatus]]),
+        nodeCounts: new Map([['obs-1', 0]]),
+      });
+      expect(
+        document.querySelector('.dashboard-source-card-badge[title*="observer_badge"]'),
+      ).toBeNull();
+    });
+
+    it('renders no observer badge for a non-meshcore source even with an observer config block', () => {
+      const nonMeshcore: DashboardSource[] = [
+        {
+          id: 'src-x',
+          name: 'Some TCP',
+          type: 'meshtastic_tcp',
+          enabled: true,
+          config: { observer: { enabled: true, brokers: [{ url: 'wss://a.example.com:443' }] } },
+        },
+      ];
+      renderSidebar({
+        sources: nonMeshcore,
+        statusMap: new Map([['src-x', { sourceId: 'src-x', connected: true } as SourceStatus]]),
+        nodeCounts: new Map([['src-x', 0]]),
+      });
+      expect(
+        document.querySelector('.dashboard-source-card-badge[title*="observer_badge"]'),
+      ).toBeNull();
+    });
+  });
+
   // Issue #3355 — drag handles are hidden until the admin enters Edit mode.
   describe('Edit mode (drag-reorder gating)', () => {
     const queryDragHandles = () =>

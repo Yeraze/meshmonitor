@@ -29,6 +29,24 @@ import { UiIcon } from '../icons';
 import SidebarFooter from '../SidebarFooter';
 import styles from './DashboardSidebar.module.css';
 
+// Narrow, LOCAL slices of `source.config` / the status poll for the compact
+// Analyzer Observer badge (#5014 Phase 2 WP3 §4.9) — not imports of a
+// server-side type, since both cross the client/server boundary as plain
+// JSON (same pattern as MeshCoreObserverSection's ObserverSourceStatusSlice).
+interface ObserverCardConfig {
+  observer?: {
+    enabled?: boolean;
+    brokers?: unknown[];
+    brokerUrl?: string;
+  };
+}
+interface ObserverCardStatus {
+  observer?: {
+    connected?: boolean;
+    brokers?: Array<{ connected: boolean }>;
+  };
+}
+
 // Every sidebar navigation link renders an icon before its label (issue #4395).
 // The global `.dashboard-sidebar-link` rule carries the colour and typography;
 // the CSS-module class adds the flex layout that aligns the glyph with the text.
@@ -612,6 +630,45 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                     VN:{vn.port}
                   </span>
                 ) : null;
+              })()}
+              {!isUnified && source.type === 'meshcore' && (() => {
+                // Compact Analyzer Observer indicator (#5014 Phase 2 WP3 §4.9).
+                // Zero new requests: `status.observer` rides the already-polled
+                // useSourceStatuses map — see the MeshCoreManager.getStatus()
+                // note in the reuse inventory (spec §1.3).
+                const obs = (source.config as ObserverCardConfig | undefined)?.observer;
+                if (obs?.enabled !== true) return null;
+                const configuredCount =
+                  Array.isArray(obs.brokers) && obs.brokers.length > 0
+                    ? obs.brokers.length
+                    : typeof obs.brokerUrl === 'string' && obs.brokerUrl.trim()
+                      ? 1
+                      : 0;
+                const live = (status as ObserverCardStatus | null | undefined)?.observer;
+                const connectedCount = live
+                  ? (live.brokers?.filter((b) => b.connected).length ?? (live.connected ? 1 : 0))
+                  : null;
+                const on = (connectedCount ?? 0) > 0;
+                return (
+                  <span
+                    className="dashboard-source-card-badge"
+                    title={
+                      connectedCount === null
+                        ? t(
+                            'source.observer_badge_unknown',
+                            'Analyzer Observer configured; status unavailable',
+                          )
+                        : t(
+                            'source.observer_badge_title',
+                            'Analyzer Observer: {{connected}} of {{total}} brokers connected',
+                            { connected: connectedCount, total: configuredCount },
+                          )
+                    }
+                  >
+                    <UiIcon name={on ? 'statusOn' : 'statusOff'} size={12} />{' '}
+                    {connectedCount === null ? `OBS ${configuredCount}` : `OBS ${connectedCount}/${configuredCount}`}
+                  </span>
+                );
               })()}
               {!isUnified && hasPermission('sources', 'write', { sourceId: source.id }) && (() => {
                 // Only show Prune Outside ROI for mqtt_bridge sources that
