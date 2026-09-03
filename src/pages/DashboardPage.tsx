@@ -146,8 +146,16 @@ function DashboardInner() {
   const [showSourceModal, setShowSourceModal] = useState(false);
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
   const [formType, setFormType] = useState<
-    'meshtastic_tcp' | 'meshcore' | 'mqtt_broker' | 'mqtt_bridge' | 'reticulum'
+    'meshtastic_tcp' | 'meshcore' | 'meshcore_mqtt' | 'mqtt_broker' | 'mqtt_bridge' | 'reticulum'
   >('meshtastic_tcp');
+  // MeshCore MQTT ingest source (#5040). One broker per source, deliberately:
+  // it keeps "which broker did this come from" collapsed to "which source".
+  const [formMcMqttBrokerUrl, setFormMcMqttBrokerUrl] = useState('');
+  const [formMcMqttRegion, setFormMcMqttRegion] = useState('');
+  const [formMcMqttUsername, setFormMcMqttUsername] = useState('');
+  const [formMcMqttPassword, setFormMcMqttPassword] = useState('');
+  const [formMcMqttRejectUnauthorized, setFormMcMqttRejectUnauthorized] = useState(true);
+  const [formMcMqttAutoConnect, setFormMcMqttAutoConnect] = useState(true);
   const [formName, setFormName] = useState('');
   const [formHost, setFormHost] = useState('');
   const [formPort, setFormPort] = useState('4403');
@@ -430,6 +438,21 @@ function DashboardInner() {
     // Cleared on every modal open, regardless of source type — drafts are
     // never seeded from the server (§3.5).
     setFormObserverCreds({});
+    if (source.type === 'meshcore_mqtt') {
+      setFormType('meshcore_mqtt');
+      setFormName(source.name);
+      setFormMcMqttBrokerUrl(cfg?.brokerUrl ?? '');
+      setFormMcMqttRegion(cfg?.region ?? '');
+      setFormMcMqttUsername(cfg?.username ?? '');
+      // Never seed the password back into the form — the server keeps the
+      // stored value when this is left blank.
+      setFormMcMqttPassword('');
+      setFormMcMqttRejectUnauthorized(cfg?.rejectUnauthorized !== false);
+      setFormMcMqttAutoConnect(cfg?.autoConnect !== false);
+      setFormError('');
+      setShowSourceModal(true);
+      return;
+    }
     if (source.type === 'reticulum') {
       setFormType('reticulum');
       setFormName(source.name);
@@ -727,6 +750,29 @@ function DashboardInner() {
       }
       if (!observerResult.config) return; // buildObserverConfig always returns config when error is unset.
       cfg.observer = observerResult.config;
+    } else if (formType === 'meshcore_mqtt') {
+      // Mirrors the server-side validation in sourceRoutes.ts: both fields are
+      // structural. The subscribe topic is built from the region, so a source
+      // without one would subscribe to nothing at all.
+      const brokerUrl = formMcMqttBrokerUrl.trim();
+      const region = formMcMqttRegion.trim();
+      if (!brokerUrl) {
+        setFormError(t('source.form.error_mc_mqtt_broker_required', 'Broker URL is required'));
+        return;
+      }
+      if (!region) {
+        setFormError(t('source.form.error_mc_mqtt_region_required', 'Region is required'));
+        return;
+      }
+      cfg = {
+        brokerUrl,
+        region: region.toUpperCase(),
+        rejectUnauthorized: formMcMqttRejectUnauthorized,
+        autoConnect: formMcMqttAutoConnect,
+      };
+      const mcUser = formMcMqttUsername.trim();
+      if (mcUser) cfg.username = mcUser;
+      if (formMcMqttPassword) cfg.password = formMcMqttPassword;
     } else if (formType === 'reticulum') {
       // Reticulum source (#3960 Phase 1b WP6): validation mirrors
       // reticulumConfigFromSource() server-side (src/server/reticulumConfig.ts)
@@ -1325,6 +1371,7 @@ function DashboardInner() {
                       e.target.value as
                         | 'meshtastic_tcp'
                         | 'meshcore'
+                        | 'meshcore_mqtt'
                         | 'mqtt_broker'
                         | 'mqtt_bridge'
                         | 'reticulum',
@@ -1333,6 +1380,7 @@ function DashboardInner() {
                 >
                   <option value="meshtastic_tcp">{t('source.form.type_meshtastic', 'Meshtastic (TCP)')}</option>
                   <option value="meshcore">{t('source.form.type_meshcore', 'MeshCore')}</option>
+                  <option value="meshcore_mqtt">{t('source.form.type_meshcore_mqtt', 'MeshCore MQTT ingest (read a region feed, no radio)')}</option>
                   <option value="mqtt_broker">{t('source.form.type_mqtt_broker', 'Embedded MQTT Broker (devices connect here)')}</option>
                   <option value="mqtt_bridge">{t('source.form.type_mqtt_bridge', 'MQTT Bridge (forward to/from an upstream broker)')}</option>
                   <option value="reticulum">{t('source.form.type_reticulum', 'Reticulum')}</option>
@@ -1967,6 +2015,83 @@ function DashboardInner() {
                     </>
                   )}
                 </fieldset>
+              </>
+            ) : formType === 'meshcore_mqtt' ? (
+              <>
+                <div className="dashboard-form-help" style={{ marginBottom: '0.75rem' }}>
+                  {t(
+                    'source.form.mc_mqtt_intro',
+                    'Reads a MeshCore Analyzer region feed over MQTT. This source has no radio: it can never transmit, and shows no device, contacts, or remote-admin pages.',
+                  )}
+                </div>
+
+                <label className="dashboard-form-field">
+                  <span className="dashboard-form-label">{t('source.form.mc_mqtt_broker_url', 'Broker URL')}</span>
+                  <input
+                    type="text"
+                    value={formMcMqttBrokerUrl}
+                    onChange={(e) => setFormMcMqttBrokerUrl(e.target.value)}
+                    placeholder="wss://mqtt.meshmapper.net:443"
+                  />
+                  <span className="dashboard-form-help">
+                    {t('source.form.mc_mqtt_broker_url_help', 'One broker per source. Accepts ws://, wss://, mqtt://, mqtts://, or host:port. Add a second source for a second broker.')}
+                  </span>
+                </label>
+
+                <label className="dashboard-form-field">
+                  <span className="dashboard-form-label">{t('source.form.mc_mqtt_region', 'Region (IATA)')}</span>
+                  <input
+                    type="text"
+                    value={formMcMqttRegion}
+                    onChange={(e) => setFormMcMqttRegion(e.target.value)}
+                    placeholder="MCO"
+                  />
+                  <span className="dashboard-form-help">
+                    {t('source.form.mc_mqtt_region_help', "The region segment of the topic this source subscribes to. Uppercased on save.")}
+                  </span>
+                </label>
+
+                <label className="dashboard-form-field">
+                  <span className="dashboard-form-label">{t('source.form.mc_mqtt_username', 'Username (optional)')}</span>
+                  <input
+                    type="text"
+                    value={formMcMqttUsername}
+                    onChange={(e) => setFormMcMqttUsername(e.target.value)}
+                    autoComplete="off"
+                  />
+                </label>
+
+                <label className="dashboard-form-field">
+                  <span className="dashboard-form-label">{t('source.form.mc_mqtt_password', 'Password (optional)')}</span>
+                  <input
+                    type="password"
+                    value={formMcMqttPassword}
+                    onChange={(e) => setFormMcMqttPassword(e.target.value)}
+                    autoComplete="new-password"
+                    placeholder={editingSourceId ? t('source.form.unchanged_placeholder', 'Leave blank to keep existing') : ''}
+                  />
+                  <span className="dashboard-form-help">
+                    {t('source.form.mc_mqtt_password_help', 'Only for brokers using fixed MQTT credentials. Leave both blank for an open broker.')}
+                  </span>
+                </label>
+
+                <label className="dashboard-form-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={formMcMqttRejectUnauthorized}
+                    onChange={(e) => setFormMcMqttRejectUnauthorized(e.target.checked)}
+                  />
+                  <span>{t('source.form.mc_mqtt_reject_unauthorized', 'Verify TLS certificate')}</span>
+                </label>
+
+                <label className="dashboard-form-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={formMcMqttAutoConnect}
+                    onChange={(e) => setFormMcMqttAutoConnect(e.target.checked)}
+                  />
+                  <span>{t('source.form.auto_connect', 'Connect automatically on startup')}</span>
+                </label>
               </>
             ) : formType === 'reticulum' ? (
               <>
