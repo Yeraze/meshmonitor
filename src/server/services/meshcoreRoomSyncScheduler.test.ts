@@ -289,6 +289,22 @@ describe('MeshCoreRoomSyncScheduler.tickOneManager — failure handling', () => 
 
     await (makeScheduler(manager) as any).tickOneManager(manager.sourceId, manager);
 
-    expect(db.recordRoomSyncFailure).toHaveBeenCalledWith('src-a', 'pk-a', 'no_reply');
+    expect(db.recordRoomSyncFailure).toHaveBeenCalledWith('src-a', 'pk-a', 'no_reply', { disable: false });
+    expect(db.setRoomSyncConfig).not.toHaveBeenCalled();
+  });
+
+  it('holds a repeatedly-throwing room to the same failure threshold', async () => {
+    // Otherwise the counter climbs for ever and the login cost is paid on
+    // every interval, indefinitely.
+    const manager = makeFakeManager({});
+    (manager as any).loginToRoomWithOutcome = async () => {
+      throw new Error('boom');
+    };
+    const db = mockFailurePath();
+    db.recordRoomSyncFailure.mockResolvedValue(3);
+
+    await (makeScheduler(manager) as any).tickOneManager(manager.sourceId, manager);
+
+    expect(db.setRoomSyncConfig).toHaveBeenCalledWith('src-a', 'pk-a', { roomSyncEnabled: false });
   });
 });

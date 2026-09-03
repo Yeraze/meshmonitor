@@ -530,9 +530,21 @@ router.delete('/rooms/credentials/:publicKey', requireAuth(), requirePermission(
     }
     const sourceId = req.params.id!;
 
+    // Clearing the credential is the part the user asked for; the other two
+    // are cleanup. Attempt all three regardless, so a failure in the cleanup
+    // cannot leave auto-sync enabled or a stale failure record behind while
+    // the password is already gone.
     await getMeshCoreCredentialStore().clearRoom(sourceId, publicKey);
-    await databaseService.meshcore.setRoomSyncConfig(sourceId, publicKey, { roomSyncEnabled: false });
-    await databaseService.meshcore.clearRoomSyncFailure(sourceId, publicKey);
+
+    const cleanup = await Promise.allSettled([
+      databaseService.meshcore.setRoomSyncConfig(sourceId, publicKey, { roomSyncEnabled: false }),
+      databaseService.meshcore.clearRoomSyncFailure(sourceId, publicKey),
+    ]);
+    for (const result of cleanup) {
+      if (result.status === 'rejected') {
+        logger.warn('[API] Room credential cleared but sync-state cleanup failed:', result.reason);
+      }
+    }
 
     res.json({ success: true });
   } catch (error) {

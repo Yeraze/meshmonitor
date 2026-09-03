@@ -874,6 +874,12 @@ export class MeshCoreRepository extends BaseRepository {
     publicKey: string,
     config: { roomSyncEnabled?: boolean; roomSyncIntervalMinutes?: number },
   ): Promise<void> {
+    // Update-only, so a missing sourceId would quietly match nothing and the
+    // caller would believe it had saved the config. Fail loudly instead, like
+    // the other room methods here.
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.setRoomSyncConfig requires a sourceId');
+    }
     const { meshcoreNodes } = this.tables;
     const now = this.now();
     await this.db

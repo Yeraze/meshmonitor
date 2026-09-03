@@ -224,9 +224,26 @@ export class MeshCoreRoomSyncScheduler {
     } catch (err) {
       logger.error(`[RoomSyncScheduler] Error syncing room ${shortKey}:`, err);
       // Count a thrown attempt as a failure too, so a room that reliably
-      // explodes cannot sit at the head of the overdue queue for ever.
+      // explodes cannot sit at the head of the overdue queue for ever — and
+      // hold it to the SAME threshold as an unanswered login. A JS-level throw
+      // is not evidence about the password, but a room that throws on every
+      // tick is not going to start working either, and letting the counter
+      // climb for ever would keep paying the login cost indefinitely.
       try {
-        await databaseService.meshcore.recordRoomSyncFailure(sourceId, target.publicKey, 'no_reply');
+        const failures = await databaseService.meshcore.recordRoomSyncFailure(
+          sourceId,
+          target.publicKey,
+          'no_reply',
+          { disable: false },
+        );
+        if (failures >= MAX_CONSECUTIVE_FAILURES) {
+          await databaseService.meshcore.setRoomSyncConfig(sourceId, target.publicKey, {
+            roomSyncEnabled: false,
+          });
+          logger.warn(
+            `[RoomSyncScheduler] Room ${shortKey} threw on ${failures} consecutive syncs — auto-sync disabled.`,
+          );
+        }
       } catch (recordErr) {
         logger.debug(`[RoomSyncScheduler] Could not record failure for ${shortKey}:`, recordErr);
       }

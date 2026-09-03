@@ -2396,7 +2396,20 @@ export class MeshCoreNativeBackend extends EventEmitter {
    *
    * The returned promise only ever REJECTS (with MESHCORE_LOGIN_REJECTED) —
    * it is meant to lose the race whenever the login actually succeeds, so the
-   * caller must always `cancel()` it to detach the listener.
+   * caller must always `cancel()` it to detach the listener. Two consequences
+   * worth spelling out:
+   *
+   *  - With no connection it attaches nothing and never settles, leaving
+   *    `Promise.race` to be decided entirely by `login()`. That is the correct
+   *    degradation rather than a silent failure: `sendCommand`'s `login` case
+   *    is only reached through `dispatch()`, which has already resolved a
+   *    contact off the live connection, so a null here means the connection
+   *    dropped mid-call and `login()` is about to reject on its own.
+   *  - The `promise.catch(() => {})` below only swallows the rejection AFTER
+   *    the race has read it. Without it, a refusal that the caller has already
+   *    turned into a MESHCORE_LOGIN_REJECTED error would ALSO surface as an
+   *    unhandled rejection and take the process down under
+   *    `--unhandled-rejections=throw`. It hides nothing the caller did not see.
    */
   private awaitLoginRejection(publicKey: Uint8Array): {
     promise: Promise<never>;
@@ -2408,7 +2421,11 @@ export class MeshCoreNativeBackend extends EventEmitter {
 
     let onRx: ((frame: Uint8Array) => void) | null = null;
     const promise = new Promise<never>((_resolve, reject) => {
-      if (!connection) return; // never settles; cancel() still detaches nothing
+      if (!connection) {
+        // Never settles — see the note above. login() decides the race.
+        logger.debug('[MeshCore:native] No connection; skipping LoginFail watch');
+        return;
+      }
       onRx = (frame: Uint8Array) => {
         if (!frame || frame.length < 8 || frame[0] !== PUSH_LOGIN_FAIL) return;
         if (bytesToHex(frame.slice(2, 8)) !== expectedPrefix) return;
@@ -2420,8 +2437,8 @@ export class MeshCoreNativeBackend extends EventEmitter {
       connection.on('rx', onRx);
     });
 
-    // A rejection that loses the race would otherwise surface as an unhandled
-    // rejection once the winning branch returns.
+    // Attach the no-op handler AFTER the race has a reference, so a rejection
+    // the caller already consumed cannot also count as unhandled.
     promise.catch(() => {});
 
     return {

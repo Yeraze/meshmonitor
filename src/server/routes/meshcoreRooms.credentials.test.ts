@@ -110,6 +110,21 @@ describe('DELETE /rooms/credentials/:publicKey', () => {
     expect(config).toMatchObject({ enabled: false, failureCount: 0, lastError: null });
   });
 
+  it('still clears the credential when the sync-state cleanup fails', async () => {
+    // The password is what the user asked to be rid of; a stale counter must
+    // not turn that into a 500 that suggests nothing happened.
+    vi.spyOn(databaseService.meshcore, 'clearRoomSyncFailure').mockRejectedValue(new Error('db down'));
+
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.delete(`${base(harness.sourceA)}/rooms/credentials/${VALID_PK}`);
+
+    expect(res.status).toBe(200);
+    expect(store.rooms.has(`${harness.sourceA}|${VALID_PK}`)).toBe(false);
+    // Auto-sync is still turned off — the two cleanup writes are independent.
+    const config = await databaseService.meshcore.getRoomSyncConfig(harness.sourceA, VALID_PK);
+    expect(config?.enabled).toBe(false);
+  });
+
   it('rejects a malformed public key before touching the store', async () => {
     const agent = await harness.loginAs(harness.admin);
     const res = await agent.delete(`${base(harness.sourceA)}/rooms/credentials/not-a-key`);

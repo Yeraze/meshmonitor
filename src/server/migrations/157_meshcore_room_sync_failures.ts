@@ -25,32 +25,44 @@
  * No backfill: existing rows start at 0 failures, which is exactly the state
  * a never-yet-failed room should be in.
  *
- * Idempotent across SQLite / PostgreSQL / MySQL.
+ * Idempotent across SQLite / PostgreSQL / MySQL via the shared helpers in
+ * `./helpers.js` (CLAUDE.md migration recipe).
  */
 import type { Database } from 'better-sqlite3';
 import { logger } from '../../utils/logger.js';
+import {
+  addColumnIfMissing,
+  addColumnIfMissingMysql,
+  addColumnIfMissingPostgres,
+} from './helpers.js';
 
 const LABEL = 'Migration 157';
 
+/**
+ * The shared helpers take the FULL column definition, name included — and
+ * PostgreSQL's wants the name quoted, since these are camelCase. Passing only
+ * the type produces `ADD COLUMN INTEGER DEFAULT 0`, which fails in a way the
+ * "duplicate column" guard does not recognise.
+ */
 interface ColumnSpec {
   name: string;
-  sqliteType: string;
-  postgresType: string;
-  mysqlType: string;
+  sqliteDdl: string;
+  postgresDdl: string;
+  mysqlDdl: string;
 }
 
 const COLUMNS: ColumnSpec[] = [
   {
     name: 'roomSyncFailureCount',
-    sqliteType: 'INTEGER DEFAULT 0',
-    postgresType: 'INTEGER DEFAULT 0',
-    mysqlType: 'INT DEFAULT 0',
+    sqliteDdl: 'roomSyncFailureCount INTEGER DEFAULT 0',
+    postgresDdl: '"roomSyncFailureCount" INTEGER DEFAULT 0',
+    mysqlDdl: 'roomSyncFailureCount INT DEFAULT 0',
   },
   {
     name: 'roomSyncLastError',
-    sqliteType: 'TEXT',
-    postgresType: 'TEXT',
-    mysqlType: 'VARCHAR(32)',
+    sqliteDdl: 'roomSyncLastError TEXT',
+    postgresDdl: '"roomSyncLastError" TEXT',
+    mysqlDdl: 'roomSyncLastError VARCHAR(32)',
   },
 ];
 
@@ -61,18 +73,7 @@ export const migration = {
     logger.info(`${LABEL} (SQLite): adding room-sync failure columns to meshcore_nodes...`);
 
     for (const col of COLUMNS) {
-      try {
-        db.exec(`ALTER TABLE meshcore_nodes ADD COLUMN ${col.name} ${col.sqliteType}`);
-        logger.debug(`${LABEL} (SQLite): added meshcore_nodes.${col.name}`);
-      } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
-        if (message.includes('duplicate column')) {
-          logger.debug(`${LABEL} (SQLite): meshcore_nodes.${col.name} already exists, skipping`);
-        } else {
-          logger.error(`${LABEL} (SQLite): could not add meshcore_nodes.${col.name}:`, message);
-          throw e;
-        }
-      }
+      addColumnIfMissing(db, 'meshcore_nodes', col.name, col.sqliteDdl);
     }
   },
 
@@ -87,10 +88,7 @@ export async function runMigration157Postgres(client: import('pg').PoolClient): 
   logger.info(`${LABEL} (PostgreSQL): adding room-sync failure columns...`);
 
   for (const col of COLUMNS) {
-    await client.query(
-      `ALTER TABLE meshcore_nodes ADD COLUMN IF NOT EXISTS "${col.name}" ${col.postgresType}`,
-    );
-    logger.debug(`${LABEL} (PostgreSQL): ensured meshcore_nodes.${col.name}`);
+    await addColumnIfMissingPostgres(client, 'meshcore_nodes', col.name, col.postgresDdl);
   }
 }
 
@@ -99,22 +97,7 @@ export async function runMigration157Postgres(client: import('pg').PoolClient): 
 export async function runMigration157Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
   logger.info(`${LABEL} (MySQL): adding room-sync failure columns...`);
 
-  const conn = await pool.getConnection();
-  try {
-    for (const col of COLUMNS) {
-      const [rows] = await conn.query(
-        `SELECT COLUMN_NAME FROM information_schema.COLUMNS
-         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'meshcore_nodes' AND COLUMN_NAME = ?`,
-        [col.name],
-      );
-      if (!Array.isArray(rows) || rows.length === 0) {
-        await conn.query(`ALTER TABLE meshcore_nodes ADD COLUMN ${col.name} ${col.mysqlType}`);
-        logger.debug(`${LABEL} (MySQL): added meshcore_nodes.${col.name}`);
-      } else {
-        logger.debug(`${LABEL} (MySQL): meshcore_nodes.${col.name} already exists, skipping`);
-      }
-    }
-  } finally {
-    conn.release();
+  for (const col of COLUMNS) {
+    await addColumnIfMissingMysql(pool, 'meshcore_nodes', col.name, col.mysqlDdl);
   }
 }
