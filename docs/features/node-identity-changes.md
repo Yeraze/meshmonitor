@@ -110,6 +110,8 @@ reversed after it.
 Open **Node Details** for either half of the pair and choose **Merge history…**.
 The button appears for administrators only.
 
+![The identity-change notice with the admin-only merge button](/images/features/node-identity-merge-notice.png)
+
 ### Step 1 — the dry run
 
 Nothing is written when the dialog opens. It shows a per-table count of exactly
@@ -132,7 +134,12 @@ If the merge is too large to record a complete undo for, the dialog says so in
 red and the confirm button stays disabled until you tick an explicit
 acknowledgement.
 
-![The confirmation state, with the undo guarantee stated](/images/features/node-identity-merge-confirm.png)
+![The bottom of the dialog: what keeps the old number, the undo guarantee, and the confirm button](/images/features/node-identity-merge-confirm.png)
+
+When the merge is too large to journal, the guarantee is replaced by a red block
+and the confirm button stays disabled until the acknowledgement is ticked:
+
+![The unreversible-merge state, with the confirm button disabled](/images/features/node-identity-merge-no-undo.png)
 
 ### What moves
 
