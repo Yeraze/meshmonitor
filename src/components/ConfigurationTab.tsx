@@ -733,10 +733,13 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           setMeshBeaconBroadcastOnRegion(mb.broadcastOnRegion ?? 0);
           setMeshBeaconBroadcastOnPreset(mb.broadcastOnPreset ?? null);
           setMeshBeaconBroadcastTargets(
+            // Narrow on `typeof`, not `??` (#5030): a non-numeric value here
+            // silently became a `<select value>` matching no `<option>`, so a
+            // configured target rendered as "Running config" / "UNSET".
             (Array.isArray(mb.broadcastTargets) ? mb.broadcastTargets : []).map((target: Record<string, unknown>) => ({
-              preset: (target?.preset as number) ?? null,
-              region: (target?.region as number) ?? 0,
-              channelIndex: (target?.channelIndex as number) ?? null,
+              preset: typeof target?.preset === 'number' ? target.preset : null,
+              region: typeof target?.region === 'number' ? target.region : 0,
+              channelIndex: typeof target?.channelIndex === 'number' ? target.channelIndex : null,
             }))
           );
         }

@@ -113,6 +113,45 @@ const IGNORE_REAPPLY_COOLDOWN_MS = 60_000;
 const ACTIVE_NODE_TOKEN_WINDOW_SECONDS = 7200;
 const ACTIVE_NODE_TOKEN_WINDOW_DAYS = ACTIVE_NODE_TOKEN_WINDOW_SECONDS / 86_400;
 
+/** One normalized MeshBeacon `broadcast_targets` entry, as the config API returns it. */
+export interface NormalizedBroadcastTarget {
+  region: number;
+  preset?: number;
+  channelIndex?: number;
+}
+
+/**
+ * Flatten the MeshBeacon `broadcast_targets` list into plain numeric objects (#5030).
+ *
+ * Every other sub-message in `getCurrentConfig()` is spread into a plain object,
+ * which incidentally turns its enums into raw numbers. `broadcast_targets` is the
+ * only *repeated message* the config API returns, so its entries stayed protobufjs
+ * `Message` instances — and `res.json()` then serializes them through protobufjs's
+ * own `Message.toJSON()`, which uses `enums: String`. The UI received
+ * `{ preset: "MEDIUM_SLOW", region: "US" }`, matched no `<option>` value, and
+ * rendered every target as "Running config" / "UNSET".
+ *
+ * Presence is tested with `hasOwnProperty`, not `?? null`: on a decoded message an
+ * unset `optional preset` reads 0 off the prototype (indistinguishable from
+ * LONG_FAST), while an unset `optional channel_index` reads null. Only fields
+ * actually on the wire are emitted, so absence keeps meaning "use the running
+ * config" rather than collapsing to preset 0.
+ */
+export function normalizeBroadcastTargets(targets: unknown): NormalizedBroadcastTarget[] {
+  if (!Array.isArray(targets)) return [];
+  return targets.map((raw) => {
+    const target = (raw ?? {}) as Record<string, unknown>;
+    const present = (key: string) =>
+      Object.prototype.hasOwnProperty.call(target, key) && typeof target[key] === 'number';
+    return {
+      // Plain enum: 0/UNSET means "use the running config region".
+      region: typeof target.region === 'number' ? target.region : 0,
+      ...(present('preset') ? { preset: target.preset as number } : {}),
+      ...(present('channelIndex') ? { channelIndex: target.channelIndex as number } : {}),
+    };
+  });
+}
+
 /** Parsed auto-responder payload: list of messages to send, plus the
  * raw decoded JSON object (or `{}` if the payload was plain text) so
  * callers can read optional fields like `private`. */
@@ -5466,11 +5505,11 @@ class MeshtasticManager implements ISourceManager {
         // Transmit settings (#4802): broadcastOnRegion 0 = UNSET (running config);
         // broadcastIntervalSecs defaults to the firmware minimum 3600, not 0.
         broadcastOnRegion: moduleConfig.meshBeacon.broadcastOnRegion !== undefined ? moduleConfig.meshBeacon.broadcastOnRegion : 0,
-        broadcastIntervalSecs: moduleConfig.meshBeacon.broadcastIntervalSecs !== undefined ? moduleConfig.meshBeacon.broadcastIntervalSecs : 3600
+        broadcastIntervalSecs: moduleConfig.meshBeacon.broadcastIntervalSecs !== undefined ? moduleConfig.meshBeacon.broadcastIntervalSecs : 3600,
         // broadcastOfferPreset / broadcastOnPreset are `optional` — absence means
         // "advertise/use no preset" and must stay undefined rather than
-        // collapsing to LONG_FAST. broadcastOnChannel / broadcastTargets are
-        // passed through as-is.
+        // collapsing to LONG_FAST. broadcastOnChannel is passed through as-is.
+        broadcastTargets: normalizeBroadcastTargets(moduleConfig.meshBeacon.broadcastTargets)
       };
 
       moduleConfig = {
