@@ -305,6 +305,12 @@ export interface DeviceInfo {
    * column — device-metrics telemetry is its only source.
    */
   uptimeSeconds?: number;
+  /**
+   * Epoch **milliseconds** of the most recent device-metrics telemetry sample,
+   * enriched from the same grouped query that supplies `uptimeSeconds` (#5033).
+   * Undefined when the node has never reported device telemetry.
+   */
+  telemetryTimestamp?: number;
   hopsAway?: number;
   lastHeard?: number;
   snr?: number;

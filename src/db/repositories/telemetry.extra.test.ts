@@ -571,6 +571,64 @@ describe('TelemetryRepository (expanded)', () => {
   });
 
   // -------------------------------------------------------------------------
+  // getLatestTelemetrySampleForAllNodes  (SQLite path) — #5033
+  // -------------------------------------------------------------------------
+  describe('getLatestTelemetrySampleForAllNodes', () => {
+    it('returns an empty Map when no records exist', async () => {
+      const map = await repo.getLatestTelemetrySampleForAllNodes('battery');
+      expect(map.size).toBe(0);
+    });
+
+    it('returns the latest value AND its timestamp per node', async () => {
+      await insertTelemetry(NODE1, NODE1_NUM, 'battery', NOW - 5 * HOUR, 50);
+      await insertTelemetry(NODE1, NODE1_NUM, 'battery', NOW - 1 * HOUR, 90);
+      await insertTelemetry(NODE2, NODE2_NUM, 'battery', NOW - 3 * HOUR, 55);
+
+      const map = await repo.getLatestTelemetrySampleForAllNodes('battery');
+      expect(map.size).toBe(2);
+      expect(map.get(NODE1)).toEqual({ value: 90, timestamp: NOW - 1 * HOUR });
+      expect(map.get(NODE2)).toEqual({ value: 55, timestamp: NOW - 3 * HOUR });
+    });
+
+    it('scopes the timestamp to the requested sourceId', async () => {
+      const SOURCE_A = 'src-a';
+      const SOURCE_B = 'src-b';
+      await repo.insertTelemetry({
+        nodeId: NODE1,
+        nodeNum: NODE1_NUM,
+        telemetryType: 'battery',
+        timestamp: NOW - 2 * HOUR,
+        value: 70,
+        unit: '%',
+        createdAt: NOW - 2 * HOUR,
+      }, SOURCE_A);
+      await repo.insertTelemetry({
+        nodeId: NODE1,
+        nodeNum: NODE1_NUM,
+        telemetryType: 'battery',
+        timestamp: NOW - 1 * HOUR,
+        value: 90,
+        unit: '%',
+        createdAt: NOW - 1 * HOUR,
+      }, SOURCE_B);
+
+      const a = await repo.getLatestTelemetrySampleForAllNodes('battery', SOURCE_A);
+      expect(a.get(NODE1)).toEqual({ value: 70, timestamp: NOW - 2 * HOUR });
+      const b = await repo.getLatestTelemetrySampleForAllNodes('battery', SOURCE_B);
+      expect(b.get(NODE1)).toEqual({ value: 90, timestamp: NOW - 1 * HOUR });
+    });
+
+    it('agrees with getLatestTelemetryValueForAllNodes on the value', async () => {
+      await insertTelemetry(NODE1, NODE1_NUM, 'battery', NOW - 5 * HOUR, 50);
+      await insertTelemetry(NODE1, NODE1_NUM, 'battery', NOW - 1 * HOUR, 90);
+
+      const values = await repo.getLatestTelemetryValueForAllNodes('battery');
+      const samples = await repo.getLatestTelemetrySampleForAllNodes('battery');
+      expect(values.get(NODE1)).toBe(samples.get(NODE1)!.value);
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // deleteTelemetryByNodeAndType
   // -------------------------------------------------------------------------
   describe('deleteTelemetryByNodeAndType', () => {

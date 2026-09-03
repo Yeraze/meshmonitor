@@ -29,6 +29,7 @@ vi.mock('../services/database.js', () => {
     telemetry: {
       // getAllNodesAsync reads an uptime map; .get() must exist.
       getLatestTelemetryValueForAllNodes: vi.fn().mockResolvedValue(new Map()),
+      getLatestTelemetrySampleForAllNodes: vi.fn().mockResolvedValue(new Map()),
     },
     nodes: {
       getNode: vi.fn().mockResolvedValue(null),

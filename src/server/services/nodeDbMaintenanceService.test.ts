@@ -16,12 +16,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const getLatestTelemetryValueForAllNodes = vi.fn();
+const getLatestTelemetrySampleForAllNodes = vi.fn();
 const getAllNodes = vi.fn();
 
 vi.mock('../../services/database.js', () => ({
   default: {
     telemetry: {
       getLatestTelemetryValueForAllNodes: (...args: unknown[]) => getLatestTelemetryValueForAllNodes(...args),
+      getLatestTelemetrySampleForAllNodes: (...args: unknown[]) => getLatestTelemetrySampleForAllNodes(...args),
     },
     nodes: {
       getAllNodes: (...args: unknown[]) => getAllNodes(...args),
@@ -124,6 +126,7 @@ function makeFakeManager(overrides: Partial<{
 describe('NodeDbMaintenanceService', () => {
   beforeEach(() => {
     getLatestTelemetryValueForAllNodes.mockReset().mockResolvedValue(new Map());
+    getLatestTelemetrySampleForAllNodes.mockReset().mockResolvedValue(new Map());
     getAllNodes.mockReset().mockResolvedValue([]);
     createPurgeNodeDbMessage.mockReset().mockReturnValue(new Uint8Array([1]));
     createAdminPacket.mockReset().mockReturnValue(new Uint8Array([2]));
@@ -234,8 +237,13 @@ describe('NodeDbMaintenanceService', () => {
 
     it('passes uptime/noise-floor telemetry maps through to the mapper', async () => {
       getAllNodes.mockResolvedValue([{ nodeNum: 7, nodeId: '!00000007', longName: '', shortName: '' }]);
+      getLatestTelemetrySampleForAllNodes.mockImplementation((type: string) => {
+        if (type === 'uptimeSeconds') {
+          return Promise.resolve(new Map([['!00000007', { value: 500, timestamp: 1700 }]]));
+        }
+        return Promise.resolve(new Map());
+      });
       getLatestTelemetryValueForAllNodes.mockImplementation((type: string) => {
-        if (type === 'uptimeSeconds') return Promise.resolve(new Map([['!00000007', 500]]));
         if (type === 'noiseFloor') return Promise.resolve(new Map([['!00000007', -95]]));
         return Promise.resolve(new Map());
       });
@@ -245,6 +253,8 @@ describe('NodeDbMaintenanceService', () => {
       const result: any[] = await svc.getAllNodesAsync('source-A');
       expect(result[0].deviceMetrics?.uptimeSeconds).toBe(500);
       expect(result[0].deviceMetrics?.noiseFloor).toBe(-95);
+      // #5033: the uptime sample's timestamp rides along as telemetryTimestamp.
+      expect(result[0].telemetryTimestamp).toBe(1700);
     });
   });
 });

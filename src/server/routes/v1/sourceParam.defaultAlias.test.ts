@@ -54,6 +54,7 @@ vi.mock('../../../services/database.js', () => ({
     nodes: { getAllNodes, getActiveNodes },
     telemetry: {
       getLatestTelemetryValueForAllNodes: vi.fn(async () => new Map()),
+      getLatestTelemetrySampleForAllNodes: vi.fn(async () => new Map()),
     },
   },
 }));

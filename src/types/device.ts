@@ -36,6 +36,17 @@ export interface DeviceInfo {
    * the "Sort: Uptime" option. Undefined when the node has never reported it.
    */
   uptimeSeconds?: number;
+  /**
+   * Epoch **milliseconds** of the most recent device-metrics telemetry sample
+   * from this node (#5033). Attached at serialization time from the same
+   * grouped query that supplies `uptimeSeconds`, so it costs no extra round
+   * trip. Undefined when the node has never reported device telemetry.
+   *
+   * Distinct from `lastHeard` (any packet, in seconds) and `positionTimestamp`
+   * (position only, in ms) — this is what tells the UI that a node is still
+   * talking but its telemetry module has gone quiet.
+   */
+  telemetryTimestamp?: number;
   hopsAway?: number;
   /** #4818 Status Message: the node's self-broadcast status (NODE_STATUS_APP), max 80 chars. Absent when unset. */
   nodeStatus?: string;

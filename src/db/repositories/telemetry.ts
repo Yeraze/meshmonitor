@@ -542,21 +542,50 @@ export class TelemetryRepository extends BaseRepository {
    * correctness in multi-source deployments, where the same nodeId can have
    * telemetry from multiple sources (issue #2831).
    *
-   * Keeps branching: PostgreSQL uses DISTINCT ON, SQLite/MySQL use subquery with MAX.
-   * Different raw SQL and result shapes per dialect.
+   * Thin projection over `getLatestTelemetrySampleForAllNodes` — callers that
+   * also need to know *when* the sample arrived should use that instead rather
+   * than issuing a second query.
    */
   async getLatestTelemetryValueForAllNodes(
     telemetryType: string,
     sourceId?: string,
   ): Promise<Map<string, number>> {
+    const samples = await this.getLatestTelemetrySampleForAllNodes(telemetryType, sourceId);
     const result = new Map<string, number>();
+    for (const [nodeId, sample] of samples) {
+      result.set(nodeId, sample.value);
+    }
+    return result;
+  }
+
+  /**
+   * Get the latest telemetry sample (value **and** its timestamp) for a given
+   * type across all nodes, in a single query.
+   *
+   * `timestamp` is epoch **milliseconds** — the same unit as `nodes.positionTimestamp`.
+   * It backs the "silent on 2.8+" notice (#5033), which needs to know how long
+   * a node has gone without emitting device telemetry. Returning it alongside
+   * the value means that feature costs zero extra database round-trips.
+   *
+   * When `sourceId` is provided, results are scoped to that source — required for
+   * correctness in multi-source deployments, where the same nodeId can have
+   * telemetry from multiple sources (issue #2831).
+   *
+   * Keeps branching: PostgreSQL uses DISTINCT ON, SQLite/MySQL use subquery with MAX.
+   * Different raw SQL and result shapes per dialect.
+   */
+  async getLatestTelemetrySampleForAllNodes(
+    telemetryType: string,
+    sourceId?: string,
+  ): Promise<Map<string, { value: number; timestamp: number }>> {
+    const result = new Map<string, { value: number; timestamp: number }>();
 
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
       const innerSourceFilter = sourceId ? sql`AND sourceId = ${sourceId}` : sql``;
       const outerSourceFilter = sourceId ? sql`AND t.sourceId = ${sourceId}` : sql``;
-      const rows = await db.all<{ nodeId: string; value: number }>(
-        sql`SELECT t.nodeId, t.value FROM telemetry t
+      const rows = await db.all<{ nodeId: string; value: number; timestamp: number }>(
+        sql`SELECT t.nodeId, t.value, t.timestamp FROM telemetry t
             INNER JOIN (
               SELECT nodeId, MAX(timestamp) as maxTs
               FROM telemetry WHERE telemetryType = ${telemetryType} ${innerSourceFilter}
@@ -565,14 +594,14 @@ export class TelemetryRepository extends BaseRepository {
             WHERE t.telemetryType = ${telemetryType} ${outerSourceFilter}`
       );
       for (const row of rows) {
-        result.set(row.nodeId, Number(row.value));
+        result.set(row.nodeId, { value: Number(row.value), timestamp: Number(row.timestamp) });
       }
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
       const innerSourceFilter = sourceId ? sql`AND sourceId = ${sourceId}` : sql``;
       const outerSourceFilter = sourceId ? sql`AND t.sourceId = ${sourceId}` : sql``;
       const [rows] = await (db as any).execute(
-        sql`SELECT t.nodeId, t.value FROM telemetry t
+        sql`SELECT t.nodeId, t.value, t.timestamp FROM telemetry t
             INNER JOIN (
               SELECT nodeId, MAX(timestamp) as maxTs
               FROM telemetry WHERE telemetryType = ${telemetryType} ${innerSourceFilter}
@@ -581,7 +610,7 @@ export class TelemetryRepository extends BaseRepository {
             WHERE t.telemetryType = ${telemetryType} ${outerSourceFilter}`
       );
       for (const row of rows as any[]) {
-        result.set(row.nodeId, Number(row.value));
+        result.set(row.nodeId, { value: Number(row.value), timestamp: Number(row.timestamp) });
       }
     } else {
       const db = this.getPostgresDb();
@@ -589,13 +618,17 @@ export class TelemetryRepository extends BaseRepository {
         ? sql`AND ${this.col('sourceId')} = ${sourceId}`
         : sql``;
       const rows = await db.execute(
-        sql`SELECT DISTINCT ON (${this.col('nodeId')}) ${this.col('nodeId')}, value
+        sql`SELECT DISTINCT ON (${this.col('nodeId')}) ${this.col('nodeId')}, value, timestamp
             FROM telemetry
             WHERE ${this.col('telemetryType')} = ${telemetryType} ${sourceFilter}
             ORDER BY ${this.col('nodeId')}, timestamp DESC`
       );
       for (const row of rows.rows) {
-        result.set(row.nodeId as string, Number(row.value));
+        // timestamp is BIGINT on PG — Number() it before it reaches the client.
+        result.set(row.nodeId as string, {
+          value: Number(row.value),
+          timestamp: Number(row.timestamp),
+        });
       }
     }
 
