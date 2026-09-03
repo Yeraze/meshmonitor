@@ -56,6 +56,7 @@ function makeStubManager(sourceId: string) {
     // ---- messaging (RF) ----
     sendMessage: async (..._args: unknown[]) => true,
     loginToRoom: async (..._args: unknown[]) => true,
+    loginToRoomWithOutcome: async (..._args: unknown[]) => 'ok' as const,
     sendRoomPost: async (..._args: unknown[]) => true,
     getRoomServers: () => [],
     isRoomLoggedIn: () => false,

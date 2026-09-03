@@ -1306,6 +1306,47 @@
   margin: 0;
 }
 
+/* Saved-credential controls in the login card. This is the one place a user
+   can reach when a saved password has stopped working: the auto-sync toggle
+   lives in the stats header, which only renders once you are logged IN. */
+.meshcore-room-saved-cred {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-surface-hover);
+}
+.meshcore-room-saved-cred-warning {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: var(--color-warning);
+  text-align: left;
+}
+.meshcore-room-forget-btn {
+  padding: 0.4rem 0.75rem;
+  border-radius: 4px;
+  border: 1px solid var(--color-surface-active);
+  background: transparent;
+  color: var(--color-text-subtle);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.meshcore-room-forget-btn:hover:not(:disabled) {
+  border-color: var(--color-error);
+  color: var(--color-error);
+}
+.meshcore-room-forget-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.meshcore-room-sync-warning {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-warning);
+}
+
 .meshcore-room-stats-header {
   display: flex;
   align-items: center;

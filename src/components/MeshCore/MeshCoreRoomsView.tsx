@@ -14,7 +14,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MeshCoreMessage, MeshCoreActions, ConnectionStatus } from './hooks/useMeshCore';
+import { MeshCoreMessage, MeshCoreActions, ConnectionStatus, RoomSyncFailureReason } from './hooks/useMeshCore';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import { useAuth } from '../../contexts/AuthContext';
@@ -93,6 +93,11 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
   const [syncEnabled, setSyncEnabled] = useState(false);
   const [syncInterval, setSyncInterval] = useState(60);
   const [syncConfigDirty, setSyncConfigDirty] = useState(false);
+  // Why the scheduler last failed to sync this room, so a saved password that
+  // has stopped working explains itself instead of auto-sync just reading
+  // "off" for no visible reason.
+  const [syncFailure, setSyncFailure] = useState<{ count: number; reason: RoomSyncFailureReason } | null>(null);
+  const [forgetting, setForgetting] = useState(false);
 
   // Fetch credential capability on mount
   useEffect(() => {
@@ -153,19 +158,33 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
       const result = await actions.loginRoomWithSaved(selectedRoom);
       if (result.success) {
         setLoggedInRooms(prev => new Set(prev).add(selectedRoom));
+      } else if (result.reason === 'rejected') {
+        // Say so rather than dropping the user on a blank login card: the
+        // saved password is the thing at fault, and the forget button below
+        // is the fix.
+        setLoginError(t(
+          'meshcore.rooms.saved_password_refused_short',
+          'The saved password was refused by this room server.',
+        ));
       }
       setLoginLoading(false);
     })();
-  }, [selectedRoom, loggedInRooms, storedCreds, actions, receiveOnly]);
+  }, [selectedRoom, loggedInRooms, storedCreds, actions, receiveOnly, t]);
 
   const loadSyncConfig = useCallback(async (pubkey: string) => {
     const config = await actions.getRoomSyncConfig(pubkey);
     if (config) {
       setSyncEnabled(config.enabled);
       setSyncInterval(config.intervalMinutes);
+      setSyncFailure(
+        config.failureCount > 0 && config.lastError
+          ? { count: config.failureCount, reason: config.lastError }
+          : null,
+      );
     } else {
       setSyncEnabled(false);
       setSyncInterval(60);
+      setSyncFailure(null);
     }
     setSyncConfigDirty(false);
   }, [actions]);
@@ -176,6 +195,7 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
     setLoginPassword('');
     setRememberPassword(false);
     setSyncConfigDirty(false);
+    setSyncFailure(null);
     void loadSyncConfig(pubkey);
     if (isMobileViewport()) setMobileShowContent(true);
   }, [loadSyncConfig]);
@@ -192,6 +212,9 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
           setStoredCreds(prev => new Set(prev).add(selectedRoom));
         }
         setLoginPassword('');
+        // The server clears the stored failure record on a successful login;
+        // mirror that here so the warning does not linger.
+        setSyncFailure(null);
       } else {
         setLoginError(result.error || t('meshcore.rooms.login_failed', 'Login failed'));
       }
@@ -201,6 +224,28 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
       setLoginLoading(false);
     }
   }, [selectedRoom, loginPassword, rememberPassword, actions, t]);
+
+  const handleForgetCredential = useCallback(async () => {
+    if (!selectedRoom) return;
+    setForgetting(true);
+    try {
+      const ok = await actions.forgetRoomCredential(selectedRoom);
+      if (ok) {
+        setStoredCreds(prev => {
+          const next = new Set(prev);
+          next.delete(selectedRoom);
+          return next;
+        });
+        // Let auto-login run again if a new password is saved later.
+        autoLoginAttempted.current.delete(selectedRoom);
+        setSyncFailure(null);
+        setSyncEnabled(false);
+        setLoginError(null);
+      }
+    } finally {
+      setForgetting(false);
+    }
+  }, [selectedRoom, actions]);
 
   const handleSend = useCallback(async (text: string): Promise<boolean> => {
     if (!selectedRoom) return false;
@@ -217,6 +262,24 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
   const connected = status?.connected ?? false;
 
   const showLoginOverlay = selectedRoom && !isLoggedIn(selectedRoom) && !loginLoading;
+
+  // Explains a stored password that has stopped working. Suppressed while
+  // `loginError` is showing: that already carries this session's live outcome,
+  // so the stored-failure text would only repeat it.
+  const savedCredWarning = useMemo(() => {
+    if (loginError || !syncFailure) return null;
+    if (syncFailure.reason === 'rejected') {
+      return t(
+        'meshcore.rooms.saved_password_refused',
+        'The saved password was refused by this room server, so auto-sync has been turned off. Log in with the correct password, or forget the saved one.',
+      );
+    }
+    return t(
+      'meshcore.rooms.saved_password_unanswered',
+      'The last {{count}} scheduled logins with the saved password went unanswered.',
+      { count: syncFailure.count },
+    );
+  }, [loginError, syncFailure, t]);
 
   const mobileClass = mobileShowContent ? 'mobile-show-content' : 'mobile-show-list';
 
@@ -331,6 +394,23 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
               {loginError && (
                 <div className="meshcore-room-login-error">{loginError}</div>
               )}
+              {selectedRoom && storedCreds.has(selectedRoom) && (
+                <div className="meshcore-room-saved-cred">
+                  {savedCredWarning && (
+                    <p className="meshcore-room-saved-cred-warning">{savedCredWarning}</p>
+                  )}
+                  <button
+                    type="button"
+                    className="meshcore-room-forget-btn"
+                    onClick={handleForgetCredential}
+                    disabled={forgetting}
+                  >
+                    {forgetting
+                      ? t('meshcore.rooms.forgetting_password', 'Forgetting…')
+                      : t('meshcore.rooms.forget_password', 'Forget saved password')}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -376,6 +456,16 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
                     <button className="meshcore-room-sync-save" onClick={handleSaveSyncConfig}>
                       {t('meshcore.rooms.save_sync', 'Save')}
                     </button>
+                  )}
+                  {syncFailure && (
+                    <span
+                      className="meshcore-room-sync-warning"
+                      title={syncFailure.reason === 'rejected'
+                        ? t('meshcore.rooms.sync_failed_rejected', 'The room server refused the saved password, so auto-sync was turned off.')
+                        : t('meshcore.rooms.sync_failed_no_reply', 'The last {{count}} scheduled logins went unanswered.', { count: syncFailure.count })}
+                    >
+                      <UiIcon name="alert" size={12} />
+                    </span>
                   )}
                   <MeshCoreReceiveOnlyNote receiveOnly={receiveOnly} />
                 </span>

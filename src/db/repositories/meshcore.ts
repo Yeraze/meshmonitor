@@ -234,6 +234,26 @@ export interface MeshCorePacketQuery {
 /**
  * Repository for MeshCore operations
  */
+/**
+ * Why a scheduled room sync failed.
+ *
+ *  - `rejected` — the room server answered and refused the password
+ *    (companion push code 0x86, PUSH_CODE_LOGIN_FAIL). Deterministic: the
+ *    same password will be refused every time, so retrying only burns airtime.
+ *  - `no_reply` — nothing came back before the timeout. Ambiguous: a lossy
+ *    LoRa link drops login round-trips routinely, so this backs off rather
+ *    than concluding the password is wrong.
+ */
+export type RoomSyncFailureReason = 'rejected' | 'no_reply';
+
+export interface RoomSyncConfigRow {
+  enabled: boolean;
+  intervalMinutes: number;
+  /** Consecutive failed syncs; reset to 0 by any success. */
+  failureCount: number;
+  lastError: RoomSyncFailureReason | null;
+}
+
 export class MeshCoreRepository extends BaseRepository {
   constructor(db: DrizzleDatabase, dbType: DatabaseType) {
     super(db, dbType);
@@ -756,25 +776,97 @@ export class MeshCoreRepository extends BaseRepository {
   async getRoomSyncConfig(
     sourceId: string,
     publicKey: string,
-  ): Promise<{ enabled: boolean; intervalMinutes: number } | null> {
+  ): Promise<RoomSyncConfigRow | null> {
     const { meshcoreNodes } = this.tables;
     const result = await this.db
       .select({
         roomSyncEnabled: meshcoreNodes.roomSyncEnabled,
         roomSyncIntervalMinutes: meshcoreNodes.roomSyncIntervalMinutes,
+        roomSyncFailureCount: meshcoreNodes.roomSyncFailureCount,
+        roomSyncLastError: meshcoreNodes.roomSyncLastError,
       })
       .from(meshcoreNodes)
       .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
     const rows = this.normalizeBigInts(result) as unknown as Array<{
       roomSyncEnabled: boolean | number | null;
       roomSyncIntervalMinutes: number | null;
+      roomSyncFailureCount: number | null;
+      roomSyncLastError: string | null;
     }>;
     if (rows.length === 0) return null;
     const row = rows[0];
     return {
       enabled: row.roomSyncEnabled === true || row.roomSyncEnabled === 1,
       intervalMinutes: row.roomSyncIntervalMinutes ?? 60,
+      failureCount: row.roomSyncFailureCount ?? 0,
+      lastError: (row.roomSyncLastError as RoomSyncFailureReason | null) ?? null,
     };
+  }
+
+  /**
+   * Record one failed scheduled room sync.
+   *
+   * Also advances `lastRoomSyncAt`, which is the whole point: the scheduler
+   * used to stamp that column only on success, so a room with a stale saved
+   * password stayed permanently overdue and was retried on every 60s tick
+   * instead of once per configured interval. Treating a failed attempt as an
+   * attempt is what turns ~180 login floods an hour back into the cadence the
+   * user actually asked for.
+   *
+   * `disable` switches auto-sync off for the row — passed once the caller has
+   * decided the credential is never going to work.
+   */
+  async recordRoomSyncFailure(
+    sourceId: string,
+    publicKey: string,
+    reason: RoomSyncFailureReason,
+    options: { disable?: boolean } = {},
+  ): Promise<number> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.recordRoomSyncFailure requires a sourceId');
+    }
+    const { meshcoreNodes } = this.tables;
+    const now = this.now();
+
+    const existing = await this.db
+      .select({ roomSyncFailureCount: meshcoreNodes.roomSyncFailureCount })
+      .from(meshcoreNodes)
+      .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)))
+      .limit(1);
+    const rows = this.normalizeBigInts(existing) as unknown as Array<{
+      roomSyncFailureCount: number | null;
+    }>;
+    const nextCount = (rows[0]?.roomSyncFailureCount ?? 0) + 1;
+
+    await this.db
+      .update(meshcoreNodes)
+      .set({
+        roomSyncFailureCount: nextCount,
+        roomSyncLastError: reason,
+        lastRoomSyncAt: now,
+        ...(options.disable ? { roomSyncEnabled: false } : {}),
+        updatedAt: now,
+      })
+      .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
+
+    return nextCount;
+  }
+
+  /**
+   * Clear the failure counter — on a successful sync, and whenever the user
+   * saves a new password or forgets the old one, so a fresh attempt is never
+   * judged by the previous credential's record.
+   */
+  async clearRoomSyncFailure(sourceId: string, publicKey: string): Promise<void> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.clearRoomSyncFailure requires a sourceId');
+    }
+    const { meshcoreNodes } = this.tables;
+    const now = this.now();
+    await this.db
+      .update(meshcoreNodes)
+      .set({ roomSyncFailureCount: 0, roomSyncLastError: null, updatedAt: now })
+      .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
   }
 
   async setRoomSyncConfig(

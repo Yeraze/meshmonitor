@@ -390,9 +390,33 @@ router.post('/rooms/login', meshcoreDeviceLimiter, requireAuth(), requirePermiss
       });
     }
 
-    const success = await managerFor(req, res).loginToRoom(publicKey, password);
-    if (!success) {
-      return res.status(401).json({ success: false, error: 'Room login failed' });
+    const outcome = await managerFor(req, res).loginToRoomWithOutcome(publicKey, password);
+    if (outcome === 'rejected') {
+      // Worth saying plainly: "login failed" sent people hunting for a radio
+      // problem when the room server had simply refused the password.
+      return res.status(401).json({
+        success: false,
+        error: 'The room server refused that password',
+        code: 'ROOM_PASSWORD_REJECTED',
+        reason: 'rejected',
+      });
+    }
+    if (outcome !== 'ok') {
+      return res.status(401).json({
+        success: false,
+        error: 'Room server did not answer the login',
+        code: 'ROOM_LOGIN_NO_REPLY',
+        reason: 'no_reply',
+      });
+    }
+
+    // A successful interactive login proves the room is reachable and the
+    // password works, so any record of the previous credential's failures is
+    // stale — clear it before it can count towards the auto-disable threshold.
+    try {
+      await databaseService.meshcore.clearRoomSyncFailure(sourceId, publicKey);
+    } catch (err) {
+      logger.debug('[API] Could not clear room sync failure state:', err);
     }
 
     if (rememberPassword) {
@@ -436,10 +460,26 @@ router.post('/rooms/login-with-saved', meshcoreDeviceLimiter, requireAuth(), req
       return res.status(409).json({ success: false, error: 'Saved credential was encrypted with a different key', code: 'CREDENTIAL_KEY_ROTATED' });
     }
 
-    const success = await managerFor(req, res).loginToRoom(publicKey, result.password);
-    if (!success) {
-      return res.status(401).json({ success: false, error: 'Saved credential rejected by room server', code: 'STORED_CREDENTIAL_REJECTED' });
+    const outcome = await managerFor(req, res).loginToRoomWithOutcome(publicKey, result.password);
+    if (outcome === 'rejected') {
+      // The room server answered and said no. Distinguished from silence so
+      // the UI can offer to forget the password rather than suggest retrying.
+      return res.status(401).json({
+        success: false,
+        error: 'Saved password was refused by the room server',
+        code: 'STORED_CREDENTIAL_REJECTED',
+        reason: 'rejected',
+      });
     }
+    if (outcome !== 'ok') {
+      return res.status(401).json({
+        success: false,
+        error: 'Room server did not answer the login',
+        code: 'ROOM_LOGIN_NO_REPLY',
+        reason: 'no_reply',
+      });
+    }
+    await databaseService.meshcore.clearRoomSyncFailure(sourceId, publicKey).catch(() => {});
     res.json({ success: true, usedStored: true });
   } catch (error) {
     if (failIfTxDisabled(res, error)) return;
@@ -466,6 +506,38 @@ router.get('/rooms/credentials', requireAuth(), requirePermission('messages', 'r
   } catch (error) {
     logger.error('[API] Error listing room credentials:', error);
     res.status(500).json({ success: false, error: 'Failed to list room credentials' });
+  }
+});
+
+/**
+ * DELETE /api/meshcore/rooms/credentials/:publicKey
+ * Forget the saved password for a room server.
+ *
+ * The way out of a saved password that no longer works. Without it the only
+ * remedies were to log in again with the right password — impossible if you
+ * no longer know it — or to edit the database by hand, while the room-sync
+ * scheduler kept retrying the stale one.
+ *
+ * Also switches auto-sync off and resets the failure record: with no
+ * credential the scheduler can only skip the room, and leaving the toggle on
+ * would report a sync that is not happening.
+ */
+router.delete('/rooms/credentials/:publicKey', requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const publicKey = req.params.publicKey!;
+    if (!isValidPublicKey(publicKey)) {
+      return res.status(400).json({ success: false, error: 'Invalid public key format' });
+    }
+    const sourceId = req.params.id!;
+
+    await getMeshCoreCredentialStore().clearRoom(sourceId, publicKey);
+    await databaseService.meshcore.setRoomSyncConfig(sourceId, publicKey, { roomSyncEnabled: false });
+    await databaseService.meshcore.clearRoomSyncFailure(sourceId, publicKey);
+
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('[API] Error clearing room credential:', error);
+    res.status(500).json({ success: false, error: 'Failed to clear room credential' });
   }
 });
 
@@ -515,9 +587,17 @@ router.get('/rooms/sync-config', requireAuth(), requirePermission('configuration
     const sourceId = req.params.id!;
     const config = await databaseService.meshcore.getRoomSyncConfig(sourceId, publicKey);
     if (!config) {
-      return res.json({ success: true, enabled: false, intervalMinutes: 60 });
+      return res.json({ success: true, enabled: false, intervalMinutes: 60, failureCount: 0, lastError: null });
     }
-    res.json({ success: true, enabled: config.enabled, intervalMinutes: config.intervalMinutes });
+    res.json({
+      success: true,
+      enabled: config.enabled,
+      intervalMinutes: config.intervalMinutes,
+      // Lets the UI say WHY auto-sync switched itself off, instead of the
+      // toggle silently reading "off" with no explanation.
+      failureCount: config.failureCount,
+      lastError: config.lastError,
+    });
   } catch (error) {
     logger.error('[API] Error getting room sync config:', error);
     res.status(500).json({ success: false, error: 'Failed to get room sync config' });
@@ -553,6 +633,12 @@ router.patch('/rooms/sync-config', requireAuth(), requirePermission('configurati
       roomSyncEnabled: enabled,
       roomSyncIntervalMinutes: interval,
     });
+    // Turning auto-sync back on is the user overriding the scheduler's
+    // decision to give up. Clear the counter so the fresh attempt is judged on
+    // its own and does not trip the threshold on its first miss.
+    if (enabled) {
+      await databaseService.meshcore.clearRoomSyncFailure(sourceId, publicKey);
+    }
     res.json({ success: true });
   } catch (error) {
     logger.error('[API] Error setting room sync config:', error);

@@ -240,6 +240,8 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         roomSyncIntervalMinutes INTEGER DEFAULT 60,
         lastRoomSyncAt INTEGER,
         lastRoomPostAt INTEGER,
+        roomSyncFailureCount INTEGER DEFAULT 0,
+        roomSyncLastError TEXT,
         roomCredential TEXT,
         positionSource TEXT,
         createdAt INTEGER NOT NULL,
@@ -493,6 +495,8 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         roomSyncIntervalMinutes INTEGER DEFAULT 60,
         lastRoomSyncAt INTEGER,
         lastRoomPostAt INTEGER,
+        roomSyncFailureCount INTEGER DEFAULT 0,
+        roomSyncLastError TEXT,
         roomCredential TEXT,
         positionSource TEXT,
         createdAt INTEGER NOT NULL,
@@ -761,6 +765,8 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         roomSyncIntervalMinutes INTEGER DEFAULT 60,
         lastRoomSyncAt INTEGER,
         lastRoomPostAt INTEGER,
+        roomSyncFailureCount INTEGER DEFAULT 0,
+        roomSyncLastError TEXT,
         roomCredential TEXT,
         positionSource TEXT,
         createdAt INTEGER NOT NULL,
@@ -837,6 +843,8 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         roomSyncIntervalMinutes INTEGER DEFAULT 60,
         lastRoomSyncAt INTEGER,
         lastRoomPostAt INTEGER,
+        roomSyncFailureCount INTEGER DEFAULT 0,
+        roomSyncLastError TEXT,
         roomCredential TEXT,
         positionSource TEXT,
         createdAt INTEGER NOT NULL,
@@ -986,5 +994,93 @@ describe('MeshCoreRepository — sourceId stamping', () => {
       // Channel 2 has no messages and is omitted entirely.
       expect(latest).toEqual({ 0: 30, 1: 40 });
     });
+  });
+});
+
+/**
+ * Room-sync failure tracking (migration 157).
+ *
+ * The counter is persisted rather than held on the scheduler instance because
+ * an in-memory one is wiped by every restart: a container that restarts hourly
+ * would never reach the auto-disable threshold, and a stale password would go
+ * on flooding the mesh across reboots.
+ */
+describe('MeshCoreRepository — room sync failure tracking', () => {
+  let db: Database.Database;
+  let repo: MeshCoreRepository;
+
+  beforeEach(async () => {
+    const t = createTestDb();
+    db = t.sqlite;
+    repo = new MeshCoreRepository(t.db, 'sqlite');
+    await repo.upsertNode({ publicKey: 'room-a', advType: 3 }, 'src-a');
+    await repo.setRoomSyncConfig('src-a', 'room-a', {
+      roomSyncEnabled: true,
+      roomSyncIntervalMinutes: 60,
+    });
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it('starts a room at zero failures with no recorded error', async () => {
+    const config = await repo.getRoomSyncConfig('src-a', 'room-a');
+    expect(config).toMatchObject({ enabled: true, failureCount: 0, lastError: null });
+  });
+
+  it('increments the counter and returns the running total', async () => {
+    expect(await repo.recordRoomSyncFailure('src-a', 'room-a', 'no_reply')).toBe(1);
+    expect(await repo.recordRoomSyncFailure('src-a', 'room-a', 'no_reply')).toBe(2);
+
+    const config = await repo.getRoomSyncConfig('src-a', 'room-a');
+    expect(config).toMatchObject({ failureCount: 2, lastError: 'no_reply' });
+  });
+
+  it('stamps lastRoomSyncAt on a FAILED attempt', async () => {
+    // The bug: only successes advanced the clock, so a room with a stale saved
+    // password stayed permanently overdue and was retried on every 60s tick.
+    await repo.recordRoomSyncFailure('src-a', 'room-a', 'no_reply');
+
+    const row = db.prepare(
+      `SELECT lastRoomSyncAt FROM meshcore_nodes WHERE publicKey = 'room-a' AND sourceId = 'src-a'`,
+    ).get() as { lastRoomSyncAt: number | null };
+    expect(row.lastRoomSyncAt).toBeGreaterThan(0);
+  });
+
+  it('leaves auto-sync on unless explicitly asked to disable it', async () => {
+    await repo.recordRoomSyncFailure('src-a', 'room-a', 'no_reply');
+    expect((await repo.getRoomSyncConfig('src-a', 'room-a'))?.enabled).toBe(true);
+
+    await repo.recordRoomSyncFailure('src-a', 'room-a', 'rejected', { disable: true });
+    expect((await repo.getRoomSyncConfig('src-a', 'room-a'))?.enabled).toBe(false);
+  });
+
+  it('clearRoomSyncFailure resets the count and the reason', async () => {
+    await repo.recordRoomSyncFailure('src-a', 'room-a', 'rejected');
+    await repo.clearRoomSyncFailure('src-a', 'room-a');
+
+    expect(await repo.getRoomSyncConfig('src-a', 'room-a')).toMatchObject({
+      failureCount: 0,
+      lastError: null,
+    });
+  });
+
+  it('scopes failure state by sourceId — the same room under two sources is independent', async () => {
+    await repo.upsertNode({ publicKey: 'room-a', advType: 3 }, 'src-b');
+    await repo.setRoomSyncConfig('src-b', 'room-a', { roomSyncEnabled: true });
+
+    await repo.recordRoomSyncFailure('src-a', 'room-a', 'rejected', { disable: true });
+
+    expect(await repo.getRoomSyncConfig('src-b', 'room-a')).toMatchObject({
+      enabled: true,
+      failureCount: 0,
+      lastError: null,
+    });
+  });
+
+  it('requires a sourceId', async () => {
+    await expect(repo.recordRoomSyncFailure('', 'room-a', 'no_reply')).rejects.toThrow(/sourceId/);
+    await expect(repo.clearRoomSyncFailure('', 'room-a')).rejects.toThrow(/sourceId/);
   });
 });

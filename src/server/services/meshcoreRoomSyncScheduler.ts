@@ -11,6 +11,23 @@
  *   - Per-room cadence: `roomSyncIntervalMinutes` from `meshcore_nodes` (min 60).
  *   - Per-source minimum: 60s between any two mesh operations.
  *   - Per-tick budget: at most one room login per manager per tick.
+ *
+ * Failure handling matters as much as the cadence. `lastRoomSyncAt` used to be
+ * written only after a SUCCESSFUL login, so a room whose saved password had
+ * gone stale never advanced its clock: it stayed the most-overdue room and was
+ * retried on every 60s tick, for ever. At up to three login sends per attempt,
+ * each flooding when the path is unknown, one wrong password cost on the order
+ * of 180 login floods an hour — and a matching stream of rejected-login entries
+ * in the room operator's own logs. So:
+ *   - Every attempt stamps `lastRoomSyncAt`, success or not, so the configured
+ *     interval is respected by failures too.
+ *   - An explicit refusal (0x86 LoginFail) disables auto-sync immediately; the
+ *     answer will not change on the next try.
+ *   - Silence is ambiguous on LoRa, so it backs off and only disables after
+ *     MAX_CONSECUTIVE_FAILURES attempts in a row.
+ * The counter lives in the database, not on this instance: an in-memory one is
+ * cleared by every restart, so a container that restarts hourly would never
+ * reach the threshold (CLAUDE.md, "Does a save reset a safety timer?").
  */
 import { logger } from '../../utils/logger.js';
 import type { MeshCoreManager } from '../meshcoreManager.js';
@@ -21,6 +38,14 @@ import databaseService from '../../services/database.js';
 
 const MIN_INTERVAL_BETWEEN_REQUESTS_MS = 60_000;
 const DEFAULT_TICK_MS = 60_000;
+
+/**
+ * Consecutive unanswered syncs before auto-sync switches itself off for a
+ * room. Three spread over three configured intervals (>= 3 hours) is well
+ * past what a lossy link explains, and each one costs up to three login
+ * floods, so waiting longer buys nothing but airtime.
+ */
+const MAX_CONSECUTIVE_FAILURES = 3;
 
 interface RoomSyncNode {
   publicKey: string;
@@ -144,20 +169,67 @@ export class MeshCoreRoomSyncScheduler {
       return;
     }
 
-    logger.debug(
-      `[RoomSyncScheduler] Syncing room ${target.publicKey.substring(0, 12)}… on source ${sourceId}`,
-    );
+    const shortKey = `${target.publicKey.substring(0, 12)}…`;
+    logger.debug(`[RoomSyncScheduler] Syncing room ${shortKey} on source ${sourceId}`);
 
     try {
-      const ok = await manager.loginToRoom(target.publicKey, cred.password);
-      if (ok) {
+      const outcome = await manager.loginToRoomWithOutcome(target.publicKey, cred.password);
+
+      // We transmitted either way — up to three login sends, each of which
+      // floods when the room's path is unknown. Record it so the per-source
+      // 60s TX floor applies to failures too.
+      manager.recordMeshTx?.();
+
+      if (outcome === 'ok') {
         await databaseService.meshcore.updateLastRoomSyncAt(sourceId, target.publicKey);
-        manager.recordMeshTx?.();
-      } else {
-        logger.warn(`[RoomSyncScheduler] Login failed for room ${target.publicKey.substring(0, 12)}…`);
+        await databaseService.meshcore.clearRoomSyncFailure(sourceId, target.publicKey);
+        return;
       }
+
+      // A refusal is the room server's final answer: this password will be
+      // refused every time. Switch auto-sync off now rather than re-floods
+      // that only add rejected-login entries to the operator's log.
+      const disable = outcome === 'rejected';
+      const failures = await databaseService.meshcore.recordRoomSyncFailure(
+        sourceId,
+        target.publicKey,
+        outcome,
+        { disable },
+      );
+
+      if (disable) {
+        logger.warn(
+          `[RoomSyncScheduler] Room ${shortKey} refused the saved password — auto-sync disabled. ` +
+          'Forget the saved password (or log in again with the right one) to re-enable it.',
+        );
+        return;
+      }
+
+      // No reply. Ambiguous on a lossy link, so back off a full interval and
+      // only give up once it has failed MAX_CONSECUTIVE_FAILURES times running.
+      if (failures >= MAX_CONSECUTIVE_FAILURES) {
+        await databaseService.meshcore.setRoomSyncConfig(sourceId, target.publicKey, {
+          roomSyncEnabled: false,
+        });
+        logger.warn(
+          `[RoomSyncScheduler] Room ${shortKey} failed ${failures} consecutive syncs — auto-sync disabled.`,
+        );
+        return;
+      }
+
+      logger.warn(
+        `[RoomSyncScheduler] Login got no reply for room ${shortKey} ` +
+        `(${failures}/${MAX_CONSECUTIVE_FAILURES}); next attempt in ${target.roomSyncIntervalMinutes}m`,
+      );
     } catch (err) {
-      logger.error(`[RoomSyncScheduler] Error syncing room ${target.publicKey.substring(0, 12)}…:`, err);
+      logger.error(`[RoomSyncScheduler] Error syncing room ${shortKey}:`, err);
+      // Count a thrown attempt as a failure too, so a room that reliably
+      // explodes cannot sit at the head of the overdue queue for ever.
+      try {
+        await databaseService.meshcore.recordRoomSyncFailure(sourceId, target.publicKey, 'no_reply');
+      } catch (recordErr) {
+        logger.debug(`[RoomSyncScheduler] Could not record failure for ${shortKey}:`, recordErr);
+      }
     }
   }
 }

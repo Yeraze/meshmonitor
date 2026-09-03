@@ -146,8 +146,9 @@ describe('MeshCoreManager room server support', () => {
         contacts: [{ publicKey: roomPubkey, advType: 3 }],
       });
 
-      // Stub loginToNode to succeed.
-      vi.spyOn(manager, 'loginToNode').mockResolvedValue(true);
+      // Stub at the outcome-aware seam: loginToRoom now routes through
+      // loginToNodeWithOutcome so it can tell a refusal from silence.
+      vi.spyOn(manager as any, 'loginToNodeWithOutcome').mockResolvedValue({ result: {}, outcome: 'ok' });
 
       expect(manager.isRoomLoggedIn(roomPubkey)).toBe(false);
       const ok = await manager.loginToRoom(roomPubkey, 'secret');
@@ -159,7 +160,7 @@ describe('MeshCoreManager room server support', () => {
       const roomPubkey = 'ff'.repeat(32);
       const { manager } = makeManager();
 
-      vi.spyOn(manager, 'loginToNode').mockResolvedValue(false);
+      vi.spyOn(manager as any, 'loginToNodeWithOutcome').mockResolvedValue({ result: null, outcome: 'no_reply' });
 
       const ok = await manager.loginToRoom(roomPubkey, 'wrong');
       expect(ok).toBe(false);
@@ -322,5 +323,76 @@ describe('MeshCoreManager room server support', () => {
       const call = insertSpy.mock.calls[0][0] as any;
       expect(call.messageType).toBe('text');
     });
+  });
+});
+
+// ---- login outcome: refusal vs silence ----
+//
+// meshcore.js listens only for LoginSuccess (0x85) — its constants mark
+// LoginFail (0x86) "not usable yet" — so a wrong password used to look
+// identical to a dropped reply: three retries, then a bare `false`. The native
+// backend now reads 0x86 off the raw frame stream and reports it as
+// MESHCORE_LOGIN_REJECTED, which lets us stop retrying an answer that will not
+// change.
+describe('MeshCoreManager.loginToRoomWithOutcome', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function makeLoginManager(respond: () => { success: boolean; error?: string; data?: unknown }) {
+    const m = new MeshCoreManager('test-source');
+    (m as any).deviceType = MeshCoreDeviceType.COMPANION;
+    (m as any).connected = true;
+    const attempts: Array<Record<string, unknown>> = [];
+    (m as any).sendBridgeCommand = async (cmd: string, params: Record<string, unknown>) => {
+      if (cmd !== 'login') return { id: '1', success: true, data: {} };
+      attempts.push(params);
+      return { id: '1', ...respond() };
+    };
+    return { manager: m, attempts };
+  }
+
+  it('stops after ONE attempt when the room server refuses the password', async () => {
+    const { manager, attempts } = makeLoginManager(() => ({
+      success: false,
+      error: 'MESHCORE_LOGIN_REJECTED',
+    }));
+
+    const outcome = await manager.loginToRoomWithOutcome('bb'.repeat(32), 'wrong');
+
+    expect(outcome).toBe('rejected');
+    // Two further floods would only be told the same thing.
+    expect(attempts).toHaveLength(1);
+  });
+
+  it('still retries three times when the login simply goes unanswered', async () => {
+    const { manager, attempts } = makeLoginManager(() => ({
+      success: false,
+      error: 'Native command timeout: login',
+    }));
+
+    const outcome = await manager.loginToRoomWithOutcome('bb'.repeat(32), 'maybe-right');
+
+    // A single miss on a lossy LoRa link must not be read as a bad password.
+    expect(outcome).toBe('no_reply');
+    expect(attempts).toHaveLength(3);
+  });
+
+  it('reports ok and marks the room logged in on success', async () => {
+    const roomPubkey = 'bb'.repeat(32);
+    const { manager, attempts } = makeLoginManager(() => ({ success: true, data: {} }));
+
+    expect(await manager.loginToRoomWithOutcome(roomPubkey, 'right')).toBe('ok');
+    expect(manager.isRoomLoggedIn(roomPubkey)).toBe(true);
+    expect(attempts).toHaveLength(1);
+  });
+
+  it('loginToRoom keeps its boolean contract for existing callers', async () => {
+    const { manager } = makeLoginManager(() => ({
+      success: false,
+      error: 'MESHCORE_LOGIN_REJECTED',
+    }));
+
+    expect(await manager.loginToRoom('bb'.repeat(32), 'wrong')).toBe(false);
   });
 });

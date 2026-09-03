@@ -199,6 +199,35 @@ the server has both `SESSION_SECRET` and the DB. This is the same
 posture as the existing channel-PSK storage (which is plaintext in the
 DB by design, because the server uses those PSKs to decrypt packets).
 
+### Room-server credentials (the second half of the store)
+
+`storeRoom` / `loadRoom` / `clearRoom` are the same AES-256-GCM envelope in a
+separate column (`meshcore_nodes.roomCredential`), used for room-server logins
+rather than remote admin. Two things about them are load-bearing:
+
+- **`clearRoom` must stay reachable from the UI.** It shipped with no route and
+  no button, and `MeshCoreRoomsView`'s auto-sync controls only render once you
+  are logged IN — which a stale saved password prevents. The result was a
+  password you could neither use nor remove without editing the database.
+  `DELETE /api/sources/:id/meshcore/rooms/credentials/:publicKey` and the
+  "Forget saved password" button in the login card are that escape hatch; do
+  not gate either behind a successful login.
+- **A saved room password that stops working is a mesh-airtime problem, not
+  just a UX one.** See the failure-policy notes at the top of
+  `src/server/services/meshcoreRoomSyncScheduler.ts`: every scheduled attempt
+  stamps `lastRoomSyncAt` whether or not it succeeded, a `rejected` outcome
+  disables auto-sync at once, and three unanswered attempts in a row disable it
+  too. The failure counter is persisted (`roomSyncFailureCount`,
+  `roomSyncLastError`, migration 157) precisely so a restart cannot reset it.
+
+`rejected` versus `no_reply` comes from `MESHCORE_LOGIN_REJECTED`, which
+`meshcoreNativeBackend` raises when it sees a LoginFail push (0x86) for the
+target's key prefix. meshcore.js does not parse that push — its constants mark
+it "not usable yet" — so the backend reads it off the raw frame stream, the
+same technique the 0x8D and 0x8E handlers use. Without it a wrong password is
+indistinguishable from a dropped reply and every failure has to be treated as
+possibly transient.
+
 ## The danger guard
 
 Pattern: `/\b(reboot|erase|clkreboot|factory)\b(?!\.)/i`.
@@ -317,6 +346,8 @@ glance whether something needs attention.
 | `src/server/meshcoreNativeBackend.ts` | `send_cli` bridge command + `cli_reply` event filter. |
 | `src/server/routes/meshcoreRoutes.ts` | `/admin/cli`, `/admin/login`, `/admin/login-with-saved`, `/admin/credentials-capability`, `/admin/credentials/:pk` DELETE, `/cli`. `DANGER_COMMAND_PATTERN` lives here. |
 | `src/server/migrations/070_meshcore_admin_credential.ts` | `meshcore_nodes.adminCredential` column. |
+| `src/server/routes/meshcoreMessagingRoutes.ts` | `/rooms/login`, `/rooms/login-with-saved`, `/rooms/credentials` GET, `/rooms/credentials/:pk` DELETE, `/rooms/sync-config` GET+PATCH. |
+| `src/server/migrations/157_meshcore_room_sync_failures.ts` | `roomSyncFailureCount` / `roomSyncLastError` columns. |
 | `src/components/MeshCore/CliConsoleBody.tsx` | Shared transcript / input / actions / danger modal / history. |
 | `src/components/MeshCore/MeshCoreRemoteConsole.tsx` | Remote wrapper: login + capability + auto-login + rotated banner + stats. |
 | `src/components/MeshCore/MeshCoreLocalConsole.tsx` | Local wrapper: device-type-aware catalog, no auth layer. |

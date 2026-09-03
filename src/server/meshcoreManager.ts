@@ -22,7 +22,7 @@ import { scheduleCron, validateCron, type CronJob } from './utils/cronScheduler.
 import { CronOrIntervalScheduler, type ScheduleMode } from './services/cronOrIntervalScheduler.js';
 import { replaceMeshCoreAnnounceTokens } from './utils/meshcoreAnnounceTokens.js';
 import { runScript, type RunScriptResult } from './utils/scriptRunner.js';
-import { MeshCoreNativeBackend, type BridgeShapedEvent } from './meshcoreNativeBackend.js';
+import { MeshCoreNativeBackend, MESHCORE_LOGIN_REJECTED, type BridgeShapedEvent } from './meshcoreNativeBackend.js';
 import { resolveMessageScope } from './meshcoreScopeResolve.js';
 import { TxDisabledError } from './errors/txDisabledError.js';
 import { isRfBridgeCommand, isTransmittingLocalCliVerb, MESHCORE_RECEIVE_ONLY_MESSAGE } from './constants/meshcoreTx.js';
@@ -806,6 +806,19 @@ export interface MeshCoreLoginResult {
   /** Granular ACL-permissions byte (firmware v7+). */
   aclPermissions?: number;
 }
+
+/**
+ * How a login attempt ended.
+ *
+ *  - `ok`       — LoginSuccess (0x85).
+ *  - `rejected` — LoginFail (0x86): the remote answered and refused the
+ *                 password. Deterministic; retrying the same password only
+ *                 spends airtime and fills the operator's log with rejections.
+ *  - `no_reply` — nothing came back in time. On LoRa this happens routinely on
+ *                 a marginal link and says nothing about whether the password
+ *                 is correct, so callers must back off rather than conclude.
+ */
+export type MeshCoreLoginOutcome = 'ok' | 'rejected' | 'no_reply';
 
 /**
  * MeshCore Manager class
@@ -5264,9 +5277,25 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * Login to a remote node for admin access
    */
   async loginToNode(publicKey: string, password: string): Promise<MeshCoreLoginResult | null> {
+    return (await this.loginToNodeWithOutcome(publicKey, password)).result;
+  }
+
+  /**
+   * `loginToNode` plus WHY it failed.
+   *
+   * Kept separate so the boolean/nullable contract every existing caller
+   * relies on stays exactly as it was; only callers that must distinguish a
+   * refused password from a lost reply (the room-sync scheduler) reach for
+   * this. A refusal arrives as the MESHCORE_LOGIN_REJECTED error the native
+   * backend raises off the 0x86 LoginFail push.
+   */
+  private async loginToNodeWithOutcome(
+    publicKey: string,
+    password: string,
+  ): Promise<{ result: MeshCoreLoginResult | null; outcome: MeshCoreLoginOutcome }> {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       logger.warn('[MeshCore] Admin login requires Companion firmware');
-      return null;
+      return { result: null, outcome: 'no_reply' };
     }
 
     this.requireTransmit();
@@ -5287,16 +5316,23 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         // the legacy guest/no-version behaviour.
         const d = response.data ?? {};
         return {
-          isAdmin: typeof d.is_admin === 'number' ? d.is_admin !== 0 : undefined,
-          firmwareVerLevel: typeof d.firmware_ver_level === 'number' ? d.firmware_ver_level : undefined,
-          serverTimestamp: typeof d.server_timestamp === 'number' ? d.server_timestamp : undefined,
-          aclPermissions: typeof d.acl_permissions === 'number' ? d.acl_permissions : undefined,
+          result: {
+            isAdmin: typeof d.is_admin === 'number' ? d.is_admin !== 0 : undefined,
+            firmwareVerLevel: typeof d.firmware_ver_level === 'number' ? d.firmware_ver_level : undefined,
+            serverTimestamp: typeof d.server_timestamp === 'number' ? d.server_timestamp : undefined,
+            aclPermissions: typeof d.acl_permissions === 'number' ? d.acl_permissions : undefined,
+          },
+          outcome: 'ok',
         };
       }
-      return null;
+      const rejected = response.error === MESHCORE_LOGIN_REJECTED;
+      if (rejected) {
+        logger.debug(`[MeshCore] Node ${publicKey.substring(0, 8)}… refused the password`);
+      }
+      return { result: null, outcome: rejected ? 'rejected' : 'no_reply' };
     } catch (error) {
       logger.error('[MeshCore] Login failed:', error);
-      return null;
+      return { result: null, outcome: 'no_reply' };
     }
   }
 
@@ -5440,20 +5476,38 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * tracks state in roomLoggedInNodes so the UI can show login status.
    */
   async loginToRoom(publicKey: string, password: string): Promise<boolean> {
+    return (await this.loginToRoomWithOutcome(publicKey, password)) === 'ok';
+  }
+
+  /**
+   * `loginToRoom` that reports WHY it failed, for callers that must not keep
+   * retrying a password the room server has already refused.
+   *
+   * The retry loop exists because a login round-trip is easily dropped on a
+   * lossy LoRa link, so a single miss must not be read as "wrong password".
+   * An explicit 0x86 refusal is the opposite case — it is the room server's
+   * final answer, so we stop at once instead of spending two more floods to
+   * be told the same thing.
+   */
+  async loginToRoomWithOutcome(publicKey: string, password: string): Promise<MeshCoreLoginOutcome> {
     this.requireTransmit();
     const maxAttempts = 3;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      const ok = await this.loginToNode(publicKey, password);
-      if (ok) {
+      const { outcome } = await this.loginToNodeWithOutcome(publicKey, password);
+      if (outcome === 'ok') {
         this.roomLoggedInNodes.set(publicKey, { loggedIn: true, loginTime: Date.now() });
-        return true;
+        return 'ok';
+      }
+      if (outcome === 'rejected') {
+        logger.warn(`[MeshCore] Room ${publicKey.substring(0, 8)}… refused the password — not retrying`);
+        return 'rejected';
       }
       if (attempt < maxAttempts) {
-        logger.warn(`[MeshCore] Room login attempt ${attempt}/${maxAttempts} failed for ${publicKey.substring(0, 8)}…, retrying`);
+        logger.warn(`[MeshCore] Room login attempt ${attempt}/${maxAttempts} got no reply for ${publicKey.substring(0, 8)}…, retrying`);
         await new Promise(r => setTimeout(r, 2000));
       }
     }
-    return false;
+    return 'no_reply';
   }
 
   isRoomLoggedIn(publicKey: string): boolean {
