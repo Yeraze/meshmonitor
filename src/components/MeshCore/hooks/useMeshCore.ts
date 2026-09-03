@@ -194,6 +194,19 @@ export interface SavedRegion {
   updatedAt: number;
 }
 
+/** Why the last scheduled room sync failed. Mirrors the server-side
+ *  `RoomSyncFailureReason`: `rejected` is the room server refusing the
+ *  password outright, `no_reply` is a login that went unanswered. */
+export type RoomSyncFailureReason = 'rejected' | 'no_reply';
+
+export interface RoomSyncConfig {
+  enabled: boolean;
+  intervalMinutes: number;
+  /** Consecutive failed scheduled syncs; 0 once one succeeds. */
+  failureCount: number;
+  lastError: RoomSyncFailureReason | null;
+}
+
 export interface MeshCoreActions {
   connect: () => Promise<boolean>;
   disconnect: () => Promise<void>;
@@ -364,16 +377,20 @@ export interface MeshCoreActions {
   // ----- Room server -----
   /** Login to a room server. Password may be empty for guest access. */
   loginRoom: (publicKey: string, password: string, rememberPassword?: boolean) => Promise<{ success: boolean; persisted?: boolean; error?: string }>;
-  /** Login to a room server using a previously saved credential. */
-  loginRoomWithSaved: (publicKey: string) => Promise<{ success: boolean; usedStored?: boolean; error?: string; code?: string }>;
+  /** Login to a room server using a previously saved credential. `reason`
+   *  separates a password the room server actively refused from one whose
+   *  login simply went unanswered. */
+  loginRoomWithSaved: (publicKey: string) => Promise<{ success: boolean; usedStored?: boolean; error?: string; code?: string; reason?: RoomSyncFailureReason }>;
   /** Send a text post to a room server. */
   sendRoomPost: (roomPublicKey: string, text: string) => Promise<boolean>;
   /** Get room credential info for this source. */
   getRoomCredentials: () => Promise<{ canRemember: boolean; stored: Array<{ publicKey: string }> } | null>;
+  /** Forget the saved password for a room server (also turns its auto-sync off). */
+  forgetRoomCredential: (publicKey: string) => Promise<boolean>;
   /** Configure periodic room sync. */
   setRoomSyncConfig: (publicKey: string, enabled: boolean, intervalMinutes?: number) => Promise<boolean>;
   /** Get current room sync config. */
-  getRoomSyncConfig: (publicKey: string) => Promise<{ enabled: boolean; intervalMinutes: number } | null>;
+  getRoomSyncConfig: (publicKey: string) => Promise<RoomSyncConfig | null>;
 }
 
 /**
@@ -1895,7 +1912,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch, reportTxDisabled]);
 
-  const loginRoomWithSaved = useCallback(async (publicKey: string): Promise<{ success: boolean; usedStored?: boolean; error?: string; code?: string }> => {
+  const loginRoomWithSaved = useCallback(async (publicKey: string): Promise<{ success: boolean; usedStored?: boolean; error?: string; code?: string; reason?: RoomSyncFailureReason }> => {
     try {
       const response = await csrfFetch(`${mcPrefix}/rooms/login-with-saved`, {
         method: 'POST',
@@ -1904,7 +1921,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       });
       const data = await response.json();
       reportTxDisabled(response.status, data);
-      return { success: !!data.success, usedStored: data.usedStored, error: data.error, code: data.code };
+      return { success: !!data.success, usedStored: data.usedStored, error: data.error, code: data.code, reason: data.reason };
     } catch (_err) {
       return { success: false, error: 'Room auto-login request failed' };
     }
@@ -1941,11 +1958,30 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
-  const getRoomSyncConfig = useCallback(async (publicKey: string): Promise<{ enabled: boolean; intervalMinutes: number } | null> => {
+  const forgetRoomCredential = useCallback(async (publicKey: string): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/rooms/credentials/${encodeURIComponent(publicKey)}`, {
+        method: 'DELETE',
+      });
+      const data = await response.json();
+      return !!data.success;
+    } catch (_err) {
+      return false;
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const getRoomSyncConfig = useCallback(async (publicKey: string): Promise<RoomSyncConfig | null> => {
     try {
       const response = await csrfFetch(`${mcPrefix}/rooms/sync-config?publicKey=${encodeURIComponent(publicKey)}`);
       const data = await response.json();
-      if (data.success) return { enabled: data.enabled, intervalMinutes: data.intervalMinutes };
+      if (data.success) {
+        return {
+          enabled: data.enabled,
+          intervalMinutes: data.intervalMinutes,
+          failureCount: data.failureCount ?? 0,
+          lastError: data.lastError ?? null,
+        };
+      }
       return null;
     } catch (_err) {
       return null;
@@ -2031,6 +2067,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       loginRoomWithSaved,
       sendRoomPost,
       getRoomCredentials,
+      forgetRoomCredential,
       getRoomSyncConfig,
       setRoomSyncConfig,
     },

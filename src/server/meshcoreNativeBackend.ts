@@ -17,6 +17,16 @@ import { logger } from '../utils/logger.js';
 import { TxDisabledError } from './errors/txDisabledError.js';
 import { isRfBridgeCommand, MESHCORE_RECEIVE_ONLY_MESSAGE } from './constants/meshcoreTx.js';
 
+/**
+ * Error message thrown when a remote answers a login attempt with an explicit
+ * refusal (companion push code 0x86) rather than simply not answering.
+ *
+ * Callers use it to separate "this password is wrong" — deterministic, worth
+ * acting on at once — from "the reply did not arrive", which on LoRa says
+ * nothing about the password.
+ */
+export const MESHCORE_LOGIN_REJECTED = 'MESHCORE_LOGIN_REJECTED';
+
 // Lazy meshcore.js import. Hold the module reference so tests can swap it
 // out by calling `__setMeshCoreModule(...)`. The default load path is the
 // upstream package; a workspace clone can be aliased via package.json.
@@ -1914,19 +1924,38 @@ export class MeshCoreNativeBackend extends EventEmitter {
         // version level, which the Virtual Node must relay so the app grants
         // admin access and unlocks version-gated features (neighbours / owner
         // info). Legacy firmware omits the trailing fields (undefined here).
-        const login = await c.login(publicKey, String(params.password ?? '')) as {
-          isAdmin?: number;
-          serverTimestamp?: number;
-          aclPermissions?: number;
-          firmwareVerLevel?: number;
-        };
-        return {
-          ok: true,
-          is_admin: login?.isAdmin,
-          server_timestamp: login?.serverTimestamp,
-          acl_permissions: login?.aclPermissions,
-          firmware_ver_level: login?.firmwareVerLevel,
-        };
+        //
+        // A REFUSED login is raced in alongside it. meshcore.js only listens
+        // for LoginSuccess (0x85) — its constants mark LoginFail (0x86) "not
+        // usable yet" — so on a wrong password its login() just sits there
+        // until the timeout, and the caller cannot tell "the server said no"
+        // from "the reply was lost on a lossy link". The firmware does send
+        // 0x86 (examples/companion_radio/MyMesh.cpp, onContactResponse), so we
+        // read it off the raw frame stream the same way the 0x8D and 0x8E
+        // handlers above do, and surface it as a distinct error the scheduler
+        // can act on immediately instead of retrying a password that will
+        // never be accepted.
+        const rejected = this.awaitLoginRejection(publicKey);
+        try {
+          const login = await Promise.race([
+            c.login(publicKey, String(params.password ?? '')) as Promise<{
+              isAdmin?: number;
+              serverTimestamp?: number;
+              aclPermissions?: number;
+              firmwareVerLevel?: number;
+            }>,
+            rejected.promise,
+          ]);
+          return {
+            ok: true,
+            is_admin: login?.isAdmin,
+            server_timestamp: login?.serverTimestamp,
+            acl_permissions: login?.aclPermissions,
+            firmware_ver_level: login?.firmwareVerLevel,
+          };
+        } finally {
+          rejected.cancel();
+        }
       }
 
       case 'get_status': {
@@ -2354,6 +2383,71 @@ export class MeshCoreNativeBackend extends EventEmitter {
       );
     }
     return { changed, flags: newFlags };
+  }
+
+  /**
+   * Watch the raw frame stream for a LoginFail push (0x86) aimed at
+   * `publicKey`, for as long as one login attempt is in flight.
+   *
+   * Frame layout, from examples/companion_radio/MyMesh.cpp:
+   *   [0x86] [reserved = 0] [pub_key_prefix 6B]
+   * The prefix check matters because the push carries no request tag: two
+   * overlapping logins to different contacts would otherwise cross wires.
+   *
+   * The returned promise only ever REJECTS (with MESHCORE_LOGIN_REJECTED) —
+   * it is meant to lose the race whenever the login actually succeeds, so the
+   * caller must always `cancel()` it to detach the listener. Two consequences
+   * worth spelling out:
+   *
+   *  - With no connection it attaches nothing and never settles, leaving
+   *    `Promise.race` to be decided entirely by `login()`. That is the correct
+   *    degradation rather than a silent failure: `sendCommand`'s `login` case
+   *    is only reached through `dispatch()`, which has already resolved a
+   *    contact off the live connection, so a null here means the connection
+   *    dropped mid-call and `login()` is about to reject on its own.
+   *  - The `promise.catch(() => {})` below only swallows the rejection AFTER
+   *    the race has read it. Without it, a refusal that the caller has already
+   *    turned into a MESHCORE_LOGIN_REJECTED error would ALSO surface as an
+   *    unhandled rejection and take the process down under
+   *    `--unhandled-rejections=throw`. It hides nothing the caller did not see.
+   */
+  private awaitLoginRejection(publicKey: Uint8Array): {
+    promise: Promise<never>;
+    cancel: () => void;
+  } {
+    const PUSH_LOGIN_FAIL = 0x86;
+    const expectedPrefix = bytesToHex(publicKey.slice(0, 6));
+    const connection = this.connection;
+
+    let onRx: ((frame: Uint8Array) => void) | null = null;
+    const promise = new Promise<never>((_resolve, reject) => {
+      if (!connection) {
+        // Never settles — see the note above. login() decides the race.
+        logger.debug('[MeshCore:native] No connection; skipping LoginFail watch');
+        return;
+      }
+      onRx = (frame: Uint8Array) => {
+        if (!frame || frame.length < 8 || frame[0] !== PUSH_LOGIN_FAIL) return;
+        if (bytesToHex(frame.slice(2, 8)) !== expectedPrefix) return;
+        logger.debug(
+          `[MeshCore:native] Login refused by ${expectedPrefix}… (0x86 LoginFail)`,
+        );
+        reject(new Error(MESHCORE_LOGIN_REJECTED));
+      };
+      connection.on('rx', onRx);
+    });
+
+    // Attach the no-op handler AFTER the race has a reference, so a rejection
+    // the caller already consumed cannot also count as unhandled.
+    promise.catch(() => {});
+
+    return {
+      promise,
+      cancel: () => {
+        if (onRx && connection) connection.off('rx', onRx);
+        onRx = null;
+      },
+    };
   }
 
   private async resolvePublicKey(hexKey: string): Promise<Uint8Array | null> {

@@ -104,6 +104,8 @@ export const meshcoreNodesSqlite = sqliteTable('meshcore_nodes', {
   roomSyncIntervalMinutes: integer('roomSyncIntervalMinutes').default(60),
   lastRoomSyncAt: integer('lastRoomSyncAt'),
   lastRoomPostAt: integer('lastRoomPostAt'),
+  roomSyncFailureCount: integer('roomSyncFailureCount').default(0),
+  roomSyncLastError: text('roomSyncLastError'),
   roomCredential: text('roomCredential'),
 
   // MeshCore per-contact forwarding route (migration 068).
@@ -179,6 +181,8 @@ export const meshcoreNodesPostgres = pgTable('meshcore_nodes', {
   roomSyncIntervalMinutes: pgInteger('roomSyncIntervalMinutes').default(60),
   lastRoomSyncAt: pgBigint('lastRoomSyncAt', { mode: 'number' }),
   lastRoomPostAt: pgBigint('lastRoomPostAt', { mode: 'number' }),
+  roomSyncFailureCount: pgInteger('roomSyncFailureCount').default(0),
+  roomSyncLastError: pgText('roomSyncLastError'),
   roomCredential: pgText('roomCredential'),
 
   outPath: pgText('out_path'),
@@ -249,6 +253,8 @@ export const meshcoreNodesMysql = mysqlTable('meshcore_nodes', {
   roomSyncIntervalMinutes: myInt('roomSyncIntervalMinutes').default(60),
   lastRoomSyncAt: myBigint('lastRoomSyncAt', { mode: 'number' }),
   lastRoomPostAt: myBigint('lastRoomPostAt', { mode: 'number' }),
+  roomSyncFailureCount: myInt('roomSyncFailureCount').default(0),
+  roomSyncLastError: myVarchar('roomSyncLastError', { length: 32 }),
   roomCredential: myVarchar('roomCredential', { length: 1024 }),
 
   outPath: myVarchar('out_path', { length: 255 }),

@@ -171,6 +171,7 @@ import { migration as meshcoreNodeNeighborsConfigMigration, runMigration153Postg
 import { migration as createMeshIssuesMigration, runMigration154Postgres, runMigration154Mysql } from '../server/migrations/154_create_mesh_issues.js';
 import { migration as clearStaleKeyMismatchMigration, runMigration155Postgres, runMigration155Mysql } from '../server/migrations/155_clear_stale_key_mismatch.js';
 import { migration as meshcoreNodeTimeSyncConfigMigration, runMigration156Postgres, runMigration156Mysql } from '../server/migrations/156_meshcore_node_time_sync_config.js';
+import { migration as meshcoreRoomSyncFailuresMigration, runMigration157Postgres, runMigration157Mysql } from '../server/migrations/157_meshcore_room_sync_failures.js';
 
 // ============================================================================
 // Registry
@@ -2507,4 +2508,24 @@ registry.register({
   sqlite: (db) => meshcoreNodeTimeSyncConfigMigration.up(db),
   postgres: (client) => runMigration156Postgres(client),
   mysql: (pool) => runMigration156Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 157: room-sync failure tracking on `meshcore_nodes`. The room-sync
+// scheduler used to advance `lastRoomSyncAt` only on a SUCCESSFUL login, so a
+// room whose saved password had gone stale stayed permanently overdue and was
+// retried every 60s tick for ever — roughly 180 login floods an hour, plus a
+// matching stream of rejected-login entries in the room operator's logs. These
+// two columns let the scheduler back off after a failure and switch auto-sync
+// off once it is clear the password will never work.
+// Idempotent across SQLite / PostgreSQL / MySQL.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 157,
+  name: 'meshcore_room_sync_failures',
+  settingsKey: 'migration_157_meshcore_room_sync_failures',
+  sqlite: (db) => meshcoreRoomSyncFailuresMigration.up(db),
+  postgres: (client) => runMigration157Postgres(client),
+  mysql: (pool) => runMigration157Mysql(pool),
 });
