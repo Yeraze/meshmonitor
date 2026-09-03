@@ -913,6 +913,28 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
       }
     }
 
+    // Same guard as host:port above, for the analyzer feed (#5040). Two sources
+    // on the same brokerUrl+region would ingest every packet twice, and the
+    // per-observer dedup is scoped per source, so nothing downstream would
+    // collapse them — the duplicate would silently double every count.
+    if (type === 'meshcore_mqtt' && config.brokerUrl && config.region) {
+      const region = String(config.region).trim().toUpperCase();
+      const existing = await databaseService.sources.getAllSources();
+      const duplicate = existing.find((s) => {
+        if (s.type !== 'meshcore_mqtt') return false;
+        const cfg = s.config as { brokerUrl?: unknown; region?: unknown };
+        return (
+          cfg?.brokerUrl === config.brokerUrl &&
+          String(cfg?.region ?? '').trim().toUpperCase() === region
+        );
+      });
+      if (duplicate) {
+        return res.status(409).json({
+          error: `A source already reads ${config.brokerUrl} for region ${region} ("${duplicate.name}")`,
+        });
+      }
+    }
+
     const source = await databaseService.sources.createSource({
       id: uuidv4(),
       name: name.trim(),
