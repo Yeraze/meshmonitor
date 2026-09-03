@@ -155,6 +155,48 @@ describe('RF replay suppression (#5034)', () => {
     expect(isDuplicatePacketLog(seen, freshKey, now + HOUR_MS, rfTtl)).toBe(true);
   });
 
+  it('keeps suppressing an hourly replay past the TTL boundary (hit refreshes expiry)', () => {
+    // Regression for the review finding on #5038: without refreshing the expiry
+    // on a hit, a replay cadence slower than the TTL leaks one duplicate row
+    // every window — an hourly replay against a 6h window escaped every 6h.
+    const seen = new Map<string, number>();
+    const rfTtl = dedupTtlForTransport(TransportMechanism.LORA);
+    const key = packetLogDedupKey(10, 999, 0, TransportMechanism.LORA, 1_788_402_926);
+
+    expect(isDuplicatePacketLog(seen, key, 0, rfTtl)).toBe(false);
+
+    // Walk hourly replays well past two full TTL windows. Every one must stay
+    // suppressed — not just the ones inside the first window.
+    for (let hour = 1; hour <= 15; hour++) {
+      expect(isDuplicatePacketLog(seen, key, hour * HOUR_MS, rfTtl)).toBe(true);
+    }
+    expect(15 * HOUR_MS).toBeGreaterThan(2 * PACKET_LOG_DEDUP_RF_TTL_MS);
+  });
+
+  it('still lets a tuple through once the repeats actually stop for a full TTL', () => {
+    // The flip side of refresh-on-hit: suppression must not become permanent.
+    // Once the replays stop, the entry ages out and a later genuine packet with
+    // the same tuple is logged again.
+    const seen = new Map<string, number>();
+    const rfTtl = dedupTtlForTransport(TransportMechanism.LORA);
+    const key = packetLogDedupKey(10, 999, 0, TransportMechanism.LORA, 1_788_402_926);
+
+    expect(isDuplicatePacketLog(seen, key, 0, rfTtl)).toBe(false);
+    expect(isDuplicatePacketLog(seen, key, HOUR_MS, rfTtl)).toBe(true);
+    // Silence for longer than the window after that last hit.
+    expect(isDuplicatePacketLog(seen, key, HOUR_MS + rfTtl + 1, rfTtl)).toBe(false);
+  });
+
+  it('gives API and INTERNAL transports the short window', () => {
+    // API is a client-injected packet, not an RF replay. INTERNAL is locally
+    // generated and is already excluded from the packet log upstream, but must
+    // not be mistaken for RF if that filter order ever changes.
+    expect(isRfTransport(TransportMechanism.API)).toBe(false);
+    expect(isRfTransport(TransportMechanism.INTERNAL)).toBe(false);
+    expect(dedupTtlForTransport(TransportMechanism.API)).toBe(PACKET_LOG_DEDUP_TTL_MS);
+    expect(dedupTtlForTransport(TransportMechanism.INTERNAL)).toBe(PACKET_LOG_DEDUP_TTL_MS);
+  });
+
   it('still keeps a flood rebroadcast heard via a different relay', () => {
     const seen = new Map<string, number>();
     const rfTtl = dedupTtlForTransport(TransportMechanism.LORA);

@@ -83,6 +83,15 @@ export const PACKET_LOG_DEDUP_MAX_ENTRIES = 20_000;
  * transports where a same-(id, relay, rx_time) repeat cannot be a real second
  * reception. `undefined`/`null` counts as RF: pre-2.8 firmware omits the field
  * and the insert path already defaults it to LORA.
+ *
+ * Everything else gets the short window, deliberately:
+ * - `MQTT` / `MULTICAST_UDP` — repeats are real per-gateway/per-peer receptions.
+ * - `API` — a client-injected packet, not an RF replay.
+ * - `INTERNAL` (0) — locally generated. These never reach the dedup call today:
+ *   `isPhantomInternalPacket` and `shouldExcludeFromPacketLog` drop them from the
+ *   packet log first. Left on the short window rather than special-cased, since
+ *   treating a local packet as RF would be the wrong default if that filter order
+ *   ever changes.
  */
 export function isRfTransport(transportMechanism: number | null | undefined): boolean {
   if (transportMechanism == null) return true;
@@ -142,7 +151,17 @@ export function isDuplicatePacketLog(
   for (const [k, expiresAt] of seen) {
     if (expiresAt <= now) seen.delete(k);
   }
-  if (seen.has(key)) return true;
+
+  // A hit REFRESHES the expiry rather than just reporting the duplicate. Without
+  // this, a replay stream slower than the TTL is only suppressed until the
+  // original entry ages out — with a 6h window and an hourly replay that leaks
+  // one duplicate row every 6 hours, forever. Refreshing makes suppression
+  // persist for as long as the repeats keep arriving, which is the invariant the
+  // RF window is sized around.
+  if (seen.has(key)) {
+    seen.set(key, now + ttlMs);
+    return true;
+  }
 
   // Bound memory over the 6h RF window. Map iteration is insertion-ordered, so
   // this drops the longest-standing entries — the ones least likely to still be
