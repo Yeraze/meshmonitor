@@ -70,6 +70,14 @@ const SHARED_DB_TESTS = [
   // when run concurrently.
   'src/db/repositories/packetLog.hopArrival.multiBackend.test.ts',
   'src/db/repositories/packetLog.broadcastTelemetry.multiBackend.test.ts',
+  // MeshCore per-node config migrations (#4618 / #4899): 153 and 156 each
+  // DROP/CREATE the shared `meshcore_nodes` table against the same PG/MySQL
+  // test DB, so whichever finishes first drops it out from under the other.
+  // Confirmed empirically — each passes alone, both fail when run together,
+  // and the backend it hits varies with interleaving (MySQL only on one run,
+  // MySQL + PostgreSQL on the next). Same class as the 141-145 group above.
+  'src/server/migrations/153_meshcore_node_neighbors_config.pgmysql.test.ts',
+  'src/server/migrations/156_meshcore_node_time_sync_config.pgmysql.test.ts',
 ];
 
 const COMMON_EXCLUDE = [
