@@ -150,7 +150,7 @@ describe.skipIf(!postgresAvailable)('SolarEstimatesRepository - PostgreSQL Backe
   let backend: TestBackend;
 
   beforeAll(async () => {
-    backend = await createPostgresBackend(POSTGRES_CREATE);
+    backend = await createPostgresBackend(POSTGRES_CREATE, 'r_solarestimates');
     if (backend.available) {
       console.log('✓ PostgreSQL connection established for solar estimates tests');
     } else {
@@ -177,7 +177,7 @@ describe.skipIf(!mysqlAvailable)('SolarEstimatesRepository - MySQL Backend', () 
   let backend: TestBackend;
 
   beforeAll(async () => {
-    backend = await createMysqlBackend(MYSQL_CREATE);
+    backend = await createMysqlBackend(MYSQL_CREATE, 'r_solarestimates');
     if (backend.available) {
       console.log('✓ MySQL connection established for solar estimates tests');
     } else {

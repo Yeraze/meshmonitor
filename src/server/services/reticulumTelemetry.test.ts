@@ -271,7 +271,7 @@ describe.skipIf(!postgresAvailable)('Reticulum interface telemetry — PostgreSQ
   let backend: TestBackend;
 
   beforeAll(async () => {
-    backend = await createPostgresBackend(POSTGRES_CREATE);
+    backend = await createPostgresBackend(POSTGRES_CREATE, 'r_reticulumtelemetry');
   });
 
   afterAll(async () => {
@@ -285,7 +285,7 @@ describe.skipIf(!mysqlAvailable)('Reticulum interface telemetry — MySQL (share
   let backend: TestBackend;
 
   beforeAll(async () => {
-    backend = await createMysqlBackend(MYSQL_CREATE);
+    backend = await createMysqlBackend(MYSQL_CREATE, 'r_reticulumtelemetry');
   });
 
   afterAll(async () => {

@@ -272,7 +272,7 @@ describe('PacketLogRepository.getBroadcastTelemetryTimestamps - SQLite Backend',
 describe.skipIf(!postgresAvailable)('PacketLogRepository.getBroadcastTelemetryTimestamps - PostgreSQL Backend', () => {
   let backend: TestBackend;
   beforeAll(async () => {
-    backend = await createPostgresBackend(POSTGRES_CREATE);
+    backend = await createPostgresBackend(POSTGRES_CREATE, 'r_packetlog_broadcast_tel');
   });
   afterAll(async () => {
     if (backend) await backend.close();
@@ -287,7 +287,7 @@ describe.skipIf(!postgresAvailable)('PacketLogRepository.getBroadcastTelemetryTi
 describe.skipIf(!mysqlAvailable)('PacketLogRepository.getBroadcastTelemetryTimestamps - MySQL Backend', () => {
   let backend: TestBackend;
   beforeAll(async () => {
-    backend = await createMysqlBackend(MYSQL_CREATE);
+    backend = await createMysqlBackend(MYSQL_CREATE, 'r_packetlog_broadcast_tel');
   });
   afterAll(async () => {
     if (backend) await backend.close();

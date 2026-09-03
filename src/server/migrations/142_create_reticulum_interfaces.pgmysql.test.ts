@@ -12,26 +12,24 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import pg from 'pg';
 import mysql from 'mysql2/promise';
 import { runMigration142Postgres, runMigration142Mysql } from './142_create_reticulum_interfaces.js';
-import { postgresAvailable, mysqlAvailable } from '../../db/repositories/test-utils.js';
-
-const { Pool: PgPool } = pg;
+import {
+  postgresAvailable,
+  mysqlAvailable,
+  createIsolatedPostgresDatabase,
+  createIsolatedMysqlDatabase,
+} from '../../db/repositories/test-utils.js';
 
 describe.skipIf(!postgresAvailable)('migration 141 — PostgreSQL (container)', () => {
-  let pool: InstanceType<typeof PgPool>;
+  let pool: pg.Pool;
+  let cleanup: (() => Promise<void>) | undefined;
 
   beforeAll(async () => {
-    pool = new PgPool({
-      host: 'localhost',
-      port: 5433,
-      user: 'test',
-      password: 'test',
-      database: 'meshmonitor_test',
-    });
+    ({ pool, cleanup } = await createIsolatedPostgresDatabase('mig142'));
     await pool.query('DROP TABLE IF EXISTS reticulum_interfaces CASCADE');
   });
 
   afterAll(async () => {
-    if (pool) await pool.end();
+    await cleanup?.();
   });
 
   it('creates the table + unique index, is idempotent, and enforces the unique constraint', async () => {
@@ -64,21 +62,15 @@ describe.skipIf(!postgresAvailable)('migration 141 — PostgreSQL (container)', 
 
 describe.skipIf(!mysqlAvailable)('migration 141 — MySQL (container)', () => {
   let pool: mysql.Pool;
+  let cleanup: (() => Promise<void>) | undefined;
 
   beforeAll(async () => {
-    pool = mysql.createPool({
-      host: 'localhost',
-      port: 3307,
-      user: 'test',
-      password: 'test',
-      database: 'meshmonitor_test',
-      connectionLimit: 5,
-    });
+    ({ pool, cleanup } = await createIsolatedMysqlDatabase('mig142'));
     await pool.query('DROP TABLE IF EXISTS reticulum_interfaces');
   });
 
   afterAll(async () => {
-    if (pool) await pool.end();
+    await cleanup?.();
   });
 
   it('creates the table + unique key, is idempotent, and enforces the unique constraint', async () => {

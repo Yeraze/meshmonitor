@@ -647,7 +647,7 @@ describe.skipIf(!postgresAvailable)('ReticulumRepository - PostgreSQL Backend', 
   let backend: TestBackend;
 
   beforeAll(async () => {
-    backend = await createPostgresBackend(POSTGRES_CREATE);
+    backend = await createPostgresBackend(POSTGRES_CREATE, 'r_reticulum');
     if (backend.available) {
       console.log('✓ PostgreSQL connection established for reticulum tests');
     } else {
@@ -676,7 +676,7 @@ describe.skipIf(!mysqlAvailable)('ReticulumRepository - MySQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {
-    backend = await createMysqlBackend(MYSQL_CREATE);
+    backend = await createMysqlBackend(MYSQL_CREATE, 'r_reticulum');
     if (backend.available) {
       console.log('✓ MySQL connection established for reticulum tests');
     } else {

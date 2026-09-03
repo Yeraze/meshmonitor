@@ -153,7 +153,7 @@ describe.skipIf(!postgresAvailable)('AutoTracerouteRepository - PostgreSQL Backe
   let backend: TestBackend;
 
   beforeAll(async () => {
-    backend = await createPostgresBackend(POSTGRES_CREATE);
+    backend = await createPostgresBackend(POSTGRES_CREATE, 'r_autotraceroute');
     if (backend.available) {
       console.log('✓ PostgreSQL connection established for auto-traceroute tests');
     } else {
@@ -180,7 +180,7 @@ describe.skipIf(!mysqlAvailable)('AutoTracerouteRepository - MySQL Backend', () 
   let backend: TestBackend;
 
   beforeAll(async () => {
-    backend = await createMysqlBackend(MYSQL_CREATE);
+    backend = await createMysqlBackend(MYSQL_CREATE, 'r_autotraceroute');
     if (backend.available) {
       console.log('✓ MySQL connection established for auto-traceroute tests');
     } else {

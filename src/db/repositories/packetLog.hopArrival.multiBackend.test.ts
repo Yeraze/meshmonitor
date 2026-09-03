@@ -272,7 +272,7 @@ describe('PacketLogRepository.getHopArrivalCountsSince - SQLite Backend', () => 
 describe.skipIf(!postgresAvailable)('PacketLogRepository.getHopArrivalCountsSince - PostgreSQL Backend', () => {
   let backend: TestBackend;
   beforeAll(async () => {
-    backend = await createPostgresBackend(POSTGRES_CREATE);
+    backend = await createPostgresBackend(POSTGRES_CREATE, 'r_packetlog_hoparrival');
   });
   afterAll(async () => {
     if (backend) await backend.close();
@@ -287,7 +287,7 @@ describe.skipIf(!postgresAvailable)('PacketLogRepository.getHopArrivalCountsSinc
 describe.skipIf(!mysqlAvailable)('PacketLogRepository.getHopArrivalCountsSince - MySQL Backend', () => {
   let backend: TestBackend;
   beforeAll(async () => {
-    backend = await createMysqlBackend(MYSQL_CREATE);
+    backend = await createMysqlBackend(MYSQL_CREATE, 'r_packetlog_hoparrival');
   });
   afterAll(async () => {
     if (backend) await backend.close();

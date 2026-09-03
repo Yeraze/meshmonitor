@@ -3,88 +3,28 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 
 /**
- * Test files that talk to the SHARED PostgreSQL / MySQL test databases
- * (`meshmonitor_test` on :5433 / :3307, via `src/db/repositories/test-utils.ts`).
+ * PostgreSQL / MySQL container suites are ISOLATED, not serialized.
  *
- * These cannot run concurrently with each other. Each one issues
- * `DROP TABLE IF EXISTS <t> CASCADE` + `CREATE TABLE <t>` against a single shared
- * database at import time, so two of them in flight at once will drop a table out
- * from under the other's queries. The overlaps are real, not theoretical:
- *   `users` — auth, channelDatabase, notifications
- *   `nodes` — nodes, keyRepair.multidb, notifications
+ * Both test containers expose exactly one database (`meshmonitor_test`), and
+ * Vitest runs test files in parallel forks. Historically every suite that
+ * talked to :5433 / :3307 issued `DROP TABLE` + `CREATE TABLE` against that one
+ * shared database, so any two suites sharing a table name dropped it out from
+ * under each other mid-test. The workaround was a checked-in `SHARED_DB_TESTS`
+ * list feeding a serial `shared-db` project — which papered over the fixture
+ * bug at the cost of running those files one at a time on every CI leg, and
+ * still missed several pairs (`mesh_issues`, `messages`, `settings`, `sources`, `telemetry`,
+ * `traceroutes`, `auto_traceroute_nodes`) whose two halves sat in *different*
+ * projects and therefore still ran concurrently.
  *
- * They therefore run in their own serial project (see `projects` below). Locally
- * these skip entirely unless the containers are up (`npm run test:db:up`), so the
- * serial cost is a CI-only ~1 min; in CI both containers are service containers.
+ * Every container suite now takes its own throwaway database
+ * (`meshmonitor_test_<key>_<token>`) via `createIsolatedPostgresDatabase` /
+ * `createIsolatedMysqlDatabase`, or by passing `isolationKey` to
+ * `createPostgresBackend` / `createMysqlBackend`. See the "Per-suite fixture
+ * isolation" banner in `src/db/repositories/test-utils.ts`.
  *
- * Add a file here whenever it starts using `createPostgresBackend` /
- * `createMysqlBackend`. If it only ever uses `createSqliteBackend`, leave it out —
- * SQLite backends are per-process `:memory:` and are safe to parallelize.
+ * If you add a suite that talks to those containers, give it an isolation key.
+ * Do NOT add it to a serial list and do NOT set `fileParallelism: false`.
  */
-const SHARED_DB_TESTS = [
-  'src/db/repositories/atakContacts.test.ts',
-  'src/db/repositories/auth.test.ts',
-  'src/db/repositories/autoTraceroute.test.ts',
-  'src/db/repositories/backupHistory.test.ts',
-  'src/db/repositories/channelDatabase.test.ts',
-  'src/db/repositories/channels.test.ts',
-  'src/db/repositories/ignoredNodes.test.ts',
-  'src/db/repositories/keyRepair.multidb.test.ts',
-  'src/db/repositories/neighbors.test.ts',
-  'src/db/repositories/newsCache.test.ts',
-  'src/db/repositories/nodes.test.ts',
-  'src/db/repositories/notifications.test.ts',
-  'src/db/repositories/settings.test.ts',
-  'src/db/repositories/solarEstimates.test.ts',
-  'src/db/repositories/traceroutes.test.ts',
-  // Migration 132's container half (#4416 WP2) drops/recreates `users`,
-  // `permissions`, AND `sources` against the shared PG/MySQL test DB —
-  // overlapping auth.test.ts (`users`, `permissions`) and channels.test.ts
-  // (`sources`). Confirmed empirically: running it concurrently with
-  // auth.test.ts's DROP TABLE ordering intermittently raises
-  // ER_FK_CANNOT_DROP_PARENT on MySQL.
-  'src/server/migrations/132_fan_out_settings_permissions.pgmysql.test.ts',
-  // Reticulum epic #3960, Phase 1a WP1 + Phase 2 WP2 + Phase 3 WP3:
-  // `reticulum.test.ts` and migrations 141/142/143/144/145's container
-  // halves all DROP/CREATE (or ALTER) `reticulum_destinations` /
-  // `reticulum_interfaces` / `reticulum_messages` against the shared PG/MySQL
-  // test DB — confirmed empirically (intermittent "table doesn't exist"
-  // mid-test on MySQL when run concurrently with the migration pgmysql
-  // tests). 144/145 ADD COLUMN onto the same two tables 141/142 DROP/CREATE,
-  // so they join the same serial group.
-  'src/server/migrations/141_create_reticulum_destinations.pgmysql.test.ts',
-  'src/server/migrations/142_create_reticulum_interfaces.pgmysql.test.ts',
-  'src/server/migrations/143_create_reticulum_messages.pgmysql.test.ts',
-  'src/server/migrations/144_add_reticulum_destination_position.pgmysql.test.ts',
-  'src/server/migrations/145_add_reticulum_interface_radio_config.pgmysql.test.ts',
-  'src/db/repositories/reticulum.test.ts',
-  // reticulumTelemetry.test.ts's regression guard DROPs/CREATEs the shared
-  // `telemetry` table against the same PG/MySQL test DB as
-  // telemetry.multidb.test.ts — both must join the serial group together.
-  'src/server/services/reticulumTelemetry.test.ts',
-  'src/db/repositories/telemetry.multidb.test.ts',
-  // Mesh Issues B6/A5 evidence queries (#4964 Phase 2 / post-epic follow-up):
-  // both DROP/CREATE the shared `packet_log` table against the same PG/MySQL
-  // test DB at import time. Confirmed empirically once a second file joined
-  // the first — "table doesn't exist" / dropped-rows races on both backends
-  // when run concurrently.
-  'src/db/repositories/packetLog.hopArrival.multiBackend.test.ts',
-  'src/db/repositories/packetLog.broadcastTelemetry.multiBackend.test.ts',
-  // MeshCore per-node config migrations (#4618 / #4899): 153 and 156 each
-  // DROP/CREATE the shared `meshcore_nodes` table against the same PG/MySQL
-  // test DB, so whichever finishes first drops it out from under the other.
-  // Confirmed empirically — each passes alone, both fail when run together,
-  // and the backend it hits varies with interleaving (MySQL only on one run,
-  // MySQL + PostgreSQL on the next). Same class as the 141-145 group above.
-  'src/server/migrations/153_meshcore_node_neighbors_config.pgmysql.test.ts',
-  'src/server/migrations/156_meshcore_node_time_sync_config.pgmysql.test.ts',
-  // Migration 158 (#5040 Phase 2) DROP/CREATEs `meshcore_packet_log` against
-  // the same shared PG/MySQL test DB. Added here on arrival rather than after
-  // it starts racing something — the 153/156 pair showed the failure mode is
-  // nondeterministic and reads as an unrelated "table doesn't exist".
-  'src/server/migrations/158_meshcore_packet_log_observer.pgmysql.test.ts',
-  'src/db/repositories/meshcorePacketLog.grouped.multidb.test.ts',
-];
 
 const COMMON_EXCLUDE = [
   '**/node_modules/**',
@@ -138,18 +78,7 @@ export default defineConfig({
         test: {
           ...COMMON_TEST,
           name: 'unit',
-          exclude: [...COMMON_EXCLUDE, ...SHARED_DB_TESTS],
-        },
-      },
-      {
-        extends: true,
-        test: {
-          ...COMMON_TEST,
-          name: 'shared-db',
-          include: SHARED_DB_TESTS,
           exclude: COMMON_EXCLUDE,
-          // Serial: these share one PostgreSQL/MySQL database. See SHARED_DB_TESTS.
-          fileParallelism: false,
         },
       },
     ],

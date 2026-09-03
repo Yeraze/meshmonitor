@@ -15,26 +15,24 @@ import pg from 'pg';
 import mysql from 'mysql2/promise';
 import { runMigration142Postgres, runMigration142Mysql } from './142_create_reticulum_interfaces.js';
 import { runMigration145Postgres, runMigration145Mysql } from './145_add_reticulum_interface_radio_config.js';
-import { postgresAvailable, mysqlAvailable } from '../../db/repositories/test-utils.js';
-
-const { Pool: PgPool } = pg;
+import {
+  postgresAvailable,
+  mysqlAvailable,
+  createIsolatedPostgresDatabase,
+  createIsolatedMysqlDatabase,
+} from '../../db/repositories/test-utils.js';
 
 describe.skipIf(!postgresAvailable)('migration 145 — PostgreSQL (container)', () => {
-  let pool: InstanceType<typeof PgPool>;
+  let pool: pg.Pool;
+  let cleanup: (() => Promise<void>) | undefined;
 
   beforeAll(async () => {
-    pool = new PgPool({
-      host: 'localhost',
-      port: 5433,
-      user: 'test',
-      password: 'test',
-      database: 'meshmonitor_test',
-    });
+    ({ pool, cleanup } = await createIsolatedPostgresDatabase('mig145'));
     await pool.query('DROP TABLE IF EXISTS reticulum_interfaces CASCADE');
   });
 
   afterAll(async () => {
-    if (pool) await pool.end();
+    await cleanup?.();
   });
 
   it('adds the radio-config columns to an existing table, is idempotent, and round-trips a patch', async () => {
@@ -81,21 +79,15 @@ describe.skipIf(!postgresAvailable)('migration 145 — PostgreSQL (container)', 
 
 describe.skipIf(!mysqlAvailable)('migration 145 — MySQL (container)', () => {
   let pool: mysql.Pool;
+  let cleanup: (() => Promise<void>) | undefined;
 
   beforeAll(async () => {
-    pool = mysql.createPool({
-      host: 'localhost',
-      port: 3307,
-      user: 'test',
-      password: 'test',
-      database: 'meshmonitor_test',
-      connectionLimit: 5,
-    });
+    ({ pool, cleanup } = await createIsolatedMysqlDatabase('mig145'));
     await pool.query('DROP TABLE IF EXISTS reticulum_interfaces');
   });
 
   afterAll(async () => {
-    if (pool) await pool.end();
+    await cleanup?.();
   });
 
   it('adds the radio-config columns to an existing table, is idempotent, and round-trips a patch', async () => {

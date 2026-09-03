@@ -32,9 +32,12 @@ import {
   runMigration050Mysql,
   PROMOTED_SETTING_KEYS,
 } from './050_promote_globals_to_default_source.js';
-import { postgresAvailable, mysqlAvailable } from '../../db/repositories/test-utils.js';
-
-const { Pool: PgPool } = pg;
+import {
+  postgresAvailable,
+  mysqlAvailable,
+  createIsolatedPostgresDatabase,
+  createIsolatedMysqlDatabase,
+} from '../../db/repositories/test-utils.js';
 
 const SAMPLE_KEY = 'autoResponderEnabled'; // present in PROMOTED_SETTING_KEYS
 const NOT_PROMOTED_KEY = 'someFutureSettingNotYetFrozen'; // deliberately NOT in the frozen list
@@ -294,21 +297,16 @@ const MYSQL_CREATE = `
 `;
 
 describe.skipIf(!postgresAvailable)('migration 050 — PostgreSQL (container)', () => {
-  let pool: InstanceType<typeof PgPool>;
+  let pool: pg.Pool;
+  let cleanup: (() => Promise<void>) | undefined;
 
   beforeAll(async () => {
-    pool = new PgPool({
-      host: 'localhost',
-      port: 5433,
-      user: 'test',
-      password: 'test',
-      database: 'meshmonitor_test',
-    });
+    ({ pool, cleanup } = await createIsolatedPostgresDatabase('mig50'));
     await pool.query(PG_CREATE);
   });
 
   afterAll(async () => {
-    if (pool) await pool.end();
+    await cleanup?.();
   });
 
   it('promotes globals, preserves the source, does not clobber overrides, backfills orphans, and is idempotent', async () => {
@@ -384,16 +382,10 @@ describe.skipIf(!postgresAvailable)('migration 050 — PostgreSQL (container)', 
 
 describe.skipIf(!mysqlAvailable)('migration 050 — MySQL (container)', () => {
   let pool: mysql.Pool;
+  let cleanup: (() => Promise<void>) | undefined;
 
   beforeAll(async () => {
-    pool = mysql.createPool({
-      host: 'localhost',
-      port: 3307,
-      user: 'test',
-      password: 'test',
-      database: 'meshmonitor_test',
-      connectionLimit: 5,
-    });
+    ({ pool, cleanup } = await createIsolatedMysqlDatabase('mig50'));
     // MySQL2's pool.query doesn't run multi-statement by default; execute
     // the DDL statements individually.
     for (const stmt of MYSQL_CREATE.split(';').map((s) => s.trim()).filter(Boolean)) {
@@ -402,7 +394,7 @@ describe.skipIf(!mysqlAvailable)('migration 050 — MySQL (container)', () => {
   });
 
   afterAll(async () => {
-    if (pool) await pool.end();
+    await cleanup?.();
   });
 
   it('promotes globals, preserves the source, does not clobber overrides, backfills orphans, and is idempotent', async () => {

@@ -460,7 +460,7 @@ describe.skipIf(!postgresAvailable)('MeshIssuesRepository - PostgreSQL Backend',
   let backend: TestBackend;
 
   beforeAll(async () => {
-    backend = await createPostgresBackend(POSTGRES_CREATE);
+    backend = await createPostgresBackend(POSTGRES_CREATE, 'r_meshissues');
     if (backend.available) {
       console.log('✓ PostgreSQL connection established for mesh issues tests');
     } else {
@@ -487,7 +487,7 @@ describe.skipIf(!mysqlAvailable)('MeshIssuesRepository - MySQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {
-    backend = await createMysqlBackend(MYSQL_CREATE);
+    backend = await createMysqlBackend(MYSQL_CREATE, 'r_meshissues');
     if (backend.available) {
       console.log('✓ MySQL connection established for mesh issues tests');
     } else {

@@ -809,7 +809,7 @@ describe.skipIf(!postgresAvailable)('AuthRepository - PostgreSQL Backend', () =>
   let backend: TestBackend;
 
   beforeAll(async () => {
-    backend = await createPostgresBackend(POSTGRES_CREATE);
+    backend = await createPostgresBackend(POSTGRES_CREATE, 'r_auth');
     if (backend.available) {
       console.log('✓ PostgreSQL connection established for auth tests');
     } else {
@@ -837,7 +837,7 @@ describe.skipIf(!mysqlAvailable)('AuthRepository - MySQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {
-    backend = await createMysqlBackend(MYSQL_CREATE);
+    backend = await createMysqlBackend(MYSQL_CREATE, 'r_auth');
     if (backend.available) {
       console.log('✓ MySQL connection established for auth tests');
     } else {

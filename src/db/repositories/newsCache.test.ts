@@ -180,7 +180,7 @@ describe.skipIf(!postgresAvailable)('NewsCacheRepository - PostgreSQL Backend', 
   let backend: TestBackend;
 
   beforeAll(async () => {
-    backend = await createPostgresBackend(POSTGRES_CREATE);
+    backend = await createPostgresBackend(POSTGRES_CREATE, 'r_newscache');
     if (backend.available) {
       console.log('✓ PostgreSQL connection established for news cache tests');
     } else {
@@ -207,7 +207,7 @@ describe.skipIf(!mysqlAvailable)('NewsCacheRepository - MySQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {
-    backend = await createMysqlBackend(MYSQL_CREATE);
+    backend = await createMysqlBackend(MYSQL_CREATE, 'r_newscache');
     if (backend.available) {
       console.log('✓ MySQL connection established for news cache tests');
     } else {
