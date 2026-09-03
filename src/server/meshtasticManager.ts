@@ -77,7 +77,7 @@ import {
   recordMqttEcho,
   matchesMqttEcho,
 } from './services/mqttProxyBridge.js';
-import { isDuplicatePacketLog, packetLogDedupKey } from './services/packetLogDedup.js';
+import { isDuplicatePacketLog, packetLogDedupKey, dedupTtlForTransport } from './services/packetLogDedup.js';
 import { NodeDbMaintenanceService } from './services/nodeDbMaintenanceService.js';
 import { AutoAnnounceService } from './services/autoAnnounceService.js';
 import { AdminTransactionService } from './services/adminTransactionService.js';
@@ -6056,16 +6056,34 @@ class MeshtasticManager implements ISourceManager {
         const spoof = this.assessLocalSpoof(meshPacket);
 
         // Drop exact-duplicate receptions the firmware delivers twice, or that a
-        // reconnect replays, from the Packet Monitor (#4811). The key folds in
-        // relay_node + transport, so a rebroadcast via a different relay or the
-        // same packet over LoRa vs MQTT keeps its own row. Only guard when we
-        // have a real packet id (0/absent = unknown, never collapse). Genuine
-        // local TX is logged on a different path and is never deduped here.
+        // reconnect/PhoneAPI NodeDB replay re-delivers, from the Packet Monitor
+        // (#4811, #5034). The key folds in relay_node + transport, so a
+        // rebroadcast via a different relay or the same packet over LoRa vs MQTT
+        // keeps its own row, and rx_time, so a genuine re-reception of the same
+        // id survives while a replay of a cached one collapses. On RF the window
+        // is hours (a same-(id,relay,rx_time) repeat there cannot be real); MQTT
+        // and multicast UDP keep the short window because per-gateway receptions
+        // of one id are real data. Only guard when we have a real packet id
+        // (0/absent = unknown, never collapse). Genuine local TX is logged on a
+        // different path and is never deduped here.
         const dedupPacketId = meshPacket.id ? Number(meshPacket.id) : 0;
+        // NOTE: rx_time is the device's receive clock in unix SECONDS (protobuf
+        // uint32), not the milliseconds of the `Date.now()` below. The mixed
+        // units are harmless here because rx_time only ever becomes an opaque
+        // token in the dedup key — it is never compared against the ms clock or
+        // used as a duration. Do not start doing arithmetic across the two.
+        const dedupRxTime = meshPacket.rxTime != null ? Number(meshPacket.rxTime) : null;
         if (dedupPacketId && isDuplicatePacketLog(
           this.recentPacketLogKeys,
-          packetLogDedupKey(fromNum, dedupPacketId, meshPacket.relayNode, meshPacket.transportMechanism),
-          Date.now()
+          packetLogDedupKey(
+            fromNum,
+            dedupPacketId,
+            meshPacket.relayNode,
+            meshPacket.transportMechanism,
+            dedupRxTime
+          ),
+          Date.now(),
+          dedupTtlForTransport(meshPacket.transportMechanism)
         )) {
           logger.debug(`📦 Skipping duplicate packet-log entry for id ${dedupPacketId} from ${fromNum}`);
         } else {
