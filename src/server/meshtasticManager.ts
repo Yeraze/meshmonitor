@@ -16,6 +16,11 @@ import { isPointInGeofence, distanceToGeofenceCenter } from '../utils/geometry.j
 import { formatTime, formatDate } from '../utils/datetime.js';
 import { logger } from '../utils/logger.js';
 import { transportColumnForPacket } from '../utils/nodeTransport.js';
+import {
+  parseFirmwareVersion as parseFirmwareVersionShared,
+  isParsedFirmwareAtLeast,
+  type ParsedFirmwareVersion,
+} from '../utils/firmwareVersion.js';
 import { getEnvironmentConfig } from './config/environment.js';
 import { notificationService } from './services/notificationService.js';
 import { sendMessagePushNotification } from './services/messagePushNotifier.js';
@@ -13506,20 +13511,32 @@ class MeshtasticManager implements ISourceManager {
 
   /**
    * Parse firmware version string into major.minor.patch
+   *
+   * Thin wrapper over the canonical, browser-safe parser in
+   * `src/utils/firmwareVersion.ts` — do NOT reimplement parsing here. The
+   * shared helper is the one place this logic lives; the frontend imports it
+   * too (`firmware28Silence.ts`), which is why it cannot live in a server
+   * module.
+   *
+   * The `^\d+\.\d+\.\d+` pre-test preserves this method's historical strict
+   * contract exactly, so no existing caller changes behaviour:
+   *   - all three numeric segments required — bare `2.8` / `3` stay `null`,
+   *     where the shared helper would default the missing parts to 0;
+   *   - no leading `v` and no surrounding whitespace — the shared helper
+   *     tolerates both;
+   *   - `.match()` on the raw argument, so a non-string sneaking past the type
+   *     system still throws a TypeError rather than silently returning `null`.
+   * Real DeviceMetadata always reports `X.Y.Z.<hash>`, so the strict and
+   * lenient parsers agree on every value a device actually sends.
    */
   // public: shared with FavoritesService.supportsFavorites() (#3962 Phase
   // 4.2a PR4 §4c) as well as the unmoved firmwareVersionAtLeast() below.
-  parseFirmwareVersion(versionString: string): { major: number; minor: number; patch: number } | null {
+  parseFirmwareVersion(versionString: string): ParsedFirmwareVersion | null {
     // Firmware version format: "2.7.11.ee68575" or "2.7.11"
-    const match = versionString.match(/^(\d+)\.(\d+)\.(\d+)/);
-    if (!match) {
+    if (!versionString.match(/^\d+\.\d+\.\d+/)) {
       return null;
     }
-    return {
-      major: parseInt(match[1], 10),
-      minor: parseInt(match[2], 10),
-      patch: parseInt(match[3], 10)
-    };
+    return parseFirmwareVersionShared(versionString);
   }
 
   /**
@@ -13536,13 +13553,16 @@ class MeshtasticManager implements ISourceManager {
     if (!this.localNodeInfo?.firmwareVersion) {
       return false;
     }
-    const version = this.parseFirmwareVersion(this.localNodeInfo.firmwareVersion);
-    if (!version) {
-      return false;
-    }
-    if (version.major !== major) return version.major > major;
-    if (version.minor !== minor) return version.minor > minor;
-    return version.patch >= patch;
+    // Ordering logic is shared with the frontend's isFirmwareAtLeast() — see
+    // src/utils/firmwareVersion.ts. Parsing stays on this.parseFirmwareVersion()
+    // (strict, and monkey-patched by FavoritesService tests) rather than on the
+    // shared string overload.
+    return isParsedFirmwareAtLeast(
+      this.parseFirmwareVersion(this.localNodeInfo.firmwareVersion),
+      major,
+      minor,
+      patch,
+    );
   }
 
   /**

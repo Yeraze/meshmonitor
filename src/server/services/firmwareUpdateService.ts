@@ -17,6 +17,7 @@ import * as net from 'net';
 import * as path from 'path';
 import { assertSafeUrl, SsrfBlockedError } from '../utils/ssrfGuard.js';
 import { logger } from '../../utils/logger.js';
+import { parseFirmwareVersion, isParsedFirmwareAtLeast } from '../../utils/firmwareVersion.js';
 import databaseService from '../../services/database.js';
 import { fallbackManager } from '../meshtasticManager.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
@@ -808,20 +809,24 @@ export class FirmwareUpdateService {
       );
     }
 
-    // WiFi OTA requires firmware >= 2.7.18 on the running node
-    const versionMatch = params.currentVersion.match(/^(\d+)\.(\d+)\.(\d+)/);
-    if (versionMatch) {
-      const [, major, minor, patch] = versionMatch.map(Number);
-      const minVersion = [2, 7, 18];
-      if (major < minVersion[0]
-        || (major === minVersion[0] && minor < minVersion[1])
-        || (major === minVersion[0] && minor === minVersion[1] && patch < minVersion[2])) {
-        throw new Error(
-          `WiFi OTA requires firmware >= 2.7.18 on the running node. ` +
-          `Current version is ${params.currentVersion}. ` +
-          `Please update manually via USB first.`
-        );
-      }
+    // WiFi OTA requires firmware >= 2.7.18 on the running node.
+    //
+    // Parsing/comparison come from the canonical helper
+    // (src/utils/firmwareVersion.ts) — do NOT reimplement them here. The
+    // `^\d+\.\d+\.\d+` pre-test and the `parsed &&` guard together preserve the
+    // original behaviour exactly: a version string that doesn't start with all
+    // three numeric segments SKIPS this gate (fail open, allow the OTA) rather
+    // than blocking it. `.match()` on the raw value (rather than `.test()`)
+    // also keeps the old TypeError for a non-string slipping past the types.
+    const parsedVersion = params.currentVersion.match(/^\d+\.\d+\.\d+/)
+      ? parseFirmwareVersion(params.currentVersion)
+      : null;
+    if (parsedVersion && !isParsedFirmwareAtLeast(parsedVersion, 2, 7, 18)) {
+      throw new Error(
+        `WiFi OTA requires firmware >= 2.7.18 on the running node. ` +
+        `Current version is ${params.currentVersion}. ` +
+        `Please update manually via USB first.`
+      );
     }
 
     // Resolve the download. Nightly builds have no per-platform zip — the

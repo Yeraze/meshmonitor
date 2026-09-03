@@ -1,10 +1,22 @@
 /**
  * Meshtastic firmware version parsing / comparison.
  *
- * SHARED HELPER — deliberately tiny and dependency-free so it can be imported
- * from both the browser bundle and server-compiled code. `compareVersions` in
- * `src/server/utils/systemInfo.ts` does something similar but that module
- * imports `fs`, so the frontend cannot use it.
+ * CANONICAL, BROWSER-SAFE HELPER. This is the single implementation of
+ * firmware version parsing in the codebase; `MeshtasticManager.parseFirmwareVersion()`
+ * delegates here rather than reimplementing it.
+ *
+ * DO NOT ADD A NODE-ONLY IMPORT (`fs`, `path`, `os`, `crypto`, a database
+ * module, a logger that reaches for one, …). Being importable from the browser
+ * bundle is the entire reason this module exists as a separate file: the
+ * pre-existing `compareVersions` in `src/server/utils/systemInfo.ts` cannot be
+ * shared with the frontend precisely because that module imports `fs`. Keep
+ * this file dependency-free and pure.
+ *
+ * `compareVersions` in `src/server/utils/systemInfo.ts` is deliberately NOT
+ * folded in here — it is a different operation (a general N-segment
+ * MeshMonitor *app* release comparator returning -1/0/1, which splits on
+ * `[-.]` so `4.16.0-rc2` compares equal to `4.16.0`, and which throws on a
+ * non-string by design; `rules.test.ts` depends on that throw).
  *
  * Firmware version strings look like `2.8.0.abcdef` (four segments, the last
  * being a short git hash), sometimes `2.7.11`, sometimes with a pre-release
@@ -43,6 +55,26 @@ export function parseFirmwareVersion(raw: string | null | undefined): ParsedFirm
 }
 
 /**
+ * True when an already-parsed version is >= major.minor.patch.
+ * False when `parsed` is `null` (fail open — see module docs).
+ *
+ * Split out from `isFirmwareAtLeast` so callers that parse with a different
+ * (stricter) front end can still share the ordering logic — see
+ * `MeshtasticManager.firmwareVersionAtLeast()`.
+ */
+export function isParsedFirmwareAtLeast(
+  parsed: ParsedFirmwareVersion | null,
+  major: number,
+  minor = 0,
+  patch = 0,
+): boolean {
+  if (!parsed) return false;
+  if (parsed.major !== major) return parsed.major > major;
+  if (parsed.minor !== minor) return parsed.minor > minor;
+  return parsed.patch >= patch;
+}
+
+/**
  * True when `raw` parses to a firmware version >= major.minor.patch.
  * False when `raw` is missing or unparseable (fail open — see module docs).
  */
@@ -52,9 +84,5 @@ export function isFirmwareAtLeast(
   minor = 0,
   patch = 0,
 ): boolean {
-  const parsed = parseFirmwareVersion(raw);
-  if (!parsed) return false;
-  if (parsed.major !== major) return parsed.major > major;
-  if (parsed.minor !== minor) return parsed.minor > minor;
-  return parsed.patch >= patch;
+  return isParsedFirmwareAtLeast(parseFirmwareVersion(raw), major, minor, patch);
 }
