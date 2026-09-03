@@ -11,7 +11,13 @@ import { logger } from '../../utils/logger.js';
 export interface Source {
   id: string;
   name: string;
-  type: 'meshtastic_tcp' | 'mqtt_broker' | 'mqtt_bridge' | 'meshcore' | 'reticulum';
+  /**
+   * `meshcore` is a device-backed MeshCore source (Companion/Repeater);
+   * `meshcore_mqtt` (#5040) subscribes to an analyzer broker and has no radio.
+   * Narrow managers with the predicates in `sourceManagerTypes.ts` rather than
+   * comparing this field by hand.
+   */
+  type: 'meshtastic_tcp' | 'mqtt_broker' | 'mqtt_bridge' | 'meshcore' | 'meshcore_mqtt' | 'reticulum';
   config: Record<string, unknown>;
   enabled: boolean;
   /** User-controlled sort rank for the source list (issue #3338). Lower first. */

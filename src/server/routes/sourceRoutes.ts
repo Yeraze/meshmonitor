@@ -805,8 +805,20 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
     if (!name || typeof name !== 'string') {
       return res.status(400).json({ error: 'name is required and must be a string' });
     }
-    if (!['meshtastic_tcp', 'mqtt_broker', 'mqtt_bridge', 'meshcore', 'reticulum'].includes(type)) {
-      return res.status(400).json({ error: 'type must be meshtastic_tcp, mqtt_broker, mqtt_bridge, meshcore, or reticulum' });
+    if (!['meshtastic_tcp', 'mqtt_broker', 'mqtt_bridge', 'meshcore', 'meshcore_mqtt', 'reticulum'].includes(type)) {
+      return res.status(400).json({ error: 'type must be meshtastic_tcp, mqtt_broker, mqtt_bridge, meshcore, meshcore_mqtt, or reticulum' });
+    }
+
+    // meshcore_mqtt (#5040) ingests from an Analyzer Observer broker and has no
+    // radio. Both fields are structural — the topic filter is built from the
+    // region, so a source without one would subscribe to nothing.
+    if (type === 'meshcore_mqtt') {
+      if (typeof config?.brokerUrl !== 'string' || config.brokerUrl.trim() === '') {
+        return res.status(400).json({ error: 'brokerUrl is required for a meshcore_mqtt source' });
+      }
+      if (typeof config?.region !== 'string' || config.region.trim() === '') {
+        return res.status(400).json({ error: 'region is required for a meshcore_mqtt source' });
+      }
     }
 
     // mqtt_bridge may optionally attach to a parent mqtt_broker. When
