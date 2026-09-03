@@ -63,6 +63,8 @@ import { MapLoadingOverlay } from './map/MapLoadingOverlay';
 import { MapModeIndicator } from './map/MapModeIndicator';
 import { NodeUnmessageableBadge } from './NodeUnmessageableBadge';
 import { NodeIncompleteBadge } from './NodeIncompleteBadge';
+import { NodeIdentityChangeBadge } from './NodeIdentityChangeBadge';
+import { useNodeIdentityChanges } from '../hooks/useNodeIdentityChanges';
 import { NodeDetailsButton } from './NodeDetailsButton';
 import nodeRowStyles from './NodeRowActions.module.css';
 import nodeStatusStyles from './NodeStatusLine.module.css';
@@ -536,6 +538,12 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   } = useUI();
 
   const { sourceId: currentSourceId } = useSource();
+
+  // Meshtastic 2.8 renumbers nodes from MAC-derived to key-derived (#5032), so
+  // an upgraded node shows up twice: a silent old row and a live new one. One
+  // request per source indexes both halves; the row badges read from the maps.
+  const { bySuccessorNodeNum: identityChangeSuccessors, byPredecessorNodeNum: identityChangePredecessors } =
+    useNodeIdentityChanges(currentSourceId);
 
   const {
     timeFormat,
@@ -2294,6 +2302,22 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                             hold nodes:write, which reveals the Copy NodeInfo action
                             below — this states the fact for everyone. */}
                         {!isNodeComplete(node) && <NodeIncompleteBadge />}
+                        {/* #5032: a 2.8 upgrade renumbers the node, orphaning its
+                            history under the old number. Badge both halves so the
+                            apparent duplicate in the list explains itself. Inert —
+                            detection is a heuristic and must never merge anything. */}
+                        {identityChangeSuccessors.has(node.nodeNum) && (
+                          <NodeIdentityChangeBadge
+                            detection={identityChangeSuccessors.get(node.nodeNum)!}
+                            role="successor"
+                          />
+                        )}
+                        {!identityChangeSuccessors.has(node.nodeNum) && identityChangePredecessors.has(node.nodeNum) && (
+                          <NodeIdentityChangeBadge
+                            detection={identityChangePredecessors.get(node.nodeNum)!}
+                            role="predecessor"
+                          />
+                        )}
                         {/* The read-only half of the security warning. Its clickable
                             twin lives in the action group below. */}
                         {(node.keyIsLowEntropy || node.duplicateKeyDetected || node.keySecurityIssueDetails) && !hasPermission('security', 'write') && (

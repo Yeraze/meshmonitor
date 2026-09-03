@@ -31,6 +31,7 @@ import { useNodeTraceroutes } from '../hooks/useNodeTraceroutes';
 import { useTraceroutePairHistory } from '../hooks/useTraceroutePairHistory';
 import { getMessageSortTime } from '../utils/messageSort';
 import KeyMismatchWarning from './security/KeyMismatchWarning';
+import { NodeIdentityChangeNotice } from './NodeIdentityChangeNotice';
 import { getUtf8ByteLength, formatByteCount, isEmoji } from '../utils/text';
 import { isDeviceDbWarningMitigatable } from '../utils/deviceDbWarning';
 import { applyHomoglyphOptimization } from '../utils/homoglyph';
@@ -2765,6 +2766,14 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                   showToast(t('node_details.notes_saved', 'Notes saved'), 'success');
                 }}
               />
+            )}
+
+            {/* Meshtastic 2.8 node-number change (#5032). Renders nothing
+                unless this node is one half of a detected handover. Sits above
+                the security block deliberately: a renumber is normal firmware
+                behaviour, and the two must not read as the same kind of event. */}
+            {selectedNode && (
+              <NodeIdentityChangeNotice nodeNum={selectedNode.nodeNum} sourceId={sourceId} />
             )}
 
             {/* Security Details Section */}

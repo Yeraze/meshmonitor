@@ -36,6 +36,31 @@ export interface NodesCacheHook {
 }
 
 /**
+ * One node's identity/liveness columns, as read by {@link
+ * NodesRepository.getIdentityRows}. Backs the Meshtastic 2.8 node-number
+ * change detector (issue #5032).
+ */
+export interface NodeIdentityRow {
+  nodeNum: number;
+  nodeId: string;
+  longName: string | null;
+  shortName: string | null;
+  /** Base64, as stored. Empty string and null both mean "no key on file". */
+  publicKey: string | null;
+  hwModel: number | null;
+  role: number | null;
+  firmwareVersion: string | null;
+  /** Unix **seconds**. */
+  lastHeard: number | null;
+  /**
+   * When MeshMonitor first created this row, in **milliseconds** — `upsertNode`
+   * writes `Date.now()`. Note the unit mismatch with `lastHeard` above; the
+   * consumer normalises before comparing them.
+   */
+  createdAt: number;
+}
+
+/**
  * Repository for node operations
  */
 export class NodesRepository extends BaseRepository {
@@ -890,6 +915,39 @@ export class NodesRepository extends BaseRepository {
       );
 
     return result;
+  }
+
+  /**
+   * The lean node projection the 2.8 identity-change detector works from
+   * (issue #5032). Deliberately NOT `DbNode` — the detector only needs the
+   * identity/liveness columns, and a source with thousands of rows should not
+   * pay to hydrate every telemetry and position column to answer "did this
+   * node change its number?".
+   */
+  async getIdentityRows(sourceId: string): Promise<NodeIdentityRow[]> {
+    const { nodes } = this.tables;
+    const result = await this.db
+      .select({
+        nodeNum: nodes.nodeNum,
+        nodeId: nodes.nodeId,
+        longName: nodes.longName,
+        shortName: nodes.shortName,
+        publicKey: nodes.publicKey,
+        hwModel: nodes.hwModel,
+        role: nodes.role,
+        firmwareVersion: nodes.firmwareVersion,
+        lastHeard: nodes.lastHeard,
+        createdAt: nodes.createdAt,
+      })
+      .from(nodes)
+      // Hard `eq`, not `withSourceScope`: this query is only ever meaningful
+      // within ONE source. A node in source A must never be matched against a
+      // node in source B — they are different meshes and a name collision
+      // across them says nothing (CLAUDE.md multi-source rules).
+      .where(eq(nodes.sourceId, sourceId));
+
+    // nodeNum/lastHeard/createdAt come back as BIGINT on PG/MySQL.
+    return this.normalizeBigInts(result) as NodeIdentityRow[];
   }
 
   /**

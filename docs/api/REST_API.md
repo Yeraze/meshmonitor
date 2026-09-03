@@ -250,6 +250,84 @@ Same as `/api/nodes` but filtered for recent activity.
 curl -X GET "http://localhost:8080/api/nodes/active?days=3"
 ```
 
+### Get Node Identity Changes
+
+#### GET /api/nodes/identity-changes
+
+Lists candidate Meshtastic 2.8 node-number changes on one source. Firmware 2.8
+derives a node's number from its public key rather than its MAC address, so an
+upgraded node appears as a brand-new node with its history orphaned under the
+old number. This endpoint reports which new node looks like which old one.
+
+**Read-only and advisory.** Nothing is merged, moved or deleted on the strength
+of a detection; a `name`-basis pairing in particular is a heuristic. See
+[Node Number Changes (2.8)](/features/node-identity-changes).
+
+**Permission:** `nodes:read` on the requested source.
+
+**Query Parameters:**
+- `sourceId` (**required**, string): the source to inspect. Detection never
+  compares nodes across sources — there is no cross-source mode.
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "sourceId": "source-1",
+    "truncated": false,
+    "options": {
+      "appearWindowSeconds": 7776000,
+      "quietLookbackSeconds": 2592000,
+      "graceSeconds": 43200,
+      "minQuietSeconds": 21600
+    },
+    "detections": [
+      {
+        "successor": {
+          "nodeNum": 3649751816,
+          "nodeId": "!d992eb08",
+          "longName": "Base Station",
+          "shortName": "BASE",
+          "hwModel": 43,
+          "firmwareVersion": "2.8.0.47db0e3",
+          "lastHeard": 1788400000,
+          "createdAt": 1788230000,
+          "hasPublicKey": true
+        },
+        "predecessor": { "nodeNum": 1127553444, "nodeId": "!433d1ba4", "...": "same shape" },
+        "basis": "derivedNodeNum",
+        "confidence": "high",
+        "derivedFromPredecessorKey": true,
+        "successorNodeNumIsKeyDerived": true,
+        "predecessorNodeNumIsKeyDerived": false,
+        "publicKeyMatches": true,
+        "nameMatches": true,
+        "hwModelMatches": true,
+        "successorFirmwareIs28OrLater": true,
+        "predecessorQuietForSeconds": 172800,
+        "handoverGapSeconds": 400,
+        "otherCandidateCount": 0
+      }
+    ]
+  }
+}
+```
+
+`basis` is one of:
+- `derivedNodeNum` — the predecessor's public key CRC-32s to exactly the
+  successor's node number, which is the firmware's own 2.8 rule. Verified.
+- `publicKey` — both entries carry the same public key.
+- `name` — long and short names match. A guess; `confidence` is `medium`.
+
+Public keys themselves are never returned; only `hasPublicKey`. All timestamps
+are unix **seconds**.
+
+**Example:**
+```bash
+curl -X GET "http://localhost:8080/api/nodes/identity-changes?sourceId=source-1"
+```
+
 ### Set Node Favorite Status
 
 #### POST /api/nodes/:nodeId/favorite

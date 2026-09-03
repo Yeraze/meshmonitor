@@ -257,6 +257,26 @@ Two things you might notice:
 
 ---
 
+### Half my node list went dark after a firmware 2.8 upgrade, and there are duplicates
+
+This is expected. **Firmware 2.8 changes how a node picks its node number** — it is now derived from the node's public key instead of the hardware MAC address — so every node that upgrades gets a **new node number** and shows up in MeshMonitor as a brand-new node.
+
+What you see:
+
+- The old entry stops updating and ages out like any silent node.
+- A new entry appears with the same long and short name, a new node ID, and no history.
+- Telemetry, positions, packet logs and messages recorded before the upgrade stay attached to the **old** node number. Nothing is lost, but it is no longer reachable from the new entry.
+
+MeshMonitor detects the likely pairing and marks **both** entries with an identity badge in the node list — the new one says which node it used to be, the silent one says what it continued as. Open **Node Details** on either for the full explanation, including what the pairing was based on.
+
+MeshMonitor **does not merge the two automatically**, and there is no button to do it. When the pairing rests on a name match it is a guess, and a wrong merge would splice two unrelated nodes' histories together irreversibly.
+
+For most people the right action is none: let the old entry age out and let new history accumulate. If you had favourited the node, or referenced it in an automation or notification rule, update those to the new node number — they are keyed on the number and will otherwise keep pointing at the silent old entry.
+
+Full details, including how the pairing is worked out and why a duplicate-key security warning may appear briefly: [Node Number Changes (Meshtastic 2.8)](/features/node-identity-changes).
+
+---
+
 ### My node stopped sharing position or telemetry after upgrading to firmware 2.8
 
 Firmware 2.8 makes position and telemetry broadcast **opt-in**. If a node goes quiet on the map or stops reporting telemetry after the upgrade, this is **expected firmware behavior, not a MeshMonitor bug** — the device is no longer broadcasting that data by default.
@@ -707,6 +727,11 @@ When viewing nodes in the **Nodes** tab, you'll see various icons next to each n
   - Part of Meshtastic security features
 
 #### Other Indicators
+
+- **🪪 Identity (Node number changed)** - This node is likely the same physical node as another entry, whose number changed on the firmware 2.8 upgrade
+  - Appears on **both** halves of the pair: the new entry and the silent old one
+  - Hover for the paired node's name, or open Node Details for the full explanation
+  - Informational only — nothing is merged. See [Node Number Changes (2.8)](/features/node-identity-changes)
 
 - **📶 Signal Strength** - Shows SNR (Signal-to-Noise Ratio) in dB
 - **🔋 Battery Level** - Current battery percentage
