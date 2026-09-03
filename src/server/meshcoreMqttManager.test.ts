@@ -213,10 +213,64 @@ describe('MeshCoreMqttManager — ingest', () => {
     expect(mgr.getIngestStats()).toMatchObject({ received: 3, accepted: 3, observers: 2 });
   });
 
+  it('rolls back `started` when connect fails, so a later start() retries', async () => {
+    // Without the rollback the source is stranded: never connected, and never
+    // retryable short of a process restart.
+    const mgr = makeManager();
+    connectMock.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+    await expect(mgr.start()).rejects.toThrow('ECONNREFUSED');
+    expect(mgr.getStatus().connected).toBe(false);
+    expect(mgr.getIngestStats().lastError).toBe('ECONNREFUSED');
+
+    // Second attempt must actually try again rather than early-returning.
+    connectMock.mockResolvedValueOnce(undefined);
+    await mgr.start();
+    expect(connectMock).toHaveBeenCalledTimes(2);
+    expect(subscribeMock).toHaveBeenCalledWith(['meshcore/MCO/+/packets']);
+  });
+
+  it('tolerates stop() before start()', async () => {
+    const mgr = makeManager();
+    await expect(mgr.stop()).resolves.toBeUndefined();
+    expect(disconnectMock).not.toHaveBeenCalled();
+  });
+
+  it('can be restarted after a clean stop', async () => {
+    const mgr = makeManager();
+    await mgr.start();
+    await mgr.stop();
+    await mgr.start();
+    expect(connectMock).toHaveBeenCalledTimes(2);
+  });
+
   it('records the last broker error without throwing', async () => {
     const mgr = makeManager();
     await mgr.start();
     lastClient!.raise('error', new Error('bad credentials'));
     expect(mgr.getIngestStats().lastError).toBe('bad credentials');
+  });
+});
+
+describe('predicate narrowing over a mixed manager list', () => {
+  // The most load-bearing guarantee in this feature, and the one that would
+  // break silently: a filter over the registry must sort this source into the
+  // read group and out of the device group.
+  const deviceLike = { sourceId: 'src-dev', sourceType: 'meshcore' } as never;
+  const tcpLike = { sourceId: 'src-tcp', sourceType: 'meshtastic_tcp' } as never;
+
+  it('excludes the MQTT source from a device-manager filter', () => {
+    const all = [deviceLike, makeManager() as never, tcpLike];
+    const devices = all.filter(isMeshCoreManager);
+    expect(devices).toHaveLength(1);
+    expect((devices[0] as { sourceId: string }).sourceId).toBe('src-dev');
+  });
+
+  it('includes BOTH MeshCore sources in an any-MeshCore filter', () => {
+    const all = [deviceLike, makeManager() as never, tcpLike];
+    const meshcore = all.filter(isAnyMeshCoreManager);
+    expect(meshcore.map((m) => (m as { sourceId: string }).sourceId).sort()).toEqual([
+      'src-dev',
+      'src-mqtt-1',
+    ]);
   });
 });

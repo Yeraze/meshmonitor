@@ -46,7 +46,6 @@ import {
   decodeObserverPacketMessage,
   observerPacketsSubscription,
   observerKeyFromTopic,
-  type MeshCoreBridgeOtaPacket,
 } from './services/meshcoreMqttIngestPacket.js';
 import { logger } from '../utils/logger.js';
 
@@ -58,7 +57,14 @@ export interface MeshCoreMqttSourceConfig {
   region: string;
   /** Static MQTT username, when the broker uses fixed credentials. */
   username?: string;
-  /** Static MQTT password. Stored encrypted; resolved before construction. */
+  /**
+   * Static MQTT password.
+   *
+   * Stored as plaintext in the source's `config` blob, like `mqtt_broker`'s
+   * `auth.password` — there is no encryption layer for source config. It is
+   * kept out of non-admin API responses by `stripSourceSecrets`, and preserved
+   * across an edit that leaves the field blank by `preserveSourceCredentials`.
+   */
   password?: string;
   /** Reject invalid TLS certs. Defaults true; only lower it for a local broker. */
   rejectUnauthorized?: boolean;
@@ -97,8 +103,15 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
     lastPacketAt: null,
     lastError: null,
   };
-  /** Observer keys seen this session, for the `observers` counter. */
+  /**
+   * Observer keys seen this session, for the `observers` counter.
+   *
+   * Capped: a busy regional feed can carry hundreds of distinct observers, and
+   * this is a display counter, not state anything depends on. Past the cap the
+   * count stops rising rather than growing the set without bound.
+   */
   private readonly seenObservers = new Set<string>();
+  private static readonly MAX_TRACKED_OBSERVERS = 1_000;
 
   constructor(sourceId: string, sourceName: string, config: MeshCoreMqttSourceConfig) {
     super();
@@ -110,6 +123,22 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
   async start(): Promise<void> {
     if (this.started) return;
     this.started = true;
+    try {
+      await this.openBroker();
+    } catch (err) {
+      // Roll back so a later start() can retry. Leaving `started` true after a
+      // failed connect would strand the source: never connected, and never
+      // retryable short of a process restart.
+      this.started = false;
+      this.client?.removeAllListeners();
+      this.client = null;
+      this.stats.lastError = err instanceof Error ? err.message : String(err);
+      throw err;
+    }
+  }
+
+  /** Open and subscribe. Separated so start() can roll back cleanly on failure. */
+  private async openBroker(): Promise<void> {
 
     const topic = observerPacketsSubscription(this.config.region);
     const client = new MqttBrokerClient({
@@ -186,7 +215,10 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
 
       this.stats.accepted++;
       this.stats.lastPacketAt = Date.now();
-      if (!this.seenObservers.has(decoded.originId)) {
+      if (
+        !this.seenObservers.has(decoded.originId) &&
+        this.seenObservers.size < MeshCoreMqttManager.MAX_TRACKED_OBSERVERS
+      ) {
         this.seenObservers.add(decoded.originId);
         this.stats.observers = this.seenObservers.size;
       }
@@ -195,7 +227,7 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
       // Phase 2 routes this into the same handleOtaPacket seam the local radio
       // path uses. The event is emitted now so a consumer can be attached
       // without changing this method.
-      this.emit('ota_packet', decoded.event satisfies MeshCoreBridgeOtaPacket);
+      this.emit('ota_packet', decoded.event);
     } catch (err) {
       this.stats.rejected++;
       logger.debug(`[MeshCoreMqtt:${this.sourceId}] failed to handle message:`, err);

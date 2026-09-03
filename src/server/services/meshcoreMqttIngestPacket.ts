@@ -49,14 +49,17 @@
  * `SNR` and `RSSI` are the exception — they are measurements, not derivable from
  * the frame, so they come off the wire and are only range-checked.
  *
- * ## What is deliberately NOT reconstructed
+ * ## Where the enum name strings come from
  *
- * `payload_type_string` / `route_type_string` are omitted. On the local path
- * those come from the device's own decoder; the wire contract's `packet_type`
- * and `route` are lossy re-encodings (`route` collapses both flood variants to
- * `F`, and both direct variants to `D`/`T`), so re-deriving a string from them
- * would invent detail the feed never carried. Consumers that need a name should
- * resolve it from the numeric `payload_type` / `route_type`.
+ * `payload_type_string` / `route_type_string` are derived from the NUMERIC
+ * enums via the decoder library's pure name lookups — never from the wire's
+ * `packet_type` / `route`, which are lossy re-encodings (`route` collapses both
+ * flood variants to `F`, and both direct variants to `D`/`T`). Reading the wire
+ * strings would discard detail that `raw` still carries.
+ *
+ * They are populated rather than left null because the packet monitor stores
+ * both (`meshcoreManager.ts` `handleOtaPacket`), and a column of nulls on every
+ * MQTT-sourced row would be a visible regression against the local path.
  */
 import { getPayloadTypeName, getRouteTypeName } from '@michaelhart/meshcore-decoder';
 import { parseObserverFrame } from './meshcoreObserverPacket.js';
