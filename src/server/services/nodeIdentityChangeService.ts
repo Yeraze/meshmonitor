@@ -155,7 +155,13 @@ export interface IdentityChangeDetection {
   successorFirmwareIs28OrLater: boolean;
   /** Seconds the predecessor has been silent, as of the evaluation clock. */
   predecessorQuietForSeconds: number;
-  /** Seconds between the predecessor's last packet and the successor's first sighting. */
+  /**
+   * Seconds between the predecessor's last packet and the successor's first
+   * sighting. **Can be negative** — the liveness gate tolerates up to
+   * `graceSeconds` of overlap, e.g. when an MQTT gateway replays the old
+   * identity's cached NodeInfo after the new one is already on air. Format it
+   * as a signed offset, never as an unsigned duration.
+   */
   handoverGapSeconds: number;
   /** How many *other* nodes also matched this successor. >0 means the pick is ambiguous. */
   otherCandidateCount: number;
@@ -224,7 +230,8 @@ function nameKeyOf(row: NodeIdentityRow): string | null {
   const short = normalizeName(row.shortName);
   if (!long || !short) return null;
   // A firmware-default long name means NodeInfo never arrived — it identifies
-  // nothing, so it must not seed a match.
+  // nothing, so it must not seed a match. (`long` is already lower-cased here;
+  // the pattern's `i` flag is belt-and-braces in case that ever changes.)
   if (FIRMWARE_DEFAULT_LONG_NAME.test(long)) return null;
   return `${long} ${short}`;
 }
@@ -304,6 +311,9 @@ export function findIdentityChanges(
     };
     // Any older row whose key CRC-32s to this successor's number — the
     // firmware's own derivation, and the strongest candidate source.
+    // Note the successor's OWN row is in this bucket whenever it is a genuine
+    // 2.8 identity (its number is its own key's CRC); `pushCandidates` drops
+    // it via the self-check, so it can never pair with itself.
     pushCandidates(byDerivedNodeNum.get(Number(successor.nodeNum)));
     if (hasKey(successor)) pushCandidates(byPublicKey.get(successor.publicKey as string));
     const successorNameKey = nameKeyOf(successor);

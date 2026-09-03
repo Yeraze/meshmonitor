@@ -38,7 +38,6 @@ function row(overrides: Partial<NodeIdentityRow> & { nodeNum: number }): NodeIde
     shortName: null,
     publicKey: null,
     hwModel: null,
-    role: null,
     firmwareVersion: null,
     lastHeard: null,
     createdAt: NOW,

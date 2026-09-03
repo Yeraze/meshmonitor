@@ -48,7 +48,6 @@ export interface NodeIdentityRow {
   /** Base64, as stored. Empty string and null both mean "no key on file". */
   publicKey: string | null;
   hwModel: number | null;
-  role: number | null;
   firmwareVersion: string | null;
   /** Unix **seconds**. */
   lastHeard: number | null;
@@ -934,7 +933,6 @@ export class NodesRepository extends BaseRepository {
         shortName: nodes.shortName,
         publicKey: nodes.publicKey,
         hwModel: nodes.hwModel,
-        role: nodes.role,
         firmwareVersion: nodes.firmwareVersion,
         lastHeard: nodes.lastHeard,
         createdAt: nodes.createdAt,

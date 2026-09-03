@@ -103,7 +103,6 @@ describe('NodesRepository.getIdentityRows — per-source isolation', () => {
       shortName: 'BASE',
       publicKey: 'a-key',
       hwModel: 43,
-      role: 2,
       firmwareVersion: '2.8.0.47db0e3',
       lastHeard: 1234,
     });

@@ -44,11 +44,6 @@
   margin-bottom: 0;
 }
 
-.peer {
-  font-family: var(--font-mono);
-  font-weight: 600;
-}
-
 /* The evidence list: how the pairing was reached, so the operator can judge it. */
 .facts {
   margin: 8px 0 0;
