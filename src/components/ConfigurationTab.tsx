@@ -302,6 +302,11 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   const [meshBeaconBroadcastTargets, setMeshBeaconBroadcastTargets] = useState<BroadcastTarget[]>([]);
 
   // Supported modules tracking (for unsupported firmware detection)
+  // `rangeTest` is optional on purpose (#5031). The backend always sends it, but
+  // it is the one gate that must fail OPEN, so the type keeps "absent" a legal
+  // state — a response from an older server, or a shape change, then reads as
+  // "supported" rather than flashing a removal notice at a node that still has
+  // the module. The consumer below tests `=== false` for the same reason.
   const [supportedModules, setSupportedModules] = useState<{ statusmessage: boolean; trafficManagement: boolean; meshBeacon: boolean; rangeTest?: boolean } | null>(null);
 
   // Serial Config State
