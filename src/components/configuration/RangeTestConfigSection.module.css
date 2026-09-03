@@ -1,0 +1,32 @@
+/*
+ * Range Test config section (#5031).
+ *
+ * Range Test was removed from Meshtastic firmware in 2.8, so on a 2.8+ node the
+ * section stays visible but explains itself and switches its controls off. The
+ * notice is styled as a caution rather than an error: nothing is broken, the
+ * firmware simply no longer carries the module.
+ */
+
+.removedNotice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--color-warning);
+  border-radius: 0.5rem;
+  background-color: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  color: var(--color-warning);
+  line-height: 1.4;
+}
+
+.removedNoticeIcon {
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+/* Grey the controls out and make them inert while the module is unavailable. */
+.disabledControls {
+  opacity: 0.4;
+  pointer-events: none;
+}

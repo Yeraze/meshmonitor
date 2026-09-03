@@ -302,7 +302,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   const [meshBeaconBroadcastTargets, setMeshBeaconBroadcastTargets] = useState<BroadcastTarget[]>([]);
 
   // Supported modules tracking (for unsupported firmware detection)
-  const [supportedModules, setSupportedModules] = useState<{ statusmessage: boolean; trafficManagement: boolean; meshBeacon: boolean } | null>(null);
+  const [supportedModules, setSupportedModules] = useState<{ statusmessage: boolean; trafficManagement: boolean; meshBeacon: boolean; rangeTest?: boolean } | null>(null);
 
   // Serial Config State
   const [serialEnabled, setSerialEnabled] = useState(false);
@@ -2531,6 +2531,11 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             setSender={setRangeTestSender}
             save={rangeTestSave}
             setSave={setRangeTestSave}
+            // Range Test was removed in firmware 2.8 (#5031). Unlike the
+            // "requires firmware X" gates above, this one must fail OPEN: only
+            // a node that positively reports 2.8+ disables the section, so an
+            // unknown/absent firmware version keeps the previous behaviour.
+            isDisabled={supportedModules?.rangeTest === false}
             isSaving={isSaving}
             onSave={handleSaveRangeTestConfig}
           />
