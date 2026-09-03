@@ -13,6 +13,17 @@ class MeshCorePacketLogService {
   private readonly CLEANUP_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
   private readonly DEFAULT_MAX_COUNT = 1000;
   private readonly DEFAULT_MAX_AGE_HOURS = 24;
+  /**
+   * Row cap for a `meshcore_mqtt` region feed (#5040 Phase 2).
+   *
+   * Deliberately far above the 1,000 a device-backed source gets. A region feed
+   * carries what EVERY observer heard, one row per observer, so 1,000 rows is
+   * minutes of history on a busy region and the monitor is useless. 50,000 is
+   * roughly 50-100MB of SQLite per source at typical row sizes — noticeable on
+   * a Pi, which is why the UI warns next to the input rather than burying it in
+   * docs. User-configurable via `meshcore_mqtt_packet_log_max_count`.
+   */
+  private readonly DEFAULT_INGEST_MAX_COUNT = 50_000;
 
   constructor() {
     this.startCleanupScheduler();
@@ -38,10 +49,23 @@ class MeshCorePacketLogService {
       const cutoff = Date.now() - maxAgeHours * 60 * 60 * 1000;
       let removed = await databaseService.meshcore.deletePacketsOlderThan(cutoff);
 
-      const maxCount = await this.getMaxCount();
+      // Row caps are applied PER SOURCE, and the two source kinds have very
+      // different volume profiles: a device-backed source logs its own radio's
+      // earshot, while a meshcore_mqtt source logs what every observer in a
+      // region heard, one row per observer (#5040 Phase 2). A single cap cannot
+      // serve both — raising it for a region feed would bloat every device
+      // source's log too — so each kind reads its own setting.
+      const deviceMaxCount = await this.getMaxCount();
+      const ingestMaxCount = await this.getIngestMaxCount();
+      const ingestSourceIds = new Set(
+        (await databaseService.sources.getAllSources())
+          .filter((src) => src.type === 'meshcore_mqtt')
+          .map((src) => src.id),
+      );
       const sourceIds = await databaseService.meshcore.getPacketLogSourceIds();
       for (const sourceId of sourceIds) {
-        removed += await databaseService.meshcore.trimPacketsToCount(sourceId, maxCount);
+        const cap = ingestSourceIds.has(sourceId) ? ingestMaxCount : deviceMaxCount;
+        removed += await databaseService.meshcore.trimPacketsToCount(sourceId, cap);
       }
 
       if (removed > 0) {
@@ -86,6 +110,13 @@ class MeshCorePacketLogService {
     const raw = await databaseService.getSettingAsync('meshcore_packet_log_max_count');
     const n = raw ? parseInt(raw, 10) : NaN;
     return Number.isFinite(n) && n > 0 ? n : this.DEFAULT_MAX_COUNT;
+  }
+
+  /** Row cap for meshcore_mqtt ingest sources; see DEFAULT_INGEST_MAX_COUNT. */
+  async getIngestMaxCount(): Promise<number> {
+    const raw = await databaseService.getSettingAsync('meshcore_mqtt_packet_log_max_count');
+    const n = raw ? parseInt(raw, 10) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : this.DEFAULT_INGEST_MAX_COUNT;
   }
 
   async getMaxAgeHours(): Promise<number> {

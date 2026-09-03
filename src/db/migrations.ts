@@ -172,6 +172,11 @@ import { migration as createMeshIssuesMigration, runMigration154Postgres, runMig
 import { migration as clearStaleKeyMismatchMigration, runMigration155Postgres, runMigration155Mysql } from '../server/migrations/155_clear_stale_key_mismatch.js';
 import { migration as meshcoreNodeTimeSyncConfigMigration, runMigration156Postgres, runMigration156Mysql } from '../server/migrations/156_meshcore_node_time_sync_config.js';
 import { migration as meshcoreRoomSyncFailuresMigration, runMigration157Postgres, runMigration157Mysql } from '../server/migrations/157_meshcore_room_sync_failures.js';
+import {
+  migration as meshcorePacketLogObserverMigration,
+  runMigration158Postgres,
+  runMigration158Mysql,
+} from '../server/migrations/158_meshcore_packet_log_observer.js';
 
 // ============================================================================
 // Registry
@@ -2528,4 +2533,23 @@ registry.register({
   sqlite: (db) => meshcoreRoomSyncFailuresMigration.up(db),
   postgres: (client) => runMigration157Postgres(client),
   mysql: (pool) => runMigration157Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 158: per-observer attribution on meshcore_packet_log (#5040 Phase 2).
+// A meshcore_mqtt source ingests what every observer in a region heard, so one
+// OTA packet lands once per observer. Those copies are receptions, not
+// duplicates — differing SNR/RSSI per observer IS the coverage data — so the
+// table becomes N-rows-per-packet for those sources and dedupes at query time,
+// mirroring mqtt_packet_log. NULL observerId = heard by our own radio.
+// Idempotent across SQLite / PostgreSQL / MySQL.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 158,
+  name: 'meshcore_packet_log_observer',
+  settingsKey: 'migration_158_meshcore_packet_log_observer',
+  sqlite: (db) => meshcorePacketLogObserverMigration.up(db),
+  postgres: (client) => runMigration158Postgres(client),
+  mysql: (pool) => runMigration158Mysql(pool),
 });

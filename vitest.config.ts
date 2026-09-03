@@ -78,6 +78,11 @@ const SHARED_DB_TESTS = [
   // MySQL + PostgreSQL on the next). Same class as the 141-145 group above.
   'src/server/migrations/153_meshcore_node_neighbors_config.pgmysql.test.ts',
   'src/server/migrations/156_meshcore_node_time_sync_config.pgmysql.test.ts',
+  // Migration 158 (#5040 Phase 2) DROP/CREATEs `meshcore_packet_log` against
+  // the same shared PG/MySQL test DB. Added here on arrival rather than after
+  // it starts racing something — the 153/156 pair showed the failure mode is
+  // nondeterministic and reads as an unrelated "table doesn't exist".
+  'src/server/migrations/158_meshcore_packet_log_observer.pgmysql.test.ts',
 ];
 
 const COMMON_EXCLUDE = [

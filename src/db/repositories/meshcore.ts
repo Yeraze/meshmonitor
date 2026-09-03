@@ -158,7 +158,49 @@ export interface DbMeshCorePacket {
   rssi?: number | null;
   payloadSize?: number | null;
   rawHex?: string | null;
+  /**
+   * 64-hex key of the observer that heard this copy (#5040 Phase 2). NULL when
+   * our own radio heard it, which is every row from a device-backed source.
+   * A `meshcore_mqtt` source writes one row per observer that heard the frame.
+   */
+  observerId?: string | null;
   createdAt: number;
+}
+
+/**
+ * One deduplicated MeshCore packet — a group of observer receptions (#5040
+ * Phase 2).
+ *
+ * A `meshcore_mqtt` source stores one row per observer that heard a frame, so
+ * the raw table is a reception log. This is the collapsed view: one entry per
+ * distinct frame, carrying how many observers heard it and the best signal any
+ * of them reported.
+ *
+ * Frames are identified by `rawHex` — the decoder already treats the raw bytes
+ * as the sole source of truth, and MeshCore has no packet id on the wire to
+ * group by the way Meshtastic does.
+ */
+export interface MeshCoreGroupedPacket {
+  rawHex: string | null;
+  timestamp: number;
+  payloadType: number;
+  payloadTypeName: string | null;
+  routeType: number | null;
+  routeTypeName: string | null;
+  pathLenRaw: number | null;
+  hopCount: number | null;
+  pathHops: string | null;
+  payloadSize: number | null;
+  /** Best (highest) SNR any observer reported for this frame. */
+  bestSnr: number | null;
+  /** Best (highest, i.e. least negative) RSSI any observer reported. */
+  bestRssi: number | null;
+  /** Distinct observers that heard it. 0 for a locally-heard frame (observerId NULL). */
+  observerCount: number;
+  /** Total rows in the group — receptions, not distinct observers. */
+  receptionCount: number;
+  firstHeard: number;
+  lastHeard: number;
 }
 
 /**
@@ -1729,6 +1771,90 @@ export class MeshCoreRepository extends BaseRepository {
       .limit(query.limit ?? 100)
       .offset(query.offset ?? 0);
     return this.normalizeBigInts(result) as unknown as DbMeshCorePacket[];
+  }
+
+  /**
+   * Query deduplicated packets — one row per distinct frame within a source,
+   * collapsing the per-observer receptions a `meshcore_mqtt` source writes
+   * (#5040 Phase 2). Newest-first, paginated.
+   *
+   * Group key mirrors `mqttPacketLog.getGroupedPackets`'s handling of the
+   * missing-identity edge: a frame with no `rawHex` cannot be grouped with
+   * anything, so it falls back to `-id` — unique, and negative so it can never
+   * collide with a real hex value.
+   *
+   * `observerCount` counts DISTINCT observerId, so a locally-heard frame
+   * (observerId NULL) reports 0 rather than 1 — SQL COUNT(DISTINCT) skips
+   * NULLs on all three backends. That is the intended reading: nobody
+   * *else* heard it, we did.
+   */
+  async getGroupedPackets(query: MeshCorePacketQuery = {}): Promise<MeshCoreGroupedPacket[]> {
+    const t = this.tables.meshcorePacketLog;
+    const groupKey = sql`COALESCE(${t.rawHex}, CAST(-${t.id} AS CHAR(24)))`;
+    const conditions = this.buildPacketConditions(query);
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    const rows = await this.db
+      .select({
+        rawHex: sql<string | null>`MAX(${t.rawHex})`,
+        timestamp: sql<number>`MAX(${t.timestamp})`,
+        payloadType: sql<number>`MAX(${t.payloadType})`,
+        payloadTypeName: sql<string | null>`MAX(${t.payloadTypeName})`,
+        routeType: sql<number | null>`MAX(${t.routeType})`,
+        routeTypeName: sql<string | null>`MAX(${t.routeTypeName})`,
+        pathLenRaw: sql<number | null>`MAX(${t.pathLenRaw})`,
+        hopCount: sql<number | null>`MAX(${t.hopCount})`,
+        pathHops: sql<string | null>`MAX(${t.pathHops})`,
+        payloadSize: sql<number | null>`MAX(${t.payloadSize})`,
+        bestSnr: sql<number | null>`MAX(${t.snr})`,
+        bestRssi: sql<number | null>`MAX(${t.rssi})`,
+        observerCount: sql<number>`COUNT(DISTINCT ${t.observerId})`,
+        receptionCount: sql<number>`COUNT(*)`,
+        firstHeard: sql<number>`MIN(${t.timestamp})`,
+        lastHeard: sql<number>`MAX(${t.timestamp})`,
+      })
+      .from(t)
+      .where(whereClause)
+      .groupBy(t.sourceId, groupKey)
+      .orderBy(sql`MAX(${t.timestamp}) DESC`)
+      .limit(query.limit ?? 100)
+      .offset(query.offset ?? 0);
+    return this.normalizeBigInts(rows) as unknown as MeshCoreGroupedPacket[];
+  }
+
+  /**
+   * Count groups matching the same filters as {@link getGroupedPackets}.
+   *
+   * Uses a subquery over the grouped rows rather than `COUNT(DISTINCT a, b)`,
+   * which MySQL does not support — same portability constraint the MQTT
+   * grouped count documents.
+   */
+  async getGroupedPacketCount(query: MeshCorePacketQuery = {}): Promise<number> {
+    const t = this.tables.meshcorePacketLog;
+    const groupKey = sql`COALESCE(${t.rawHex}, CAST(-${t.id} AS CHAR(24)))`;
+    const conditions = this.buildPacketConditions(query);
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    const grouped = this.db
+      .select({ k: sql`1` })
+      .from(t)
+      .where(whereClause)
+      .groupBy(t.sourceId, groupKey)
+      .as('grouped');
+    const res = await this.db.select({ count: sql<number>`COUNT(*)` }).from(grouped);
+    return Number(res[0]?.count ?? 0);
+  }
+
+  /**
+   * Per-observer reception detail for one frame, oldest-first — the expansion
+   * behind a grouped row's `observerCount`.
+   */
+  async getPacketReceptions(sourceId: string, rawHex: string): Promise<DbMeshCorePacket[]> {
+    const t = this.tables.meshcorePacketLog;
+    const rows = await this.db
+      .select()
+      .from(t)
+      .where(and(eq(t.sourceId, sourceId), eq(t.rawHex, rawHex)))
+      .orderBy(t.timestamp, t.id);
+    return this.normalizeBigInts(rows) as unknown as DbMeshCorePacket[];
   }
 
   /**
