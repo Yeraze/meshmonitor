@@ -118,6 +118,13 @@ export function dedupTtlForTransport(transportMechanism: number | null | undefin
  * genuine re-reception (new device receive time) survives the long RF window
  * while a firmware replay (cached receive time) collapses. Absent values collapse
  * to a stable empty token.
+ *
+ * `rxTime` is unix SECONDS (the device's receive clock), unrelated to the
+ * millisecond `now` the TTL uses — it is only ever an opaque token here.
+ *
+ * Every field is numeric, so the unescaped `:` separator is injective: no value
+ * can contain the delimiter, and split positions are unambiguous. That stops
+ * holding if a free-form string field is ever added to the key — escape it then.
  */
 export function packetLogDedupKey(
   fromNum: number,

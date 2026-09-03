@@ -6067,6 +6067,11 @@ class MeshtasticManager implements ISourceManager {
         // (0/absent = unknown, never collapse). Genuine local TX is logged on a
         // different path and is never deduped here.
         const dedupPacketId = meshPacket.id ? Number(meshPacket.id) : 0;
+        // NOTE: rx_time is the device's receive clock in unix SECONDS (protobuf
+        // uint32), not the milliseconds of the `Date.now()` below. The mixed
+        // units are harmless here because rx_time only ever becomes an opaque
+        // token in the dedup key — it is never compared against the ms clock or
+        // used as a duration. Do not start doing arithmetic across the two.
         const dedupRxTime = meshPacket.rxTime != null ? Number(meshPacket.rxTime) : null;
         if (dedupPacketId && isDuplicatePacketLog(
           this.recentPacketLogKeys,
