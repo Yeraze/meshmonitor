@@ -280,6 +280,17 @@ describe('MeshCoreRoomSyncScheduler.tickOneManager — failure handling', () => 
     expect(db.recordRoomSyncFailure).not.toHaveBeenCalled();
   });
 
+  it('still clears the failure record when the success-path timestamp write fails', async () => {
+    const manager = makeFakeManager({ loginOutcome: 'ok' });
+    const db = mockFailurePath();
+    db.updateLastRoomSyncAt.mockRejectedValue(new Error('db down'));
+
+    await (makeScheduler(manager) as any).tickOneManager(manager.sourceId, manager);
+
+    // A stale count must not survive against a room that demonstrably works.
+    expect(db.clearRoomSyncFailure).toHaveBeenCalledWith('src-a', 'pk-a');
+  });
+
   it('records a failure when the login throws, so a broken room cannot camp at the head of the queue', async () => {
     const manager = makeFakeManager({});
     (manager as any).loginToRoomWithOutcome = async () => {

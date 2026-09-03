@@ -181,8 +181,18 @@ export class MeshCoreRoomSyncScheduler {
       manager.recordMeshTx?.();
 
       if (outcome === 'ok') {
-        await databaseService.meshcore.updateLastRoomSyncAt(sourceId, target.publicKey);
-        await databaseService.meshcore.clearRoomSyncFailure(sourceId, target.publicKey);
+        // Both writes are attempted regardless: if stamping the timestamp
+        // throws, a sequential await would skip the clear and leave a stale
+        // failure count sitting against a room that is demonstrably working.
+        const settled = await Promise.allSettled([
+          databaseService.meshcore.updateLastRoomSyncAt(sourceId, target.publicKey),
+          databaseService.meshcore.clearRoomSyncFailure(sourceId, target.publicKey),
+        ]);
+        for (const result of settled) {
+          if (result.status === 'rejected') {
+            logger.warn(`[RoomSyncScheduler] Room ${shortKey} synced but state update failed:`, result.reason);
+          }
+        }
         return;
       }
 
