@@ -260,8 +260,8 @@ upgraded node appears as a brand-new node with its history orphaned under the
 old number. This endpoint reports which new node looks like which old one.
 
 **Read-only and advisory.** Nothing is merged, moved or deleted on the strength
-of a detection; a `name`-basis pairing in particular is a heuristic. See
-[Node Number Changes (2.8)](/features/node-identity-changes).
+of a detection — merging is a separate, operator-initiated action (see below).
+See [Node Number Changes (2.8)](/features/node-identity-changes).
 
 **Permission:** `nodes:read` on the requested source.
 
@@ -280,7 +280,8 @@ of a detection; a `name`-basis pairing in particular is a heuristic. See
       "appearWindowSeconds": 7776000,
       "quietLookbackSeconds": 2592000,
       "graceSeconds": 43200,
-      "minQuietSeconds": 21600
+      "minQuietSeconds": 21600,
+      "includeNameBasis": false
     },
     "detections": [
       {
@@ -318,7 +319,11 @@ of a detection; a `name`-basis pairing in particular is a heuristic. See
 - `derivedNodeNum` — the predecessor's public key CRC-32s to exactly the
   successor's node number, which is the firmware's own 2.8 rule. Verified.
 - `publicKey` — both entries carry the same public key.
-- `name` — long and short names match. A guess; `confidence` is `medium`.
+
+Only these two, key-verified bases are reported. A third signal — matching long
+and short names for keyless nodes — exists but is off by default
+(`includeNameBasis`), because a name match is a guess and this list is what an
+operator merges history on.
 
 Public keys themselves are never returned; only `hasPublicKey`. All timestamps
 are unix **seconds**.
@@ -327,6 +332,175 @@ are unix **seconds**.
 ```bash
 curl -X GET "http://localhost:8080/api/nodes/identity-changes?sourceId=source-1"
 ```
+
+### Preview a Node Identity Merge
+
+#### POST /api/nodes/identity-changes/merge/preview
+
+Dry-runs a merge: counts, per table, every row that would be re-keyed onto the
+surviving node number, every row that would be removed, and everything that
+would deliberately stay behind. **Writes nothing.**
+
+The response is produced by the same code that performs the merge — the merge
+re-runs this plan inside its own transaction and applies exactly it — so the
+preview cannot drift from what actually happens.
+
+**Permission:** `nodes:write` on the source **and** an administrator account.
+
+**Request Body:**
+- `sourceId` (**required**, string): the source both nodes live on. A merge never
+  crosses sources.
+- `fromNodeNum` (**required**, number or `!hex`): the node being retired.
+- `toNodeNum` (**required**, number or `!hex`): the node that survives.
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "sourceId": "source-1",
+    "fromNodeNum": 1127553444,
+    "toNodeNum": 3649751816,
+    "fromNodeId": "!433d1ba4",
+    "toNodeId": "!d992eb08",
+    "entries": [
+      { "table": "telemetry", "column": "nodeNum", "action": "rekey", "rows": 4210 },
+      { "table": "messages", "column": "id", "action": "dropCollision", "rows": 2,
+        "note": "Same packet id held by both nodes; the surviving node's row is kept." },
+      { "table": "nodes", "column": "nodeNum", "action": "deleteNodeRow", "rows": 1 }
+    ],
+    "totalRowsRekeyed": 95413,
+    "totalRowsDropped": 3,
+    "journalPkCount": 40,
+    "undoable": true,
+    "undoBlockedReason": null,
+    "notRekeyed": [ { "table": "estimated_positions", "reason": "Global by design…" } ],
+    "warnings": [],
+    "detectionBasis": "derivedNodeNum"
+  }
+}
+```
+
+`action` is one of `rekey`, `moveRow`, `dropCollision`, `dropSelfLoop`,
+`dropRow`, `deleteNodeRow`, `patchNodeRow`.
+
+`detectionBasis` is `derivedNodeNum` / `publicKey` when a key-verified detection
+backs this exact pair, or `manual` when it does not. `manual` is allowed but
+recorded on the audit row.
+
+`undoable: false` means the merge is too large to journal a complete undo for.
+It can still be performed, but only with `acknowledgeNoUndo: true`.
+
+**Errors:** `404 NODE_NOT_FOUND`, `400 SAME_NODE`, `400 INVALID_NODE`,
+`400 SOURCE_REQUIRED`.
+
+### Merge Node Identities
+
+#### POST /api/nodes/identity-changes/merge
+
+Re-keys the retired node's history onto the surviving node's number and removes
+the retired node's entry. Runs as **one transaction** on SQLite, PostgreSQL and
+MySQL: it either completes or changes nothing.
+
+**Permission:** `nodes:write` on the source **and** an administrator account.
+
+**Request Body:**
+- `sourceId`, `fromNodeNum`, `toNodeNum` — as for the preview.
+- `confirm` (**required**, boolean): must be `true`. Without it the request is
+  refused, so a merge cannot happen on a call that never previewed.
+- `acknowledgeNoUndo` (optional, boolean): required only when the preview
+  reported `undoable: false`.
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "mergeId": "0f2f6f7a-…",
+    "plan": { "…": "the plan that was applied, same shape as the preview" },
+    "detectionBasis": "derivedNodeNum"
+  }
+}
+```
+
+**Errors:** `400 CONFIRMATION_REQUIRED`, `409 UNDO_UNAVAILABLE`, plus the
+preview's errors.
+
+**Example:**
+```bash
+curl -X POST "http://localhost:8080/api/nodes/identity-changes/merge" \
+  -H "Content-Type: application/json" \
+  -d '{"sourceId":"source-1","fromNodeNum":1127553444,"toNodeNum":3649751816,"confirm":true}'
+```
+
+### List Node Identity Merges
+
+#### GET /api/nodes/identity-changes/merges
+
+Merges recorded on one source, newest first. Each row is the audit record and
+the handle an undo is aimed at.
+
+**Permission:** `nodes:read` on the requested source.
+
+**Query Parameters:**
+- `sourceId` (**required**, string).
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "merges": [
+      {
+        "id": "0f2f6f7a-…",
+        "sourceId": "source-1",
+        "fromNodeNum": 1127553444,
+        "toNodeNum": 3649751816,
+        "fromNodeId": "!433d1ba4",
+        "toNodeId": "!d992eb08",
+        "basis": "derivedNodeNum",
+        "mergedAt": 1788478000000,
+        "mergedBy": "admin",
+        "rowsRekeyed": 95413,
+        "rowsDropped": 3,
+        "undoable": true,
+        "undoBlockedReason": null,
+        "undoneAt": null,
+        "undoneBy": null
+      }
+    ]
+  }
+}
+```
+
+`mergedAt` / `undoneAt` are **milliseconds**.
+
+### Undo a Node Identity Merge
+
+#### POST /api/nodes/identity-changes/merges/:mergeId/undo
+
+Reverses a merge, restoring the re-keyed rows, the removed rows and the retired
+node's entry. One transaction, like the merge itself.
+
+**Permission:** `nodes:write` on the source **and** an administrator account.
+
+**Request Body:**
+- `sourceId` (**required**, string): the source the caller's permission is
+  checked against. The merge must belong to it — checked before anything is
+  written.
+
+**Errors:**
+- `404 MERGE_NOT_FOUND`
+- `403 WRONG_SOURCE` — the merge belongs to another source.
+- `409 ALREADY_UNDONE`
+- `409 UNDO_UNAVAILABLE` — the merge was too large to journal.
+- `409 LATER_MERGE_PENDING` — a newer merge involving one of these nodes is
+  still in place; undo that one first.
+- `409 NODE_REAPPEARED` — the retired node number exists again, so restoring the
+  snapshot would collide with a live row.
+
+Rows created **after** the merge keep the new node number: undo puts back what
+the merge moved, not traffic that arrived since.
 
 ### Set Node Favorite Status
 

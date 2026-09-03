@@ -16,9 +16,10 @@
  * ## What this module does — and deliberately does not do
  *
  * It **detects and reports**. It never mutates, merges, re-keys or deletes
- * anything. Detection is a heuristic over names and keys; two genuinely
- * different nodes can share a long name, and silently merging them would
- * corrupt both histories irreversibly. A human decides.
+ * anything, and nothing it returns is acted on automatically. Re-keying the
+ * orphaned history onto the new number is a separate, operator-initiated
+ * action in `nodeIdentityMergeService.ts` — that service takes a node pair from
+ * an admin, not a detection, and always shows a dry-run preview first.
  *
  * ## Signals, strongest first
  *
@@ -39,6 +40,16 @@
  *    The fallback for nodes with no key on file. Firmware-default
  *    `Node !xxxxxxxx` long names are excluded — they would match every unnamed
  *    node to every other one.
+ *
+ * **Signal 3 is switched off by default** (`includeNameBasis`, default
+ * `false`). A name match is a guess: two genuinely different nodes that share a
+ * long *and* short name would be presented as one physical node, and that is
+ * exactly the input that would drive a wrong merge in the merge tool that sits
+ * on top of this detector (`nodeIdentityMergeService`). Only key-verified
+ * pairings — signals 1 and 2 — are reported, so everything downstream is
+ * working from evidence rather than a coincidence. The code path is kept, one
+ * boolean away, because it is the only signal available for a keyless node and
+ * a future read-only view may want it.
  *
  * A **differing public key is a hard veto**: if both rows carry a key and the
  * keys differ, they cannot be the same node under 2.8's derivation, no matter
@@ -96,6 +107,15 @@ export interface IdentityChangeOptions {
   graceSeconds?: number;
   /** The predecessor must have been silent at least this long by now. Default 6 hours. */
   minQuietSeconds?: number;
+  /**
+   * Report `basis: 'name'` pairings too. Default **false**.
+   *
+   * A name-only match is a guess — two different nodes sharing a long and a
+   * short name look identical to it — and the merge tool re-keys history on
+   * the strength of what this detector reports. Key-verified pairings only, by
+   * default.
+   */
+  includeNameBasis?: boolean;
   /** Clock injection for tests. Unix seconds. */
   nowSeconds?: number;
 }
@@ -109,7 +129,18 @@ export const IDENTITY_CHANGE_DEFAULTS: Required<Omit<IdentityChangeOptions, 'now
   quietLookbackSeconds: 30 * DAY,
   graceSeconds: 12 * HOUR,
   minQuietSeconds: 6 * HOUR,
+  // Key-verified pairings only. See `includeNameBasis` above.
+  includeNameBasis: false,
 };
+
+/**
+ * The bases that survive the default filter — the two that are checked against
+ * the firmware's own key derivation rather than inferred from a display name.
+ */
+export const KEY_VERIFIED_BASES: ReadonlySet<IdentityChangeDetection['basis']> = new Set([
+  'derivedNodeNum',
+  'publicKey',
+]);
 
 /** Hard cap on returned pairs so a pathological mesh can't produce an unbounded response. */
 export const MAX_IDENTITY_CHANGE_DETECTIONS = 500;
@@ -323,7 +354,12 @@ export function findIdentityChanges(
     const matches: IdentityChangeDetection[] = [];
     for (const predecessor of candidates) {
       const evaluated = evaluatePair(successor, predecessor, successorNameKey, derivedFor, now, opts);
-      if (evaluated) matches.push(evaluated);
+      if (!evaluated) continue;
+      // Drop name-only guesses before the pick, not after: a name match must
+      // never win the sort, and must not inflate `otherCandidateCount` into
+      // implying an ambiguity that no key-verified evidence supports.
+      if (!opts.includeNameBasis && !KEY_VERIFIED_BASES.has(evaluated.basis)) continue;
+      matches.push(evaluated);
     }
     if (matches.length === 0) continue;
 

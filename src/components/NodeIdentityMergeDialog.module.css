@@ -1,0 +1,335 @@
+/*
+ * NodeIdentityMergeDialog (#5032).
+ *
+ * The confirmation surface for the most destructive action in the app. The
+ * styling is doing a job, not decorating: the preview table is the widest thing
+ * here and gets the most room, the irreversible-merge warning uses the danger
+ * token while the ordinary "some rows will be dropped" note uses the warning
+ * one, and the confirm button is visually the LAST thing you reach.
+ *
+ * All colors go through semantic `var(--color-*)` tokens with no literal
+ * fallback, so themes and dark mode carry through (see the map-sidebar note in
+ * agent memory: a fallback silently defeats the theme).
+ */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: 16px;
+}
+
+.dialog {
+  background: var(--color-bg-raised);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  width: min(760px, 100%);
+  max-height: min(88vh, 900px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--color-border);
+  font-weight: 600;
+}
+
+.headerSpacer {
+  flex: 1;
+}
+
+.closeButton {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+}
+
+.closeButton:hover {
+  color: var(--color-text);
+}
+
+.body {
+  padding: 14px 16px;
+  overflow-y: auto;
+  font-size: 0.9em;
+  line-height: 1.5;
+}
+
+.body p {
+  margin: 0 0 10px;
+}
+
+.direction {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg);
+  margin-bottom: 12px;
+}
+
+.nodeChip {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.nodeChipName {
+  font-weight: 600;
+}
+
+.nodeChipId {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.85em;
+  color: var(--color-text-muted);
+}
+
+.arrow {
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+}
+
+.roleLabel {
+  font-size: 0.75em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+}
+
+/* Wide content scrolls inside its own box; the dialog body never scrolls sideways. */
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88em;
+}
+
+.table th,
+.table td {
+  padding: 6px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.table th {
+  background: var(--color-bg);
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.note {
+  white-space: normal;
+  color: var(--color-text-muted);
+  font-size: 0.9em;
+}
+
+.actionDrop {
+  color: var(--color-warning);
+  font-weight: 600;
+}
+
+.totals {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  font-size: 0.9em;
+}
+
+.totalValue {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.warning {
+  border: 1px solid var(--color-warning);
+  border-left-width: 4px;
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  background: var(--color-bg);
+}
+
+.danger {
+  border: 1px solid var(--color-danger);
+  border-left-width: 4px;
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  background: var(--color-bg);
+}
+
+.dangerTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--color-danger);
+  margin-bottom: 6px;
+}
+
+.warningTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--color-warning);
+  margin-bottom: 6px;
+}
+
+.list {
+  margin: 6px 0 0;
+  padding-left: 1.2em;
+}
+
+.details {
+  margin-bottom: 12px;
+}
+
+.details summary {
+  cursor: pointer;
+  color: var(--color-text-muted);
+  font-size: 0.9em;
+}
+
+.details ul {
+  margin: 8px 0 0;
+  padding-left: 1.2em;
+  font-size: 0.85em;
+  color: var(--color-text-muted);
+}
+
+.details li {
+  margin-bottom: 6px;
+}
+
+.tableName {
+  font-family: var(--font-mono, monospace);
+}
+
+.acknowledge {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 0.9em;
+}
+
+.errorBox {
+  border: 1px solid var(--color-danger);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  color: var(--color-danger);
+}
+
+.footer {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 12px 16px;
+  border-top: 1px solid var(--color-border);
+}
+
+.cancelButton {
+  background: var(--color-bg);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 7px 14px;
+  cursor: pointer;
+}
+
+.confirmButton {
+  background: var(--color-danger);
+  /* Text ON a danger fill: the page background reads as the inverse of the
+     foreground in every theme, which is how the node-popup danger buttons in
+     `nodes.css` do it. There is no `--color-text-inverse` role. */
+  color: var(--color-bg);
+  border: 1px solid var(--color-danger);
+  border-radius: 6px;
+  padding: 7px 14px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.confirmButton:disabled,
+.cancelButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.loading {
+  color: var(--color-text-muted);
+  padding: 12px 0;
+}
+
+/* The launch button that lives inside NodeIdentityChangeNotice. */
+.launchButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 0.9em;
+}
+
+.launchButton:hover {
+  border-color: var(--color-info);
+  color: var(--color-info);
+}
+
+@media (max-width: 600px) {
+  .dialog {
+    max-height: 94vh;
+  }
+
+  .footer {
+    flex-direction: column-reverse;
+  }
+
+  .cancelButton,
+  .confirmButton {
+    width: 100%;
+  }
+}

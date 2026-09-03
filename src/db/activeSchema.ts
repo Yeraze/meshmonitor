@@ -204,6 +204,11 @@ import {
   reticulumPathsSqlite, reticulumPathsPostgres, reticulumPathsMysql,
 } from './schema/reticulum.js';
 
+// Node identity-merge journal (#5032) — undo tape for the 2.8 renumber merge.
+import {
+  nodeIdentityMergesSqlite, nodeIdentityMergesPostgres, nodeIdentityMergesMysql,
+} from './schema/nodeIdentityMerges.js';
+
 /**
  * Runtime table map interface.
  *
@@ -350,6 +355,12 @@ export interface ActiveSchema {
   reticulumMessages: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3960 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   reticulumPaths: any;
+  /**
+   * `unknown`, not `any`, unlike its neighbours: this entry is new and the
+   * merge repository already narrows it at the point of use, so there is no
+   * reason to add another `any` to the burn-down pile (#3962 Phase 6).
+   */
+  nodeIdentityMerges: unknown;
 
   // Allow dynamic access for flexibility
   [key: string]: any;
@@ -430,6 +441,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     reticulumInterfaces: reticulumInterfacesSqlite,
     reticulumMessages: reticulumMessagesSqlite,
     reticulumPaths: reticulumPathsSqlite,
+    nodeIdentityMerges: nodeIdentityMergesSqlite,
   },
   postgres: {
     nodes: nodesPostgres,
@@ -502,6 +514,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     reticulumInterfaces: reticulumInterfacesPostgres,
     reticulumMessages: reticulumMessagesPostgres,
     reticulumPaths: reticulumPathsPostgres,
+    nodeIdentityMerges: nodeIdentityMergesPostgres,
   },
   mysql: {
     nodes: nodesMysql,
@@ -574,6 +587,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     reticulumInterfaces: reticulumInterfacesMysql,
     reticulumMessages: reticulumMessagesMysql,
     reticulumPaths: reticulumPathsMysql,
+    nodeIdentityMerges: nodeIdentityMergesMysql,
   },
 };
 

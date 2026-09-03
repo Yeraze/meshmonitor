@@ -1,7 +1,12 @@
 import { DeviceInfo, Channel } from '../types/device.js';
 import { MeshMessage, MessageEvent, MeshtasticHeardByEntry } from '../types/message.js';
 import type { ElevationProfile, ElevationTestResult } from '../types/elevation.js';
-import type { IdentityChangeReport } from '../types/nodeIdentityChange.js';
+import type {
+  IdentityChangeReport,
+  MergePreview,
+  MergeRecord,
+  MergeResult,
+} from '../types/nodeIdentityChange.js';
 import {
   sanitizeTextInput,
   validateChannel,
@@ -1109,6 +1114,69 @@ class ApiService {
   async getNodeIdentityChanges(sourceId: string): Promise<IdentityChangeReport> {
     const body = await this.get<{ success: boolean; data: IdentityChangeReport }>(
       `/api/nodes/identity-changes?sourceId=${encodeURIComponent(sourceId)}`,
+    );
+    return body.data;
+  }
+
+  /**
+   * Dry-run a node identity merge: what would move, what would be dropped,
+   * per table. Writes nothing.
+   *
+   * The server produces this with the same code that performs the merge, so
+   * the numbers shown to the operator are the ones that will actually apply.
+   * Admin-only.
+   */
+  async previewNodeIdentityMerge(
+    sourceId: string,
+    fromNodeNum: number,
+    toNodeNum: number,
+  ): Promise<MergePreview> {
+    const body = await this.post<{ success: boolean; data: MergePreview }>(
+      '/api/nodes/identity-changes/merge/preview',
+      { sourceId, fromNodeNum, toNodeNum },
+    );
+    return body.data;
+  }
+
+  /**
+   * Perform the merge. `confirm` is sent explicitly — the server refuses
+   * without it, so a merge cannot happen on a request that never saw a preview.
+   *
+   * `acknowledgeNoUndo` is only accepted, and only required, when the preview
+   * reported `undoable: false`.
+   */
+  async mergeNodeIdentities(
+    sourceId: string,
+    fromNodeNum: number,
+    toNodeNum: number,
+    options: { acknowledgeNoUndo?: boolean } = {},
+  ): Promise<MergeResult> {
+    const body = await this.post<{ success: boolean; data: MergeResult }>(
+      '/api/nodes/identity-changes/merge',
+      {
+        sourceId,
+        fromNodeNum,
+        toNodeNum,
+        confirm: true,
+        acknowledgeNoUndo: options.acknowledgeNoUndo === true,
+      },
+    );
+    return body.data;
+  }
+
+  /** Merges recorded on one source, newest first. */
+  async getNodeIdentityMerges(sourceId: string): Promise<MergeRecord[]> {
+    const body = await this.get<{ success: boolean; data: { merges: MergeRecord[] } }>(
+      `/api/nodes/identity-changes/merges?sourceId=${encodeURIComponent(sourceId)}`,
+    );
+    return body.data.merges;
+  }
+
+  /** Reverse a merge. The sourceId is what the server checks the caller's grant against. */
+  async undoNodeIdentityMerge(mergeId: string, sourceId: string): Promise<MergeRecord> {
+    const body = await this.post<{ success: boolean; data: MergeRecord }>(
+      `/api/nodes/identity-changes/merges/${encodeURIComponent(mergeId)}/undo`,
+      { sourceId },
     );
     return body.data;
   }

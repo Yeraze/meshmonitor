@@ -177,6 +177,7 @@ import {
   runMigration158Postgres,
   runMigration158Mysql,
 } from '../server/migrations/158_meshcore_packet_log_observer.js';
+import { migration as nodeIdentityMergesMigration, runMigration159Postgres, runMigration159Mysql } from '../server/migrations/159_node_identity_merges.js';
 
 // ============================================================================
 // Registry
@@ -2552,4 +2553,24 @@ registry.register({
   sqlite: (db) => meshcorePacketLogObserverMigration.up(db),
   postgres: (client) => runMigration158Postgres(client),
   mysql: (pool) => runMigration158Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 159: `node_identity_merges` — the undo journal for the Meshtastic
+// 2.8 node-number merge tool (#5032). 2.8 derives the node number from the
+// public key, so an upgraded node reappears under a new number with its history
+// orphaned under the old one. Merging re-keys that history; this table records
+// what each merge touched, inside the merge's own transaction, so it can be
+// run backwards. `journal` is LONGTEXT on MySQL — TEXT's 64 KiB cap would
+// truncate the undo tape silently.
+// Idempotent across SQLite / PostgreSQL / MySQL.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 159,
+  name: 'node_identity_merges',
+  settingsKey: 'migration_159_node_identity_merges',
+  sqlite: (db) => nodeIdentityMergesMigration.up(db),
+  postgres: (client) => runMigration159Postgres(client),
+  mysql: (pool) => runMigration159Mysql(pool),
 });

@@ -15,9 +15,11 @@ import type { IdentityChangeDetection } from '../types/nodeIdentityChange';
  * action is required. It sits with the location / MQTT / telemetry indicators
  * and states a fact, in the same inert `<span>` form as
  * `NodeIncompleteBadge` — deliberately not a button, because the detector must
- * never be one click away from merging two nodes' histories. A `name`-basis
- * match in particular is a guess: two genuinely different nodes can share a
- * name, so the copy says "likely", never "is".
+ * never be one click away from merging two nodes' histories. Merging lives
+ * behind an admin-only dry-run preview in Node Details, several deliberate
+ * clicks away. Every reported pairing is key-verified, but the copy still says
+ * "likely", never "is": the key proves which identity the number belongs to,
+ * not that the operator wants the two rows joined.
  *
  * Rendered on both halves of a pair, with the wording flipped: the new node
  * says where it came from, the silent old node says where its traffic went.
@@ -37,8 +39,9 @@ export function NodeIdentityChangeBadge({ detection, role }: NodeIdentityChangeB
   const other = role === 'successor' ? detection.predecessor : detection.successor;
   const otherName = other.longName || other.shortName || other.nodeId;
 
-  // A CRC-verified match is the firmware's own rule applied to the stored key,
-  // so it can be stated plainly. A name match is a guess and must read like one.
+  // Every reported pairing is key-verified — the server does not report
+  // name-only guesses — so the certainty line can be stated plainly. The
+  // `medium` arm stays for the opt-in `includeNameBasis` path.
   const certainty =
     detection.confidence === 'high'
       ? t('nodes.identity_change_certain', 'Confirmed by the node\'s public key.')

@@ -93,3 +93,4 @@ export * from './meshBeaconOffers.js';
 // Reticulum tables (epic #3960, Phase 1a) — per-source destinations +
 // interfaces snapshot.
 export * from './reticulum.js';
+export * from './nodeIdentityMerges.js';

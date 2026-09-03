@@ -9,8 +9,8 @@ number**, and MeshMonitor sees it as a brand-new node.
 
 If your whole mesh upgrades over a weekend, most of your node list goes dark and
 a set of look-alike entries appears beside it. Nothing is broken. This page
-explains what you are seeing, what MeshMonitor does about it, and what it
-deliberately does not do.
+explains what you are seeing, what MeshMonitor does about it, and how to move a
+node's history onto its new number if you decide the pairing is right.
 
 ## What actually happens
 
@@ -57,13 +57,20 @@ paired with, what the pairing is based on, and where the old history lives.
 
 ### How the pairing is worked out
 
-Three signals, strongest first:
+**Only key-verified pairings are reported.** Two signals:
 
 | Basis | Confidence | What it means |
 |-------|-----------|---------------|
 | `derivedNodeNum` | High | The old entry's public key CRC-32s to exactly the new entry's node number. That is the firmware's own rule, so this is a verification rather than a guess — and it holds even if you renamed the node during the upgrade. |
 | `publicKey` | High | Both entries carry the same public key. A node keeps its key across the upgrade, so this is the same node. |
-| `name` | Medium | Long name and short name match, and neither entry has a key on file. This is a genuine guess — two different nodes can share a name. |
+
+A third signal — matching long and short names, for nodes with no key on file —
+exists in the code but is **switched off**. A name match is a guess: two
+genuinely different nodes that share a long *and* a short name look identical to
+it. Since these pairings are what an operator merges history on, MeshMonitor
+only reports pairings the node's own key vouches for. A keyless node that
+renumbers is therefore not reported at all, which is the right answer when the
+alternative is a coincidence presented as a fact.
 
 A pairing is only reported when the timing also looks like a handover: the old
 entry fell silent around the time the new one first appeared, it is still silent
@@ -76,7 +83,8 @@ Two guards keep false pairings out:
   names line up. Two same-named neighbours are never paired.
 - **Firmware-default names are ignored.** An entry still called
   `Node !a1b2c3d4` has never sent its NodeInfo. Matching on that placeholder
-  would pair every unnamed node with every other one.
+  would pair every unnamed node with every other one. (This guard only matters
+  for the disabled name signal, but it stays in place.)
 
 The notice retires once the new entry is no longer new (90 days), so an old name
 collision never becomes a permanent badge.
@@ -92,35 +100,141 @@ If you watch the same physical mesh through both a direct TCP source and an MQTT
 source, you will see the notice separately on each, which is correct: each
 source keeps its own node table.
 
-## What MeshMonitor will not do
+## Merging the history
 
-**It will not merge anything automatically.** No history is moved, re-keyed or
-deleted, and there is no button to do it either.
+If you are satisfied the pairing is right, an admin can move the old node's
+history onto the new node number. This is the one action in MeshMonitor that
+rewrites history in place, so it is built to be inspected before it runs and
+reversed after it.
 
-This is deliberate. The `name` basis is a heuristic, and an automatic merge on a
-name collision would splice two unrelated nodes' telemetry, positions and
-message history together — irreversibly, and without anyone noticing until the
-graphs looked wrong. The cost of a missed merge is an operator reading two
-charts instead of one. The cost of a wrong merge is corrupted data.
+Open **Node Details** for either half of the pair and choose **Merge history…**.
+The button appears for administrators only.
 
-So MeshMonitor states what it observed and leaves the decision to you.
+### Step 1 — the dry run
 
-## What to do about it
+Nothing is written when the dialog opens. It shows a per-table count of exactly
+what would move, what would be removed, and what would stay behind:
 
-For most operators: nothing. Let the old entry age out. New telemetry
-accumulates under the new number and the graphs fill in again over the following
-days.
+![The merge dry-run preview, listing per-table row counts](/images/features/node-identity-merge-preview.png)
 
-If you want a tidy list sooner:
+The counts come from the same server code that performs the merge — the merge
+re-runs that count inside its own transaction and applies exactly what it
+described. There is no separate estimate that can drift from reality.
+
+### Step 2 — the confirmation
+
+The merge runs only when you press **Merge history**, and only then. It runs as
+a single database transaction on SQLite, PostgreSQL and MySQL alike: it either
+completes or leaves the database exactly as it found it. A half-applied merge is
+not a state MeshMonitor can produce.
+
+If the merge is too large to record a complete undo for, the dialog says so in
+red and the confirm button stays disabled until you tick an explicit
+acknowledgement.
+
+![The confirmation state, with the undo guarantee stated](/images/features/node-identity-merge-confirm.png)
+
+### What moves
+
+Everything the retired node's number appears in, within that one source:
+
+| Table | Columns re-keyed |
+|-------|------------------|
+| `messages` | sender, recipient, relay, ack — and the row's primary key, which encodes the sender |
+| `telemetry` | node number and node id |
+| `traceroutes`, `route_segments` | both endpoints |
+| `neighbor_info` | the node and its neighbours |
+| `packet_log`, `mqtt_packet_log`, `mqtt_ok_to_mqtt_violations` | sender, recipient, relay, gateway |
+| `waypoints` | owner |
+| `atak_contacts` | node number |
+| `dead_drop_messages` | sender |
+| `auto_traceroute_log`, `auto_key_repair_log` | node number |
+| `ignored_nodes`, `mesh_beacon_offers` | moved across, or dropped if the surviving node already has a row |
+| `nodes` | the retired entry is removed; the survivor keeps the **earlier** first-seen date, plus the retired entry's notes and favourite flag if it had none |
+
+### What does not move
+
+The dialog lists these too, so nothing is a surprise afterwards:
+
+- **`estimated_positions`** and its anchors — one row per physical node number,
+  pooled across every source by design. A per-source merge must not rewrite a
+  row another source shares; the position estimator regenerates it on its next
+  run.
+- **Global, source-less state** — key-repair state, geofence cooldowns, mesh
+  issues, automation home anchors. These self-heal or expire.
+- **Your preference lists** — auto-traceroute, auto-time-sync, auto-favourite
+  targets, and the monitored-node list in your notification settings. Re-add the
+  node to those after the merge. They are forward-looking configuration rather
+  than history, and re-keying them risks colliding with an entry the surviving
+  node already has.
+- **`backup_history`** — a record of what a past backup contained, which stays
+  true.
+
+### Collisions
+
+Both entries can occasionally hold the same row. The rules are fixed and shown
+in the preview:
+
+- **The same message under both numbers.** A message's id is
+  `source_node_packet`, so re-keying the sender changes the primary key, and two
+  copies of the same packet collide. The surviving node's copy is kept and the
+  retired node's copy is removed — the two are the same packet observed twice,
+  so neither is more correct, and "keep the one already under that id" needs no
+  tie-break that could differ between the preview and the merge.
+- **"Old node heard new node" neighbour rows.** A real observation before the
+  upgrade, a self-loop after it. Removed.
+- **`ignored_nodes` / `mesh_beacon_offers`.** At most one row per node, so if
+  the survivor already has one the retired node's is removed.
+
+Every removed row is snapshotted whole before it goes, so an undo puts it back
+exactly as it was.
+
+### Undo
+
+Each merge is recorded with enough detail to run it backwards, and the record is
+written inside the merge's own transaction. Undo restores the re-keyed rows, the
+removed rows and the retired node's entry.
+
+Four things stop an undo, and they refuse rather than guess:
+
+- The merge was already undone.
+- A **newer** merge involving either node is still in place. Undo them in
+  reverse order.
+- The retired node number **exists again** — it started transmitting after the
+  merge. Restoring the snapshot would collide with a live row.
+- The merge was recorded as not undoable, because it was too large to journal.
+  The dialog told you this before you confirmed.
+
+Rows that arrived **after** the merge stay under the new number. Undo puts back
+what the merge moved, not the traffic that has come in since.
+
+### Permissions and scope
+
+- Merging requires `nodes:write` on that source **and** an administrator
+  account. Ordinary write access is not enough.
+- A merge never crosses sources. Both node numbers must exist on the same
+  source, and every statement is scoped to it — a merge on one source cannot
+  touch a single row belonging to another, even when both hold the same node
+  numbers.
+- Detection never triggers a merge. The two node numbers come from you; the
+  detector only supplies the "verified" label recorded on the audit row. If you
+  merge a pair the detector does not back, the dialog says the pairing is
+  unverified and the audit row records it as `manual`.
+
+## If you would rather not merge
+
+Nothing forces you to. Let the old entry age out: new telemetry accumulates
+under the new number and the graphs fill in again over the following days.
+
+To tidy the list without merging:
 
 - **Re-favourite the node** under its new number, if you had favourited it.
 - **Update any automations, notification rules or monitored-node lists** that
   reference the node explicitly. These are keyed on node number and will keep
   pointing at the silent old entry until you change them.
 - **Delete the old entry** once you no longer need its history (node list →
-  delete). This is destructive — the old telemetry and position history go with
-  it — so do it only when you are sure the pairing is right, and prefer waiting
-  if the notice says the basis was `name`.
+  delete). Unlike a merge, this is not reversible — the old telemetry and
+  position history go with it.
 
 ## Related: duplicate-key security warnings
 

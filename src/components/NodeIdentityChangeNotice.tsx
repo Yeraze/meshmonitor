@@ -1,7 +1,11 @@
+import { useContext, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from './icons';
 import { useNodeIdentityChanges } from '../hooks/useNodeIdentityChanges';
+import { AuthContext } from '../contexts/AuthContext';
+import { NodeIdentityMergeDialog } from './NodeIdentityMergeDialog';
 import styles from './NodeIdentityChangeNotice.module.css';
+import mergeStyles from './NodeIdentityMergeDialog.module.css';
 
 /**
  * The Node Details explanation of a Meshtastic 2.8 node-number change
@@ -13,13 +17,14 @@ import styles from './NodeIdentityChangeNotice.module.css';
  *
  * Three deliberate choices:
  *
- * - **It informs, it does not act.** There is no merge button. Detection is a
- *   heuristic — a `name`-basis pairing is two nodes that happen to share a
- *   name until proven otherwise — and an automatic merge would irreversibly
- *   splice two unrelated histories together. The operator decides.
+ * - **It informs; acting takes several more clicks.** Detection never merges
+ *   anything. An admin gets a "Merge history" button here, and that button
+ *   opens a dry-run preview — the merge itself is behind an explicit
+ *   confirmation in `NodeIdentityMergeDialog`. Non-admins see no button at all,
+ *   matching the server's admin-only gate.
  * - **It shows its working.** The evidence list states which signals fired, so
- *   a reader can tell a key-verified pairing from a name guess rather than
- *   trusting a confidence word.
+ *   a reader can see what the pairing actually rests on rather than trusting a
+ *   confidence word.
  * - **It is not a warning.** Renumbering on upgrade is correct firmware
  *   behaviour. The styling is informational, not the red used by the
  *   security blocks elsewhere in Node Details.
@@ -45,6 +50,11 @@ function formatDuration(seconds: number, t: ReturnType<typeof useTranslation>['t
 export function NodeIdentityChangeNotice({ nodeNum, sourceId }: NodeIdentityChangeNoticeProps) {
   const { t } = useTranslation();
   const { bySuccessorNodeNum, byPredecessorNodeNum } = useNodeIdentityChanges(sourceId);
+  // The raw context, not `useAuth()`: that hook throws outside an AuthProvider,
+  // and this notice renders in places (and tests) that have no auth tree. No
+  // provider means no admin, which is the safe default for a merge button.
+  const authStatus = useContext(AuthContext)?.authStatus ?? null;
+  const [mergeOpen, setMergeOpen] = useState(false);
 
   if (nodeNum == null) return null;
 
@@ -54,24 +64,27 @@ export function NodeIdentityChangeNotice({ nodeNum, sourceId }: NodeIdentityChan
   const detection = asSuccessor ?? byPredecessorNodeNum.get(nodeNum);
   if (!detection) return null;
 
+  // Merging is admin-only on the server. Rendering the button to anyone else
+  // would only produce a 403 they cannot act on.
+  const canMerge = Boolean(sourceId) && authStatus?.authenticated === true && authStatus.user?.isAdmin === true;
+
   const role: 'successor' | 'predecessor' = asSuccessor ? 'successor' : 'predecessor';
   const other = role === 'successor' ? detection.predecessor : detection.successor;
   const otherName = other.longName || other.shortName || other.nodeId;
 
-  const basisText = {
-    derivedNodeNum: t(
-      'nodes.identity_change_basis_derived',
-      "The old node's public key produces exactly this node's number, which is how Meshtastic 2.8 assigns them. This pairing is verified, not guessed.",
-    ),
-    publicKey: t(
-      'nodes.identity_change_basis_key',
-      'Both nodes present the same public key, and a node keeps its key across the 2.8 upgrade.',
-    ),
-    name: t(
-      'nodes.identity_change_basis_name',
-      'The long and short names match. This is a guess: two different nodes can share a name, so check before relying on it.',
-    ),
-  }[detection.basis];
+  // Only the two key-verified bases reach the client — the server does not
+  // report name-only guesses (see `includeNameBasis`), so there is no
+  // "the names matched" copy to write here.
+  const basisText =
+    detection.basis === 'derivedNodeNum'
+      ? t(
+          'nodes.identity_change_basis_derived',
+          "The old node's public key produces exactly this node's number, which is how Meshtastic 2.8 assigns them. This pairing is verified, not guessed.",
+        )
+      : t(
+          'nodes.identity_change_basis_key',
+          'Both nodes present the same public key, and a node keeps its key across the 2.8 upgrade.',
+        );
 
   return (
     <div className={styles.notice} data-testid="node-identity-change-notice" data-role={role}>
@@ -94,11 +107,17 @@ export function NodeIdentityChangeNotice({ nodeNum, sourceId }: NodeIdentityChan
               )}
         </p>
         <p>
-          {t(
-            'nodes.identity_change_history',
-            'Telemetry, positions and packet history recorded before the change stay under {{oldNodeId}}. MeshMonitor does not move them: the two entries remain separate.',
-            { oldNodeId: detection.predecessor.nodeId },
-          )}
+          {canMerge
+            ? t(
+                'nodes.identity_change_history_admin',
+                'Telemetry, positions and packet history recorded before the change stay under {{oldNodeId}}. Nothing moves on its own — an admin can merge the two entries below, after reviewing exactly what would change.',
+                { oldNodeId: detection.predecessor.nodeId },
+              )
+            : t(
+                'nodes.identity_change_history',
+                'Telemetry, positions and packet history recorded before the change stay under {{oldNodeId}}. MeshMonitor does not move them: the two entries remain separate.',
+                { oldNodeId: detection.predecessor.nodeId },
+              )}
         </p>
         <ul className={styles.facts}>
           <li>{basisText}</li>
@@ -112,7 +131,7 @@ export function NodeIdentityChangeNotice({ nodeNum, sourceId }: NodeIdentityChan
           {detection.hwModelMatches && (
             <li>{t('nodes.identity_change_fact_hw', 'Both entries report the same hardware model.')}</li>
           )}
-          {detection.basis !== 'name' && detection.nameMatches && (
+          {detection.nameMatches && (
             <li>{t('nodes.identity_change_fact_name', 'Both entries carry the same long and short name.')}</li>
           )}
           {detection.otherCandidateCount > 0 && (
@@ -128,10 +147,33 @@ export function NodeIdentityChangeNotice({ nodeNum, sourceId }: NodeIdentityChan
         <div className={styles.caveat}>
           {t(
             'nodes.identity_change_caveat',
-            'This is a read-only observation. Nothing has been merged, moved or deleted.',
+            'Nothing has been merged, moved or deleted. This is an observation.',
           )}
         </div>
+        {canMerge && (
+          <button
+            type="button"
+            className={mergeStyles.launchButton}
+            onClick={() => setMergeOpen(true)}
+            data-testid="node-identity-merge-open"
+          >
+            <UiIcon name="link" size={14} />
+            {t('nodes.identity_change_merge_button', 'Merge history…')}
+          </button>
+        )}
       </div>
+      {mergeOpen && sourceId && (
+        <NodeIdentityMergeDialog
+          sourceId={sourceId}
+          fromNodeNum={detection.predecessor.nodeNum}
+          toNodeNum={detection.successor.nodeNum}
+          fromLabel={
+            detection.predecessor.longName || detection.predecessor.shortName || detection.predecessor.nodeId
+          }
+          toLabel={detection.successor.longName || detection.successor.shortName || detection.successor.nodeId}
+          onClose={() => setMergeOpen(false)}
+        />
+      )}
     </div>
   );
 }
