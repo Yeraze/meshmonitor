@@ -889,6 +889,11 @@ export class MeshCoreRepository extends BaseRepository {
   }
 
   async updateLastRoomSyncAt(sourceId: string, publicKey: string): Promise<void> {
+    // Update-only, like setRoomSyncConfig: without this a missing sourceId
+    // matches nothing and the caller believes the sync was recorded.
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.updateLastRoomSyncAt requires a sourceId');
+    }
     const { meshcoreNodes } = this.tables;
     const now = this.now();
     await this.db

@@ -1080,7 +1080,11 @@ describe('MeshCoreRepository — room sync failure tracking', () => {
   });
 
   it('requires a sourceId', async () => {
+    // All four room-sync writers are update-only, so a missing sourceId would
+    // match nothing and the caller would believe the write landed.
     await expect(repo.recordRoomSyncFailure('', 'room-a', 'no_reply')).rejects.toThrow(/sourceId/);
     await expect(repo.clearRoomSyncFailure('', 'room-a')).rejects.toThrow(/sourceId/);
+    await expect(repo.setRoomSyncConfig('', 'room-a', { roomSyncEnabled: false })).rejects.toThrow(/sourceId/);
+    await expect(repo.updateLastRoomSyncAt('', 'room-a')).rejects.toThrow(/sourceId/);
   });
 });
