@@ -1896,19 +1896,39 @@ export class MeshCoreRepository extends BaseRepository {
     const total = await this.getPacketCount({ sourceId });
     if (total <= maxCount) return 0;
 
-    // Find the cutoff id: keep the newest `maxCount` rows, delete the rest.
+    // Find the cutoff row: keep the newest `maxCount`, delete everything older.
     const survivors = await this.db
-      .select({ id: meshcorePacketLog.id })
+      .select({ id: meshcorePacketLog.id, timestamp: meshcorePacketLog.timestamp })
       .from(meshcorePacketLog)
       .where(eq(meshcorePacketLog.sourceId, sourceId))
       .orderBy(desc(meshcorePacketLog.timestamp), desc(meshcorePacketLog.id))
       .limit(maxCount);
     if (survivors.length === 0) return 0;
-    const oldestKeptId = Number(survivors[survivors.length - 1].id);
+    const boundary = survivors[survivors.length - 1];
+    const oldestKeptId = Number(boundary.id);
+    const oldestKeptTs = Number(boundary.timestamp);
 
-    await this.db
+    // The delete predicate must mirror the survivor ORDER BY exactly:
+    // `timestamp < ts OR (timestamp = ts AND id < id)`. A bare `id < oldestKeptId`
+    // silently assumes ids rise with timestamps. They normally do — both write
+    // paths stamp Date.now() at insert — but a backwards clock step (NTP) breaks
+    // it, and then a row with a HIGH id and an OLD timestamp falls out of the
+    // survivor set while escaping the delete, so the log grows past its cap.
+    // Measured: with one such row, a trim to 3 left 4.
+    //
+    // Note the failure is over-RETENTION, not data loss: the reverse case (a low
+    // id with a NEW timestamp, which would delete a row that should survive)
+    // cannot arise while timestamps are assigned at insert.
+    const deleted = await this.db
       .delete(meshcorePacketLog)
-      .where(and(eq(meshcorePacketLog.sourceId, sourceId), lt(meshcorePacketLog.id, oldestKeptId)));
+      .where(and(
+        eq(meshcorePacketLog.sourceId, sourceId),
+        or(
+          lt(meshcorePacketLog.timestamp, oldestKeptTs),
+          and(eq(meshcorePacketLog.timestamp, oldestKeptTs), lt(meshcorePacketLog.id, oldestKeptId)),
+        ),
+      ));
+    void deleted;
     return total - survivors.length;
   }
 
