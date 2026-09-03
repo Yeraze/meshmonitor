@@ -83,6 +83,7 @@ const SHARED_DB_TESTS = [
   // it starts racing something — the 153/156 pair showed the failure mode is
   // nondeterministic and reads as an unrelated "table doesn't exist".
   'src/server/migrations/158_meshcore_packet_log_observer.pgmysql.test.ts',
+  'src/db/repositories/meshcorePacketLog.grouped.multidb.test.ts',
 ];
 
 const COMMON_EXCLUDE = [
