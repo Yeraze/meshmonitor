@@ -23,15 +23,53 @@
 
 import type { ISourceManager, SourceManagerRegistry } from './sourceManagerRegistry.js';
 import type { MeshCoreManager } from './meshcoreManager.js';
+import type { MeshCoreMqttManager } from './meshcoreMqttManager.js';
 import type { MeshtasticManager } from './meshtasticManager.js';
 import type { ReticulumManager } from './reticulumManager.js';
 
 /**
- * Narrows an ISourceManager to MeshCoreManager.
+ * Narrows an ISourceManager to a **device-backed** MeshCoreManager.
+ *
+ * Note the "device-backed": `meshcore_mqtt` sources (#5040) are MeshCore too,
+ * but have no radio, so this predicate deliberately excludes them. Every caller
+ * that drives the device — the neighbours / remote-telemetry / room-sync /
+ * telemetry-poll / time-sync schedulers, the config and device routes — wants
+ * exactly this narrowing, and gets the exclusion for free.
+ *
+ * For a surface that should see MeshCore data regardless of where it came from
+ * (node lists, automation triggers, notification services), use
+ * {@link isAnyMeshCoreManager} instead. Picking the wrong one is the likely bug:
+ * this predicate silently skips MQTT sources, which reads as "the feature just
+ * doesn't work for that source" rather than as an error.
+ *
  * Predicate is based on the sourceType discriminant — no instanceof, no import cycles.
  */
 export function isMeshCoreManager(m: ISourceManager): m is MeshCoreManager {
   return m.sourceType === 'meshcore';
+}
+
+/**
+ * Narrows an ISourceManager to the MQTT-fed MeshCore ingest manager (#5040).
+ *
+ * This source has no device: it subscribes to an analyzer broker and replays
+ * what other observers heard. It can never transmit.
+ */
+export function isMeshCoreMqttManager(m: ISourceManager): m is MeshCoreMqttManager {
+  return m.sourceType === 'meshcore_mqtt';
+}
+
+/**
+ * True for any MeshCore source, device-backed or MQTT-fed.
+ *
+ * Use this for read/consume surfaces — node lists, automation triggers,
+ * notification and analysis services — where "which transport delivered it"
+ * is not the question being asked. Use {@link isMeshCoreManager} when the code
+ * is going to talk to a radio.
+ */
+export function isAnyMeshCoreManager(
+  m: ISourceManager,
+): m is MeshCoreManager | MeshCoreMqttManager {
+  return isMeshCoreManager(m) || isMeshCoreMqttManager(m);
 }
 
 /**

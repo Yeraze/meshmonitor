@@ -28,6 +28,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
+import { MeshCoreMqttManager, type MeshCoreMqttSourceConfig } from './meshcoreMqttManager.js';
 import { logger } from '../utils/logger.js';
 import { applyManagerSettings } from './applyManagerSettings.js';
 import { meshcoreConfigFromSource, ensureMeshCoreManagerStarted } from './meshcoreConfig.js';
@@ -199,6 +200,31 @@ export async function bootstrapSources(deps: BootstrapDeps): Promise<void> {
         await ensureMeshCoreManagerStarted(source, mcConfig);
       } catch (err) {
         logger.error(`Failed to start MeshCore source ${source.id} (${source.name}); continuing with other sources:`, err);
+      }
+      continue;
+    }
+
+    if (source.type === 'meshcore_mqtt') {
+      // MeshCore ingest from an Analyzer Observer broker (#5040). Subscribe-only
+      // and radio-less: it never transmits, and `isMeshCoreManager()` excludes
+      // it from every device-driving scheduler by construction.
+      const cfg = source.config as Partial<MeshCoreMqttSourceConfig>;
+      if (cfg?.autoConnect === false) {
+        logger.info(`Skipping auto-connect for MeshCore MQTT source ${source.id} (${source.name}) — autoConnect disabled`);
+        continue;
+      }
+      if (!cfg?.brokerUrl || !cfg?.region) {
+        logger.warn(`MeshCore MQTT source ${source.id} (${source.name}) is missing brokerUrl or region; skipping`);
+        continue;
+      }
+
+      try {
+        const manager = new MeshCoreMqttManager(source.id, source.name, cfg as MeshCoreMqttSourceConfig);
+        await deps.registry.addManager(manager);
+        await manager.start();
+        logger.info(`Started MeshCore MQTT source ${source.id} (${source.name})`);
+      } catch (err) {
+        logger.error(`Failed to start MeshCore MQTT source ${source.id} (${source.name}); continuing with other sources:`, err);
       }
       continue;
     }

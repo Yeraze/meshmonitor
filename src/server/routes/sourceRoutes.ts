@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import databaseService from '../../services/database.js';
 import { requirePermission, optionalAuth } from '../auth/authMiddleware.js';
+import { MeshCoreMqttManager, type MeshCoreMqttSourceConfig } from '../meshcoreMqttManager.js';
 import { logger } from '../../utils/logger.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { MeshtasticManager } from '../meshtasticManager.js';
@@ -549,7 +550,10 @@ function validateMqttBridgeRewrites(config: Record<string, any>): string | null 
 // the stored value. Without this merge, editing an unrelated field (e.g.
 // the geofence bounding box) writes back a config with no password and
 // wipes the saved credential.
-function preserveSourceCredentials(
+// Exported for direct unit testing: a missing branch here silently WIPES a
+// stored credential on the next save, which is invisible in a route-level test
+// unless you assert on the persisted config. See sourceRoutes.credentials.test.ts.
+export function preserveSourceCredentials(
   type: string,
   existingConfig: Record<string, unknown> | undefined,
   incomingConfig: Record<string, unknown>,
@@ -574,6 +578,19 @@ function preserveSourceCredentials(
       (incomingUpstream.password === undefined || incomingUpstream.password === '')
     ) {
       merged.upstream = { ...incomingUpstream, password: existingUpstream.password };
+    }
+  } else if (type === 'meshcore_mqtt') {
+    // Top-level `password` rather than a nested auth block (#5040). The edit
+    // form OMITS the field when left blank rather than sending '', so check for
+    // absence as well as empty string — without this the whole config object is
+    // replaced and the stored credential is silently dropped on every save.
+    const existingPassword = (existingConfig as { password?: unknown } | undefined)?.password;
+    const incomingPassword = (incomingConfig as { password?: unknown }).password;
+    if (
+      typeof existingPassword === 'string' && existingPassword !== '' &&
+      (incomingPassword === undefined || incomingPassword === '')
+    ) {
+      merged.password = existingPassword;
     }
   }
   return merged;
@@ -805,8 +822,20 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
     if (!name || typeof name !== 'string') {
       return res.status(400).json({ error: 'name is required and must be a string' });
     }
-    if (!['meshtastic_tcp', 'mqtt_broker', 'mqtt_bridge', 'meshcore', 'reticulum'].includes(type)) {
-      return res.status(400).json({ error: 'type must be meshtastic_tcp, mqtt_broker, mqtt_bridge, meshcore, or reticulum' });
+    if (!['meshtastic_tcp', 'mqtt_broker', 'mqtt_bridge', 'meshcore', 'meshcore_mqtt', 'reticulum'].includes(type)) {
+      return res.status(400).json({ error: 'type must be meshtastic_tcp, mqtt_broker, mqtt_bridge, meshcore, meshcore_mqtt, or reticulum' });
+    }
+
+    // meshcore_mqtt (#5040) ingests from an Analyzer Observer broker and has no
+    // radio. Both fields are structural — the topic filter is built from the
+    // region, so a source without one would subscribe to nothing.
+    if (type === 'meshcore_mqtt') {
+      if (typeof config?.brokerUrl !== 'string' || config.brokerUrl.trim() === '') {
+        return res.status(400).json({ error: 'brokerUrl is required for a meshcore_mqtt source' });
+      }
+      if (typeof config?.region !== 'string' || config.region.trim() === '') {
+        return res.status(400).json({ error: 'region is required for a meshcore_mqtt source' });
+      }
     }
 
     // mqtt_bridge may optionally attach to a parent mqtt_broker. When
@@ -884,6 +913,28 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
       }
     }
 
+    // Same guard as host:port above, for the analyzer feed (#5040). Two sources
+    // on the same brokerUrl+region would ingest every packet twice, and the
+    // per-observer dedup is scoped per source, so nothing downstream would
+    // collapse them — the duplicate would silently double every count.
+    if (type === 'meshcore_mqtt' && config.brokerUrl && config.region) {
+      const region = String(config.region).trim().toUpperCase();
+      const existing = await databaseService.sources.getAllSources();
+      const duplicate = existing.find((s) => {
+        if (s.type !== 'meshcore_mqtt') return false;
+        const cfg = s.config as { brokerUrl?: unknown; region?: unknown };
+        return (
+          cfg?.brokerUrl === config.brokerUrl &&
+          String(cfg?.region ?? '').trim().toUpperCase() === region
+        );
+      });
+      if (duplicate) {
+        return res.status(409).json({
+          error: `A source already reads ${config.brokerUrl} for region ${region} ("${duplicate.name}")`,
+        });
+      }
+    }
+
     const source = await databaseService.sources.createSource({
       id: uuidv4(),
       name: name.trim(),
@@ -941,6 +992,20 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
         }
       } catch (err) {
         logger.warn(`Could not start Reticulum manager for new source ${source.id}:`, err);
+      }
+    } else if (source.enabled && source.type === 'meshcore_mqtt' && cfgForStart?.autoConnect !== false) {
+      // Without this the source is persisted but never started until the next
+      // restart — the dashboard would report success and then simply do nothing.
+      try {
+        if (cfgForStart?.brokerUrl && cfgForStart?.region) {
+          const manager = new MeshCoreMqttManager(source.id, source.name, cfgForStart as MeshCoreMqttSourceConfig);
+          await sourceManagerRegistry.addManager(manager);
+          await manager.start();
+        } else {
+          logger.warn(`MeshCore MQTT source ${source.id} created with incomplete config`);
+        }
+      } catch (err) {
+        logger.warn(`Could not start MeshCore MQTT manager for new source ${source.id}:`, err);
       }
     } else if (source.enabled && (source.type === 'mqtt_broker' || source.type === 'mqtt_bridge')) {
       try {

@@ -15,7 +15,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { MeshCoreManager } from '../meshcoreManager.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
-import { isMeshCoreManager } from '../sourceManagerTypes.js';
+import { isMeshCoreManager, isMeshCoreMqttManager } from '../sourceManagerTypes.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { fail } from '../utils/apiResponse.js';
@@ -55,9 +55,18 @@ export function meshcoreRouteGuard(req: Request, res: Response, next: NextFuncti
   }
   const _guardMgr = sourceManagerRegistry.getManager(sourceId);
   if (!_guardMgr || !isMeshCoreManager(_guardMgr)) {
+    // A `meshcore_mqtt` source (#5040) IS MeshCore, but has no device — it
+    // ingests from an analyzer broker. `isMeshCoreManager` excludes it by
+    // construction, which is what we want for this whole router (it is all
+    // device lifecycle, local-node status and advert). Say so specifically
+    // rather than claiming no MeshCore manager exists, which would send an
+    // operator hunting for a registration bug that isn't there.
+    const isMqttIngest = _guardMgr !== undefined && isMeshCoreMqttManager(_guardMgr);
     return res.status(404).json({
       success: false,
-      error: `No MeshCore manager for source ${sourceId}`,
+      error: isMqttIngest
+        ? `Source ${sourceId} is a MeshCore MQTT ingest source and has no device — these routes require a Companion or Repeater`
+        : `No MeshCore manager for source ${sourceId}`,
     });
   }
   // Cache the narrowed manager so managerFor() can avoid a second registry lookup.
