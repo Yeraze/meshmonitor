@@ -310,6 +310,11 @@ describe('compact-landscape queries do not straddle rail and bottom bar (#5053)'
     const railBlocks = [...clean.matchAll(/@media([^{]*orientation:\s*landscape[^{]*)\{/g)].filter(
       (m) => /max-height:\s*700px/.test(m[1])
     );
+    // Sidebar.css carries exactly two of these — the padding/controls block and
+    // the header/logo/collapsed-rail block. Pinning the count is deliberate: a
+    // third one added later is a new place for a rail rule to leak into the bar,
+    // and the author should have to come here and confirm it is guarded rather
+    // than have the loop silently skip it.
     expect(railBlocks.length).toBe(2);
     for (const m of railBlocks) {
       expect(mediaMatches(m[1].trim(), LANDSCAPE_PHONE)).toBe(false);

@@ -73,7 +73,9 @@
   position: absolute;
   top: 10px;
   right: 10px;
-  z-index: 1000;
+  /* Matches `.map-sidebar` above, for the same reason (#5052): 1000 ties with
+     Leaflet's control containers and lets DOM order decide. */
+  z-index: 1001;
   width: 34px;
   height: 34px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
