@@ -14,7 +14,7 @@ Configuration changes directly modify your Meshtastic device settings. Always en
 
 **Description**: The full display name for your node, shown in node lists and messages.
 
-**Maximum Length**: 39 characters
+**Maximum Length**: 39 characters. Firmware 2.8 and later clamp the name it stores and transmits to 24 bytes (`MAX_LONG_NAME_BYTES`, `meshUtils.h`), so a longer name is truncated on the device.
 
 **Effect**: Changes how your node appears to other users on the mesh network.
 
@@ -254,11 +254,11 @@ MeshMonitor will warn you before setting ROUTER mode. Only use this for powered,
 
 **Description**: How often the device broadcasts its node information to the mesh.
 
-**Range**: 3600-4294967295 seconds (1 hour - ~136 years)
+**Range**: up to 2147483647 seconds (~68 years). Firmware clamps anything larger.
 
 **Default**: 10800 seconds (3 hours)
 
-**Minimum**: 3600 seconds (1 hour)
+**Minimum**: 3600 seconds (1 hour) is the documented floor (`min_node_info_broadcast_secs`, `Default.h`), but firmware only applies it on the compile-time USERPREFS path, not to config set over the air. MeshMonitor clamps values below 3600 on both the Configuration and Admin Commands tabs.
 
 **Effect**: Controls how frequently other nodes receive updated information about your device (name, position, battery status, etc.).
 
@@ -571,11 +571,11 @@ Always select the correct region for your location. Using incorrect frequency ba
 
 ### Channel Number
 
-**Description**: LoRa channel number used for frequency hopping within the selected frequency band.
+**Description**: The frequency slot the radio transmits on within the region's band. The value is 1-based.
 
-**Range**: 0-255
+**Range**: 1 to the region's frequency-slot count. The ceiling depends on region and bandwidth, and firmware rejects any slot above it (`numFreqSlots`, `RadioInterface.cpp`), so there is no flat 0-255 limit.
 
-**Default**: 0
+**Default**: 0, which derives the slot from a hash of the channel name.
 
 **Effect**: Determines the specific frequency offset within your region's frequency band. All nodes on the same mesh network must use the same channel number to communicate.
 
@@ -713,7 +713,7 @@ Configure power management and battery settings for your Meshtastic device. Thes
 
 **Description**: Calibration value for battery voltage reading accuracy.
 
-**Default**: Auto-calculated by firmware
+**Default**: 0, meaning use the board default. The proto documents a practical range of 2-6 (`config.proto`); firmware accepts any value above 0 and does not clamp the upper bound.
 
 **Effect**: Adjusts the analog-to-digital converter scaling for accurate battery percentage reporting.
 
@@ -1024,7 +1024,9 @@ Configure network settings including WiFi, NTP, and static IP addresses.
 
 **Description**: Network Time Protocol server address for time synchronization.
 
-**Default**: `pool.ntp.org`
+**Default**: `meshtastic.pool.ntp.org` (`NodeDB.cpp`)
+
+**Maximum Length**: 32 characters (the nanopb buffer is 33 bytes including the NUL terminator)
 
 **Effect**: Configures where the device gets accurate time when connected to the internet.
 

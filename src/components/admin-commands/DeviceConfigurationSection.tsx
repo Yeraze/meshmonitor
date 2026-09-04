@@ -201,6 +201,7 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
             onChange={(e) => onOwnerConfigChange('longName', e.target.value)}
             disabled={isExecuting}
             placeholder={t('admin_commands.long_name_placeholder')}
+            maxLength={39}
             className="setting-input"
           />
         </div>
@@ -1183,7 +1184,7 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
             onChange={(e) => onNetworkConfigChange('ntpServer', e.target.value)}
             disabled={isExecuting}
             placeholder="meshtastic.pool.ntp.org"
-            maxLength={33}
+            maxLength={32}
             className="setting-input"
             style={{ width: '100%', maxWidth: '600px' }}
           />

@@ -392,7 +392,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
           lineHeight: '1.5',
           marginBottom: '1rem',
         }}>
-          {t('automation.auto_announce.native_notice', "Heads up: firmware 2.8's MeshBeacon module can broadcast a periodic message natively (see the MeshBeacon settings). It's more limited than Auto Announce, though — it's zero-hop (only direct neighbors hear it), capped at a minimum one-hour interval, and currently only on the Meshtastic development branch, not a released firmware — so it isn't a full replacement.")}
+          {t('automation.auto_announce.native_notice', "Heads up: firmware 2.8's MeshBeacon module can broadcast a periodic message natively (see the MeshBeacon settings). It's more limited than Auto Announce, though — it's zero-hop (only direct neighbors hear it), capped at a minimum one-hour interval, and currently only in 2.8.0 alpha/prerelease builds, not a stable release — so it isn't a full replacement.")}
         </div>
 
         {lastAnnouncementTime && (

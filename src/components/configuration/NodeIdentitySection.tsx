@@ -99,7 +99,7 @@ const NodeIdentitySection: React.FC<NodeIdentitySectionProps> = ({
         <input
           id="longName"
           type="text"
-          maxLength={40}
+          maxLength={39}
           value={longName}
           onChange={(e) => setLongName(e.target.value)}
           className="setting-input"

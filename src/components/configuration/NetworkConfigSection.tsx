@@ -369,7 +369,7 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
           value={ntpServer}
           onChange={(e) => setNtpServer(e.target.value)}
           placeholder="meshtastic.pool.ntp.org"
-          maxLength={33}
+          maxLength={32}
           className="setting-input"
           style={{ width: '400px' }}
         />
@@ -387,7 +387,7 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
           value={rsyslogServer}
           onChange={(e) => setRsyslogServer(e.target.value)}
           placeholder="192.168.1.100:514"
-          maxLength={33}
+          maxLength={32}
           className="setting-input"
           style={{ width: '400px' }}
         />
