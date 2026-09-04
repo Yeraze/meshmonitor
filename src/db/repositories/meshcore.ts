@@ -1305,12 +1305,26 @@ export class MeshCoreRepository extends BaseRepository {
    * Insert a message. `sourceId` is required so every row in
    * `meshcore_messages` is stamped with its owning source.
    */
-  async insertMessage(message: DbMeshCoreMessage, sourceId: string): Promise<void> {
+  /**
+   * Insert a message, ignoring a duplicate id.
+   *
+   * Returns TRUE only when a row was actually written. That return value is
+   * load-bearing (#5040 Phase 4): callers gate their `dataEventEmitter` emit on
+   * it, so a message the same source receives twice fires notifications and
+   * automations exactly once. Mirrors `MessagesRepository.insertMessage`, which
+   * has used this shape since the Meshtastic MQTT path had the same problem.
+   *
+   * The device path passes a random id and so always inserts, unchanged. The
+   * MQTT ingest path passes a CONTENT-derived id, so the same frame relayed by
+   * many observers collapses to one row here rather than N.
+   */
+  async insertMessage(message: DbMeshCoreMessage, sourceId: string): Promise<boolean> {
     if (!sourceId) {
       throw new Error('MeshCoreRepository.insertMessage requires a sourceId');
     }
     const { meshcoreMessages } = this.tables;
-    await this.db.insert(meshcoreMessages).values({ ...message, sourceId });
+    const result = await this.insertIgnore(meshcoreMessages, { ...message, sourceId });
+    return this.getAffectedRows(result) > 0;
   }
 
   /**

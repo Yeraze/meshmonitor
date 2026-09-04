@@ -51,6 +51,10 @@ import {
 import meshcorePacketLogService from './services/meshcorePacketLogService.js';
 import databaseService from '../services/database.js';
 import { decodeMeshCorePacket } from '../utils/meshcorePacketDecode.js';
+import { createHash } from 'node:crypto';
+import { ChannelCrypto } from '@michaelhart/meshcore-decoder';
+import { ALL_SOURCES } from '../db/repositories/base.js';
+import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { logger } from '../utils/logger.js';
 
 /** Persisted `sources.config` shape for a `meshcore_mqtt` source. */
@@ -88,6 +92,8 @@ export interface MeshCoreMqttIngestStats {
   observers: number;
   /** ADVERT frames turned into node create/updates. */
   advertsIngested: number;
+  /** GRP_TXT frames decrypted and stored as channel messages. */
+  channelMessages: number;
   lastPacketAt: number | null;
   lastError: string | null;
 }
@@ -100,6 +106,52 @@ export interface MeshCoreMqttIngestStats {
  * claim is either a forgery or a node with a bad clock, and both would corrupt
  * every "last heard" ordering that reads this column.
  */
+/**
+ * Content-derived message id for a channel message ingested over MQTT
+ * (#5040 Phase 4).
+ *
+ * Includes `sourceId` so a copy your own radio heard keeps its own row under
+ * its own source — the two are different observations and the UI labels them —
+ * while every observer relaying the SAME frame on THIS source collapses to one
+ * id and therefore one row.
+ *
+ * Keyed on (channel, sender timestamp, text) rather than the raw frame: two
+ * observers can report the same message with different hop paths and signal
+ * metadata, so the raw bytes differ while the message does not.
+ */
+/** The shape `ChannelCrypto.decryptGroupTextMessage` returns in `data`. */
+interface ChannelPlaintext {
+  timestamp?: number;
+  flags?: number;
+  sender?: string;
+  message?: string;
+}
+
+export function channelMessageId(
+  sourceId: string,
+  channelHash: string,
+  timestampSec: number,
+  text: string,
+): string {
+  const digest = createHash('sha256')
+    .update(`${channelHash}\u0000${timestampSec}\u0000${text}`)
+    .digest('hex')
+    .slice(0, 24);
+  return `mqtt_${sourceId}_${digest}`;
+}
+
+/** Base64 or hex channel secret -> lowercase hex, or null when unusable. */
+export function pskToHex(psk: string | null | undefined): string | null {
+  if (!psk) return null;
+  if (/^[0-9a-fA-F]+$/.test(psk) && psk.length % 2 === 0) return psk.toLowerCase();
+  try {
+    const buf = Buffer.from(psk, 'base64');
+    return buf.length > 0 ? buf.toString('hex') : null;
+  } catch {
+    return null;
+  }
+}
+
 export function advertLastHeardMs(timestampSec: number, nowMs: number = Date.now()): number | undefined {
   if (!Number.isFinite(timestampSec) || timestampSec <= 0) return undefined;
   return Math.min(timestampSec * 1000, nowMs);
@@ -120,6 +172,7 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
     rejected: 0,
     observers: 0,
     advertsIngested: 0,
+    channelMessages: 0,
     lastPacketAt: null,
     lastError: null,
   };
@@ -249,6 +302,7 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
       this.emit('ota_packet', decoded.event);
       void this.persistPacket(decoded);
       void this.ingestAdvert(decoded);
+      void this.ingestChannelMessage(decoded);
     } catch (err) {
       this.stats.rejected++;
       logger.debug(`[MeshCoreMqtt:${this.sourceId}] failed to handle message:`, err);
@@ -363,6 +417,106 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
     } catch (err) {
       logger.debug(`[MeshCoreMqtt:${this.sourceId}] failed to ingest advert:`, err);
     }
+  }
+
+  /**
+   * Decrypt a GRP_TXT (channel) frame and store it as a message (#5040 Phase 4).
+   *
+   * ## Channel keys are read across ALL sources
+   *
+   * An ingest source has no device and therefore no channels of its own — the
+   * PSKs a user holds live on their device source. Reading every source's
+   * channels is the only way this works without asking them to duplicate keys
+   * onto a radio-less source, and it matches the codebase's existing
+   * cross-source exception: CLAUDE.md names decryption keys as the canonical
+   * "global by design" case (the Meshtastic `channel_database` does the same).
+   *
+   * Keys are selected by channel hash rather than brute-forced: the frame's
+   * first payload byte is `SHA256(secret)[0]`, so at most a couple of
+   * candidates are ever tried per frame.
+   *
+   * ## Duplicates collapse at the id, not at read time
+   *
+   * The id is CONTENT-derived and includes `sourceId`, so the same frame
+   * relayed by twenty observers writes ONE row, while a copy your own radio
+   * heard keeps its own row under its own source (source-labelled in the UI).
+   * `insertMessage` returns whether it actually wrote, and the event emit is
+   * gated on that — otherwise twenty observers would mean twenty notifications
+   * and twenty automation triggers.
+   */
+  private async ingestChannelMessage(decoded: IngestedObserverPacket): Promise<void> {
+    try {
+      const packet = decodeMeshCorePacket(decoded.event.raw_hex);
+      const group = packet?.payload?.groupText;
+      if (!group) return;
+
+      const plain = await this.decryptGroupText(group);
+      if (!plain) return;
+
+      // Sender's own timestamp, not ingest time — every observer's copy of one
+      // message must agree, and a delayed relay must not re-date it (the same
+      // rule Phase 3 applies to lastHeard).
+      const timestampMs = plain.timestampSec > 0 ? plain.timestampSec * 1000 : Date.now();
+      const id = channelMessageId(this.sourceId, group.channelHash, plain.timestampSec, plain.text);
+
+      const inserted = await databaseService.meshcore.insertMessage(
+        {
+          id,
+          fromPublicKey: '',
+          fromName: plain.senderName,
+          text: plain.text,
+          timestamp: timestampMs,
+          messageType: 'channel',
+          snr: decoded.event.snr ?? null,
+          rssi: decoded.event.rssi ?? null,
+          createdAt: Date.now(),
+        },
+        this.sourceId,
+      );
+
+      if (!inserted) return; // A different observer's copy already landed.
+      this.stats.channelMessages++;
+      dataEventEmitter.emitMeshCoreMessage(
+        { id, text: plain.text, timestamp: timestampMs } as never,
+        this.sourceId,
+      );
+    } catch (err) {
+      logger.debug(`[MeshCoreMqtt:${this.sourceId}] failed to ingest channel message:`, err);
+    }
+  }
+
+  /**
+   * Try every known channel key whose hash matches the frame's.
+   *
+   * Returns null when we hold no matching key — the overwhelmingly common case
+   * on a region feed, where most traffic belongs to channels we are not in.
+   * That is not an error and must not be logged per packet.
+   */
+  private async decryptGroupText(
+    group: { channelHash: string; cipherMacHex: string; ciphertextHex: string },
+  ): Promise<{ text: string; senderName: string | null; timestampSec: number } | null> {
+    const channels = await databaseService.channels.getAllChannels(ALL_SOURCES);
+    for (const ch of channels) {
+      const secretHex = pskToHex(ch.psk);
+      if (!secretHex) continue;
+      if (ChannelCrypto.calculateChannelHash(secretHex) !== group.channelHash) continue;
+
+      const res = ChannelCrypto.decryptGroupTextMessage(
+        group.ciphertextHex,
+        group.cipherMacHex,
+        secretHex,
+      );
+      // The library already splits the plaintext into timestamp / flags /
+      // sender / message, so there is no second parser to keep in step.
+      const data = res?.success ? (res.data as ChannelPlaintext | undefined) : undefined;
+      if (!data || typeof data.message !== 'string' || data.message === '') continue;
+      return {
+        text: data.message,
+        senderName: typeof data.sender === 'string' && data.sender !== '' ? data.sender : null,
+        timestampSec: typeof data.timestamp === 'number' ? data.timestamp : 0,
+      };
+    }
+    return null;
   }
 
   getStatus(): SourceStatus {

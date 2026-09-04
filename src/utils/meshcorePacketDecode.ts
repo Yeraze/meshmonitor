@@ -99,6 +99,28 @@ export interface DecodedAdvert {
   appDataHex?: string;
 }
 
+/**
+ * GRP_TXT (channel message) plaintext framing (#5040 Phase 4).
+ *
+ * A channel message is NOT laid out like the other encrypted types. The generic
+ * branch reads byte 0 as `destHash` and byte 1 as `srcHash`, but for GRP_TXT:
+ *
+ *   byte 0      channel hash  (first byte of SHA256(channel secret))
+ *   bytes 1..2  cipher MAC    (2 bytes)
+ *   bytes 3..   ciphertext
+ *
+ * So byte 1 is half a MAC, not a source hash, and `encryptedHex` from the
+ * generic branch starts one byte too early to feed a decrypt. Decoding it
+ * properly here keeps ONE decoder for both the packet monitor and the ingest
+ * path rather than re-slicing raw bytes at the call site.
+ */
+export interface DecodedGroupText {
+  /** Selects the channel: matches `ChannelCrypto.calculateChannelHash(secret)`. */
+  channelHash: string;
+  cipherMacHex: string;
+  ciphertextHex: string;
+}
+
 export interface DecodedMeshCorePacket {
   header: {
     raw: number;
@@ -120,6 +142,8 @@ export interface DecodedMeshCorePacket {
     sizeBytes: number;
     hex: string;
     advert?: DecodedAdvert;
+    /** Present for GRP_TXT (0x05) only — see DecodedGroupText. */
+    groupText?: DecodedGroupText;
     message?: { destHash: string; srcHash: string; encryptedHex: string };
     ack?: { ackCodeHex: string };
   };
@@ -229,6 +253,26 @@ export function decodeMeshCorePacket(rawHex: string | null | undefined): Decoded
   } else if (payloadType === 0x03) {
     // ACK — entire payload is the ack code.
     payload.ack = { ackCodeHex: bytesToHex(payloadBytes) };
+  } else if (payloadType === 0x05) {
+    // GRP_TXT: channel_hash(1) | cipher_mac(2) | ciphertext(rest).
+    if (payloadBytes.length >= 4) {
+      payload.groupText = {
+        channelHash: payloadBytes[0].toString(16).padStart(2, '0'),
+        cipherMacHex: bytesToHex(payloadBytes.subarray(1, 3)),
+        ciphertextHex: bytesToHex(payloadBytes.subarray(3)),
+      };
+    } else {
+      errors.push('GRP_TXT payload too short to decode');
+    }
+    // Also fill the generic shape so the monitor's existing rendering is
+    // unchanged; only the new `groupText` field is layout-correct for decrypt.
+    if (payloadBytes.length >= 2) {
+      payload.message = {
+        destHash: payloadBytes[0].toString(16).padStart(2, '0'),
+        srcHash: payloadBytes[1].toString(16).padStart(2, '0'),
+        encryptedHex: bytesToHex(payloadBytes.subarray(2)),
+      };
+    }
   } else if (ENCRYPTED_MSG_TYPES.has(payloadType)) {
     // Plaintext (dest_hash, src_hash) prefix; the rest is encrypted.
     if (payloadBytes.length >= 2) {
