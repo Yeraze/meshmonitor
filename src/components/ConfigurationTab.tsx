@@ -981,7 +981,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
     setIsSaving(true);
     setStatusMessage('');
     try {
-      // Enforce minimum value for positionBroadcastSecs (32 seconds minimum per Meshtastic docs)
+      // Enforce MeshMonitor's 32-second floor; firmware itself does not clamp this field (#5055).
       const validPositionBroadcastSecs = Math.max(32, positionBroadcastSecs);
       if (validPositionBroadcastSecs !== positionBroadcastSecs) {
         setPositionBroadcastSecs(validPositionBroadcastSecs);

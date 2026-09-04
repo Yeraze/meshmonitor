@@ -154,7 +154,7 @@ When "Use Preset" is disabled, you can manually configure:
 Configure how the device broadcasts its position.
 
 **Settings:**
-- **Position Broadcast Interval**: How often to broadcast position (minimum: 32 seconds)
+- **Position Broadcast Interval**: How often to broadcast position. Firmware does not enforce a minimum for this setting, but MeshMonitor clamps values below 32 seconds. When Smart Position is enabled, firmware will not rebroadcast more often than every 5 minutes (300 seconds).
 - **Smart Position**: Enable intelligent position broadcasting (reduces broadcasts when stationary)
 - **Fixed Position**: Lock device to a fixed location
   - **Fixed Latitude**: Latitude coordinate
