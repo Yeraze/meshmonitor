@@ -29,7 +29,7 @@ import { filterNodesByChannelPermission, enhanceNodeForClient, checkNodeChannelA
 import { pivotPositionHistory } from '../utils/positionHistoryPivot.js';
 import { resolveRequestSourceId } from '../utils/sourceResolver.js';
 import { requireSourceId } from '../utils/requireSourceId.js';
-import { optionalAuth, requirePermission, hasPermission } from '../auth/authMiddleware.js';
+import { optionalAuth, requirePermission, requireAdmin, hasPermission } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { isValidNodeNum, MAX_NODE_NUM } from '../constants/meshtastic.js';
 import { fail, ok } from '../utils/apiResponse.js';
@@ -50,7 +50,6 @@ import {
   listNodeIdentityMerges,
   NodeIdentityMergeError,
 } from '../services/nodeIdentityMergeService.js';
-import { requireAdmin } from '../auth/authMiddleware.js';
 
 const router = express.Router();
 
