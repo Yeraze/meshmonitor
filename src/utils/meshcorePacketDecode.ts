@@ -82,6 +82,21 @@ export interface DecodedAdvert {
   feat1?: number;
   feat2?: number;
   name?: string;
+  /**
+   * The raw appData slice (everything after the 100-byte
+   * pubkey+timestamp+signature prefix), lowercase hex.
+   *
+   * Exposed because `Ed25519SignatureVerifier.verifyAdvertisementSignature()`
+   * signs over `publicKey + timestamp + appData` and needs those bytes
+   * verbatim — the parsed `flags`/`latitude`/`name` above cannot be
+   * re-serialised back to them reliably (optional fields, unknown future
+   * flags). Keeping it here means ONE decoder serves both the packet-monitor
+   * display and any caller that wants to check the signature (#5040 Phase 3).
+   *
+   * NOTE the ingest path deliberately does NOT gate node creation on signature
+   * validity — see the manager's advert handler for that decision.
+   */
+  appDataHex?: string;
 }
 
 export interface DecodedMeshCorePacket {
@@ -263,7 +278,9 @@ function decodeAdvert(payload: Uint8Array, errors: string[]): DecodedAdvert | un
     flags: 0,
   };
 
-  // appData: flags byte, then optional fields.
+  // appData: flags byte, then optional fields. Captured whole first, since the
+  // signature is computed over these exact bytes.
+  advert.appDataHex = bytesToHex(payload.subarray(100));
   let p = 100;
   if (p < payload.length) {
     const flags = payload[p++];
