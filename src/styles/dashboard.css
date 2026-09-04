@@ -13,6 +13,21 @@
   color: var(--color-text);
   font-family: var(--font-family, sans-serif);
   overflow: hidden;
+
+  /*
+   * Real on-screen height of `.dashboard-topbar` (#5053).
+   *
+   * index.html ships `viewport-fit=cover`, so the page starts at the physical
+   * screen edge and the top of the topbar sits *under* the status bar / notch.
+   * `.app-header` already pads for this (AppHeader.css); the dashboard topbar
+   * did not, which is why the hamburger/X was half-hidden behind the status bar
+   * even in portrait.
+   *
+   * Anything positioned below the topbar (the mobile drawer and its backdrop)
+   * must offset by this, NOT by bare `--header-height` — that variable is a
+   * hardcoded constant that does not know about the inset.
+   */
+  --dashboard-topbar-height: calc(var(--header-height, 64px) + env(safe-area-inset-top, 0px));
 }
 
 .dashboard-topbar {
@@ -20,8 +35,11 @@
   flex-direction: row;
   align-items: center;
   gap: 12px;
-  padding: 0 24px;
-  height: var(--header-height, 64px);
+  /* Horizontal insets keep the hamburger and the user menu clear of the notch
+     in landscape, where safe-area-inset-left/right are non-zero (#5053). */
+  padding: env(safe-area-inset-top, 0px) calc(24px + env(safe-area-inset-right, 0px)) 0
+    calc(24px + env(safe-area-inset-left, 0px));
+  height: var(--dashboard-topbar-height);
   flex-shrink: 0;
   background: var(--color-bg-raised);
   border-bottom: 1px solid var(--color-surface);
@@ -86,12 +104,31 @@
 
 /* ── Sidebar backdrop (mobile overlay) ──────────────────────────────────── */
 
+/*
+ * Mobile drawer stacking ladder (#5052). Read this before changing a number.
+ *
+ *   200-700  Leaflet map panes
+ *   997      .map-controls on mobile (nodes.css) — yields to the drawer
+ *   1000     .leaflet-top / .leaflet-bottom — Leaflet's own CONTROL containers
+ *            (zoom buttons, attribution). Vendor value, leaflet.css:141. These
+ *            are NOT panes: the panes top out at 700, the controls do not.
+ *   1001     .map-sidebar (MapSidebar.css) — must beat the control containers
+ *   1098     this backdrop
+ *   1099     .dashboard-sidebar.mobile-open
+ *   10000+   app header, app rail, modals
+ *
+ * The drawer used to sit at 999, one below Leaflet's control layer, so the
+ * zoom buttons painted over the first source card. Raising the drawer is the
+ * fix rather than lowering Leaflet's controls: the attribution strip shares
+ * that same 1000, and pushing it down is what nodes.css:2556 was written to
+ * avoid.
+ */
 .dashboard-sidebar-backdrop {
   display: none; /* Hidden on desktop */
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.5);
-  z-index: 998;
+  z-index: 1098;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.2s ease;
@@ -746,7 +783,21 @@
 
 /* ── Mobile: collapsible sidebar ─────────────────────────────────────────── */
 
-@media (max-width: 768px) {
+/*
+ * Width OR compact landscape (#5053).
+ *
+ * A phone held sideways is *wider* than 768px (iPhone 13 landscape is 844px,
+ * Pixel 7 is 915px), so a width-only query drops the whole mobile treatment the
+ * moment the user rotates: `.dashboard-topbar-hamburger` reverted to
+ * `display: none`, which deleted the only control that closes the Sources
+ * drawer, while the drawer itself fell back to the static desktop sidebar and
+ * looked stuck open.
+ *
+ * The landscape half deliberately reuses the exact query App.css, Sidebar.css,
+ * SourceNav.module.css and SaveBar.css use — and that `src/utils/sidebarWidth.ts`
+ * mirrors in JS — so the whole shell agrees on what "mobile" means.
+ */
+@media (max-width: 768px), (max-height: 500px) and (orientation: landscape) {
   /* Show hamburger toggle in the topbar */
   .dashboard-topbar-hamburger {
     display: inline-flex;
@@ -754,9 +805,12 @@
     justify-content: center;
   }
 
-  /* Tighten up the topbar on mobile */
+  /* Tighten up the topbar on mobile.
+     Keep the safe-area insets — a flat `0 8px` here re-buried the close control
+     under the status bar / notch that the base rule pads for (#5053). */
   .dashboard-topbar {
-    padding: 0 8px;
+    padding: env(safe-area-inset-top, 0px) calc(8px + env(safe-area-inset-right, 0px)) 0
+      calc(8px + env(safe-area-inset-left, 0px));
     gap: 6px;
   }
 
@@ -802,12 +856,16 @@
   /* Sidebar becomes a slide-in overlay drawer */
   .dashboard-sidebar {
     position: fixed;
-    top: var(--header-height, 64px);
-    left: 0;
+    top: var(--dashboard-topbar-height);
+    /* Clear the notch in landscape — a fixed `left: 0` puts the first source
+       card under it on a notched phone held sideways (#5053). */
+    left: env(safe-area-inset-left, 0px);
     bottom: 0;
     /* Overlay drawer has a fixed width; ignore the desktop resize var. */
     width: 260px;
-    z-index: 999;
+    /* Above Leaflet's control containers (1000) — see the ladder on
+       `.dashboard-sidebar-backdrop` (#5052). */
+    z-index: 1099;
     transform: translateX(-100%);
     transition: transform 0.25s ease;
     box-shadow: 2px 0 12px rgba(0, 0, 0, 0.4);
@@ -825,7 +883,9 @@
   /* Backdrop fades in when drawer is open */
   .dashboard-sidebar-backdrop {
     display: block;
-    top: var(--header-height, 64px);
+    /* Must match the drawer's `top` exactly: any smaller value slides the
+       backdrop up over the topbar and swallows taps on the close control. */
+    top: var(--dashboard-topbar-height);
   }
 
   .dashboard-sidebar-backdrop.open {

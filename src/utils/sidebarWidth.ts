@@ -17,6 +17,17 @@ export const MOBILE_BREAKPOINT_PX = 768;
  * A landscape phone is wider than MOBILE_BREAKPOINT_PX but is still the mobile
  * layout — App.css collapses the rail to 48px for both conditions, so the width
  * test alone would misclassify it as desktop.
+ *
+ * This is the shell's threshold: below it the nav is a bottom bar. Sidebar.css
+ * and SidebarFooter.module.css carry a separate `max-height: 700px` landscape
+ * query, but that one compacts the vertical RAIL and is scoped
+ * `min-width: 769px` / `min-height: 501px` so it cannot reach into bar
+ * territory (#5053). The two describe different things and are allowed to
+ * differ; what is not allowed is the rail query overlapping this one.
+ *
+ * If you change this number, change every
+ * `(max-height: 500px) and (orientation: landscape)` block with it — and the
+ * `min-height` guard on the rail blocks.
  */
 export const MOBILE_LANDSCAPE_MAX_HEIGHT_PX = 500;
 

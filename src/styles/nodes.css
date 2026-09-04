@@ -2537,25 +2537,29 @@
    over the base `top/right/z-index` above. (Issue #3532 — the original fix
    placed this in an earlier media block and was silently overridden, so the
    Features panel still painted over the slide-in Sources sidebar on mobile.) */
-@media (max-width: 768px) {
+/* Width OR compact landscape (#5053): a phone held sideways is wider than
+   768px, so a width-only query left the panel unconstrained — and un-yielding
+   — in exactly the orientation where the Sources drawer overlays the map. */
+@media (max-width: 768px), (max-height: 500px) and (orientation: landscape) {
   .map-controls {
     top: 16px;
     right: 8px;
     left: auto;
     max-width: calc(100vw - 64px);
-    /* Sit below the mobile sidebar drawer (.dashboard-sidebar, z-index 999)
-       and its backdrop (998) so the Features panel yields when the Sources
-       sidebar is open. When the drawer is closed its backdrop is
-       opacity:0/pointer-events:none, so this has no effect on the normal
-       map-controls interaction. */
+    /* Sit below the mobile sidebar drawer (.dashboard-sidebar) and its
+       backdrop so the Features panel yields when the Sources sidebar is open.
+       Those now sit at 1099/1098, above Leaflet's control layer (#5052) — see
+       the ladder documented on `.dashboard-sidebar-backdrop` in dashboard.css.
+       When the drawer is closed its backdrop is opacity:0/pointer-events:none,
+       so this has no effect on the normal map-controls interaction. */
     z-index: 997;
     /*
      * Keep the panel clear of the Leaflet attribution strip (#4495).
      *
      * Raising z-index cannot solve this: the attribution lives in Leaflet's
-     * own `.leaflet-bottom`, which ships `z-index: 1000`, while this panel must
-     * stay at 997 to yield to the Sources drawer (999). 997 < 1000, so wherever
-     * the two overlap the attribution wins — which is exactly the report.
+     * own `.leaflet-bottom`, which ships `z-index: 1000`, while this panel
+     * stays at 997 to yield to the Sources drawer. 997 < 1000, so wherever the
+     * two overlap the attribution wins — which is exactly the report.
      * Bounding the height means they never overlap in the first place.
      *
      * 16px top offset + ~34px for the attribution strip and a little air.

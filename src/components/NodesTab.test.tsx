@@ -448,8 +448,8 @@ describe('map controls: attribution clearance + zoom-to-fit (#4495, #4496)', () 
 
   it('bounds the mobile controls panel so it cannot reach the attribution strip', () => {
     // Raising z-index cannot fix this: the attribution is inside Leaflet's
-    // `.leaflet-bottom` (z-index 1000) while this panel must stay at 997 to
-    // yield to the Sources drawer (999). Geometry is the only lever.
+    // `.leaflet-bottom` (z-index 1000) while this panel stays at 997 to yield
+    // to the Sources drawer (1099 since #5052). Geometry is the only lever.
     const rule = mobileOverrideRule('.map-controls');
     expect(rule).toMatch(/max-height:\s*calc\(/);
     // The z-index that forces the geometric approach must still be there.

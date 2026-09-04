@@ -177,8 +177,33 @@
 /* Removed old layout-affecting rules - sidebar now floats over content */
 
 
+/* ============================================================================
+ * COMPACT-LANDSCAPE RAIL — scoped to viewports that actually HAVE a rail
+ * ============================================================================
+ * These two blocks compact the vertical nav rail on a short landscape screen.
+ * They used to be plain `(orientation: landscape) and (max-height: 700px)`,
+ * which overlapped the shell's own mobile definition —
+ * `(max-width: 768px), (max-height: 500px) and (orientation: landscape)` — the
+ * range in which SourceNav is a horizontal BOTTOM BAR, not a rail. Rail rules
+ * landing on a bar is not a cosmetic mismatch; #5054 traced an unreachable
+ * bottom nav to exactly that (`.sidebar.collapsed { width: 48px !important }`
+ * beating `.mobileBottomBar.collapsed { width: 100% }` from another sheet), and
+ * the `!important`s in the bottom-bar block at the end of this file exist only
+ * to claw those overrides back.
+ *
+ * So the reconciliation is NOT to move 700 down to 500 — that would delete the
+ * compaction from the 501–700px band where it does its job and keep it in the
+ * band where it causes harm. It is to subtract the bar's territory:
+ *
+ *     min-width: 769px   — wider than the shell's mobile breakpoint
+ *     min-height: 501px  — taller than the shell's compact-landscape threshold
+ *
+ * The shell threshold itself is unchanged at 500px, so `src/utils/sidebarWidth.ts`,
+ * `Sidebar.tsx` and `SourceNav.tsx` still mirror it exactly. (#5053)
+ * ============================================================================ */
+
 /* Mobile responsive - landscape: minimal changes to fix layout */
-@media (orientation: landscape) and (max-height: 700px) {
+@media (orientation: landscape) and (max-height: 700px) and (min-width: 769px) and (min-height: 501px) {
   .sidebar {
     padding-top: max(4px, env(safe-area-inset-top));
     padding-bottom: max(4px, env(safe-area-inset-bottom));
@@ -195,8 +220,8 @@
 /* Scrollbar styling moved with the nav list into SourceNav.module.css (#4473) —
    `.sidebar-nav` no longer exists in the markup. */
 
-/* Mobile landscape - increased threshold to catch more devices */
-@media (max-height: 700px) and (orientation: landscape) {
+/* Mobile landscape — same rail-only scoping as the block above (#5053). */
+@media (max-height: 700px) and (orientation: landscape) and (min-width: 769px) and (min-height: 501px) {
   .sidebar {
     /* Reduce padding to maximize scrollable area */
     padding-top: max(2px, env(safe-area-inset-top)) !important;
@@ -315,11 +340,18 @@
     right: 0;
     height: auto;
     /*
-     * `!important` only to beat the two `@media (max-height: 700px) and
-     * (orientation: landscape)` blocks further down, which set padding with
-     * `!important` to compact the *rail*. On a bottom bar that padding is just
-     * height: it inflated the landscape bar to 53.7px against the 44px the
-     * shell reserves, so content and the save bar sat under it.
+     * `!important` was needed to beat the two compact-landscape RAIL blocks
+     * above, which set padding with `!important` of their own. On a bottom bar
+     * that padding is just height: it inflated the landscape bar to 53.7px
+     * against the 44px the shell reserves, so content and the save bar sat
+     * under it.
+     *
+     * Since #5053 those blocks are scoped `min-width: 769px` /
+     * `min-height: 501px`, so they no longer match any viewport this block
+     * matches and the `!important` here is belt-and-braces. Kept deliberately:
+     * it costs nothing, and it is the guard that made the collision survivable
+     * the last two times a rail rule leaked into the bar. Do not read it as
+     * proof that something still overrides this.
      *
      * padding-bottom keeps the safe-area inset rather than flattening to 0
      * (#4497). A flat 0 here ALSO beat SourceNav's own
