@@ -99,14 +99,6 @@ export interface MeshCoreMqttIngestStats {
 }
 
 /**
- * Convert an ADVERT's self-reported unix-seconds timestamp into a `lastHeard`
- * milliseconds value, or `undefined` when it carries none.
- *
- * Clamped to now: the value comes from an untrusted publisher, so a future
- * claim is either a forgery or a node with a bad clock, and both would corrupt
- * every "last heard" ordering that reads this column.
- */
-/**
  * Content-derived message id for a channel message ingested over MQTT
  * (#5040 Phase 4).
  *
@@ -152,6 +144,14 @@ export function pskToHex(psk: string | null | undefined): string | null {
   }
 }
 
+/**
+ * Convert an ADVERT's self-reported unix-seconds timestamp into a `lastHeard`
+ * milliseconds value, or `undefined` when it carries none.
+ *
+ * Clamped to now: the value comes from an untrusted publisher, so a future
+ * claim is either a forgery or a node with a bad clock, and both would corrupt
+ * every "last heard" ordering that reads this column.
+ */
 export function advertLastHeardMs(timestampSec: number, nowMs: number = Date.now()): number | undefined {
   if (!Number.isFinite(timestampSec) || timestampSec <= 0) return undefined;
   return Math.min(timestampSec * 1000, nowMs);
@@ -456,6 +456,21 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
       // Sender's own timestamp, not ingest time — every observer's copy of one
       // message must agree, and a delayed relay must not re-date it (the same
       // rule Phase 3 applies to lastHeard).
+      // The row's timestamp falls back to ingest time when the sender has no
+      // clock, but the ID deliberately keeps the raw 0.
+      //
+      // Those diverge on purpose. Every observer of one transmission must
+      // derive the SAME id, and ingest time differs per observer — so the id
+      // can only use what is on the wire. The cost is a real limitation worth
+      // stating: for a CLOCK-LESS sender, two separate transmissions of
+      // identical text on one channel are indistinguishable, and the second
+      // collapses into the first.
+      //
+      // That is inherent, not a gap to close. MeshCore encrypts
+      // `timestamp | flags | text` with AES-ECB, so with a zero timestamp both
+      // transmissions are byte-identical on the wire; nothing separates them
+      // except reception time, and using that would break the multi-observer
+      // collapse this id exists for.
       const timestampMs = plain.timestampSec > 0 ? plain.timestampSec * 1000 : Date.now();
       const id = channelMessageId(this.sourceId, group.channelHash, plain.timestampSec, plain.text);
 

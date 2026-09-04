@@ -10,6 +10,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createHmac, createCipheriv } from 'node:crypto';
 import { ChannelCrypto } from '@michaelhart/meshcore-decoder';
+import { ALL_SOURCES } from '../db/repositories/base.js';
 
 const insertMessage = vi.fn().mockResolvedValue(true);
 const getAllChannels = vi.fn();
@@ -223,8 +224,10 @@ describe('channel message ingest (#5040 Phase 4)', () => {
     await settle();
 
     expect(getAllChannels).toHaveBeenCalled();
-    // Called with the ALL_SOURCES sentinel, not this source's id.
-    expect(getAllChannels.mock.calls[0][0]).not.toBe('src-mqtt');
+    // Assert the ALL_SOURCES sentinel POSITIVELY: a negative check would still
+    // pass if a regression passed some third value that is neither this source
+    // nor the sentinel.
+    expect(getAllChannels.mock.calls[0][0]).toBe(ALL_SOURCES);
   });
 
   it('ignores non-GRP_TXT frames', async () => {
