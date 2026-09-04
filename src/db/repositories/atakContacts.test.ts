@@ -304,7 +304,7 @@ describe.skipIf(!postgresAvailable)('AtakContactsRepository - PostgreSQL Backend
   let backend: TestBackend;
 
   beforeAll(async () => {
-    backend = await createPostgresBackend(POSTGRES_CREATE);
+    backend = await createPostgresBackend(POSTGRES_CREATE, 'r_atakcontacts');
     if (backend.available) {
       console.log('✓ PostgreSQL connection established for atak contacts tests');
     } else {
@@ -331,7 +331,7 @@ describe.skipIf(!mysqlAvailable)('AtakContactsRepository - MySQL Backend', () =>
   let backend: TestBackend;
 
   beforeAll(async () => {
-    backend = await createMysqlBackend(MYSQL_CREATE);
+    backend = await createMysqlBackend(MYSQL_CREATE, 'r_atakcontacts');
     if (backend.available) {
       console.log('✓ MySQL connection established for atak contacts tests');
     } else {

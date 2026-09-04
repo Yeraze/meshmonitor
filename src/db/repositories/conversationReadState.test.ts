@@ -221,7 +221,7 @@ describe.skipIf(!postgresAvailable)('ConversationReadStateRepository - PostgreSQ
   let backend: TestBackend;
 
   beforeAll(async () => {
-    backend = await createPostgresBackend(POSTGRES_CREATE);
+    backend = await createPostgresBackend(POSTGRES_CREATE, 'r_conversationreadstate');
     if (backend.available) {
       console.log('✓ PostgreSQL connection established for conversation read-state tests');
     } else {
@@ -248,7 +248,7 @@ describe.skipIf(!mysqlAvailable)('ConversationReadStateRepository - MySQL Backen
   let backend: TestBackend;
 
   beforeAll(async () => {
-    backend = await createMysqlBackend(MYSQL_CREATE);
+    backend = await createMysqlBackend(MYSQL_CREATE, 'r_conversationreadstate');
     if (backend.available) {
       console.log('✓ MySQL connection established for conversation read-state tests');
     } else {

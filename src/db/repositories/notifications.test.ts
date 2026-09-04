@@ -1205,7 +1205,7 @@ describe.skipIf(!postgresAvailable)('NotificationsRepository - PostgreSQL Backen
   let backend: TestBackend;
 
   beforeAll(async () => {
-    backend = await createPostgresBackend(POSTGRES_CREATE);
+    backend = await createPostgresBackend(POSTGRES_CREATE, 'r_notifications');
     if (backend.available) {
       console.log('✓ PostgreSQL connection established for notifications tests');
     } else {
@@ -1238,7 +1238,7 @@ describe.skipIf(!mysqlAvailable)('NotificationsRepository - MySQL Backend', () =
   let backend: TestBackend;
 
   beforeAll(async () => {
-    backend = await createMysqlBackend(MYSQL_CREATE);
+    backend = await createMysqlBackend(MYSQL_CREATE, 'r_notifications');
     if (backend.available) {
       console.log('✓ MySQL connection established for notifications tests');
     } else {

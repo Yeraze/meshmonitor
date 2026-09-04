@@ -14,9 +14,8 @@ import { telemetrySqlite, telemetryPostgres } from '../schema/telemetry.js';
 import { TelemetryRepository } from './telemetry.js';
 import { ALL_SOURCES } from './base.js';
 import * as schema from '../schema/index.js';
-import { postgresAvailable } from './test-utils.js';
+import { postgresAvailable, createIsolatedPostgresDatabase } from './test-utils.js';
 
-const { Pool } = pg;
 
 // Test constants
 const NODE1 = '!aabbccdd';
@@ -117,17 +116,11 @@ describe.skipIf(!postgresAvailable)('TelemetryRepository - PostgreSQL Backend', 
   let drizzleDb: ReturnType<typeof drizzlePostgres>;
   let repo: TelemetryRepository;
   let pgAvailable = true;
+  let cleanup: (() => Promise<void>) | undefined;
 
   beforeAll(async () => {
     try {
-      pool = new Pool({
-        host: 'localhost',
-        port: 5433,
-        user: 'test',
-        password: 'test',
-        database: 'meshmonitor_test',
-        connectionTimeoutMillis: 5000,
-      });
+      ({ pool, cleanup } = await createIsolatedPostgresDatabase('r_telemetry_multidb'));
 
       // Test connection
       const client = await pool.connect();
@@ -174,9 +167,7 @@ describe.skipIf(!postgresAvailable)('TelemetryRepository - PostgreSQL Backend', 
   });
 
   afterAll(async () => {
-    if (pool) {
-      await pool.end();
-    }
+    await cleanup?.();
   });
 
   beforeEach(async () => {

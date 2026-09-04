@@ -567,7 +567,7 @@ describe.skipIf(!postgresAvailable)('ChannelsRepository - PostgreSQL Backend', (
   let backend: TestBackend;
 
   beforeAll(async () => {
-    backend = await createPostgresBackend(POSTGRES_CREATE);
+    backend = await createPostgresBackend(POSTGRES_CREATE, 'r_channels');
     if (backend.available) {
       console.log('✓ PostgreSQL connection established for channels tests');
     } else {
@@ -595,7 +595,7 @@ describe.skipIf(!mysqlAvailable)('ChannelsRepository - MySQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {
-    backend = await createMysqlBackend(MYSQL_CREATE);
+    backend = await createMysqlBackend(MYSQL_CREATE, 'r_channels');
     if (backend.available) {
       console.log('✓ MySQL connection established for channels tests');
     } else {

@@ -359,7 +359,7 @@ describe('MqttPacketLogRepository RF evidence aggregates - SQLite Backend', () =
 describe.skipIf(!postgresAvailable)('MqttPacketLogRepository RF evidence aggregates - PostgreSQL Backend', () => {
   let backend: TestBackend;
   beforeAll(async () => {
-    backend = await createPostgresBackend(POSTGRES_CREATE);
+    backend = await createPostgresBackend(POSTGRES_CREATE, 'r_mqttpacketlog_rfevidence');
   });
   afterAll(async () => {
     if (backend) await backend.close();
@@ -374,7 +374,7 @@ describe.skipIf(!postgresAvailable)('MqttPacketLogRepository RF evidence aggrega
 describe.skipIf(!mysqlAvailable)('MqttPacketLogRepository RF evidence aggregates - MySQL Backend', () => {
   let backend: TestBackend;
   beforeAll(async () => {
-    backend = await createMysqlBackend(MYSQL_CREATE);
+    backend = await createMysqlBackend(MYSQL_CREATE, 'r_mqttpacketlog_rfevidence');
   });
   afterAll(async () => {
     if (backend) await backend.close();

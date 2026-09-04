@@ -569,7 +569,7 @@ describe.skipIf(!postgresAvailable)('SettingsRepository - PostgreSQL Backend', (
   let backend: TestBackend;
 
   beforeAll(async () => {
-    backend = await createPostgresBackend(POSTGRES_CREATE);
+    backend = await createPostgresBackend(POSTGRES_CREATE, 'r_settings');
     if (backend.available) {
       console.log('✓ PostgreSQL connection established for settings tests');
     } else {
@@ -596,7 +596,7 @@ describe.skipIf(!mysqlAvailable)('SettingsRepository - MySQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {
-    backend = await createMysqlBackend(MYSQL_CREATE);
+    backend = await createMysqlBackend(MYSQL_CREATE, 'r_settings');
     if (backend.available) {
       console.log('✓ MySQL connection established for settings tests');
     } else {

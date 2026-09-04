@@ -33,9 +33,12 @@ import {
   runMigration132Postgres,
   runMigration132Mysql,
 } from './132_fan_out_settings_permissions.js';
-import { postgresAvailable, mysqlAvailable } from '../../db/repositories/test-utils.js';
-
-const { Pool: PgPool } = pg;
+import {
+  postgresAvailable,
+  mysqlAvailable,
+  createIsolatedPostgresDatabase,
+  createIsolatedMysqlDatabase,
+} from '../../db/repositories/test-utils.js';
 
 function sourceRows(n: number): Array<{ id: string }> {
   return Array.from({ length: n }, (_, i) => ({ id: `src-${i}` }));
@@ -410,18 +413,19 @@ function realCheckPermissionAsyncFor(authRepo: AuthRepository) {
 }
 
 describe.skipIf(!postgresAvailable)('migration 132 — PostgreSQL (container)', () => {
-  let pool: InstanceType<typeof PgPool>;
+  let pool: pg.Pool;
+  let cleanup: (() => Promise<void>) | undefined;
   let authRepo: AuthRepository;
 
   beforeAll(async () => {
-    pool = new PgPool({ host: 'localhost', port: 5433, user: 'test', password: 'test', database: 'meshmonitor_test' });
+    ({ pool, cleanup } = await createIsolatedPostgresDatabase('mig132'));
     await pool.query(PG_CREATE);
     const drizzleDb = drizzlePostgres(pool, { schema });
     authRepo = new AuthRepository(drizzleDb as any, 'postgres');
   });
 
   afterAll(async () => {
-    if (pool) await pool.end();
+    await cleanup?.();
   });
 
   it('preserves effective settings access exactly across the fan-out (the deliverable)', async () => {
@@ -558,10 +562,11 @@ describe.skipIf(!postgresAvailable)('migration 132 — PostgreSQL (container)', 
 
 describe.skipIf(!mysqlAvailable)('migration 132 — MySQL (container)', () => {
   let pool: mysql.Pool;
+  let cleanup: (() => Promise<void>) | undefined;
   let authRepo: AuthRepository;
 
   beforeAll(async () => {
-    pool = mysql.createPool({ host: 'localhost', port: 3307, user: 'test', password: 'test', database: 'meshmonitor_test', connectionLimit: 5 });
+    ({ pool, cleanup } = await createIsolatedMysqlDatabase('mig132'));
     for (const stmt of MYSQL_CREATE.split(';').map((s) => s.trim()).filter(Boolean)) {
       await pool.query(stmt);
     }
@@ -570,7 +575,7 @@ describe.skipIf(!mysqlAvailable)('migration 132 — MySQL (container)', () => {
   });
 
   afterAll(async () => {
-    if (pool) await pool.end();
+    await cleanup?.();
   });
 
   it('preserves effective settings access exactly across the fan-out (the deliverable)', async () => {

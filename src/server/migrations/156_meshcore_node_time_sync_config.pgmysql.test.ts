@@ -8,26 +8,31 @@
  * no-op). A silent skip here still reports `success: true` at the suite level
  * — confirm via `numPendingTests` in the JSON reporter, not just the pass/fail
  * summary (see CLAUDE.md Multi-Database section).
+ *
+ * The fixture runs in its OWN throwaway database (`createIsolated*Database`),
+ * not the shared `meshmonitor_test`. Migration 153 seeds the same
+ * `meshcore_nodes` table; while both used the shared database, whichever
+ * finished first dropped the table out from under the other and the pair
+ * failed 100% of the time in parallel — a failure that was twice written off
+ * as "pre-existing and environmental". Keep the isolation.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import pg from 'pg';
 import mysql from 'mysql2/promise';
 import { runMigration156Postgres, runMigration156Mysql } from './156_meshcore_node_time_sync_config.js';
-import { postgresAvailable, mysqlAvailable } from '../../db/repositories/test-utils.js';
-
-const { Pool: PgPool } = pg;
+import {
+  postgresAvailable,
+  mysqlAvailable,
+  createIsolatedPostgresDatabase,
+  createIsolatedMysqlDatabase,
+} from '../../db/repositories/test-utils.js';
 
 describe.skipIf(!postgresAvailable)('migration 156 — PostgreSQL (container)', () => {
-  let pool: InstanceType<typeof PgPool>;
+  let pool: pg.Pool;
+  let cleanup: (() => Promise<void>) | undefined;
 
   beforeAll(async () => {
-    pool = new PgPool({
-      host: 'localhost',
-      port: 5433,
-      user: 'test',
-      password: 'test',
-      database: 'meshmonitor_test',
-    });
+    ({ pool, cleanup } = await createIsolatedPostgresDatabase('mig156'));
     await pool.query('DROP TABLE IF EXISTS meshcore_nodes CASCADE');
     await pool.query(`
       CREATE TABLE meshcore_nodes (
@@ -44,7 +49,7 @@ describe.skipIf(!postgresAvailable)('migration 156 — PostgreSQL (container)', 
   afterAll(async () => {
     if (pool) {
       await pool.query('DROP TABLE IF EXISTS meshcore_nodes CASCADE');
-      await pool.end();
+      await cleanup?.();
     }
   });
 
@@ -77,16 +82,10 @@ describe.skipIf(!postgresAvailable)('migration 156 — PostgreSQL (container)', 
 
 describe.skipIf(!mysqlAvailable)('migration 156 — MySQL (container)', () => {
   let pool: mysql.Pool;
+  let cleanup: (() => Promise<void>) | undefined;
 
   beforeAll(async () => {
-    pool = mysql.createPool({
-      host: 'localhost',
-      port: 3307,
-      user: 'test',
-      password: 'test',
-      database: 'meshmonitor_test',
-      connectionLimit: 5,
-    });
+    ({ pool, cleanup } = await createIsolatedMysqlDatabase('mig156'));
     await pool.query('DROP TABLE IF EXISTS meshcore_nodes');
     await pool.query(`
       CREATE TABLE meshcore_nodes (
@@ -103,7 +102,7 @@ describe.skipIf(!mysqlAvailable)('migration 156 — MySQL (container)', () => {
   afterAll(async () => {
     if (pool) {
       await pool.query('DROP TABLE IF EXISTS meshcore_nodes');
-      await pool.end();
+      await cleanup?.();
     }
   });
 

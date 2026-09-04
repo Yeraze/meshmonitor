@@ -264,7 +264,7 @@ describe('TelemetryRepository cadence aggregates - SQLite Backend', () => {
 describe.skipIf(!postgresAvailable)('TelemetryRepository cadence aggregates - PostgreSQL Backend', () => {
   let backend: TestBackend;
   beforeAll(async () => {
-    backend = await createPostgresBackend(POSTGRES_CREATE);
+    backend = await createPostgresBackend(POSTGRES_CREATE, 'r_telemetry_cadence_agg');
   });
   afterAll(async () => {
     if (backend) await backend.close();
@@ -279,7 +279,7 @@ describe.skipIf(!postgresAvailable)('TelemetryRepository cadence aggregates - Po
 describe.skipIf(!mysqlAvailable)('TelemetryRepository cadence aggregates - MySQL Backend', () => {
   let backend: TestBackend;
   beforeAll(async () => {
-    backend = await createMysqlBackend(MYSQL_CREATE);
+    backend = await createMysqlBackend(MYSQL_CREATE, 'r_telemetry_cadence_agg');
   });
   afterAll(async () => {
     if (backend) await backend.close();

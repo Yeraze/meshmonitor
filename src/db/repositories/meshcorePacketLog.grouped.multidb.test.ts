@@ -18,7 +18,11 @@
  * answer was that the grouped query was only ever exercised on SQLite. These
  * tests close that: the same assertions run on the real containers.
  *
- * Registered in SHARED_DB_TESTS — it DROP/CREATEs `meshcore_packet_log`.
+ * The fixture runs in its OWN throwaway database (`createIsolated*Database`),
+ * not the shared `meshmonitor_test`. Migration 158's container half DROP/CREATEs
+ * the same `meshcore_packet_log` table; on the shared database whichever
+ * finished first dropped it out from under the other. Keep the isolation — see
+ * the "Per-suite fixture isolation" banner in test-utils.ts.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import pg from 'pg';
@@ -27,9 +31,12 @@ import { drizzle as drizzlePostgres } from 'drizzle-orm/node-postgres';
 import { drizzle as drizzleMysql } from 'drizzle-orm/mysql2';
 import { MeshCoreRepository, type DbMeshCorePacket } from './meshcore.js';
 import * as schema from '../schema/index.js';
-import { postgresAvailable, mysqlAvailable } from './test-utils.js';
-
-const { Pool } = pg;
+import {
+  postgresAvailable,
+  mysqlAvailable,
+  createIsolatedPostgresDatabase,
+  createIsolatedMysqlDatabase,
+} from './test-utils.js';
 
 const FRAME_A = '0500deadbeef';
 const FRAME_B = '0500cafebabe';
@@ -150,17 +157,11 @@ const MYSQL_CREATE = `
 
 describe.skipIf(!postgresAvailable)('grouped packet queries — PostgreSQL', () => {
   let pool: pg.Pool;
+  let cleanup: (() => Promise<void>) | undefined;
   let repo: MeshCoreRepository;
 
   beforeAll(async () => {
-    pool = new Pool({
-      host: 'localhost',
-      port: 5433,
-      user: 'test',
-      password: 'test',
-      database: 'meshmonitor_test',
-      connectionTimeoutMillis: 5000,
-    });
+    ({ pool, cleanup } = await createIsolatedPostgresDatabase('r_meshcorepacketlog_grp'));
     repo = new MeshCoreRepository(drizzlePostgres(pool, { schema }) as never, 'postgres');
     await pool.query(PG_CREATE);
   });
@@ -168,7 +169,7 @@ describe.skipIf(!postgresAvailable)('grouped packet queries — PostgreSQL', () 
   afterAll(async () => {
     if (pool) {
       await pool.query('DROP TABLE IF EXISTS meshcore_packet_log CASCADE');
-      await pool.end();
+      await cleanup?.();
     }
   });
 
@@ -181,16 +182,11 @@ describe.skipIf(!postgresAvailable)('grouped packet queries — PostgreSQL', () 
 
 describe.skipIf(!mysqlAvailable)('grouped packet queries — MySQL', () => {
   let pool: mysql.Pool;
+  let cleanup: (() => Promise<void>) | undefined;
   let repo: MeshCoreRepository;
 
   beforeAll(async () => {
-    pool = mysql.createPool({
-      host: 'localhost',
-      port: 3307,
-      user: 'test',
-      password: 'test',
-      database: 'meshmonitor_test',
-    });
+    ({ pool, cleanup } = await createIsolatedMysqlDatabase('r_meshcorepacketlog_grp'));
     repo = new MeshCoreRepository(drizzleMysql(pool, { schema, mode: 'default' }) as never, 'mysql');
     await pool.query('DROP TABLE IF EXISTS meshcore_packet_log');
     await pool.query(MYSQL_CREATE);
@@ -199,7 +195,7 @@ describe.skipIf(!mysqlAvailable)('grouped packet queries — MySQL', () => {
   afterAll(async () => {
     if (pool) {
       await pool.query('DROP TABLE IF EXISTS meshcore_packet_log');
-      await pool.end();
+      await cleanup?.();
     }
   });
 

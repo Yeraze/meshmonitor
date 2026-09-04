@@ -1364,7 +1364,7 @@ describe.skipIf(!postgresAvailable)('NodesRepository - PostgreSQL Backend', () =
   let backend: TestBackend;
 
   beforeAll(async () => {
-    backend = await createPostgresBackend(POSTGRES_CREATE);
+    backend = await createPostgresBackend(POSTGRES_CREATE, 'r_nodes');
     if (backend.available) {
       console.log('PostgreSQL connection established for nodes tests');
     } else {
@@ -1391,7 +1391,7 @@ describe.skipIf(!mysqlAvailable)('NodesRepository - MySQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {
-    backend = await createMysqlBackend(MYSQL_CREATE);
+    backend = await createMysqlBackend(MYSQL_CREATE, 'r_nodes');
     if (backend.available) {
       console.log('MySQL connection established for nodes tests');
     } else {

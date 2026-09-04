@@ -242,7 +242,7 @@ describe('AnalysisRepository.getHopCounts - SQLite Backend', () => {
 describe.skipIf(!postgresAvailable)('AnalysisRepository.getHopCounts - PostgreSQL Backend', () => {
   let backend: TestBackend;
   beforeAll(async () => {
-    backend = await createPostgresBackend(POSTGRES_CREATE);
+    backend = await createPostgresBackend(POSTGRES_CREATE, 'r_analysis_hopcounts');
   });
   afterAll(async () => {
     if (backend) await backend.close();
@@ -257,7 +257,7 @@ describe.skipIf(!postgresAvailable)('AnalysisRepository.getHopCounts - PostgreSQ
 describe.skipIf(!mysqlAvailable)('AnalysisRepository.getHopCounts - MySQL Backend', () => {
   let backend: TestBackend;
   beforeAll(async () => {
-    backend = await createMysqlBackend(MYSQL_CREATE);
+    backend = await createMysqlBackend(MYSQL_CREATE, 'r_analysis_hopcounts');
   });
   afterAll(async () => {
     if (backend) await backend.close();

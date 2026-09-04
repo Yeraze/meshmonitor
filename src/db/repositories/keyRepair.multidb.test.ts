@@ -416,7 +416,7 @@ describe.skipIf(!postgresAvailable)('KeyRepairRepository - PostgreSQL Backend', 
   let backend: TestBackend;
 
   beforeAll(async () => {
-    backend = await createPostgresBackend(POSTGRES_DDL);
+    backend = await createPostgresBackend(POSTGRES_DDL, 'r_keyrepair_multidb');
   });
 
   afterAll(async () => {
@@ -433,7 +433,7 @@ describe.skipIf(!mysqlAvailable)('KeyRepairRepository - MySQL Backend', () => {
   let backend: TestBackend;
 
   beforeAll(async () => {
-    backend = await createMysqlBackend(MYSQL_DDL);
+    backend = await createMysqlBackend(MYSQL_DDL, 'r_keyrepair_multidb');
   });
 
   afterAll(async () => {
