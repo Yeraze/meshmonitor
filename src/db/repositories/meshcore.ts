@@ -1919,7 +1919,7 @@ export class MeshCoreRepository extends BaseRepository {
     // Note the failure is over-RETENTION, not data loss: the reverse case (a low
     // id with a NEW timestamp, which would delete a row that should survive)
     // cannot arise while timestamps are assigned at insert.
-    const deleted = await this.db
+    await this.db
       .delete(meshcorePacketLog)
       .where(and(
         eq(meshcorePacketLog.sourceId, sourceId),
@@ -1928,7 +1928,6 @@ export class MeshCoreRepository extends BaseRepository {
           and(eq(meshcorePacketLog.timestamp, oldestKeptTs), lt(meshcorePacketLog.id, oldestKeptId)),
         ),
       ));
-    void deleted;
     return total - survivors.length;
   }
 
