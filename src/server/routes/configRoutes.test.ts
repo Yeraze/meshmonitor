@@ -241,4 +241,89 @@ describe('configRoutes', () => {
       }
     });
   });
+
+  /**
+   * Both MeshBeacon limits fail *silently* on the device: nanopb caps
+   * `broadcast_targets` at max_count:4 and `broadcast_message` at max_size:101
+   * (100 bytes + NUL), and one byte or one entry over makes it discard the
+   * WHOLE ModuleConfig with no error and no log line. The remote-admin route has
+   * guarded this since #3854; this local route had no guard at all until #5062.
+   */
+  describe('POST /module/meshbeacon — nanopb limit guards (#5062)', () => {
+    let setGenericModuleConfig: ReturnType<typeof vi.fn>;
+
+    beforeEach(async () => {
+      setGenericModuleConfig = vi.fn().mockResolvedValue(undefined);
+      await sourceManagerRegistry.addManager({
+        sourceId: harness.sourceA,
+        sourceType: 'meshtastic_tcp',
+        start: vi.fn().mockResolvedValue(undefined),
+        stop: vi.fn().mockResolvedValue(undefined),
+        getStatus: vi.fn().mockReturnValue({ sourceId: harness.sourceA, sourceName: 'Source A', sourceType: 'meshtastic_tcp', connected: true }),
+        getLocalNodeInfo: vi.fn().mockReturnValue(null),
+        startDistanceDeleteScheduler: vi.fn().mockResolvedValue(undefined),
+        stopDistanceDeleteScheduler: vi.fn(),
+        setGenericModuleConfig,
+      } as unknown as ISourceManager);
+      await harness.grant(harness.limited.id, 'configuration', 'write', harness.sourceA);
+    });
+
+    afterEach(async () => {
+      await sourceManagerRegistry.removeManager(harness.sourceA);
+    });
+
+    async function postBeacon(config: Record<string, unknown>) {
+      const agent = await harness.loginAs(harness.limited);
+      return agent.post('/module/meshbeacon').send({ sourceId: harness.sourceA, ...config });
+    }
+
+    const target = { region: 1, preset: 0, channelIndex: 0 };
+
+    it('accepts exactly four broadcast targets', async () => {
+      const res = await postBeacon({ flags: 2, broadcastTargets: [target, target, target, target] });
+      expect(res.status).toBe(200);
+      expect(setGenericModuleConfig).toHaveBeenCalled();
+    });
+
+    it('rejects a fifth broadcast target before touching the device', async () => {
+      const res = await postBeacon({ flags: 2, broadcastTargets: [target, target, target, target, target] });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('INVALID_MESHBEACON_CONFIG');
+      expect(res.body.error).toMatch(/at most 4/);
+      expect(setGenericModuleConfig).not.toHaveBeenCalled();
+    });
+
+    it('accepts a beacon message of exactly 100 bytes', async () => {
+      const res = await postBeacon({ flags: 2, broadcastMessage: 'a'.repeat(100) });
+      expect(res.status).toBe(200);
+      expect(setGenericModuleConfig).toHaveBeenCalled();
+    });
+
+    it('rejects a 101-byte beacon message before touching the device', async () => {
+      const res = await postBeacon({ flags: 2, broadcastMessage: 'a'.repeat(101) });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/100 bytes/);
+      expect(setGenericModuleConfig).not.toHaveBeenCalled();
+    });
+
+    it('counts UTF-8 bytes, not characters', async () => {
+      // 34 * 3 bytes = 102 bytes from 34 characters.
+      const res = await postBeacon({ flags: 2, broadcastMessage: 'éé'.repeat(0) + '中'.repeat(34) });
+      expect(res.status).toBe(400);
+      expect(setGenericModuleConfig).not.toHaveBeenCalled();
+    });
+
+    it('rejects a channel index outside the node channel table', async () => {
+      const res = await postBeacon({ flags: 2, broadcastTargets: [{ region: 1, channelIndex: 8 }] });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/channelIndex/);
+      expect(setGenericModuleConfig).not.toHaveBeenCalled();
+    });
+
+    it('leaves other module types unguarded', async () => {
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.post('/module/serial').send({ sourceId: harness.sourceA, enabled: true });
+      expect(res.status).toBe(200);
+    });
+  });
 });

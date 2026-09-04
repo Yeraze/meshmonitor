@@ -1,0 +1,48 @@
+/*
+ * MeshBeacon broadcast-targets editor (issue #5062). Scoped styles for the
+ * repeated-row table; the surrounding `.setting-item` / `.setting-input`
+ * classes still come from the shared configuration sheet.
+ */
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: flex-end;
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--color-surface-hover);
+  border-radius: 0.375rem;
+}
+
+.field {
+  flex: 1 1 8rem;
+}
+
+.fieldWide {
+  flex: 1 1 10rem;
+}
+
+.fieldLabel {
+  font-size: 0.8rem;
+}
+
+.addButton {
+  margin-top: 0.5rem;
+}
+
+/*
+ * Both nanopb limits fail silently on the device, so the reason a control is
+ * unavailable has to be visible right next to it.
+ */
+.notice {
+  display: block;
+  margin-top: 0.5rem;
+  color: var(--color-text-subtle);
+  font-size: 0.85rem;
+}
+
+.warning {
+  composes: notice;
+  color: var(--color-warning);
+}

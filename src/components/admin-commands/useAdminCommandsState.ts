@@ -185,11 +185,16 @@ export interface TrafficManagementConfigState {
 }
 
 /**
- * One entry of the repeated `broadcast_targets` list (module_config.proto:929).
- * The broadcaster transmits one beacon copy per target, each on its own radio
- * settings. `preset`/`channelIndex` are `optional` on the wire (null = fall back
- * to the running config); `region` is a plain enum where 0/UNSET means "use the
+ * One entry of the repeated `broadcast_targets` list
+ * (`MeshBeaconConfig.BroadcastTarget`, module_config.proto). The broadcaster
+ * transmits one beacon copy per target, each on its own radio settings.
+ * `preset`/`channelIndex` are `optional` on the wire (null = fall back to the
+ * running config); `region` is a plain enum where 0/UNSET means "use the
  * running config region".
+ *
+ * `channelIndex` names a slot in the node's own channel table — the firmware
+ * needs that channel's key to encrypt, so a slot the node does not have is not
+ * a valid target (issue #5062).
  */
 export interface BroadcastTarget {
   /** Config.LoRaConfig.ModemPreset, or null to use the running config preset. */
@@ -199,6 +204,21 @@ export interface BroadcastTarget {
   /** Channel-table slot (0..MAX_NUM_CHANNELS-1), or null for the preset default. */
   channelIndex: number | null;
 }
+
+/**
+ * nanopb caps `broadcast_targets` at `max_count:4`
+ * (`meshtastic/module_config.options`). A fifth entry does not decode, and
+ * nanopb drops the **entire** ModuleConfig without an error or a log line — the
+ * user just sees settings that never saved. Enforced in the editor and again
+ * server-side (issue #5062).
+ */
+export const MESH_BEACON_MAX_TARGETS = 4;
+
+/**
+ * nanopb caps `broadcast_message` at `max_size:101` — 100 bytes of text plus the
+ * NUL terminator. Same silent whole-config drop as the target cap above.
+ */
+export const MESH_BEACON_MESSAGE_MAX_BYTES = 100;
 
 // MeshBeacon Config State (firmware 2.8+, #3854).
 //
@@ -211,8 +231,6 @@ export interface MeshBeaconConfigState {
   broadcastEnabled: boolean;
   legacySplit: boolean;
   broadcastMessage: string;
-  /** 0 = send as the local node; otherwise the node ID to send beacons as. */
-  broadcastSendAsNode: number;
   /** Name of the channel advertised in offer_channel; '' = advertise none. */
   broadcastOfferChannelName: string;
   /** Base64 PSK for the advertised channel. */
@@ -229,18 +247,13 @@ export interface MeshBeaconConfigState {
    * and defaults to 3600; the UI mirrors that floor (see MESH_BEACON_MIN_INTERVAL_SECS).
    */
   broadcastIntervalSecs: number;
-  /** Single-target TX channel name (broadcast_on_channel); '' = primary channel. */
-  broadcastOnChannelName: string;
-  /** Base64 PSK for the single-target TX channel. */
-  broadcastOnChannelPsk: string;
-  /** Config.LoRaConfig.RegionCode for the single-target TX; 0 = use running config. */
-  broadcastOnRegion: number;
-  /** Config.LoRaConfig.ModemPreset for the single-target TX, or null = running config. */
-  broadcastOnPreset: number | null;
   /**
-   * Multi-target broadcast list. When non-empty the device sends one beacon per
-   * entry, each on that entry's preset/region/channel; when empty the single
-   * broadcast_on_* fields are used instead.
+   * Broadcast destination list — the only way to name a transmit destination
+   * since firmware consolidated the single `broadcast_on_*` fields onto it
+   * (protobufs #1048 / firmware #11646, issue #5062). When non-empty the device
+   * sends one beacon per entry, each on that entry's preset/region/channel; when
+   * empty it sends a single beacon on the running preset/region over the primary
+   * channel. Capped at MESH_BEACON_MAX_TARGETS entries by nanopb.
    */
   broadcastTargets: BroadcastTarget[];
 }
@@ -321,11 +334,10 @@ export function pskToBase64(psk: unknown): string {
  * (AdminCommandsTab) surfaces so the omit-logic lives in exactly one place.
  *
  * The omit rules mirror the proto semantics:
- * - `offer_channel` / `broadcast_on_channel` are whole ChannelSettings
- *   sub-messages: sent only when a name is present. A blank name means "no
- *   channel", not a nameless one.
- * - `offer_preset` / `broadcast_on_preset` are `optional`: null is omitted so the
- *   device reads "no preset", which differs from sending 0 (LONG_FAST).
+ * - `offer_channel` is a whole ChannelSettings sub-message: sent only when a
+ *   name is present. A blank name means "no channel", not a nameless one.
+ * - `offer_preset` is `optional`: null is omitted so the device reads "no
+ *   preset", which differs from sending 0 (LONG_FAST).
  * - a target's `preset` / `channelIndex` are `optional`: null is dropped so the
  *   device falls back to the running config for that field.
  * - `broadcast_targets` is always included (even when empty) so removing every
@@ -338,10 +350,8 @@ export function buildMeshBeaconConfigPayload(
     // The three checkboxes are one bitfield on the wire.
     flags: packMeshBeaconFlags(beacon),
     broadcastMessage: beacon.broadcastMessage,
-    broadcastSendAsNode: beacon.broadcastSendAsNode,
     broadcastOfferRegion: beacon.broadcastOfferRegion,
     broadcastIntervalSecs: beacon.broadcastIntervalSecs,
-    broadcastOnRegion: beacon.broadcastOnRegion,
     broadcastTargets: beacon.broadcastTargets.map((target) => {
       const entry: Record<string, unknown> = { region: target.region };
       if (target.preset !== null) entry.preset = target.preset;
@@ -357,20 +367,10 @@ export function buildMeshBeaconConfigPayload(
     };
   }
 
-  if (beacon.broadcastOnChannelName.trim().length > 0) {
-    config.broadcastOnChannel = {
-      name: beacon.broadcastOnChannelName,
-      ...(beacon.broadcastOnChannelPsk ? { psk: beacon.broadcastOnChannelPsk } : {}),
-    };
-  }
-
-  // `optional` fields: omit to advertise/use no preset. Sending 0 would mean
+  // `optional` field: omit to advertise no preset. Sending 0 would mean
   // LONG_FAST, a different statement.
   if (beacon.broadcastOfferPreset !== null) {
     config.broadcastOfferPreset = beacon.broadcastOfferPreset;
-  }
-  if (beacon.broadcastOnPreset !== null) {
-    config.broadcastOnPreset = beacon.broadcastOnPreset;
   }
 
   return config;
@@ -398,12 +398,10 @@ export function parseMeshBeaconConfig(
     (value && typeof value === 'object' ? value : {}) as Record<string, unknown>;
 
   const offerChannel = asRecord(config.broadcastOfferChannel);
-  const onChannel = asRecord(config.broadcastOnChannel);
   const rawTargets: unknown[] = Array.isArray(config.broadcastTargets) ? config.broadcastTargets : [];
   return {
     ...unpackMeshBeaconFlags(num(config.flags, 0)),
     broadcastMessage: str(config.broadcastMessage),
-    broadcastSendAsNode: num(config.broadcastSendAsNode, 0),
     broadcastOfferChannelName: str(offerChannel.name),
     broadcastOfferChannelPsk: pskToBase64(offerChannel.psk),
     broadcastOfferRegion: num(config.broadcastOfferRegion, 0),
@@ -411,10 +409,6 @@ export function parseMeshBeaconConfig(
     broadcastOfferPreset: numOrNull(config.broadcastOfferPreset),
     // Firmware default/minimum is 3600; absence reads as that rather than 0.
     broadcastIntervalSecs: num(config.broadcastIntervalSecs, 0) || MESH_BEACON_MIN_INTERVAL_SECS,
-    broadcastOnChannelName: str(onChannel.name),
-    broadcastOnChannelPsk: pskToBase64(onChannel.psk),
-    broadcastOnRegion: num(config.broadcastOnRegion, 0),
-    broadcastOnPreset: numOrNull(config.broadcastOnPreset),
     broadcastTargets: rawTargets.map((raw) => {
       const target = asRecord(raw);
       return {
@@ -608,16 +602,11 @@ const initialState: AdminCommandsState = {
     broadcastEnabled: false,
     legacySplit: false,
     broadcastMessage: '',
-    broadcastSendAsNode: 0,
     broadcastOfferChannelName: '',
     broadcastOfferChannelPsk: '',
     broadcastOfferRegion: 0,
     broadcastOfferPreset: null,
     broadcastIntervalSecs: MESH_BEACON_MIN_INTERVAL_SECS,
-    broadcastOnChannelName: '',
-    broadcastOnChannelPsk: '',
-    broadcastOnRegion: 0,
-    broadcastOnPreset: null,
     broadcastTargets: [],
   },
 };

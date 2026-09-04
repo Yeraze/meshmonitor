@@ -286,19 +286,15 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   const [meshBeaconBroadcastEnabled, setMeshBeaconBroadcastEnabled] = useState(false);
   const [meshBeaconLegacySplit, setMeshBeaconLegacySplit] = useState(false);
   const [meshBeaconBroadcastMessage, setMeshBeaconBroadcastMessage] = useState('');
-  const [meshBeaconBroadcastSendAsNode, setMeshBeaconBroadcastSendAsNode] = useState(0);
   const [meshBeaconBroadcastOfferChannelName, setMeshBeaconBroadcastOfferChannelName] = useState('');
   const [meshBeaconBroadcastOfferChannelPsk, setMeshBeaconBroadcastOfferChannelPsk] = useState('');
   const [meshBeaconBroadcastOfferRegion, setMeshBeaconBroadcastOfferRegion] = useState(0);
   // null = advertise no preset; the proto field is `optional`, so this is not 0.
   const [meshBeaconBroadcastOfferPreset, setMeshBeaconBroadcastOfferPreset] = useState<number | null>(null);
-  // Transmit settings + broadcast targets (issue #4802).
+  // Interval + broadcast targets (issue #4802). The single `broadcast_on_*`
+  // transmit fields were removed from the firmware and their tags reserved
+  // (issue #5062) — the targets list is now the only transmit destination.
   const [meshBeaconBroadcastIntervalSecs, setMeshBeaconBroadcastIntervalSecs] = useState(MESH_BEACON_MIN_INTERVAL_SECS);
-  const [meshBeaconBroadcastOnChannelName, setMeshBeaconBroadcastOnChannelName] = useState('');
-  const [meshBeaconBroadcastOnChannelPsk, setMeshBeaconBroadcastOnChannelPsk] = useState('');
-  const [meshBeaconBroadcastOnRegion, setMeshBeaconBroadcastOnRegion] = useState(0);
-  // null = use the running config preset; the proto field is `optional`.
-  const [meshBeaconBroadcastOnPreset, setMeshBeaconBroadcastOnPreset] = useState<number | null>(null);
   const [meshBeaconBroadcastTargets, setMeshBeaconBroadcastTargets] = useState<BroadcastTarget[]>([]);
 
   // Supported modules tracking (for unsupported firmware detection)
@@ -724,19 +720,14 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           setMeshBeaconBroadcastEnabled(flags.broadcastEnabled);
           setMeshBeaconLegacySplit(flags.legacySplit);
           setMeshBeaconBroadcastMessage(mb.broadcastMessage ?? '');
-          setMeshBeaconBroadcastSendAsNode(mb.broadcastSendAsNode ?? 0);
           setMeshBeaconBroadcastOfferChannelName(mb.broadcastOfferChannel?.name ?? '');
           setMeshBeaconBroadcastOfferChannelPsk(pskToBase64(mb.broadcastOfferChannel?.psk));
           setMeshBeaconBroadcastOfferRegion(mb.broadcastOfferRegion ?? 0);
           // `optional` — absent means "advertise no preset", not LONG_FAST.
           setMeshBeaconBroadcastOfferPreset(mb.broadcastOfferPreset ?? null);
-          // Transmit settings + targets (#4802). Interval absence reads as the
-          // firmware minimum (3600), not 0.
+          // Interval + targets (#4802). Interval absence reads as the firmware
+          // minimum (3600), not 0.
           setMeshBeaconBroadcastIntervalSecs(mb.broadcastIntervalSecs || MESH_BEACON_MIN_INTERVAL_SECS);
-          setMeshBeaconBroadcastOnChannelName(mb.broadcastOnChannel?.name ?? '');
-          setMeshBeaconBroadcastOnChannelPsk(pskToBase64(mb.broadcastOnChannel?.psk));
-          setMeshBeaconBroadcastOnRegion(mb.broadcastOnRegion ?? 0);
-          setMeshBeaconBroadcastOnPreset(mb.broadcastOnPreset ?? null);
           setMeshBeaconBroadcastTargets(
             // Narrow on `typeof`, not `??` (#5030): a non-numeric value here
             // silently became a `<select value>` matching no `<option>`, so a
@@ -1476,23 +1467,18 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
     setIsSaving(true);
     setStatusMessage('');
     try {
-      // Shared builder owns the wire omit-logic (offer/on channels, optional
-      // presets, target normalisation) — see buildMeshBeaconConfigPayload.
+      // Shared builder owns the wire omit-logic (offer channel, optional
+      // preset, target normalisation) — see buildMeshBeaconConfigPayload.
       const config = buildMeshBeaconConfigPayload({
         listenEnabled: meshBeaconListenEnabled,
         broadcastEnabled: meshBeaconBroadcastEnabled,
         legacySplit: meshBeaconLegacySplit,
         broadcastMessage: meshBeaconBroadcastMessage,
-        broadcastSendAsNode: meshBeaconBroadcastSendAsNode,
         broadcastOfferChannelName: meshBeaconBroadcastOfferChannelName,
         broadcastOfferChannelPsk: meshBeaconBroadcastOfferChannelPsk,
         broadcastOfferRegion: meshBeaconBroadcastOfferRegion,
         broadcastOfferPreset: meshBeaconBroadcastOfferPreset,
         broadcastIntervalSecs: meshBeaconBroadcastIntervalSecs,
-        broadcastOnChannelName: meshBeaconBroadcastOnChannelName,
-        broadcastOnChannelPsk: meshBeaconBroadcastOnChannelPsk,
-        broadcastOnRegion: meshBeaconBroadcastOnRegion,
-        broadcastOnPreset: meshBeaconBroadcastOnPreset,
         broadcastTargets: meshBeaconBroadcastTargets,
       });
 
@@ -2701,8 +2687,6 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             setLegacySplit={setMeshBeaconLegacySplit}
             broadcastMessage={meshBeaconBroadcastMessage}
             setBroadcastMessage={setMeshBeaconBroadcastMessage}
-            broadcastSendAsNode={meshBeaconBroadcastSendAsNode}
-            setBroadcastSendAsNode={setMeshBeaconBroadcastSendAsNode}
             broadcastOfferChannelName={meshBeaconBroadcastOfferChannelName}
             setBroadcastOfferChannelName={setMeshBeaconBroadcastOfferChannelName}
             broadcastOfferChannelPsk={meshBeaconBroadcastOfferChannelPsk}
@@ -2713,16 +2697,9 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             setBroadcastOfferPreset={setMeshBeaconBroadcastOfferPreset}
             broadcastIntervalSecs={meshBeaconBroadcastIntervalSecs}
             setBroadcastIntervalSecs={setMeshBeaconBroadcastIntervalSecs}
-            broadcastOnChannelName={meshBeaconBroadcastOnChannelName}
-            setBroadcastOnChannelName={setMeshBeaconBroadcastOnChannelName}
-            broadcastOnChannelPsk={meshBeaconBroadcastOnChannelPsk}
-            setBroadcastOnChannelPsk={setMeshBeaconBroadcastOnChannelPsk}
-            broadcastOnRegion={meshBeaconBroadcastOnRegion}
-            setBroadcastOnRegion={setMeshBeaconBroadcastOnRegion}
-            broadcastOnPreset={meshBeaconBroadcastOnPreset}
-            setBroadcastOnPreset={setMeshBeaconBroadcastOnPreset}
             broadcastTargets={meshBeaconBroadcastTargets}
             setBroadcastTargets={setMeshBeaconBroadcastTargets}
+            channels={channels}
             isDisabled={!supportedModules?.meshBeacon}
             isSaving={isSaving}
             onSave={handleSaveMeshBeaconConfig}

@@ -18,7 +18,7 @@ import { logger } from '../../utils/logger.js';
 import { requireAdmin } from '../auth/authMiddleware.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
-import { getRoutingErrorName, MESH_BEACON_MESSAGE_MAX_BYTES } from '../constants/meshtastic.js';
+import { getRoutingErrorName, validateMeshBeaconConfigPayload } from '../constants/meshtastic.js';
 import { CONFIG_TYPE_MAP, MODULE_FIELD_BY_ID, DEVICE_FIELD_BY_ID } from '../constants/configTypes.js';
 import { autoFavoriteManagementScheduler } from '../services/autoFavoriteManagementService.js';
 import protobufService from '../protobufService.js';
@@ -1840,25 +1840,16 @@ router.post('/commands', requireAdmin(), async (req, res) => {
         if (!params.config) {
           return res.status(400).json({ error: 'config is required for setMeshBeaconConfig' });
         }
-        // Firmware enforces a 100-byte cap on the beacon text. Reject over-long
-        // input here rather than letting the device silently truncate it or drop
-        // the whole set-config message (#3854).
-        if (typeof params.config.broadcastMessage === 'string'
-          && Buffer.byteLength(params.config.broadcastMessage, 'utf8') > MESH_BEACON_MESSAGE_MAX_BYTES) {
-          return res.status(400).json({
-            error: `broadcastMessage exceeds ${MESH_BEACON_MESSAGE_MAX_BYTES} bytes (firmware limit)`
-          });
-        }
-        // Firmware enforces a 3600s (1h) minimum on broadcast_interval_secs and
-        // silently rejects lower values (#4802). Reject a positive sub-minimum
-        // here so the user gets a clear error instead of a setting that never
-        // persists. 0 is allowed (device falls back to the firmware default).
-        if (typeof params.config.broadcastIntervalSecs === 'number'
-          && params.config.broadcastIntervalSecs > 0
-          && params.config.broadcastIntervalSecs < 3600) {
-          return res.status(400).json({
-            error: 'broadcastIntervalSecs must be at least 3600 seconds (firmware minimum)'
-          });
+        // The device enforces the beacon-text cap, the 3600s interval floor and
+        // the 4-target nanopb limit *silently* — an over-long message or a fifth
+        // target makes nanopb drop the entire ModuleConfig with no error and no
+        // log line (#3854, #4802, #5062). Reject up front so the user gets a
+        // clear error instead of settings that never persist.
+        {
+          const meshBeaconError = validateMeshBeaconConfigPayload(params.config);
+          if (meshBeaconError) {
+            return res.status(400).json({ error: meshBeaconError });
+          }
         }
         buildAdminMessage = (passkey) => protobufService.createSetModuleConfigMessageGeneric('meshbeacon', params.config, passkey);
         break;

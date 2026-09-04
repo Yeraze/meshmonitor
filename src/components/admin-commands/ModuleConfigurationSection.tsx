@@ -2,7 +2,12 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { MODEM_PRESET_OPTIONS, REGION_OPTIONS } from '../configuration/constants';
 import BroadcastTargetsEditor from '../configuration/BroadcastTargetsEditor';
-import { MESH_BEACON_MIN_INTERVAL_SECS, type BroadcastTarget } from './useAdminCommandsState';
+import {
+  MESH_BEACON_MIN_INTERVAL_SECS,
+  MESH_BEACON_MESSAGE_MAX_BYTES,
+  type BroadcastTarget,
+} from './useAdminCommandsState';
+import type { Channel } from '../../types/device';
 
 interface ModuleConfigurationSectionProps {
   // CollapsibleSection component (passed from parent)
@@ -82,18 +87,17 @@ interface ModuleConfigurationSectionProps {
   meshBeaconBroadcastEnabled: boolean;
   meshBeaconLegacySplit: boolean;
   meshBeaconBroadcastMessage: string;
-  meshBeaconBroadcastSendAsNode: number;
   meshBeaconBroadcastOfferChannelName: string;
   meshBeaconBroadcastOfferChannelPsk: string;
   meshBeaconBroadcastOfferRegion: number;
   meshBeaconBroadcastOfferPreset: number | null;
-  // Transmit settings + broadcast targets (issue #4802).
+  // Interval + broadcast targets (issue #4802). The single `broadcast_on_*`
+  // transmit fields were removed from the firmware and their tags reserved
+  // (issue #5062) — the targets list is now the only transmit destination.
   meshBeaconBroadcastIntervalSecs: number;
-  meshBeaconBroadcastOnChannelName: string;
-  meshBeaconBroadcastOnChannelPsk: string;
-  meshBeaconBroadcastOnRegion: number;
-  meshBeaconBroadcastOnPreset: number | null;
   meshBeaconBroadcastTargets: BroadcastTarget[];
+  /** The remote node's channel table, for the per-target channel slot picker. */
+  meshBeaconChannels?: Channel[];
   // Narrower than the sibling module handlers' `value: any` — every scalar
   // MeshBeacon field is one of these, and `null` is meaningful (offer-no-preset).
   onMeshBeaconConfigChange: (field: string, value: string | number | boolean | null) => void;
@@ -173,17 +177,13 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
   meshBeaconBroadcastEnabled,
   meshBeaconLegacySplit,
   meshBeaconBroadcastMessage,
-  meshBeaconBroadcastSendAsNode,
   meshBeaconBroadcastOfferChannelName,
   meshBeaconBroadcastOfferChannelPsk,
   meshBeaconBroadcastOfferRegion,
   meshBeaconBroadcastOfferPreset,
   meshBeaconBroadcastIntervalSecs,
-  meshBeaconBroadcastOnChannelName,
-  meshBeaconBroadcastOnChannelPsk,
-  meshBeaconBroadcastOnRegion,
-  meshBeaconBroadcastOnPreset,
   meshBeaconBroadcastTargets,
+  meshBeaconChannels,
   onMeshBeaconConfigChange,
   onMeshBeaconTargetsChange,
   onSaveMeshBeaconConfig,
@@ -198,6 +198,13 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
   meshBeaconHeaderActions,
 }) => {
   const { t } = useTranslation();
+
+  // nanopb caps `broadcast_message` at 100 bytes + NUL. One byte over and the
+  // device drops the entire MeshBeacon config with no error and no log line, so
+  // the save button is blocked rather than letting the user find out by the
+  // settings silently not sticking (#5062).
+  const meshBeaconMessageBytes = new TextEncoder().encode(meshBeaconBroadcastMessage).length;
+  const meshBeaconMessageTooLong = meshBeaconMessageBytes > MESH_BEACON_MESSAGE_MAX_BYTES;
 
   return (
     <CollapsibleSection
@@ -985,12 +992,22 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
                   className="setting-input"
                   placeholder={t('meshbeacon_config.broadcast_message_placeholder', 'e.g. Welcome to the local mesh')}
                 />
-                <span className="setting-description">
+                <span
+                  className="setting-description"
+                  style={meshBeaconMessageTooLong ? { color: 'var(--color-danger)' } : undefined}
+                >
                   {t('meshbeacon_config.broadcast_message_desc', 'Human-readable text sent with each beacon. Firmware caps this at 100 bytes.')}
                   {' '}
-                  {t('meshbeacon_config.broadcast_message_count', '{{used}}/100 bytes used', {
-                    used: new TextEncoder().encode(meshBeaconBroadcastMessage).length
+                  {t('meshbeacon_config.broadcast_message_count', '{{used}}/{{max}} bytes used', {
+                    used: meshBeaconMessageBytes,
+                    max: MESH_BEACON_MESSAGE_MAX_BYTES
                   })}
+                  {meshBeaconMessageTooLong && (
+                    <>
+                      {' '}
+                      {t('meshbeacon_config.broadcast_message_too_long', 'Over the limit. The device rejects the whole MeshBeacon config without reporting an error, so nothing would save.')}
+                    </>
+                  )}
                 </span>
               </div>
 
@@ -1008,19 +1025,6 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
                     <span className="setting-description">{t('meshbeacon_config.legacy_split_desc', 'Send the text and the offer as two packets, so nodes that only decode text messages still see the text. Costs one extra transmission per beacon.')}</span>
                   </div>
                 </label>
-              </div>
-
-              <div className="setting-item">
-                <label>{t('meshbeacon_config.send_as_node', 'Send As Node')}</label>
-                <input
-                  type="number"
-                  min="0"
-                  value={meshBeaconBroadcastSendAsNode}
-                  onChange={(e) => onMeshBeaconConfigChange('broadcastSendAsNode', parseInt(e.target.value) || 0)}
-                  disabled={isExecuting || meshBeaconIsDisabled}
-                  className="setting-input"
-                />
-                <span className="setting-description">{t('meshbeacon_config.send_as_node_desc', 'Node number to send beacons as. 0 sends them as this node. A remote admin may only set this to their own node ID.')}</span>
               </div>
 
               <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--color-text)', margin: '0.75rem 0 0.5rem' }}>{t('meshbeacon_config.offer_section', 'Offered Network (optional)')}</div>
@@ -1103,71 +1107,11 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
                 <span className="setting-description">{t('meshbeacon_config.interval_desc', 'How often to broadcast. Firmware enforces a minimum of 3600 seconds (1 hour) and rejects lower values, so a shorter interval will not persist on the device.')}</span>
               </div>
 
-              <div className="setting-item">
-                <label>{t('meshbeacon_config.on_channel_name', 'Transmit Channel Name')}</label>
-                <input
-                  type="text"
-                  value={meshBeaconBroadcastOnChannelName}
-                  onChange={(e) => onMeshBeaconConfigChange('broadcastOnChannelName', e.target.value)}
-                  disabled={isExecuting || meshBeaconIsDisabled}
-                  className="setting-input"
-                />
-                <span className="setting-description">{t('meshbeacon_config.on_channel_name_desc', 'Channel the beacon is sent on. Leave blank to use the primary channel. Ignored when broadcast targets are set below.')}</span>
-              </div>
-
-              {meshBeaconBroadcastOnChannelName.trim().length > 0 && (
-                <div className="setting-item">
-                  <label>{t('meshbeacon_config.on_channel_psk', 'Transmit Channel PSK')}</label>
-                  <input
-                    type="text"
-                    value={meshBeaconBroadcastOnChannelPsk}
-                    onChange={(e) => onMeshBeaconConfigChange('broadcastOnChannelPsk', e.target.value)}
-                    disabled={isExecuting || meshBeaconIsDisabled}
-                    className="setting-input"
-                    placeholder={t('meshbeacon_config.offer_channel_psk_placeholder', 'base64, e.g. AQ==')}
-                  />
-                  <span className="setting-description">{t('meshbeacon_config.on_channel_psk_desc', 'Base64 pre-shared key for the transmit channel.')}</span>
-                </div>
-              )}
-
-              <div className="setting-item">
-                <label>{t('meshbeacon_config.on_region', 'Transmit Region')}</label>
-                <select
-                  value={meshBeaconBroadcastOnRegion}
-                  onChange={(e) => onMeshBeaconConfigChange('broadcastOnRegion', parseInt(e.target.value) || 0)}
-                  disabled={isExecuting || meshBeaconIsDisabled}
-                  className="setting-input"
-                >
-                  {REGION_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
-                <span className="setting-description">{t('meshbeacon_config.on_region_desc', 'Region to transmit beacons on. UNSET uses this node\'s running config region.')}</span>
-              </div>
-
-              <div className="setting-item">
-                <label>{t('meshbeacon_config.on_preset', 'Transmit Modem Preset')}</label>
-                <select
-                  value={meshBeaconBroadcastOnPreset === null ? '' : meshBeaconBroadcastOnPreset}
-                  onChange={(e) => onMeshBeaconConfigChange(
-                    'broadcastOnPreset',
-                    e.target.value === '' ? null : parseInt(e.target.value)
-                  )}
-                  disabled={isExecuting || meshBeaconIsDisabled}
-                  className="setting-input"
-                >
-                  <option value="">{t('meshbeacon_config.on_preset_running', 'Use running config preset')}</option>
-                  {MODEM_PRESET_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>{option.name} — {option.description}</option>
-                  ))}
-                </select>
-                <span className="setting-description">{t('meshbeacon_config.on_preset_desc', 'Modem preset to transmit beacons on. The radio is temporarily switched for TX when this differs from the running config.')}</span>
-              </div>
-
               <BroadcastTargetsEditor
                 targets={meshBeaconBroadcastTargets}
                 onChange={onMeshBeaconTargetsChange}
                 disabled={isExecuting || meshBeaconIsDisabled}
+                channels={meshBeaconChannels}
               />
             </div>
           )}
@@ -1175,11 +1119,11 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
           <button
             className="save-button"
             onClick={onSaveMeshBeaconConfig}
-            disabled={isExecuting || selectedNodeNum === null || meshBeaconIsDisabled}
+            disabled={isExecuting || selectedNodeNum === null || meshBeaconIsDisabled || meshBeaconMessageTooLong}
             style={{
               marginTop: '1rem',
-              opacity: (isExecuting || selectedNodeNum === null || meshBeaconIsDisabled) ? 0.5 : 1,
-              cursor: (isExecuting || selectedNodeNum === null || meshBeaconIsDisabled) ? 'not-allowed' : 'pointer'
+              opacity: (isExecuting || selectedNodeNum === null || meshBeaconIsDisabled || meshBeaconMessageTooLong) ? 0.5 : 1,
+              cursor: (isExecuting || selectedNodeNum === null || meshBeaconIsDisabled || meshBeaconMessageTooLong) ? 'not-allowed' : 'pointer'
             }}
           >
             {isExecuting ? t('common.saving') : t('meshbeacon_config.save_button', 'Save MeshBeacon Config')}

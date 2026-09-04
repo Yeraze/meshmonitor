@@ -456,7 +456,7 @@ describe('adminRoutes — TX-disabled mapping + txEnabled preservation (#4294)',
   });
 });
 
-describe('adminRoutes — setMeshBeaconConfig interval guard (#4802)', () => {
+describe('adminRoutes — setMeshBeaconConfig firmware-limit guards (#4802, #5062)', () => {
   let harness: RouteTestHarness;
 
   function makeManager(overrides: Record<string, unknown> = {}): ISourceManager {
@@ -533,6 +533,68 @@ describe('adminRoutes — setMeshBeaconConfig interval guard (#4802)', () => {
     });
 
     expect(res.status).toBe(200);
+  });
+
+  /**
+   * nanopb caps `broadcast_targets` at max_count:4. A fifth entry does not
+   * decode and nanopb drops the WHOLE ModuleConfig — no error, no log line, the
+   * user just sees settings that never saved (#5062).
+   */
+  it('accepts exactly four broadcast targets', async () => {
+    await sourceManagerRegistry.addManager(makeManager());
+    const agent = await harness.loginAs(harness.admin);
+    const target = { region: 1, preset: 0, channelIndex: 0 };
+
+    const res = await agent.post('/commands').send({
+      command: 'setMeshBeaconConfig',
+      sourceId: harness.sourceA,
+      nodeNum: 1,
+      config: { flags: 2, broadcastTargets: [target, target, target, target] },
+    });
+
+    expect(res.status).toBe(200);
+    expect(protobufService.createSetModuleConfigMessageGeneric).toHaveBeenCalled();
+  });
+
+  it('rejects a fifth broadcast target with 400, before touching the device', async () => {
+    const sendAdminCommand = vi.fn().mockResolvedValue(undefined);
+    await sourceManagerRegistry.addManager(makeManager({ sendAdminCommand }));
+    const agent = await harness.loginAs(harness.admin);
+    const target = { region: 1, preset: 0, channelIndex: 0 };
+
+    const res = await agent.post('/commands').send({
+      command: 'setMeshBeaconConfig',
+      sourceId: harness.sourceA,
+      nodeNum: 1,
+      config: { flags: 2, broadcastTargets: [target, target, target, target, target] },
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/at most 4/);
+    expect(sendAdminCommand).not.toHaveBeenCalled();
+    expect(protobufService.createSetModuleConfigMessageGeneric).not.toHaveBeenCalled();
+  });
+
+  it('accepts a beacon message of exactly 100 bytes and rejects 101', async () => {
+    await sourceManagerRegistry.addManager(makeManager());
+    const agent = await harness.loginAs(harness.admin);
+
+    const atLimit = await agent.post('/commands').send({
+      command: 'setMeshBeaconConfig',
+      sourceId: harness.sourceA,
+      nodeNum: 1,
+      config: { flags: 2, broadcastMessage: 'a'.repeat(100) },
+    });
+    expect(atLimit.status).toBe(200);
+
+    const overLimit = await agent.post('/commands').send({
+      command: 'setMeshBeaconConfig',
+      sourceId: harness.sourceA,
+      nodeNum: 1,
+      config: { flags: 2, broadcastMessage: 'a'.repeat(101) },
+    });
+    expect(overLimit.status).toBe(400);
+    expect(overLimit.body.error).toMatch(/100 bytes/);
   });
 });
 
