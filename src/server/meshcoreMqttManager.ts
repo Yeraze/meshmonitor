@@ -49,6 +49,8 @@ import {
   type IngestedObserverPacket,
 } from './services/meshcoreMqttIngestPacket.js';
 import meshcorePacketLogService from './services/meshcorePacketLogService.js';
+import databaseService from '../services/database.js';
+import { decodeMeshCorePacket } from '../utils/meshcorePacketDecode.js';
 import { logger } from '../utils/logger.js';
 
 /** Persisted `sources.config` shape for a `meshcore_mqtt` source. */
@@ -84,8 +86,23 @@ export interface MeshCoreMqttIngestStats {
   rejected: number;
   /** Distinct observer public keys seen this session. */
   observers: number;
+  /** ADVERT frames turned into node create/updates. */
+  advertsIngested: number;
   lastPacketAt: number | null;
   lastError: string | null;
+}
+
+/**
+ * Convert an ADVERT's self-reported unix-seconds timestamp into a `lastHeard`
+ * milliseconds value, or `undefined` when it carries none.
+ *
+ * Clamped to now: the value comes from an untrusted publisher, so a future
+ * claim is either a forgery or a node with a bad clock, and both would corrupt
+ * every "last heard" ordering that reads this column.
+ */
+export function advertLastHeardMs(timestampSec: number, nowMs: number = Date.now()): number | undefined {
+  if (!Number.isFinite(timestampSec) || timestampSec <= 0) return undefined;
+  return Math.min(timestampSec * 1000, nowMs);
 }
 
 export class MeshCoreMqttManager extends EventEmitter implements ISourceManager {
@@ -102,6 +119,7 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
     accepted: 0,
     rejected: 0,
     observers: 0,
+    advertsIngested: 0,
     lastPacketAt: null,
     lastError: null,
   };
@@ -230,6 +248,7 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
       // reconstructing the bridge shape.
       this.emit('ota_packet', decoded.event);
       void this.persistPacket(decoded);
+      void this.ingestAdvert(decoded);
     } catch (err) {
       this.stats.rejected++;
       logger.debug(`[MeshCoreMqtt:${this.sourceId}] failed to handle message:`, err);
@@ -274,6 +293,75 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
       });
     } catch (err) {
       logger.debug(`[MeshCoreMqtt:${this.sourceId}] failed to persist packet:`, err);
+    }
+  }
+
+  /**
+   * Create or update a node from an ADVERT frame (#5040 Phase 3).
+   *
+   * Adverts are the only frame type a region feed can turn into node knowledge:
+   * they are unencrypted and self-describing (public key, name, device role,
+   * and optionally a position). Everything else on the feed is either encrypted
+   * to someone else or carries no identity.
+   *
+   * ## Signatures are decoded but NOT enforced
+   *
+   * An advert is self-signed, and this source ingests frames published by
+   * strangers, so a forged advert can create a node or move an existing one on
+   * THIS source. That is an accepted trade-off, decided deliberately (#5040):
+   *
+   * - Verification is not free — an Ed25519 check per advert on a busy regional
+   *   feed is real CPU on the ingest path.
+   * - The device-backed path does not verify either; the radio hands us
+   *   contacts without proof, so gating only the MQTT path would be
+   *   inconsistent without being complete.
+   * - Blast radius is bounded by per-source scoping: forged rows land in this
+   *   source's `meshcore_nodes` only, never in a device source's.
+   *
+   * `decodeMeshCorePacket` exposes `appDataHex` so a caller that DOES want
+   * proof can run `Ed25519SignatureVerifier.verifyAdvertisementSignature()` —
+   * the packet monitor can show validity per frame on demand. If this ever
+   * needs to become a gate, that is the hook, and it belongs here.
+   *
+   * Best-effort: a decode or write failure must never break the ingest stream.
+   */
+  private async ingestAdvert(decoded: IngestedObserverPacket): Promise<void> {
+    try {
+      const packet = decodeMeshCorePacket(decoded.event.raw_hex);
+      const advert = packet?.payload?.advert;
+      if (!advert?.publicKey) return;
+
+      await databaseService.meshcore.upsertNode(
+        {
+          publicKey: advert.publicKey,
+          // `undefined` means "not observed" to upsertNode, which then PRESERVES
+          // the stored value. Passing null would clobber a good name with
+          // nothing when an advert omits one.
+          name: advert.name ?? undefined,
+          advType: advert.advType,
+          latitude: advert.latitude,
+          longitude: advert.longitude,
+          // Same provenance tag the contact-sync path uses: an advert position
+          // is the static kind, so a real telemetry fix keeps precedence.
+          positionSource: advert.latitude !== undefined ? 'contact' : undefined,
+          // When the observer heard it, not when we ingested it — a replayed or
+          // delayed publish must not make a silent node look freshly heard.
+          //
+          // Capped at now, because the timestamp is attacker-controlled in both
+          // directions and only the stale one was guarded. A forged or
+          // misconfigured advert claiming a FUTURE time would otherwise park the
+          // node at the top of every "last heard" sort indefinitely, and no
+          // later genuine reception could displace it. Mirrors the Meshtastic
+          // NodeInfo path, which caps for the same reason
+          // (`meshtasticManager.ts`, "cap at current time to prevent future
+          // timestamps").
+          lastHeard: advertLastHeardMs(advert.timestamp),
+        },
+        this.sourceId,
+      );
+      this.stats.advertsIngested++;
+    } catch (err) {
+      logger.debug(`[MeshCoreMqtt:${this.sourceId}] failed to ingest advert:`, err);
     }
   }
 
