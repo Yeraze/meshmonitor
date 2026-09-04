@@ -1,0 +1,60 @@
+/*
+ * Informational notice for a node that went quiet on firmware 2.8+ (#5033).
+ * Scoped CSS module — the global sheets (src/styles/nodes.css and siblings)
+ * are frozen. Every color is a semantic role token with NO fallback, so a
+ * renamed token surfaces as a visible bug instead of a silently wrong hue
+ * (#4567, enforced by src/styles/semanticTokens.test.ts).
+ */
+
+.notice {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-info) 45%, transparent);
+  border-left: 3px solid var(--color-info);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-info) 12%, transparent);
+  color: var(--color-text);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.icon {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--color-info);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.title {
+  font-weight: 600;
+  color: var(--color-info);
+}
+
+.detail {
+  color: var(--color-text-muted);
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 2px;
+}
+
+.links a {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+
+.links a:hover {
+  color: var(--color-accent-hover);
+}

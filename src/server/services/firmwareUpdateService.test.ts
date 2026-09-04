@@ -935,6 +935,31 @@ describe('FirmwareUpdateService', () => {
 
         expect(service.getStatus().state).toBe('awaiting-confirm');
       });
+
+      // The gate parses via the shared helper in src/utils/firmwareVersion.ts
+      // (PR #5042), which is more lenient than the regex that used to live
+      // here. The guard around it keeps the original fail-OPEN behaviour: a
+      // string without all three numeric segments skips the check entirely
+      // rather than blocking the update.
+      it.each(['unknown', '2.7', 'v2.7.15', ''])(
+        'skips the version gate for an unparseable current version (%j)',
+        (currentVersion) => {
+          (getBoardName as ReturnType<typeof vi.fn>).mockReturnValue('heltec-v3');
+          (getPlatformForBoard as ReturnType<typeof vi.fn>).mockReturnValue('esp32s3');
+          (isOtaCapable as ReturnType<typeof vi.fn>).mockReturnValue(true);
+          (getHardwareDisplayName as ReturnType<typeof vi.fn>).mockReturnValue('Heltec V3');
+
+          service.startPreflight({
+            currentVersion,
+            targetVersion: '2.7.19.abcdef',
+            targetRelease: makeRelease('2.7.19.abcdef'),
+            gatewayIp: '192.168.1.100',
+            hwModel: 43,
+          });
+
+          expect(service.getStatus().state).toBe('awaiting-confirm');
+        },
+      );
     });
 
     describe('verifyUpdate', () => {

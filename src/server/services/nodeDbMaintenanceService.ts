@@ -41,8 +41,14 @@ import { logger } from '../../utils/logger.js';
  * so no `Number(...)` coercion belongs in this function itself. Preserved
  * verbatim from the pre-extraction `MeshtasticManager.mapDbNodeToDeviceInfo`.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- relocated verbatim; `node` is an untyped Drizzle row shape, same as the pre-extraction manager method
-export function mapDbNodeToDeviceInfo(node: any, uptimeSeconds?: number, noiseFloor?: number): DeviceInfo {
+export function mapDbNodeToDeviceInfo(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- relocated verbatim; `node` is an untyped Drizzle row shape, same as the pre-extraction manager method
+  node: any,
+  uptimeSeconds?: number,
+  noiseFloor?: number,
+  /** Epoch ms of the latest device-metrics telemetry sample (#5033). */
+  telemetryTimestamp?: number,
+): DeviceInfo {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- relocated verbatim; the function assigns fields (isFavorite, keyIsLowEntropy, etc.) beyond the DeviceInfo interface, same as the pre-extraction manager method
   const deviceInfo: any = {
     nodeNum: node.nodeNum,
@@ -65,6 +71,13 @@ export function mapDbNodeToDeviceInfo(node: any, uptimeSeconds?: number, noiseFl
     snr: node.snr,
     rssi: node.rssi
   };
+
+  // #5033: how long the node's telemetry module has been quiet. Only set when
+  // the node has ever reported device metrics — "never sent any" must stay
+  // distinguishable from "sent some, then stopped".
+  if (telemetryTimestamp !== null && telemetryTimestamp !== undefined) {
+    deviceInfo.telemetryTimestamp = telemetryTimestamp;
+  }
 
   // Add role if it exists
   if (node.role !== null && node.role !== undefined) {
@@ -211,8 +224,10 @@ export class NodeDbMaintenanceService {
    * the (now module-level) `mapDbNodeToDeviceInfo`.
    */
   async getAllNodesAsync(sourceId?: string): Promise<DeviceInfo[]> {
-    const [uptimeMap, noiseFloorMap] = await Promise.all([
-      databaseService.telemetry.getLatestTelemetryValueForAllNodes('uptimeSeconds', sourceId),
+    // The uptime query now returns the sample's timestamp alongside its value
+    // (#5033), so telemetry-recency costs no extra round trip.
+    const [uptimeSamples, noiseFloorMap] = await Promise.all([
+      databaseService.telemetry.getLatestTelemetrySampleForAllNodes('uptimeSeconds', sourceId),
       databaseService.telemetry.getLatestTelemetryValueForAllNodes('noiseFloor', sourceId),
     ]);
     // intentional cross-source when sourceId omitted: caller wants unified view across all sources
@@ -220,9 +235,15 @@ export class NodeDbMaintenanceService {
     // Without a sourceId the caller wants the unified view, so collapse the
     // per-source rows into one entry per nodeNum. Issue #3135.
     const effective = sourceId ? dbNodes : mergeNodesAcrossSources(dbNodes);
-    return effective.map(node =>
-      mapDbNodeToDeviceInfo(node, uptimeMap.get(node.nodeId), noiseFloorMap.get(node.nodeId)),
-    );
+    return effective.map(node => {
+      const uptime = uptimeSamples.get(node.nodeId);
+      return mapDbNodeToDeviceInfo(
+        node,
+        uptime?.value,
+        noiseFloorMap.get(node.nodeId),
+        uptime?.timestamp,
+      );
+    });
   }
 
   /**

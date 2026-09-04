@@ -96,3 +96,47 @@ describe('MeshtasticManager.supportsFavorites — version-keyed cache', () => {
     expect(spy).toHaveBeenCalledTimes(1);
   });
 });
+
+/**
+ * MeshtasticManager.parseFirmwareVersion() now delegates to the canonical,
+ * browser-safe parser in src/utils/firmwareVersion.ts (PR #5042). It keeps a
+ * `^\d+\.\d+\.\d+` strictness pre-test so its contract is exactly what it was
+ * before consolidation — these cases pin that, because loosening it would
+ * silently flip firmware feature gates (supportsFavorites,
+ * supportsStatusMessage, supportsRangeTest, …) from false to true.
+ */
+describe('MeshtasticManager.parseFirmwareVersion — strict contract', () => {
+  const mgr = makeManager('2.7.24');
+
+  it.each([
+    ['2.8.0', { major: 2, minor: 8, patch: 0 }],
+    ['2.8.0.abc1234', { major: 2, minor: 8, patch: 0 }],
+    ['2.8.0-rc1', { major: 2, minor: 8, patch: 0 }],
+    ['2.8.1.deadbe-beta', { major: 2, minor: 8, patch: 1 }],
+    ['2.10.0', { major: 2, minor: 10, patch: 0 }],
+    ['2.7.11', { major: 2, minor: 7, patch: 11 }],
+  ] as const)('parses %s like the shared helper', (input, expected) => {
+    expect(mgr.parseFirmwareVersion(input)).toEqual(expected);
+  });
+
+  it.each([
+    // Requires all three numeric segments — the shared helper defaults to 0.
+    '2.8',
+    '3',
+    // No leading `v`, no surrounding whitespace — the shared helper tolerates both.
+    'v2.8.0',
+    '  v2.8.0  ',
+    // Agreed rejections.
+    '',
+    'unknown',
+    'abc2.8.0',
+  ])('rejects %j (stricter than the shared helper)', (input) => {
+    expect(mgr.parseFirmwareVersion(input)).toBeNull();
+  });
+
+  it('still throws on a non-string, as it always has', () => {
+    expect(() => mgr.parseFirmwareVersion(undefined as unknown as string)).toThrow(TypeError);
+    expect(() => mgr.parseFirmwareVersion(null as unknown as string)).toThrow(TypeError);
+    expect(() => mgr.parseFirmwareVersion(123 as unknown as string)).toThrow(TypeError);
+  });
+});

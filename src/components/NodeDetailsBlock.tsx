@@ -16,6 +16,7 @@ import './NodeDetailsBlock.css';
 import { UiIcon, type UiIconName } from './icons';
 import { MeshtasticContactShare } from './MeshtasticContactShare';
 import { NodeSkyView } from './gnss/NodeSkyView';
+import { Firmware28SilenceNotice } from './Firmware28SilenceNotice';
 
 interface NodeDetailsBlockProps {
   node: DeviceInfo | null;
@@ -792,6 +793,11 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
             </div>
           ) : null}
         </div>
+
+        {/* "Silent on 2.8+" notice (#5033). Self-gated: renders nothing unless
+            the node is on firmware >= 2.8, is still being heard, and has gone
+            quiet on position and/or telemetry. Display only — sends nothing. */}
+        <Firmware28SilenceNotice node={node} />
 
         {/* GNSS Sky View (#4729) — theoretical-vs-reported satellite diagnostic,
             rendered only when the node has a position. Self-gated + collapsed. */}

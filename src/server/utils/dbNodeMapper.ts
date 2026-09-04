@@ -18,7 +18,13 @@ import { mergeNodesAcrossSources } from './mergeNodesAcrossSources.js';
 import type { DeviceInfo } from '../meshtasticManager.js';
 import { logger } from '../../utils/logger.js';
 
-export function mapDbNodeToDeviceInfo(node: any, uptimeSeconds?: number, noiseFloor?: number): DeviceInfo {
+export function mapDbNodeToDeviceInfo(
+  node: any,
+  uptimeSeconds?: number,
+  noiseFloor?: number,
+  /** Epoch ms of the latest device-metrics telemetry sample (#5033). */
+  telemetryTimestamp?: number,
+): DeviceInfo {
   const deviceInfo: any = {
     nodeNum: node.nodeNum,
     user: {
@@ -40,6 +46,13 @@ export function mapDbNodeToDeviceInfo(node: any, uptimeSeconds?: number, noiseFl
     snr: node.snr,
     rssi: node.rssi,
   };
+
+  // #5033: how long the node's telemetry module has been quiet. Only set when
+  // the node has ever reported device metrics — "never sent any" must stay
+  // distinguishable from "sent some, then stopped".
+  if (telemetryTimestamp !== null && telemetryTimestamp !== undefined) {
+    deviceInfo.telemetryTimestamp = telemetryTimestamp;
+  }
 
   if (node.role !== null && node.role !== undefined) {
     deviceInfo.user.role = node.role.toString();
@@ -146,14 +159,22 @@ export function mapDbNodeToDeviceInfo(node: any, uptimeSeconds?: number, noiseFl
  * `mergeNodesAcrossSources` (issue #3135).
  */
 export async function loadAllNodesAsDeviceInfo(sourceId?: string): Promise<DeviceInfo[]> {
-  const [uptimeMap, noiseFloorMap] = await Promise.all([
-    databaseService.telemetry.getLatestTelemetryValueForAllNodes('uptimeSeconds', sourceId),
+  // The uptime query now returns the sample's timestamp alongside its value
+  // (#5033), so telemetry-recency costs no extra round trip.
+  const [uptimeSamples, noiseFloorMap] = await Promise.all([
+    databaseService.telemetry.getLatestTelemetrySampleForAllNodes('uptimeSeconds', sourceId),
     databaseService.telemetry.getLatestTelemetryValueForAllNodes('noiseFloor', sourceId),
   ]);
   // intentional cross-source when sourceId omitted: caller wants unified view across all sources
   const dbNodes = await databaseService.nodes.getAllNodes(sourceId ?? ALL_SOURCES);
   const effective = sourceId ? dbNodes : mergeNodesAcrossSources(dbNodes);
-  return effective.map(node =>
-    mapDbNodeToDeviceInfo(node, uptimeMap.get(node.nodeId), noiseFloorMap.get(node.nodeId)),
-  );
+  return effective.map(node => {
+    const uptime = uptimeSamples.get(node.nodeId);
+    return mapDbNodeToDeviceInfo(
+      node,
+      uptime?.value,
+      noiseFloorMap.get(node.nodeId),
+      uptime?.timestamp,
+    );
+  });
 }
