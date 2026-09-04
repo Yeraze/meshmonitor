@@ -31,6 +31,22 @@ export const MOBILE_BREAKPOINT_PX = 768;
  */
 export const MOBILE_LANDSCAPE_MAX_HEIGHT_PX = 500;
 
+/**
+ * The shell's definition of "mobile layout", written as a CSS media query.
+ *
+ * This is the exact condition `isMobileLayout()` implements, and the exact
+ * condition the sheets spell out by hand as
+ * `(max-width: 768px), (max-height: 500px) and (orientation: landscape)`.
+ * Components whose CSS carries that pair of clauses and which ALSO need to know
+ * the answer in JS should match against this string rather than re-deriving a
+ * third definition — `MapSidebar` reads it for its collapsed-by-default rule
+ * (#5060), where a width-only test left the panel open over the map on a
+ * landscape phone.
+ */
+export const MOBILE_LAYOUT_MEDIA_QUERY =
+  `(max-width: ${MOBILE_BREAKPOINT_PX}px), ` +
+  `(max-height: ${MOBILE_LANDSCAPE_MAX_HEIGHT_PX}px) and (orientation: landscape)`;
+
 /** Narrowest useful node list. */
 export const NODE_SIDEBAR_MIN_WIDTH_PX = 200;
 

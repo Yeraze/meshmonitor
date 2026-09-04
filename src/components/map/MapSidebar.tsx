@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { UiIcon } from '../icons';
-import { useIsMobileViewport } from '../../hooks/useIsMobileViewport';
+import { useIsMobileLayoutViewport } from '../../hooks/useIsMobileViewport';
 import './MapSidebar.css';
 
 /**
@@ -13,8 +13,11 @@ import './MapSidebar.css';
  *
  * - Desktop: a right-edge panel; the toggle collapses it to a small ☰ button,
  *   with the collapsed state persisted per `storageKey`.
- * - Mobile (≤768px, handled in CSS): the open panel takes over the viewport as
- *   a full-screen sheet; the same toggle dismisses it back to the ☰ button.
+ * - Mobile portrait (≤768px wide, handled in CSS): the open panel takes over
+ *   the map pane as a full sheet; the same toggle dismisses it to the ☰ button.
+ * - Mobile landscape (≤500px tall, handled in CSS): a full-height right-edge
+ *   sheet capped at 60% of the pane, so the map the controls act on stays
+ *   visible. Both orientations start collapsed (#5060).
  *
  * Presentational only — it owns layout/collapse, not the controls' content.
  */
@@ -31,7 +34,10 @@ export function MapSidebar({
   storageKey = 'mm-map-sidebar-collapsed',
   title = 'Map controls',
 }: MapSidebarProps) {
-  const isMobile = useIsMobileViewport();
+  // The shell's mobile definition, not the width-only one: a landscape phone is
+  // 844px wide, so the width test alone left the panel open over the map on
+  // every rotated phone — the JS half of #5060.
+  const isMobile = useIsMobileLayoutViewport();
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     try {
       const stored = localStorage.getItem(storageKey);
@@ -39,8 +45,8 @@ export function MapSidebar({
     } catch {
       /* storage unavailable — fall through to the viewport default */
     }
-    // No saved preference: mobile starts collapsed (the open panel is a
-    // full-screen sheet over the map), desktop starts expanded (#4909).
+    // No saved preference: mobile starts collapsed (the open panel covers most
+    // of the map), desktop starts expanded (#4909).
     return isMobile;
   });
 

@@ -8,10 +8,13 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { MapSidebar } from './MapSidebar';
 
 // Control the viewport-size hook so mobile-vs-desktop defaults are testable
-// without a real matchMedia (jsdom lacks it).
+// without a real matchMedia (jsdom lacks it). `useIsMobileLayoutViewport` is
+// the shell's definition — narrow OR short-and-landscape — so "mobile" here
+// covers a rotated phone too (#5060).
 let mockIsMobile = false;
 vi.mock('../../hooks/useIsMobileViewport', () => ({
   useIsMobileViewport: () => mockIsMobile,
+  useIsMobileLayoutViewport: () => mockIsMobile,
 }));
 
 describe('MapSidebar (#4909)', () => {

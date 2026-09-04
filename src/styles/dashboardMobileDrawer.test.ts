@@ -21,101 +21,28 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import {
+  createResolver,
+  mediaMatches,
+  type Viewport,
+  PORTRAIT_PHONE,
+  LANDSCAPE_PHONE,
+  LANDSCAPE_BIG_PHONE,
+  LANDSCAPE_SMALL_PHONE,
+  DESKTOP,
+} from './cssCascadeResolver';
 
 const css = readFileSync(resolve('src/styles/dashboard.css'), 'utf-8');
-
-interface Viewport {
-  width: number;
-  height: number;
-}
-
-/** Evaluates the small media-feature grammar these sheets actually use. */
-function mediaMatches(condition: string, vp: Viewport): boolean {
-  // A comma-separated list is an OR of conjunctions.
-  return condition.split(',').some((clause) => {
-    const features = clause.split(/\s+and\s+/).map((f) => f.trim());
-    return features.every((feature) => {
-      const m = feature.match(/\(\s*([a-z-]+)\s*:\s*([^)]+?)\s*\)/);
-      if (!m) throw new Error(`unsupported media feature: ${feature}`);
-      const [, name, value] = m;
-      switch (name) {
-        case 'max-width':
-          return vp.width <= Number(value.replace('px', ''));
-        case 'min-width':
-          return vp.width >= Number(value.replace('px', ''));
-        case 'max-height':
-          return vp.height <= Number(value.replace('px', ''));
-        case 'min-height':
-          return vp.height >= Number(value.replace('px', ''));
-        case 'orientation':
-          // CSS counts a square viewport as landscape.
-          return value === 'landscape' ? vp.width >= vp.height : vp.height > vp.width;
-        default:
-          throw new Error(`unsupported media feature: ${name}`);
-      }
-    });
-  });
-}
-
-/** Strips comments and splits the sheet into (mediaCondition | null, body) blocks. */
-function topLevelBlocks(source: string): Array<{ condition: string | null; body: string }> {
-  const clean = source.replace(/\/\*[\s\S]*?\*\//g, '');
-  const blocks: Array<{ condition: string | null; body: string }> = [];
-  let i = 0;
-  while (i < clean.length) {
-    const braceAt = clean.indexOf('{', i);
-    if (braceAt === -1) break;
-    const prelude = clean.slice(i, braceAt).trim();
-    // Walk to the matching close brace.
-    let depth = 0;
-    let j = braceAt;
-    for (; j < clean.length; j++) {
-      if (clean[j] === '{') depth++;
-      else if (clean[j] === '}' && --depth === 0) break;
-    }
-    const body = clean.slice(braceAt + 1, j);
-    if (prelude.startsWith('@media')) {
-      blocks.push({ condition: prelude.slice('@media'.length).trim(), body });
-    } else if (prelude.startsWith('@')) {
-      // Other at-rules (@keyframes, @supports) are not needed by these tests.
-    } else {
-      blocks.push({ condition: null, body: `${prelude} {${body}}` });
-    }
-    i = j + 1;
-  }
-  return blocks;
-}
 
 /**
  * Resolved value of one property for one selector at one viewport.
  *
  * Deliberately simple: every rule in this sheet that touches these selectors
- * has the same specificity, so source order alone decides the winner.
+ * has the same specificity, so source order alone decides the winner. The
+ * resolver moved to `cssCascadeResolver.ts` when MapSidebar needed it too
+ * (#5060).
  */
-function resolve_(selector: string, property: string, vp: Viewport): string | null {
-  let winner: string | null = null;
-  const wanted = new RegExp(
-    `(^|\\})\\s*${selector.replace(/[.\\[\]]/g, '\\$&')}\\s*\\{([^}]*)\\}`,
-    'g'
-  );
-  for (const block of topLevelBlocks(css)) {
-    if (block.condition !== null && !mediaMatches(block.condition, vp)) continue;
-    const scope = block.condition === null ? block.body : block.body;
-    wanted.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = wanted.exec(scope)) !== null) {
-      const decl = m[2].match(new RegExp(`(?:^|;)\\s*${property}\\s*:\\s*([^;]+)`));
-      if (decl) winner = decl[1].trim();
-    }
-  }
-  return winner;
-}
-
-const PORTRAIT_PHONE: Viewport = { width: 390, height: 844 }; // iPhone 13
-const LANDSCAPE_PHONE: Viewport = { width: 844, height: 390 }; // iPhone 13, rotated
-const LANDSCAPE_BIG_PHONE: Viewport = { width: 915, height: 412 }; // Pixel 7, rotated
-const LANDSCAPE_SMALL_PHONE: Viewport = { width: 667, height: 375 }; // iPhone SE, rotated
-const DESKTOP: Viewport = { width: 1440, height: 900 };
+const resolve_ = createResolver(css);
 
 describe('Sources drawer close control (#5053)', () => {
   const mobileViewports: Array<[string, Viewport]> = [
@@ -275,6 +202,9 @@ describe('compact-landscape queries do not straddle rail and bottom bar (#5053)'
     'src/components/AppHeader/AppHeader.css',
     'src/components/nav/SourceNav.module.css',
     'src/components/SaveBar/SaveBar.css',
+    // Not shell chrome, but it grew a landscape query in #5060 and is subject to
+    // the same "no third breakpoint" rule.
+    'src/components/map/MapSidebar.css',
   ];
 
   it.each(sheets)('%s: every landscape query is shell-scoped or rail-scoped', (sheet) => {
