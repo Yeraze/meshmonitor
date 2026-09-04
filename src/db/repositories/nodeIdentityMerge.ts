@@ -159,6 +159,15 @@ interface RekeyTarget {
  * column, so a plain re-key can never collide — the one exception is
  * `messages.fromNodeNum`, whose primary key encodes the sender, and that is
  * handled by the collision pass before any UPDATE runs.
+ *
+ * **Scope: Meshtastic only.** A merge moves history keyed on a 32-bit
+ * Meshtastic node number. MeshCore identifies a node by its 64-hex public key,
+ * so no MeshCore table (`meshcore_nodes`, `meshcore_packet_log` and its
+ * `observerId`, `meshcore_position_history`, `meshcore_pathfinding_targets`)
+ * carries a node-number column at all — there is nothing for a merge to
+ * re-key, which is why they are absent from both this list and
+ * {@link NOT_REKEYED}. A new MeshCore table needs no entry here; a new
+ * *Meshtastic* per-source table does.
  */
 export const REKEY_TARGETS: readonly RekeyTarget[] = [
   // --- messages -----------------------------------------------------------
