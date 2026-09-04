@@ -104,12 +104,31 @@
 
 /* ── Sidebar backdrop (mobile overlay) ──────────────────────────────────── */
 
+/*
+ * Mobile drawer stacking ladder (#5052). Read this before changing a number.
+ *
+ *   200-700  Leaflet map panes
+ *   997      .map-controls on mobile (nodes.css) — yields to the drawer
+ *   1000     .leaflet-top / .leaflet-bottom — Leaflet's own CONTROL containers
+ *            (zoom buttons, attribution). Vendor value, leaflet.css:141. These
+ *            are NOT panes: the panes top out at 700, the controls do not.
+ *   1001     .map-sidebar (MapSidebar.css) — must beat the control containers
+ *   1098     this backdrop
+ *   1099     .dashboard-sidebar.mobile-open
+ *   10000+   app header, app rail, modals
+ *
+ * The drawer used to sit at 999, one below Leaflet's control layer, so the
+ * zoom buttons painted over the first source card. Raising the drawer is the
+ * fix rather than lowering Leaflet's controls: the attribution strip shares
+ * that same 1000, and pushing it down is what nodes.css:2556 was written to
+ * avoid.
+ */
 .dashboard-sidebar-backdrop {
   display: none; /* Hidden on desktop */
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.5);
-  z-index: 998;
+  z-index: 1098;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.2s ease;
@@ -844,7 +863,9 @@
     bottom: 0;
     /* Overlay drawer has a fixed width; ignore the desktop resize var. */
     width: 260px;
-    z-index: 999;
+    /* Above Leaflet's control containers (1000) — see the ladder on
+       `.dashboard-sidebar-backdrop` (#5052). */
+    z-index: 1099;
     transform: translateX(-100%);
     transition: transform 0.25s ease;
     box-shadow: 2px 0 12px rgba(0, 0, 0, 0.4);

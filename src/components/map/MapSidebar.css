@@ -7,7 +7,19 @@
   top: 10px;
   right: 10px;
   bottom: 10px;
-  z-index: 1000; /* above Leaflet panes (which top out ~700) */
+  /*
+   * Above Leaflet's CONTROL containers, not just its panes (#5052).
+   *
+   * The old value was 1000 with the comment "above Leaflet panes (which top out
+   * ~700)". The panes were the wrong thing to reason about: `.leaflet-top` and
+   * `.leaflet-bottom`, which hold the zoom buttons and the attribution, also
+   * ship 1000 (leaflet.css:141). At an equal z-index the winner falls to DOM
+   * order, which is why the overlap looked intermittent. 1001 settles it.
+   *
+   * Still below the mobile Sources drawer — see the ladder documented on
+   * `.dashboard-sidebar-backdrop` in src/styles/dashboard.css.
+   */
+  z-index: 1001;
   width: 300px;
   max-width: calc(100% - 20px);
   display: flex;

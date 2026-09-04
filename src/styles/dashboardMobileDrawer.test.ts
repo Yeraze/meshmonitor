@@ -179,17 +179,97 @@ describe('Sources drawer close control (#5053)', () => {
   });
 });
 
-describe('compact-landscape breakpoint is a single number (#5053)', () => {
+describe('Sources drawer stacks above the Leaflet control layer (#5052)', () => {
+  /**
+   * Leaflet's *panes* top out at 700, but `.leaflet-top` / `.leaflet-bottom` —
+   * the containers holding the zoom buttons and the attribution — ship 1000.
+   * The drawer sat at 999, one below, so the zoom control painted over the
+   * first source card. Read the vendor value rather than hardcoding it, so a
+   * Leaflet upgrade that moves the number fails here instead of in the field.
+   */
+  const leafletCss = readFileSync(resolve('node_modules/leaflet/dist/leaflet.css'), 'utf-8');
+  const LEAFLET_CONTROL_Z = (() => {
+    const block = leafletCss.match(
+      /\.leaflet-top,\s*\n?\s*\.leaflet-bottom\s*\{([^}]*)\}/
+    )?.[1];
+    const z = block?.match(/z-index:\s*(\d+)/)?.[1];
+    return Number(z);
+  })();
+
+  const z = (selector: string, vp: Viewport) => Number(resolve_(selector, 'z-index', vp));
+
+  it('reads a usable z-index off Leaflet itself', () => {
+    expect(Number.isFinite(LEAFLET_CONTROL_Z)).toBe(true);
+    expect(LEAFLET_CONTROL_Z).toBe(1000);
+  });
+
+  it.each([
+    ['portrait phone', PORTRAIT_PHONE],
+    ['landscape phone', LANDSCAPE_PHONE],
+  ] as Array<[string, Viewport]>)(
+    'puts the drawer and its backdrop above Leaflet\'s controls on a %s',
+    (_name, vp) => {
+      expect(z('.dashboard-sidebar', vp)).toBeGreaterThan(LEAFLET_CONTROL_Z);
+      expect(z('.dashboard-sidebar-backdrop', vp)).toBeGreaterThan(LEAFLET_CONTROL_Z);
+      // The drawer still sits above its own backdrop.
+      expect(z('.dashboard-sidebar', vp)).toBeGreaterThan(z('.dashboard-sidebar-backdrop', vp));
+    }
+  );
+
+  it('keeps the map-controls panel yielding to the drawer', () => {
+    // The documented 997 relationship (nodes.css) must survive the raise.
+    const nodesCss = readFileSync(resolve('src/styles/nodes.css'), 'utf-8');
+    const mobileBlock = nodesCss.slice(nodesCss.lastIndexOf('Map Controls (mobile override)'));
+    const rule = mobileBlock.match(/\.map-controls\s*\{([^}]*)\}/)?.[1] ?? '';
+    const panelZ = Number(rule.match(/z-index:\s*(\d+)/)?.[1]);
+    expect(panelZ).toBe(997);
+    expect(panelZ).toBeLessThan(z('.dashboard-sidebar-backdrop', PORTRAIT_PHONE));
+  });
+
+  it('applies the map-controls mobile override in landscape too', () => {
+    // Same width-only-query defect as #5053: without the landscape clause the
+    // Features panel keeps its desktop z-index and does not yield.
+    const nodesCss = readFileSync(resolve('src/styles/nodes.css'), 'utf-8');
+    const idx = nodesCss.lastIndexOf('Map Controls (mobile override)');
+    const query = nodesCss.slice(idx).match(/@media([^{]*)\{/)?.[1] ?? '';
+    expect(query).toMatch(/max-width:\s*768px/);
+    expect(query).toMatch(/max-height:\s*500px\)\s*and\s*\(orientation:\s*landscape/);
+  });
+
+  it('lifts .map-sidebar clear of the tie with Leaflet\'s controls', () => {
+    const mapSidebarCss = readFileSync(resolve('src/components/map/MapSidebar.css'), 'utf-8');
+    const rule = mapSidebarCss.match(/\.map-sidebar\s*\{([\s\S]*?)\n\}/)?.[1] ?? '';
+    const value = Number(rule.match(/z-index:\s*(\d+)/)?.[1]);
+    expect(value).toBeGreaterThan(LEAFLET_CONTROL_Z);
+    // ...but still under the Sources drawer.
+    expect(value).toBeLessThan(z('.dashboard-sidebar', PORTRAIT_PHONE));
+  });
+});
+
+describe('compact-landscape queries do not straddle rail and bottom bar (#5053)', () => {
   /**
    * The shell had two competing definitions of "compact landscape" — 500px in
    * App.css/AppHeader.css/SourceNav/SaveBar and 700px in Sidebar.css and
-   * SidebarFooter.module.css — so a viewport 501–700px tall in landscape got
-   * half of each layout. `src/utils/sidebarWidth.ts` mirrors the 500px query in
-   * JS, so 500px is the number the rest of the app already agrees on.
+   * SidebarFooter.module.css.
+   *
+   * The 700px pair are RAIL rules: they compact the vertical nav on a short
+   * landscape screen. Below the shell's own thresholds SourceNav is a
+   * horizontal bottom BAR instead, and a rail rule landing on a bar is not
+   * cosmetic — #5054 traced an unreachable bottom nav to
+   * `.sidebar.collapsed { width: 48px !important }` from one of these blocks
+   * beating `.mobileBottomBar.collapsed { width: 100% }`.
+   *
+   * So the invariant is not "one number". It is: a landscape query either uses
+   * the shell threshold (500px, the one `sidebarWidth.ts` mirrors), or it is a
+   * rail block that explicitly subtracts the bar's territory.
    */
+  const SHELL_MAX_HEIGHT = 500;
+  const SHELL_MAX_WIDTH = 768;
+
   const sheets = [
     'src/App.css',
     'src/styles/dashboard.css',
+    'src/styles/nodes.css',
     'src/components/Sidebar.css',
     'src/components/SidebarFooter.module.css',
     'src/components/AppHeader/AppHeader.css',
@@ -197,20 +277,53 @@ describe('compact-landscape breakpoint is a single number (#5053)', () => {
     'src/components/SaveBar/SaveBar.css',
   ];
 
-  it.each(sheets)('%s uses max-height: 500px for every landscape query', (sheet) => {
+  it.each(sheets)('%s: every landscape query is shell-scoped or rail-scoped', (sheet) => {
     const text = readFileSync(resolve(sheet), 'utf-8').replace(/\/\*[\s\S]*?\*\//g, '');
-    const landscapeQueries = [...text.matchAll(/@media([^{]*orientation:\s*landscape[^{]*)\{/g)].map(
+    const queries = [...text.matchAll(/@media([^{]*orientation:\s*landscape[^{]*)\{/g)].map(
       (m) => m[1]
     );
-    for (const q of landscapeQueries) {
-      for (const [, value] of q.matchAll(/max-height:\s*(\d+)px/g)) {
-        expect(Number(value), `${sheet}: @media${q}`).toBe(500);
-      }
+    expect(queries.length).toBeGreaterThan(0);
+
+    for (const q of queries) {
+      const maxHeights = [...q.matchAll(/max-height:\s*(\d+)px/g)].map((m) => Number(m[1]));
+      if (maxHeights.length === 0) continue; // orientation-only query — nothing to reconcile
+      if (maxHeights.every((h) => h === SHELL_MAX_HEIGHT)) continue; // shell-scoped
+
+      // Anything else is a rail block and must exclude the bottom bar on both
+      // axes, or it will fire on viewports where no rail exists.
+      const minWidth = Number(q.match(/min-width:\s*(\d+)px/)?.[1]);
+      const minHeight = Number(q.match(/min-height:\s*(\d+)px/)?.[1]);
+      expect(minWidth, `${sheet}: @media${q} lacks a min-width guard`).toBeGreaterThan(
+        SHELL_MAX_WIDTH
+      );
+      expect(minHeight, `${sheet}: @media${q} lacks a min-height guard`).toBeGreaterThan(
+        SHELL_MAX_HEIGHT
+      );
+    }
+  });
+
+  it('leaves no rail rule matching a bottom-bar viewport', () => {
+    // The concrete regression: a landscape phone must not pick up the rail's
+    // collapsed width, which is what stubbed the bottom nav in #5054.
+    const sidebarCss = readFileSync(resolve('src/components/Sidebar.css'), 'utf-8');
+    const clean = sidebarCss.replace(/\/\*[\s\S]*?\*\//g, '');
+    const railBlocks = [...clean.matchAll(/@media([^{]*orientation:\s*landscape[^{]*)\{/g)].filter(
+      (m) => /max-height:\s*700px/.test(m[1])
+    );
+    expect(railBlocks.length).toBe(2);
+    for (const m of railBlocks) {
+      expect(mediaMatches(m[1].trim(), LANDSCAPE_PHONE)).toBe(false);
+      expect(mediaMatches(m[1].trim(), LANDSCAPE_SMALL_PHONE)).toBe(false);
+      // ...but still active where a rail genuinely exists.
+      expect(mediaMatches(m[1].trim(), { width: 1024, height: 600 })).toBe(true);
     }
   });
 
   it('matches the threshold the JS mirror uses', async () => {
-    const { MOBILE_LANDSCAPE_MAX_HEIGHT_PX } = await import('../utils/sidebarWidth.js');
-    expect(MOBILE_LANDSCAPE_MAX_HEIGHT_PX).toBe(500);
+    const { MOBILE_LANDSCAPE_MAX_HEIGHT_PX, MOBILE_BREAKPOINT_PX } = await import(
+      '../utils/sidebarWidth.js'
+    );
+    expect(MOBILE_LANDSCAPE_MAX_HEIGHT_PX).toBe(SHELL_MAX_HEIGHT);
+    expect(MOBILE_BREAKPOINT_PX).toBe(SHELL_MAX_WIDTH);
   });
 });

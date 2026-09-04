@@ -67,6 +67,14 @@
   padding: 0.25rem 0.75rem;
   transition: all 0.2s ease;
   white-space: nowrap;
+  /*
+   * Never absorb the squeeze (#5051). `.header-left` is `overflow: hidden`, so
+   * a shrinkable back button gets hard-clipped mid-word ("Sourc…") rather than
+   * ellipsised. The source-name badge next to it already carries
+   * `text-overflow: ellipsis` and a `max-width`, so it is the element that
+   * should give way when the row runs out of room.
+   */
+  flex-shrink: 0;
 }
 
 .back-to-sources-btn:hover {
@@ -316,6 +324,43 @@
   .connection-status {
     margin: 0;
     padding: 0;
+  }
+
+  /*
+   * Collapse the cycling badge to icons only (#5051).
+   *
+   * The badge rotates Connected → Battery → Airtime, and its widest faces
+   * ("Plugged in 4.38V", "Ch 12.3% · Air 4.5%") plus the 5.5rem `min-width`
+   * reservation ran the header row past a 390px viewport. `.header-left` is
+   * `overflow: hidden`, so the overflow landed on the "Sources" back button as
+   * a hard clip. Dropping ~90px of always-reserved width is what makes the row
+   * fit; the colored dot still carries connection state, the face icon still
+   * says which metric is showing, and the numbers are one tap away in the
+   * System Status popup this badge opens.
+   *
+   * Deliberately the existing 768px mobile breakpoint rather than a third
+   * threshold — this block already hides the logo, the wordmark and the node
+   * info for the same reason. The rotation itself is untouched (#4917/#4927):
+   * this is presentation only.
+   */
+  .connection-status-label {
+    /* Was 5.5rem to stop the badge jumping as text faces rotate; with the text
+       gone the icon slot is what needs reserving. */
+    min-width: 1.25rem;
+    justify-content: center;
+  }
+
+  /* Hidden from layout, kept for screen readers — `display: none` would drop
+     the only textual form of the connection state from the accessibility tree,
+     leaving a colored dot and nothing to announce. */
+  .connection-status-label .status-text,
+  .connection-status-label .status-metric-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   .connection-status .status-indicator {

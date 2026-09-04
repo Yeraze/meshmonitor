@@ -93,7 +93,9 @@ export const CyclingConnectionStatus: React.FC<CyclingConnectionStatusProps> = (
       return (
         <span className="status-metric">
           <UiIcon name={plugged ? 'batteryCharging' : 'battery'} size={14} />
-          {parts.join(' ')}
+          {/* Wrapped, not a bare text node, so the narrow-viewport rules in
+              AppHeader.css can collapse the badge to its icon (#5051). */}
+          <span className="status-metric-text">{parts.join(' ')}</span>
         </span>
       );
     }
@@ -109,12 +111,12 @@ export const CyclingConnectionStatus: React.FC<CyclingConnectionStatusProps> = (
       return (
         <span className="status-metric">
           <UiIcon name="zap" size={14} />
-          {parts.join(' · ')}
+          <span className="status-metric-text">{parts.join(' · ')}</span>
         </span>
       );
     }
 
-    return <span>{connectionStatusText}</span>;
+    return <span className="status-text">{connectionStatusText}</span>;
   };
 
   return (

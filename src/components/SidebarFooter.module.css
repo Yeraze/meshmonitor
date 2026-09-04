@@ -76,10 +76,13 @@
 }
 
 /* The per-source sidebar hides its footer on short landscape screens to free
-   nav space — mirrors the frozen .sidebar-footer rules in Sidebar.css.
-   500px, not 700px: one shared "compact landscape" threshold across the shell
-   and its JS mirror in src/utils/sidebarWidth.ts (#5053). */
-@media (orientation: landscape) and (max-height: 500px) {
+   nav space — mirrors the frozen .sidebar-footer rules in Sidebar.css, and
+   carries the same rail-only scoping (#5053): below the shell's mobile
+   thresholds SourceNav is a bottom bar, and it already hides `.footerSlot`
+   outright, so this rule has no business firing there. See the banner above
+   those blocks in Sidebar.css for why subtracting the bar's territory beats
+   moving 700 down to 500. */
+@media (orientation: landscape) and (max-height: 700px) and (min-width: 769px) and (min-height: 501px) {
   .hideOnCompactLandscape {
     display: none;
   }
