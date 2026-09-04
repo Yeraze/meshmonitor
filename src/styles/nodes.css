@@ -1508,6 +1508,29 @@
   }
 }
 
+/* The split view's bottom-bar clearance, again, for short LANDSCAPE (#5060).
+ *
+ * The block above is gated on `max-width: 768px` alone, and a phone in
+ * landscape is 844 or 915px wide, so the clearance switched off exactly when
+ * the screen got short: `.nodes-split-view` fell back to the base rule's
+ * `bottom: 0` and ran its last ~44px under the fixed bottom nav bar. Anything
+ * living down there — the end of the node list, the bottom of the map controls
+ * sheet — was painted but not tappable, because the bar was on top of it.
+ *
+ * Only `bottom` is restated: `top` and `left` already resolve correctly from
+ * the base rule in landscape (`--sidebar-width` is 0 once the rail becomes a
+ * bar), so overriding them here would be noise with a blast radius.
+ *
+ * Placement: after the base `.nodes-split-view` rule at the top of this file
+ * AND after the max-width block above, per the ordering constraint in the file
+ * banner (#3532) — an @media adds no specificity, so source order is the only
+ * thing making this win. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .nodes-split-view {
+    bottom: calc(var(--app-nav-bar-height, 44px) + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 /* Extra small screens - iPhone SE and similar */
 @media (max-width: 400px) {
 

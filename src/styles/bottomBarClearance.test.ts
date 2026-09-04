@@ -21,6 +21,14 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import {
+  createResolver,
+  PORTRAIT_PHONE,
+  LANDSCAPE_PHONE,
+  LANDSCAPE_BIG_PHONE,
+  LANDSCAPE_SMALL_PHONE,
+  DESKTOP,
+} from './cssCascadeResolver';
 
 const appCss = readFileSync(resolve('src/App.css'), 'utf-8');
 const nodesCss = readFileSync(resolve('src/styles/nodes.css'), 'utf-8');
@@ -77,5 +85,35 @@ describe('mobile bottom-bar clearance (#4473)', () => {
     expect(appCss).toMatch(/--app-nav-bar-height:\s*44px/);
     // And --sidebar-width collapses so horizontal offsets stop reserving a rail.
     expect(appCss).toMatch(/--sidebar-width:\s*0px\s*!important/);
+  });
+});
+
+describe('the clearance survives rotation (#5060)', () => {
+  /**
+   * The rule above lived only in `@media (max-width: 768px)`. A phone in
+   * landscape is wider than that (844 / 915), so on rotation `.nodes-split-view`
+   * fell back to the base `bottom: 0` and ran its last ~44px under the fixed
+   * bottom bar — painted but not tappable, the #5053 family again.
+   *
+   * Resolved values rather than a grep: the whole failure mode is a rule that
+   * exists in the file and loses.
+   */
+  const resolve_ = createResolver(nodesCss);
+
+  it.each([
+    ['portrait phone', PORTRAIT_PHONE],
+    ['landscape phone', LANDSCAPE_PHONE],
+    ['landscape big phone', LANDSCAPE_BIG_PHONE],
+    ['landscape small phone', LANDSCAPE_SMALL_PHONE],
+  ])('reserves the bar height on a %s', (_name, vp) => {
+    const bottom = resolve_('.nodes-split-view', 'bottom', vp);
+    expect(bottom).not.toBe('0');
+    expect(bottom).toMatch(/var\(--app-nav-bar-height/);
+    expect(bottom).toMatch(/env\(safe-area-inset-bottom/);
+  });
+
+  it('leaves the desktop split view flush to the viewport', () => {
+    // No bar on desktop, so reserving space there would be dead pixels.
+    expect(resolve_('.nodes-split-view', 'bottom', DESKTOP)).toBe('0');
   });
 });

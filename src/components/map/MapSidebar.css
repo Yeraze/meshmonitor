@@ -108,7 +108,42 @@
   padding-top: 0.75rem;
 }
 
-/* Mobile: the open sidebar takes over the viewport as a full-screen sheet. */
+/* ============================================================================
+ * SMALL-SCREEN TREATMENTS — two of them, and the order below is load-bearing
+ * ============================================================================
+ * "Mobile" here follows the shell's own definition, the one `isMobileLayout()`
+ * and `MOBILE_LAYOUT_MEDIA_QUERY` mirror in `src/utils/sidebarWidth.ts`:
+ *
+ *     (max-width: 768px), (max-height: 500px) and (orientation: landscape)
+ *
+ * The second clause is the whole of #5060. A phone in landscape is WIDER than
+ * 768px (iPhone 13 → 844, Pixel 7 → 915), so a width-only query switches the
+ * mobile treatment off exactly when the screen gets short — the same defect
+ * that hid the Sources drawer's close control in #5053. Do not "reconcile" the
+ * two numbers into one: 768 is a width and 500 is a height, and the small-screen
+ * side wants their union, not a third breakpoint.
+ *
+ * Portrait and short-landscape get DIFFERENT geometry on purpose:
+ *
+ *   Portrait — a full sheet over the map pane. There is plenty of height, and
+ *     the pane is narrow, so anything less than the full width just wastes it.
+ *
+ *   Short landscape — a right-edge sheet that stops at 60% of the pane. A full
+ *     sheet here would hide the map completely, and these are *map* controls:
+ *     you tick "Show Neighbors" to watch neighbors appear. Losing the thing the
+ *     controls act on is a worse outcome than the bug. Width is not the scarce
+ *     axis in landscape (300px already fits every control), so the sheet keeps
+ *     the desktop column width and spends the win on HEIGHT instead — flush to
+ *     the top and bottom of the pane rather than inset 10px, which is the axis
+ *     a 390px-tall viewport is actually short of.
+ *
+ * ORDER: an iPhone SE in landscape (667x375) matches BOTH blocks. The landscape
+ * block must come second so it wins on equal specificity — the cascade trap
+ * documented at the top of src/styles/nodes.css (#3532), which has bitten this
+ * repo twice.
+ * ============================================================================ */
+
+/* Portrait / narrow: the open sidebar takes over the map pane as a full sheet. */
 @media (max-width: 768px) {
   .map-sidebar {
     top: 0;
@@ -119,5 +154,36 @@
     max-width: 100%;
     border-radius: 0;
     border: none;
+  }
+}
+
+/* Short landscape: full-height right-edge sheet, map still visible beside it. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .map-sidebar {
+    top: 0;
+    right: 0;
+    bottom: 0;
+    /* Undoes `left: 0` from the block above on viewports that match both. */
+    left: auto;
+    width: 300px;
+    /* Never swallow the pane: at least 40% of the map stays on screen, however
+       narrow the pane is (the Nodes split-view pane is ~464px at 844x390). */
+    max-width: 60%;
+    border-radius: 0;
+    border: none;
+    /* Re-stated rather than left to the base rule: the portrait block's
+       `border: none` also matches at 667x375 and would otherwise erase it. */
+    border-left: 1px solid var(--color-surface-hover);
+  }
+
+  /* Keep the close control clear of a side notch when the phone is rotated so
+     the cutout lands on the right. Zero on every other device. */
+  .map-sidebar-header {
+    padding-right: max(0.75rem, env(safe-area-inset-right));
+  }
+
+  /* Same for the collapsed affordance, which sits in that corner on its own. */
+  .map-sidebar-toggle {
+    right: max(10px, env(safe-area-inset-right));
   }
 }

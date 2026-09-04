@@ -10,8 +10,29 @@ import {
   isMobileLayout,
   MOBILE_BREAKPOINT_PX,
   MOBILE_LANDSCAPE_MAX_HEIGHT_PX,
+  MOBILE_LAYOUT_MEDIA_QUERY,
   NODE_SIDEBAR_MIN_WIDTH_PX,
 } from './sidebarWidth';
+import { mediaMatches } from '../styles/cssCascadeResolver';
+
+describe('MOBILE_LAYOUT_MEDIA_QUERY (#5060)', () => {
+  // The CSS string and the predicate are two spellings of one rule; a component
+  // that mixes them (MapSidebar does — sheet plus collapsed-by-default) breaks
+  // in a way no render test can see if they ever drift.
+  it.each([
+    ['iPhone 13 portrait', 390, 844],
+    ['iPhone 13 landscape', 844, 390],
+    ['Pixel 7 landscape', 915, 412],
+    ['iPhone SE landscape', 667, 375],
+    ['laptop', 1366, 768],
+    ['desktop', 1440, 900],
+    ['square', 1000, 1000],
+  ])('agrees with isMobileLayout on a %s', (_name, w, h) => {
+    expect(mediaMatches(MOBILE_LAYOUT_MEDIA_QUERY, { width: w, height: h })).toBe(
+      isMobileLayout(w, h)
+    );
+  });
+});
 
 describe('isMobileLayout', () => {
   it.each([
