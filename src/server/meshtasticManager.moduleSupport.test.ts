@@ -93,6 +93,73 @@ describe('MeshtasticManager — module support gating (firmware version, not con
     });
   });
 
+  describe('supportsRangeTest (removed in 2.8 - inverse gate, #5031)', () => {
+    // Range Test is the one module gated by an UPPER bound: it was removed
+    // outright in firmware 2.8 (confirmed by garth, a Meshtastic maintainer),
+    // so support means "older than 2.8.0".
+    it('returns true for 2.7.26', () => {
+      expect((makeManager('2.7.26') as any).supportsRangeTest()).toBe(true);
+    });
+
+    it('returns true for the last 2.7.x builds', () => {
+      expect((makeManager('2.7.99') as any).supportsRangeTest()).toBe(true);
+    });
+
+    it('returns false at the exact removal threshold 2.8.0', () => {
+      expect((makeManager('2.8.0') as any).supportsRangeTest()).toBe(false);
+    });
+
+    it('returns false for 2.8.x with a commit-hash suffix', () => {
+      expect((makeManager('2.8.4.abc1234') as any).supportsRangeTest()).toBe(false);
+    });
+
+    it('returns false for a 2.8.0 pre-release suffix', () => {
+      expect((makeManager('2.8.0-alpha.1') as any).supportsRangeTest()).toBe(false);
+    });
+
+    it('returns false for a future major (3.0.0)', () => {
+      expect((makeManager('3.0.0') as any).supportsRangeTest()).toBe(false);
+    });
+
+    it('fails OPEN when the firmware version is unknown', () => {
+      // Unknown version must NOT disable the UI - that would look like a bug.
+      expect((makeManager(undefined) as any).supportsRangeTest()).toBe(true);
+    });
+
+    it('fails OPEN when the firmware version is unparseable', () => {
+      expect((makeManager('unknown') as any).supportsRangeTest()).toBe(true);
+      expect((makeManager('v2.8.0') as any).supportsRangeTest()).toBe(true);
+      expect((makeManager('') as any).supportsRangeTest()).toBe(true);
+    });
+  });
+
+  describe('parseFirmwareVersion edge cases', () => {
+    const parse = (v: string) => (makeManager(undefined) as any).parseFirmwareVersion(v);
+
+    it('parses a plain three-part version', () => {
+      expect(parse('2.7.11')).toEqual({ major: 2, minor: 7, patch: 11 });
+    });
+
+    it('parses a version with a trailing commit-hash segment', () => {
+      expect(parse('2.8.0.abcdef1')).toEqual({ major: 2, minor: 8, patch: 0 });
+    });
+
+    it('parses a pre-release suffixed version', () => {
+      expect(parse('2.8.0-alpha.1')).toEqual({ major: 2, minor: 8, patch: 0 });
+    });
+
+    it('parses multi-digit components without truncation', () => {
+      expect(parse('10.11.12')).toEqual({ major: 10, minor: 11, patch: 12 });
+    });
+
+    it('returns null for a v-prefixed or otherwise unparseable string', () => {
+      expect(parse('v2.8.0')).toBeNull();
+      expect(parse('2.8')).toBeNull();
+      expect(parse('')).toBeNull();
+      expect(parse('unknown')).toBeNull();
+    });
+  });
+
   describe('getCurrentConfig().supportedModules', () => {
     // Regression: a 2.7.24 device that has never had Traffic Management or
     // StatusMessage configured sends an all-default config. Proto3 omits an
@@ -106,6 +173,27 @@ describe('MeshtasticManager — module support gating (firmware version, not con
 
       expect(supportedModules.trafficManagement).toBe(false);
       expect(supportedModules.statusmessage).toBe(true);
+      // Range Test still exists on 2.7.x (#5031).
+      expect(supportedModules.rangeTest).toBe(true);
+    });
+
+    it('reports rangeTest unsupported on 2.8.0, where the module was removed (#5031)', () => {
+      const mgr = makeManager('2.8.0');
+      (mgr as any).actualModuleConfig = {};
+
+      const { supportedModules } = mgr.getCurrentConfig();
+
+      expect(supportedModules.rangeTest).toBe(false);
+      expect(supportedModules.trafficManagement).toBe(true);
+    });
+
+    it('reports rangeTest supported when the firmware version is unknown (fail open, #5031)', () => {
+      const mgr = makeManager(undefined);
+      (mgr as any).actualModuleConfig = {};
+
+      const { supportedModules } = mgr.getCurrentConfig();
+
+      expect(supportedModules.rangeTest).toBe(true);
     });
 
     it('reports trafficManagement unsupported on 2.7.25 — the issue #3491 case', () => {

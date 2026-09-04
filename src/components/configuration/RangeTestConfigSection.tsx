@@ -1,6 +1,8 @@
 import React, { useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { UiIcon } from '../icons';
+import styles from './RangeTestConfigSection.module.css';
 
 interface RangeTestConfigSectionProps {
   enabled: boolean;
@@ -9,6 +11,14 @@ interface RangeTestConfigSectionProps {
   setSender: (value: number) => void;
   save: boolean;
   setSave: (value: boolean) => void;
+  /**
+   * True when the connected node's firmware no longer carries the Range Test
+   * module — it was removed in Meshtastic 2.8 (#5031). The section stays
+   * visible with an explanatory notice rather than disappearing, so users don't
+   * conclude MeshMonitor broke. Defaults to false, which is also what an
+   * unknown firmware version resolves to: fail open to the old behaviour.
+   */
+  isDisabled?: boolean;
   isSaving: boolean;
   onSave: () => Promise<void>;
 }
@@ -20,6 +30,7 @@ const RangeTestConfigSection: React.FC<RangeTestConfigSectionProps> = ({
   setSender,
   save,
   setSave,
+  isDisabled = false,
   isSaving,
   onSave
 }) => {
@@ -56,11 +67,12 @@ const RangeTestConfigSection: React.FC<RangeTestConfigSectionProps> = ({
     };
   }, [onSave, enabled, sender, save]);
 
-  // Register with SaveBar
+  // Register with SaveBar. A removed module must never offer a save — the
+  // firmware would drop the admin message silently.
   useSaveBar({
     id: 'rangetest-config',
     sectionName: t('rangetest_config.title'),
-    hasChanges,
+    hasChanges: hasChanges && !isDisabled,
     isSaving,
     onSave: handleSave,
     onDismiss: resetChanges
@@ -85,61 +97,78 @@ const RangeTestConfigSection: React.FC<RangeTestConfigSectionProps> = ({
         </a>
       </h3>
 
-      {/* Enable Module */}
-      <div className="setting-item">
-        <label htmlFor="rangetestEnabled" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
-          <input
-            id="rangetestEnabled"
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => setEnabled(e.target.checked)}
-            style={{ marginTop: '0.2rem', flexShrink: 0 }}
-          />
-          <div style={{ flex: 1 }}>
-            <div>{t('rangetest_config.enabled')}</div>
-            <span className="setting-description">{t('rangetest_config.enabled_description')}</span>
-          </div>
-        </label>
-      </div>
-
-      {enabled && (
-        <>
-          {/* Sender Interval */}
-          <div className="setting-item">
-            <label htmlFor="rangetestSender">
-              {t('rangetest_config.sender')}
-              <span className="setting-description">{t('rangetest_config.sender_description')}</span>
-            </label>
-            <input
-              id="rangetestSender"
-              type="number"
-              min="0"
-              max="65535"
-              value={sender}
-              onChange={(e) => setSender(parseInt(e.target.value) || 0)}
-              className="setting-input"
-              placeholder="0"
-            />
-          </div>
-
-          {/* Save Results */}
-          <div className="setting-item">
-            <label htmlFor="rangetestSave" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
-              <input
-                id="rangetestSave"
-                type="checkbox"
-                checked={save}
-                onChange={(e) => setSave(e.target.checked)}
-                style={{ marginTop: '0.2rem', flexShrink: 0 }}
-              />
-              <div style={{ flex: 1 }}>
-                <div>{t('rangetest_config.save')}</div>
-                <span className="setting-description">{t('rangetest_config.save_description')}</span>
-              </div>
-            </label>
-          </div>
-        </>
+      {isDisabled && (
+        <div className={styles.removedNotice} role="status">
+          <span className={styles.removedNoticeIcon}><UiIcon name="alert" /></span>
+          <span>
+            {t(
+              'rangetest_config.removed_in_28',
+              'Range Test was removed in Meshtastic 2.8 and is not available on this firmware. These settings cannot be changed.'
+            )}
+          </span>
+        </div>
       )}
+
+      <div className={isDisabled ? styles.disabledControls : undefined}>
+        {/* Enable Module */}
+        <div className="setting-item">
+          <label htmlFor="rangetestEnabled" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+            <input
+              id="rangetestEnabled"
+              type="checkbox"
+              checked={enabled}
+              disabled={isDisabled}
+              onChange={(e) => setEnabled(e.target.checked)}
+              style={{ marginTop: '0.2rem', flexShrink: 0 }}
+            />
+            <div style={{ flex: 1 }}>
+              <div>{t('rangetest_config.enabled')}</div>
+              <span className="setting-description">{t('rangetest_config.enabled_description')}</span>
+            </div>
+          </label>
+        </div>
+
+        {enabled && (
+          <>
+            {/* Sender Interval */}
+            <div className="setting-item">
+              <label htmlFor="rangetestSender">
+                {t('rangetest_config.sender')}
+                <span className="setting-description">{t('rangetest_config.sender_description')}</span>
+              </label>
+              <input
+                id="rangetestSender"
+                type="number"
+                min="0"
+                max="65535"
+                value={sender}
+                disabled={isDisabled}
+                onChange={(e) => setSender(parseInt(e.target.value) || 0)}
+                className="setting-input"
+                placeholder="0"
+              />
+            </div>
+
+            {/* Save Results */}
+            <div className="setting-item">
+              <label htmlFor="rangetestSave" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+                <input
+                  id="rangetestSave"
+                  type="checkbox"
+                  checked={save}
+                  disabled={isDisabled}
+                  onChange={(e) => setSave(e.target.checked)}
+                  style={{ marginTop: '0.2rem', flexShrink: 0 }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div>{t('rangetest_config.save')}</div>
+                  <span className="setting-description">{t('rangetest_config.save_description')}</span>
+                </div>
+              </label>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 };

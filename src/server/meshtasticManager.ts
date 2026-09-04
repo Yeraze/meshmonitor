@@ -5369,7 +5369,7 @@ class MeshtasticManager implements ISourceManager {
   /**
    * Get the current device configuration
    */
-  getCurrentConfig(): { deviceConfig: any; moduleConfig: any; localNodeInfo: any; supportedModules: { statusmessage: boolean; trafficManagement: boolean; meshBeacon: boolean } } {
+  getCurrentConfig(): { deviceConfig: any; moduleConfig: any; localNodeInfo: any; supportedModules: { statusmessage: boolean; trafficManagement: boolean; meshBeacon: boolean; rangeTest: boolean } } {
     logger.debug(`[CONFIG] getCurrentConfig called - hopLimit=${this.actualDeviceConfig?.lora?.hopLimit}`);
 
     // Apply Proto3 defaults to device config if it exists
@@ -5622,7 +5622,8 @@ class MeshtasticManager implements ISourceManager {
         // otherwise report as unsupported. See firmwareVersionAtLeast().
         statusmessage: this.supportsStatusMessage(),
         trafficManagement: this.supportsTrafficManagement(),
-        meshBeacon: this.supportsMeshBeacon()
+        meshBeacon: this.supportsMeshBeacon(),
+        rangeTest: this.supportsRangeTest()
       }
     };
   }
@@ -13577,6 +13578,24 @@ class MeshtasticManager implements ISourceManager {
    */
   supportsMeshBeacon(): boolean {
     return this.firmwareVersionAtLeast(2, 8, 0);
+  }
+
+  /**
+   * Check if the local device firmware still has the Range Test module (#5031).
+   *
+   * Range Test was REMOVED outright in firmware 2.8 (confirmed by garth, a
+   * Meshtastic core maintainer). This is the inverse of every other gate above:
+   * support is capped at an upper bound rather than requiring a minimum, so the
+   * expression is a negation of `firmwareVersionAtLeast(2, 8, 0)`.
+   *
+   * That negation also gives us the fail-open behaviour we want. When the
+   * firmware version is unknown or unparseable, `firmwareVersionAtLeast` returns
+   * false, so this returns true and the UI keeps working exactly as it did
+   * before. Only a node that positively reports 2.8.0 or newer gets the
+   * "removed from this firmware" notice.
+   */
+  supportsRangeTest(): boolean {
+    return !this.firmwareVersionAtLeast(2, 8, 0);
   }
 
   /**
