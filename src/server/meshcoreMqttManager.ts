@@ -459,27 +459,30 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
       const timestampMs = plain.timestampSec > 0 ? plain.timestampSec * 1000 : Date.now();
       const id = channelMessageId(this.sourceId, group.channelHash, plain.timestampSec, plain.text);
 
-      const inserted = await databaseService.meshcore.insertMessage(
-        {
+      const row = {
           id,
-          fromPublicKey: '',
-          fromName: plain.senderName,
+          // 'channel-N' is how this table encodes channel membership; the
+          // channel queries match on it. An empty value here would fall through
+          // channelWhereClause(0)'s legacy "null recipient, non-channel sender"
+          // branch and file EVERY ingested message under channel 0, whichever
+          // channel it actually came from.
+          fromPublicKey: `channel-${plain.channelIdx}`,
+          // undefined, not null: the DB column is nullable but the event's
+          // MeshCoreMessage type is `fromName?: string`, and one object has to
+          // satisfy both — it is inserted and emitted unchanged.
+          fromName: plain.senderName ?? undefined,
           text: plain.text,
           timestamp: timestampMs,
           messageType: 'channel',
-          snr: decoded.event.snr ?? null,
-          rssi: decoded.event.rssi ?? null,
+          snr: decoded.event.snr ?? undefined,
+          rssi: decoded.event.rssi ?? undefined,
           createdAt: Date.now(),
-        },
-        this.sourceId,
-      );
+      };
 
+      const inserted = await databaseService.meshcore.insertMessage(row, this.sourceId);
       if (!inserted) return; // A different observer's copy already landed.
       this.stats.channelMessages++;
-      dataEventEmitter.emitMeshCoreMessage(
-        { id, text: plain.text, timestamp: timestampMs } as never,
-        this.sourceId,
-      );
+      dataEventEmitter.emitMeshCoreMessage(row, this.sourceId);
     } catch (err) {
       logger.debug(`[MeshCoreMqtt:${this.sourceId}] failed to ingest channel message:`, err);
     }
@@ -494,7 +497,7 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
    */
   private async decryptGroupText(
     group: { channelHash: string; cipherMacHex: string; ciphertextHex: string },
-  ): Promise<{ text: string; senderName: string | null; timestampSec: number } | null> {
+  ): Promise<{ text: string; senderName: string | null; timestampSec: number; channelIdx: number } | null> {
     const channels = await databaseService.channels.getAllChannels(ALL_SOURCES);
     for (const ch of channels) {
       const secretHex = pskToHex(ch.psk);
@@ -514,6 +517,10 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
         text: data.message,
         senderName: typeof data.sender === 'string' && data.sender !== '' ? data.sender : null,
         timestampSec: typeof data.timestamp === 'number' ? data.timestamp : 0,
+        // The row id of the key that decrypted it IS the channel index — the
+        // only way to know which channel a frame belongs to, since the wire
+        // carries a hash rather than an index.
+        channelIdx: Number(ch.id),
       };
     }
     return null;

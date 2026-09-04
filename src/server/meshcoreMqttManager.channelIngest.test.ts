@@ -52,11 +52,18 @@ import { MeshCoreMqttManager } from './meshcoreMqttManager.js';
 
 const SECRET_HEX = '0123456789abcdef0123456789abcdef'; // 16 bytes
 const SECRET_B64 = Buffer.from(SECRET_HEX, 'hex').toString('base64');
+/** A second, distinct channel key so channel ROUTING can be proven. */
+const SECRET3_HEX = 'fedcba9876543210fedcba9876543210';
+const SECRET3_B64 = Buffer.from(SECRET3_HEX, 'hex').toString('base64');
 const OBSERVER_A = 'AA'.repeat(32);
 const OBSERVER_B = 'BB'.repeat(32);
 
 /** Encrypt exactly as MeshCore does, so the shipping decrypt accepts it. */
-function encryptChannelBody(timestampSec: number, body: string): { macHex: string; ctHex: string } {
+function encryptChannelBody(
+  timestampSec: number,
+  body: string,
+  secretHex: string = SECRET_HEX,
+): { macHex: string; ctHex: string } {
   const text = Buffer.from(body, 'utf8');
   const plain = Buffer.alloc(5 + text.length);
   plain.writeUInt32LE(timestampSec, 0);
@@ -66,22 +73,22 @@ function encryptChannelBody(timestampSec: number, body: string): { macHex: strin
   const padded = Buffer.alloc(Math.ceil(plain.length / 16) * 16);
   plain.copy(padded);
 
-  const cipher = createCipheriv('aes-128-ecb', Buffer.from(SECRET_HEX, 'hex'), null);
+  const cipher = createCipheriv('aes-128-ecb', Buffer.from(secretHex, 'hex'), null);
   cipher.setAutoPadding(false);
   const ct = Buffer.concat([cipher.update(padded), cipher.final()]);
 
   // MAC: HMAC-SHA256 over the ciphertext, keyed with the 16-byte secret
   // zero-padded to 32 — first two bytes.
   const key32 = Buffer.alloc(32);
-  Buffer.from(SECRET_HEX, 'hex').copy(key32);
+  Buffer.from(secretHex, 'hex').copy(key32);
   const mac = createHmac('sha256', key32).update(ct).digest();
   return { macHex: mac.subarray(0, 2).toString('hex'), ctHex: ct.toString('hex') };
 }
 
 /** header | path_len | channel_hash | mac(2) | ciphertext */
-function grpTxtFrame(timestampSec: number, body: string): string {
-  const { macHex, ctHex } = encryptChannelBody(timestampSec, body);
-  const hash = ChannelCrypto.calculateChannelHash(SECRET_HEX);
+function grpTxtFrame(timestampSec: number, body: string, secretHex: string = SECRET_HEX): string {
+  const { macHex, ctHex } = encryptChannelBody(timestampSec, body, secretHex);
+  const hash = ChannelCrypto.calculateChannelHash(secretHex);
   const header = ((5 & 0x0f) << 2) | 1; // payload GRP_TXT(5), route FLOOD(1)
   return header.toString(16).padStart(2, '0') + '00' + hash + macHex + ctHex;
 }
@@ -149,15 +156,49 @@ describe('channel message ingest (#5040 Phase 4)', () => {
     expect(mgr.getIngestStats().channelMessages).toBe(1);
   });
 
+  it('files the message under the channel that decrypted it, not channel 0', async () => {
+    // Regression for a bug caught in review on #5063. An empty fromPublicKey
+    // does not simply hide these rows — it falls through
+    // channelWhereClause(0)'s legacy "null recipient, non-channel sender"
+    // branch, so EVERY ingested message would have filed under channel 0
+    // whichever channel it actually came from. Silent mis-filing, not absence.
+    getAllChannels.mockResolvedValue([
+      { id: 0, name: 'Public', psk: SECRET_B64 },
+      { id: 3, name: 'Gauntlet', psk: SECRET3_B64 },
+    ]);
+    await started();
+    lastClient!.deliver(`meshcore/MCO/${OBSERVER_A}/packets`,
+      msg(grpTxtFrame(1_700_000_000, 'Alice: on three', SECRET3_HEX)));
+    await settle();
+
+    expect(insertMessage).toHaveBeenCalledTimes(1);
+    expect(insertMessage.mock.calls[0][0].fromPublicKey).toBe('channel-3');
+  });
+
+  it('still files a channel-0 message under channel 0', async () => {
+    getAllChannels.mockResolvedValue([
+      { id: 0, name: 'Public', psk: SECRET_B64 },
+      { id: 3, name: 'Gauntlet', psk: SECRET3_B64 },
+    ]);
+    await started();
+    lastClient!.deliver(`meshcore/MCO/${OBSERVER_A}/packets`,
+      msg(grpTxtFrame(1_700_000_000, 'Alice: on zero')));
+    await settle();
+
+    expect(insertMessage.mock.calls[0][0].fromPublicKey).toBe('channel-0');
+  });
+
   it('keeps a message with no "Sender: " prefix verbatim', async () => {
     await started();
     lastClient!.deliver(`meshcore/MCO/${OBSERVER_A}/packets`,
       msg(grpTxtFrame(1_700_000_000, 'no prefix here')));
     await settle();
 
-    expect(insertMessage.mock.calls[0][0]).toMatchObject({
-      text: 'no prefix here', fromName: null,
-    });
+    // undefined, not null: one object is both inserted and emitted, and the
+    // event's MeshCoreMessage type declares `fromName?: string`.
+    const row = insertMessage.mock.calls[0][0];
+    expect(row.text).toBe('no prefix here');
+    expect(row.fromName).toBeUndefined();
   });
 
   it('ignores a channel we hold no key for, without erroring', async () => {

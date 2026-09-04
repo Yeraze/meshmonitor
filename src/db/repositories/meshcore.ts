@@ -1302,11 +1302,10 @@ export class MeshCoreRepository extends BaseRepository {
   }
 
   /**
-   * Insert a message. `sourceId` is required so every row in
-   * `meshcore_messages` is stamped with its owning source.
-   */
-  /**
    * Insert a message, ignoring a duplicate id.
+   *
+   * `sourceId` is required so every row in `meshcore_messages` is stamped with
+   * its owning source.
    *
    * Returns TRUE only when a row was actually written. That return value is
    * load-bearing (#5040 Phase 4): callers gate their `dataEventEmitter` emit on
