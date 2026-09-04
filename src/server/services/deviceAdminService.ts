@@ -43,6 +43,7 @@
 import type { MeshtasticManager } from '../meshtasticManager.js';
 import databaseService from '../../services/database.js';
 import protobufService from '../protobufService.js';
+import { MODULE_FIELD_BY_ID } from '../constants/configTypes.js';
 import { calculateLoRaFrequency } from '../../utils/loraFrequency.js';
 import { logger } from '../../utils/logger.js';
 
@@ -360,6 +361,30 @@ export class DeviceAdminService {
 
       await this.mgr.sendLocalAdminPacket(adminPacket);
       logger.debug(`⚙️ Sent set_${moduleType}_config admin message`);
+
+      // Refresh the cached section (#5045). `GET /api/config/current` serves
+      // `actualModuleConfig` verbatim, and nothing else writes it outside the
+      // device's config download — so without this the Configuration tab keeps
+      // rendering the pre-save values every time it remounts.
+      //
+      // Most module saves hid that: the firmware reboots after
+      // `set_module_config`, MeshMonitor's link drops, and the reconnect
+      // re-downloads the whole config. MeshBeacon is on the firmware's
+      // no-reboot allowlist (`shouldReboot = false`, alongside
+      // statusmessage/mqtt/serial), so its stale cache never got corrected.
+      //
+      // Replace rather than merge, mirroring the device's whole-struct assign:
+      // a field the client omitted — an `optional` preset the user reset to
+      // "use running config", say — is cleared on the node, so the cache must
+      // drop it too. Optimistic by design: where the firmware clamps a value
+      // (the MeshBeacon 3600 s interval floor) the cache shows what we asked
+      // for until the next config download; the UI already warns about that
+      // floor next to the input.
+      const cacheKey = MODULE_FIELD_BY_ID[moduleType];
+      if (cacheKey) {
+        this.mgr.updateCachedModuleConfig(cacheKey, config, 'replace');
+        logger.debug(`⚙️ Updated actualModuleConfig.${cacheKey} cache`);
+      }
     } catch (error) {
       logger.error(`❌ Error sending ${moduleType} config:`, error);
       throw error;

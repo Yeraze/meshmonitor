@@ -7,3 +7,4 @@
 - [Channel Hash Generation](reference_channel_hash_generation.md) — generateHash = xor(name) XOR xor(PSK); blank name substitutes to modem preset display name (e.g. "LongFast")
 - [StatusMessageModule broadcast gates](reference_status_message_module_broadcast_gates.md) — portnum 36; has_statusmessage flag drives BOTH 2min-vs-12h interval AND send; set path shouldReboot=false so runtime set never re-arms thread
 - [2.8 NodeNum = CRC32(public_key)](reference_nodenum_from_pubkey_2_8.md) — zlib CRC-32 over 32 raw key bytes; upgrades KEEP the 2.7 keypair, so same-pubkey+new-num = upgraded
+- [MeshBeacon broadcast_on_* deleted](reference_meshbeacon_broadcast_on_fields_removed.md) — tags 8/9/10 reserved 2026-08-28; no v2.8.0 build has them; use broadcast_targets (13)
