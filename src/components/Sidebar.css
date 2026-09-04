@@ -177,8 +177,18 @@
 /* Removed old layout-affecting rules - sidebar now floats over content */
 
 
-/* Mobile responsive - landscape: minimal changes to fix layout */
-@media (orientation: landscape) and (max-height: 700px) {
+/*
+ * Mobile responsive - landscape: minimal changes to fix layout.
+ *
+ * 500px, not the 700px this block used to carry (#5053). The shell had two
+ * disagreeing definitions of "compact landscape": 500px in App.css,
+ * AppHeader.css, SourceNav.module.css, SaveBar.css and `sidebarWidth.ts`, and
+ * 700px only here and in SidebarFooter.module.css. A viewport 501–700px tall in
+ * landscape therefore got a half-applied layout — the rail compacted itself and
+ * the footer vanished while the shell still drew a full-height desktop rail.
+ * One threshold, and it is the one JS already mirrors.
+ */
+@media (orientation: landscape) and (max-height: 500px) {
   .sidebar {
     padding-top: max(4px, env(safe-area-inset-top));
     padding-bottom: max(4px, env(safe-area-inset-bottom));
@@ -195,8 +205,8 @@
 /* Scrollbar styling moved with the nav list into SourceNav.module.css (#4473) —
    `.sidebar-nav` no longer exists in the markup. */
 
-/* Mobile landscape - increased threshold to catch more devices */
-@media (max-height: 700px) and (orientation: landscape) {
+/* Mobile landscape — same single 500px threshold as the block above (#5053). */
+@media (max-height: 500px) and (orientation: landscape) {
   .sidebar {
     /* Reduce padding to maximize scrollable area */
     padding-top: max(2px, env(safe-area-inset-top)) !important;
@@ -315,9 +325,12 @@
     right: 0;
     height: auto;
     /*
-     * `!important` only to beat the two `@media (max-height: 700px) and
-     * (orientation: landscape)` blocks further down, which set padding with
-     * `!important` to compact the *rail*. On a bottom bar that padding is just
+     * `!important` only to beat the two `@media (max-height: 500px) and
+     * (orientation: landscape)` blocks above (they read 700px until #5053),
+     * which set padding with `!important` to compact the *rail*. Those blocks
+     * now match exactly the same viewports as this one, so the override is
+     * load-bearing on every compact-landscape phone, not just the short end of
+     * the range. On a bottom bar that padding is just
      * height: it inflated the landscape bar to 53.7px against the 44px the
      * shell reserves, so content and the save bar sat under it.
      *

@@ -17,6 +17,12 @@ export const MOBILE_BREAKPOINT_PX = 768;
  * A landscape phone is wider than MOBILE_BREAKPOINT_PX but is still the mobile
  * layout — App.css collapses the rail to 48px for both conditions, so the width
  * test alone would misclassify it as desktop.
+ *
+ * This is now the *only* compact-landscape threshold in the sheets. Sidebar.css
+ * and SidebarFooter.module.css used to carry a competing 700px variant, so a
+ * viewport 501–700px tall in landscape got a half-applied layout; #5053 folded
+ * them into this one. If you change this number, change every
+ * `(max-height: 500px) and (orientation: landscape)` block with it.
  */
 export const MOBILE_LANDSCAPE_MAX_HEIGHT_PX = 500;
 
