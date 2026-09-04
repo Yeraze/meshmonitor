@@ -52,6 +52,7 @@ import {
   MqttOkToMqttViolationsRepository,
   AtakContactsRepository,
   MeshBeaconOffersRepository,
+  NodeIdentityMergeRepository,
   ReticulumRepository,
   EstimatedPositionsRepository,
   AutoFavoriteTargetsRepository,
@@ -540,6 +541,7 @@ class DatabaseService {
   public mqttOkToMqttViolationsRepo: MqttOkToMqttViolationsRepository | null = null;
   public atakContactsRepo: AtakContactsRepository | null = null;
   public meshBeaconOffersRepo: MeshBeaconOffersRepository | null = null;
+  public nodeIdentityMergeRepo: NodeIdentityMergeRepository | null = null;
   public reticulumRepo: ReticulumRepository | null = null;
   public estimatedPositionsRepo: EstimatedPositionsRepository | null = null;
   public autoFavoriteTargetsRepo: AutoFavoriteTargetsRepository | null = null;
@@ -781,6 +783,12 @@ class DatabaseService {
   get meshBeaconOffers(): MeshBeaconOffersRepository {
     if (!this.meshBeaconOffersRepo) throw new Error('Database not initialized');
     return this.meshBeaconOffersRepo;
+  }
+
+  /** Node identity-merge tool + undo journal (#5032). */
+  get nodeIdentityMerge(): NodeIdentityMergeRepository {
+    if (!this.nodeIdentityMergeRepo) throw new Error('Database not initialized');
+    return this.nodeIdentityMergeRepo;
   }
 
   get atakContacts(): AtakContactsRepository {
@@ -1037,6 +1045,7 @@ class DatabaseService {
       this.mqttOkToMqttViolationsRepo = new MqttOkToMqttViolationsRepository(drizzleDb, this.drizzleDbType);
       this.atakContactsRepo = new AtakContactsRepository(drizzleDb, this.drizzleDbType);
       this.meshBeaconOffersRepo = new MeshBeaconOffersRepository(drizzleDb, this.drizzleDbType);
+      this.nodeIdentityMergeRepo = new NodeIdentityMergeRepository(drizzleDb, this.drizzleDbType);
       this.reticulumRepo = new ReticulumRepository(drizzleDb, this.drizzleDbType);
       this.estimatedPositionsRepo = new EstimatedPositionsRepository(drizzleDb, this.drizzleDbType);
       this.autoFavoriteTargetsRepo = new AutoFavoriteTargetsRepository(drizzleDb, this.drizzleDbType);

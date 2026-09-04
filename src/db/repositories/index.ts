@@ -135,6 +135,28 @@ export type {
 export { AtakContactsRepository } from './atakContacts.js';
 export type { AtakContactRow } from './atakContacts.js';
 export { MeshBeaconOffersRepository, offerContentChanged, computeHasOffer, toPublicOffer } from './meshBeaconOffers.js';
+export {
+  NodeIdentityMergeRepository,
+  NodeIdentityMergeError,
+  REKEY_TARGETS,
+  SINGLETON_TARGETS,
+  NOT_REKEYED,
+  MERGE_COLLISION_POLICY,
+  MERGE_JOURNAL_VERSION,
+  MAX_JOURNAL_PKS,
+  MAX_SURVIVOR_CAPTURE_PKS,
+  chooseCapture,
+  nodeNumToNodeId,
+} from './nodeIdentityMerge.js';
+export type {
+  MergePlan,
+  MergePlanEntry,
+  MergeRecord,
+  MergeJournal,
+  MergeJournalEntry,
+  ExecuteMergeOptions,
+  ExecuteMergeResult,
+} from './nodeIdentityMerge.js';
 export type { MeshBeaconOfferRow, PublicMeshBeaconOffer, BeaconOfferInput } from './meshBeaconOffers.js';
 
 export { ReticulumRepository, DEFAULT_RETICULUM_DESTINATIONS_MAX } from './reticulum.js';

@@ -107,6 +107,12 @@ export const TABLE_ORDER = [
   // 4964: global mesh-health findings (no sourceId — keyed by issueType+subjectKey).
   // Derived data, but firstDetected history and dismissed state are worth keeping.
   'mesh_issues',
+  // 5032: the node identity-merge audit + undo journal. Migrated rather than
+  // skipped because a merge is otherwise irreversible: dropping this table on a
+  // backend move would turn every past merge from "undoable" into permanent,
+  // silently. Copied AFTER `nodes` (which it names but does not FK to) so the
+  // history reads in order.
+  'node_identity_merges',
   // 2608: per-source automated remote favorites management config + ledger
   'auto_favorite_targets',
   'auto_favorite_assignments',

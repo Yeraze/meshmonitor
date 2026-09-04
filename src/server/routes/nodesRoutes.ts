@@ -29,7 +29,7 @@ import { filterNodesByChannelPermission, enhanceNodeForClient, checkNodeChannelA
 import { pivotPositionHistory } from '../utils/positionHistoryPivot.js';
 import { resolveRequestSourceId } from '../utils/sourceResolver.js';
 import { requireSourceId } from '../utils/requireSourceId.js';
-import { optionalAuth, requirePermission, hasPermission } from '../auth/authMiddleware.js';
+import { optionalAuth, requirePermission, requireAdmin, hasPermission } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { isValidNodeNum, MAX_NODE_NUM } from '../constants/meshtastic.js';
 import { fail, ok } from '../utils/apiResponse.js';
@@ -43,6 +43,13 @@ import {
   SharedContactValidationError,
 } from '../services/sharedContactService.js';
 import { detectIdentityChanges } from '../services/nodeIdentityChangeService.js';
+import {
+  previewNodeIdentityMerge,
+  performNodeIdentityMerge,
+  undoNodeIdentityMerge,
+  listNodeIdentityMerges,
+  NodeIdentityMergeError,
+} from '../services/nodeIdentityMergeService.js';
 
 const router = express.Router();
 
@@ -212,6 +219,160 @@ router.get(
     } catch (error) {
       logger.error('Error detecting node identity changes:', error);
       return fail(res, 500, 'INTERNAL_ERROR', 'Failed to detect node identity changes');
+    }
+  },
+);
+
+/**
+ * The Meshtastic 2.8 identity MERGE tool (issue #5032).
+ *
+ * Four routes, and the shape of them is the safety design:
+ *
+ * - `POST /nodes/identity-changes/merge/preview` — a dry run. Counts every row
+ *   that would move, be dropped or be edited, per table, and writes nothing.
+ * - `POST /nodes/identity-changes/merge` — performs it, in one transaction,
+ *   writing an undo journal in the same transaction.
+ * - `GET  /nodes/identity-changes/merges` — what has been merged on this source.
+ * - `POST /nodes/identity-changes/merges/:mergeId/undo` — reverses one.
+ *
+ * All four are **admin-only on top of `nodes:write`**. Re-keying a node's whole
+ * history is not an ordinary node edit: a wrong pairing silently splices two
+ * physical nodes' histories together, so it takes the strongest gate the app
+ * has plus per-source permission, not one or the other.
+ *
+ * Nothing here is reachable from detection. The client sends an explicit node
+ * pair; the detector only supplies the `basis` label recorded on the audit row.
+ *
+ * Registered before the parametric `/nodes/:nodeNum/...` routes — these are
+ * literal paths that do not collide, but registering first removes all doubt.
+ */
+function mergeErrorStatus(code: string): number {
+  switch (code) {
+    case 'NODE_NOT_FOUND':
+    case 'MERGE_NOT_FOUND':
+      return 404;
+    case 'WRONG_SOURCE':
+      return 403;
+    case 'SOURCE_REQUIRED':
+    case 'INVALID_NODE':
+    case 'SAME_NODE':
+      return 400;
+    case 'UNDO_UNAVAILABLE':
+    case 'ALREADY_UNDONE':
+    case 'LATER_MERGE_PENDING':
+    case 'NODE_REAPPEARED':
+    case 'JOURNAL_VERSION':
+    case 'JOURNAL_UNREADABLE':
+      return 409;
+    default:
+      return 500;
+  }
+}
+
+function handleMergeError(res: express.Response, error: unknown, context: string) {
+  if (error instanceof NodeIdentityMergeError) {
+    logger.warn(`${context}: ${error.code} — ${error.message}`);
+    return fail(res, mergeErrorStatus(error.code), error.code, error.message);
+  }
+  logger.error(`${context}:`, error);
+  return fail(res, 500, 'INTERNAL_ERROR', context);
+}
+
+/** Read a node number from a request body value, accepting `!hex` or decimal. */
+function parseMergeNodeNum(raw: unknown): number | null {
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+  if (typeof raw === 'string') return parseNodeNumParam(raw);
+  return null;
+}
+
+router.post(
+  '/nodes/identity-changes/merge/preview',
+  requirePermission('nodes', 'write', { sourceIdFrom: 'body', requireSourceId: true }),
+  requireAdmin(),
+  async (req, res) => {
+    try {
+      const sourceId = req.body?.sourceId as string;
+      const fromNodeNum = parseMergeNodeNum(req.body?.fromNodeNum);
+      const toNodeNum = parseMergeNodeNum(req.body?.toNodeNum);
+      if (fromNodeNum === null || toNodeNum === null) {
+        return fail(res, 400, 'INVALID_NODE', 'fromNodeNum and toNodeNum are required.');
+      }
+      const preview = await previewNodeIdentityMerge(sourceId, fromNodeNum, toNodeNum);
+      return ok(res, preview);
+    } catch (error) {
+      return handleMergeError(res, error, 'Failed to preview node identity merge');
+    }
+  },
+);
+
+router.post(
+  '/nodes/identity-changes/merge',
+  requirePermission('nodes', 'write', { sourceIdFrom: 'body', requireSourceId: true }),
+  requireAdmin(),
+  async (req, res) => {
+    try {
+      const sourceId = req.body?.sourceId as string;
+      const fromNodeNum = parseMergeNodeNum(req.body?.fromNodeNum);
+      const toNodeNum = parseMergeNodeNum(req.body?.toNodeNum);
+      if (fromNodeNum === null || toNodeNum === null) {
+        return fail(res, 400, 'INVALID_NODE', 'fromNodeNum and toNodeNum are required.');
+      }
+      // The client must echo back the exact pair it previewed. This is the
+      // "explicit operator confirmation" requirement in wire form: a merge
+      // cannot be triggered by a request that never saw a preview.
+      if (req.body?.confirm !== true) {
+        return fail(
+          res,
+          400,
+          'CONFIRMATION_REQUIRED',
+          'Set confirm: true to perform the merge. Preview it first.',
+        );
+      }
+      const result = await performNodeIdentityMerge({
+        sourceId,
+        fromNodeNum,
+        toNodeNum,
+        mergedBy: req.user?.username ?? null,
+        acknowledgeNoUndo: req.body?.acknowledgeNoUndo === true,
+      });
+      return ok(res, result);
+    } catch (error) {
+      return handleMergeError(res, error, 'Failed to merge node identities');
+    }
+  },
+);
+
+router.get(
+  '/nodes/identity-changes/merges',
+  requirePermission('nodes', 'read', { sourceIdFrom: 'query', requireSourceId: true }),
+  async (req, res) => {
+    try {
+      const sourceId = req.query.sourceId as string;
+      const merges = await listNodeIdentityMerges(sourceId);
+      return ok(res, { merges });
+    } catch (error) {
+      return handleMergeError(res, error, 'Failed to list node identity merges');
+    }
+  },
+);
+
+router.post(
+  '/nodes/identity-changes/merges/:mergeId/undo',
+  requirePermission('nodes', 'write', { sourceIdFrom: 'body', requireSourceId: true }),
+  requireAdmin(),
+  async (req, res) => {
+    try {
+      // The journal table is global, so the merge's own sourceId is checked
+      // against the one the caller's permission was granted for — inside the
+      // repository, before a single row is written.
+      const record = await undoNodeIdentityMerge(
+        String(req.params.mergeId),
+        req.body?.sourceId as string,
+        req.user?.username ?? null,
+      );
+      return ok(res, record);
+    } catch (error) {
+      return handleMergeError(res, error, 'Failed to undo node identity merge');
     }
   },
 );

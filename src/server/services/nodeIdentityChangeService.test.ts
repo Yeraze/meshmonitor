@@ -134,14 +134,29 @@ describe('findIdentityChanges — public-key and name fallbacks', () => {
     expect(detections[0].confidence).toBe('high');
   });
 
-  it('falls back to long+short name when neither row has a key on file', () => {
+  it('does NOT report a name-only match by default', () => {
+    // The default report is key-verified only. Two rows that share a long and a
+    // short name are indistinguishable from two genuinely different nodes with
+    // the same name, and this list is what an operator merges history on.
     const upgradeAt = NOW - 2 * DAY;
     const rows = [
       row({ nodeNum: 111, longName: 'Hilltop Relay', shortName: 'HILL', lastHeard: upgradeAt, createdAt: NOW - 90 * DAY }),
       row({ nodeNum: 222, longName: 'Hilltop Relay', shortName: 'HILL', lastHeard: NOW - HOUR, createdAt: upgradeAt }),
     ];
 
-    const { detections } = findIdentityChanges(rows, { nowSeconds: NOW });
+    expect(findIdentityChanges(rows, { nowSeconds: NOW }).detections).toHaveLength(0);
+  });
+
+  it('still finds the name match when a caller explicitly opts in', () => {
+    // The signal is kept one boolean away — it is the only one available for a
+    // keyless node — but nothing in the product turns it on.
+    const upgradeAt = NOW - 2 * DAY;
+    const rows = [
+      row({ nodeNum: 111, longName: 'Hilltop Relay', shortName: 'HILL', lastHeard: upgradeAt, createdAt: NOW - 90 * DAY }),
+      row({ nodeNum: 222, longName: 'Hilltop Relay', shortName: 'HILL', lastHeard: NOW - HOUR, createdAt: upgradeAt }),
+    ];
+
+    const { detections } = findIdentityChanges(rows, { nowSeconds: NOW, includeNameBasis: true });
     expect(detections).toHaveLength(1);
     expect(detections[0].basis).toBe('name');
     // A name match is a guess, and must never claim otherwise.
@@ -156,7 +171,7 @@ describe('findIdentityChanges — public-key and name fallbacks', () => {
         row({ nodeNum: 111, longName: 'hilltop relay', shortName: 'hill', ...base }),
         row({ nodeNum: 222, longName: 'Hilltop Relay', shortName: 'HILL', lastHeard: NOW - HOUR, createdAt: upgradeAt }),
       ],
-      { nowSeconds: NOW },
+      { nowSeconds: NOW, includeNameBasis: true },
     );
     expect(casing.detections).toHaveLength(1);
 
@@ -165,20 +180,24 @@ describe('findIdentityChanges — public-key and name fallbacks', () => {
         row({ nodeNum: 111, longName: 'Hilltop Relay', shortName: 'HIL1', ...base }),
         row({ nodeNum: 222, longName: 'Hilltop Relay', shortName: 'HIL2', lastHeard: NOW - HOUR, createdAt: upgradeAt }),
       ],
-      { nowSeconds: NOW },
+      { nowSeconds: NOW, includeNameBasis: true },
     );
     expect(shortNameDiffers.detections).toHaveLength(0);
   });
 
   it('ignores firmware-default "Node !xxxxxxxx" long names', () => {
     // Otherwise every node we have no NodeInfo for pairs with every other one.
+    // Asserted with the name signal explicitly ON, so the test proves the
+    // placeholder guard rather than the default filter.
     const upgradeAt = NOW - 2 * DAY;
     const rows = [
       row({ nodeNum: 0x433d1ba4, longName: 'Node !433d1ba4', shortName: '1ba4', lastHeard: upgradeAt, createdAt: NOW - 90 * DAY }),
       row({ nodeNum: 0x11223344, longName: 'Node !433d1ba4', shortName: '1ba4', lastHeard: NOW - HOUR, createdAt: upgradeAt }),
     ];
 
-    expect(findIdentityChanges(rows, { nowSeconds: NOW }).detections).toHaveLength(0);
+    expect(
+      findIdentityChanges(rows, { nowSeconds: NOW, includeNameBasis: true }).detections,
+    ).toHaveLength(0);
   });
 });
 
@@ -243,7 +262,11 @@ describe('findIdentityChanges — vetoes and false-positive guards', () => {
       row({ nodeNum: 222, longName: 'Hilltop Relay', shortName: 'HILL', lastHeard: NOW - HOUR, createdAt: appeared }),
     ];
 
-    expect(findIdentityChanges(rows, { nowSeconds: NOW }).detections).toHaveLength(0);
+    // Name signal ON, so the zero comes from the lookback gate rather than from
+    // the default key-verified-only filter.
+    expect(
+      findIdentityChanges(rows, { nowSeconds: NOW, includeNameBasis: true }).detections,
+    ).toHaveLength(0);
   });
 
   it('does not report a predecessor that has only just fallen silent', () => {
@@ -291,12 +314,19 @@ describe('findIdentityChanges — ambiguity is surfaced, not hidden', () => {
       row({ nodeNum: DERIVED_A, publicKey: KEY_A, longName: 'Twin', shortName: 'TWIN', lastHeard: NOW - HOUR, createdAt: upgradeAt }),
     ];
 
+    const withNames = findIdentityChanges(rows, { nowSeconds: NOW, includeNameBasis: true });
+    expect(withNames.detections).toHaveLength(1);
+    expect(withNames.detections[0].basis).toBe('derivedNodeNum');
+    expect(withNames.detections[0].predecessor.nodeNum).toBe(222);
+    // The operator must be able to see that the pick was not the only option.
+    expect(withNames.detections[0].otherCandidateCount).toBe(1);
+
+    // …but by default the name-only rival is filtered out BEFORE the count, so
+    // the report does not imply an ambiguity no key evidence supports.
     const { detections } = findIdentityChanges(rows, { nowSeconds: NOW });
     expect(detections).toHaveLength(1);
-    expect(detections[0].basis).toBe('derivedNodeNum');
     expect(detections[0].predecessor.nodeNum).toBe(222);
-    // The operator must be able to see that the pick was not the only option.
-    expect(detections[0].otherCandidateCount).toBe(1);
+    expect(detections[0].otherCandidateCount).toBe(0);
   });
 
   it('breaks a tie between equal-strength candidates on most-recently-heard', () => {
@@ -307,7 +337,7 @@ describe('findIdentityChanges — ambiguity is surfaced, not hidden', () => {
       row({ nodeNum: 333, longName: 'Twin', shortName: 'TWIN', lastHeard: NOW - HOUR, createdAt: upgradeAt }),
     ];
 
-    const { detections } = findIdentityChanges(rows, { nowSeconds: NOW });
+    const { detections } = findIdentityChanges(rows, { nowSeconds: NOW, includeNameBasis: true });
     expect(detections).toHaveLength(1);
     expect(detections[0].predecessor.nodeNum).toBe(222);
     expect(detections[0].otherCandidateCount).toBe(1);
@@ -321,7 +351,7 @@ describe('findIdentityChanges — ambiguity is surfaced, not hidden', () => {
       row({ nodeNum: 444, longName: 'Bravo', shortName: 'BRVO', lastHeard: NOW - HOUR, createdAt: NOW - 2 * DAY }),
     ];
 
-    const { detections } = findIdentityChanges(rows, { nowSeconds: NOW });
+    const { detections } = findIdentityChanges(rows, { nowSeconds: NOW, includeNameBasis: true });
     expect(detections.map(d => d.successor.nodeNum)).toEqual([444, 222]);
   });
 });
