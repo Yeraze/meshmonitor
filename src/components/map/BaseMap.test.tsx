@@ -49,7 +49,9 @@ vi.mock('../TilesetSelector', () => ({
 }));
 
 vi.mock('../MapResizeHandler', () => ({
-  default: () => <div data-testid="resize-handler" />,
+  default: (p: { trigger?: unknown }) => (
+    <div data-testid="resize-handler" data-trigger={p.trigger === undefined ? '' : String(p.trigger)} />
+  ),
 }));
 
 // leafletDefaultIcon is a side-effect module (mutates the global L.Icon.Default);
@@ -263,15 +265,25 @@ describe('BaseMap', () => {
     expect(screen.getByTestId('map-container')).not.toContainElement(selector);
   });
 
-  // 5. Resize gating
-  it('does not mount MapResizeHandler when resizeTrigger is omitted', () => {
+  // 5. Resize handling — mounted for EVERY map surface since #5054, so a phone
+  // rotation invalidates the map even on surfaces that pass no trigger.
+  it('mounts MapResizeHandler when resizeTrigger is omitted', () => {
     render(<BaseMap center={[0, 0]} zoom={3} />);
-    expect(screen.queryByTestId('resize-handler')).not.toBeInTheDocument();
+    expect(screen.getByTestId('resize-handler')).toBeInTheDocument();
+    expect(screen.getByTestId('resize-handler').getAttribute('data-trigger')).toBe('');
   });
 
-  it('mounts MapResizeHandler when resizeTrigger is provided', () => {
+  it('mounts MapResizeHandler and forwards the trigger when provided', () => {
     render(<BaseMap center={[0, 0]} zoom={3} resizeTrigger={1} />);
     expect(screen.getByTestId('resize-handler')).toBeInTheDocument();
+    expect(screen.getByTestId('resize-handler').getAttribute('data-trigger')).toBe('1');
+  });
+
+  it('renders MapResizeHandler inside the MapContainer (it needs useMap)', () => {
+    render(<BaseMap center={[0, 0]} zoom={3} />);
+    expect(screen.getByTestId('map-container')).toContainElement(
+      screen.getByTestId('resize-handler'),
+    );
   });
 
   // 6. Children passthrough

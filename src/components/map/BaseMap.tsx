@@ -49,7 +49,12 @@ export interface BaseMapProps {
 
   // ---- Resize handling ----------------------------------------------------
   /** When this value changes, BaseMap calls map.invalidateSize() (via
-   *  MapResizeHandler). Omit ⇒ handler NOT mounted (no behavior change). */
+   *  MapResizeHandler). For *internal* layout state (list collapse, drawer
+   *  height) whose CSS transition an observer only sees late.
+   *
+   *  Viewport changes (rotation, browser chrome, split view) need no trigger:
+   *  MapResizeHandler is mounted unconditionally since #5054 and watches the
+   *  map container itself. Omitting this prop leaves only that path active. */
   resizeTrigger?: unknown;
 
   // ---- Map instance access ------------------------------------------------
@@ -78,7 +83,8 @@ export interface BaseMapProps {
  * Owns: the MapContainer element, the raster-vs-vector tile layer branch, an
  * optional TilesetSelector overlay (rendered as a sibling AFTER MapContainer
  * — never inside it, see docs/internal/dev-notes/MAP_CONSOLIDATION_P1_SPEC.md
- * §2.2/§6.10), and an optional gated MapResizeHandler.
+ * §2.2/§6.10), and the MapResizeHandler that keeps Leaflet's cached container
+ * size honest.
  *
  * Tile-layer keys differ by branch on purpose:
  *
@@ -214,7 +220,15 @@ export function BaseMap({
               )}
             </>
           )}
-        {resizeTrigger !== undefined && <MapResizeHandler trigger={resizeTrigger} />}
+        {/* Always mounted (#5054). It used to be gated on `resizeTrigger !==
+            undefined`, which meant only the three surfaces that pass internal
+            layout state ever invalidated — nothing in the app watched the
+            viewport, so a phone rotation left every map drawing tiles for the
+            pre-rotation box and rotating back did not recover it. The handler
+            now owns a ResizeObserver on the map container; the prop remains the
+            caller-driven path for layout changes an observer sees only after a
+            CSS transition, and stays dormant when omitted. */}
+        <MapResizeHandler trigger={resizeTrigger} />
         {children}
       </MapContainer>
       {showTilesetSelector && (

@@ -260,7 +260,18 @@
   }
 
   /* Width is a row-layout concept here; the collapsed/expanded rail widths
-     must not leak into the bar. */
+     must not leak into the bar.
+
+     These carry no `!important`, so a consumer that sets one wins outright and
+     no rule here can claw it back — cross-sheet `!important` at equal
+     specificity is settled by bundler order (#4478). Sidebar.css's
+     compact-landscape RAIL block used to do exactly that
+     (`.sidebar.collapsed { width: 48px !important }`) and leaked onto the BAR
+     below 500px tall, rendering it as a 48px stub with most tabs unreachable —
+     the nav half of #5054. The fix is upstream, not here: #5053 scoped those
+     rail blocks to `min-width: 769px` / `min-height: 501px`, so they no longer
+     reach the bar's viewport range. Keep that scoping in mind before widening
+     any rail media query. */
   .mobileBottomBar.collapsed,
   .mobileBottomBar.expanded {
     width: 100%;
