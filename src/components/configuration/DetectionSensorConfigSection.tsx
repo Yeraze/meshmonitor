@@ -160,7 +160,7 @@ const DetectionSensorConfigSection: React.FC<DetectionSensorConfigSectionProps> 
             <input
               id="detectionsensorName"
               type="text"
-              maxLength={20}
+              maxLength={19}
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="setting-input"

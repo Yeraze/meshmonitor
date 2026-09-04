@@ -897,7 +897,10 @@ describe('AutoAnnounceSection — firmware 2.8 MeshBeacon notice (#4731)', () =>
     const notice = screen.getByText(/firmware 2\.8's MeshBeacon module/i);
     expect(notice).toBeInTheDocument();
     expect(notice.textContent).toMatch(/zero-hop/i);
-    expect(notice.textContent).toMatch(/development branch/i);
+    // MeshBeacon shipped in tagged v2.8.0.* prereleases, so the notice must say
+    // "alpha/prerelease", not "development branch, not a released firmware" (#5056).
+    expect(notice.textContent).toMatch(/alpha\/prerelease/i);
+    expect(notice.textContent || '').not.toMatch(/development branch/i);
     // Must NOT claim a native "Auto Welcome" exists (the firmware has none).
     expect(notice.textContent || '').not.toMatch(/auto[- ]?welcome/i);
   });
