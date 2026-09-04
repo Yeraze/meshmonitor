@@ -102,6 +102,9 @@ export const VALID_SETTINGS_KEYS = [
   'packet_log_max_age_hours',
   'meshcore_packet_log_enabled',
   'meshcore_packet_log_max_count',
+  // Separate cap for meshcore_mqtt region feeds (#5040) — far higher volume
+  // than one radio's earshot, so it cannot share the device-source cap.
+  'meshcore_mqtt_packet_log_max_count',
   'meshcore_packet_log_max_age_hours',
   'mqtt_packet_log_enabled',
   'mqtt_packet_log_max_count',

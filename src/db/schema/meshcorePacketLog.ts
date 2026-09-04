@@ -38,6 +38,13 @@ export const meshcorePacketLogSqlite = sqliteTable('meshcore_packet_log', {
   payloadSize: integer('payloadSize'),
   /** Full raw OTA packet as a lowercase hex string. */
   rawHex: text('rawHex'),
+  /**
+   * 64-hex public key of the observer that heard THIS copy (#5040 Phase 2).
+   * NULL means our own radio heard it — device-backed sources never set this,
+   * so they keep one row per packet. A `meshcore_mqtt` source writes one row
+   * per observer, deduped at query time.
+   */
+  observerId: text('observerId'),
   createdAt: integer('createdAt').notNull(),
 });
 
@@ -59,6 +66,7 @@ export const meshcorePacketLogPostgres = pgTable('meshcore_packet_log', {
   rssi: pgInteger('rssi'),
   payloadSize: pgInteger('payloadSize'),
   rawHex: pgText('rawHex'),
+  observerId: pgText('observerId'),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
 });
 
@@ -80,5 +88,6 @@ export const meshcorePacketLogMysql = mysqlTable('meshcore_packet_log', {
   rssi: myInt('rssi'),
   payloadSize: myInt('payloadSize'),
   rawHex: myText('rawHex'),
+  observerId: myVarchar('observerId', { length: 64 }),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
 });

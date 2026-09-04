@@ -46,7 +46,9 @@ import {
   decodeObserverPacketMessage,
   observerPacketsSubscription,
   observerKeyFromTopic,
+  type IngestedObserverPacket,
 } from './services/meshcoreMqttIngestPacket.js';
+import meshcorePacketLogService from './services/meshcorePacketLogService.js';
 import { logger } from '../utils/logger.js';
 
 /** Persisted `sources.config` shape for a `meshcore_mqtt` source. */
@@ -223,14 +225,55 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
         this.stats.observers = this.seenObservers.size;
       }
 
-      // Phase 1 ends here: the packet is decoded and counted, not persisted.
-      // Phase 2 routes this into the same handleOtaPacket seam the local radio
-      // path uses. The event is emitted now so a consumer can be attached
-      // without changing this method.
+      // Emitted for the same consumers the local radio path feeds (Virtual
+      // Node bridge, channel-echo correlation) — the whole point of
+      // reconstructing the bridge shape.
       this.emit('ota_packet', decoded.event);
+      void this.persistPacket(decoded);
     } catch (err) {
       this.stats.rejected++;
       logger.debug(`[MeshCoreMqtt:${this.sourceId}] failed to handle message:`, err);
+    }
+  }
+
+  /**
+   * Write one reception to the MeshCore packet monitor (#5040 Phase 2).
+   *
+   * One row PER OBSERVER, not per packet: the same frame heard by eight
+   * observers is eight rows, differing in SNR/RSSI and stamped with who heard
+   * it. That is the coverage data a region feed exists to provide, and
+   * collapsing it here would throw it away — the repository's grouped queries
+   * dedupe at read time instead.
+   *
+   * Gated on the same opt-in setting as the local packet monitor, and
+   * best-effort: a DB failure must never break the ingest stream.
+   */
+  private async persistPacket(decoded: IngestedObserverPacket): Promise<void> {
+    try {
+      if (!(await meshcorePacketLogService.isEnabled())) return;
+      const now = Date.now();
+      const e = decoded.event;
+      await meshcorePacketLogService.logPacket({
+        sourceId: this.sourceId,
+        // Our ingest time, not the publisher's claimed `timestamp` — a remote
+        // clock is untrusted input and would corrupt ordering and retention.
+        timestamp: now,
+        payloadType: e.payload_type,
+        payloadTypeName: e.payload_type_string,
+        routeType: e.route_type,
+        routeTypeName: e.route_type_string,
+        pathLenRaw: e.path_len_raw,
+        hopCount: e.hop_count,
+        pathHops: e.path_hops.length > 0 ? e.path_hops.join(',') : null,
+        snr: e.snr ?? null,
+        rssi: e.rssi ?? null,
+        payloadSize: e.payload_size,
+        rawHex: e.raw_hex,
+        observerId: decoded.originId,
+        createdAt: now,
+      });
+    } catch (err) {
+      logger.debug(`[MeshCoreMqtt:${this.sourceId}] failed to persist packet:`, err);
     }
   }
 
