@@ -263,10 +263,11 @@ export const NOT_REKEYED: readonly { table: string; reason: string }[] = [
       'Re-point the anchor in the automation editor if you used one.',
   },
   {
-    table: 'auto_traceroute_nodes / auto_time_sync_nodes / auto_favorite_targets',
+    table: 'auto_traceroute_nodes / auto_time_sync_nodes / auto_favorite_targets / auto_favorite_assignments',
     reason:
       'Forward-looking operator preference lists, not history. Re-add the node to them after the merge — ' +
-      're-keying them risks colliding with an entry the surviving node already has.',
+      'the favorite tables are unique per (source, target[, favorite]), so re-keying them would collide ' +
+      'with any entry the surviving node already has.',
   },
   {
     table: 'user_notification_preferences.monitored_nodes',

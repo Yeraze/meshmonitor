@@ -170,10 +170,11 @@ The dialog lists these too, so nothing is a surprise afterwards:
 - **Global, source-less state** — key-repair state, geofence cooldowns, mesh
   issues, automation home anchors. These self-heal or expire.
 - **Your preference lists** — auto-traceroute, auto-time-sync, auto-favourite
-  targets, and the monitored-node list in your notification settings. Re-add the
-  node to those after the merge. They are forward-looking configuration rather
-  than history, and re-keying them risks colliding with an entry the surviving
-  node already has.
+  targets and their assignments, and the monitored-node list in your
+  notification settings. Re-add the node to those after the merge. They are
+  forward-looking configuration rather than history, and the favourite tables
+  are unique per node, so re-keying them would collide with any entry the
+  surviving node already has.
 - **`backup_history`** — a record of what a past backup contained, which stays
   true.
 
