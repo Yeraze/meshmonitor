@@ -1,6 +1,7 @@
 import { DeviceInfo, Channel } from '../types/device.js';
 import { MeshMessage, MessageEvent, MeshtasticHeardByEntry } from '../types/message.js';
 import type { ElevationProfile, ElevationTestResult } from '../types/elevation.js';
+import type { IdentityChangeReport } from '../types/nodeIdentityChange.js';
 import {
   sanitizeTextInput,
   validateChannel,
@@ -1089,6 +1090,25 @@ class ApiService {
     // not unwrap, so read body.data explicitly.
     const body = await this.get<{ success: boolean; data: SignalTrendResult }>(
       `/api/telemetry/${encodeURIComponent(validatedNodeId ?? nodeId)}/signal-trend${qs}`,
+    );
+    return body.data;
+  }
+
+  /**
+   * Candidate Meshtastic 2.8 node-number changes on ONE source (issue #5032).
+   *
+   * 2.8 derives a node's number from its public key instead of its MAC, so an
+   * upgraded node arrives as a brand-new node with orphaned history. This
+   * reports which new node looks like which old one. Read-only and advisory —
+   * nothing is merged on the strength of it.
+   *
+   * `sourceId` is required by the endpoint; detection never compares across
+   * sources. Unwraps the `{success,data}` envelope, which `request()`
+   * deliberately does not.
+   */
+  async getNodeIdentityChanges(sourceId: string): Promise<IdentityChangeReport> {
+    const body = await this.get<{ success: boolean; data: IdentityChangeReport }>(
+      `/api/nodes/identity-changes?sourceId=${encodeURIComponent(sourceId)}`,
     );
     return body.data;
   }

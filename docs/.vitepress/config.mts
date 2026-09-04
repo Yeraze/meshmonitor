@@ -72,6 +72,7 @@ export default defineConfig({
             { text: 'Settings', link: '/features/settings' },
             { text: 'Global Settings', link: '/features/global-settings' },
             { text: 'Multi-Source', link: '/features/multi-source' },
+            { text: 'Node Number Changes (2.8)', link: '/features/node-identity-changes' },
             { text: 'Device Configuration', link: '/features/device' },
             { text: 'Receive-Only Mode', link: '/features/receive-only-mode' }
           ]

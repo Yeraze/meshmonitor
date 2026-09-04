@@ -42,6 +42,7 @@ import {
   encodeSharedContactUrl,
   SharedContactValidationError,
 } from '../services/sharedContactService.js';
+import { detectIdentityChanges } from '../services/nodeIdentityChangeService.js';
 
 const router = express.Router();
 
@@ -179,6 +180,41 @@ router.get('/nodes/active', optionalAuth(), async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch active nodes' });
   }
 });
+
+/**
+ * GET /api/nodes/identity-changes?sourceId=...
+ *
+ * Candidate Meshtastic 2.8 node-number changes on ONE source (issue #5032).
+ * 2.8 derives a node's number from its public key instead of its MAC, so an
+ * upgrading node arrives as a brand-new node and its history is orphaned under
+ * the old number. This reports which new node looks like which old one.
+ *
+ * Strictly read-only and advisory. Nothing here merges, re-keys or deletes any
+ * data — a name match is a heuristic, and two genuinely different nodes can
+ * share a name. A human decides what, if anything, to do.
+ *
+ * `sourceId` is mandatory. Detection compares nodes *within* one source; a
+ * cross-source comparison would pair unrelated meshes and leak node names
+ * across the per-source permission boundary (#3745).
+ *
+ * Registered before the parametric `/nodes/:nodeNum/...` routes — a literal
+ * 2-segment path does not collide with any of them, but registering first
+ * removes all doubt.
+ */
+router.get(
+  '/nodes/identity-changes',
+  requirePermission('nodes', 'read', { sourceIdFrom: 'query', requireSourceId: true }),
+  async (req, res) => {
+    try {
+      const sourceId = req.query.sourceId as string;
+      const report = await detectIdentityChanges(sourceId);
+      return ok(res, report);
+    } catch (error) {
+      logger.error('Error detecting node identity changes:', error);
+      return fail(res, 500, 'INTERNAL_ERROR', 'Failed to detect node identity changes');
+    }
+  },
+);
 
 // NodeInfo enrichment (cross-source fill-blanks-only). Registered before the
 // parametric /nodes/:nodeNum/... and /nodes/:nodeId/... routes as
