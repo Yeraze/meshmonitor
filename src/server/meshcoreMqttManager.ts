@@ -92,6 +92,19 @@ export interface MeshCoreMqttIngestStats {
   lastError: string | null;
 }
 
+/**
+ * Convert an ADVERT's self-reported unix-seconds timestamp into a `lastHeard`
+ * milliseconds value, or `undefined` when it carries none.
+ *
+ * Clamped to now: the value comes from an untrusted publisher, so a future
+ * claim is either a forgery or a node with a bad clock, and both would corrupt
+ * every "last heard" ordering that reads this column.
+ */
+export function advertLastHeardMs(timestampSec: number, nowMs: number = Date.now()): number | undefined {
+  if (!Number.isFinite(timestampSec) || timestampSec <= 0) return undefined;
+  return Math.min(timestampSec * 1000, nowMs);
+}
+
 export class MeshCoreMqttManager extends EventEmitter implements ISourceManager {
   readonly sourceId: string;
   readonly sourceType = 'meshcore_mqtt' as const;
@@ -333,7 +346,16 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
           positionSource: advert.latitude !== undefined ? 'contact' : undefined,
           // When the observer heard it, not when we ingested it — a replayed or
           // delayed publish must not make a silent node look freshly heard.
-          lastHeard: advert.timestamp > 0 ? advert.timestamp * 1000 : undefined,
+          //
+          // Capped at now, because the timestamp is attacker-controlled in both
+          // directions and only the stale one was guarded. A forged or
+          // misconfigured advert claiming a FUTURE time would otherwise park the
+          // node at the top of every "last heard" sort indefinitely, and no
+          // later genuine reception could displace it. Mirrors the Meshtastic
+          // NodeInfo path, which caps for the same reason
+          // (`meshtasticManager.ts`, "cap at current time to prevent future
+          // timestamps").
+          lastHeard: advertLastHeardMs(advert.timestamp),
         },
         this.sourceId,
       );

@@ -45,7 +45,7 @@ vi.mock('./transports/mqttBrokerClient.js', () => ({
   MqttBrokerClient: class { constructor() { lastClient = new FakeClient(); return lastClient as unknown as object; } },
 }));
 
-import { MeshCoreMqttManager } from './meshcoreMqttManager.js';
+import { MeshCoreMqttManager, advertLastHeardMs } from './meshcoreMqttManager.js';
 
 const OBSERVER = 'AA'.repeat(32);
 const NODE_KEY = '11'.repeat(32);
@@ -139,6 +139,21 @@ describe('ADVERT ingest (#5040 Phase 3)', () => {
     expect(upsertNode.mock.calls[0][0].lastHeard).toBe(1_600_000_000_000);
   });
 
+  it('caps a FUTURE advert timestamp at now', async () => {
+    // The timestamp is attacker-controlled in both directions. Uncapped, a
+    // forged future claim parks the node at the top of every "last heard" sort
+    // indefinitely, and no later genuine reception can displace it.
+    const before = Date.now();
+    await started();
+    lastClient!.deliver(`meshcore/MCO/${OBSERVER}/packets`,
+      body(advertFrame({ timestamp: 4_000_000_000, name: 'FromTheFuture' })));
+    await settle();
+
+    const stamped = upsertNode.mock.calls[0][0].lastHeard as number;
+    expect(stamped).toBeLessThanOrEqual(Date.now());
+    expect(stamped).toBeGreaterThanOrEqual(before);
+  });
+
   it('omits name rather than nulling it when the advert carries none', async () => {
     // upsertNode treats undefined as "not observed" and PRESERVES the stored
     // value; null would clobber a good name with nothing.
@@ -201,5 +216,29 @@ describe('ADVERT ingest (#5040 Phase 3)', () => {
     expect(upsertNode).toHaveBeenCalledTimes(2);
     // The packet itself still counted both times — node ingest is a side path.
     expect(mgr.getIngestStats().accepted).toBe(2);
+  });
+});
+
+describe('advertLastHeardMs', () => {
+  const NOW = 1_700_000_000_000;
+
+  it('passes a past timestamp through, in milliseconds', () => {
+    expect(advertLastHeardMs(1_600_000_000, NOW)).toBe(1_600_000_000_000);
+  });
+
+  it('clamps a future timestamp to now', () => {
+    expect(advertLastHeardMs(4_000_000_000, NOW)).toBe(NOW);
+  });
+
+  it('treats the boundary as not-future', () => {
+    expect(advertLastHeardMs(NOW / 1000, NOW)).toBe(NOW);
+  });
+
+  it('returns undefined for absent or nonsense values', () => {
+    // undefined (not 0) so upsertNode PRESERVES any stored lastHeard rather
+    // than overwriting it with the epoch.
+    expect(advertLastHeardMs(0, NOW)).toBeUndefined();
+    expect(advertLastHeardMs(-1, NOW)).toBeUndefined();
+    expect(advertLastHeardMs(Number.NaN, NOW)).toBeUndefined();
   });
 });
