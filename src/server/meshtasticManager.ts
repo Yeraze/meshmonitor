@@ -14279,15 +14279,25 @@ class MeshtasticManager implements ISourceManager {
   /**
    * Update cached module config section after a successful admin command.
    * Mirrors `updateCachedDeviceConfig` above but for `actualModuleConfig`.
+   *
+   * `mode: 'replace'` drops the previous section instead of merging into it,
+   * which is what the firmware does: `AdminModule` whole-struct-assigns
+   * `moduleConfig.<section> = <incoming>`, so a field the client left out is
+   * cleared on the device. Merging would leave the cache claiming a value the
+   * node no longer holds — for MeshBeacon that means an `optional`
+   * `broadcast_on_preset` the user reset to "use running config" would survive
+   * as its old preset number (#5045).
    */
-  updateCachedModuleConfig(section: string, values: Record<string, any>): void {
+  updateCachedModuleConfig(section: string, values: Record<string, any>, mode: 'merge' | 'replace' = 'merge'): void {
     if (!this.actualModuleConfig) {
       this.actualModuleConfig = {};
     }
-    this.actualModuleConfig[section] = {
-      ...this.actualModuleConfig[section],
-      ...values
-    };
+    this.actualModuleConfig[section] = mode === 'replace'
+      ? { ...values }
+      : {
+        ...this.actualModuleConfig[section],
+        ...values
+      };
   }
 
   // ── Narrow accessors for RemoteAdminService (#3962 Phase 4.2a PR5 §4e) ──
