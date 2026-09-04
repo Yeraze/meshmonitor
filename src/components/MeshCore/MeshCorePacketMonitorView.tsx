@@ -34,7 +34,33 @@ interface MeshCorePacketMonitorViewProps {
 
 type Packet = MeshCoreOtaPacketEvent;
 
+/**
+ * One collapsed row: a distinct frame with its per-observer receptions folded
+ * in (#5040 Phase 2b). Shares the display fields of `Packet` so the table body
+ * can render either shape.
+ */
+interface GroupedPacket extends Packet {
+  observerCount: number;
+  receptionCount: number;
+  bestSnr: number | null;
+  bestRssi: number | null;
+  firstHeard: number;
+  lastHeard: number;
+}
+
 const MAX_BUFFER = 2000;
+
+/**
+ * Render an observer count for display.
+ *
+ * `0` does NOT mean "nobody heard this" — it means OUR radio heard it, because
+ * a local reception carries a NULL observerId and COUNT(DISTINCT) skips NULLs
+ * (#5040 Phase 2). Showing the digit would invert the meaning for every
+ * locally-heard packet, so the local case gets a word instead.
+ */
+function observerLabel(count: number, localText: string): string {
+  return count > 0 ? String(count) : localText;
+}
 
 function payloadLabel(p: Packet): string {
   if (p.payloadTypeName) return p.payloadTypeName;
@@ -83,12 +109,22 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
   const [maxAgeHours, setMaxAgeHours] = useState(24);
   const [savingSettings, setSavingSettings] = useState(false);
 
+  // Collapsed view (#5040 Phase 2b). Meaningful for any MeshCore source: a
+  // device-backed one records a single reception per frame, so grouping is a
+  // no-op there rather than something to hide behind a source-type check.
+  const [grouped, setGrouped] = useState(false);
+  const [groupedPackets, setGroupedPackets] = useState<GroupedPacket[]>([]);
+  const [isIngestSource, setIsIngestSource] = useState(false);
+
   const [payloadFilter, setPayloadFilter] = useState<number | ''>('');
   const [routeFilter, setRouteFilter] = useState<number | ''>('');
   const [selectedPacket, setSelectedPacket] = useState<Packet | null>(null);
 
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
+  const groupedRef = useRef(grouped);
+  groupedRef.current = grouped;
+  const reloadRef = useRef<(() => void) | null>(null);
 
   const mcPrefix = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/meshcore`;
 
@@ -101,19 +137,25 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
       const params = new URLSearchParams();
       if (payloadFilter !== '') params.set('payload_type', String(payloadFilter));
       if (routeFilter !== '') params.set('route_type', String(routeFilter));
-      const res = await csrfFetch(`${mcPrefix}/packets?${params.toString()}`);
+      const path = grouped ? 'packets/grouped' : 'packets';
+      const res = await csrfFetch(`${mcPrefix}/${path}?${params.toString()}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      setPackets(Array.isArray(data.packets) ? data.packets : []);
+      if (grouped) {
+        setGroupedPackets(Array.isArray(data.packets) ? data.packets : []);
+      } else {
+        setPackets(Array.isArray(data.packets) ? data.packets : []);
+      }
       if (typeof data.enabled === 'boolean') setEnabled(data.enabled);
       if (typeof data.maxCount === 'number') setMaxCount(data.maxCount);
       if (typeof data.maxAgeHours === 'number') setMaxAgeHours(data.maxAgeHours);
+      if (typeof data.isIngestSource === 'boolean') setIsIngestSource(data.isIngestSource);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load packets');
     } finally {
       setLoading(false);
     }
-  }, [csrfFetch, mcPrefix, payloadFilter, routeFilter]);
+  }, [csrfFetch, mcPrefix, payloadFilter, routeFilter, grouped]);
 
   // Initial load + reload on filter change.
   useEffect(() => {
@@ -126,6 +168,13 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
     const onOtaPacket = (evt: MeshCoreOtaPacketEvent) => {
       if (evt.sourceId && evt.sourceId !== sourceId) return;
       if (pausedRef.current) return;
+      // Grouping is a server-side aggregation: a new reception should increment
+      // an existing group, not prepend a row. Prepending would show the same
+      // frame twice and contradict the counts, so reload instead.
+      if (groupedRef.current) {
+        void reloadRef.current?.();
+        return;
+      }
       setPackets(prev => {
         const next = [evt, ...prev];
         return next.length > MAX_BUFFER ? next.slice(0, MAX_BUFFER) : next;
@@ -138,12 +187,20 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
   }, [socket, sourceId]);
 
   const visiblePackets = useMemo(() => {
+    // Grouped rows arrive already filtered and aggregated by the server; the
+    // client-side filter exists only to keep live-prepended rows honest in flat
+    // mode, and re-applying it to groups would be a no-op at best.
+    if (grouped) return groupedPackets as Packet[];
     return packets.filter(p => {
       if (payloadFilter !== '' && p.payloadType !== payloadFilter) return false;
       if (routeFilter !== '' && p.routeType !== routeFilter) return false;
       return true;
     });
-  }, [packets, payloadFilter, routeFilter]);
+  }, [grouped, groupedPackets, packets, payloadFilter, routeFilter]);
+
+  // Let the live-packet handler trigger a reload without re-subscribing the
+  // socket on every `load` identity change.
+  reloadRef.current = load;
 
   const saveSettings = useCallback(async (patch: Record<string, string>): Promise<boolean> => {
     setSavingSettings(true);
@@ -241,6 +298,17 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
             {paused ? <Play size={14} /> : <Pause size={14} />}
           </button>
           <button
+            className={`mcpm-btn ${grouped ? 'active' : ''}`}
+            onClick={() => setGrouped(g => !g)}
+            title={grouped
+              ? t('meshcore.packets.ungroupHelp', 'Show every reception separately')
+              : t('meshcore.packets.groupHelp', 'Collapse receptions of the same frame into one row')}
+          >
+            {grouped
+              ? t('meshcore.packets.grouped', 'Grouped')
+              : t('meshcore.packets.flat', 'All')}
+          </button>
+          <button
             className={`mcpm-btn ${showFilters ? 'active' : ''}`}
             onClick={() => setShowFilters(s => !s)}
             title={t('common.filters', 'Filters')}
@@ -305,13 +373,29 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
                 <input
                   type="number"
                   min={100}
-                  max={50000}
+                  max={isIngestSource ? 500000 : 50000}
                   step={100}
                   value={maxCount}
                   onChange={e => setMaxCount(Number(e.target.value))}
-                  onBlur={() => void saveSettings({ meshcore_packet_log_max_count: String(maxCount) })}
+                  onBlur={() => void saveSettings(
+                    // Retention is per-source-kind (#5040): an MQTT region feed
+                    // writes one row per observer and has its own key, so
+                    // writing the device key here would silently cap the wrong
+                    // sources.
+                    isIngestSource
+                      ? { meshcore_mqtt_packet_log_max_count: String(maxCount) }
+                      : { meshcore_packet_log_max_count: String(maxCount) },
+                  )}
                 />
               </label>
+              {isIngestSource && (
+                <span className="mcpm-setting-warning">
+                  {t(
+                    'meshcore.packets.ingestCapWarning',
+                    'A region feed stores one row per observer that heard each frame. At 50,000 rows expect roughly 50–100MB of database per source — noticeable on a Pi or a small container volume.',
+                  )}
+                </span>
+              )}
               <label>
                 {t('meshcore.packets.maxAgeHours', 'Max age (h)')}
                 <input
@@ -350,6 +434,11 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
                 <th>{t('meshcore.packets.snr', 'SNR')}</th>
                 <th>{t('meshcore.packets.rssi', 'RSSI')}</th>
                 <th>{t('meshcore.packets.size', 'Size')}</th>
+                {grouped && (
+                  <th title={t('meshcore.packets.observersHelp', 'Distinct observers that heard this frame. "Local" means your own radio heard it.')}>
+                    {t('meshcore.packets.observers', 'Observers')}
+                  </th>
+                )}
                 <th>{t('meshcore.packets.path', 'Path')}</th>
               </tr>
             </thead>
@@ -370,6 +459,14 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
                     <td className="mcpm-mono">{typeof p.snr === 'number' ? p.snr.toFixed(2) : '—'}</td>
                     <td className="mcpm-mono">{typeof p.rssi === 'number' ? p.rssi : '—'}</td>
                     <td className="mcpm-mono">{typeof p.payloadSize === 'number' ? p.payloadSize : '—'}</td>
+                    {grouped && (
+                      <td className="mcpm-mono">
+                        {observerLabel(
+                          Number((p as GroupedPacket).observerCount ?? 0),
+                          t('meshcore.packets.observersLocal', 'Local'),
+                        )}
+                      </td>
+                    )}
                     <td className="mcpm-mono mcpm-path">{p.pathHops || (p.pathLenRaw === 255 ? 'direct' : '—')}</td>
                   </tr>
                 );

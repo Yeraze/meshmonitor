@@ -1,6 +1,6 @@
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
-import type { DbMeshCorePacket, MeshCorePacketQuery } from '../../db/repositories/meshcore.js';
+import type { DbMeshCorePacket, MeshCorePacketQuery, MeshCoreGroupedPacket } from '../../db/repositories/meshcore.js';
 
 /**
  * Service for the MeshCore Packet Monitor — the OTA-packet analogue of
@@ -90,6 +90,25 @@ class MeshCorePacketLogService {
 
   async getPackets(query: MeshCorePacketQuery): Promise<DbMeshCorePacket[]> {
     return databaseService.meshcore.getPackets(query);
+  }
+
+  /**
+   * Collapsed view: one entry per distinct frame, with the per-observer
+   * receptions of a `meshcore_mqtt` source folded into counts (#5040 Phase 2b).
+   * A device-backed source has one reception per frame, so this degenerates to
+   * the flat list for it.
+   */
+  async getGroupedPackets(query: MeshCorePacketQuery): Promise<MeshCoreGroupedPacket[]> {
+    return databaseService.meshcore.getGroupedPackets(query);
+  }
+
+  async getGroupedPacketCount(query: MeshCorePacketQuery): Promise<number> {
+    return databaseService.meshcore.getGroupedPacketCount(query);
+  }
+
+  /** The per-observer receptions behind one grouped row. */
+  async getPacketReceptions(sourceId: string, rawHex: string): Promise<DbMeshCorePacket[]> {
+    return databaseService.meshcore.getPacketReceptions(sourceId, rawHex);
   }
 
   async getPacketCount(query: MeshCorePacketQuery): Promise<number> {
