@@ -16,6 +16,7 @@ import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { resolveSourceConnectionConfig } from '../utils/resolveSourceConnectionConfig.js';
 import { isValidModuleConfigType } from '../constants/moduleConfig.js';
+import { validateMeshBeaconConfigPayload } from '../constants/meshtastic.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { fail } from '../utils/apiResponse.js';
 import { isTxDisabledError } from '../errors/txDisabledError.js';
@@ -267,6 +268,18 @@ router.post('/module/:moduleType', requirePermission('configuration', 'write'), 
     if (!isValidModuleConfigType(moduleType)) {
       res.status(400).json({ error: `Invalid module type: ${moduleType}` });
       return;
+    }
+
+    // MeshBeacon's nanopb limits fail silently on the device: an over-long
+    // broadcast_message or a fifth broadcast_target makes nanopb discard the
+    // whole ModuleConfig with no error and no log line, so the user just sees
+    // settings that never saved. Mirror the remote-admin guard here — this
+    // local path had none (#5062).
+    if (moduleType === 'meshbeacon') {
+      const meshBeaconError = validateMeshBeaconConfigPayload(config);
+      if (meshBeaconError) {
+        return fail(res, 400, 'INVALID_MESHBEACON_CONFIG', meshBeaconError);
+      }
     }
 
     await cfgModManager.setGenericModuleConfig(moduleType, config);

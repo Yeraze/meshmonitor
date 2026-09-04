@@ -3,6 +3,8 @@ import {
   buildMeshBeaconConfigPayload,
   parseMeshBeaconConfig,
   MESH_BEACON_MIN_INTERVAL_SECS,
+  MESH_BEACON_MAX_TARGETS,
+  MESH_BEACON_MESSAGE_MAX_BYTES,
   type MeshBeaconConfigState,
 } from './useAdminCommandsState';
 
@@ -12,64 +14,70 @@ import {
  * way. These assert the proto-driven edge cases: `optional` presets vs 0,
  * whole-submessage channels vs blank names, UNSET(0) regions surviving, and the
  * repeated broadcast_targets normalisation.
+ *
+ * The single-destination fields (`broadcast_on_channel` / `_region` / `_preset`,
+ * tags 8/9/10) and `broadcast_send_as_node` (tag 3) were deleted from the proto
+ * and their tags reserved (protobufs #1048 / firmware #11646). The payload must
+ * no longer contain them — a reserved tag is skipped by nanopb without an error,
+ * so the only way to catch a regression is to assert their absence (#5062).
  */
 const baseState: MeshBeaconConfigState = {
   listenEnabled: false,
   broadcastEnabled: true,
   legacySplit: false,
   broadcastMessage: 'hi',
-  broadcastSendAsNode: 0,
   broadcastOfferChannelName: '',
   broadcastOfferChannelPsk: '',
   broadcastOfferRegion: 0,
   broadcastOfferPreset: null,
   broadcastIntervalSecs: MESH_BEACON_MIN_INTERVAL_SECS,
-  broadcastOnChannelName: '',
-  broadcastOnChannelPsk: '',
-  broadcastOnRegion: 0,
-  broadcastOnPreset: null,
   broadcastTargets: [],
 };
 
 describe('buildMeshBeaconConfigPayload', () => {
-  it('always includes interval and both regions (0 is a real value)', () => {
+  it('always includes interval and the offer region (0 is a real value)', () => {
     const payload = buildMeshBeaconConfigPayload(baseState);
     expect(payload.broadcastIntervalSecs).toBe(3600);
     expect(payload.broadcastOfferRegion).toBe(0);
-    expect(payload.broadcastOnRegion).toBe(0);
   });
 
-  it('omits optional presets when null, includes them when 0 (LONG_FAST)', () => {
-    expect(buildMeshBeaconConfigPayload(baseState)).not.toHaveProperty('broadcastOnPreset');
+  it('never emits the removed reserved fields', () => {
+    const payload = buildMeshBeaconConfigPayload({
+      ...baseState,
+      broadcastOfferPreset: 3,
+      broadcastTargets: [{ preset: 3, region: 1, channelIndex: 1 }],
+    });
+    expect(payload).not.toHaveProperty('broadcastSendAsNode');
+    expect(payload).not.toHaveProperty('broadcastOnChannel');
+    expect(payload).not.toHaveProperty('broadcastOnRegion');
+    expect(payload).not.toHaveProperty('broadcastOnPreset');
+  });
+
+  it('omits the optional offer preset when null, includes it when 0 (LONG_FAST)', () => {
     expect(buildMeshBeaconConfigPayload(baseState)).not.toHaveProperty('broadcastOfferPreset');
 
-    const withPresets = buildMeshBeaconConfigPayload({
-      ...baseState,
-      broadcastOnPreset: 0,
-      broadcastOfferPreset: 0,
-    });
-    expect(withPresets.broadcastOnPreset).toBe(0);
-    expect(withPresets.broadcastOfferPreset).toBe(0);
+    const withPreset = buildMeshBeaconConfigPayload({ ...baseState, broadcastOfferPreset: 0 });
+    expect(withPreset.broadcastOfferPreset).toBe(0);
   });
 
-  it('omits broadcast_on_channel when name blank, sends name+psk when present', () => {
-    expect(buildMeshBeaconConfigPayload(baseState)).not.toHaveProperty('broadcastOnChannel');
+  it('omits broadcast_offer_channel when name blank, sends name+psk when present', () => {
+    expect(buildMeshBeaconConfigPayload(baseState)).not.toHaveProperty('broadcastOfferChannel');
 
     const withChannel = buildMeshBeaconConfigPayload({
       ...baseState,
-      broadcastOnChannelName: 'gauntlet',
-      broadcastOnChannelPsk: 'AQ==',
+      broadcastOfferChannelName: 'gauntlet',
+      broadcastOfferChannelPsk: 'AQ==',
     });
-    expect(withChannel.broadcastOnChannel).toEqual({ name: 'gauntlet', psk: 'AQ==' });
+    expect(withChannel.broadcastOfferChannel).toEqual({ name: 'gauntlet', psk: 'AQ==' });
   });
 
-  it('sends broadcast_on_channel name without psk when psk blank', () => {
+  it('sends broadcast_offer_channel name without psk when psk blank', () => {
     const withChannel = buildMeshBeaconConfigPayload({
       ...baseState,
-      broadcastOnChannelName: 'gauntlet',
-      broadcastOnChannelPsk: '',
+      broadcastOfferChannelName: 'gauntlet',
+      broadcastOfferChannelPsk: '',
     });
-    expect(withChannel.broadcastOnChannel).toEqual({ name: 'gauntlet' });
+    expect(withChannel.broadcastOfferChannel).toEqual({ name: 'gauntlet' });
   });
 
   it('always emits broadcast_targets (empty array clears the device list)', () => {
@@ -91,6 +99,25 @@ describe('buildMeshBeaconConfigPayload', () => {
       { region: 3, preset: 0 },
     ]);
   });
+
+  it('carries a full four-target list — the nanopb max_count — unchanged', () => {
+    const targets = Array.from({ length: MESH_BEACON_MAX_TARGETS }, (_, i) => ({
+      preset: i,
+      region: 1,
+      channelIndex: i,
+    }));
+    const payload = buildMeshBeaconConfigPayload({ ...baseState, broadcastTargets: targets });
+    expect(payload.broadcastTargets).toHaveLength(MESH_BEACON_MAX_TARGETS);
+  });
+});
+
+describe('MeshBeacon nanopb limits', () => {
+  it('exposes the two limits that fail silently on the device', () => {
+    // nanopb: broadcast_targets max_count:4, broadcast_message max_size:101
+    // (100 bytes + NUL). Both drop the whole ModuleConfig when exceeded.
+    expect(MESH_BEACON_MAX_TARGETS).toBe(4);
+    expect(MESH_BEACON_MESSAGE_MAX_BYTES).toBe(100);
+  });
 });
 
 describe('parseMeshBeaconConfig', () => {
@@ -104,15 +131,28 @@ describe('parseMeshBeaconConfig', () => {
     expect(parseMeshBeaconConfig({ broadcastIntervalSecs: 7200 }).broadcastIntervalSecs).toBe(7200);
   });
 
-  it('keeps a real UNSET(0) region and null optional preset', () => {
-    const parsed = parseMeshBeaconConfig({ broadcastOnRegion: 0 });
-    expect(parsed.broadcastOnRegion).toBe(0);
-    expect(parsed.broadcastOnPreset).toBeNull();
+  it('keeps a real UNSET(0) offer region and null optional offer preset', () => {
+    const parsed = parseMeshBeaconConfig({ broadcastOfferRegion: 0 });
+    expect(parsed.broadcastOfferRegion).toBe(0);
+    expect(parsed.broadcastOfferPreset).toBeNull();
   });
 
-  it('distinguishes preset 0 (present) from absent (null)', () => {
-    expect(parseMeshBeaconConfig({ broadcastOnPreset: 0 }).broadcastOnPreset).toBe(0);
-    expect(parseMeshBeaconConfig({}).broadcastOnPreset).toBeNull();
+  it('distinguishes offer preset 0 (present) from absent (null)', () => {
+    expect(parseMeshBeaconConfig({ broadcastOfferPreset: 0 }).broadcastOfferPreset).toBe(0);
+    expect(parseMeshBeaconConfig({}).broadcastOfferPreset).toBeNull();
+  });
+
+  it('ignores the removed fields if an old device still sends them', () => {
+    const parsed = parseMeshBeaconConfig({
+      broadcastSendAsNode: 42,
+      broadcastOnRegion: 1,
+      broadcastOnPreset: 3,
+      broadcastOnChannel: { name: 'gauntlet' },
+    }) as Record<string, unknown>;
+    expect(parsed).not.toHaveProperty('broadcastSendAsNode');
+    expect(parsed).not.toHaveProperty('broadcastOnRegion');
+    expect(parsed).not.toHaveProperty('broadcastOnPreset');
+    expect(parsed).not.toHaveProperty('broadcastOnChannelName');
   });
 
   it('maps repeated targets, filling nulls for absent optional fields', () => {
@@ -131,18 +171,18 @@ describe('parseMeshBeaconConfig', () => {
   it('round-trips build → parse for a populated state', () => {
     const populated: MeshBeaconConfigState = {
       ...baseState,
-      broadcastOnChannelName: 'gauntlet',
-      broadcastOnChannelPsk: 'AQ==',
-      broadcastOnRegion: 1,
-      broadcastOnPreset: 6,
+      broadcastOfferChannelName: 'gauntlet',
+      broadcastOfferChannelPsk: 'AQ==',
+      broadcastOfferRegion: 1,
+      broadcastOfferPreset: 6,
       broadcastIntervalSecs: 7200,
       broadcastTargets: [{ preset: 6, region: 1, channelIndex: 2 }],
     };
     const parsed = parseMeshBeaconConfig(buildMeshBeaconConfigPayload(populated));
-    expect(parsed.broadcastOnChannelName).toBe('gauntlet');
-    expect(parsed.broadcastOnChannelPsk).toBe('AQ==');
-    expect(parsed.broadcastOnRegion).toBe(1);
-    expect(parsed.broadcastOnPreset).toBe(6);
+    expect(parsed.broadcastOfferChannelName).toBe('gauntlet');
+    expect(parsed.broadcastOfferChannelPsk).toBe('AQ==');
+    expect(parsed.broadcastOfferRegion).toBe(1);
+    expect(parsed.broadcastOfferPreset).toBe(6);
     expect(parsed.broadcastIntervalSecs).toBe(7200);
     expect(parsed.broadcastTargets).toEqual([{ preset: 6, region: 1, channelIndex: 2 }]);
   });

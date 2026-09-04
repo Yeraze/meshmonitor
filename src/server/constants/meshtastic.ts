@@ -150,6 +150,66 @@ export type MeshBeaconFlagsType = typeof MeshBeaconFlags[keyof typeof MeshBeacon
 export const MESH_BEACON_MESSAGE_MAX_BYTES = 100;
 
 /**
+ * Maximum number of `MeshBeaconConfig.broadcast_targets` entries.
+ *
+ * nanopb `max_count:4` in `meshtastic/module_config.options`. A fifth entry
+ * fails to decode and nanopb discards the **whole** ModuleConfig — no error, no
+ * log line, the settings simply never save (#5062). Same failure mode as an
+ * over-length `broadcast_message`, which is why both are rejected up front.
+ */
+export const MESH_BEACON_MAX_TARGETS = 4;
+
+/** Highest valid channel-table index (MAX_NUM_CHANNELS - 1). */
+export const MAX_CHANNEL_INDEX = 7;
+
+/**
+ * Validate a MeshBeacon module-config payload against the limits the device
+ * enforces silently. Returns an error message, or null when the payload is
+ * acceptable.
+ *
+ * Shared by the local (`POST /api/config/module/meshbeacon`) and remote-admin
+ * (`setMeshBeaconConfig`) routes so both surfaces refuse the same payloads —
+ * the local route previously had no server-side guard at all.
+ */
+export function validateMeshBeaconConfigPayload(config: unknown): string | null {
+  if (!config || typeof config !== 'object') return null;
+  const beacon = config as Record<string, unknown>;
+
+  if (typeof beacon.broadcastMessage === 'string'
+    && Buffer.byteLength(beacon.broadcastMessage, 'utf8') > MESH_BEACON_MESSAGE_MAX_BYTES) {
+    return `broadcastMessage exceeds ${MESH_BEACON_MESSAGE_MAX_BYTES} bytes (firmware limit)`;
+  }
+
+  // Firmware enforces a 3600s (1h) minimum on broadcast_interval_secs and
+  // silently rejects lower values (#4802). 0 is allowed — the device falls back
+  // to the firmware default.
+  if (typeof beacon.broadcastIntervalSecs === 'number'
+    && beacon.broadcastIntervalSecs > 0
+    && beacon.broadcastIntervalSecs < 3600) {
+    return 'broadcastIntervalSecs must be at least 3600 seconds (firmware minimum)';
+  }
+
+  if (Array.isArray(beacon.broadcastTargets)) {
+    if (beacon.broadcastTargets.length > MESH_BEACON_MAX_TARGETS) {
+      return `broadcastTargets accepts at most ${MESH_BEACON_MAX_TARGETS} entries (firmware limit)`;
+    }
+    for (const raw of beacon.broadcastTargets) {
+      const target = (raw ?? {}) as Record<string, unknown>;
+      const channelIndex = target.channelIndex;
+      if (channelIndex === undefined || channelIndex === null) continue;
+      if (typeof channelIndex !== 'number'
+        || !Number.isInteger(channelIndex)
+        || channelIndex < 0
+        || channelIndex > MAX_CHANNEL_INDEX) {
+        return `broadcastTargets channelIndex must be an integer between 0 and ${MAX_CHANNEL_INDEX}`;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
  * True when a device's `network.enabledProtocols` bit field has UDP_BROADCAST set.
  *
  * Firmware `Router::send()` calls `udpHandler->onSend(p)` gated ONLY on this

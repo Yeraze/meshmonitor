@@ -4692,10 +4692,6 @@ class MeshtasticManager implements ISourceManager {
               parsed.data.meshBeacon.flags = 0;
               logger.debug('📊 Set meshBeacon.flags to 0 (was undefined - Proto3 default)');
             }
-            if (parsed.data.meshBeacon.broadcastSendAsNode === undefined) {
-              parsed.data.meshBeacon.broadcastSendAsNode = 0;
-              logger.debug('📊 Set meshBeacon.broadcastSendAsNode to 0 (was undefined - Proto3 default)');
-            }
             if (parsed.data.meshBeacon.broadcastMessage === undefined) {
               parsed.data.meshBeacon.broadcastMessage = '';
               logger.debug('📊 Set meshBeacon.broadcastMessage to "" (was undefined - Proto3 default)');
@@ -4704,21 +4700,20 @@ class MeshtasticManager implements ISourceManager {
               parsed.data.meshBeacon.broadcastOfferRegion = 0;
               logger.debug('📊 Set meshBeacon.broadcastOfferRegion to 0 (was undefined - Proto3 default)');
             }
-            // Transmit settings (#4802). broadcastOnRegion is a plain enum (0 =
-            // UNSET = use running config); default it so the UI reads "off"
-            // rather than indeterminate. broadcastIntervalSecs defaults to the
+            // Transmit settings (#4802). broadcastIntervalSecs defaults to the
             // firmware minimum/default of 3600, not 0.
-            if (parsed.data.meshBeacon.broadcastOnRegion === undefined) {
-              parsed.data.meshBeacon.broadcastOnRegion = 0;
-            }
             if (parsed.data.meshBeacon.broadcastIntervalSecs === undefined) {
               parsed.data.meshBeacon.broadcastIntervalSecs = 3600;
             }
-            // broadcastOfferPreset / broadcastOnPreset are `optional` in the
-            // proto — absence is meaningful ("advertise/use no preset"), so they
-            // are deliberately left undefined rather than defaulted to 0
-            // (LONG_FAST). broadcastOnChannel / broadcastTargets are left as the
-            // device sent them (absent sub-message / empty repeated field).
+            // broadcastOfferPreset is `optional` in the proto — absence is
+            // meaningful ("advertise no preset"), so it is deliberately left
+            // undefined rather than defaulted to 0 (LONG_FAST). broadcastTargets
+            // is left as the device sent it (empty repeated field).
+            //
+            // The single broadcast_on_channel / broadcast_on_region /
+            // broadcast_on_preset fields (tags 8/9/10) and broadcast_send_as_node
+            // (tag 3) were deleted from the proto and reserved (protobufs #1048 /
+            // firmware #11646). Nothing reads or writes them any more (#5062).
           }
 
           // Merge the actual module configuration (don't overwrite)
@@ -5510,16 +5505,16 @@ class MeshtasticManager implements ISourceManager {
         ...moduleConfig.meshBeacon,
         // IMPORTANT: Proto3 omits boolean false and numeric 0 values from JSON serialization
         flags: moduleConfig.meshBeacon.flags !== undefined ? moduleConfig.meshBeacon.flags : 0,
-        broadcastSendAsNode: moduleConfig.meshBeacon.broadcastSendAsNode !== undefined ? moduleConfig.meshBeacon.broadcastSendAsNode : 0,
         broadcastMessage: moduleConfig.meshBeacon.broadcastMessage !== undefined ? moduleConfig.meshBeacon.broadcastMessage : '',
         broadcastOfferRegion: moduleConfig.meshBeacon.broadcastOfferRegion !== undefined ? moduleConfig.meshBeacon.broadcastOfferRegion : 0,
-        // Transmit settings (#4802): broadcastOnRegion 0 = UNSET (running config);
-        // broadcastIntervalSecs defaults to the firmware minimum 3600, not 0.
-        broadcastOnRegion: moduleConfig.meshBeacon.broadcastOnRegion !== undefined ? moduleConfig.meshBeacon.broadcastOnRegion : 0,
+        // Transmit settings (#4802): broadcastIntervalSecs defaults to the
+        // firmware minimum 3600, not 0.
         broadcastIntervalSecs: moduleConfig.meshBeacon.broadcastIntervalSecs !== undefined ? moduleConfig.meshBeacon.broadcastIntervalSecs : 3600,
-        // broadcastOfferPreset / broadcastOnPreset are `optional` — absence means
-        // "advertise/use no preset" and must stay undefined rather than
-        // collapsing to LONG_FAST. broadcastOnChannel is passed through as-is.
+        // broadcastOfferPreset is `optional` — absence means "advertise no
+        // preset" and must stay undefined rather than collapsing to LONG_FAST.
+        // The single broadcast_on_* transmit fields and broadcast_send_as_node
+        // were removed from the proto and reserved (#5062); broadcast_targets is
+        // the only transmit destination.
         broadcastTargets: normalizeBroadcastTargets(moduleConfig.meshBeacon.broadcastTargets)
       };
 
@@ -14284,9 +14279,9 @@ class MeshtasticManager implements ISourceManager {
    * which is what the firmware does: `AdminModule` whole-struct-assigns
    * `moduleConfig.<section> = <incoming>`, so a field the client left out is
    * cleared on the device. Merging would leave the cache claiming a value the
-   * node no longer holds — for MeshBeacon that means an `optional`
-   * `broadcast_on_preset` the user reset to "use running config" would survive
-   * as its old preset number (#5045).
+   * node no longer holds — for MeshBeacon that means a broadcast target the user
+   * deleted, or an `optional` target `preset` they reset to "use running
+   * config", would survive in the cache (#5045).
    */
   updateCachedModuleConfig(section: string, values: Record<string, any>, mode: 'merge' | 'replace' = 'merge'): void {
     if (!this.actualModuleConfig) {

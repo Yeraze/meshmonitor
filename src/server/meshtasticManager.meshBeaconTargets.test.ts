@@ -129,7 +129,6 @@ describe('getCurrentConfig — MeshBeacon broadcast targets survive JSON seriali
       decodedMeshBeaconConfig({
         flags: 2,
         broadcastOfferRegion: REGION_US,
-        broadcastOnRegion: REGION_US,
         broadcastIntervalSecs: 3600,
         broadcastTargets: [
           { preset: PRESET_MEDIUM_SLOW, region: REGION_US },
