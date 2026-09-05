@@ -78,10 +78,29 @@ export interface MqttClientCapabilities {
  * Coordinates reconnection across multiple MqttBrokerClient instances
  * targeting the same broker. Instead of N independent backoff timers
  * (which interleave to produce once-per-second aggregate retry storms),
- * a single shared timer fires and reconnects all registered clients together.
+ * a single shared timer fires and reconnects the clients that asked for it.
+ *
+ * ### Only pending clients reconnect (#5079)
+ *
+ * The original implementation reconnected **every** registered client on each
+ * tick, healthy ones included. `mqtt.js`'s `_reconnect()` on an already-
+ * connected client runs `end()` then `connect()` — a full teardown and a brand
+ * new TCP socket. So in `per_gateway` mode, where the publisher pool registers
+ * one client per gateway, a single flapping member tore down and rebuilt every
+ * sibling socket on every tick. Worse, each forced teardown emitted `'close'`,
+ * which called `requestReconnect()` again: the coordinator kept itself alive
+ * forever after one initial drop. That is the connection storm in #5079 —
+ * dozens of short-lived sockets with climbing source ports, one
+ * "MQTT client connected" line each.
+ *
+ * The pending set fixes it: a tick reconnects only the clients that actually
+ * dropped, and `MqttBrokerClient.doReconnect()` additionally no-ops while
+ * connected, so a healthy socket is never churned.
  */
 export class MqttReconnectCoordinator {
   private readonly clients = new Set<MqttBrokerClient>();
+  /** Clients that reported a drop and are waiting for the next shared tick. */
+  private readonly pending = new Set<MqttBrokerClient>();
   private backoffMs = 1000;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private static readonly BACKOFF_MIN_MS = 1000;
@@ -93,23 +112,47 @@ export class MqttReconnectCoordinator {
 
   unregister(client: MqttBrokerClient): void {
     this.clients.delete(client);
+    this.pending.delete(client);
   }
 
-  requestReconnect(): void {
+  requestReconnect(client: MqttBrokerClient): void {
+    if (!this.clients.has(client)) return;
+    this.pending.add(client);
     if (this.timer) return;
     const jitter = this.backoffMs * 0.2 * (Math.random() - 0.5);
     const delay = Math.round(this.backoffMs + jitter);
     this.timer = setTimeout(() => {
       this.timer = null;
-      for (const client of this.clients) {
-        client.doReconnect();
+      const due = Array.from(this.pending);
+      this.pending.clear();
+      for (const c of due) {
+        c.doReconnect();
       }
     }, delay);
     this.backoffMs = Math.min(this.backoffMs * 2, MqttReconnectCoordinator.BACKOFF_MAX_MS);
   }
 
-  resetBackoff(): void {
+  /**
+   * A registered client held a connection past its stability window.
+   *
+   * The shared backoff resets only when *nobody* is still waiting to
+   * reconnect. Previously any single client could reset it unconditionally,
+   * so in a pool one healthy member kept pinning the throttle at 1s for a
+   * flapping sibling — the storm never slowed down (#5079).
+   */
+  noteStableConnection(): void {
+    if (this.pending.size > 0 || this.timer) return;
     this.backoffMs = MqttReconnectCoordinator.BACKOFF_MIN_MS;
+  }
+
+  /** Current shared retry delay in ms (diagnostics + tests). */
+  getBackoffMs(): number {
+    return this.backoffMs;
+  }
+
+  /** How many registered clients are waiting on the next shared tick. */
+  getPendingCount(): number {
+    return this.pending.size;
   }
 
   dispose(): void {
@@ -117,6 +160,7 @@ export class MqttReconnectCoordinator {
       clearTimeout(this.timer);
       this.timer = null;
     }
+    this.pending.clear();
     this.clients.clear();
   }
 }
@@ -138,7 +182,34 @@ export class MqttBrokerClient extends EventEmitter {
   // A connection must stay up this long before its success counts as "stable"
   // and resets the reconnect backoff. Shorter than this and a flapping
   // connection would keep the backoff pinned at the minimum.
-  private static readonly STABLE_RESET_MS = 30_000;
+  //
+  // MUST stay comfortably ABOVE BACKOFF_MAX_MS. It used to be 30s — half the
+  // 60s cap — which turned the throttle into a sawtooth: the backoff climbed
+  // to 32s, the next attempt then trivially survived the 30s window, reset to
+  // 1s, and the burst repeated forever on a ~1 minute cycle. That is the
+  // "backoff never grows" half of #5079.
+  private static readonly STABLE_RESET_MS = 120_000;
+  /** A session shorter than this counts as a flap, not a real connection. */
+  private static readonly SHORT_SESSION_MS = 10_000;
+  /** At most one flap-summary warning per this window. */
+  private static readonly FLAP_SUMMARY_MS = 60_000;
+  /** Consecutive short post-CONNACK sessions before we name the likely cause. */
+  private static readonly DUPLICATE_ID_HINT_AFTER = 3;
+
+  // --- Flap diagnostics (#5079) ---------------------------------------
+  private resolvedUrl = '';
+  private resolvedClientId = '';
+  private connectedAt: number | null = null;
+  /** Connects since the last connection that proved stable. 1 = healthy. */
+  private connectsSinceStable = 0;
+  private flapEpisodeStartedAt: number | null = null;
+  private lastFlapSummaryAt = 0;
+  private lastCloseReason: string | null = null;
+  private lastErrorAt = 0;
+  private shortSessionStreak = 0;
+  private duplicateIdHintLogged = false;
+  /** Set by disconnect() so a teardown-induced 'close' never re-arms a retry. */
+  private stopping = false;
 
   constructor(options: MqttBrokerClientOptions) {
     super();
@@ -184,10 +255,15 @@ export class MqttBrokerClient extends EventEmitter {
       // MESHCORE_OBSERVER_PHASE2_SPEC.md).
       ...(this.options.will ? { will: this.options.will } : {}),
     };
+    this.resolvedUrl = url;
+    this.resolvedClientId = clientId;
+    this.stopping = false;
     this.client = connect(url, connectOptions);
 
     this.client.on('connect', () => {
+      const now = Date.now();
       this.connected = true;
+      this.connectedAt = now;
       this.lastError = null;
       this.authFailed = false;
       // Only reset the reconnect backoff once the connection proves STABLE.
@@ -197,7 +273,20 @@ export class MqttBrokerClient extends EventEmitter {
       // that drops before the grace window now never resets backoff, so it
       // climbs 1s→…→60s and the storm throttles itself.
       this.armStableReset();
-      logger.info(`📡 MQTT client connected to ${url}`);
+      this.connectsSinceStable += 1;
+      if (this.connectsSinceStable === 1) {
+        // State change into "connected" — the only line worth an info.
+        this.flapEpisodeStartedAt = now;
+        logger.info(`📡 MQTT client connected to ${url} (clientId=${clientId})`);
+      } else {
+        // Repeat connect inside a flap episode. One line per socket is what
+        // buried the container logs in #5079, so these drop to debug and the
+        // storm is surfaced by a rate-limited summary instead.
+        logger.debug(
+          `📡 MQTT reconnected to ${url} (clientId=${clientId}, attempt #${this.connectsSinceStable})`,
+        );
+        this.maybeLogFlapSummary(now);
+      }
       // Re-subscribe on every connect (covers reconnects with clean=true).
       // Clear previously-tracked denials too — a fresh session may have
       // different ACLs (e.g. broker reconfigured).
@@ -214,17 +303,32 @@ export class MqttBrokerClient extends EventEmitter {
     this.client.on('reconnect', () => this.emit('reconnect'));
     this.client.on('offline', () => {
       this.connected = false;
+      this.connectedAt = null;
       this.clearStableReset();
       this.emit('offline');
     });
     this.client.on('close', () => {
+      this.noteClose();
       this.connected = false;
+      this.connectedAt = null;
       this.clearStableReset();
       this.scheduleReconnect();
       this.emit('close');
     });
+    // MQTT 5 DISCONNECT packet. We hardcode protocolVersion 4 so this never
+    // fires today, but if the client is ever bumped it carries the broker's
+    // own reason code — by far the best drop diagnostic available.
+    this.client.on('disconnect', (packet) => {
+      const code = (packet as { reasonCode?: number } | undefined)?.reasonCode;
+      this.lastCloseReason =
+        code === undefined
+          ? 'broker sent DISCONNECT'
+          : `broker sent DISCONNECT (reasonCode=${code})`;
+      this.lastErrorAt = Date.now();
+    });
     this.client.on('error', (err) => {
       this.lastError = err.message;
+      this.lastErrorAt = Date.now();
       logger.warn(`MQTT client error (${url}): ${err.message}`);
       // Classify CONNACK auth rejections. mqtt.js surfaces these as
       // ErrorWithReasonCode whose .code matches the MQTT 3.1.1 CONNACK
@@ -292,8 +396,19 @@ export class MqttBrokerClient extends EventEmitter {
     });
   }
 
+  /**
+   * Reconnect this client, if it actually needs one.
+   *
+   * The `connected` guard is load-bearing (#5079): mqtt.js's `_reconnect()`
+   * on a live client runs `end()` then `connect()`, i.e. it throws away a
+   * perfectly good TCP socket and opens a fresh one. Reconnecting healthy
+   * clients was the amplifier that turned one dropped pool member into
+   * dozens of sockets per minute against the upstream broker.
+   */
   doReconnect(): void {
-    if (this.client) this.client.reconnect();
+    if (this.stopping || !this.client) return;
+    if (this.connected) return;
+    this.client.reconnect();
   }
 
   /**
@@ -307,7 +422,20 @@ export class MqttBrokerClient extends EventEmitter {
     this.stableTimer = setTimeout(() => {
       this.stableTimer = null;
       this.reconnectBackoffMs = MqttBrokerClient.BACKOFF_MIN_MS;
-      if (this.coordinator) this.coordinator.resetBackoff();
+      // The coordinator decides for itself — it will refuse while a sibling
+      // is still waiting to reconnect.
+      if (this.coordinator) this.coordinator.noteStableConnection();
+      if (this.connectsSinceStable > 1) {
+        const seconds = Math.round(MqttBrokerClient.STABLE_RESET_MS / 1000);
+        logger.info(
+          `📡 MQTT connection to ${this.resolvedUrl} (clientId=${this.resolvedClientId}) ` +
+            `stable for ${seconds}s after ${this.connectsSinceStable} connect attempts — backoff reset`,
+        );
+      }
+      this.connectsSinceStable = 1;
+      this.flapEpisodeStartedAt = Date.now();
+      this.shortSessionStreak = 0;
+      this.duplicateIdHintLogged = false;
     }, MqttBrokerClient.STABLE_RESET_MS);
   }
 
@@ -318,10 +446,97 @@ export class MqttBrokerClient extends EventEmitter {
     }
   }
 
+  /**
+   * Record *why* the connection dropped and log it proportionately.
+   *
+   * Before #5079 only the reconnect was visible, so a storm showed up as an
+   * endless run of "connected" lines with no hint of what was knocking the
+   * socket over. The first drop of an episode is a warning; the rest fold
+   * into the rate-limited flap summary so the log stays readable.
+   */
+  private noteClose(): void {
+    if (this.stopping) return;
+    const now = Date.now();
+    const uptimeMs = this.connectedAt === null ? null : now - this.connectedAt;
+    const reason = this.describeCloseReason(now, uptimeMs);
+    this.lastCloseReason = reason;
+
+    if (uptimeMs !== null && uptimeMs < MqttBrokerClient.SHORT_SESSION_MS) {
+      this.shortSessionStreak += 1;
+    } else {
+      this.shortSessionStreak = 0;
+    }
+
+    const where = `${this.resolvedUrl} (clientId=${this.resolvedClientId})`;
+    if (this.connectsSinceStable <= 1) {
+      logger.warn(`📡 MQTT connection to ${where} dropped: ${reason}`);
+    } else {
+      logger.debug(`📡 MQTT connection to ${where} dropped: ${reason}`);
+      this.maybeLogFlapSummary(now);
+    }
+
+    // A run of sessions that die seconds after CONNACK, with no client-side
+    // error, is the MQTT 3.1.1 §3.1.4 signature: another connection took the
+    // Client ID and the broker evicted this one. Say so once — it is the
+    // single most useful line an operator can get out of this failure.
+    if (
+      !this.duplicateIdHintLogged &&
+      this.shortSessionStreak >= MqttBrokerClient.DUPLICATE_ID_HINT_AFTER &&
+      !this.lastError
+    ) {
+      this.duplicateIdHintLogged = true;
+      logger.warn(
+        `📡 MQTT connection to ${where} has been evicted ${this.shortSessionStreak} times ` +
+          `within seconds of connecting, with no client-side error. This is the classic ` +
+          `duplicate Client ID signature (MQTT 3.1.1 §3.1.4): another client — a second ` +
+          `MeshMonitor, or the gateway node itself — is connected to this broker using the ` +
+          `same Client ID, and the broker kicks whichever session is older. Give this ` +
+          `connection a unique Client ID, or stop the other publisher.`,
+      );
+    }
+  }
+
+  private describeCloseReason(now: number, uptimeMs: number | null): string {
+    // An error within the last couple of seconds is almost certainly the cause.
+    if (this.lastError && now - this.lastErrorAt <= 2000) {
+      return `error: ${this.lastError}`;
+    }
+    if (uptimeMs === null) {
+      return 'connection attempt failed before CONNACK (unreachable broker, refused socket, or TLS failure)';
+    }
+    if (uptimeMs < MqttBrokerClient.SHORT_SESSION_MS) {
+      return (
+        `broker closed the connection ${uptimeMs}ms after CONNACK with no client-side error ` +
+        `— typically a duplicate Client ID (MQTT 3.1.1 §3.1.4), an ACL kick, or a keepalive timeout`
+      );
+    }
+    return `connection closed after ${Math.round(uptimeMs / 1000)}s with no client-side error — broker-initiated or network drop`;
+  }
+
+  /**
+   * Rate-limited storm summary. Replaces the per-reconnect info line, so the
+   * flap stays visible (a silent storm is worse than a loud one) without one
+   * log entry per socket.
+   */
+  private maybeLogFlapSummary(now: number): void {
+    if (now - this.lastFlapSummaryAt < MqttBrokerClient.FLAP_SUMMARY_MS) return;
+    this.lastFlapSummaryAt = now;
+    const startedAt = this.flapEpisodeStartedAt ?? now;
+    const windowSec = Math.max(1, Math.round((now - startedAt) / 1000));
+    const nextDelay = this.coordinator
+      ? this.coordinator.getBackoffMs()
+      : this.reconnectBackoffMs;
+    logger.warn(
+      `📡 MQTT connection to ${this.resolvedUrl} (clientId=${this.resolvedClientId}) is flapping: ` +
+        `${this.connectsSinceStable} connects in the last ${windowSec}s. ` +
+        `Last drop: ${this.lastCloseReason ?? 'unknown'}. Next retry in ~${Math.round(nextDelay / 1000)}s.`,
+    );
+  }
+
   private scheduleReconnect(): void {
-    if (!this.client) return;
+    if (this.stopping || !this.client) return;
     if (this.coordinator) {
-      this.coordinator.requestReconnect();
+      this.coordinator.requestReconnect(this);
       return;
     }
     if (this.reconnectTimer) return;
@@ -352,6 +567,9 @@ export class MqttBrokerClient extends EventEmitter {
    *   an immediate forced `end(true)`.
    */
   async disconnect(opts?: { flush?: boolean }): Promise<void> {
+    // Set before end(): end() emits 'close', and without this the teardown
+    // would arm a reconnect timer for a client we are throwing away.
+    this.stopping = true;
     if (this.coordinator) {
       this.coordinator.unregister(this);
       this.coordinator = null;
@@ -386,6 +604,11 @@ export class MqttBrokerClient extends EventEmitter {
 
     this.client = null;
     this.connected = false;
+    this.connectedAt = null;
+    this.connectsSinceStable = 0;
+    this.flapEpisodeStartedAt = null;
+    this.shortSessionStreak = 0;
+    this.duplicateIdHintLogged = false;
     this.subscriptions.clear();
     this.deniedSubscriptions.clear();
     this.authFailed = false;
@@ -397,6 +620,11 @@ export class MqttBrokerClient extends EventEmitter {
 
   getLastError(): string | null {
     return this.lastError;
+  }
+
+  /** Why the connection last dropped, as reported in the logs. Null before any drop. */
+  getLastCloseReason(): string | null {
+    return this.lastCloseReason;
   }
 
   getCapabilities(): MqttClientCapabilities {
