@@ -202,9 +202,12 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
   private readonly seenObservers = new Set<string>();
   private static readonly MAX_TRACKED_OBSERVERS = 1_000;
   /**
-   * Latest `/status` snapshot per observer. Bounded by the same cap — a status
-   * heartbeat arrives per observer per interval, so an unbounded map would grow
-   * with region size.
+   * Latest `/status` snapshot per observer, capped at
+   * {@link MAX_TRACKED_OBSERVERS} and evicted longest-unseen-first.
+   *
+   * The cap is enforced in `handleStatus`, not here — a heartbeat arrives per
+   * observer per interval and a departed observer never clears its own entry,
+   * so an unconditional `set()` would grow with region size forever.
    */
   private readonly seenObserverStatus = new Map<string, ObserverStatusSnapshot>();
 
@@ -599,6 +602,24 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
       if (!status) return;
 
       this.stats.statusMessages++;
+
+      // Enforce the cap the field comment claims. A heartbeat arrives per
+      // observer per interval, and observers that go away never come back to
+      // clear their entry, so an unconditional set() grows with the region
+      // forever. Evicting the LONGEST-UNSEEN entry (Map iteration is
+      // insertion-ordered, and a re-seen observer is re-inserted below) keeps
+      // the panel showing the observers that are actually active.
+      if (
+        !this.seenObserverStatus.has(status.originId) &&
+        this.seenObserverStatus.size >= MeshCoreMqttManager.MAX_TRACKED_OBSERVERS
+      ) {
+        const oldest = this.seenObserverStatus.keys().next();
+        if (!oldest.done) this.seenObserverStatus.delete(oldest.value);
+      }
+      // Delete-then-set so a repeat heartbeat moves the entry to the END of the
+      // insertion order; without it the eviction above would drop the most
+      // chatty observer rather than the most stale one.
+      this.seenObserverStatus.delete(status.originId);
       this.seenObserverStatus.set(status.originId, {
         online: status.online,
         at: Date.now(),

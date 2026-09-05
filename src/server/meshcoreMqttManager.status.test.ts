@@ -151,6 +151,59 @@ describe('status ingest (#5040 Phase 5)', () => {
     expect(upsertNode.mock.calls[0][0].noiseFloor).toBeUndefined();
   });
 
+  it('caps the observer-status map and evicts the LONGEST-UNSEEN entry', async () => {
+    // Regression for a review finding on #5076: the field comment claimed a
+    // cap that was never enforced. A heartbeat arrives per observer per
+    // interval and a departed observer never clears its own entry, so an
+    // unconditional set() grows with the region forever.
+    const mgr = await started();
+    const key = (n: number) => n.toString(16).padStart(64, '0').toUpperCase();
+
+    // Fill past the cap.
+    for (let i = 0; i < 1_005; i++) {
+      lastClient!.deliver(`meshcore/MCO/${key(i)}/status`, online({ origin_id: key(i) }));
+    }
+    await settle();
+
+    const snapshots = mgr.getObserverStatuses();
+    expect(snapshots.size).toBeLessThanOrEqual(1_000);
+    // The earliest observers were evicted; the most recent survive.
+    expect(snapshots.has(key(0))).toBe(false);
+    expect(snapshots.has(key(1_004))).toBe(true);
+  });
+
+  it('keeps a chatty observer alive rather than evicting it as stale', async () => {
+    // The eviction is longest-UNSEEN, not first-ever-seen. Without the
+    // delete-then-set, a repeat heartbeat would leave the entry at its original
+    // insertion position and the most active observer would be dropped first.
+    const mgr = await started();
+    const key = (n: number) => n.toString(16).padStart(64, '0').toUpperCase();
+
+    lastClient!.deliver(`meshcore/MCO/${key(0)}/status`, online({ origin_id: key(0) }));
+    for (let i = 1; i < 999; i++) {
+      lastClient!.deliver(`meshcore/MCO/${key(i)}/status`, online({ origin_id: key(i) }));
+    }
+    // observer 0 speaks again, right before the map overflows.
+    lastClient!.deliver(`meshcore/MCO/${key(0)}/status`, online({ origin_id: key(0) }));
+    for (let i = 999; i < 1_010; i++) {
+      lastClient!.deliver(`meshcore/MCO/${key(i)}/status`, online({ origin_id: key(i) }));
+    }
+    await settle();
+
+    const snapshots = mgr.getObserverStatuses();
+    expect(snapshots.has(key(0))).toBe(true);
+    expect(snapshots.has(key(1))).toBe(false);
+  });
+
+  it('returns a copy, so a caller cannot mutate the manager state', async () => {
+    const mgr = await started();
+    lastClient!.deliver(statusTopic, online());
+    await settle();
+
+    mgr.getObserverStatuses().clear?.();
+    expect(mgr.getObserverStatuses().size).toBe(1);
+  });
+
   it('ignores a packet body delivered on the status topic', async () => {
     await started();
     lastClient!.deliver(statusTopic, { type: 'PACKET', origin_id: OBS, raw: '0500deadbeef' });

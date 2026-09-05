@@ -263,10 +263,15 @@ export function decodeObserverStatusMessage(body: unknown): IngestedObserverStat
   const battery = readMeasurement(stats.battery_mv, BATTERY_MIN_MV, BATTERY_MAX_MV);
   if (battery !== undefined) out.batteryMv = battery;
 
-  // Uptime only has a floor: a node up for a year is unremarkable.
+  // Uptime has a floor but no ceiling: a node up for a year is unremarkable, so
+  // there is no upper bound to check against. 0 is accepted — a node that just
+  // booted genuinely reports it.
   const uptime = readNumeric(stats.uptime_secs);
   if (uptime !== null && uptime >= 0) out.uptimeSecs = uptime;
 
+  // Ambient RF noise is negative dBm; -200 is far below any real receiver's
+  // sensitivity and 0 is the ceiling, so this rejects junk without clipping a
+  // legitimate reading from any radio.
   const noise = readMeasurement(stats.noise_floor, -200, 0);
   if (noise !== undefined) out.noiseFloor = noise;
 
