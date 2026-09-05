@@ -22,7 +22,7 @@ import databaseService from '../../services/database.js';
 import { hasPermission } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
-import { isMeshCoreManager } from '../sourceManagerTypes.js';
+import { isAnyMeshCoreManager } from '../sourceManagerTypes.js';
 import {
   filterNodesByChannelPermission,
   maskNodeLocationByChannel,
@@ -58,7 +58,10 @@ export async function buildSourceNodes(source: SourceRow, user: ReqUser): Promis
     }
 
     const _raw = sourceManagerRegistry.getManager(source.id);
-    const mcManager = _raw && isMeshCoreManager(_raw) ? _raw : null;
+    // isAnyMeshCoreManager, not isMeshCoreManager (#5040 Phase 5.5): an MQTT
+    // ingest source discovers nodes from adverts and has positions for them.
+    // Narrowing device-only meant those never reached the map.
+    const mcManager = _raw && isAnyMeshCoreManager(_raw) ? _raw : null;
     const mcNodes: any[] = [];
     if (mcManager) {
       for (const n of await mcManager.getAllNodes()) {
