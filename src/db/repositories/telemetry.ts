@@ -4,7 +4,7 @@
  * Handles all telemetry-related database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, lt, gte, and, desc, inArray, or, not, SQL, count, sql } from 'drizzle-orm';
+import { eq, lt, gte, and, desc, inArray, isNull, or, not, SQL, count, sql } from 'drizzle-orm';
 import { ALL_SOURCES, BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType, DbTelemetry } from '../types.js';
 import { logger } from '../../utils/logger.js';
@@ -54,6 +54,24 @@ function sanitizeTelemetryTimestamp<T extends DbTelemetry>(row: T): T {
 export interface TelemetryFavorite {
   nodeId: string;
   telemetryType: string;
+  /**
+   * Source that owns this favorite (#5080). Favorites are stored per source
+   * (`source:<id>:telemetryFavorites`), so a favorite registered on source A
+   * must not protect the same (nodeId, telemetryType) rows belonging to
+   * source B. Rows with a NULL `sourceId` predate source scoping and are
+   * treated as belonging to every source, so a legacy row is never orphaned
+   * into the shorter non-favorite window.
+   *
+   * Omit for a legacy global favorites list — it then matches any source.
+   */
+  sourceId?: string;
+  /**
+   * Per-entry retention cutoff in epoch milliseconds (#5080). Rows matching
+   * this favorite that are OLDER than this are purged. Omit to use the call's
+   * `favoriteCutoffTimestamp`; set it when different sources carry different
+   * `favoriteTelemetryStorageDays` values.
+   */
+  cutoffTimestamp?: number;
 }
 
 /**
@@ -761,20 +779,63 @@ export class TelemetryRepository extends BaseRepository {
   }
 
   /**
-   * Build a SQL condition that matches any of the favorited (nodeId, telemetryType) pairs.
+   * Build a SQL condition matching one favorited (nodeId, telemetryType[, sourceId]) entry.
+   *
+   * The `sourceId` clause is deliberately `sourceId = <id> OR sourceId IS NULL`
+   * rather than a bare equality (#5080). Two reasons, both load-bearing:
+   *  - A bare `sourceId = <id>` evaluates to NULL (not FALSE) for pre-source-scoping
+   *    rows, so `NOT (…)` over it is also NULL and those rows would silently escape
+   *    the non-favorites delete forever.
+   *  - Legacy unscoped rows have no source to attribute them to, so protecting them
+   *    under any source's favorite is the safe direction: over-retention, never loss.
+   */
+  private buildFavoriteMatch(favorite: TelemetryFavorite): SQL {
+    const { telemetry } = this.tables;
+    const parts: SQL[] = [
+      eq(telemetry.nodeId, favorite.nodeId)!,
+      eq(telemetry.telemetryType, favorite.telemetryType)!,
+    ];
+    if (favorite.sourceId) {
+      parts.push(or(eq(telemetry.sourceId, favorite.sourceId), isNull(telemetry.sourceId))!);
+    }
+    return and(...parts)!;
+  }
+
+  /**
+   * Build a SQL condition that matches any of the favorited entries.
    * Returns null if favorites array is empty.
    */
-  protected buildFavoritesCondition(
-    favorites: Array<{ nodeId: string; telemetryType: string }>
-  ): SQL | null {
+  protected buildFavoritesCondition(favorites: TelemetryFavorite[]): SQL | null {
     if (favorites.length === 0) return null;
-    const { telemetry } = this.tables;
-
-    const conditions = favorites.map(f =>
-      and(eq(telemetry.nodeId, f.nodeId), eq(telemetry.telemetryType, f.telemetryType))
-    );
-
+    const conditions = favorites.map(f => this.buildFavoriteMatch(f));
     return conditions.length === 1 ? conditions[0]! : or(...conditions)!;
+  }
+
+  /**
+   * Group favorites by the cutoff timestamp that applies to them (#5080).
+   *
+   * `favoriteTelemetryStorageDays` is a per-source setting, so two sources can
+   * legitimately disagree about how long their favorites live. Each entry may
+   * carry its own `cutoffTimestamp`; entries without one fall back to the call's
+   * `favoriteCutoffTimestamp`. Every cutoff is clamped to `regularCutoffTimestamp`
+   * so a favorite can never be retained for LESS time than plain telemetry.
+   */
+  private groupFavoritesByCutoff(
+    favorites: TelemetryFavorite[],
+    favoriteCutoffTimestamp: number,
+    regularCutoffTimestamp: number
+  ): Array<{ cutoff: number; condition: SQL }> {
+    const byCutoff = new Map<number, TelemetryFavorite[]>();
+    for (const f of favorites) {
+      const cutoff = Math.min(f.cutoffTimestamp ?? favoriteCutoffTimestamp, regularCutoffTimestamp);
+      const bucket = byCutoff.get(cutoff);
+      if (bucket) bucket.push(f);
+      else byCutoff.set(cutoff, [f]);
+    }
+    return [...byCutoff.entries()].map(([cutoff, entries]) => ({
+      cutoff,
+      condition: this.buildFavoritesCondition(entries)!,
+    }));
   }
 
   /**
@@ -787,7 +848,7 @@ export class TelemetryRepository extends BaseRepository {
   async deleteOldTelemetryWithFavorites(
     regularCutoffTimestamp: number,
     favoriteCutoffTimestamp: number,
-    favorites: Array<{ nodeId: string; telemetryType: string }>
+    favorites: TelemetryFavorite[]
   ): Promise<{ nonFavoritesDeleted: number; favoritesDeleted: number }> {
     // If no favorites, just delete everything older than regularCutoff
     if (favorites.length === 0) {
@@ -795,10 +856,13 @@ export class TelemetryRepository extends BaseRepository {
       return { nonFavoritesDeleted: count, favoritesDeleted: 0 };
     }
 
-    // Validate: favoriteCutoff should be <= regularCutoff (earlier timestamp = longer retention)
-    const effectiveFavoriteCutoff = Math.min(favoriteCutoffTimestamp, regularCutoffTimestamp);
     const { telemetry } = this.tables;
-    const favoritesCondition = this.buildFavoritesCondition(favorites);
+    const favoritesCondition = this.buildFavoritesCondition(favorites)!;
+    const groups = this.groupFavoritesByCutoff(
+      favorites,
+      favoriteCutoffTimestamp,
+      regularCutoffTimestamp
+    );
 
     let nonFavoritesDeleted = 0;
     let favoritesDeleted = 0;
@@ -808,35 +872,39 @@ export class TelemetryRepository extends BaseRepository {
       const nonFavoritesCount = await this.db
         .select({ cnt: count() })
         .from(telemetry)
-        .where(and(lt(telemetry.timestamp, regularCutoffTimestamp), not(favoritesCondition!)));
+        .where(and(lt(telemetry.timestamp, regularCutoffTimestamp), not(favoritesCondition)));
       nonFavoritesDeleted = Number(nonFavoritesCount[0]?.cnt ?? 0);
 
       await this.db
         .delete(telemetry)
-        .where(and(lt(telemetry.timestamp, regularCutoffTimestamp), not(favoritesCondition!)));
+        .where(and(lt(telemetry.timestamp, regularCutoffTimestamp), not(favoritesCondition)));
 
-      const favoritesCount = await this.db
-        .select({ cnt: count() })
-        .from(telemetry)
-        .where(and(lt(telemetry.timestamp, effectiveFavoriteCutoff), favoritesCondition!));
-      favoritesDeleted = Number(favoritesCount[0]?.cnt ?? 0);
+      for (const group of groups) {
+        const favoritesCount = await this.db
+          .select({ cnt: count() })
+          .from(telemetry)
+          .where(and(lt(telemetry.timestamp, group.cutoff), group.condition));
+        favoritesDeleted += Number(favoritesCount[0]?.cnt ?? 0);
 
-      await this.db
-        .delete(telemetry)
-        .where(and(lt(telemetry.timestamp, effectiveFavoriteCutoff), favoritesCondition!));
+        await this.db
+          .delete(telemetry)
+          .where(and(lt(telemetry.timestamp, group.cutoff), group.condition));
+      }
     } else {
       // SQLite and PostgreSQL support .returning()
       const deletedNonFavorites = await (this.db as any)
         .delete(telemetry)
-        .where(and(lt(telemetry.timestamp, regularCutoffTimestamp), not(favoritesCondition!)))
+        .where(and(lt(telemetry.timestamp, regularCutoffTimestamp), not(favoritesCondition)))
         .returning({ id: telemetry.id });
       nonFavoritesDeleted = deletedNonFavorites.length;
 
-      const deletedFavorites = await (this.db as any)
-        .delete(telemetry)
-        .where(and(lt(telemetry.timestamp, effectiveFavoriteCutoff), favoritesCondition!))
-        .returning({ id: telemetry.id });
-      favoritesDeleted = deletedFavorites.length;
+      for (const group of groups) {
+        const deletedFavorites = await (this.db as any)
+          .delete(telemetry)
+          .where(and(lt(telemetry.timestamp, group.cutoff), group.condition))
+          .returning({ id: telemetry.id });
+        favoritesDeleted += deletedFavorites.length;
+      }
     }
 
     return { nonFavoritesDeleted, favoritesDeleted };
@@ -1500,6 +1568,11 @@ export class TelemetryRepository extends BaseRepository {
     const db = this.getSqliteDb();
     const { telemetry } = this.tables;
     const favoritesCondition = this.buildFavoritesCondition(favorites)!;
+    const groups = this.groupFavoritesByCutoff(
+      favorites,
+      favoriteCutoffTimestamp,
+      regularCutoffTimestamp
+    );
 
     const nonFavoritesResult = db
       .delete(telemetry)
@@ -1507,11 +1580,14 @@ export class TelemetryRepository extends BaseRepository {
       .run();
     const nonFavoritesDeleted = Number((nonFavoritesResult as any).changes ?? 0);
 
-    const favoritesResult = db
-      .delete(telemetry)
-      .where(and(lt(telemetry.timestamp, favoriteCutoffTimestamp), favoritesCondition))
-      .run();
-    const favoritesDeleted = Number((favoritesResult as any).changes ?? 0);
+    let favoritesDeleted = 0;
+    for (const group of groups) {
+      const favoritesResult = db
+        .delete(telemetry)
+        .where(and(lt(telemetry.timestamp, group.cutoff), group.condition))
+        .run();
+      favoritesDeleted += Number((favoritesResult as any).changes ?? 0);
+    }
 
     return { nonFavoritesDeleted, favoritesDeleted };
   }

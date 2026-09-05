@@ -18,6 +18,8 @@ import {
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 import { isSourceyResource } from '../types/permission.js';
 import { computeAveragingIntervalMinutes } from '../utils/telemetryAveraging.js';
+import { buildFavoriteRetentions } from '../utils/telemetryRetention.js';
+import type { TelemetryFavorite } from '../db/repositories/telemetry.js';
 import { getMaxNodeAgeHours } from '../server/services/nodeDisplaySettings.js';
 // Drizzle ORM imports for dual-database support
 import { drizzle as drizzleSqlite } from 'drizzle-orm/better-sqlite3';
@@ -3271,85 +3273,68 @@ class DatabaseService {
   }
 
   /**
+   * Collect every favorited (nodeId, telemetryType) pair the purge must protect,
+   * from BOTH the global settings namespace and every `source:<id>:` namespace
+   * (#5080).
+   *
+   * The Dashboard always writes `telemetryFavorites` and
+   * `favoriteTelemetryStorageDays` with `?sourceId=<id>`, so reading only the
+   * global keys — as this purge used to — found nothing and deleted every
+   * favorited chart's history past the 7-day non-favorite window.
+   *
+   * One `getAllSettings()` snapshot covers both namespaces, so this costs a
+   * single query per hourly purge.
+   */
+  private async collectFavoriteRetentionsAsync(defaultDaysToKeep: number): Promise<TelemetryFavorite[]> {
+    const allSettings = await this.settings.getAllSettings();
+    return buildFavoriteRetentions(allSettings, Date.now(), defaultDaysToKeep);
+  }
+
+  /**
    * Purge old telemetry data (async version)
    */
   async purgeOldTelemetryAsync(hoursToKeep: number, favoriteDaysToKeep?: number): Promise<number> {
     const regularCutoffTime = Date.now() - (hoursToKeep * 60 * 60 * 1000);
+    const isSql = this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql';
 
-    // PostgreSQL/MySQL: Use async telemetry repository
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (!favoriteDaysToKeep) {
-        const count = await this.telemetry.deleteOldTelemetry(regularCutoffTime);
-        logger.debug(`🧹 Purged ${count} old telemetry records (keeping last ${hoursToKeep} hours)`);
-        return count;
-      }
-
-      // Get favorites and use favorites-aware deletion
-      const favoritesStr = await this.getSettingAsync('telemetryFavorites');
-      let favorites: Array<{ nodeId: string; telemetryType: string }> = [];
-      if (favoritesStr) {
-        try {
-          favorites = JSON.parse(favoritesStr);
-        } catch (error) {
-          logger.error('Failed to parse telemetryFavorites from settings:', error);
-        }
-      }
-
-      const favoriteCutoffTime = Date.now() - (favoriteDaysToKeep * 24 * 60 * 60 * 1000);
-      const { nonFavoritesDeleted, favoritesDeleted } = await this.telemetry.deleteOldTelemetryWithFavorites(
-        regularCutoffTime,
-        favoriteCutoffTime,
-        favorites
-      );
-      const totalDeleted = nonFavoritesDeleted + favoritesDeleted;
-      logger.debug(
-        `🧹 Purged ${totalDeleted} old telemetry records ` +
-        `(${nonFavoritesDeleted} non-favorites older than ${hoursToKeep}h, ` +
-        `${favoritesDeleted} favorites older than ${favoriteDaysToKeep}d)`
-      );
-      return totalDeleted;
-    }
-
-    // SQLite: synchronous path via repository
+    // Caller explicitly opted out of favorites retention — purge everything past
+    // the regular window.
     if (!favoriteDaysToKeep) {
-      const deleted = this.telemetry.deleteOldTelemetrySync(regularCutoffTime);
+      const deleted = isSql
+        ? await this.telemetry.deleteOldTelemetry(regularCutoffTime)
+        : this.telemetry.deleteOldTelemetrySync(regularCutoffTime);
       logger.debug(`🧹 Purged ${deleted} old telemetry records (keeping last ${hoursToKeep} hours)`);
-      if (deleted > 0) this.invalidateTelemetryTypesCache();
+      if (!isSql && deleted > 0) this.invalidateTelemetryTypesCache();
       return deleted;
     }
 
-    const favoritesStr = this.getSetting('telemetryFavorites');
-    let favorites: Array<{ nodeId: string; telemetryType: string }> = [];
-    if (favoritesStr) {
-      try {
-        favorites = JSON.parse(favoritesStr);
-      } catch (error) {
-        logger.error('Failed to parse telemetryFavorites from settings:', error);
-      }
-    }
-
-    if (favorites.length === 0) {
-      const deleted = this.telemetry.deleteOldTelemetrySync(regularCutoffTime);
-      logger.debug(`🧹 Purged ${deleted} old telemetry records (keeping last ${hoursToKeep} hours, no favorites)`);
-      if (deleted > 0) this.invalidateTelemetryTypesCache();
-      return deleted;
-    }
-
+    // Each entry carries its own cutoff, resolved from that source's
+    // `favoriteTelemetryStorageDays` (falling back to global, then the caller's
+    // value). `favoriteCutoffTime` below only covers entries with no explicit
+    // cutoff, which today means none — it is the safety net, not the policy.
+    const favorites = await this.collectFavoriteRetentionsAsync(favoriteDaysToKeep);
     const favoriteCutoffTime = Date.now() - (favoriteDaysToKeep * 24 * 60 * 60 * 1000);
 
-    const { nonFavoritesDeleted, favoritesDeleted } = this.telemetry.deleteOldTelemetryWithFavoritesSync(
-      regularCutoffTime,
-      favoriteCutoffTime,
-      favorites
-    );
-    const totalDeleted = nonFavoritesDeleted + favoritesDeleted;
+    const { nonFavoritesDeleted, favoritesDeleted } = isSql
+      ? await this.telemetry.deleteOldTelemetryWithFavorites(
+          regularCutoffTime,
+          favoriteCutoffTime,
+          favorites
+        )
+      : this.telemetry.deleteOldTelemetryWithFavoritesSync(
+          regularCutoffTime,
+          favoriteCutoffTime,
+          favorites
+        );
 
+    const totalDeleted = nonFavoritesDeleted + favoritesDeleted;
     logger.debug(
       `🧹 Purged ${totalDeleted} old telemetry records ` +
       `(${nonFavoritesDeleted} non-favorites older than ${hoursToKeep}h, ` +
-      `${favoritesDeleted} favorites older than ${favoriteDaysToKeep}d)`
+      `${favoritesDeleted} of ${favorites.length} protected favorite series past their ` +
+      `per-source retention window)`
     );
-    if (totalDeleted > 0) this.invalidateTelemetryTypesCache();
+    if (!isSql && totalDeleted > 0) this.invalidateTelemetryTypesCache();
     return totalDeleted;
   }
 
