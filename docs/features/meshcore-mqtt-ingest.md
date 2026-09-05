@@ -19,7 +19,7 @@ That is the whole point: your radio hears its own earshot, while a region feed c
 | Packet Monitor for the whole region | **Direct messages** — encrypted to their recipient, and you are not it |
 | Nodes discovered from adverts (name, role, position) | **Contacts, CLI, remote admin** — there is no device to ask |
 | Channel messages, where you hold the channel key | **Sending anything** — no radio |
-| Observer battery / uptime stats | |
+| Observer battery / uptime, and noise floor as telemetry | |
 
 The right-hand column is not a roadmap. Those are consequences of reading someone else's observations rather than operating a node, and no future phase removes them.
 
@@ -83,7 +83,13 @@ Two things adverts deliberately do **not** do:
 
 The `/status` topic carries the **publishing observer's own** battery, uptime and noise floor — not stats about nodes it overheard. Battery and uptime are stored against that observer's node row.
 
-Noise floor is decoded and shown on the source status panel but is **not stored**, since there is no column for it yet.
+Noise floor is stored as telemetry, under `mc_status_noise_floor` — the same series a device-backed MeshCore source writes, so an ingest observer graphs beside a device-backed one. It appears per observer on the **Telemetry** page.
+
+It is telemetry rather than a value on the node row because the useful question ("is this band getting more congested?") is about a trend, and a single latest reading cannot answer it. Samples are throttled to one per observer per minute — observers heartbeat every 5 minutes, so no real reading is dropped; the throttle only collapses the retained-status replay that arrives on every reconnect.
+
+::: tip Unit
+Stored as `dB` to match the existing series. Ambient RF noise is really dBm, but splitting one series across two units to correct a label would be the worse bug.
+:::
 
 A status heartbeat does **not** refresh `lastHeard`: it proves the observer can reach its broker, not that it is reachable over the air.
 

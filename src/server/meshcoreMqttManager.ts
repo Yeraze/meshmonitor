@@ -51,6 +51,7 @@ import {
   type IngestedObserverPacket,
 } from './services/meshcoreMqttIngestPacket.js';
 import meshcorePacketLogService from './services/meshcorePacketLogService.js';
+import { MC_TELEMETRY_PREFIX, nodeNumFromPubkey } from './services/meshcoreTelemetryPoller.js';
 import databaseService from '../services/database.js';
 import { decodeMeshCorePacket } from '../utils/meshcorePacketDecode.js';
 import type { MeshCoreNode, MeshCoreMessage } from './meshcoreManager.js';
@@ -211,6 +212,17 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
    * so an unconditional `set()` would grow with region size forever.
    */
   private readonly seenObserverStatus = new Map<string, ObserverStatusSnapshot>();
+  /**
+   * Floor on the gap between two stored noise-floor samples for one observer.
+   *
+   * Observers heartbeat every `STATUS_REFRESH_MS` (5 minutes), so this never
+   * drops a genuine reading. It exists for the RETAINED-message path: the
+   * broker replays each observer's retained `/status` on every reconnect, so a
+   * flapping socket would otherwise write one sample per observer per
+   * reconnect. This codebase has already shipped one self-sustaining MQTT
+   * reconnect storm, so that is a real shape, not a hypothetical.
+   */
+  private static readonly MIN_NOISE_SAMPLE_MS = 60_000;
 
   constructor(sourceId: string, sourceName: string, config: MeshCoreMqttSourceConfig) {
     super();
@@ -587,11 +599,16 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
    * point as an advert, which means the observer shows up as a node on this
    * source whether or not it has also advertised.
    *
-   * Only battery and uptime are persisted. `noise_floor` decodes and is
-   * deliberately NOT stored: `meshcore_nodes` has no column for it, and adding
-   * one that nothing displays would be a dead column plus a migration. It is a
-   * genuinely useful signal for a region feed — it says how congested the band
-   * is — so it belongs with a display surface, not ahead of one.
+   * Battery and uptime are stored on the node row (current value). Noise floor
+   * is stored as a `mc_status_noise_floor` TELEMETRY row instead — the series
+   * the remote-telemetry scheduler already writes for device-backed MeshCore
+   * sources, which `TelemetryChart` already labels and `telemetryCategory`
+   * already files under `signal`. So this needs no column, no migration and no
+   * new UI, and an ingest observer graphs beside a device-backed one.
+   *
+   * Noise floor wants history rather than a current value: "how congested is
+   * this band" is a question about a trend, and a single latest reading cannot
+   * answer it. That is the same reason it is telemetry and not a node column.
    *
    * `lastHeard` is NOT touched here. A status heartbeat proves the observer is
    * talking to its BROKER, not that it is reachable on the mesh; stamping it
@@ -603,6 +620,12 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
       if (!status) return;
 
       this.stats.statusMessages++;
+
+      // Read the prior snapshot BEFORE the delete/set below overwrites it. Its
+      // `at` is what the noise-floor throttle measures against; once the new
+      // snapshot is stored the gap always reads as zero.
+      const previous = this.seenObserverStatus.get(status.originId);
+      const now = Date.now();
 
       // Enforce the cap the field comment claims. A heartbeat arrives per
       // observer per interval, and observers that go away never come back to
@@ -623,16 +646,24 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
       this.seenObserverStatus.delete(status.originId);
       this.seenObserverStatus.set(status.originId, {
         online: status.online,
-        at: Date.now(),
+        at: now,
         batteryMv: status.batteryMv,
         uptimeSecs: status.uptimeSecs,
         noiseFloor: status.noiseFloor,
       });
 
       // Nothing worth persisting on an offline notice, or from firmware that
-      // reports no stats at all.
+      // reports no stats at all. Noise floor counts as a stat: firmware that
+      // reports ONLY noise_floor still gets a node row, or its telemetry would
+      // reference a node that does not exist and show up nowhere.
       if (!status.online) return;
-      if (status.batteryMv === undefined && status.uptimeSecs === undefined) return;
+      if (
+        status.batteryMv === undefined &&
+        status.uptimeSecs === undefined &&
+        status.noiseFloor === undefined
+      ) {
+        return;
+      }
 
       await databaseService.meshcore.upsertNode(
         {
@@ -643,8 +674,62 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
         },
         this.sourceId,
       );
+
+      // Node row first, telemetry second: the sample is only reachable in the
+      // UI through its node.
+      await this.recordNoiseFloor(status.originId, status.noiseFloor, previous, now);
     } catch (err) {
       logger.debug(`[MeshCoreMqtt:${this.sourceId}] failed to handle status:`, err);
+    }
+  }
+
+  /**
+   * Store one observer's noise floor as a telemetry sample.
+   *
+   * Written as `mc_status_noise_floor` — the SAME series the remote-telemetry
+   * scheduler writes for device-backed MeshCore sources, so an ingest observer
+   * and a device-backed one land on one graph with one label and one unit.
+   *
+   * The unit is `dB`, matching that scheduler's `STATUS_FIELD_MAP`. Ambient RF
+   * noise is really dBm, and the Meshtastic-side `noiseFloor` key does say
+   * dBm — but splitting one series across two units to fix a label would be a
+   * worse bug than the label. Left as-is deliberately.
+   *
+   * A failure here is logged and swallowed: a lost telemetry sample must never
+   * cost us the packet ingest that shares this connection.
+   */
+  private async recordNoiseFloor(
+    originId: string,
+    noiseFloor: number | undefined,
+    previous: ObserverStatusSnapshot | undefined,
+    now: number,
+  ): Promise<void> {
+    if (noiseFloor === undefined || !Number.isFinite(noiseFloor)) return;
+    if (previous && now - previous.at < MeshCoreMqttManager.MIN_NOISE_SAMPLE_MS) return;
+
+    try {
+      await databaseService.telemetry.insertTelemetryBatch(
+        [
+          {
+            nodeId: originId,
+            // MeshCore has no Meshtastic nodeNum; synthesised from the pubkey
+            // exactly as every other MeshCore telemetry writer does, so the
+            // same observer gets the same number on every path.
+            nodeNum: nodeNumFromPubkey(originId),
+            telemetryType: `${MC_TELEMETRY_PREFIX}status_noise_floor`,
+            value: noiseFloor,
+            unit: 'dB',
+            timestamp: now,
+            createdAt: now,
+          },
+        ],
+        this.sourceId,
+      );
+    } catch (err) {
+      logger.debug(
+        `[MeshCoreMqtt:${this.sourceId}] failed to store noise floor for ${originId}:`,
+        err,
+      );
     }
   }
 
