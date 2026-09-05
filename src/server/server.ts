@@ -16,6 +16,7 @@ import { createRequire } from 'module';
 import { logger } from '../utils/logger.js';
 import { setDiscardInvalidPositions, parseDiscardInvalidPositions } from '../utils/positionIngestConfig.js';
 import { setNoIndexEnabled, parseNoIndexEnabled } from '../utils/robotsConfig.js';
+import { FAVORITE_STORAGE_DAYS_DEFAULT } from '../utils/telemetryRetention.js';
 import { robotsTagMiddleware } from './middleware/robotsTag.js';
 import { getSessionMiddleware } from './auth/sessionConfig.js';
 import { initializeWebSocket } from './services/webSocketService.js';
@@ -461,15 +462,21 @@ setTimeout(async () => {
 // Schedule hourly telemetry purge to keep database performant
 // Keep telemetry for 7 days (168 hours) by default
 const TELEMETRY_RETENTION_HOURS = 168; // 7 days
+// Fallback retention for FAVORITED telemetry when no namespace configures one.
+// The real window comes from each source's `favoriteTelemetryStorageDays`,
+// resolved inside purgeOldTelemetryAsync (#5080).
+const FAVORITE_TELEMETRY_DEFAULT_DAYS = FAVORITE_STORAGE_DAYS_DEFAULT;
 setInterval(async () => {
   try {
     // Long migrations (e.g. on big MySQL telemetry tables) can keep the DB
     // unready well past the first tick — wait before touching repos.
     await databaseService.waitForReady();
-    // Get favorite telemetry storage days from settings (defaults to 7 if not set)
-    const favoriteDaysStr = await databaseService.settings.getSetting('favoriteTelemetryStorageDays');
-    const favoriteDays = favoriteDaysStr ? parseInt(favoriteDaysStr) : 7;
-    const purgedCount = await databaseService.purgeOldTelemetryAsync(TELEMETRY_RETENTION_HOURS, favoriteDays);
+    // FAVORITE_TELEMETRY_DEFAULT_DAYS is only the fallback: purgeOldTelemetryAsync
+    // resolves each source's own `favoriteTelemetryStorageDays` (#5080).
+    const purgedCount = await databaseService.purgeOldTelemetryAsync(
+      TELEMETRY_RETENTION_HOURS,
+      FAVORITE_TELEMETRY_DEFAULT_DAYS
+    );
     if (purgedCount > 0) {
       logger.debug(`⏰ Hourly telemetry purge completed: removed ${purgedCount} records`);
     }
@@ -485,10 +492,10 @@ setTimeout(async () => {
     // on a large MySQL telemetry table) can run longer than this 5s delay,
     // and accessing databaseService.settings before init throws.
     await databaseService.waitForReady();
-    // Get favorite telemetry storage days from settings (defaults to 7 if not set)
-    const favoriteDaysStr = await databaseService.settings.getSetting('favoriteTelemetryStorageDays');
-    const favoriteDays = favoriteDaysStr ? parseInt(favoriteDaysStr) : 7;
-    await databaseService.purgeOldTelemetryAsync(TELEMETRY_RETENTION_HOURS, favoriteDays);
+    await databaseService.purgeOldTelemetryAsync(
+      TELEMETRY_RETENTION_HOURS,
+      FAVORITE_TELEMETRY_DEFAULT_DAYS
+    );
   } catch (error) {
     logger.error('Error during initial telemetry purge:', error);
   }
