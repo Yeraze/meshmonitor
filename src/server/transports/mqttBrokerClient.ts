@@ -202,6 +202,8 @@ export class MqttBrokerClient extends EventEmitter {
   private connectedAt: number | null = null;
   /** Connects since the last connection that proved stable. 1 = healthy. */
   private connectsSinceStable = 0;
+  /** Drops since the last connection that proved stable. 0 = healthy. */
+  private dropsSinceStable = 0;
   private flapEpisodeStartedAt: number | null = null;
   private lastFlapSummaryAt = 0;
   private lastCloseReason: string | null = null;
@@ -433,6 +435,7 @@ export class MqttBrokerClient extends EventEmitter {
         );
       }
       this.connectsSinceStable = 1;
+      this.dropsSinceStable = 0;
       this.flapEpisodeStartedAt = Date.now();
       this.shortSessionStreak = 0;
       this.duplicateIdHintLogged = false;
@@ -467,10 +470,16 @@ export class MqttBrokerClient extends EventEmitter {
       this.shortSessionStreak = 0;
     }
 
+    this.dropsSinceStable += 1;
     const where = `${this.resolvedUrl} (clientId=${this.resolvedClientId})`;
-    if (this.connectsSinceStable <= 1) {
+    if (this.dropsSinceStable === 1) {
+      // First drop of an episode — loud, and it carries the reason.
       logger.warn(`📡 MQTT connection to ${where} dropped: ${reason}`);
     } else {
+      // Repeats fold into the rate-limited summary. This covers the
+      // never-reaches-CONNACK case (broker down) as well as a true flap:
+      // there is no 'connect' event to count in that scenario, so keying
+      // this off the connect counter would warn on every single retry.
       logger.debug(`📡 MQTT connection to ${where} dropped: ${reason}`);
       this.maybeLogFlapSummary(now);
     }
@@ -528,7 +537,7 @@ export class MqttBrokerClient extends EventEmitter {
       : this.reconnectBackoffMs;
     logger.warn(
       `📡 MQTT connection to ${this.resolvedUrl} (clientId=${this.resolvedClientId}) is flapping: ` +
-        `${this.connectsSinceStable} connects in the last ${windowSec}s. ` +
+        `${this.connectsSinceStable} connects / ${this.dropsSinceStable} drops in the last ${windowSec}s. ` +
         `Last drop: ${this.lastCloseReason ?? 'unknown'}. Next retry in ~${Math.round(nextDelay / 1000)}s.`,
     );
   }
@@ -606,6 +615,7 @@ export class MqttBrokerClient extends EventEmitter {
     this.connected = false;
     this.connectedAt = null;
     this.connectsSinceStable = 0;
+    this.dropsSinceStable = 0;
     this.flapEpisodeStartedAt = null;
     this.shortSessionStreak = 0;
     this.duplicateIdHintLogged = false;

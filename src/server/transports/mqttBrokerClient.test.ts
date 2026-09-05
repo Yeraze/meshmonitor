@@ -376,7 +376,7 @@ describe('MqttBrokerClient', () => {
       // A silent storm is worse than a loud one — but it must be bounded.
       expect(summaries.length).toBeGreaterThan(0);
       expect(summaries.length).toBeLessThanOrEqual(6); // ≤1 per 60s window
-      expect(summaries[0]).toMatch(/connects in the last/);
+      expect(summaries[0]).toMatch(/connects \/ \d+ drops in the last/);
       expect(summaries[0]).toMatch(/Last drop:/);
     });
 
@@ -407,6 +407,23 @@ describe('MqttBrokerClient', () => {
       down(fake);
 
       expect(client.getLastCloseReason()).toMatch(/error: ECONNRESET/);
+    });
+
+    it('does not warn per retry when the broker is simply unreachable', () => {
+      // No 'connect' ever fires here, so a "first drop of an episode" rule
+      // keyed off the connect count would warn on every single retry.
+      const client = new MqttBrokerClient({ url: URL, clientId: '!aaaaaaaa' });
+      void client.connect();
+      const fake = lastFakeClient();
+
+      for (let i = 0; i < 40; i++) {
+        down(fake); // connection attempt dies before CONNACK
+        vi.advanceTimersByTime(5000);
+      }
+
+      const drops = warnLines(logger).filter((l: string) => l.includes('dropped:'));
+      expect(drops).toHaveLength(1);
+      expect(drops[0]).toMatch(/before CONNACK/);
     });
 
     it('reports a pre-CONNACK failure distinctly from a broker eviction', () => {
