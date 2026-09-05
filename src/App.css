@@ -3,7 +3,45 @@
    ============================== */
 :root {
   /* Layout dimensions */
+
+  /*
+   * TWO HEADER HEIGHTS — pick the right one (#5070, #5053).
+   *
+   * `--header-height` is the DESIGN height of the header bar's content strip:
+   * how tall we want the row of controls to be. It is a constant, it knows
+   * nothing about notches, and it is what `.app-header` sizes its own box
+   * from. Use it only when you mean "how tall is the row of header controls".
+   *
+   * `--app-header-height` is the REAL on-screen height of the fixed
+   * `.app-header` element, top edge of the screen to bottom edge of the bar.
+   * Anything that means "content starts below the fixed header" — a
+   * `padding-top`, a `top` on a fixed/sticky pane, a `100vh - header`
+   * subtraction — must offset by THIS one.
+   *
+   * They differ for two reasons:
+   *   1. `index.html` ships `viewport-fit=cover`, so the page starts at the
+   *      physical screen edge and the bar's top sits under the status bar /
+   *      notch. `.app-header` grows by `env(safe-area-inset-top)` to stay
+   *      clear of it.
+   *   2. In compact landscape the bar is `height: auto` (AppHeader.css) —
+   *      the 768px mobile compaction block does not reach a landscape phone,
+   *      which is wider than 768px, so the bar carries desktop-sized content
+   *      and renders 57-60px against a 40px `--header-height`.
+   *
+   * Reason 2 cannot be expressed in CSS, so the value below is a static floor
+   * and `useAppHeaderHeightVar` (src/hooks/useAppHeaderHeightVar.ts)
+   * overwrites it on <html> with the header's measured height once the shell
+   * mounts. Keep the fallback expression correct anyway: it is what renders
+   * on the very first paint, and what the cascade tests assert.
+   *
+   * Before this existed, every offset in the app used the bare
+   * `--header-height`, so the top ~17-20px of every landscape page was
+   * painted under the bar and un-tappable — the Info tab heading (#5070) and
+   * the node list's collapse control (#5053).
+   */
   --header-height: 60px;
+  --app-header-height: calc(var(--header-height) + env(safe-area-inset-top, 0px));
+
   --sidebar-width: 60px;
   --banner-height: 36px;
 
@@ -783,7 +821,8 @@ body {
 
 .app-main {
   padding: 2rem;
-  padding-top: calc(var(--header-height) + 2rem); /* Account for fixed header + desired padding */
+  /* Real header height, not the design constant — see the banner in :root. */
+  padding-top: calc(var(--app-header-height) + 2rem);
   padding-bottom: max(2rem, env(safe-area-inset-bottom)); /* Account for iPhone home indicator */
   width: calc(100% - var(--sidebar-width)); /* Full width minus sidebar */
   margin: 0;
@@ -971,7 +1010,8 @@ body {
   border: 1px solid var(--color-surface-hover);
   /* Desktop: constrain to viewport height */
   min-height: 400px;
-  max-height: calc(100vh - var(--header-height) - 12rem);
+  /* Viewport minus the real bar, not the design constant (see :root banner). */
+  max-height: calc(100vh - var(--app-header-height) - 12rem);
   display: flex;
   flex-direction: column;
 }
@@ -1683,7 +1723,8 @@ body {
 
   .app-main {
     padding: 0.5rem;
-    padding-top: calc(var(--header-height) + 0.5rem); /* Account for fixed header + desired padding */
+    /* Real header height, not the design constant — see the banner in :root. */
+    padding-top: calc(var(--app-header-height) + 0.5rem);
     /* Clear the bottom bar as well as the iPhone home indicator — the bar is
        fixed and would otherwise cover the end of the content. */
     padding-bottom: calc(
@@ -3074,7 +3115,9 @@ body {
   border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-lg);
   position: sticky;
-  top: var(--header-height);
+  /* Sticks directly below the fixed bar, so it needs the bar's real height
+     (see the banner in :root) — the design constant left it half-buried. */
+  top: var(--app-header-height);
   z-index: 10;
 }
 
@@ -3230,7 +3273,13 @@ body {
   }
 
   .app-main {
-    padding-top: calc(var(--header-height) + 0.25rem);
+    /*
+     * `--app-header-height`, NOT `--header-height`. This is the landscape
+     * viewport where the bar is `height: auto` and renders 57-60px against a
+     * 40px constant, so offsetting by the constant tucked the first ~17px of
+     * every page under the bar — #5070's clipped Info heading.
+     */
+    padding-top: calc(var(--app-header-height) + 0.25rem);
     padding-bottom: calc(
       var(--app-nav-bar-height, 44px) + max(0.25rem, env(safe-area-inset-bottom))
     );
@@ -3238,8 +3287,12 @@ body {
 
   /* Compact channel conversation for landscape */
   .channels-tab-content {
-    height: calc(100vh - var(--header-height) - 0.25rem - max(0.25rem, env(safe-area-inset-bottom)));
-    height: calc(100dvh - var(--header-height) - 0.25rem - max(0.25rem, env(safe-area-inset-bottom)));
+    height: calc(
+      100vh - var(--app-header-height) - 0.25rem - max(0.25rem, env(safe-area-inset-bottom))
+    );
+    height: calc(
+      100dvh - var(--app-header-height) - 0.25rem - max(0.25rem, env(safe-area-inset-bottom))
+    );
   }
 
   .channels-header h2 {

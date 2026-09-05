@@ -25,7 +25,16 @@
 /* Fullscreen Map Layout for Nodes */
 .nodes-split-view {
   position: fixed;
-  top: var(--header-height); /* Below header */
+  /*
+   * The REAL header height, not the design constant (#5053). See the banner on
+   * `--app-header-height` in App.css: it carries `env(safe-area-inset-top)` and
+   * is overwritten at runtime with the bar's measured height, which in compact
+   * landscape is 57-60px against a 40px `--header-height`. Starting this pane
+   * at 40px put `.collapse-nodes-btn` — an 18px control at `top: 8px` — wholly
+   * underneath the bar: `document.elementFromPoint()` at its centre returned
+   * `.app-header`, so the node list could not be collapsed at all.
+   */
+  top: var(--app-header-height); /* Below header */
   left: var(--sidebar-width); /* After sidebar */
   right: 0;
   bottom: 0;
@@ -1249,11 +1258,9 @@
 /* Responsive design */
 @media (max-width: 768px) {
   .nodes-split-view {
-    /* Clear the header including the iOS safe-area inset. A flat 48px ignored
-       env(safe-area-inset-top), so in an iOS standalone/PWA the taller
-       safe-area header overlapped the map and pushed its bottom controls
-       off-screen (#4772). Mirrors the bottom edge's safe-area handling below. */
-    top: calc(var(--header-height) + env(safe-area-inset-top, 0px));
+    /* The safe-area correction this block used to restate by hand (#4772) now
+       lives inside `--app-header-height`, which the base rule already uses
+       (#5070). Only the bottom/left edges still need a mobile answer. */
     /* The left rail became a bottom bar (#4473 phase 2), so the map/list split
        spans the full width and instead has to clear the bar, which is fixed
        over the bottom of the viewport. */
@@ -1528,6 +1535,47 @@
 @media (max-height: 500px) and (orientation: landscape) {
   .nodes-split-view {
     bottom: calc(var(--app-nav-bar-height, 44px) + env(safe-area-inset-bottom, 0px));
+  }
+
+  /*
+   * The node list is an OVERLAY on a landscape phone too (#5053 item 2).
+   *
+   * The block above (`@media (max-width: 768px)`) is where the list stops being
+   * an in-flow column and becomes a sheet over the map. A landscape phone is
+   * *wider* than 768px, so none of it applied and the list stayed
+   * `position: relative; width: 380px` — an in-flow column eating 45% of an
+   * 852px screen, and collapsing by reflowing the map rather than sliding off.
+   *
+   * It also disagreed with the JS. `isMobileLayout()`
+   * (src/utils/sidebarWidth.ts) already counts a landscape phone as mobile, so
+   * `resolveNodeSidebarMaxWidth` lets the drag handle take the list to the FULL
+   * container width — which, against an in-flow column, squeezes the map to
+   * zero width instead of covering it. CSS and JS now agree on what "mobile"
+   * means, which is the whole point of MOBILE_LAYOUT_MEDIA_QUERY.
+   *
+   * Placement: after the base rules at the top of this file AND after the
+   * max-width block, per the ordering constraint in the file banner (#3532).
+   */
+  .nodes-anchored-sidebar {
+    position: absolute;
+    z-index: 1000;
+    width: min(calc(100vw - 48px), 360px);
+    height: 100%;
+  }
+
+  .nodes-anchored-sidebar.collapsed {
+    position: static;
+    width: 0 !important;
+    min-width: 0;
+    max-width: 0;
+    max-height: 100%;
+    padding: 0;
+    overflow: visible;
+  }
+
+  .nodes-sidebar.collapsed .sidebar-header {
+    padding: 0.5rem;
+    min-height: 40px;
   }
 }
 

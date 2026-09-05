@@ -13,14 +13,18 @@
  * later edit that reorders two same-specificity blocks.
  *
  * Deliberately small. It understands the media-feature grammar these sheets
- * actually use (max/min-width, max/min-height, orientation, comma = OR) and
- * assumes every rule touching a given selector has equal specificity, so source
- * order alone decides. Both hold across the sheets it is pointed at; if one
- * stops holding, the test that relies on it should say so loudly rather than
- * this file growing a specificity engine.
+ * actually use (max/min-width, max/min-height, orientation, hover, pointer,
+ * prefers-reduced-motion, comma = OR) and assumes every rule touching a given
+ * selector has equal specificity, so source order alone decides. Both hold
+ * across the sheets it is pointed at; if one stops holding, the test that
+ * relies on it should say so loudly rather than this file growing a specificity
+ * engine — which is why an unknown feature throws instead of being skipped.
  *
  * Extracted from `dashboardMobileDrawer.test.ts` (#5058) when `MapSidebar`
- * needed the same machinery (#5060).
+ * needed the same machinery (#5060). Gained the input-capability features when
+ * it was pointed at App.css for #5070, which carries an
+ * `@media (hover: none) and (pointer: coarse)` block; silently ignoring those
+ * would have resolved a touch device's declarations to the mouse ones.
  */
 
 export interface Viewport {
@@ -32,6 +36,14 @@ export interface Viewport {
    * block (AppHeader.css does) resolves rather than throwing (#5051).
    */
   prefersReducedMotion?: boolean;
+  /**
+   * Input capability, as CSS reports it. Defaults to a touch profile
+   * (`hover: none`, `pointer: coarse`) because every viewport this resolver is
+   * pointed at is a phone except `DESKTOP`, and getting this backwards on a
+   * phone resolves the wrong declaration for the touch-target rules (#5070).
+   */
+  hover?: 'hover' | 'none';
+  pointer?: 'fine' | 'coarse' | 'none';
 }
 
 /** Evaluates the small media-feature grammar these sheets actually use. */
@@ -59,6 +71,10 @@ export function mediaMatches(condition: string, vp: Viewport): boolean {
           return value === 'reduce'
             ? vp.prefersReducedMotion === true
             : vp.prefersReducedMotion !== true;
+        case 'hover':
+          return value === (vp.hover ?? 'none');
+        case 'pointer':
+          return value === (vp.pointer ?? 'coarse');
         default:
           throw new Error(`unsupported media feature: ${name}`);
       }
@@ -131,4 +147,4 @@ export const PORTRAIT_PHONE: Viewport = { width: 390, height: 844 }; // iPhone 1
 export const LANDSCAPE_PHONE: Viewport = { width: 844, height: 390 }; // iPhone 13, rotated
 export const LANDSCAPE_BIG_PHONE: Viewport = { width: 915, height: 412 }; // Pixel 7, rotated
 export const LANDSCAPE_SMALL_PHONE: Viewport = { width: 667, height: 375 }; // iPhone SE, rotated
-export const DESKTOP: Viewport = { width: 1440, height: 900 };
+export const DESKTOP: Viewport = { width: 1440, height: 900, hover: 'hover', pointer: 'fine' };

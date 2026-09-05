@@ -26,6 +26,18 @@
    * Anything positioned below the topbar (the mobile drawer and its backdrop)
    * must offset by this, NOT by bare `--header-height` — that variable is a
    * hardcoded constant that does not know about the inset.
+   *
+   * WHY THIS IS NOT `--app-header-height` (#5070). The app-wide variable now
+   * carries the same static expression, but it is *overwritten at runtime with
+   * the measured height of `.app-header`* — a different element, on a different
+   * route, that the Dashboard never renders. Aliasing to it would make this
+   * topbar's geometry depend on whatever the app shell last measured.
+   *
+   * Unlike `.app-header`, this bar never needs a measurement: it is a fixed
+   * `height` with `padding-top: env(safe-area-inset-top)` inside a border box,
+   * so it renders at exactly this value at every viewport. Keep it that way —
+   * the moment this bar becomes content-driven it needs the same treatment
+   * `useAppHeaderHeightVar` gives the app header.
    */
   --dashboard-topbar-height: calc(var(--header-height, 64px) + env(safe-area-inset-top, 0px));
 }
