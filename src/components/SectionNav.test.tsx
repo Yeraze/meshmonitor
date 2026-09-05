@@ -72,3 +72,64 @@ describe('SectionNav scrollToSection', () => {
     expect(scrollToSpy).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Selected-category state (#5069). The picker had none, which is survivable
+ * only while every button is on screen at once. Once it has to scroll — the
+ * landscape rail, the portrait chip row — the user cannot otherwise tell which
+ * category they are in.
+ */
+describe('SectionNav selected state', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+    vi.restoreAllMocks();
+  });
+
+  const mountSections = (ids: string[]) => {
+    for (const id of ids) {
+      const section = document.createElement('div');
+      section.id = id;
+      // jsdom lays nothing out, so every rect is at 0 — i.e. above the reading
+      // line. Left alone, the scrollspy would call the LAST section current.
+      section.getBoundingClientRect = () => ({ top: 5000 }) as DOMRect;
+      document.body.appendChild(section);
+    }
+  };
+
+  it('marks the clicked category as current', () => {
+    (window as any).scrollTo = vi.fn();
+    mountSections(['sec-a', 'sec-b']);
+    const { getByRole } = render(
+      <SectionNav
+        items={[
+          { id: 'sec-a', label: 'A' },
+          { id: 'sec-b', label: 'B' },
+        ]}
+      />
+    );
+
+    fireEvent.click(getByRole('button', { name: 'B' }));
+    expect(getByRole('button', { name: 'B' })).toHaveAttribute('aria-current', 'true');
+    expect(getByRole('button', { name: 'A' })).not.toHaveAttribute('aria-current');
+  });
+
+  it('falls back to the first category when nothing has scrolled past the line', () => {
+    mountSections(['sec-a', 'sec-b']);
+    const { getByRole } = render(
+      <SectionNav
+        items={[
+          { id: 'sec-a', label: 'A' },
+          { id: 'sec-b', label: 'B' },
+        ]}
+      />
+    );
+    expect(getByRole('button', { name: 'A' })).toHaveAttribute('aria-current', 'true');
+  });
+
+  it('passes an extra class through to the nav so callers can re-shape it', () => {
+    const { container } = render(<SectionNav items={[]} className="rail" />);
+    const nav = container.querySelector('nav');
+    expect(nav?.className).toContain('section-nav');
+    expect(nav?.className).toContain('rail');
+  });
+});
