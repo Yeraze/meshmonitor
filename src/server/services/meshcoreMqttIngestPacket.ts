@@ -289,7 +289,11 @@ export function observerPacketsSubscription(region: string): string {
   return `meshcore/${region.trim().toUpperCase()}/+/packets`;
 }
 
-/** Same, for the status topic consumed in a later phase. */
+/**
+ * Same, for the `/status` topic — observer heartbeats carrying that node's own
+ * battery / uptime / noise-floor stats. Subscribed alongside the packets topic
+ * in the same `subscribe()` call (#5040 Phase 5).
+ */
 export function observerStatusSubscription(region: string): string {
   return `meshcore/${region.trim().toUpperCase()}/+/status`;
 }
