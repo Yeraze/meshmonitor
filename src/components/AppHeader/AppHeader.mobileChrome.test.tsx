@@ -118,10 +118,16 @@ describe('header connection badge on narrow viewports (#5051)', () => {
   });
 
   it('does not make the header taller to buy the room', () => {
-    // The alternative fix in the issue. `--header-height` is a constant every
-    // other surface offsets from, and App.css deliberately shrinks it to 40px
-    // in landscape where vertical space is scarce — growing it here would
+    // The alternative fix in the issue. `--header-height` is the DESIGN height
+    // of the header's control strip, and App.css deliberately shrinks it to
+    // 40px in landscape where vertical space is scarce — growing it here would
     // fight #5053.
+    //
+    // Still true after #5070, which did NOT change this variable. #5070 added a
+    // second one, `--app-header-height` (the bar's real on-screen height,
+    // inset included and measured at runtime), and moved the offsets onto it.
+    // Surfaces below the bar no longer read the constant asserted here, so this
+    // test constrains presentation only — exactly what it was written to do.
     const appCss = readFileSync(resolve('src/App.css'), 'utf-8');
     const landscape = appCss.slice(
       appCss.indexOf('@media (max-height: 500px) and (orientation: landscape)')

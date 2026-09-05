@@ -71,6 +71,7 @@ import { useCsrf } from './contexts/CsrfContext';
 import { useSource } from './contexts/SourceContext';
 import { useNavigate, useLocation, Routes, Route, Navigate } from 'react-router-dom';
 import { useWebSocketConnected } from './contexts/WebSocketContext';
+import { useAppHeaderHeightVar } from './hooks/useAppHeaderHeightVar';
 import { useHealth } from './hooks/useHealth';
 import { useTxStatus } from './hooks/useTxStatus';
 import { useVersionCheck } from './hooks/useVersionCheck';
@@ -117,6 +118,11 @@ function App() {
   const isMqtt = isMqttBridge || isMqttBroker;
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Keep `--app-header-height` equal to the fixed header's real rendered height
+  // so every "content starts below the header" offset stays honest, including
+  // compact landscape where the bar is height:auto (#5070, #5053).
+  useAppHeaderHeightVar();
 
   // Hash->path redirect shim (#3962 5.4 PR1, kept >= 1 release). See
   // getHashTabRedirectTarget for the full rationale + enumerated
@@ -3517,7 +3523,7 @@ function App() {
             path="packetmonitor"
             element={
               <ErrorBoundary fallbackTitle="Packet Monitor failed to load">
-                <div style={{ height: 'calc(100dvh - var(--header-height, 60px) - 4rem)', overflow: 'hidden' }}>
+                <div style={{ height: 'calc(100dvh - var(--app-header-height, 60px) - 4rem)', overflow: 'hidden' }}>
                   {isMqtt && sourceId ? (
                     <MqttPacketMonitorView baseUrl={baseUrl} sourceId={sourceId} />
                   ) : (

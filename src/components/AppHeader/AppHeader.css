@@ -1,14 +1,46 @@
-/* App Header container */
+/*
+ * App Header container.
+ *
+ * HEIGHT CONTRACT (#5070, #5053) — read before changing `height` or the
+ * vertical padding here.
+ *
+ * This bar is `position: fixed`, so it is out of flow and every surface below
+ * it has to reserve room for it by hand. Those reservations offset from
+ * `--app-header-height` (App.css), which is defined as
+ * `--header-height + env(safe-area-inset-top)` and then *overwritten with this
+ * element's measured height* at runtime by `useAppHeaderHeightVar`. So the one
+ * rule this file has to keep is simple: whatever height the bar actually
+ * renders at is the number the rest of the app will use.
+ *
+ * Two traps this replaced:
+ *
+ * 1. `padding-top: max(1.5rem, env(safe-area-inset-top))` inside a border-box
+ *    with a FIXED `height`. Padding does not grow a border-box; it shrinks the
+ *    content box, flooring it at zero. On a notched phone the 59px inset left
+ *    a 40px bar whose contents were laid out ~44px down — painted outside the
+ *    bar, on top of the page. The inset is now ADDED to the height and the
+ *    padding, so the bar grows by exactly the inset and its contents stay
+ *    centred in the `--header-height` region below it.
+ *
+ * 2. `height: auto` (the landscape block at the end of this file) while
+ *    `.app-main`, `.nodes-split-view` and friends still offset by the bare
+ *    `--header-height` constant. That is #5070 and #5053 item 1 exactly: the
+ *    bar rendered 57-60px in landscape, everything below it started at 40px.
+ *    `height: auto` is still correct there — the 768px compaction block does
+ *    not reach a landscape phone, so the bar genuinely needs the room — but it
+ *    is now honest, because the measured height is what gets published.
+ */
 .app-header {
   background: var(--color-bg-raised);
   border-bottom: 1px solid var(--color-surface);
   padding: 1.5rem 2rem;
-  padding-top: max(1.5rem, env(safe-area-inset-top)); /* Account for iPhone notch/status bar */
+  /* Add the inset rather than max()ing against it — see trap 1 above. */
+  padding-top: calc(1.5rem + env(safe-area-inset-top, 0px));
   position: fixed;
   top: 0;
   left: var(--sidebar-width);
   right: 0;
-  height: var(--header-height);
+  height: calc(var(--header-height) + env(safe-area-inset-top, 0px));
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -331,7 +363,8 @@
        (#5016) — the full desktop padding alone can eat ~15% of the viewport
        width before any header content is laid out. */
     padding: 1rem;
-    padding-top: max(1rem, env(safe-area-inset-top));
+    /* Added, not max()ed — the height contract at the top of this file. */
+    padding-top: calc(1rem + env(safe-area-inset-top, 0px));
     /* Narrower gutter than desktop, but still a gutter — see the base rule
        (#5051): with the halves flush, clipped name text lands on the dot. */
     gap: 0.5rem;
@@ -430,9 +463,26 @@
 @media (max-height: 500px) and (orientation: landscape) {
   .app-header {
     padding: 0.5rem 1rem;
-    padding-top: max(0.5rem, env(safe-area-inset-top));
+    padding-top: calc(0.5rem + env(safe-area-inset-top, 0px));
+    /*
+     * Content-driven on purpose. The 768px block above hides the logo, the
+     * wordmark and the node info and shrinks the badge — and a landscape phone
+     * is WIDER than 768px, so none of that reaches here. The bar therefore
+     * carries desktop-sized content and genuinely needs ~57-60px.
+     *
+     * That is fine now: `useAppHeaderHeightVar` measures this element and
+     * publishes the result as `--app-header-height`, which is what everything
+     * below the bar offsets from. Before #5070 the offsets used the bare
+     * `--header-height: 40px` constant, so the top ~17-20px of every page —
+     * the Info tab's <h1>, the node list's collapse control — was painted
+     * underneath this bar and could not be tapped.
+     *
+     * `min-height` keeps the floor at the same inset-aware value as the base
+     * rule, so a future compaction of the header contents shrinks the bar to
+     * 40px + inset and stops there rather than collapsing further.
+     */
     height: auto;
-    min-height: 40px;
+    min-height: calc(var(--header-height) + env(safe-area-inset-top, 0px));
   }
 
   .app-header h1 {

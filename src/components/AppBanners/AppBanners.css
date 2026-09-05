@@ -5,7 +5,12 @@
   left: var(--sidebar-width);
   right: 0;
   padding: 8px 16px;
-  padding-top: calc(8px + env(safe-area-inset-top));
+  /*
+   * No safe-area padding here any more (#5070). Banners are stacked BELOW the
+   * fixed header, and `top` now offsets by `--app-header-height`, which already
+   * contains `env(safe-area-inset-top)`. Padding for the inset a second time
+   * added a blank strip inside every banner.
+   */
   text-align: center;
   font-size: 14px;
   font-weight: 500;
@@ -14,7 +19,9 @@
 }
 
 .warning-banner {
-  top: var(--header-height);
+  /* Below the fixed bar, so the bar's real height (see the :root banner in
+     App.css) — the design constant left the first banner half-covered. */
+  top: var(--app-header-height);
   background-color: var(--color-error);
   color: var(--color-bg-sunken);
   border-bottom: 2px solid var(--color-danger);
@@ -110,7 +117,9 @@
   .warning-banner,
   .update-banner {
     font-size: 13px;
-    padding-top: calc(6px + env(safe-area-inset-top));
+    /* No inset here either — `top: var(--app-header-height)` already clears
+       the notch, so padding for it again just added dead space (#5070). */
+    padding-top: 6px;
     padding-bottom: 6px;
     padding-left: 12px;
   }

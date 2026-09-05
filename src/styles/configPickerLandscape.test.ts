@@ -37,6 +37,17 @@ const resolveModule = createResolver(moduleCss);
 const activeCss = readFileSync(resolve('src/components/SectionNav.module.css'), 'utf-8');
 const resolveActive = createResolver(activeCss);
 
+// The shell sheets the rail has to agree with about where the fixed header ends.
+const appCss = readFileSync(resolve('src/App.css'), 'utf-8');
+const resolveApp = createResolver(appCss);
+const nodesCss = readFileSync(resolve('src/styles/nodes.css'), 'utf-8');
+const resolveNodes = createResolver(nodesCss);
+
+/** Names the custom property a declaration offsets the fixed header by. */
+function headerVarUsedBy(declaration: string | null): string | null {
+  return declaration?.match(/var\((--app-header-height|--header-height)\b/)?.[1] ?? null;
+}
+
 const LANDSCAPE_VIEWPORTS: Array<[string, Viewport]> = [
   ['landscape phone', LANDSCAPE_PHONE],
   ['landscape big phone', LANDSCAPE_BIG_PHONE],
@@ -69,7 +80,7 @@ describe('config picker becomes a left rail in landscape (#5069)', () => {
     // Derived from the shell's own variables, never a magic pixel count, so it
     // stays correct if the header or bottom bar is re-measured (#5070/#5053).
     expect(resolveModule('.configNav.configNav', 'max-height', vp)).toBe(
-      'calc(100dvh - var(--header-height) - var(--app-nav-bar-height) - 0.5rem)'
+      'calc(100dvh - var(--app-header-height) - var(--app-nav-bar-height) - 0.5rem)'
     );
   });
 
@@ -125,6 +136,60 @@ describe('config picker becomes a left rail in landscape (#5069)', () => {
     expect(resolveModule('.configNav.configNav', 'flex-direction', LANDSCAPE_SMALL_PHONE)).toBe(
       'column'
     );
+  });
+});
+
+/**
+ * The rail is sticky, so where it parks is a "content starts below the fixed
+ * header" question — the same one `.app-main`, `.nodes-split-view` and the
+ * banner stack ask, and the one #5070 exists to answer once.
+ *
+ * #5069 shipped these two declarations against `--header-height`, the DESIGN
+ * height of the header's control strip. In landscape that constant is 40px
+ * while the bar actually renders 57-60px, because AppHeader.css's compaction
+ * block is gated on `max-width: 768px` and a rotated phone is wider than that.
+ * Measured on the real page at 852x393: the rail stuck at 44px against a header
+ * bottom of 57px, burying its first 13px and the top of the first chip.
+ *
+ * These assert the RELATIONSHIP rather than a pixel: whatever variable the rest
+ * of the shell offsets the header by, the rail uses the same one. A literal
+ * `60px` would be wrong the moment the header's contents change — and they do,
+ * measurably: the bar is 57px with a user menu and 60px with a Login button.
+ */
+describe('the sticky rail parks below the whole header, not the constant (#5070)', () => {
+  it.each(LANDSCAPE_VIEWPORTS)('offsets `top` by the real header height on a %s', (_name, vp) => {
+    expect(headerVarUsedBy(resolveModule('.configNav.configNav', 'top', vp))).toBe(
+      '--app-header-height'
+    );
+  });
+
+  it.each(LANDSCAPE_VIEWPORTS)('subtracts the real header height too on a %s', (_name, vp) => {
+    // Same question asked downward: under-counting the bar runs the rail's own
+    // scroll area past the bottom of the screen.
+    expect(headerVarUsedBy(resolveModule('.configNav.configNav', 'max-height', vp))).toBe(
+      '--app-header-height'
+    );
+  });
+
+  it.each(LANDSCAPE_VIEWPORTS)('agrees with the rest of the shell on a %s', (_name, vp) => {
+    // The relationship, stated directly. If someone repoints one of these and
+    // not the others, the rail and the page disagree about where the bar ends
+    // — which is exactly how #5070 and #5053 happened.
+    const shellVar = headerVarUsedBy(resolveApp('.app-main', 'padding-top', vp));
+    expect(shellVar).toBe('--app-header-height');
+    expect(headerVarUsedBy(resolveNodes('.nodes-split-view', 'top', vp))).toBe(shellVar);
+    expect(headerVarUsedBy(resolveModule('.configNav.configNav', 'top', vp))).toBe(shellVar);
+  });
+
+  it('does not disturb portrait or desktop, where the rail does not exist', () => {
+    // #5069 verified both; this pins that #5070 changed neither. The rail
+    // declarations resolve to nothing outside landscape, so the App.css chip
+    // row keeps owning the surface — and it offsets by the same variable.
+    for (const vp of [PORTRAIT_PHONE, DESKTOP]) {
+      expect(resolveModule('.configNav.configNav', 'top', vp)).toBeNull();
+      expect(resolveModule('.configNav.configNav', 'max-height', vp)).toBeNull();
+      expect(headerVarUsedBy(resolveApp('.section-nav', 'top', vp))).toBe('--app-header-height');
+    }
   });
 });
 
