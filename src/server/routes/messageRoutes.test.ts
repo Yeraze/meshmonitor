@@ -824,6 +824,51 @@ describe('Message Deletion Routes', () => {
       expect(response.body).toHaveProperty('total');
     });
 
+    it('includes an MQTT ingest source’s messages in search results (#5040 Phase 5.5)', async () => {
+      // The wiring, not the manager. Phase 5.5 exists because read surfaces
+      // narrowed device-only and silently dropped this source; a unit test on
+      // the manager cannot catch someone changing the filter predicate back.
+      const app = createApp({ id: 1, username: 'admin', isAdmin: true });
+      (databaseService as any).searchMessagesAsync = vi.fn().mockResolvedValue({ messages: [], total: 0 });
+
+      const ingestManager = {
+        sourceId: 'src-mqtt',
+        sourceType: 'meshcore_mqtt' as const,
+        isConnected: () => true,
+        getRecentMessagesAsync: vi.fn().mockResolvedValue([
+          { id: 'mqtt_1', text: 'hello from the region feed', timestamp: 5000, fromPublicKey: 'channel-0' },
+        ]),
+      };
+      registryStub.getAllManagers.mockReturnValue([ingestManager]);
+
+      const response = await request(app).get('/api/messages/search?q=region');
+
+      expect(response.status).toBe(200);
+      expect(ingestManager.getRecentMessagesAsync).toHaveBeenCalled();
+      const texts = (response.body.data ?? []).map((m: { text: string }) => m.text);
+      expect(texts).toContain('hello from the region feed');
+    });
+
+    it('skips an MQTT ingest source that is not connected', async () => {
+      const app = createApp({ id: 1, username: 'admin', isAdmin: true });
+      (databaseService as any).searchMessagesAsync = vi.fn().mockResolvedValue({ messages: [], total: 0 });
+
+      const ingestManager = {
+        sourceId: 'src-mqtt',
+        sourceType: 'meshcore_mqtt' as const,
+        isConnected: () => false,
+        getRecentMessagesAsync: vi.fn().mockResolvedValue([
+          { id: 'mqtt_1', text: 'stale region message', timestamp: 5000, fromPublicKey: 'channel-0' },
+        ]),
+      };
+      registryStub.getAllManagers.mockReturnValue([ingestManager]);
+
+      const response = await request(app).get('/api/messages/search?q=stale');
+
+      expect(response.status).toBe(200);
+      expect(ingestManager.getRecentMessagesAsync).not.toHaveBeenCalled();
+    });
+
     it('should filter by channels for non-admin user', async () => {
       const app = createApp({ id: 2, username: 'user', isAdmin: false });
       (databaseService as any).getUserPermissionSetAsync = vi.fn().mockResolvedValue({

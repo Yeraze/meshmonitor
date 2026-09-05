@@ -23,6 +23,9 @@ vi.mock('../sourceManagerRegistry.js', () => ({
 
 vi.mock('../sourceManagerTypes.js', () => ({
   isMeshCoreManager: (m: unknown) => Boolean(m),
+  // buildSourceNodes narrows with the INCLUSIVE predicate since #5040 Phase
+  // 5.5, so an MQTT ingest source's advert-discovered nodes reach the map too.
+  isAnyMeshCoreManager: (m: unknown) => Boolean(m),
   isMeshtasticManager: () => false,
 }));
 

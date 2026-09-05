@@ -53,6 +53,7 @@ import {
 import meshcorePacketLogService from './services/meshcorePacketLogService.js';
 import databaseService from '../services/database.js';
 import { decodeMeshCorePacket } from '../utils/meshcorePacketDecode.js';
+import type { MeshCoreNode, MeshCoreMessage } from './meshcoreManager.js';
 import { createHash } from 'node:crypto';
 import { ChannelCrypto } from '@michaelhart/meshcore-decoder';
 import { ALL_SOURCES } from '../db/repositories/base.js';
@@ -650,6 +651,56 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
   /** Latest status seen per observer, for the source status panel. */
   getObserverStatuses(): ReadonlyMap<string, ObserverStatusSnapshot> {
     return new Map(this.seenObserverStatus);
+  }
+
+  /**
+   * Every node this source knows, newest data from the database (#5040 Phase 5.5).
+   *
+   * The device-backed manager merges its live contact store over the DB rows;
+   * there is no contact store here, so the DB IS the whole picture — adverts
+   * (Phase 3) and observer status heartbeats (Phase 5) are the only writers.
+   *
+   * Exists so read surfaces can narrow with `isAnyMeshCoreManager()` and call
+   * this on the union without a cast. Before Phase 5.5 those surfaces narrowed
+   * device-only, which silently hid this source's nodes from the map and
+   * under-counted the unified card.
+   */
+  async getAllNodes(): Promise<MeshCoreNode[]> {
+    try {
+      return (await databaseService.meshcore.getNodesBySource(this.sourceId)) as unknown as MeshCoreNode[];
+    } catch (err) {
+      logger.debug(`[MeshCoreMqtt:${this.sourceId}] failed to read nodes:`, err);
+      return [];
+    }
+  }
+
+  /**
+   * Recent messages for this source, newest-first.
+   *
+   * Read straight from the database rather than an in-memory ring: the device
+   * manager keeps one because it receives messages as events, whereas here they
+   * arrive already persisted by the Phase 4 ingest path. Message SEARCH is the
+   * caller that matters — without this, a region feed's channel messages were
+   * stored but unsearchable.
+   */
+  async getRecentMessagesAsync(limit = 1000): Promise<MeshCoreMessage[]> {
+    try {
+      return (await databaseService.meshcore.getRecentMessages(limit, this.sourceId)) as unknown as MeshCoreMessage[];
+    } catch (err) {
+      logger.debug(`[MeshCoreMqtt:${this.sourceId}] failed to read messages:`, err);
+      return [];
+    }
+  }
+
+  /**
+   * True while the broker connection is up.
+   *
+   * Read surfaces filter on this to skip sources that are configured but not
+   * currently receiving. For this source it means "subscribed to the broker",
+   * not "has a working radio" — there is no radio.
+   */
+  isConnected(): boolean {
+    return this.client?.isConnected() ?? false;
   }
 
   getStatus(): SourceStatus {

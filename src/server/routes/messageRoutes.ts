@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
 import databaseService, { DbMessage } from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
-import { isMeshCoreManager, isMeshtasticManager, getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
+import { isMeshCoreManager, isMeshCoreMqttManager, isMeshtasticManager, getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
 import type { MeshCoreManager } from '../meshcoreManager.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { logger } from '../../utils/logger.js';
@@ -223,12 +223,33 @@ router.get('/search', async (req: Request, res: Response) => {
     }
 
     // Search MeshCore messages (in-memory filter, across every registered source)
-    const meshcoreManagers = sourceManagerRegistry.getAllManagers().filter((m): m is MeshCoreManager => isMeshCoreManager(m) && m.isConnected());
-    if ((searchScope === 'all' || searchScope === 'meshcore') && meshcoreManagers.length > 0) {
+    const allManagers = sourceManagerRegistry.getAllManagers();
+    const meshcoreManagers = allManagers.filter((m): m is MeshCoreManager => isMeshCoreManager(m) && m.isConnected());
+    // Ingest sources are resolved BEFORE the gate, and the gate counts both
+    // kinds. Nesting them inside a device-manager-only check meant an install
+    // with a region feed and no MeshCore radio got zero results — the exact
+    // silent-exclusion this phase exists to fix (#5040 Phase 5.5).
+    const ingestManagers = allManagers.filter(isMeshCoreMqttManager).filter(m => m.isConnected());
+    if (
+      (searchScope === 'all' || searchScope === 'meshcore') &&
+      (meshcoreManagers.length > 0 || ingestManagers.length > 0)
+    ) {
       const hasMeshcoreAccess = isAdmin || (accessibleChannels !== null && accessibleChannels.has(-1));
 
       if (hasMeshcoreAccess) {
-        const allMeshcoreMessages = meshcoreManagers.flatMap(m => m.getRecentMessages(1000));
+        // Device-backed sources keep an in-memory ring and answer synchronously;
+        // an MQTT ingest source has no ring — its messages are already persisted
+        // by the Phase 4 ingest path, so it reads them back asynchronously.
+        // Gathered separately rather than forcing one signature on both
+        // (#5040 Phase 5.5): before this, a region feed's channel messages were
+        // stored but never searchable.
+        const ingestMessages = (
+          await Promise.all(ingestManagers.map(m => m.getRecentMessagesAsync(1000)))
+        ).flat();
+        const allMeshcoreMessages = [
+          ...meshcoreManagers.flatMap(m => m.getRecentMessages(1000)),
+          ...ingestMessages,
+        ];
         const filtered = allMeshcoreMessages.filter(m => {
           if (!m.text) return false;
           const textMatch = isCaseSensitive
