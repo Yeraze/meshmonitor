@@ -13,7 +13,7 @@ import { optionalAuth } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { PortNum, CHANNEL_DB_OFFSET, modemPresetChannelName } from '../constants/meshtastic.js';
 import { filterPacketsByPermissions, getAllowedChannels } from './packetPermissions.js';
-import { isMeshCoreManager } from '../sourceManagerTypes.js';
+import { isAnyMeshCoreManager } from '../sourceManagerTypes.js';
 import {
   getUserReadableVirtualChannelIds,
   canReadVirtualChannel,
@@ -1262,7 +1262,9 @@ router.get('/status', async (req: Request, res: Response) => {
     let mcActiveNodeCount = 0;
     for (const id of meshcoreAllowedIds) {
       const _rawUni = sourceManagerRegistry.getManager(id);
-      const mcManager = _rawUni && isMeshCoreManager(_rawUni) ? _rawUni : null;
+      // isAnyMeshCoreManager (#5040 Phase 5.5): an ingest source's nodes are
+      // real nodes and must count toward the unified totals.
+      const mcManager = _rawUni && isAnyMeshCoreManager(_rawUni) ? _rawUni : null;
       if (mcManager) {
         const all = await mcManager.getAllNodes();
         mcNodeCount += all.length;
