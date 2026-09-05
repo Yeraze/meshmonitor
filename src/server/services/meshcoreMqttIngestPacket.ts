@@ -211,6 +211,69 @@ export function decodeObserverPacketMessage(body: unknown): IngestedObserverPack
 }
 
 /**
+ * A decoded `/status` message (#5040 Phase 5).
+ *
+ * IMPORTANT: a status message describes the OBSERVER that published it — the
+ * node running the analyzer bridge — not some arbitrary node it overheard. So
+ * these stats belong to `originId`, and nothing here says anything about the
+ * rest of the region.
+ */
+export interface IngestedObserverStatus {
+  /** Observer's public key, UPPER 64-hex. */
+  originId: string;
+  /** Observer's self-reported name. Display only. */
+  origin: string;
+  online: boolean;
+  /** Millivolts. Absent when the firmware does not report it. */
+  batteryMv?: number;
+  uptimeSecs?: number;
+  /** dBm. No column for this yet — see the manager's status handler. */
+  noiseFloor?: number;
+}
+
+/** Plausible battery range for a MeshCore node, in millivolts. */
+const BATTERY_MIN_MV = 1_000;
+const BATTERY_MAX_MV = 20_000;
+
+/**
+ * Decode one `/status`-topic message.
+ *
+ * Total: returns null rather than throwing, so a malformed status heartbeat on
+ * a busy region feed cannot break the stream. Stats are range-checked the same
+ * way packet measurements are — an out-of-range battery is not a reading.
+ */
+export function decodeObserverStatusMessage(body: unknown): IngestedObserverStatus | null {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  const msg = body as Record<string, unknown>;
+
+  // Packet messages share the topic prefix; skip them quietly.
+  if (msg.type === 'PACKET') return null;
+  if (msg.status !== 'online' && msg.status !== 'offline') return null;
+
+  const originId = readString(msg.origin_id);
+  if (!originId || !ORIGIN_ID_RE.test(originId)) return null;
+
+  const stats = (msg.stats && typeof msg.stats === 'object' ? msg.stats : {}) as Record<string, unknown>;
+  const out: IngestedObserverStatus = {
+    originId: originId.toUpperCase(),
+    origin: readString(msg.origin) ?? '',
+    online: msg.status === 'online',
+  };
+
+  const battery = readMeasurement(stats.battery_mv, BATTERY_MIN_MV, BATTERY_MAX_MV);
+  if (battery !== undefined) out.batteryMv = battery;
+
+  // Uptime only has a floor: a node up for a year is unremarkable.
+  const uptime = readNumeric(stats.uptime_secs);
+  if (uptime !== null && uptime >= 0) out.uptimeSecs = uptime;
+
+  const noise = readMeasurement(stats.noise_floor, -200, 0);
+  if (noise !== undefined) out.noiseFloor = noise;
+
+  return out;
+}
+
+/**
  * Build the subscribe filter for a region.
  *
  * Mirrors `observerTopics()` on the publish side, with a `+` wildcard in the

@@ -45,6 +45,8 @@ import { MqttBrokerClient } from './transports/mqttBrokerClient.js';
 import {
   decodeObserverPacketMessage,
   observerPacketsSubscription,
+  observerStatusSubscription,
+  decodeObserverStatusMessage,
   observerKeyFromTopic,
   type IngestedObserverPacket,
 } from './services/meshcoreMqttIngestPacket.js';
@@ -80,6 +82,17 @@ export interface MeshCoreMqttSourceConfig {
   autoConnect?: boolean;
 }
 
+/** One observer's latest self-reported state, for the status panel. */
+export interface ObserverStatusSnapshot {
+  online: boolean;
+  /** When WE saw the heartbeat, not the publisher's clock. */
+  at: number;
+  batteryMv?: number;
+  uptimeSecs?: number;
+  /** Decoded but not persisted — see the manager's status handler. */
+  noiseFloor?: number;
+}
+
 /** Counters surfaced on the source status panel. */
 export interface MeshCoreMqttIngestStats {
   /** Messages received on the packets topic, before validation. */
@@ -94,6 +107,8 @@ export interface MeshCoreMqttIngestStats {
   advertsIngested: number;
   /** GRP_TXT frames decrypted and stored as channel messages. */
   channelMessages: number;
+  /** `/status` heartbeats decoded. Counted separately from packets. */
+  statusMessages: number;
   lastPacketAt: number | null;
   lastError: string | null;
 }
@@ -173,6 +188,7 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
     observers: 0,
     advertsIngested: 0,
     channelMessages: 0,
+    statusMessages: 0,
     lastPacketAt: null,
     lastError: null,
   };
@@ -185,6 +201,12 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
    */
   private readonly seenObservers = new Set<string>();
   private static readonly MAX_TRACKED_OBSERVERS = 1_000;
+  /**
+   * Latest `/status` snapshot per observer. Bounded by the same cap — a status
+   * heartbeat arrives per observer per interval, so an unbounded map would grow
+   * with region size.
+   */
+  private readonly seenObserverStatus = new Map<string, ObserverStatusSnapshot>();
 
   constructor(sourceId: string, sourceName: string, config: MeshCoreMqttSourceConfig) {
     super();
@@ -213,7 +235,8 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
   /** Open and subscribe. Separated so start() can roll back cleanly on failure. */
   private async openBroker(): Promise<void> {
 
-    const topic = observerPacketsSubscription(this.config.region);
+    const packetsTopic = observerPacketsSubscription(this.config.region);
+    const statusTopic = observerStatusSubscription(this.config.region);
     const client = new MqttBrokerClient({
       url: this.config.brokerUrl,
       username: this.config.username,
@@ -235,9 +258,9 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
     });
 
     await client.connect();
-    await client.subscribe([topic]);
+    await client.subscribe([packetsTopic, statusTopic]);
     logger.info(
-      `[MeshCoreMqtt:${this.sourceId}] subscribed to ${topic} on ${this.config.brokerUrl}`,
+      `[MeshCoreMqtt:${this.sourceId}] subscribed to ${packetsTopic} and ${statusTopic} on ${this.config.brokerUrl}`,
     );
   }
 
@@ -263,6 +286,16 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
    * single bad message on a busy region feed can never throw.
    */
   private handleMessage(topic: string, payload: Buffer): void {
+    // Status heartbeats ride the same region prefix as packets but are a
+    // different shape. Split on the topic suffix BEFORE any parsing or
+    // counting: the packet counters must not drift by one per observer per
+    // heartbeat, and a malformed status body must not be booked as a rejected
+    // packet.
+    if (topic.endsWith('/status')) {
+      void this.handleStatus(payload);
+      return;
+    }
+
     this.stats.received++;
     try {
       const body: unknown = JSON.parse(payload.toString('utf8'));
@@ -539,6 +572,63 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
       };
     }
     return null;
+  }
+
+  /**
+   * Record an observer's self-reported device stats (#5040 Phase 5).
+   *
+   * A `/status` message describes the OBSERVER that published it — the node
+   * running the analyzer bridge — not anything it overheard. So these stats
+   * belong to `originId` and are written through the same `upsertNode` choke
+   * point as an advert, which means the observer shows up as a node on this
+   * source whether or not it has also advertised.
+   *
+   * Only battery and uptime are persisted. `noise_floor` decodes and is
+   * deliberately NOT stored: `meshcore_nodes` has no column for it, and adding
+   * one that nothing displays would be a dead column plus a migration. It is a
+   * genuinely useful signal for a region feed — it says how congested the band
+   * is — so it belongs with a display surface, not ahead of one.
+   *
+   * `lastHeard` is NOT touched here. A status heartbeat proves the observer is
+   * talking to its BROKER, not that it is reachable on the mesh; stamping it
+   * would make an observer with a dead radio look mesh-alive.
+   */
+  private async handleStatus(payload: Buffer): Promise<void> {
+    try {
+      const status = decodeObserverStatusMessage(JSON.parse(payload.toString('utf8')));
+      if (!status) return;
+
+      this.stats.statusMessages++;
+      this.seenObserverStatus.set(status.originId, {
+        online: status.online,
+        at: Date.now(),
+        batteryMv: status.batteryMv,
+        uptimeSecs: status.uptimeSecs,
+        noiseFloor: status.noiseFloor,
+      });
+
+      // Nothing worth persisting on an offline notice, or from firmware that
+      // reports no stats at all.
+      if (!status.online) return;
+      if (status.batteryMv === undefined && status.uptimeSecs === undefined) return;
+
+      await databaseService.meshcore.upsertNode(
+        {
+          publicKey: status.originId,
+          name: status.origin !== '' ? status.origin : undefined,
+          batteryMv: status.batteryMv,
+          uptimeSecs: status.uptimeSecs,
+        },
+        this.sourceId,
+      );
+    } catch (err) {
+      logger.debug(`[MeshCoreMqtt:${this.sourceId}] failed to handle status:`, err);
+    }
+  }
+
+  /** Latest status seen per observer, for the source status panel. */
+  getObserverStatuses(): ReadonlyMap<string, ObserverStatusSnapshot> {
+    return new Map(this.seenObserverStatus);
   }
 
   getStatus(): SourceStatus {
