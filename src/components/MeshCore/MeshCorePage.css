@@ -450,6 +450,7 @@
   padding: 1rem 1.25rem;
   margin: 0 0.4rem 0.5rem;
   background: var(--color-surface);
+  color: var(--color-text);
   border: 2px solid var(--color-surface-active);
   border-radius: var(--radius-xl);
   cursor: pointer;
