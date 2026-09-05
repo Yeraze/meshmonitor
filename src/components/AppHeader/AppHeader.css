@@ -14,6 +14,16 @@
   align-items: center;
   z-index: 10000; /* Above all content including map */
   box-sizing: border-box;
+  /*
+   * A real gutter between the two halves (#5051).
+   *
+   * `.header-left` is `overflow: hidden`, so its right edge is a clip plane.
+   * With `space-between` and no gap that plane lands exactly on the first thing
+   * in `.header-right` — the connection dot — so anything that overflows the
+   * left half is guillotined flush against the indicator. The gap keeps the
+   * clip plane and the dot apart no matter how long the source name is.
+   */
+  gap: 1rem;
 }
 
 /* Header layout */
@@ -41,6 +51,23 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  /*
+   * The squeeze has to reach the source name (#5051).
+   *
+   * A flex item defaults to `min-width: auto`, i.e. it refuses to shrink below
+   * its content-based minimum. `.header-source-name` caps that minimum with a
+   * `max-width` (30vw on phones), so this wrapper became a ~117px *floor*
+   * rather than a ceiling: `.header-left` could not shrink it, overflowed its
+   * own content box, and hard-clipped it at the boundary with `.header-right`.
+   * The name never ellipsised because its own box was never the thing running
+   * out of room — its ancestor was.
+   *
+   * With `min-width: 0` the shrink propagates: the wrapper collapses to the
+   * width actually available, the name's own `overflow: hidden` +
+   * `text-overflow: ellipsis` resolves against that width, and nothing escapes
+   * the row to collide with the connection indicator.
+   */
+  min-width: 0;
 }
 
 .header-logo {
@@ -178,6 +205,14 @@
   height: 12px;
   border-radius: var(--radius-full);
   background: var(--color-text-disabled);
+  /*
+   * The dot is the one thing in this row that must never give (#5051). It is a
+   * flex item, so it defaults to `flex-shrink: 1` and an empty span's automatic
+   * minimum size is 0 — a tight row could squeeze it to nothing and leave the
+   * connection state showing as no state at all, which is worse than showing
+   * none of the name.
+   */
+  flex-shrink: 0;
 }
 
 .status-indicator.connected {
@@ -297,6 +332,9 @@
        width before any header content is laid out. */
     padding: 1rem;
     padding-top: max(1rem, env(safe-area-inset-top));
+    /* Narrower gutter than desktop, but still a gutter — see the base rule
+       (#5051): with the halves flush, clipped name text lands on the dot. */
+    gap: 0.5rem;
   }
 
   .app-header .header-logo,
@@ -311,6 +349,17 @@
 
   .header-right {
     gap: 8px;
+  }
+
+  /*
+   * `.user-menu` carries a global `margin-left: 16px` (App.css) from before the
+   * header row had a `gap`, so on a phone the avatar sat 24px from the badge
+   * while the source name was fighting for single digits (#5051). `.header-right`
+   * is `flex-shrink: 0`, so every pixel it wastes is taken straight out of
+   * `.header-left` — the half that has to hold the name.
+   */
+  .header-right .user-menu {
+    margin-left: 0;
   }
 
   .back-to-sources-btn {
