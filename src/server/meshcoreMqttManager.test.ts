@@ -127,7 +127,12 @@ describe('MeshCoreMqttManager — subscription', () => {
   it('subscribes to the region wildcard topic on start', async () => {
     await makeManager().start();
     expect(connectMock).toHaveBeenCalledTimes(1);
-    expect(subscribeMock).toHaveBeenCalledWith(['meshcore/MCO/+/packets']);
+    expect(subscribeMock).toHaveBeenCalledWith([
+      'meshcore/MCO/+/packets',
+      // Phase 5 (#5040) added the status topic to the same subscribe call —
+      // observer heartbeats ride the same region prefix as packets.
+      'meshcore/MCO/+/status',
+    ]);
   });
 
   it('is idempotent — a second start does not open a second connection', async () => {
@@ -226,7 +231,12 @@ describe('MeshCoreMqttManager — ingest', () => {
     connectMock.mockResolvedValueOnce(undefined);
     await mgr.start();
     expect(connectMock).toHaveBeenCalledTimes(2);
-    expect(subscribeMock).toHaveBeenCalledWith(['meshcore/MCO/+/packets']);
+    expect(subscribeMock).toHaveBeenCalledWith([
+      'meshcore/MCO/+/packets',
+      // Phase 5 (#5040) added the status topic to the same subscribe call —
+      // observer heartbeats ride the same region prefix as packets.
+      'meshcore/MCO/+/status',
+    ]);
   });
 
   it('tolerates stop() before start()', async () => {
