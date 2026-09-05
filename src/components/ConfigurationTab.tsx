@@ -41,6 +41,7 @@ import { ImportConfigModal } from './configuration/ImportConfigModal';
 import { ExportConfigModal } from './configuration/ExportConfigModal';
 import { ROLE_MAP, PRESET_MAP, REGION_MAP } from './configuration/constants';
 import SectionNav from './SectionNav';
+import styles from './ConfigurationTab.module.css';
 
 interface ConfigurationTabProps {
   baseUrl?: string; // Optional, not used in component but passed from App.tsx
@@ -1965,7 +1966,10 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
 
   return (
     <div className="tab-content">
-      <SectionNav items={[
+      {/* Picker + form share one flex row on a landscape phone (#5069): the
+          picker becomes a left rail so the form keeps the full usable height. */}
+      <div className={styles.configShell}>
+      <SectionNav className={styles.configNav} items={[
         { id: 'config-danger', label: t('config.warning_title', 'Warning') },
         { id: 'config-import-export', label: t('config.import_export_title', 'Import/Export') },
         { id: 'config-node-identity', label: t('config.node_identity', 'Node Identity') },
@@ -1997,7 +2001,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
       ]} />
 
       {/* Two-column layout: main content on left, GPIO summary on right */}
-      <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
+      <div className={styles.configBody} style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
         {/* Main content column */}
         <div style={{ flex: 1, minWidth: 0 }}>
 
@@ -2813,6 +2817,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           />
         </div>
       </div>{/* End two-column layout */}
+      </div>{/* End landscape rail shell */}
 
       {/* Import/Export Modals */}
       <ImportConfigModal

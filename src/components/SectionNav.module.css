@@ -1,0 +1,25 @@
+/*
+ * SectionNav — selected-category state (#5069).
+ *
+ * The picker is an anchor list over one long document, so until now it had no
+ * "selected" state at all. That was survivable while every button was on
+ * screen at once. It stops being survivable the moment the picker has to
+ * scroll — the landscape rail and the portrait chip row both do — because then
+ * the user cannot see which category they are in, nor where they are in the
+ * list.
+ *
+ * The class is doubled so it out-specifies `.section-nav-item` in App.css
+ * (0,2,0 vs 0,1,0) regardless of which sheet the bundler emits first.
+ */
+.active.active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-text);
+  font-weight: 600;
+}
+
+.active.active:hover {
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+  color: var(--color-accent-text);
+}
