@@ -1953,8 +1953,44 @@ body {
     padding: 0.5rem;
   }
 
-  /* Make entire page non-scrollable on mobile */
-  .tab-content {
+  /*
+   * NON-SCROLLABLE PAGE — CHANNELS ONLY.
+   *
+   * This started life as a bare `.tab-content { overflow: hidden }` in #754
+   * ("Improve mobile layout for Channels and Messages tabs"), written in the
+   * middle of that PR's channel declarations. The intent was the chat view:
+   * a fixed-height layout whose message list scrolls internally, so the page
+   * behind it must not scroll too. The selector was simply wider than the
+   * intent — `.tab-content` is also rendered by Settings, Notifications,
+   * Device config, Admin Commands and Info.
+   *
+   * `overflow: hidden` makes the element a scroll container that can never
+   * scroll, and a scroll container is the scrollport every `position: sticky`
+   * descendant is measured against. Those pages are `height: auto`, so the
+   * box grows with its content, its scrollTop stays 0 forever, and sticky
+   * silently never engages: the `.section-nav` chip row scrolled away with
+   * the content on all of them. Measured at 393x852, it left the viewport at
+   * scrollTop 1200 instead of parking at the header's 40px.
+   *
+   * Only portrait was affected — this block is `max-width: 768px` and a
+   * landscape phone is wider than that — so the same page stuck correctly at
+   * 852x393 and not at 393x852. Landscape was the correct behaviour; this
+   * scoping makes portrait match it.
+   *
+   * Scoped to the compound selector rather than deleted, because the intent is
+   * real. It is now a backstop beside the primary declaration in the
+   * `.channels-tab-content` block above (which also carries the flex chain,
+   * `min-height: 0` and `overscroll-behavior: contain`), and beside
+   * `.app:has(...)`, `.app-main:has(...)` and `body:has(.channels-tab-content)`
+   * further down. Do not widen it back to `.tab-content`.
+   *
+   * Because that block already declares the same thing, this rule changes
+   * nothing today — it is documentary until the day someone deletes the
+   * declaration above, at which point it silently becomes the only copy. That
+   * is what a backstop is for; just do not read "it has no effect" as "it can
+   * go".
+   */
+  .tab-content.channels-tab-content {
     overflow: hidden;
   }
 
