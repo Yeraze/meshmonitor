@@ -6,14 +6,16 @@
  * the ones separating status from packet handling, since both ride the same
  * region topic prefix.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const upsertNode = vi.fn().mockResolvedValue(undefined);
+const insertTelemetryBatch = vi.fn().mockResolvedValue(1);
 
 vi.mock('../services/database.js', () => ({
   default: {
     meshcore: { upsertNode: (...a: unknown[]) => upsertNode(...a), insertMessage: vi.fn() },
     channels: { getAllChannels: vi.fn().mockResolvedValue([]) },
+    telemetry: { insertTelemetryBatch: (...a: unknown[]) => insertTelemetryBatch(...a) },
   },
 }));
 vi.mock('./services/dataEventEmitter.js', () => ({ dataEventEmitter: { emitMeshCoreMessage: vi.fn() } }));
@@ -59,7 +61,21 @@ async function started() {
 }
 const settle = () => new Promise(r => setTimeout(r, 0));
 
-beforeEach(() => { upsertNode.mockClear(); lastClient = null; });
+beforeEach(() => {
+  upsertNode.mockClear();
+  insertTelemetryBatch.mockClear();
+  nowMs = 1_700_000_000_000;
+  vi.spyOn(Date, 'now').mockImplementation(() => nowMs);
+  lastClient = null;
+});
+afterEach(() => { vi.restoreAllMocks(); });
+
+/** Controls the manager's clock so the sample throttle is testable. */
+let nowMs = 1_700_000_000_000;
+
+/** The single row handed to insertTelemetryBatch on the Nth call. */
+const rowAt = (call: number) =>
+  (insertTelemetryBatch.mock.calls[call][0] as Array<Record<string, unknown>>)[0];
 
 describe('status ingest (#5040 Phase 5)', () => {
   it('subscribes to the status topic alongside packets', async () => {
@@ -209,5 +225,132 @@ describe('status ingest (#5040 Phase 5)', () => {
     lastClient!.deliver(statusTopic, { type: 'PACKET', origin_id: OBS, raw: '0500deadbeef' });
     await settle();
     expect(upsertNode).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Noise floor persistence (#5040 follow-up).
+ *
+ * Phase 5 decoded `noise_floor` and showed it live, but stored nothing, so a
+ * region feed could not answer "is this band getting more congested" — the one
+ * question the reading is for. It is written as `mc_status_noise_floor`, the
+ * series the remote-telemetry scheduler already writes for device-backed
+ * MeshCore sources, so both kinds of observer share one graph.
+ */
+describe('noise floor persistence (#5040 follow-up)', () => {
+  it('stores the reading as an mc_status_noise_floor telemetry sample', async () => {
+    await started();
+    lastClient!.deliver(statusTopic, online());
+    await settle();
+
+    expect(insertTelemetryBatch).toHaveBeenCalledTimes(1);
+    const [, sourceId] = insertTelemetryBatch.mock.calls[0];
+    expect(sourceId).toBe('src-mqtt');
+
+    const row = rowAt(0);
+    expect(row.telemetryType).toBe('mc_status_noise_floor');
+    expect(row.value).toBe(-95);
+    expect(row.nodeId).toBe(OBS);
+    // Same synthesised nodeNum every other MeshCore telemetry writer uses:
+    // low 32 bits of the pubkey, forced non-negative.
+    expect(row.nodeNum).toBe(0xaaaaaaaa & 0x7fffffff);
+  });
+
+  it('uses the same unit as the device-backed scheduler, so one series is not split', async () => {
+    await started();
+    lastClient!.deliver(statusTopic, online());
+    await settle();
+    expect(rowAt(0).unit).toBe('dB');
+  });
+
+  it('writes the node row before the sample, so the reading has a node to hang off', async () => {
+    await started();
+    lastClient!.deliver(statusTopic, online());
+    await settle();
+
+    expect(upsertNode).toHaveBeenCalled();
+    expect(insertTelemetryBatch).toHaveBeenCalled();
+    expect(upsertNode.mock.invocationCallOrder[0]).toBeLessThan(
+      insertTelemetryBatch.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('stores a reading from firmware that reports ONLY noise_floor', async () => {
+    // The Phase 5 guard returned early unless battery or uptime was present,
+    // which would have dropped this observer entirely — no node, no sample.
+    await started();
+    lastClient!.deliver(statusTopic, online({ stats: { noise_floor: -101 } }));
+    await settle();
+
+    expect(upsertNode).toHaveBeenCalledTimes(1);
+    expect(rowAt(0).value).toBe(-101);
+  });
+
+  it('drops a retained replay: a second heartbeat inside the throttle stores nothing', async () => {
+    // The broker replays each observer's retained /status on every reconnect,
+    // so a flapping socket would otherwise write a sample per reconnect.
+    await started();
+    lastClient!.deliver(statusTopic, online());
+    await settle();
+    nowMs += 5_000;
+    lastClient!.deliver(statusTopic, online({ stats: { noise_floor: -80 } }));
+    await settle();
+
+    expect(insertTelemetryBatch).toHaveBeenCalledTimes(1);
+    expect(rowAt(0).value).toBe(-95);
+  });
+
+  it('stores the next real heartbeat, which is well past the throttle', async () => {
+    await started();
+    lastClient!.deliver(statusTopic, online());
+    await settle();
+    // Observers heartbeat every 5 minutes; the throttle is 60s, so a genuine
+    // heartbeat is never the thing being dropped.
+    nowMs += 300_000;
+    lastClient!.deliver(statusTopic, online({ stats: { noise_floor: -88 } }));
+    await settle();
+
+    expect(insertTelemetryBatch).toHaveBeenCalledTimes(2);
+    expect(rowAt(1).value).toBe(-88);
+    expect(rowAt(1).timestamp).toBe(nowMs);
+  });
+
+  it('throttles per observer, not globally', async () => {
+    const other = 'BB'.repeat(32);
+    await started();
+    lastClient!.deliver(statusTopic, online());
+    await settle();
+    lastClient!.deliver(`meshcore/MCO/${other}/status`, online({ origin_id: other }));
+    await settle();
+
+    expect(insertTelemetryBatch).toHaveBeenCalledTimes(2);
+    expect(rowAt(1).nodeId).toBe(other);
+  });
+
+  it('stores nothing when the observer reports no noise floor', async () => {
+    await started();
+    lastClient!.deliver(statusTopic, online({ stats: { battery_mv: 4100 } }));
+    await settle();
+
+    expect(upsertNode).toHaveBeenCalledTimes(1);
+    expect(insertTelemetryBatch).not.toHaveBeenCalled();
+  });
+
+  it('stores nothing from an offline notice', async () => {
+    await started();
+    lastClient!.deliver(statusTopic, online({ status: 'offline' }));
+    await settle();
+    expect(insertTelemetryBatch).not.toHaveBeenCalled();
+  });
+
+  it('keeps ingesting when the telemetry write fails', async () => {
+    // A lost sample must never cost us the packet ingest on this connection.
+    insertTelemetryBatch.mockRejectedValueOnce(new Error('db down'));
+    const mgr = await started();
+    lastClient!.deliver(statusTopic, online());
+    await settle();
+
+    expect(upsertNode).toHaveBeenCalledTimes(1);
+    expect(mgr.getStatus().connected).toBe(true);
   });
 });

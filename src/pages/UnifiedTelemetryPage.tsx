@@ -60,6 +60,10 @@ const TYPE_LABELS: Record<string, string> = {
   numTxDropped: 'TX Drop',
   heapTotalBytes: 'Heap Total',
   heapFreeBytes: 'Heap Free',
+  // MeshCore. Other mc_* types still fall back to their raw key here; this one
+  // is labelled because an MQTT ingest source has no other telemetry surface —
+  // it has no local node, so the per-source Node Info page does not apply.
+  mc_status_noise_floor: 'Noise Floor',
   // Environment
   temperature: 'Temp',
   humidity: 'Humidity',
