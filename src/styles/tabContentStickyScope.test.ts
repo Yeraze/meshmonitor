@@ -105,9 +105,15 @@ describe('.tab-content does not trap its sticky descendants', () => {
 });
 
 describe('the channels tab keeps the non-scrollable treatment', () => {
-  const SMALL: Array<[string, Viewport]> = [['portrait phone', PORTRAIT_PHONE]];
+  /*
+   * Portrait only, and deliberately so: the rule under repair lives in the
+   * `max-width: 768px` block, which a landscape phone never enters. Landscape
+   * containment comes from the `min-width: 769px` and compact-landscape blocks
+   * instead, and asserting this selector there would assert nothing.
+   */
+  const PORTRAIT_ONLY: Array<[string, Viewport]> = [['portrait phone', PORTRAIT_PHONE]];
 
-  it.each(SMALL)('contains the chat view on a %s', (_name, vp) => {
+  it.each(PORTRAIT_ONLY)('contains the chat view on a %s', (_name, vp) => {
     // The intent of #754, preserved. The chat view is a fixed-height layout
     // whose message list scrolls internally; without containment the page
     // scrolls behind the conversation and the send bar is pushed off screen
@@ -115,7 +121,7 @@ describe('the channels tab keeps the non-scrollable treatment', () => {
     expect(resolveApp('.tab-content.channels-tab-content', 'overflow', vp)).toBe('hidden');
   });
 
-  it.each(SMALL)('does not lean on the shared rule for it on a %s', (_name, vp) => {
+  it.each(PORTRAIT_ONLY)('does not lean on the shared rule for it on a %s', (_name, vp) => {
     // The channel-scoped block declares its own containment alongside the flex
     // chain, so removing the shared rule changed nothing here — verified in
     // the browser by deleting the rule via CSSOM and re-measuring. Asserted so
@@ -131,9 +137,14 @@ describe('the channels tab keeps the non-scrollable treatment', () => {
     // regression this file exists to catch, and it would read as a one-word
     // diff. Comments are stripped first — the rule this replaced sat directly
     // behind one, so a raw-text scan silently matches nothing.
+    //
+    // The boundary accepts a comma on either side, so a grouped selector
+    // (`.foo, .tab-content { overflow: … }` or `.tab-content, .foo { … }`)
+    // is caught too. `.tab-content.channels-tab-content` is not, because the
+    // character after the class is `.`, which is in neither boundary set.
     expect(appCss).toContain('.tab-content.channels-tab-content');
     const withoutComments = appCss.replace(/\/\*[\s\S]*?\*\//g, '');
-    expect(withoutComments).not.toMatch(/(^|\})\s*\.tab-content\s*\{[^}]*overflow\s*:/);
+    expect(withoutComments).not.toMatch(/(^|\}|,)\s*\.tab-content\s*[,{][^}]*overflow\s*:/);
   });
 });
 

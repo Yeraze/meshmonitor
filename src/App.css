@@ -1983,6 +1983,12 @@ body {
    * `min-height: 0` and `overscroll-behavior: contain`), and beside
    * `.app:has(...)`, `.app-main:has(...)` and `body:has(.channels-tab-content)`
    * further down. Do not widen it back to `.tab-content`.
+   *
+   * Because that block already declares the same thing, this rule changes
+   * nothing today — it is documentary until the day someone deletes the
+   * declaration above, at which point it silently becomes the only copy. That
+   * is what a backstop is for; just do not read "it has no effect" as "it can
+   * go".
    */
   .tab-content.channels-tab-content {
     overflow: hidden;
