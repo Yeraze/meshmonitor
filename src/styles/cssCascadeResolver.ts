@@ -26,6 +26,12 @@
 export interface Viewport {
   width: number;
   height: number;
+  /**
+   * User preference, not a dimension. Defaults to "no-preference" — the
+   * browser default — so a sheet that carries a `prefers-reduced-motion`
+   * block (AppHeader.css does) resolves rather than throwing (#5051).
+   */
+  prefersReducedMotion?: boolean;
 }
 
 /** Evaluates the small media-feature grammar these sheets actually use. */
@@ -49,6 +55,10 @@ export function mediaMatches(condition: string, vp: Viewport): boolean {
         case 'orientation':
           // CSS counts a square viewport as landscape.
           return value === 'landscape' ? vp.width >= vp.height : vp.height > vp.width;
+        case 'prefers-reduced-motion':
+          return value === 'reduce'
+            ? vp.prefersReducedMotion === true
+            : vp.prefersReducedMotion !== true;
         default:
           throw new Error(`unsupported media feature: ${name}`);
       }
