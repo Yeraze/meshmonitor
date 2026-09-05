@@ -223,8 +223,17 @@ router.get('/search', async (req: Request, res: Response) => {
     }
 
     // Search MeshCore messages (in-memory filter, across every registered source)
-    const meshcoreManagers = sourceManagerRegistry.getAllManagers().filter((m): m is MeshCoreManager => isMeshCoreManager(m) && m.isConnected());
-    if ((searchScope === 'all' || searchScope === 'meshcore') && meshcoreManagers.length > 0) {
+    const allManagers = sourceManagerRegistry.getAllManagers();
+    const meshcoreManagers = allManagers.filter((m): m is MeshCoreManager => isMeshCoreManager(m) && m.isConnected());
+    // Ingest sources are resolved BEFORE the gate, and the gate counts both
+    // kinds. Nesting them inside a device-manager-only check meant an install
+    // with a region feed and no MeshCore radio got zero results — the exact
+    // silent-exclusion this phase exists to fix (#5040 Phase 5.5).
+    const ingestManagers = allManagers.filter(isMeshCoreMqttManager).filter(m => m.isConnected());
+    if (
+      (searchScope === 'all' || searchScope === 'meshcore') &&
+      (meshcoreManagers.length > 0 || ingestManagers.length > 0)
+    ) {
       const hasMeshcoreAccess = isAdmin || (accessibleChannels !== null && accessibleChannels.has(-1));
 
       if (hasMeshcoreAccess) {
@@ -234,10 +243,6 @@ router.get('/search', async (req: Request, res: Response) => {
         // Gathered separately rather than forcing one signature on both
         // (#5040 Phase 5.5): before this, a region feed's channel messages were
         // stored but never searchable.
-        const ingestManagers = sourceManagerRegistry
-          .getAllManagers()
-          .filter(isMeshCoreMqttManager)
-          .filter(m => m.isConnected());
         const ingestMessages = (
           await Promise.all(ingestManagers.map(m => m.getRecentMessagesAsync(1000)))
         ).flat();

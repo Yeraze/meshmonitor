@@ -1269,6 +1269,10 @@ router.get('/status', async (req: Request, res: Response) => {
         const all = await mcManager.getAllNodes();
         mcNodeCount += all.length;
         const localHasLastHeard = mcManager.getLocalNode()?.lastHeard != null;
+        // The i===0 branch below only ever fires for a device-backed source:
+        // `getLocalNode()` is hardcoded null on an MQTT ingest manager (it is
+        // not a node on the mesh), so those sources fall through to the
+        // lastHeard check for every node, which is the correct reading.
         mcActiveNodeCount += all.filter((n: any, i: number) => {
           if (i === 0 && mcManager.getLocalNode() && !localHasLastHeard) return true;
           return typeof n.lastHeard === 'number' && n.lastHeard >= activeCutoffMs;
