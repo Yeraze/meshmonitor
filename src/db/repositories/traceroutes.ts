@@ -470,15 +470,23 @@ export class TraceroutesRepository extends BaseRepository {
   /**
    * Delete all traceroutes, optionally scoped to a single source.
    */
+  /*
+   * #5088: this used to branch on `sourceId` truthiness and, when omitted,
+   * delete every row across every source WITHOUT consulting `withSourceScope`.
+   * Its sibling `deleteAllRouteSegments` did consult the guard and threw. So a
+   * caller that forgot the scope wiped all traceroutes, then failed on the
+   * segments — the user saw an error while the data was already gone, leaving
+   * orphaned route_segments behind. Both now go through the same guard, so an
+   * omitted scope fails before deleting anything.
+   */
   async deleteAllTraceroutes(sourceId?: SourceScope): Promise<number> {
     const { traceroutes } = this.tables;
+    const scope = this.withSourceScope(traceroutes, sourceId);
     const countQuery = this.db.select({ count: count() }).from(traceroutes);
-    const result = await (sourceId
-      ? countQuery.where(eq(traceroutes.sourceId, sourceId))
-      : countQuery);
+    const result = await (scope ? countQuery.where(scope) : countQuery);
     const total = Number(result[0].count);
-    if (sourceId) {
-      await this.db.delete(traceroutes).where(eq(traceroutes.sourceId, sourceId));
+    if (scope) {
+      await this.db.delete(traceroutes).where(scope);
     } else {
       await this.db.delete(traceroutes);
     }

@@ -1337,12 +1337,14 @@ class ApiService {
     return response.json();
   }
 
-  async purgeTraceroutes() {
+  /** @param sourceId Scope the purge to one source; omit from the global Danger Zone. */
+  async purgeTraceroutes(sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/purge/traceroutes`, {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
       credentials: 'include',
+      body: JSON.stringify(sourceId ? { sourceId } : {}),
     });
 
     if (!response.ok) {

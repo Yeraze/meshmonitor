@@ -144,6 +144,54 @@ function runTraceroutesTests(getBackend: () => TestBackend) {
     repo = new TraceroutesRepository(backend.drizzleDb, backend.dbType);
   });
 
+  // ============ SOURCE-SCOPE GUARD (#5088) ============
+
+  /*
+   * `deleteAllTraceroutes` used to branch on `sourceId` truthiness and, when it
+   * was omitted, delete every row across every source without consulting the
+   * guard — while its sibling `deleteAllRouteSegments` threw. A caller that
+   * forgot the scope therefore wiped all traceroutes, THEN failed on the
+   * segments: an error toast on top of silent cross-source data loss, with
+   * orphaned route_segments left behind. Both must refuse the same way.
+   */
+  it('deleteAllTraceroutes refuses an omitted scope instead of wiping every source', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+    await expect((repo as unknown as { deleteAllTraceroutes: (s?: undefined) => Promise<number> })
+      .deleteAllTraceroutes(undefined)).rejects.toThrow(/sourceId is required/);
+  });
+
+  it('deleteAllRouteSegments refuses an omitted scope too', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+    await expect((repo as unknown as { deleteAllRouteSegments: (s?: undefined) => Promise<number> })
+      .deleteAllRouteSegments(undefined)).rejects.toThrow(/sourceId is required/);
+  });
+
+  it('deleteAllTraceroutes leaves other sources intact when scoped', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+    await repo.insertTraceroute(makeTraceroute(), 'src-a');
+    await repo.insertTraceroute(makeTraceroute(), 'src-b');
+
+    await repo.deleteAllTraceroutes('src-a');
+
+    const remaining = await repo.getAllTraceroutes(100, ALL_SOURCES);
+    expect(remaining.every(r => r.sourceId === 'src-b')).toBe(true);
+    expect(remaining.length).toBeGreaterThan(0);
+  });
+
+  it('deleteAllTraceroutes with ALL_SOURCES still clears everything', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+    await repo.insertTraceroute(makeTraceroute(), 'src-a');
+    await repo.insertTraceroute(makeTraceroute(), 'src-b');
+
+    await repo.deleteAllTraceroutes(ALL_SOURCES);
+
+    expect(await repo.getAllTraceroutes(100, ALL_SOURCES)).toHaveLength(0);
+  });
+
   // ============ TRACEROUTES ============
 
   it('insertTraceroute / getAllTraceroutes - insert and retrieve traceroutes', async () => {

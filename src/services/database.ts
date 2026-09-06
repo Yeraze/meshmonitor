@@ -3544,8 +3544,11 @@ class DatabaseService {
         await this.telemetryRepo.deleteAllTelemetry(sourceId);
       }
       if (this.traceroutesRepo) {
-        await this.traceroutesRepo.deleteAllTraceroutes(sourceId);
-        // undefined sourceId = admin global purge across every source — intentional cross-source
+        // undefined sourceId = admin global purge across every source — intentional cross-source.
+        // Both calls must resolve it: `deleteAllTraceroutes` used to accept a bare
+        // undefined and wipe every source without consulting the guard, so this line
+        // silently spanned sources while the one below it did not (#5088).
+        await this.traceroutesRepo.deleteAllTraceroutes(sourceId ?? ALL_SOURCES);
         await this.traceroutesRepo.deleteAllRouteSegments(sourceId ?? ALL_SOURCES);
       }
       if (this.neighborsRepo) {

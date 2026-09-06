@@ -6,6 +6,7 @@
  * NOT converted in this phase. See src/server/test-helpers/routeTestApp.ts.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { ALL_SOURCES } from '../../db/repositories/index.js';
 import tracerouteRoutes from './tracerouteRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 import type { DbTraceroute } from '../../db/types.js';
@@ -46,7 +47,7 @@ describe('GET /api/traceroutes/participation/:nodeNum', () => {
     // permissions/sources, not data rows. Without this, traceroute rows
     // seeded by an earlier test (same fixed sourceA/sourceB ids) leak into a
     // later test's participation query for the same nodeNum.
-    await harness.db.traceroutes.deleteAllTraceroutes();
+    await harness.db.traceroutes.deleteAllTraceroutes(ALL_SOURCES);
     await harness.cleanup();
   });
 
