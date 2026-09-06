@@ -4,6 +4,7 @@ import session from 'express-session';
 import request from 'supertest';
 import purgeRoutes from './purgeRoutes.js';
 import databaseService from '../../services/database.js';
+import { ALL_SOURCES } from '../../db/repositories/index.js';
 
 vi.mock('../../services/database.js', () => ({
   default: {
@@ -133,8 +134,43 @@ describe('Purge Routes', () => {
       const res = await request(app).post('/purge/traceroutes').send({});
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(mockDb.traceroutes.deleteAllTraceroutes).toHaveBeenCalled();
-      expect(mockDb.traceroutes.deleteAllRouteSegments).toHaveBeenCalled();
+      // Asserting the ARGUMENT, not merely that it was called: the previous
+      // assertion was `toHaveBeenCalled()`, which passed while both calls
+      // omitted the scope and tripped the repository guard at runtime (#5088).
+      expect(mockDb.traceroutes.deleteAllTraceroutes).toHaveBeenCalledWith(ALL_SOURCES);
+      expect(mockDb.traceroutes.deleteAllRouteSegments).toHaveBeenCalledWith(ALL_SOURCES);
+    });
+
+    it('scopes the purge to the source when one is supplied', async () => {
+      mockDb.findUserByIdAsync.mockResolvedValue(adminUser);
+      mockDb.getUserPermissionSetAsync.mockResolvedValue({ resources: {}, isAdmin: true });
+      const app = createApp(adminUser.id);
+      const res = await request(app).post('/purge/traceroutes').send({ sourceId: 'src-b' });
+      expect(res.status).toBe(200);
+      expect(mockDb.traceroutes.deleteAllTraceroutes).toHaveBeenCalledWith('src-b');
+      expect(mockDb.traceroutes.deleteAllRouteSegments).toHaveBeenCalledWith('src-b');
+      expect(res.body.message).toContain('src-b');
+    });
+
+    it('never passes an omitted scope through to the repositories', async () => {
+      // The guard exists so a forgotten scope cannot silently span sources.
+      // The route must resolve it, not forward `undefined`.
+      mockDb.findUserByIdAsync.mockResolvedValue(adminUser);
+      mockDb.getUserPermissionSetAsync.mockResolvedValue({ resources: {}, isAdmin: true });
+      const app = createApp(adminUser.id);
+      await request(app).post('/purge/traceroutes').send({});
+      for (const fn of [mockDb.traceroutes.deleteAllTraceroutes, mockDb.traceroutes.deleteAllRouteSegments]) {
+        expect(fn.mock.calls[0][0]).toBeDefined();
+      }
+    });
+
+    it('records the scope in the audit log', async () => {
+      mockDb.findUserByIdAsync.mockResolvedValue(adminUser);
+      mockDb.getUserPermissionSetAsync.mockResolvedValue({ resources: {}, isAdmin: true });
+      const app = createApp(adminUser.id);
+      await request(app).post('/purge/traceroutes').send({ sourceId: 'src-c' });
+      const detail = mockDb.auditLogAsync.mock.calls.at(-1)?.[3];
+      expect(JSON.parse(detail as string)).toEqual({ sourceId: 'src-c' });
     });
   });
 });

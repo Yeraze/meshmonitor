@@ -86,18 +86,30 @@ router.post('/messages', async (req: Request, res: Response) => {
 
 router.post('/traceroutes', async (req: Request, res: Response) => {
   try {
-    await databaseService.traceroutes.deleteAllTraceroutes();
-    await databaseService.traceroutes.deleteAllRouteSegments();
+    // Mirrors /purge/nodes and /purge/telemetry: scope to the source whose
+    // Danger Zone was used, or ALL_SOURCES from the global one. Passing the
+    // scope explicitly is required — the repositories reject an omitted
+    // sourceId rather than silently spanning every source (#5088).
+    const { sourceId: purgeTraceroutesSourceId } = req.body || {};
+    const scope = purgeTraceroutesSourceId ?? ALL_SOURCES;
+
+    await databaseService.traceroutes.deleteAllTraceroutes(scope);
+    await databaseService.traceroutes.deleteAllRouteSegments(scope);
 
     void databaseService.auditLogAsync(
       req.user!.id,
       'traceroutes_purged',
       'traceroute',
-      'All traceroutes and route segments purged',
+      JSON.stringify({ sourceId: purgeTraceroutesSourceId ?? null }),
       req.ip || null
     );
 
-    res.json({ success: true, message: 'All traceroutes and route segments purged' });
+    res.json({
+      success: true,
+      message: purgeTraceroutesSourceId
+        ? `Traceroutes and route segments purged for source ${purgeTraceroutesSourceId}`
+        : 'All traceroutes and route segments purged',
+    });
   } catch (error) {
     logger.error('Error purging traceroutes:', error);
     res.status(500).json({ error: 'Failed to purge traceroutes' });

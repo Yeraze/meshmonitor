@@ -37,6 +37,7 @@ import MapStyleManager from './MapStyleManager';
 import { useDashboardSources } from '../hooks/useDashboardData';
 import { DEFAULT_TERRARIUM_URL } from '../types/elevation';
 import { useSourceQuery } from '../hooks/useSourceQuery';
+import { useSource } from '../contexts/SourceContext';
 import {
   NODE_DISPLAY_SETTING_KEYS,
   NODE_DISPLAY_NUMERIC_DEFAULTS,
@@ -381,6 +382,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // #4412 Phase 3 WP4: scopes the Node Display GET/POST to the active source.
   // '' in mode="global" (GlobalSettingsPage renders outside a SourceProvider).
   const sourceQuery = useSourceQuery();
+  // Scope destructive purges to the source whose Danger Zone this is; null in
+  // global mode. `useSourceQuery()` returns a query string, so read the id
+  // directly rather than parsing it back out (#5088).
+  const { sourceId: purgeSourceId } = useSource();
 
   // Single draft reducer replacing the 49 `local*` mirrors (Task 5.3). Lazy-initialized once from
   // the current context/props values; category-C fields (no context/prop home) start at their
@@ -1378,7 +1383,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     if (!confirmed) return;
 
     try {
-      await apiService.purgeTraceroutes();
+      await apiService.purgeTraceroutes(purgeSourceId);
       showToast(t('toast.traceroutes_purged'), 'success');
       setTimeout(() => window.location.reload(), 1500);
     } catch (error) {
