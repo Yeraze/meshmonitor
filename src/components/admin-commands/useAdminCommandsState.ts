@@ -721,6 +721,44 @@ function adminCommandsReducer(state: AdminCommandsState, action: AdminCommandsAc
  * Hook to manage admin commands state with useReducer
  * Consolidates 50+ useState calls into organized state management
  */
+/**
+ * Build the security-config state updates from a loaded remote config.
+ *
+ * Extracted in #5077. The payload was applied from two places — the "load all"
+ * sequence and the per-section Load button — as near-identical inline copies.
+ * The #4736 `loadedForNodeNum` stamp was added to the first only, so a
+ * per-section security load populated the fields while leaving the Save gate
+ * closed: the config could be edited and never saved to the node.
+ *
+ * `loadedForNodeNum` is ALWAYS stamped, including when the device reported no
+ * recognised fields. The gate answers "which node did the values on screen come
+ * from", which is a fact about the load, not about how many fields it carried.
+ *
+ * @param config    Decoded security config from the admin response.
+ * @param forNodeNum The node the values were loaded from; stamped onto the gate.
+ * @returns `adminKeys` when present (applied separately), and the flag updates.
+ */
+export function buildSecurityConfigUpdates(
+  config: Record<string, unknown>,
+  forNodeNum: number | null,
+): { adminKeys?: string[]; updates: Record<string, unknown> } {
+  const result: { adminKeys?: string[]; updates: Record<string, unknown> } = { updates: {} };
+
+  if (Array.isArray(config.adminKeys)) {
+    const keys = config.adminKeys as string[];
+    result.adminKeys = keys.length === 0
+      ? ['']
+      : (keys.length < 3 ? [...keys, ''] : keys.slice(0, 3));
+  }
+
+  for (const field of ['isManaged', 'serialEnabled', 'debugLogApiEnabled', 'adminChannelEnabled'] as const) {
+    if (config[field] !== undefined) result.updates[field] = config[field];
+  }
+
+  result.updates.loadedForNodeNum = forNodeNum;
+  return result;
+}
+
 export function useAdminCommandsState() {
   const [state, dispatch] = useReducer(adminCommandsReducer, initialState);
 
