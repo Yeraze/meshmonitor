@@ -14,6 +14,7 @@ import { logger } from '../utils/logger';
 import type { PermissionSet, ResourceType } from '../types/permission';
 import { RESOURCES, SOURCEY_RESOURCES } from '../types/permission';
 import { useToast } from './ToastContainer';
+import { isAnyMeshCoreSourceType } from '../utils/nodeTypeCategory';
 
 interface Source {
   id: string;
@@ -993,7 +994,12 @@ const UsersTab: React.FC = () => {
                 // the extra checkbox when it does something — on a Meshtastic
                 // source, `nodes:viewOnMap` isn't checked anywhere.
                 const scopedSourceForNodes = sources.find(s => s.id === permissionScope);
-                const showNodesViewOnMap = resource === 'nodes' && scopedSourceForNodes?.type === 'meshcore';
+                // Any MeshCore source, ingest included (#5094): buildSourceNodes
+                // gates ingest nodes on nodes:viewOnMap exactly as it does
+                // device-backed ones, so hiding the checkbox made the permission
+                // ungrantable and the map silently empty.
+                const showNodesViewOnMap =
+                  resource === 'nodes' && isAnyMeshCoreSourceType(scopedSourceForNodes?.type);
 
                 return (
                   <div key={resource} className="permission-item">

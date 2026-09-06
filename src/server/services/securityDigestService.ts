@@ -1,6 +1,7 @@
 import { logger } from '../../utils/logger.js';
 import { scheduleCron } from '../utils/cronScheduler.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { isAnyMeshCoreSourceType } from '../../utils/nodeTypeCategory.js';
 import { resolveAppriseServerUrl, appriseNotifyEndpoint } from './appriseNotificationService.js';
 import type { Cron as CronJob } from 'croner';
 
@@ -314,7 +315,11 @@ class SecurityDigestService {
     // iterate every registered source and build a per-source digest.
     const targetSourceIds = sourceIdOverride
       ? [sourceIdOverride]
-      : sourceManagerRegistry.getAllManagers().filter(m => m.sourceType !== 'meshcore').map(m => m.sourceId);
+      // Exclusion, so it widens with the predicate: a digest is about OUR
+      // node's key/security posture, which an ingest source does not have.
+      : sourceManagerRegistry.getAllManagers()
+          .filter(m => !isAnyMeshCoreSourceType(m.sourceType))
+          .map(m => m.sourceId);
 
     if (targetSourceIds.length === 0) {
       return { success: false, message: 'No sources available' };

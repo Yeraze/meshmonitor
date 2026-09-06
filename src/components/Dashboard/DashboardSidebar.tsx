@@ -28,6 +28,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { UiIcon } from '../icons';
 import SidebarFooter from '../SidebarFooter';
 import styles from './DashboardSidebar.module.css';
+import { isAnyMeshCoreSourceType } from '../../utils/nodeTypeCategory';
 
 // Narrow, LOCAL slices of `source.config` / the status poll for the compact
 // Analyzer Observer badge (#5014 Phase 2 WP3 §4.9) — not imports of a
@@ -585,7 +586,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
         // without a watermark.
         const isMeshtastic =
           source.type === 'meshtastic_tcp' || source.type === 'meshtastic_mqtt';
-        const isMeshCore = source.type === 'meshcore';
+        const isMeshCore = isAnyMeshCoreSourceType(source.type);
         const isMqttBroker = source.type === 'mqtt_broker';
         const isMqttBridge = source.type === 'mqtt_bridge';
         // Reticulum (#3960 Phase 1b): no brand-asset watermark ships yet

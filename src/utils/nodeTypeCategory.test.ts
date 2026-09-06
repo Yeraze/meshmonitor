@@ -9,6 +9,7 @@ import {
   MESHCORE_CATEGORIES,
   MESHTASTIC_CATEGORIES,
   NODE_TYPE_CATEGORIES,
+  isAnyMeshCoreSourceType,
 } from './nodeTypeCategory';
 
 describe('getNodeTypeCategory', () => {
@@ -169,5 +170,41 @@ describe('categoriesForProtocols (adaptive filter set, issue #3610)', () => {
   it('nothing connected yet falls back to the full set (never empty)', () => {
     const cats = categoriesForProtocols({ meshcore: false, meshtastic: false });
     expect(cats).toEqual(NODE_TYPE_CATEGORIES);
+  });
+});
+
+/**
+ * Source-type classification for MeshCore (#5094).
+ *
+ * `sourceTypeProtocol` classified `meshcore_mqtt` as 'meshtastic', which is how
+ * ingest nodes ended up categorised — and rendered — as the wrong protocol.
+ */
+describe('isAnyMeshCoreSourceType / sourceTypeProtocol (#5094)', () => {
+  it('accepts both MeshCore source types', () => {
+    expect(isAnyMeshCoreSourceType('meshcore')).toBe(true);
+    expect(isAnyMeshCoreSourceType('meshcore_mqtt')).toBe(true);
+  });
+
+  it('rejects every non-MeshCore source type', () => {
+    for (const t of ['meshtastic_tcp', 'mqtt_broker', 'mqtt_bridge', 'reticulum']) {
+      expect(isAnyMeshCoreSourceType(t)).toBe(false);
+    }
+  });
+
+  it('rejects null/undefined rather than throwing', () => {
+    expect(isAnyMeshCoreSourceType(null)).toBe(false);
+    expect(isAnyMeshCoreSourceType(undefined)).toBe(false);
+  });
+
+  it('does not match on a prefix', () => {
+    // Guards against a future `startsWith('meshcore')` "simplification", which
+    // would swallow any later meshcore_* type that is NOT a read-alike source.
+    expect(isAnyMeshCoreSourceType('meshcore_future_device')).toBe(false);
+  });
+
+  it('classifies an ingest source as the meshcore protocol', () => {
+    expect(sourceTypeProtocol('meshcore_mqtt')).toBe('meshcore');
+    expect(sourceTypeProtocol('meshcore')).toBe('meshcore');
+    expect(sourceTypeProtocol('meshtastic_tcp')).toBe('meshtastic');
   });
 });

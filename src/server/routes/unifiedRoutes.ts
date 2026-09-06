@@ -14,6 +14,7 @@ import { logger } from '../../utils/logger.js';
 import { PortNum, CHANNEL_DB_OFFSET, modemPresetChannelName } from '../constants/meshtastic.js';
 import { filterPacketsByPermissions, getAllowedChannels } from './packetPermissions.js';
 import { isAnyMeshCoreManager } from '../sourceManagerTypes.js';
+import { isAnyMeshCoreSourceType } from '../../utils/nodeTypeCategory.js';
 import {
   getUserReadableVirtualChannelIds,
   canReadVirtualChannel,
@@ -541,7 +542,7 @@ router.get('/messages', async (req: Request, res: Response) => {
 
     await Promise.all(
       sources.map(async (source) => {
-        if (source.type === 'meshcore') {
+        if (isAnyMeshCoreSourceType(source.type)) {
           await ingestMeshCore(source);
           return;
         }
@@ -860,7 +861,7 @@ router.get('/telemetry', async (req: Request, res: Response) => {
           longName?: string | null;
           shortName?: string | null;
         }> =
-          source.type === 'meshcore'
+          isAnyMeshCoreSourceType(source.type)
             ? (await databaseService.meshcore.getNodesBySource(source.id)).map((n) => ({
                 telemetryNodeId: n.publicKey,
                 longName: n.name,
@@ -1039,7 +1040,7 @@ router.get('/packets', async (req: Request, res: Response) => {
 
     const perSource = await Promise.allSettled(
       fetchSources.map(async (source): Promise<{ rows: TaggedPacket[]; saturated: boolean }> => {
-        if (source.type === 'meshcore') {
+        if (isAnyMeshCoreSourceType(source.type)) {
           if (!meshcoreEligible) return { rows: [], saturated: false };
           const raw = await meshcorePacketLogService.getPackets({
             sourceId: source.id,
@@ -1148,7 +1149,7 @@ router.get('/packets/distribution', async (req: Request, res: Response) => {
       readableSources.map(async (source) => {
         // MeshCore OTA rows have no per-node/per-PortNum breakdown that aligns
         // with the Meshtastic namespace, so they only contribute a source total.
-        if (source.type === 'meshcore') {
+        if (isAnyMeshCoreSourceType(source.type)) {
           const count = await meshcorePacketLogService.getPacketCount({ sourceId: source.id, since });
           return { source, byDevice: [], byType: [], meshcoreCount: count };
         }
@@ -1250,11 +1251,13 @@ router.get('/status', async (req: Request, res: Response) => {
     // MeshCore nodes live in per-source in-memory managers (looked up via
     // sourceManagerRegistry), not the shared `nodes` table — count them separately
     // using the same 2h active window as the per-source /status endpoint (issue #3321).
+    // Both halves use the same predicate so an ingest source lands in exactly
+    // one of them. Flipping only the first would have counted it twice (#5094).
     const meshcoreAllowedIds = allowedIds.filter(
-      (id) => sources.find((s) => s.id === id)?.type === 'meshcore',
+      (id) => isAnyMeshCoreSourceType(sources.find((s) => s.id === id)?.type),
     );
     const meshtasticAllowedIds = allowedIds.filter(
-      (id) => sources.find((s) => s.id === id)?.type !== 'meshcore',
+      (id) => !isAnyMeshCoreSourceType(sources.find((s) => s.id === id)?.type),
     );
 
     const activeCutoffMs = Date.now() - 7_200_000;

@@ -262,5 +262,26 @@ export function categoriesForProtocols(opts: {
  * invent a category for it here ahead of that work.
  */
 export function sourceTypeProtocol(type: string | undefined | null): 'meshcore' | 'meshtastic' {
-  return type === 'meshcore' ? 'meshcore' : 'meshtastic';
+  return isAnyMeshCoreSourceType(type) ? 'meshcore' : 'meshtastic';
+}
+
+/**
+ * True for every MeshCore source type — device-backed (`meshcore`) AND the
+ * MQTT ingest source (`meshcore_mqtt`).
+ *
+ * The source-type mirror of `isAnyMeshCoreManager()` in
+ * `src/server/sourceManagerTypes.ts`, and the reason it exists: #5040 Phase 5.5
+ * widened the MANAGER predicates but left the raw `source.type === 'meshcore'`
+ * string comparisons alone, so ingest sources kept falling into the Meshtastic
+ * branch of read paths — nodes present in `meshcore_nodes` and invisible in the
+ * UI (#5094).
+ *
+ * Use this for READ surfaces: anything asking "which table do this source's
+ * nodes/messages/packets live in", or "which protocol should I render". Do NOT
+ * use it for device or TX paths (connect, device config, CLI, remote admin,
+ * auto-acknowledge) — an ingest source has no radio, and those must keep
+ * narrowing to `'meshcore'` exactly.
+ */
+export function isAnyMeshCoreSourceType(type: string | undefined | null): boolean {
+  return type === 'meshcore' || type === 'meshcore_mqtt';
 }

@@ -22,6 +22,7 @@ import databaseService from '../../services/database.js';
 import { hasPermission } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { isAnyMeshCoreSourceType } from '../../utils/nodeTypeCategory.js';
 import { isAnyMeshCoreManager } from '../sourceManagerTypes.js';
 import {
   filterNodesByChannelPermission,
@@ -46,7 +47,10 @@ export async function buildSourceNodes(source: SourceRow, user: ReqUser): Promis
   // them into the dashboard's flat node shape. These return early and never
   // reach the position-override logic below: MeshCore contacts have no
   // override columns (that's a Meshtastic-node feature, #3551).
-  if (source.type === 'meshcore') {
+  // isAnyMeshCoreSourceType, not === 'meshcore' (#5094): this outer gate was
+  // the reason the isAnyMeshCoreManager narrow below never ran for an ingest
+  // source. The comment there described behaviour this line prevented.
+  if (isAnyMeshCoreSourceType(source.type)) {
     // Mirror the Meshtastic path below: canRead("nodes") makes the contact
     // list available, but publishing positions on the map additionally
     // requires viewOnMap("nodes") — MeshCore has no per-channel granularity
