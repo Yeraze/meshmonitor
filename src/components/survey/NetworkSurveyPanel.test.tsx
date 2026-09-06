@@ -88,6 +88,21 @@ describe('NetworkSurveyPanel', () => {
     expect(get).not.toHaveBeenCalled();
   });
 
+  /*
+   * #5078: the panel requested `/sources/:id/survey` with no `/api` prefix, so
+   * the path missed the API router, fell through to the SPA catch-all, and came
+   * back as index.html with a 200. Every source on every version failed with a
+   * generic "Could not build the survey" while the server was fine. Assert the
+   * prefix, not just that a request happened.
+   */
+  it('requests the survey under /api so it reaches the API router', async () => {
+    renderPanel(survey());
+    await waitFor(() => expect(get).toHaveBeenCalled());
+    const url = get.mock.calls[0][0] as string;
+    expect(url.startsWith('/api/')).toBe(true);
+    expect(url).toBe('/api/sources/src-a/survey?hours=24');
+  });
+
   it('states plainly that viewing it transmits nothing', async () => {
     // A panel called "survey" that quietly used airtime would be a nasty
     // surprise, and the user has no other way to tell.
@@ -137,7 +152,7 @@ describe('NetworkSurveyPanel', () => {
 
     await user.selectOptions(screen.getByTestId('survey-window'), '6');
 
-    await waitFor(() => expect(get).toHaveBeenLastCalledWith('/sources/src-a/survey?hours=6'));
+    await waitFor(() => expect(get).toHaveBeenLastCalledWith('/api/sources/src-a/survey?hours=6'));
   });
 
   it('recovers via retry after a failure', async () => {

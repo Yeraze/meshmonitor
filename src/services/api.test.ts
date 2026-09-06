@@ -1314,3 +1314,58 @@ describe('ApiService.sendAdminCommand — async operation following (#4482)', ()
       .rejects.toMatchObject({ code: 'OPERATION_NOT_FOUND' });
   });
 });
+
+/*
+ * #5078: a request path missing its `/api` prefix does not 404. It falls
+ * through to the static catch-all and returns the SPA shell with a 200, so
+ * `response.json()` dies on `<!DOCTYPE` and the caller sees an opaque parse
+ * error with no hint about the real mistake. One mis-prefixed call shipped for
+ * months behind a generic "Could not build the survey".
+ */
+describe('ApiService — SPA-fallback guard (#5078)', () => {
+  beforeEach(() => {
+    (apiService as any).baseUrl = '';
+    (apiService as any).configFetched = true;
+    (apiService as any).configPromise = null;
+    mockFetch.mockClear();
+  });
+
+  it('rejects an HTML body with a message naming the endpoint', async () => {
+    mockFetch.mockResolvedValueOnce(
+      createMockResponse('<!DOCTYPE html><div id="root"></div>', true, 'text/html; charset=utf-8'),
+    );
+    await expect(apiService.get('/sources/abc/survey?hours=24'))
+      .rejects.toThrow(/\/sources\/abc\/survey/);
+  });
+
+  it('explains that the /api prefix is the likely cause', async () => {
+    mockFetch.mockResolvedValueOnce(
+      createMockResponse('<!DOCTYPE html>', true, 'text/html'),
+    );
+    await expect(apiService.get('/oops')).rejects.toThrow(/\/api prefix/);
+  });
+
+  it('still accepts a normal JSON response', async () => {
+    mockFetch.mockResolvedValueOnce(createMockResponse({ ok: true }, true, 'application/json'));
+    await expect(apiService.get('/api/thing')).resolves.toEqual({ ok: true });
+  });
+
+  it('accepts a JSON response whose content-type carries parameters', async () => {
+    mockFetch.mockResolvedValueOnce(
+      createMockResponse({ ok: true }, true, 'application/json; charset=utf-8'),
+    );
+    await expect(apiService.get('/api/thing')).resolves.toEqual({ ok: true });
+  });
+
+  it('accepts JSON served as text/plain — only HTML is the failure signal', async () => {
+    mockFetch.mockResolvedValueOnce(createMockResponse({ ok: true }, true, 'text/plain;charset=UTF-8'));
+    await expect(apiService.get('/api/thing')).resolves.toEqual({ ok: true });
+  });
+
+  it('does not reject when the server sends no content-type at all', async () => {
+    // Absent header is not evidence of an HTML body; failing here would break
+    // any endpoint that omits it.
+    mockFetch.mockResolvedValueOnce(createMockResponse({ ok: true }, true, null as any));
+    await expect(apiService.get('/api/thing')).resolves.toEqual({ ok: true });
+  });
+});

@@ -60,7 +60,7 @@ export default function NetworkSurveyPanel({
     setFailed(false);
     try {
       const res = await apiService.get<{ success: boolean; data: NetworkSurvey }>(
-        `/sources/${sourceId}/survey?hours=${hours}`,
+        `/api/sources/${sourceId}/survey?hours=${hours}`,
       );
       setSurvey(res?.data ?? null);
     } catch {
