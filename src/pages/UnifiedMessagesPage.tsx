@@ -36,6 +36,7 @@ import '../styles/unified.css';
 import { UiIcon } from '../components/icons';
 import { resolveReplyPreview } from '../utils/replyPreview';
 import { getSourceColor } from '../utils/sourceColors';
+import { isAnyMeshCoreSourceType } from '../utils/nodeTypeCategory';
 
 type TFn = (key: string, options?: Record<string, unknown>) => string;
 
@@ -567,7 +568,7 @@ export default function UnifiedMessagesPage() {
                       title={t('unified.messages.heard_by_source', { name: r.sourceName })}
                     >
                       {r.sourceName}
-                      {r.sourceType === 'meshcore' && (
+                      {isAnyMeshCoreSourceType(r.sourceType) && (
                         <span className="unified-msg-card__proto-badge">
                           {t('unified.messages.meshcore_badge', 'MeshCore')}
                         </span>

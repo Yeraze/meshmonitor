@@ -2,6 +2,7 @@ import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import { notificationService } from './notificationService.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { isAnyMeshCoreSourceType } from '../../utils/nodeTypeCategory.js';
 import { HourlyLogLimiter } from '../utils/hourlyLogLimiter.js';
 import { parseMonitoredUnion, countMonitoredNodes, formatSourceIdForLog, logZeroEligiblePrefRows } from '../utils/notificationCheckHelpers.js';
 import { getInactiveNodeConfig } from './nodeDisplaySettings.js';
@@ -263,7 +264,7 @@ class InactiveNodeNotificationService {
             // MeshCore nodes live in a separate table and report lastHeard in
             // milliseconds; Meshtastic nodes report seconds. Collect a
             // protocol-appropriate, already-formatted list of inactive alerts.
-            const alerts = manager.sourceType === 'meshcore'
+            const alerts = isAnyMeshCoreSourceType(manager.sourceType)
               ? await this.collectMeshCoreInactiveAlerts(monitoredUnion, sourceId, cfg.thresholdHours, now)
               : await this.collectMeshtasticInactiveAlerts(monitoredUnion, sourceId, cutoffSeconds, now);
 

@@ -13,6 +13,7 @@ import { getDiscardInvalidPositions } from '../utils/positionDisplayConfig';
 import { getNodeTransportClasses, type NodeTransportClass } from '../utils/nodeTransport';
 import { unifiedNodeKey } from '../utils/nodeIdentity';
 import type { SourceRadioSummary } from '../types/elevation';
+import { isAnyMeshCoreSourceType } from '../utils/nodeTypeCategory';
 
 /**
  * A data source configured in MeshMonitor
@@ -556,7 +557,7 @@ export function useDashboardUnifiedData(
     return {
       sourceId: 'name' in s ? s.id : undefined,
       sourceName: 'name' in s ? s.name : undefined,
-      protocol: 'type' in s ? (s.type === 'meshcore' ? 'MeshCore' : 'Meshtastic') : undefined,
+      protocol: 'type' in s ? (isAnyMeshCoreSourceType(s.type) ? 'MeshCore' : 'Meshtastic') : undefined,
       nodes: b?.nodes ?? [],
       traceroutes: b?.traceroutes ?? [],
       neighborInfo: b?.neighborInfo ?? [],

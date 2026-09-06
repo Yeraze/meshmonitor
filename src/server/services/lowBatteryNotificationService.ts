@@ -2,6 +2,7 @@ import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import { notificationService } from './notificationService.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { isAnyMeshCoreSourceType } from '../../utils/nodeTypeCategory.js';
 import { HourlyLogLimiter } from '../utils/hourlyLogLimiter.js';
 import { parseMonitoredUnion, countMonitoredNodes, formatSourceIdForLog, logZeroEligiblePrefRows } from '../utils/notificationCheckHelpers.js';
 
@@ -212,7 +213,7 @@ class LowBatteryNotificationService {
           // MeshCore nodes report voltage (mV); Meshtastic nodes report a 0-100
           // percentage. Build a protocol-appropriate list of alerts with the
           // current value/threshold already formatted for display.
-          const alerts = manager.sourceType === 'meshcore'
+          const alerts = isAnyMeshCoreSourceType(manager.sourceType)
             ? await this.collectMeshCoreLowBatteryAlerts(thresholdRow, monitoredUnion, sourceId)
             : await this.collectMeshtasticLowBatteryAlerts(thresholdRow, monitoredUnion, sourceId);
 

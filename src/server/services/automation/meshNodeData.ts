@@ -8,6 +8,7 @@ import { ALL_SOURCES } from '../../../db/repositories/index.js';
 import type { NodeDataProvider, NodeFacts, StaleCandidate } from './engineContext.js';
 import { sourceProtocol } from './channelUnify.js';
 import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
+import { isAnyMeshCoreSourceType } from '../../../utils/nodeTypeCategory.js';
 import { isMeshCoreManager } from '../../sourceManagerTypes.js';
 import { isOwnNodeNum as isOwnedByAnySource, isOwnPublicKey as isOwnedPubkeyByAnySource } from '../../utils/ownNodes.js';
 
@@ -151,7 +152,9 @@ export function createMeshNodeDataProvider(): NodeDataProvider {
         for (const m of sourceManagerRegistry.getAllManagers()) {
           const sourceId = m.sourceId;
           try {
-            if (m.sourceType === 'meshcore') {
+            // Ingest observers live in meshcore_nodes too; the else branch
+            // below queries the Meshtastic table and finds nothing (#5094).
+            if (isAnyMeshCoreSourceType(m.sourceType)) {
               const nodes = await databaseService.meshcore.getNodesBySource(sourceId);
               for (const n of nodes) {
                 // MeshCore lastHeard is already epoch milliseconds.
