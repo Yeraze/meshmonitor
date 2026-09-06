@@ -17,7 +17,7 @@ import { getHardwareModelName, getRoleName } from '../utils/nodeHelpers';
 import { DeviceConfigurationSection } from './admin-commands/DeviceConfigurationSection';
 import AutoFavoriteManagementSection from './admin-commands/AutoFavoriteManagementSection';
 import { ModuleConfigurationSection } from './admin-commands/ModuleConfigurationSection';
-import { useAdminCommandsState, buildMeshBeaconConfigPayload, parseMeshBeaconConfig } from './admin-commands/useAdminCommandsState';
+import { useAdminCommandsState, buildMeshBeaconConfigPayload, parseMeshBeaconConfig, buildSecurityConfigUpdates } from './admin-commands/useAdminCommandsState';
 import {
   DEFAULT_PUBLIC_PSK,
   PUBLIC_CHANNEL_PRECISION_MAX_BITS,
@@ -589,25 +589,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       await new Promise(resolve => setTimeout(resolve, 200));
 
       await loadConfig('security', 5, (result) => {
-        const config = result.config;
-        if (config.adminKeys !== undefined) {
-          const keys = config.adminKeys.length === 0 ? [''] : (config.adminKeys.length < 3 ? [...config.adminKeys, ''] : config.adminKeys.slice(0, 3));
-          setSecurityConfig({ adminKeys: keys });
-        }
-        const securityUpdates: any = {};
-        if (config.isManaged !== undefined) securityUpdates.isManaged = config.isManaged;
-        if (config.serialEnabled !== undefined) securityUpdates.serialEnabled = config.serialEnabled;
-        if (config.debugLogApiEnabled !== undefined) securityUpdates.debugLogApiEnabled = config.debugLogApiEnabled;
-        if (config.adminChannelEnabled !== undefined) securityUpdates.adminChannelEnabled = config.adminChannelEnabled;
-
-        // #4736: stamp WHICH node these values came from. Save is gated on this
-        // matching the current selection, so the admin keys and flags being
-        // written are always the ones the user actually saw for that node.
-        securityUpdates.loadedForNodeNum = selectedNodeNum;
-
-        if (Object.keys(securityUpdates).length > 0) {
-          setSecurityConfig(securityUpdates);
-        }
+        applyLoadedSecurityConfig(result.config, selectedNodeNum);
       });
       await new Promise(resolve => setTimeout(resolve, 200));
 
@@ -977,6 +959,20 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   };
 
   // Individual section load handlers
+  /*
+   * #5077: the security payload is applied from two places — the "load all"
+   * sequence and the per-section Load button. They were near-identical copies,
+   * and the #4736 `loadedForNodeNum` stamp was added to the first one only. The
+   * per-section load therefore populated the fields but left the Save gate
+   * closed forever, so a remote node's security config could be edited and
+   * never saved. One applier, so the two paths cannot drift again.
+   */
+  const applyLoadedSecurityConfig = useCallback((config: any, forNodeNum: number | null) => {
+    const { adminKeys, updates } = buildSecurityConfigUpdates(config, forNodeNum);
+    if (adminKeys) setSecurityConfig({ adminKeys });
+    setSecurityConfig(updates);
+  }, [setSecurityConfig]);
+
   const handleLoadSingleConfig = async (configType: string) => {
     if (selectedNodeNum === null) {
       showToast(t('admin_commands.please_select_node'), 'error');
@@ -1149,18 +1145,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                 });
                 break;
               case 'security':
-                if (config.adminKeys !== undefined) {
-                  const keys = config.adminKeys.length === 0 ? [''] : (config.adminKeys.length < 3 ? [...config.adminKeys, ''] : config.adminKeys.slice(0, 3));
-                  setSecurityConfig({ adminKeys: keys });
-                }
-                const securityUpdates: Record<string, unknown> = {};
-                if (config.isManaged !== undefined) securityUpdates.isManaged = config.isManaged;
-                if (config.serialEnabled !== undefined) securityUpdates.serialEnabled = config.serialEnabled;
-                if (config.debugLogApiEnabled !== undefined) securityUpdates.debugLogApiEnabled = config.debugLogApiEnabled;
-                if (config.adminChannelEnabled !== undefined) securityUpdates.adminChannelEnabled = config.adminChannelEnabled;
-                if (Object.keys(securityUpdates).length > 0) {
-                  setSecurityConfig(securityUpdates);
-                }
+                applyLoadedSecurityConfig(config, selectedNodeNum);
                 break;
               case 'bluetooth':
                 setBluetoothConfig({
