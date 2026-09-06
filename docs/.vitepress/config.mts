@@ -159,7 +159,8 @@ export default defineConfig({
           items: [
             { text: 'MeshCore', link: '/features/meshcore' },
             { text: 'MeshCore Receive-Only Mode', link: '/features/meshcore-receive-only' },
-            { text: 'MeshCore Analyzer Observer', link: '/features/meshcore-analyzer-observer' }
+            { text: 'MeshCore Analyzer Observer', link: '/features/meshcore-analyzer-observer' },
+            { text: 'MeshCore MQTT Ingest', link: '/features/meshcore-mqtt-ingest' }
           ]
         }
       ],

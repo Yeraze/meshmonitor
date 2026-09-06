@@ -16,6 +16,8 @@ The Analyzer Observer relays every packet your MeshCore Companion hears to one o
 
 It publishes what the radio already heard, to as many brokers as you configure. Nothing more.
 
+For the opposite direction — *reading* a region's feed rather than contributing to it — see [MeshCore MQTT Ingest](/features/meshcore-mqtt-ingest). The two are independent: you can publish, consume, or both.
+
 Because it only ever publishes outbound to a broker over the network, the Analyzer Observer keeps running unaffected when a source is in [receive-only mode](/features/meshcore-receive-only) — receive-only blocks the radio path, not this one.
 
 ## Contribute to MeshMapper
