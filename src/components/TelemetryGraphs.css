@@ -86,6 +86,19 @@
   border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-lg);
   padding: 15px;
+  /*
+   * #5093: a grid item defaults to `min-width: auto`, so it refuses to shrink
+   * below its content's min-content width. These cards therefore sized to their
+   * own contents (measured 307-502px) rather than to the track, and anything
+   * wider than the viewport spilled off the right edge in portrait. Landscape
+   * hid it because ~852px accommodates even the widest card.
+   *
+   * Note the mobile `grid-template-columns: 1fr` below does NOT prevent this:
+   * `1fr` is shorthand for `minmax(auto, 1fr)`, and that `auto` floor is exactly
+   * the min-content size we need to escape. The floor has to be zeroed, either
+   * here or as `minmax(0, 1fr)` on the track.
+   */
+  min-width: 0;
 }
 
 .graph-header {
@@ -103,7 +116,21 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: calc(100% - 60px); /* Reserve space for favorite and menu buttons */
+  /*
+   * #5093: this used to reserve a fixed `max-width: calc(100% - 60px)` for
+   * "the favorite and menu buttons". That was true when there were two of
+   * them; a TelemetryGraphs header now carries up to six controls — the
+   * 3-button mode-toggle group (~ / gauge / #), solar, CSV export, favorite
+   * and the ⋯ menu — which measure ~182px. The title therefore claimed 122px
+   * more than was left, pushing the controls past the right edge in portrait.
+   *
+   * Sizing by flex instead of a magic number self-corrects however many
+   * controls a given header renders. `min-width: 0` is what lets the title
+   * actually shrink: a flex item's default `min-width: auto` floors it at
+   * min-content, and `text-overflow: ellipsis` never engages above that floor.
+   */
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .graph-actions {
@@ -111,6 +138,8 @@
   align-items: center;
   gap: 4px;
   position: relative;
+  /* Never squeeze the controls — the title gives way instead (#5093). */
+  flex: 0 0 auto;
 }
 
 .favorite-btn,
@@ -303,7 +332,9 @@
 
 @media (max-width: 768px) {
   .graphs-grid {
-    grid-template-columns: 1fr;
+    /* `minmax(0, 1fr)`, not `1fr` — see the min-width note on .graph-container
+       (#5093). Bare `1fr` keeps a min-content floor and still overflows. */
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .telemetry-graphs {
