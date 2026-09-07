@@ -51,6 +51,20 @@ export class TcpTransport extends EventEmitter implements ITransport {
   private heartbeatPayloadFactory: (() => Uint8Array | Promise<Uint8Array>) | null = null;
   private heartbeatTimer: NodeJS.Timeout | null = null;
 
+  // The in-flight connect timeout, hoisted out of doConnect()'s closure.
+  //
+  // It used to be a bare local, which meant nothing outside that closure could
+  // cancel it. Every path that reclaims a socket calls removeAllListeners()
+  // first, so the 'connect'/'error'/'close' handlers that clear the timer are
+  // gone by the time the socket dies — leaving a live timer whose callback
+  // reads `this.socket`, i.e. whatever socket is current when it eventually
+  // fires. On a transport that connects again, that is a healthy, connected
+  // socket being destroyed by a stale timer, with no warning logged and an
+  // auto-reconnect scheduled right after: exactly the silent client-initiated
+  // FIN reported in #5122. Tracking it on the instance lets every teardown
+  // path cancel it.
+  private connectTimeout: NodeJS.Timeout | null = null;
+
   // Configurable TCP timing
   private connectTimeoutMs: number = 10000; // 10 second default
   private reconnectInitialDelayMs: number = 1000; // 1 second default
@@ -178,6 +192,44 @@ export class TcpTransport extends EventEmitter implements ITransport {
     return this.doConnect();
   }
 
+  private clearConnectTimeout(): void {
+    if (this.connectTimeout) {
+      clearTimeout(this.connectTimeout);
+      this.connectTimeout = null;
+    }
+  }
+
+  /**
+   * Close the current socket and say who did it.
+   *
+   * Every teardown path has to strip the socket's listeners first, otherwise
+   * the 'close' handler treats a deliberate teardown as a lost link and
+   * schedules a reconnect. The side effect was that these paths closed the
+   * socket in complete silence — no log line, no event — which is why a report
+   * like #5122 (a client-initiated FIN with nothing in the application log)
+   * could not be attributed to any particular mechanism. Routing all of them
+   * through here means every FIN we send has a reason next to it.
+   */
+  private teardownSocket(reason: string): void {
+    this.clearConnectTimeout();
+    const socket = this.socket;
+    if (!socket) return;
+    this.socket = null;
+    // `wasConnected` separates "we hung up on a live link" (which a reader of
+    // the log will want to correlate with a FIN in a packet capture) from
+    // reclaiming a socket that never came up.
+    const wasConnected = this.isConnected;
+    try {
+      socket.removeAllListeners();
+      socket.destroy();
+    } catch { /* ignore */ }
+    if (wasConnected) {
+      logger.info(`🔌 Closing the live TCP connection to ${this.config?.host}:${this.config?.port} — ${reason}`);
+    } else {
+      logger.debug(`🔌 Discarded a TCP socket that was not connected — ${reason}`);
+    }
+  }
+
   private async doConnect(): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!this.config) {
@@ -194,13 +246,7 @@ export class TcpTransport extends EventEmitter implements ITransport {
       // Reclaim any pre-existing socket before opening a new one. Without this
       // a single transport could leak two live sockets at the daemon — the
       // 2:1 "Force close previous TCP connection" fingerprint from #3270.
-      if (this.socket) {
-        try {
-          this.socket.removeAllListeners();
-          this.socket.destroy();
-        } catch { /* ignore */ }
-        this.socket = null;
-      }
+      this.teardownSocket('reclaimed before a new connect attempt');
 
       this.isConnecting = true;
       logger.debug(`📡 Connecting to TCP ${this.config.host}:${this.config.port}...`);
@@ -211,16 +257,31 @@ export class TcpTransport extends EventEmitter implements ITransport {
       this.socket.setKeepAlive(true, 300000); // Keep alive every 5 minutes (app-layer health check handles dead connections)
       this.socket.setNoDelay(true); // Disable Nagle's algorithm for low latency
 
-      // Connection timeout
-      const connectTimeout = setTimeout(() => {
-        if (this.socket) {
-          this.socket.destroy();
-          reject(new Error('Connection timeout'));
+      // Connection timeout. Bound to THIS attempt's socket, not to whatever
+      // `this.socket` happens to be when it fires — a stale timer must never
+      // be able to destroy a later, healthy connection (#5122). It is also
+      // cancelled by every teardown path, so it cannot outlive its socket.
+      const attemptSocket = this.socket;
+      this.clearConnectTimeout();
+      this.connectTimeout = setTimeout(() => {
+        this.connectTimeout = null;
+        if (this.socket !== attemptSocket) {
+          // The attempt this timer belongs to is long gone. Firing here would
+          // tear down an unrelated socket.
+          logger.debug('⏱️  Ignoring a connect timeout from a superseded attempt');
+          return;
         }
+        if (!this.isConnecting) {
+          // Already connected (or already torn down) — nothing to time out.
+          return;
+        }
+        logger.warn(`⏱️  TCP connect to ${this.config?.host}:${this.config?.port} timed out after ${this.connectTimeoutMs}ms — destroying the socket`);
+        attemptSocket.destroy();
+        reject(new Error('Connection timeout'));
       }, this.connectTimeoutMs);
 
       this.socket.once('connect', () => {
-        clearTimeout(connectTimeout);
+        this.clearConnectTimeout();
         this.isConnecting = false;
         this.isConnected = true;
         this.reconnectAttempts = 0;
@@ -248,7 +309,7 @@ export class TcpTransport extends EventEmitter implements ITransport {
       });
 
       this.socket.on('error', (error: Error) => {
-        clearTimeout(connectTimeout);
+        this.clearConnectTimeout();
         logger.error('❌ TCP socket error:', error.message);
         this.emit('error', error);
 
@@ -258,7 +319,7 @@ export class TcpTransport extends EventEmitter implements ITransport {
       });
 
       this.socket.on('close', () => {
-        clearTimeout(connectTimeout);
+        this.clearConnectTimeout();
         this.isConnecting = false;
         const wasConnected = this.isConnected;
         this.isConnected = false;
@@ -328,11 +389,7 @@ export class TcpTransport extends EventEmitter implements ITransport {
     // Stop keepalive heartbeat
     this.stopHeartbeat();
 
-    if (this.socket) {
-      this.socket.removeAllListeners();
-      this.socket.destroy();
-      this.socket = null;
-    }
+    this.teardownSocket('transport.disconnect() was called');
 
     this.isConnected = false;
     this.isConnecting = false;
