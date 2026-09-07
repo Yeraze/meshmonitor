@@ -19,6 +19,7 @@
  * neither gates or drives the accept.
  */
 import {
+  getRegionComplianceWarning,
   isPresetLegalForRegion,
   MODEM_PRESET_OPTIONS,
   REGION_OPTIONS,
@@ -49,6 +50,17 @@ export interface OfferActionability {
    * not touch LoRa config.
    */
   presetNote?: string;
+  /**
+   * Regulator-compliance warning for the advertised (region, preset) pair —
+   * a combination that fits the band but that the region's regulator does not
+   * permit, e.g. Long Fast in the US (#5103).
+   *
+   * Kept separate from `presetNote` rather than appended to it so the card can
+   * style it as a warning, matching the amateur-radio warning on the local LoRa
+   * config. Like `presetNote`, it never gates the join: it describes the
+   * neighbour's mesh, not anything this node is about to do.
+   */
+  complianceNote?: string;
 }
 
 export function presetName(preset: number | null | undefined): string {
@@ -75,6 +87,22 @@ function hasPreset(offer: BeaconOfferLike): boolean {
   return offer.offerPreset != null;
 }
 
+/**
+ * Warning for a (region, preset) pair that fits the band but that the region's
+ * regulator does not permit (#5103). Independent of `isPresetLegalForRegion`,
+ * which only answers the firmware's bandwidth-fits-the-span question — Long
+ * Fast in the US passes that and is still non-compliant.
+ *
+ * Only produced when the offer carries BOTH a region and a preset: a rule is
+ * per-region, and there is nothing to judge without the preset.
+ */
+function buildComplianceNote(offer: BeaconOfferLike): string | undefined {
+  if (!hasRegion(offer) || !hasPreset(offer)) return undefined;
+  const warning = getRegionComplianceWarning(offer.offerRegion!, offer.offerPreset!);
+  if (!warning) return undefined;
+  return `${presetName(offer.offerPreset)}'s ${warning.bandwidthKHz} kHz bandwidth is not compliant in ${regionName(offer.offerRegion)} — ${warning.rationale}. ${warning.recommendedPresetName} is the recommended preset there.`;
+}
+
 function buildPresetNote(offer: BeaconOfferLike): string | undefined {
   if (!hasRegion(offer) && !hasPreset(offer)) return undefined;
 
@@ -90,6 +118,7 @@ function buildPresetNote(offer: BeaconOfferLike): string | undefined {
 
 export function assessBeaconOffer(offer: BeaconOfferLike): OfferActionability {
   const presetNote = buildPresetNote(offer);
+  const complianceNote = buildComplianceNote(offer);
   const channelName = offer.offerChannelName?.trim();
 
   if (!channelName) {
@@ -99,7 +128,7 @@ export function assessBeaconOffer(offer: BeaconOfferLike): OfferActionability {
     const reason = presetNote
       ? 'This beacon advertises a mesh but offers no channel to join, so there is nothing to apply automatically.'
       : 'This beacon carries no network offer — it is text only.';
-    return { actionable: false, reason, presetNote };
+    return { actionable: false, reason, presetNote, complianceNote };
   }
 
   if (!offer.hasChannelKey) {
@@ -107,8 +136,9 @@ export function assessBeaconOffer(offer: BeaconOfferLike): OfferActionability {
       actionable: false,
       reason: `The beacon names a channel ("${channelName}") but did not include its key, so joining it would produce a channel that cannot decrypt anything.`,
       presetNote,
+      complianceNote,
     };
   }
 
-  return { actionable: true, presetNote };
+  return { actionable: true, presetNote, complianceNote };
 }

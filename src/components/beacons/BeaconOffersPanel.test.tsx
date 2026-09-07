@@ -173,6 +173,26 @@ describe('BeaconOffersPanel', () => {
     expect(screen.getByText(/Advertises a mesh/i)).toBeTruthy();
     expect(screen.queryByText(/switch preset/i)).toBeNull();
   });
+
+  it('warns about a non-compliant advertised region/preset without blocking the join (#5103)', async () => {
+    // Long Fast in the US: fits the band, so the firmware legality check is
+    // happy, but FCC §15.247 needs 500 kHz. Warning-only — the join button
+    // must still be there.
+    renderPanel([offer({ offerRegion: 1, offerPreset: 0 })]);
+    await screen.findByTestId(`beacon-offer-${NODE}`);
+
+    const warning = screen.getByTestId('beacon-offer-compliance');
+    expect(warning.textContent).toMatch(/not compliant in/i);
+    expect(warning.textContent).toContain('LONG_TURBO');
+    expect(warning.getAttribute('role')).toBe('alert');
+    expect(screen.queryByTestId('beacon-offer-reason')).toBeNull();
+  });
+
+  it('shows no compliance warning for a compliant region/preset (#5103)', async () => {
+    renderPanel([offer({ offerRegion: 1, offerPreset: 9 })]); // US / LONG_TURBO
+    await screen.findByTestId(`beacon-offer-${NODE}`);
+    expect(screen.queryByTestId('beacon-offer-compliance')).toBeNull();
+  });
 });
 
 describe('stylesheet', () => {
