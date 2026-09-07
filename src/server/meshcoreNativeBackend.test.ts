@@ -66,7 +66,7 @@ class MockConnection extends EventEmitter {
   public deviceTimeResponse: { epochSecs: number } | null = { epochSecs: 1700000000 };
   public statsResponse: any = {
     type: StatsTypes.Core,
-    data: { batteryMilliVolts: 4100, uptimeSecs: 12345, queueLen: 0 },
+    data: { batteryMilliVolts: 4100, uptimeSecs: 12345, errors: 7, queueLen: 3 },
   };
   public deviceQueryResponse: any = {
     firmwareVer: 4,
@@ -875,7 +875,76 @@ describe('MeshCoreNativeBackend', () => {
     await backend.connect();
     const resp = await backend.sendCommand('get_stats', { type: 'core' });
     expect(resp.success).toBe(true);
-    expect(resp.data).toEqual({ battery_mv: 4100, uptime_secs: 12345, queue_len: 0 });
+    // `errors` sits between uptime and queue_len in the Core stats payload.
+    // The pinned meshcore.js used to skip it, so queue_len read the low byte
+    // of errors and `errors` never surfaced at all (#5125).
+    expect(resp.data).toEqual({ battery_mv: 4100, uptime_secs: 12345, errors: 7, queue_len: 3 });
+  });
+
+  it('core stats survive a device that omits errors/queue_len (#5125)', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+    // meshcore.js reports a short payload's trailing fields as null.
+    conn.statsResponse = {
+      type: StatsTypes.Core,
+      data: { batteryMilliVolts: 4100, uptimeSecs: 12345, errors: null, queueLen: null },
+    };
+    const resp = await backend.sendCommand('get_stats', { type: 'core' });
+    expect(resp.success).toBe(true);
+    expect(resp.data).toEqual({ battery_mv: 4100, uptime_secs: 12345, errors: undefined, queue_len: undefined });
+  });
+
+  it('get_status forwards the trailing RepeaterStats counters (#5125)', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+    conn.contactsResponse = [{ publicKey: Uint8Array.from(Array.from({ length: 32 }, (_, i) => i + 1)) }];
+    // firmware >= v1.8 appends total_rx_air_time_secs; >= v1.12 appends
+    // n_recv_errors. meshcore.js only decodes them from upstream PR #37 on.
+    conn.statusResolveValue = {
+      batt_milli_volts: 4000,
+      total_up_time_secs: 999,
+      total_air_time_secs: 120,
+      total_rx_air_time_secs: 456,
+      n_recv_errors: 12,
+    };
+    const pubkeyHex = Array.from({ length: 32 }, (_, i) => (i + 1).toString(16).padStart(2, '0')).join('');
+    const resp = await backend.sendCommand('get_status', { public_key: pubkeyHex });
+    expect(resp.success).toBe(true);
+    expect(resp.data).toMatchObject({
+      air_time_secs: 120,
+      rx_air_time_secs: 456,
+      recv_errors: 12,
+    });
+  });
+
+  it('get_status leaves the trailing counters undefined on pre-v1.8 firmware (#5125)', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+    conn.contactsResponse = [{ publicKey: Uint8Array.from(Array.from({ length: 32 }, (_, i) => i + 1)) }];
+    // Short payload — meshcore.js reports the absent trailing fields as null.
+    conn.statusResolveValue = {
+      batt_milli_volts: 4000,
+      total_up_time_secs: 999,
+      total_rx_air_time_secs: null,
+      n_recv_errors: null,
+    };
+    const pubkeyHex = Array.from({ length: 32 }, (_, i) => (i + 1).toString(16).padStart(2, '0')).join('');
+    const resp = await backend.sendCommand('get_status', { public_key: pubkeyHex });
+    expect(resp.success).toBe(true);
+    expect(resp.data.rx_air_time_secs).toBeUndefined();
+    expect(resp.data.recv_errors).toBeUndefined();
   });
 
   it('maps get_device_time to { time }', async () => {

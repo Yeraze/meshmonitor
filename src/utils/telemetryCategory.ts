@@ -149,6 +149,8 @@ const TYPE_CATEGORY: Record<string, TelemetryCategory> = {
   mc_status_errors: 'network',
   mc_status_direct_dups: 'network',
   mc_status_flood_dups: 'network',
+  mc_status_rx_air_time_secs: 'network',
+  mc_status_recv_errors: 'network',
   mc_tx_duty_pct: 'network',
   mc_rx_duty_pct: 'network',
   mc_pkt_sent_rate: 'network',

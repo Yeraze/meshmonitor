@@ -703,6 +703,10 @@ export interface MeshCoreStatus {
   errors?: number;
   directDups?: number;
   floodDups?: number;
+  /** Total receive air time in seconds. Repeater firmware >= v1.8 only. */
+  rxAirTimeSecs?: number;
+  /** RadioLib CRC/receive error count. Repeater firmware >= v1.12 only. */
+  recvErrors?: number;
 
   // Companion-only fields (radio config etc.). Kept on the interface for
   // backwards compatibility with callers that ask Companion targets for status.
@@ -5370,6 +5374,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           errors: d.errors,
           directDups: d.direct_dups,
           floodDups: d.flood_dups,
+          rxAirTimeSecs: d.rx_air_time_secs,
+          recvErrors: d.recv_errors,
           txPower: d.tx_power,
           radioFreq: d.radio_freq,
           radioBw: d.radio_bw,

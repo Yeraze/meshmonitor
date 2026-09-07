@@ -262,6 +262,11 @@ export const STATUS_FIELD_MAP: readonly StatusFieldDef[] = [
   { source: 'errors', telemetryType: 'errors' },
   { source: 'directDups', telemetryType: 'direct_dups' },
   { source: 'floodDups', telemetryType: 'flood_dups' },
+  // Added to RepeaterStats by firmware v1.8 / v1.12 respectively; only decoded
+  // by meshcore.js from upstream PR #37 onwards (#5125). Absent on older
+  // firmware, in which case statusToTelemetryRows skips the row.
+  { source: 'rxAirTimeSecs', telemetryType: 'rx_air_time_secs', unit: 's' },
+  { source: 'recvErrors', telemetryType: 'recv_errors' },
 ];
 
 export function statusToTelemetryRows(

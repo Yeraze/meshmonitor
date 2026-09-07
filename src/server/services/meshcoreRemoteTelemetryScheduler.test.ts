@@ -732,6 +732,26 @@ describe('statusToTelemetryRows', () => {
     expect(rows.every((r) => r.nodeId === 'pk' && r.nodeNum === 99 && r.timestamp === 1_700_000_000)).toBe(true);
   });
 
+  it('maps the RepeaterStats counters added by firmware v1.8 / v1.12 (#5125)', () => {
+    const rows = statusToTelemetryRows(
+      { rxAirTimeSecs: 456, recvErrors: 12 },
+      'pk',
+      1,
+      1_700_000_000,
+    );
+    const byType = new Map(rows.map((r) => [r.telemetryType, r]));
+    expect(byType.get('mc_status_rx_air_time_secs')?.value).toBe(456);
+    expect(byType.get('mc_status_rx_air_time_secs')?.unit).toBe('s');
+    expect(byType.get('mc_status_recv_errors')?.value).toBe(12);
+  });
+
+  it('emits no rows for the new counters on firmware that never sends them (#5125)', () => {
+    const rows = statusToTelemetryRows({ batteryMv: 3700 }, 'pk', 1, 0);
+    const types = rows.map((r) => r.telemetryType);
+    expect(types).not.toContain('mc_status_rx_air_time_secs');
+    expect(types).not.toContain('mc_status_recv_errors');
+  });
+
   it('skips undefined fields rather than emitting NaN rows', () => {
     const rows = statusToTelemetryRows({ batteryMv: 3700 }, 'pk', 1, 0);
     expect(rows).toHaveLength(1);

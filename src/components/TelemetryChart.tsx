@@ -239,6 +239,8 @@ const TELEMETRY_LABELS: Record<string, string> = {
   mc_status_errors: 'Errors',
   mc_status_direct_dups: 'Duplicates (Direct)',
   mc_status_flood_dups: 'Duplicates (Flood)',
+  mc_status_rx_air_time_secs: 'RX Air Time',
+  mc_status_recv_errors: 'Receive Errors',
   // Local-node poller types (meshcoreTelemetryPoller) — shorter names than
   // the remote-status path above; both can appear in the telemetry store.
   mc_queue_len: 'Queue Length',

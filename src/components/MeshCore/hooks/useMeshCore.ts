@@ -415,6 +415,10 @@ export interface MeshCoreRemoteStatus {
   errors?: number;
   directDups?: number;
   floodDups?: number;
+  /** Total receive air time in seconds. Repeater firmware >= v1.8 only (#5125). */
+  rxAirTimeSecs?: number;
+  /** RadioLib CRC/receive error count. Repeater firmware >= v1.12 only (#5125). */
+  recvErrors?: number;
   txPower?: number;
   radioFreq?: number;
   radioBw?: number;
