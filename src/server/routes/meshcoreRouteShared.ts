@@ -15,7 +15,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { MeshCoreManager } from '../meshcoreManager.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
-import { isMeshCoreManager, isMeshCoreMqttManager } from '../sourceManagerTypes.js';
+import { isMeshCoreManager, isMeshCoreMqttManager, isAnyMeshCoreManager } from '../sourceManagerTypes.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { fail } from '../utils/apiResponse.js';
@@ -71,6 +71,44 @@ export function meshcoreRouteGuard(req: Request, res: Response, next: NextFuncti
   }
   // Cache the narrowed manager so managerFor() can avoid a second registry lookup.
   res.locals.meshcoreManager = _guardMgr as MeshCoreManager;
+  next();
+}
+
+/**
+ * Router-level guard for MeshCore **data** routes — accepts a device-backed
+ * source AND a `meshcore_mqtt` ingest source (#5096).
+ *
+ * The device guard below refuses ingest sources on purpose, because everything
+ * it protects is device surface. That was over-applied: the barrel mounted the
+ * packet routes behind it too, and packets are DATA, not device surface — an
+ * ingest source has a `meshcore_packet_log` full of them. The result was a
+ * packet monitor built for ingest sources in #5040 Phase 2b that no request
+ * could ever reach, including an `isMeshCoreIngestSource()` helper inside the
+ * packet routes that could never execute.
+ *
+ * Mount this BEFORE `meshcoreRouteGuard`, with the data routers between them.
+ * Everything mounted after the device guard stays device-only.
+ *
+ * Deliberately does NOT populate `res.locals.meshcoreManager`: that field is
+ * typed as the device manager and `managerFor()` asserts it. A data route must
+ * not reach for a device manager, so it gets `meshcoreAnyManager` instead.
+ */
+export function anyMeshCoreRouteGuard(req: Request, res: Response, next: NextFunction) {
+  const sourceId = (req.params as { id?: string }).id;
+  if (!sourceId) {
+    return res.status(404).json({
+      success: false,
+      error: 'MeshCore routes must be mounted under /api/sources/:id/meshcore',
+    });
+  }
+  const mgr = sourceManagerRegistry.getManager(sourceId);
+  if (!mgr || !isAnyMeshCoreManager(mgr)) {
+    return res.status(404).json({
+      success: false,
+      error: `No MeshCore manager for source ${sourceId}`,
+    });
+  }
+  res.locals.meshcoreAnyManager = mgr;
   next();
 }
 
