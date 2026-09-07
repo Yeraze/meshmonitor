@@ -680,7 +680,17 @@ class MeshtasticManager implements ISourceManager {
   // Buffer resets (`initConfigCache`, `preConfigChannelSnapshot`) stay as
   // separate, explicit statements at each call site — pre-refactor code
   // never bundled them into these two booleans either.
+  // Config-sync progress, for diagnosing a link that drops part-way through
+  // the initial NodeDB stream (#5122). A large NodeDB takes minutes and arrives
+  // in bursts, so "we disconnected" and "we disconnected after 120 of ~190
+  // NodeInfos, 74s in" are very different reports — and the second one is the
+  // only one that can be correlated against a packet capture.
+  private configSyncStartedAt: number | null = null;
+  private configSyncNodeInfoCount = 0;
+
   private startConfigCapture(): void {
+    this.configSyncStartedAt = Date.now();
+    this.configSyncNodeInfoCount = 0;
     this.isCapturingInitConfig = true;
     this.configCaptureComplete = false;
   }
@@ -2099,8 +2109,26 @@ class MeshtasticManager implements ISourceManager {
     }
   }
 
+  /** Seconds since the current config sync started, or 'unknown' if none is. */
+  private describeConfigSyncElapsed(): string {
+    if (this.configSyncStartedAt === null) return 'unknown elapsed time';
+    return `${Math.round((Date.now() - this.configSyncStartedAt) / 1000)}s`;
+  }
+
   private async handleDisconnected(): Promise<void> {
     logger.debug('TCP connection lost');
+
+    // Losing the link mid-sync means the whole NodeDB stream restarts from
+    // scratch on reconnect, so on a large mesh it can loop forever without ever
+    // completing. That is worth a warning with the numbers attached, not a
+    // debug line indistinguishable from an idle disconnect (#5122).
+    if (this.isCapturingInitConfig && !this.configCaptureComplete) {
+      logger.warn(
+        `⚠️ Connection lost during the initial config sync — ${this.configSyncNodeInfoCount} NodeInfo message(s) received over ${this.describeConfigSyncElapsed()}. ` +
+        'The sync restarts from the beginning on reconnect; on a large NodeDB it may never finish if this repeats. ' +
+        'Consider enabling Passive Mode for this source.'
+      );
+    }
 
     // #3962 Phase 4.2b C2: TRANSPORT_DISCONNECTED. A transport-level
     // disconnect that fires after an operator-initiated userDisconnect()
@@ -4444,6 +4472,13 @@ class MeshtasticManager implements ISourceManager {
           await this.processMyNodeInfo(parsed.data);
           break;
         case 'nodeInfo':
+          if (this.isCapturingInitConfig && !this.configCaptureComplete) {
+            this.configSyncNodeInfoCount++;
+            // Every 25th, so a 200-node sync leaves ~8 lines rather than 200.
+            if (this.configSyncNodeInfoCount % 25 === 0) {
+              logger.debug(`📇 Config sync: ${this.configSyncNodeInfoCount} NodeInfo messages in ${this.describeConfigSyncElapsed()}`);
+            }
+          }
           await this.processNodeInfoProtobuf(parsed.data);
           break;
         case 'metadata':
@@ -4753,6 +4788,8 @@ class MeshtasticManager implements ISourceManager {
             const { next, actions } = dispatch(this.#state, 'CONFIG_COMPLETE', this.buildSmContext());
             this.#state = next;
             logger.debug(`📸 Init config capture complete! Captured ${this.initConfigCache.length} messages for virtual node replay`);
+            logger.info(`✅ Config sync complete: ${this.configSyncNodeInfoCount} NodeInfo message(s) in ${this.describeConfigSyncElapsed()}`);
+            this.configSyncStartedAt = null;
 
             for (const action of actions) {
               switch (action.kind) {
