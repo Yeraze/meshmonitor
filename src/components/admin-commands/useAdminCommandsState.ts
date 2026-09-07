@@ -166,22 +166,16 @@ export interface StatusMessageConfigState {
   nodeStatus: string;
 }
 
-// Traffic Management Config State (v2.7.22 schema)
+// Traffic Management Config State (v2.8 "non-zero implies enabled" schema).
+// Protobufs commit d4f7ddb1 removed the nine bool toggles and
+// position_precision_bits and reserved their tags; every knob left is a uint32
+// that the firmware treats as enabled when non-zero (#5123).
 export interface TrafficManagementConfigState {
-  enabled: boolean;
-  positionDedupEnabled: boolean;
-  positionPrecisionBits: number;
   positionMinIntervalSecs: number;
-  nodeinfoDirectResponse: boolean;
   nodeinfoDirectResponseMaxHops: number;
-  rateLimitEnabled: boolean;
   rateLimitWindowSecs: number;
   rateLimitMaxPackets: number;
-  dropUnknownEnabled: boolean;
   unknownPacketThreshold: number;
-  exhaustHopTelemetry: boolean;
-  exhaustHopPosition: boolean;
-  routerPreserveHops: boolean;
 }
 
 /**
@@ -582,20 +576,11 @@ const initialState: AdminCommandsState = {
     nodeStatus: '',
   },
   trafficManagement: {
-    enabled: false,
-    positionDedupEnabled: false,
-    positionPrecisionBits: 0,
     positionMinIntervalSecs: 0,
-    nodeinfoDirectResponse: false,
     nodeinfoDirectResponseMaxHops: 0,
-    rateLimitEnabled: false,
     rateLimitWindowSecs: 0,
     rateLimitMaxPackets: 0,
-    dropUnknownEnabled: false,
     unknownPacketThreshold: 0,
-    exhaustHopTelemetry: false,
-    exhaustHopPosition: false,
-    routerPreserveHops: false,
   },
   meshBeacon: {
     listenEnabled: false,

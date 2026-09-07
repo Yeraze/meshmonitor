@@ -6,49 +6,58 @@ Because this is a device-side module, the actual packet policing happens on the 
 
 ## Settings reference
 
-The settings live under **Configuration → Module Settings → Traffic Management**, grouped exactly as they appear in the UI. Enabling the module reveals the grouped sub-settings below it. In MeshMonitor's editor every toggle starts **unchecked** and every numeric field starts at **0** until the device reports its own values; the numbers below describe what each field controls.
+The settings live under **Configuration → Module Settings → Traffic Management**, grouped exactly as they appear in the UI.
 
-### Enable Traffic Management
-
-- **Enable Traffic Management** — turns the module on. Its description: *packet inspection and traffic shaping to reduce channel utilization.* When off, none of the groups below have any effect. Default: **off**.
+::: tip Non-zero enables, 0 disables
+Traffic Management has no separate on/off checkboxes. Every setting is a number, and the firmware treats a **non-zero value as "this feature is on"** and **0 as "off"**. Turning a feature off means setting its value back to 0. The module itself is switched on by the device the first time it receives a Traffic Management config.
+:::
 
 ### Position Deduplication
 
 Drops redundant position broadcasts so the same location isn't rebroadcast repeatedly.
 
-- **Enable** — *drop redundant position broadcasts.* Default: **off**.
-- **Precision Bits (0–32)** — *number of bits of precision (geohash) for position dedup. More bits = finer granularity.* A slider from 0 to 32; a higher value treats smaller movements as distinct positions (fewer drops), a lower value dedups more aggressively.
-- **Minimum Interval (seconds)** — *minimum seconds between position updates from the same node.* Positions arriving sooner than this from a given node are dropped.
+- **Minimum Interval (seconds)** — minimum seconds between position updates from the same node. Positions arriving sooner than this from a given node are dropped. **0 disables position deduplication.**
+
+The precision used to decide whether two positions are "the same place" comes from the **channel's own Position Precision setting**, not from Traffic Management.
 
 ### NodeInfo Direct Response
 
 Lets the node answer NodeInfo requests from its own cache instead of forwarding them across the mesh.
 
-- **Enable** — *respond directly to NodeInfo requests from local cache.* Default: **off**.
-- **Max Hops (0–7)** — *minimum hop distance from requestor before responding from cache.* Controls how far away a requestor must be before the node answers from cache rather than relaying.
+- **Max Hops (0–7)** — maximum hop distance from the requestor at which the node answers from cache rather than relaying. **0 disables direct response.**
 
 ### Rate Limiting
 
 Throttles nodes that transmit too frequently.
 
-- **Enable** — *throttle chatty nodes.* Default: **off**.
-- **Window (seconds)** — *time window for rate limiting calculations.*
-- **Max Packets Per Window** — *maximum packets allowed per node within the window.* Packets beyond this count within the window are dropped.
+- **Window (seconds)** — time window for rate limiting calculations.
+- **Max Packets Per Window** — maximum packets allowed per node within the window. Packets beyond this count within the window are dropped.
+
+Rate limiting runs **only when both values are non-zero**. Leaving either at 0 turns it off.
 
 ### Drop Unknown Packets
 
 Discards packets the node cannot decode/decrypt once a node exceeds a threshold.
 
-- **Enable** — *drop unknown/undecryptable packets after threshold.* Default: **off**.
-- **Unknown Packet Threshold** — *number of unknown packets from a node before dropping.*
+- **Unknown Packet Threshold** — number of unknown/undecryptable packets from a node within the rate window before it is dropped. **0 disables unknown-packet filtering.**
 
-### Hop Limit Exhaustion
+### Settings that used to be here
 
-Controls how the node handles hop limits on traffic it relays. Own packets are never affected by the exhaust toggles.
+Meshtastic protobufs commit `d4f7ddb1` removed nine fields from `TrafficManagementConfig` and reserved their tags, because none of them had shipped in a stable release:
 
-- **Exhaust Hop Limit on Relayed Telemetry** — *set hop_limit=0 on relayed telemetry broadcasts (own packets unaffected).* Stops relayed telemetry from being rebroadcast further. Default: **off**.
-- **Exhaust Hop Limit on Relayed Positions** — *set hop_limit=0 on relayed position broadcasts (own packets unaffected).* Default: **off**.
-- **Router Preserve Hops** — *preserve hop_limit for router-to-router traffic.* Keeps the hop limit intact between routers even when the exhaust options above are active. Default: **off**.
+| Removed setting | What replaced it |
+|---|---|
+| Enable Traffic Management | The device's own module flag, set when it receives a Traffic Management config |
+| Position Dedup → Enable | Minimum Interval > 0 |
+| Position Dedup → Precision Bits | The channel's Position Precision setting |
+| NodeInfo Direct Response → Enable | Max Hops > 0 |
+| Rate Limiting → Enable | Window and Max Packets both > 0 |
+| Drop Unknown → Enable | Unknown Packet Threshold > 0 |
+| Exhaust Hop Limit on Relayed Telemetry | Removed — shelved in the firmware module itself |
+| Exhaust Hop Limit on Relayed Positions | Removed — shelved in the firmware module itself |
+| Router Preserve Hops | Removed — shelved in the firmware module itself |
+
+MeshMonitor no longer shows these controls. It used to, and on 2.8 firmware they did nothing: the device treats those tags as reserved and ignores them, so the config appeared to save while nothing changed on the node.
 
 ## Telemetry display
 
@@ -76,9 +85,9 @@ The released **v2.7.26** source contains neither `TrafficManagementModule` nor t
 
 Start conservative and tighten only once you understand how your mesh behaves:
 
-1. **Enable the module** and turn on **Position Deduplication** with a **moderate precision** and a **moderate minimum interval** — this trims the most common source of redundant airtime (repeated position broadcasts) with little risk.
-2. **Leave Rate Limiting and Drop Unknown Packets off** until you have observed your mesh's normal traffic. Both drop packets, so enabling them before you know what "normal" looks like can silently discard legitimate traffic.
-3. **Be cautious with Hop Limit Exhaustion and router settings on a router node.** These affect traffic the node relays for everyone, so aggressive settings on a router **affect its neighbors' reachability**, not just the local node. Change them one at a time and watch the telemetry counters for the effect.
+1. **Start with Position Deduplication alone** — set a **moderate Minimum Interval** and leave everything else at 0. This trims the most common source of redundant airtime (repeated position broadcasts) with little risk.
+2. **Leave Rate Limiting and Drop Unknown Packets at 0** until you have observed your mesh's normal traffic. Both drop packets, so enabling them before you know what "normal" looks like can silently discard legitimate traffic.
+3. **Be extra careful on a router node.** These settings affect traffic the node relays for everyone, so an aggressive value on a router **affects its neighbors' reachability**, not just the local node. Change one at a time and watch the telemetry counters for the effect.
 
 Use the **"Traffic Mgmt:"** telemetry graphs to confirm each change is doing what you expect before making the next one.
 

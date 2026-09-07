@@ -33,21 +33,26 @@ describe('createSetModuleConfigMessageGeneric round-trip', () => {
   };
 
   it('encodes trafficmanagement with the correct payload variant and field names', () => {
+    // v2.8 schema — the bool toggles are gone; a non-zero value on each uint32
+    // knob is what enables the feature on the device (#5123).
     const encoded = protobufService.createSetModuleConfigMessageGeneric('trafficmanagement', {
-      enabled: true,
-      rateLimitEnabled: true,
+      positionMinIntervalSecs: 300,
+      rateLimitWindowSecs: 60,
       rateLimitMaxPackets: 5,
-      routerPreserveHops: true,
+      unknownPacketThreshold: 4,
     });
     const msg = decode(encoded);
 
     // ModuleConfig.payload_variant must be the trafficManagement oneof case,
     // not empty — an empty/omitted variant is the silent-failure we guard against.
     expect(msg.setModuleConfig.payloadVariant).toBe('trafficManagement');
-    expect(msg.setModuleConfig.trafficManagement.enabled).toBe(true);
-    expect(msg.setModuleConfig.trafficManagement.rateLimitEnabled).toBe(true);
+    expect(msg.setModuleConfig.trafficManagement.positionMinIntervalSecs).toBe(300);
+    expect(msg.setModuleConfig.trafficManagement.rateLimitWindowSecs).toBe(60);
     expect(msg.setModuleConfig.trafficManagement.rateLimitMaxPackets).toBe(5);
-    expect(msg.setModuleConfig.trafficManagement.routerPreserveHops).toBe(true);
+    expect(msg.setModuleConfig.trafficManagement.unknownPacketThreshold).toBe(4);
+    // The removed tags must never reappear on the wire.
+    expect(msg.setModuleConfig.trafficManagement.enabled).toBeUndefined();
+    expect(msg.setModuleConfig.trafficManagement.routerPreserveHops).toBeUndefined();
   });
 
   it('encodes statusmessage with the correct payload variant and field name', () => {
