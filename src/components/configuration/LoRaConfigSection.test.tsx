@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { MODEM_PRESET_OPTIONS, FEM_LNA_MODE_OPTIONS, AMATEUR_RADIO_REGIONS, isAmateurRadioRegion, REGION_MAP } from './constants';
+import { MODEM_PRESET_OPTIONS, FEM_LNA_MODE_OPTIONS, AMATEUR_RADIO_REGIONS, isAmateurRadioRegion, REGION_MAP, REGION_COMPLIANCE_RULES, getRegionComplianceWarning, isPresetLegalForRegion } from './constants';
 
 /**
  * LoRaConfigSection Tests
@@ -237,6 +237,43 @@ describe('LoRaConfigSection', () => {
 
       expect(config.usePreset).toBe(true);
       expect(config).toHaveProperty('modemPreset');
+    });
+  });
+  describe('Region regulator compliance (#5103)', () => {
+    it('flags Long Fast in the US even though it passes the bandwidth fit-check', () => {
+      // The two checks answer different questions. If this ever starts failing
+      // because isPresetLegalForRegion went false, the compliance table is no
+      // longer the thing catching this case and the warning may be duplicated.
+      expect(isPresetLegalForRegion(1, 0)).toBe(true);
+      const w = getRegionComplianceWarning(1, 0);
+      expect(w).not.toBeNull();
+      expect(w!.bandwidthKHz).toBe(250);
+      expect(w!.minBandwidthKHz).toBe(500);
+      expect(w!.recommendedPresetName).toBe('LONG_TURBO');
+    });
+
+    it('clears every US preset at or above the 500 kHz floor', () => {
+      for (const preset of [8, 9, 16]) { // SHORT_TURBO, LONG_TURBO, MEDIUM_TURBO
+        expect(getRegionComplianceWarning(1, preset), `preset ${preset}`).toBeNull();
+      }
+    });
+
+    it('is default-open — no rule, no warning', () => {
+      expect(getRegionComplianceWarning(3, 1)).toBeNull();   // EU_868, 125 kHz
+      expect(getRegionComplianceWarning(250, 0)).toBeNull(); // unknown region
+      expect(getRegionComplianceWarning(null, 0)).toBeNull();
+      expect(getRegionComplianceWarning(1, null)).toBeNull();
+    });
+
+    it('recommends a preset that itself satisfies the rule it is recommended for', () => {
+      // A table entry pointing at a preset that also fails the floor would send
+      // the user straight back to the same warning.
+      for (const [region, rule] of Object.entries(REGION_COMPLIANCE_RULES)) {
+        expect(
+          getRegionComplianceWarning(Number(region), rule.recommendedPreset),
+          `region ${region} recommends preset ${rule.recommendedPreset}`,
+        ).toBeNull();
+      }
     });
   });
 });

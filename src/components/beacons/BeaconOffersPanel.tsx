@@ -170,6 +170,20 @@ export default function BeaconOffersPanel({
                   rewrite the radio's LoRa config, which this card does not do. */}
               {verdict.presetNote && <p className={styles.beaconOfferNote}>{verdict.presetNote}</p>}
 
+              {/* Regulator-compliance warning for the advertised region/preset
+                  (#5103). Warning-only, like the amateur-band notice on the
+                  local LoRa config — it describes the neighbour's mesh and
+                  never gates the join. */}
+              {verdict.complianceNote && (
+                <p
+                  role="alert"
+                  className={styles.beaconOfferWarning}
+                  data-testid="beacon-offer-compliance"
+                >
+                  <UiIcon name="alert" /> {verdict.complianceNote}
+                </p>
+              )}
+
               {/* Decision 2: say why, rather than hiding the offer. */}
               {!verdict.actionable && (
                 <p className={styles.beaconOfferReason} data-testid="beacon-offer-reason">

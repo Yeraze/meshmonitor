@@ -90,4 +90,63 @@ describe('assessBeaconOffer', () => {
       expect(assessBeaconOffer(joinable).presetNote).toBeUndefined();
     });
   });
+  // --- Regulator-compliance warning (#5103) ---
+
+  it('warns that Long Fast is not compliant in the US and names Long Turbo', () => {
+    // The combination the official Meshtastic clients now flag. It PASSES the
+    // firmware bandwidth-fits-the-band check, so only the compliance table
+    // catches it — that is the whole point of the second check.
+    const r = assessBeaconOffer({ ...joinable, offerRegion: 1, offerPreset: 0 });
+    expect(isPresetLegalForRegion(1, 0)).toBe(true);
+    expect(r.complianceNote).toMatch(/not compliant in/i);
+    expect(r.complianceNote).toContain('LONG_FAST');
+    expect(r.complianceNote).toContain('250 kHz');
+    expect(r.complianceNote).toContain('LONG_TURBO');
+  });
+
+  it('never blocks the join on a compliance warning', () => {
+    // Region/preset are context about the neighbour's mesh; joining a channel
+    // does not touch this node's LoRa config, so a warning must not gate it.
+    const r = assessBeaconOffer({ ...joinable, offerRegion: 1, offerPreset: 0 });
+    expect(r.actionable).toBe(true);
+  });
+
+  it('still reports the compliance warning on an un-actionable offer', () => {
+    const r = assessBeaconOffer({ offerChannelName: null, offerRegion: 1, offerPreset: 0 });
+    expect(r.actionable).toBe(false);
+    expect(r.complianceNote).toMatch(/not compliant in/i);
+  });
+
+  it('does not warn about a US preset that meets the 500 kHz floor', () => {
+    for (const preset of [8, 9, 16]) { // SHORT_TURBO, LONG_TURBO, MEDIUM_TURBO
+      expect(assessBeaconOffer({ ...joinable, offerRegion: 1, offerPreset: preset }).complianceNote)
+        .toBeUndefined();
+    }
+  });
+
+  it('is default-open: a region with no confirmed rule produces no warning', () => {
+    // EU_868 with a 125 kHz preset — narrow, but no ETSI rule is encoded, and
+    // guessing one would put a false legal claim in front of the user.
+    expect(assessBeaconOffer({ ...joinable, offerRegion: 3, offerPreset: 1 }).complianceNote)
+      .toBeUndefined();
+    // An unknown region code likewise.
+    expect(assessBeaconOffer({ ...joinable, offerRegion: 250, offerPreset: 0 }).complianceNote)
+      .toBeUndefined();
+  });
+
+  it('needs both a region and a preset before it judges anything', () => {
+    // offer_region UNSET (0) normalises to falsy; offer_preset 0 is LONG_FAST,
+    // a real value — so the guards are deliberately asymmetric.
+    expect(assessBeaconOffer({ ...joinable, offerPreset: 0 }).complianceNote).toBeUndefined();
+    expect(assessBeaconOffer({ ...joinable, offerRegion: 1 }).complianceNote).toBeUndefined();
+    expect(assessBeaconOffer({ ...joinable, offerRegion: 0, offerPreset: 0 }).complianceNote).toBeUndefined();
+  });
+
+  it('keeps the compliance warning separate from the plain preset note', () => {
+    // They are rendered differently (warning box vs muted line), so a caller
+    // must be able to tell them apart.
+    const r = assessBeaconOffer({ ...joinable, offerRegion: 1, offerPreset: 0 });
+    expect(r.presetNote).toMatch(/Advertises a mesh on/);
+    expect(r.presetNote).not.toMatch(/not compliant/i);
+  });
 });

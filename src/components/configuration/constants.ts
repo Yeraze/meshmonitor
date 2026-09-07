@@ -323,6 +323,77 @@ export function isPresetLegalForRegion(
   return spanMHz >= bandwidthMHz - 1e-9;
 }
 
+// --- Region -> regulator compliance guidance (issue #5103) ---
+//
+// This is NOT the same question as `isPresetLegalForRegion` above. That one
+// mirrors the firmware's fit-check: "does this preset's bandwidth physically
+// fit inside the region's frequency span?" A combination can pass that check
+// and still be **non-compliant with the region's regulator** — the case the
+// official Meshtastic clients now warn about for Long Fast in the US.
+//
+// US: FCC §15.247(a)(2) permits digital modulation in 902-928 MHz only when the
+// 6 dB bandwidth is at least 500 kHz. Long Fast is 250 kHz, so it clears the
+// 26 MHz band span by a mile and is still outside the rule; Long Turbo (500 kHz)
+// is the compliant equivalent, which is why the mobile app recommends it.
+//
+// As with the legality table, no protobuf field carries any of this — it is
+// client-side guidance. Coverage is deliberately thin and **default-open**: a
+// region with no entry produces no warning at all. Add an entry only where the
+// regulator guidance is confirmed, or where the upstream apps already flag it.
+
+export interface RegionComplianceRule {
+  /** Regulator's minimum occupied bandwidth, in kHz. */
+  minBandwidthKHz: number;
+  /** Preset to suggest instead — must itself satisfy the rule. */
+  recommendedPreset: number;
+  /** Why the rule exists, in one clause, for the user-facing warning. */
+  rationale: string;
+}
+
+export const REGION_COMPLIANCE_RULES: Record<number, RegionComplianceRule> = {
+  1: {
+    minBandwidthKHz: 500,
+    recommendedPreset: 9, // LONG_TURBO
+    rationale: 'FCC §15.247 allows digital modulation in the 902-928 MHz band only at 500 kHz of bandwidth or more',
+  },
+};
+
+export interface RegionComplianceWarning {
+  /** Bandwidth the offered preset actually uses, in kHz. */
+  bandwidthKHz: number;
+  /** Regulator minimum this fails. */
+  minBandwidthKHz: number;
+  rationale: string;
+  /** Protobuf name of the suggested preset, e.g. `LONG_TURBO`. */
+  recommendedPresetName: string;
+}
+
+/**
+ * Regulator-compliance check for a (region, preset) pair.
+ *
+ * Returns null — no warning — for an unknown region, a region with no rule, a
+ * null region or preset, or a preset that satisfies the rule. Never throws and
+ * never blocks anything: this is advisory only.
+ */
+export function getRegionComplianceWarning(
+  region: number | null | undefined,
+  preset: number | null | undefined
+): RegionComplianceWarning | null {
+  if (region == null || preset == null) return null;
+  const rule = REGION_COMPLIANCE_RULES[region];
+  if (!rule) return null;
+  const info = REGION_FREQ_INFO[region];
+  const bandwidthKHz = getPresetBandwidthKHz(preset, !!info?.wideLora);
+  if (bandwidthKHz >= rule.minBandwidthKHz) return null;
+  const recommended = MODEM_PRESET_OPTIONS.find((o) => o.value === rule.recommendedPreset);
+  return {
+    bandwidthKHz,
+    minBandwidthKHz: rule.minBandwidthKHz,
+    rationale: rule.rationale,
+    recommendedPresetName: recommended?.name ?? `preset ${rule.recommendedPreset}`,
+  };
+}
+
 /**
  * Returns the subset of MODEM_PRESET_OPTIONS that are legal for `region`.
  * `currentPreset`, when supplied, is always retained even if it is illegal, so
