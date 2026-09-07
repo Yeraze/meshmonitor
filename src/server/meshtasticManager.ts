@@ -5588,25 +5588,20 @@ class MeshtasticManager implements ISourceManager {
       logger.debug(`[CONFIG] Returning StatusMessage config with nodeStatus="${statusMessageConfigWithDefaults.nodeStatus}"`);
     }
 
-    // Apply Proto3 defaults to TrafficManagement module config (v2.7.22 schema)
+    // Apply Proto3 defaults to TrafficManagement module config (v2.8
+    // "non-zero implies enabled" schema). Protobufs commit d4f7ddb1 removed
+    // the nine bool toggles and position_precision_bits and reserved their
+    // tags; the module-level on/off switch is `moduleConfig.has_traffic_management`
+    // and each remaining uint32 is enabled by a non-zero value (#5123).
     if (moduleConfig.trafficManagement) {
       const tm = moduleConfig.trafficManagement;
       const trafficManagementConfigWithDefaults = {
         ...tm,
-        enabled: tm.enabled !== undefined ? tm.enabled : false,
-        positionDedupEnabled: tm.positionDedupEnabled !== undefined ? tm.positionDedupEnabled : false,
-        positionPrecisionBits: tm.positionPrecisionBits !== undefined ? tm.positionPrecisionBits : 0,
         positionMinIntervalSecs: tm.positionMinIntervalSecs !== undefined ? tm.positionMinIntervalSecs : 0,
-        nodeinfoDirectResponse: tm.nodeinfoDirectResponse !== undefined ? tm.nodeinfoDirectResponse : false,
         nodeinfoDirectResponseMaxHops: tm.nodeinfoDirectResponseMaxHops !== undefined ? tm.nodeinfoDirectResponseMaxHops : 0,
-        rateLimitEnabled: tm.rateLimitEnabled !== undefined ? tm.rateLimitEnabled : false,
         rateLimitWindowSecs: tm.rateLimitWindowSecs !== undefined ? tm.rateLimitWindowSecs : 0,
         rateLimitMaxPackets: tm.rateLimitMaxPackets !== undefined ? tm.rateLimitMaxPackets : 0,
-        dropUnknownEnabled: tm.dropUnknownEnabled !== undefined ? tm.dropUnknownEnabled : false,
-        unknownPacketThreshold: tm.unknownPacketThreshold !== undefined ? tm.unknownPacketThreshold : 0,
-        exhaustHopTelemetry: tm.exhaustHopTelemetry !== undefined ? tm.exhaustHopTelemetry : false,
-        exhaustHopPosition: tm.exhaustHopPosition !== undefined ? tm.exhaustHopPosition : false,
-        routerPreserveHops: tm.routerPreserveHops !== undefined ? tm.routerPreserveHops : false
+        unknownPacketThreshold: tm.unknownPacketThreshold !== undefined ? tm.unknownPacketThreshold : 0
       };
 
       moduleConfig = {
@@ -5614,7 +5609,7 @@ class MeshtasticManager implements ISourceManager {
         trafficManagement: trafficManagementConfigWithDefaults
       };
 
-      logger.debug(`[CONFIG] Returning TrafficManagement config with enabled=${trafficManagementConfigWithDefaults.enabled}`);
+      logger.debug(`[CONFIG] Returning TrafficManagement config with positionMinIntervalSecs=${trafficManagementConfigWithDefaults.positionMinIntervalSecs}`);
     }
 
     return {
