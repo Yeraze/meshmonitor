@@ -35,6 +35,12 @@ vi.mock('../sourceManagerRegistry.js', () => ({
 }));
 vi.mock('../sourceManagerTypes.js', () => ({
   isMeshCoreManager: (m: unknown) => !!m,
+  // Required since #5096: the barrel's data routes run behind
+  // anyMeshCoreRouteGuard, which calls this. A partial mock that omits an
+  // export the module under test uses fails as a 500 (`undefined is not a
+  // function`), not as a missing-mock error.
+  isAnyMeshCoreManager: (m: unknown) => !!m,
+  isMeshCoreMqttManager: () => false,
   isMeshtasticManager: () => false,
   getPrimaryMeshtasticManager: () => null,
 }));

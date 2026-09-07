@@ -39,6 +39,7 @@ import UnifiedPacketMonitorPage from './pages/UnifiedPacketMonitorPage.tsx';
 import GlobalSettingsPage from './pages/GlobalSettingsPage.tsx';
 import UsersPage from './pages/UsersPage.tsx';
 import MeshCoreSourcePage from './pages/MeshCoreSourcePage.tsx';
+import MeshCoreIngestSourcePage from './pages/MeshCoreIngestSourcePage.tsx';
 import ReticulumSourcePage from './pages/ReticulumSourcePage.tsx';
 import { useDashboardSources } from './hooks/useDashboardData';
 import './index.css';
@@ -97,6 +98,21 @@ export function SourceApp() {
       <SourceProvider sourceId={sourceId} sourceName={source.name} sourceType={source.type}>
         <WebSocketProvider>
           <MeshCoreSourcePage key={sourceId} />
+        </WebSocketProvider>
+      </SourceProvider>
+    );
+  }
+
+  // A meshcore_mqtt ingest source is MeshCore, but has no device — it gets its
+  // own read-only page rather than MeshCorePage (whose useMeshCore hook polls
+  // ~20 device endpoints the route guard refuses for it) and rather than
+  // falling through to the Meshtastic <App /> shell below, which is what it did
+  // before #5096 and why it showed Meshtastic tabs for a MeshCore source.
+  if (source?.type === 'meshcore_mqtt') {
+    return (
+      <SourceProvider sourceId={sourceId} sourceName={source.name} sourceType={source.type}>
+        <WebSocketProvider>
+          <MeshCoreIngestSourcePage key={sourceId} />
         </WebSocketProvider>
       </SourceProvider>
     );
