@@ -55,6 +55,31 @@ case "$HTTP_CODE" in
   200)
     echo "==> Merging with existing published index ($REPO_URL/index.yaml)"
     helm repo index "$OUT_DIR" --url "$REPO_URL" --merge "$EXISTING_INDEX"
+
+    # $OUT_DIR only holds the .tgz just packaged above; the merged index.yaml
+    # also references every previously released version's .tgz, which lives
+    # nowhere in this checkout. actions/deploy-pages replaces the whole
+    # published site with the uploaded artifact rather than adding to it, so
+    # any referenced archive missing from $OUT_DIR silently disappears from
+    # the live site even though the index still lists it (#5119, a follow-on
+    # to the index-only fix in #4335). Re-fetch each previously published
+    # archive that isn't already present so it survives this deploy too.
+    echo "==> Fetching previously published chart archives referenced in the index"
+    readarray -t EXISTING_CHART_URLS < <(grep -oE 'https?://[^"'"'"'[:space:]]+\.tgz' "$EXISTING_INDEX" | sort -u)
+    for url in "${EXISTING_CHART_URLS[@]:-}"; do
+      [[ -z "$url" ]] && continue
+      filename="$(basename "$url")"
+      dest="$OUT_DIR/$filename"
+      if [[ -f "$dest" ]]; then
+        continue
+      fi
+      echo "    -> downloading $filename"
+      if ! curl -sSL -f -o "$dest" "$url"; then
+        echo "error: failed to download previously published chart archive $url" >&2
+        echo "       Refusing to publish an index that references an archive we could not fetch." >&2
+        exit 1
+      fi
+    done
     ;;
   404)
     echo "==> No existing published index found at $REPO_URL/index.yaml; generating fresh index"
