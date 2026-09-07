@@ -433,6 +433,15 @@ export class MeshCoreRemoteTelemetryScheduler {
     const ts = this.nowFn();
     const rows: DbTelemetry[] = [];
     const sources: string[] = [];
+    // A successful status or LPP response is a live round-trip with the
+    // node, exactly as much proof of "heard" as a contact advert or a
+    // message (meshcoreManager.ts persistContact()/DM handling already
+    // bump lastHeard for those). Without this, a node that only ever
+    // responds to telemetry polls (no adverts, no messages) never refreshes
+    // meshcore_nodes.lastHeard and can be flagged as inactive by
+    // inactiveNodeNotificationService while actively answering telemetry
+    // requests. See https://github.com/Yeraze/meshmonitor/issues/5131
+    let gotResponse = false;
 
     // Path #1: SendStatusReq → StatusResponse. Works on any reachable
     // Repeater / Room Server with no login required, returns the
@@ -444,6 +453,7 @@ export class MeshCoreRemoteTelemetryScheduler {
       try {
         const status = await manager.requestNodeStatus(target.publicKey);
         if (status) {
+          gotResponse = true;
           // Device Health (#4558 follow-up): detect a reboot from the uptime
           // reading BEFORE the batch insert below, so the "prior" it reads is the
           // last tick's value. DB read only, no packet sent.
@@ -528,6 +538,7 @@ export class MeshCoreRemoteTelemetryScheduler {
 
       const records = await manager.requestRemoteTelemetry(target.publicKey);
       if (records && records.length > 0) {
+        gotResponse = true;
         const lppRows: DbTelemetry[] = [];
         for (const rec of records) {
           lppRows.push(...recordToTelemetryRows(rec, target.publicKey, nodeNum, ts));
@@ -574,6 +585,17 @@ export class MeshCoreRemoteTelemetryScheduler {
             }
           }
         }
+      }
+    }
+
+    if (gotResponse) {
+      try {
+        await this.database.meshcore.upsertNode({ publicKey: target.publicKey, lastHeard: ts }, manager.sourceId);
+      } catch (err) {
+        logger.warn(
+          `[MeshCoreRemoteTelem:${manager.sourceId}] Failed to persist lastHeard for ${keyShort}…:`,
+          err,
+        );
       }
     }
 

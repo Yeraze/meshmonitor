@@ -559,7 +559,7 @@ describe('MeshCoreRemoteTelemetryScheduler.tickOneManager', () => {
     );
   });
 
-  it('does not call upsertNode when requestNodeStatus returns no battery voltage', async () => {
+  it('does not persist batteryMv when requestNodeStatus returns no battery voltage', async () => {
     const now = 10_000_000;
     const manager = makeFakeManager({
       statusToReturn: { uptimeSecs: 500 }, // no batteryMv
@@ -581,7 +581,10 @@ describe('MeshCoreRemoteTelemetryScheduler.tickOneManager', () => {
       now: () => now,
     });
     await scheduler.tickOneManager(manager);
-    expect(upsertNode).not.toHaveBeenCalled();
+    // #5131: a status/LPP response is still a live round-trip, so lastHeard
+    // is refreshed even though there's no battery voltage to persist.
+    expect(upsertNode).toHaveBeenCalledWith({ publicKey: 'rep-a', lastHeard: now }, 'src-a');
+    expect(upsertNode).not.toHaveBeenCalledWith(expect.objectContaining({ batteryMv: expect.anything() }), 'src-a');
   });
 
   it('persists GPS position to meshcore_nodes when LPP response includes type 136', async () => {
@@ -644,7 +647,10 @@ describe('MeshCoreRemoteTelemetryScheduler.tickOneManager', () => {
       now: () => now,
     });
     await scheduler.tickOneManager(manager);
-    expect(upsertNode).not.toHaveBeenCalled();
+    // #5131: an LPP response is still a live round-trip, so lastHeard is
+    // refreshed even though the Null Island fix itself is discarded.
+    expect(upsertNode).toHaveBeenCalledWith({ publicKey: 'companion-c', lastHeard: now }, 'src-a');
+    expect(upsertNode).not.toHaveBeenCalledWith(expect.objectContaining({ latitude: expect.anything() }), 'src-a');
   });
 
   it('does not persist GPS position when LPP type 136 value lacks lat/lon fields', async () => {
@@ -670,7 +676,10 @@ describe('MeshCoreRemoteTelemetryScheduler.tickOneManager', () => {
       now: () => now,
     });
     await scheduler.tickOneManager(manager);
-    expect(upsertNode).not.toHaveBeenCalled();
+    // #5131: an LPP response is still a live round-trip, so lastHeard is
+    // refreshed even though there's no usable GPS fix to persist.
+    expect(upsertNode).toHaveBeenCalledWith({ publicKey: 'companion-d', lastHeard: now }, 'src-a');
+    expect(upsertNode).not.toHaveBeenCalledWith(expect.objectContaining({ latitude: expect.anything() }), 'src-a');
   });
 
   it('does not insert when both status and LPP are empty on a Repeater', async () => {
@@ -693,6 +702,82 @@ describe('MeshCoreRemoteTelemetryScheduler.tickOneManager', () => {
     });
     await scheduler.tickOneManager(manager);
     expect(insertSpy).not.toHaveBeenCalled();
+  });
+
+  // Regression for #5131: a node that only ever answers telemetry polls (no
+  // adverts, no messages) must still be considered "heard" — otherwise
+  // inactiveNodeNotificationService flags it as inactive despite a live
+  // round-trip minutes earlier.
+  it('persists lastHeard when a status response is received, even with no LPP records', async () => {
+    const now = 10_000_000;
+    const manager = makeFakeManager({
+      statusToReturn: { uptimeSecs: 500 },
+      recordsToReturn: [],
+    });
+    const upsertNode = vi.fn().mockResolvedValue(undefined);
+    const scheduler = new MeshCoreRemoteTelemetryScheduler({
+      registry: makeRegistry([manager]),
+      database: {
+        meshcore: {
+          getTelemetryEnabledNodes: vi.fn().mockResolvedValue([
+            makeNode({ publicKey: 'rep-e', telemetryEnabled: true, advType: 2, lastTelemetryRequestAt: null }),
+          ]),
+          markTelemetryRequested: vi.fn(),
+          upsertNode,
+        },
+        telemetry: { insertTelemetryBatch: vi.fn().mockResolvedValue(1) },
+      },
+      now: () => now,
+    });
+    await scheduler.tickOneManager(manager);
+    expect(upsertNode).toHaveBeenCalledWith({ publicKey: 'rep-e', lastHeard: now }, 'src-a');
+  });
+
+  it('persists lastHeard when LPP records are received, even with no status response', async () => {
+    const now = 10_000_000;
+    const manager = makeFakeManager({
+      statusToReturn: null,
+      recordsToReturn: [{ channel: 1, type: 103, value: 21.5 }],
+    });
+    const upsertNode = vi.fn().mockResolvedValue(undefined);
+    const scheduler = new MeshCoreRemoteTelemetryScheduler({
+      registry: makeRegistry([manager]),
+      database: {
+        meshcore: {
+          getTelemetryEnabledNodes: vi.fn().mockResolvedValue([
+            makeNode({ publicKey: 'companion-f', telemetryEnabled: true, advType: 1, lastTelemetryRequestAt: null }),
+          ]),
+          markTelemetryRequested: vi.fn(),
+          upsertNode,
+        },
+        telemetry: { insertTelemetryBatch: vi.fn().mockResolvedValue(1) },
+      },
+      now: () => now,
+    });
+    await scheduler.tickOneManager(manager);
+    expect(upsertNode).toHaveBeenCalledWith({ publicKey: 'companion-f', lastHeard: now }, 'src-a');
+  });
+
+  it('does not persist lastHeard when both status and LPP are empty', async () => {
+    const now = 10_000_000;
+    const manager = makeFakeManager({ statusToReturn: null, recordsToReturn: [] });
+    const upsertNode = vi.fn().mockResolvedValue(undefined);
+    const scheduler = new MeshCoreRemoteTelemetryScheduler({
+      registry: makeRegistry([manager]),
+      database: {
+        meshcore: {
+          getTelemetryEnabledNodes: vi.fn().mockResolvedValue([
+            makeNode({ publicKey: 'rep-g', telemetryEnabled: true, advType: 2, lastTelemetryRequestAt: null }),
+          ]),
+          markTelemetryRequested: vi.fn(),
+          upsertNode,
+        },
+        telemetry: { insertTelemetryBatch: vi.fn().mockResolvedValue(0) },
+      },
+      now: () => now,
+    });
+    await scheduler.tickOneManager(manager);
+    expect(upsertNode).not.toHaveBeenCalled();
   });
 });
 
