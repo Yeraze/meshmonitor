@@ -122,7 +122,9 @@ export const MeshCoreRemoteStatsPanel: React.FC<Props> = ({
               <StatField label={t('meshcore.remoteStats.last_snr', 'Last SNR')} value={formatSnr(status.lastSnr)} />
               <StatField label={t('meshcore.remoteStats.noise_floor', 'Noise floor')} value={formatRssi(status.noiseFloor)} />
               <StatField label={t('meshcore.remoteStats.air_time', 'Air time')} value={formatAirTime(status.airTimeSecs)} />
+              <StatField label={t('meshcore.remoteStats.rx_air_time', 'RX air time')} value={formatAirTime(status.rxAirTimeSecs)} />
               <StatField label={t('meshcore.remoteStats.errors', 'Error Events')} value={formatNumber(status.errors)} />
+              <StatField label={t('meshcore.remoteStats.recv_errors', 'Receive errors')} value={formatNumber(status.recvErrors)} />
 
               <div className="mrs-section">
                 <h5>{t('meshcore.remoteStats.rx', 'Received')}</h5>

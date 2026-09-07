@@ -1988,6 +1988,13 @@ export class MeshCoreNativeBackend extends EventEmitter {
           errors: stats?.err_events,
           direct_dups: stats?.n_direct_dups,
           flood_dups: stats?.n_flood_dups,
+          // RepeaterStats grew two trailing counters after the original 48-byte
+          // layout: total_rx_air_time_secs (firmware v1.8) and n_recv_errors
+          // (v1.12). meshcore.js only started decoding them in upstream PR #37
+          // (#5125); both read back `null` from older firmware that stops the
+          // payload short, so normalise that to `undefined` for the bridge shape.
+          rx_air_time_secs: stats?.total_rx_air_time_secs ?? undefined,
+          recv_errors: stats?.n_recv_errors ?? undefined,
           tx_power: undefined,
           radio_freq: undefined,
           radio_bw: undefined,
@@ -2325,7 +2332,11 @@ export class MeshCoreNativeBackend extends EventEmitter {
       return {
         battery_mv: data.batteryMilliVolts,
         uptime_secs: data.uptimeSecs,
-        queue_len: data.queueLen,
+        // `errors` sits between uptime and queue_len on the wire. meshcore.js
+        // used to skip it, which made queue_len read the low byte of errors —
+        // wrong on any device reporting non-zero errors (#5125).
+        errors: data.errors ?? undefined,
+        queue_len: data.queueLen ?? undefined,
       };
     }
     if (type === 'radio') {
