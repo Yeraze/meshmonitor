@@ -126,18 +126,25 @@ if [[ -s "$EXISTING_INDEX" ]]; then
     # The version just packaged above is already here.
     [[ -f "$dest" ]] && continue
 
-    code="$(curl -sSL -w '%{http_code}' -o "$dest" "$url" || true)"
+    # Download to a temp file first and only rename it into place on success,
+    # so an interrupted run can never leave a truncated .tgz at $dest. The temp
+    # file lives in $WORK_DIR, not $OUT_DIR, so it's covered by the EXIT trap
+    # above even if the script dies before reaching the case statement below —
+    # $OUT_DIR is uploaded wholesale, so nothing must land there but on success.
+    tmp_dest="$(mktemp "$WORK_DIR/download.XXXXXX")"
+    code="$(curl -sSL -w '%{http_code}' -o "$tmp_dest" "$url" || true)"
     code="${code:-000}"
     case "$code" in
       200)
+        mv "$tmp_dest" "$dest"
         RECOVERED=$((RECOVERED + 1))
         continue
         ;;
       404)
-        rm -f "$dest"
+        rm -f "$tmp_dest"
         ;;
       *)
-        rm -f "$dest"
+        rm -f "$tmp_dest"
         echo "error: fetching $url returned HTTP $code (neither 200 nor 404)." >&2
         echo "       Treating that as 'cannot reach the site', not 'archive is gone' — dropping" >&2
         echo "       released versions on a transient failure is exactly the #4335 regression." >&2
