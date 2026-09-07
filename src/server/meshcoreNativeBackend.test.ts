@@ -40,6 +40,9 @@ const BinaryRequestTypes = { GetTelemetryData: 0x03 };
 const AdvType = { None: 0, Chat: 1, Repeater: 2, Room: 3 };
 const TxtTypes = { Plain: 0, CliData: 1, SignedPlain: 2 };
 
+/** Flush pending microtasks + setImmediate so async fire-and-forget work runs. */
+const flushAsync = () => new Promise<void>((r) => setImmediate(r));
+
 /** Mock Connection that surfaces every method the backend touches. */
 class MockConnection extends EventEmitter {
   public connectCalled = 0;
@@ -430,8 +433,8 @@ describe('MeshCoreNativeBackend', () => {
     try {
       conn.emit(PushCodes.MsgWaiting);
       // Flush microtasks/macrotasks so the fire-and-forget async IIFE settles.
-      await new Promise((r) => setImmediate(r));
-      await new Promise((r) => setImmediate(r));
+      await flushAsync();
+      await flushAsync();
     } finally {
       process.off('unhandledRejection', onUnhandledRejection);
     }
