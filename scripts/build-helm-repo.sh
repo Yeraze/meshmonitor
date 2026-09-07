@@ -6,13 +6,15 @@
 # can `helm repo add meshmonitor https://meshmonitor.org/charts`.
 #
 # Run by the Deploy Documentation workflow (.github/workflows/deploy-docs.yml)
-# before the VitePress build. Requires `helm` on PATH.
+# before the VitePress build. Requires `helm` and `git` on PATH, and a checkout
+# with full history + tags (the workflow uses fetch-depth: 0).
 #
-# See issue #3431.
+# See issues #3431, #4335, #5119.
 set -euo pipefail
 
 REPO_URL="${HELM_REPO_URL:-https://meshmonitor.org/charts}"
 CHART_DIR="helm/meshmonitor"
+CHART_NAME="meshmonitor"
 OUT_DIR="docs/public/charts"
 
 if ! command -v helm >/dev/null 2>&1; then
@@ -30,22 +32,40 @@ helm package "$CHART_DIR" --destination "$OUT_DIR"
 
 # $OUT_DIR (docs/public/charts/) is gitignored and rebuilt from a clean
 # checkout on every run, so it only ever contains the chart version just
-# packaged above. Without merging in the index already live at $REPO_URL,
-# `helm repo index` would overwrite the published index.yaml with a
-# single-entry index, deleting every previously released version from the
-# repo (#4335). Fetch the current published index, if any, and merge it in.
+# packaged above — while actions/deploy-pages REPLACES the whole published site
+# with the uploaded artifact rather than adding to it.
+#
+# #4335 fixed half of this by merging the published index.yaml so previously
+# released versions kept being listed. But the archives those entries point at
+# were never re-uploaded, so every one of them 404'd while the index went on
+# advertising them (#5119). Listing a chart you cannot download is worse than
+# not listing it: `helm repo add` succeeds and `helm install` then fails.
+#
+# The fix is to make the published directory self-consistent — every version the
+# index names must be a file we are about to upload — and then generate the
+# index straight from that directory. So, for each archive the currently
+# published index references:
+#
+#   * fetch it from the live site (the common case; byte-identical, so its
+#     digest is unchanged),
+#   * or, if it is genuinely gone (404), rebuild it from its release tag,
+#   * or, failing both, drop it — the index simply stops advertising a file
+#     nobody can download.
+#
+# Anything other than 200/404 is treated as "cannot reach the site", not "gone",
+# and fails the run: quietly dropping every released version because of a
+# transient 5xx is the #4335 regression, and a failed deploy is recoverable in a
+# way an overwritten index is not.
 EXISTING_INDEX="$(mktemp)"
-trap 'rm -f "$EXISTING_INDEX"' EXIT
+WORK_DIR="$(mktemp -d)"
+trap 'rm -rf "$EXISTING_INDEX" "$WORK_DIR"' EXIT
 
 #
 # Distinguish "no index published yet" from "could not reach the index": both
 # are non-2xx as far as `curl -f` is concerned, but only the first is safe to
-# proceed from. Regenerating a fresh index after a transient DNS/5xx/TLS
-# failure would silently reintroduce #4335 and drop every released version,
-# while exiting 0. A failed deploy is recoverable by re-running; an
-# overwritten index is visible to everyone running `helm repo update`, so we
-# fail loudly instead.
-echo "==> Generating repository index (url: $REPO_URL)"
+# proceed from. See the note above on why a transient failure must not become a
+# fresh, single-entry index.
+echo "==> Fetching the currently published index ($REPO_URL/index.yaml)"
 # curl still writes %{http_code} (as 000) when it never got a response, so do
 # not append a fallback code here — that would report a doubled "000000".
 HTTP_CODE="$(curl -sSL -w '%{http_code}' -o "$EXISTING_INDEX" "$REPO_URL/index.yaml" || true)"
@@ -53,37 +73,11 @@ HTTP_CODE="${HTTP_CODE:-000}"
 
 case "$HTTP_CODE" in
   200)
-    echo "==> Merging with existing published index ($REPO_URL/index.yaml)"
-    helm repo index "$OUT_DIR" --url "$REPO_URL" --merge "$EXISTING_INDEX"
-
-    # $OUT_DIR only holds the .tgz just packaged above; the merged index.yaml
-    # also references every previously released version's .tgz, which lives
-    # nowhere in this checkout. actions/deploy-pages replaces the whole
-    # published site with the uploaded artifact rather than adding to it, so
-    # any referenced archive missing from $OUT_DIR silently disappears from
-    # the live site even though the index still lists it (#5119, a follow-on
-    # to the index-only fix in #4335). Re-fetch each previously published
-    # archive that isn't already present so it survives this deploy too.
-    echo "==> Fetching previously published chart archives referenced in the index"
-    readarray -t EXISTING_CHART_URLS < <(grep -oE 'https?://[^"'"'"'[:space:]]+\.tgz' "$EXISTING_INDEX" | sort -u)
-    for url in "${EXISTING_CHART_URLS[@]:-}"; do
-      [[ -z "$url" ]] && continue
-      filename="$(basename "$url")"
-      dest="$OUT_DIR/$filename"
-      if [[ -f "$dest" ]]; then
-        continue
-      fi
-      echo "    -> downloading $filename"
-      if ! curl -sSL -f -o "$dest" "$url"; then
-        echo "error: failed to download previously published chart archive $url" >&2
-        echo "       Refusing to publish an index that references an archive we could not fetch." >&2
-        exit 1
-      fi
-    done
+    echo "==> Reconciling previously published chart archives"
     ;;
   404)
-    echo "==> No existing published index found at $REPO_URL/index.yaml; generating fresh index"
-    helm repo index "$OUT_DIR" --url "$REPO_URL"
+    echo "==> No existing published index found; nothing to reconcile"
+    : > "$EXISTING_INDEX"
     ;;
   *)
     echo "error: could not fetch $REPO_URL/index.yaml (HTTP $HTTP_CODE)." >&2
@@ -92,6 +86,95 @@ case "$HTTP_CODE" in
     exit 1
     ;;
 esac
+
+# Rebuild one released version's archive from its git tag. Used when the live
+# site no longer serves it. The regenerated tarball is byte-for-byte unrelated
+# to the original, so its digest differs from the one the old index recorded —
+# which is fine, because the index is regenerated from these files rather than
+# merged from the stale one.
+repackage_from_tag() {
+  local version="$1" tag="v$1" dest="$2"
+  if ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+    return 1
+  fi
+  local src="$WORK_DIR/$version"
+  rm -rf "$src"
+  mkdir -p "$src"
+  # Only the chart directory — a full worktree checkout is unnecessary and slow.
+  if ! git archive "$tag" "$CHART_DIR" 2>/dev/null | tar -x -C "$src"; then
+    return 1
+  fi
+  [[ -f "$src/$CHART_DIR/Chart.yaml" ]] || return 1
+  helm package "$src/$CHART_DIR" --destination "$OUT_DIR" >/dev/null || return 1
+  # helm names the file from Chart.yaml's own version; if the tag and the chart
+  # version ever disagreed, we did not produce the file the index asked for.
+  [[ -f "$dest" ]]
+}
+
+RECOVERED=0
+REBUILT=0
+DROPPED=()
+
+if [[ -s "$EXISTING_INDEX" ]]; then
+  # One URL per referenced archive. `sort -u` because a version can legitimately
+  # be listed with several mirror URLs.
+  readarray -t EXISTING_CHART_URLS < <(grep -oE 'https?://[^"'"'"'[:space:]]+\.tgz' "$EXISTING_INDEX" | sort -u)
+  for url in "${EXISTING_CHART_URLS[@]:-}"; do
+    [[ -z "$url" ]] && continue
+    filename="$(basename "$url")"
+    dest="$OUT_DIR/$filename"
+    # The version just packaged above is already here.
+    [[ -f "$dest" ]] && continue
+
+    code="$(curl -sSL -w '%{http_code}' -o "$dest" "$url" || true)"
+    code="${code:-000}"
+    case "$code" in
+      200)
+        RECOVERED=$((RECOVERED + 1))
+        continue
+        ;;
+      404)
+        rm -f "$dest"
+        ;;
+      *)
+        rm -f "$dest"
+        echo "error: fetching $url returned HTTP $code (neither 200 nor 404)." >&2
+        echo "       Treating that as 'cannot reach the site', not 'archive is gone' — dropping" >&2
+        echo "       released versions on a transient failure is exactly the #4335 regression." >&2
+        exit 1
+        ;;
+    esac
+
+    # 404: the archive really is missing from the published site. Rebuild it
+    # from its release tag so the version stays installable.
+    version="${filename#${CHART_NAME}-}"
+    version="${version%.tgz}"
+    if repackage_from_tag "$version" "$dest"; then
+      echo "    -> rebuilt $filename from tag v$version"
+      REBUILT=$((REBUILT + 1))
+    else
+      rm -f "$dest"
+      DROPPED+=("$version")
+    fi
+  done
+fi
+
+echo "==> Archives: $RECOVERED re-fetched, $REBUILT rebuilt from tags"
+if [[ ${#DROPPED[@]} -gt 0 ]]; then
+  echo "warning: dropping ${#DROPPED[@]} version(s) with no downloadable archive and no usable release tag:" >&2
+  printf '           %s\n' "${DROPPED[@]}" >&2
+  echo "         They will no longer be listed in index.yaml. This is deliberate — an index" >&2
+  echo "         entry whose .tgz 404s breaks 'helm install' for anyone who selects it." >&2
+fi
+
+# Generate the index from the directory rather than merging the published one.
+# $OUT_DIR now holds every archive that should be downloadable, so a
+# directory-derived index cannot reference a file the upload does not contain —
+# the invariant #5119 was about. Digests are recomputed from the actual bytes,
+# so a re-fetched archive keeps its original digest and a rebuilt one gets a
+# correct new digest instead of the stale one the old index recorded.
+echo "==> Generating repository index (url: $REPO_URL)"
+helm repo index "$OUT_DIR" --url "$REPO_URL"
 
 echo "==> Helm repository contents:"
 ls -la "$OUT_DIR"
