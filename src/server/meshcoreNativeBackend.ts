@@ -410,7 +410,10 @@ export class MeshCoreNativeBackend extends EventEmitter {
         this.cachedFirmwareVer = typeof info?.firmwareVer === 'number' ? info.firmwareVer : null;
       } catch (verErr) {
         this.cachedFirmwareVer = null;
-        logger.debug(`[MeshCoreNative:${this.sourceId}] deviceQuery for version failed: ${(verErr as Error).message}`);
+        // meshcore.js can reject with NO argument on an uncorrelated Err ack
+        // (#5102) — don't assume verErr is an Error.
+        const detail = verErr instanceof Error ? verErr.message : String(verErr);
+        logger.debug(`[MeshCoreNative:${this.sourceId}] deviceQuery for version failed: ${detail}`);
       }
     } catch (err) {
       // A failed connect (e.g. a SelfInfo handshake timeout right after a USB
@@ -422,8 +425,11 @@ export class MeshCoreNativeBackend extends EventEmitter {
       try {
         await this.connection?.close?.();
       } catch (closeErr) {
+        // meshcore.js can reject with NO argument on an uncorrelated Err ack
+        // (#5102) — don't assume closeErr is an Error.
+        const detail = closeErr instanceof Error ? closeErr.message : String(closeErr);
         logger.debug(
-          `[MeshCoreNative:${this.sourceId}] close after failed connect threw: ${(closeErr as Error).message}`,
+          `[MeshCoreNative:${this.sourceId}] close after failed connect threw: ${detail}`,
         );
       }
       this.connection = null;
@@ -440,7 +446,10 @@ export class MeshCoreNativeBackend extends EventEmitter {
       try {
         await this.connection.close?.();
       } catch (err) {
-        logger.debug(`[MeshCoreNative:${this.sourceId}] close threw: ${(err as Error).message}`);
+        // meshcore.js can reject with NO argument on an uncorrelated Err ack
+        // (#5102) — don't assume err is an Error.
+        const detail = err instanceof Error ? err.message : String(err);
+        logger.debug(`[MeshCoreNative:${this.sourceId}] close threw: ${detail}`);
       }
       this.connection = null;
     }
@@ -903,7 +912,12 @@ export class MeshCoreNativeBackend extends EventEmitter {
               if (existing.some((ct) => bytesToHex(ct.publicKey) === publicKey)) return;
               await c.addOrUpdateContact(publicKeyBytes, nodeType, 0, 0xff, new Uint8Array(64), '', 0, 0, 0);
             } catch (err) {
-              logger.warn(`[MeshCore:native] discover auto-add failed for ${publicKey.substring(0, 16)}…: ${(err as Error).message}`);
+              // meshcore.js's uncorrelated global Ok/Err ack can reject this
+              // promise with NO argument when a concurrent command's Err frame
+              // is misattributed to it (see the `share_contact` guard above) —
+              // don't assume `err` is an Error.
+              const detail = err instanceof Error ? err.message : err == null ? 'no ack (uncorrelated Err)' : String(err);
+              logger.warn(`[MeshCore:native] discover auto-add failed for ${publicKey.substring(0, 16)}…: ${detail}`);
             }
           })();
         }
@@ -1038,7 +1052,15 @@ export class MeshCoreNativeBackend extends EventEmitter {
         if (!next) break;
       }
     } catch (err) {
-      logger.warn(`[MeshCoreNative:${this.sourceId}] drainWaitingMessages threw: ${(err as Error).message}`);
+      // meshcore.js's uncorrelated global Ok/Err ack can reject
+      // syncNextMessage() with NO argument when a concurrent command's Err
+      // frame is misattributed to it (same as `share_contact` elsewhere in
+      // this file). This handler is invoked fire-and-forget from a
+      // `MsgWaiting` push (`void this.drainWaitingMessages()`), so letting a
+      // TypeError escape here becomes a genuinely unhandled promise
+      // rejection that crashes the whole process (#5102).
+      const detail = err instanceof Error ? err.message : err == null ? 'no ack (uncorrelated Err)' : String(err);
+      logger.warn(`[MeshCoreNative:${this.sourceId}] drainWaitingMessages threw: ${detail}`);
     } finally {
       this.drainInFlight = false;
     }
@@ -1686,9 +1708,13 @@ export class MeshCoreNativeBackend extends EventEmitter {
           } catch (writeErr) {
             // The ack may have been a foreign `Err` (cannibalised) rather than a
             // real device rejection — the read-back below is authoritative, so
-            // don't fail here.
+            // don't fail here. meshcore.js rejects with NO argument in this
+            // case (same as `share_contact` above), so don't assume
+            // `writeErr` is an Error — reading `.message` off `undefined`
+            // would throw inside this catch block (#5102).
+            const detail = writeErr instanceof Error ? writeErr.message : writeErr == null ? 'no ack (uncorrelated Err)' : String(writeErr);
             logger.debug(
-              `[MeshCore] set_out_path write ack errored for ${bytesToHex(publicKey)} (${(writeErr as Error).message}); verifying via read-back`,
+              `[MeshCore] set_out_path write ack errored for ${bytesToHex(publicKey)} (${detail}); verifying via read-back`,
             );
           }
 

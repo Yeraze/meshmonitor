@@ -407,6 +407,37 @@ describe('MeshCoreNativeBackend', () => {
     expect(resp.error).not.toBe('undefined');
   });
 
+  it('drainWaitingMessages does not crash the process when syncNextMessage bare-rejects (#5102)', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+    // meshcore.js's uncorrelated global Ok/Err ack can reject syncNextMessage()
+    // with NO argument when a concurrent command's Err frame is misattributed
+    // to it (same as the `share_contact` case above). drainWaitingMessages is
+    // invoked fire-and-forget from a MsgWaiting push (`void
+    // this.drainWaitingMessages()`), so before the fix, reading `.message` off
+    // the undefined reason threw a TypeError with no catch anywhere in the
+    // chain — a genuinely unhandled promise rejection that crashed the whole
+    // process.
+    conn.syncNextMessage = () => Promise.reject(undefined);
+
+    const unhandled: unknown[] = [];
+    const onUnhandledRejection = (reason: unknown) => unhandled.push(reason);
+    process.on('unhandledRejection', onUnhandledRejection);
+    try {
+      conn.emit(PushCodes.MsgWaiting);
+      // Flush microtasks/macrotasks so the fire-and-forget async IIFE settles.
+      await new Promise((r) => setImmediate(r));
+      await new Promise((r) => setImmediate(r));
+    } finally {
+      process.off('unhandledRejection', onUnhandledRejection);
+    }
+    expect(unhandled).toHaveLength(0);
+  });
+
   it('set_device_time resolves on Ok and forwards the epoch', async () => {
     const backend = new MeshCoreNativeBackend('src-1', {
       connectionType: 'serial',

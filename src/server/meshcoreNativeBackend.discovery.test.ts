@@ -236,6 +236,37 @@ describe('MeshCoreNativeBackend — node discovery', () => {
     expect(conn.addOrUpdateContact).not.toHaveBeenCalled();
   });
 
+  it('does not crash the process when the auto-add ack bare-rejects (#5102)', async () => {
+    const { backend, conn } = await connectedBackend();
+    const tag = 0x5a5a5a5a;
+    await backend.sendCommand('discover_nodes', { filter: 0x0c, tag });
+
+    // meshcore.js's uncorrelated global Ok/Err ack can reject
+    // addOrUpdateContact() with NO argument when a concurrent command's Err
+    // frame is misattributed to it. The discover auto-add call runs
+    // fire-and-forget (`void (async () => {...})()`), so before the fix,
+    // reading `.message` off the undefined reason threw a TypeError with no
+    // catch anywhere in the chain — a genuinely unhandled promise rejection
+    // that crashed the whole process.
+    conn.addOrUpdateContact.mockRejectedValueOnce(undefined);
+
+    const unhandled: unknown[] = [];
+    const onUnhandledRejection = (reason: unknown) => unhandled.push(reason);
+    process.on('unhandledRejection', onUnhandledRejection);
+    try {
+      const pubkey = Uint8Array.from(Array.from({ length: 32 }, (_, i) => i + 1));
+      conn.emit('rx', buildDiscoverResp({
+        snrX4: 20, rssi: -40 & 0xff, pathLen: 0xff,
+        nodeType: AdvType.Repeater, responderSnrX4: 12, tag, pubkey,
+      }));
+      await flushAsync();
+      await flushAsync();
+    } finally {
+      process.off('unhandledRejection', onUnhandledRejection);
+    }
+    expect(unhandled).toHaveLength(0);
+  });
+
   it('does not auto-add a prefix-only (short key) response', async () => {
     const { backend, conn, events } = await connectedBackend();
     const tag = 0x12345678;
