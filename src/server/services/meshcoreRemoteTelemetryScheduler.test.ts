@@ -557,6 +557,9 @@ describe('MeshCoreRemoteTelemetryScheduler.tickOneManager', () => {
       expect.objectContaining({ publicKey: 'rep-a', batteryMv: 3700 }),
       'src-a',
     );
+    // #5131: the batteryMv write and the lastHeard write are separate
+    // upsertNode calls — confirm the latter also fires on this path.
+    expect(upsertNode).toHaveBeenCalledWith({ publicKey: 'rep-a', lastHeard: now }, 'src-a');
   });
 
   it('does not persist batteryMv when requestNodeStatus returns no battery voltage', async () => {
