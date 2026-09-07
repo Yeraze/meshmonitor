@@ -140,7 +140,7 @@ jobs:
 
       - name: Upload EXE to release
         if: steps.rename_artifacts.outputs.EXE_PATH
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3
         with:
           tag_name: ${{ steps.get_version.outputs.TAG }}
           files: ${{ steps.rename_artifacts.outputs.EXE_PATH }}
@@ -148,7 +148,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload checksums to release
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3
         with:
           tag_name: ${{ steps.get_version.outputs.TAG }}
           files: ${{ steps.checksums.outputs.CHECKSUM_FILE }}
@@ -496,7 +496,7 @@ jobs:
 
       - name: Upload DMG to release
         if: steps.rename_artifacts.outputs.DMG_PATH
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3
         with:
           tag_name: ${{ steps.get_version.outputs.TAG }}
           files: ${{ steps.rename_artifacts.outputs.DMG_PATH }}
@@ -504,7 +504,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload checksums to release
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3
         with:
           tag_name: ${{ steps.get_version.outputs.TAG }}
           files: ${{ steps.checksums.outputs.CHECKSUM_FILE }}
@@ -872,7 +872,7 @@ jobs:
 
       - name: Upload DMG to release
         if: steps.rename_artifacts.outputs.DMG_PATH
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3
         with:
           tag_name: ${{ steps.get_version.outputs.TAG }}
           files: ${{ steps.rename_artifacts.outputs.DMG_PATH }}
@@ -880,7 +880,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload checksums to release
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3
         with:
           tag_name: ${{ steps.get_version.outputs.TAG }}
           files: ${{ steps.checksums.outputs.CHECKSUM_FILE }}
