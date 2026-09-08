@@ -55,6 +55,13 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
 
   const presetId = useMemo(() => findPresetId(freq, bw, sf, cr), [freq, bw, sf, cr]);
 
+  // Keyed off the RESOLVED preset, not the last one clicked, so the note is
+  // also there for a node that already arrived on these parameters (#5137).
+  const presetNote = useMemo(
+    () => RADIO_PRESETS.find(p => p.id === presetId)?.note,
+    [presetId],
+  );
+
   const handlePresetChange = (id: string) => {
     if (id === 'custom') return;
     const preset = RADIO_PRESETS.find(p => p.id === id);
@@ -322,11 +329,17 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
               <option key={p.id} value={p.id}>{p.label}</option>
             ))}
           </select>
+          {presetNote && (
+            <p className="hint" data-testid="mc-cfg-preset-note">
+              <UiIcon name="info" size={14} /> {presetNote}
+            </p>
+          )}
         </div>
         <div className="form-row">
           <div>
-            <label>{t('meshcore.config.frequency', 'Frequency (MHz)')}</label>
+            <label htmlFor="mc-cfg-freq">{t('meshcore.config.frequency', 'Frequency (MHz)')}</label>
             <input
+              id="mc-cfg-freq"
               type="number"
               step="0.001"
               min={137}
@@ -337,8 +350,9 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
             />
           </div>
           <div>
-            <label>{t('meshcore.config.bandwidth', 'Bandwidth (kHz)')}</label>
+            <label htmlFor="mc-cfg-bw">{t('meshcore.config.bandwidth', 'Bandwidth (kHz)')}</label>
             <select
+              id="mc-cfg-bw"
               value={bw}
               onChange={e => setBw(parseFloat(e.target.value))}
               disabled={!connected || savingRadio}
@@ -349,8 +363,9 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
             </select>
           </div>
           <div>
-            <label>{t('meshcore.config.sf', 'Spreading Factor')}</label>
+            <label htmlFor="mc-cfg-sf">{t('meshcore.config.sf', 'Spreading Factor')}</label>
             <select
+              id="mc-cfg-sf"
               value={sf}
               onChange={e => setSf(parseInt(e.target.value, 10))}
               disabled={!connected || savingRadio}
@@ -361,8 +376,9 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
             </select>
           </div>
           <div>
-            <label>{t('meshcore.config.cr', 'Coding Rate')}</label>
+            <label htmlFor="mc-cfg-cr">{t('meshcore.config.cr', 'Coding Rate')}</label>
             <select
+              id="mc-cfg-cr"
               value={cr}
               onChange={e => setCr(parseInt(e.target.value, 10))}
               disabled={!connected || savingRadio}

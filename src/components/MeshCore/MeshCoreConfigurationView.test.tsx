@@ -155,3 +155,54 @@ describe('MeshCoreConfigurationView permission gating', () => {
     }
   });
 });
+
+describe('MeshCoreConfigurationView radio preset picker (#5137)', () => {
+  it('offers the Philadelphia preset and applies its parameters when chosen', () => {
+    render(<MeshCoreConfigurationView status={makeStatus()} actions={makeActions()} />);
+
+    const picker = screen.getByLabelText('meshcore.config.preset') as HTMLSelectElement;
+    expect(Array.from(picker.options).map(o => o.value)).toContain('us-philly');
+
+    fireEvent.change(picker, { target: { value: 'us-philly' } });
+
+    // 500 kHz is the whole point — it is what makes the preset FCC-compliant,
+    // and the only entry in the table that uses it.
+    expect(screen.getByLabelText('meshcore.config.frequency')).toHaveValue(902.25);
+    expect(screen.getByLabelText('meshcore.config.bandwidth')).toHaveValue('500');
+    expect(screen.getByLabelText('meshcore.config.sf')).toHaveValue('11');
+    expect(screen.getByLabelText('meshcore.config.cr')).toHaveValue('5');
+  });
+
+  it('shows the path-hash note only while the Philadelphia preset is resolved', () => {
+    render(<MeshCoreConfigurationView status={makeStatus()} actions={makeActions()} />);
+
+    expect(screen.queryByTestId('mc-cfg-preset-note')).toBeNull();
+
+    fireEvent.change(screen.getByLabelText('meshcore.config.preset'), {
+      target: { value: 'us-philly' },
+    });
+    expect(screen.getByTestId('mc-cfg-preset-note').textContent).toMatch(/path hash/i);
+
+    // A preset with nothing extra to say must not leave the note behind.
+    fireEvent.change(screen.getByLabelText('meshcore.config.preset'), {
+      target: { value: 'us-ca' },
+    });
+    expect(screen.queryByTestId('mc-cfg-preset-note')).toBeNull();
+  });
+
+  it('shows the note for a node that already arrived on the Philadelphia parameters', () => {
+    // Keyed off the resolved preset, not the last click — a node flashed
+    // elsewhere and then connected here still needs to see the requirement.
+    render(
+      <MeshCoreConfigurationView
+        status={makeStatus({ radioFreq: 902.25, radioBw: 500, radioSf: 11, radioCr: 5 })}
+        actions={makeActions()}
+      />,
+    );
+
+    expect(
+      (screen.getByLabelText('meshcore.config.preset') as HTMLSelectElement).value,
+    ).toBe('us-philly');
+    expect(screen.getByTestId('mc-cfg-preset-note').textContent).toMatch(/path hash/i);
+  });
+});
