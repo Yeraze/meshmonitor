@@ -29,11 +29,38 @@ updates:
       - dependency-name: "maplibre-gl"
         update-types: ["version-update:semver-major"]
     groups:
+      # vitest core and its companions (@vitest/coverage-v8, @vitest/ui) pin
+      # each other EXACTLY — coverage-v8 5.0.0 declares
+      # `peerDependencies: { vitest: "5.0.0" }`. Same hazard as the
+      # codeql-action group below, in a different ecosystem.
+      #
+      # development-dependencies matched `vitest*` for minor/patch ONLY, so a
+      # major fell outside every group and Dependabot opened one PR per
+      # package: #5114 and #5107 bumped the companions to 5.0.0 with no
+      # vitest-5 PR to pair them with.
+      #
+      # That combination is not merely inconvenient, it is invisible. `.npmrc`
+      # sets legacy-peer-deps=true, so the mismatch INSTALLS without complaint,
+      # and CI does not run coverage (removed from ci.yml when it hung on Node
+      # 24; `npm run test:coverage` now runs only in release.yml). #5114 duly
+      # reported CLEAN with 13 green checks while being unmergeable in
+      # substance — the breakage would have surfaced as a failed coverage gate
+      # mid-release.
+      #
+      # Listed FIRST so it wins the match, and takes every update-type so the
+      # family always moves as one PR.
+      vitest:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
       development-dependencies:
         patterns:
           - "@types/*"
           - "eslint*"
-          - "vitest*"
           - "@testing-library/*"
         update-types:
           - "minor"
@@ -45,6 +72,10 @@ updates:
           - "@types/*"
           - "eslint*"
           - "vitest*"
+          # `vitest*` does NOT match the scoped companions — belt and braces so
+          # a patch bump cannot fall into this catch-all if the vitest group
+          # above is ever narrowed.
+          - "@vitest/*"
           - "@testing-library/*"
         update-types:
           - "patch"
