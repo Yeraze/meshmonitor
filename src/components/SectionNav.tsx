@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import styles from './SectionNav.module.css';
+import { useSectionNavHeightVar } from '../hooks/useSectionNavHeightVar';
 
 export interface NavItem {
   id: string;
@@ -39,6 +40,11 @@ const SectionNav: React.FC<SectionNavProps> = ({ items, className }) => {
   const navRef = useRef<HTMLElement | null>(null);
   const settleUntilRef = useRef(0);
   const [activeId, setActiveId] = useState<string | null>(null);
+
+  // This nav is sticky and opaque, so a second sticky element beside it has to
+  // park below BOTH the fixed bar and this row. Its height is a function of how
+  // many chips wrap at the current width, so it gets measured (#5100).
+  useSectionNavHeightVar(navRef);
 
   // Stable dependency: callers build the `items` array inline, so it is a new
   // reference on every render and would re-arm the observer each time.
