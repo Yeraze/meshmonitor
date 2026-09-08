@@ -178,6 +178,7 @@ import {
   runMigration158Mysql,
 } from '../server/migrations/158_meshcore_packet_log_observer.js';
 import { migration as nodeIdentityMergesMigration, runMigration159Postgres, runMigration159Mysql } from '../server/migrations/159_node_identity_merges.js';
+import { migration as tracerouteTransportMechanismMigration, runMigration160Postgres, runMigration160Mysql } from '../server/migrations/160_traceroute_transport_mechanism.js';
 
 // ============================================================================
 // Registry
@@ -2573,4 +2574,22 @@ registry.register({
   sqlite: (db) => nodeIdentityMergesMigration.up(db),
   postgres: (client) => runMigration159Postgres(client),
   mysql: (pool) => runMigration159Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 160: `traceroutes.transportMechanism` (#5097) — which transport
+// carried the traceroute, so the map's Show RF / UDP / MQTT toggles can filter
+// route segments the way they already filter markers and neighbor links. NULL
+// on legacy rows (the transport was never recorded and cannot be recovered);
+// readers fall back to 'rf' so historical traceroutes stay visible.
+// Idempotent across SQLite / PostgreSQL / MySQL.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 160,
+  name: 'traceroute_transport_mechanism',
+  settingsKey: 'migration_160_traceroute_transport_mechanism',
+  sqlite: (db) => tracerouteTransportMechanismMigration.up(db),
+  postgres: (client) => runMigration160Postgres(client),
+  mysql: (pool) => runMigration160Mysql(pool),
 });

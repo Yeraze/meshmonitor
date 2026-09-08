@@ -125,6 +125,19 @@ export default function TraceroutePathsLayer() {
   const selectedSourceId =
     selected?.type === 'node' ? selected.sourceId ?? null : null;
 
+  // #5097 — the same Show RF / UDP / MQTT pills that already filter the node
+  // markers (`useAnalysisNodes`) now filter these hops too, so the two layers
+  // agree about what a disabled transport means. Memoised because the analysis
+  // hook lists it as a dependency.
+  const transportFlags = useMemo(
+    () => ({
+      showRfNodes: config.transports.rf,
+      showUdpNodes: config.transports.udp,
+      showMqttNodes: config.transports.mqtt,
+    }),
+    [config.transports],
+  );
+
   const { segments } = useTracerouteAnalysis({
     traceroutes: items as TracerouteAnalysisInput[],
     positionByKey,
@@ -133,6 +146,7 @@ export default function TraceroutePathsLayer() {
     options,
     visibleNodeNums,
     timeWindow,
+    transportFlags,
   });
 
   // Arrows are only drawn in the directional (node-selected) view to keep the

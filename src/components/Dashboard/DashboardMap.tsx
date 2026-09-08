@@ -45,6 +45,12 @@ import {
 import { getSourceColor, resolveSourceColor } from '../../utils/sourceColors';
 import { getOwnNodePositions } from '../../utils/ownNodePositions';
 import { nodePassesTransportFilter } from '../../utils/nodeTransport';
+import {
+  hopTransportClass,
+  segmentPassesTransportFilter,
+  tracerouteTransportClass,
+  transportFilterIsInert,
+} from '../../utils/tracerouteTransport';
 import { shouldDiscardPosition } from '../../utils/nullIsland';
 import { getDiscardInvalidPositions } from '../../utils/positionDisplayConfig';
 import { effectiveMapMaxAgeHours } from '../../utils/mapAge';
@@ -570,6 +576,15 @@ export default function DashboardMap({
   // traceroute's own key is prefixed onto the util's per-hop key
   // (`"forward:123-456"`) since multiple traceroute records can repeat the
   // same node pair and the util itself only decomposes one record at a time.
+  // #5097 — memoized so `tracerouteRenderSegments` can list it as a dependency
+  // without rebuilding every segment on each render.
+  const transportFlags = useMemo(
+    () => ({ showRfNodes, showUdpNodes, showMqttNodes }),
+    [showRfNodes, showUdpNodes, showMqttNodes],
+  );
+  // All three on means the filter can remove nothing — skip the per-hop work.
+  const transportFilterActive = !transportFilterIsInert(transportFlags);
+
   const tracerouteRenderSegments = useMemo<TracerouteRenderSegment[]>(() => {
     if (!showPaths && !showRoute) return [];
     // Map Features age slider (#3322): hide traceroutes/route segments older
@@ -602,12 +617,23 @@ export default function DashboardMap({
         },
         { resolvePosition },
       );
+      // #5097 — Show RF / UDP / MQTT. One traceroute per iteration, so a hop's
+      // class is this record's transport unless the hop's own unknown-SNR
+      // sentinel says MQTT. Same rule the neighbor links above use, and the
+      // same rule `useTraceroutePaths` applies on the Nodes map.
+      const recordClass = tracerouteTransportClass(tr);
       for (const seg of decomposed) {
+        if (
+          transportFilterActive &&
+          !segmentPassesTransportFilter([hopTransportClass(recordClass, seg.isMqtt)], transportFlags)
+        ) {
+          continue;
+        }
         segs.push({ ...seg, key: `${keyPrefix}-${seg.key}` });
       }
     }
     return segs;
-  }, [traceroutes, positionByNodeNum, showPaths, showRoute, effectiveMaxAge]);
+  }, [traceroutes, positionByNodeNum, showPaths, showRoute, effectiveMaxAge, transportFilterActive, transportFlags]);
 
   const hasNodes = nodesWithPosition.length > 0;
 

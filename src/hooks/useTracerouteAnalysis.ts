@@ -4,6 +4,13 @@ import { useMemo } from 'react';
 // tests) don't have to pull in mapHelpers.tsx's leaflet/react-leaflet
 // imports just for the sentinel.
 import { isUnknownSnr, hasReturnPath } from '../utils/tracerouteSegments';
+import {
+  hopTransportClass,
+  segmentPassesTransportFilter,
+  tracerouteTransportClass,
+  transportFilterIsInert,
+  type TransportFilterFlags,
+} from '../utils/tracerouteTransport';
 
 /**
  * Traceroute analysis for the Map Analysis view (issue #3399).
@@ -40,6 +47,11 @@ export interface TracerouteAnalysisInput {
   snrTowards?: string | null;
   snrBack?: string | null;
   timestamp?: number;
+  /**
+   * `MeshPacket.TransportMechanism` of the packet that carried this route
+   * (#5097, migration 160). Absent/null resolves to `'rf'`.
+   */
+  transportMechanism?: number | null;
 }
 
 export interface TracerouteAnalysisOptions {
@@ -59,6 +71,12 @@ export interface AnalyzeParams {
   /** When set (search active), segments touching a node outside this set are dropped. */
   visibleNodeNums?: Set<number> | null;
   timeWindow?: { startMs?: number; endMs?: number } | null;
+  /**
+   * Map Analysis' Show RF / UDP / MQTT pills (#5097). A hop is dropped when the
+   * transport it was observed over is switched off — the same rule the Nodes
+   * map applies in `useTraceroutePaths`. Omit to filter nothing.
+   */
+  transportFlags?: TransportFilterFlags | null;
 }
 
 export interface AnalyzedSegment {
@@ -192,7 +210,11 @@ export function analyzeTraceroutes(params: AnalyzeParams): AnalyzeResult {
     options,
     visibleNodeNums,
     timeWindow,
+    transportFlags,
   } = params;
+
+  // #5097 — all three toggles on means the filter can remove nothing.
+  const transportFilterActive = !!transportFlags && !transportFilterIsInert(transportFlags);
 
   // "focus" = a node is selected AND the focus toggle is on. Only then do we
   // scope to / classify relative to that node; otherwise links render globally.
@@ -228,6 +250,9 @@ export function analyzeTraceroutes(params: AnalyzeParams): AnalyzeResult {
   // 2. Aggregate directed hops.
   const acc = new Map<string, Accum>();
   for (const tr of rows) {
+    // #5097 — how this traceroute reached us; each hop inherits it unless the
+    // hop's own unknown-SNR sentinel says MQTT.
+    const recordTransportClass = tracerouteTransportClass(tr);
     for (const seg of segmentsForTraceroute(tr)) {
       if (INVALID_NODE_NUMS.has(seg.from) || INVALID_NODE_NUMS.has(seg.to)) continue;
       if (seg.from === seg.to) continue;
@@ -239,6 +264,16 @@ export function analyzeTraceroutes(params: AnalyzeParams): AnalyzeResult {
       // Search filter: both endpoints must be visible.
       if (visibleNodeNums) {
         if (!visibleNodeNums.has(seg.from) || !visibleNodeNums.has(seg.to)) continue;
+      }
+      // #5097 — Show RF / UDP / MQTT. Note this asks for an EXPLICIT sentinel,
+      // where `hasUnknown` below also counts a missing SNR sample. Deliberate:
+      // `hasUnknown` drives colour, and colouring a no-data hop as unknown is
+      // honest, but HIDING one behind the MQTT toggle would remove hops that
+      // simply came from pre-snr-array firmware.
+      if (transportFilterActive && transportFlags) {
+        const hopIsMqtt = seg.snr !== undefined && isUnknownSnr(seg.snr);
+        const cls = hopTransportClass(recordTransportClass, hopIsMqtt);
+        if (!segmentPassesTransportFilter([cls], transportFlags)) continue;
       }
 
       const key = aggregateKey(seg);
@@ -351,6 +386,7 @@ export function useTracerouteAnalysis(params: AnalyzeParams): AnalyzeResult {
     options,
     visibleNodeNums,
     timeWindow,
+    transportFlags,
   } = params;
   return useMemo(
     () =>
@@ -362,6 +398,7 @@ export function useTracerouteAnalysis(params: AnalyzeParams): AnalyzeResult {
         options,
         visibleNodeNums,
         timeWindow,
+        transportFlags,
       }),
     [
       traceroutes,
@@ -371,6 +408,7 @@ export function useTracerouteAnalysis(params: AnalyzeParams): AnalyzeResult {
       options,
       visibleNodeNums,
       timeWindow,
+      transportFlags,
     ],
   );
 }

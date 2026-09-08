@@ -31,6 +31,14 @@ import { TraceroutePathsLayer } from '../components/map/layers/TraceroutePathsLa
 import { darkOverlayColors } from '../config/overlayColors';
 import { logger } from '../utils/logger';
 import type { DistanceUnit } from '../contexts/SettingsContext';
+import {
+  hopTransportClass,
+  segmentPassesTransportFilter,
+  tracerouteTransportClass,
+  transportFilterIsInert,
+  type NodeTransportClass,
+  type TransportFilterFlags,
+} from '../utils/tracerouteTransport';
 
 /** Small component for route segment SNR chart with time-of-day / chronological toggle */
 function SegmentSnrChart({ chartData }: {
@@ -166,6 +174,12 @@ export interface TracerouteDigest {
   routePositions?: string; // JSON: { [nodeNum]: { lat, lng, alt? } } - position snapshot at traceroute time
   timestamp?: number;
   createdAt?: number;
+  /**
+   * `MeshPacket.TransportMechanism` of the packet that carried this route
+   * (#5097, migration 160). Absent/null on pre-migration rows and resolves to
+   * `'rf'` — see `utils/tracerouteTransport.ts`.
+   */
+  transportMechanism?: number | null;
 }
 
 /**
@@ -210,6 +224,14 @@ export interface UseTraceroutePathsParams {
   visibleNodeNums?: Set<number>;
   /** Current map zoom level - controls detail filtering */
   mapZoom?: number;
+  /**
+   * The map's Show RF / UDP / MQTT toggles (#5097). A hop is drawn only when a
+   * transport it was observed over is enabled — see
+   * `utils/tracerouteTransport.ts` for how a hop's class is decided. Omit to
+   * disable transport filtering entirely (every segment renders), which is
+   * what callers that have no toggles should do.
+   */
+  transportFlags?: TransportFilterFlags;
 }
 
 /**
@@ -237,6 +259,19 @@ const BROADCAST_ADDR = 4294967295;
  */
 const FALLBACK_SNR_COLORS: SnrColorScale = darkOverlayColors.snrColors;
 
+/**
+ * Canonical key for an unordered node pair — the same string for A→B and B→A.
+ *
+ * The numeric comparator is deliberate. `Array.prototype.sort()` with no
+ * comparator sorts lexicographically, so `[9, 100]` orders as `[100, 9]`. Every
+ * call site here used the bare `.sort()`, so the keys agreed with each other and
+ * nothing was broken — but "correct only because every site is wrong the same
+ * way" is a trap for the next person to add a site. Routing all of them through
+ * one helper removes the coupling. (Raised in review on #5097.)
+ */
+const nodePairKey = (a: number, b: number): string =>
+  [a, b].sort((x, y) => x - y).join('-');
+
 // `isValidRouteNode` (reserved/broadcast node-number filtering) is imported
 // from `tracerouteSegments.ts` — that's the single home; see its doc comment.
 // #1862 snapshot parsing + snapshot-then-live position resolution likewise go
@@ -259,7 +294,12 @@ export function useTraceroutePaths({
   callbacks,
   visibleNodeNums,
   mapZoom,
+  transportFlags,
 }: UseTraceroutePathsParams): UseTraceroutePathsResult {
+  // #5097. Absent flags, or all three on, means the filter cannot remove
+  // anything — skip the per-segment bookkeeping entirely on a map that may
+  // carry hundreds of segments.
+  const transportFilterActive = !!transportFlags && !transportFilterIsInert(transportFlags);
   // Shared live-node position map for the #1862 snapshot-then-live fallback,
   // built via the shared `buildLiveNodePositionMap` (also fixes the
   // lat/lng===0 falsy-zero bug on the live side, not just the snapshot side).
@@ -283,6 +323,20 @@ export function useTraceroutePaths({
     const segmentSNRs = new Map<string, Array<{ snr: number; timestamp: number }>>();
     // Track segments that have MQTT/unknown hops (SNR sentinel indicates MQTT gateway or unknown)
     const segmentHasMqtt = new Map<string, boolean>();
+    // #5097 — every transport class this segment has been observed over, across
+    // all contributing traceroutes. Union, not last-wins: a link seen over RF by
+    // one traceroute and MQTT by another is genuinely both, and stays on the map
+    // while either toggle is on. Only populated when the filter can actually
+    // remove something (see `transportFilterActive`).
+    const segmentTransportClasses = new Map<string, Set<NodeTransportClass>>();
+    const noteTransportClass = (segmentKey: string, cls: NodeTransportClass): void => {
+      let set = segmentTransportClasses.get(segmentKey);
+      if (!set) {
+        set = new Set<NodeTransportClass>();
+        segmentTransportClasses.set(segmentKey, set);
+      }
+      set.add(cls);
+    };
     // Track most recent timestamp per segment for temporal fade
     const segmentLatestTimestamp = new Map<string, number>();
     const segmentsList: Array<{
@@ -304,7 +358,7 @@ export function useTraceroutePaths({
     const tracerouteMap = new Map<string, TracerouteDigest>();
     recentTraceroutes.forEach(tr => {
       // Create a bidirectional key (same for A→B and B→A)
-      const key = [tr.fromNodeNum, tr.toNodeNum].sort().join('-');
+      const key = nodePairKey(tr.fromNodeNum, tr.toNodeNum);
       const existing = tracerouteMap.get(key);
       const timestamp = tr.timestamp || tr.createdAt || 0;
       const existingTimestamp = existing?.timestamp || existing?.createdAt || 0;
@@ -343,6 +397,9 @@ export function useTraceroutePaths({
         const snrForward =
           tr.snrTowards && tr.snrTowards !== 'null' && tr.snrTowards !== '' ? JSON.parse(tr.snrTowards) : [];
         const timestamp = tr.timestamp || tr.createdAt || Date.now();
+        // #5097 — how THIS traceroute reached us. Each hop inherits it unless
+        // the hop's own unknown-SNR sentinel says MQTT.
+        const recordTransportClass = tracerouteTransportClass(tr);
 
         // #1862 — snapshot positions via the shared util (fixes a
         // lat/lng===0 truthy-check bug in the old per-consumer copy).
@@ -366,7 +423,7 @@ export function useTraceroutePaths({
         for (let i = 0; i < forwardPositions.length - 1; i++) {
           const from = forwardPositions[i];
           const to = forwardPositions[i + 1];
-          const segmentKey = [from.nodeNum, to.nodeNum].sort().join('-');
+          const segmentKey = nodePairKey(from.nodeNum, to.nodeNum);
 
           segmentUsage.set(segmentKey, (segmentUsage.get(segmentKey) || 0) + 1);
 
@@ -380,6 +437,13 @@ export function useTraceroutePaths({
             if (isUnknownSnr(snrValue)) {
               segmentHasMqtt.set(segmentKey, true);
             }
+          }
+
+          if (transportFilterActive) {
+            // The sentinel is only knowable when this hop reported an SNR; with
+            // none, the record's own transport is the best evidence there is.
+            const hopIsMqtt = snrForward[i] !== undefined && isUnknownSnr(snrForward[i] / 4);
+            noteTransportClass(segmentKey, hopTransportClass(recordTransportClass, hopIsMqtt));
           }
 
           // Track most recent timestamp for temporal fade
@@ -413,7 +477,7 @@ export function useTraceroutePaths({
         for (let i = 0; i < backPositions.length - 1; i++) {
           const from = backPositions[i];
           const to = backPositions[i + 1];
-          const segmentKey = [from.nodeNum, to.nodeNum].sort().join('-');
+          const segmentKey = nodePairKey(from.nodeNum, to.nodeNum);
 
           segmentUsage.set(segmentKey, (segmentUsage.get(segmentKey) || 0) + 1);
 
@@ -427,6 +491,11 @@ export function useTraceroutePaths({
             if (isUnknownSnr(snrValue)) {
               segmentHasMqtt.set(segmentKey, true);
             }
+          }
+
+          if (transportFilterActive) {
+            const hopIsMqtt = snrBack[i] !== undefined && isUnknownSnr(snrBack[i] / 4);
+            noteTransportClass(segmentKey, hopTransportClass(recordTransportClass, hopIsMqtt));
           }
 
           // Track most recent timestamp for temporal fade
@@ -455,11 +524,24 @@ export function useTraceroutePaths({
         })
       : segmentsList;
 
+    // #5097 — Show RF / UDP / MQTT. Applied after the endpoint-visibility pass
+    // and before the zoom-adaptive one, so a segment removed here never reaches
+    // the SNR averaging below.
+    if (transportFilterActive && transportFlags) {
+      filteredSegments = filteredSegments.filter(segment => {
+        const segKey = nodePairKey(segment.nodeNums[0], segment.nodeNums[1]);
+        return segmentPassesTransportFilter(
+          segmentTransportClasses.get(segKey) ?? [],
+          transportFlags,
+        );
+      });
+    }
+
     // Zoom-adaptive filtering: at low zoom levels, only show stronger segments
     if (mapZoom !== undefined && mapZoom < 8) {
       // Regional view: only show segments with good or medium SNR (filter out poor/unknown)
       filteredSegments = filteredSegments.filter(segment => {
-        const segKey = segment.nodeNums.slice().sort().join('-');
+        const segKey = nodePairKey(segment.nodeNums[0], segment.nodeNums[1]);
         const snrData = segmentSNRs.get(segKey);
         if (!snrData || snrData.length === 0) return false; // Hide unknown segments at low zoom
         const rfSnrs = snrData.filter(d => !isUnknownSnr(d.snr)).map(d => d.snr);
@@ -474,7 +556,7 @@ export function useTraceroutePaths({
     // popup/className below can read them straight off `seg` instead of a
     // side-table lookup.
     const renderSegments: TracerouteRenderSegment[] = filteredSegments.map(segment => {
-      const segmentKey = segment.nodeNums.slice().sort().join('-');
+      const segmentKey = nodePairKey(segment.nodeNums[0], segment.nodeNums[1]);
       const usage = segmentUsage.get(segmentKey) || 1;
       // A segment is MQTT/IP only when the firmware reported the unknown-SNR
       // sentinel for that specific hop (issue #2931). Don't infer from
@@ -516,7 +598,7 @@ export function useTraceroutePaths({
     const renderBasePopup = (seg: TracerouteRenderSegment): React.ReactNode => {
       const nodeNum1 = seg.fromNodeNum;
       const nodeNum2 = seg.toNodeNum;
-      const segmentKey = [nodeNum1, nodeNum2].sort().join('-');
+      const segmentKey = nodePairKey(nodeNum1, nodeNum2);
       const usage = segmentUsage.get(segmentKey) || 1;
       const node1 = nodeByNum.get(nodeNum1);
       const node2 = nodeByNum.get(nodeNum2);
@@ -729,7 +811,7 @@ export function useTraceroutePaths({
         segmentClassName={baseSegmentClassName}
       />,
     ];
-  }, [showPaths, traceroutesDigest, nodesPositionDigest, distanceUnit, maxNodeAgeHours, themeColors.snrColors, themeColors.mqttSegment, themeColors.faint, callbacks, visibleNodeNums, mapZoom, liveNodePositions]);
+  }, [showPaths, traceroutesDigest, nodesPositionDigest, distanceUnit, maxNodeAgeHours, themeColors.snrColors, themeColors.mqttSegment, themeColors.faint, callbacks, visibleNodeNums, mapZoom, liveNodePositions, transportFilterActive, transportFlags]);
 
   // Separate memoization for selected node traceroute (showRoute)
   // This can change independently without re-rendering the base map markers
@@ -758,7 +840,7 @@ export function useTraceroutePaths({
       // forward and return legs are gated independently: `route` gates the
       // forward leg, `hasReturnPath` gates the return leg (#2051) — a
       // traceroute can render one leg without the other.
-      const segments = decomposeTraceroute(
+      const decomposed = decomposeTraceroute(
         {
           fromNodeNum: selectedTrace.fromNodeNum,
           toNodeNum: selectedTrace.toNodeNum,
@@ -771,6 +853,21 @@ export function useTraceroutePaths({
         },
         { resolvePosition }
       );
+
+      // #5097 — Show RF / UDP / MQTT. One record, so each hop's class is the
+      // record's transport unless the hop's own unknown-SNR sentinel says MQTT.
+      // Hops removed here leave a gap in the drawn path on purpose: the map is
+      // meant to show what the enabled transports alone can account for, and
+      // bridging the gap would draw a link the user asked not to see.
+      const segments =
+        transportFilterActive && transportFlags
+          ? decomposed.filter(seg =>
+              segmentPassesTransportFilter(
+                [hopTransportClass(tracerouteTransportClass(selectedTrace), seg.isMqtt)],
+                transportFlags,
+              ),
+            )
+          : decomposed;
 
       if (segments.length === 0) return null;
 
@@ -866,7 +963,7 @@ export function useTraceroutePaths({
       logger.error('Error rendering selected node traceroute:', error);
       return null;
     }
-  }, [showRoute, selectedNodeId, traceroutesDigest, nodesPositionDigest, currentNodeId, distanceUnit, themeColors.error, themeColors.accent, themeColors.tracerouteForward, themeColors.tracerouteReturn, themeColors.snrColors, liveNodePositions]);
+  }, [showRoute, selectedNodeId, traceroutesDigest, nodesPositionDigest, currentNodeId, distanceUnit, themeColors.error, themeColors.accent, themeColors.tracerouteForward, themeColors.tracerouteReturn, themeColors.snrColors, liveNodePositions, transportFilterActive, transportFlags]);
 
   // Compute the set of node numbers involved in the selected traceroute.
   // Used for filtering map markers to only show nodes in the active
