@@ -6,6 +6,7 @@
  */
 import { getProtobufRoot } from '../protobufLoader.js';
 import { logger } from '../../utils/logger.js';
+import { safeJson } from '../utils/redactSecrets.js';
 
 export interface DecodedChannelSettings {
   psk?: string;  // Base64 encoded PSK, or special value like "default" for shorthand 1
@@ -80,7 +81,7 @@ class ChannelUrlService {
         oneofs: true
       });
 
-      logger.debug('Decoded ChannelSet:', JSON.stringify(channelSetObj, null, 2));
+      logger.debug('Decoded ChannelSet:', safeJson(channelSetObj, 2));
 
       // Convert to our format
       const result: DecodedChannelSet = {

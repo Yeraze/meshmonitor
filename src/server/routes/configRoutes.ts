@@ -20,6 +20,7 @@ import { validateMeshBeaconConfigPayload } from '../constants/meshtastic.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { fail } from '../utils/apiResponse.js';
 import { isTxDisabledError } from '../errors/txDisabledError.js';
+import { safeJson } from '../utils/redactSecrets.js';
 
 const env = getEnvironmentConfig();
 const BASE_URL = env.baseUrl;
@@ -182,7 +183,7 @@ router.post('/mqtt', requirePermission('configuration', 'write'), async (req, re
 });
 
 router.post('/neighborinfo', requirePermission('configuration', 'write'), async (req, res) => {
-  logger.debug('🔍 DEBUG: /config/neighborinfo endpoint called with body:', JSON.stringify(req.body));
+  logger.debug('🔍 DEBUG: /config/neighborinfo endpoint called with body:', safeJson(req.body));
   try {
     const { sourceId: cfgNiSourceId, ...config } = req.body;
     const cfgNiManager = resolveSourceManager(cfgNiSourceId);

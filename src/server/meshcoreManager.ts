@@ -61,6 +61,7 @@ import { MESHCORE_SECRET_BYTES } from '../utils/meshcoreHelpers.js';
 import { parsePathHops, pathHashBytesOf, resolveRouteNames } from '../utils/meshcorePath.js';
 import { tryDecodeGroupTextPayload } from './utils/meshcoreGroupEcho.js';
 import { meshcoreAgeCutoffMs, isWithinMeshcoreAge } from '../utils/meshcoreAge.js';
+import { safeJson } from './utils/redactSecrets.js';
 
 // Dynamic imports for optional serialport dependency
 // These are loaded only when MeshCore is enabled to avoid requiring native build tools
@@ -3046,8 +3047,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         const nameResponse = await this.sendRepeaterCommand('get name');
         const radioResponse = await this.sendRepeaterCommand('get radio');
 
-        logger.debug(`[MeshCore] Name response: ${JSON.stringify(nameResponse)}`);
-        logger.debug(`[MeshCore] Radio response: ${JSON.stringify(radioResponse)}`);
+        logger.debug(`[MeshCore] Name response: ${safeJson(nameResponse)}`);
+        logger.debug(`[MeshCore] Radio response: ${safeJson(radioResponse)}`);
 
         // Repeater CLI returns "  -> > DeviceName" format
         const nameMatch = nameResponse.match(/->\s*>\s*(.+)/);

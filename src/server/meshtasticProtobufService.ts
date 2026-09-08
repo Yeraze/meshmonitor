@@ -8,6 +8,7 @@ import { loadProtobufDefinitions, getProtobufRoot, type FromRadio, type MeshPack
 import { logger } from '../utils/logger.js';
 import { PortNum } from './constants/meshtastic.js';
 import { decodeTakV2Payload, takV2Variant, takV2DictName, TAK_V2_UNCOMPRESSED } from './takV2Decoder.js';
+import { safeJson } from './utils/redactSecrets.js';
 
 export class MeshtasticProtobufService {
   private static instance: MeshtasticProtobufService;
@@ -729,7 +730,7 @@ export class MeshtasticProtobufService {
           !fromRadio.channel && !fromRadio.metadata && !fromRadio.moduleConfig && !fromRadio.configCompleteId &&
           !(fromRadio as any).clientNotification) {
         logger.debug('🔍 DEBUG: All FromRadio keys:', Object.keys(fromRadio));
-        logger.debug('🔍 DEBUG: Full FromRadio object:', JSON.stringify(fromRadio, null, 2));
+        logger.debug('🔍 DEBUG: Full FromRadio object:', safeJson(fromRadio, 2));
       }
 
       if (fromRadio.packet) {

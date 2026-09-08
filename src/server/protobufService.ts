@@ -5,6 +5,7 @@ import { buildSharedContactPayload } from './services/sharedContactService.js';
 import { logger } from '../utils/logger.js';
 import { PortNum, resolveHopLimit } from './constants/meshtastic.js';
 import { MODULE_FIELD_BY_ID } from './constants/configTypes.js';
+import { safeJson } from './utils/redactSecrets.js';
 
 export interface MeshtasticPosition {
   latitude_i: number;
@@ -241,7 +242,7 @@ class ProtobufService {
 
       const decoded = Position.decode(data);
       const position = Position.toObject(decoded);
-      logger.debug('🗺️  Decoded position:', JSON.stringify(position, null, 2));
+      logger.debug('🗺️  Decoded position:', safeJson(position, 2));
 
       // Map protobuf field names to our interface
       return {
@@ -288,7 +289,7 @@ class ProtobufService {
 
       const decoded = User.decode(data);
       const user = User.toObject(decoded);
-      logger.debug('👤 Decoded user:', JSON.stringify(user, null, 2));
+      logger.debug('👤 Decoded user:', safeJson(user, 2));
 
       return {
         id: user.id || '',
@@ -319,7 +320,7 @@ class ProtobufService {
 
       const decoded = NodeInfo.decode(data);
       const nodeInfo = NodeInfo.toObject(decoded);
-      logger.debug('🏠 Decoded NodeInfo:', JSON.stringify(nodeInfo, null, 2));
+      logger.debug('🏠 Decoded NodeInfo:', safeJson(nodeInfo, 2));
 
       // Extract embedded User and Position data
       let user: MeshtasticUser | undefined = undefined;
@@ -428,7 +429,7 @@ class ProtobufService {
 
       const decoded = FromRadio.decode(data);
       const fromRadio = FromRadio.toObject(decoded);
-      logger.debug('📻 Decoded FromRadio:', JSON.stringify(fromRadio, null, 2));
+      logger.debug('📻 Decoded FromRadio:', safeJson(fromRadio, 2));
 
       return fromRadio;
     } catch (error) {
@@ -449,7 +450,7 @@ class ProtobufService {
 
       const decoded = MeshPacket.decode(data);
       const meshPacket = MeshPacket.toObject(decoded);
-      logger.debug('📦 Decoded MeshPacket:', JSON.stringify(meshPacket, null, 2));
+      logger.debug('📦 Decoded MeshPacket:', safeJson(meshPacket, 2));
 
       // Extract the decoded payload if available
       let unencrypted: any = null;
@@ -581,7 +582,7 @@ class ProtobufService {
       }
 
       const message = MessageType.decode(data);
-      logger.debug(`🔍 Inspecting ${typeName}:`, JSON.stringify(message, null, 2));
+      logger.debug(`🔍 Inspecting ${typeName}:`, safeJson(message, 2));
       return message;
     } catch (error) {
       logger.error(`Failed to inspect ${typeName}:`, error);
@@ -945,7 +946,7 @@ class ProtobufService {
         }
       }
       
-      logger.debug('⚙️ Decoded AdminMessage:', JSON.stringify(adminMsg, null, 2));
+      logger.debug('⚙️ Decoded AdminMessage:', safeJson(adminMsg, 2));
       return adminMsg;
     } catch (error) {
       logger.error('Failed to decode AdminMessage:', error);
@@ -1051,7 +1052,7 @@ class ProtobufService {
         deviceConfig.buzzerGpio = config.buzzerGpio;
       }
 
-      logger.debug('⚙️ Sending device config:', JSON.stringify(deviceConfig));
+      logger.debug('⚙️ Sending device config:', safeJson(deviceConfig));
 
       const configMsg = Config.create({
         device: deviceConfig
@@ -1117,7 +1118,7 @@ class ProtobufService {
       // funnel through here, so this covers Device Config and Remote Admin save paths.
       if (config.femLnaMode !== undefined) loraConfigData.femLnaMode = config.femLnaMode;
 
-      logger.debug('LoRa config data being sent to device:', JSON.stringify(loraConfigData, null, 2));
+      logger.debug('LoRa config data being sent to device:', safeJson(loraConfigData, 2));
 
       const configMsg = Config.create({
         lora: loraConfigData
@@ -1228,12 +1229,12 @@ class ProtobufService {
         }
       }
 
-      logger.debug('Security config data being sent to device:', JSON.stringify({
+      logger.debug('Security config data being sent to device:', safeJson({
         ...securityConfigData,
         adminKey: securityConfigData.adminKey ? `${securityConfigData.adminKey.length} key(s)` : 'none',
         publicKey: securityConfigData.publicKey ? '[PRESENT]' : '[NOT SET]',
         privateKey: securityConfigData.privateKey ? '[PRESENT]' : '[NOT SET]'
-      }, null, 2));
+      }, 2));
 
       const configMsg = Config.create({
         security: securityConfigData
@@ -1311,7 +1312,7 @@ class ProtobufService {
         networkConfig.ipv6Enabled = config.ipv6Enabled;
       }
 
-      logger.debug('⚙️ Sending network config:', JSON.stringify(networkConfig));
+      logger.debug('⚙️ Sending network config:', safeJson(networkConfig));
 
       const configMsg = Config.create({
         network: networkConfig
@@ -1472,7 +1473,7 @@ class ProtobufService {
 
       const encoded = AdminMessage.encode(adminMsg).finish();
       logger.debug('⚙️ Created SetPositionConfig admin message');
-      logger.debug('⚙️ Position config data:', JSON.stringify(positionConfigData, null, 2));
+      logger.debug('⚙️ Position config data:', safeJson(positionConfigData, 2));
       logger.debug('⚙️ Smart broadcast enabled:', positionConfigData.positionBroadcastSmartEnabled);
       if (positionConfigData.positionBroadcastSmartEnabled) {
         logger.debug('⚙️ Smart broadcast minimum distance:', positionConfigData.broadcastSmartMinimumDistance);
@@ -1555,7 +1556,7 @@ class ProtobufService {
       const encoded = AdminMessage.encode(adminMsg).finish();
       logger.debug('⚙️ Created SetNeighborInfoConfig admin message');
       logger.debug('🔍 AdminMessage bytes:', Array.from(encoded).map(b => b.toString(16).padStart(2, '0')).join(' '));
-      logger.debug('🔍 AdminMessage object:', JSON.stringify(adminMsg, null, 2));
+      logger.debug('🔍 AdminMessage object:', safeJson(adminMsg, 2));
       return encoded;
     } catch (error) {
       logger.error('Failed to create SetNeighborInfoConfig message:', error);
@@ -1707,9 +1708,9 @@ class ProtobufService {
       const adminMsg = AdminMessage.create(adminMsgData);
       const encoded = AdminMessage.encode(adminMsg).finish();
       logger.debug('⚙️ Created SetFixedPosition admin message');
-      logger.debug('🔍 Position data:', JSON.stringify(positionMsg));
-      logger.debug('🔍 AdminMessage data:', JSON.stringify(adminMsgData));
-      logger.debug('🔍 AdminMessage object:', JSON.stringify(adminMsg, null, 2));
+      logger.debug('🔍 Position data:', safeJson(positionMsg));
+      logger.debug('🔍 AdminMessage data:', safeJson(adminMsgData));
+      logger.debug('🔍 AdminMessage object:', safeJson(adminMsg, 2));
       logger.debug('🔍 AdminMessage bytes:', Array.from(encoded).map(b => b.toString(16).padStart(2, '0')).join(' '));
       return encoded;
     } catch (error) {
@@ -1957,7 +1958,7 @@ class ProtobufService {
 
       const meshPacket = MeshPacket.create(meshPacketData);
 
-      logger.debug('🔍 MeshPacket created:', JSON.stringify(meshPacket, null, 2));
+      logger.debug('🔍 MeshPacket created:', safeJson(meshPacket, 2));
 
       // Wrap in ToRadio
       const toRadio = ToRadio.create({
