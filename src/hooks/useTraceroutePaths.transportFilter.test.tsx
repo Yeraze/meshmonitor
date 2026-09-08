@@ -184,6 +184,38 @@ describe('useTraceroutePaths — Show RF / UDP / MQTT on route segments (#5097)'
     expect(basePairs(params)).toContain('100-300');
   });
 
+  it('keys segments numerically, so a mixed-width node pair still matches', () => {
+    // Review point on #5097: the pair key used a bare `.sort()`, which orders
+    // lexicographically — [9, 100] becomes "100-9". Every site was wrong the
+    // same way so nothing broke, but a new site using a numeric sort would have
+    // silently missed the accumulated transport classes and rendered a segment
+    // the toggle should have removed. Node 9 vs 100 is the smallest pair that
+    // distinguishes the two orderings.
+    const params = baseParams({
+      nodesPositionDigest: [
+        { nodeNum: 9, position: { latitude: 40.0, longitude: -75.0 }, user: { id: '!9', longName: 'S', shortName: 'S' } },
+        { nodeNum: 100, position: { latitude: 40.2, longitude: -75.2 }, user: { id: '!64', longName: 'A', shortName: 'A' } },
+      ],
+      traceroutesDigest: [
+        traceroute({
+          fromNodeNum: 9,
+          toNodeNum: 100,
+          fromNodeId: '!9',
+          toNodeId: '!64',
+          route: '[]',
+          routeBack: '[]',
+          snrTowards: '[40]',
+          snrBack: '[40]',
+          transportMechanism: TX_MQTT,
+        }),
+      ],
+      transportFlags: { ...ALL_ON, showMqttNodes: false },
+    });
+    // If the filter looked the pair up under a differently-ordered key it would
+    // find no classes, fall through to "no evidence", and draw the segment.
+    expect(basePairs(params)).toEqual([]);
+  });
+
   it('applies the same rule to the selected traceroute layer', () => {
     // "Show Traceroute" is a separate memo with its own render path; a fix that
     // only reached the aggregated layer would leave this one unfiltered.

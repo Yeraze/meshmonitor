@@ -259,6 +259,19 @@ const BROADCAST_ADDR = 4294967295;
  */
 const FALLBACK_SNR_COLORS: SnrColorScale = darkOverlayColors.snrColors;
 
+/**
+ * Canonical key for an unordered node pair — the same string for A→B and B→A.
+ *
+ * The numeric comparator is deliberate. `Array.prototype.sort()` with no
+ * comparator sorts lexicographically, so `[9, 100]` orders as `[100, 9]`. Every
+ * call site here used the bare `.sort()`, so the keys agreed with each other and
+ * nothing was broken — but "correct only because every site is wrong the same
+ * way" is a trap for the next person to add a site. Routing all of them through
+ * one helper removes the coupling. (Raised in review on #5097.)
+ */
+const nodePairKey = (a: number, b: number): string =>
+  [a, b].sort((x, y) => x - y).join('-');
+
 // `isValidRouteNode` (reserved/broadcast node-number filtering) is imported
 // from `tracerouteSegments.ts` — that's the single home; see its doc comment.
 // #1862 snapshot parsing + snapshot-then-live position resolution likewise go
@@ -345,7 +358,7 @@ export function useTraceroutePaths({
     const tracerouteMap = new Map<string, TracerouteDigest>();
     recentTraceroutes.forEach(tr => {
       // Create a bidirectional key (same for A→B and B→A)
-      const key = [tr.fromNodeNum, tr.toNodeNum].sort().join('-');
+      const key = nodePairKey(tr.fromNodeNum, tr.toNodeNum);
       const existing = tracerouteMap.get(key);
       const timestamp = tr.timestamp || tr.createdAt || 0;
       const existingTimestamp = existing?.timestamp || existing?.createdAt || 0;
@@ -410,7 +423,7 @@ export function useTraceroutePaths({
         for (let i = 0; i < forwardPositions.length - 1; i++) {
           const from = forwardPositions[i];
           const to = forwardPositions[i + 1];
-          const segmentKey = [from.nodeNum, to.nodeNum].sort().join('-');
+          const segmentKey = nodePairKey(from.nodeNum, to.nodeNum);
 
           segmentUsage.set(segmentKey, (segmentUsage.get(segmentKey) || 0) + 1);
 
@@ -464,7 +477,7 @@ export function useTraceroutePaths({
         for (let i = 0; i < backPositions.length - 1; i++) {
           const from = backPositions[i];
           const to = backPositions[i + 1];
-          const segmentKey = [from.nodeNum, to.nodeNum].sort().join('-');
+          const segmentKey = nodePairKey(from.nodeNum, to.nodeNum);
 
           segmentUsage.set(segmentKey, (segmentUsage.get(segmentKey) || 0) + 1);
 
@@ -516,7 +529,7 @@ export function useTraceroutePaths({
     // the SNR averaging below.
     if (transportFilterActive && transportFlags) {
       filteredSegments = filteredSegments.filter(segment => {
-        const segKey = segment.nodeNums.slice().sort().join('-');
+        const segKey = nodePairKey(segment.nodeNums[0], segment.nodeNums[1]);
         return segmentPassesTransportFilter(
           segmentTransportClasses.get(segKey) ?? [],
           transportFlags,
@@ -528,7 +541,7 @@ export function useTraceroutePaths({
     if (mapZoom !== undefined && mapZoom < 8) {
       // Regional view: only show segments with good or medium SNR (filter out poor/unknown)
       filteredSegments = filteredSegments.filter(segment => {
-        const segKey = segment.nodeNums.slice().sort().join('-');
+        const segKey = nodePairKey(segment.nodeNums[0], segment.nodeNums[1]);
         const snrData = segmentSNRs.get(segKey);
         if (!snrData || snrData.length === 0) return false; // Hide unknown segments at low zoom
         const rfSnrs = snrData.filter(d => !isUnknownSnr(d.snr)).map(d => d.snr);
@@ -543,7 +556,7 @@ export function useTraceroutePaths({
     // popup/className below can read them straight off `seg` instead of a
     // side-table lookup.
     const renderSegments: TracerouteRenderSegment[] = filteredSegments.map(segment => {
-      const segmentKey = segment.nodeNums.slice().sort().join('-');
+      const segmentKey = nodePairKey(segment.nodeNums[0], segment.nodeNums[1]);
       const usage = segmentUsage.get(segmentKey) || 1;
       // A segment is MQTT/IP only when the firmware reported the unknown-SNR
       // sentinel for that specific hop (issue #2931). Don't infer from
@@ -585,7 +598,7 @@ export function useTraceroutePaths({
     const renderBasePopup = (seg: TracerouteRenderSegment): React.ReactNode => {
       const nodeNum1 = seg.fromNodeNum;
       const nodeNum2 = seg.toNodeNum;
-      const segmentKey = [nodeNum1, nodeNum2].sort().join('-');
+      const segmentKey = nodePairKey(nodeNum1, nodeNum2);
       const usage = segmentUsage.get(segmentKey) || 1;
       const node1 = nodeByNum.get(nodeNum1);
       const node2 = nodeByNum.get(nodeNum2);
