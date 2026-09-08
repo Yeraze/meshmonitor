@@ -2028,6 +2028,7 @@ function DashboardInner() {
                 <label className="dashboard-form-field">
                   <span className="dashboard-form-label">{t('source.form.mc_mqtt_broker_url', 'Broker URL')}</span>
                   <input
+                    className="dashboard-form-input"
                     type="text"
                     value={formMcMqttBrokerUrl}
                     onChange={(e) => setFormMcMqttBrokerUrl(e.target.value)}
@@ -2041,6 +2042,7 @@ function DashboardInner() {
                 <label className="dashboard-form-field">
                   <span className="dashboard-form-label">{t('source.form.mc_mqtt_region', 'Region (IATA)')}</span>
                   <input
+                    className="dashboard-form-input"
                     type="text"
                     value={formMcMqttRegion}
                     onChange={(e) => setFormMcMqttRegion(e.target.value)}
@@ -2054,6 +2056,7 @@ function DashboardInner() {
                 <label className="dashboard-form-field">
                   <span className="dashboard-form-label">{t('source.form.mc_mqtt_username', 'Username (optional)')}</span>
                   <input
+                    className="dashboard-form-input"
                     type="text"
                     value={formMcMqttUsername}
                     onChange={(e) => setFormMcMqttUsername(e.target.value)}
@@ -2064,6 +2067,7 @@ function DashboardInner() {
                 <label className="dashboard-form-field">
                   <span className="dashboard-form-label">{t('source.form.mc_mqtt_password', 'Password (optional)')}</span>
                   <input
+                    className="dashboard-form-input"
                     type="password"
                     value={formMcMqttPassword}
                     onChange={(e) => setFormMcMqttPassword(e.target.value)}

@@ -227,6 +227,27 @@ describe('MeshCore MQTT ingest source fieldset (#5040 Phase 1)', () => {
     expect(screen.getByPlaceholderText('MCO')).toBeInTheDocument();
   });
 
+  it('themes every text input with the shared class (#5135)', () => {
+    // These rendered as unstyled native controls — white box, default border —
+    // against the app's dark modal, because the fieldset was added without
+    // `dashboard-form-input`. Nothing functional broke, so no other test
+    // noticed. Asserting on the rendered DOM rather than the source keeps this
+    // honest about what the user actually sees.
+    renderPage();
+    openAddModal();
+    selectMcMqttType();
+
+    const modal = document.querySelector('.dashboard-modal, [role="dialog"]') ?? document.body;
+    const controls = [...modal.querySelectorAll('input, select, textarea')].filter(
+      (el) => !['checkbox', 'radio'].includes((el as HTMLInputElement).type),
+    );
+    expect(controls.length).toBeGreaterThan(0);
+    const unstyled = controls.filter((el) => !el.classList.contains('dashboard-form-input'));
+    expect(
+      unstyled.map((el) => `${el.tagName.toLowerCase()}[type=${(el as HTMLInputElement).type}]`),
+    ).toEqual([]);
+  });
+
   it('states up front that the source has no radio', () => {
     // Expectation-setting matters here: a user who does not read this will file
     // "my MeshCore source has no device page" as a bug.
