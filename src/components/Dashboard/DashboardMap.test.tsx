@@ -32,6 +32,30 @@ const mocks = vi.hoisted(() => ({
   terrainCaps: { enabled: false, terrainTiles: false, isLoading: false },
   rendered3DNodes: [] as unknown[][],
   geoJsonLayers: [] as Array<{ id: string; name: string; visible: boolean; style: { color: string } }>,
+  // #5097: the Show RF / UDP / MQTT toggles have to vary per test to exercise
+  // the route-segment transport filter. Defaults match what the static mock
+  // used before, so every pre-existing test is unaffected.
+  mapContext: {
+    showPaths: false,
+    showRoute: false,
+    showRfNodes: true,
+    showUdpNodes: true,
+    showMqttNodes: true,
+  },
+  // Segments handed to the shared TraceroutePathsLayer on the last render.
+  tracerouteSegments: [] as Array<{ fromNodeNum: number; toNodeNum: number; isMqtt: boolean }>,
+}));
+
+// #5097: DashboardMap builds its own per-record traceroute segments (it renders
+// individual traceroutes rather than aggregating by node pair, so it cannot
+// share `useTraceroutePaths`). Stub the shared layer to capture what it is
+// handed — that list IS the filter's output. No pre-existing test renders
+// traceroutes (`defaultProps.traceroutes` is empty), so this affects nothing else.
+vi.mock('../map/layers/TraceroutePathsLayer', () => ({
+  TraceroutePathsLayer: ({ segments }: { segments: Array<{ fromNodeNum: number; toNodeNum: number; isMqtt: boolean }> }) => {
+    mocks.tracerouteSegments = segments;
+    return <div data-testid="traceroute-paths-layer" data-count={segments.length} />;
+  },
 }));
 
 // ---------------------------------------------------------------------------
@@ -115,17 +139,17 @@ vi.mock('react-leaflet', () => ({
 // filtering doesn't drop existing fixture nodes), traceroute/accuracy off.
 vi.mock('../../contexts/MapContext', () => ({
   useMapContext: () => ({
-    showPaths: false,
+    showPaths: mocks.mapContext.showPaths,
     setShowPaths: vi.fn(),
-    showRoute: false,
+    showRoute: mocks.mapContext.showRoute,
     setShowRoute: vi.fn(),
     showAccuracyRegions: false,
     setShowAccuracyRegions: vi.fn(),
-    showRfNodes: true,
+    showRfNodes: mocks.mapContext.showRfNodes,
     setShowRfNodes: vi.fn(),
-    showUdpNodes: true,
+    showUdpNodes: mocks.mapContext.showUdpNodes,
     setShowUdpNodes: vi.fn(),
-    showMqttNodes: true,
+    showMqttNodes: mocks.mapContext.showMqttNodes,
     setShowMqttNodes: vi.fn(),
     showNeighborInfo: true,
     setShowNeighborInfo: vi.fn(),
@@ -354,6 +378,15 @@ describe('DashboardMap', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    // #5097: back to the pre-existing defaults for every test that doesn't opt in.
+    mocks.mapContext = {
+      showPaths: false,
+      showRoute: false,
+      showRfNodes: true,
+      showUdpNodes: true,
+      showMqttNodes: true,
+    };
+    mocks.tracerouteSegments = [];
     // Reset the shared settings mock to "no Default Map Center configured".
     mocks.settings.mapPinStyle = 'official';
     mocks.settings.overlayColors = darkOverlayColors;
@@ -956,5 +989,85 @@ describe('DashboardMap', () => {
     rerender(<DashboardMap {...defaultProps} sourceId="src-a" nodes={[nodeWithPosition]} />);
     expect(screen.queryByTestId('map-3d-view')).not.toBeInTheDocument();
     expect(screen.getByTestId('map-container')).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #5097 — Show RF / UDP / MQTT on route segments
+// ---------------------------------------------------------------------------
+// DashboardMap builds its own per-record traceroute segments rather than going
+// through `useTraceroutePaths` (it renders individual traceroutes; the Nodes map
+// aggregates them by node pair). That means the transport filter is wired up in
+// two places, and these tests cover the Dashboard's copy — the hook's copy is
+// covered by useTraceroutePaths.transportFilter.test.tsx.
+describe('DashboardMap — route segment transport filter (#5097)', () => {
+  const TX_LORA = 1;
+  const TX_MQTT = 5;
+  const TX_MULTICAST_UDP = 6;
+  const RAW_SENTINEL = -128; // INT8_MIN; /4 == the firmware unknown-SNR sentinel
+  const RAW_GOOD = 40; // 10 dB
+
+  const trNodes = [
+    { nodeNum: 100, user: { id: '!64', shortName: 'A', longName: 'A' }, position: { latitude: 35.0, longitude: -80.0 }, hopsAway: 1, role: 1, lastHeard: recent },
+    { nodeNum: 200, user: { id: '!c8', shortName: 'B', longName: 'B' }, position: { latitude: 35.2, longitude: -80.2 }, hopsAway: 1, role: 1, lastHeard: recent },
+  ];
+
+  /** One direct traceroute 100 <-> 200, carrying a record transport. */
+  function trace(transportMechanism: number | null, snrRaw = RAW_GOOD) {
+    return {
+      id: 1,
+      sourceId: 'src-a',
+      fromNodeNum: 100,
+      toNodeNum: 200,
+      route: '[]',
+      routeBack: '[]',
+      snrTowards: JSON.stringify([snrRaw]),
+      snrBack: JSON.stringify([snrRaw]),
+      transportMechanism,
+      // Milliseconds, unlike the `recent` node fixture above, which is a
+      // `lastHeard` value in SECONDS. DashboardMap compares a traceroute's
+      // timestamp against `Date.now() - maxAge`, so a seconds value reads as
+      // 1970 and the row is dropped by the age filter before any transport
+      // filtering happens — which would make every assertion here vacuous.
+      timestamp: Date.now(),
+      createdAt: Date.now(),
+    };
+  }
+
+  function renderWith(traceroutes: unknown[]) {
+    mocks.mapContext.showPaths = true;
+    render(<DashboardMap {...defaultProps} sourceId="src-a" nodes={trNodes} traceroutes={traceroutes} />);
+    return mocks.tracerouteSegments;
+  }
+
+  it('draws the segments when every toggle is on', () => {
+    // A positive control for the four negative assertions below: without it,
+    // an empty `segments` for any reason (age filter, unresolved positions)
+    // would make every "is filtered out" test pass vacuously.
+    expect(renderWith([trace(TX_MULTICAST_UDP)]).length).toBeGreaterThan(0);
+  });
+
+  it('hides a UDP-delivered traceroute when Show UDP is off', () => {
+    mocks.mapContext.showUdpNodes = false;
+    expect(renderWith([trace(TX_MULTICAST_UDP)])).toHaveLength(0);
+  });
+
+  it('hides an MQTT-delivered traceroute when Show MQTT is off', () => {
+    mocks.mapContext.showMqttNodes = false;
+    expect(renderWith([trace(TX_MQTT)])).toHaveLength(0);
+  });
+
+  it('keeps a pre-migration traceroute, which reads as RF', () => {
+    // Upgrade safety on the Dashboard too: NULL must not mean "hidden".
+    mocks.mapContext.showMqttNodes = false;
+    mocks.mapContext.showUdpNodes = false;
+    expect(renderWith([trace(null)]).length).toBeGreaterThan(0);
+  });
+
+  it('hides a sentinel hop of an RF traceroute when Show MQTT is off', () => {
+    // Per-hop beats per-record: the traceroute arrived over LoRa, but the hop
+    // itself carries the firmware unknown-SNR sentinel.
+    mocks.mapContext.showMqttNodes = false;
+    expect(renderWith([trace(TX_LORA, RAW_SENTINEL)])).toHaveLength(0);
   });
 });
