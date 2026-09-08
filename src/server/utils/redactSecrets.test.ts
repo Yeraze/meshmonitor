@@ -81,6 +81,20 @@ describe('redactSecrets', () => {
     expect(safeJson({ big: 1n })).toBe('[unserializable]');
   });
 
+  it('refuses to write a prototype-shaped key from remote input', () => {
+    // The object being walked comes off the radio, so its key names are remote
+    // input. `out['__proto__'] = ...` on a normal object literal reassigns the
+    // prototype instead of adding a property — CodeQL flags this as
+    // js/remote-property-injection, and it caught exactly this in review.
+    const hostile = JSON.parse('{"__proto__": {"polluted": true}, "name": "node"}');
+    const out = redactSecrets(hostile) as Record<string, unknown>;
+
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    expect(Object.getPrototypeOf(out)).toBeNull();
+    expect(out.name).toBe('node');
+    expect(safeJson(hostile)).toContain('[unsafe key]');
+  });
+
   it('collapses rather than recursing on a pathologically deep object', () => {
     let deep: Record<string, unknown> = { psk: 'SECRET' };
     for (let i = 0; i < 40; i++) deep = { nested: deep };

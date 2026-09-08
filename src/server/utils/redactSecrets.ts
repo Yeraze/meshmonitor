@@ -43,6 +43,18 @@ const SECRET_KEYS = new Set([
 
 const REDACTED = '[redacted]';
 
+/**
+ * Keys that must never be written back onto the copy.
+ *
+ * The object being walked comes off the radio, so its key names are remote
+ * input. Writing `out['__proto__'] = ...` on a normal object literal reassigns
+ * that object's prototype rather than adding a property — prototype injection,
+ * which CodeQL flags as `js/remote-property-injection`. The copy is built with
+ * a null prototype so there is nothing to pollute, and these keys are dropped
+ * outright so the dynamic write can never reach a prototype slot at all.
+ */
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
 /** Guard against a pathological or cyclic shape in a logging path. */
 const MAX_DEPTH = 12;
 
@@ -85,8 +97,16 @@ export function redactSecrets(value: unknown, depth = 0, seen = new WeakSet<obje
     return value.map((item) => redactSecrets(item, depth + 1, seen));
   }
 
-  const out: Record<string, unknown> = {};
+  // Null prototype: the keys below are remote input, so there must be no
+  // prototype for a crafted name to reach.
+  const out: Record<string, unknown> = Object.create(null);
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (UNSAFE_KEYS.has(k)) {
+      // Dropped rather than copied — a device sending one of these is either
+      // broken or hostile, and either way the log line should say so.
+      out[`${k} (dropped)`] = '[unsafe key]';
+      continue;
+    }
     out[k] = isSecretKey(k) ? describe(v) : redactSecrets(v, depth + 1, seen);
   }
   return out;
