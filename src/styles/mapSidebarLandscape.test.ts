@@ -72,7 +72,9 @@ describe('MapSidebar small-screen sheet applies in landscape (#5060)', () => {
 
   it('leaves the desktop floating panel untouched', () => {
     expect(resolve_('.map-sidebar', 'top', DESKTOP)).toBe('10px');
-    expect(resolve_('.map-sidebar', 'bottom', DESKTOP)).toBe('10px');
+    // 34px, not the 10px this rule shipped with: the panel now stops above
+    // Leaflet's attribution strip (#5099). See mapAttributionClearance.test.ts.
+    expect(resolve_('.map-sidebar', 'bottom', DESKTOP)).toBe('34px');
     expect(resolve_('.map-sidebar', 'width', DESKTOP)).toBe('300px');
     expect(resolve_('.map-sidebar', 'max-width', DESKTOP)).toBe('calc(100% - 20px)');
   });

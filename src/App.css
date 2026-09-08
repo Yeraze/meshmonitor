@@ -3085,6 +3085,22 @@ body {
   transition: height 0.05s ease-out;
 }
 
+/*
+ * Lift the Leaflet credit off the packet monitor's top edge (#5099).
+ *
+ * Leaflet pins the attribution flush to the map's bottom-right corner. Against
+ * the window edge that reads as normal chrome; against the hard edge of a
+ * docked panel it reads as pinched, which is exactly what was reported. Only
+ * the docked case gets the margin — undocked, flush is the Leaflet norm.
+ *
+ * The other half of the report is the Map controls panel slicing through the
+ * same text; that is fixed by the `bottom` inset in map/MapSidebar.css, which
+ * is sized to clear this margin too.
+ */
+.map-container.with-packet-monitor .leaflet-control-attribution {
+  margin-bottom: 6px;
+}
+
 
 /* Hide packet monitor toggle on mobile */
 @media (max-width: 768px) {
