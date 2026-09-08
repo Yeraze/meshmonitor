@@ -9,6 +9,7 @@ import databaseService from '../services/database.js';
 import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
 import { MODEM_PRESET_CHANNEL_NAMES } from '../utils/loraFrequency.js';
 import { getMaxNodeAgeHours } from './services/nodeDisplaySettings.js';
+import { safeJson } from './utils/redactSecrets.js';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
@@ -378,7 +379,7 @@ export class VirtualNodeServer extends EventEmitter {
         return;
       }
 
-      logger.trace(`Virtual node: Parsed message from ${clientId}:`, JSON.stringify(toRadio, null, 2));
+      logger.trace(`Virtual node: Parsed message from ${clientId}:`, safeJson(toRadio, 2));
 
       // Handle different message types
       if (toRadio.packet) {
@@ -513,7 +514,7 @@ export class VirtualNodeServer extends EventEmitter {
                   else {
                     // Other admin commands - block them
                     logger.warn(`Virtual node: Blocked admin command from ${clientId} (portnum ${normalizedPortNum}/${meshtasticProtobufService.getPortNumName(normalizedPortNum)})`);
-                    logger.warn(`Virtual node: Blocked packet details:`, JSON.stringify({
+                    logger.warn(`Virtual node: Blocked packet details:`, safeJson({
                       from: toRadio.packet.from,
                       to: toRadio.packet.to,
                       wantAck: toRadio.packet.wantAck,
@@ -521,7 +522,7 @@ export class VirtualNodeServer extends EventEmitter {
                       portnumName: meshtasticProtobufService.getPortNumName(normalizedPortNum),
                       originalPortnum: portnum,
                       decoded: toRadio.packet.decoded,
-                    }, null, 2));
+                    }, 2));
                     // Silently drop the message
                     return;
                   }
@@ -538,7 +539,7 @@ export class VirtualNodeServer extends EventEmitter {
             } else {
               // Non-admin blocked portnum (like NODEINFO_APP) - block it
               logger.warn(`Virtual node: Blocked admin command from ${clientId} (portnum ${normalizedPortNum}/${meshtasticProtobufService.getPortNumName(normalizedPortNum)})`);
-              logger.warn(`Virtual node: Blocked packet details:`, JSON.stringify({
+              logger.warn(`Virtual node: Blocked packet details:`, safeJson({
                 from: toRadio.packet.from,
                 to: toRadio.packet.to,
                 wantAck: toRadio.packet.wantAck,
@@ -546,7 +547,7 @@ export class VirtualNodeServer extends EventEmitter {
                 portnumName: meshtasticProtobufService.getPortNumName(normalizedPortNum),
                 originalPortnum: portnum,
                 decoded: toRadio.packet.decoded,
-              }, null, 2));
+              }, 2));
               // Silently drop the message
               return;
             }

@@ -37,6 +37,7 @@ import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMeshCoreManager } from '../sourceManagerTypes.js';
 import { fail } from '../utils/apiResponse.js';
 import { requireSourceId } from '../utils/requireSourceId.js';
+import { safeJson } from '../utils/redactSecrets.js';
 
 const router: Router = Router();
 
@@ -1062,7 +1063,7 @@ router.post('/encode-url', requirePermission('configuration', 'read'), requireSo
     if (includeLoraConfig) {
       logger.debug('📡 includeLoraConfig is TRUE, fetching device config...');
       const deviceConfig = await encodeUrlManager.getDeviceConfig();
-      logger.debug('📡 Device config lora:', JSON.stringify(deviceConfig?.lora, null, 2));
+      logger.debug('📡 Device config lora:', safeJson(deviceConfig?.lora, 2));
       if (deviceConfig?.lora) {
         loraConfig = {
           usePreset: deviceConfig.lora.usePreset,
@@ -1081,7 +1082,7 @@ router.post('/encode-url', requirePermission('configuration', 'read'), requireSo
           sx126xRxBoostedGain: deviceConfig.lora.sx126xRxBoostedGain,
           configOkToMqtt: deviceConfig.lora.configOkToMqtt,
         };
-        logger.debug('📡 LoRa config to encode:', JSON.stringify(loraConfig, null, 2));
+        logger.debug('📡 LoRa config to encode:', safeJson(loraConfig, 2));
       } else {
         logger.warn('⚠️ Device config or lora config is missing');
       }
@@ -1187,7 +1188,7 @@ router.post('/import-config', requirePermission('configuration', 'write'), requi
     let requiresReboot = false;
     if (decoded.loraConfig) {
       try {
-        logger.debug(`📥 Importing LoRa config:`, JSON.stringify(decoded.loraConfig, null, 2));
+        logger.debug(`📥 Importing LoRa config:`, safeJson(decoded.loraConfig, 2));
 
         // Preserve the device's current txEnabled rather than importing the
         // URL's value (issue #4294) — this is a local-node import.

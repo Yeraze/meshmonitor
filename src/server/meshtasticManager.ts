@@ -93,6 +93,7 @@ import { ConnState, dispatch, type SmContext } from './meshtastic/connectionStat
 import fs from 'fs';
 import path from 'path';
 import * as net from 'net';
+import { safeJson } from './utils/redactSecrets.js';
 
 const POST_RESET_COOLDOWN_MS = 5000;
 const TCP_READY_TIMEOUT_MS = 15000;
@@ -4040,7 +4041,7 @@ class MeshtasticManager implements ISourceManager {
           trigger.scriptArgs, trigger, nodeNum, lat, lng, eventType
         );
         scriptArgsList = this.parseScriptArgs(expandedArgs);
-        logger.debug(`📍 Geofence script args expanded: ${trigger.scriptArgs} -> ${JSON.stringify(scriptArgsList)}`);
+        logger.debug(`📍 Geofence script args expanded: ${trigger.scriptArgs} -> ${safeJson(scriptArgsList)}`);
       }
 
       const { stdout, stderr } = await execFileAsync(interpreter, [resolvedPath, ...scriptArgsList], {
@@ -4291,7 +4292,7 @@ class MeshtasticManager implements ISourceManager {
       if (scriptArgs) {
         const expandedArgs = await this.replaceAnnouncementTokens(scriptArgs);
         scriptArgsList = this.parseScriptArgs(expandedArgs);
-        logger.debug(`⏱️ Timer script args expanded: ${scriptArgs} -> ${JSON.stringify(scriptArgsList)}`);
+        logger.debug(`⏱️ Timer script args expanded: ${scriptArgs} -> ${safeJson(scriptArgsList)}`);
       }
 
       // Execute script with 30-second timeout (longer than auto-responder for scheduled tasks)
@@ -4592,12 +4593,12 @@ class MeshtasticManager implements ISourceManager {
           break;
         case 'config':
           logger.debug('⚙️ Received Config with keys:', Object.keys(parsed.data));
-          logger.debug('⚙️ Received Config:', JSON.stringify(parsed.data, null, 2));
+          logger.debug('⚙️ Received Config:', safeJson(parsed.data, 2));
 
           // Proto3 omits fields with default values (false for bool, 0 for numeric)
           // We need to ensure these fields exist with proper defaults
           if (parsed.data.lora) {
-            logger.debug(`📊 Raw LoRa config from device:`, JSON.stringify(parsed.data.lora, null, 2));
+            logger.debug(`📊 Raw LoRa config from device:`, safeJson(parsed.data.lora, 2));
 
             // Ensure boolean fields have explicit values (Proto3 omits false)
             if (parsed.data.lora.usePreset === undefined) {
@@ -4649,7 +4650,7 @@ class MeshtasticManager implements ISourceManager {
 
           // Apply Proto3 defaults to device config
           if (parsed.data.device) {
-            logger.debug(`📊 Raw Device config from device:`, JSON.stringify(parsed.data.device, null, 2));
+            logger.debug(`📊 Raw Device config from device:`, safeJson(parsed.data.device, 2));
 
             // Ensure numeric fields have explicit values (Proto3 omits 0)
             if (parsed.data.device.nodeInfoBroadcastSecs === undefined) {
@@ -4660,7 +4661,7 @@ class MeshtasticManager implements ISourceManager {
 
           // Apply Proto3 defaults to position config
           if (parsed.data.position) {
-            logger.debug(`📊 Raw Position config from device:`, JSON.stringify(parsed.data.position, null, 2));
+            logger.debug(`📊 Raw Position config from device:`, safeJson(parsed.data.position, 2));
 
             // Ensure boolean fields have explicit values (Proto3 omits false)
             if (parsed.data.position.positionBroadcastSmartEnabled === undefined) {
@@ -4681,7 +4682,7 @@ class MeshtasticManager implements ISourceManager {
 
           // Apply Proto3 defaults to position config
           if (parsed.data.position) {
-            logger.debug(`📊 Raw Position config from device:`, JSON.stringify(parsed.data.position, null, 2));
+            logger.debug(`📊 Raw Position config from device:`, safeJson(parsed.data.position, 2));
 
             // Ensure boolean fields have explicit values (Proto3 omits false)
             if (parsed.data.position.positionBroadcastSmartEnabled === undefined) {
@@ -4780,11 +4781,11 @@ class MeshtasticManager implements ISourceManager {
           break;
         case 'moduleConfig':
           logger.debug('⚙️ Received Module Config with keys:', Object.keys(parsed.data));
-          logger.debug('⚙️ Received Module Config:', JSON.stringify(parsed.data, null, 2));
+          logger.debug('⚙️ Received Module Config:', safeJson(parsed.data, 2));
 
           // Apply Proto3 defaults to MQTT config
           if (parsed.data.mqtt) {
-            logger.debug(`📊 Raw MQTT config from device:`, JSON.stringify(parsed.data.mqtt, null, 2));
+            logger.debug(`📊 Raw MQTT config from device:`, safeJson(parsed.data.mqtt, 2));
 
             // Ensure boolean fields have explicit values (Proto3 omits false)
             if (parsed.data.mqtt.enabled === undefined) {
@@ -4803,7 +4804,7 @@ class MeshtasticManager implements ISourceManager {
 
           // Apply Proto3 defaults to NeighborInfo config
           if (parsed.data.neighborInfo) {
-            logger.debug(`📊 Raw NeighborInfo config from device:`, JSON.stringify(parsed.data.neighborInfo, null, 2));
+            logger.debug(`📊 Raw NeighborInfo config from device:`, safeJson(parsed.data.neighborInfo, 2));
 
             // Ensure boolean fields have explicit values (Proto3 omits false)
             if (parsed.data.neighborInfo.enabled === undefined) {
@@ -4827,7 +4828,7 @@ class MeshtasticManager implements ISourceManager {
           // field omitted entirely — without this the UI would render every
           // toggle as indeterminate rather than off.
           if (parsed.data.meshBeacon) {
-            logger.debug(`📊 Raw MeshBeacon config from device:`, JSON.stringify(parsed.data.meshBeacon, null, 2));
+            logger.debug(`📊 Raw MeshBeacon config from device:`, safeJson(parsed.data.meshBeacon, 2));
 
             if (parsed.data.meshBeacon.flags === undefined) {
               parsed.data.meshBeacon.flags = 0;
@@ -5049,7 +5050,7 @@ class MeshtasticManager implements ISourceManager {
 
   private async processMyNodeInfoImpl(myNodeInfo: any): Promise<void> {
     logger.debug('📱 Processing MyNodeInfo for local device');
-    logger.debug('📱 MyNodeInfo contents:', JSON.stringify(myNodeInfo, null, 2));
+    logger.debug('📱 MyNodeInfo contents:', safeJson(myNodeInfo, 2));
 
     // Log minAppVersion for debugging but don't use it as firmware version
     if (myNodeInfo.minAppVersion) {
@@ -5779,7 +5780,7 @@ class MeshtasticManager implements ISourceManager {
    * Process DeviceMetadata protobuf message
    */
   private async processDeviceMetadata(metadata: any): Promise<void> {
-    logger.debug('📱 Processing DeviceMetadata:', JSON.stringify(metadata, null, 2));
+    logger.debug('📱 Processing DeviceMetadata:', safeJson(metadata, 2));
     logger.debug('📱 Firmware version:', metadata.firmwareVersion);
 
     // MyNodeInfo establishes local identity and DeviceMetadata follows it in the
@@ -8247,7 +8248,7 @@ class MeshtasticManager implements ISourceManager {
         logger.debug(`🗺️ Outgoing traceroute response from local node ${fromNodeId} — will record without segments`);
       }
 
-      logger.debug(`🗺️ Traceroute response from ${fromNodeId}:`, JSON.stringify(routeDiscovery, null, 2));
+      logger.debug(`🗺️ Traceroute response from ${fromNodeId}:`, safeJson(routeDiscovery, 2));
 
       // Ensure from node exists in database (don't overwrite existing names)
       const existingFromNode = await databaseService.nodes.getNode(fromNum);
@@ -8347,8 +8348,8 @@ class MeshtasticManager implements ISourceManager {
       // Log if we filtered any invalid nodes
       if (route.length !== rawRoute.length || routeBack.length !== rawRouteBack.length) {
         logger.warn(`🗺️ Filtered invalid node numbers from traceroute: route ${rawRoute.length}→${route.length}, routeBack ${rawRouteBack.length}→${routeBack.length}`);
-        logger.debug(`🗺️ Raw route: ${JSON.stringify(rawRoute)}, Filtered: ${JSON.stringify(route)}`);
-        logger.debug(`🗺️ Raw routeBack: ${JSON.stringify(rawRouteBack)}, Filtered: ${JSON.stringify(routeBack)}`);
+        logger.debug(`🗺️ Raw route: ${safeJson(rawRoute)}, Filtered: ${safeJson(route)}`);
+        logger.debug(`🗺️ Raw routeBack: ${safeJson(rawRouteBack)}, Filtered: ${safeJson(routeBack)}`);
       }
 
       // Traceroute intermediate hops are nodes that relayed traffic on our
@@ -9889,7 +9890,7 @@ class MeshtasticManager implements ISourceManager {
     logger.debug('🔍 getDeviceConfig called - actualModuleConfig present:', !!this.actualModuleConfig);
 
     if (this.actualDeviceConfig?.lora || this.actualModuleConfig) {
-      logger.debug('Using actualDeviceConfig:', JSON.stringify(this.actualDeviceConfig, null, 2));
+      logger.debug('Using actualDeviceConfig:', safeJson(this.actualDeviceConfig, 2));
       logger.debug('✅ Returning device config from actualDeviceConfig');
       return await this.deviceAdminService.buildDeviceConfigFromActual();
     }
@@ -11895,7 +11896,7 @@ class MeshtasticManager implements ISourceManager {
                   message.rxSnr, message.rxRssi, message.viaMqtt, false, message.relayNode
                 );
                 scriptArgsList = this.parseScriptArgs(expandedArgs);
-                logger.debug(`🤖 Script args expanded: ${trigger.scriptArgs} -> ${JSON.stringify(scriptArgsList)}`);
+                logger.debug(`🤖 Script args expanded: ${trigger.scriptArgs} -> ${safeJson(scriptArgsList)}`);
               }
 
               // Execute script with the script-side auto-responder timeout (30s)

@@ -46,6 +46,7 @@ import protobufService from '../protobufService.js';
 import { MODULE_FIELD_BY_ID } from '../constants/configTypes.js';
 import { calculateLoRaFrequency } from '../../utils/loraFrequency.js';
 import { logger } from '../../utils/logger.js';
+import { safeJson } from '../utils/redactSecrets.js';
 
 export class DeviceAdminService {
   constructor(private readonly mgr: MeshtasticManager) {}
@@ -59,7 +60,7 @@ export class DeviceAdminService {
     }
 
     try {
-      logger.debug('⚙️ Sending device config:', JSON.stringify(config));
+      logger.debug('⚙️ Sending device config:', safeJson(config));
       const setConfigMsg = protobufService.createSetDeviceConfigMessage(config, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.mgr.getLocalNodeInfo()?.nodeNum || 0, this.mgr.getLocalNodeInfo()?.nodeNum);
 
@@ -80,7 +81,7 @@ export class DeviceAdminService {
     }
 
     try {
-      logger.debug('⚙️ Sending LoRa config:', JSON.stringify(config));
+      logger.debug('⚙️ Sending LoRa config:', safeJson(config));
       const setConfigMsg = protobufService.createSetLoRaConfigMessage(config, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.mgr.getLocalNodeInfo()?.nodeNum || 0, this.mgr.getLocalNodeInfo()?.nodeNum);
 
@@ -102,7 +103,7 @@ export class DeviceAdminService {
     }
 
     try {
-      logger.debug('⚙️ Sending network config:', JSON.stringify(config));
+      logger.debug('⚙️ Sending network config:', safeJson(config));
       const setConfigMsg = protobufService.createSetNetworkConfigMessage(config, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.mgr.getLocalNodeInfo()?.nodeNum || 0, this.mgr.getLocalNodeInfo()?.nodeNum);
 
@@ -137,7 +138,7 @@ export class DeviceAdminService {
     }
 
     try {
-      logger.debug(`⚙️ Sending channel ${channelIndex} config:`, JSON.stringify(config));
+      logger.debug(`⚙️ Sending channel ${channelIndex} config:`, safeJson(config));
       const setChannelMsg = protobufService.createSetChannelMessage(channelIndex, config, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setChannelMsg, this.mgr.getLocalNodeInfo()?.nodeNum || 0, this.mgr.getLocalNodeInfo()?.nodeNum);
 
@@ -196,7 +197,7 @@ export class DeviceAdminService {
       }
 
       // Then send position configuration (fixedPosition flag, broadcast intervals, etc.)
-      logger.debug('⚙️ Sending position config:', JSON.stringify(positionConfig));
+      logger.debug('⚙️ Sending position config:', safeJson(positionConfig));
       const setConfigMsg = protobufService.createSetPositionConfigMessage(positionConfig, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.mgr.getLocalNodeInfo()?.nodeNum || 0, this.mgr.getLocalNodeInfo()?.nodeNum);
 
@@ -218,7 +219,7 @@ export class DeviceAdminService {
     }
 
     try {
-      logger.debug('⚙️ Sending MQTT config:', JSON.stringify(config));
+      logger.debug('⚙️ Sending MQTT config:', safeJson(config));
       const setConfigMsg = protobufService.createSetMQTTConfigMessage(config, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.mgr.getLocalNodeInfo()?.nodeNum || 0, this.mgr.getLocalNodeInfo()?.nodeNum);
 
@@ -240,7 +241,7 @@ export class DeviceAdminService {
     }
 
     try {
-      logger.debug('⚙️ Sending NeighborInfo config:', JSON.stringify(config));
+      logger.debug('⚙️ Sending NeighborInfo config:', safeJson(config));
       const setConfigMsg = protobufService.createSetNeighborInfoConfigMessage(config, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.mgr.getLocalNodeInfo()?.nodeNum || 0, this.mgr.getLocalNodeInfo()?.nodeNum);
 
@@ -262,7 +263,7 @@ export class DeviceAdminService {
     }
 
     try {
-      logger.debug('⚙️ Sending power config:', JSON.stringify(config));
+      logger.debug('⚙️ Sending power config:', safeJson(config));
       const setConfigMsg = protobufService.createSetDeviceConfigMessageGeneric('power', config, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.mgr.getLocalNodeInfo()?.nodeNum || 0, this.mgr.getLocalNodeInfo()?.nodeNum);
 
@@ -283,7 +284,7 @@ export class DeviceAdminService {
     }
 
     try {
-      logger.debug('⚙️ Sending display config:', JSON.stringify(config));
+      logger.debug('⚙️ Sending display config:', safeJson(config));
       const setConfigMsg = protobufService.createSetDeviceConfigMessageGeneric('display', config, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.mgr.getLocalNodeInfo()?.nodeNum || 0, this.mgr.getLocalNodeInfo()?.nodeNum);
 
@@ -307,7 +308,7 @@ export class DeviceAdminService {
     }
 
     try {
-      logger.debug('⚙️ Sending bluetooth config:', JSON.stringify(config));
+      logger.debug('⚙️ Sending bluetooth config:', safeJson(config));
       const setConfigMsg = protobufService.createSetDeviceConfigMessageGeneric('bluetooth', config, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.mgr.getLocalNodeInfo()?.nodeNum || 0, this.mgr.getLocalNodeInfo()?.nodeNum);
 
@@ -328,7 +329,7 @@ export class DeviceAdminService {
     }
 
     try {
-      logger.debug('⚙️ Sending telemetry config:', JSON.stringify(config));
+      logger.debug('⚙️ Sending telemetry config:', safeJson(config));
       const setConfigMsg = protobufService.createSetModuleConfigMessageGeneric('telemetry', config, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.mgr.getLocalNodeInfo()?.nodeNum || 0, this.mgr.getLocalNodeInfo()?.nodeNum);
 
@@ -355,7 +356,7 @@ export class DeviceAdminService {
     }
 
     try {
-      logger.debug(`⚙️ Sending ${moduleType} config:`, JSON.stringify(config));
+      logger.debug(`⚙️ Sending ${moduleType} config:`, safeJson(config));
       const setConfigMsg = protobufService.createSetModuleConfigMessageGeneric(moduleType, config, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.mgr.getLocalNodeInfo()?.nodeNum || 0, this.mgr.getLocalNodeInfo()?.nodeNum);
 
@@ -509,8 +510,8 @@ export class DeviceAdminService {
       mapReportingEnabled: mqttConfig.mapReportingEnabled !== undefined ? mqttConfig.mapReportingEnabled : false
     };
 
-    logger.debug('🔍 loraConfig being used:', JSON.stringify(loraConfigWithDefaults, null, 2));
-    logger.debug('🔍 mqttConfig being used:', JSON.stringify(mqttConfigWithDefaults, null, 2));
+    logger.debug('🔍 loraConfig being used:', safeJson(loraConfigWithDefaults, 2));
+    logger.debug('🔍 mqttConfig being used:', safeJson(mqttConfigWithDefaults, 2));
 
     // Map region enum values to strings
     const regionMap: { [key: number]: string } = {
