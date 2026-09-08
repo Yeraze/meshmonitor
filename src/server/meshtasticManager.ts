@@ -690,19 +690,38 @@ class MeshtasticManager implements ISourceManager {
   private configSyncStartedAt: number | null = null;
   private configSyncNodeInfoCount = 0;
 
+  /**
+   * Mirror the capture flags onto the transport's sync-stall watchdog (#5122).
+   *
+   * These three helpers are the only writers of the capture flags, so this is
+   * the one seam where "a sync is running" is authoritative. Optional on
+   * ITransport, so non-TCP transports and test doubles simply opt out.
+   */
+  private setTransportConfigSyncActive(active: boolean): void {
+    try {
+      this.transport?.setConfigSyncActive?.(active);
+    } catch (err) {
+      // Never let a watchdog hint break the capture state machine.
+      logger.debug(`Ignoring setConfigSyncActive(${active}) failure: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   private startConfigCapture(): void {
     this.configSyncStartedAt = Date.now();
     this.configSyncNodeInfoCount = 0;
     this.isCapturingInitConfig = true;
     this.configCaptureComplete = false;
+    this.setTransportConfigSyncActive(true);
   }
   private completeConfigCapture(): void {
     this.isCapturingInitConfig = false;
     this.configCaptureComplete = true;
+    this.setTransportConfigSyncActive(false);
   }
   private clearConfigCapture(): void {
     this.isCapturingInitConfig = false;
     this.configCaptureComplete = false;
+    this.setTransportConfigSyncActive(false);
   }
   private preserveConfigCapture(): void {
     // no-op on both flags — #3122 passive/no-VN disconnect keeps the cached

@@ -31,6 +31,20 @@ export class TcpTransport extends EventEmitter implements ITransport {
   private staleConnectionTimeout: number = 300000; // 5 minutes default (in milliseconds)
   private healthCheckInterval: NodeJS.Timeout | null = null;
   private readonly HEALTH_CHECK_INTERVAL_MS = 60000; // Check every minute
+
+  // Initial-config-sync stall detection (#5122).
+  //
+  // A reporter watched a node go silent mid-sync and stay that way: no data, no
+  // error, no FIN. MeshMonitor's own state read `isConnected=true,
+  // configuring=true` for 70+ seconds with zero reconnect attempts, because the
+  // only liveness guard is the idle watchdog below — 5 minutes by default, polled
+  // once a minute. A sync that stalls is not an idle link: it will never recover
+  // on its own, and every second spent waiting is a sync that has to restart
+  // from scratch anyway. So while the manager says a sync is running, silence is
+  // policed on a much tighter budget.
+  private configSyncActive = false;
+  private readonly CONFIG_SYNC_STALL_MS = 60000; // 60s of total silence mid-sync
+  private readonly CONFIG_SYNC_CHECK_INTERVAL_MS = 15000; // poll 4x faster while syncing
   private readonly BUFFER_STALE_TIMEOUT_MS = 30000; // 30s: if buffer has data but no frames parsed, reset it
 
   // Configurable keepalive heartbeat (issues 2609 / 2616).
@@ -97,6 +111,21 @@ export class TcpTransport extends EventEmitter implements ITransport {
     }
 
     logger.debug(`⏱️  Stale connection timeout set to ${timeoutMs}ms (${Math.floor(timeoutMs / 1000 / 60)} minute(s))`);
+  }
+
+  /**
+   * Mark the initial config sync as running or finished (#5122).
+   *
+   * Re-arms the health check so the faster sync-phase cadence takes effect
+   * immediately rather than at the next minute boundary.
+   */
+  setConfigSyncActive(active: boolean): void {
+    if (this.configSyncActive === active) return;
+    this.configSyncActive = active;
+    logger.debug(`⏱️  Config-sync stall detection ${active ? 'armed' : 'disarmed'}`);
+    if (this.isConnected && this.healthCheckInterval) {
+      this.startHealthCheck();
+    }
   }
 
   /**
@@ -593,9 +622,14 @@ export class TcpTransport extends EventEmitter implements ITransport {
 
     // When heartbeat is active, check at half the heartbeat interval so we
     // detect a missed reply within ~1.5 heartbeat intervals.
-    const checkInterval = this.heartbeatIntervalMs > 0
+    const baseInterval = this.heartbeatIntervalMs > 0
       ? Math.max(5000, Math.floor(this.heartbeatIntervalMs / 2))
       : this.HEALTH_CHECK_INTERVAL_MS;
+    // A 60s stall budget polled once a minute would take up to two minutes to
+    // notice. Poll faster while syncing so detection lands close to the budget.
+    const checkInterval = this.configSyncActive
+      ? Math.min(baseInterval, this.CONFIG_SYNC_CHECK_INTERVAL_MS)
+      : baseInterval;
 
     this.healthCheckInterval = setInterval(() => {
       this.checkConnection();
@@ -697,6 +731,23 @@ export class TcpTransport extends EventEmitter implements ITransport {
 
     const now = Date.now();
     const timeSinceLastData = now - this.lastDataReceived;
+
+    // Sync-phase stall (#5122). Checked BEFORE the general idle test because its
+    // budget is much tighter — 60s versus the 5-minute default — and because a
+    // stalled sync is a distinct failure: the link is open and healthy-looking,
+    // the peer has simply stopped talking part-way through the NodeDB stream and
+    // will never resume. Reconnecting is the only way out.
+    if (this.configSyncActive && timeSinceLastData > this.CONFIG_SYNC_STALL_MS) {
+      logger.warn(
+        `⚠️  Config sync stalled: no data received for ${Math.floor(timeSinceLastData / 1000)}s ` +
+        `while the initial sync was still running (budget: ${this.CONFIG_SYNC_STALL_MS / 1000}s). Forcing reconnection...`,
+      );
+      this.emit('stale-connection', { timeSinceLastData, timeout: this.CONFIG_SYNC_STALL_MS, phase: 'config-sync' });
+      if (this.socket) {
+        this.socket.destroy();
+      }
+      return;
+    }
 
     if (timeSinceLastData > effectiveTimeoutMs) {
       const secondsSinceLastData = Math.floor(timeSinceLastData / 1000);
