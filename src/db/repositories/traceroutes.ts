@@ -36,6 +36,7 @@ export class TraceroutesRepository extends BaseRepository {
       routePositions: tracerouteData.routePositions ?? null,
       channel: tracerouteData.channel ?? null,
       packetId: tracerouteData.packetId ?? null,
+      transportMechanism: tracerouteData.transportMechanism ?? null,
       timestamp: tracerouteData.timestamp,
       createdAt: tracerouteData.createdAt,
     };
@@ -72,12 +73,17 @@ export class TraceroutesRepository extends BaseRepository {
   /**
    * Update a pending traceroute with response data
    */
-  async updateTracerouteResponse(id: number, route: string | null, routeBack: string | null, snrTowards: string | null, snrBack: string | null, timestamp: number, packetId?: number | null): Promise<void> {
+  async updateTracerouteResponse(id: number, route: string | null, routeBack: string | null, snrTowards: string | null, snrBack: string | null, timestamp: number, packetId?: number | null, transportMechanism?: number | null): Promise<void> {
     const { traceroutes } = this.tables;
     const set: any = { route, routeBack, snrTowards, snrBack, timestamp };
     // Only overwrite packetId when the response carries one — preserves any id
     // already stored on the pending row if this update doesn't supply it.
     if (packetId !== undefined) set.packetId = packetId;
+    // #5097: the pending row was written when WE sent the request, so it
+    // carries no transport. The response is the packet that actually crossed
+    // the mesh, so its mechanism is the one the map should filter on. Same
+    // "only when supplied" rule as packetId.
+    if (transportMechanism !== undefined) set.transportMechanism = transportMechanism;
     await this.db
       .update(traceroutes)
       .set(set)
@@ -605,6 +611,9 @@ export class TraceroutesRepository extends BaseRepository {
             snrTowards: tracerouteData.snrTowards || null,
             snrBack: tracerouteData.snrBack || null,
             packetId: tracerouteData.packetId ?? null,
+            // #5097 — see updateTracerouteResponse for why the response's
+            // mechanism, not the pending request's, is the one stored.
+            transportMechanism: tracerouteData.transportMechanism ?? null,
             timestamp: tracerouteData.timestamp,
           })
           .where(eq(traceroutes.id, id))
@@ -620,6 +629,7 @@ export class TraceroutesRepository extends BaseRepository {
           snrTowards: tracerouteData.snrTowards || null,
           snrBack: tracerouteData.snrBack || null,
           packetId: tracerouteData.packetId ?? null,
+          transportMechanism: tracerouteData.transportMechanism ?? null,
           timestamp: tracerouteData.timestamp,
           createdAt: tracerouteData.createdAt,
           sourceId: sourceId ?? null,

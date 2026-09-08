@@ -21,6 +21,7 @@ export const traceroutesSqlite = sqliteTable('traceroutes', {
   routePositions: text('routePositions'), // JSON: { nodeNum: { lat, lng, alt? } } position snapshot at traceroute time
   channel: integer('channel'), // Mesh channel this traceroute was received on (null = unknown/pre-migration)
   packetId: integer('packetId'), // Originating Meshtastic packet id (null = pre-migration). Enables cross-source correlation (#3623)
+  transportMechanism: integer('transportMechanism'), // meshtastic.MeshPacket.TransportMechanism of the packet that carried the route (null = pre-migration -> treated as RF). Drives the map's Show RF/UDP/MQTT filter for route segments (#5097)
   timestamp: integer('timestamp').notNull(),
   createdAt: integer('createdAt').notNull(),
   // Source association (nullable — NULL = legacy default source)
@@ -59,6 +60,7 @@ export const traceroutesPostgres = pgTable('traceroutes', {
   routePositions: pgText('routePositions'), // JSON: { nodeNum: { lat, lng, alt? } } position snapshot at traceroute time
   channel: pgInteger('channel'), // Mesh channel this traceroute was received on (null = unknown/pre-migration)
   packetId: pgBigint('packetId', { mode: 'number' }), // Originating Meshtastic packet id (null = pre-migration). Enables cross-source correlation (#3623)
+  transportMechanism: pgInteger('transportMechanism'), // see SQLite definition (#5097)
   timestamp: pgBigint('timestamp', { mode: 'number' }).notNull(),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   // Source association (nullable — NULL = legacy default source)
@@ -97,6 +99,7 @@ export const traceroutesMysql = mysqlTable('traceroutes', {
   routePositions: myText('routePositions'), // JSON: { nodeNum: { lat, lng, alt? } } position snapshot at traceroute time
   channel: myInt('channel'), // Mesh channel this traceroute was received on (null = unknown/pre-migration)
   packetId: myBigint('packetId', { mode: 'number' }), // Originating Meshtastic packet id (null = pre-migration). Enables cross-source correlation (#3623)
+  transportMechanism: myInt('transportMechanism'), // see SQLite definition (#5097)
   timestamp: myBigint('timestamp', { mode: 'number' }).notNull(),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   // Source association (nullable — NULL = legacy default source)

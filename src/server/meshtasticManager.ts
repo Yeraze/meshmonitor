@@ -8666,6 +8666,14 @@ class MeshtasticManager implements ISourceManager {
         routePositions: JSON.stringify(routePositions),
         channel: channelIndex >= 0 ? channelIndex : null,
         packetId: meshPacket.id != null ? Number(meshPacket.id) : null,
+        // #5097 — which transport carried this traceroute, so the map's
+        // Show RF / UDP / MQTT toggles can filter its route segments. This is
+        // per-RECORD, and it has to be: the traceroute protobuf carries no
+        // per-hop transport field, and the only per-hop signal (the unknown-SNR
+        // sentinel) says nothing about UDP. Same resolver the node rows use, so
+        // a bridge packet with no explicit mechanism still classifies MQTT via
+        // the legacy `viaMqtt` flag.
+        transportMechanism: resolveRadioPacketTransport(meshPacket),
         timestamp: timestamp,
         createdAt: Date.now()
       };

@@ -281,3 +281,79 @@ describe('analyzeTraceroutes', () => {
     expect(segments).toHaveLength(0);
   });
 });
+
+describe('analyzeTraceroutes — Show RF / UDP / MQTT (#5097)', () => {
+  const ALL_ON = { showRfNodes: true, showUdpNodes: true, showMqttNodes: true };
+  const RAW_SENTINEL = -128; // INT8_MIN; /4 == UNKNOWN_SNR_SENTINEL
+  const RAW_GOOD = 20; // 5 dB
+
+  /** Same fixture as `directTrace`, plus a record transport. */
+  function tracedOver(mechanism: number | null, snrRaw = RAW_GOOD): TracerouteAnalysisInput {
+    return { ...directTrace(1, [snrRaw], [snrRaw]), transportMechanism: mechanism };
+  }
+
+  it('filters nothing when no flags are supplied', () => {
+    // Map Analysis without the pills wired must behave exactly as before.
+    const { segments } = analyzeTraceroutes(
+      makeParams({ traceroutes: [tracedOver(6)], selectedNodeNum: REQ, selectedSourceId: 's1' }),
+    );
+    expect(segments.length).toBeGreaterThan(0);
+  });
+
+  it('drops a UDP-delivered traceroute when Show UDP is off', () => {
+    const { segments } = analyzeTraceroutes(
+      makeParams({
+        traceroutes: [tracedOver(6)], // MULTICAST_UDP
+        selectedNodeNum: REQ,
+        selectedSourceId: 's1',
+        transportFlags: { ...ALL_ON, showUdpNodes: false },
+      }),
+    );
+    expect(segments).toHaveLength(0);
+  });
+
+  it('keeps a pre-migration traceroute, which reads as RF', () => {
+    const { segments } = analyzeTraceroutes(
+      makeParams({
+        traceroutes: [tracedOver(null)],
+        selectedNodeNum: REQ,
+        selectedSourceId: 's1',
+        transportFlags: { ...ALL_ON, showUdpNodes: false, showMqttNodes: false },
+      }),
+    );
+    expect(segments.length).toBeGreaterThan(0);
+  });
+
+  it('drops a sentinel hop of an RF traceroute when Show MQTT is off', () => {
+    const { segments } = analyzeTraceroutes(
+      makeParams({
+        traceroutes: [tracedOver(1, RAW_SENTINEL)], // LORA record, sentinel hops
+        selectedNodeNum: REQ,
+        selectedSourceId: 's1',
+        transportFlags: { ...ALL_ON, showMqttNodes: false },
+      }),
+    );
+    expect(segments).toHaveLength(0);
+  });
+
+  it('keeps a hop that merely reports no SNR at all', () => {
+    // The deliberate divergence from `isMqtt`/colouring: a MISSING sample is
+    // coloured unknown but must not be hidden behind the MQTT toggle, or hops
+    // from pre-snr-array firmware would vanish.
+    const noSnr: TracerouteAnalysisInput = {
+      ...directTrace(2, [], []),
+      routeBack: '[]',
+      snrBack: '[0]', // non-empty so the #2051 return-path guard passes
+      transportMechanism: 1,
+    };
+    const { segments } = analyzeTraceroutes(
+      makeParams({
+        traceroutes: [noSnr],
+        selectedNodeNum: REQ,
+        selectedSourceId: 's1',
+        transportFlags: { ...ALL_ON, showMqttNodes: false },
+      }),
+    );
+    expect(segments.length).toBeGreaterThan(0);
+  });
+});

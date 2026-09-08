@@ -215,6 +215,14 @@ export interface DbTraceroute {
   routePositions?: string | null;
   channel?: number | null;
   packetId?: number | null;
+  /**
+   * `meshtastic.MeshPacket.TransportMechanism` of the packet that carried the
+   * route data (#5097). NULL on every pre-migration-160 row and on any packet
+   * that reported no mechanism — read it through `classifyNodeTransport`,
+   * which falls back to `'rf'`, so legacy traceroutes stay visible under the
+   * map's default toggles.
+   */
+  transportMechanism?: number | null;
   timestamp: number;
   createdAt: number;
 }

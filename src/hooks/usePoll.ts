@@ -118,6 +118,13 @@ export interface PollTraceroute {
   snrTowards: string;
   snrBack: string;
   routePositions?: string; // JSON: { [nodeNum]: { lat, lng, alt? } } - position snapshot at traceroute time
+  /**
+   * `MeshPacket.TransportMechanism` of the packet that carried this route
+   * (#5097, migration 160). Null on pre-migration rows; readers resolve that to
+   * `'rf'` via `utils/tracerouteTransport.ts`. Drives the Show RF / UDP / MQTT
+   * filter on the Dashboard and Map Analysis route-segment layers.
+   */
+  transportMechanism?: number | null;
   timestamp: number;
   createdAt: number;
   hopCount: number;

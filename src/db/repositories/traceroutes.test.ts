@@ -38,6 +38,7 @@ const POSTGRES_CREATE = `
     "routePositions" TEXT,
     channel INTEGER,
     "packetId" BIGINT,
+    "transportMechanism" INTEGER,
     timestamp BIGINT NOT NULL,
     "createdAt" BIGINT NOT NULL,
     "sourceId" TEXT
@@ -77,6 +78,7 @@ const MYSQL_CREATE = `
     routePositions TEXT,
     channel INT,
     packetId BIGINT,
+    transportMechanism INT,
     timestamp BIGINT NOT NULL,
     createdAt BIGINT NOT NULL,
     sourceId VARCHAR(36)
@@ -351,6 +353,69 @@ function runTraceroutesTests(getBackend: () => TestBackend) {
     const all = await repo.getAllTraceroutes(100, ALL_SOURCES);
     expect(all.length).toBe(1);
     expect(Number(all[0].packetId)).toBe(packetId);
+  });
+
+  it('transportMechanism (#5097) - persists on insert and is returned', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    const now = Date.now();
+    // 6 = MULTICAST_UDP. Stored so the map's Show RF / UDP / MQTT toggles can
+    // filter this traceroute's route segments.
+    await repo.insertTraceroute(makeTraceroute({ timestamp: now, createdAt: now, transportMechanism: 6 }));
+
+    const all = await repo.getAllTraceroutes(100, ALL_SOURCES);
+    expect(all.length).toBe(1);
+    expect(Number(all[0].transportMechanism)).toBe(6);
+  });
+
+  it('transportMechanism (#5097) - null when the caller supplies none', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    const now = Date.now();
+    await repo.insertTraceroute(makeTraceroute({ timestamp: now, createdAt: now }));
+
+    const all = await repo.getAllTraceroutes(100, ALL_SOURCES);
+    // Readers resolve null to 'rf' so pre-migration rows stay on the map — see
+    // utils/tracerouteTransport.ts.
+    expect(all[0].transportMechanism ?? null).toBeNull();
+  });
+
+  it('transportMechanism (#5097) - the RESPONSE stamps it, not the pending request', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    const now = Date.now();
+    // The pending row is written when WE send the request, so it has no
+    // transport; the response is the packet that actually crossed the mesh.
+    await repo.insertTraceroute(makeTraceroute({ timestamp: now, createdAt: now }));
+    const pending = await repo.findPendingTraceroute(1001, 2002, now - 60000);
+    expect(pending).not.toBeNull();
+
+    await repo.updateTracerouteResponse(
+      pending!.id,
+      '1001,3003,2002',
+      '2002,3003,1001',
+      '10.5,8.2',
+      '9.1,7.3',
+      now + 5000,
+      3_500_000_124,
+      5, // MQTT
+    );
+
+    const all = await repo.getAllTraceroutes(100, ALL_SOURCES);
+    expect(all.length).toBe(1);
+    expect(Number(all[0].transportMechanism)).toBe(5);
   });
 
   it('getTraceroutesByNodes - filter by from/to (bidirectional)', async () => {

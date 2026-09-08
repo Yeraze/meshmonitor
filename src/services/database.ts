@@ -261,6 +261,13 @@ export interface DbTraceroute {
   routePositions?: string;
   /** Originating Meshtastic packet id (null/undefined = not captured). Enables cross-source correlation (#3623). */
   packetId?: number | null;
+  /**
+   * `MeshPacket.TransportMechanism` of the packet that carried the route
+   * (#5097, migration 160). Null/undefined on pre-migration rows and resolves
+   * to `'rf'` through `classifyNodeTransport`, so historical traceroutes stay
+   * visible under the map's default Show RF / UDP / MQTT toggles.
+   */
+  transportMechanism?: number | null;
   timestamp: number;
   createdAt: number;
 }
@@ -2213,7 +2220,8 @@ class DatabaseService {
               tracerouteData.snrTowards || null,
               tracerouteData.snrBack || null,
               tracerouteData.timestamp,
-              tracerouteData.packetId ?? null
+              tracerouteData.packetId ?? null,
+              tracerouteData.transportMechanism ?? null
             );
           } else {
             // Insert new traceroute

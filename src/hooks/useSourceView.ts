@@ -676,10 +676,12 @@ export function useSourceView(params: UseSourceViewParams) {
       snrBack: tr.snrBack,
       timestamp: tr.timestamp,
       createdAt: tr.createdAt,
+      // #5097 — drives the Show RF / UDP / MQTT filter on route segments.
+      transportMechanism: tr.transportMechanism,
     }));
   }, [
     traceroutes
-      .map(tr => `${tr.fromNodeNum}-${tr.toNodeNum}-${tr.route}-${tr.routeBack}-${tr.timestamp || tr.createdAt}`)
+      .map(tr => `${tr.fromNodeNum}-${tr.toNodeNum}-${tr.route}-${tr.routeBack}-${tr.timestamp || tr.createdAt}-${tr.transportMechanism ?? ''}`)
       .join(','),
   ]);
 
@@ -719,6 +721,14 @@ export function useSourceView(params: UseSourceViewParams) {
     return new Set(visibleNodes.map(n => n.nodeNum));
   }, [processedNodes, showRfNodes, showUdpNodes, showMqttNodes, showIncompleteNodes, showEstimatedPositions, nodesWithEstimatedPosition, effectiveMapMaxAge]);
 
+  // #5097 — memoized so the identity is stable; `useTraceroutePaths` lists it
+  // as a memo dependency, and a fresh object each render would rebuild every
+  // segment on the map.
+  const transportFlags = useMemo(
+    () => ({ showRfNodes, showUdpNodes, showMqttNodes }),
+    [showRfNodes, showUdpNodes, showMqttNodes],
+  );
+
   const { traceroutePathsElements, selectedNodeTraceroute, tracerouteNodeNums, tracerouteBounds } = useTraceroutePaths({
     showPaths,
     showRoute,
@@ -732,6 +742,7 @@ export function useSourceView(params: UseSourceViewParams) {
     callbacks: tracerouteCallbacks,
     visibleNodeNums,
     mapZoom,
+    transportFlags,
   });
 
   return {
