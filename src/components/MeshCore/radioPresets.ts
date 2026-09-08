@@ -25,6 +25,7 @@ export const RADIO_PRESETS: ReadonlyArray<RadioPreset> = [
   { id: 'pt868',         label: 'Portugal 868',             freq: 869.618, bw: 62.5,  sf: 7,  cr: 6 },
   { id: 'ch',            label: 'Switzerland',              freq: 869.618, bw: 62.5,  sf: 8,  cr: 8 },
   { id: 'us-ca',         label: 'USA/Canada (Recommended)', freq: 910.525, bw: 62.5,  sf: 7,  cr: 5 },
+  { id: 'us-phl',         label: 'USA - Philadelphia Metro', freq: 902.250, bw: 500,  sf: 11,  cr: 5 },
   { id: 'vn-narrow',     label: 'Vietnam (Narrow)',         freq: 920.250, bw: 62.5,  sf: 8,  cr: 5 },
   { id: 'vn-depr',       label: 'Vietnam (Deprecated)',     freq: 920.250, bw: 250,   sf: 11, cr: 5 },
 ];
