@@ -6,7 +6,21 @@
   position: absolute;
   top: 10px;
   right: 10px;
-  bottom: 10px;
+  /*
+   * 34px, not 10px, so the panel stops ABOVE Leaflet's attribution strip
+   * (#5099).
+   *
+   * Leaflet pins the credit flush to the map's bottom-right corner, in the
+   * same corner this panel occupies, and the strip is ~17px tall. At the old
+   * 10px inset the panel's bottom edge cut straight through the text, and
+   * z-index cannot rescue it: `.leaflet-bottom` ships 1000 and this panel sits
+   * at 1001 deliberately (#5052), so the panel wins wherever they overlap.
+   * Bounding the panel means they never overlap in the first place — the same
+   * remedy as the mobile `max-height` for #4495.
+   *
+   * 10px base inset + ~17px strip + ~7px air.
+   */
+  bottom: 34px;
   /*
    * Above Leaflet's CONTROL containers, not just its panes (#5052).
    *
