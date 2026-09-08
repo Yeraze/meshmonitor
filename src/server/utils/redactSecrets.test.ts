@@ -11,9 +11,9 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { redactSecrets, safeJson } from './redactSecrets.js';
+import { safeJson } from './redactSecrets.js';
 
-describe('redactSecrets', () => {
+describe('safeJson redaction', () => {
   it('redacts every credential a device config can carry', () => {
     const config = {
       security: { publicKey: 'PUB', privateKey: 'PRIV-SECRET', adminKey: ['ADMIN-SECRET'] },
@@ -44,10 +44,8 @@ describe('redactSecrets', () => {
   });
 
   it('keeps the length, because "is the PSK 16 or 32 bytes" is a real question', () => {
-    const out = redactSecrets({ psk: new Uint8Array(32) }) as Record<string, string>;
-    expect(out.psk).toBe('[redacted]: 32 bytes');
-    const str = redactSecrets({ password: 'abcd' }) as Record<string, string>;
-    expect(str.password).toBe('[redacted]: 4 chars');
+    expect(JSON.parse(safeJson({ psk: new Uint8Array(32) })).psk).toBe('[redacted]: 32 bytes');
+    expect(JSON.parse(safeJson({ password: 'abcd' })).password).toBe('[redacted]: 4 chars');
   });
 
   it('reaches secrets nested inside arrays — channels are a repeated field', () => {
@@ -81,26 +79,23 @@ describe('redactSecrets', () => {
     expect(safeJson({ big: 1n })).toBe('[unserializable]');
   });
 
-  it('refuses to write a prototype-shaped key from remote input', () => {
+  it('cannot be used for prototype injection by a hostile key name', () => {
     // The object being walked comes off the radio, so its key names are remote
-    // input. `out['__proto__'] = ...` on a normal object literal reassigns the
-    // prototype instead of adding a property — CodeQL flags this as
-    // js/remote-property-injection, and it caught exactly this in review.
+    // input. The first implementation copied into a new object — CodeQL flagged
+    // `out[k] = ...` as js/remote-property-injection (high) and was right to.
+    // Redacting through a replacer removes the sink entirely: no property is
+    // ever written from a remote key.
     const hostile = JSON.parse('{"__proto__": {"polluted": true}, "name": "node"}');
-    const out = redactSecrets(hostile) as Record<string, unknown>;
 
+    expect(() => safeJson(hostile)).not.toThrow();
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();
-    expect(Object.getPrototypeOf(out)).toBeNull();
-    expect(out.name).toBe('node');
-    expect(safeJson(hostile)).toContain('[unsafe key]');
+    expect(JSON.parse(safeJson(hostile)).name).toBe('node');
   });
 
-  it('collapses rather than recursing on a pathologically deep object', () => {
+  it('still redacts a secret buried deep in the object', () => {
     let deep: Record<string, unknown> = { psk: 'SECRET' };
     for (let i = 0; i < 40; i++) deep = { nested: deep };
-    const out = safeJson(deep);
-    expect(out).toContain('[depth limit]');
-    expect(out).not.toContain('SECRET');
+    expect(safeJson(deep)).not.toContain('SECRET');
   });
 });
 

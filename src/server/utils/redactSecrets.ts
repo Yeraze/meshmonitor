@@ -43,73 +43,35 @@ const SECRET_KEYS = new Set([
 
 const REDACTED = '[redacted]';
 
-/**
- * Keys that must never be written back onto the copy.
- *
- * The object being walked comes off the radio, so its key names are remote
- * input. Writing `out['__proto__'] = ...` on a normal object literal reassigns
- * that object's prototype rather than adding a property — prototype injection,
- * which CodeQL flags as `js/remote-property-injection`. The copy is built with
- * a null prototype so there is nothing to pollute, and these keys are dropped
- * outright so the dynamic write can never reach a prototype slot at all.
- */
-const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
-
-/** Guard against a pathological or cyclic shape in a logging path. */
-const MAX_DEPTH = 12;
-
 const normalizeKey = (key: string): string => key.replace(/[_\-\s]/g, '').toLowerCase();
 
 const isSecretKey = (key: string): boolean => SECRET_KEYS.has(normalizeKey(key));
+
+/**
+ * Redact through a `JSON.stringify` replacer rather than by copying into a new
+ * object.
+ *
+ * The first version deep-copied, writing `out[k] = ...` where `k` came off the
+ * radio. CodeQL flagged that as `js/remote-property-injection` (high) and was
+ * right to: a crafted `__proto__` key reassigns the copy's prototype instead of
+ * adding a property. A null-prototype target plus a denylist fixes the actual
+ * vulnerability, but leaves a dynamic write with a tainted key that the query
+ * still — reasonably — cannot prove safe.
+ *
+ * A replacer has no such sink. Substituting a value for a key is exactly what
+ * the API is for, no property is ever written from remote input, and the result
+ * is simpler and faster than building a parallel object. The vulnerability is
+ * gone by construction rather than mitigated in place.
+ */
 
 /** Describe a redacted value without revealing it. */
 function describe(value: unknown): string {
   if (typeof value === 'string') return `${REDACTED}: ${value.length} chars`;
   if (typeof value === 'number') return REDACTED;
-  if (value instanceof Uint8Array || Array.isArray(value)) {
-    return `${REDACTED}: ${(value as { length: number }).length} bytes`;
-  }
   if (value && typeof value === 'object' && typeof (value as { length?: unknown }).length === 'number') {
     return `${REDACTED}: ${(value as { length: number }).length} bytes`;
   }
   return REDACTED;
-}
-
-/**
- * Deep-copy `value`, replacing any secret-keyed value with a safe placeholder.
- *
- * Never throws: this runs on a logging path, where blowing up would be a worse
- * outcome than an unredacted line. A cycle or an over-deep object collapses to
- * a marker rather than recursing forever.
- */
-export function redactSecrets(value: unknown, depth = 0, seen = new WeakSet<object>()): unknown {
-  if (depth > MAX_DEPTH) return '[depth limit]';
-  if (value === null || typeof value !== 'object') return value;
-
-  if (seen.has(value as object)) return '[circular]';
-  seen.add(value as object);
-
-  // Binary blobs log as-is; only a secret-KEYED one gets replaced, by the
-  // parent. Left intact here so a public key still prints.
-  if (value instanceof Uint8Array || Buffer.isBuffer(value)) return value;
-
-  if (Array.isArray(value)) {
-    return value.map((item) => redactSecrets(item, depth + 1, seen));
-  }
-
-  // Null prototype: the keys below are remote input, so there must be no
-  // prototype for a crafted name to reach.
-  const out: Record<string, unknown> = Object.create(null);
-  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-    if (UNSAFE_KEYS.has(k)) {
-      // Dropped rather than copied — a device sending one of these is either
-      // broken or hostile, and either way the log line should say so.
-      out[`${k} (dropped)`] = '[unsafe key]';
-      continue;
-    }
-    out[k] = isSecretKey(k) ? describe(v) : redactSecrets(v, depth + 1, seen);
-  }
-  return out;
 }
 
 /**
@@ -122,8 +84,23 @@ export function redactSecrets(value: unknown, depth = 0, seen = new WeakSet<obje
  * secret in a shared log file.
  */
 export function safeJson(value: unknown, space?: number): string {
+  // Reported for a value already emitted elsewhere in the same document, which
+  // includes genuine cycles. Logs care about "don't hang or throw", not about
+  // distinguishing a cycle from a shared reference.
+  const seen = new WeakSet<object>();
   try {
-    return JSON.stringify(redactSecrets(value), null, space);
+    return JSON.stringify(
+      value,
+      (key, val) => {
+        if (key && isSecretKey(key)) return describe(val);
+        if (val !== null && typeof val === 'object') {
+          if (seen.has(val as object)) return '[circular]';
+          seen.add(val as object);
+        }
+        return val;
+      },
+      space,
+    );
   } catch {
     return '[unserializable]';
   }
