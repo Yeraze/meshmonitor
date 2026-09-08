@@ -110,6 +110,8 @@ const SCRIPT_AUTO_RESPONDER_TIMEOUT_MS = 30_000;
 // Minimum gap between local "re-ignore" admin pushes for the same node (#2601),
 // so a device that can't durably hold the ignore doesn't trigger a command storm.
 const IGNORE_REAPPLY_COOLDOWN_MS = 60_000;
+/** Same coalescing window as the ignore re-sync, for the favorite re-sync (#5122). */
+const FAVORITE_REAPPLY_COOLDOWN_MS = 60_000;
 // Window for the {NODECOUNT}/{DIRECTCOUNT} template tokens, matching the
 // Sources panel's per-source "active" badge (issue #3388). The badge counts
 // nodes heard in the last 2h (getActiveNodeCount default, issue #2883); the
@@ -723,6 +725,78 @@ class MeshtasticManager implements ISourceManager {
     }
   }
 
+  /**
+   * Converge the device's favorite flag to ours for a `favoriteLocked` node.
+   *
+   * This used to fire inline, fire-and-forget, from `processNodeInfoProtobuf` —
+   * so on a large mesh every locked node whose device state disagreed injected
+   * an admin write INTO the initial NodeDB sync, while NodeInfo was still
+   * streaming. A reporter packet-captured the consequence (#5122): the node
+   * stops ACKing that exact segment, the OS retransmits it 8 times over
+   * ~10-15s with the same sequence number, and the node then RSTs the
+   * connection. The sync restarts from scratch and, on a ~190-node mesh, never
+   * finishes. The same capture shows this packet flowing fine outside the sync
+   * window, so the fix is when we send it, not what we send.
+   *
+   * So: during config capture, record the intent and send nothing. The DB has
+   * already been made authoritative by the caller, so nothing is lost by
+   * waiting; `flushPendingFavoriteResyncs()` drains the queue once
+   * `configComplete` lands.
+   *
+   * The cooldown mirrors the ignore re-sync directly below the call site — a
+   * device that cannot durably hold the flag would otherwise trigger an admin
+   * command on every single NodeInfo for that node.
+   */
+  private queueFavoriteResync(nodeNum: number, nodeId: string, desiredFavorite: boolean): void {
+    if (this.isCapturingInitConfig && !this.configCaptureComplete) {
+      // Map, not push: a node that flaps mid-sync collapses to its final value.
+      this.pendingFavoriteResync.set(nodeNum, desiredFavorite);
+      logger.debug(`⏸️ Deferring favorite write-back for ${nodeId} until the config sync completes (#5122)`);
+      return;
+    }
+    void this.sendFavoriteResyncNow(nodeNum, nodeId, desiredFavorite);
+  }
+
+  /** The actual admin write, cooldown-guarded. Local command — no mesh airtime. */
+  private async sendFavoriteResyncNow(nodeNum: number, nodeId: string, desiredFavorite: boolean): Promise<void> {
+    const now = Date.now();
+    const lastPush = this.favoriteReapplyCooldown.get(nodeNum) ?? 0;
+    if (now - lastPush < FAVORITE_REAPPLY_COOLDOWN_MS) {
+      logger.debug(`⏳ Favorite write-back for ${nodeId} still in cooldown — skipping`);
+      return;
+    }
+    this.favoriteReapplyCooldown.set(nodeNum, now);
+    try {
+      if (desiredFavorite) {
+        await this.sendFavoriteNode(nodeNum);
+      } else {
+        await this.sendRemoveFavoriteNode(nodeNum);
+      }
+    } catch (err) {
+      logger.warn(`⚠️ Failed to re-sync locked favorite for node ${nodeId}:`, err);
+    }
+  }
+
+  /**
+   * Drain the favorite write-backs deferred during config capture (#5122).
+   *
+   * Sends are serialised rather than fired in parallel: the whole point is to
+   * stop handing the node a burst of admin packets it may not keep up with, and
+   * firing the queue at once right after `configComplete` would recreate that in
+   * a different place. These are local admin commands to the connected node, so
+   * they cost no mesh airtime.
+   */
+  private async flushPendingFavoriteResyncs(): Promise<void> {
+    if (this.pendingFavoriteResync.size === 0) return;
+    const pending = [...this.pendingFavoriteResync.entries()];
+    this.pendingFavoriteResync.clear();
+    logger.debug(`▶️ Config sync complete — applying ${pending.length} deferred favorite write-back(s) (#5122)`);
+    for (const [nodeNum, desiredFavorite] of pending) {
+      const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
+      await this.sendFavoriteResyncNow(nodeNum, nodeId, desiredFavorite);
+    }
+  }
+
   private cancelConfigCompleteFallbackTimer(): void {
     if (this.configCompleteFallbackTimer) {
       clearTimeout(this.configCompleteFallbackTimer);
@@ -859,6 +933,15 @@ class MeshtasticManager implements ISourceManager {
   private remoteLocalStatsLastSentAt: Map<number, number> = new Map();
   private nodeLinkQuality: Map<number, { quality: number; lastHops: number }> = new Map(); // Track link quality per node
   private ignoreReapplyCooldown: Map<number, number> = new Map(); // nodeNum -> last local re-ignore push timestamp (#2601), coalesces bursts
+  private favoriteReapplyCooldown: Map<number, number> = new Map(); // nodeNum -> last favorite write-back timestamp (#5122), coalesces bursts
+  /**
+   * Favorite write-backs deferred until the initial config sync finishes (#5122).
+   *
+   * nodeNum -> the favorite state we want the device to converge to. A Map, so a
+   * node that flaps several times during one sync collapses to its final value
+   * and produces a single admin command on flush.
+   */
+  private pendingFavoriteResync: Map<number, boolean> = new Map();
   private remoteAdminScannerInterval: NodeJS.Timeout | null = null;
   private remoteAdminScannerIntervalMinutes: number = 0; // 0 = disabled
   private pendingRemoteAdminScans: Set<number> = new Set(); // Track nodes being scanned
@@ -2172,6 +2255,10 @@ class MeshtasticManager implements ISourceManager {
           this.localNodeInfo = null;
           this.actualDeviceConfig = null;
           this.actualModuleConfig = null;
+          // A sync that died mid-flight must not carry its deferred favorite
+          // write-backs into the next session — the device re-reports its own
+          // state on reconnect and the reconciliation runs again from there (#5122).
+          this.pendingFavoriteResync.clear();
           logger.debug('📸 Cleared device and module config cache on disconnect');
           break;
         case 'clearConfigCapture':
@@ -4820,6 +4907,9 @@ class MeshtasticManager implements ISourceManager {
                   break;
               }
             }
+            // After the action loop, so the capture flags are already flipped
+            // before any deferred admin write goes out (#5122).
+            void this.flushPendingFavoriteResyncs();
             this.assertStateConsistent();
           }
           break;
@@ -9276,19 +9366,12 @@ class MeshtasticManager implements ISourceManager {
         if (existingNode?.favoriteLocked) {
           if (existingNode.isFavorite !== nodeInfo.isFavorite) {
             logger.debug(`🔒 Node ${nodeId} favoriteLocked — preserving DB isFavorite=${existingNode.isFavorite}, re-syncing to device (device reported ${nodeInfo.isFavorite})`);
+            // The DB always wins immediately — that part is local and free.
             nodeData.isFavorite = existingNode.isFavorite;
-            // Re-push the locked favorite state to the connected device
-            void (async () => {
-              try {
-                if (existingNode.isFavorite) {
-                  await this.sendFavoriteNode(nodeNum);
-                } else {
-                  await this.sendRemoveFavoriteNode(nodeNum);
-                }
-              } catch (err) {
-                logger.warn(`⚠️ Failed to re-sync locked favorite for node ${nodeId}:`, err);
-              }
-            })();
+            // The write-back to the device is what must wait (#5122). See
+            // queueFavoriteResync: sending it mid-sync has been packet-captured
+            // wedging the node's TCP stack until it RSTs the connection.
+            this.queueFavoriteResync(nodeNum, nodeId, existingNode.isFavorite === true);
           }
         } else {
           nodeData.isFavorite = nodeInfo.isFavorite;
