@@ -969,11 +969,21 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
     return aHops - bHops;
   };
 
-  // Default sort: favorites first, then by last message time
+  // Default sort: favorites first, then by last message time, then by last heard
   const sortDefault = (a: NodeWithMessages, b: NodeWithMessages): number => {
     if (a.isFavorite && !b.isFavorite) return -1;
     if (!a.isFavorite && b.isFavorite) return 1;
-    return b.lastMessageTime - a.lastMessageTime;
+
+    // 1. Prioritize nodes with messages (most recent message first; lastMessageTime is ms)
+    const msgDiff = (b.lastMessageTime || 0) - (a.lastMessageTime || 0);
+    if (msgDiff !== 0) return msgDiff;
+
+    // 2. Fallback for nodes without message history (or tied): most recently heard first (lastHeard is seconds)
+    const heardDiff = (b.lastHeard || 0) - (a.lastHeard || 0);
+    if (heardDiff !== 0) return heardDiff;
+
+    // 3. Deterministic alphabetical fallback
+    return (a.user?.longName || `Node ${a.nodeNum}`).localeCompare(b.user?.longName || `Node ${b.nodeNum}`);
   };
 
   // Sort and filter nodes based on dmFilter
@@ -1013,7 +1023,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
       if (['hops', 'favorites', 'withPosition', 'noInfra'].includes(dmFilter)) {
         return sortByHops(a, b);
       }
-      // Default sort: favorites first, then by last message time
+      // Default sort: favorites first, then by last message time, then by last heard
       return sortDefault(a, b);
     });
 
