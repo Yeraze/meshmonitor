@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { formatCount } from '../utils/numberFormat';
 
 // Color palette for distribution charts (Catppuccin-compatible)
 export const DISTRIBUTION_COLORS = [
@@ -60,7 +61,7 @@ const PacketStatsChart: React.FC<PacketStatsChartProps> = React.memo(({ title, d
               if (isNaN(numValue)) return ['-', ''];
               const pct = total > 0 ? ((numValue / total) * 100).toFixed(1) : '0';
               const entryName = props?.payload?.name || '';
-              return [`${numValue.toLocaleString()} (${pct}%)`, entryName];
+              return [`${formatCount(numValue)} (${pct}%)`, entryName];
             }}
             contentStyle={{
               backgroundColor: 'var(--color-surface)',
@@ -102,7 +103,7 @@ const PacketStatsChart: React.FC<PacketStatsChartProps> = React.memo(({ title, d
               borderRadius: '2px',
               flexShrink: 0,
             }}></span>
-            {entry.name}: {pct}% ({entry.value.toLocaleString()})
+            {entry.name}: {pct}% ({formatCount(entry.value)})
           </p>
         );
       })}

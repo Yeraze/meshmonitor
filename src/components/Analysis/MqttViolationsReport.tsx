@@ -67,6 +67,7 @@ import {
   packetsCsvFilename,
 } from './mqttViolationsCsv';
 import { downloadTextFile } from '../../utils/nodeExport';
+import { formatCount } from '../../utils/numberFormat';
 import styles from './MqttViolationsReport.module.css';
 
 type TFn = ReturnType<typeof useTranslation>['t'];
@@ -160,12 +161,12 @@ function buildExportMessage(
   exportCap: number,
 ): { message: string; capped: boolean } {
   const capped = exported >= exportCap || total > exported;
-  const cap = exportCap.toLocaleString();
+  const cap = formatCount(exportCap);
   const message = capped
     ? t(
         'analysis.mqtt_violations.export_capped',
         'Exported {{exported}} of {{total}} matching rows — the API caps a single scan at {{cap}} rows. Narrow the window to export the rest.',
-        { exported: exported.toLocaleString(), total: total.toLocaleString(), cap },
+        { exported: formatCount(exported), total: formatCount(total), cap },
       )
     : t('analysis.mqtt_violations.export_done', 'Exported {{count}} rows', {
         // `count` is i18next's reserved pluralization key and is typed
@@ -400,7 +401,7 @@ const MqttViolationsReport: React.FC = () => {
   const reachable = data ? (capApplied ? Math.min(data.total, scanCap) : data.total) : 0;
   const totalPages = data ? Math.max(1, Math.ceil(reachable / data.limit)) : 1;
   const currentPage = data ? Math.floor(data.offset / data.limit) + 1 : 1;
-  const capLabel = scanCap.toLocaleString();
+  const capLabel = formatCount(scanCap);
 
   const windowFmt = data ? formatSuspectedWindow(data.suspectedWindowMs) : null;
   const windowText =
@@ -434,7 +435,7 @@ const MqttViolationsReport: React.FC = () => {
   const drillTotal = packetsQuery.data?.total ?? 0;
   const drillCapApplied = packetsQuery.data?.capApplied === true;
   const drillScanCap = packetsQuery.data?.scanCap ?? API_SCAN_CAP;
-  const drillCapLabel = drillScanCap.toLocaleString();
+  const drillCapLabel = formatCount(drillScanCap);
   const drillLimit = packetsQuery.data?.limit ?? drill.limit;
   const drillReachable = packetsQuery.data
     ? (drillCapApplied ? Math.min(drillTotal, drillScanCap) : drillTotal)
@@ -687,21 +688,21 @@ const MqttViolationsReport: React.FC = () => {
           <div className="reports-stats">
             <Stat
               label={t('analysis.mqtt_violations.stat_gateways', 'Gateways')}
-              value={capApplied ? `${capLabel}+` : stats.gatewayCount.toLocaleString()}
+              value={capApplied ? `${capLabel}+` : formatCount(stats.gatewayCount)}
             />
             <Stat
               label={t('analysis.mqtt_violations.stat_confirmed', 'Confirmed violations')}
-              value={stats.confirmed.toLocaleString()}
+              value={formatCount(stats.confirmed)}
             />
             {suspectedShown && (
               <Stat
                 label={t('analysis.mqtt_violations.stat_suspected', 'Suspected')}
-                value={stats.suspected.toLocaleString()}
+                value={formatCount(stats.suspected)}
               />
             )}
             <Stat
               label={t('analysis.mqtt_violations.stat_originators', 'Originators affected')}
-              value={stats.originators.toLocaleString()}
+              value={formatCount(stats.originators)}
             />
           </div>
 
@@ -1088,9 +1089,9 @@ const MqttViolationsReport: React.FC = () => {
                   ? t('analysis.mqtt_violations.total_rows_capped', '{{cap}}+ gateways', {
                       cap: capLabel,
                     })
-                  : t('analysis.mqtt_violations.total_rows', '{{total}} gateways', {
-                      total: data.total.toLocaleString(),
-                    })}
+                    : t('analysis.mqtt_violations.total_rows', '{{total}} gateways', {
+                        total: formatCount(data.total),
+                      })}
               </span>
               {' · '}
               <span>
