@@ -14,6 +14,9 @@ import { NeighborLinksLayer, type NeighborLinkDescriptor } from './map/layers/Ne
 import type { TracerouteRenderSegment } from '../utils/tracerouteSegments';
 import { UiIcon } from './icons';
 import api from '../services/api';
+import { usePrivacyLinks, privacyLinkHref } from '../hooks/usePrivacyLinks';
+import { PRIVACY_LINK_FALLBACK_LABEL } from '../types/privacy';
+import { appBasename } from '../init';
 
 interface EmbedConfig {
   id: string;
@@ -128,6 +131,7 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
   const [geoJsonLayers, setGeoJsonLayers] = useState<GeoJsonLayer[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const { links: privacyLinks } = usePrivacyLinks();
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // The embed route is a standalone public page (src/embed.tsx) — it's the
@@ -586,6 +590,47 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
               }} />
               <span>{label}</span>
             </div>
+          ))}
+        </div>
+      )}
+
+      {/* Operator's disclosure links (#5156). The embed is the one fully
+          unauthenticated surface — no session, no token — so it is where a
+          privacy policy link matters most.
+
+          Styled inline with hardcoded theme colors, and labelled from the
+          static fallbacks rather than i18n, for the same reason the legend
+          above is: the embed is a separate Vite entry that loads neither the
+          app's CSS variables nor its i18n instance. Reusing <PrivacyLinks>
+          here would render unstyled and blow up on useTranslation(). Always
+          opens a new tab — the embed usually lives in someone else's iframe. */}
+      {privacyLinks.length > 0 && (
+        <div style={{
+          position: 'absolute',
+          bottom: '4px',
+          right: '10px',
+          zIndex: 1000,
+          display: 'flex',
+          gap: '10px',
+          fontSize: '11px',
+          fontFamily: 'system-ui, -apple-system, sans-serif',
+        }}>
+          {privacyLinks.map((link) => (
+            <a
+              key={link.slug}
+              href={privacyLinkHref(link, appBasename)}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                color: '#a6adc8',
+                textDecoration: 'none',
+                background: 'rgba(26, 26, 46, 0.85)',
+                borderRadius: '4px',
+                padding: '2px 6px',
+              }}
+            >
+              {link.title?.trim() || PRIVACY_LINK_FALLBACK_LABEL[link.slug]}
+            </a>
           ))}
         </div>
       )}

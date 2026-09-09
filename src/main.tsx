@@ -29,6 +29,7 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { queryClient } from './config/queryClient.ts';
 import App from './App.tsx';
 import PacketMonitorPage from './pages/PacketMonitorPage.tsx';
+import PrivacyDocumentPage from './pages/PrivacyDocumentPage.tsx';
 import DashboardPage from './pages/DashboardPage.tsx';
 import MapAnalysisPage from './pages/MapAnalysisPage.tsx';
 import ReportsPage from './pages/ReportsPage.tsx';
@@ -166,6 +167,12 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Routes>
             {/* Standalone routes — no auth providers needed */}
             <Route path="packet-monitor" element={<PacketMonitorPage />} />
+
+            {/* Operator-hosted privacy/terms/contact document (#5156).
+                Deliberately outside every auth provider: a policy that only
+                logged-in users can read defeats the purpose, and the tokenless
+                embed bundle links here too. */}
+            <Route path="privacy/:slug" element={<PrivacyDocumentPage />} />
 
             {/* Source-specific view — SourceProvider wraps WebSocketProvider for correct sourceId */}
             <Route

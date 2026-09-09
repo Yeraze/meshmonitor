@@ -221,6 +221,14 @@ export const VALID_SETTINGS_KEYS = [
   // serves a disallow-all `/robots.txt`, discouraging search engines and LLM
   // crawlers from indexing a publicly-exposed dashboard. See robotsConfig.ts.
   'noIndexEnabled',
+  // Global privacy disclosure links (issue #5156). A publicly-reachable
+  // MeshMonitor re-serves mesh data to anonymous visitors and to tokenless
+  // embed viewers; these let the operator disclose the policy that applies.
+  // Empty string = no link rendered. An operator-hosted document in
+  // `privacy_documents` takes precedence over the matching URL here.
+  'privacyPolicyUrl',
+  'termsOfServiceUrl',
+  'contactUrl',
   // Global opt-in (issue #3979, default OFF): when enabled, an AUTOMATED MeshCore
   // channel/broadcast send that hears ZERO repeaters within 30s is resent exactly
   // once. Applies only to automated senders (Automation Engine action.sendMessage,
@@ -668,6 +676,9 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   'linkPreviewsEnabled',                    // :175 global privacy toggle (#3416)
   'discardInvalidPositions',                // :178 global ingest gate
   'noIndexEnabled',                         // :184 global robots gate (#4202)
+  'privacyPolicyUrl',                       // global disclosure link (#5156)
+  'termsOfServiceUrl',                      // "
+  'contactUrl',                             // "
   'meshcoreChannelRetryEnabled',            // :189 global opt-in (#3979)
   'meshcoreCliTimeoutSeconds',              // :195 global CLI reply timeout (#4027)
   'adminRetryAttempts',                     // :201 global admin retry count (#4487)

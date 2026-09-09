@@ -12,6 +12,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { logger } from '../utils/logger';
 import { ApiError } from '../services/api';
 import { version } from '../../package.json';
+import PrivacyLinks from './PrivacyLinks';
+import { appBasename } from '../init';
 import './LoginPage.css';
 
 const LoginPage: React.FC = () => {
@@ -316,6 +318,9 @@ const LoginPage: React.FC = () => {
           >
             {t('common.view_on_github')}
           </a>
+          {/* Disclosure links (#5156) — the login screen is where an anonymous
+              visitor to a public instance most often lands first. */}
+          <PrivacyLinks basename={appBasename} />
         </div>
       </div>
     </div>

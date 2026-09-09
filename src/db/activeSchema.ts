@@ -148,6 +148,11 @@ import {
   meshcoreSavedRegionsSqlite, meshcoreSavedRegionsPostgres, meshcoreSavedRegionsMysql,
 } from './schema/savedRegions.js';
 
+// Operator-hosted privacy documents (global — no sourceId) (#5156)
+import {
+  privacyDocumentsSqlite, privacyDocumentsPostgres, privacyDocumentsMysql,
+} from './schema/privacyDocuments.js';
+
 // Waypoints table
 import {
   waypointsSqlite, waypointsPostgres, waypointsMysql,
@@ -309,6 +314,10 @@ export interface ActiveSchema {
   // MeshCore saved-regions catalog (global — no sourceId) (#3770)
   meshcoreSavedRegions: any;
 
+  // Operator-hosted privacy documents (global — no sourceId) (#5156)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- matches ActiveSchema per-dialect table pattern
+  privacyDocuments: any;
+
   // Waypoints
   waypoints: any;
 
@@ -425,6 +434,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     automationVariableValues: automationVariableValuesSqlite,
     automationHomeAnchors: automationHomeAnchorsSqlite,
     meshcoreSavedRegions: meshcoreSavedRegionsSqlite,
+    privacyDocuments: privacyDocumentsSqlite,
     waypoints: waypointsSqlite,
     sources: sourcesSqlite,
     estimatedPositions: estimatedPositionsSqlite,
@@ -498,6 +508,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     automationVariableValues: automationVariableValuesPostgres,
     automationHomeAnchors: automationHomeAnchorsPostgres,
     meshcoreSavedRegions: meshcoreSavedRegionsPostgres,
+    privacyDocuments: privacyDocumentsPostgres,
     waypoints: waypointsPostgres,
     sources: sourcesPostgres,
     estimatedPositions: estimatedPositionsPostgres,
@@ -571,6 +582,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     automationVariableValues: automationVariableValuesMysql,
     automationHomeAnchors: automationHomeAnchorsMysql,
     meshcoreSavedRegions: meshcoreSavedRegionsMysql,
+    privacyDocuments: privacyDocumentsMysql,
     waypoints: waypointsMysql,
     sources: sourcesMysql,
     estimatedPositions: estimatedPositionsMysql,

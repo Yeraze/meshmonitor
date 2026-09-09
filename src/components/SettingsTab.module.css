@@ -1,0 +1,17 @@
+/*
+ * SettingsTab — CSS module for markup added under the containment rule
+ * (CLAUDE.md): new styling lands here, not in the frozen global sheets.
+ * Semantic tokens with no fallback.
+ */
+
+/*
+ * Sub-heading inside a settings-section, for grouping related controls under
+ * one <h3>. First used by the Privacy section's "Disclosure links" and
+ * "Documents hosted here" groups (#5156).
+ */
+.privacyHeading {
+  margin: 1.5rem 0 0.35rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-text);
+}

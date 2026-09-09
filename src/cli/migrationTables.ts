@@ -140,6 +140,9 @@ export const TABLE_ORDER = [
   'automation_home_anchors',
   // 3770: global MeshCore saved-regions catalog. No sourceId / no FK.
   'meshcore_saved_regions',
+  // 5156: global operator-hosted privacy documents. No sourceId / no FK — the
+  // policy describes the deployment, not a source.
+  'privacy_documents',
 ];
 
 // Tables in the 4.0 schema that carry a `sourceId` column. When the source
