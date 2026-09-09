@@ -91,6 +91,7 @@
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.18.3",
     "recharts": "^3.9.2",
+    "remark-gfm": "^4.0.1",
     "rotating-file-stream": "^3.2.10",
     "satellite.js": "^7.1.0",
     "socket.io": "^4.8.3",

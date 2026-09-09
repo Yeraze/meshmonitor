@@ -29,6 +29,7 @@ import {
   type PrivacyDocumentAdmin,
   type PrivacyDocumentSlug,
 } from '../../types/privacy';
+import { seedFromUpload } from './privacyUpload';
 import styles from './PrivacyDocumentsSection.module.css';
 
 /** Mirrors the server's cap so the UI can refuse before a round trip. */
@@ -142,13 +143,8 @@ const PrivacyDocumentsSection: React.FC<PrivacyDocumentsSectionProps> = ({ canEd
       return;
     }
     const text = await file.text();
-    // Seed the title from the first Markdown H1 when the operator hasn't set
-    // one — an uploaded policy almost always starts with its own heading.
-    const heading = /^#\s+(.+)$/m.exec(text)?.[1]?.trim();
-    setDraft(slug, {
-      content: text,
-      title: draftFor(slug).title.trim() || heading || PRIVACY_LINK_FALLBACK_LABEL[slug],
-    });
+    const { title, content } = seedFromUpload(text, draftFor(slug).title, slug);
+    setDraft(slug, { content, title });
     setOpenSlug(slug);
     setError(null);
   };

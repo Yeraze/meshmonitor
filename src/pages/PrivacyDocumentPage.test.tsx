@@ -70,6 +70,28 @@ describe('PrivacyDocumentPage', () => {
     expect(container.textContent).toContain('<script>');
   });
 
+  it('renders GFM tables, not literal pipes', async () => {
+    // Without remark-gfm, react-markdown renders a table as a single line of
+    // "| Data | Retention |" text. A retention table is the first thing an
+    // operator reaches for in a privacy policy, so this is not cosmetic.
+    vi.mocked(apiService.getPrivacyDocument).mockResolvedValue(
+      doc('| Data | Retention |\n| --- | --- |\n| Packets | 90 days |\n'),
+    );
+    const { container } = renderAt('/privacy/privacy');
+
+    await waitFor(() => expect(container.querySelector('table')).not.toBeNull());
+    expect(screen.getByRole('columnheader', { name: 'Retention' })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: '90 days' })).toBeInTheDocument();
+    expect(container.textContent).not.toContain('| Data |');
+  });
+
+  it('renders GFM strikethrough', async () => {
+    vi.mocked(apiService.getPrivacyDocument).mockResolvedValue(doc('We ~~sell~~ keep data.'));
+    const { container } = renderAt('/privacy/privacy');
+
+    await waitFor(() => expect(container.querySelector('del')).not.toBeNull());
+  });
+
   it('opens links in the document in a new tab, safely', async () => {
     vi.mocked(apiService.getPrivacyDocument).mockResolvedValue(
       doc('Read [more](https://example.org/more).'),

@@ -15,11 +15,17 @@
  * the whole reason the column stores Markdown and the write path rejects HTML
  * documents. Links are forced through a renderer that adds
  * `rel="noopener noreferrer"`.
+ *
+ * `remark-gfm` IS safe to use and is loaded: it extends the Markdown grammar
+ * with tables, strikethrough, task lists and autolinks — a retention table is
+ * the first thing an operator reaches for in a privacy policy. It does not
+ * enable raw HTML; that is `rehype-raw`, which is the one to keep out.
  */
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import apiService from '../services/api';
 import { isPrivacyDocumentSlug, type PrivacyDocumentPayload } from '../types/privacy';
 import styles from './PrivacyDocumentPage.module.css';
@@ -107,6 +113,7 @@ const PrivacyDocumentPage: React.FC = () => {
         <div className={styles.body}>
           {/* No rehype-raw: raw HTML in the source is escaped, not executed. */}
           <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
             components={{
               a: ({ href, children, ...props }) => (
                 <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
