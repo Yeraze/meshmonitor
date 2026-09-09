@@ -313,6 +313,28 @@ describe('privacy routes', () => {
       expect(await harness.db.privacyDocuments.getBySlugAsync('privacy')).not.toBeNull();
     });
 
+    it('lets a settings:read user list documents but not write or delete them', async () => {
+      // The asymmetry matters on an auth-sensitive surface: read access to the
+      // editor must not imply the ability to publish or unpublish a policy.
+      await harness.db.privacyDocuments.upsertAsync('privacy', 'Our Policy', '# Ours');
+      await harness.grant(harness.limited.id, 'settings', 'read', harness.sourceA);
+      const agent = await harness.loginAs(harness.limited);
+
+      expect((await agent.get('/api/privacy/admin/documents')).status).toBe(200);
+
+      const put = await agent
+        .put('/api/privacy/admin/documents/privacy')
+        .send({ title: 'Hijacked', content: '# nope' });
+      expect(put.status).toBe(403);
+
+      const del = await agent.delete('/api/privacy/admin/documents/privacy');
+      expect(del.status).toBe(403);
+
+      // And the document is untouched.
+      const stored = await harness.db.privacyDocuments.getBySlugAsync('privacy');
+      expect(stored?.title).toBe('Our Policy');
+    });
+
     it('lists hosted documents for a reader', async () => {
       await harness.db.privacyDocuments.upsertAsync('privacy', 'Our Policy', '# Ours');
 

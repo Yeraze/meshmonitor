@@ -87,7 +87,9 @@ export function isSafeExternalUrl(raw: string | null | undefined): boolean {
  * pasting an exported HTML policy and getting a page full of visible tags.
  */
 export function looksLikeHtmlDocument(content: string): boolean {
-  return /<\s*(!doctype\s+html|html|script|iframe|object|embed)\b/i.test(content);
+  return /<\s*(!doctype\s+html|html|head|body|script|style|link|meta|iframe|object|embed|svg|form)\b/i.test(
+    content,
+  );
 }
 
 /** A rejected document, as `fail()` arguments. */
@@ -164,8 +166,18 @@ export interface PrivacyLink {
  * text shipped to them on every page load.
  */
 export async function resolvePrivacyLinks(): Promise<PrivacyLink[]> {
-  const hosted = await databaseService.privacyDocuments.getAllAsync();
+  // Meta-only: this runs on every page load from three surfaces, and a
+  // document can be 256 KB. Bodies are served by /documents/:slug alone.
+  const hosted = await databaseService.privacyDocuments.getAllMetaAsync();
   const byslug = new Map(hosted.map((d) => [d.slug, d]));
+
+  // The remaining URL lookups are independent, so issue them together rather
+  // than awaiting each in turn.
+  const needUrl = PRIVACY_DOCUMENT_SLUGS.filter((slug) => !byslug.has(slug));
+  const urls = await Promise.all(
+    needUrl.map((slug) => databaseService.settings.getSetting(URL_SETTING_KEY[slug])),
+  );
+  const urlBySlug = new Map(needUrl.map((slug, i) => [slug, urls[i]]));
 
   const links: PrivacyLink[] = [];
   for (const slug of PRIVACY_DOCUMENT_SLUGS) {
@@ -174,9 +186,9 @@ export async function resolvePrivacyLinks(): Promise<PrivacyLink[]> {
       links.push({ slug, kind: 'hosted', title: doc.title });
       continue;
     }
-    const url = await databaseService.settings.getSetting(URL_SETTING_KEY[slug]);
+    const url = urlBySlug.get(slug)?.trim();
     if (isSafeExternalUrl(url)) {
-      links.push({ slug, kind: 'url', href: url!.trim() });
+      links.push({ slug, kind: 'url', href: url });
     }
   }
   return links;
@@ -287,9 +299,10 @@ privacyAdminRouter.put(
       logger.info(`[PrivacyRoutes] Privacy document "${slug}" saved (${byteLength} bytes)`);
       return ok(res, saved);
     } catch (error) {
+      // Log the driver's message; do not return it. A uniqueness or constraint
+      // error can echo fragments of the row being written back to the client.
       logger.error(`[PrivacyRoutes] Failed to save privacy document "${slug}":`, error);
-      const message = error instanceof Error ? error.message : 'Failed to save document';
-      return fail(res, 500, 'PRIVACY_DOCUMENT_SAVE_FAILED', message);
+      return fail(res, 500, 'PRIVACY_DOCUMENT_SAVE_FAILED', 'Failed to save document');
     }
   },
 );

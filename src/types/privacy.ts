@@ -37,6 +37,10 @@ export interface PrivacyDocumentPayload {
   title: string;
   /** Markdown source. Rendered with raw HTML disabled — never inject as HTML. */
   content: string;
+  /**
+   * Unix timestamp in MILLISECONDS (the DB column is BIGINT ms, matching
+   * `Date.now()`). Pass straight to `new Date(...)`; do NOT multiply by 1000.
+   */
   updatedAt: number;
 }
 

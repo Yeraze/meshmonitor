@@ -47,8 +47,8 @@ export interface PrivacyDocumentsSectionProps {
 
 const PrivacyDocumentsSection: React.FC<PrivacyDocumentsSectionProps> = ({ canEdit }) => {
   const { t } = useTranslation();
-  const [docs, setDocs] = useState<Record<string, PrivacyDocumentAdmin>>({});
-  const [drafts, setDrafts] = useState<Record<string, DocDraft>>({});
+  const [docs, setDocs] = useState<Partial<Record<PrivacyDocumentSlug, PrivacyDocumentAdmin>>>({});
+  const [drafts, setDrafts] = useState<Partial<Record<PrivacyDocumentSlug, DocDraft>>>({});
   const [openSlug, setOpenSlug] = useState<PrivacyDocumentSlug | null>(null);
   const [busySlug, setBusySlug] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -58,7 +58,7 @@ const PrivacyDocumentsSection: React.FC<PrivacyDocumentsSectionProps> = ({ canEd
   const reload = useCallback(async () => {
     try {
       const all = await apiService.getPrivacyDocumentsAdmin();
-      const bySlug: Record<string, PrivacyDocumentAdmin> = {};
+      const bySlug: Partial<Record<PrivacyDocumentSlug, PrivacyDocumentAdmin>> = {};
       for (const doc of all) bySlug[doc.slug] = doc;
       setDocs(bySlug);
       setError(null);

@@ -27,9 +27,15 @@ import { sqliteTable, text, integer, uniqueIndex } from 'drizzle-orm/sqlite-core
 import { pgTable, text as pgText, bigint as pgBigint, serial as pgSerial, uniqueIndex as pgUniqueIndex } from 'drizzle-orm/pg-core';
 import { mysqlTable, varchar as myVarchar, int as myInt, bigint as myBigint, longtext as myLongtext, uniqueIndex as myUniqueIndex } from 'drizzle-orm/mysql-core';
 
-/** The three documents an operator can host. Also the public URL segment. */
-export const PRIVACY_DOCUMENT_SLUGS = ['privacy', 'terms', 'contact'] as const;
-export type PrivacyDocumentSlug = (typeof PRIVACY_DOCUMENT_SLUGS)[number];
+/**
+ * The three documents an operator can host. Also the public URL segment.
+ *
+ * Defined in `src/types/privacy.ts` and re-exported here so there is ONE
+ * canonical list. That module is frontend-safe (no imports at all), so the
+ * dependency points server → shared and never drags Drizzle into a browser
+ * bundle. Server code may import either; both resolve to the same constant.
+ */
+export { PRIVACY_DOCUMENT_SLUGS, type PrivacyDocumentSlug } from '../../types/privacy.js';
 
 // SQLite
 export const privacyDocumentsSqlite = sqliteTable('privacy_documents', {

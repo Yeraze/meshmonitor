@@ -15,6 +15,12 @@ import { DatabaseType } from '../types.js';
 import { logger } from '../../utils/logger.js';
 import { PRIVACY_DOCUMENT_SLUGS, type PrivacyDocumentSlug } from '../schema/privacyDocuments.js';
 
+/** Slug + title only — what the public links endpoint needs. */
+export interface PrivacyDocumentMeta {
+  slug: PrivacyDocumentSlug;
+  title: string;
+}
+
 export interface PrivacyDocument {
   id: number;
   slug: PrivacyDocumentSlug;
@@ -72,18 +78,21 @@ export class PrivacyDocumentsRepository extends BaseRepository {
   }
 
   /**
-   * The slugs that currently have a hosted document. Used by the public
-   * links endpoint, which must not ship document bodies to anonymous
-   * visitors just to decide whether to render a link.
+   * Slug + title for every hosted document — no bodies.
+   *
+   * This is what the public links endpoint uses. It runs on every page load
+   * from the sidebar footer, the login page and the embed, and a document can
+   * be 256 KB, so `getAllAsync()` there would fetch up to ~768 KB per request
+   * and throw all of it away.
    */
-  async getHostedSlugsAsync(): Promise<PrivacyDocumentSlug[]> {
+  async getAllMetaAsync(): Promise<PrivacyDocumentMeta[]> {
     const { privacyDocuments } = this.tables;
     const rows = await this.db
-      .select({ slug: privacyDocuments.slug })
+      .select({ slug: privacyDocuments.slug, title: privacyDocuments.title })
       .from(privacyDocuments)
       .orderBy(asc(privacyDocuments.slug));
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see map()
-    return rows.map((r: any) => r.slug as PrivacyDocumentSlug);
+    return rows.map((r: any) => ({ slug: r.slug as PrivacyDocumentSlug, title: r.title }));
   }
 
   /**

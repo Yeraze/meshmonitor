@@ -74,7 +74,7 @@ export type { AutomationHomeAnchor } from './automationHomeAnchors.js';
 export { SavedRegionsRepository, normalizeRegionName } from './savedRegions.js';
 export type { SavedRegion } from './savedRegions.js';
 export { PrivacyDocumentsRepository } from './privacyDocuments.js';
-export type { PrivacyDocument } from './privacyDocuments.js';
+export type { PrivacyDocument, PrivacyDocumentMeta } from './privacyDocuments.js';
 export { SourcesRepository } from './sources.js';
 export type { Source, CreateSourceInput } from './sources.js';
 export { AnalysisRepository } from './analysis.js';

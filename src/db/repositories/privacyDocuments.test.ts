@@ -42,7 +42,7 @@ describe('PrivacyDocumentsRepository', () => {
 
   it('starts empty', async () => {
     expect(await repo.getAllAsync()).toEqual([]);
-    expect(await repo.getHostedSlugsAsync()).toEqual([]);
+    expect(await repo.getAllMetaAsync()).toEqual([]);
   });
 
   it('creates and reads back a document', async () => {
@@ -83,10 +83,23 @@ describe('PrivacyDocumentsRepository', () => {
     await repo.upsertAsync('privacy', 'P', 'p-body');
     await repo.upsertAsync('terms', 'T', 't-body');
 
-    expect(await repo.getHostedSlugsAsync()).toEqual(['privacy', 'terms']);
+    expect(await repo.getAllMetaAsync()).toEqual([
+      { slug: 'privacy', title: 'P' },
+      { slug: 'terms', title: 'T' },
+    ]);
     expect((await repo.getBySlugAsync('privacy'))?.content).toBe('p-body');
     expect((await repo.getBySlugAsync('terms'))?.content).toBe('t-body');
     expect(await repo.getBySlugAsync('contact')).toBeNull();
+  });
+
+  it('returns slug and title only from the meta query, never bodies', async () => {
+    // The public links endpoint calls this on every page load; a 256 KB body
+    // fetched and discarded there would be pure waste.
+    await repo.upsertAsync('privacy', 'Our Policy', '# a very long body');
+
+    const meta = await repo.getAllMetaAsync();
+    expect(meta).toEqual([{ slug: 'privacy', title: 'Our Policy' }]);
+    expect(JSON.stringify(meta)).not.toContain('very long body');
   });
 
   it('rejects an unknown slug rather than creating a row for it', async () => {
@@ -110,13 +123,13 @@ describe('PrivacyDocumentsRepository', () => {
     await repo.deleteAsync('privacy');
 
     expect(await repo.getBySlugAsync('privacy')).toBeNull();
-    expect(await repo.getHostedSlugsAsync()).toEqual(['terms']);
+    expect((await repo.getAllMetaAsync()).map((d) => d.slug)).toEqual(['terms']);
   });
 
   it('ignores a delete for an unknown slug', async () => {
     await repo.upsertAsync('privacy', 'P', 'p-body');
     await expect(repo.deleteAsync('nonsense')).resolves.toBeUndefined();
-    expect(await repo.getHostedSlugsAsync()).toEqual(['privacy']);
+    expect((await repo.getAllMetaAsync()).map((d) => d.slug)).toEqual(['privacy']);
   });
 
   it('returns null for an unknown slug rather than throwing', async () => {
