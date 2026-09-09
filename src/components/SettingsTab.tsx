@@ -1909,6 +1909,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               id="privacyPolicyUrl"
               type="url"
               inputMode="url"
+              className="setting-input"
               placeholder="https://example.org/privacy"
               value={draft.privacyPolicyUrl}
               onChange={(e) => updateField('privacyPolicyUrl', e.target.value)}
@@ -1921,6 +1922,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               id="termsOfServiceUrl"
               type="url"
               inputMode="url"
+              className="setting-input"
               placeholder="https://example.org/terms"
               value={draft.termsOfServiceUrl}
               onChange={(e) => updateField('termsOfServiceUrl', e.target.value)}
@@ -1933,6 +1935,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               id="contactUrl"
               type="url"
               inputMode="url"
+              className="setting-input"
               placeholder="https://example.org/contact"
               value={draft.contactUrl}
               onChange={(e) => updateField('contactUrl', e.target.value)}
