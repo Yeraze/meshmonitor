@@ -311,6 +311,10 @@ function DashboardInner() {
   // #5124. `enabled: false` means the query never runs, so switching the badge
   // off stops the polling too rather than merely hiding the answer.
   const { data: unreadBySourceData } = useUnreadBySource({
+    // The app can be served under a base path (BASE_URL=/meshmonitor in the
+    // dev container), so the bare `/api/...` default would 404. Same
+    // `appBasename` every other query hook is handed.
+    baseUrl: appBasename,
     enabled: isAuthenticated && unreadIndicatorEnabled,
   });
   const neighborSourceIds = isUnifiedSelected
