@@ -509,6 +509,12 @@ describe('Settings Persistence', () => {
         // by SettingsTab (admin-only field, no global hook), same pattern as
         // elevationEnabled/elevationSourceUrl above.
         'cotFeedEnabled', 'cotFeedPort',
+        // Privacy disclosure links (#5156) — loaded directly by SettingsTab
+        // into its own initial* snapshots (admin-only fields, no global hook),
+        // same pattern as elevationEnabled/elevationSourceUrl above. Read back
+        // at runtime by the public GET /api/privacy/links endpoint rather than
+        // through SettingsContext.
+        'privacyPolicyUrl', 'termsOfServiceUrl', 'contactUrl',
       ];
 
       const keysNotLoaded = SETTINGS_TAB_SENDS.filter(
