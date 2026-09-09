@@ -679,6 +679,7 @@ import {
 import { getMeshCoreCredentialStore } from './services/meshcoreCredentialStore.js';
 import embedProfileRoutes from './routes/embedProfileRoutes.js';
 import embedPublicRoutes from './routes/embedPublicRoutes.js';
+import { privacyPublicRouter, privacyAdminRouter } from './routes/privacyRoutes.js';
 import firmwareUpdateRoutes from './routes/firmwareUpdateRoutes.js';
 import sourceRoutes from './routes/sourceRoutes.js';
 import unifiedRoutes from './routes/unifiedRoutes.js';
@@ -879,6 +880,10 @@ const geojsonDataDir = path.join(process.env.DATA_DIR || '/data', 'geojson');
 const geojsonService = new GeoJsonService(geojsonDataDir);
 const geojsonRouter = createGeoJsonRouter(geojsonService);
 apiRouter.use('/geojson', geojsonRouter);
+// Privacy disclosure admin (#5156). The PUBLIC half is mounted below, before
+// the api router, so a logged-out visitor can read the policy; this half stays
+// behind rate limiting, CSRF and settings permissions.
+apiRouter.use('/privacy/admin', privacyAdminRouter);
 
 // MapLibre GL style routes
 const mapStyleDataDir = path.join(process.env.DATA_DIR || '/data', 'styles');
@@ -1063,6 +1068,16 @@ if (BASE_URL) {
 }
 app.get('/api/scripts', apiLimiter, scriptsEndpoint);
 
+
+// Public privacy disclosure API (#5156) — must come BEFORE apiRouter so an
+// anonymous visitor (and the tokenless embed bundle) can fetch the policy
+// links and document bodies without auth or a CSRF token. The router declares
+// only /links and /documents/:slug, so /api/privacy/admin/* falls through to
+// the authenticated router mounted above.
+if (BASE_URL) {
+  app.use(`${BASE_URL}/api/privacy`, privacyPublicRouter);
+}
+app.use('/api/privacy', privacyPublicRouter);
 
 // Public embed config API (must come BEFORE apiRouter to avoid rate limiter and CSRF)
 // CSP middleware is applied per-route inside the router (needs req.params.profileId)

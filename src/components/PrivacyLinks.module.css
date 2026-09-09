@@ -1,0 +1,37 @@
+/*
+ * PrivacyLinks — disclosure link strip (#5156).
+ *
+ * CSS module per CLAUDE.md's containment rule: new components style here, not
+ * in the frozen global sheets. Colors come from the semantic theme tokens with
+ * no fallback, so a missing token surfaces as a visible bug rather than a
+ * silently hardcoded color.
+ */
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.link {
+  color: var(--color-text-muted);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.link:hover,
+.link:focus-visible {
+  color: var(--color-text);
+  border-bottom-color: var(--color-border);
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}

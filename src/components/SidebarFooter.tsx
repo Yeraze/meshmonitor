@@ -12,7 +12,9 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import packageJson from '../../package.json';
 import { BrandIcon, UiIcon } from './icons';
+import PrivacyLinks from './PrivacyLinks';
 import styles from './SidebarFooter.module.css';
+import { appBasename } from '../init';
 
 export const MESHMONITOR_GITHUB_URL = 'https://github.com/Yeraze/meshmonitor';
 export const MESHMONITOR_DISCORD_URL = 'https://discord.gg/JVR3VBETQE';
@@ -133,6 +135,10 @@ const SidebarFooter: React.FC<SidebarFooterProps> = ({
           <UiIcon name="link" size={18} />
         </a>
       </div>
+      {/* Operator's disclosure links (#5156). Renders nothing when none are
+          configured, which is the default — a homelab instance does not grow
+          a legal footer it never asked for. */}
+      <PrivacyLinks basename={appBasename} className={styles.privacyLinks} />
     </div>
   );
 };

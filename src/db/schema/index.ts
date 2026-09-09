@@ -63,6 +63,9 @@ export * from './automationHomeAnchors.js';
 // MeshCore saved-regions catalog (global — no sourceId) (#3770)
 export * from './savedRegions.js';
 
+// Operator-hosted privacy documents (global — no sourceId) (#5156)
+export * from './privacyDocuments.js';
+
 // Waypoints table
 export * from './waypoints.js';
 

@@ -180,6 +180,7 @@ import {
 import { migration as nodeIdentityMergesMigration, runMigration159Postgres, runMigration159Mysql } from '../server/migrations/159_node_identity_merges.js';
 import { migration as tracerouteTransportMechanismMigration, runMigration160Postgres, runMigration160Mysql } from '../server/migrations/160_traceroute_transport_mechanism.js';
 import { migration as userPrefsUnreadIndicatorMigration, runMigration161Postgres, runMigration161Mysql } from '../server/migrations/161_user_map_preferences_unread_indicator.js';
+import { migration as privacyDocumentsMigration, runMigration162Postgres, runMigration162Mysql } from '../server/migrations/162_privacy_documents.js';
 
 // ============================================================================
 // Registry
@@ -2609,4 +2610,22 @@ registry.register({
   sqlite: (db) => userPrefsUnreadIndicatorMigration.up(db),
   postgres: (client) => runMigration161Postgres(client),
   mysql: (pool) => runMigration161Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 162: `privacy_documents` (#5156) — the operator's hosted privacy
+// policy / terms / contact pages for a publicly-reachable instance. GLOBAL (no
+// sourceId): the document describes the deployment serving the dashboard, not
+// any one mesh source. `content` is Markdown source, never HTML, because the
+// page is served to anonymous visitors and tokenless embed viewers.
+// Idempotent across SQLite / PostgreSQL / MySQL.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 162,
+  name: 'privacy_documents',
+  settingsKey: 'migration_162_privacy_documents',
+  sqlite: (db) => privacyDocumentsMigration.up(db),
+  postgres: (client) => runMigration162Postgres(client),
+  mysql: (pool) => runMigration162Mysql(pool),
 });

@@ -1,0 +1,130 @@
+/*
+ * PrivacyDocumentPage — standalone policy document view (#5156).
+ *
+ * A reading surface, not a dashboard: one centered column, generous measure,
+ * no chrome. Anonymous visitors land here straight from a footer link, so it
+ * has to look finished on its own.
+ */
+
+.page {
+  min-height: 100dvh;
+  padding: 2.5rem 1.25rem 4rem;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.sheet {
+  max-width: 46rem;
+  margin: 0 auto;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 2rem 2.25rem 2.5rem;
+}
+
+.title {
+  margin: 0 0 0.35rem;
+  font-size: 1.75rem;
+  line-height: 1.2;
+}
+
+.muted {
+  margin: 0 0 1.75rem;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.body {
+  font-size: 0.95rem;
+  line-height: 1.65;
+}
+
+.body h1,
+.body h2,
+.body h3,
+.body h4 {
+  margin: 1.75rem 0 0.6rem;
+  line-height: 1.25;
+}
+
+.body h1 { font-size: 1.4rem; }
+.body h2 { font-size: 1.2rem; }
+.body h3 { font-size: 1.05rem; }
+
+.body p,
+.body ul,
+.body ol,
+.body blockquote {
+  margin: 0 0 1rem;
+}
+
+.body ul,
+.body ol {
+  padding-left: 1.5rem;
+}
+
+.body li {
+  margin-bottom: 0.35rem;
+}
+
+.body a {
+  color: var(--color-accent);
+}
+
+.body blockquote {
+  padding-left: 1rem;
+  border-left: 3px solid var(--color-border);
+  color: var(--color-text-muted);
+}
+
+.body code {
+  background: var(--color-surface-hover);
+  border-radius: 3px;
+  padding: 0.1em 0.35em;
+  font-size: 0.9em;
+}
+
+/* Wide content scrolls inside its own box so the page never scrolls sideways. */
+.body pre,
+.body table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.body pre {
+  background: var(--color-surface-hover);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+}
+
+.body table {
+  border-collapse: collapse;
+}
+
+.body th,
+.body td {
+  border: 1px solid var(--color-border);
+  padding: 0.4rem 0.7rem;
+  text-align: left;
+}
+
+.body hr {
+  border: 0;
+  border-top: 1px solid var(--color-border);
+  margin: 1.75rem 0;
+}
+
+@media (max-width: 600px) {
+  .page {
+    padding: 1.25rem 0.75rem 3rem;
+  }
+
+  .sheet {
+    padding: 1.25rem 1.25rem 1.75rem;
+  }
+
+  .title {
+    font-size: 1.4rem;
+  }
+}

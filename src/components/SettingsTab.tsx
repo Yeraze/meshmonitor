@@ -15,6 +15,8 @@ import { type NodeListStyle } from '../utils/nodeColor';
 import PacketMonitorSettings from './PacketMonitorSettings';
 import ChannelSoundPicker from './ChannelSoundPicker';
 import PkiDmGlobalToggle from './settings/PkiDmGlobalToggle';
+import PrivacyDocumentsSection from './settings/PrivacyDocumentsSection';
+import settingsStyles from './SettingsTab.module.css';
 import SystemBackupSection from './configuration/SystemBackupSection';
 import DatabaseMaintenanceSection from './configuration/DatabaseMaintenanceSection';
 import ScriptsSection from './settings/ScriptsSection';
@@ -130,6 +132,11 @@ interface SettingsDraft {
   analyticsProvider: string;
   analyticsConfig: Record<string, string>;
   appriseApiServerUrl: string;
+  // Privacy disclosure links (#5156). Empty string = no link rendered. A
+  // hosted document for the same slug overrides the URL at read time.
+  privacyPolicyUrl: string;
+  termsOfServiceUrl: string;
+  contactUrl: string;
   externalUrl: string;
   elevationEnabled: boolean;
   elevationSourceUrl: string;
@@ -444,6 +451,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     analyticsProvider: 'none',
     analyticsConfig: {},
     appriseApiServerUrl: '',
+    privacyPolicyUrl: '',
+    termsOfServiceUrl: '',
+    contactUrl: '',
     externalUrl: '',
     elevationEnabled: false,
     elevationSourceUrl: '',
@@ -471,6 +481,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [initialAnalyticsProvider, setInitialAnalyticsProvider] = useState<string>('none');
   const [initialAnalyticsConfig, setInitialAnalyticsConfig] = useState<string>('{}');
   const [initialAppriseApiServerUrl, setInitialAppriseApiServerUrl] = useState<string>('');
+  const [initialPrivacyPolicyUrl, setInitialPrivacyPolicyUrl] = useState<string>('');
+  const [initialTermsOfServiceUrl, setInitialTermsOfServiceUrl] = useState<string>('');
+  const [initialContactUrl, setInitialContactUrl] = useState<string>('');
   // External URL (#4437). Same pattern as Apprise API Server above: global,
   // admin-only, server-backed, no SettingsContext prop home.
   const [initialExternalUrl, setInitialExternalUrl] = useState<string>('');
@@ -619,6 +632,17 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           updateField('appriseApiServerUrl', appriseApiServerUrl);
           setInitialAppriseApiServerUrl(appriseApiServerUrl);
 
+          // Load privacy disclosure links (#5156). Absent key => no link.
+          const privacyPolicyUrl = typeof settings.privacyPolicyUrl === 'string' ? settings.privacyPolicyUrl : '';
+          updateField('privacyPolicyUrl', privacyPolicyUrl);
+          setInitialPrivacyPolicyUrl(privacyPolicyUrl);
+          const termsOfServiceUrl = typeof settings.termsOfServiceUrl === 'string' ? settings.termsOfServiceUrl : '';
+          updateField('termsOfServiceUrl', termsOfServiceUrl);
+          setInitialTermsOfServiceUrl(termsOfServiceUrl);
+          const contactUrl = typeof settings.contactUrl === 'string' ? settings.contactUrl : '';
+          updateField('contactUrl', contactUrl);
+          setInitialContactUrl(contactUrl);
+
           // Load External URL (#4437)
           const externalUrl = typeof settings.externalUrl === 'string'
             ? settings.externalUrl
@@ -742,6 +766,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       analyticsProvider: initialAnalyticsProvider,
       analyticsConfig: parsedAnalyticsConfig,
       appriseApiServerUrl: initialAppriseApiServerUrl,
+      privacyPolicyUrl: initialPrivacyPolicyUrl,
+      termsOfServiceUrl: initialTermsOfServiceUrl,
+      contactUrl: initialContactUrl,
       externalUrl: initialExternalUrl,
       elevationEnabled: initialElevationEnabled,
       elevationSourceUrl: initialElevationSourceUrl,
@@ -759,6 +786,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
       initialPacketMonitorSettings, initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialMeshcoreCliTimeoutSeconds, initialAdminRetryAttempts,
       initialAnalyticsProvider, initialAnalyticsConfig, initialAppriseApiServerUrl, initialExternalUrl, initialElevationEnabled, initialElevationSourceUrl,
+      initialPrivacyPolicyUrl, initialTermsOfServiceUrl, initialContactUrl,
       initialCartoApiKey, initialCotFeedEnabled, initialCotFeedPort]);
 
   // Re-seed the draft's category-A/B fields whenever the upstream props/context values change.
@@ -937,6 +965,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setInitialAnalyticsProvider(d.analyticsProvider);
     setInitialAnalyticsConfig(JSON.stringify(d.analyticsConfig));
     setInitialAppriseApiServerUrl(d.appriseApiServerUrl.trim());
+    setInitialPrivacyPolicyUrl(d.privacyPolicyUrl.trim());
+    setInitialTermsOfServiceUrl(d.termsOfServiceUrl.trim());
+    setInitialContactUrl(d.contactUrl.trim());
     setInitialExternalUrl(d.externalUrl.trim());
     setInitialElevationEnabled(d.elevationEnabled);
     setInitialElevationSourceUrl(d.elevationSourceUrl.trim());
@@ -1012,6 +1043,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         analyticsProvider: draft.analyticsProvider,
         analyticsConfig: JSON.stringify(draft.analyticsConfig),
         appriseApiServerUrl: draft.appriseApiServerUrl.trim(),
+        privacyPolicyUrl: draft.privacyPolicyUrl.trim(),
+        termsOfServiceUrl: draft.termsOfServiceUrl.trim(),
+        contactUrl: draft.contactUrl.trim(),
         externalUrl: draft.externalUrl.trim(),
         elevationEnabled: draft.elevationEnabled ? 'true' : 'false',
         elevationSourceUrl: draft.elevationSourceUrl.trim(),
@@ -1854,6 +1888,76 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           <p className="setting-description">
             {t('settings.no_index_description', 'When enabled, MeshMonitor adds an "X-Robots-Tag: noindex, nofollow" header to every response and serves a disallow-all /robots.txt, asking search engines and LLM crawlers not to index this dashboard. Both are advisory — a crawler must choose to honor them. The robots.txt body is served in addition to the header because some reverse proxies (e.g. Cloudflare tunnels) strip custom headers at the edge.')}
           </p>
+
+          {/* Disclosure links (#5156). A publicly-reachable MeshMonitor re-serves
+              mesh data to anonymous visitors and to tokenless embed viewers; these
+              give the operator somewhere to state the policy that applies. All
+              optional — with none set, no footer link is rendered anywhere. */}
+          <h4 className={settingsStyles.privacyHeading}>
+            {t('settings.privacy_disclosures', 'Disclosure links')}
+          </h4>
+          <p className="setting-description">
+            {t(
+              'settings.privacy_disclosures_description',
+              'Shown in the sidebar footer, on the login page, and on public embed maps. Leave a field blank to render no link. Anything you host below overrides the matching URL here.',
+            )}
+          </p>
+
+          <div className="setting-item">
+            <label htmlFor="privacyPolicyUrl">{t('settings.privacy_policy_url', 'Privacy policy URL')}</label>
+            <input
+              id="privacyPolicyUrl"
+              type="url"
+              inputMode="url"
+              className="setting-input"
+              placeholder="https://example.org/privacy"
+              value={draft.privacyPolicyUrl}
+              onChange={(e) => updateField('privacyPolicyUrl', e.target.value)}
+            />
+          </div>
+
+          <div className="setting-item">
+            <label htmlFor="termsOfServiceUrl">{t('settings.terms_url', 'Terms of service URL')}</label>
+            <input
+              id="termsOfServiceUrl"
+              type="url"
+              inputMode="url"
+              className="setting-input"
+              placeholder="https://example.org/terms"
+              value={draft.termsOfServiceUrl}
+              onChange={(e) => updateField('termsOfServiceUrl', e.target.value)}
+            />
+          </div>
+
+          <div className="setting-item">
+            <label htmlFor="contactUrl">{t('settings.contact_url', 'Contact URL')}</label>
+            <input
+              id="contactUrl"
+              type="url"
+              inputMode="url"
+              className="setting-input"
+              placeholder="https://example.org/contact"
+              value={draft.contactUrl}
+              onChange={(e) => updateField('contactUrl', e.target.value)}
+            />
+          </div>
+          <p className="setting-description">
+            {t(
+              'settings.privacy_url_help',
+              'Only http:// and https:// links are accepted — anything else is ignored rather than rendered.',
+            )}
+          </p>
+
+          <h4 className={settingsStyles.privacyHeading}>
+            {t('settings.privacy_hosted_documents', 'Documents hosted here')}
+          </h4>
+          <p className="setting-description">
+            {t(
+              'settings.privacy_hosted_documents_description',
+              'Write or upload a document and MeshMonitor serves it at /privacy/<name>, so you do not need somewhere else to host it. Saved in the database, so it is included in system backups.',
+            )}
+          </p>
+          <PrivacyDocumentsSection canEdit={canWriteSettings} />
         </div>}
 
         {show('settings-meshcore-messaging') && <div id="settings-meshcore-messaging" className="settings-section">

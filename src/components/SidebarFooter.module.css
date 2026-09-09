@@ -87,3 +87,16 @@
     display: none;
   }
 }
+
+/*
+ * Disclosure link strip (#5156). Sits under the icon row; renders only when the
+ * operator has configured a policy link, so the default footer is unchanged.
+ */
+.privacyLinks {
+  margin-top: 2px;
+}
+
+/* The narrow (60px) collapsed rail has no room for word-length links. */
+.narrow .privacyLinks {
+  display: none;
+}

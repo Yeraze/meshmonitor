@@ -2,6 +2,12 @@ import { DeviceInfo, Channel } from '../types/device.js';
 import { MeshMessage, MessageEvent, MeshtasticHeardByEntry } from '../types/message.js';
 import type { ElevationProfile, ElevationTestResult } from '../types/elevation.js';
 import type {
+  PrivacyLink,
+  PrivacyDocumentSlug,
+  PrivacyDocumentPayload,
+  PrivacyDocumentAdmin,
+} from '../types/privacy.js';
+import type {
   IdentityChangeReport,
   MergePreview,
   MergeRecord,
@@ -2091,6 +2097,61 @@ class ApiService {
   /**
    * Get cached news feed
    */
+  // -------------------------------------------------------------------------
+  // Privacy disclosure links + operator-hosted documents (#5156)
+  //
+  // NOTE: these endpoints use the `ok()` envelope, and `request()` does NOT
+  // unwrap `data` — hence the explicit `.data` reads below.
+  // -------------------------------------------------------------------------
+
+  /**
+   * Which privacy/terms/contact links this instance publishes. Unauthenticated
+   * — the whole point is that a logged-out visitor can find the policy. Never
+   * throws: a footer must not break the page it is rendered in.
+   */
+  async getPrivacyLinks(): Promise<PrivacyLink[]> {
+    try {
+      const res = await this.get<{ success: boolean; data: PrivacyLink[] }>('/api/privacy/links');
+      return res?.data ?? [];
+    } catch {
+      return [];
+    }
+  }
+
+  /** The Markdown source of one operator-hosted document. Unauthenticated. */
+  async getPrivacyDocument(slug: PrivacyDocumentSlug): Promise<PrivacyDocumentPayload> {
+    const res = await this.get<{ success: boolean; data: PrivacyDocumentPayload }>(
+      `/api/privacy/documents/${slug}`,
+    );
+    return res.data;
+  }
+
+  /** Every hosted document, bodies included. Requires settings:read. */
+  async getPrivacyDocumentsAdmin(): Promise<PrivacyDocumentAdmin[]> {
+    const res = await this.get<{ success: boolean; data: PrivacyDocumentAdmin[] }>(
+      '/api/privacy/admin/documents',
+    );
+    return res?.data ?? [];
+  }
+
+  /** Create or replace a hosted document. Requires settings:write. */
+  async savePrivacyDocument(
+    slug: PrivacyDocumentSlug,
+    title: string,
+    content: string,
+  ): Promise<PrivacyDocumentAdmin> {
+    const res = await this.put<{ success: boolean; data: PrivacyDocumentAdmin }>(
+      `/api/privacy/admin/documents/${slug}`,
+      { title, content },
+    );
+    return res.data;
+  }
+
+  /** Unpublish a hosted document. Requires settings:write. */
+  async deletePrivacyDocument(slug: PrivacyDocumentSlug): Promise<void> {
+    await this.delete(`/api/privacy/admin/documents/${slug}`);
+  }
+
   async getNewsFeed(): Promise<{
     version: string;
     lastUpdated: string;
