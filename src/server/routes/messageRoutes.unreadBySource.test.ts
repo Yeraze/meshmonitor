@@ -27,17 +27,23 @@ const PEER_B = { nodeNum: 0x0b000002, nodeId: '!0b000002' };
 const nodesBySource: Record<string, Array<{ nodeNum: number; user: { id: string }; channel: number }>> = {};
 /** Local node per source id; `null` models a source that has never connected. */
 const localBySource: Record<string, { nodeNum: number; nodeId: string } | null> = {};
+/** Source ids whose manager should omit `getAllNodesAsync` entirely. */
+const omitNodeList = new Set<string>();
 
 vi.mock('../sourceManagerRegistry.js', () => ({
   sourceManagerRegistry: {
     getManager: vi.fn((sourceId: string) => {
       if (!(sourceId in localBySource)) return null;
-      return {
+      const manager: Record<string, unknown> = {
         sourceId,
         sourceType: 'meshtastic_tcp',
         getLocalNodeInfo: () => localBySource[sourceId],
-        getAllNodesAsync: async () => nodesBySource[sourceId] ?? [],
       };
+      // Some managers (MeshCore, Reticulum) genuinely lack this method.
+      if (!omitNodeList.has(sourceId)) {
+        manager.getAllNodesAsync = async () => nodesBySource[sourceId] ?? [];
+      }
+      return manager;
     }),
     getAllManagers: vi.fn(() => []),
     startManager: vi.fn(),
@@ -116,6 +122,7 @@ describe('GET /api/messages/unread-by-source (#5124)', () => {
     await harness.cleanup();
     for (const k of Object.keys(localBySource)) delete localBySource[k];
     for (const k of Object.keys(nodesBySource)) delete nodesBySource[k];
+    omitNodeList.clear();
     vi.clearAllMocks();
   });
 
@@ -221,5 +228,38 @@ describe('GET /api/messages/unread-by-source (#5124)', () => {
 
     expect((await agent.get('/unread-by-source')).body.sources[harness.sourceA])
       .toBeUndefined();
+  });
+
+  it('does not count a muted sender', async () => {
+    // Matches /unread-counts: muting a DM conversation silences its badge too.
+    // Without this the mute would quiet notifications but leave the source card
+    // permanently lit, which is the opposite of what muting is for.
+    const prefs = await harness.db.notifications.getUserPreferences(harness.admin.id);
+    await harness.db.notifications.saveUserPreferences(harness.admin.id, {
+      ...(prefs ?? ({} as never)),
+      mutedDMs: [{ nodeUuid: PEER_A.nodeId, muteUntil: null }],
+    } as never);
+
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get('/unread-by-source');
+
+    expect(res.body.sources[harness.sourceA]).toBeUndefined();
+    // The other source is untouched — muting is per-conversation, not global.
+    expect(res.body.sources[harness.sourceB]).toEqual({ directMessages: 1 });
+  });
+
+  it('counts nothing for a manager that cannot list its nodes', async () => {
+    // The node list IS the sender-visibility gate, so a manager without
+    // `getAllNodesAsync` must fail CLOSED. Failing open would hand out counts
+    // with no permission filtering at all.
+    omitNodeList.add(harness.sourceA);
+
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get('/unread-by-source');
+
+    expect(res.body.sources[harness.sourceA]).toBeUndefined();
+    // The source that CAN list its nodes is unaffected — proving the omission
+    // is what silenced A, not a blanket failure of the handler.
+    expect(res.body.sources[harness.sourceB]).toEqual({ directMessages: 1 });
   });
 });

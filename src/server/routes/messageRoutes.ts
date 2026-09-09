@@ -1370,7 +1370,11 @@ router.get('/unread-by-source', optionalAuth(), async (req, res) => {
     res.json({ sources: result });
   } catch (error) {
     logger.error('Error fetching per-source unread counts:', error);
-    res.status(500).json({ error: 'Failed to fetch per-source unread counts' });
+    // `fail()` per the response-envelope rule. Only the error path converts:
+    // the success path returns a bare `{ sources }` body that the client reads
+    // directly, and `ok()` would wrap it in `data` and break that consumer
+    // (the gotcha called out in CLAUDE.md).
+    fail(res, 500, 'UNREAD_BY_SOURCE_FAILED', 'Failed to fetch per-source unread counts');
   }
 });
 
