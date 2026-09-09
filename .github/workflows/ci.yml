@@ -226,6 +226,14 @@ jobs:
           sudo apt-get install -y wget apt-transport-https gnupg lsb-release
           wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
           echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
+          # The runner image ships a Google Chrome apt source that neither scan
+          # job needs. `apt-get update` refreshes every configured source, so
+          # when that repo serves an index whose hash disagrees with its
+          # Release file, apt exits 100 and takes this step down with it —
+          # before Trivy is ever installed, so the job fails with no SARIF and
+          # no finding. Dropping the source keeps the failure surface to the
+          # repos we actually asked for.
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list
           sudo apt-get update
           sudo apt-get install -y trivy
 
@@ -254,6 +262,11 @@ jobs:
       - name: Install & update ClamAV
         run: |
           set -e
+          # Same reason as the Trivy job above: drop the runner's Chrome apt
+          # source so a bad index hash upstream cannot fail this step. `set -e`
+          # makes it fatal here immediately, so ClamAV never runs and the job
+          # reports a failure it never actually scanned for.
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list
           sudo apt-get update
           sudo apt-get install -y clamav clamav-freshclam
           sudo systemctl stop clamav-freshclam || true
