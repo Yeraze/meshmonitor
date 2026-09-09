@@ -98,6 +98,27 @@ describe('TcpTransport — mid-sync fast-retry ramp (#5122)', () => {
     expect(scheduledDelays()).toEqual([3_000, 10_000, 3_000]);
   });
 
+  it('carries the ramp across an abandoned sync rather than restarting it', () => {
+    // The manager's `clearConfigCapture` (teardown paths where no sync
+    // finished) deliberately does NOT call resetConfigSyncLossRetries — only
+    // `completeConfigCapture` does. So a source that keeps dying mid-sync
+    // continues down the ramp instead of getting a fresh 3s rung each cycle.
+    //
+    // Worth stating what this does NOT affect: the ramp lives on the transport
+    // instance, and a manual disconnect/reconnect builds a new one
+    // (`teardownExistingTransport` -> `new TcpTransport()`), so an operator
+    // reconnecting by hand always starts from the top rung.
+    transport.noteConfigSyncLoss();
+    transport.scheduleReconnect();
+
+    // ...sync abandoned without completing; nothing resets the ladder...
+
+    transport.noteConfigSyncLoss();
+    transport.scheduleReconnect();
+
+    expect(scheduledDelays()).toEqual([3_000, 10_000]);
+  });
+
   it('does not let one mid-sync loss shorten the NEXT, unrelated disconnect', () => {
     // The flag describes the disconnect that just happened. If it survived into
     // the following reconnect, a single bad sync would quietly put the source on

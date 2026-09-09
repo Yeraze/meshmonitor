@@ -113,6 +113,19 @@ describe('MeshtasticManager — arming the mid-sync fast retry (#5122)', () => {
     expect(transport.noteConfigSyncLoss).toHaveBeenCalledTimes(1);
   });
 
+  it('does not arm once the capture has completed but not yet been cleared', async () => {
+    // The `!configCaptureComplete` half of the guard, on its own. Both flags
+    // true is a real intermediate state — the sync finished, the capture has
+    // not been torn down yet — and a disconnect there is a normal end-of-life
+    // one, not a sync that died.
+    mgr.isCapturingInitConfig = true;
+    mgr.configCaptureComplete = true;
+
+    await mgr.handleDisconnected();
+
+    expect(transport.noteConfigSyncLoss).not.toHaveBeenCalled();
+  });
+
   it('leaves the backoff alone for a disconnect outside the sync', async () => {
     // The control that keeps a powered-off node on the ordinary 60s backoff
     // instead of collecting a SYN every three seconds at every startup.
