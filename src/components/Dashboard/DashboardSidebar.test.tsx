@@ -655,4 +655,70 @@ describe('DashboardSidebar', () => {
       expect(screen.queryByTitle('source.sidebar.settings')).toBeNull();
     });
   });
+
+  // ── #5124: per-source unread DM badge ───────────────────────────────────────
+  //
+  // The counts arrive as a prop, already permission-filtered by the server
+  // (`/api/messages/unread-by-source` re-checks `messages:read` per source id).
+  // What this component owns is the rendering rule, and one part of it is
+  // load-bearing: a source ABSENT from the map gets no badge, because absent
+  // means "the server would not answer for this source", not "zero".
+  describe('unread DM badge (#5124)', () => {
+    const badges = () =>
+      Array.from(document.querySelectorAll('.dashboard-unread-badge')).map(
+        (el) => el.textContent,
+      );
+
+    it('renders a badge only for sources with a count', () => {
+      renderSidebar({ unreadBySource: { 'src-2': { directMessages: 3 } } });
+      expect(badges()).toEqual(['3']);
+    });
+
+    it('renders nothing when the map is empty', () => {
+      renderSidebar({ unreadBySource: {} });
+      expect(badges()).toEqual([]);
+    });
+
+    it('renders nothing when the indicator is off', () => {
+      // The owner passes `undefined` rather than the data when the preference
+      // is off, so the component never has to know about the preference.
+      renderSidebar({ unreadBySource: undefined });
+      expect(badges()).toEqual([]);
+    });
+
+    it('omits the badge for an unauthenticated viewer', () => {
+      // Unread is per-user; an anonymous viewer has no unread state, and the
+      // server returns nothing for them either.
+      renderSidebar({
+        isAuthenticated: false,
+        unreadBySource: { 'src-2': { directMessages: 3 } },
+      });
+      expect(badges()).toEqual([]);
+    });
+
+    it('caps the displayed count at 99+', () => {
+      renderSidebar({ unreadBySource: { 'src-2': { directMessages: 250 } } });
+      expect(badges()).toEqual(['99+']);
+    });
+
+    it('treats a zero count as no badge', () => {
+      // The server should never send 0, but a badge reading "0" would be worse
+      // than none if it ever did.
+      renderSidebar({ unreadBySource: { 'src-2': { directMessages: 0 } } });
+      expect(badges()).toEqual([]);
+    });
+
+    it('shows the toggle only when the owner wired a handler', () => {
+      const onToggleUnreadIndicator = vi.fn();
+      const { unmount } = renderSidebar({ onToggleUnreadIndicator });
+      const btn = screen.getByTitle('settings.unread_indicator_help');
+      fireEvent.click(btn);
+      // Default preference is on, so the click asks to turn it off.
+      expect(onToggleUnreadIndicator).toHaveBeenCalledWith(false);
+      unmount();
+
+      renderSidebar({ onToggleUnreadIndicator: undefined });
+      expect(screen.queryByTitle('settings.unread_indicator_help')).toBeNull();
+    });
+  });
 });

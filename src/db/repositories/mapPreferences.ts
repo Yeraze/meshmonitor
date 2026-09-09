@@ -48,6 +48,9 @@ export class MapPreferencesRepository extends BaseRepository {
         showAccuracyRegions: row.showAccuracyRegions ?? false,
         showEstimatedPositions: row.showEstimatedPositions ?? false,
         showAtakContacts: row.showAtakContacts ?? false,
+        // NULL on a pre-migration-161 row means "never set", and the badge
+        // defaults on (#5124) — so null reads as true, not false.
+        unreadIndicatorEnabled: row.unreadIndicatorEnabled ?? true,
         positionHistoryHours: row.positionHistoryHours ?? null,
         mapMaxAgeHours: row.mapMaxAgeHours ?? null,
         positionHistoryPointsOnly: row.positionHistoryPointsOnly ?? false,
@@ -78,6 +81,7 @@ export class MapPreferencesRepository extends BaseRepository {
     showAccuracyRegions?: boolean;
     showEstimatedPositions?: boolean;
     showAtakContacts?: boolean;
+    unreadIndicatorEnabled?: boolean;
     positionHistoryHours?: number | null;
     mapMaxAgeHours?: number | null;
     positionHistoryPointsOnly?: boolean;
@@ -108,6 +112,7 @@ export class MapPreferencesRepository extends BaseRepository {
         if (preferences.showAccuracyRegions !== undefined) set.showAccuracyRegions = preferences.showAccuracyRegions;
         if (preferences.showEstimatedPositions !== undefined) set.showEstimatedPositions = preferences.showEstimatedPositions;
         if (preferences.showAtakContacts !== undefined) set.showAtakContacts = preferences.showAtakContacts;
+        if (preferences.unreadIndicatorEnabled !== undefined) set.unreadIndicatorEnabled = preferences.unreadIndicatorEnabled;
         if (preferences.positionHistoryHours !== undefined) set.positionHistoryHours = preferences.positionHistoryHours;
         if (preferences.mapMaxAgeHours !== undefined) set.mapMaxAgeHours = preferences.mapMaxAgeHours;
         if (preferences.positionHistoryPointsOnly !== undefined) set.positionHistoryPointsOnly = preferences.positionHistoryPointsOnly;
@@ -135,6 +140,7 @@ export class MapPreferencesRepository extends BaseRepository {
           showAccuracyRegions: preferences.showAccuracyRegions ?? false,
           showEstimatedPositions: preferences.showEstimatedPositions ?? true,
           showAtakContacts: preferences.showAtakContacts ?? false,
+          unreadIndicatorEnabled: preferences.unreadIndicatorEnabled ?? true,
           positionHistoryHours: preferences.positionHistoryHours ?? null,
           mapMaxAgeHours: preferences.mapMaxAgeHours ?? null,
           positionHistoryPointsOnly: preferences.positionHistoryPointsOnly ?? false,

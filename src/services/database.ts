@@ -5292,6 +5292,7 @@ class DatabaseService {
     positionHistoryHours?: number | null;
     mapMaxAgeHours?: number | null;
     positionHistoryPointsOnly?: boolean;
+      unreadIndicatorEnabled?: boolean;
   }): Promise<void> {
     return this.mapPreferences!.saveMapPreferences(userId, preferences);
   }

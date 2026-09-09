@@ -26,6 +26,19 @@ import { isTxDisabledError } from '../errors/txDisabledError.js';
 const router = express.Router();
 
 /**
+ * Source types whose direct messages are rows in the Meshtastic `messages`
+ * table, and so are countable by `getBatchUnreadDMCountsAsync` (#5124).
+ *
+ * MeshCore (`meshcore`, `meshcore_mqtt`) and Reticulum keep their messages
+ * elsewhere; they are omitted deliberately rather than reported as zero.
+ */
+const DM_BEARING_SOURCE_TYPES: ReadonlySet<string> = new Set([
+  'meshtastic_tcp',
+  'mqtt_broker',
+  'mqtt_bridge',
+]);
+
+/**
  * Permission middleware - require messages:write for DM / node-scoped deletions.
  * Scoped to a source: caller must supply sourceId via body or query.
  */
@@ -1236,6 +1249,128 @@ router.get('/unread-counts', optionalAuth(), async (req, res) => {
   } catch (error) {
     logger.error('Error fetching unread counts:', error);
     res.status(500).json({ error: 'Failed to fetch unread counts' });
+  }
+});
+
+/**
+ * GET /api/messages/unread-by-source
+ *
+ * Unread DM count for EVERY source the caller may read, in one request —
+ * the per-source badge on the Sources list (#5124).
+ *
+ * ## Why one endpoint rather than N calls to /unread-counts
+ *
+ * `/unread-counts?sourceId=X` already answers this for a single source, but
+ * the sidebar shows every source and refetches on a timer. On the reporter's
+ * 5+ source install that is 5+ requests every 10 seconds, each doing its own
+ * node fetch and permission filtering.
+ *
+ * ## Permissions
+ *
+ * Every gate is evaluated PER SOURCE, and that is the whole point of this
+ * handler rather than a loop around the existing one.
+ *
+ * `/unread-counts` checks `hasPermission(user, 'messages', 'read')` with no
+ * `sourceId` and then queries one source. That is bounded there — the caller
+ * names the source and sees only that source. Reused verbatim across every
+ * source it would be a leak: a user granted `messages:read` on source A but
+ * not source B would be told how many unread DMs B is holding. That is the
+ * cross-source shape of #3745, so:
+ *
+ *   - `messages:read` is re-checked for each source id (admins short-circuit).
+ *   - DM identity is `toNodeId = that source's OWN local node`, so a source
+ *     whose manager has no local node yet contributes nothing rather than
+ *     falling back to another source's node.
+ *   - Senders are filtered through `filterNodesByChannelPermission` per
+ *     source, so a DM from a node the caller cannot see never lights a badge.
+ *   - Muted DMs are dropped, matching `/unread-counts`.
+ *
+ * A source the caller cannot read is OMITTED rather than reported as 0. The
+ * source list itself is public metadata (`GET /api/sources` is `optionalAuth`),
+ * so absence discloses nothing that listing did not already.
+ *
+ * Anonymous callers get an empty map: unread state is per-user
+ * (`read_messages.userId`), so there is nothing meaningful to count.
+ */
+router.get('/unread-by-source', optionalAuth(), async (req, res) => {
+  try {
+    const userId = req.user?.id ?? null;
+    const isAdmin = req.user?.isAdmin === true;
+    const result: { [sourceId: string]: { directMessages: number } } = {};
+
+    // No identity, no per-user read state to report on.
+    if (!req.user) {
+      return res.json({ sources: result });
+    }
+
+    // Muted DMs must not light a badge, same rule as /unread-counts.
+    const mutedDMNodeIds: Set<string> = new Set();
+    if (userId) {
+      const { getUserNotificationPreferencesAsync } = await import('../utils/notificationFiltering.js');
+      const prefs = await getUserNotificationPreferencesAsync(userId);
+      const now = Date.now();
+      for (const rule of (prefs?.mutedDMs ?? [])) {
+        if (rule.muteUntil === null || rule.muteUntil > now) {
+          mutedDMNodeIds.add(rule.nodeUuid);
+        }
+      }
+    }
+
+    const sources = await databaseService.sources.getAllSources();
+
+    for (const source of sources) {
+      // Per-source gate. Without the sourceId argument this loop would hand
+      // every source's count to anyone holding a grant on any one source.
+      const allowed = isAdmin || await hasPermission(req.user, 'messages', 'read', source.id);
+      if (!allowed) continue;
+
+      // Which source types can hold a Meshtastic DM at all. Gating on
+      // `isMeshtasticManager` alone would have been wrong in the direction
+      // that produces "rows in the DB, empty badge": MQTT bridge/broker
+      // sources ingest into the very same `messages` table and can absolutely
+      // carry a DM addressed to their local node.
+      //
+      // MeshCore and Reticulum are excluded on purpose, not overlooked — their
+      // DMs live in their own tables and need a different query. A badge for
+      // them is follow-up work, not something to fake here.
+      if (!DM_BEARING_SOURCE_TYPES.has(source.type)) continue;
+
+      const manager = sourceManagerRegistry.getManager(source.id);
+      if (!manager) continue;
+
+      // A DM is addressed to THIS source's local node. No local node yet
+      // (still connecting, never connected) means nothing can be addressed to
+      // it — deliberately not falling back to the primary source's node.
+      const localNodeId = manager.getLocalNodeInfo()?.nodeId;
+      if (!localNodeId) continue;
+
+      const perSender = await databaseService.getBatchUnreadDMCountsAsync(localNodeId, userId, source.id);
+      if (Object.keys(perSender).length === 0) continue;
+
+      // No node list means no way to check sender visibility. Count nothing
+      // rather than everything — the filter is a permission gate, so failing
+      // open here would be the leak this handler exists to avoid.
+      if (typeof manager.getAllNodesAsync !== 'function') continue;
+      const nodes = await manager.getAllNodesAsync(source.id);
+      const visible = await filterNodesByChannelPermission(nodes, req.user, source.id);
+      const visibleNodeIds = new Set(
+        visible.map((n) => n.user?.id).filter((id): id is string => typeof id === 'string'),
+      );
+
+      let total = 0;
+      for (const [nodeId, count] of Object.entries(perSender)) {
+        if (!visibleNodeIds.has(nodeId)) continue;
+        if (mutedDMNodeIds.has(nodeId)) continue;
+        total += Number(count) || 0;
+      }
+
+      if (total > 0) result[source.id] = { directMessages: total };
+    }
+
+    res.json({ sources: result });
+  } catch (error) {
+    logger.error('Error fetching per-source unread counts:', error);
+    res.status(500).json({ error: 'Failed to fetch per-source unread counts' });
   }
 });
 

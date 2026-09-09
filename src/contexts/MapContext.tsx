@@ -57,6 +57,9 @@ interface MapContextType {
   showUdpNodes: boolean;
   setShowUdpNodes: (show: boolean) => void;
   showRfNodes: boolean;
+  /** Per-source unread-DM badge on the Sources list (#5124). Default on. */
+  unreadIndicatorEnabled: boolean;
+  setUnreadIndicatorEnabled: (value: boolean) => void;
   setShowRfNodes: (show: boolean) => void;
   showMeshCoreNodes: boolean;
   setShowMeshCoreNodes: (show: boolean) => void;
@@ -124,6 +127,9 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   // MQTT bridge or UDP multicast feed don't get a saturated map by default.
   const [showUdpNodes, setShowUdpNodesState] = useState<boolean>(false);
   const [showRfNodes, setShowRfNodesState] = useState<boolean>(true);
+  // Defaults on: the badge is the feature, and a pre-migration-161 row has no
+  // stored value. The toggle exists for installs with many overlapping sources.
+  const [unreadIndicatorEnabled, setUnreadIndicatorEnabledState] = useState<boolean>(true);
   const [showMeshCoreNodes, setShowMeshCoreNodesState] = useState<boolean>(true);
   // Waypoint markers default on (#3253) — opt-out toggle in the Map Features panel.
   const [showWaypoints, setShowWaypointsState] = useState<boolean>(true);
@@ -197,6 +203,17 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const setShowUdpNodes = React.useCallback((value: boolean) => {
     setShowUdpNodesState(value);
     void savePreferenceToServer({ showUdpNodes: value });
+  }, []);
+
+  // #5124. `savePreferenceToServer` is declared BELOW this callback, so naming
+  // it as a dependency would be a temporal-dead-zone reference at render time.
+  // Every sibling setter above carries the same empty array for the same
+  // reason (they are the 14 baselined violations in this file); the call only
+  // runs after mount, by which point the binding is initialised.
+  const setUnreadIndicatorEnabled = React.useCallback((value: boolean) => {
+    setUnreadIndicatorEnabledState(value);
+    void savePreferenceToServer({ unreadIndicatorEnabled: value });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- #5124 see comment above
   }, []);
 
   const setShowRfNodes = React.useCallback((value: boolean) => {
@@ -344,6 +361,9 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
             if (preferences.showRfNodes !== undefined) {
               setShowRfNodesState(preferences.showRfNodes);
             }
+            if (preferences.unreadIndicatorEnabled !== undefined) {
+              setUnreadIndicatorEnabledState(preferences.unreadIndicatorEnabled);
+            }
             if (preferences.showMeshCoreNodes !== undefined) {
               setShowMeshCoreNodesState(preferences.showMeshCoreNodes);
             }
@@ -431,6 +451,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     showUdpNodes,
     setShowUdpNodes,
     showRfNodes,
+    unreadIndicatorEnabled,
+    setUnreadIndicatorEnabled,
     setShowRfNodes,
     showMeshCoreNodes,
     setShowMeshCoreNodes,
@@ -478,6 +500,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     showMqttNodes, setShowMqttNodes,
     showUdpNodes, setShowUdpNodes,
     showRfNodes, setShowRfNodes,
+    unreadIndicatorEnabled, setUnreadIndicatorEnabled,
     showMeshCoreNodes, setShowMeshCoreNodes,
     showWaypoints, setShowWaypoints,
     showAtakContacts, setShowAtakContacts,

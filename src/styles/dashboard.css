@@ -422,6 +422,24 @@
   color: var(--color-warning);
 }
 
+/* Unread-DM count on a source card (#5124). Deliberately louder than the
+   publisher badge beside it — this one is asking to be acted on, not just
+   reporting state — and pill-shaped so a 1-digit and a 3-digit count keep the
+   same visual weight. Uses the semantic tokens with no fallback, per the
+   MapSidebar convention. */
+.dashboard-unread-badge {
+  min-width: 18px;
+  padding: 1px 6px;
+  border-radius: 9px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: center;
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+  white-space: nowrap;
+}
+
 .dashboard-source-card-actions {
   display: flex;
   align-items: center;
