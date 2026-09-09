@@ -718,6 +718,13 @@ class MeshtasticManager implements ISourceManager {
     this.isCapturingInitConfig = false;
     this.configCaptureComplete = true;
     this.setTransportConfigSyncActive(false);
+    // A sync that finished spends the #5122 fast-retry ladder back to the top,
+    // so it counts consecutive failures rather than lifetime ones.
+    try {
+      this.transport?.resetConfigSyncLossRetries?.();
+    } catch (err) {
+      logger.debug(`Ignoring resetConfigSyncLossRetries failure: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
   private clearConfigCapture(): void {
     this.isCapturingInitConfig = false;
@@ -2231,6 +2238,17 @@ class MeshtasticManager implements ISourceManager {
         'The sync restarts from the beginning on reconnect; on a large NodeDB it may never finish if this repeats. ' +
         'Consider enabling Passive Mode for this source.'
       );
+      // Retry sooner than the 60s default backoff (#5122). The reporter's
+      // captures show the retry after one of these completes the whole
+      // ~190-node sync in about 2s, so a minute of waiting is almost all of
+      // the user-visible outage. The transport ramps its own delay if this
+      // keeps happening, so a node that genuinely cannot finish is not
+      // hammered — see SYNC_LOSS_RETRY_LADDER_MS.
+      try {
+        this.transport?.noteConfigSyncLoss?.();
+      } catch (err) {
+        logger.debug(`Ignoring noteConfigSyncLoss failure: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
 
     // #3962 Phase 4.2b C2: TRANSPORT_DISCONNECTED. A transport-level
