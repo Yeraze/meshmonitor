@@ -94,6 +94,31 @@ export class TcpTransport extends EventEmitter implements ITransport {
   private startupGraceUntil: number = 0;
   private startupGraceFastDelayMs: number = 0;
 
+  /**
+   * Fast-retry ramp after the link drops mid-config-sync (#5122).
+   *
+   * The reporter's packet captures show a node that goes silent for ~10s
+   * partway through a ~190-node NodeDB dump, flushes a backlog, then closes
+   * its own side. The retry then completes the full sync in about 2 seconds —
+   * so the recovery is cheap, and it was the 60s reconnect delay, not the
+   * failure itself, that made the mesh feel unusable.
+   *
+   * Retrying fast forever would be the wrong answer though: every reconnect
+   * makes the node re-dump its entire NodeDB, which is the very work that is
+   * stalling. So this ramps. One quick attempt catches the common case; if
+   * that also dies mid-sync, back off rather than hammer a node that has
+   * already told us twice it cannot finish.
+   *
+   * Only a *mid-sync* loss arms this. A node that is simply unreachable never
+   * starts a sync, so it keeps the ordinary backoff instead of collecting a
+   * SYN every three seconds.
+   */
+  private static readonly SYNC_LOSS_RETRY_LADDER_MS = [3_000, 10_000, 30_000];
+  /** How many rungs of the ladder this transport has spent. Reset on a sync that completes. */
+  private syncLossRetryStep = 0;
+  /** Set by `noteConfigSyncLoss()`, consumed by the next `scheduleReconnect()`. */
+  private syncLossRetryPending = false;
+
   // Protocol constants
   private readonly START1 = 0x94;
   private readonly START2 = 0xc3;
@@ -126,6 +151,30 @@ export class TcpTransport extends EventEmitter implements ITransport {
     if (this.isConnected && this.healthCheckInterval) {
       this.startHealthCheck();
     }
+  }
+
+  /**
+   * The link dropped while the initial config sync was still running (#5122).
+   *
+   * Arms one rung of the fast-retry ramp for the reconnect that is about to be
+   * scheduled. Deliberately separate from `setConfigSyncActive(false)`, which
+   * fires on a *successful* sync too — only a loss should shorten the wait.
+   */
+  noteConfigSyncLoss(): void {
+    this.syncLossRetryPending = true;
+  }
+
+  /**
+   * A config sync ran to completion — spend the ladder back to the top (#5122).
+   *
+   * Without this, a source that recovers on the first fast retry and then hits
+   * an unrelated mid-sync loss hours later would start from whatever rung it
+   * left off on. The ladder is meant to measure consecutive failures, not
+   * lifetime ones.
+   */
+  resetConfigSyncLossRetries(): void {
+    this.syncLossRetryStep = 0;
+    this.syncLossRetryPending = false;
   }
 
   /**
@@ -389,11 +438,34 @@ export class TcpTransport extends EventEmitter implements ITransport {
     // window, use the fast delay regardless of attempt count. Outside the
     // window, fall back to exponential backoff.
     const inGrace = this.startupGraceUntil > 0 && Date.now() < this.startupGraceUntil;
-    const delay = inGrace
-      ? this.startupGraceFastDelayMs
-      : Math.min(Math.pow(2, this.reconnectAttempts - 1) * this.reconnectInitialDelayMs, this.reconnectMaxDelayMs);
 
-    logger.debug(`🔄 Reconnecting in ${delay / 1000}s (attempt ${this.reconnectAttempts}${inGrace ? ', startup-grace' : ''})...`);
+    // A mid-sync loss (#5122) is the most specific signal we have about WHY the
+    // link went down, so its ramp wins over the startup grace window when both
+    // apply. The grace window stays in charge of every other early disconnect.
+    const ladder = TcpTransport.SYNC_LOSS_RETRY_LADDER_MS;
+    const useSyncLossLadder = this.syncLossRetryPending && this.syncLossRetryStep < ladder.length;
+    // Consume the flag either way: it describes the disconnect that just
+    // happened, not a standing preference, so it must not leak into the next one.
+    this.syncLossRetryPending = false;
+
+    let delay: number;
+    let label: string;
+    if (useSyncLossLadder) {
+      delay = ladder[this.syncLossRetryStep];
+      this.syncLossRetryStep++;
+      label = `, sync-loss retry ${this.syncLossRetryStep}/${ladder.length}`;
+    } else if (inGrace) {
+      delay = this.startupGraceFastDelayMs;
+      label = ', startup-grace';
+    } else {
+      delay = Math.min(
+        Math.pow(2, this.reconnectAttempts - 1) * this.reconnectInitialDelayMs,
+        this.reconnectMaxDelayMs,
+      );
+      label = '';
+    }
+
+    logger.debug(`🔄 Reconnecting in ${delay / 1000}s (attempt ${this.reconnectAttempts}${label})...`);
 
     this.reconnectTimeout = setTimeout(() => {
       this.doConnect().catch((error) => {

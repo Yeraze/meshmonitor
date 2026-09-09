@@ -25,4 +25,17 @@ export interface ITransport extends EventEmitter {
    * non-TCP transports (and test doubles) need not implement it.
    */
   setConfigSyncActive?(active: boolean): void;
+  /**
+   * Tell the transport the link dropped *while* the initial config sync was
+   * running (#5122), so it can retry sooner than the ordinary backoff.
+   *
+   * Separate from `setConfigSyncActive(false)`, which also fires on a sync that
+   * succeeded. Optional for the same reason as the hook above.
+   */
+  noteConfigSyncLoss?(): void;
+  /**
+   * Tell the transport a config sync ran to completion (#5122), so any
+   * fast-retry ramp armed by `noteConfigSyncLoss` resets. Optional.
+   */
+  resetConfigSyncLossRetries?(): void;
 }
