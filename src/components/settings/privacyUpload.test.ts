@@ -12,16 +12,15 @@ import { describe, it, expect } from 'vitest';
 import { seedFromUpload } from './privacyUpload';
 
 describe('seedFromUpload', () => {
-  it('takes the leading H1 as the title and removes it from the body', () => {
-    const { title, content } = seedFromUpload(
-      '# Privacy Policy\n\nWe store packets.\n',
-      '',
-      'privacy',
-    );
+  it('takes the leading H1 as the title but leaves the body untouched', () => {
+    // The body is stored exactly as uploaded; the duplicate heading is dropped
+    // at render time by stripDuplicateHeading, which also covers hand-typed and
+    // API-created documents that never went through this path.
+    const text = '# Privacy Policy\n\nWe store packets.\n';
+    const { title, content } = seedFromUpload(text, '', 'privacy');
 
     expect(title).toBe('Privacy Policy');
-    expect(content).toBe('We store packets.\n');
-    expect(content).not.toContain('# Privacy Policy');
+    expect(content).toBe(text);
   });
 
   it('keeps a title the operator already typed, and leaves the body untouched', () => {
@@ -57,11 +56,6 @@ describe('seedFromUpload', () => {
     // must survive.
     expect(title).toBe('Real Heading');
     expect(seedFromUpload(text, '', 'privacy').content).toContain('Intro paragraph.');
-  });
-
-  it('trims leading blank lines left behind by the removed heading', () => {
-    const { content } = seedFromUpload('# Title\n\n\n\nBody.\n', '', 'privacy');
-    expect(content.startsWith('Body.')).toBe(true);
   });
 
   it('treats a whitespace-only operator title as unset', () => {

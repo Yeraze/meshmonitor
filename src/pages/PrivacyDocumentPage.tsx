@@ -28,6 +28,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import apiService from '../services/api';
 import { isPrivacyDocumentSlug, type PrivacyDocumentPayload } from '../types/privacy';
+import { stripDuplicateHeading } from '../utils/privacyDocumentBody';
 import styles from './PrivacyDocumentPage.module.css';
 
 type LoadState =
@@ -122,7 +123,7 @@ const PrivacyDocumentPage: React.FC = () => {
               ),
             }}
           >
-            {doc.content}
+            {stripDuplicateHeading(doc.content, doc.title)}
           </ReactMarkdown>
         </div>
       </article>

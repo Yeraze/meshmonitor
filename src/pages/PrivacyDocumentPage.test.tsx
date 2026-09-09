@@ -70,6 +70,31 @@ describe('PrivacyDocumentPage', () => {
     expect(container.textContent).toContain('<script>');
   });
 
+  it('does not render the title twice when the body repeats it', async () => {
+    // Found by driving the deployed container: the page renders the stored
+    // title as its <h1>, and an operator's policy almost always opens with the
+    // same title as its own '# Heading'.
+    vi.mocked(apiService.getPrivacyDocument).mockResolvedValue(
+      doc('# Privacy Policy\n\nWe store packets.\n', 'Privacy Policy'),
+    );
+    const { container } = renderAt('/privacy/privacy');
+
+    await screen.findByText('We store packets.');
+    const headings = [...container.querySelectorAll('h1')].map((h) => h.textContent);
+    expect(headings).toEqual(['Privacy Policy']);
+  });
+
+  it('keeps a leading heading that is not the title', async () => {
+    vi.mocked(apiService.getPrivacyDocument).mockResolvedValue(
+      doc('# Scope\n\nBody.\n', 'Privacy Policy'),
+    );
+    const { container } = renderAt('/privacy/privacy');
+
+    await screen.findByText('Body.');
+    const headings = [...container.querySelectorAll('h1')].map((h) => h.textContent);
+    expect(headings).toEqual(['Privacy Policy', 'Scope']);
+  });
+
   it('renders GFM tables, not literal pipes', async () => {
     // Without remark-gfm, react-markdown renders a table as a single line of
     // "| Data | Retention |" text. A retention table is the first thing an

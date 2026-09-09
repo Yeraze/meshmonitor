@@ -13,14 +13,14 @@ import {
 /**
  * Derive the title and body for an uploaded document.
  *
- * An exported policy almost always opens with its own `# Heading`, and the
- * page already renders the stored title as the page's `<h1>`. Seeding the
- * title from that heading and leaving it in the body renders it twice, so
- * when the heading IS consumed as the title it is dropped from the content.
- * The operator sees the result in the textarea before publishing.
+ * An exported policy almost always opens with its own `# Heading`, so that
+ * heading is the best guess at a title when the operator has not typed one.
  *
- * An operator who has already typed a title keeps it, and the body is left
- * exactly as uploaded — we only remove a heading we actually used.
+ * The body is left EXACTLY as uploaded. The duplicate-title problem it creates
+ * (the page renders the stored title as its own `<h1>`) is solved at render
+ * time by `stripDuplicateHeading`, not by rewriting what the operator saved —
+ * silently editing their file on the way in is the more surprising behaviour,
+ * and it would not help the hand-typed or API-created cases anyway.
  */
 export function seedFromUpload(
   text: string,
@@ -35,6 +35,5 @@ export function seedFromUpload(
   if (!heading) {
     return { title: PRIVACY_LINK_FALLBACK_LABEL[slug], content: text };
   }
-  const content = text.slice(0, match!.index) + text.slice(match!.index + match![0].length);
-  return { title: heading, content: content.replace(/^\n+/, '') };
+  return { title: heading, content: text };
 }
