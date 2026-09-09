@@ -52,6 +52,7 @@ import { ToastProvider } from '../components/ToastContainer';
 import api, { ApiError } from '../services/api';
 import { logger } from '../utils/logger';
 import { appBasename } from '../init';
+import { MESHCORE_DEFAULT_TCP_PORT } from '../constants';
 import { getReservedLandingPath, isReservedLandingValue } from '../utils/defaultLandingPage';
 import '../styles/dashboard.css';
 import { UiIcon } from '../components/icons';
@@ -189,7 +190,11 @@ function DashboardInner() {
   const [formMcTransport, setFormMcTransport] = useState<'usb' | 'tcp'>('usb');
   const [formMcSerialPort, setFormMcSerialPort] = useState('');
   const [formMcTcpHost, setFormMcTcpHost] = useState('');
-  const [formMcTcpPort, setFormMcTcpPort] = useState('4403');
+  // MeshCore WiFi/Ethernet companion firmware opens its TCP server on 5000
+  // (#5160). 4403 is Meshtastic's port, and also what MeshCore's less common
+  // "native TCP" companion builds use — but the WiFi/Ethernet build is what
+  // people actually add here, so it gets the default.
+  const [formMcTcpPort, setFormMcTcpPort] = useState(MESHCORE_DEFAULT_TCP_PORT);
   const [formMcDeviceType, setFormMcDeviceType] = useState<'companion' | 'repeater'>('companion');
   // MQTT broker (mqtt_broker) form state.
   const [formMqttListenPort, setFormMqttListenPort] = useState('1883');
@@ -413,7 +418,7 @@ function DashboardInner() {
     setFormMcTransport('usb');
     setFormMcSerialPort('');
     setFormMcTcpHost('');
-    setFormMcTcpPort('4403');
+    setFormMcTcpPort(MESHCORE_DEFAULT_TCP_PORT);
     setFormMcDeviceType('companion');
     setFormMqttListenPort('1883');
     setFormMqttUsername('');
@@ -577,7 +582,7 @@ function DashboardInner() {
     setFormMcTransport(mcTransport);
     setFormMcSerialPort(cfg?.serialPort ?? cfg?.port ?? '');
     setFormMcTcpHost(cfg?.tcpHost ?? '');
-    setFormMcTcpPort(cfg?.tcpPort != null ? String(cfg.tcpPort) : '4403');
+    setFormMcTcpPort(cfg?.tcpPort != null ? String(cfg.tcpPort) : MESHCORE_DEFAULT_TCP_PORT);
     setFormMcDeviceType(cfg?.deviceType === 'repeater' ? 'repeater' : 'companion');
     const link = cfg?.mqttLink as { enabled?: boolean; mqttBrokerSourceId?: string } | undefined;
     setFormMtMqttLinkBrokerId(link?.enabled && link.mqttBrokerSourceId ? link.mqttBrokerSourceId : '');
@@ -1747,7 +1752,7 @@ function DashboardInner() {
                         type="number"
                         value={formMcTcpPort}
                         onChange={(e) => setFormMcTcpPort(e.target.value)}
-                        placeholder="4403"
+                        placeholder={MESHCORE_DEFAULT_TCP_PORT}
                       />
                     </label>
                   </>
