@@ -730,5 +730,31 @@
       "Reports per-lane wait times (General, SENTRI, NEXUS, Pedestrian, etc.)",
       "No API key or external Python packages required"
     ]
+  },
+  {
+    "name": "EmComm Control",
+    "filename": "mm_emcomm_control.py",
+    "icon": "🚨",
+    "description": "Emergency communications control for MeshMonitor supporting both LIVE real-world operations and EXERCISE/drill operations over Meshtastic and MeshCore. Provides station check-in/check-out, SITREPs, message traffic with ROUTINE/PRIORITY/IMMEDIATE precedence, operational status, exercise injects, logging, and after-action CSV exports. Designed for amateur radio EmComm, ARES/SET exercises, served agencies, and city, county/regional, and state Emergency Operations Centers (EOCs).",
+    "language": "Python",
+    "tags": ["EmComm", "Emergency Communications", "EOC", "Meshtastic", "MeshCore", "Amateur Radio", "Ham Radio", "ARES", "ARRL SET", "SITREP", "Emergency Management", "Incident Communications"],
+    "githubPath": "maxhayim/meshmonitor-emcomm-control/mm_emcomm_control.py",
+    "exampleTrigger": "EMCOMM CHECKIN {callsign} {location} {power} {role}, EMCOMM CHECKOUT {callsign}, EMCOMM SITREP {location} {status}, EMCOMM TRAFFIC {to} [ROUTINE|PRIORITY|IMMEDIATE] {text}, EMCOMM STATUS, EMCOMM HELP",
+    "requirements": [
+      "MeshMonitor with Auto Responder/User Scripts support",
+      "Python 3.9+ (no third-party packages required)",
+      "Writable /data/scripts/mm_emcomm_control_data/ for operational state and logs",
+      "Optional: legacy ^SET\\b trigger for backwards-compatible EXERCISE commands",
+      "Optional: separate mm_emcomm_panel.py browser Operator Control Panel (not required for the Auto Responder script)"
+    ],
+    "author": "maxhayim",
+    "features": [
+      "LIVE and EXERCISE/drill operating modes over Meshtastic and MeshCore",
+      "Station check-in/check-out and SITREP reporting",
+      "Message traffic with ROUTINE/PRIORITY/IMMEDIATE precedence",
+      "Operational status queries and timed exercise injects",
+      "Logging and after-action CSV exports",
+      "LIVE mode blocks simulated injects and requires explicit local activation"
+    ]
   }
 ]
