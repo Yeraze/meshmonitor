@@ -1,5 +1,5 @@
 /**
- * Migration 161: the `privacy_documents` table (issue #5156).
+ * Migration 162: the `privacy_documents` table (issue #5156).
  *
  * A publicly-reachable MeshMonitor re-serves mesh data to anonymous visitors
  * and to tokenless embed viewers. The operator running it needs somewhere to
@@ -30,7 +30,7 @@ import type { Database } from 'better-sqlite3';
 import { logger } from '../../utils/logger.js';
 import { createTableIfMissingMysql } from './helpers.js';
 
-const LABEL = 'Migration 161';
+const LABEL = 'Migration 162';
 const TABLE = 'privacy_documents';
 
 // ============ SQLite ============
@@ -63,7 +63,7 @@ export const migration = {
 
 // ============ PostgreSQL ============
 
-export async function runMigration161Postgres(client: import('pg').PoolClient): Promise<void> {
+export async function runMigration162Postgres(client: import('pg').PoolClient): Promise<void> {
   logger.info(`${LABEL} (PostgreSQL): creating ${TABLE}...`);
 
   await client.query(`
@@ -85,7 +85,7 @@ export async function runMigration161Postgres(client: import('pg').PoolClient): 
 
 // ============ MySQL ============
 
-export async function runMigration161Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
+export async function runMigration162Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
   logger.info(`${LABEL} (MySQL): creating ${TABLE}...`);
 
   // The unique key is declared inline: MySQL has no CREATE INDEX IF NOT

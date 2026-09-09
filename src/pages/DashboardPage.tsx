@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { SettingsProvider, useSettings } from '../contexts/SettingsContext';
 import { useAuth } from '../contexts/AuthContext';
 import { MapProvider, useMapContext } from '../contexts/MapContext';
+import { useUnreadBySource } from '../hooks/useUnreadBySource';
 import {
   useDashboardSources,
   useSourceStatuses,
@@ -306,7 +307,16 @@ function DashboardInner() {
   // toggle is on (DashboardInner sits inside MapProvider, so we can read it
   // here to gate the request). Unified pulls every source; single-source pulls
   // just the selected one. Non-MeshCore sources simply return no edges.
-  const { showNeighborInfo } = useMapContext();
+  const { showNeighborInfo, unreadIndicatorEnabled, setUnreadIndicatorEnabled } = useMapContext();
+  // #5124. `enabled: false` means the query never runs, so switching the badge
+  // off stops the polling too rather than merely hiding the answer.
+  const { data: unreadBySourceData } = useUnreadBySource({
+    // The app can be served under a base path (BASE_URL=/meshmonitor in the
+    // dev container), so the bare `/api/...` default would 404. Same
+    // `appBasename` every other query hook is handed.
+    baseUrl: appBasename,
+    enabled: isAuthenticated && unreadIndicatorEnabled,
+  });
   const neighborSourceIds = isUnifiedSelected
     ? sourceIds
     : (selectedSourceId && selectedSourceId !== UNIFIED_SOURCE_ID ? [selectedSourceId] : []);
@@ -1262,6 +1272,9 @@ function DashboardInner() {
           onPruneOutsideRoi={onPruneOutsideRoi}
           onResyncSource={onResyncSource}
           connectingIds={connectingIds}
+          unreadBySource={unreadIndicatorEnabled ? unreadBySourceData?.sources : undefined}
+          unreadIndicatorEnabled={unreadIndicatorEnabled}
+          onToggleUnreadIndicator={setUnreadIndicatorEnabled}
           mobileOpen={mobileSidebarOpen}
           onMobileClose={() => setMobileSidebarOpen(false)}
           onNewsClick={() => {

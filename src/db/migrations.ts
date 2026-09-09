@@ -179,7 +179,8 @@ import {
 } from '../server/migrations/158_meshcore_packet_log_observer.js';
 import { migration as nodeIdentityMergesMigration, runMigration159Postgres, runMigration159Mysql } from '../server/migrations/159_node_identity_merges.js';
 import { migration as tracerouteTransportMechanismMigration, runMigration160Postgres, runMigration160Mysql } from '../server/migrations/160_traceroute_transport_mechanism.js';
-import { migration as privacyDocumentsMigration, runMigration161Postgres, runMigration161Mysql } from '../server/migrations/161_privacy_documents.js';
+import { migration as userPrefsUnreadIndicatorMigration, runMigration161Postgres, runMigration161Mysql } from '../server/migrations/161_user_map_preferences_unread_indicator.js';
+import { migration as privacyDocumentsMigration, runMigration162Postgres, runMigration162Mysql } from '../server/migrations/162_privacy_documents.js';
 
 // ============================================================================
 // Registry
@@ -2596,7 +2597,23 @@ registry.register({
 });
 
 // ---------------------------------------------------------------------------
-// Migration 161: `privacy_documents` (#5156) — the operator's hosted privacy
+// Migration 161: `user_map_preferences.unread_indicator_enabled` (#5124) — per-user
+// switch for the Sources list's unread-DM badge. Defaults TRUE (the badge is
+// the feature); NULL on pre-migration rows reads as enabled.
+// Idempotent across SQLite / PostgreSQL / MySQL.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 161,
+  name: 'user_map_preferences_unread_indicator',
+  settingsKey: 'migration_161_user_map_preferences_unread_indicator',
+  sqlite: (db) => userPrefsUnreadIndicatorMigration.up(db),
+  postgres: (client) => runMigration161Postgres(client),
+  mysql: (pool) => runMigration161Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 162: `privacy_documents` (#5156) — the operator's hosted privacy
 // policy / terms / contact pages for a publicly-reachable instance. GLOBAL (no
 // sourceId): the document describes the deployment serving the dashboard, not
 // any one mesh source. `content` is Markdown source, never HTML, because the
@@ -2605,10 +2622,10 @@ registry.register({
 // ---------------------------------------------------------------------------
 
 registry.register({
-  number: 161,
+  number: 162,
   name: 'privacy_documents',
-  settingsKey: 'migration_161_privacy_documents',
+  settingsKey: 'migration_162_privacy_documents',
   sqlite: (db) => privacyDocumentsMigration.up(db),
-  postgres: (client) => runMigration161Postgres(client),
-  mysql: (pool) => runMigration161Mysql(pool),
+  postgres: (client) => runMigration162Postgres(client),
+  mysql: (pool) => runMigration162Mysql(pool),
 });

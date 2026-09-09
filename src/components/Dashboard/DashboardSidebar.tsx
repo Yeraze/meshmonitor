@@ -112,6 +112,18 @@ interface DashboardSidebarProps {
    * handles and the list stays read-only.
    */
   onReorderSources?: (orderedIds: string[]) => void;
+  /**
+   * Unread DM count per source id for the badge (#5124). Owned by
+   * DashboardPage, which holds the query and the user's toggle — this stays a
+   * presentational component, like every other datum it receives.
+   * Undefined = indicator off or not loaded; a source absent from the map has
+   * no badge (the server omits what the caller may not read).
+   */
+  unreadBySource?: { [sourceId: string]: { directMessages: number } };
+  /** Current value of the per-user unread-indicator preference (#5124). */
+  unreadIndicatorEnabled?: boolean;
+  /** Toggle the preference from the sidebar header (#5124). Omit to hide the control. */
+  onToggleUnreadIndicator?: (value: boolean) => void;
   /** Mobile drawer state — on desktop the sidebar is always visible. */
   mobileOpen?: boolean;
   /** Called to close the drawer on mobile (after selecting a source or tapping backdrop). */
@@ -389,9 +401,13 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
   onMobileClose,
   onNewsClick,
   onReorderSources,
+  unreadBySource,
+  unreadIndicatorEnabled = true,
+  onToggleUnreadIndicator,
 }) => {
   const navigate = useNavigate();
   const { t } = useTranslation();
+
   // PR-C: kebab visibility (Prune Outside ROI in particular) is gated by
   // per-source `sources:write` rather than the legacy global `isAdmin` prop.
   // Admin short-circuit lives inside hasPermission, so existing admin users
@@ -543,6 +559,22 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
             title={t('source.edit_mode_help')}
           >
             {editMode ? t('source.edit_mode_done') : t('source.edit_mode')}
+          </button>
+        )}
+        {/* #5124: the badge's off switch lives next to the badges rather than
+            in Settings, because Settings persists global server settings and
+            this is a per-user preference on a different save path. A reporter
+            with 5+ overlapping sources expects it lit constantly; one click
+            here stops both the badge and its polling. */}
+        {isAuthenticated && onToggleUnreadIndicator && (
+          <button
+            className="dashboard-add-source-btn"
+            style={{ marginLeft: 6, padding: '2px 8px', fontSize: 11 }}
+            onClick={() => onToggleUnreadIndicator(!unreadIndicatorEnabled)}
+            aria-pressed={unreadIndicatorEnabled}
+            title={t('settings.unread_indicator_help')}
+          >
+            {t('settings.unread_indicator')}
           </button>
         )}
       </div>
@@ -788,6 +820,22 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
             </div>
 
             <div className="dashboard-source-card-actions">
+              {/* Unread DM badge (#5124). The server omits sources the viewer
+                  may not read, so a missing entry is "no badge", not "zero". */}
+              {(() => {
+                const unread = unreadBySource?.[source.id]?.directMessages ?? 0;
+                if (!isAuthenticated || unread <= 0) return null;
+                const label = t('source.unread_dms', {
+                  defaultValue: '{{count}} unread DM',
+                  defaultValue_plural: '{{count}} unread DMs',
+                  count: unread,
+                });
+                return (
+                  <span className="dashboard-unread-badge" title={label} aria-label={label}>
+                    {unread > 99 ? '99+' : unread}
+                  </span>
+                );
+              })()}
               {isAuthenticated ? (
                 <span className="dashboard-node-count">{t('source.node_count', { count: nodeCount })}</span>
               ) : (

@@ -1,5 +1,5 @@
 /**
- * Migration 161 — PostgreSQL / MySQL container behaviour (#5156).
+ * Migration 162 — PostgreSQL / MySQL container behaviour (#5156).
  *
  * The repository suite builds its fixture from the Drizzle definitions, so it
  * cannot catch a migration whose `CREATE TABLE` disagrees with the schema.
@@ -32,13 +32,13 @@ import { drizzle as drizzleMysql } from 'drizzle-orm/mysql2';
 import { eq } from 'drizzle-orm';
 import * as schema from '../../db/schema/index.js';
 import { privacyDocumentsPostgres, privacyDocumentsMysql } from '../../db/schema/privacyDocuments.js';
-import { runMigration161Postgres, runMigration161Mysql } from './161_privacy_documents.js';
+import { runMigration162Postgres, runMigration162Mysql } from './162_privacy_documents.js';
 import { postgresAvailable, mysqlAvailable } from '../../db/repositories/test-utils.js';
 
 const { Pool: PgPool } = pg;
 
-const PG_SCHEMA = 'privacy_migration_161';
-const MYSQL_DB = 'meshmonitor_test_privacy_161';
+const PG_SCHEMA = 'privacy_migration_162';
+const MYSQL_DB = 'meshmonitor_test_privacy_162';
 
 const NOW = 1_800_000_000_000;
 
@@ -54,7 +54,7 @@ const BASE_ROW = {
 /** Comfortably past MySQL TEXT's 64 KiB ceiling. */
 const LONG_POLICY = `# Policy\n\n${'All your packets are belong to us. '.repeat(3000)}`;
 
-describe.skipIf(!postgresAvailable)('migration 161 — PostgreSQL (container)', () => {
+describe.skipIf(!postgresAvailable)('migration 162 — PostgreSQL (container)', () => {
   let pool: InstanceType<typeof PgPool>;
   let db: ReturnType<typeof drizzlePostgres>;
 
@@ -83,10 +83,10 @@ describe.skipIf(!postgresAvailable)('migration 161 — PostgreSQL (container)', 
   it('creates a table the Drizzle schema can round-trip, and runs twice safely', async () => {
     const client = await pool.connect();
     try {
-      await runMigration161Postgres(client);
+      await runMigration162Postgres(client);
       // The ledger normally runs a migration once, but a crash between the
       // migration and its ledger write re-runs it — idempotency is mandatory.
-      await expect(runMigration161Postgres(client)).resolves.toBeUndefined();
+      await expect(runMigration162Postgres(client)).resolves.toBeUndefined();
     } finally {
       client.release();
     }
@@ -126,7 +126,7 @@ describe.skipIf(!postgresAvailable)('migration 161 — PostgreSQL (container)', 
   });
 });
 
-describe.skipIf(!mysqlAvailable)('migration 161 — MySQL (container)', () => {
+describe.skipIf(!mysqlAvailable)('migration 162 — MySQL (container)', () => {
   let pool: mysql.Pool;
   let db: ReturnType<typeof drizzleMysql>;
 
@@ -156,8 +156,8 @@ describe.skipIf(!mysqlAvailable)('migration 161 — MySQL (container)', () => {
   });
 
   it('creates a table the Drizzle schema can round-trip, and runs twice safely', async () => {
-    await runMigration161Mysql(pool);
-    await expect(runMigration161Mysql(pool)).resolves.toBeUndefined();
+    await runMigration162Mysql(pool);
+    await expect(runMigration162Mysql(pool)).resolves.toBeUndefined();
 
     await db.insert(privacyDocumentsMysql).values(BASE_ROW);
     const [row] = await db
