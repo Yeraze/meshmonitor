@@ -179,6 +179,7 @@ import {
 } from '../server/migrations/158_meshcore_packet_log_observer.js';
 import { migration as nodeIdentityMergesMigration, runMigration159Postgres, runMigration159Mysql } from '../server/migrations/159_node_identity_merges.js';
 import { migration as tracerouteTransportMechanismMigration, runMigration160Postgres, runMigration160Mysql } from '../server/migrations/160_traceroute_transport_mechanism.js';
+import { migration as userPrefsUnreadIndicatorMigration, runMigration161Postgres, runMigration161Mysql } from '../server/migrations/161_user_map_preferences_unread_indicator.js';
 
 // ============================================================================
 // Registry
@@ -2592,4 +2593,20 @@ registry.register({
   sqlite: (db) => tracerouteTransportMechanismMigration.up(db),
   postgres: (client) => runMigration160Postgres(client),
   mysql: (pool) => runMigration160Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 161: `user_map_preferences.unread_indicator_enabled` (#5124) — per-user
+// switch for the Sources list's unread-DM badge. Defaults TRUE (the badge is
+// the feature); NULL on pre-migration rows reads as enabled.
+// Idempotent across SQLite / PostgreSQL / MySQL.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 161,
+  name: 'user_map_preferences_unread_indicator',
+  settingsKey: 'migration_161_user_map_preferences_unread_indicator',
+  sqlite: (db) => userPrefsUnreadIndicatorMigration.up(db),
+  postgres: (client) => runMigration161Postgres(client),
+  mysql: (pool) => runMigration161Mysql(pool),
 });

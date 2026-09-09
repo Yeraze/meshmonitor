@@ -117,6 +117,10 @@ export const userMapPreferencesSqlite = sqliteTable('user_map_preferences', {
   // ATAK contact marker visibility (#3691, persisted in #4378). Default false —
   // opt-in, unlike showWaypoints.
   showAtakContacts: integer('show_atak_contacts', { mode: 'boolean' }).default(false),
+  // Per-source unread-DM badge on the Sources list (#5124). Default true —
+  // the badge is the feature; the toggle exists because a reporter with 5+
+  // sources expects it lit constantly and wants it gone.
+  unreadIndicatorEnabled: integer('unread_indicator_enabled', { mode: 'boolean' }).default(true),
   positionHistoryHours: integer('position_history_hours'),
   // Map age slider: hide nodes/traceroutes older than this on the map (hours).
   // NULL = follow the global maxNodeAgeHours setting. See #3322.
@@ -150,6 +154,7 @@ export const userMapPreferencesPostgres = pgTable('user_map_preferences', {
   showAccuracyRegions: pgBoolean('show_accuracy_regions').default(false),
   showEstimatedPositions: pgBoolean('show_estimated_positions').default(false),
   showAtakContacts: pgBoolean('show_atak_contacts').default(false),
+  unreadIndicatorEnabled: pgBoolean('unread_indicator_enabled').default(true),
   positionHistoryHours: pgInteger('position_history_hours'),
   mapMaxAgeHours: pgInteger('map_max_age_hours'),
   positionHistoryPointsOnly: pgBoolean('position_history_points_only').default(false),
@@ -403,6 +408,7 @@ export const userMapPreferencesMysql = mysqlTable('user_map_preferences', {
   showAccuracyRegions: myBoolean('show_accuracy_regions').default(false),
   showEstimatedPositions: myBoolean('show_estimated_positions').default(false),
   showAtakContacts: myBoolean('show_atak_contacts').default(false),
+  unreadIndicatorEnabled: myBoolean('unread_indicator_enabled').default(true),
   positionHistoryHours: myInt('position_history_hours'),
   mapMaxAgeHours: myInt('map_max_age_hours'),
   positionHistoryPointsOnly: myBoolean('position_history_points_only').default(false),

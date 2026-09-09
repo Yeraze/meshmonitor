@@ -24,6 +24,17 @@ export interface ISourceManager {
   stop(): Promise<void>;
   getStatus(): SourceStatus;
   getLocalNodeInfo(): { nodeNum: number; nodeId: string; longName: string; shortName: string; hwModel?: number; firmwareVersion?: string; rebootCount?: number; isLocked?: boolean } | null;
+  /**
+   * Nodes this source knows about (#5124).
+   *
+   * Optional on the interface, but every Meshtastic-family manager
+   * (`MeshtasticManager`, `MqttBridgeManager`, `MqttBrokerManager`) already
+   * implements it — `/api/poll` has depended on that since the broker manager
+   * gained it to stop throwing `getAllNodesAsync is not a function`. Declaring
+   * it here documents that reality and lets cross-source consumers reach it
+   * without a cast; MeshCore/Reticulum simply omit it.
+   */
+  getAllNodesAsync?(sourceId?: string): Promise<Array<{ user?: { id?: string } }>>;
   /** Arm (or re-arm) this source's auto-delete-by-distance scheduler from its persisted settings. */
   startDistanceDeleteScheduler(): Promise<void>;
   /** Disarm this source's auto-delete-by-distance scheduler. */
