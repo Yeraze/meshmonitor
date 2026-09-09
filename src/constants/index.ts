@@ -46,3 +46,21 @@ export function isRelayRole(role: number | undefined): boolean {
 
 // Re-export HARDWARE_MODELS from the specialized utility file
 export { HARDWARE_MODELS } from '../utils/hardwareModel.js';
+/**
+ * Default TCP port for a MeshCore companion reached over the network (#5160).
+ *
+ * MeshCore's WiFi and Ethernet companion builds open their TCP server on 5000,
+ * and that is the build people actually add as a TCP source. The form used to
+ * default to 4403, which is Meshtastic's port — so every new MeshCore TCP
+ * source failed to connect until the user worked out the right number.
+ *
+ * 4403 is not arbitrary, which is why this is worth writing down: MeshCore's
+ * less common "native TCP" companion builds do listen there, and
+ * `meshcoreConfig.ts` still falls back to it for a stored config that carries
+ * no port at all. That fallback is deliberately left alone — changing it would
+ * silently repoint any existing portless source, and the form has always
+ * required a port, so it only affects sources created outside the UI.
+ *
+ * A string because it feeds `useState` and an `<input>` value directly.
+ */
+export const MESHCORE_DEFAULT_TCP_PORT = '5000';

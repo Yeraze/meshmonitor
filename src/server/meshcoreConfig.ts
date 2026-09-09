@@ -388,6 +388,14 @@ export function meshcoreConfigFromSource(source: Source): MeshCoreConfig | null 
     return {
       connectionType: ConnectionType.TCP,
       tcpHost: cfg.tcpHost,
+      // 4403, not the 5000 the Add-Source form now defaults to (#5160). The
+      // two differ on purpose. 5000 is where MeshCore's WiFi/Ethernet
+      // companion builds listen, and that is the right thing to pre-fill for
+      // someone adding a source. This fallback only fires for a stored config
+      // with NO port at all, which the form cannot produce — it validates the
+      // field — so in practice it is reached by sources created through the
+      // API or an import. Moving it to 5000 would silently repoint those,
+      // including any that are working today against a native-TCP build.
       tcpPort: cfg.tcpPort ?? 4403,
       firmwareType,
       virtualNode,
