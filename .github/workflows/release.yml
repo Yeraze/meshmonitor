@@ -106,12 +106,35 @@ jobs:
       - name: Run all tests
         run: npm run test:run
 
+      # Node 22, NOT 24. This is the only place coverage still runs — it was
+      # removed from ci.yml when @vitest/coverage-v8 hung 30+ min on Node 24 —
+      # so a failure here blocks the whole release: build-artifacts and
+      # update-release both need this job, and skipping them leaves the
+      # published release without its source tarball.
+      #
+      # Node 24 + coverage-v8 has now bitten twice. On v4.16.0-rc6 this step
+      # failed on 24 on two consecutive runs while 22 passed the identical
+      # suite both times, with 19,361 tests passed / 0 failed, a complete
+      # coverage table, and then:
+      #
+      #   EnvironmentTeardownError: [vitest-worker]: Closing rpc while
+      #   "onUserConsoleLog" was pending
+      #   Process completed with exit code 1
+      #
+      # The gate itself is healthy — 63.94% statements against the floors in
+      # vitest.config.ts — so the answer is to run it on the runtime where it
+      # reports honestly, not to drop it. `npm run test:run` still covers Node
+      # 24 in this same matrix; only the coverage pass moves.
       - name: Generate coverage report
-        if: matrix.node-version == '24.x'
+        if: matrix.node-version == '22.x'
         run: npm run test:coverage
 
+      # Thresholds are enforced by vitest.config.ts (statements 32 overall,
+      # src/utils/** 70, src/server/** 25) — `vitest run --coverage` exits
+      # non-zero on its own if they are breached. This step is a placeholder
+      # for any additional check and must track the condition above.
       - name: Check coverage thresholds
-        if: matrix.node-version == '24.x'
+        if: matrix.node-version == '22.x'
         run: |
           echo "Checking coverage thresholds..."
           # Add coverage threshold checks here when configured
