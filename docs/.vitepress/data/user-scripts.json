@@ -737,9 +737,9 @@
     "icon": "🚨",
     "description": "Emergency communications control for MeshMonitor supporting both LIVE real-world operations and EXERCISE/drill operations over Meshtastic and MeshCore. Provides station check-in/check-out, SITREPs, message traffic with ROUTINE/PRIORITY/IMMEDIATE precedence, operational status, exercise injects, logging, and after-action CSV exports. Designed for amateur radio EmComm, ARES/SET exercises, served agencies, and city, county/regional, and state Emergency Operations Centers (EOCs).",
     "language": "Python",
-    "tags": ["EmComm", "Emergency Communications", "EOC", "Meshtastic", "MeshCore", "Amateur Radio", "Ham Radio", "ARES", "ARRL SET", "SITREP", "Emergency Management", "Incident Communications"],
+    "tags": ["EmComm", "Emergency Communications", "EOC", "Ham Radio", "ARES", "SITREP"],
     "githubPath": "maxhayim/meshmonitor-emcomm-control/mm_emcomm_control.py",
-    "exampleTrigger": "EMCOMM CHECKIN {callsign} {location} {power} {role}, EMCOMM CHECKOUT {callsign}, EMCOMM SITREP {location} {status}, EMCOMM TRAFFIC {to} [ROUTINE|PRIORITY|IMMEDIATE] {text}, EMCOMM STATUS, EMCOMM HELP",
+    "exampleTrigger": "EMCOMM CHECKIN, EMCOMM CHECKOUT, EMCOMM SITREP, EMCOMM TRAFFIC, EMCOMM STATUS, EMCOMM HELP",
     "requirements": [
       "MeshMonitor with Auto Responder/User Scripts support",
       "Python 3.9+ (no third-party packages required)",
