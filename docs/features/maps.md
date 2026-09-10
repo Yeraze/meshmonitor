@@ -123,6 +123,28 @@ are split buttons with a `▾` channel-selection dropdown (shown when more than
 one channel exists, mirroring the **Exchange Position** control). Use it to
 override the default and send on a specific channel.
 
+### Transport filtering and route segments
+
+The **Map Features** panel carries three transport toggles — **Show RF**, **Show UDP**, and **Show MQTT** — that filter the map by *how the traffic reached MeshMonitor*: over the air (RF), Meshtastic's multicast-UDP local transport, or an MQTT broker/bridge.
+
+**Show RF defaults to on; Show UDP and Show MQTT default to off.**
+
+Since 4.16.0 these toggles filter **traceroute route segments** as well as node markers. Previously segments were drawn regardless of transport.
+
+A segment is drawn when any transport it was observed over is enabled:
+
+- Each traceroute records which transport carried it. Every hop inherits that transport…
+- …unless the hop itself carries the firmware's unknown-SNR sentinel, which marks a hop that crossed MQTT. That marking wins for that hop.
+- The aggregated "Show Route Segments" layer collapses many traceroutes onto one line per node pair, so a link observed over RF by one traceroute and MQTT by another stays visible while **Show RF** is on. Real RF evidence for a link is not discarded because some other traceroute travelled differently.
+
+::: warning Fewer route segments after upgrading to 4.16.0
+Because **Show MQTT** and **Show UDP** are off by default, upgrading can visibly reduce the number of route segments on the map — in particular the dashed, MQTT-coloured ones. Nothing has been deleted. Turn **Show MQTT** on in the Map Features panel to see them again.
+:::
+
+Traceroutes recorded before 4.16.0 carry no transport information — MeshMonitor never stored it — so they are treated as RF and remain visible under the default toggles.
+
+MeshCore and Reticulum sources are not covered by this filter; their messages live in separate tables and need a different query.
+
 ### Waypoints
 
 Waypoints — Meshtastic's `WAYPOINT_APP` pins — render directly on the per-source dashboard map and the Map Analysis canvas, using each waypoint's emoji as its icon. Users with `waypoints:write` can create, edit, and delete waypoints in place from the **Map Features** panel. The same panel has a **Show Waypoints** checkbox (default on) that toggles waypoint marker visibility per-user — persisted alongside the other map feature toggles. See the dedicated [Waypoints](/features/waypoints) page for the full workflow, permissions, and REST API.

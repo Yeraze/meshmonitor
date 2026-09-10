@@ -53,6 +53,33 @@ Changes that alter the upstream target (host, port, heartbeat) automatically res
 - **Resize** — drag the sidebar's right edge to widen or narrow it; the chosen width is remembered per browser (200–480px). Useful for long MQTT source names.
 - The per-source **node count** badge reflects each source's own nodes consistently, regardless of which source is currently selected.
 
+### Unread direct-message badge
+
+::: tip New in 4.16.0
+:::
+
+Each source card shows a badge with the number of unread direct messages addressed to
+that source's own node, so you can see which source wants attention without opening each
+one in turn. Counts above 99 display as `99+`.
+
+The badge respects the permissions you already have:
+
+- A source is counted only if you hold `messages:read` **on that source**. A grant on one
+  source never reveals another source's count.
+- A DM is counted only if you can see the node that sent it, the same channel-visibility
+  rule the per-conversation unread badges use.
+- Muted conversations do not light the badge.
+- Anonymous visitors see no badges — unread state is per-user.
+
+Sources whose messages live outside the Meshtastic message store — MeshCore and
+Reticulum — are not counted. They are omitted rather than shown as zero, because zero
+would be a claim MeshMonitor cannot currently make for them.
+
+**Turning it off.** A reporter running five or more overlapping sources expected the
+badge lit more or less permanently, so there is a per-user switch: the **Unread DM
+indicator** button in the Sources list header. Switching it off stops the polling as well
+as hiding the badges, and the preference is saved to your account rather than the browser.
+
 ## Source picker
 
 Nearly every top-level view has a **source picker** in the header. It controls which source's data you're looking at:

@@ -69,11 +69,12 @@ Added in 4.5.1. MeshCore Companions can now be reached over TCP directly from th
 | Field | Default | Notes |
 |---|---|---|
 | Host | (none) | Hostname or IP of the device or proxy reachable from the MeshMonitor container |
-| Port | `4403` | TCP port the companion is listening on; override if your proxy uses a different port |
+| Port | `5000` | TCP port the companion is listening on. `5000` is where MeshCore's WiFi and Ethernet companion builds open their TCP server. Override it for a `ser2net`/`esp-link` proxy on another port, or for a **native TCP** build (see below), which listens on `4403`. |
 
 Common ways to put a MeshCore Companion on TCP:
 
-- **Native TCP firmware** — MeshCore Companion builds that expose the binary protocol directly over TCP (listening on `4403` by default). Wire the device to your network, point MeshMonitor at it.
+- **WiFi / Ethernet companion firmware** — the common case. A companion build with a network interface opens its TCP server on `5000`; wire the device to your network and point MeshMonitor at it. This is what the port field pre-fills.
+- **Native TCP firmware** — a separate Companion build that exposes the binary protocol directly over TCP, listening on `4403` rather than `5000`. If you are using one of these, change the port when adding the source.
 - **`ser2net`** — Bridge a serial-attached MeshCore device on another host to a TCP port. Useful when the companion is plugged into a Pi or workstation that isn't running MeshMonitor.
 - **`esp-link`** — ESP8266/ESP32-based serial-to-WiFi adapter wired to the companion's UART. The same binary protocol flows transparently over the link.
 
@@ -595,7 +596,7 @@ The roadmap is incremental: keep landing MeshCore features each release, keep al
 
 ### MeshCore source can't be added or connection fails
 - For **USB** sources: Verify the serial port is accessible inside the container (check `devices:` mapping in docker-compose). The entrypoint auto-grants the `node` user access to mapped tty groups; if you mounted a device after the container started, restart it.
-- For **TCP** sources: Verify the host is reachable from inside the container (the MeshMonitor process resolves it, not your browser). Use a LAN IP rather than `localhost`/`127.0.0.1`, or `host.docker.internal` when the device shares a host with MeshMonitor. Confirm the port (default `4403`) is open and the proxy/firmware is listening.
+- For **TCP** sources: Verify the host is reachable from inside the container (the MeshMonitor process resolves it, not your browser). Use a LAN IP rather than `localhost`/`127.0.0.1`, or `host.docker.internal` when the device shares a host with MeshMonitor. Confirm the port is open and the proxy/firmware is listening — `5000` for a WiFi/Ethernet companion build (the default the form pre-fills), `4403` for a native-TCP build, or whatever port your `ser2net`/`esp-link` proxy uses. A wrong port here is the most common cause of a MeshCore TCP source that never connects.
 - Check MeshMonitor logs for `[MeshCore]` entries for detailed error messages.
 
 ### Runtime-added MeshCore source idle until restart
