@@ -28,6 +28,152 @@ const newsJsonPlugin = {
 }
 
 // https://vitepress.dev/reference/site-config
+/**
+ * Features sidebar.
+ *
+ * Rebalanced so no group runs past six rows: "Network Insight" had grown to ten
+ * and "Administration & Security" to nine, which is past the point a sidebar
+ * group can be scanned. Groups are named for what the reader is doing rather
+ * than for the subsystem involved.
+ *
+ * Shared with the root-level pages below (`/faq`, `/user-scripts`,
+ * `/security-duplicate-keys`, …) so those stop rendering with no sidebar at
+ * all. Their URLs are deliberately unchanged — this site has no redirect
+ * mechanism, so a move would break every inbound link permanently, and the two
+ * `security-*` URLs in particular are shared with users directly.
+ */
+const featuresSidebar = [
+  {
+    text: 'Start Here',
+    collapsed: false,
+    items: [
+      { text: 'Settings', link: '/features/settings' },
+      { text: 'Global Settings', link: '/features/global-settings' },
+      { text: 'Multi-Source', link: '/features/multi-source' },
+      { text: 'Privacy Disclosures', link: '/features/privacy-disclosures' }
+    ]
+  },
+  {
+    text: 'Your Nodes',
+    collapsed: false,
+    items: [
+      { text: 'Device Configuration', link: '/features/device' },
+      { text: 'Node Number Changes (2.8)', link: '/features/node-identity-changes' },
+      { text: 'Traffic Management', link: '/features/traffic-management' },
+      { text: 'Receive-Only Mode', link: '/features/receive-only-mode' }
+    ]
+  },
+  {
+    text: 'Messaging & Channels',
+    collapsed: false,
+    items: [
+      { text: 'Message Search', link: '/features/message-search' },
+      { text: 'Delivery Details', link: '/features/delivery-diagnostics' },
+      { text: 'Channel Database', link: '/features/channel-database' },
+      { text: 'Store & Forward', link: '/features/store-forward' }
+    ]
+  },
+  {
+    text: 'Maps & Geography',
+    collapsed: false,
+    items: [
+      { text: 'Interactive Maps', link: '/features/maps' },
+      { text: 'Map Analysis', link: '/features/map-analysis' },
+      { text: 'Waypoints', link: '/features/waypoints' },
+      { text: 'Position Estimation', link: '/features/position-estimation' },
+      { text: 'Estimated Accuracy', link: '/features/estimated-accuracy' },
+      { text: 'Embed Maps', link: '/features/embed-maps' }
+    ]
+  },
+  {
+    text: 'Monitoring & Telemetry',
+    collapsed: false,
+    items: [
+      { text: 'Analytics', link: '/features/analytics' },
+      { text: 'Analysis & Reports', link: '/features/analysis-reports' },
+      { text: 'Telemetry Widgets', link: '/features/telemetry-widgets' },
+      { text: 'Solar Monitoring', link: '/features/solar-monitoring' }
+    ]
+  },
+  {
+    text: 'Diagnostics',
+    collapsed: false,
+    items: [
+      {
+        text: 'Mesh Issues Analysis',
+        link: '/features/mesh-issues',
+        items: [
+          { text: 'Test Reference', link: '/features/mesh-issues-test-reference' }
+        ]
+      },
+      { text: 'Link Quality & Smart Hops', link: '/features/link-quality' },
+      { text: 'Packet Monitor', link: '/features/packet-monitor' }
+    ]
+  },
+  {
+    text: 'Automation & Alerts',
+    collapsed: false,
+    items: [
+      { text: 'Automatic Responses', link: '/features/automation' },
+      { text: 'Automation Engine', link: '/features/automation-engine' },
+      { text: 'Geofence Triggers', link: '/features/geofence-triggers' },
+      { text: 'Push Notifications', link: '/features/notifications' },
+      { text: 'Auto Heap Management', link: '/features/auto-heap-management' }
+    ]
+  },
+  {
+    text: 'Security',
+    collapsed: false,
+    items: [
+      { text: 'Security Overview', link: '/features/security' },
+      { text: 'Duplicate Encryption Keys', link: '/security-duplicate-keys' },
+      { text: 'Low-Entropy Encryption Keys', link: '/security-low-entropy-keys' },
+      { text: 'Impersonation Detection', link: '/features/impersonation-detection' },
+      { text: 'PKI Direct Message Decryption', link: '/features/pki-dm-decryption' },
+      { text: 'Security Advisories', link: '/security/SECURITY_ADVISORY' }
+    ]
+  },
+  {
+    text: 'Administration',
+    collapsed: false,
+    items: [
+      { text: 'Per-Source Permissions', link: '/features/per-source-permissions' },
+      { text: 'Admin Commands', link: '/features/admin-commands' },
+      { text: 'System Backup & Restore', link: '/features/system-backup' },
+      { text: 'Firmware OTA Updates', link: '/firmware-ota-prerequisites' }
+    ]
+  },
+  {
+    text: 'Integrations',
+    collapsed: false,
+    items: [
+      { text: 'Embedded MQTT Broker & Bridge', link: '/features/mqtt-broker' },
+      { text: 'ATAK / CoT Integration', link: '/features/atak' }
+    ]
+  },
+  {
+    text: 'MeshCore',
+    collapsed: false,
+    items: [
+      { text: 'MeshCore Overview', link: '/features/meshcore' },
+      { text: 'Receive-Only Mode', link: '/features/meshcore-receive-only' },
+      { text: 'Analyzer Observer', link: '/features/meshcore-analyzer-observer' },
+      { text: 'MQTT Ingest', link: '/features/meshcore-mqtt-ingest' }
+    ]
+  },
+  {
+    text: 'Appearance & Community',
+    collapsed: true,
+    items: [
+      { text: '\u{1F3A8} Custom Themes', link: '/features/custom-themes' },
+      { text: '\u{1F3A8} Theme Gallery', link: '/THEME_GALLERY' },
+      { text: '\u{1F30D} Translations', link: '/features/translations' },
+      { text: '\u{1F310} Site Gallery', link: '/site-gallery' },
+      { text: '\u{1F4DC} User Scripts', link: '/user-scripts' }
+    ]
+  }
+]
+
 export default defineConfig({
   vite: {
     server: {
@@ -64,107 +210,26 @@ export default defineConfig({
     ],
 
     sidebar: {
-      '/features/': [
-        {
-          text: 'Core',
-          collapsed: false,
-          items: [
-            { text: 'Settings', link: '/features/settings' },
-            { text: 'Global Settings', link: '/features/global-settings' },
-            { text: 'Multi-Source', link: '/features/multi-source' },
-          { text: 'Privacy Disclosures', link: '/features/privacy-disclosures' },
-            { text: 'Node Number Changes (2.8)', link: '/features/node-identity-changes' },
-            { text: 'Device Configuration', link: '/features/device' },
-            { text: 'Receive-Only Mode', link: '/features/receive-only-mode' }
-          ]
-        },
-        {
-          text: 'Messaging & Channels',
-          collapsed: false,
-          items: [
-            { text: 'Message Search', link: '/features/message-search' },
-            { text: 'Delivery Details', link: '/features/delivery-diagnostics' },
-            { text: 'Channel Database', link: '/features/channel-database' },
-            { text: 'Store & Forward', link: '/features/store-forward' },
-            { text: 'Embedded MQTT Broker & Bridge', link: '/features/mqtt-broker' }
-          ]
-        },
-        {
-          text: 'Maps & Geography',
-          collapsed: false,
-          items: [
-            { text: 'Interactive Maps', link: '/features/maps' },
-            { text: 'Position Estimation', link: '/features/position-estimation' },
-            { text: 'Estimated Accuracy', link: '/features/estimated-accuracy' },
-            { text: 'Embed Maps', link: '/features/embed-maps' },
-            { text: 'Map Analysis', link: '/features/map-analysis' },
-            { text: 'Waypoints', link: '/features/waypoints' }
-          ]
-        },
-        {
-          text: 'Network Insight',
-          collapsed: false,
-          items: [
-            { text: 'Analytics', link: '/features/analytics' },
-            { text: 'Analysis & Reports', link: '/features/analysis-reports' },
-            { text: 'Mesh Issues Analysis', link: '/features/mesh-issues' },
-            { text: 'Mesh Issues Test Reference', link: '/features/mesh-issues-test-reference' },
-            { text: 'Link Quality & Smart Hops', link: '/features/link-quality' },
-            { text: 'Telemetry Widgets', link: '/features/telemetry-widgets' },
-            { text: 'Traffic Management', link: '/features/traffic-management' },
-            { text: 'Solar Monitoring', link: '/features/solar-monitoring' },
-            { text: 'Packet Monitor', link: '/features/packet-monitor' },
-            { text: 'ATAK / CoT Integration', link: '/features/atak' }
-          ]
-        },
-        {
-          text: 'Automation & Alerts',
-          collapsed: false,
-          items: [
-            { text: 'Automation', link: '/features/automation' },
-            { text: 'Automation Engine', link: '/features/automation-engine' },
-            { text: 'Geofence Triggers', link: '/features/geofence-triggers' },
-            { text: 'Auto Heap Management', link: '/features/auto-heap-management' },
-            { text: 'Push Notifications', link: '/features/notifications' }
-          ]
-        },
-        {
-          text: 'Administration & Security',
-          collapsed: false,
-          items: [
-            { text: 'Security', link: '/features/security' },
-            { text: 'Duplicate Encryption Keys', link: '/security-duplicate-keys' },
-            { text: 'Low-Entropy Encryption Keys', link: '/security-low-entropy-keys' },
-            { text: 'Impersonation Detection', link: '/features/impersonation-detection' },
-            { text: 'Per-Source Permissions', link: '/features/per-source-permissions' },
-            { text: 'PKI Direct Message Decryption', link: '/features/pki-dm-decryption' },
-            { text: 'Admin Commands', link: '/features/admin-commands' },
-            { text: 'System Backup & Restore', link: '/features/system-backup' },
-            { text: 'Firmware OTA Updates', link: '/firmware-ota-prerequisites' }
-          ]
-        },
-        {
-          text: 'Appearance & UX',
-          collapsed: true,
-          items: [
-            { text: '🎨 Custom Themes', link: '/features/custom-themes' },
-            { text: '🎨 Theme Gallery', link: '/THEME_GALLERY' },
-            { text: '🌍 Translations', link: '/features/translations' },
-            { text: '🌐 Site Gallery', link: '/site-gallery' },
-            { text: '📜 User Scripts', link: '/user-scripts' }
-          ]
-        },
-        {
-          text: 'Protocol-Specific',
-          collapsed: true,
-          items: [
-            { text: 'MeshCore', link: '/features/meshcore' },
-            { text: 'MeshCore Receive-Only Mode', link: '/features/meshcore-receive-only' },
-            { text: 'MeshCore Analyzer Observer', link: '/features/meshcore-analyzer-observer' },
-            { text: 'MeshCore MQTT Ingest', link: '/features/meshcore-mqtt-ingest' }
-          ]
-        }
-      ],
+      '/features/': featuresSidebar,
+
+      // Root-level pages used to render with NO sidebar at all, because every
+      // sidebar key was a directory prefix and these live at the site root.
+      // Arriving from search gave the reader no sense that a section existed.
+      // Their URLs are unchanged on purpose (no redirect support on this site);
+      // they just borrow the Features sidebar for context.
+      //
+      // `/security-duplicate-keys` and `/security-low-entropy-keys` are the
+      // short URLs shared with users about key problems. Do not move or rename
+      // them.
+      '/security-duplicate-keys': featuresSidebar,
+      '/security-low-entropy-keys': featuresSidebar,
+      '/security/': featuresSidebar,
+      '/firmware-ota-prerequisites': featuresSidebar,
+      '/THEME_GALLERY': featuresSidebar,
+      '/site-gallery': featuresSidebar,
+      '/user-scripts': featuresSidebar,
+      '/faq': featuresSidebar,
+
       '/configuration/': [
         {
           text: 'Get Started',
@@ -209,6 +274,7 @@ export default defineConfig({
           items: [
             { text: 'Production Deployment', link: '/configuration/production' },
             { text: '🔄 Updating MeshMonitor', link: '/configuration/updating' },
+          { text: 'Unattended Upgrades', link: '/configuration/auto-upgrade' },
             { text: 'Reducing Node Load', link: '/configuration/node-load' },
             { text: 'Push Notifications', link: '/features/notifications' },
             { text: '🗺️ Custom Tile Servers', link: '/configuration/custom-tile-servers' }
@@ -325,6 +391,9 @@ export default defineConfig({
     '**/api/**',
     '**/planning/**',
     '**/plans/**',
-    '**/operations/**'
+    '**/operations/**',
+    // Dated point-in-time security review, kept in-repo as an archive record.
+    // The living advisory page (security/SECURITY_ADVISORY.md) still publishes.
+    '**/security/2026-*-review.md'
   ]
 })

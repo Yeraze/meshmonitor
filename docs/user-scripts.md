@@ -173,7 +173,7 @@ External scripts are fetched from the external repository's raw GitHub URL. The 
 For detailed information on creating Auto Responder scripts, see:
 
 - [Auto Responder Scripting Guide](/developers/auto-responder-scripting) - Complete developer documentation
-- [Automation Features](/features/automation) - User-facing Auto Responder documentation
+- [Automatic Responses](/features/automation) - User-facing Auto Responder documentation
 - [Example Scripts README](https://github.com/yeraze/meshmonitor/blob/main/examples/auto-responder-scripts/README.md) - Detailed examples and patterns
 
 ## Join the Community

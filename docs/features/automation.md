@@ -1,4 +1,14 @@
-# Automation Features
+# Automatic Responses
+
+::: tip Which automation page do I want?
+**This page** covers the standing behaviours MeshMonitor runs on its own — auto-responder,
+auto-acknowledge, auto-announce, scheduled traceroutes and the rest. You switch them on and
+configure them; they run in the background.
+
+If instead you want to build a rule — *when this happens, do that* — with conditions,
+variables and `{{ token }}` substitution, you want the
+[Automation Engine](/features/automation-engine).
+:::
 
 MeshMonitor includes several automation features that can help you manage your mesh network more efficiently. These features run in the background and can be configured through the Info tab.
 
