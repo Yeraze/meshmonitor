@@ -58,27 +58,25 @@ Changes that alter the upstream target (host, port, heartbeat) automatically res
 ::: tip New in 4.16.0
 :::
 
-Each source card shows a badge with the number of unread direct messages addressed to
-that source's own node, so you can see which source wants attention without opening each
-one in turn. Counts above 99 display as `99+`.
+**Each source card shows how many unread direct messages it holds, so you can see which
+source needs you without opening them one by one.** Counts over 99 show as `99+`.
 
-The badge respects the permissions you already have:
+To switch it off, click **Unread DM indicator** in the Sources list header. That stops the
+polling as well as the badges, and MeshMonitor saves the choice to your account, not your
+browser. Run five sources that all hear the same traffic and you may want this — the badge
+will stay lit.
 
-- A source is counted only if you hold `messages:read` **on that source**. A grant on one
-  source never reveals another source's count.
-- A DM is counted only if you can see the node that sent it, the same channel-visibility
-  rule the per-conversation unread badges use.
-- Muted conversations do not light the badge.
-- Anonymous visitors see no badges — unread state is per-user.
+The badge obeys the permissions you already hold:
 
-Sources whose messages live outside the Meshtastic message store — MeshCore and
-Reticulum — are not counted. They are omitted rather than shown as zero, because zero
-would be a claim MeshMonitor cannot currently make for them.
+- MeshMonitor counts a source only if you hold `messages:read` **on that source**. A grant on
+  one source never leaks another source's count.
+- It counts a DM only if you can see the node that sent it — the same rule the
+  per-conversation badges use.
+- Muted conversations never light the badge.
+- Anonymous visitors see no badges, because unread state belongs to a user.
 
-**Turning it off.** A reporter running five or more overlapping sources expected the
-badge lit more or less permanently, so there is a per-user switch: the **Unread DM
-indicator** button in the Sources list header. Switching it off stops the polling as well
-as hiding the badges, and the preference is saved to your account rather than the browser.
+MeshCore and Reticulum sources show no badge. Their messages live in other tables, and
+MeshMonitor leaves them out rather than showing a zero it cannot stand behind.
 
 ## Source picker
 

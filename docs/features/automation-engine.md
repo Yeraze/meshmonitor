@@ -5,13 +5,12 @@
      instead of evaluating them as Vue interpolation (which breaks the build). -->
 <div v-pre>
 
-::: tip Which automation page do I want?
-**This page** is the rule builder: *when this happens, do that*, with conditions, variables
-and `{{ token }}` substitution. You compose the logic yourself.
+::: tip Two automation pages — which one?
+**Use this page to build your own rule** — when this happens, do that — with conditions,
+variables, and `{{ token }}` substitution. You write the logic.
 
-If instead you just want to switch on a standing behaviour — auto-responder, auto-acknowledge,
-auto-announce, scheduled traceroutes — those are on
-[Automatic Responses](/features/automation).
+**Use [Automatic Responses](/features/automation) to switch on behaviour MeshMonitor already
+knows how to do**: auto-responder, auto-acknowledge, auto-announce, scheduled traceroutes.
 :::
 
 ::: tip New in 4.12

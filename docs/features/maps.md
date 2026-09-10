@@ -125,25 +125,29 @@ override the default and send on a specific channel.
 
 ### Transport filtering and route segments
 
-The **Map Features** panel carries three transport toggles — **Show RF**, **Show UDP**, and **Show MQTT** — that filter the map by *how the traffic reached MeshMonitor*: over the air (RF), Meshtastic's multicast-UDP local transport, or an MQTT broker/bridge.
+**Since 4.16.0, the Show RF / UDP / MQTT toggles hide route segments too, not just node
+markers. Show MQTT and Show UDP are off by default, so upgrading removes segments from your
+map.** Nothing is deleted. Turn **Show MQTT** on in the **Map Features** panel to see them
+again — the dashed, MQTT-coloured ones are the ones you will miss.
 
-**Show RF defaults to on; Show UDP and Show MQTT default to off.**
+The three toggles filter the map by *how the traffic reached MeshMonitor*: over the air (RF),
+Meshtastic's multicast-UDP local transport, or an MQTT broker or bridge. Show RF starts on;
+the other two start off.
 
-Since 4.16.0 these toggles filter **traceroute route segments** as well as node markers. Previously segments were drawn regardless of transport.
+MeshMonitor draws a segment when any transport it saw that segment on is switched on:
 
-A segment is drawn when any transport it was observed over is enabled:
+- Each traceroute records the transport that carried it, and every hop inherits it.
+- One thing overrides that: if the firmware could not fill in a hop's SNR, it marks the hop,
+  and MeshMonitor reads that mark as MQTT. The mark wins for that hop.
+- **Show Route Segments** draws one line per node pair from many traceroutes. So a link that
+  one traceroute saw over RF and another saw over MQTT stays on the map while **Show RF** is
+  on. Real RF evidence for a link survives, whatever route the other traceroutes took.
 
-- Each traceroute records which transport carried it. Every hop inherits that transport…
-- …unless the hop itself carries the firmware's unknown-SNR sentinel, which marks a hop that crossed MQTT. That marking wins for that hop.
-- The aggregated "Show Route Segments" layer collapses many traceroutes onto one line per node pair, so a link observed over RF by one traceroute and MQTT by another stays visible while **Show RF** is on. Real RF evidence for a link is not discarded because some other traceroute travelled differently.
+Traceroutes from before 4.16.0 carry no transport at all — MeshMonitor never recorded it — so
+the map treats them as RF and keeps showing them.
 
-::: warning Fewer route segments after upgrading to 4.16.0
-Because **Show MQTT** and **Show UDP** are off by default, upgrading can visibly reduce the number of route segments on the map — in particular the dashed, MQTT-coloured ones. Nothing has been deleted. Turn **Show MQTT** on in the Map Features panel to see them again.
-:::
-
-Traceroutes recorded before 4.16.0 carry no transport information — MeshMonitor never stored it — so they are treated as RF and remain visible under the default toggles.
-
-MeshCore and Reticulum sources are not covered by this filter; their messages live in separate tables and need a different query.
+This filter skips MeshCore and Reticulum sources. Their messages live in other tables and need
+a different query.
 
 ### Waypoints
 

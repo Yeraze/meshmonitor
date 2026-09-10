@@ -2,73 +2,69 @@
 
 *Added in 4.16.0.*
 
-A publicly reachable MeshMonitor re-serves mesh data — node names, positions, message
-traffic — to anonymous visitors and to tokenless embed viewers. Privacy disclosures let
-the operator state, in the interface itself, what policy applies to that data and who is
-responsible for it.
+Publish your privacy policy, terms of service, and contact details in MeshMonitor.
 
-Three documents are supported: **Privacy Policy**, **Terms of Service**, and **Contact**.
-Each is optional and off by default; nothing is rendered until you configure one.
+You need this if strangers can reach your dashboard. A public MeshMonitor hands mesh data —
+node names, positions, message traffic — to anyone who opens it, including people viewing an
+embedded map. These three documents tell them what happens to that data and who to ask about it.
+
+All three are optional and start empty. Nothing shows up until you set one.
 
 ## Two ways to publish
 
-Each of the three slots can be filled either way. If both are set for the same slot, the
-hosted document wins.
+Fill each slot either way. If you do both, the hosted document wins.
 
 ### Link to a document you host elsewhere
 
-Set a URL and MeshMonitor renders a link to it. Suitable when your policy already lives
-on a club site or a company page.
+Set a URL and MeshMonitor links to it. Use this when your policy already lives on a club site
+or a company page.
 
-| Setting | Purpose |
+| Setting | Fills |
 |---|---|
-| `privacyPolicyUrl` | Link target for the Privacy Policy slot |
-| `termsOfServiceUrl` | Link target for the Terms of Service slot |
-| `contactUrl` | Link target for the Contact slot |
+| `privacyPolicyUrl` | Privacy Policy |
+| `termsOfServiceUrl` | Terms of Service |
+| `contactUrl` | Contact |
 
-An empty string means no link is rendered for that slot.
+Leave a setting empty and MeshMonitor shows no link for it.
 
 ### Host the document in MeshMonitor
 
-Write the document in MeshMonitor and it is served at a stable public path:
+Write the document in MeshMonitor and it serves it at a fixed path:
 
 ```
 /privacy      /terms      /contact
 ```
 
-Bodies are authored in Markdown, including GitHub-flavoured tables and task lists, and
-render on a standalone page that does not require a login. That matters: a visitor who
-cannot see the dashboard still needs to be able to read the policy that covers the data
-they were just shown.
+Write the body in Markdown, including tables and task lists. The page needs no login — which is
+the point, since a visitor who cannot see your dashboard must still be able to read the policy
+that covers what you just showed them.
 
-A hosted document **takes precedence** over the matching URL setting, so you can stage a
-replacement by writing it, and fall back by deleting it.
+A hosted document beats the matching URL setting. So you can stage a replacement by writing it,
+and fall back by deleting it.
 
 ## Who can edit
 
-Editing is admin-gated. The API separates the two concerns deliberately:
+Only admins. The API splits the two jobs on purpose:
 
-| Endpoint | Access |
+| Endpoint | Who |
 |---|---|
-| `GET /api/privacy/links` | Public — the resolved set of links to render |
-| `GET /api/privacy/documents/:slug` | Public — one hosted document |
-| `/api/privacy/admin/documents` | Admin — create, update, delete |
+| `GET /api/privacy/links` | Anyone — the links to show |
+| `GET /api/privacy/documents/:slug` | Anyone — one hosted document |
+| `/api/privacy/admin/documents` | Admins — create, update, delete |
 
-The public router is mounted at both the base URL and the site root, so disclosures stay
-reachable when MeshMonitor is served under a sub-path such as `/meshmonitor`.
+MeshMonitor mounts the public routes at both the base URL and the site root, so your
+disclosures stay reachable when you serve the app under a sub-path such as `/meshmonitor`.
 
 ## Backup and restore
 
-Hosted documents are included in system backups and restored with the rest of the
-configuration, so a rebuilt instance comes back with its disclosures intact rather than
-silently losing them.
+System backups include hosted documents. A rebuilt instance comes back with its disclosures
+intact instead of quietly losing them.
 
 ## What this does not do
 
-- It does not change what data MeshMonitor collects or serves. It is disclosure, not
-  enforcement. See [Map Privacy and Security](/features/maps#map-privacy-and-security)
-  for the controls that actually restrict what anonymous visitors can see.
-- It does not write a policy for you. The documents are whatever you put in them.
-- It is unrelated to `noIndexEnabled` (which asks crawlers not to index the dashboard)
-  and to `linkPreviewsEnabled` (which controls outbound link-preview fetches), though
-  operators exposing an instance publicly usually want to consider all three.
+- **It does not change what MeshMonitor serves.** This is disclosure, not enforcement. To
+  restrict what anonymous visitors see, use the controls in
+  [Map Privacy and Security](/features/maps#map-privacy-and-security).
+- **It does not write your policy.** The documents say whatever you put in them.
+- **It is not `noIndexEnabled` or `linkPreviewsEnabled`.** Those ask crawlers to skip your
+  dashboard and control outbound link previews. If you run a public instance, weigh all three.
