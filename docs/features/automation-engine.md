@@ -5,12 +5,20 @@
      instead of evaluating them as Vue interpolation (which breaks the build). -->
 <div v-pre>
 
+::: tip Two automation pages — which one?
+**Use this page to build your own rule** — when this happens, do that — with conditions,
+variables, and `{{ token }}` substitution. You write the logic.
+
+**Use [Automatic Responses](/features/automation) to switch on behaviour MeshMonitor already
+knows how to do**: auto-responder, auto-acknowledge, auto-announce, scheduled traceroutes.
+:::
+
 ::: tip New in 4.12
 A generic, visual **"when this happens, do that"** builder — Home Assistant / Node-RED / IFTTT-inspired — that lets you create your own automations instead of relying on the hardcoded ones. It runs **globally across every source**, with optional per-source scoping.
 :::
 
 The Automation Engine lives on its own top-level **Automations** tab. It complements the
-[legacy Automation features](/features/automation) (Auto Acknowledge, Auto Traceroute, Auto Ping,
+[Automatic Responses](/features/automation) (Auto Acknowledge, Auto Traceroute, Auto Ping,
 Auto Responder, Auto Announce, …): those remain available and unchanged, while the engine is the
 flexible "build it yourself" alternative. Where a legacy automation gives you one fixed form, the
 engine lets you wire a **trigger → conditions → actions** graph for almost any behavior you can

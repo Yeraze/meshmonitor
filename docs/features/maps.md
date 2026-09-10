@@ -123,6 +123,32 @@ are split buttons with a `▾` channel-selection dropdown (shown when more than
 one channel exists, mirroring the **Exchange Position** control). Use it to
 override the default and send on a specific channel.
 
+### Transport filtering and route segments
+
+**Since 4.16.0, the Show RF / UDP / MQTT toggles hide route segments too, not just node
+markers. Show MQTT and Show UDP are off by default, so upgrading removes segments from your
+map.** Nothing is deleted. Turn **Show MQTT** on in the **Map Features** panel to see them
+again — the dashed, MQTT-coloured ones are the ones you will miss.
+
+The three toggles filter the map by *how the traffic reached MeshMonitor*: over the air (RF),
+Meshtastic's multicast-UDP local transport, or an MQTT broker or bridge. Show RF starts on;
+the other two start off.
+
+MeshMonitor draws a segment when any transport it saw that segment on is switched on:
+
+- Each traceroute records the transport that carried it, and every hop inherits it.
+- One thing overrides that: if the firmware could not fill in a hop's SNR, it marks the hop,
+  and MeshMonitor reads that mark as MQTT. The mark wins for that hop.
+- **Show Route Segments** draws one line per node pair from many traceroutes. So a link that
+  one traceroute saw over RF and another saw over MQTT stays on the map while **Show RF** is
+  on. Real RF evidence for a link survives, whatever route the other traceroutes took.
+
+Traceroutes from before 4.16.0 carry no transport at all — MeshMonitor never recorded it — so
+the map treats them as RF and keeps showing them.
+
+This filter skips MeshCore and Reticulum sources. Their messages live in other tables and need
+a different query.
+
 ### Waypoints
 
 Waypoints — Meshtastic's `WAYPOINT_APP` pins — render directly on the per-source dashboard map and the Map Analysis canvas, using each waypoint's emoji as its icon. Users with `waypoints:write` can create, edit, and delete waypoints in place from the **Map Features** panel. The same panel has a **Show Waypoints** checkbox (default on) that toggles waypoint marker visibility per-user — persisted alongside the other map feature toggles. See the dedicated [Waypoints](/features/waypoints) page for the full workflow, permissions, and REST API.

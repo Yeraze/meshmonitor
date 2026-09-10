@@ -113,7 +113,8 @@ Auto Heap Management uses MeshMonitor's existing remote admin connection to your
 
 ## Related Documentation
 
-- [Automation](/features/automation) — Overview of all MeshMonitor automation features
+- [Automatic Responses](/features/automation) — The standing automation behaviours
+- [Automation Engine](/features/automation-engine) — The rule builder
 - [Admin Commands](/features/admin-commands) — Manual node management commands
 - [Remote Admin Scanner](/features/automation#remote-admin-scanner) — Discover remotely manageable nodes across the mesh
 - [Settings](/features/settings) — General MeshMonitor configuration

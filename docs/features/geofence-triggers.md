@@ -48,6 +48,6 @@ The geofence appears on the main map as a translucent overlay (colour-coded by t
 
 ## Related
 
-- [Automation Overview](/features/automation)
+- [Automatic Responses](/features/automation)
 - [Auto-Responder Scripting](/developers/auto-responder-scripting) — custom actions
 - [Per-Source Permissions](/features/per-source-permissions) — who can edit geofences

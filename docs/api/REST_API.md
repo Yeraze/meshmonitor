@@ -106,9 +106,9 @@ position/nodeinfo/neighbor/telemetry request, or remote-node admin command — r
 `code: "TX_DISABLED"`. Two independent causes trigger it, one per source type:
 
 - **Meshtastic** — the target source's LoRa radio has `lora.txEnabled = false` (receive-only mode;
-  see [Receive-Only Mode](/docs/features/receive-only-mode.md)).
+  see [Receive-Only Mode](../features/receive-only-mode.md)).
 - **MeshCore** — the target source has the per-source `meshcoreReceiveOnly` setting turned on
-  (see [MeshCore Receive-Only Mode](/docs/features/meshcore-receive-only.md)).
+  (see [MeshCore Receive-Only Mode](../features/meshcore-receive-only.md)).
 
 ```json
 {
@@ -1226,7 +1226,7 @@ Manually trigger a traceroute request to a specific node to discover the network
 **Error Responses:**
 - `400`: Missing or invalid destination node ID
 - `409`: Transmit disabled on this source (`TX_DISABLED`) — the source's LoRa radio is in
-  receive-only mode; see [Receive-Only Mode](/docs/features/receive-only-mode.md)
+  receive-only mode; see [Receive-Only Mode](../features/receive-only-mode.md)
 - `500`: Failed to send traceroute
 
 **Example:**

@@ -462,7 +462,7 @@ Send a text message to the mesh network.
 
 **Error Responses:**
 - `409 TX_DISABLED` — Transmit is disabled on this source (receive-only mode); nothing was sent.
-  See [Receive-Only Mode](/docs/features/receive-only-mode.md).
+  See [Receive-Only Mode](../features/receive-only-mode.md).
 
 ---
 
@@ -612,7 +612,7 @@ Initiate a traceroute to a specific node.
 
 **Error Responses:**
 - `409 TX_DISABLED` — Transmit is disabled on this source (receive-only mode); nothing was sent.
-  See [Receive-Only Mode](/docs/features/receive-only-mode.md).
+  See [Receive-Only Mode](../features/receive-only-mode.md).
 
 ### GET /api/traceroutes/recent
 Get recent traceroute results.
@@ -730,7 +730,7 @@ Update automation and system settings.
 - **Traceroute**: `tracerouteIntervalMinutes` (1-60)
 - **MeshCore** (per-source — pass `?sourceId=<id>`): `meshcoreReceiveOnly` (string: exact
   `"true"`/`"false"` — see the strict-boolean note below). Blocks every transmission from that
-  MeshCore source; see [MeshCore Receive-Only Mode](/docs/features/meshcore-receive-only.md).
+  MeshCore source; see [MeshCore Receive-Only Mode](../features/meshcore-receive-only.md).
   Current state is also readable from `GET /api/sources` (`radio.receiveOnly` /
   `radio.canTransmit` on the MeshCore entry) and `GET /api/device/tx-status?sourceId=<id>`.
 
@@ -768,7 +768,7 @@ Update automation and system settings.
 - Changes to announce settings (`autoAnnounceEnabled`, `autoAnnounceIntervalHours`, `autoAnnounceUseSchedule`, `autoAnnounceSchedule`) trigger automatic scheduler restart
 - No container restart required for schedule changes - changes take effect immediately
 - Cron expressions are validated before accepting (must be valid 5-field cron format)
-- See [Automation Documentation](/docs/features/automation.md) for detailed information about each automation feature
+- See [Automation Documentation](../features/automation.md) for detailed information about each automation feature
 
 ### POST /api/settings/traceroute-interval
 Update the automatic traceroute interval.
@@ -869,7 +869,7 @@ The LoRa configuration write path no longer force-overrides `txEnabled` to `true
 honors whatever value is submitted, and backfills the device's current value when a client omits
 the field (LoRa config is written as a whole-message replace, so an omitted boolean would
 otherwise decode as `false`). This lets a source legitimately run in **receive-only mode** — see
-[Receive-Only Mode](/docs/features/receive-only-mode.md).
+[Receive-Only Mode](../features/receive-only-mode.md).
 
 Channel-URL import and remote-node config import likewise **preserve** the device's current
 `txEnabled` value instead of forcing it to `true` — importing channels or a remote config no
@@ -1130,9 +1130,9 @@ format above with `code: "TX_DISABLED"` and HTTP `409`. Two independent causes t
 source type:
 
 - **Meshtastic** — the target source's LoRa radio has `lora.txEnabled = false` (receive-only mode;
-  see [Receive-Only Mode](/docs/features/receive-only-mode.md)).
+  see [Receive-Only Mode](../features/receive-only-mode.md)).
 - **MeshCore** — the target source has the per-source `meshcoreReceiveOnly` setting turned on
-  (see [MeshCore Receive-Only Mode](/docs/features/meshcore-receive-only.md)).
+  (see [MeshCore Receive-Only Mode](../features/meshcore-receive-only.md)).
 
 ```json
 {
