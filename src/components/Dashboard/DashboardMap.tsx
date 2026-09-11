@@ -306,6 +306,7 @@ export default function DashboardMap({
     setShowPolarGrid,
     mapMaxAgeHours,
     setMapMaxAgeHours,
+    spreadNodes,
   } = useMapContext();
 
   // Effective map age cap from the Map Features age slider (#3322), clamped to
@@ -391,6 +392,8 @@ export default function DashboardMap({
         bits: node.positionPrecisionBits,
         isOverride: node.positionIsOverride,
       })),
+      // #5177: "Spread Nodes" off pins every marker on its reported point.
+      { enabled: spreadNodes },
     ).map(({ item: node, latLng }) => ({ node, pos: { lat: latLng[0], lng: latLng[1] } }));
 
     return { nodesWithPosition: positionedNodes, nowMs: referenceNowMs, cutoffTime: ageCutoffTime };

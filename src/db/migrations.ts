@@ -182,6 +182,7 @@ import { migration as tracerouteTransportMechanismMigration, runMigration160Post
 import { migration as userPrefsUnreadIndicatorMigration, runMigration161Postgres, runMigration161Mysql } from '../server/migrations/161_user_map_preferences_unread_indicator.js';
 import { migration as privacyDocumentsMigration, runMigration162Postgres, runMigration162Mysql } from '../server/migrations/162_privacy_documents.js';
 import { migration as meshcoreSnrRealMigration, runMigration163Postgres, runMigration163Mysql } from '../server/migrations/163_meshcore_snr_real.js';
+import { migration as spreadNodesPrefMigration, runMigration164Postgres, runMigration164Mysql } from '../server/migrations/164_user_map_preferences_spread_nodes.js';
 
 // ============================================================================
 // Registry
@@ -2645,4 +2646,19 @@ registry.register({
   sqlite: (db) => meshcoreSnrRealMigration.up(db),
   postgres: (client) => runMigration163Postgres(client),
   mysql: (pool) => runMigration163Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 164: `user_map_preferences.spread_nodes` (#5177) — per-user toggle
+// for the within-accuracy-cell marker offset. Default TRUE (today's behaviour);
+// unchecking pins every node at its exact reported position.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 164,
+  name: 'user_map_preferences_spread_nodes',
+  settingsKey: 'migration_164_user_map_preferences_spread_nodes',
+  sqlite: (db) => spreadNodesPrefMigration.up(db),
+  postgres: (client) => runMigration164Postgres(client),
+  mysql: (pool) => runMigration164Mysql(pool),
 });

@@ -4904,6 +4904,8 @@
     "showAnimations": "Show Animations",
     "showEstimatedPositions": "Show Estimated Positions",
     "showAccuracyRegions": "Show Accuracy Regions",
+    "spreadNodes": "Spread Nodes",
+    "spreadNodesHelp": "Offset low-precision nodes within their accuracy area so same-cell markers do not stack. Turn off to pin every node at exactly the position it reported.",
     "showPolarGrid": "Show Polar Grid",
     "polarGridDisabledTooltip": "Requires own node position"
   },

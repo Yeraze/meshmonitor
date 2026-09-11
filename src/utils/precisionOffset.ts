@@ -212,10 +212,22 @@ export interface PrecisionOffsetInput<T> {
  *
  * Returns each input's `item` paired with its resolved `latLng` (offset where the
  * cell has 2+ occupants, true center otherwise), in the input order.
+ *
+ * `options.enabled` is the user's "Spread Nodes" Map Features toggle (#5177).
+ * When false EVERY node keeps its true reported position — the map stops
+ * implying a within-cell guess the node never made, at the cost of same-cell
+ * markers stacking. Defaults to true, so a caller that doesn't pass it behaves
+ * exactly as before.
  */
 export function applyPrecisionCellOffsets<T>(
   nodes: ReadonlyArray<PrecisionOffsetInput<T>>,
+  options: { enabled?: boolean } = {},
 ): Array<{ item: T; latLng: [number, number] }> {
+  // Spread disabled: every marker sits on its reported point. Returned in input
+  // order with the same shape, so callers need no other branch.
+  if (options.enabled === false) {
+    return nodes.map((n) => ({ item: n.item, latLng: n.latLng }));
+  }
   // Pass 1: for each node resolve its accuracy cell (null when not offsettable)
   // and count occupancy. `shouldOffsetForPrecision` is evaluated once per node
   // here; it also narrows `bits` to a number, which we capture for pass 2.

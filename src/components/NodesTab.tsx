@@ -469,6 +469,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setShowEstimatedPositions,
     showAccuracyRegions,
     setShowAccuracyRegions,
+    spreadNodes,
+    setSpreadNodes,
+    pendingCenterNodeNum,
+    setPendingCenterNodeNum,
     showPolarGrid,
     setShowPolarGrid,
     animatedNodes,
@@ -1247,6 +1251,27 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     nodePositionsRef.current = nodePositions;
   });
 
+  // "Center on Map" handed over from another tab (#5177). Messages sends the
+  // nodeNum rather than a lat/lng because only this component knows where the
+  // marker was actually drawn: a low-precision node is rendered at a stable
+  // offset INSIDE its accuracy cell (#4016/#4155), so panning to the reported
+  // centre put the map up to half a cell — kilometres, for an obscured node —
+  // away from the pin the user asked to see. `centerOnNodeMarker` prefers the
+  // rendered position and falls back to the raw centre for a node that isn't
+  // currently on the map. Declared after the ref-sync effect above so
+  // `nodePositionsRef` is already current for this commit.
+  useEffect(() => {
+    if (pendingCenterNodeNum == null) return;
+    // Nodes haven't loaded yet — leave the request pending and retry on the
+    // render that brings them in.
+    if (processedNodes.length === 0) return;
+    const node = processedNodes.find(n => n.nodeNum === pendingCenterNodeNum);
+    // Clear unconditionally: a node that isn't in this source's list will never
+    // arrive, and a stuck request would hijack a later navigation.
+    setPendingCenterNodeNum(null);
+    if (node) centerOnNodeMarker(node);
+  }, [pendingCenterNodeNum, processedNodes, centerOnNodeMarker, setPendingCenterNodeNum]);
+
   // NodeLink handoff (Mesh Issues → Source Node Details): a click in the
   // Mesh Issues report drops the target nodeId into sessionStorage and
   // navigates. When NodesTab mounts on the destination source with its
@@ -1480,14 +1505,19 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
           bits: node.positionPrecisionBits,
           isOverride: node.positionIsOverride,
         })),
+      // #5177: "Spread Nodes" off pins every marker on its reported point.
+      { enabled: spreadNodes },
     );
     const posMap = new Map<number, [number, number]>();
     for (const { item: node, latLng } of offset) posMap.set(node.nodeNum, latLng);
     return posMap;
+  // `spreadNodes` belongs in the deps: flipping the toggle changes every
+  // resolved position without changing any node, so without it the memo would
+  // hand back the stale offsets and the markers would not move (#5177).
   }, [nodesWithPosition.map(n => {
     const pos = getEffectivePosition(n);
     return `${n.nodeNum}-${pos.latitude}-${pos.longitude}-${n.positionPrecisionBits ?? ''}`;
-  }).join(',')]);
+  }).join(','), spreadNodes]);
 
   // #4015: the Leaflet auto-open-on-click strip is now owned by the shared
   // `NodeMarkersLayer` (#4047 Phase 4 WP6) — it runs the same every-render,
@@ -2728,6 +2758,26 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       onChange={(e) => setShowAccuracyRegions(e.target.checked)}
                     />
                     <span>{t('map.showAccuracyRegions')}</span>
+                  </label>
+                  {/* #5177: obscured low-precision nodes are drawn at a stable
+                      offset inside their accuracy cell so same-cell markers
+                      don't stack (#4016/#4155). A reporter compared a pin to
+                      the node's reported GPS on OpenStreetMap and read that as
+                      the map lying, so it's now a choice. Off = every node sits
+                      exactly where it said it was. */}
+                  <label
+                    className="map-control-item"
+                    title={t(
+                      'map.spreadNodesHelp',
+                      'Offset low-precision nodes within their accuracy area so same-cell markers do not stack. Turn off to pin every node at exactly the position it reported.',
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={spreadNodes}
+                      onChange={(e) => setSpreadNodes(e.target.checked)}
+                    />
+                    <span>{t('map.spreadNodes', 'Spread Nodes')}</span>
                   </label>
                   <label className="map-control-item" title={unavailableIn3DTitle}>
                     <input
