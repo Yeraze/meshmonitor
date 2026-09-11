@@ -2,9 +2,9 @@
  * Drizzle schema definition for MeshCore messages table
  * Supports SQLite, PostgreSQL, and MySQL
  */
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
-import { pgTable, text as pgText, integer as pgInteger, boolean as pgBoolean, bigint as pgBigint } from 'drizzle-orm/pg-core';
-import { mysqlTable, varchar as myVarchar, int as myInt, boolean as myBoolean, bigint as myBigint, text as myText } from 'drizzle-orm/mysql-core';
+import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
+import { pgTable, text as pgText, integer as pgInteger, real as pgReal, boolean as pgBoolean, bigint as pgBigint } from 'drizzle-orm/pg-core';
+import { mysqlTable, varchar as myVarchar, int as myInt, double as myDouble, boolean as myBoolean, bigint as myBigint, text as myText } from 'drizzle-orm/mysql-core';
 
 // ============ SQLite Schema ============
 
@@ -27,9 +27,11 @@ export const meshcoreMessagesSqlite = sqliteTable('meshcore_messages', {
   // Timestamp (Unix ms)
   timestamp: integer('timestamp').notNull(),
 
-  // Signal quality at receive time
+  // Signal quality at receive time. rssi is a plain signed dBm byte
+  // (integer); snr is a quarter-dB LoRa value (fractional, e.g. -8.25) per
+  // the MeshCore companion wire format — see meshcoreCompanionCodec.ts.
   rssi: integer('rssi'),
-  snr: integer('snr'),
+  snr: real('snr'),
   // Routing metadata for received messages (#3742): hop count (from path_len)
   // and the comma-separated relay-hash chain (e.g. "a3,7f,02"). Null = direct/unknown.
   hopCount: integer('hopCount'),
@@ -65,7 +67,7 @@ export const meshcoreMessagesPostgres = pgTable('meshcore_messages', {
   text: pgText('text').notNull(),
   timestamp: pgBigint('timestamp', { mode: 'number' }).notNull(),
   rssi: pgInteger('rssi'),
-  snr: pgInteger('snr'),
+  snr: pgReal('snr'),
   hopCount: pgInteger('hopCount'),
   routePath: pgText('routePath'),
   scopeCode: pgInteger('scopeCode'),
@@ -87,7 +89,7 @@ export const meshcoreMessagesMysql = mysqlTable('meshcore_messages', {
   text: myText('text').notNull(),
   timestamp: myBigint('timestamp', { mode: 'number' }).notNull(),
   rssi: myInt('rssi'),
-  snr: myInt('snr'),
+  snr: myDouble('snr'),
   hopCount: myInt('hopCount'),
   routePath: myText('routePath'),
   scopeCode: myInt('scopeCode'),

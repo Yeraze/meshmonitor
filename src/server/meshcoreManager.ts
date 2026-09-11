@@ -2292,7 +2292,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       if (this.attributedChannelEchoes.has(match.echoKey)) return;
       this.attributedChannelEchoes.set(match.echoKey, now);
 
-      const snr = typeof data.snr === 'number' ? Math.round(data.snr) : null;
+      const snr = typeof data.snr === 'number' ? data.snr : null;
       const heardBy: Array<{ hash: string; name?: string | null; snr?: number | null }> = [];
 
       for (const hash of match.pathHops) {
