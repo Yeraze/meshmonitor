@@ -142,6 +142,9 @@ describe('MeshCoreManager Auto-Pathfinding run cancellation (#5170)', () => {
     // stops instead.
     await vi.advanceTimersByTimeAsync(3 * 60 * 1000);
     expect(discoverContactPath).not.toHaveBeenCalledWith('pubkey-1');
+    // The new run is unaffected by the stale run's cancellation — it
+    // continues on to its own next target.
+    expect(discoverContactPath).toHaveBeenCalledWith('new-pubkey-1');
   });
 
   it('a superseded run does not start a fresh pass over targets at all', async () => {
@@ -160,5 +163,8 @@ describe('MeshCoreManager Auto-Pathfinding run cancellation (#5170)', () => {
     await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
 
     expect(discoverContactPath).not.toHaveBeenCalled();
+    // A superseded run must not advance the "last completed run" timestamp
+    // either — only a run that actually finishes its target list should.
+    expect((m as any).autoPathfindingLastRunAt).toBe(0);
   });
 });
