@@ -343,7 +343,7 @@ function App() {
   // useTraceroutePaths) now live in useSourceView, which calls
   // useMapContext() itself (#3962 5.4 PR4).
   const {
-    setMapCenterTarget,
+    setPendingCenterNodeNum,
     traceroutes,
     setTraceroutes,
     setNeighborInfo,
@@ -3827,7 +3827,15 @@ function App() {
               const node = nodes.find(n => n.user?.id === nodeId);
               if (node?.position?.latitude != null && node?.position?.longitude != null) {
                 setSelectedNodeId(nodeId);
-                setMapCenterTarget([node.position.latitude, node.position.longitude]);
+                // #5177: hand NodesTab the NODE, not the reported lat/lng. A
+                // low-precision node's marker is drawn at a stable offset
+                // inside its accuracy cell (#4016/#4155), so centring on the
+                // reported position left the pin off-screen-ish — up to half a
+                // cell away, kilometres for an obscured node. Only the map
+                // surface knows where the marker actually landed, so it
+                // resolves the target and falls back to the reported centre
+                // for a node that isn't currently on the map.
+                setPendingCenterNodeNum(node.nodeNum);
                 setActiveTab('nodes');
               }
             }}
@@ -3862,7 +3870,9 @@ function App() {
         onShowOnMap={(node: DeviceInfo) => {
           if (node.user?.id && node.position?.latitude != null && node.position?.longitude != null) {
             setSelectedNodeId(node.user.id);
-            setMapCenterTarget([node.position.latitude, node.position.longitude]);
+            // #5177: centre on the marker, not the reported point — see the
+            // handleShowOnMap comment above.
+            setPendingCenterNodeNum(node.nodeNum);
             setActiveTab('nodes');
           }
         }}

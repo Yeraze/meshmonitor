@@ -5301,6 +5301,7 @@ class DatabaseService {
     mapMaxAgeHours?: number | null;
     positionHistoryPointsOnly?: boolean;
       unreadIndicatorEnabled?: boolean;
+      spreadNodes?: boolean;
   }): Promise<void> {
     return this.mapPreferences!.saveMapPreferences(userId, preferences);
   }

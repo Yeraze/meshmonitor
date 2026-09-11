@@ -121,6 +121,10 @@ export const userMapPreferencesSqlite = sqliteTable('user_map_preferences', {
   // the badge is the feature; the toggle exists because a reporter with 5+
   // sources expects it lit constantly and wants it gone.
   unreadIndicatorEnabled: integer('unread_indicator_enabled', { mode: 'boolean' }).default(true),
+  // Within-accuracy-cell marker offset for low-precision nodes (#5177).
+  // Default true = today's decluttering behaviour; false pins every node at
+  // exactly the position it reported.
+  spreadNodes: integer('spread_nodes', { mode: 'boolean' }).default(true),
   positionHistoryHours: integer('position_history_hours'),
   // Map age slider: hide nodes/traceroutes older than this on the map (hours).
   // NULL = follow the global maxNodeAgeHours setting. See #3322.
@@ -155,6 +159,7 @@ export const userMapPreferencesPostgres = pgTable('user_map_preferences', {
   showEstimatedPositions: pgBoolean('show_estimated_positions').default(false),
   showAtakContacts: pgBoolean('show_atak_contacts').default(false),
   unreadIndicatorEnabled: pgBoolean('unread_indicator_enabled').default(true),
+  spreadNodes: pgBoolean('spread_nodes').default(true),
   positionHistoryHours: pgInteger('position_history_hours'),
   mapMaxAgeHours: pgInteger('map_max_age_hours'),
   positionHistoryPointsOnly: pgBoolean('position_history_points_only').default(false),
@@ -409,6 +414,7 @@ export const userMapPreferencesMysql = mysqlTable('user_map_preferences', {
   showEstimatedPositions: myBoolean('show_estimated_positions').default(false),
   showAtakContacts: myBoolean('show_atak_contacts').default(false),
   unreadIndicatorEnabled: myBoolean('unread_indicator_enabled').default(true),
+  spreadNodes: myBoolean('spread_nodes').default(true),
   positionHistoryHours: myInt('position_history_hours'),
   mapMaxAgeHours: myInt('map_max_age_hours'),
   positionHistoryPointsOnly: myBoolean('position_history_points_only').default(false),

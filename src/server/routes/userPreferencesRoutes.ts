@@ -13,6 +13,7 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { optionalAuth, requireAuth } from '../auth/authMiddleware.js';
 import { getMapTilesetValidationError, normalizeMapTilesetPayload } from '../utils/mapTilesetPreferences.js';
+import { fail } from '../utils/apiResponse.js';
 
 const router = express.Router();
 
@@ -37,33 +38,33 @@ router.post('/map-preferences', requireAuth(), async (req, res) => {
   try {
     // Prevent saving preferences for anonymous user
     if (req.user!.username === 'anonymous') {
-      return res.status(403).json({ error: 'Cannot save preferences for anonymous user' });
+      return fail(res, 403, 'ANONYMOUS_USER', 'Cannot save preferences for anonymous user');
     }
 
-    const { mapTileset, mapTilesetLight, mapTilesetDark, showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showUdpNodes, showRfNodes, showMeshCoreNodes, showWaypoints, showAnimations, showAccuracyRegions, showEstimatedPositions, showAtakContacts, positionHistoryPointsOnly, positionHistoryHours, mapMaxAgeHours, unreadIndicatorEnabled } = req.body;
+    const { mapTileset, mapTilesetLight, mapTilesetDark, showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showUdpNodes, showRfNodes, showMeshCoreNodes, showWaypoints, showAnimations, showAccuracyRegions, showEstimatedPositions, showAtakContacts, positionHistoryPointsOnly, positionHistoryHours, mapMaxAgeHours, unreadIndicatorEnabled, spreadNodes } = req.body;
 
     // Validate boolean values
-    const booleanFields = { showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showUdpNodes, showRfNodes, showMeshCoreNodes, showWaypoints, showAnimations, showAccuracyRegions, showEstimatedPositions, showAtakContacts, positionHistoryPointsOnly, unreadIndicatorEnabled };
+    const booleanFields = { showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showUdpNodes, showRfNodes, showMeshCoreNodes, showWaypoints, showAnimations, showAccuracyRegions, showEstimatedPositions, showAtakContacts, positionHistoryPointsOnly, unreadIndicatorEnabled, spreadNodes };
     for (const [key, value] of Object.entries(booleanFields)) {
       if (value !== undefined && typeof value !== 'boolean') {
-        return res.status(400).json({ error: `${key} must be a boolean` });
+        return fail(res, 400, 'INVALID_PREFERENCE', `${key} must be a boolean`);
       }
     }
 
     // Validate tileset IDs (optional strings). Custom IDs are valid here.
     const tilesetValidationError = getMapTilesetValidationError({ mapTileset, mapTilesetLight, mapTilesetDark });
     if (tilesetValidationError) {
-      return res.status(400).json({ error: tilesetValidationError });
+      return fail(res, 400, 'INVALID_TILESET', tilesetValidationError);
     }
 
     // Validate positionHistoryHours (optional number or null)
     if (positionHistoryHours !== undefined && positionHistoryHours !== null && typeof positionHistoryHours !== 'number') {
-      return res.status(400).json({ error: 'positionHistoryHours must be a number or null' });
+      return fail(res, 400, 'INVALID_PREFERENCE', 'positionHistoryHours must be a number or null');
     }
 
     // Validate mapMaxAgeHours (optional number or null)
     if (mapMaxAgeHours !== undefined && mapMaxAgeHours !== null && typeof mapMaxAgeHours !== 'number') {
-      return res.status(400).json({ error: 'mapMaxAgeHours must be a number or null' });
+      return fail(res, 400, 'INVALID_PREFERENCE', 'mapMaxAgeHours must be a number or null');
     }
 
     // Save preferences
@@ -87,12 +88,18 @@ router.post('/map-preferences', requireAuth(), async (req, res) => {
       positionHistoryHours,
       mapMaxAgeHours,
       unreadIndicatorEnabled,
+      spreadNodes,
     });
 
+    // Deliberately NOT `ok(res)`: that emits a bare `{ success: true }` and
+    // drops `message`, which this route's own test asserts — i.e. the field is
+    // a codified part of the contract, not incidental. Converting it is a
+    // response-shape change that belongs in its own PR, not a drive-by here
+    // (#5177). The error paths above DO use `fail()`, which is always safe.
     res.json({ success: true, message: 'Map preferences saved successfully' });
   } catch (error) {
     logger.error('Error saving user map preferences:', error);
-    res.status(500).json({ error: 'Failed to save map preferences' });
+    fail(res, 500, 'SAVE_FAILED', 'Failed to save map preferences');
   }
 });
 

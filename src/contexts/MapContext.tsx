@@ -60,6 +60,25 @@ interface MapContextType {
   /** Per-source unread-DM badge on the Sources list (#5124). Default on. */
   unreadIndicatorEnabled: boolean;
   setUnreadIndicatorEnabled: (value: boolean) => void;
+  /**
+   * "Spread Nodes" Map Features toggle (#5177). When on (default), a
+   * low-precision node's marker sits at a deterministic offset WITHIN its
+   * accuracy cell so same-cell markers declutter (#4016/#4155). When off,
+   * every node is pinned at exactly the position it reported.
+   */
+  spreadNodes: boolean;
+  setSpreadNodes: (value: boolean) => void;
+  /**
+   * A "centre the map on this node" request, by nodeNum (#5177). Distinct from
+   * `mapCenterTarget`, which is a raw lat/lng: a low-precision node's MARKER is
+   * drawn at an offset inside its accuracy cell, and only the map surface knows
+   * where that landed. Cross-tab callers (Messages → "Center on Map") therefore
+   * hand over the node and let NodesTab resolve the rendered marker position,
+   * instead of panning to a reported centre the pin isn't on. Cleared by the
+   * consumer once honoured.
+   */
+  pendingCenterNodeNum: number | null;
+  setPendingCenterNodeNum: (nodeNum: number | null) => void;
   setShowRfNodes: (show: boolean) => void;
   showMeshCoreNodes: boolean;
   setShowMeshCoreNodes: (show: boolean) => void;
@@ -130,6 +149,10 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   // Defaults on: the badge is the feature, and a pre-migration-161 row has no
   // stored value. The toggle exists for installs with many overlapping sources.
   const [unreadIndicatorEnabled, setUnreadIndicatorEnabledState] = useState<boolean>(true);
+  // #5177: default true = preserve the existing within-cell offset behaviour.
+  const [spreadNodes, setSpreadNodesState] = useState<boolean>(true);
+  // #5177: transient (not persisted) cross-tab centre-on-node request.
+  const [pendingCenterNodeNum, setPendingCenterNodeNum] = useState<number | null>(null);
   const [showMeshCoreNodes, setShowMeshCoreNodesState] = useState<boolean>(true);
   // Waypoint markers default on (#3253) — opt-out toggle in the Map Features panel.
   const [showWaypoints, setShowWaypointsState] = useState<boolean>(true);
@@ -214,6 +237,12 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     setUnreadIndicatorEnabledState(value);
     void savePreferenceToServer({ unreadIndicatorEnabled: value });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- #5124 see comment above
+  }, []);
+
+  const setSpreadNodes = React.useCallback((value: boolean) => {
+    setSpreadNodesState(value);
+    void savePreferenceToServer({ spreadNodes: value });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- #5177 same temporal-dead-zone reason as the sibling setters: `savePreferenceToServer` is declared below this callback
   }, []);
 
   const setShowRfNodes = React.useCallback((value: boolean) => {
@@ -364,6 +393,9 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
             if (preferences.unreadIndicatorEnabled !== undefined) {
               setUnreadIndicatorEnabledState(preferences.unreadIndicatorEnabled);
             }
+            if (preferences.spreadNodes !== undefined) {
+              setSpreadNodesState(preferences.spreadNodes);
+            }
             if (preferences.showMeshCoreNodes !== undefined) {
               setShowMeshCoreNodesState(preferences.showMeshCoreNodes);
             }
@@ -453,6 +485,10 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     showRfNodes,
     unreadIndicatorEnabled,
     setUnreadIndicatorEnabled,
+    spreadNodes,
+    setSpreadNodes,
+    pendingCenterNodeNum,
+    setPendingCenterNodeNum,
     setShowRfNodes,
     showMeshCoreNodes,
     setShowMeshCoreNodes,
@@ -501,6 +537,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     showUdpNodes, setShowUdpNodes,
     showRfNodes, setShowRfNodes,
     unreadIndicatorEnabled, setUnreadIndicatorEnabled,
+    spreadNodes, setSpreadNodes,
+    pendingCenterNodeNum, setPendingCenterNodeNum,
     showMeshCoreNodes, setShowMeshCoreNodes,
     showWaypoints, setShowWaypoints,
     showAtakContacts, setShowAtakContacts,
@@ -536,3 +574,23 @@ export const useMapContext = () => {
   }
   return context;
 };
+
+/**
+ * Non-throwing read of the map context, for a DATA hook that must not force a
+ * provider on its consumers' tests (#5177).
+ *
+ * `useAnalysisNodes` is the case this exists for: it feeds several Map Analysis
+ * components, and #4240 rejected a UI-provider dependency there precisely
+ * because every one of those components' tests would then have to wrap the
+ * provider. In the running app those components are rendered under
+ * `<MapProvider>` (App.tsx), so the real read always succeeds and the toggle
+ * stays live; outside one — i.e. in a bare component test — this returns
+ * `undefined` and the caller falls back to its default.
+ *
+ * Prefer {@link useMapContext} everywhere else: a UI component that renders
+ * without its provider is a bug worth throwing for.
+ */
+// #5177: this file already exports the useMapContext hook beside its provider
+// component; the optional variant belongs next to it, not in a new module.
+// eslint-disable-next-line react-refresh/only-export-components -- see above
+export const useMapContextOptional = () => useContext(MapContext);

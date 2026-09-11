@@ -11,6 +11,7 @@ import { nodePassesTransportFilter, transportCutoffSec } from '../../utils/nodeT
 import { useMaxNodeAgeHoursAcross } from '../../hooks/useNodeDisplaySettings';
 import { unifiedNodeKey } from '../../utils/nodeIdentity';
 import { applyPrecisionCellOffsets } from '../../utils/precisionOffset';
+import { useMapContextOptional } from '../../contexts/MapContext';
 import type { NodeSourceRef } from '../Dashboard/DashboardNodePopup';
 
 /**
@@ -68,6 +69,13 @@ export interface AnalysisNode {
  */
 export function useAnalysisNodes(): AnalysisNode[] {
   const { config, nodeFilter } = useMapAnalysisCtx();
+  // #5177: the user's "Spread Nodes" Map Features toggle. Read through the
+  // NON-throwing accessor deliberately: #4240 rejected a UI-provider dependency
+  // in this hook because every consumer's test would then need the provider
+  // wrapped. Map Analysis renders under <MapProvider> in the app, so the toggle
+  // is live there; a bare component test gets `undefined` and the default
+  // (spread on) below, exactly as before this flag existed.
+  const spreadNodes = useMapContextOptional()?.spreadNodes ?? true;
   const { data: sources = [] } = useDashboardSources();
   const sourceList = sources as Array<{ id: string; name: string }>;
   const sourceIds = sourceList.map((s) => s.id);
@@ -145,6 +153,8 @@ export function useAnalysisNodes(): AnalysisNode[] {
         bits: node.positionPrecisionBits,
         isOverride: node.positionIsOverride,
       })),
+      // #5177: "Spread Nodes" off pins every marker on its reported point.
+      { enabled: spreadNodes },
     )
       .map(({ item: node, latLng }) => ({ node, latLng, key: unifiedNodeKey(node) }))
       .filter((entry): entry is AnalysisNode => entry.key !== null);
@@ -152,5 +162,5 @@ export function useAnalysisNodes(): AnalysisNode[] {
     // TanStack query hook rather than a plain mutable-variable read, so it is a
     // real reactive dependency (its value changes when a source's setting loads
     // or changes) — safe and correct to list, unlike the old #4240 mirror read.
-  }, [nodes, nodeFilter, config.nodeTypes, config.transports, config.sources, transportCutoff]);
+  }, [nodes, nodeFilter, config.nodeTypes, config.transports, config.sources, transportCutoff, spreadNodes]);
 }

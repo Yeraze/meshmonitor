@@ -306,6 +306,8 @@ export default function DashboardMap({
     setShowPolarGrid,
     mapMaxAgeHours,
     setMapMaxAgeHours,
+    spreadNodes,
+    setSpreadNodes,
   } = useMapContext();
 
   // Effective map age cap from the Map Features age slider (#3322), clamped to
@@ -391,10 +393,14 @@ export default function DashboardMap({
         bits: node.positionPrecisionBits,
         isOverride: node.positionIsOverride,
       })),
+      // #5177: "Spread Nodes" off pins every marker on its reported point.
+      { enabled: spreadNodes },
     ).map(({ item: node, latLng }) => ({ node, pos: { lat: latLng[0], lng: latLng[1] } }));
 
     return { nodesWithPosition: positionedNodes, nowMs: referenceNowMs, cutoffTime: ageCutoffTime };
-  }, [nodes, effectiveMaxAge, effectiveInfraMaxAge, infraNever, showRfNodes, showUdpNodes, showMqttNodes]);
+  // `spreadNodes` (#5177) changes every resolved position without changing any
+  // node, so it has to be a dependency or toggling it leaves the markers put.
+  }, [nodes, effectiveMaxAge, effectiveInfraMaxAge, infraNever, showRfNodes, showUdpNodes, showMqttNodes, spreadNodes]);
 
   // Array form of node positions for MapBoundsUpdater (fit bounds).
   const nodePositions: [number, number][] = nodesWithPosition.map((e) => [e.pos.lat, e.pos.lng]);
@@ -1038,6 +1044,22 @@ export default function DashboardMap({
               onChange={(e) => setShowAccuracyRegions(e.target.checked)}
             />
             <span>Show Accuracy Regions</span>
+          </label>
+          {/* #5177: obscured low-precision nodes are drawn at a stable offset
+              inside their accuracy cell so same-cell markers don't stack
+              (#4016/#4155). A reporter compared a pin to the node's reported
+              GPS on OpenStreetMap and read that as the map lying, so it's now
+              a choice. Off = every node sits exactly where it said it was. */}
+          <label
+            className="map-control-item"
+            title="Offset low-precision nodes within their accuracy area so same-cell markers do not stack. Turn off to pin every node at exactly the position it reported."
+          >
+            <input
+              type="checkbox"
+              checked={spreadNodes}
+              onChange={(e) => setSpreadNodes(e.target.checked)}
+            />
+            <span>Spread Nodes</span>
           </label>
           <label className="map-control-item">
             <input
