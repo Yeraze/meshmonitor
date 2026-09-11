@@ -242,7 +242,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const setSpreadNodes = React.useCallback((value: boolean) => {
     setSpreadNodesState(value);
     void savePreferenceToServer({ spreadNodes: value });
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- #5177 see comment above
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- #5177 same temporal-dead-zone reason as the sibling setters: `savePreferenceToServer` is declared below this callback
   }, []);
 
   const setShowRfNodes = React.useCallback((value: boolean) => {
