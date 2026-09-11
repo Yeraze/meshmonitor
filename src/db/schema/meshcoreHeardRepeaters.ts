@@ -15,9 +15,9 @@
  * supports cheap per-message aggregation, and avoids read-modify-write races as
  * multiple echoes stream in.
  */
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
-import { pgTable, text as pgText, integer as pgInteger, bigint as pgBigint, serial as pgSerial } from 'drizzle-orm/pg-core';
-import { mysqlTable, varchar as myVarchar, int as myInt, bigint as myBigint } from 'drizzle-orm/mysql-core';
+import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
+import { pgTable, text as pgText, real as pgReal, bigint as pgBigint, serial as pgSerial } from 'drizzle-orm/pg-core';
+import { mysqlTable, varchar as myVarchar, int as myInt, double as myDouble, bigint as myBigint } from 'drizzle-orm/mysql-core';
 
 // ============ SQLite Schema ============
 
@@ -31,8 +31,9 @@ export const meshcoreHeardRepeatersSqlite = sqliteTable('meshcore_heard_repeater
   repeaterHash: text('repeaterHash').notNull(),
   // Resolved repeater contact name (best-effort; null when the hash is unknown).
   repeaterName: text('repeaterName'),
-  // Best (max) SNR observed for this repeater across echoes (nullable).
-  snr: integer('snr'),
+  // Best (max) SNR observed for this repeater across echoes (nullable,
+  // fractional — MeshCore SNR is quarter-dB, e.g. -8.25).
+  snr: real('snr'),
   // When the echo was heard (Unix ms).
   heardAt: integer('heardAt').notNull(),
   createdAt: integer('createdAt').notNull(),
@@ -46,7 +47,7 @@ export const meshcoreHeardRepeatersPostgres = pgTable('meshcore_heard_repeaters'
   messageId: pgText('messageId').notNull(),
   repeaterHash: pgText('repeaterHash').notNull(),
   repeaterName: pgText('repeaterName'),
-  snr: pgInteger('snr'),
+  snr: pgReal('snr'),
   heardAt: pgBigint('heardAt', { mode: 'number' }).notNull(),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
 });
@@ -59,7 +60,7 @@ export const meshcoreHeardRepeatersMysql = mysqlTable('meshcore_heard_repeaters'
   messageId: myVarchar('messageId', { length: 64 }).notNull(),
   repeaterHash: myVarchar('repeaterHash', { length: 16 }).notNull(),
   repeaterName: myVarchar('repeaterName', { length: 128 }),
-  snr: myInt('snr'),
+  snr: myDouble('snr'),
   heardAt: myBigint('heardAt', { mode: 'number' }).notNull(),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
 });

@@ -333,6 +333,20 @@ describe('MeshCoreRepository — sourceId stamping', () => {
     expect(row.text).toBe('hello');
   });
 
+  it('insertMessage persists fractional snr (#5175 — MeshCore SNR is quarter-dB)', async () => {
+    await repo.insertMessage(
+      { id: 'm-snr', fromPublicKey: 'pk-1', text: 'fractional snr', timestamp: 3000, createdAt: 3000, rssi: -116, snr: -8.25 },
+      'src-a',
+    );
+
+    const row = db.prepare(`SELECT rssi, snr FROM meshcore_messages WHERE id = 'm-snr'`).get() as {
+      rssi: number;
+      snr: number;
+    };
+    expect(row.rssi).toBe(-116);
+    expect(row.snr).toBeCloseTo(-8.25);
+  });
+
   it('insertMessage persists hopCount + routePath and reads them back (#3742)', async () => {
     await repo.insertMessage(
       { id: 'm-route', fromPublicKey: 'pk-1', text: 'relayed', timestamp: 2000, createdAt: 2000, hopCount: 2, routePath: 'a3,7f' },

@@ -181,6 +181,7 @@ import { migration as nodeIdentityMergesMigration, runMigration159Postgres, runM
 import { migration as tracerouteTransportMechanismMigration, runMigration160Postgres, runMigration160Mysql } from '../server/migrations/160_traceroute_transport_mechanism.js';
 import { migration as userPrefsUnreadIndicatorMigration, runMigration161Postgres, runMigration161Mysql } from '../server/migrations/161_user_map_preferences_unread_indicator.js';
 import { migration as privacyDocumentsMigration, runMigration162Postgres, runMigration162Mysql } from '../server/migrations/162_privacy_documents.js';
+import { migration as meshcoreSnrRealMigration, runMigration163Postgres, runMigration163Mysql } from '../server/migrations/163_meshcore_snr_real.js';
 
 // ============================================================================
 // Registry
@@ -2628,4 +2629,20 @@ registry.register({
   sqlite: (db) => privacyDocumentsMigration.up(db),
   postgres: (client) => runMigration162Postgres(client),
   mysql: (pool) => runMigration162Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 163: widen `meshcore_messages.snr` and `meshcore_heard_repeaters.snr`
+// from INTEGER to REAL/DOUBLE (#5175) — MeshCore SNR is quarter-dB fractional
+// (e.g. -8.25), which PostgreSQL's INTEGER column rejected outright.
+// Idempotent across SQLite / PostgreSQL / MySQL.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 163,
+  name: 'meshcore_snr_real',
+  settingsKey: 'migration_163_meshcore_snr_real',
+  sqlite: (db) => meshcoreSnrRealMigration.up(db),
+  postgres: (client) => runMigration163Postgres(client),
+  mysql: (pool) => runMigration163Mysql(pool),
 });

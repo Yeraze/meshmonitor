@@ -83,6 +83,24 @@ describe('MeshCoreRepository — heard-repeaters', () => {
     expect(all[0].snr).toBe(7);
   });
 
+  it('persists fractional SNR and keeps the max across quarter-dB values (#5175)', async () => {
+    await repo.recordHeardRepeater({
+      sourceId: 'src-a', messageId: 'm1', repeaterHash: 'a3', snr: 3.25, heardAt: HEARD_AT,
+    });
+    const merged = await repo.recordHeardRepeater({
+      sourceId: 'src-a', messageId: 'm1', repeaterHash: 'a3', snr: 7.75, heardAt: HEARD_AT + 1000,
+    });
+    expect(merged.snr).toBeCloseTo(7.75);
+
+    const lower = await repo.recordHeardRepeater({
+      sourceId: 'src-a', messageId: 'm1', repeaterHash: 'a3', snr: -0.25, heardAt: HEARD_AT + 2000,
+    });
+    expect(lower.snr).toBeCloseTo(7.75); // max retained
+
+    const all = await repo.getHeardRepeatersForMessage('m1', 'src-a');
+    expect(all[0].snr).toBeCloseTo(7.75);
+  });
+
   it('fills in a repeaterName on a later echo when it becomes known', async () => {
     await repo.recordHeardRepeater({
       sourceId: 'src-a', messageId: 'm1', repeaterHash: 'a3', repeaterName: null, snr: 2, heardAt: HEARD_AT,
