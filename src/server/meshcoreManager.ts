@@ -2748,6 +2748,25 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       throw new Error('Serial port not configured');
     }
 
+    // Check the path against the same allow-list the native/Companion backend
+    // uses (#5178) — but WARN ONLY, never refuse. The Repeater path has never
+    // validated, so a path the allow-list doesn't recognise (a socat/virtual
+    // PTY outside /dev, a symlink in a home directory) connects today.
+    // Rejecting one would break a working deployment for no safety gain: the
+    // value only ever reaches the serialport library, never a shell. So an
+    // unrecognised path is logged and passed through, which still surfaces a
+    // typo early instead of leaving it to whatever serialport reports.
+    const path = this.config.serialPort;
+    try {
+      this.sanitizeSerialPort(path);
+    } catch {
+      logger.warn(
+        `[MeshCore:${this.sourceId}] Serial port "${path}" is not a recognised device path — ` +
+        'connecting anyway. A USB device is normally /dev/ttyACM0 or a stable ' +
+        '/dev/serial/by-id/... name.',
+      );
+    }
+
     if (!SerialPort || !ReadlineParser) {
       throw new Error('Serial port support not loaded');
     }
@@ -2757,7 +2776,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
     await new Promise<void>((resolve, reject) => {
       this.serialPort = new SerialPortClass({
-        path: this.config!.serialPort!,
+        path,
         baudRate: this.config!.baudRate || 115200,
       });
 
