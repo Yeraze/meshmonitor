@@ -2961,8 +2961,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    */
   private sanitizeSerialPort(port: string): string {
     const validPatterns = [
-      /^\/dev\/tty[A-Za-z0-9]+$/,
-      /^\/dev\/[a-zA-Z][a-zA-Z0-9_-]*$/,
+      // Linux device nodes, including nested udev symlinks such as
+      // /dev/serial/by-id/usb-... and /dev/serial/by-path/pci-...
+      // (the recommended stable path for USB passthrough in Docker/LXC,
+      // since it survives replug/reboot unlike /dev/ttyACM0 — #5172).
+      /^\/dev\/[a-zA-Z0-9][a-zA-Z0-9._:-]*(?:\/[a-zA-Z0-9][a-zA-Z0-9._:-]*)*$/,
       /^\/dev\/cu\.[A-Za-z0-9_-]+$/,
       /^COM\d+$/i,
       /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+$/,
