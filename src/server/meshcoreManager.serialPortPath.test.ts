@@ -35,6 +35,12 @@ describe('MeshCore serial port validation (#5172)', () => {
     }
   });
 
+  it('keeps accepting underscores, which the by-id names lean on heavily', () => {
+    // A single-segment underscore name, accepted by the old allow-list.
+    expect(sanitize('/dev/tty_custom')).toBe('/dev/tty_custom');
+    expect(sanitize('/dev/cu.usbmodem_1')).toBe('/dev/cu.usbmodem_1');
+  });
+
   it('still accepts Windows COM ports and host:port pairs', () => {
     expect(sanitize('COM3')).toBe('COM3');
     expect(sanitize('192.168.1.50:5000')).toBe('192.168.1.50:5000');
