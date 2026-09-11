@@ -590,4 +590,7 @@ export const useMapContext = () => {
  * Prefer {@link useMapContext} everywhere else: a UI component that renders
  * without its provider is a bug worth throwing for.
  */
+// #5177: this file already exports the useMapContext hook beside its provider
+// component; the optional variant belongs next to it, not in a new module.
+// eslint-disable-next-line react-refresh/only-export-components -- see above
 export const useMapContextOptional = () => useContext(MapContext);
