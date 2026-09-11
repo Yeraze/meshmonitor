@@ -7165,6 +7165,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     logger.info(`[MeshCore:${this.sourceId}] Auto-pathfinding: starting (pathDiscovery=${pathDiscoveryEnabled}, neighbors=${neighborsEnabled}, interval=${intervalMinutes}m, repeat=${repeatHours}h, jitter=${Math.round(initialJitterMs / 1000)}s)`);
 
     const executeRun = async () => {
+      // #5170: a stale run from a superseded generation (e.g. the old run
+      // from before a reconnect) must not start a fresh pass over the
+      // target list — checked again inside the loop below since this only
+      // guards entry, not a run already iterating targets.
+      if (myGeneration !== this.autoPathfindingGeneration) {
+        logger.debug(`[MeshCore:${this.sourceId}] Auto-pathfinding: run superseded before start, skipping`);
+        return;
+      }
       // Receive-only (#4547): loop entry — before any guarded primitive.
       if (!this.canTransmit()) {
         logger.debug(`⏭️ [MeshCore:${this.sourceId}] Auto-pathfinding: Skipping - receive-only mode`);
@@ -7209,6 +7217,16 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
       for (let i = 0; i < targets.length; i++) {
         if (!this.connected) break;
+        // #5170: re-checked per-target (and immediately after the
+        // inter-target sleep below, since that's where this run spends
+        // almost all its time) — a reconnect bumps the generation via
+        // stopAutoPathfinding()+startAutoPathfinding(), and this stale run
+        // must stop promptly instead of continuing to fire requests
+        // alongside the new run that reconnect just started.
+        if (myGeneration !== this.autoPathfindingGeneration) {
+          logger.debug(`[MeshCore:${this.sourceId}] Auto-pathfinding: run superseded mid-loop, stopping`);
+          break;
+        }
         // Receive-only (#4547): re-checked per-target — the loop awaits
         // between targets, so the flag can flip mid-run.
         if (!this.canTransmit()) {
