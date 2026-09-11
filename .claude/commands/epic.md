@@ -107,7 +107,7 @@ Once you are satisfied with the work product:
 
 1. Push the branch (`git push origin <branch>` — branch ref, no checkout of main needed).
 2. Create the PR with `/create-pr` (it runs validation and writes the PR body). Reference the epic's issue and phase number.
-3. Monitor with `/ci-monitor` and use the existing processes to resolve findings: it auto-fixes CI failures; a failed Claude Code Review check is usually transient auth (`~/Development/homelab/tools/gh-secret.sh`, then rerun); background CI watchers can lose network — trust the output file's final EXIT line, not the task exit code.
+3. Monitor with `/ci-monitor` and use the existing processes to resolve findings: it auto-fixes CI failures; a failed Claude Code Review check is usually transient — rerun the failed job, and never run `gh-secret.sh` (it would overwrite the repo's long-lived `CLAUDE_CODE_OAUTH_TOKEN` with a revoked short-lived one); it is advisory and never blocks a merge; background CI watchers can lose network — trust the output file's final EXIT line, not the task exit code.
 4. Address review findings by dispatching fixes through the Stage 3/4 loop (commits to the same branch), not by hand-editing.
 5. When CI is green and findings are resolved, **merge via `/merge`** (it fast-forwards local main and cleans up the worktree/branch).
 
