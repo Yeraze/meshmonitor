@@ -2961,9 +2961,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    */
   private sanitizeSerialPort(port: string): string {
     const validPatterns = [
-      /^\/dev\/tty[A-Za-z0-9]+$/,
-      /^\/dev\/[a-zA-Z][a-zA-Z0-9_-]*$/,
-      /^\/dev\/cu\.[A-Za-z0-9_-]+$/,
+      // Any device node or udev symlink under /dev, including the nested
+      // persistent-name directories (#5172): a Proxmox LXC passthrough is
+      // normally wired up as /dev/serial/by-id/usb-Seeed_Studio_XIAO_nRF52840_
+      // <serial>-if00, and by-path names carry colons and dots
+      // (/dev/serial/by-path/pci-0000:00:14.0-usb-0:2:1.0-port0). Every segment
+      // must start with an alphanumeric, so a `.` or `..` segment can never
+      // walk the path back out of /dev.
+      /^\/dev\/[A-Za-z0-9][A-Za-z0-9._:+-]*(?:\/[A-Za-z0-9][A-Za-z0-9._:+-]*)*$/,
       /^COM\d+$/i,
       /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+$/,
     ];
