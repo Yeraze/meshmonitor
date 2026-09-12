@@ -134,8 +134,15 @@ export function createResolver(css: string) {
       wanted.lastIndex = 0;
       let m: RegExpExecArray | null;
       while ((m = wanted.exec(block.body)) !== null) {
-        const decl = m[2].match(new RegExp(`(?:^|;)\\s*${property}\\s*:\\s*([^;]+)`));
-        if (decl) winner = decl[1].trim();
+        // LAST declaration within the block wins, not the first. A rule may
+        // legitimately declare the same property twice as a progressive
+        // -enhancement fallback pair — `max-height: 80vh` then
+        // `max-height: 80dvh` — where the later line is what a supporting
+        // browser actually uses. A non-global `String.match` here returned the
+        // fallback and reported the opposite of what the browser does (#5191).
+        const declRe = new RegExp(`(?:^|;)\\s*${property}\\s*:\\s*([^;]+)`, 'g');
+        let decl: RegExpExecArray | null;
+        while ((decl = declRe.exec(m[2])) !== null) winner = decl[1].trim();
       }
     }
     return winner;
