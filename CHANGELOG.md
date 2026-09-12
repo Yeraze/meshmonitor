@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Fixed
+- **Bundled Apprise API server no longer logs `BrokenPipeError` tracebacks** — when a notification request took longer to process than the Node client's fetch timeout (or the client otherwise disconnected early), `apprise-api.py` tried to write a response to an already-closed socket and let the resulting `BrokenPipeError` propagate, printing a noisy "Exception occurred during processing of request" traceback to the container log even though the underlying notification had already been dispatched. Response writes now swallow a broken/reset connection instead of raising. (#5184)
+
 ## [4.15.2-rc2] - 2026-08-22
 
 ### Added

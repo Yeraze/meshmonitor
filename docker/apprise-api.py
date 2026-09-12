@@ -59,19 +59,33 @@ class AppriseHandler(BaseHTTPRequestHandler):
 
     def send_json_response(self, code, data):
         """Helper to send JSON response"""
-        self.send_response(code)
-        self.send_header('Content-type', 'application/json')
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.end_headers()
-        self.wfile.write(json.dumps(data).encode())
+        try:
+            self.send_response(code)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps(data).encode())
+        except (BrokenPipeError, ConnectionResetError):
+            # Caller (e.g. Node's fetch() with an AbortSignal.timeout) gave up
+            # waiting and closed the socket before this response could be
+            # written. The underlying notification may already have been sent
+            # successfully — there is nothing to recover, so drop the response
+            # instead of letting it raise into do_POST/do_GET, where it would
+            # otherwise be treated as a second failure and trigger a retry at
+            # sending an (also doomed) error response, producing the noisy
+            # double traceback in #5184.
+            pass
 
     def do_OPTIONS(self):
         """Handle CORS preflight"""
-        self.send_response(200)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-        self.end_headers()
+        try:
+            self.send_response(200)
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+            self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+            self.end_headers()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def do_GET(self):
         """Handle GET requests"""
