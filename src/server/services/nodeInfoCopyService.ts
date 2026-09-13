@@ -184,7 +184,10 @@ export async function copyNodeInfo(
     const donorVal = (donorNode as any)[field];
     // A donor value the repository would refuse to store (hwModel 0) is not
     // worth copying — reporting it as copied is exactly what made the
-    // enrichment count oscillate forever in #5193.
+    // enrichment count oscillate forever in #5193. This applies in the explicit
+    // `fields` overwrite mode too: picking hwModel from an UNSET donor yields an
+    // empty `copiedFields` rather than a write the repository would discard,
+    // which is what the caller's UI should report.
     if (isNodeInfoFieldBlank(donorVal, field)) continue;
 
     if (!selected) {

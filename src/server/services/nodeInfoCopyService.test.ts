@@ -175,7 +175,11 @@ describe('copyNodeInfo', () => {
 
     h.getNodeMock
       .mockResolvedValueOnce(donor)
-      .mockResolvedValueOnce(target);
+      .mockResolvedValueOnce(target)
+      // Third read is copyNodeInfo's post-write verification (#5193). Return the
+      // target with the copy applied, so the verify path actually runs and stays
+      // quiet instead of being skipped on an undefined row.
+      .mockResolvedValueOnce(makeNode({ longName: 'TestNode', channel: 3 }));
 
     const result = await copyNodeInfo(100, 'src-B', 'src-A', true);
 
