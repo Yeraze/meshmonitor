@@ -168,8 +168,10 @@ describe('copyNodeInfo', () => {
     const sendMock = vi.fn().mockResolvedValue({ packetId: 1, requestId: 1 });
     h.getManagerMock.mockReturnValue({ sendNodeInfoRequest: sendMock });
 
-    const donor = makeNode({ longName: 'TestNode', channel: 3 });
-    const target = makeNode();
+    // #5193: the slot comes from the TARGET row — the donor's channel number
+    // only means something on the donor's own source.
+    const donor = makeNode({ longName: 'TestNode', channel: 7 });
+    const target = makeNode({ channel: 3 });
 
     h.getNodeMock
       .mockResolvedValueOnce(donor)

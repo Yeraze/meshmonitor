@@ -53,7 +53,9 @@ interface ApplyItem {
 }
 
 interface ApplyResult {
-  applied: Array<ApplyItem & { copiedFields: string[]; pushedToDevice: boolean }>;
+  // `error` is set per item by the server when that one copy threw; the batch
+  // as a whole still reports success, so the toast has to read it (#5193).
+  applied: Array<ApplyItem & { copiedFields: string[]; pushedToDevice: boolean; error?: string }>;
   totalFieldsCopied: number;
 }
 
@@ -94,14 +96,43 @@ const NodeInfoEnrichmentReport: React.FC = () => {
       return body.data;
     },
     onSuccess: (result) => {
-      showToast(
-        t(
-          'analysis.enrichment.apply_success',
-          'Copied {{fields}} field(s) across {{targets}} target(s)',
-          { fields: result.totalFieldsCopied, targets: result.applied.length },
-        ),
-        'success',
-      );
+      // A 200 here only means the batch ran. Individual items can fail (the
+      // server catches each one so a bad item never aborts the rest), and a
+      // copy can legitimately land zero fields. Reporting either as a plain
+      // success is what let #5193 look like "Fix All worked" while the count
+      // bounced straight back.
+      const failed = result.applied.filter((a) => a.error);
+      if (failed.length > 0) {
+        showToast(
+          t(
+            'analysis.enrichment.apply_partial',
+            'Copied {{fields}} field(s); {{failed}} target(s) failed: {{reason}}',
+            {
+              fields: result.totalFieldsCopied,
+              failed: failed.length,
+              reason: failed[0].error,
+            },
+          ),
+          'error',
+        );
+      } else if (result.totalFieldsCopied === 0) {
+        showToast(
+          t(
+            'analysis.enrichment.apply_nothing_copied',
+            'No fields were copied — the donor values are ones MeshMonitor cannot store. Check the server log.',
+          ),
+          'warning',
+        );
+      } else {
+        showToast(
+          t(
+            'analysis.enrichment.apply_success',
+            'Copied {{fields}} field(s) across {{targets}} target(s)',
+            { fields: result.totalFieldsCopied, targets: result.applied.length },
+          ),
+          'success',
+        );
+      }
       void qc.invalidateQueries({ queryKey: ANALYSIS_KEY });
     },
     onError: (err) => {

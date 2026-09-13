@@ -2,6 +2,7 @@ import databaseService from '../../services/database.js';
 import { DbNode } from '../../db/types.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { logger } from '../../utils/logger.js';
+import { CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
 
 const NODE_INFO_FIELDS = [
   'longName', 'shortName', 'hwModel', 'role', 'macaddr',
@@ -24,14 +25,39 @@ export interface CopyNodeInfoResult {
   pushedToDevice: boolean;
 }
 
-/** Canonical "this NodeInfo field is empty" predicate. */
-export function isNodeInfoFieldBlank(value: unknown): boolean {
-  return value == null || value === '';
+/**
+ * Fields whose stored `0` is a "not reported" sentinel rather than a real
+ * value, and which `NodesRepository.upsertNode` therefore refuses to persist.
+ *
+ * `hwModel` 0 is `HardwareModel.UNSET`. Both the update and the insert paths in
+ * `src/db/repositories/nodes.ts` map an incoming 0 back to the stored value (or
+ * to null on first insert) — see the `#3505` notes there. `role` is NOT in this
+ * set: role 0 is `Role.CLIENT`, a genuine value the repository stores.
+ *
+ * Keeping this list next to the blank predicate is what stopped #5193: the
+ * analyzer used to count a donor's `hwModel: 0` as data worth copying, the copy
+ * dutifully reported it as copied, and the repository dropped it on the floor.
+ * The target stayed blank, so the very next analysis offered the identical
+ * copy — an enrichment count that could never reach zero, and (with "push to
+ * device" on) a NodeInfo request re-sent over LoRa on every press.
+ */
+const ZERO_IS_UNSET_FIELDS = new Set<string>(['hwModel']);
+
+/**
+ * Canonical "this NodeInfo field is empty" predicate.
+ *
+ * Pass `field` wherever it is known: it is what lets `hwModel: 0` read as blank
+ * rather than as a value, keeping this predicate in step with what the nodes
+ * repository will actually store (#5193).
+ */
+export function isNodeInfoFieldBlank(value: unknown, field?: string): boolean {
+  if (value == null || value === '') return true;
+  return field !== undefined && value === 0 && ZERO_IS_UNSET_FIELDS.has(field);
 }
 
 /** Count of NODE_INFO_FIELDS that are non-blank on a node. Used for donor ranking. */
 export function countFilledNodeInfoFields(node: Partial<DbNode>): number {
-  return NODE_INFO_FIELDS.filter(f => !isNodeInfoFieldBlank(node[f as keyof DbNode])).length;
+  return NODE_INFO_FIELDS.filter(f => !isNodeInfoFieldBlank(node[f as keyof DbNode], f)).length;
 }
 
 /** Analysis field set — NODE_INFO_FIELDS minus the derived hasPKC flag. */
@@ -156,12 +182,15 @@ export async function copyNodeInfo(
     if (selected && !selected.has(field)) continue;
 
     const donorVal = (donorNode as any)[field];
-    if (donorVal == null || donorVal === '') continue;
+    // A donor value the repository would refuse to store (hwModel 0) is not
+    // worth copying — reporting it as copied is exactly what made the
+    // enrichment count oscillate forever in #5193.
+    if (isNodeInfoFieldBlank(donorVal, field)) continue;
 
     if (!selected) {
       // Legacy path: fill only what the target is missing.
       const targetVal = (targetNode as any)[field];
-      if (targetVal != null && targetVal !== '') continue;
+      if (!isNodeInfoFieldBlank(targetVal, field)) continue;
     }
 
     (updates as any)[field] = donorVal;
@@ -181,18 +210,57 @@ export async function copyNodeInfo(
     `Copied NodeInfo for node ${nodeNum} from source ${fromSourceId} to ${toSourceId}: ${copiedFields.join(', ')}`,
   );
 
+  // Read the target back and say so loudly if a field we just "copied" is still
+  // blank. A write the repository silently drops is invisible from here, and
+  // the caller re-offers the identical copy on its next analysis — the
+  // never-ending enrichment count of #5193. This costs one read per applied
+  // item on an operator-triggered action, which is worth a loop we can see.
+  const verifyNode = await databaseService.nodes.getNode(nodeNum, toSourceId);
+  if (verifyNode) {
+    const notPersisted = copiedFields.filter(f =>
+      isNodeInfoFieldBlank(verifyNode[f as keyof DbNode], f),
+    );
+    if (notPersisted.length > 0) {
+      logger.warn(
+        `NodeInfo copy for node ${nodeNum} did not persist on source ${toSourceId}: ` +
+        `${notPersisted.join(', ')} still blank after the write. ` +
+        'The donor value is one the nodes repository refuses to store.',
+      );
+    }
+  }
+
   let pushedToDevice = false;
   if (pushToNodeDb) {
-    pushedToDevice = await pushNodeInfoToDevice(nodeNum, toSourceId, donorNode);
+    pushedToDevice = await pushNodeInfoToDevice(nodeNum, toSourceId, targetNode);
   }
 
   return { copiedFields, pushedToDevice };
 }
 
+/**
+ * Resolve the channel slot to address the target device on.
+ *
+ * This used to read `donorNode.channel`, which is a number that only means
+ * anything on the DONOR's source. For an MQTT donor it is not even a slot: MQTT
+ * rows carry `CHANNEL_DB_OFFSET + channelDatabaseId` (>= 100) so virtual-channel
+ * permissions can key off it. Handing that to the target radio asked it to
+ * transmit on a channel it has never had, and it answered with a flood of
+ * `NO_CHANNEL (6)` routing errors — the push never reached the mesh (#5193).
+ *
+ * The target row's own `channel` is the right slot, and only when it is a real
+ * one. Anything else falls back to the primary channel, which every device has.
+ */
+function resolvePushChannel(targetNode: DbNode): number {
+  const channel = targetNode.channel;
+  if (typeof channel !== 'number' || !Number.isInteger(channel)) return 0;
+  if (channel < 0 || channel >= CHANNEL_DB_OFFSET) return 0;
+  return channel;
+}
+
 async function pushNodeInfoToDevice(
   nodeNum: number,
   targetSourceId: string,
-  donorNode: DbNode,
+  targetNode: DbNode,
 ): Promise<boolean> {
   const manager = sourceManagerRegistry.getManager(targetSourceId) as any;
   if (!manager || typeof manager.sendNodeInfoRequest !== 'function') {
@@ -203,9 +271,11 @@ async function pushNodeInfoToDevice(
   }
 
   try {
-    const channel = donorNode.channel ?? 0;
+    const channel = resolvePushChannel(targetNode);
     await manager.sendNodeInfoRequest(nodeNum, channel);
-    logger.info(`Pushed NodeInfo request for node ${nodeNum} to device on source ${targetSourceId}`);
+    logger.info(
+      `Pushed NodeInfo request for node ${nodeNum} to device on source ${targetSourceId} (channel ${channel})`,
+    );
     return true;
   } catch (error) {
     logger.error(`Failed to push NodeInfo to device for node ${nodeNum}:`, error);
