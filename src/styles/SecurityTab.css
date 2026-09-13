@@ -226,11 +226,32 @@
   background: var(--color-bg-raised);
 }
 
-.node-info {
+/*
+ * These two carry `.security-tab` scoping on purpose. `.node-info` and
+ * `.node-name` are generic names that two other global sheets also claim, and
+ * both of those turn the element into a flex row:
+ *
+ *   AppHeader.css  `.node-info { display: flex; align-items: center }`
+ *   nodes.css      `.node-name { display: flex; flex: 1; min-width: 0 }`
+ *
+ * Nothing here ever declared `display`, so those won by default. A Security
+ * issue card's three stacked lines (name / node id / last seen) were laid out
+ * side by side, and the name — `flex: 1` with `min-width: 0` in a row too
+ * narrow to hold it — collapsed to zero width and rendered straight on top of
+ * the node id. Desktop hid it: the card is wide enough for the row to fit.
+ *
+ * The class-level scope (0,2,0) outranks the bare global selectors (0,1,0), so
+ * stating the intended block layout explicitly is enough. Don't unscope these.
+ */
+.security-tab .node-info {
+  display: block;
   flex: 1;
+  min-width: 0;
 }
 
-.node-name {
+.security-tab .node-name {
+  display: block;
+  min-width: 0;
   font-size: 16px;
   margin-bottom: 5px;
 }
@@ -807,7 +828,10 @@
     flex-wrap: wrap;
   }
 
-  .node-info {
+  /* Scoped to match the `.security-tab .node-info` base rule above — a bare
+     `.node-info` here is (0,1,0) and would lose to it, silently dropping the
+     full-width basis this override exists to set. */
+  .security-tab .node-info {
     flex-basis: 100%;
     margin-bottom: 10px;
   }
