@@ -331,10 +331,10 @@
  */
 .security-table-scroll {
   overflow-x: auto;
-  /* Keep the card's rounded corners now that the wrapper clips, and give iOS
-     the momentum scrolling it applies to native scroll areas. */
+  /* Keep the card's rounded corners now that the wrapper clips. Momentum
+     scrolling needs no help — `-webkit-overflow-scrolling: touch` has been a
+     no-op since iOS 13 made it the default for `overflow: auto`. */
   border-radius: var(--radius-lg);
-  -webkit-overflow-scrolling: touch;
 }
 
 .top-broadcasters-table {

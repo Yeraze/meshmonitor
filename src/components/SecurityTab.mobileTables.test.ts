@@ -23,6 +23,14 @@ const css = readFileSync(join(here, '../styles/SecurityTab.css'), 'utf8')
   .replace(/\/\*[\s\S]*?\*\//g, '');
 const tsx = readFileSync(join(here, 'SecurityTab.tsx'), 'utf8');
 
+/**
+ * Body of the first rule whose selector list contains `selector`.
+ *
+ * `selector` must start with `.` — the `\\$` before the interpolation emits a
+ * single backslash into the pattern, which escapes that leading dot so it
+ * matches literally rather than as "any character". Same helper shape as
+ * TelemetryGraphs.layout.test.ts.
+ */
 const ruleBody = (source: string, selector: string): string => {
   const re = new RegExp(`(^|\\})[^{}]*\\${selector}\\s*(,[^{}]*)?\\{([^}]*)\\}`, 'm');
   const match = re.exec(source);
