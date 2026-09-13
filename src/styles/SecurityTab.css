@@ -226,10 +226,23 @@
   background: var(--color-bg-raised);
 }
 
+.node-info {
+  /* A flex ITEM of `.issue-header` (which is `display: flex`) — this grow
+     factor is live and load-bearing, independent of the `display: block` the
+     rule below sets for the element's own children. */
+  flex: 1;
+}
+
+.node-name {
+  font-size: 16px;
+  margin-bottom: 5px;
+}
+
 /*
- * These two carry `.security-tab` scoping on purpose. `.node-info` and
- * `.node-name` are generic names that two other global sheets also claim, and
- * both of those turn the element into a flex row:
+ * Layout guard, deliberately scoped to the issue card.
+ *
+ * `.node-info` and `.node-name` are generic names that two other global sheets
+ * also claim, and both turn the element into a flex row:
  *
  *   AppHeader.css  `.node-info { display: flex; align-items: center }`
  *   nodes.css      `.node-name { display: flex; flex: 1; min-width: 0 }`
@@ -240,20 +253,16 @@
  * narrow to hold it — collapsed to zero width and rendered straight on top of
  * the node id. Desktop hid it: the card is wide enough for the row to fit.
  *
- * The class-level scope (0,2,0) outranks the bare global selectors (0,1,0), so
- * stating the intended block layout explicitly is enough. Don't unscope these.
+ * The `.issue-header` scope (0,3,0) outranks the bare global selectors (0,1,0),
+ * so stating the intended block layout explicitly is enough. It is kept this
+ * narrow on purpose: `.node-name` is also a `<td>` class in
+ * `.top-broadcasters-table`, and that cell should keep whatever layout it has
+ * rather than be swept up in a fix for the cards. Don't widen or unscope this.
  */
-.security-tab .node-info {
-  display: block;
-  flex: 1;
-  min-width: 0;
-}
-
-.security-tab .node-name {
+.security-tab .issue-header .node-info,
+.security-tab .issue-header .node-name {
   display: block;
   min-width: 0;
-  font-size: 16px;
-  margin-bottom: 5px;
 }
 
 .node-name strong {
@@ -828,10 +837,7 @@
     flex-wrap: wrap;
   }
 
-  /* Scoped to match the `.security-tab .node-info` base rule above — a bare
-     `.node-info` here is (0,1,0) and would lose to it, silently dropping the
-     full-width basis this override exists to set. */
-  .security-tab .node-info {
+  .node-info {
     flex-basis: 100%;
     margin-bottom: 10px;
   }
