@@ -49,6 +49,18 @@ describe('SecurityTab mobile table overflow (#5194)', () => {
     expect(ruleBody(css, '.security-tab')).toMatch(/min-width:\s*0/);
   });
 
+  it('lets the digest inputs shrink instead of panning the page', () => {
+    // `flex: 1` is `1 1 0%`, but a flex item's default `min-width: auto` floors
+    // it at min-content — for an <input> that is its intrinsic `size`, ~222px.
+    // Next to the 140px label that overflowed the card and left the whole page
+    // panning 22px sideways even after the tables were fixed.
+    expect(ruleBody(css, '.digest-input')).toMatch(/min-width:\s*0/);
+
+    const mobile = css.slice(css.indexOf('@media (max-width: 768px)'));
+    expect(/\.digest-row\s*\{([^}]*)\}/.exec(mobile)?.[1] ?? '').toMatch(/flex-wrap:\s*wrap/);
+    expect(/\.digest-label\s*\{([^}]*)\}/.exec(mobile)?.[1] ?? '').toMatch(/min-width:\s*0/);
+  });
+
   it('floors the table width on mobile so it scrolls instead of truncating', () => {
     const mobile = css.slice(css.indexOf('@media (max-width: 768px)'));
     const rule = /\.top-broadcasters-table\s*\{([^}]*)\}/.exec(mobile);

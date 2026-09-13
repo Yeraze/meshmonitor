@@ -436,6 +436,14 @@
 
 .digest-input {
   flex: 1;
+  /*
+   * #5194: `flex: 1` is `1 1 0%`, but a flex item's default `min-width: auto`
+   * floors it at min-content — and an <input>'s min-content width is its
+   * intrinsic `size`, about 222px. Next to the 140px label that overflowed the
+   * card and, with nothing between here and the document root to absorb it,
+   * left the whole Security page panning sideways by 22px.
+   */
+  min-width: 0;
   padding: 6px 10px;
   background: var(--color-surface-hover);
   border: 1px solid var(--color-surface-active);
@@ -852,6 +860,15 @@
    */
   .top-broadcasters-table {
     min-width: 620px;
+  }
+
+  /* #5194: stack label over control so neither has to give up its own width. */
+  .digest-row {
+    flex-wrap: wrap;
+  }
+
+  .digest-label {
+    min-width: 0;
   }
 }
 
