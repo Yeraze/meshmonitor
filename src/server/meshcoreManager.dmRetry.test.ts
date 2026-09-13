@@ -218,6 +218,28 @@ describe('MeshCoreManager — DM ack-timeout auto-retry (#3977)', () => {
     expect(updated.mock.calls.some(c => (c[0] as any).deliveryStatus === 'failed')).toBe(true);
   });
 
+  it('reuses the ORIGINAL senderTimestamp with an incrementing attempt on every retry (#5202)', async () => {
+    const { manager, bridgeCalls } = makeManager();
+
+    await manager.sendMessageWithResult('hello', PUBKEY);
+    await vi.advanceTimersByTimeAsync(10_000); // same-path retry #1
+    await vi.advanceTimersByTimeAsync(10_000); // same-path retry #2
+    await vi.advanceTimersByTimeAsync(10_000); // flood retry (reset + resend)
+
+    const dmSends = sends(bridgeCalls);
+    expect(dmSends).toHaveLength(4);
+
+    // Every attempt in the cascade — initial + all 3 retries — must carry the
+    // SAME wire senderTimestamp. A retry that mints a fresh one (the bug) makes
+    // the retransmit look like a brand-new message to the recipient.
+    const timestamps = dmSends.map((s) => s.params.sender_timestamp);
+    expect(new Set(timestamps).size).toBe(1);
+    expect(timestamps[0]).toEqual(expect.any(Number));
+
+    // `attempt` advances by exactly 1 on every send in the cascade.
+    expect(dmSends.map((s) => s.params.attempt)).toEqual([0, 1, 2, 3]);
+  });
+
   it('does not schedule a retry for channel/broadcast sends', async () => {
     const { manager, bridgeCalls } = makeManager();
 

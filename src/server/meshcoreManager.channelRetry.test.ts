@@ -92,6 +92,21 @@ describe('MeshCoreManager — automated channel-send auto-retry (#3979 Part 2)',
     expect((manager as any).pendingChannelRetries.size).toBe(0);
   });
 
+  it('reuses the ORIGINAL senderTimestamp on the resend (#5202)', async () => {
+    const { manager, bridgeCalls } = makeManager({ retryEnabled: true, heardRepeaters: [] });
+
+    await manager.sendMessage('hi', undefined, 0, undefined, true);
+    await vi.advanceTimersByTimeAsync(30_000); // resend
+
+    const chanSends = sends(bridgeCalls);
+    expect(chanSends).toHaveLength(2);
+    // A resend that mints a fresh senderTimestamp reads as a brand-new message
+    // to the mesh's dedup, which is exactly the duplicate-message bug: the
+    // resend must carry the SAME wire senderTimestamp as the original send.
+    expect(chanSends[1].params.sender_timestamp).toBe(chanSends[0].params.sender_timestamp);
+    expect(chanSends[0].params.sender_timestamp).toEqual(expect.any(Number));
+  });
+
   it('(b) at least one repeater heard within 30s → NO resend', async () => {
     const { manager, bridgeCalls } = makeManager({
       retryEnabled: true,

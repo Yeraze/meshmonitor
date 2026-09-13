@@ -1796,6 +1796,16 @@ export class MeshCoreNativeBackend extends EventEmitter {
       case 'send_message': {
         const to = params.to as string | null | undefined;
         const text = String(params.text ?? '');
+        // Explicit attempt/senderTimestamp (#5202): MeshCoreManager passes these
+        // for every send it makes through performScopedSend, so it controls
+        // both fields itself instead of letting meshcore.js's sendTextMessage()/
+        // sendChannelTextMessage() wrappers mint a fresh timestamp (and, for
+        // DMs, hardcode attempt=0) on every call — including a *retry* of an
+        // already-sent message, which is what produced duplicate deliveries.
+        // A caller that doesn't need retry control (sendRoomPost) can omit
+        // sender_timestamp and fall back to the library wrappers below.
+        const attempt = params.attempt !== undefined ? Number(params.attempt) : undefined;
+        const senderTimestamp = params.sender_timestamp !== undefined ? Number(params.sender_timestamp) : undefined;
         if (to) {
           // Direct message: locate the full contact pubkey (DM API needs the
           // full 32-byte public key, not the 6-byte prefix the manager passes).
@@ -1803,7 +1813,9 @@ export class MeshCoreNativeBackend extends EventEmitter {
           if (!fullKey) {
             throw new Error(`Contact not found for public key ${to.substring(0, 12)}…`);
           }
-          const sentResp = await c.sendTextMessage(fullKey, text);
+          const sentResp = senderTimestamp !== undefined
+            ? await this.sendTextMessageWithAttempt(c, K, fullKey, text, attempt ?? 0, senderTimestamp)
+            : await c.sendTextMessage(fullKey, text);
           return {
             sent: true,
             expectedAckCrc: sentResp?.expectedAckCrc ?? null,
@@ -1822,7 +1834,11 @@ export class MeshCoreNativeBackend extends EventEmitter {
         if (!Number.isInteger(channelIdx) || channelIdx < 0 || channelIdx > 255) {
           throw new Error(`Invalid channel index: ${channelIdxRaw}`);
         }
-        await c.sendChannelTextMessage(channelIdx, text);
+        if (senderTimestamp !== undefined) {
+          await this.sendChannelTextMessageWithTimestamp(c, K, channelIdx, text, senderTimestamp);
+        } else {
+          await c.sendChannelTextMessage(channelIdx, text);
+        }
         return { sent: true };
       }
 
@@ -2503,6 +2519,91 @@ export class MeshCoreNativeBackend extends EventEmitter {
       }
     }
     return null;
+  }
+
+  /**
+   * DM send with an explicit `attempt`/`senderTimestamp`, bypassing meshcore.js's
+   * `sendTextMessage()` wrapper (#5202). That wrapper always hardcodes
+   * `attempt = 0` and stamps `Math.floor(Date.now() / 1000)` on every call —
+   * correct for a genuinely new message, but wrong for a *retry* of one already
+   * sent: other MeshCore clients (and the firmware's own retry cadence) expect a
+   * retry to carry the SAME `senderTimestamp` with an incrementing `attempt`, so
+   * the recipient recognizes it as the same logical send. Reusing the library's
+   * fresh-timestamp wrapper for a retry instead made every retransmit look like a
+   * brand new message, which is what produced duplicate deliveries.
+   *
+   * The underlying `sendCommandSendTxtMsg(txtType, attempt, senderTimestamp,
+   * pubKeyPrefix, text)` already accepts both fields — it's just fire-and-forget
+   * (no response correlation) — so this replicates the wrapper's own
+   * Sent/Err `.once()` dance around it to still surface the firmware's
+   * `expectedAckCrc`/`estTimeout`.
+   */
+  private sendTextMessageWithAttempt(
+    c: AnyConnection,
+    K: MeshCoreJsModule['Constants'],
+    pubKey: Uint8Array,
+    text: string,
+    attempt: number,
+    senderTimestamp: number,
+  ): Promise<{ expectedAckCrc?: number; estTimeout?: number } | undefined> {
+    return new Promise((resolve, reject) => {
+      const onSent = (response: any) => {
+        c.off(K.ResponseCodes.Sent, onSent);
+        c.off(K.ResponseCodes.Err, onErr);
+        resolve(response);
+      };
+      const onErr = () => {
+        c.off(K.ResponseCodes.Sent, onSent);
+        c.off(K.ResponseCodes.Err, onErr);
+        reject(new Error('Device rejected DM send'));
+      };
+      c.once(K.ResponseCodes.Sent, onSent);
+      c.once(K.ResponseCodes.Err, onErr);
+      Promise.resolve(c.sendCommandSendTxtMsg(K.TxtTypes.Plain, attempt, senderTimestamp, pubKey, text)).catch(
+        (err: unknown) => {
+          c.off(K.ResponseCodes.Sent, onSent);
+          c.off(K.ResponseCodes.Err, onErr);
+          reject(err);
+        },
+      );
+    });
+  }
+
+  /**
+   * Channel send with an explicit `senderTimestamp` (#5202) — the channel retry
+   * counterpart of {@link sendTextMessageWithAttempt}. The channel frame carries
+   * no `attempt` field, so reusing the ORIGINAL timestamp on a retry produces a
+   * byte-identical payload, which is what lets normal mesh dedup treat the
+   * resend as the same message instead of a new one.
+   */
+  private sendChannelTextMessageWithTimestamp(
+    c: AnyConnection,
+    K: MeshCoreJsModule['Constants'],
+    channelIdx: number,
+    text: string,
+    senderTimestamp: number,
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const onOk = () => {
+        c.off(K.ResponseCodes.Ok, onOk);
+        c.off(K.ResponseCodes.Err, onErr);
+        resolve();
+      };
+      const onErr = () => {
+        c.off(K.ResponseCodes.Ok, onOk);
+        c.off(K.ResponseCodes.Err, onErr);
+        reject(new Error('Device rejected channel send'));
+      };
+      c.once(K.ResponseCodes.Ok, onOk);
+      c.once(K.ResponseCodes.Err, onErr);
+      Promise.resolve(c.sendCommandSendChannelTxtMsg(K.TxtTypes.Plain, channelIdx, senderTimestamp, text)).catch(
+        (err: unknown) => {
+          c.off(K.ResponseCodes.Ok, onOk);
+          c.off(K.ResponseCodes.Err, onErr);
+          reject(err);
+        },
+      );
+    });
   }
 }
 

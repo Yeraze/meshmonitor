@@ -119,6 +119,26 @@ class MockConnection extends EventEmitter {
     this.sentChannelMessages.push({ channel, text });
   }
 
+  // Low-level primitives (#5202): fire-and-forget on the wire, like the real
+  // library — the backend's own Sent/Ok listener correlates the response.
+  public sendCommandSendTxtMsgCalls: Array<{ txtType: number; attempt: number; senderTimestamp: number; pubKey: Uint8Array; text: string }> = [];
+  public sentTxtMsgAckCrc = 0xdeadbeef;
+  public sentTxtMsgEstTimeout = 8000;
+  async sendCommandSendTxtMsg(txtType: number, attempt: number, senderTimestamp: number, pubKey: Uint8Array, text: string) {
+    this.sendCommandSendTxtMsgCalls.push({ txtType, attempt, senderTimestamp, pubKey, text });
+    setTimeout(() => {
+      this.emit(ResponseCodes.Sent, { expectedAckCrc: this.sentTxtMsgAckCrc, estTimeout: this.sentTxtMsgEstTimeout });
+    }, 1);
+  }
+
+  public sendCommandSendChannelTxtMsgCalls: Array<{ txtType: number; channelIdx: number; senderTimestamp: number; text: string }> = [];
+  async sendCommandSendChannelTxtMsg(txtType: number, channelIdx: number, senderTimestamp: number, text: string) {
+    this.sendCommandSendChannelTxtMsgCalls.push({ txtType, channelIdx, senderTimestamp, text });
+    setTimeout(() => {
+      this.emit(ResponseCodes.Ok, {});
+    }, 1);
+  }
+
   async sendAdvert(type: number) {
     this.sentAdverts.push(type);
   }
@@ -744,6 +764,62 @@ describe('MeshCoreNativeBackend', () => {
     expect(resp.success).toBe(true);
     expect(conn.sentTextMessages).toHaveLength(1);
     expect(conn.sentTextMessages[0].text).toBe('dm');
+  });
+
+  it('DM send_message with explicit attempt/sender_timestamp bypasses sendTextMessage() and drives sendCommandSendTxtMsg directly (#5202)', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+    const targetBytes = Uint8Array.from([
+      0xde, 0xad, 0xbe, 0xef, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ]);
+    conn.contactsResponse = [{ publicKey: targetBytes, type: AdvType.Chat, advName: 'Bob' }];
+    conn.sentTxtMsgAckCrc = 0x1234;
+    conn.sentTxtMsgEstTimeout = 9000;
+
+    const resp = await backend.sendCommand('send_message', {
+      text: 'retry dm',
+      to: 'deadbeef',
+      attempt: 2,
+      sender_timestamp: 1_700_000_000,
+    });
+
+    expect(resp.success).toBe(true);
+    // The library wrapper (which would mint a fresh timestamp / attempt=0) is
+    // NOT used for this send.
+    expect(conn.sentTextMessages).toHaveLength(0);
+    // The low-level command is driven directly with the CALLER's values.
+    expect(conn.sendCommandSendTxtMsgCalls).toHaveLength(1);
+    expect(conn.sendCommandSendTxtMsgCalls[0].attempt).toBe(2);
+    expect(conn.sendCommandSendTxtMsgCalls[0].senderTimestamp).toBe(1_700_000_000);
+    expect(conn.sendCommandSendTxtMsgCalls[0].text).toBe('retry dm');
+    // The firmware's Sent response is still surfaced to the caller.
+    expect(resp.data).toEqual({ sent: true, expectedAckCrc: 0x1234, estTimeout: 9000 });
+  });
+
+  it('channel send_message with an explicit sender_timestamp bypasses sendChannelTextMessage() and drives sendCommandSendChannelTxtMsg directly (#5202)', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+
+    const resp = await backend.sendCommand('send_message', {
+      text: 'retry chan',
+      channel_idx: 1,
+      sender_timestamp: 1_700_000_000,
+    });
+
+    expect(resp.success).toBe(true);
+    expect(conn.sentChannelMessages).toHaveLength(0);
+    expect(conn.sendCommandSendChannelTxtMsgCalls).toHaveLength(1);
+    expect(conn.sendCommandSendChannelTxtMsgCalls[0].channelIdx).toBe(1);
+    expect(conn.sendCommandSendChannelTxtMsgCalls[0].senderTimestamp).toBe(1_700_000_000);
+    expect(conn.sendCommandSendChannelTxtMsgCalls[0].text).toBe('retry chan');
   });
 
   it('translates push events into bridge-shaped events', async () => {
