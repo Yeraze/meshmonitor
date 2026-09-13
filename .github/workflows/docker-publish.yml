@@ -71,9 +71,24 @@ jobs:
         timeout-minutes: 40
 
   # Build for armv7 using Node.js 22 (Debian slim)
+  #
+  # This one runs under QEMU emulation, so it is far slower than the native
+  # amd64/arm64 job and it has been creeping toward its cap for weeks:
+  # v4.16.0-rc5 35m, rc6 40m34s, v4.16.1-rc1 40m18s — and v4.16.1-rc2 timed out
+  # twice at exactly the same place, while `exporting layers` with every build
+  # stage already DONE. The cost is concentrated in two emulated steps:
+  # `npm install` (~24 min) and the frontend build (~10 min).
+  #
+  # A timeout here is not cosmetic. `create-manifest` needs this job, so when it
+  # fails the multi-arch `:VERSION` tag is never published at all and NO platform
+  # can pull the release — only the intermediate `-main` tag exists. The headroom
+  # below is deliberately generous rather than "just enough"; the previous
+  # setting left every release a coin flip. Cutting the emulated work down (e.g.
+  # cross-compiling the builder stage natively) is the real fix and would let
+  # this come back down.
   build-armv7:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 80
     permissions:
       contents: read
       packages: write
@@ -124,7 +139,9 @@ jobs:
           cache-to: type=gha,mode=max,scope=armv7
           provenance: true
           sbom: true
-        timeout-minutes: 40
+        # See the note on the job above: 40 min was the cap this build kept
+        # timing out against, with the layer export as the step that ran out.
+        timeout-minutes: 75
 
   # Smoke test: verify critical files are non-zero in each platform image
   # Prevents publishing broken images (see issue #2046)
