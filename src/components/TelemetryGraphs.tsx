@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import './TelemetryGraphs.css';
@@ -18,6 +18,7 @@ import { useSource } from '../contexts/SourceContext';
 import { useResolvedSourceId } from '../hooks/useResolvedSourceId';
 import { getLatestValue } from '../utils/telemetry';
 import { telemetryDisplayScale } from '../utils/telemetryFormat';
+import { telemetryDotProp } from '../utils/telemetryChartDensity';
 import TelemetryGauge from './TelemetryGauge';
 import TelemetryNumericLabel from './TelemetryNumericLabel';
 import { getTelemetryLabel } from './TelemetryChart';
@@ -205,6 +206,28 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
 }) => {
   const [mode, setMode] = useWidgetMode(nodeId, type, baseUrl);
   const [range, setRange] = useWidgetRange(nodeId, type, baseUrl);
+
+  /*
+   * #5196: marker size has to answer to how much room each point actually gets,
+   * and only the rendered card knows that — the same 24-hour series is legible
+   * on a 600px desktop column and a solid blob in a ~300px phone card. Measure
+   * the container and let `telemetryDotProp` scale the marker down (and off).
+   * `chartWidth` starts at 0, which that helper reads as "not measured yet" and
+   * answers with today's full-size markers, so the first paint is unchanged and
+   * environments without ResizeObserver (jsdom) keep the old behaviour.
+   */
+  const chartWrapRef = useRef<HTMLDivElement>(null);
+  const [chartWidth, setChartWidth] = useState(0);
+  useEffect(() => {
+    const el = chartWrapRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(entries => {
+      const width = entries[0]?.contentRect.width;
+      if (typeof width === 'number') setChartWidth(width);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [mode]);
 
   const isTemperature = isTemperatureType(type);
   const chartData = prepareChartData(data, isTemperature, globalMinTime);
@@ -402,6 +425,7 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
           <div className="telemetry-no-data">{t('telemetry.no_data')}</div>
         )
       ) : (
+        <div ref={chartWrapRef}>
         <ResponsiveContainer width="100%" height={200}>
           <ComposedChart data={scaledChartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#ccc" />
@@ -482,7 +506,7 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
                   name="WiFi"
                   stroke={getColor('paxcounterWifi')}
                   strokeWidth={2}
-                  dot={{ fill: getColor('paxcounterWifi'), r: 3 }}
+                  dot={telemetryDotProp(scaledChartData.length, chartWidth, getColor('paxcounterWifi'))}
                   activeDot={{ r: 5 }}
                   connectNulls={true}
                 />
@@ -493,7 +517,7 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
                   name="BLE"
                   stroke={getColor('paxcounterBle')}
                   strokeWidth={2}
-                  dot={{ fill: getColor('paxcounterBle'), r: 3 }}
+                  dot={telemetryDotProp(scaledChartData.length, chartWidth, getColor('paxcounterBle'))}
                   activeDot={{ r: 5 }}
                   connectNulls={true}
                 />
@@ -505,13 +529,14 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
                 dataKey="value"
                 stroke={color}
                 strokeWidth={2}
-                dot={{ fill: color, r: 3 }}
+                dot={telemetryDotProp(scaledChartData.length, chartWidth, color)}
                 activeDot={{ r: 5 }}
                 connectNulls={true}
               />
             )}
           </ComposedChart>
         </ResponsiveContainer>
+        </div>
       )}
     </div>
   );

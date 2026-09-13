@@ -54,6 +54,15 @@ const PacketStatsChart: React.FC<PacketStatsChartProps> = React.memo(({ title, d
             ))}
           </Pie>
           <Tooltip
+            /*
+             * #5195: the tooltip renders inside this 140px chart box, so a long
+             * node name ("CKL MeshNet - Lindsay East") ran straight off the
+             * card and off the phone viewport, truncated mid-value. Letting it
+             * escape the chart's viewBox and capping its width so the text
+             * wraps keeps the whole label and count readable.
+             */
+            allowEscapeViewBox={{ x: true, y: true }}
+            wrapperStyle={{ zIndex: 5, maxWidth: 'min(260px, 70vw)' }}
             formatter={(value, _name, props) => {
               if (value === null || value === undefined) return ['-', ''];
               const numValue = typeof value === 'number' ? value : parseFloat(String(value));
@@ -67,6 +76,9 @@ const PacketStatsChart: React.FC<PacketStatsChartProps> = React.memo(({ title, d
               border: '1px solid var(--color-surface-active)',
               borderRadius: '4px',
               fontSize: '0.85em',
+              maxWidth: 'min(260px, 70vw)',
+              whiteSpace: 'normal',
+              overflowWrap: 'anywhere',
             }}
             itemStyle={{
               color: 'var(--color-text)',
@@ -114,7 +126,11 @@ const PacketStatsChart: React.FC<PacketStatsChartProps> = React.memo(({ title, d
     // Stacked: chart above legend (for distribution charts in side-by-side grid)
     if (stacked) {
       return (
-        <div style={{ overflow: 'hidden' }}>
+        // `minWidth: 0`, not `overflow: hidden` — both let this grid item shrink
+        // below its min-content width, but only the former leaves the Recharts
+        // tooltip free to overhang the card (#5195/#5093). The legend does its
+        // own ellipsis clipping.
+        <div style={{ minWidth: 0 }}>
           <h3 style={{ fontSize: '1rem', marginBottom: '0.5rem' }}>{title}</h3>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
             {pieChart}
@@ -125,7 +141,7 @@ const PacketStatsChart: React.FC<PacketStatsChartProps> = React.memo(({ title, d
     }
     // Horizontal: chart left, legend right (for RX/TX in stacked box)
     return (
-      <div style={{ overflow: 'hidden' }}>
+      <div style={{ minWidth: 0 }}>
         <h3 style={{ fontSize: '1rem', marginBottom: '0.5rem' }}>{title}</h3>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           {pieChart}

@@ -2,6 +2,14 @@
   padding: 20px;
   max-width: 1400px;
   margin: 0 auto;
+  /*
+   * #5194: a grid/flex child defaults to `min-width: auto`, which floors it at
+   * its content's min-content width. That is how one over-wide table used to
+   * push this whole page — sticky nav included — past the viewport. Zeroing the
+   * floor keeps any future wide child's overflow inside its own scroll area
+   * instead of turning the document root into the scroller.
+   */
+  min-width: 0;
 }
 
 .security-header {
@@ -311,6 +319,22 @@
   color: var(--color-text-subtle);
   font-size: 14px;
   margin-bottom: 15px;
+}
+
+/*
+ * #5194: these tables have no fixed width, but their cells hold unbreakable
+ * content — `!0aca5658` node IDs, `HELTEC_MESH_NODE_T114` hardware names — so
+ * the table's min-content width runs past a phone viewport. A bare <table> has
+ * nothing to scroll inside, so the overflow escaped all the way to the document
+ * root: the reader had to drag the entire layout, sticky nav and all, to read
+ * one cell. The wrapper gives the overflow somewhere to go.
+ */
+.security-table-scroll {
+  overflow-x: auto;
+  /* Keep the card's rounded corners now that the wrapper clips, and give iOS
+     the momentum scrolling it applies to native scroll areas. */
+  border-radius: var(--radius-lg);
+  -webkit-overflow-scrolling: touch;
 }
 
 .top-broadcasters-table {
@@ -818,6 +842,16 @@
 
   .send-notification-btn {
     margin-left: 0;
+  }
+
+  /*
+   * #5194: below this width the table must scroll rather than squeeze. The
+   * min-width is what makes it scroll at all — without a floor the table
+   * compresses to the viewport and truncates every cell instead, which is the
+   * symptom the reporter saw before the whole page started panning.
+   */
+  .top-broadcasters-table {
+    min-width: 620px;
   }
 }
 

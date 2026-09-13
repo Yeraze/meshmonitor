@@ -1137,13 +1137,16 @@ body {
 
 .packet-distribution-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* `minmax(0, 1fr)`, not `1fr`: bare `1fr` keeps a min-content floor, so a
+     donut card with long node names in its legend pushed the row wider than the
+     viewport (#5195, same trap as #5093). */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 1rem;
 }
 
 @media (max-width: 700px) {
   .packet-distribution-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
