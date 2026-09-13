@@ -504,7 +504,16 @@
   width: 90%;
   max-width: 500px;
   max-height: 80vh;
+  /* iOS Safari counts the collapsing address bar in `vh`, so 80vh can exceed
+     what is actually on screen. `dvh` tracks the visible viewport; the `vh`
+     line above stays as the fallback for browsers without it — same
+     progressive-enhancement pair used by `.modal-content` in App.css. */
+  max-height: 80dvh;
   overflow: hidden;
+  /* Column flex so the content region below owns the scrolling while the
+     header stays pinned (#5191). */
+  display: flex;
+  flex-direction: column;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 }
 
@@ -542,6 +551,18 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  /* #5191: the modal clips at max-height, and this region had no overflow of
+     its own, so every widget past the fold was simply unreachable — worst on a
+     phone, where 80vh fits only the first few cards.
+     `min-height: 0` is load-bearing, not decoration: a flex child defaults to
+     `min-height: auto` and refuses to shrink below its content, which would
+     push the overflow straight back out to the clipped parent and leave this
+     rule doing nothing. */
+  overflow-y: auto;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+  /* Don't chain the scroll to the page behind the modal once this list ends. */
+  overscroll-behavior: contain;
 }
 
 .add-widget-option {
