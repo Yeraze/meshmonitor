@@ -110,14 +110,14 @@ export async function analyzeEnrichment(
 
     for (const targetRow of rows) {
       const targetSourceId = targetRow.sourceId;
-      const blanks = ANALYZE_NODE_INFO_FIELDS.filter(f => isNodeInfoFieldBlank(targetRow[f as keyof DbNode]));
+      const blanks = ANALYZE_NODE_INFO_FIELDS.filter(f => isNodeInfoFieldBlank(targetRow[f as keyof DbNode], f));
       if (blanks.length === 0) continue;
 
       // Donor candidates: other source rows for this nodeNum that can fill
       // at least one of the target's blank fields.
       const donorCandidates = rows.filter(r => {
         if (r.sourceId === targetSourceId) return false;
-        return blanks.some(f => !isNodeInfoFieldBlank(r[f as keyof DbNode]));
+        return blanks.some(f => !isNodeInfoFieldBlank(r[f as keyof DbNode], f));
       });
       if (donorCandidates.length === 0) continue;
 
@@ -130,7 +130,7 @@ export async function analyzeEnrichment(
       const donor = donorCandidates[0];
       const donorSourceId = donor.sourceId;
 
-      const fillableFields = blanks.filter(f => !isNodeInfoFieldBlank(donor[f as keyof DbNode]));
+      const fillableFields = blanks.filter(f => !isNodeInfoFieldBlank(donor[f as keyof DbNode], f));
       if (fillableFields.length === 0) continue;
 
       targets.push({
