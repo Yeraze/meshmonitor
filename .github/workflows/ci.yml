@@ -109,8 +109,23 @@ jobs:
         # Tracking: remediation epic #3962 Task 1.2.
         continue-on-error: true
 
+      # `--disableConsoleIntercept` for the same reason as the release workflow's
+      # coverage step: `onUserConsoleLog` is the RPC a worker uses to ship a
+      # test's console output to the main process, and with ~1,265 files logging
+      # freely it can still be in flight when the worker is torn down. The run
+      # then exits 1 on an unhandled
+      #
+      #   EnvironmentTeardownError: [vitest-worker]: Closing rpc while
+      #   "onUserConsoleLog" was pending
+      #
+      # *after* reporting every file passed — costing a rerun on an otherwise
+      # green PR. Seen on #5179, #5181 and #5192 in a single afternoon.
+      # Disabling interception means that RPC never exists, so there is no race
+      # to lose. Console output still reaches the log (it goes straight to
+      # stdout instead of via the interceptor) and failures report unchanged;
+      # measured locally the log got SMALLER, 1.58M lines to ~750k.
       - name: Run tests
-        run: npm run test:run
+        run: npm run test:run -- --disableConsoleIntercept
 
   build:
     name: Build Check

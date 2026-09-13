@@ -125,9 +125,30 @@ jobs:
       # vitest.config.ts — so the answer is to run it on the runtime where it
       # reports honestly, not to drop it. `npm run test:run` still covers Node
       # 24 in this same matrix; only the coverage pass moves.
+      #
+      # Moving to 22 did NOT fix it — v4.16.0-rc6, v4.16.0 and v4.16.1-rc1 all
+      # failed here on 22 with the identical error, every one of them reporting
+      # 1264 files passed / 0 failed first. The cause is in the name:
+      # `onUserConsoleLog` is the RPC a worker uses to ship a test's console
+      # output to the main process, and it can still be in flight when the
+      # worker is torn down. `--disableConsoleIntercept` stops Vitest
+      # intercepting console at all, so that RPC never exists and the race it
+      # loses cannot happen. Measured over three local full runs:
+      #
+      #   --coverage                      4x "Closing rpc"   exit 1  (CI)
+      #   --coverage --silent=passed-only 3x "Closing rpc"   exit 1
+      #   --coverage --disableConsoleIntercept  0            exit 0  (x2)
+      #
+      # Trade-off: test console output now goes straight to stdout, so `--silent`
+      # is inert here and this job's log stays large (~750k lines, about half
+      # what it was). Failures still report normally — this changes where console
+      # output goes, not whether a failing test fails.
+      #
+      # NOT `|| true` and NOT `--dangerouslyIgnoreUnhandledErrors`: both would
+      # hide real failures. This removes the cause instead of the symptom.
       - name: Generate coverage report
         if: matrix.node-version == '22.x'
-        run: npm run test:coverage
+        run: npm run test:coverage -- --disableConsoleIntercept
 
       # Thresholds are enforced by vitest.config.ts (statements 32 overall,
       # src/utils/** 70, src/server/** 25) — `vitest run --coverage` exits

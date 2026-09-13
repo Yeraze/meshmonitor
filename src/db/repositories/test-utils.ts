@@ -31,9 +31,32 @@ const { Pool: PgPool } = pg;
 // evaluation even if many test files import this file concurrently).
 // ---------------------------------------------------------------------------
 
+/**
+ * `new PgPool(...)` with an `'error'` listener attached.
+ *
+ * A `pg` Pool with no `'error'` handler turns any error on an IDLE client into
+ * an uncaught exception. The suite drops its per-test databases with
+ * `DROP DATABASE ... WITH (FORCE)`, which terminates whatever is still
+ * connected to them — so the server hands back `57P01 terminating connection
+ * due to administrator command` on a socket nobody is listening to, and Vitest
+ * fails the whole run on an unhandled error AFTER every test has passed.
+ *
+ * There is nothing to recover: the database is being destroyed on purpose and
+ * the pool is on its way out. Swallow it rather than letting it take the run
+ * down. Real query failures are unaffected — those reject their own promise at
+ * the call site and never reach this handler.
+ */
+function guardedPgPool(config: ConstructorParameters<typeof PgPool>[0]): InstanceType<typeof PgPool> {
+  const pool = new PgPool(config);
+  pool.on('error', () => {
+    // Intentionally empty — see above.
+  });
+  return pool;
+}
+
 async function probePostgres(): Promise<boolean> {
   try {
-    const pool = new PgPool({
+    const pool = guardedPgPool({
       host: 'localhost',
       port: 5433,
       user: 'test',
@@ -232,7 +255,7 @@ export async function createIsolatedPostgresDatabase(
 ): Promise<IsolatedPostgresDatabase> {
   const databaseName = isolatedDatabaseName(isolationKey);
 
-  const admin = new PgPool({
+  const admin = guardedPgPool({
     ...PG_TEST_CONN,
     database: SHARED_TEST_DB,
     connectionTimeoutMillis: 5000,
@@ -245,7 +268,7 @@ export async function createIsolatedPostgresDatabase(
     await admin.end();
   }
 
-  const pool = new PgPool({
+  const pool = guardedPgPool({
     ...PG_TEST_CONN,
     database: databaseName,
     connectionTimeoutMillis: 5000,
@@ -256,7 +279,7 @@ export async function createIsolatedPostgresDatabase(
     databaseName,
     cleanup: async () => {
       await pool.end();
-      const dropper = new PgPool({
+      const dropper = guardedPgPool({
         ...PG_TEST_CONN,
         database: SHARED_TEST_DB,
         connectionTimeoutMillis: 5000,
@@ -379,7 +402,7 @@ export async function createPostgresBackend(
 
     const pool = isolated
       ? isolated.pool
-      : new PgPool({
+      : guardedPgPool({
           host: 'localhost',
           port: 5433,
           user: 'test',
