@@ -772,36 +772,38 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
               <div className="issues-section top-broadcasters-section">
                 <h3>{t('security.top_broadcasters')}</h3>
                 <p className="section-description">{t('security.top_broadcasters_description')}</p>
-                <table className="top-broadcasters-table">
-                  <thead>
-                    <tr>
-                      <th>{t('security.rank')}</th>
-                      <th>{t('security.node')}</th>
-                      <th>{t('security.node_id')}</th>
-                      <th>{t('security.packets_hour')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {issues.topBroadcasters.map((broadcaster, index) => (
-                      <tr key={broadcaster.nodeNum}>
-                        <td className="rank">#{index + 1}</td>
-                        <td className="node-name">
-                          <span
-                            className="node-link"
-                            onClick={() => handleNodeClick(broadcaster.nodeNum)}
-                          >
-                            {broadcaster.longName || broadcaster.shortName || 'Unknown'}
-                          </span>
-                          {broadcaster.shortName && broadcaster.longName && (
-                            <span className="short-name"> ({broadcaster.shortName})</span>
-                          )}
-                        </td>
-                        <td className="node-id">!{broadcaster.nodeNum.toString(16).padStart(8, '0')}</td>
-                        <td className="packet-count">{broadcaster.packetCount}</td>
+                <div className="security-table-scroll">
+                  <table className="top-broadcasters-table">
+                    <thead>
+                      <tr>
+                        <th>{t('security.rank')}</th>
+                        <th>{t('security.node')}</th>
+                        <th>{t('security.node_id')}</th>
+                        <th>{t('security.packets_hour')}</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {issues.topBroadcasters.map((broadcaster, index) => (
+                        <tr key={broadcaster.nodeNum}>
+                          <td className="rank">#{index + 1}</td>
+                          <td className="node-name">
+                            <span
+                              className="node-link"
+                              onClick={() => handleNodeClick(broadcaster.nodeNum)}
+                            >
+                              {broadcaster.longName || broadcaster.shortName || 'Unknown'}
+                            </span>
+                            {broadcaster.shortName && broadcaster.longName && (
+                              <span className="short-name"> ({broadcaster.shortName})</span>
+                            )}
+                          </td>
+                          <td className="node-id">!{broadcaster.nodeNum.toString(16).padStart(8, '0')}</td>
+                          <td className="packet-count">{broadcaster.packetCount}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
@@ -1000,51 +1002,53 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
                       </button>
                     )}
                   </div>
-                  <table className="top-broadcasters-table">
-                    <thead>
-                      <tr>
-                        <th style={{ width: '30px' }}></th>
-                        <th>{t('security.dead_nodes_name', 'Name')}</th>
-                        <th>{t('security.dead_nodes_id', 'ID')}</th>
-                        <th>{t('security.dead_nodes_hardware', 'Hardware')}</th>
-                        <th>{t('security.dead_nodes_last_heard', 'Last Heard')}</th>
-                        <th>{t('security.dead_nodes_location', 'Location')}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {deadNodes.map(node => (
-                        <tr key={node.nodeNum} style={{ opacity: selectedDeadNodes.has(node.nodeNum) ? 1 : 0.8 }}>
-                          <td>
-                            <input
-                              type="checkbox"
-                              checked={selectedDeadNodes.has(node.nodeNum)}
-                              onChange={() => toggleDeadNodeSelection(node.nodeNum)}
-                            />
-                          </td>
-                          <td>
-                            {node.longName || node.shortName || <span style={{ color: 'var(--color-text-subtle)', fontStyle: 'italic' }}>Unknown</span>}
-                            {node.shortName && node.longName && (
-                              <span style={{ color: 'var(--color-text-subtle)', marginLeft: '0.5rem', fontSize: '0.8rem' }}>({node.shortName})</span>
-                            )}
-                          </td>
-                          <td style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{node.nodeId}</td>
-                          <td>{node.hwModel != null ? getHardwareModelName(node.hwModel) : '-'}</td>
-                          <td>{formatLastHeard(node.lastHeard)}</td>
-                          <td>
-                            {node.inDeviceDb ? (
-                              <span title={t('security.dead_nodes_in_both', 'In both local and device database')} style={{ color: 'var(--color-warning)' }}>
-                                <UiIcon name="radioSignal" /> {t('security.dead_nodes_local_and_device', 'Local + Device')}
-                              </span>
-                            ) : (
-                              <span title={t('security.dead_nodes_local_only', 'Only in local database')} style={{ color: 'var(--color-text-subtle)' }}>
-                                <UiIcon name="database" /> {t('security.dead_nodes_local_only_short', 'Local Only')}
-                              </span>
-                            )}
-                          </td>
+                  <div className="security-table-scroll">
+                    <table className="top-broadcasters-table">
+                      <thead>
+                        <tr>
+                          <th style={{ width: '30px' }}></th>
+                          <th>{t('security.dead_nodes_name', 'Name')}</th>
+                          <th>{t('security.dead_nodes_id', 'ID')}</th>
+                          <th>{t('security.dead_nodes_hardware', 'Hardware')}</th>
+                          <th>{t('security.dead_nodes_last_heard', 'Last Heard')}</th>
+                          <th>{t('security.dead_nodes_location', 'Location')}</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {deadNodes.map(node => (
+                          <tr key={node.nodeNum} style={{ opacity: selectedDeadNodes.has(node.nodeNum) ? 1 : 0.8 }}>
+                            <td>
+                              <input
+                                type="checkbox"
+                                checked={selectedDeadNodes.has(node.nodeNum)}
+                                onChange={() => toggleDeadNodeSelection(node.nodeNum)}
+                              />
+                            </td>
+                            <td>
+                              {node.longName || node.shortName || <span style={{ color: 'var(--color-text-subtle)', fontStyle: 'italic' }}>Unknown</span>}
+                              {node.shortName && node.longName && (
+                                <span style={{ color: 'var(--color-text-subtle)', marginLeft: '0.5rem', fontSize: '0.8rem' }}>({node.shortName})</span>
+                              )}
+                            </td>
+                            <td style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{node.nodeId}</td>
+                            <td>{node.hwModel != null ? getHardwareModelName(node.hwModel) : '-'}</td>
+                            <td>{formatLastHeard(node.lastHeard)}</td>
+                            <td>
+                              {node.inDeviceDb ? (
+                                <span title={t('security.dead_nodes_in_both', 'In both local and device database')} style={{ color: 'var(--color-warning)' }}>
+                                  <UiIcon name="radioSignal" /> {t('security.dead_nodes_local_and_device', 'Local + Device')}
+                                </span>
+                              ) : (
+                                <span title={t('security.dead_nodes_local_only', 'Only in local database')} style={{ color: 'var(--color-text-subtle)' }}>
+                                  <UiIcon name="database" /> {t('security.dead_nodes_local_only_short', 'Local Only')}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </>
               )}
             </div>
@@ -1057,30 +1061,32 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
                   <p>{t('security.key_mismatch_empty')}</p>
                 </div>
               ) : (
-                <table className="top-broadcasters-table">
-                  <thead>
-                    <tr>
-                      <th>{t('security.node')}</th>
-                      <th>{t('security.key_mismatch_detected')}</th>
-                      <th>{t('security.key_mismatch_old_key')}</th>
-                      <th>{t('security.key_mismatch_new_key')}</th>
-                      <th>{t('security.key_mismatch_status')}</th>
-                      <th>{t('security.key_mismatch_resolved')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {mismatchEvents.map((event) => (
-                      <tr key={event.id}>
-                        <td>{event.nodeName || `!${event.nodeNum.toString(16).padStart(8, '0')}`}</td>
-                        <td>{new Date(event.timestamp).toLocaleString()}</td>
-                        <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{event.oldKeyFragment || '-'}</td>
-                        <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{event.newKeyFragment || '-'}</td>
-                        <td>{getMismatchStatusLabel(event.action)}</td>
-                        <td>{event.action === 'fixed' ? new Date(event.timestamp).toLocaleString() : '-'}</td>
+                <div className="security-table-scroll">
+                  <table className="top-broadcasters-table">
+                    <thead>
+                      <tr>
+                        <th>{t('security.node')}</th>
+                        <th>{t('security.key_mismatch_detected')}</th>
+                        <th>{t('security.key_mismatch_old_key')}</th>
+                        <th>{t('security.key_mismatch_new_key')}</th>
+                        <th>{t('security.key_mismatch_status')}</th>
+                        <th>{t('security.key_mismatch_resolved')}</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {mismatchEvents.map((event) => (
+                        <tr key={event.id}>
+                          <td>{event.nodeName || `!${event.nodeNum.toString(16).padStart(8, '0')}`}</td>
+                          <td>{new Date(event.timestamp).toLocaleString()}</td>
+                          <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{event.oldKeyFragment || '-'}</td>
+                          <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{event.newKeyFragment || '-'}</td>
+                          <td>{getMismatchStatusLabel(event.action)}</td>
+                          <td>{event.action === 'fixed' ? new Date(event.timestamp).toLocaleString() : '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
           </>

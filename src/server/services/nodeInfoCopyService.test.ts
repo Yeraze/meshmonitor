@@ -168,12 +168,18 @@ describe('copyNodeInfo', () => {
     const sendMock = vi.fn().mockResolvedValue({ packetId: 1, requestId: 1 });
     h.getManagerMock.mockReturnValue({ sendNodeInfoRequest: sendMock });
 
-    const donor = makeNode({ longName: 'TestNode', channel: 3 });
-    const target = makeNode();
+    // #5193: the slot comes from the TARGET row — the donor's channel number
+    // only means something on the donor's own source.
+    const donor = makeNode({ longName: 'TestNode', channel: 7 });
+    const target = makeNode({ channel: 3 });
 
     h.getNodeMock
       .mockResolvedValueOnce(donor)
-      .mockResolvedValueOnce(target);
+      .mockResolvedValueOnce(target)
+      // Third read is copyNodeInfo's post-write verification (#5193). Return the
+      // target with the copy applied, so the verify path actually runs and stays
+      // quiet instead of being skipped on an undefined row.
+      .mockResolvedValueOnce(makeNode({ longName: 'TestNode', channel: 3 }));
 
     const result = await copyNodeInfo(100, 'src-B', 'src-A', true);
 

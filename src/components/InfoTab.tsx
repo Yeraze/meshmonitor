@@ -706,7 +706,11 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
           });
 
           const timeRangeButtons = (
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
+            // #5195: `flexWrap` on the group itself, so the three buttons drop
+            // to a second line rather than running off the right of the card on
+            // a phone. `marginLeft: auto` keeps them right-aligned on the one
+            // line they fit on at desktop widths.
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginLeft: 'auto' }}>
               <button
                 onClick={() => setDistributionTimeRange('hour')}
                 style={timeRangeButtonStyle(distributionTimeRange === 'hour')}
@@ -738,8 +742,15 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
 
               {!loadingDistribution && packetDistribution.total > 0 && (
                 <div className="info-section-wide">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem' }}>
+                  {/*
+                    * #5195: this row is title-plus-buttons with no wrap, and a
+                    * flex item will not shrink below its min-content width, so
+                    * on a phone the toggle group was clipped by the card edge
+                    * with "All Data" unreachable. Wrapping drops the group onto
+                    * its own line instead; `rowGap` keeps the two lines apart.
+                    */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', rowGap: '0.5rem', marginBottom: '0.75rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem', flexWrap: 'wrap', minWidth: 0 }}>
                       <h3 style={{ margin: 0 }}>{t('info.packet_distribution', 'Packet Distribution')}</h3>
                       <span style={{ fontSize: '0.9em', color: 'var(--color-text-subtle)', fontWeight: 600 }}>
                         {t('info.total_packets', { count: packetDistribution.total, defaultValue: 'Total: {{count}} packets' })}
