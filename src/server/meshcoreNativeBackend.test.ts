@@ -746,6 +746,9 @@ describe('MeshCoreNativeBackend', () => {
     const resp = await backend.sendCommand('send_message', { text: 'hello world' });
     expect(resp.success).toBe(true);
     expect(conn.sentChannelMessages).toEqual([{ channel: 0, text: 'hello world' }]);
+    // No explicit sender_timestamp (e.g. sendRoomPost, or any other caller that
+    // doesn't need retry control) → the low-level path must NOT be taken (#5202).
+    expect(conn.sendCommandSendChannelTxtMsgCalls).toHaveLength(0);
   });
 
   it('routes DM send_message to the resolved contact pubkey', async () => {
@@ -764,6 +767,9 @@ describe('MeshCoreNativeBackend', () => {
     expect(resp.success).toBe(true);
     expect(conn.sentTextMessages).toHaveLength(1);
     expect(conn.sentTextMessages[0].text).toBe('dm');
+    // No explicit sender_timestamp (e.g. sendRoomPost, or any other caller that
+    // doesn't need retry control) → the low-level path must NOT be taken (#5202).
+    expect(conn.sendCommandSendTxtMsgCalls).toHaveLength(0);
   });
 
   it('DM send_message with explicit attempt/sender_timestamp bypasses sendTextMessage() and drives sendCommandSendTxtMsg directly (#5202)', async () => {
