@@ -19,6 +19,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import messageRoutes from './messageRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
+import databaseService from '../../services/database.js';
 
 const LOCAL_A = { nodeNum: 0x0a000001, nodeId: '!0a000001' };
 const LOCAL_B = { nodeNum: 0x0b000001, nodeId: '!0b000001' };
@@ -183,6 +184,28 @@ describe('POST /api/messages/mark-all-dms-read (#5197)', () => {
     const agent = await harness.loginAs(harness.limited);
     const res = await agent.post('/mark-all-dms-read');
     expect(res.status).toBe(403);
+  });
+
+  it('reports a failure mid-sweep rather than a partial success', async () => {
+    // A bulk action that dies halfway must not answer 200 — the caller would
+    // clear the badges optimistically and the remaining conversations would
+    // stay unread with nothing to show for it. Fail loudly; the sweep is
+    // idempotent, so a retry costs nothing.
+    const spy = vi
+      .spyOn(databaseService, 'markDMMessagesAsReadAsync')
+      .mockRejectedValueOnce(new Error('db exploded'));
+
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.post('/mark-all-dms-read');
+
+    expect(res.status).toBe(500);
+    expect(res.body.code).toBe('MARK_ALL_DMS_READ_FAILED');
+    spy.mockRestore();
+
+    // Nothing was silently half-applied from the caller's point of view: the
+    // DMs are still counted, so a retry has the same work to do.
+    const after = await agent.get('/unread-by-source');
+    expect(Object.keys(after.body.sources).length).toBeGreaterThan(0);
   });
 
   it('is idempotent — a second sweep marks nothing and still succeeds', async () => {
