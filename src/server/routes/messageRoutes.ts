@@ -1145,10 +1145,32 @@ router.post('/mark-read', optionalAuth(), async (req, res) => {
  */
 router.get('/unread-counts', optionalAuth(), async (req, res) => {
   try {
-    // Check if user has either any channel permission or messages permission
+    // Resolved BEFORE the permission gates below, because those gates are
+    // scoped to it. Reading it afterwards is what let the two drift apart.
+    const unreadSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
+      ? req.query.sourceId
+      : undefined;
+
+    // Check if user has either any channel permission or messages permission.
+    //
+    // Both checks are scoped to `unreadSourceId`. They used to be un-scoped
+    // while the queries below answered for the caller-named source, which is
+    // the #3745 cross-source leak in slow motion: holding `messages:read` on
+    // ANY one source was enough to read EVERY source's unread DM counts, one
+    // `?sourceId=` at a time. Observed on a real install — an account with
+    // `messages:read` on three MQTT sources and none on a TCP source could
+    // still read that TCP source's DM counts.
+    //
+    // `/unread-by-source` re-checks per source id for exactly this reason; it
+    // described this handler as "bounded ... the caller names the source and
+    // sees only that source", which is true of the RESPONSE but says nothing
+    // about whether the caller was entitled to name it.
+    //
+    // With `sourceId` omitted the queries deliberately span every source, and
+    // `hasPermission` with no scope keeps its original meaning there.
     const isAdmin = req.user?.isAdmin === true;
-    const hasChannelsRead = isAdmin || (req.user ? await hasPermission(req.user, 'channel_0', 'read') : false);
-    const hasMessagesRead = isAdmin || (req.user ? await hasPermission(req.user, 'messages', 'read') : false);
+    const hasChannelsRead = isAdmin || (req.user ? await hasPermission(req.user, 'channel_0', 'read', unreadSourceId) : false);
+    const hasMessagesRead = isAdmin || (req.user ? await hasPermission(req.user, 'messages', 'read', unreadSourceId) : false);
     // Virtual (Channel Database) channels are gated by per-entry `canRead`
     // grants; a virtual-channel-only reader still needs to reach the unread
     // counts for those channels.
@@ -1164,13 +1186,11 @@ router.get('/unread-counts', optionalAuth(), async (req, res) => {
     }
 
     const userId = req.user?.id ?? null;
-    // Optional sourceId scoping — multi-source views must only see unread
-    // counts for messages their own source ingested. Without this an inactive
+    // `unreadSourceId` is resolved at the top of the handler (it gates the
+    // permission checks). Multi-source views must only see unread counts for
+    // messages their own source ingested — without that scoping an inactive
     // source can keep a badge lit for messages that aren't visible in the
     // current source's tab.
-    const unreadSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
-      ? req.query.sourceId
-      : undefined;
     const excludeMqtt = req.query.excludeMqtt === 'true';
     const unreadManager = resolveSourceManager(unreadSourceId);
     const localNodeInfo = unreadManager.getLocalNodeInfo();
