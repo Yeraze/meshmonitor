@@ -5410,5 +5410,8 @@
   "settings.contact_url": "Contact URL",
   "settings.privacy_url_help": "Only http:// and https:// links are accepted — anything else is ignored rather than rendered.",
   "settings.privacy_hosted_documents": "Documents hosted here",
-  "settings.privacy_hosted_documents_description": "Write or upload a document and MeshMonitor serves it at /privacy/<name>, so you do not need somewhere else to host it. Saved in the database, so it is included in system backups."
+  "settings.privacy_hosted_documents_description": "Write or upload a document and MeshMonitor serves it at /privacy/<name>, so you do not need somewhere else to host it. Saved in the database, so it is included in system backups.",
+  "source.mark_all_dms_read": "Mark all read",
+  "source.mark_all_dms_read_help": "Clear the unread direct-message badge on every source you can read.",
+  "source.mark_all_dms_read_confirm": "Mark all {{count}} unread direct messages as read? This cannot be undone."
 }

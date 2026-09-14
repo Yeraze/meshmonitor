@@ -1292,10 +1292,99 @@ router.get('/unread-counts', optionalAuth(), async (req, res) => {
  * Anonymous callers get an empty map: unread state is per-user
  * (`read_messages.userId`), so there is nothing meaningful to count.
  */
+/**
+ * The unread DMs a caller is actually allowed to see, grouped by source.
+ *
+ * Extracted so `/unread-by-source` (which counts them) and
+ * `/mark-all-dms-read` (which clears them) can never disagree about the set
+ * (#5197). If the badge counted a DM the bulk clear skipped, the badge would
+ * survive a "mark all read"; if the clear covered DMs the badge never counted,
+ * it would silently mark conversations the caller is not allowed to see. One
+ * traversal, used by both, is what keeps those two in step.
+ *
+ * Every gate here is PER SOURCE — see the handler docs below for why that is
+ * the whole point rather than an optimisation.
+ */
+async function collectVisibleUnreadDms(
+  user: Express.Request['user'],
+  userId: number | null,
+): Promise<Array<{ sourceId: string; localNodeId: string; senders: Record<string, number> }>> {
+  const isAdmin = user?.isAdmin === true;
+  const out: Array<{ sourceId: string; localNodeId: string; senders: Record<string, number> }> = [];
+  if (!user) return out;
+
+  // Muted DMs must not light a badge, same rule as /unread-counts — and so
+  // must not be swept up by a bulk clear either.
+  const mutedDMNodeIds: Set<string> = new Set();
+  if (userId) {
+    const { getUserNotificationPreferencesAsync } = await import('../utils/notificationFiltering.js');
+    const prefs = await getUserNotificationPreferencesAsync(userId);
+    const now = Date.now();
+    for (const rule of (prefs?.mutedDMs ?? [])) {
+      if (rule.muteUntil === null || rule.muteUntil > now) {
+        mutedDMNodeIds.add(rule.nodeUuid);
+      }
+    }
+  }
+
+  const sources = await databaseService.sources.getAllSources();
+
+  for (const source of sources) {
+    // Per-source gate. Without the sourceId argument this loop would hand
+    // every source's count to anyone holding a grant on any one source.
+    const allowed = isAdmin || await hasPermission(user, 'messages', 'read', source.id);
+    if (!allowed) continue;
+
+    // Which source types can hold a Meshtastic DM at all. Gating on
+    // `isMeshtasticManager` alone would have been wrong in the direction
+    // that produces "rows in the DB, empty badge": MQTT bridge/broker
+    // sources ingest into the very same `messages` table and can absolutely
+    // carry a DM addressed to their local node.
+    //
+    // MeshCore and Reticulum are excluded on purpose, not overlooked — their
+    // DMs live in their own tables and need a different query. A badge for
+    // them is follow-up work, not something to fake here.
+    if (!DM_BEARING_SOURCE_TYPES.has(source.type)) continue;
+
+    const manager = sourceManagerRegistry.getManager(source.id);
+    if (!manager) continue;
+
+    // A DM is addressed to THIS source's local node. No local node yet
+    // (still connecting, never connected) means nothing can be addressed to
+    // it — deliberately not falling back to the primary source's node.
+    const localNodeId = manager.getLocalNodeInfo()?.nodeId;
+    if (!localNodeId) continue;
+
+    const perSender = await databaseService.getBatchUnreadDMCountsAsync(localNodeId, userId, source.id);
+    if (Object.keys(perSender).length === 0) continue;
+
+    // No node list means no way to check sender visibility. Count nothing
+    // rather than everything — the filter is a permission gate, so failing
+    // open here would be the leak this handler exists to avoid.
+    if (typeof manager.getAllNodesAsync !== 'function') continue;
+    const nodes = await manager.getAllNodesAsync(source.id);
+    const visible = await filterNodesByChannelPermission(nodes, user, source.id);
+    const visibleNodeIds = new Set(
+      visible.map((n) => n.user?.id).filter((id): id is string => typeof id === 'string'),
+    );
+
+    const senders: Record<string, number> = {};
+    for (const [nodeId, count] of Object.entries(perSender)) {
+      if (!visibleNodeIds.has(nodeId)) continue;
+      if (mutedDMNodeIds.has(nodeId)) continue;
+      const n = Number(count) || 0;
+      if (n > 0) senders[nodeId] = n;
+    }
+
+    if (Object.keys(senders).length > 0) out.push({ sourceId: source.id, localNodeId, senders });
+  }
+
+  return out;
+}
+
 router.get('/unread-by-source', optionalAuth(), async (req, res) => {
   try {
     const userId = req.user?.id ?? null;
-    const isAdmin = req.user?.isAdmin === true;
     const result: { [sourceId: string]: { directMessages: number } } = {};
 
     // No identity, no per-user read state to report on.
@@ -1303,68 +1392,9 @@ router.get('/unread-by-source', optionalAuth(), async (req, res) => {
       return res.json({ sources: result });
     }
 
-    // Muted DMs must not light a badge, same rule as /unread-counts.
-    const mutedDMNodeIds: Set<string> = new Set();
-    if (userId) {
-      const { getUserNotificationPreferencesAsync } = await import('../utils/notificationFiltering.js');
-      const prefs = await getUserNotificationPreferencesAsync(userId);
-      const now = Date.now();
-      for (const rule of (prefs?.mutedDMs ?? [])) {
-        if (rule.muteUntil === null || rule.muteUntil > now) {
-          mutedDMNodeIds.add(rule.nodeUuid);
-        }
-      }
-    }
-
-    const sources = await databaseService.sources.getAllSources();
-
-    for (const source of sources) {
-      // Per-source gate. Without the sourceId argument this loop would hand
-      // every source's count to anyone holding a grant on any one source.
-      const allowed = isAdmin || await hasPermission(req.user, 'messages', 'read', source.id);
-      if (!allowed) continue;
-
-      // Which source types can hold a Meshtastic DM at all. Gating on
-      // `isMeshtasticManager` alone would have been wrong in the direction
-      // that produces "rows in the DB, empty badge": MQTT bridge/broker
-      // sources ingest into the very same `messages` table and can absolutely
-      // carry a DM addressed to their local node.
-      //
-      // MeshCore and Reticulum are excluded on purpose, not overlooked — their
-      // DMs live in their own tables and need a different query. A badge for
-      // them is follow-up work, not something to fake here.
-      if (!DM_BEARING_SOURCE_TYPES.has(source.type)) continue;
-
-      const manager = sourceManagerRegistry.getManager(source.id);
-      if (!manager) continue;
-
-      // A DM is addressed to THIS source's local node. No local node yet
-      // (still connecting, never connected) means nothing can be addressed to
-      // it — deliberately not falling back to the primary source's node.
-      const localNodeId = manager.getLocalNodeInfo()?.nodeId;
-      if (!localNodeId) continue;
-
-      const perSender = await databaseService.getBatchUnreadDMCountsAsync(localNodeId, userId, source.id);
-      if (Object.keys(perSender).length === 0) continue;
-
-      // No node list means no way to check sender visibility. Count nothing
-      // rather than everything — the filter is a permission gate, so failing
-      // open here would be the leak this handler exists to avoid.
-      if (typeof manager.getAllNodesAsync !== 'function') continue;
-      const nodes = await manager.getAllNodesAsync(source.id);
-      const visible = await filterNodesByChannelPermission(nodes, req.user, source.id);
-      const visibleNodeIds = new Set(
-        visible.map((n) => n.user?.id).filter((id): id is string => typeof id === 'string'),
-      );
-
-      let total = 0;
-      for (const [nodeId, count] of Object.entries(perSender)) {
-        if (!visibleNodeIds.has(nodeId)) continue;
-        if (mutedDMNodeIds.has(nodeId)) continue;
-        total += Number(count) || 0;
-      }
-
-      if (total > 0) result[source.id] = { directMessages: total };
+    for (const entry of await collectVisibleUnreadDms(req.user, userId)) {
+      const total = Object.values(entry.senders).reduce((sum, n) => sum + n, 0);
+      if (total > 0) result[entry.sourceId] = { directMessages: total };
     }
 
     res.json({ sources: result });
@@ -1375,6 +1405,79 @@ router.get('/unread-by-source', optionalAuth(), async (req, res) => {
     // directly, and `ok()` would wrap it in `data` and break that consumer
     // (the gotcha called out in CLAUDE.md).
     fail(res, 500, 'UNREAD_BY_SOURCE_FAILED', 'Failed to fetch per-source unread counts');
+  }
+});
+
+/**
+ * POST /api/messages/mark-all-dms-read
+ *
+ * Clear the unread DM badge on EVERY source the caller may read, in one
+ * request (#5197). The Sources sidebar shows a badge per source; without this
+ * a user with 5+ active sources has to open each one to dismiss them.
+ *
+ * ## Why not `/mark-read` with `allDMs`
+ *
+ * That flag already exists, but it resolves ONE manager and marks every DM
+ * to or from that single source's local node. Pointed at a multi-source
+ * install it clears one badge and leaves the rest lit. It also 500s with
+ * "Local node not connected" when that one manager has no local node, which
+ * for a bulk action means one disconnected source fails the whole sweep.
+ *
+ * ## What it marks
+ *
+ * Exactly the DMs `/unread-by-source` counts — same traversal, via
+ * `collectVisibleUnreadDms`. Per source, per visible sender, skipping mutes.
+ * So the badge is guaranteed to reach zero, and a conversation the caller
+ * cannot see is never touched.
+ *
+ * Marking is done per (localNodeId, senderNodeId) through the same repository
+ * call that opening a conversation uses, so this introduces no new read-state
+ * semantics — it is the manual "open each thread" loop the reporter is doing
+ * today, executed server-side.
+ *
+ * Note that repository call keys on node ids rather than `sourceId`, so two
+ * sources sharing one local node (the same physical node reached over both TCP
+ * and MQTT) have their DMs marked together. That is pre-existing and applies
+ * identically to opening a single conversation; it is not introduced here.
+ */
+router.post('/mark-all-dms-read', optionalAuth(), async (req, res) => {
+  try {
+    // Defensive only: `optionalAuth` normally attaches the seeded `anonymous`
+    // user when there is no session, so a signed-out caller reaches the
+    // permission gate below and gets a 403. This covers an install with no
+    // anonymous row at all.
+    if (!req.user) {
+      return fail(res, 401, 'UNAUTHORIZED', 'Sign in to mark direct messages as read');
+    }
+
+    // Matches the `allDMs` gate on /mark-read. The per-source check inside
+    // collectVisibleUnreadDms is what actually bounds the sweep.
+    const hasMessagesRead = req.user.isAdmin || await hasPermission(req.user, 'messages', 'read');
+    if (!hasMessagesRead) {
+      return fail(res, 403, 'FORBIDDEN', 'Insufficient permissions');
+    }
+
+    const userId = req.user.id ?? null;
+    const entries = await collectVisibleUnreadDms(req.user, userId);
+
+    let marked = 0;
+    for (const entry of entries) {
+      for (const senderNodeId of Object.keys(entry.senders)) {
+        marked += await databaseService.markDMMessagesAsReadAsync(
+          entry.localNodeId,
+          senderNodeId,
+          userId,
+        );
+      }
+    }
+
+    // Bare body, not `ok()`: mirrors /mark-read's `{ marked }` shape so the two
+    // read the same way to a client. `sources` is the number of sources that
+    // had anything to clear, which is what the UI reports back to the user.
+    res.json({ marked, sources: entries.length });
+  } catch (error) {
+    logger.error('Error marking all DMs as read:', error);
+    fail(res, 500, 'MARK_ALL_DMS_READ_FAILED', 'Failed to mark all direct messages as read');
   }
 });
 
