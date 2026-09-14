@@ -57,6 +57,29 @@ updates:
           - "major"
           - "minor"
           - "patch"
+      # react and react-dom refuse to run at different versions — react-dom
+      # throws `Incompatible React versions: The "react" and "react-dom"
+      # packages must have the exact same version` at import time. Ungrouped,
+      # Dependabot opened #5210 (react-dom + @types/react-dom) and #5214
+      # (react + @types/react) for the same 19.2.8 -> 19.3.0 release, and
+      # NEITHER could merge: whichever landed first would leave main mismatched,
+      # and each PR on its own failed all 1272 test files at collection with
+      # "no tests" — a total CI wipeout that reads nothing like a version skew.
+      #
+      # Same hazard as the vitest and codeql-action groups: sibling packages
+      # that pin each other exactly. Listed before `development-dependencies`
+      # so `@types/react*` matches here rather than being split off into that
+      # group, and takes every update-type so the family always moves as one PR.
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
       development-dependencies:
         patterns:
           - "@types/*"
