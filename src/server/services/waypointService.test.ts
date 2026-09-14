@@ -18,6 +18,8 @@ const {
   mockMarkRebroadcasted,
   mockGetManager,
   emit,
+  mockNotifyIfInRange,
+  mockForgetWaypoint,
 } = vi.hoisted(() => ({
   mockUpsert: vi.fn(),
   mockGet: vi.fn(),
@@ -29,6 +31,8 @@ const {
   mockMarkRebroadcasted: vi.fn(),
   mockGetManager: vi.fn(),
   emit: vi.fn(),
+  mockNotifyIfInRange: vi.fn(),
+  mockForgetWaypoint: vi.fn(),
 }));
 
 vi.mock('../../services/database.js', () => ({
@@ -49,6 +53,13 @@ vi.mock('../../services/database.js', () => ({
 vi.mock('../sourceManagerRegistry.js', () => ({
   sourceManagerRegistry: {
     getManager: (...args: unknown[]) => mockGetManager(...args),
+  },
+}));
+
+vi.mock('./waypointNotificationService.js', () => ({
+  waypointNotificationService: {
+    notifyIfInRange: (...args: unknown[]) => mockNotifyIfInRange(...args),
+    forgetWaypoint: (...args: unknown[]) => mockForgetWaypoint(...args),
   },
 }));
 
@@ -78,6 +89,10 @@ beforeEach(() => {
   mockMarkRebroadcasted.mockReset();
   mockGetManager.mockReset();
   emit.mockReset();
+  mockNotifyIfInRange.mockReset();
+  mockNotifyIfInRange.mockResolvedValue(undefined);
+  mockForgetWaypoint.mockReset();
+  mockForgetWaypoint.mockResolvedValue(undefined);
 });
 
 function eligibleRow(overrides: Record<string, unknown> = {}) {
@@ -515,5 +530,91 @@ describe('expireSweep', () => {
     const removed = await waypointService.expireSweep(3600);
     expect(removed).toBe(2);
     expect(emit.mock.calls.filter((c) => c[0] === 'expired').length).toBe(2);
+  });
+});
+
+/**
+ * Which paths alert (#4750).
+ *
+ * The whole "don't tell the user about themselves" rule lives in which call
+ * sites invoke the notifier — there is no filtering inside it to catch a
+ * mistake here. A waypoint the user placed, edited, or that our own rebroadcast
+ * scheduler refreshed must stay silent; only one that arrived over the air
+ * alerts.
+ */
+describe('waypoint arrival notifications wiring', () => {
+  const decoded = {
+    id: 42,
+    latitudeI: 261200000,
+    longitudeI: -801400000,
+    expire: 0,
+    name: 'MEETUP',
+    description: '',
+    icon: 0x1f4cd,
+  };
+
+  it('notifies for a waypoint received from the mesh', async () => {
+    const persisted = { sourceId: 's1', waypointId: 42, latitude: 26.12, longitude: -80.14 };
+    mockUpsert.mockResolvedValue(persisted);
+
+    await waypointService.upsertFromMesh('s1', 555, decoded);
+    // Fire-and-forget: let the microtask the service queued run.
+    await Promise.resolve();
+
+    expect(mockNotifyIfInRange).toHaveBeenCalledWith(persisted, 's1');
+  });
+
+  it('stays silent for a waypoint the user created locally', async () => {
+    mockGetExistingIds.mockResolvedValue(new Set());
+    mockUpsert.mockResolvedValue({ sourceId: 's1', waypointId: 99 });
+
+    await waypointService.createLocal('s1', 1234, { latitude: 26.12, longitude: -80.14, name: 'mine' });
+    await Promise.resolve();
+
+    expect(mockNotifyIfInRange).not.toHaveBeenCalled();
+  });
+
+  it('stays silent when the user edits a waypoint', async () => {
+    mockGet.mockResolvedValue({
+      sourceId: 's1', waypointId: 42, ownerNodeNum: 1234, latitude: 26.12, longitude: -80.14,
+      expireAt: null, lockedTo: null, name: 'MEETUP', description: '', iconCodepoint: null,
+      iconEmoji: '📍', isVirtual: false, channel: null, rebroadcastIntervalS: null,
+    });
+    mockUpsert.mockResolvedValue({ sourceId: 's1', waypointId: 42 });
+
+    await waypointService.update('s1', 42, 1234, { name: 'MEETUP 2' });
+    await Promise.resolve();
+
+    expect(mockNotifyIfInRange).not.toHaveBeenCalled();
+  });
+
+  it('forgets the ledger when a waypoint is deleted, so a reused id alerts again', async () => {
+    mockGet.mockResolvedValue({ sourceId: 's1', waypointId: 42, lockedTo: null });
+    mockDelete.mockResolvedValue(true);
+
+    await waypointService.deleteLocal('s1', 42, 1234);
+
+    expect(mockForgetWaypoint).toHaveBeenCalledWith('s1', 42);
+  });
+
+  it('does not touch the ledger when the delete removed nothing', async () => {
+    mockGet.mockResolvedValue({ sourceId: 's1', waypointId: 42, lockedTo: null });
+    mockDelete.mockResolvedValue(false);
+
+    await waypointService.deleteLocal('s1', 42, 1234);
+
+    expect(mockForgetWaypoint).not.toHaveBeenCalled();
+  });
+
+  it('forgets the ledger for every waypoint the expire sweep removes', async () => {
+    mockSweep.mockResolvedValue([
+      { sourceId: 's1', waypointId: 1 },
+      { sourceId: 's2', waypointId: 2 },
+    ]);
+
+    await waypointService.expireSweep();
+
+    expect(mockForgetWaypoint).toHaveBeenCalledWith('s1', 1);
+    expect(mockForgetWaypoint).toHaveBeenCalledWith('s2', 2);
   });
 });

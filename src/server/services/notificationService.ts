@@ -290,7 +290,7 @@ class NotificationService {
    * actually reached anyone, instead of firing-and-forgetting.
    */
   public async broadcastToPreferenceUsers(
-    preferenceKey: 'notifyOnNewNode' | 'notifyOnTraceroute' | 'notifyOnInactiveNode' | 'notifyOnLowBattery' | 'notifyOnServerEvents',
+    preferenceKey: 'notifyOnNewNode' | 'notifyOnTraceroute' | 'notifyOnInactiveNode' | 'notifyOnLowBattery' | 'notifyOnServerEvents' | 'notifyOnWaypoint',
     payload: NotificationPayload,
     targetUserId?: number
   ): Promise<{ sent: number; failed: number; filtered: number }> {

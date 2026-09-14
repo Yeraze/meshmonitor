@@ -3,9 +3,9 @@
  * Includes: push_subscriptions, user_notification_preferences, read_messages
  * Supports SQLite, PostgreSQL, and MySQL
  */
-import { sqliteTable, text, integer, uniqueIndex as sqliteUniqueIndex, index as sqliteIndex } from 'drizzle-orm/sqlite-core';
-import { pgTable, text as pgText, integer as pgInteger, boolean as pgBoolean, bigint as pgBigint, serial as pgSerial, uniqueIndex as pgUniqueIndex, index as pgIndex } from 'drizzle-orm/pg-core';
-import { mysqlTable, varchar as myVarchar, text as myText, int as myInt, boolean as myBoolean, bigint as myBigint, serial as mySerial, uniqueIndex as myUniqueIndex, index as myIndex } from 'drizzle-orm/mysql-core';
+import { sqliteTable, text, integer, real, primaryKey as sqlitePrimaryKey, uniqueIndex as sqliteUniqueIndex, index as sqliteIndex } from 'drizzle-orm/sqlite-core';
+import { pgTable, text as pgText, integer as pgInteger, boolean as pgBoolean, bigint as pgBigint, doublePrecision as pgDouble, serial as pgSerial, primaryKey as pgPrimaryKey, uniqueIndex as pgUniqueIndex, index as pgIndex } from 'drizzle-orm/pg-core';
+import { mysqlTable, varchar as myVarchar, text as myText, int as myInt, boolean as myBoolean, bigint as myBigint, double as myDouble, serial as mySerial, primaryKey as myPrimaryKey, uniqueIndex as myUniqueIndex, index as myIndex } from 'drizzle-orm/mysql-core';
 import { usersSqlite, usersPostgres, usersMysql } from './auth.js';
 
 // ============ PUSH SUBSCRIPTIONS ============
@@ -60,6 +60,13 @@ export const userNotificationPreferencesSqlite = sqliteTable('user_notification_
   // so low-battery alerts for them trigger when batteryMv drops below this value.
   lowBatteryVoltageThreshold: integer('low_battery_voltage_threshold').default(3300),
   notifyOnServerEvents: integer('notify_on_server_events', { mode: 'boolean' }).default(false),
+  // Waypoint arrival alerts (#4750). Opt-in like the two flags above it, with a
+  // radius so a user hears about their own area rather than the whole mesh.
+  // A NULL centre means "use this source's own node position".
+  notifyOnWaypoint: integer('notify_on_waypoint', { mode: 'boolean' }).default(false),
+  waypointRadiusKm: real('waypoint_radius_km').default(10),
+  waypointCenterLat: real('waypoint_center_lat'),
+  waypointCenterLon: real('waypoint_center_lon'),
   prefixWithNodeName: integer('prefix_with_node_name', { mode: 'boolean' }).default(false),
   appriseEnabled: integer('enable_apprise', { mode: 'boolean' }).default(true),
   appriseUrls: text('apprise_urls'),
@@ -91,6 +98,10 @@ export const userNotificationPreferencesPostgres = pgTable('user_notification_pr
   lowBatteryThreshold: pgInteger('lowBatteryThreshold').default(20),
   lowBatteryVoltageThreshold: pgInteger('lowBatteryVoltageThreshold').default(3300),
   notifyOnServerEvents: pgBoolean('notifyOnServerEvents').default(false),
+  notifyOnWaypoint: pgBoolean('notifyOnWaypoint').default(false),
+  waypointRadiusKm: pgDouble('waypointRadiusKm').default(10),
+  waypointCenterLat: pgDouble('waypointCenterLat'),
+  waypointCenterLon: pgDouble('waypointCenterLon'),
   prefixWithNodeName: pgBoolean('prefixWithNodeName').default(false),
   appriseEnabled: pgBoolean('appriseEnabled').default(true),
   appriseUrls: pgText('appriseUrls'),
@@ -154,6 +165,10 @@ export const userNotificationPreferencesMysql = mysqlTable('user_notification_pr
   lowBatteryThreshold: myInt('lowBatteryThreshold').default(20),
   lowBatteryVoltageThreshold: myInt('lowBatteryVoltageThreshold').default(3300),
   notifyOnServerEvents: myBoolean('notifyOnServerEvents').default(false),
+  notifyOnWaypoint: myBoolean('notifyOnWaypoint').default(false),
+  waypointRadiusKm: myDouble('waypointRadiusKm').default(10),
+  waypointCenterLat: myDouble('waypointCenterLat'),
+  waypointCenterLon: myDouble('waypointCenterLon'),
   prefixWithNodeName: myBoolean('prefixWithNodeName').default(false),
   appriseEnabled: myBoolean('appriseEnabled').default(true),
   appriseUrls: myText('appriseUrls'),
@@ -199,3 +214,52 @@ export type PushSubscriptionMysql = typeof pushSubscriptionsMysql.$inferSelect;
 export type NewPushSubscriptionMysql = typeof pushSubscriptionsMysql.$inferInsert;
 export type UserNotificationPreferenceMysql = typeof userNotificationPreferencesMysql.$inferSelect;
 export type NewUserNotificationPreferenceMysql = typeof userNotificationPreferencesMysql.$inferInsert;
+
+
+// ============ WAYPOINT NOTIFICATION LEDGER ============
+
+/**
+ * One row per (user, source, waypoint) already alerted on (#4750).
+ *
+ * The dedupe key is the waypoint id alone — deliberately not its name or
+ * position. Waypoints do not move: a "moved" waypoint is a new one, created
+ * with a fresh id, and SHOULD alert again. Keying on the id gives that for
+ * free while a rebroadcast of an id already in this table stays silent.
+ *
+ * Rows are written only when an alert is actually sent, so a waypoint that
+ * arrived out of range leaves no row and will alert if it comes back while the
+ * user's reference point has moved closer. They are deleted when the waypoint
+ * is deleted or expires, which both bounds the table and lets a recycled id
+ * alert again.
+ */
+export const waypointNotificationsSqlite = sqliteTable('waypoint_notifications', {
+  userId: integer('user_id').notNull(),
+  sourceId: text('source_id').notNull(),
+  waypointId: integer('waypoint_id').notNull(),
+  notifiedAt: integer('notified_at').notNull(),
+}, (t) => ({
+  pk: sqlitePrimaryKey({ columns: [t.userId, t.sourceId, t.waypointId] }),
+  sourceWaypoint: sqliteIndex('idx_waypoint_notifications_source_waypoint').on(t.sourceId, t.waypointId),
+}));
+
+export const waypointNotificationsPostgres = pgTable('waypoint_notifications', {
+  userId: pgInteger('userId').notNull(),
+  sourceId: pgText('sourceId').notNull(),
+  waypointId: pgBigint('waypointId', { mode: 'number' }).notNull(),
+  notifiedAt: pgBigint('notifiedAt', { mode: 'number' }).notNull(),
+}, (t) => ({
+  pk: pgPrimaryKey({ columns: [t.userId, t.sourceId, t.waypointId] }),
+  sourceWaypoint: pgIndex('idx_waypoint_notifications_source_waypoint').on(t.sourceId, t.waypointId),
+}));
+
+export const waypointNotificationsMysql = mysqlTable('waypoint_notifications', {
+  userId: myInt('userId').notNull(),
+  // VARCHAR rather than TEXT: it is part of the primary key, and MySQL cannot
+  // index a TEXT column without a prefix length.
+  sourceId: myVarchar('sourceId', { length: 191 }).notNull(),
+  waypointId: myBigint('waypointId', { mode: 'number' }).notNull(),
+  notifiedAt: myBigint('notifiedAt', { mode: 'number' }).notNull(),
+}, (t) => ({
+  pk: myPrimaryKey({ columns: [t.userId, t.sourceId, t.waypointId] }),
+  sourceWaypoint: myIndex('idx_waypoint_notifications_source_waypoint').on(t.sourceId, t.waypointId),
+}));

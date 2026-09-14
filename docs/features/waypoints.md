@@ -94,6 +94,12 @@ Migration **130** adds the `channel` column that records which slot a waypoint i
 
 The daily database maintenance tick sweeps expired waypoints (with a grace window) and emits `waypoint:expired` events for each removed row.
 
+## Arrival notifications
+
+You can be alerted when a waypoint arrives from the mesh inside a radius you choose. It is off by default and configured per source, on that source's **Notifications** tab — see [Waypoint Arrivals](/features/notifications#waypoint-arrivals).
+
+Migration **165** adds the four preference columns (`notify_on_waypoint`, `waypoint_radius_km`, `waypoint_center_lat`, `waypoint_center_lon`) and the `waypoint_notifications` ledger, one row per (user, source, waypoint) already alerted on. The ledger is what makes a rebroadcast silent; rows are removed when a waypoint is deleted or swept as expired.
+
 ## Limitations and follow-ups
 
 - **Rebroadcast scheduler is not yet wired**. The `rebroadcast_interval_s` column is persisted and accepted by the API, but no timer fires it. Waypoints you create are broadcast once on save; resends rely on the stock Meshtastic firmware behaviour at this time.

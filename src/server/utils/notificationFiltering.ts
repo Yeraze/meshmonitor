@@ -38,6 +38,11 @@ export interface NotificationPreferences {
   lowBatteryThreshold: number;
   lowBatteryVoltageThreshold: number;
   notifyOnServerEvents: boolean;
+  /** Waypoint arrival alerts (#4750) — see the repository's mirror of this type. */
+  notifyOnWaypoint: boolean;
+  waypointRadiusKm: number;
+  waypointCenterLat: number | null;
+  waypointCenterLon: number | null;
   prefixWithNodeName: boolean;
   monitoredNodes: string[];
   whitelist: string[];
@@ -138,6 +143,12 @@ export async function getUserNotificationPreferencesAsync(userId: number, source
         notifyOnTraceroute: boolOr(oldPrefs.notifyOnTraceroute, true),
         notifyOnInactiveNode: boolOr(oldPrefs.notifyOnInactiveNode, false),
         notifyOnLowBattery: boolOr(oldPrefs.notifyOnLowBattery, false),
+        // Waypoint alerts postdate the legacy blob entirely, so there is
+        // nothing to read back — they are off until the user opts in (#4750).
+        notifyOnWaypoint: boolOr(oldPrefs.notifyOnWaypoint, false),
+        waypointRadiusKm: typeof oldPrefs.waypointRadiusKm === 'number' ? oldPrefs.waypointRadiusKm : 10,
+        waypointCenterLat: typeof oldPrefs.waypointCenterLat === 'number' ? oldPrefs.waypointCenterLat : null,
+        waypointCenterLon: typeof oldPrefs.waypointCenterLon === 'number' ? oldPrefs.waypointCenterLon : null,
         lowBatteryThreshold: typeof oldPrefs.lowBatteryThreshold === 'number' ? oldPrefs.lowBatteryThreshold : 20,
         lowBatteryVoltageThreshold: typeof oldPrefs.lowBatteryVoltageThreshold === 'number' ? oldPrefs.lowBatteryVoltageThreshold : 3300,
         notifyOnServerEvents: boolOr(oldPrefs.notifyOnServerEvents, false),

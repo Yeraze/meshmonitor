@@ -57,6 +57,9 @@ export const TABLE_ORDER = [
   // Notification tables
   'push_subscriptions',
   'user_notification_preferences',
+  // #4750: waypoint alert dedupe ledger. No FKs (userId is a plain int), so
+  // its position here is only for readability.
+  'waypoint_notifications',
   // Misc tables
   'read_messages',
   // 4607: per-user MeshCore last-read watermarks. No FKs (userId is a plain
