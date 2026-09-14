@@ -903,10 +903,27 @@ router.post('/nodes/:nodeNum/purge-from-device', requireMessagesWrite, async (re
  */
 router.get('/', optionalAuth(), async (req, res) => {
   try {
+    // Resolved before the gates, which are scoped to it.
+    //
+    // Un-scoped, these checks authorized the caller-named `?sourceId=`: holding
+    // `messages:read` on ANY one source returned the DM BODIES of a source the
+    // caller held nothing on. Confirmed against a live install — an account with
+    // grants on three MQTT sources read a DM's text off a Meshtastic TCP source
+    // it had no `messages` grant for. Same class as #5225, which fixed the
+    // count-shaped siblings (`/unread-counts`, `/first-unread`); this one
+    // returns the message text.
+    //
+    // It survived that pass because a 50-message sample from a busy source is
+    // all channel traffic — the DMs only appear at a higher `?limit=`.
+    //
+    // With `sourceId` omitted the query spans every source and an un-scoped
+    // check keeps its original union-across-sources meaning.
+    const messagesSourceId = req.query.sourceId as string | undefined;
+
     // Check if user has either any channel permission or messages permission
     const isAdmin = req.user?.isAdmin === true;
-    const hasChannelsRead = isAdmin || (req.user ? await hasPermission(req.user, 'channel_0', 'read') : false);
-    const hasMessagesRead = isAdmin || (req.user ? await hasPermission(req.user, 'messages', 'read') : false);
+    const hasChannelsRead = isAdmin || (req.user ? await hasPermission(req.user, 'channel_0', 'read', messagesSourceId) : false);
+    const hasMessagesRead = isAdmin || (req.user ? await hasPermission(req.user, 'messages', 'read', messagesSourceId) : false);
     // Virtual (Channel Database) channels are gated by per-entry `canRead`
     // grants, not the channel_0..7 RBAC resources. Load them so virtual-channel
     // readers — including MQTT-bridge and anonymous users — can see their
@@ -922,7 +939,6 @@ router.get('/', optionalAuth(), async (req, res) => {
     }
 
     const limit = parseInt(req.query.limit as string) || 100;
-    const messagesSourceId = req.query.sourceId as string | undefined;
     const defaultMgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
     let messages = await defaultMgr.getRecentMessages(limit, messagesSourceId);
 
@@ -935,7 +951,10 @@ router.get('/', optionalAuth(), async (req, res) => {
     } else if (req.user) {
       for (let id = 0; id <= 7; id++) {
         const channelResource = `channel_${id}` as import('../../types/permission.js').ResourceType;
-        if (await hasPermission(req.user, channelResource, 'read')) authorizedChannelIds.add(id);
+        // Scoped for the same reason as the gates above — an un-scoped check
+        // here would let a channel grant on one source unhide that channel's
+        // messages on every other source.
+        if (await hasPermission(req.user, channelResource, 'read', messagesSourceId)) authorizedChannelIds.add(id);
       }
     }
 
@@ -1005,7 +1024,10 @@ router.get('/channel/:channel', optionalAuth(), async (req, res) => {
       }
     } else {
       const channelResource = `channel_${messageChannel}` as import('../../types/permission.js').ResourceType;
-      if (!req.user?.isAdmin && !(req.user ? await hasPermission(req.user, channelResource, 'read') : false)) {
+      // Scoped to the requested source, same as `GET /` above: un-scoped, a
+      // `channel_N:read` grant on ANY source authorized reading channel N's
+      // messages on EVERY source, just by naming one in `?sourceId=`.
+      if (!req.user?.isAdmin && !(req.user ? await hasPermission(req.user, channelResource, 'read', sourceIdParam) : false)) {
         return res.status(403).json({
           error: 'Insufficient permissions',
           code: 'FORBIDDEN',
