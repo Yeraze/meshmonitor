@@ -55,7 +55,7 @@ vi.mock('../meshtasticManager.js', () => ({
   },
 }));
 
-describe('GET /api/messages/unread-counts — source-scoped permission gate', () => {
+describe('unread endpoints — source-scoped permission gate', () => {
   let harness: RouteTestHarness;
 
   const seedDm = async (
@@ -167,5 +167,46 @@ describe('GET /api/messages/unread-counts — source-scoped permission gate', ()
     const b = await agent.get(`/unread-counts?sourceId=${harness.sourceB}`);
     expect(b.status).toBe(200);
     expect(b.body.directMessages).toEqual({ [PEER_B.nodeId]: 1 });
+  });
+
+  // `/first-unread` is shaped identically to `/unread-counts` — un-scoped gate,
+  // caller-named `?sourceId=`, DMs filtered only by sender visibility — and
+  // leaked the same way, returning the oldest-unread timestamp for a source the
+  // caller held nothing on. Raised in review on this PR; covered here rather
+  // than deferred, so the two cannot drift apart again.
+  describe('GET /first-unread', () => {
+    it('refuses a source the caller holds no messages grant on', async () => {
+      // Same load-bearing `viewOnMap` on B as the sibling case above: without
+      // it the sender is dropped by `filterNodesByChannelPermission` and the
+      // test would pass against unfixed code.
+      await harness.grant(harness.limited.id, 'messages', 'read', harness.sourceA);
+      await harness.grant(harness.limited.id, 'channel_0', 'viewOnMap', harness.sourceA);
+      await harness.grant(harness.limited.id, 'channel_0', 'viewOnMap', harness.sourceB);
+
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.get(`/first-unread?sourceId=${harness.sourceB}`);
+
+      if (res.status === 200) {
+        // NOTE the `.data`: unlike `/unread-counts`, this handler returns the
+        // `ok()` envelope. Reading `res.body.directMessages` here would be
+        // `undefined` and the assertion would pass no matter what the endpoint
+        // did — which is exactly how the first draft of this test passed
+        // against unfixed code.
+        expect(res.body.data?.directMessages ?? {}).toEqual({});
+      } else {
+        expect(res.status).toBe(403);
+      }
+    });
+
+    it('still answers for the source the caller does hold a grant on', async () => {
+      await harness.grant(harness.limited.id, 'messages', 'read', harness.sourceA);
+      await harness.grant(harness.limited.id, 'channel_0', 'viewOnMap', harness.sourceA);
+
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.get(`/first-unread?sourceId=${harness.sourceA}`);
+
+      expect(res.status).toBe(200);
+      expect(Object.keys(res.body.data?.directMessages ?? {})).toEqual([PEER_A.nodeId]);
+    });
   });
 });

@@ -1517,9 +1517,18 @@ router.post('/mark-all-dms-read', optionalAuth(), async (req, res) => {
  */
 router.get('/first-unread', optionalAuth(), async (req, res) => {
   try {
+    // Resolved before the gates, which are scoped to it — same reasoning as
+    // `/unread-counts` above, and the same leak if they are left un-scoped:
+    // this handler is shaped identically, so `messages:read` on any one source
+    // would otherwise return the oldest-unread timestamps for a source the
+    // caller holds nothing on, just by naming it in `?sourceId=`.
+    const scopedSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
+      ? req.query.sourceId
+      : undefined;
+
     const isAdmin = req.user?.isAdmin === true;
-    const hasChannelsRead = isAdmin || (req.user ? await hasPermission(req.user, 'channel_0', 'read') : false);
-    const hasMessagesRead = isAdmin || (req.user ? await hasPermission(req.user, 'messages', 'read') : false);
+    const hasChannelsRead = isAdmin || (req.user ? await hasPermission(req.user, 'channel_0', 'read', scopedSourceId) : false);
+    const hasMessagesRead = isAdmin || (req.user ? await hasPermission(req.user, 'messages', 'read', scopedSourceId) : false);
     const readableVirtual = await getUserReadableVirtualChannelIds(req.user, isAdmin);
     const hasVirtualRead = hasAnyReadableVirtualChannel(readableVirtual);
 
@@ -1528,9 +1537,6 @@ router.get('/first-unread', optionalAuth(), async (req, res) => {
     }
 
     const userId = req.user?.id ?? null;
-    const scopedSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
-      ? req.query.sourceId
-      : undefined;
     const excludeMqtt = req.query.excludeMqtt === 'true';
     const manager = resolveSourceManager(scopedSourceId);
     const localNodeInfo = manager.getLocalNodeInfo();
