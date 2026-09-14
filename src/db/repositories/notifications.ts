@@ -522,7 +522,13 @@ export class NotificationsRepository extends BaseRepository {
         waypointCenterLon: r.waypointCenterLon != null ? Number(r.waypointCenterLon) : null,
       }));
     } catch (error) {
-      logger.debug('Failed to query users with waypoint notifications:', error);
+      // `error`, not `debug` like the two siblings below. This read fails OPEN
+      // — an unreadable preferences table means nobody is alerted — which is
+      // the safe direction but an invisible one: at debug level an operator
+      // asking "why did my waypoint alerts stop?" has nothing to find. A
+      // broken preferences table is not a steady state, so the volume is not
+      // a concern (review, #5228).
+      logger.error('Failed to query users with waypoint notifications, no alerts will be sent:', error);
       return [];
     }
   }
