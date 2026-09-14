@@ -31,16 +31,27 @@ export function matchesQuery(haystack: string, tokens: string[]): boolean {
 }
 
 /**
- * Rank a matched entry so the palette can order results.
+ * Rank a matched entry so the palette can order results. Lower is better.
  *
- * Lower is better. The intent is only that an exact label hit outranks a hit
- * buried in a keyword list — anything finer would be guesswork.
+ * Four bands, coarsest first:
+ *
+ *   0 — the label IS the query
+ *   1 — the label starts with the query
+ *   2 — every token is somewhere in the label
+ *   3 — the label matched none of them, so it got here via a keyword or the
+ *       page name
+ *
+ * The query is compared as one joined string in bands 0 and 1, so "region
+ * preset" is ranked against the phrase rather than against each word
+ * separately. Anything finer than these four bands would be guesswork on a
+ * corpus of eighty short labels.
  */
 export function matchRank(label: string, tokens: string[]): number {
   if (tokens.length === 0) return 3;
   const lowered = label.toLowerCase();
-  if (lowered === tokens.join(' ')) return 0;
-  if (tokens.every((token) => lowered.startsWith(token))) return 1;
+  const query = tokens.join(' ');
+  if (lowered === query) return 0;
+  if (lowered.startsWith(query)) return 1;
   if (tokens.every((token) => lowered.includes(token))) return 2;
   return 3;
 }
