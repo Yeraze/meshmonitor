@@ -130,6 +130,16 @@ vi.mock('react-leaflet', () => ({
     <div data-testid="map-polyline" data-positions={JSON.stringify(positions)} />
   ),
   Rectangle: () => <div data-testid="map-rectangle" />,
+  // Required, not optional: the #4794 test below pushes a *visible* geoJsonLayer,
+  // so DashboardMap renders <GeoJsonOverlay>, which reads `GeoJSON` off this
+  // mock. Omitting it made vitest throw "No \"GeoJSON\" export is defined on the
+  // react-leaflet mock" from inside GeoJsonOverlay's render — asynchronously,
+  // after `findByLabelText('Coverage overlay')` had already resolved. The throw
+  // tore down the tree, so the very next query failed with an empty <body> and
+  // a misleading "Unable to find a label with the text of: 3D Terrain".
+  // It only surfaced on slower runners, which made it read as a flake for days.
+  // Mirrors EmbedMap.test.tsx's mock.
+  GeoJSON: () => <div data-testid="geojson" />,
   useMap: () => ({ fitBounds: mocks.fitBounds, setView: vi.fn() }),
 }));
 
