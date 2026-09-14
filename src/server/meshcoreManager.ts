@@ -3542,7 +3542,6 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     this.requireTransmit();
     try {
       const isChannelSend = !toPublicKey && channelIdx !== undefined;
-      const senderTimestamp = retry?.senderTimestamp ?? Math.floor(Date.now() / 1000);
       const attempt = retry?.attempt ?? 0;
 
       // Assert the effective region/scope on the device before sending (#3667).
@@ -3563,6 +3562,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         ? normalizedOverride
         : await this.resolveScopeForSend(isChannelSend ? channelIdx : undefined);
       await this.applyFloodScope(region);
+
+      // Stamped here, AFTER the scope resolve/assert round-trips above, not
+      // before them. Those are device calls and can take a noticeable moment;
+      // stamping earlier would backdate a brand-new message by however long the
+      // device took to answer. This is the point at which meshcore.js's own
+      // wrapper used to stamp it, so a new send keeps exactly its previous wire
+      // value. A retry ignores all of this and reuses the original (#5202).
+      const senderTimestamp = retry?.senderTimestamp ?? Math.floor(Date.now() / 1000);
 
       const response = await this.sendBridgeCommand('send_message', {
         text,
