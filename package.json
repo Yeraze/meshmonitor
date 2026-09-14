@@ -71,7 +71,7 @@
     "leaflet": "^1.9.4",
     "leaflet.heat": "^0.2.0",
     "lucide-react": "^1.44.0",
-    "maplibre-gl": "^6.7.0",
+    "maplibre-gl": "^6.9.0",
     "morgan": "^1.12.1",
     "mqtt": "^5.15.2",
     "mysql2": "^3.24.4",
