@@ -1,0 +1,93 @@
+# Re-point a moving alias tag (:dev, :latest, …) at a version that is already
+# built and published, without rebuilding anything.
+#
+# Why this exists: the release pipeline builds each platform to an intermediate
+# tag (`<version>-main`, `<version>-armv7`) and only then combines them into the
+# real tags. Those intermediate tags are never deleted, so once a version has
+# built successfully its alias can be recreated from them in about a minute.
+#
+# v4.16.1-rc2 is the case that motivated it. Its armv7 build timed out, so
+# `create-manifest` was skipped and no `:VERSION` tag published at all; the
+# rebuild had to go through `workflow_dispatch`, and the `:dev` step is gated on
+# `github.event_name == 'release'`. The result was a published release whose
+# image existed but which every `:dev` follower was invisible to. The choice then
+# is a 40-minute rebuild, deleting a release that already holds ~1 GB of signed
+# desktop assets, or this.
+name: Retag
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Already-published version to point at (e.g. 4.16.1-rc2). Must have -main and -armv7 tags.'
+        required: true
+      alias:
+        description: 'Alias tag to move (e.g. dev, latest)'
+        required: true
+        default: 'dev'
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  retag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve image name
+        id: meta
+        run: echo "image=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+      - name: Verify the source tags exist
+        # Fail here with a clear message rather than let `imagetools create`
+        # produce a confusing manifest error, and refuse to touch the alias at
+        # all unless BOTH platforms are present — a half-populated `:dev` that
+        # silently drops armv7 would be worse than leaving it where it was.
+        run: |
+          MAIN="${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ inputs.version }}-main"
+          ARMV7="${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ inputs.version }}-armv7"
+          missing=0
+          for ref in "$MAIN" "$ARMV7"; do
+            if docker buildx imagetools inspect "$ref" > /dev/null 2>&1; then
+              echo "found: $ref"
+            else
+              echo "MISSING: $ref"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::Cannot retag ${{ inputs.alias }} — version ${{ inputs.version }} has not been fully built."
+            exit 1
+          fi
+
+      - name: Show what the alias points at now
+        continue-on-error: true
+        run: |
+          echo "Before:"
+          docker buildx imagetools inspect \
+            "${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ inputs.alias }}" || echo "  (alias does not exist yet)"
+
+      - name: Move the alias
+        run: |
+          docker buildx imagetools create \
+            -t ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ inputs.alias }} \
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ inputs.version }}-main \
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ inputs.version }}-armv7
+
+      - name: Confirm the result
+        run: |
+          echo "After:"
+          docker buildx imagetools inspect \
+            "${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ inputs.alias }}"
+          echo "::notice::${{ inputs.alias }} now points at ${{ inputs.version }}"
