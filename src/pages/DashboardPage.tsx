@@ -13,7 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { SettingsProvider, useSettings } from '../contexts/SettingsContext';
 import { useAuth } from '../contexts/AuthContext';
 import { MapProvider, useMapContext } from '../contexts/MapContext';
-import { useUnreadBySource } from '../hooks/useUnreadBySource';
+import { useUnreadBySource, useMarkAllDmsRead } from '../hooks/useUnreadBySource';
 import {
   useDashboardSources,
   useSourceStatuses,
@@ -322,6 +322,9 @@ function DashboardInner() {
     baseUrl: appBasename,
     enabled: isAuthenticated && unreadIndicatorEnabled,
   });
+
+  // #5197: same basename for the same reason as the query above.
+  const markAllDmsRead = useMarkAllDmsRead({ baseUrl: appBasename });
   const neighborSourceIds = isUnifiedSelected
     ? sourceIds
     : (selectedSourceId && selectedSourceId !== UNIFIED_SOURCE_ID ? [selectedSourceId] : []);
@@ -1280,6 +1283,8 @@ function DashboardInner() {
           unreadBySource={unreadIndicatorEnabled ? unreadBySourceData?.sources : undefined}
           unreadIndicatorEnabled={unreadIndicatorEnabled}
           onToggleUnreadIndicator={setUnreadIndicatorEnabled}
+          onMarkAllDmsRead={() => markAllDmsRead.mutate()}
+          markAllDmsReadPending={markAllDmsRead.isPending}
           mobileOpen={mobileSidebarOpen}
           onMobileClose={() => setMobileSidebarOpen(false)}
           onNewsClick={() => {

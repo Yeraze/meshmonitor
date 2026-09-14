@@ -11,7 +11,8 @@
  * dropped — and omits anything it will not answer for. So a source missing
  * from the map means "no badge", never "zero, honest".
  */
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useCsrf } from '../contexts/CsrfContext';
 
 export interface UnreadBySourceData {
   /** Source id -> counts. A source the caller cannot read is absent, not 0. */
@@ -54,5 +55,43 @@ export function useUnreadBySource({
     gcTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
     retry: 1,
+  });
+}
+
+/**
+ * Clear the unread DM badge on every source the caller may read (#5197).
+ *
+ * The server marks exactly what `/unread-by-source` counts — same traversal —
+ * so the badges are guaranteed to reach zero rather than leaving a stubborn
+ * remainder from a conversation the sweep missed.
+ *
+ * Invalidates `unreadCounts` as well as `unreadBySource`: the per-conversation
+ * badges elsewhere in the app read the same read-state, and leaving them stale
+ * would show a source with no badge whose conversations still look unread.
+ */
+export function useMarkAllDmsRead({ baseUrl = '' }: { baseUrl?: string } = {}) {
+  const queryClient = useQueryClient();
+  const { getToken: getCsrfToken } = useCsrf();
+
+  return useMutation({
+    mutationFn: async (): Promise<{ marked: number; sources: number }> => {
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      const csrfToken = getCsrfToken();
+      if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+
+      const response = await fetch(`${baseUrl}/api/messages/mark-all-dms-read`, {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to mark all DMs as read: ${response.status}`);
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['unreadBySource'] });
+      void queryClient.invalidateQueries({ queryKey: ['unreadCounts'] });
+    },
   });
 }
