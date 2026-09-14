@@ -618,6 +618,11 @@ export interface MeshCoreSendResult {
   ok: boolean;
   expectedAckCrc?: number;
   estTimeout?: number;
+  /** The wire `senderTimestamp` (epoch seconds) this send was stamped with
+   *  (#5202). Callers that may need to retry this exact send (DM ack-timeout,
+   *  channel echo-miss) must reuse this value rather than letting a resend
+   *  mint a fresh one — see {@link MeshCoreManager.performScopedSend}. */
+  senderTimestamp?: number;
 }
 
 export interface MeshCoreMessage {
@@ -1007,6 +1012,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       /** Remaining flood (reset-path) resends after same-path exhausts. */
       floodRetriesLeft: number;
       timer: NodeJS.Timeout;
+      /** The ORIGINAL send's wire `senderTimestamp` (epoch seconds, #5202).
+       *  Every retry in this cascade reuses this exact value — only `attempt`
+       *  advances — so a retransmit reads as the same logical send to the
+       *  recipient instead of a brand-new message. */
+      senderTimestamp: number;
+      /** Attempt number of the send *this pending entry is currently tracking*
+       *  (0 = initial send). The next retry sends `attempt + 1` (#5202). */
+      attempt: number;
     }
   > = new Map();
 
@@ -1037,6 +1050,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       /** Remaining resends. Starts at 1 (one-shot); the resend itself never re-arms. */
       retriesLeft: number;
       timer: NodeJS.Timeout;
+      /** The ORIGINAL send's wire `senderTimestamp` (epoch seconds, #5202),
+       *  reused verbatim on the one-shot resend — the channel frame carries no
+       *  `attempt` field, so an identical (sender, timestamp, text) payload is
+       *  what lets the normal mesh dedup treat the resend as the same message
+       *  rather than a new one. */
+      senderTimestamp: number;
     }
   > = new Map();
 
@@ -3508,10 +3527,22 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     scopeOverride?: string | null,
     isAutoRetry: boolean = false,
     autoRetryOnMiss: boolean = false,
+    /**
+     * When resending an already-sent message (DM ack-timeout retry, channel
+     * echo-miss retry), the caller MUST supply the ORIGINAL send's
+     * `senderTimestamp` and the next `attempt` number rather than letting this
+     * call mint a fresh timestamp — otherwise the retransmit reads as a brand
+     * new message to the recipient (and to any repeater/companion that dedups
+     * on sender+timestamp), which is exactly the duplicate-message bug in
+     * #5202. Omitted for a genuinely new send, which always starts at
+     * attempt 0 with a freshly stamped timestamp.
+     */
+    retry?: { attempt: number; senderTimestamp: number },
   ): Promise<MeshCoreSendResult> {
     this.requireTransmit();
     try {
       const isChannelSend = !toPublicKey && channelIdx !== undefined;
+      const attempt = retry?.attempt ?? 0;
 
       // Assert the effective region/scope on the device before sending (#3667).
       // DMs are scoped too, by design: MeshCore firmware applies the default
@@ -3532,10 +3563,21 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         : await this.resolveScopeForSend(isChannelSend ? channelIdx : undefined);
       await this.applyFloodScope(region);
 
+      // Stamped here, AFTER the scope resolve/assert round-trips above, not
+      // before them. Those are device calls and can take a noticeable moment;
+      // stamping earlier would backdate a brand-new message by however long the
+      // device took to answer. This is the point at which meshcore.js's own
+      // wrapper used to stamp it, so a new send keeps exactly its previous wire
+      // value. A retry ignores all of this and reuses the original (#5202).
+      const senderTimestamp = retry?.senderTimestamp ?? Math.floor(Date.now() / 1000);
+
       const response = await this.sendBridgeCommand('send_message', {
         text,
         to: toPublicKey || null,
         channel_idx: isChannelSend ? channelIdx : undefined,
+        // Explicit attempt/timestamp (#5202) — see the `retry` param doc above.
+        attempt,
+        sender_timestamp: senderTimestamp,
       });
 
       if (response.success) {
@@ -3605,6 +3647,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
               estTimeout,
               MeshCoreManager.DM_SAME_PATH_RETRIES,
               MeshCoreManager.DM_FLOOD_RETRIES,
+              senderTimestamp,
+              attempt,
             );
           }
         }
@@ -3623,11 +3667,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           // re-registered above for echo correlation but never re-armed, so at
           // most ONE retry ever fires per logical send.
           if (autoRetryOnMiss && !isAutoRetry) {
-            await this.maybeArmChannelRetry(msgId, text, channelIdx!, scopeOverride);
+            await this.maybeArmChannelRetry(msgId, text, channelIdx!, scopeOverride, senderTimestamp);
           }
         }
 
-        return { ok: true, expectedAckCrc: ackCrc ?? undefined, estTimeout: estTimeout ?? undefined };
+        return { ok: true, expectedAckCrc: ackCrc ?? undefined, estTimeout: estTimeout ?? undefined, senderTimestamp };
       } else {
         logger.error('[MeshCore] Send failed:', response.error);
         return { ok: false };
@@ -3682,6 +3726,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     estTimeout: number,
     samePathRetriesLeft: number,
     floodRetriesLeft: number,
+    senderTimestamp: number,
+    attempt: number,
   ): void {
     const existing = this.pendingDmRetries.get(ackCrc);
     if (existing) clearTimeout(existing.timer);
@@ -3695,6 +3741,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       samePathRetriesLeft,
       floodRetriesLeft,
       timer,
+      senderTimestamp,
+      attempt,
     });
   }
 
@@ -3768,6 +3816,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         undefined,
         undefined,
         true,
+        false,
+        // Reuse the ORIGINAL senderTimestamp with an incrementing attempt
+        // (#5202) — see the `retry` param doc on performScopedSend.
+        { attempt: pending.attempt + 1, senderTimestamp: pending.senderTimestamp },
       );
       if (!result.ok || result.expectedAckCrc == null || result.estTimeout == null) {
         this.failDmDelivery(pending.messageId, ackCrc);
@@ -3794,6 +3846,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         result.estTimeout,
         useFlood ? pending.samePathRetriesLeft : pending.samePathRetriesLeft - 1,
         useFlood ? pending.floodRetriesLeft - 1 : pending.floodRetriesLeft,
+        pending.senderTimestamp,
+        pending.attempt + 1,
       );
     });
   }
@@ -3861,6 +3915,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     text: string,
     channelIdx: number,
     scopeOverride: string | null | undefined,
+    senderTimestamp: number,
   ): Promise<void> {
     let enabled: boolean;
     try {
@@ -3882,6 +3937,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       scopeOverride,
       retriesLeft: 1,
       timer,
+      senderTimestamp,
     });
   }
 
@@ -3953,6 +4009,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         pending.scopeOverride,
         true,
         false,
+        // Reuse the ORIGINAL senderTimestamp (#5202): the channel frame has no
+        // `attempt` field, so an identical (sender, timestamp, text) payload is
+        // what lets normal mesh dedup treat this as the same message rather
+        // than a new one. `attempt` is inert for channel sends.
+        { attempt: 0, senderTimestamp: pending.senderTimestamp },
       );
     });
   }
