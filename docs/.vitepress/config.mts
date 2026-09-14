@@ -49,6 +49,7 @@ const featuresSidebar = [
     items: [
       { text: 'Settings', link: '/features/settings' },
       { text: 'Global Settings', link: '/features/global-settings' },
+      { text: 'Configuration Search', link: '/features/configuration-search' },
       { text: 'Multi-Source', link: '/features/multi-source' },
       { text: 'Privacy Disclosures', link: '/features/privacy-disclosures' }
     ]

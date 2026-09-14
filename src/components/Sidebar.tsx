@@ -28,6 +28,8 @@ interface SidebarProps {
   onChannelsClick?: () => void;
   onNewsClick?: () => void;
   onSearchClick?: () => void;
+  /** Opens the cross-page configuration palette (#5182). */
+  onConfigSearchClick?: () => void;
   baseUrl: string;
   connectedNodeName?: string;
   packetLogEnabled?: boolean;
@@ -57,6 +59,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onChannelsClick,
   onNewsClick,
   onSearchClick,
+  onConfigSearchClick,
   baseUrl,
   connectedNodeName,
   packetLogEnabled,
@@ -200,6 +203,13 @@ const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   const configItems: SourceNavItem[] = [
+    /* Like the message-search entry above, this opens an overlay rather than
+       switching tabs, so its id never matches activeTab and it never renders
+       active. Placed first in the section because it is a way INTO the pages
+       below it, not a peer of them. */
+    ...(onConfigSearchClick
+      ? [navItem('config-search' as TabType, t('config_search.nav', 'Search Settings'), 'search', { onClick: onConfigSearchClick })]
+      : []),
     /* 'settings' is sourcey (Phase 6 #4416); this nav link guards the whole
        Settings tab, most of whose routes are unscoped, so anySource mirrors the
        server's union check. */

@@ -12,6 +12,7 @@ import type { Channel } from '../types/device';
 import { ImportConfigModal } from './configuration/ImportConfigModal';
 import { ExportConfigModal } from './configuration/ExportConfigModal';
 import SectionNav from './SectionNav';
+import { adminCommandsNavItems } from './search/configSections';
 import { encodePositionFlags, decodePositionFlags, decodePositionFlagNames } from '../utils/positionFlags';
 import { getHardwareModelName, getRoleName } from '../utils/nodeHelpers';
 import { DeviceConfigurationSection } from './admin-commands/DeviceConfigurationSection';
@@ -2483,15 +2484,13 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
   return (
     <div className="tab-content">
-      <SectionNav items={[
-        { id: 'admin-target-node', label: t('admin_commands.target_node', 'Target Node') },
-        { id: 'radio-config', label: t('admin_commands.radio_configuration', 'Radio Configuration') },
-        { id: 'device-config', label: t('admin_commands.device_configuration', 'Device Configuration') },
-        { id: 'module-config', label: t('admin_commands.module_configuration', 'Module Configuration') },
-        { id: 'admin-import-export', label: t('admin_commands.config_import_export', 'Import/Export') },
-        { id: 'admin-node-management', label: t('admin_commands.node_favorites_ignored', 'Node Management') },
-        { id: 'admin-auto-favorites', label: t('auto_favorite.nav', 'Automatic Favorites') },
-      ]} />
+      <SectionNav
+        searchable
+        searchPlaceholder={t('config_search.filter_admin', 'Search admin sections...')}
+        searchLabel={t('config_search.filter_admin', 'Search admin sections...')}
+        noMatchesLabel={t('config_search.no_sections', 'No matching sections')}
+        items={adminCommandsNavItems(t)}
+      />
 
       {remoteAdminBlocked && (
         <div

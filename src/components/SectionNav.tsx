@@ -1,10 +1,17 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import styles from './SectionNav.module.css';
 import { useSectionNavHeightVar } from '../hooks/useSectionNavHeightVar';
+import { matchesQuery, tokenize } from './search/configSearchMatch';
 
 export interface NavItem {
   id: string;
   label: string;
+  /**
+   * Extra terms the filter should match on beyond the label and the section's
+   * own rendered text — synonyms and the words a user is likely to reach for
+   * ("GPS" for Position, "radio" for LoRa). Also feeds the cross-page palette.
+   */
+  keywords?: string[];
 }
 
 interface SectionNavProps {
@@ -15,7 +22,26 @@ interface SectionNavProps {
    * landscape phone (#5069).
    */
   className?: string;
+  /**
+   * Render a filter box in the nav that narrows BOTH the chip list and the
+   * sections those chips point at (#5182). Off by default so surfaces with a
+   * handful of sections keep the plain picker.
+   */
+  searchable?: boolean;
+  /** Placeholder for the filter box. Callers pass a translated string. */
+  searchPlaceholder?: string;
+  /** Accessible label for the filter box. Callers pass a translated string. */
+  searchLabel?: string;
+  /** Shown in place of the chips when nothing matches. */
+  noMatchesLabel?: string;
 }
+
+/**
+ * Section ids are author-written slugs, but they end up inside a generated CSS
+ * selector, so anything that isn't a plain slug is dropped rather than escaped.
+ * A section we cannot safely name simply stays visible.
+ */
+const SAFE_ID = /^[A-Za-z0-9_-]+$/;
 
 /** Where a clicked section lands when the window is the scroller. */
 const WINDOW_SCROLL_OFFSET = 130;
@@ -36,10 +62,18 @@ const readingLine = () => Math.max(window.innerHeight * 0.3, WINDOW_SCROLL_OFFSE
 /** How long to trust a click over the scrollspy, in ms — one smooth scroll. */
 const CLICK_SETTLE_MS = 700;
 
-const SectionNav: React.FC<SectionNavProps> = ({ items, className }) => {
+const SectionNav: React.FC<SectionNavProps> = ({
+  items,
+  className,
+  searchable = false,
+  searchPlaceholder,
+  searchLabel,
+  noMatchesLabel,
+}) => {
   const navRef = useRef<HTMLElement | null>(null);
   const settleUntilRef = useRef(0);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
 
   // This nav is sticky and opaque, so a second sticky element beside it has to
   // park below BOTH the fixed bar and this row. Its height is a function of how
@@ -49,6 +83,64 @@ const SectionNav: React.FC<SectionNavProps> = ({ items, className }) => {
   // Stable dependency: callers build the `items` array inline, so it is a new
   // reference on every render and would re-arm the observer each time.
   const idsKey = items.map((item) => item.id).join('|');
+
+  const tokens = useMemo(() => (searchable ? tokenize(query) : []), [searchable, query]);
+
+  /**
+   * Ids surviving the filter, or `null` when no filter is active.
+   *
+   * Computed in an effect rather than during render because the haystack
+   * includes each section's RENDERED text — a section is matched by any word
+   * inside it, not only by its own heading, which is what makes "battery" or
+   * "gps" find the right panel without anyone maintaining a keyword list per
+   * setting. That text only exists after commit, and it keeps arriving (device
+   * config values land asynchronously).
+   *
+   * So the effect deliberately re-runs on every render while a query is active
+   * and re-reads the DOM. It settles immediately: the state setter returns the
+   * previous array when the result is unchanged, so no render it causes can
+   * cause another.
+   */
+  const [matchedIds, setMatchedIds] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    if (tokens.length === 0) {
+      setMatchedIds((prev) => (prev === null ? prev : null));
+      return;
+    }
+    const next = items
+      .filter((item) => {
+        const element = document.getElementById(item.id);
+        const haystack = [
+          item.label,
+          (item.keywords ?? []).join(' '),
+          element?.textContent ?? '',
+        ].join(' ');
+        return matchesQuery(haystack, tokens);
+      })
+      .map((item) => item.id);
+    setMatchedIds((prev) =>
+      prev && prev.length === next.length && prev.every((id, i) => id === next[i]) ? prev : next,
+    );
+  }, [items, tokens]);
+
+  const visibleItems = matchedIds === null ? items : items.filter((item) => matchedIds.includes(item.id));
+
+  /**
+   * Sections the filter excludes are hidden with a generated stylesheet rather
+   * than by touching their DOM nodes. Those nodes belong to the tab that
+   * rendered them; setting `hidden` or a class on them from here would be
+   * clobbered by that tab's next render. A <style> element is React's own and
+   * survives.
+   */
+  const hideRule = useMemo(() => {
+    if (matchedIds === null) return '';
+    const hidden = items
+      .map((item) => item.id)
+      .filter((id) => !matchedIds.includes(id) && SAFE_ID.test(id));
+    if (hidden.length === 0) return '';
+    return `${hidden.map((id) => `#${id}`).join(',')}{display:none!important}`;
+  }, [items, matchedIds]);
 
   const scrollToSection = useCallback((id: string) => {
     const element = document.getElementById(id);
@@ -154,6 +246,38 @@ const SectionNav: React.FC<SectionNavProps> = ({ items, className }) => {
   }, [idsKey]);
 
   /**
+   * Honour a `#section-id` in the URL (#5182).
+   *
+   * The cross-page configuration palette navigates to `…/configuration#config-lora`,
+   * and the browser cannot do that jump itself: the section does not exist yet
+   * when the hash is applied, and even once it does, a bare anchor jump parks it
+   * under the fixed header and this sticky nav. So the nav — which already knows
+   * the right scroller and the right offset — does it.
+   *
+   * A short delay lets the target tab finish its first paint; without it the
+   * element is either absent or laid out at the wrong height.
+   */
+  useEffect(() => {
+    const ids = idsKey ? idsKey.split('|') : [];
+    if (ids.length === 0) return;
+
+    let timer = 0;
+    const jumpToHash = () => {
+      const target = decodeURIComponent(window.location.hash.replace(/^#/, ''));
+      if (!target || !ids.includes(target)) return;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => scrollToSection(target), 80);
+    };
+
+    jumpToHash();
+    window.addEventListener('hashchange', jumpToHash);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('hashchange', jumpToHash);
+    };
+  }, [idsKey, scrollToSection]);
+
+  /**
    * Keep the active button inside the picker's own scrollport. Deliberately not
    * `scrollIntoView` — that walks up and scrolls the window too, which would
    * fight the smooth scroll we just started.
@@ -174,7 +298,33 @@ const SectionNav: React.FC<SectionNavProps> = ({ items, className }) => {
 
   return (
     <nav ref={navRef} className={`section-nav ${className ?? ''}`.trim()}>
-      {items.map((item) => (
+      {hideRule && <style>{hideRule}</style>}
+      {searchable && (
+        <div className={styles.search}>
+          <input
+            type="search"
+            className={styles.searchInput}
+            value={query}
+            placeholder={searchPlaceholder}
+            aria-label={searchLabel ?? searchPlaceholder}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              // Escape clears the filter instead of bubbling to whatever modal
+              // or drawer happens to be listening further up.
+              if (e.key === 'Escape' && query) {
+                e.stopPropagation();
+                setQuery('');
+              }
+            }}
+          />
+        </div>
+      )}
+      {searchable && visibleItems.length === 0 && (
+        <span className={styles.noMatches} role="status">
+          {noMatchesLabel}
+        </span>
+      )}
+      {visibleItems.map((item) => (
         <button
           key={item.id}
           type="button"

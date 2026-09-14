@@ -7,6 +7,7 @@ import { useAutomation } from '../contexts/AutomationContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { DeviceInfo, Channel } from '../types/device';
 import SectionNav from './SectionNav';
+import { automationNavItems } from './search/configSections';
 import { AutomationTokenReference } from './AutomationTokenReference';
 import { buildMeshtasticTokenGroups } from './meshtasticAutomationTokens';
 import AirtimeCutoffSection from './AirtimeCutoffSection';
@@ -101,25 +102,11 @@ const AutomationTab: React.FC<AutomationTabProps> = ({ baseUrl, channels, nodes,
     <SaveBarGroup id="automation">
       <div className="settings-tab">
         <SectionNav
-          items={[
-            { id: 'airtime-cutoff', label: t('automation.airtime_cutoff.title', 'Cutoff Airtime Utilization Threshold') },
-            { id: 'auto-welcome', label: t('automation.welcome.title', 'Auto Welcome') },
-            { id: 'auto-favorite', label: t('automation.auto_favorite.title', 'Auto Favorite') },
-            { id: 'auto-traceroute', label: t('automation.traceroute.title', 'Auto Traceroute') },
-            { id: 'auto-localstats', label: t('automation.auto_localstats.title', 'Auto Remote LocalStats') },
-            { id: 'auto-ping', label: t('automation.auto_ping.title', 'Auto Ping') },
-            { id: 'auto-heap-management', label: t('automation.auto_heap.title', 'Auto Heap Management') },
-            { id: 'remote-admin-scanner', label: t('automation.remote_admin_scanner.title', 'Remote Admin Scanner') },
-            { id: 'auto-time-sync', label: t('automation.time_sync.title', 'Auto Time Sync') },
-            { id: 'auto-acknowledge', label: t('automation.acknowledge.title', 'Auto Acknowledge') },
-            { id: 'auto-announce', label: t('automation.announce.title', 'Auto Announce') },
-            { id: 'auto-responder', label: t('automation.auto_responder.title', 'Auto Responder') },
-            { id: 'auto-key-management', label: t('automation.auto_key_management.title', 'Auto Key Management') },
-            { id: 'timer-triggers', label: t('automation.timer_triggers.title', 'Timer Triggers') },
-            { id: 'geofence-triggers', label: t('automation.geofence_triggers.title', 'Geofence Triggers') },
-            { id: 'auto-delete-by-distance', label: t('automation.distance_delete.title', 'Auto Delete by Distance') },
-            { id: 'ignored-nodes', label: t('automation.ignored_nodes.title', 'Ignored Nodes') },
-          ]}
+          searchable
+          searchPlaceholder={t('config_search.filter_automation', 'Search automations...')}
+          searchLabel={t('config_search.filter_automation', 'Search automations...')}
+          noMatchesLabel={t('config_search.no_sections', 'No matching sections')}
+          items={automationNavItems(t)}
         />
         <div className="settings-content">
           <AutomationTokenReference

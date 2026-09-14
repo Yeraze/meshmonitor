@@ -5,6 +5,7 @@ import { logger } from '../utils/logger';
 import { Channel } from '../types/device';
 import { useToast } from './ToastContainer';
 import SectionNav from './SectionNav';
+import { notificationsNavItems } from './search/configSections';
 import { useSource } from '../contexts/SourceContext';
 import {
   reconcileMonitoredNodes,
@@ -537,11 +538,13 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
     <div className="tab-content">
       <h2>{t('notifications.title')}</h2>
 
-      <SectionNav items={[
-        { id: 'notif-services', label: t('notifications.services_title', 'Services') },
-        { id: 'notif-webpush', label: t('notifications.webpush_title', 'Web Push') },
-        { id: 'notif-apprise', label: t('notifications.apprise_title', 'Apprise') },
-      ]} />
+      <SectionNav
+        searchable
+        searchPlaceholder={t('config_search.filter_notifications', 'Search notification settings...')}
+        searchLabel={t('config_search.filter_notifications', 'Search notification settings...')}
+        noMatchesLabel={t('config_search.no_sections', 'No matching sections')}
+        items={notificationsNavItems(t)}
+      />
 
       {/* ========================================
           SECTION 1: Notification Services & Filtering (Top)

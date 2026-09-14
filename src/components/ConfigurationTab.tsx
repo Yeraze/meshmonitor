@@ -41,6 +41,7 @@ import { ImportConfigModal } from './configuration/ImportConfigModal';
 import { ExportConfigModal } from './configuration/ExportConfigModal';
 import { ROLE_MAP, PRESET_MAP, REGION_MAP } from './configuration/constants';
 import SectionNav from './SectionNav';
+import { configurationNavItems } from './search/configSections';
 import styles from './ConfigurationTab.module.css';
 
 interface ConfigurationTabProps {
@@ -1946,36 +1947,14 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
       {/* Picker + form share one flex row on a landscape phone (#5069): the
           picker becomes a left rail so the form keeps the full usable height. */}
       <div className={styles.configShell}>
-      <SectionNav className={styles.configNav} items={[
-        { id: 'config-danger', label: t('config.warning_title', 'Warning') },
-        { id: 'config-import-export', label: t('config.import_export_title', 'Import/Export') },
-        { id: 'config-node-identity', label: t('config.node_identity', 'Node Identity') },
-        { id: 'config-device', label: t('config.device_config', 'Device') },
-        { id: 'config-lora', label: t('config.lora_config', 'LoRa') },
-        { id: 'config-position', label: t('config.position_config', 'Position') },
-        { id: 'config-power', label: t('config.power_config', 'Power') },
-        { id: 'config-display', label: t('config.display_config', 'Display') },
-        { id: 'config-telemetry', label: t('config.telemetry_config', 'Telemetry') },
-        { id: 'config-mqtt', label: t('config.mqtt_config', 'MQTT') },
-        { id: 'config-neighbor', label: t('config.neighbor_info', 'Neighbor Info') },
-        { id: 'config-network', label: t('config.network_config', 'Network') },
-        { id: 'config-extnotif', label: t('extnotif_config.title', 'External Notification') },
-        { id: 'config-storeforward', label: t('storeforward_config.title', 'Store & Forward') },
-        { id: 'config-rangetest', label: t('rangetest_config.title', 'Range Test') },
-        { id: 'config-cannedmsg', label: t('cannedmsg_config.title', 'Canned Messages') },
-        { id: 'config-audio', label: t('audio_config.title', 'Audio') },
-        { id: 'config-remotehardware', label: t('remotehardware_config.title', 'Remote Hardware') },
-        { id: 'config-detectionsensor', label: t('detectionsensor_config.title', 'Detection Sensor') },
-        { id: 'config-paxcounter', label: t('paxcounter_config.title', 'Paxcounter') },
-        { id: 'config-statusmessage', label: t('statusmessage_config.title', 'Status Message') },
-        { id: 'config-trafficmanagement', label: t('trafficmanagement_config.title', 'Traffic Management') },
-        { id: 'config-meshbeacon', label: t('meshbeacon_config.title', 'MeshBeacon') },
-        { id: 'config-serial', label: t('serial_config.title', 'Serial') },
-        { id: 'config-ambientlighting', label: t('ambientlighting_config.title', 'Ambient Lighting') },
-        { id: 'config-security', label: t('security_config.title', 'Security') },
-        { id: 'config-channels', label: t('config.channels', 'Channels') },
-        { id: 'config-backup', label: t('config.backup_management', 'Backup') },
-      ]} />
+      <SectionNav
+        className={styles.configNav}
+        searchable
+        searchPlaceholder={t('config_search.filter_configuration', 'Search configuration...')}
+        searchLabel={t('config_search.filter_configuration', 'Search configuration...')}
+        noMatchesLabel={t('config_search.no_sections', 'No matching sections')}
+        items={configurationNavItems(t)}
+      />
 
       {/* Two-column layout: main content on left, GPIO summary on right */}
       <div className={styles.configBody} style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>

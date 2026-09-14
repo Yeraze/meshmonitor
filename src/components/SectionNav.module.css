@@ -23,3 +23,44 @@
   border-color: var(--color-accent-hover);
   color: var(--color-accent-text);
 }
+
+/*
+ * In-nav section filter (#5182).
+ *
+ * The box is a flex item of `.section-nav` itself rather than a wrapper around
+ * it, because the nav's own height is measured and published as
+ * `--section-nav-height` (see useSectionNavHeightVar) and other sticky elements
+ * park below it. An extra wrapper would leave those elements clearing the chips
+ * but not the filter.
+ */
+.search {
+  display: flex;
+  flex: 0 1 14rem;
+  min-width: 8rem;
+}
+
+.searchInput {
+  width: 100%;
+  min-width: 0;
+  padding: 0.375rem 0.625rem;
+  font-size: 0.85rem;
+  color: var(--color-text);
+  background: var(--color-bg-sunken);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.searchInput::placeholder {
+  color: var(--color-text-faint);
+}
+
+.searchInput:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.noMatches {
+  align-self: center;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
