@@ -28,6 +28,11 @@ import { getEffectiveTileset, type Theme, type AppearanceMode, type NodeHopsCalc
 import { type SortOption as DashboardSortOption } from './Dashboard/types';
 import { LanguageSelector } from './LanguageSelector';
 import SectionNav from './SectionNav';
+import {
+  GLOBAL_SETTINGS_SECTIONS,
+  SOURCE_SETTINGS_SECTIONS,
+  settingsNavItems,
+} from './search/configSections';
 import PositionEstimationSection from './PositionEstimationSection';
 import MeshIssuesSection from './MeshIssuesSection';
 import TapbackEmojiSettings from './TapbackEmojiSettings';
@@ -247,27 +252,6 @@ interface SettingsTabProps {
   mode?: 'global' | 'source';
 }
 
-const GLOBAL_SECTIONS = new Set([
-  'settings-language', 'settings-units', 'settings-appearance', 'settings-link-previews', 'settings-privacy', 'settings-meshcore-messaging', 'settings-map',
-  'settings-security',
-  'settings-remote-admin',
-  'settings-apprise-server', 'settings-elevation', 'settings-atak-cot', 'settings-backup', 'settings-channel-database',
-  'settings-scripts',
-  'settings-maintenance', 'settings-analytics',
-  // Position estimation is a single global, cross-source batch job (issue
-  // #3271) — it belongs in global Settings, not the per-source Automation tab.
-  'settings-position-estimation',
-  // Mesh Issues Analysis is a single global, cross-source batch job (#4964)
-  // — same reasoning as position estimation above.
-  'settings-mesh-issues',
-]);
-
-const SOURCE_SECTIONS = new Set([
-  'settings-sorting', 'settings-node-display', 'settings-telemetry',
-  'settings-notifications', 'settings-packet-monitor', 'settings-solar',
-  'settings-firmware', 'settings-reset-ui',
-  'settings-management', 'settings-danger',
-]);
 
 const SettingsTab: React.FC<SettingsTabProps> = ({
   maxNodeAgeHours,
@@ -323,7 +307,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   mode
 }) => {
   const show = (sectionId: string) =>
-    !mode || (mode === 'global' ? GLOBAL_SECTIONS.has(sectionId) : SOURCE_SECTIONS.has(sectionId));
+    !mode || (mode === 'global'
+      ? GLOBAL_SETTINGS_SECTIONS.has(sectionId)
+      : SOURCE_SETTINGS_SECTIONS.has(sectionId));
 
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
@@ -1544,37 +1530,19 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         >
           <UiIcon name="heart" /> {t('settings.support')}</a>
       </div>
-      <SectionNav items={[
-        { id: 'settings-language', label: t('settings.language') },
-        { id: 'settings-units', label: t('settings.units_and_formats') },
-        { id: 'settings-sorting', label: t('settings.sorting') },
-        { id: 'settings-appearance', label: t('settings.appearance') },
-        { id: 'settings-link-previews', label: t('settings.link_previews', 'Link Previews') },
-        { id: 'settings-privacy', label: t('settings.privacy', 'Privacy') },
-        { id: 'settings-meshcore-messaging', label: t('settings.meshcore_messaging', 'MeshCore Messaging') },
-        { id: 'settings-map', label: t('settings.map') },
-        { id: 'settings-node-display', label: t('settings.node_display') },
-        { id: 'settings-telemetry', label: t('settings.telemetry') },
-        { id: 'settings-notifications', label: t('settings.notifications_and_security') },
-        { id: 'settings-security', label: t('settings.security', 'Security') },
-        { id: 'settings-packet-monitor', label: t('settings.packet_monitor') },
-        { id: 'settings-solar', label: t('settings.solar_monitoring') },
-        ...(isAdmin ? [{ id: 'settings-remote-admin', label: t('settings.remote_admin_section', 'Remote Administration') }] : []),
-        ...(isAdmin ? [{ id: 'settings-apprise-server', label: t('settings.apprise_server_section', 'Apprise API Server') }] : []),
-        ...(isAdmin ? [{ id: 'settings-elevation', label: t('settings.elevation_section', 'Elevation / Terrain') }] : []),
-        { id: 'settings-backup', label: t('settings.system_backup', 'System Backup') },
-        ...(isAdmin ? [{ id: 'settings-channel-database', label: t('channel_database.title', 'Channel Database') }] : []),
-        ...(isAdmin ? [{ id: 'settings-scripts', label: t('settings.scripts_section', 'Scripts') }] : []),
-        // Only show Database Maintenance for SQLite - it uses SQLite-specific features like VACUUM
-        ...(databaseType === 'sqlite' ? [{ id: 'settings-maintenance', label: t('maintenance.title', 'Database Maintenance') }] : []),
-        ...(isAdmin && firmwareOtaEnabled ? [{ id: 'settings-firmware', label: t('firmware.title', 'Firmware Updates') }] : []),
-        { id: 'settings-reset-ui', label: t('settings.reset_ui_positions') },
-        ...(isAdmin ? [{ id: 'settings-analytics', label: t('settings.analytics') }] : []),
-        ...(canWriteSettings ? [{ id: 'settings-position-estimation', label: t('automation.position_estimation.title', 'Position Estimation') }] : []),
-        ...(canWriteSettings ? [{ id: 'settings-mesh-issues', label: t('automation.mesh_issues.title', 'Mesh Issues Analysis') }] : []),
-        { id: 'settings-management', label: t('settings.settings_management') },
-        { id: 'settings-danger', label: t('settings.danger_zone') },
-      ].filter(item => show(item.id))} />
+      <SectionNav
+        searchable
+        searchPlaceholder={t('config_search.filter_settings', 'Search settings...')}
+        searchLabel={t('config_search.filter_settings', 'Search settings...')}
+        noMatchesLabel={t('config_search.no_sections', 'No matching sections')}
+        items={settingsNavItems(t, {
+          mode,
+          isAdmin,
+          canWriteSettings,
+          databaseType,
+          firmwareOtaEnabled,
+        })}
+      />
       <div className="settings-content settings-multi-column">
         {show('settings-language') && <div id="settings-language" className="settings-section">
           <h3>{t('settings.language')}</h3>

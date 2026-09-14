@@ -59,6 +59,7 @@ import { settingsToMatrix } from './utils/autoAckMatrix';
 import { applyHomoglyphOptimization } from './utils/homoglyph';
 import Sidebar from './components/Sidebar';
 import { SearchModal } from './components/SearchModal/SearchModal.js';
+import ConfigSearchHost from './components/search/ConfigSearchHost';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 import { MapProvider, useMapContext } from './contexts/MapContext';
 import type { PositionHistoryItem } from './contexts/MapContext';
@@ -166,6 +167,14 @@ function App() {
   const [selectedRouteSegment, setSelectedRouteSegment] = useState<{ nodeNum1: number; nodeNum2: number } | null>(null);
   const [emojiPickerMessage, setEmojiPickerMessage] = useState<MeshMessage | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  /**
+   * Opener published by ConfigSearchHost (#5182) so the sidebar's
+   * "Search settings" entry can raise the palette the keyboard shortcut owns.
+   */
+  const openConfigSearchRef = useRef<(() => void) | null>(null);
+  const registerConfigSearchOpener = useCallback((open: () => void) => {
+    openConfigSearchRef.current = open;
+  }, []);
   const [focusMessageId, setFocusMessageId] = useState<string | null>(null);
   const [packetLogEnabled, setPacketLogEnabled] = useState(false);
 
@@ -3446,6 +3455,7 @@ function App() {
         connectedNodeName={connectedNodeName}
         packetLogEnabled={packetLogEnabled}
         onSearchClick={() => setIsSearchOpen(true)}
+        onConfigSearchClick={() => openConfigSearchRef.current?.()}
         hasReadableVirtualChannels={channelDatabaseEntries.length > 0}
         mqttReadOnly={isMqttBridge}
       />
@@ -3928,6 +3938,9 @@ function App() {
         canSearchDms={hasPermission('messages', 'read')}
         canSearchMeshcore={false}
       />
+
+      {/* Cross-page configuration search (#5182) */}
+      <ConfigSearchHost baseUrl={baseUrl} registerOpener={registerConfigSearchOpener} />
 
       {/* SaveBar for unified save/dismiss actions */}
       <SaveBar />

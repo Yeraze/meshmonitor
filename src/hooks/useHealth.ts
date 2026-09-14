@@ -20,6 +20,16 @@ export interface HealthData {
   version: string;
   /** Server uptime in milliseconds since start */
   uptime: number;
+  /**
+   * Which database backend is live. Absent on older servers.
+   *
+   * Already returned by /api/health — SettingsTab and DatabaseMaintenanceSection
+   * each fetch the endpoint directly for it. Declared here so consumers of this
+   * hook can read it from the shared cache instead of issuing a third request.
+   */
+  databaseType?: 'sqlite' | 'postgres' | 'mysql';
+  /** Whether the server exposes firmware OTA updates. Absent on older servers. */
+  firmwareOtaEnabled?: boolean;
 }
 
 /**

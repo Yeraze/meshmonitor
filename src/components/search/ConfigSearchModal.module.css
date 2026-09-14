@@ -1,0 +1,117 @@
+/*
+ * Configuration palette (#5182).
+ *
+ * Anchored near the top rather than centred: the result list grows downward as
+ * you type, and a vertically centred panel that grows in both directions makes
+ * the row under the cursor move while you are aiming at it.
+ */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 10vh 16px 16px;
+  background: rgb(0 0 0 / 55%);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 560px;
+  max-height: 70vh;
+  overflow: hidden;
+  background: var(--color-bg-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 35%);
+}
+
+.inputRow {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  color: var(--color-text-muted);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.25rem 0;
+  font-size: 1rem;
+  color: var(--color-text);
+  background: transparent;
+  border: none;
+}
+
+.input:focus {
+  outline: none;
+}
+
+.input::placeholder {
+  color: var(--color-text-faint);
+}
+
+.close {
+  padding: 0 0.25rem;
+  font-size: 1.4rem;
+  line-height: 1;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+.close:hover {
+  color: var(--color-text);
+}
+
+.results {
+  margin: 0;
+  overflow-y: auto;
+  list-style: none;
+  padding-inline: 0;
+  padding-block: 0.25rem;
+}
+
+.result {
+  display: flex;
+  gap: 1rem;
+  align-items: baseline;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+.resultActive {
+  background: var(--color-surface-hover);
+}
+
+.resultLabel {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.resultSurface {
+  flex: none;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.empty,
+.hint {
+  padding: 1rem;
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}

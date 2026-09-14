@@ -80,6 +80,7 @@ The `/api/v1/messages/search` endpoint requires a valid API token (Bearer authen
 
 ## Related Documentation
 
+- [Configuration Search](/features/configuration-search) — finding a settings section, rather than a message
 - [Settings](/features/settings) — general MeshMonitor settings
 - [Channel Database](/features/channel-database) — additional channel configurations
 - [MeshCore](/features/meshcore) — MeshCore messaging

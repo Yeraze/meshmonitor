@@ -11,12 +11,18 @@
  *
  * SettingsTab.tsx and App.tsx are far too large to render in jsdom, so this is
  * a static-source invariant test asserting the move stuck in both directions.
+ *
+ * The two halves it reads now live in two files: the section catalogue (which
+ * settings section belongs to which surface, and the SectionNav entry) moved to
+ * `search/configSections.ts` when configuration search was added (#5182); the
+ * rendered anchor and its permission gate are still in SettingsTab.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const settingsTabSrc = readFileSync(resolve('src/components/SettingsTab.tsx'), 'utf8');
+const configSectionsSrc = readFileSync(resolve('src/components/search/configSections.ts'), 'utf8');
 const appSrc = readFileSync(resolve('src/App.tsx'), 'utf8');
 
 /** Return the contents of a `const NAME = new Set([ ... ])` literal. */
@@ -29,14 +35,14 @@ function setLiteral(src: string, name: string): string {
 
 describe('Position Estimation lives in global Settings (issue #3271)', () => {
   it('is a GLOBAL settings section, not a per-source one', () => {
-    expect(setLiteral(settingsTabSrc, 'GLOBAL_SECTIONS')).toContain("'settings-position-estimation'");
-    expect(setLiteral(settingsTabSrc, 'SOURCE_SECTIONS')).not.toContain("'settings-position-estimation'");
+    expect(setLiteral(configSectionsSrc, 'GLOBAL_SETTINGS_SECTIONS')).toContain("'settings-position-estimation'");
+    expect(setLiteral(configSectionsSrc, 'SOURCE_SETTINGS_SECTIONS')).not.toContain("'settings-position-estimation'");
   });
 
   it('renders the section and a nav link inside SettingsTab', () => {
     expect(settingsTabSrc).toContain("import PositionEstimationSection from './PositionEstimationSection'");
-    // SectionNav quick-link entry.
-    expect(settingsTabSrc).toContain("id: 'settings-position-estimation'");
+    // SectionNav quick-link entry (now built from the shared catalogue).
+    expect(configSectionsSrc).toContain("id: 'settings-position-estimation'");
     // Rendered section anchor + the component itself.
     expect(settingsTabSrc).toContain('id="settings-position-estimation"');
     expect(settingsTabSrc).toContain('<PositionEstimationSection baseUrl={baseUrl} />');

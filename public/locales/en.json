@@ -5413,5 +5413,17 @@
   "settings.privacy_hosted_documents_description": "Write or upload a document and MeshMonitor serves it at /privacy/<name>, so you do not need somewhere else to host it. Saved in the database, so it is included in system backups.",
   "source.mark_all_dms_read": "Mark all read",
   "source.mark_all_dms_read_help": "Clear the unread direct-message badge on every source you can read.",
-  "source.mark_all_dms_read_confirm": "Mark all {{count}} unread direct messages as read? This cannot be undone."
+  "source.mark_all_dms_read_confirm": "Mark all {{count}} unread direct messages as read? This cannot be undone.",
+  "config_search.nav": "Search Settings",
+  "config_search.title": "Search settings",
+  "config_search.placeholder": "Search all settings and configuration...",
+  "config_search.hint": "Type to find a settings section — try \"battery\", \"mqtt\", \"gps\" or \"backup\".",
+  "config_search.no_results": "No matching settings",
+  "config_search.no_sections": "No matching sections",
+  "config_search.global_settings": "Global Settings",
+  "config_search.filter_settings": "Search settings...",
+  "config_search.filter_configuration": "Search configuration...",
+  "config_search.filter_automation": "Search automations...",
+  "config_search.filter_notifications": "Search notification settings...",
+  "config_search.filter_admin": "Search admin sections..."
 }
