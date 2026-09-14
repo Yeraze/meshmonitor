@@ -226,5 +226,21 @@ describe('message list endpoints — source-scoped permission gates', () => {
       expect(res.status).toBe(200);
       expect(JSON.stringify(res.body)).toContain('channel A');
     });
+
+    it('returns both sources for an admin', async () => {
+      // Admin takes the `req.user?.isAdmin` short-circuit and never reaches
+      // `hasPermission`, so scoping that call cannot affect them — which is
+      // precisely why it is worth asserting rather than assuming. Mirrors the
+      // `GET /` case above.
+      const agent = await harness.loginAs(harness.admin);
+
+      const a = await agent.get(`/channel/0?sourceId=${harness.sourceA}&limit=100`);
+      expect(a.status).toBe(200);
+      expect(JSON.stringify(a.body)).toContain('channel A');
+
+      const b = await agent.get(`/channel/0?sourceId=${harness.sourceB}&limit=100`);
+      expect(b.status).toBe(200);
+      expect(JSON.stringify(b.body)).toContain('channel B');
+    });
   });
 });
