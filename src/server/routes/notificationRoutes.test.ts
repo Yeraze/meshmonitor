@@ -233,6 +233,101 @@ describe('notificationRoutes - push', () => {
     expect(res.body.success).toBe(true);
     expect(mockNotif.saveUserNotificationPreferencesAsync).toHaveBeenCalled();
   });
+
+  /**
+   * Waypoint arrival alerts (#4750). The validation here is the only thing
+   * between a typo and a setting that reads "on" while matching nothing (a
+   * zero radius) or matching everything (no radius at all).
+   */
+  describe('waypoint preferences', () => {
+    const base = {
+      enableWebPush: true,
+      enableApprise: false,
+      enabledChannels: [],
+      enableDirectMessages: true,
+      notifyOnEmoji: true,
+      notifyOnMqtt: true,
+      notifyOnNewNode: true,
+      notifyOnTraceroute: true,
+      notifyOnInactiveNode: false,
+      notifyOnServerEvents: false,
+      prefixWithNodeName: false,
+      whitelist: [],
+      blacklist: [],
+    };
+    const post = (over: Record<string, unknown>) =>
+      request(app).post('/push/preferences').send({ ...base, ...over });
+
+    beforeEach(() => mockNotif.saveUserNotificationPreferencesAsync.mockResolvedValue(true));
+
+    it('defaults the flag OFF and the radius to 10 km for a client that omits them', async () => {
+      const res = await post({});
+      expect(res.status).toBe(200);
+      const saved = mockNotif.saveUserNotificationPreferencesAsync.mock.calls[0][1];
+      expect(saved.notifyOnWaypoint).toBe(false);
+      expect(saved.waypointRadiusKm).toBe(10);
+      expect(saved.waypointCenterLat).toBeNull();
+      expect(saved.waypointCenterLon).toBeNull();
+    });
+
+    it('saves an opted-in radius and centre', async () => {
+      const res = await post({
+        notifyOnWaypoint: true,
+        waypointRadiusKm: 2.5,
+        waypointCenterLat: 26.12,
+        waypointCenterLon: -80.14,
+      });
+      expect(res.status).toBe(200);
+      const saved = mockNotif.saveUserNotificationPreferencesAsync.mock.calls[0][1];
+      expect(saved).toMatchObject({
+        notifyOnWaypoint: true,
+        waypointRadiusKm: 2.5,
+        waypointCenterLat: 26.12,
+        waypointCenterLon: -80.14,
+      });
+    });
+
+    it('rejects a non-boolean flag', async () => {
+      expect((await post({ notifyOnWaypoint: 'yes' })).status).toBe(400);
+    });
+
+    it('rejects a zero or negative radius, which would silently match nothing', async () => {
+      expect((await post({ waypointRadiusKm: 0 })).status).toBe(400);
+      expect((await post({ waypointRadiusKm: -5 })).status).toBe(400);
+    });
+
+    it('rejects a radius larger than the planet', async () => {
+      expect((await post({ waypointRadiusKm: 99999 })).status).toBe(400);
+    });
+
+    it('rejects half a centre — a radius with no origin', async () => {
+      expect((await post({ waypointCenterLat: 26.12 })).status).toBe(400);
+      expect((await post({ waypointCenterLon: -80.14 })).status).toBe(400);
+    });
+
+    it('rejects out-of-range coordinates', async () => {
+      expect((await post({ waypointCenterLat: 91, waypointCenterLon: 0 })).status).toBe(400);
+      expect((await post({ waypointCenterLat: 0, waypointCenterLon: 181 })).status).toBe(400);
+    });
+
+    it('accepts an explicit null centre as "use this source\'s own node"', async () => {
+      const res = await post({
+        notifyOnWaypoint: true,
+        waypointCenterLat: null,
+        waypointCenterLon: null,
+      });
+      expect(res.status).toBe(200);
+      const saved = mockNotif.saveUserNotificationPreferencesAsync.mock.calls[0][1];
+      expect(saved.waypointCenterLat).toBeNull();
+    });
+  });
+
+  it('GET /push/preferences includes the waypoint defaults', async () => {
+    mockNotif.getUserNotificationPreferencesAsync.mockResolvedValue(null);
+    const res = await request(app).get('/push/preferences');
+    expect(res.body.notifyOnWaypoint).toBe(false);
+    expect(res.body.waypointRadiusKm).toBe(10);
+  });
 });
 
 describe('notificationRoutes - apprise', () => {

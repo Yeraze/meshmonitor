@@ -47,6 +47,9 @@ import {
 import {
   pushSubscriptionsSqlite, pushSubscriptionsPostgres, pushSubscriptionsMysql,
   userNotificationPreferencesSqlite, userNotificationPreferencesPostgres, userNotificationPreferencesMysql,
+  waypointNotificationsSqlite,
+  waypointNotificationsPostgres,
+  waypointNotificationsMysql,
   readMessagesSqlite, readMessagesPostgres, readMessagesMysql,
 } from './schema/notifications.js';
 
@@ -242,6 +245,8 @@ export interface ActiveSchema {
   // Notification tables
   pushSubscriptions: any;
   userNotificationPreferences: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4750: matches every sibling in this map; typing the three Drizzle dialects here is Phase 6 burn-down work, not this feature's.
+  waypointNotifications: any;
   readMessages: any;
 
   // Per-user conversation read watermarks (issue #4607)
@@ -395,6 +400,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     apiTokens: apiTokensSqlite,
     pushSubscriptions: pushSubscriptionsSqlite,
     userNotificationPreferences: userNotificationPreferencesSqlite,
+    waypointNotifications: waypointNotificationsSqlite,
     readMessages: readMessagesSqlite,
     conversationReadState: conversationReadStateSqlite,
     packetLog: packetLogSqlite,
@@ -469,6 +475,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     apiTokens: apiTokensPostgres,
     pushSubscriptions: pushSubscriptionsPostgres,
     userNotificationPreferences: userNotificationPreferencesPostgres,
+    waypointNotifications: waypointNotificationsPostgres,
     readMessages: readMessagesPostgres,
     conversationReadState: conversationReadStatePostgres,
     packetLog: packetLogPostgres,
@@ -543,6 +550,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     apiTokens: apiTokensMysql,
     pushSubscriptions: pushSubscriptionsMysql,
     userNotificationPreferences: userNotificationPreferencesMysql,
+    waypointNotifications: waypointNotificationsMysql,
     readMessages: readMessagesMysql,
     conversationReadState: conversationReadStateMysql,
     packetLog: packetLogMysql,

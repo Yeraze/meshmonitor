@@ -51,6 +51,12 @@ export interface NotificationPreferences {
   /** Battery-voltage threshold (mV) for MeshCore nodes, which report voltage instead of a percentage. */
   lowBatteryVoltageThreshold: number;
   notifyOnServerEvents: boolean;
+  /** Alert when a waypoint arrives from the mesh within `waypointRadiusKm` (#4750). */
+  notifyOnWaypoint: boolean;
+  waypointRadiusKm: number;
+  /** Explicit centre for the radius. NULL on both means "this source's own node". */
+  waypointCenterLat: number | null;
+  waypointCenterLon: number | null;
   prefixWithNodeName: boolean;
   monitoredNodes: string[];
   whitelist: string[];
@@ -262,6 +268,10 @@ export class NotificationsRepository extends BaseRepository {
       lowBatteryThreshold: prefs.lowBatteryThreshold,
       lowBatteryVoltageThreshold: prefs.lowBatteryVoltageThreshold,
       notifyOnServerEvents: prefs.notifyOnServerEvents,
+      notifyOnWaypoint: prefs.notifyOnWaypoint,
+      waypointRadiusKm: prefs.waypointRadiusKm,
+      waypointCenterLat: prefs.waypointCenterLat,
+      waypointCenterLon: prefs.waypointCenterLon,
       prefixWithNodeName: prefs.prefixWithNodeName,
       appriseEnabled: prefs.enableApprise,
       appriseUrls: JSON.stringify(prefs.appriseUrls),
@@ -453,6 +463,72 @@ export class NotificationsRepository extends BaseRepository {
       }));
     } catch (error) {
       logger.debug('Failed to query users with inactive node notifications:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Preference rows for every user who has waypoint alerts enabled on at least
+   * one row (#4750).
+   *
+   * Returns ALL of that user's rows, not just the flagged one, for the same
+   * split-row reason as the two queries below it (#4020): a user's flag may
+   * live on the legacy '' row while their radius and centre were saved later
+   * against a real source id. The caller resolves which row wins per concern.
+   */
+  async getUsersWithWaypointNotifications(): Promise<Array<{
+    userId: number;
+    sourceId: string;
+    notifyOnWaypoint: boolean;
+    waypointRadiusKm: number | null;
+    waypointCenterLat: number | null;
+    waypointCenterLon: number | null;
+  }>> {
+    try {
+      const { userNotificationPreferences: t } = this.tables;
+      const flaggedRows = await this.db
+        .select({ userId: t.userId })
+        .from(t)
+        .where(eq(t.notifyOnWaypoint, true));
+      const flaggedUserIds = Array.from(new Set<number>(flaggedRows.map((r: { userId: number }) => Number(r.userId))));
+      if (flaggedUserIds.length === 0) return [];
+
+      const rows = await this.db
+        .select({
+          userId: t.userId,
+          sourceId: t.sourceId,
+          notifyOnWaypoint: t.notifyOnWaypoint,
+          waypointRadiusKm: t.waypointRadiusKm,
+          waypointCenterLat: t.waypointCenterLat,
+          waypointCenterLon: t.waypointCenterLon,
+        })
+        .from(t)
+        .where(inArray(t.userId, flaggedUserIds))
+        .orderBy(asc(t.userId), asc(t.sourceId));
+
+      return rows.map((r: {
+        userId: number;
+        sourceId: string;
+        notifyOnWaypoint: boolean | number | null;
+        waypointRadiusKm: number | null;
+        waypointCenterLat: number | null;
+        waypointCenterLon: number | null;
+      }) => ({
+        userId: Number(r.userId),
+        sourceId: r.sourceId,
+        notifyOnWaypoint: Boolean(r.notifyOnWaypoint),
+        waypointRadiusKm: r.waypointRadiusKm != null ? Number(r.waypointRadiusKm) : null,
+        waypointCenterLat: r.waypointCenterLat != null ? Number(r.waypointCenterLat) : null,
+        waypointCenterLon: r.waypointCenterLon != null ? Number(r.waypointCenterLon) : null,
+      }));
+    } catch (error) {
+      // `error`, not `debug` like the two siblings below. This read fails OPEN
+      // — an unreadable preferences table means nobody is alerted — which is
+      // the safe direction but an invisible one: at debug level an operator
+      // asking "why did my waypoint alerts stop?" has nothing to find. A
+      // broken preferences table is not a steady state, so the volume is not
+      // a concern (review, #5228).
+      logger.error('Failed to query users with waypoint notifications, no alerts will be sent:', error);
       return [];
     }
   }
@@ -1251,6 +1327,10 @@ export class NotificationsRepository extends BaseRepository {
       lowBatteryThreshold: row.lowBatteryThreshold != null ? Number(row.lowBatteryThreshold) : 20,
       lowBatteryVoltageThreshold: row.lowBatteryVoltageThreshold != null ? Number(row.lowBatteryVoltageThreshold) : 3300,
       notifyOnServerEvents: row.notifyOnServerEvents !== undefined ? Boolean(row.notifyOnServerEvents) : false,
+      notifyOnWaypoint: row.notifyOnWaypoint !== undefined ? Boolean(row.notifyOnWaypoint) : false,
+      waypointRadiusKm: row.waypointRadiusKm != null ? Number(row.waypointRadiusKm) : 10,
+      waypointCenterLat: row.waypointCenterLat != null ? Number(row.waypointCenterLat) : null,
+      waypointCenterLon: row.waypointCenterLon != null ? Number(row.waypointCenterLon) : null,
       prefixWithNodeName: row.prefixWithNodeName !== undefined ? Boolean(row.prefixWithNodeName) : false,
       monitoredNodes: parseJsonArray(row.monitoredNodes) as string[],
       whitelist: parseJsonArray(row.whitelist) as string[],

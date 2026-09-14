@@ -44,6 +44,10 @@ interface NotificationPreferences {
   notifyOnLowBattery: boolean;
   lowBatteryThreshold: number;
   lowBatteryVoltageThreshold: number;
+  notifyOnWaypoint: boolean;
+  waypointRadiusKm: number;
+  waypointCenterLat: number | null;
+  waypointCenterLon: number | null;
   notifyOnServerEvents: boolean;
   prefixWithNodeName: boolean;
   monitoredNodes: string[];
@@ -90,6 +94,10 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
     notifyOnLowBattery: false,
     lowBatteryThreshold: 20,
     lowBatteryVoltageThreshold: 3300,
+    notifyOnWaypoint: false,
+    waypointRadiusKm: 10,
+    waypointCenterLat: null,
+    waypointCenterLon: null,
     notifyOnServerEvents: false,
     prefixWithNodeName: false,
     monitoredNodes: [],
@@ -761,6 +769,125 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                   />
                   <span style={{ fontWeight: '500' }}><UiIcon name="route" /> {t('notifications.traceroutes')}</span>
                 </label>
+              </div>
+              )}
+
+              {/* Waypoint Arrival Toggle — Meshtastic only (#4750). MeshCore has
+                  no waypoint concept, so the whole block is gated like
+                  traceroutes above. */}
+              {!isMeshCore && (
+              <div style={{
+                padding: '12px',
+                backgroundColor: '#252535',
+                borderRadius: '6px',
+                marginBottom: '16px',
+                border: '2px solid #3a3a3a'
+              }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={preferences.notifyOnWaypoint}
+                    onChange={(e) => {
+                      setPreferences(prev => ({
+                        ...prev,
+                        notifyOnWaypoint: e.target.checked
+                      }));
+                    }}
+                    style={{ width: '18px', height: '18px' }}
+                  />
+                  <span style={{ fontWeight: '500' }}><UiIcon name="location" /> {t('notifications.notify_on_waypoint', 'Waypoint arrivals')}</span>
+                </label>
+
+                {preferences.notifyOnWaypoint && (
+                  <>
+                    <div style={{ marginLeft: '28px', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <label htmlFor="waypointRadiusKm" style={{ margin: 0, fontSize: '0.9em', color: 'var(--color-text-subtle)' }}>
+                        {t('notifications.waypoint_radius_label', 'Alert within')}
+                      </label>
+                      <input
+                        id="waypointRadiusKm"
+                        type="number"
+                        min={1}
+                        max={20037}
+                        value={preferences.waypointRadiusKm}
+                        onChange={(e) => {
+                          const raw = parseFloat(e.target.value);
+                          // A zero radius would read as "on" while silently
+                          // matching nothing, so the floor is 1 km.
+                          const clamped = isNaN(raw) ? 1 : Math.max(1, Math.min(20037, raw));
+                          setPreferences(prev => ({ ...prev, waypointRadiusKm: clamped }));
+                        }}
+                        style={{
+                          width: '80px',
+                          padding: '0.35rem 0.5rem',
+                          background: 'var(--color-bg)',
+                          border: '1px solid var(--color-surface-active)',
+                          borderRadius: '4px',
+                          color: 'var(--color-text)'
+                        }}
+                      />
+                      <span style={{ fontSize: '0.9em', color: 'var(--color-text-subtle)' }}>km</span>
+                    </div>
+
+                    <div style={{ marginLeft: '28px', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <label htmlFor="waypointCenterLat" style={{ margin: 0, fontSize: '0.9em', color: 'var(--color-text-subtle)' }}>
+                        {t('notifications.waypoint_center_label', 'Measured from')}
+                      </label>
+                      <input
+                        id="waypointCenterLat"
+                        type="number"
+                        step="any"
+                        placeholder={t('notifications.waypoint_center_lat_placeholder', 'latitude')}
+                        value={preferences.waypointCenterLat ?? ''}
+                        onChange={(e) => {
+                          const raw = e.target.value === '' ? null : parseFloat(e.target.value);
+                          setPreferences(prev => ({
+                            ...prev,
+                            waypointCenterLat: raw === null || isNaN(raw) ? null : raw
+                          }));
+                        }}
+                        style={{
+                          width: '120px',
+                          padding: '0.35rem 0.5rem',
+                          background: 'var(--color-bg)',
+                          border: '1px solid var(--color-surface-active)',
+                          borderRadius: '4px',
+                          color: 'var(--color-text)'
+                        }}
+                      />
+                      <input
+                        id="waypointCenterLon"
+                        type="number"
+                        step="any"
+                        aria-label={t('notifications.waypoint_center_lon_placeholder', 'longitude')}
+                        placeholder={t('notifications.waypoint_center_lon_placeholder', 'longitude')}
+                        value={preferences.waypointCenterLon ?? ''}
+                        onChange={(e) => {
+                          const raw = e.target.value === '' ? null : parseFloat(e.target.value);
+                          setPreferences(prev => ({
+                            ...prev,
+                            waypointCenterLon: raw === null || isNaN(raw) ? null : raw
+                          }));
+                        }}
+                        style={{
+                          width: '120px',
+                          padding: '0.35rem 0.5rem',
+                          background: 'var(--color-bg)',
+                          border: '1px solid var(--color-surface-active)',
+                          borderRadius: '4px',
+                          color: 'var(--color-text)'
+                        }}
+                      />
+                    </div>
+
+                    <p style={{ marginLeft: '28px', marginTop: '6px', marginBottom: 0, fontSize: '0.8em', color: 'var(--color-text-subtle)', fontStyle: 'italic' }}>
+                      {t(
+                        'notifications.waypoint_hint',
+                        'Leave the coordinates empty to measure from this source\'s own node, which follows it when mobile. You are alerted once per waypoint; rebroadcasts of one you have already seen stay silent.'
+                      )}
+                    </p>
+                  </>
+                )}
               </div>
               )}
 

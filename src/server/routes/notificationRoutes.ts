@@ -194,6 +194,10 @@ pushRouter.get(
         notifyOnLowBattery: false,
         lowBatteryThreshold: 20,
         lowBatteryVoltageThreshold: 3300,
+        notifyOnWaypoint: false,
+        waypointRadiusKm: 10,
+        waypointCenterLat: null,
+        waypointCenterLon: null,
         notifyOnServerEvents: false,
         prefixWithNodeName: false,
         monitoredNodes: [],
@@ -244,6 +248,10 @@ pushRouter.post(
       notifyOnLowBattery,
       lowBatteryThreshold,
       lowBatteryVoltageThreshold,
+      notifyOnWaypoint,
+      waypointRadiusKm,
+      waypointCenterLat,
+      waypointCenterLon,
       notifyOnServerEvents,
       prefixWithNodeName,
       monitoredNodes,
@@ -296,6 +304,36 @@ pushRouter.post(
     ) {
       return res.status(400).json({ error: 'lowBatteryThreshold must be a number between 0 and 100' });
     }
+    // Waypoint alerts are optional (older clients omit them) (#4750).
+    if (notifyOnWaypoint !== undefined && typeof notifyOnWaypoint !== 'boolean') {
+      return res.status(400).json({ error: 'notifyOnWaypoint must be a boolean' });
+    }
+    // 0 km would silently disable the feature while the toggle reads on, so the
+    // radius has to be positive. The ceiling is half the Earth's circumference:
+    // beyond that every point on the planet is inside the fence anyway.
+    if (
+      waypointRadiusKm !== undefined &&
+      (typeof waypointRadiusKm !== 'number' ||
+        !Number.isFinite(waypointRadiusKm) ||
+        waypointRadiusKm <= 0 ||
+        waypointRadiusKm > 20037)
+    ) {
+      return res.status(400).json({ error: 'waypointRadiusKm must be a number between 0 (exclusive) and 20037' });
+    }
+    // The centre is optional and nullable — null means "use this source's own
+    // node". Both halves must be present together, or the radius has no origin.
+    const latGiven = waypointCenterLat !== undefined && waypointCenterLat !== null;
+    const lonGiven = waypointCenterLon !== undefined && waypointCenterLon !== null;
+    if (latGiven !== lonGiven) {
+      return res.status(400).json({ error: 'waypointCenterLat and waypointCenterLon must be set together' });
+    }
+    if (latGiven && (typeof waypointCenterLat !== 'number' || !Number.isFinite(waypointCenterLat) || Math.abs(waypointCenterLat) > 90)) {
+      return res.status(400).json({ error: 'waypointCenterLat must be a number between -90 and 90' });
+    }
+    if (lonGiven && (typeof waypointCenterLon !== 'number' || !Number.isFinite(waypointCenterLon) || Math.abs(waypointCenterLon) > 180)) {
+      return res.status(400).json({ error: 'waypointCenterLon must be a number between -180 and 180' });
+    }
+
     // lowBatteryVoltageThreshold (mV) is optional (older clients omit it). MeshCore
     // nodes report battery voltage; 0-20000 mV covers single-cell through multi-cell packs.
     if (
@@ -353,6 +391,10 @@ pushRouter.post(
       notifyOnLowBattery: notifyOnLowBattery ?? false,
       lowBatteryThreshold: lowBatteryThreshold ?? 20,
       lowBatteryVoltageThreshold: lowBatteryVoltageThreshold ?? 3300,
+      notifyOnWaypoint: notifyOnWaypoint ?? false,
+      waypointRadiusKm: waypointRadiusKm ?? 10,
+      waypointCenterLat: waypointCenterLat ?? null,
+      waypointCenterLon: waypointCenterLon ?? null,
       notifyOnServerEvents: notifyOnServerEvents ?? false,
       prefixWithNodeName: prefixWithNodeName ?? false,
       monitoredNodes: monitoredNodes ?? [],

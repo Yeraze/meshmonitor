@@ -19,6 +19,7 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { dataEventEmitter } from './dataEventEmitter.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { waypointNotificationService } from './waypointNotificationService.js';
 import type { Waypoint } from '../../db/repositories/waypoints.js';
 
 /** Default emoji shown when a waypoint arrives without a valid icon codepoint. */
@@ -196,6 +197,19 @@ class WaypointService {
     });
 
     dataEventEmitter.emitWaypointUpserted(persisted, sourceId);
+
+    // Waypoint arrival alerts (#4750). Deliberately only here: this is the one
+    // path a waypoint reaches us over the air. createLocal/update are the user's
+    // own edits and the rebroadcast tick is our own transmission, so notifying
+    // from any of them would be telling the user about themselves.
+    //
+    // Not awaited — a notification must never delay or fail packet ingest. The
+    // service swallows its own errors; this catch is belt-and-braces for a
+    // rejection before it gets that far.
+    void waypointNotificationService
+      .notifyIfInRange(persisted, sourceId)
+      .catch((error) => logger.error('[waypointService] waypoint notification failed:', error));
+
     return persisted;
   }
 
@@ -327,6 +341,10 @@ class WaypointService {
     const removed = await databaseService.waypoints.deleteAsync(sourceId, waypointId);
     if (removed) {
       dataEventEmitter.emitWaypointDeleted({ sourceId, waypointId }, sourceId);
+      // Forget the alert ledger rows too, so a waypoint id that comes back
+      // later is treated as new rather than silenced by a row about a
+      // waypoint that no longer exists (#4750).
+      await waypointNotificationService.forgetWaypoint(sourceId, waypointId);
     }
     return removed;
   }
@@ -437,6 +455,9 @@ class WaypointService {
           { sourceId: w.sourceId, waypointId: w.waypointId },
           w.sourceId,
         );
+        // Same reasoning as deleteLocal: an expired waypoint's ledger rows
+        // would otherwise outlive it and mute a later re-use of the id (#4750).
+        await waypointNotificationService.forgetWaypoint(w.sourceId, w.waypointId);
       }
       if (removed.length > 0) {
         logger.info(`[waypointService] Expired sweep removed ${removed.length} waypoint(s)`);

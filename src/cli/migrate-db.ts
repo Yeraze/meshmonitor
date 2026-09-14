@@ -83,6 +83,13 @@ const COLUMN_MAPPINGS: Record<string, Record<string, string>> = {
     notify_on_traceroute: 'notifyOnTraceroute',   // Old: notify_on_traceroute → New: notifyOnTraceroute
     notify_on_inactive_node: 'notifyOnInactiveNode',
     notify_on_server_events: 'notifyOnServerEvents',
+    // #4750 waypoint arrival alerts. Without these the four columns keep their
+    // SQLite snake_case names, find no match in the PostgreSQL table, and the
+    // user's radius and centre are silently dropped by the migration.
+    notify_on_waypoint: 'notifyOnWaypoint',
+    waypoint_radius_km: 'waypointRadiusKm',
+    waypoint_center_lat: 'waypointCenterLat',
+    waypoint_center_lon: 'waypointCenterLon',
     prefix_with_node_name: 'prefixWithNodeName',
     enable_apprise: 'appriseEnabled',             // Old: enable_apprise → New: appriseEnabled
     apprise_urls: 'appriseUrls',

@@ -5425,5 +5425,11 @@
   "config_search.filter_configuration": "Search configuration...",
   "config_search.filter_automation": "Search automations...",
   "config_search.filter_notifications": "Search notification settings...",
-  "config_search.filter_admin": "Search admin sections..."
+  "config_search.filter_admin": "Search admin sections...",
+  "notifications.notify_on_waypoint": "Waypoint arrivals",
+  "notifications.waypoint_radius_label": "Alert within",
+  "notifications.waypoint_center_label": "Measured from",
+  "notifications.waypoint_center_lat_placeholder": "latitude",
+  "notifications.waypoint_center_lon_placeholder": "longitude",
+  "notifications.waypoint_hint": "Leave the coordinates empty to measure from this source's own node, which follows it when mobile. You are alerted once per waypoint; rebroadcasts of one you have already seen stay silent."
 }

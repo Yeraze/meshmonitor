@@ -585,6 +585,7 @@ Notification filtering applies to **both Web Push and Apprise** notifications:
 - **Emoji Reactions**: Enable/disable notifications for emoji-only messages (third priority)
 - **Newly Found Nodes**: Enable/disable notifications when new nodes are discovered
 - **Successful Traceroutes**: Enable/disable notifications for completed traceroute responses
+- **Waypoint Arrivals**: Enable/disable notifications when a waypoint arrives from the mesh nearby
 - **Enabled Channels**: Specific channels to receive notifications from
 - **Direct Messages**: Enable/disable direct message notifications
 
@@ -597,6 +598,7 @@ The filtering follows this priority order for **message notifications**:
 **Special Event Notifications** (bypass message filtering):
 - **Newly Found Nodes** → Sent when a new node appears on the mesh (includes node name and hop count)
 - **Successful Traceroutes** → Sent when a traceroute completes (includes full forward and return route)
+- **Waypoint Arrivals** → Sent the first time a waypoint arrives from the mesh inside your radius (see below)
 
 ::: tip Emoji Reaction Filtering
 When "Emoji Reactions" is disabled, notifications will be suppressed for messages containing only emojis (e.g., "👍", "😀", "❤️"). Messages with emojis mixed with text will still trigger notifications normally. This is useful for reducing notification noise from emoji reactions and tapbacks.
@@ -605,6 +607,37 @@ When "Emoji Reactions" is disabled, notifications will be suppressed for message
 ::: info Special Event Notifications
 New Node and Traceroute notifications bypass normal message filtering (whitelist/blacklist/channel settings) and are only sent if you have that specific preference enabled. These notifications help you stay informed about mesh network topology changes and connectivity testing without cluttering your message notifications.
 :::
+
+### Waypoint Arrivals
+
+Alerts you when someone places a waypoint near you. Configured per source, on that source's **Notifications** tab, beside the other alert toggles. Meshtastic only — MeshCore has no waypoint concept, so the block is hidden there.
+
+Off by default. Turning it on reveals two settings:
+
+- **Alert within** — the radius, in kilometres. Default 10 km, roughly a LongFast neighbourhood. This is what keeps a busy mesh from alerting you about waypoints two counties away.
+- **Measured from** — a latitude and longitude. Leave both empty (the normal case) and the radius is measured from that source's own node, which follows it when the node is mobile. Fill them in when your server's node sits somewhere other than the area you care about.
+
+![Waypoint arrival settings on a source's Notifications tab](/images/features/4750-waypoint-notifications.png)
+
+::: warning No reference point, no alerts
+If you leave the coordinates empty and the source's node has never reported a position, nothing is sent. This is deliberate: the alternative would be treating "no centre" as "no radius", which alerts on every waypoint anywhere on the mesh.
+:::
+
+#### You are alerted once per waypoint
+
+Waypoints rebroadcast on a schedule, so the first alert is the only one. MeshMonitor records which waypoints it has told you about and stays silent on every rebroadcast of the same one.
+
+That record is keyed on the waypoint's **id**, not its name or position — and that is what you want, because waypoints do not move. Someone who "moves" a waypoint actually creates a new one with a new id, and you are alerted about it, correctly, as a new waypoint. The record is cleared when a waypoint is deleted or expires, so an id that gets reused later alerts again.
+
+The record lives in the database rather than in memory, so restarting the container does not re-alert you about everything in range.
+
+#### What does not alert you
+
+Only waypoints that arrive **over the air** trigger a notification. Waypoints you create or edit in MeshMonitor, and the periodic rebroadcasts MeshMonitor sends of your own waypoints, are silent — you already know about those.
+
+#### Airtime
+
+None. This feature transmits nothing; it reacts to packets that already arrived.
 
 ### MeshCore Sources
 
@@ -617,7 +650,7 @@ MeshCore sources have their own **Notifications** tab, and the settings are tail
 | **Newly Found Nodes** | ✅ | Sent the first time a contact advertises (display name + device type: Companion / Repeater / Room Server). |
 | **Server Events** | ✅ | Source connect/disconnect/reconnect. |
 | **Web Push / Apprise / Monitored-node picker** | ✅ | Delivery and node selection work the same as Meshtastic. |
-| Direct Messages, Emoji Reactions, MQTT, Traceroutes, Channel selection, Keyword filtering, percentage battery threshold | ❌ | Hidden for MeshCore — these depend on Meshtastic-only protocol features or data. |
+| Direct Messages, Emoji Reactions, MQTT, Traceroutes, Waypoint arrivals, Channel selection, Keyword filtering, percentage battery threshold | ❌ | Hidden for MeshCore — these depend on Meshtastic-only protocol features or data. |
 
 All preferences are scoped per-source, so a MeshCore source and a Meshtastic source can have independent thresholds and monitored-node lists.
 

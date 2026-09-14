@@ -80,6 +80,7 @@ export type { Source, CreateSourceInput } from './sources.js';
 export { AnalysisRepository } from './analysis.js';
 export type { PositionRow, PaginatedPositions, GetPositionsArgs } from './analysis.js';
 export { WaypointsRepository } from './waypoints.js';
+export { WaypointNotificationsRepository } from './waypointNotifications.js';
 export type { Waypoint, WaypointUpsertInput, WaypointListOptions } from './waypoints.js';
 export { EstimatedPositionsRepository } from './estimatedPositions.js';
 export type {

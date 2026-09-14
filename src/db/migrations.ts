@@ -183,6 +183,7 @@ import { migration as userPrefsUnreadIndicatorMigration, runMigration161Postgres
 import { migration as privacyDocumentsMigration, runMigration162Postgres, runMigration162Mysql } from '../server/migrations/162_privacy_documents.js';
 import { migration as meshcoreSnrRealMigration, runMigration163Postgres, runMigration163Mysql } from '../server/migrations/163_meshcore_snr_real.js';
 import { migration as spreadNodesPrefMigration, runMigration164Postgres, runMigration164Mysql } from '../server/migrations/164_user_map_preferences_spread_nodes.js';
+import { migration as waypointNotificationsMigration, runMigration165Postgres, runMigration165Mysql } from '../server/migrations/165_waypoint_notifications.js';
 
 // ============================================================================
 // Registry
@@ -2661,4 +2662,20 @@ registry.register({
   sqlite: (db) => spreadNodesPrefMigration.up(db),
   postgres: (client) => runMigration164Postgres(client),
   mysql: (pool) => runMigration164Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 165: waypoint arrival notifications (#4750) — the four
+// `user_notification_preferences` columns (flag, radius, optional centre) plus
+// `waypoint_notifications`, the persisted dedupe ledger that stops a
+// rebroadcasting waypoint from alerting forever.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 165,
+  name: 'waypoint_notifications',
+  settingsKey: 'migration_165_waypoint_notifications',
+  sqlite: (db) => waypointNotificationsMigration.up(db),
+  postgres: (client) => runMigration165Postgres(client),
+  mysql: (pool) => runMigration165Mysql(pool),
 });
