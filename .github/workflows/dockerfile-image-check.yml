@@ -42,8 +42,13 @@ jobs:
             echo "Checking $dockerfile"
             echo "=========================================="
 
-            # Extract all FROM lines (base images), resolving ARGs where possible
-            IMAGES=$(grep -E '^FROM ' "$dockerfile" | sed 's/FROM //; s/ [Aa][Ss] .*//' | sort -u)
+            # Extract all FROM lines (base images), resolving ARGs where possible.
+            # `s/--[a-zA-Z-]*=[^ ]* //g` drops FROM flags such as
+            # `--platform=$BUILDPLATFORM` before the image name is read. Without
+            # it the flag itself was taken as the image, and the check failed
+            # with "Base image --platform=$BUILDPLATFORM does not have a
+            # manifest" — a parse error reported as a missing image.
+            IMAGES=$(grep -E '^FROM ' "$dockerfile" | sed 's/FROM //; s/--[a-zA-Z-]*=[^ ]* //g; s/ [Aa][Ss] .*//' | sort -u)
             PLATFORMS="${DOCKERFILE_PLATFORMS[$dockerfile]}"
 
             for image in $IMAGES; do
