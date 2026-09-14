@@ -14,6 +14,8 @@ The filter matches **anything rendered inside a section**, not just its heading.
 
 A multi-word query narrows rather than widens: every word has to appear. `region preset` finds LoRa; `region battery` finds nothing.
 
+![The Settings tab filtered to "battery"](/images/features/5182-settings-filter.png)
+
 ## Searching across every page
 
 The page filter only knows about the page you are on. To search all of them at once, open the configuration palette:
@@ -22,6 +24,8 @@ The page filter only knows about the page you are on. To search all of them at o
 - Click **Search Settings** in the sidebar, at the top of the Configuration group.
 
 Type a word and you get matching sections from every configuration page, each labelled with the page it lives on. Move with the **arrow keys**, open with **Enter**, dismiss with **Escape**.
+
+![The configuration palette showing results from several pages](/images/features/5182-config-palette.png)
 
 Picking a result takes you straight to that section — it navigates to the page and scrolls the section into view, clear of the header.
 
