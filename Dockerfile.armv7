@@ -72,6 +72,10 @@ RUN --mount=type=cache,target=/app/.tsc-cache \
 # Stage 2 (EMULATED): the only thing that genuinely needs armv7 — node_modules
 # with native modules compiled for the target. No application build runs here.
 # ---------------------------------------------------------------------------
+# No `--platform` here on purpose: an un-annotated stage already builds for the
+# target, and spelling it as `--platform=$TARGETPLATFORM` makes BuildKit emit
+# `RedundantTargetPlatform`. The emulation this stage needs is the default; it
+# is `jsbuilder` above that has to opt out of it.
 FROM node:22.22.2-bookworm-slim AS deps
 
 WORKDIR /app
@@ -120,11 +124,11 @@ COPY package*.json ./
 # would merely be slow, but node_modules from the native stage would ship amd64
 # better-sqlite3 binaries into an armv7 image.
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=jsbuilder /app/dist ./dist
+# `--chown` rather than a following `RUN chown -R ./dist`: same result in one
+# layer instead of two, without walking the tree again. protobufs is left
+# root-owned exactly as before — the server only reads it.
+COPY --chown=node:node --from=jsbuilder /app/dist ./dist
 COPY --from=jsbuilder /app/protobufs ./protobufs
-
-# Fix ownership of dist directory for node user
-RUN chown -R node:node ./dist
 
 # Create data directory for SQLite database and Apprise configs
 RUN mkdir -p /data/apprise-config /data/scripts && chown -R node:node /data
