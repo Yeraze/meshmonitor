@@ -185,7 +185,8 @@ describe('AutoTracerouteSection — filter combine modes (#5230)', () => {
         return Promise.resolve({ ok: true, json: async () => ({ log: [] }) });
       }
       if (url.includes('/api/channel-database')) {
-        return Promise.resolve({ ok: true, json: async () => [{ id: 63, name: 'LongTurbo' }, { id: 2, name: 'LongFast' }] });
+        // The real endpoint always returns the { success, count, data } envelope.
+        return Promise.resolve({ ok: true, json: async () => ({ success: true, count: 2, data: [{ id: 63, name: 'LongTurbo' }, { id: 2, name: 'LongFast' }] }) });
       }
       if (url.includes('/api/channels')) {
         return Promise.resolve({ ok: true, json: async () => [{ id: 0, name: 'Primary' }] });
@@ -287,7 +288,7 @@ describe('AutoTracerouteSection — filter combine modes (#5230)', () => {
         return Promise.resolve({ ok: true, json: async () => filterResponse({ filterChannelsMode: 'and', filterChannels: [163] }) });
       }
       if (url.includes('/api/settings/traceroute-log')) return Promise.resolve({ ok: true, json: async () => ({ log: [] }) });
-      if (url.includes('/api/channel-database')) return Promise.resolve({ ok: true, json: async () => [{ id: 63, name: 'LongTurbo' }] });
+      if (url.includes('/api/channel-database')) return Promise.resolve({ ok: true, json: async () => ({ success: true, count: 1, data: [{ id: 63, name: 'LongTurbo' }] }) });
       if (url.includes('/api/channels')) return Promise.resolve({ ok: true, json: async () => [] });
       if (url.includes('/api/settings')) return Promise.resolve({ ok: true, json: async () => ({ tracerouteScheduleEnabled: 'false' }) });
       if (url.includes('/api/nodes')) {
@@ -300,6 +301,35 @@ describe('AutoTracerouteSection — filter combine modes (#5230)', () => {
 
     await screen.findByTestId('traceroute-mode-channels');
     expect(screen.queryByTestId('traceroute-channel-unknown-warning')).toBeNull();
+  });
+
+  it('does not let the default .* regex neutralise the other OR filters', async () => {
+    // `filterRegexEnabled` defaults true and the pattern defaults to `.*`. The
+    // old preview counted that as a match-all OR member, so every other OR
+    // filter was swallowed: picking a channel showed the WHOLE mesh as matching
+    // while the scheduler traced only that channel. The backend never treats
+    // `.*` as an active filter — the preview must agree, or users tune against
+    // a number that is not what will happen.
+    mockApi({ filterChannels: [163], filterNameRegex: '.*', filterRegexEnabled: true });
+    renderSection();
+
+    // Node 1 is on channel 163; nodes 2 and 3 are not.
+    expect(await screen.findByTestId('traceroute-match-1')).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.queryByTestId('traceroute-match-2')).toBeNull();
+      expect(screen.queryByTestId('traceroute-match-3')).toBeNull();
+    });
+  });
+
+  it('still applies a real regex pattern in the union', async () => {
+    // The counterpart: a non-default pattern IS an active filter, so it widens
+    // the OR group as before.
+    mockApi({ filterChannels: [163], filterNameRegex: '^B$', filterRegexEnabled: true });
+    renderSection();
+
+    expect(await screen.findByTestId('traceroute-match-1')).toBeTruthy();
+    expect(await screen.findByTestId('traceroute-match-2')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByTestId('traceroute-match-3')).toBeNull());
   });
 
   it('shows no exclusion warning while the channel filter is OR', async () => {

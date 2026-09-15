@@ -266,8 +266,10 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
           }
         }
         if (dbRes.ok) {
+          // Always the `{ success, count, data }` envelope — see
+          // _channelDatabaseHandlers.getAllChannelsHandler.
           const body = await dbRes.json();
-          const rows = Array.isArray(body) ? body : body?.data;
+          const rows = body?.data;
           if (Array.isArray(rows)) {
             rows.forEach((c: { id?: number; name?: string }) => {
               if (typeof c?.id === 'number' && c.name) names.set(CHANNEL_DB_OFFSET + c.id, c.name);
@@ -469,11 +471,11 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
       setFilterNameRegex(initialSettings.filterNameRegex || '.*');
       setFilterNodesEnabled(initialSettings.filterNodesEnabled !== false);
       setFilterChannelsEnabled(initialSettings.filterChannelsEnabled !== false);
-    setFilterNodesMode(asFilterMode(initialSettings.filterNodesMode));
-    setFilterChannelsMode(asFilterMode(initialSettings.filterChannelsMode));
-    setFilterRolesMode(asFilterMode(initialSettings.filterRolesMode));
-    setFilterHwModelsMode(asFilterMode(initialSettings.filterHwModelsMode));
-    setFilterRegexMode(asFilterMode(initialSettings.filterRegexMode));
+      setFilterNodesMode(asFilterMode(initialSettings.filterNodesMode));
+      setFilterChannelsMode(asFilterMode(initialSettings.filterChannelsMode));
+      setFilterRolesMode(asFilterMode(initialSettings.filterRolesMode));
+      setFilterHwModelsMode(asFilterMode(initialSettings.filterHwModelsMode));
+      setFilterRegexMode(asFilterMode(initialSettings.filterRegexMode));
       setFilterRolesEnabled(initialSettings.filterRolesEnabled !== false);
       setFilterHwModelsEnabled(initialSettings.filterHwModelsEnabled !== false);
       setFilterRegexEnabled(initialSettings.filterRegexEnabled !== false);
@@ -620,11 +622,13 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
         matches: (n) => { const h = getNodeHwModel(n); return h !== undefined && filterHwModels.includes(h); },
       });
     }
-    if (filterRegexEnabled && filterNameRegex === '.*') {
-      // The default pattern matches everything — still a participating filter,
-      // which matters when it is the only 'or' one left.
-      active.push({ mode: filterRegexMode, matches: () => true });
-    } else if (filterRegexEnabled && regexMatcherForCheck !== null) {
+    // `.*` is NOT a participating filter, matching the backend, which only
+    // compiles a matcher when the pattern is non-default. The old preview
+    // treated it as a match-all OR member — and since the regex filter is
+    // enabled with `.*` by DEFAULT, that silently neutralised every other OR
+    // filter: picking a channel showed the whole mesh as matching while the
+    // scheduler traced only the channel. The preview now says what will happen.
+    if (filterRegexEnabled && regexMatcherForCheck !== null) {
       const re = regexMatcherForCheck;
       active.push({ mode: filterRegexMode, matches: (n) => re.test(nodeName(n)) });
     }
@@ -1489,6 +1493,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                     debouncedMatchingNodes.map(node => (
                       <div
                         key={node.nodeNum}
+                        data-testid={`traceroute-match-${node.nodeNum}`}
                         style={{
                           padding: '0.35rem 0.5rem',
                           borderBottom: '1px solid var(--color-surface-hover)',
