@@ -8,7 +8,7 @@
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../styles/messages.css';
-import BeaconOffersPanel from './beacons/BeaconOffersPanel';
+import BeaconsPanel from './beacons/BeaconsPanel';
 import { Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
 import { ResourceType } from '../types/permission';
@@ -744,6 +744,18 @@ export default function ChannelsTab({
               </button>
             </div>
           )}
+          {/* MeshBeacon invitations (#4723, #5232) — an offer to join a channel
+              belongs next to the channel list, but as a button with a count
+              rather than a stack of cards: beacons re-advertise on their own
+              interval, and the cards grew without bound and pushed the message
+              list off a phone screen. Renders nothing until a beacon has been
+              heard, so pre-2.8 meshes see no empty surface. */}
+          <BeaconsPanel
+            sourceId={sourceId}
+            channels={channels}
+            canWrite={hasPermission('nodes', 'write')}
+            nodeName={(nodeNum) => nodes.find((n) => n.nodeNum === nodeNum)?.user?.longName}
+          />
           {!mqttReadOnly && (
             <label className="mqtt-toggle">
               <input type="checkbox" checked={showMqttMessages} onChange={e => setShowMqttMessages(e.target.checked)} />
@@ -942,16 +954,6 @@ export default function ChannelsTab({
                 );
               })}
             </div>
-
-            {/* MeshBeacon invitations (#4723) — an offer to join a channel
-                belongs next to the channel list. Renders nothing when no
-                beacons have been heard, so pre-2.8 meshes see no empty surface. */}
-            <BeaconOffersPanel
-              sourceId={sourceId}
-              channels={channels}
-              canWrite={hasPermission('nodes', 'write')}
-              nodeName={(nodeNum) => nodes.find((n) => n.nodeNum === nodeNum)?.user?.longName}
-            />
 
             {/* Selected Channel Messaging */}
             {selectedChannel !== -1 && (

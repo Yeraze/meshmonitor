@@ -90,6 +90,15 @@ export const meshBeaconOffersSqlite = sqliteTable('mesh_beacon_offers', {
    * the one already declined.
    */
   dismissedAt: integer('dismissedAt'),
+  /**
+   * ms epoch the user muted this sender permanently; null = not muted (#5232).
+   *
+   * The difference from `dismissedAt` is the whole reason there are two
+   * columns: a dismissal is "not now" and lapses when the advertised network
+   * changes, a mute is "never" and survives that. Only an explicit un-mute
+   * clears it.
+   */
+  mutedAt: integer('mutedAt'),
 }, (table) => ({
   pk: sqlitePrimaryKey({ columns: [table.sourceId, table.nodeNum] }),
   lastSeenIdx: sqliteIndex('idx_mesh_beacon_offers_lastSeenAt').on(table.lastSeenAt),
@@ -112,6 +121,8 @@ export const meshBeaconOffersPostgres = pgTable('mesh_beacon_offers', {
   firstSeenAt: pgBigint('firstSeenAt', { mode: 'number' }).notNull(),
   lastSeenAt: pgBigint('lastSeenAt', { mode: 'number' }).notNull(),
   dismissedAt: pgBigint('dismissedAt', { mode: 'number' }),
+  /** ms epoch of a permanent mute (#5232); survives a changed offer. */
+  mutedAt: pgBigint('mutedAt', { mode: 'number' }),
 }, (table) => ({
   pk: pgPrimaryKey({ columns: [table.sourceId, table.nodeNum] }),
   lastSeenIdx: pgIndex('idx_mesh_beacon_offers_lastSeenAt').on(table.lastSeenAt),
@@ -133,6 +144,8 @@ export const meshBeaconOffersMysql = mysqlTable('mesh_beacon_offers', {
   firstSeenAt: myBigint('firstSeenAt', { mode: 'number' }).notNull(),
   lastSeenAt: myBigint('lastSeenAt', { mode: 'number' }).notNull(),
   dismissedAt: myBigint('dismissedAt', { mode: 'number' }),
+  /** ms epoch of a permanent mute (#5232); survives a changed offer. */
+  mutedAt: myBigint('mutedAt', { mode: 'number' }),
 }, (table) => ({
   pk: myPrimaryKey({ columns: [table.sourceId, table.nodeNum] }),
   lastSeenIdx: myIndex('idx_mesh_beacon_offers_lastSeenAt').on(table.lastSeenAt),

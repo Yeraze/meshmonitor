@@ -1,0 +1,385 @@
+/* Received MeshBeacons: the button, the list modal, and the join dialog
+   (#4723, #5232). Scoped module — see CLAUDE.md. */
+
+/* ---------------------------------------------------------------- button --
+   One line in the channels controls row whatever the mesh is doing. The stack
+   of cards this replaced grew with the number of beaconing neighbours, which
+   is exactly what made it unusable on a phone. */
+
+.beaconsButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 0.9rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.beaconsButton:hover {
+  background: var(--color-surface-hover);
+}
+
+.beaconsBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* ----------------------------------------------------------------- modal -- */
+
+.beaconModalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.beaconModal {
+  display: flex;
+  flex-direction: column;
+  width: min(900px, 100%);
+  max-height: min(80vh, 100%);
+  padding: 1rem 1.15rem;
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  overflow: hidden;
+}
+
+.beaconModalHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.beaconModalTitle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  font-size: 1rem;
+}
+
+.beaconModalClose {
+  padding: 0.25rem 0.4rem;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.beaconModalControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+
+.beaconSearch {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 1 1 14rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  color: var(--color-text-muted);
+}
+
+.beaconSearch input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 0.9rem;
+}
+
+.beaconSearch input:focus {
+  outline: none;
+}
+
+.beaconFilters {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.beaconFilter {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.beaconFilterActive {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+}
+
+.beaconEmpty {
+  margin: 1.5rem 0;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+/* ----------------------------------------------------------------- table --
+   The wrapper owns both scroll axes so the modal itself never scrolls its
+   header away, and so a wide row scrolls sideways instead of forcing the page
+   to (see the responsive rule in CLAUDE.md). */
+
+.beaconTableWrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.beaconTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.beaconTable th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0.35rem 0.5rem;
+  background: var(--color-surface);
+  text-align: left;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.beaconTable td {
+  padding: 0.5rem;
+  border-top: 1px solid var(--color-border);
+  vertical-align: top;
+}
+
+.beaconSortButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+/* Already dismissed or muted: still listed (that is how a mute gets undone),
+   but visibly not awaiting anything. */
+.beaconRowHidden {
+  opacity: 0.6;
+}
+
+.beaconBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.25rem;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+
+/* ------------------------------------------------------------ cell parts -- */
+
+.beaconOffersError {
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+  border: 1px solid var(--color-error);
+  border-radius: 4px;
+  color: var(--color-error);
+}
+
+.beaconOfferNode {
+  font-weight: 600;
+}
+
+.beaconOfferTime {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.beaconOfferMessage {
+  margin: 0.25rem 0 0;
+  color: var(--color-text-muted);
+}
+
+.beaconOfferMuted {
+  color: var(--color-text-muted);
+}
+
+.beaconOfferChannel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--font-mono);
+}
+
+.beaconOfferNote,
+.beaconOfferReason {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+/* Regulator-compliance warning (#5103). Same visual language as the
+   amateur-band alert on the LoRa config section, so a user reads them as the
+   same class of "this is legal advice, not a control". */
+.beaconOfferWarning {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  margin: 0.35rem 0 0;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--color-warning);
+  border-radius: 4px;
+  background-color: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  color: var(--color-warning);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.beaconOfferActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.beaconOfferJoin,
+.beaconOfferSecondary,
+.beaconConfirmGo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.beaconOfferJoin:disabled,
+.beaconOfferSecondary:disabled,
+.beaconConfirmGo:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* The affirmative action carries the accent; Dismiss, Mute and Restore stay
+   neutral so the destructive-looking option is not the visually loudest one.
+   Named for the ROLE rather than for Dismiss, which was merely the first button
+   to need it. */
+.beaconOfferJoin,
+.beaconConfirmGo {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+}
+
+.beaconOfferSecondary {
+  background: transparent;
+  color: var(--color-text-muted);
+}
+
+/* ---------------------------------------------------------- join dialog --
+   Sits above the list modal: a join is started from a row, and the
+   confirmation must not be hidden behind the thing that launched it. */
+
+.beaconConfirmOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.beaconConfirmDialog {
+  max-width: 460px;
+  width: calc(100% - 2rem);
+  padding: 1.1rem 1.25rem;
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.beaconConfirmSlot {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+
+.beaconConfirmWarning {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--color-warning);
+  border-radius: 4px;
+  color: var(--color-warning);
+}
+
+.beaconConfirmActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+/* Replacing an existing channel is destructive — the button that does it should
+   not look identical to the one that simply joins a free slot. */
+.beaconConfirmDanger {
+  border-color: var(--color-danger);
+  background: var(--color-danger);
+}
+
+/* On a phone the table's five columns cannot fit. Drop the two timestamp
+   columns to a single "last heard" and let the wrapper scroll the rest —
+   the whole point of this surface is that it stops eating the viewport. */
+@media (max-width: 600px) {
+  .beaconModal {
+    max-height: 100%;
+    padding: 0.75rem;
+  }
+
+  .beaconTable th:nth-child(3),
+  .beaconTable td:nth-child(3) {
+    display: none;
+  }
+}

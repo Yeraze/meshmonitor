@@ -7,7 +7,7 @@
  * cannot use.
  */
 import { describe, it, expect } from 'vitest';
-import { assessBeaconOffer } from './beaconOfferActionability';
+import { assessBeaconOffer, regionName } from './beaconOfferActionability';
 import { isPresetLegalForRegion } from '../configuration/constants';
 
 const joinable = { offerChannelName: 'RegionMesh', hasChannelKey: true };
@@ -148,5 +148,24 @@ describe('assessBeaconOffer', () => {
     const r = assessBeaconOffer({ ...joinable, offerRegion: 1, offerPreset: 0 });
     expect(r.presetNote).toMatch(/Advertises a mesh on/);
     expect(r.presetNote).not.toMatch(/not compliant/i);
+  });
+});
+
+describe('regionName', () => {
+  it('names the region instead of falling through to its number', () => {
+    // `REGION_OPTIONS` entries carry `label`, not `name`. Reading the wrong key
+    // made every advertised region read as "region 1" in the beacons list.
+    expect(regionName(1)).toBe('US');
+    expect(regionName(3)).toBe('EU_868');
+  });
+
+  it('still has a placeholder for a region code we do not know', () => {
+    expect(regionName(250)).toBe('region 250');
+    expect(regionName(null)).toBe('unknown region');
+  });
+
+  it('puts the short code in the sentence the card renders', () => {
+    expect(assessBeaconOffer({ offerChannelName: 'X', hasChannelKey: true, offerRegion: 1, offerPreset: 0 }).presetNote)
+      .toBe('Advertises a mesh on LONG_FAST / US.');
   });
 });

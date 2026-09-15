@@ -184,6 +184,7 @@ import { migration as privacyDocumentsMigration, runMigration162Postgres, runMig
 import { migration as meshcoreSnrRealMigration, runMigration163Postgres, runMigration163Mysql } from '../server/migrations/163_meshcore_snr_real.js';
 import { migration as spreadNodesPrefMigration, runMigration164Postgres, runMigration164Mysql } from '../server/migrations/164_user_map_preferences_spread_nodes.js';
 import { migration as waypointNotificationsMigration, runMigration165Postgres, runMigration165Mysql } from '../server/migrations/165_waypoint_notifications.js';
+import { migration as meshBeaconMuteMigration, runMigration166Postgres, runMigration166Mysql } from '../server/migrations/166_mesh_beacon_mute.js';
 
 // ============================================================================
 // Registry
@@ -2678,4 +2679,20 @@ registry.register({
   sqlite: (db) => waypointNotificationsMigration.up(db),
   postgres: (client) => runMigration165Postgres(client),
   mysql: (pool) => runMigration165Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 166: `mesh_beacon_offers.mutedAt` (#5232) — the permanent form of
+// a dismissal. `dismissedAt` intentionally clears when the advertised network
+// changes; `mutedAt` never does, so a neighbour that keeps re-targeting its
+// beacon can be silenced for good.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 166,
+  name: 'mesh_beacon_mute',
+  settingsKey: 'migration_166_mesh_beacon_mute',
+  sqlite: (db) => meshBeaconMuteMigration.up(db),
+  postgres: (client) => runMigration166Postgres(client),
+  mysql: (pool) => runMigration166Mysql(pool),
 });

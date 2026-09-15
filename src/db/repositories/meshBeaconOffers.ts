@@ -14,7 +14,7 @@
  * preserved, `lastSeenAt` advances. The table is therefore bounded by beaconing
  * neighbours rather than by uptime, which is why it needs no retention sweep.
  */
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, count, desc, eq, isNull } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType } from '../types.js';
 import { logger } from '../../utils/logger.js';
@@ -32,6 +32,15 @@ export interface MeshBeaconOfferRow {
   firstSeenAt: number;
   lastSeenAt: number;
   dismissedAt: number | null;
+  /**
+   * ms epoch of a permanent mute (#5232); null = not muted.
+   *
+   * `dismissedAt` lapses when the advertised network changes — deliberately,
+   * so a re-keyed channel reads as a new invitation. `mutedAt` does not: a
+   * neighbour that keeps re-targeting its beacon would otherwise keep coming
+   * back no matter how often it was dismissed.
+   */
+  mutedAt: number | null;
 }
 
 /** A row safe to send to a client: identical minus the channel key. */
@@ -60,6 +69,7 @@ export function toPublicOffer(row: MeshBeaconOfferRow): PublicMeshBeaconOffer {
     firstSeenAt: row.firstSeenAt,
     lastSeenAt: row.lastSeenAt,
     dismissedAt: row.dismissedAt,
+    mutedAt: row.mutedAt,
   };
 }
 
@@ -132,6 +142,10 @@ export class MeshBeaconOffersRepository extends BaseRepository {
    * that is the anti-nag guarantee — EXCEPT when the offer now advertises a
    * different network, which is a new invitation rather than a repeat of the
    * one already declined, so the card comes back.
+   *
+   * `mutedAt` survives BOTH (#5232). It is the answer to a sender whose offer
+   * keeps changing: a dismissal that lapses on a re-key is correct behaviour
+   * and still leaves no way to say "never again", which is what a mute is.
    */
   async recordBeacon(
     sourceId: string,
@@ -150,6 +164,7 @@ export class MeshBeaconOffersRepository extends BaseRepository {
       firstSeenAt: existing?.firstSeenAt ?? now,
       lastSeenAt: now,
       dismissedAt: existing && !offerContentChanged(existing, offer) ? existing.dismissedAt : null,
+      mutedAt: existing?.mutedAt ?? null,
     };
 
     await this.upsert(
@@ -165,7 +180,8 @@ export class MeshBeaconOffersRepository extends BaseRepository {
         hasOffer: row.hasOffer,
         lastSeenAt: row.lastSeenAt,
         dismissedAt: row.dismissedAt,
-        // firstSeenAt intentionally omitted — preserved from the original insert.
+        // firstSeenAt and mutedAt intentionally omitted — both are preserved
+        // from the existing row, and a rebroadcast must never lift a mute.
       },
     );
 
@@ -173,17 +189,58 @@ export class MeshBeaconOffersRepository extends BaseRepository {
   }
 
   /**
-   * Offers still awaiting a decision, newest first. This is what the invitation
-   * card renders, so dismissed rows are excluded rather than filtered client-side.
+   * Offers still awaiting a decision, newest first. This is what the Beacons
+   * button counts, so dismissed and muted rows are excluded here rather than
+   * filtered client-side — the badge must match what opening it shows.
    */
   async listPending(sourceId: SourceScope): Promise<MeshBeaconOfferRow[]> {
     const { meshBeaconOffers } = this.tables;
     const rows = await this.db
       .select()
       .from(meshBeaconOffers)
-      .where(and(this.withSourceScope(meshBeaconOffers, sourceId), isNull(meshBeaconOffers.dismissedAt)))
+      .where(this.pendingWhere(sourceId))
       .orderBy(desc(meshBeaconOffers.lastSeenAt));
     return this.normalizeBigInts(rows) as MeshBeaconOfferRow[];
+  }
+
+  /**
+   * How many offers are awaiting a decision. Counted in SQL rather than by
+   * measuring `listPending`, because the badge is polled and the list is not —
+   * pulling every row (PSK included) to learn a single number is waste.
+   */
+  async countPending(sourceId: SourceScope): Promise<number> {
+    const { meshBeaconOffers } = this.tables;
+    const rows = await this.db
+      .select({ n: count() })
+      .from(meshBeaconOffers)
+      .where(this.pendingWhere(sourceId));
+    return Number((rows as Array<{ n: number | string }>)[0]?.n ?? 0);
+  }
+
+  /**
+   * How many offers exist at all for the source, hidden ones included.
+   *
+   * Drives whether the Beacons button renders: a user who muted every beacon
+   * still needs a route back to un-mute one, and a button that vanished at
+   * `pending === 0` would take that away.
+   */
+  async countAll(sourceId: SourceScope): Promise<number> {
+    const { meshBeaconOffers } = this.tables;
+    const rows = await this.db
+      .select({ n: count() })
+      .from(meshBeaconOffers)
+      .where(this.withSourceScope(meshBeaconOffers, sourceId));
+    return Number((rows as Array<{ n: number | string }>)[0]?.n ?? 0);
+  }
+
+  /** The one definition of "pending", shared by the list and its count. */
+  private pendingWhere(sourceId: SourceScope) {
+    const { meshBeaconOffers } = this.tables;
+    return and(
+      this.withSourceScope(meshBeaconOffers, sourceId),
+      isNull(meshBeaconOffers.dismissedAt),
+      isNull(meshBeaconOffers.mutedAt),
+    );
   }
 
   /** Every offer for a source, dismissed or not. */
@@ -213,6 +270,37 @@ export class MeshBeaconOffersRepository extends BaseRepository {
     const result = await this.db
       .update(meshBeaconOffers)
       .set({ dismissedAt: null })
+      .where(and(eq(meshBeaconOffers.sourceId, sourceId), eq(meshBeaconOffers.nodeNum, nodeNum)));
+    return this.getAffectedRows(result);
+  }
+
+  /**
+   * Silence a sender for good. Unlike `dismiss`, this survives the sender
+   * changing what it advertises — that is the entire difference between the
+   * two, and why muting is a separate action rather than a longer dismissal.
+   * Returns rows affected.
+   */
+  async mute(sourceId: string, nodeNum: number, now: number): Promise<number> {
+    const { meshBeaconOffers } = this.tables;
+    const result = await this.db
+      .update(meshBeaconOffers)
+      .set({ mutedAt: now })
+      .where(and(eq(meshBeaconOffers.sourceId, sourceId), eq(meshBeaconOffers.nodeNum, nodeNum)));
+    return this.getAffectedRows(result);
+  }
+
+  /**
+   * Undo a mute. Also clears any dismissal, so un-muting puts the offer back
+   * in the pending list instead of leaving it hidden behind the other flag —
+   * a user who un-mutes is asking to see it again, and having to then also
+   * un-dismiss it would read as the button not working.
+   * Returns rows affected.
+   */
+  async unmute(sourceId: string, nodeNum: number): Promise<number> {
+    const { meshBeaconOffers } = this.tables;
+    const result = await this.db
+      .update(meshBeaconOffers)
+      .set({ mutedAt: null, dismissedAt: null })
       .where(and(eq(meshBeaconOffers.sourceId, sourceId), eq(meshBeaconOffers.nodeNum, nodeNum)));
     return this.getAffectedRows(result);
   }
