@@ -1352,6 +1352,7 @@ router.post('/traceroute-nodes', requirePermission('settings', 'write'), async (
     const {
       enabled, nodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex,
       filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled, filterRegexEnabled,
+      filterNodesMode, filterChannelsMode, filterRolesMode, filterHwModelsMode, filterRegexMode,
       expirationHours, sortByHops,
       filterLastHeardEnabled, filterLastHeardHours,
       filterHopsEnabled, filterHopsMin, filterHopsMax,
@@ -1450,6 +1451,33 @@ router.post('/traceroute-nodes', requirePermission('settings', 'write'), async (
       return res.status(400).json({ error: (error as Error).message });
     }
 
+    // Validate the per-filter combine modes (#5230). Rejected rather than
+    // silently coerced: a typo'd mode that quietly became 'or' would widen the
+    // selection — more airtime, not less — which is the opposite of what a user
+    // reaching for 'and' is asking for.
+    const validateOptionalMode = (value: unknown, name: string): 'or' | 'and' | undefined => {
+      if (value === undefined || value === null) return undefined;
+      if (value !== 'or' && value !== 'and') {
+        throw new Error(`Invalid ${name} value. Must be "or" or "and".`);
+      }
+      return value;
+    };
+
+    let validatedFilterNodesMode: 'or' | 'and' | undefined;
+    let validatedFilterChannelsMode: 'or' | 'and' | undefined;
+    let validatedFilterRolesMode: 'or' | 'and' | undefined;
+    let validatedFilterHwModelsMode: 'or' | 'and' | undefined;
+    let validatedFilterRegexMode: 'or' | 'and' | undefined;
+    try {
+      validatedFilterNodesMode = validateOptionalMode(filterNodesMode, 'filterNodesMode');
+      validatedFilterChannelsMode = validateOptionalMode(filterChannelsMode, 'filterChannelsMode');
+      validatedFilterRolesMode = validateOptionalMode(filterRolesMode, 'filterRolesMode');
+      validatedFilterHwModelsMode = validateOptionalMode(filterHwModelsMode, 'filterHwModelsMode');
+      validatedFilterRegexMode = validateOptionalMode(filterRegexMode, 'filterRegexMode');
+    } catch (error) {
+      return res.status(400).json({ error: (error as Error).message });
+    }
+
     // Validate expirationHours (optional, must be an integer between 0 and 168; 0 = always retraceroute)
     let validatedExpirationHours: number | undefined;
     if (expirationHours !== undefined) {
@@ -1516,6 +1544,11 @@ router.post('/traceroute-nodes', requirePermission('settings', 'write'), async (
       filterRolesEnabled: validatedFilterRolesEnabled,
       filterHwModelsEnabled: validatedFilterHwModelsEnabled,
       filterRegexEnabled: validatedFilterRegexEnabled,
+      filterNodesMode: validatedFilterNodesMode,
+      filterChannelsMode: validatedFilterChannelsMode,
+      filterRolesMode: validatedFilterRolesMode,
+      filterHwModelsMode: validatedFilterHwModelsMode,
+      filterRegexMode: validatedFilterRegexMode,
       expirationHours: validatedExpirationHours,
       sortByHops: validatedSortByHops,
       filterLastHeardEnabled: validatedFilterLastHeardEnabled,

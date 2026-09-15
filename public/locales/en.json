@@ -2583,6 +2583,8 @@
   "automation.auto_traceroute.matching_nodes": "{{count}} node(s) match current filters",
   "automation.auto_traceroute.specific_nodes": "Specific Nodes",
   "automation.auto_traceroute.filter_by_channel": "Filter by Channel",
+  "automation.auto_traceroute.combine_mode": "How this filter combines: OR widens the selection, AND narrows it",
+  "automation.auto_traceroute.channel_unknown_excluded": "{{count}} node(s) have no known channel and are excluded while this filter is set to AND.",
   "automation.auto_traceroute.filter_by_role": "Filter by Role",
   "automation.auto_traceroute.filter_by_hardware": "Filter by Hardware Model",
   "automation.auto_traceroute.filter_by_name": "Filter by Name (Regex)",
