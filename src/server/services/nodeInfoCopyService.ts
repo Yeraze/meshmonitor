@@ -3,6 +3,7 @@ import { DbNode } from '../../db/types.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { logger } from '../../utils/logger.js';
 import { CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
+import { isBlankMacAddr } from '../../utils/nodeFieldBlanks.js';
 
 const NODE_INFO_FIELDS = [
   'longName', 'shortName', 'hwModel', 'role', 'macaddr',
@@ -52,6 +53,12 @@ const ZERO_IS_UNSET_FIELDS = new Set<string>(['hwModel']);
  */
 export function isNodeInfoFieldBlank(value: unknown, field?: string): boolean {
   if (value == null || value === '') return true;
+  // #5231: an all-zero MAC is the string-typed sibling of the `hwModel: 0`
+  // sentinel. `User.macaddr` was deprecated in firmware 2.1.x, so many nodes
+  // broadcast six zero bytes; '000000000000' looks like data to a naive
+  // emptiness check, so a donor was credited with a MAC it does not have and
+  // the report kept offering a copy that changed nothing.
+  if (field === 'macaddr' && isBlankMacAddr(value)) return true;
   return field !== undefined && value === 0 && ZERO_IS_UNSET_FIELDS.has(field);
 }
 

@@ -12,6 +12,7 @@ import { isBogusPosition, shouldDiscardPosition } from '../utils/nullIsland';
 import { getDiscardInvalidPositions } from '../utils/positionDisplayConfig';
 import { getNodeTransportClasses, type NodeTransportClass } from '../utils/nodeTransport';
 import { unifiedNodeKey } from '../utils/nodeIdentity';
+import { isBlankMacAddr, isPlaceholderLongName, isPlaceholderShortName } from '../utils/nodeFieldBlanks';
 import type { SourceRadioSummary } from '../types/elevation';
 import { isAnyMeshCoreSourceType } from '../utils/nodeTypeCategory';
 
@@ -266,6 +267,29 @@ export function useDashboardSourceData(sourceId: string | null): DashboardSource
  *   on the same source record — otherwise we'd splice a stale lat onto a
  *   fresh lng and end up at (0, 0) or worse.
  */
+/**
+ * True for a value that is present but carries no information, so the
+ * whole-record merge below should look at the next source instead of letting
+ * it win just for being newest (#5231).
+ *
+ * The case that put this here: MeshMonitor inserts a stub row named
+ * `Node !9e80e848` / `e848` the first time a node shows up as a traceroute hop
+ * or a neighbour entry. Those are non-empty strings, so a source that has only
+ * ever seen the node that way — often a busy MQTT source with the freshest
+ * `lastHeard` — eclipsed the real `SKYC` another source had learned, and the
+ * unified map rendered the hex stub.
+ */
+function isUninformativeNodeValue(
+  key: string,
+  value: unknown,
+  record: { nodeId?: string | null },
+): boolean {
+  if (key === 'longName') return isPlaceholderLongName(value);
+  if (key === 'shortName') return isPlaceholderShortName(value, record?.nodeId);
+  if (key === 'macaddr') return isBlankMacAddr(value);
+  return false;
+}
+
 function mergeNodeRecords(records: any[]): any {
   const sortedNewestFirst = [...records].sort(
     (a, b) => (b.lastHeard ?? -1) - (a.lastHeard ?? -1),
@@ -288,10 +312,21 @@ function mergeNodeRecords(records: any[]): any {
       ) {
         continue;
       }
+      if (isUninformativeNodeValue(k, v, r)) continue;
       if ((merged[k] === undefined || merged[k] === null) && v !== undefined && v !== null) {
         merged[k] = v;
       }
     }
+  }
+
+  // #5231: when EVERY source held only a placeholder, the loop above skipped
+  // them all and the node would render nameless. Fall back to the newest
+  // placeholder so the marker keeps its hex stub, which is what it showed
+  // before. Deliberately names only — a blank MAC should read as absent.
+  for (const k of ['longName', 'shortName'] as const) {
+    if (merged[k] != null) continue;
+    const fallback = sortedNewestFirst.find((r) => r[k] != null && r[k] !== '');
+    if (fallback) merged[k] = fallback[k];
   }
 
   // Position: take the newest record with a REAL fix — both lat and lng present

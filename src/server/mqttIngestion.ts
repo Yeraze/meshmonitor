@@ -18,6 +18,7 @@ import { sendMessagePushNotification } from './services/messagePushNotifier.js';
 import mqttPacketLogService from './services/mqttPacketLogService.js';
 import { autoDeleteByDistanceService } from './services/autoDeleteByDistanceService.js';
 import databaseService from '../services/database.js';
+import { isBlankMacAddr } from '../utils/nodeFieldBlanks.js';
 
 /**
  * Public Meshtastic channels that ship with the default key. Used to
@@ -353,7 +354,15 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
         // for MQTT scopes), so non-admins can never see MQTT nodes on
         // the map regardless of what they grant.
         channel: effectiveChannel,
-        macaddr: user.macaddr ? bytesToHex(user.macaddr) : undefined,
+        // #5231: `undefined` when this node reported no usable MAC, so the
+        // repository merge keeps whatever another source learned. Two shapes
+        // reach here looking like data: protobuf.js hands back an EMPTY buffer
+        // for an unset `bytes` field (truthy), and firmware deprecated
+        // `macaddr` in 2.1.x so plenty of nodes broadcast six zero bytes. Both
+        // hex-encoded to a non-empty string that overwrote a real MAC on every
+        // NodeInfo packet, and the enrichment report then re-offered the
+        // identical copy forever.
+        macaddr: isBlankMacAddr(user.macaddr) ? undefined : bytesToHex(user.macaddr),
         // publicKey is stored base64 across the rest of the codebase
         // (see meshtasticManager.ts:5546 and the security-config save
         // path at 3594). Using bytesToHex here would diverge from those
@@ -361,9 +370,14 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
         // time a node first ingested via MQTT later sends NodeInfo over
         // the direct radio link. Cleanup of existing hex rows happens in
         // migration 069.
-        publicKey: user.publicKey
-          ? Buffer.from(user.publicKey).toString('base64')
-          : (user.public_key ? Buffer.from(user.public_key).toString('base64') : undefined),
+        //
+        // #5231: the emptiness check is load-bearing, not defensive. An unset
+        // `public_key` decodes to an empty buffer, which is truthy, and
+        // `Buffer.from(empty).toString('base64')` is `''` — while `upsertNode`
+        // merges publicKey with `??`, which does not catch `''`. Every keyless
+        // NodeInfo packet therefore wiped the key the user had just copied in
+        // from another source, which is the field that kept "resurrecting".
+        publicKey: pickPublicKeyBase64(user),
         lastHeard: lastHeardSec,
         sourceId,
         createdAt: nowMs,
@@ -1227,6 +1241,19 @@ async function resolveChannelDatabaseIdForMqtt(
 /** Exposed for tests to reset between cases. */
 export function _resetMqttIngestCachesForTest(): void {
   channelNameToDbIdCache.clear();
+}
+
+/**
+ * Base64 of a NodeInfo public key, or `undefined` when the node sent none.
+ *
+ * Handles both field spellings (protobuf.js keeps `public_key` snake_case in
+ * some decode shapes — see the camelCase-digit quirk) and, critically, treats
+ * a zero-length buffer as "absent" rather than encoding it to `''` (#5231).
+ */
+function pickPublicKeyBase64(user: Record<string, unknown>): string | undefined {
+  const raw = (user.publicKey ?? user.public_key) as Uint8Array | undefined | null;
+  if (raw == null || raw.length === 0) return undefined;
+  return Buffer.from(raw).toString('base64');
 }
 
 function bytesToHex(buf: Uint8Array | ArrayLike<number>): string {
