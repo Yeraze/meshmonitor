@@ -545,6 +545,34 @@ describe('DashboardSidebar', () => {
       fireEvent.click(screen.getByRole('button', { name: 'source.edit_mode_done' }));
       expect(queryDragHandles().length).toBe(0);
     });
+
+    // Issue #5233 — a reorder handle is only draggable under a finger if the
+    // browser is told not to claim the touch gesture for scrolling or text
+    // selection first. The Channels handle shipped without `touch-action: none`
+    // and could not be dragged on iOS at all; this one always had it, but the
+    // bare ⠿ glyph it drew was still selectable, so a long-press could raise
+    // the selection callout over it. Both now share DRAG_HANDLE_TOUCH_STYLE.
+    //
+    // `-webkit-touch-callout` is not asserted here: jsdom does not know the
+    // property and drops it on serialization, so the element cannot report it
+    // regardless of what React rendered. dragHandleStyle.test.tsx pins it on
+    // the constant instead.
+    it('gives every drag handle the styles a touch drag needs (#5233)', () => {
+      renderSidebar({ onReorderSources: vi.fn() });
+      fireEvent.click(screen.getByRole('button', { name: 'source.edit_mode' }));
+
+      const handles = Array.from(queryDragHandles()) as HTMLElement[];
+      expect(handles.length).toBe(3);
+
+      handles.forEach((handle) => {
+        expect(handle.style.touchAction).toBe('none');
+        expect(handle.style.userSelect).toBe('none');
+        expect(handle.style.getPropertyValue('-webkit-user-select')).toBe('none');
+        // Drawn as a UiIcon now, not a selectable braille character.
+        expect(handle.textContent).not.toContain('⠿');
+        expect(handle.querySelector('svg')).not.toBeNull();
+      });
+    });
   });
 
   // Issue #3356 — resizable sidebar with persisted width.

@@ -26,6 +26,7 @@ import type { DashboardSource, SourceStatus, UnifiedStatus } from '../../hooks/u
 import { UNIFIED_SOURCE_ID } from '../../hooks/useDashboardData';
 import { useAuth } from '../../contexts/AuthContext';
 import { UiIcon } from '../icons';
+import { DRAG_HANDLE_TOUCH_STYLE } from '../dragHandleStyle';
 import SidebarFooter from '../SidebarFooter';
 import styles from './DashboardSidebar.module.css';
 import { isAnyMeshCoreSourceType } from '../../utils/nodeTypeCategory';
@@ -366,6 +367,7 @@ const SortableSourceCard: React.FC<{
         {...listeners}
         onClick={(e) => e.stopPropagation()}
         title="Drag to reorder"
+        data-testid="dashboard-source-drag-handle"
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -374,13 +376,14 @@ const SortableSourceCard: React.FC<{
           marginLeft: '8px',
           cursor: isDragging ? 'grabbing' : 'grab',
           color: isDragging ? 'var(--color-accent)' : 'var(--color-text-disabled)',
-          fontSize: '1.2rem',
-          userSelect: 'none',
           flexShrink: 0,
-          touchAction: 'none',
+          // #5233: this handle already had `touch-action: none`, so dragging
+          // worked here — but the bare glyph was still selectable text, so a
+          // long-press could raise the iOS selection callout over it.
+          ...DRAG_HANDLE_TOUCH_STYLE,
         }}
       >
-        ⠿
+        <UiIcon name="dragHandle" size={17} />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
     </div>
