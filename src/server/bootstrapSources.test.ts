@@ -591,7 +591,8 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
         db, registry,
         makeMeshtastic: meshFactory.factory,
       }));
-      // Registry may have 0 entries (ensureMeshCoreManagerStarted is mocked as no-op)
+      // ensureMeshCoreManagerStarted is mocked as a no-op here, so the registry
+      // is empty in this test context — and empty of tcp managers either way.
       expect(getPrimaryMeshtasticManager(registry)).toBeUndefined();
     });
 
