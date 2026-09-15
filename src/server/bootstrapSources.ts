@@ -140,7 +140,7 @@ export async function bootstrapSources(deps: BootstrapDeps): Promise<void> {
   // hole for whatever path leaves the sources table genuinely empty.
   const sourceCount = await deps.db.sources.getSourceCount();
   if (sourceCount === 0) {
-    if (deps.env.meshtasticNodeIpProvided && deps.env.meshtasticNodeIp) {
+    if (deps.env.meshtasticNodeIpProvided) {
       await deps.db.sources.createSource({
         id: uuidv4(),
         name: 'Default',
