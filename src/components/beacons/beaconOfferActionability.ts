@@ -68,10 +68,21 @@ export function presetName(preset: number | null | undefined): string {
   return MODEM_PRESET_OPTIONS.find((o) => o.value === preset)?.name ?? `preset ${preset}`;
 }
 
+/**
+ * `REGION_OPTIONS` entries carry a `label` ("US - United States"), not a `name`
+ * — unlike `MODEM_PRESET_OPTIONS`, which does. Reading `.name` here meant every
+ * region fell through to the `region ${n}` placeholder, so a beacon advertising
+ * the US mesh read as "a mesh on LONG_FAST / region 1".
+ *
+ * The label's short code is the half worth showing: these strings go inside a
+ * sentence, and "United States" after the dash is the part a reader already
+ * knows from the code in front of it.
+ */
 export function regionName(region: number | null | undefined): string {
   if (region == null) return 'unknown region';
-  const opt = REGION_OPTIONS.find((o) => o.value === region);
-  return (opt as { name?: string } | undefined)?.name ?? `region ${region}`;
+  const label = REGION_OPTIONS.find((o) => o.value === region)?.label;
+  if (!label) return `region ${region}`;
+  return label.split(' - ')[0].trim() || `region ${region}`;
 }
 
 /**
