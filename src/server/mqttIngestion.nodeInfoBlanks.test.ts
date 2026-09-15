@@ -89,6 +89,12 @@ describe('MQTT NodeInfo ingest — blank public key (#5231)', () => {
     expect(node.publicKey).toBeUndefined();
   });
 
+  it('still carries a real public key through under the snake_case spelling', async () => {
+    const key = new Uint8Array([0xc7, 0xe9, 0x55, 0xa8, 0xcf, 0x34, 0x99, 0xc9]);
+    const node = await ingest({ longName: 'SKYB', public_key: key });
+    expect(node.publicKey).toBe(Buffer.from(key).toString('base64'));
+  });
+
   it('still carries a real public key through, base64-encoded', async () => {
     const key = new Uint8Array([0xeb, 0xd4, 0x63, 0x06, 0x20, 0x12, 0x11, 0xff]);
     const node = await ingest({ longName: 'SKYC', publicKey: key });
