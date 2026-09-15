@@ -36,7 +36,7 @@ vi.mock('react-i18next', () => {
 vi.mock('../icons/UiIcon', () => ({ UiIcon: ({ name }: { name: string }) => <i data-icon={name} /> }));
 
 import BeaconsPanel from './BeaconsPanel';
-import { selectOffers, nodeHexId } from './BeaconsModal';
+import { selectOffers, nodeHexId } from './beaconList';
 import type { PublicBeaconOffer } from './types';
 
 const NODE = 0xaabbccdd;

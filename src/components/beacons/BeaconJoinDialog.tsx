@@ -17,16 +17,8 @@
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons/UiIcon';
-import type { PublicBeaconOffer } from './types';
+import { JOINABLE_SLOTS, type PendingAccept } from './types';
 import styles from './Beacons.module.css';
-
-/** Meshtastic slots 1-7 are join targets; 0 is the primary and is never offered. */
-export const JOINABLE_SLOTS = [1, 2, 3, 4, 5, 6, 7];
-
-export interface PendingAccept {
-  offer: PublicBeaconOffer;
-  slot: number;
-}
 
 export interface BeaconJoinDialogProps {
   pending: PendingAccept;

@@ -20,6 +20,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons/UiIcon';
 import { assessBeaconOffer, type OfferActionability } from './beaconOfferActionability';
+import { nodeHexId, selectOffers } from './beaconList';
 import { isHidden, type BeaconFilter, type BeaconSort, type BeaconSortKey, type PublicBeaconOffer } from './types';
 import styles from './Beacons.module.css';
 
@@ -42,73 +43,6 @@ export interface BeaconsModalProps {
    * close the list out from under the dialog that was launched from it.
    */
   escapeCloses?: boolean;
-}
-
-/** The canonical fallback label for a node we have no name for. */
-export function nodeHexId(nodeNum: number): string {
-  return `!${nodeNum.toString(16).padStart(8, '0')}`;
-}
-
-/**
- * Filter, search and sort, in that order.
- *
- * Exported and pure so the behaviour can be tested without a DOM — this is the
- * part users will notice being wrong, and it is the part a render test covers
- * least well.
- */
-export function selectOffers(
-  offers: PublicBeaconOffer[],
-  filter: BeaconFilter,
-  query: string,
-  sort: BeaconSort,
-  nodeName?: (nodeNum: number) => string | undefined,
-): PublicBeaconOffer[] {
-  const label = (o: PublicBeaconOffer) => nodeName?.(o.nodeNum) ?? nodeHexId(o.nodeNum);
-
-  const filtered = offers.filter((o) => {
-    if (filter === 'pending') return !isHidden(o);
-    if (filter === 'hidden') return isHidden(o);
-    return true;
-  });
-
-  const needle = query.trim().toLowerCase();
-  const searched = needle
-    ? filtered.filter((o) => (
-      label(o).toLowerCase().includes(needle)
-        || nodeHexId(o.nodeNum).includes(needle)
-        || (o.message ?? '').toLowerCase().includes(needle)
-        || (o.offerChannelName ?? '').toLowerCase().includes(needle)
-    ))
-    : filtered;
-
-  // Sorting a copy: the caller's array is React state.
-  const sorted = [...searched].sort((a, b) => {
-    let cmp = 0;
-    switch (sort.key) {
-      case 'node':
-        cmp = label(a).localeCompare(label(b));
-        break;
-      case 'channel':
-        // Offers without a channel sort last in ascending order rather than
-        // clumping at the top under an empty string — the named ones are what
-        // someone sorting by channel is looking for.
-        cmp = (a.offerChannelName ?? '￿').localeCompare(b.offerChannelName ?? '￿');
-        break;
-      case 'firstSeenAt':
-        cmp = a.firstSeenAt - b.firstSeenAt;
-        break;
-      case 'lastSeenAt':
-      default:
-        cmp = a.lastSeenAt - b.lastSeenAt;
-        break;
-    }
-    // Stable tiebreak so two beacons heard in the same second do not swap
-    // places between renders.
-    if (cmp === 0) cmp = a.nodeNum - b.nodeNum;
-    return sort.direction === 'asc' ? cmp : -cmp;
-  });
-
-  return sorted;
 }
 
 export default function BeaconsModal({

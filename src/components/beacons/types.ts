@@ -45,3 +45,12 @@ export interface BeaconSort {
 export function isHidden(offer: PublicBeaconOffer): boolean {
   return offer.dismissedAt != null || offer.mutedAt != null;
 }
+
+/** Meshtastic slots 1-7 are join targets; 0 is the primary and is never offered. */
+export const JOINABLE_SLOTS = [1, 2, 3, 4, 5, 6, 7];
+
+/** An accept in flight: which offer, and the slot it would be written to. */
+export interface PendingAccept {
+  offer: PublicBeaconOffer;
+  slot: number;
+}

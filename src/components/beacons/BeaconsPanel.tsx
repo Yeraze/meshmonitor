@@ -16,10 +16,10 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons/UiIcon';
-import BeaconJoinDialog, { JOINABLE_SLOTS, type PendingAccept } from './BeaconJoinDialog';
+import BeaconJoinDialog from './BeaconJoinDialog';
 import BeaconsModal from './BeaconsModal';
 import { useBeaconOffers } from './useBeaconOffers';
-import type { PublicBeaconOffer } from './types';
+import { JOINABLE_SLOTS, type PendingAccept, type PublicBeaconOffer } from './types';
 import styles from './Beacons.module.css';
 
 export interface BeaconsPanelProps {
