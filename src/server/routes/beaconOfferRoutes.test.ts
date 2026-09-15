@@ -119,6 +119,70 @@ describe('dismiss / restore', () => {
   });
 });
 
+describe('GET /count', () => {
+  it('reports pending and total separately', async () => {
+    await seedOffer();
+    const agent = await harness.loginAs(harness.admin);
+
+    expect((await agent.get(url('/count'))).body.data).toEqual({ pending: 1, total: 1 });
+
+    // Muting empties the badge but must not empty the button — otherwise the
+    // un-mute is unreachable.
+    await harness.db.meshBeaconOffers.mute(harness.sourceA, NODE, 2_000);
+    expect((await agent.get(url('/count'))).body.data).toEqual({ pending: 0, total: 1 });
+  });
+
+  it('is not parsed as a node id', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get(url('/count'));
+    expect(res.status).toBe(200);
+    expect(res.body.code).toBeUndefined();
+  });
+
+  it('refuses a user without nodes:read on this source', async () => {
+    await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceB);
+    const agent = await harness.loginAs(harness.limited);
+    expect((await agent.get(url('/count'))).status).toBe(403);
+  });
+});
+
+describe('mute / unmute', () => {
+  it('a mute survives a rebroadcast that changes the offer', async () => {
+    await seedOffer();
+    const agent = await harness.loginAs(harness.admin);
+
+    expect((await agent.post(url(`/${NODE}/mute`))).status).toBe(200);
+    await seedOffer({ offerChannelName: 'SomethingElse' });
+
+    // A changed offer lifts a dismissal by design. A mute is what a user
+    // reaches for precisely when that keeps happening, so it must not lift.
+    expect(await harness.db.meshBeaconOffers.listPending(harness.sourceA)).toHaveLength(0);
+  });
+
+  it('un-mute brings the row back even when it was also dismissed', async () => {
+    await seedOffer();
+    const agent = await harness.loginAs(harness.admin);
+
+    await agent.post(url(`/${NODE}/dismiss`));
+    await agent.post(url(`/${NODE}/mute`));
+    expect((await agent.post(url(`/${NODE}/unmute`))).status).toBe(200);
+
+    expect(await harness.db.meshBeaconOffers.listPending(harness.sourceA)).toHaveLength(1);
+  });
+
+  it('404s for a node that never beaconed here', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    expect((await agent.post(url('/12345/mute'))).body.code).toBe('BEACON_OFFER_NOT_FOUND');
+  });
+
+  it('refuses a user without nodes:write', async () => {
+    await seedOffer();
+    await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceA);
+    const agent = await harness.loginAs(harness.limited);
+    expect((await agent.post(url(`/${NODE}/mute`))).status).toBe(403);
+  });
+});
+
 describe('POST accept', () => {
   const accept = (body: Record<string, unknown>) =>
     harness.loginAs(harness.admin).then((a) => a.post(url(`/${NODE}/accept`)).send(body));

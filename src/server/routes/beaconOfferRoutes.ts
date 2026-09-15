@@ -73,6 +73,38 @@ router.get(
 );
 
 /**
+ * GET /api/sources/:id/beacon-offers/count
+ *
+ * Just the pending count, for the Beacons button's badge (#5232). Split from
+ * the listing because the badge is polled on every source and the list is only
+ * fetched when the modal opens — shipping every row (and its decode work) to
+ * render one number would be waste on a surface that is usually zero.
+ *
+ * Declared before `/:nodeNum` routes so "count" is never parsed as a node id.
+ */
+router.get(
+  '/count',
+  optionalAuth(),
+  requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = sourceIdOf(req);
+      const [pending, total] = await Promise.all([
+        databaseService.meshBeaconOffers.countPending(sourceId),
+        databaseService.meshBeaconOffers.countAll(sourceId),
+      ]);
+      // `total` is what decides whether the button exists at all; `pending` is
+      // what the badge shows. They differ as soon as anything is muted, and the
+      // button must outlive the badge so a mute stays undoable.
+      ok(res, { pending, total });
+    } catch (error) {
+      logger.error('[API] Error counting beacon offers:', error);
+      fail(res, 500, 'BEACON_OFFERS_COUNT_FAILED', 'Failed to count beacon offers');
+    }
+  },
+);
+
+/**
  * POST /api/sources/:id/beacon-offers/:nodeNum/dismiss
  *
  * Hides the offer until the advertising node changes what it advertises.
@@ -112,6 +144,54 @@ router.post(
     } catch (error) {
       logger.error('[API] Error restoring beacon offer:', error);
       fail(res, 500, 'BEACON_OFFER_RESTORE_FAILED', 'Failed to restore beacon offer');
+    }
+  },
+);
+
+/**
+ * POST /api/sources/:id/beacon-offers/:nodeNum/mute
+ *
+ * The permanent form of dismiss (#5232). A plain dismissal lapses when the
+ * sender changes what it advertises, which is right for an invitation you
+ * merely declined and wrong for a neighbouring mesh you never want to hear
+ * from — that one comes back on every re-key. Muting survives both the
+ * rebroadcast and the content change.
+ */
+router.post(
+  '/:nodeNum/mute',
+  requireAuth(),
+  requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const nodeNum = parseNodeNum(req.params.nodeNum);
+      if (nodeNum == null) return fail(res, 400, 'INVALID_NODE_NUM', 'Invalid node number');
+
+      const changed = await databaseService.meshBeaconOffers.mute(sourceIdOf(req), nodeNum, Date.now());
+      if (!changed) return fail(res, 404, 'BEACON_OFFER_NOT_FOUND', 'No beacon offer from that node on this source');
+      ok(res);
+    } catch (error) {
+      logger.error('[API] Error muting beacon offer:', error);
+      fail(res, 500, 'BEACON_OFFER_MUTE_FAILED', 'Failed to mute beacon offer');
+    }
+  },
+);
+
+/** POST /api/sources/:id/beacon-offers/:nodeNum/unmute — undo a mute. */
+router.post(
+  '/:nodeNum/unmute',
+  requireAuth(),
+  requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const nodeNum = parseNodeNum(req.params.nodeNum);
+      if (nodeNum == null) return fail(res, 400, 'INVALID_NODE_NUM', 'Invalid node number');
+
+      const changed = await databaseService.meshBeaconOffers.unmute(sourceIdOf(req), nodeNum);
+      if (!changed) return fail(res, 404, 'BEACON_OFFER_NOT_FOUND', 'No beacon offer from that node on this source');
+      ok(res);
+    } catch (error) {
+      logger.error('[API] Error unmuting beacon offer:', error);
+      fail(res, 500, 'BEACON_OFFER_UNMUTE_FAILED', 'Failed to unmute beacon offer');
     }
   },
 );

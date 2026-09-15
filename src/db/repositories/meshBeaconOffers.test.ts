@@ -199,6 +199,70 @@ describe('MeshBeaconOffersRepository', () => {
     expect(await repo.listPending(SRC_A)).toHaveLength(1);
   });
 
+  it('keeps a mute through a rebroadcast that changes the offer (#5232)', async () => {
+    await repo.recordBeacon(SRC_A, NODE, offer(), 1_000);
+    await repo.mute(SRC_A, NODE, 2_000);
+
+    // A changed offer resurfaces a *dismissal* — that is deliberate. A mute is
+    // the answer to a sender that keeps changing what it advertises, so it must
+    // survive exactly the case that lifts a dismissal.
+    await repo.recordBeacon(SRC_A, NODE, offer({ offerChannelName: 'OtherMesh' }), 3_000);
+
+    expect(await repo.listPending(SRC_A)).toHaveLength(0);
+    const row = await repo.getOffer(SRC_A, NODE);
+    expect(row?.mutedAt).toBe(2_000);
+    expect(row?.offerChannelName).toBe('OtherMesh');
+  });
+
+  it('lists a muted offer in listAll so it can be found and un-muted', async () => {
+    await repo.recordBeacon(SRC_A, NODE, offer(), 1_000);
+    await repo.mute(SRC_A, NODE, 2_000);
+    expect(await repo.listAll(SRC_A)).toHaveLength(1);
+  });
+
+  it('un-muting clears the dismissal too, so one action brings a row back', async () => {
+    await repo.recordBeacon(SRC_A, NODE, offer(), 1_000);
+    await repo.dismiss(SRC_A, NODE, 2_000);
+    await repo.mute(SRC_A, NODE, 3_000);
+
+    expect(await repo.unmute(SRC_A, NODE)).toBe(1);
+    const pending = await repo.listPending(SRC_A);
+    expect(pending).toHaveLength(1);
+    expect(pending[0].mutedAt).toBeNull();
+    expect(pending[0].dismissedAt).toBeNull();
+  });
+
+  it('does not let a mute on one source hide the other', async () => {
+    await repo.recordBeacon(SRC_A, NODE, offer(), 1_000);
+    await repo.recordBeacon(SRC_B, NODE, offer(), 1_000);
+    await repo.mute(SRC_A, NODE, 2_000);
+
+    expect(await repo.listPending(SRC_A)).toHaveLength(0);
+    expect(await repo.listPending(SRC_B)).toHaveLength(1);
+  });
+
+  it('counts pending and total separately — the badge and the button differ', async () => {
+    await repo.recordBeacon(SRC_A, NODE, offer(), 1_000);
+    await repo.recordBeacon(SRC_A, NODE + 1, offer(), 1_000);
+    expect(await repo.countPending(SRC_A)).toBe(2);
+    expect(await repo.countAll(SRC_A)).toBe(2);
+
+    await repo.mute(SRC_A, NODE, 2_000);
+    await repo.dismiss(SRC_A, NODE + 1, 2_000);
+
+    // Nothing is pending, but the button must still render — otherwise there is
+    // no route back to un-mute.
+    expect(await repo.countPending(SRC_A)).toBe(0);
+    expect(await repo.countAll(SRC_A)).toBe(2);
+  });
+
+  it('counts across every source when asked for the whole table', async () => {
+    await repo.recordBeacon(SRC_A, NODE, offer(), 1_000);
+    await repo.recordBeacon(SRC_B, NODE, offer(), 1_000);
+    expect(await repo.countPending(ALL_SOURCES)).toBe(2);
+    expect(await repo.countAll(ALL_SOURCES)).toBe(2);
+  });
+
   it('drops only the named source when a source is deleted', async () => {
     await repo.recordBeacon(SRC_A, NODE, offer(), 1_000);
     await repo.recordBeacon(SRC_B, NODE, offer(), 1_000);
