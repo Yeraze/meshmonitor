@@ -314,20 +314,24 @@ setTimeout(async () => {
     // Wait for database initialization (critical for PostgreSQL/MySQL where repos are async)
     await databaseService.waitForReady();
 
-    // Bootstrap all enabled sources (or auto-create a Default source from env
-    // when none exist). Extracted into bootstrapSources() for testability — see
-    // WP1 of issue #3962 Phase 2 and src/server/bootstrapSources.ts.
+    // Bootstrap all enabled sources (auto-creating a Default source from env
+    // only when none exist AND MESHTASTIC_NODE_IP was explicitly set).
+    // Extracted into bootstrapSources() for testability — see WP1 of issue
+    // #3962 Phase 2 and src/server/bootstrapSources.ts.
     // NOTE: Per-source scheduler settings are applied inside bootstrapSources
     // via applyManagerSettings(). Globally-scoped schedulers self-bootstrap
     // inside their own start*Scheduler methods.
+    // #5237: bootstrapSources no longer takes a fallbackManager — nothing
+    // connects to MESHTASTIC_NODE_IP unless a source row says to.
     await bootstrapSources({
       db: databaseService,
-      env: { meshtasticNodeIp: env.meshtasticNodeIp, meshtasticTcpPort: env.meshtasticTcpPort },
+      env: {
+        meshtasticNodeIp: env.meshtasticNodeIp,
+        meshtasticNodeIpProvided: env.meshtasticNodeIpProvided,
+        meshtasticTcpPort: env.meshtasticTcpPort,
+      },
       registry: sourceManagerRegistry,
       makeMeshtastic: (id, cfg) => new MeshtasticManager(id, cfg),
-      // fallbackManager.connect() is called only when no tcp source auto-connects
-      // (S4: all-MeshCore / all-disabled-tcp / autoConnect:false installs).
-      fallbackManager: fallbackManager,
     });
 
     // Initialize backup scheduler. Pass a resolver (not a captured instance)
