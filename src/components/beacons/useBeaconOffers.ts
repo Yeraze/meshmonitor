@@ -14,7 +14,7 @@
  * Nothing here touches the mesh: beacons arrive on their own, and accepting one
  * writes a channel to the locally attached radio. No packets are sent.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiService from '../../services/api';
 import type { PublicBeaconOffer } from './types';
@@ -36,8 +36,6 @@ export interface UseBeaconOffers {
   error: string | null;
   /** Clear a surfaced error without re-fetching. */
   clearError: () => void;
-  /** Re-read both the list and the count. */
-  refresh: () => Promise<void>;
   /** Tell the hook the list is on screen, so it starts loading rows. */
   setListOpen: (open: boolean) => void;
   dismiss: (nodeNum: number) => Promise<void>;
@@ -54,11 +52,6 @@ export function useBeaconOffers(sourceId: string | null | undefined): UseBeaconO
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [listOpen, setListOpen] = useState(false);
-
-  // Read inside the poll without making the interval depend on it — an effect
-  // that re-subscribed whenever the list opened would restart the timer.
-  const listOpenRef = useRef(listOpen);
-  listOpenRef.current = listOpen;
 
   const base = sourceId ? `/api/sources/${encodeURIComponent(sourceId)}/beacon-offers` : null;
 
@@ -91,10 +84,6 @@ export function useBeaconOffers(sourceId: string | null | undefined): UseBeaconO
       setLoading(false);
     }
   }, [base, t]);
-
-  const refresh = useCallback(async () => {
-    await Promise.all([loadCount(), listOpenRef.current ? loadList() : Promise.resolve()]);
-  }, [loadCount, loadList]);
 
   useEffect(() => { void loadCount(); }, [loadCount]);
 
@@ -157,6 +146,6 @@ export function useBeaconOffers(sourceId: string | null | undefined): UseBeaconO
 
   return {
     pendingCount, totalCount, offers, loading, error, clearError,
-    refresh, setListOpen, dismiss, mute, restore, accept,
+    setListOpen, dismiss, mute, restore, accept,
   };
 }

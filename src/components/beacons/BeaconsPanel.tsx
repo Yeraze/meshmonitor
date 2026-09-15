@@ -113,6 +113,7 @@ export default function BeaconsPanel({
           canWrite={canWrite}
           nodeName={nodeName}
           busy={busy}
+          escapeCloses={!pending}
           onClose={closeList}
           onJoin={startJoin}
           onDismiss={(o) => void run(() => beacons.dismiss(o.nodeNum))}

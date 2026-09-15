@@ -14,6 +14,7 @@
  * Extracted from the old inline invitation panel in #5232 so the beacons modal
  * and anything else that can start a join share one dialog.
  */
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons/UiIcon';
 import type { PublicBeaconOffer } from './types';
@@ -42,6 +43,15 @@ export default function BeaconJoinDialog({
 }: BeaconJoinDialogProps) {
   const { t } = useTranslation();
   const occupant = occupiedBySlot.get(pending.slot);
+
+  // Escape cancels — never confirms. This dialog stands between a click and a
+  // radio write, so the key that means "get me out of here" must not be the one
+  // that performs it.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busy) onCancel(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [busy, onCancel]);
 
   return (
     <div className={styles.beaconConfirmOverlay} onClick={onCancel}>

@@ -16,7 +16,7 @@
  * an empty list where a neighbour is plainly beaconing looks broken. See
  * `beaconOfferActionability.ts`.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons/UiIcon';
 import { assessBeaconOffer, type OfferActionability } from './beaconOfferActionability';
@@ -37,6 +37,11 @@ export interface BeaconsModalProps {
   onMute: (offer: PublicBeaconOffer) => void;
   onRestore: (offer: PublicBeaconOffer) => void;
   busy: boolean;
+  /**
+   * False while the join confirmation is layered on top, so one Escape does not
+   * close the list out from under the dialog that was launched from it.
+   */
+  escapeCloses?: boolean;
 }
 
 /** The canonical fallback label for a node we have no name for. */
@@ -108,7 +113,7 @@ export function selectOffers(
 
 export default function BeaconsModal({
   offers, loading, error, canWrite, nodeName,
-  onClose, onJoin, onDismiss, onMute, onRestore, busy,
+  onClose, onJoin, onDismiss, onMute, onRestore, busy, escapeCloses = true,
 }: BeaconsModalProps) {
   const { t } = useTranslation();
   const [filter, setFilter] = useState<BeaconFilter>('pending');
@@ -122,6 +127,16 @@ export default function BeaconsModal({
 
   const hiddenCount = useMemo(() => offers.filter(isHidden).length, [offers]);
 
+  // Escape closes the list, like every other overlay in the app. Bound to the
+  // document rather than the dialog so it works before anything inside has
+  // taken focus.
+  useEffect(() => {
+    if (!escapeCloses) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [escapeCloses, onClose]);
+
   /** Clicking the active column flips direction; a new column starts descending
    *  for times (newest first) and ascending for text. */
   const toggleSort = (key: BeaconSortKey) => {
@@ -134,13 +149,17 @@ export default function BeaconsModal({
     ? null
     : <UiIcon name={sort.direction === 'asc' ? 'sortAscending' : 'sortDescending'} />;
 
+  // `aria-sort` belongs on the header cell, not on the control inside it — a
+  // screen reader reads the column's sort state off the <th>.
   const header = (key: BeaconSortKey, labelKey: string, fallback: string) => (
-    <th scope="col">
+    <th
+      scope="col"
+      aria-sort={sort.key === key ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
+    >
       <button
         type="button"
         className={styles.beaconSortButton}
         onClick={() => toggleSort(key)}
-        aria-sort={sort.key === key ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
         data-testid={`beacon-sort-${key}`}
       >
         {t(labelKey, fallback)} {sortIndicator(key)}

@@ -304,6 +304,27 @@ describe('actions', () => {
   });
 });
 
+describe('escape key layering', () => {
+  it('closes the list', async () => {
+    const user = await openList([offer()]);
+    await user.keyboard('{Escape}');
+    expect(screen.queryByTestId('beacons-modal')).toBeNull();
+  });
+
+  it('cancels the join dialog without closing the list behind it', async () => {
+    // One Escape, one thing dismissed. Closing both would lose the user's place
+    // in a list they may have searched and sorted to get to.
+    const user = await openList([offer()]);
+    await user.click(screen.getByText('beacons.join_channel'));
+
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByTestId('beacon-confirm-dialog')).toBeNull();
+    expect(screen.getByTestId('beacons-modal')).toBeTruthy();
+    expect(post).not.toHaveBeenCalled();
+  });
+});
+
 describe('selectOffers', () => {
   const rows = [
     offer({ nodeNum: 1, offerChannelName: 'Zulu', firstSeenAt: 10, lastSeenAt: 30, message: 'alpha text' }),
