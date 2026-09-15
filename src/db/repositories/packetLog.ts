@@ -357,8 +357,9 @@ export class PacketLogRepository extends BaseRepository {
    */
   async clearPacketLogs(sourceId?: string): Promise<number> {
     try {
+      const { packetLog } = this.tables;
       const results = sourceId
-        ? await this.executeRun(sql`DELETE FROM packet_log WHERE sourceId = ${sourceId}`)
+        ? await this.executeRun(this.db.delete(packetLog).where(eq(packetLog.sourceId, sourceId)))
         : await this.executeRun(sql`DELETE FROM packet_log`);
       const deletedCount = this.getAffectedRows(results);
       logger.debug(`[PacketLogRepository] Cleared ${deletedCount} packet log entries`);
