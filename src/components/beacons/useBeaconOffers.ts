@@ -87,7 +87,11 @@ export function useBeaconOffers(sourceId: string | null | undefined): UseBeaconO
       // only route to a muted offer — on nothing worse than one failed request.
       // Flag it so the caller shows the button and lets the list report the
       // real error.
-      setCountUnknown((prev) => prev || !loadedOnceRef.current);
+      // Read the ref HERE, not inside the updater: React calls a functional
+      // updater when it flushes, so a lambda would sample the ref at flush time
+      // rather than at failure time.
+      const neverLoaded = !loadedOnceRef.current;
+      setCountUnknown((prev) => prev || neverLoaded);
     }
   }, [base]);
 

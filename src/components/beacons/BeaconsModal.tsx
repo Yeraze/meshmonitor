@@ -296,18 +296,18 @@ function BeaconRow({
             )}
             {hidden
               ? (
-                <button type="button" className={styles.beaconOfferDismiss} disabled={busy} onClick={() => onRestore(offer)}>
+                <button type="button" className={styles.beaconOfferSecondary} disabled={busy} onClick={() => onRestore(offer)}>
                   {t('beacons.restore', 'Restore')}
                 </button>
               )
               : (
                 <>
-                  <button type="button" className={styles.beaconOfferDismiss} disabled={busy} onClick={() => onDismiss(offer)}>
+                  <button type="button" className={styles.beaconOfferSecondary} disabled={busy} onClick={() => onDismiss(offer)}>
                     {t('beacons.dismiss')}
                   </button>
                   <button
                     type="button"
-                    className={styles.beaconOfferDismiss}
+                    className={styles.beaconOfferSecondary}
                     disabled={busy}
                     onClick={() => onMute(offer)}
                     title={t('beacons.mute_title', 'Never show beacons from this node again')}

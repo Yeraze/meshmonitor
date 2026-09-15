@@ -280,7 +280,7 @@
 }
 
 .beaconOfferJoin,
-.beaconOfferDismiss,
+.beaconOfferSecondary,
 .beaconConfirmGo {
   display: inline-flex;
   align-items: center;
@@ -293,14 +293,16 @@
 }
 
 .beaconOfferJoin:disabled,
-.beaconOfferDismiss:disabled,
+.beaconOfferSecondary:disabled,
 .beaconConfirmGo:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-/* The affirmative action carries the accent; Dismiss and Mute stay neutral so
-   the destructive-looking option is not the visually loudest one. */
+/* The affirmative action carries the accent; Dismiss, Mute and Restore stay
+   neutral so the destructive-looking option is not the visually loudest one.
+   Named for the ROLE rather than for Dismiss, which was merely the first button
+   to need it. */
 .beaconOfferJoin,
 .beaconConfirmGo {
   border-color: var(--color-accent);
@@ -308,7 +310,7 @@
   color: var(--color-accent-text);
 }
 
-.beaconOfferDismiss {
+.beaconOfferSecondary {
   background: transparent;
   color: var(--color-text-muted);
 }

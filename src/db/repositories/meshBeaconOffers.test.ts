@@ -80,7 +80,7 @@ describe('toPublicOffer', () => {
       sourceId: SRC_A, nodeNum: NODE, message: 'hi',
       offerChannelName: 'Mesh', offerChannelPsk: 'c2VjcmV0',
       offerRegion: 1, offerPreset: 2, hasOffer: true,
-      firstSeenAt: 1, lastSeenAt: 2, dismissedAt: null,
+      firstSeenAt: 1, lastSeenAt: 2, dismissedAt: null, mutedAt: null,
     });
 
     expect(JSON.stringify(pub)).not.toContain('c2VjcmV0');
@@ -93,9 +93,24 @@ describe('toPublicOffer', () => {
       sourceId: SRC_A, nodeNum: NODE, message: 'hi',
       offerChannelName: 'Mesh', offerChannelPsk: null,
       offerRegion: null, offerPreset: null, hasOffer: true,
-      firstSeenAt: 1, lastSeenAt: 2, dismissedAt: null,
+      firstSeenAt: 1, lastSeenAt: 2, dismissedAt: null, mutedAt: null,
     });
     expect(pub.hasChannelKey).toBe(false);
+  });
+
+  it('passes both hidden-state flags through to the client', () => {
+    // The field-by-field construction exists so a new column cannot ride along
+    // silently — which cuts both ways: a field the UI DOES need must be added
+    // deliberately, and stay added. The list styles hidden rows off these two.
+    const pub = toPublicOffer({
+      sourceId: SRC_A, nodeNum: NODE, message: 'hi',
+      offerChannelName: 'Mesh', offerChannelPsk: 'AQ==',
+      offerRegion: null, offerPreset: null, hasOffer: true,
+      firstSeenAt: 1, lastSeenAt: 2, dismissedAt: 3_000, mutedAt: 4_000,
+    });
+
+    expect(pub.dismissedAt).toBe(3_000);
+    expect(pub.mutedAt).toBe(4_000);
   });
 });
 
