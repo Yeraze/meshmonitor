@@ -9,6 +9,7 @@ import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType, DbNode } from '../types.js';
 import { logger } from '../../utils/logger.js';
 import { isValidNodeNum } from '../../server/constants/meshtastic.js';
+import { isBlankMacAddr } from '../../utils/nodeFieldBlanks.js';
 
 /**
  * Hook for keeping an external in-memory node cache coherent with PG/MySQL writes.
@@ -482,6 +483,12 @@ export class NodesRepository extends BaseRepository {
       // instead of clobbering it (#3456/#3505).
       const nameOrExisting = (incoming: any, existing: any) =>
         (incoming === null || incoming === undefined || incoming === '') ? existing : incoming;
+      // #5231: same idea, one field wider. An all-zero MAC is not a MAC —
+      // `User.macaddr` was deprecated in firmware 2.1.x, so many nodes
+      // broadcast six zero bytes, and '000000000000' sailed past the '' check
+      // above and overwrote a real MAC another source had learned.
+      const macOrExisting = (incoming: unknown, existing: string | null | undefined) =>
+        isBlankMacAddr(incoming) ? existing : (incoming as string);
       // Update existing node - coerceBigintField is safe for all dialects (just Math.floor)
       await this.db
         .update(nodes)
@@ -506,7 +513,7 @@ export class NodesRepository extends BaseRepository {
           transportLastMqtt: nodeData.transportLastMqtt ?? existingNode.transportLastMqtt,
           transportLastUdp: nodeData.transportLastUdp ?? existingNode.transportLastUdp,
           isStoreForwardServer: nodeData.isStoreForwardServer ?? existingNode.isStoreForwardServer,
-          macaddr: nameOrExisting(nodeData.macaddr, existingNode.macaddr),
+          macaddr: macOrExisting(nodeData.macaddr, existingNode.macaddr),
           latitude: nodeData.latitude ?? existingNode.latitude,
           longitude: nodeData.longitude ?? existingNode.longitude,
           altitude: nodeData.altitude ?? existingNode.altitude,
@@ -524,7 +531,12 @@ export class NodesRepository extends BaseRepository {
             : (nodeData.isFavorite ?? existingNode.isFavorite),
           mobile: nodeData.mobile ?? existingNode.mobile,
           rebootCount: nodeData.rebootCount ?? existingNode.rebootCount,
-          publicKey: nodeData.publicKey ?? existingNode.publicKey,
+          // #5231: `nameOrExisting`, not `??`. An unset protobuf `bytes` field
+          // decodes to an EMPTY buffer, so the MQTT NodeInfo path handed us
+          // `publicKey: ''` — which `??` happily stored, wiping the key a user
+          // had just filled in from another source. The enrichment report then
+          // re-offered the identical copy on every refresh.
+          publicKey: nameOrExisting(nodeData.publicKey, existingNode.publicKey),
           hasPKC: nodeData.hasPKC ?? existingNode.hasPKC,
           lastPKIPacket: this.coerceBigintField(nodeData.lastPKIPacket ?? existingNode.lastPKIPacket),
           // Don't update welcomedAt here - it's managed by markNodeAsWelcomedIfNotAlready
@@ -575,7 +587,8 @@ export class NodesRepository extends BaseRepository {
         viaMqtt: nodeData.viaMqtt ?? null,
         transportMechanism: nodeData.transportMechanism ?? null,
         isStoreForwardServer: nodeData.isStoreForwardServer ?? null,
-        macaddr: nodeData.macaddr ?? null,
+        // #5231: see the conflict-path note below — zero MACs store as null.
+        macaddr: isBlankMacAddr(nodeData.macaddr) ? null : nodeData.macaddr,
         latitude: nodeData.latitude ?? null,
         longitude: nodeData.longitude ?? null,
         altitude: nodeData.altitude ?? null,
@@ -591,7 +604,8 @@ export class NodesRepository extends BaseRepository {
         isFavorite: nodeData.isFavorite ?? false,
         mobile: nodeData.mobile ?? null,
         rebootCount: nodeData.rebootCount ?? null,
-        publicKey: nodeData.publicKey ?? null,
+        // #5231: `||`, not `??` — an empty-string key is no key.
+        publicKey: nodeData.publicKey || null,
         hasPKC: nodeData.hasPKC ?? null,
         lastPKIPacket: this.coerceBigintField(nodeData.lastPKIPacket),
         welcomedAt: this.coerceBigintField(nodeData.welcomedAt),
@@ -641,7 +655,9 @@ export class NodesRepository extends BaseRepository {
         viaMqtt: nodeData.viaMqtt ?? null,
         transportMechanism: nodeData.transportMechanism ?? null,
         isStoreForwardServer: nodeData.isStoreForwardServer ?? null,
-        macaddr: blankToNull(nodeData.macaddr),
+        // #5231: an all-zero MAC joins '' as "not reported" — firmware
+        // deprecated `User.macaddr` in 2.1.x and many nodes send six zero bytes.
+        macaddr: isBlankMacAddr(nodeData.macaddr) ? null : nodeData.macaddr,
         latitude: nodeData.latitude ?? null,
         longitude: nodeData.longitude ?? null,
         altitude: nodeData.altitude ?? null,
@@ -658,7 +674,7 @@ export class NodesRepository extends BaseRepository {
         // Note: mobile is NOT included here - it's only set by updateNodeMobility
         // to prevent overwriting the computed mobility flag on conflict
         rebootCount: nodeData.rebootCount ?? null,
-        publicKey: nodeData.publicKey ?? null,
+        publicKey: blankToNull(nodeData.publicKey),
         hasPKC: nodeData.hasPKC ?? null,
         lastPKIPacket: this.coerceBigintField(nodeData.lastPKIPacket),
         welcomedAt: this.coerceBigintField(nodeData.welcomedAt),
@@ -1797,7 +1813,8 @@ export class NodesRepository extends BaseRepository {
       setIfProvided('hopsAway', nodeData.hopsAway);
       if (nodeData.viaMqtt !== undefined) updateSet.viaMqtt = nodeData.viaMqtt;
       if (nodeData.transportMechanism !== undefined) updateSet.transportMechanism = nodeData.transportMechanism;
-      setIfNonBlank('macaddr', nodeData.macaddr);
+      // #5231: zero-filled MACs are as blank as '' — see isBlankMacAddr.
+      if (!isBlankMacAddr(nodeData.macaddr)) updateSet.macaddr = nodeData.macaddr;
       setIfProvided('latitude', nodeData.latitude);
       setIfProvided('longitude', nodeData.longitude);
       setIfProvided('altitude', nodeData.altitude);
@@ -1857,7 +1874,7 @@ export class NodesRepository extends BaseRepository {
         hopsAway: nodeData.hopsAway !== undefined ? nodeData.hopsAway : null,
         viaMqtt: nodeData.viaMqtt !== undefined ? !!nodeData.viaMqtt : null,
         transportMechanism: nodeData.transportMechanism !== undefined ? nodeData.transportMechanism : null,
-        macaddr: nodeData.macaddr || null,
+        macaddr: isBlankMacAddr(nodeData.macaddr) ? null : nodeData.macaddr,
         latitude: nodeData.latitude || null,
         longitude: nodeData.longitude || null,
         altitude: nodeData.altitude || null,
