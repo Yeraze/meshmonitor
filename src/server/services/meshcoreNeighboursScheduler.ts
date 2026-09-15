@@ -34,6 +34,7 @@ export interface NeighboursSchedulerDatabase {
   meshcore: {
     getNeighborsEnabledNodes: (sourceId: string) => Promise<DbMeshCoreNode[]>;
     markNeighborsRequested: (sourceId: string, publicKey: string, when?: number) => Promise<void>;
+    markHeard: (sourceId: string, publicKey: string, heardAtMs: number) => Promise<void>;
   };
 }
 
@@ -196,6 +197,18 @@ export class MeshCoreNeighboursScheduler {
         logger.debug(
           `[MeshCoreNeighbours:${manager.sourceId}] ${keyShort}… → ${result.total} reported, ${result.written} stored`,
         );
+        // A neighbours reply is proof the node is alive and reachable, so it
+        // counts as heard (#5131 follow-up) — same treatment the telemetry
+        // round-trip gets. A node polled for neighbours but advertising rarely
+        // was otherwise reported inactive while answering us every cycle.
+        try {
+          await this.database.meshcore.markHeard(manager.sourceId, target.publicKey, Date.now());
+        } catch (err) {
+          logger.warn(
+            `[MeshCoreNeighbours:${manager.sourceId}] Failed to stamp lastHeard for ${keyShort}…:`,
+            err,
+          );
+        }
       } else {
         logger.debug(
           `[MeshCoreNeighbours:${manager.sourceId}] ${keyShort}… → no neighbours (failed/timeout/not a Companion source)`,

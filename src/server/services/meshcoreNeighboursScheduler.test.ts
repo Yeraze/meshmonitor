@@ -112,13 +112,22 @@ function makeDb(nodes: DbMeshCoreNode[]): {
   db: NeighboursSchedulerDatabase;
   getEnabled: ReturnType<typeof vi.fn>;
   mark: ReturnType<typeof vi.fn>;
+  markHeard: ReturnType<typeof vi.fn>;
 } {
   const getEnabled = vi.fn().mockResolvedValue(nodes);
   const mark = vi.fn().mockResolvedValue(undefined);
+  const markHeard = vi.fn().mockResolvedValue(undefined);
   return {
-    db: { meshcore: { getNeighborsEnabledNodes: getEnabled, markNeighborsRequested: mark } },
+    db: {
+      meshcore: {
+        getNeighborsEnabledNodes: getEnabled,
+        markNeighborsRequested: mark,
+        markHeard,
+      },
+    },
     getEnabled,
     mark,
+    markHeard,
   };
 }
 
@@ -200,5 +209,48 @@ describe('MeshCoreNeighboursScheduler.tickOneManager', () => {
 
     await (scheduler as any).tickOneManager(manager);
     expect(manager._state.polledFor).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #5131 follow-up — a neighbours reply proves the node answered us, so it is
+// as much evidence of life as a telemetry round-trip. Without this a node that
+// answers every neighbours poll but adverts twice a day was still reported
+// inactive.
+// ---------------------------------------------------------------------------
+describe('MeshCoreNeighboursScheduler — lastHeard stamping (#5131)', () => {
+  it('marks the node heard when it returns neighbours', async () => {
+    const target = node({ publicKey: 'rep-a', neighborsEnabled: true, lastNeighborsRequestAt: null });
+    const { db, markHeard } = makeDb([target]);
+    const manager = makeFakeManager({ pollResult: { total: 3, written: 3 } });
+
+    await new MeshCoreNeighboursScheduler({ registry: makeRegistry([manager]), database: db })
+      .tickOneManager(manager);
+
+    expect(markHeard).toHaveBeenCalledWith('src-a', 'rep-a', expect.any(Number));
+  });
+
+  it('does NOT mark it heard when the poll fails or times out', async () => {
+    // A null result is "failed/timeout/not a Companion source" — no evidence.
+    const target = node({ publicKey: 'rep-a', neighborsEnabled: true, lastNeighborsRequestAt: null });
+    const { db, markHeard } = makeDb([target]);
+    const manager = makeFakeManager({ pollResult: null });
+
+    await new MeshCoreNeighboursScheduler({ registry: makeRegistry([manager]), database: db })
+      .tickOneManager(manager);
+
+    expect(markHeard).not.toHaveBeenCalled();
+  });
+
+  it('a failing heard stamp does not break the tick', async () => {
+    const target = node({ publicKey: 'rep-a', neighborsEnabled: true, lastNeighborsRequestAt: null });
+    const { db, markHeard } = makeDb([target]);
+    markHeard.mockRejectedValue(new Error('constraint failed'));
+    const manager = makeFakeManager({ pollResult: { total: 1, written: 1 } });
+
+    await expect(
+      new MeshCoreNeighboursScheduler({ registry: makeRegistry([manager]), database: db })
+        .tickOneManager(manager),
+    ).resolves.toBeUndefined();
   });
 });

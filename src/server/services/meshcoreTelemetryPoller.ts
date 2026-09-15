@@ -42,6 +42,7 @@ export interface PollerDatabase {
   };
   meshcore: {
     upsertNode: (node: Partial<DbMeshCoreNode> & { publicKey: string }, sourceId: string) => Promise<void>;
+    markHeard: (sourceId: string, publicKey: string, heardAtMs: number) => Promise<void>;
   };
 }
 
@@ -447,6 +448,22 @@ export class MeshCoreTelemetryPoller {
         `[MeshCorePoller:${manager.sourceId}] No metrics produced for ${nodeId.substring(0, 16)}`,
       );
       return;
+    }
+
+    // Producing metrics means the companion answered us, so it was heard
+    // (#5131 follow-up). Without this the local node's `lastHeard` is moved
+    // only by its own adverts, and a companion that adverts rarely gets
+    // reported inactive while we are actively polling it over USB/TCP.
+    //
+    // Deliberately after the empty-rows return: a poll that yields nothing is
+    // a timeout or a refusal, which is not evidence of anything.
+    try {
+      await this.database.meshcore.markHeard(manager.sourceId, nodeId, Date.now());
+    } catch (err) {
+      logger.warn(
+        `[MeshCorePoller:${manager.sourceId}] Failed to stamp lastHeard for ${nodeId.substring(0, 16)}…:`,
+        err,
+      );
     }
 
     // Device Health (#4558 follow-up): detect a reboot from the uptime reading

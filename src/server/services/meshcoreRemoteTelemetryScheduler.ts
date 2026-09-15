@@ -54,6 +54,7 @@ export interface RemoteTelemetrySchedulerDatabase {
     getTelemetryEnabledNodes: (sourceId: string) => Promise<DbMeshCoreNode[]>;
     markTelemetryRequested: (sourceId: string, publicKey: string, when?: number) => Promise<void>;
     upsertNode: (node: Partial<DbMeshCoreNode> & { publicKey: string }, sourceId: string) => Promise<void>;
+    markHeard: (sourceId: string, publicKey: string, heardAtMs: number) => Promise<void>;
   };
   telemetry: {
     insertTelemetryBatch: (rows: DbTelemetry[], sourceId?: string) => Promise<number>;
@@ -595,7 +596,12 @@ export class MeshCoreRemoteTelemetryScheduler {
 
     if (gotResponse) {
       try {
-        await this.database.meshcore.upsertNode({ publicKey: target.publicKey, lastHeard: ts }, manager.sourceId);
+        // Routed through markHeard so every "we received something" site in
+        // the codebase reads the same and shares the monotonic guard (#5131
+        // follow-up). #5132 added this stamp via upsertNode; the next contact
+        // sync then overwrote it with the firmware's stale advert time, which
+        // is why the original report reproduced after that fix.
+        await this.database.meshcore.markHeard(manager.sourceId, target.publicKey, ts);
       } catch (err) {
         logger.warn(
           `[MeshCoreRemoteTelem:${manager.sourceId}] Failed to persist lastHeard for ${keyShort}…:`,
