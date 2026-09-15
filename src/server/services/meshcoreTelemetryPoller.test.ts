@@ -79,9 +79,11 @@ function makeDatabase(): {
   db: PollerDatabase;
   batches: { rows: any[]; sourceId?: string }[];
   upsertedNodes: { node: any; sourceId: string }[];
+  heardStamps: { sourceId: string; publicKey: string; heardAtMs: number }[];
 } {
   const batches: { rows: any[]; sourceId?: string }[] = [];
   const upsertedNodes: { node: any; sourceId: string }[] = [];
+  const heardStamps: { sourceId: string; publicKey: string; heardAtMs: number }[] = [];
   const db: PollerDatabase = {
     telemetry: {
       insertTelemetryBatch: async (rows, sourceId) => {
@@ -93,9 +95,12 @@ function makeDatabase(): {
       upsertNode: async (node, sourceId) => {
         upsertedNodes.push({ node: { ...node }, sourceId });
       },
+      markHeard: async (sourceId, publicKey, heardAtMs) => {
+        heardStamps.push({ sourceId, publicKey, heardAtMs });
+      },
     },
   };
-  return { db, batches, upsertedNodes };
+  return { db, batches, upsertedNodes, heardStamps };
 }
 
 const FULL_PUBKEY = 'a'.repeat(64);
@@ -411,7 +416,10 @@ describe('MeshCoreTelemetryPoller.pollOnce', () => {
     // telemetry graph still shows a voltage. It must not be swallowed.
     const db: PollerDatabase = {
       telemetry: { insertTelemetryBatch: async (rows) => rows.length },
-      meshcore: { upsertNode: async () => { throw new Error('constraint failed'); } },
+      meshcore: {
+        upsertNode: async () => { throw new Error('constraint failed'); },
+        markHeard: async () => { throw new Error('constraint failed'); },
+      },
     };
     const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => {});
     try {
@@ -449,5 +457,78 @@ describe('MeshCoreTelemetryPoller.pollOnce', () => {
     } finally {
       infoSpy.mockRestore();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #5131 follow-up — a successful poll is evidence the companion is alive.
+// Before this, the local node's lastHeard moved only on its own adverts, so a
+// companion we were polling every 5 minutes over USB could be reported
+// inactive. The remote-telemetry scheduler already did this for repeaters.
+// ---------------------------------------------------------------------------
+describe('MeshCoreTelemetryPoller — lastHeard stamping (#5131)', () => {
+  it('marks the companion heard when the poll produced metrics', async () => {
+    const manager = makeManager({
+      sourceId: 'src-a',
+      publicKey: FULL_PUBKEY,
+      core: FULL_CORE,
+    });
+    const { db, heardStamps } = makeDatabase();
+
+    await new MeshCoreTelemetryPoller({
+      registry: makeRegistry(manager),
+      database: db,
+      intervalMs: 60_000,
+    }).pollOnce();
+
+    expect(heardStamps).toHaveLength(1);
+    expect(heardStamps[0].sourceId).toBe('src-a');
+    expect(heardStamps[0].publicKey).toBe(FULL_PUBKEY);
+    expect(heardStamps[0].heardAtMs).toBeGreaterThan(0);
+  });
+
+  it('does NOT mark it heard when the poll produced nothing', async () => {
+    // Empty stats are a timeout or a refusal, not evidence the node answered.
+    const manager = makeManager({
+      sourceId: 'src-a',
+      publicKey: FULL_PUBKEY,
+      core: null,
+      radio: null,
+      packets: null,
+      deviceTime: null,
+      deviceInfo: null,
+    });
+    const { db, heardStamps } = makeDatabase();
+
+    await new MeshCoreTelemetryPoller({
+      registry: makeRegistry(manager),
+      database: db,
+      intervalMs: 60_000,
+    }).pollOnce();
+
+    expect(heardStamps).toHaveLength(0);
+  });
+
+  it('still writes telemetry when the heard stamp fails', async () => {
+    // A failed stamp must not cost us the telemetry rows — it is a
+    // side-effect of the poll, not its purpose.
+    const manager = makeManager({
+      sourceId: 'src-a',
+      publicKey: FULL_PUBKEY,
+      core: FULL_CORE,
+    });
+    const { db, batches } = makeDatabase();
+    db.meshcore.markHeard = async () => {
+      throw new Error('constraint failed');
+    };
+
+    await new MeshCoreTelemetryPoller({
+      registry: makeRegistry(manager),
+      database: db,
+      intervalMs: 60_000,
+    }).pollOnce();
+
+    expect(batches).toHaveLength(1);
+    expect(batches[0].rows.length).toBeGreaterThan(0);
   });
 });

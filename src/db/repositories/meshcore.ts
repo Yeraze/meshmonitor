@@ -457,6 +457,30 @@ export class MeshCoreRepository extends BaseRepository {
         }
         // else: preserve the existing stored value (don't write the field)
       }
+
+      // `lastHeard` only ever moves FORWARD (#5131 follow-up).
+      //
+      // Writers disagree about what "last heard" means and they run in no
+      // particular order. `persistContact()` passes the firmware's own
+      // `contact.lastSeen`, which the device refreshes only on an ADVERT; the
+      // telemetry and neighbours paths pass the wall clock at the moment a
+      // node actually answered us. Without this guard the next contact sync
+      // after a telemetry round-trip rewrites `lastHeard` back to the last
+      // advert — hours ago for a node that adverts twice a day — and the
+      // inactive-node notifier fires on a node we demonstrably just spoke to.
+      // That is exactly the bug #5132 tried to fix: it added the forward
+      // stamp, but nothing stopped the next sync from undoing it.
+      //
+      // A lower incoming value is therefore never news: it is a staler
+      // observer's opinion, not evidence the node went away. Drop it and keep
+      // what we have. (Null/undefined was already dropped by the merge above.)
+      if (
+        typeof updateSet.lastHeard === 'number' &&
+        typeof existing.lastHeard === 'number' &&
+        updateSet.lastHeard <= existing.lastHeard
+      ) {
+        delete updateSet.lastHeard;
+      }
       await this.db
         .update(meshcoreNodes)
         .set(updateSet)
@@ -471,6 +495,30 @@ export class MeshCoreRepository extends BaseRepository {
           updatedAt: now,
         });
     }
+  }
+
+  /**
+   * Record that we received something from a node, over any path.
+   *
+   * "Heard" means evidence the node is alive and reachable on this source:
+   * an advert, a direct message, a telemetry or neighbours response, an
+   * observer relaying a packet it overheard. It does NOT mean we merely hold
+   * a stale contact record for it, and it is not a place to stamp a local
+   * edit — renaming a contact or resetting its route tells us nothing about
+   * whether the node is still on the air.
+   *
+   * `heardAtMs` is milliseconds (MeshCore's `lastHeard` unit; the Meshtastic
+   * `nodes.lastHeard` is SECONDS — do not cross the two). Pass the moment the
+   * evidence arrived. `upsertNode` drops the write if it would move
+   * `lastHeard` backwards, so a late or replayed sample cannot rewind a
+   * fresher one and call sites need no ordering discipline of their own.
+   *
+   * This is what the inactive-node notifier reads, so a new receive path that
+   * forgets to call this makes MeshMonitor claim a live node is gone (#5131).
+   */
+  async markHeard(sourceId: string, publicKey: string, heardAtMs: number): Promise<void> {
+    if (!Number.isFinite(heardAtMs) || heardAtMs <= 0) return;
+    await this.upsertNode({ publicKey, lastHeard: heardAtMs }, sourceId);
   }
 
   /**
