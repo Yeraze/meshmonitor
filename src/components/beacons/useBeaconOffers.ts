@@ -154,20 +154,15 @@ export function useBeaconOffers(sourceId: string | null | undefined): UseBeaconO
   const mute = useCallback((nodeNum: number) =>
     act(nodeNum, 'mute', undefined, 'beacons.mute_failed'), [act]);
 
-  // Un-mute clears both flags server-side, so one action restores a row
-  // whichever way it was hidden — the user asked to see it again, and which
-  // button hid it is not something they should have to remember.
-  const restore = useCallback(async (nodeNum: number) => {
-    if (!base) return;
-    setError(null);
-    try {
-      await apiService.post(`${base}/${nodeNum}/unmute`, undefined);
-      await Promise.all([loadCount(), loadList()]);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t('beacons.restore_failed'));
-      throw e;
-    }
-  }, [base, loadCount, loadList, t]);
+  // Deliberately `/unmute`, not `/restore`: un-mute clears BOTH flags
+  // server-side, so one action brings a row back whichever way it was hidden.
+  // `/restore` clears only the dismissal and would leave a muted row hidden —
+  // correct on its own terms, but it would make the button look broken, and
+  // which of the two buttons hid a row is not something a user should have to
+  // remember. Goes through `act` like every other write so the reload-and-
+  // surface-the-error path has exactly one owner.
+  const restore = useCallback((nodeNum: number) =>
+    act(nodeNum, 'unmute', undefined, 'beacons.restore_failed'), [act]);
 
   const accept = useCallback((nodeNum: number, slot: number, overwrite: boolean) =>
     act(nodeNum, 'accept', { slot, confirm: true, overwrite }, 'beacons.accept_failed'), [act]);
