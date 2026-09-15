@@ -504,9 +504,17 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
   );
 
   // Meshtastic
+  // `wasProvided` means "the operator named a host", which is stricter than
+  // "the variable exists". `MESHTASTIC_NODE_IP=` with nothing after it is a
+  // common docker-compose shape, and `value` has already collapsed it to the
+  // placeholder — so a bare `!== undefined` check would report the placeholder
+  // as user-supplied. Both consumers treat that as permission to dial
+  // 192.168.1.100: the fresh-install source auto-create (#5237) and the OTA
+  // wizard's #2981 guard. Match `_legacyDefaultSource.ts`: non-empty or nothing.
+  const meshtasticNodeIpRaw = process.env.MESHTASTIC_NODE_IP?.trim() ?? '';
   const meshtasticNodeIp = {
-    value: process.env.MESHTASTIC_NODE_IP || '192.168.1.100',
-    wasProvided: process.env.MESHTASTIC_NODE_IP !== undefined
+    value: meshtasticNodeIpRaw || '192.168.1.100',
+    wasProvided: meshtasticNodeIpRaw.length > 0
   };
   // Accept MESHTASTIC_NODE_PORT (used by the online configurator and docker-compose examples)
   // as a synonym for MESHTASTIC_TCP_PORT, giving it priority.

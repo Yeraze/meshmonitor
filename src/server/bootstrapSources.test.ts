@@ -7,12 +7,12 @@
  *
  * Scenarios tested (§5 of the task-2.3 spec):
  *  #1 env-only fresh install (explicit MESHTASTIC_NODE_IP)
- *  #2 env-only fresh install (no explicit IP → default 192.168.1.100 quirk)
+ *  #2 env-only fresh install (MESHTASTIC_NODE_IP never set → NO source created)
  *  #3 DB-sources-only: 2 tcp rows, env set → env IGNORED
  *  #4 DB+env: rows exist + env set → rows win, env ignored
- *  #5 single tcp row with autoConnect:false → S4 fallback fires
- *  #6 meshcore-only enabled → S4 fallback fires (env-IP wart pinned)
- *  #7 all sources disabled (count>0) → S4 fallback fires
+ *  #5 single tcp row with autoConnect:false → nothing connects
+ *  #6 meshcore-only enabled → nothing connects
+ *  #7 all sources disabled (count>0) → no auto-create, nothing connects
  *  #8 mixed: 1 broker + 2 tcp → start order broker<tcp, first tcp = primary
  *
  * Identity/staleness pins (§5, WP1 contract documentation):
@@ -22,8 +22,13 @@
  *    "resolveSourceManager(null) live-fallback contract" below).
  *  - getPrimaryMeshtasticManager returns first meshtastic_tcp manager in registry
  *
- * These tests MUST remain byte-identical through WP2/WP3 for scenarios 1-4,8.
- * Scenarios 5-7 change ONLY if Q1 decides to drop the S4 fallback (with rationale).
+ * #5237 resolved open Q1 by DROPPING the S4 env-IP fallback, and additionally
+ * gated the fresh-install auto-create behind an explicitly-set MESHTASTIC_NODE_IP.
+ * Scenarios 2 and 5-7/9 were rewritten accordingly: where they used to assert
+ * `fallbackManager.connect()` fired, they now assert that NOTHING connects.
+ * `bootstrapSources` no longer takes a `fallbackManager` dep at all — the
+ * exported singleton lives on only as the `?? fallbackManager` resolution
+ * target, which the identity pins at the bottom of this file still cover.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -161,31 +166,6 @@ function makeDbStub(initialSources: SourceRow[] = []): BootstrapDb & { _sources:
 }
 
 /**
- * Minimal ISourceManager stub for the fallback (legacy singleton) manager.
- * WP3: configureSource() is deleted; this stub no longer tracks it.
- * Only used for S4: connect() is called when no tcp source auto-connects.
- */
-function makeFallbackManagerStub() {
-  const stub = {
-    sourceId: 'default',
-    sourceType: 'meshtastic_tcp' as const,
-    connect: vi.fn().mockResolvedValue(undefined),
-    start: vi.fn().mockResolvedValue(undefined),
-    stop: vi.fn().mockResolvedValue(undefined),
-    getStatus: vi.fn(() => ({
-      sourceId: 'default',
-      sourceName: 'default',
-      sourceType: 'meshtastic_tcp' as const,
-      connected: false,
-    })),
-    getLocalNodeInfo: vi.fn().mockReturnValue(null),
-    startDistanceDeleteScheduler: vi.fn().mockResolvedValue(undefined),
-    stopDistanceDeleteScheduler: vi.fn(),
-  };
-  return stub;
-}
-
-/**
  * Factory that produces fresh meshtastic_tcp ISourceManager stubs.
  * The returned `factory` spy is passed as `deps.makeMeshtastic`.
  * The `instances` array records every (id, cfg, stub) created.
@@ -239,10 +219,15 @@ function makeMqttManagerStub(id: string): ISourceManager {
 function makeDeps(overrides: Partial<BootstrapDeps> & { db: BootstrapDb }): BootstrapDeps {
   const { factory } = makeMeshMockFactory();
   return {
-    env: { meshtasticNodeIp: '192.168.1.100', meshtasticTcpPort: 4403 },
+    // Default: MESHTASTIC_NODE_IP unset, so meshtasticNodeIp carries the
+    // placeholder and meshtasticNodeIpProvided is false (#5237).
+    env: {
+      meshtasticNodeIp: '192.168.1.100',
+      meshtasticNodeIpProvided: false,
+      meshtasticTcpPort: 4403,
+    },
     registry: new SourceManagerRegistry(),
     makeMeshtastic: factory,
-    fallbackManager: makeFallbackManagerStub() as any,
     ...overrides,
   };
 }
@@ -260,12 +245,10 @@ import { ensureReticulumManagerStarted } from './reticulumConfig.js';
 
 describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
   let registry: SourceManagerRegistry;
-  let fallbackManager: ReturnType<typeof makeFallbackManagerStub>;
   let meshFactory: ReturnType<typeof makeMeshMockFactory>;
 
   beforeEach(() => {
     registry = new SourceManagerRegistry();
-    fallbackManager = makeFallbackManagerStub();
     meshFactory = makeMeshMockFactory();
     vi.clearAllMocks();
   });
@@ -277,9 +260,9 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
     it('(A) creates a Default source row with host from env', async () => {
       const db = makeDbStub([]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
-        env: { meshtasticNodeIp: '1.2.3.4', meshtasticTcpPort: 4403 },
+        env: { meshtasticNodeIp: '1.2.3.4', meshtasticNodeIpProvided: true, meshtasticTcpPort: 4403 },
       }));
       expect(db.sources.createSource).toHaveBeenCalledOnce();
       const createdArg = (db.sources.createSource as any).mock.calls[0][0];
@@ -291,9 +274,9 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
     it('(B/C) registers exactly 1 manager via makeMeshtastic with host=1.2.3.4', async () => {
       const db = makeDbStub([]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
-        env: { meshtasticNodeIp: '1.2.3.4', meshtasticTcpPort: 4403 },
+        env: { meshtasticNodeIp: '1.2.3.4', meshtasticNodeIpProvided: true, meshtasticTcpPort: 4403 },
       }));
       expect(registry.size).toBe(1);
       // WP3: first TCP source uses makeMeshtastic() — not configureSource (deleted).
@@ -305,30 +288,33 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
     it('(D) getPrimaryMeshtasticManager resolves to the first makeMeshtastic instance', async () => {
       const db = makeDbStub([]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
-        env: { meshtasticNodeIp: '1.2.3.4', meshtasticTcpPort: 4403 },
+        env: { meshtasticNodeIp: '1.2.3.4', meshtasticNodeIpProvided: true, meshtasticTcpPort: 4403 },
       }));
       // WP3: primary = the instance returned by makeMeshtastic (not fallbackManager).
       expect(getPrimaryMeshtasticManager(registry)).toBe(meshFactory.instances[0].stub);
     });
 
-    it('(E) fallbackManager.connect() is NOT called (tcp source was configured)', async () => {
+    it('(E) exactly one manager is registered — nothing else connects', async () => {
       const db = makeDbStub([]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
-        env: { meshtasticNodeIp: '1.2.3.4', meshtasticTcpPort: 4403 },
+        env: { meshtasticNodeIp: '1.2.3.4', meshtasticNodeIpProvided: true, meshtasticTcpPort: 4403 },
       }));
-      expect(fallbackManager.connect).not.toHaveBeenCalled();
+      // Pre-#5237 this asserted fallbackManager.connect() was not called. There
+      // is no fallback connect any more, so the equivalent pin is that the
+      // registry holds only the source we asked for.
+      expect(registry.size).toBe(1);
     });
 
     it('makeMeshtastic factory IS called for the first (and only) tcp source', async () => {
       const db = makeDbStub([]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
-        env: { meshtasticNodeIp: '1.2.3.4', meshtasticTcpPort: 4403 },
+        env: { meshtasticNodeIp: '1.2.3.4', meshtasticNodeIpProvided: true, meshtasticTcpPort: 4403 },
       }));
       // WP3: uniform construction — factory called once for the single auto-created source.
       expect(meshFactory.factory).toHaveBeenCalledOnce();
@@ -336,35 +322,57 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Scenario 2: env-only fresh install WITHOUT explicit MESHTASTIC_NODE_IP
-  // Pins the "always-truthy" quirk: env.meshtasticNodeIp defaults to
-  // '192.168.1.100', so a Default source is ALWAYS auto-created on fresh boot.
+  // Scenario 2: fresh install with MESHTASTIC_NODE_IP never set (#5237).
+  //
+  // This scenario INVERTED in #5237. It used to pin the "always-truthy quirk":
+  // env.meshtasticNodeIp falls back to the placeholder '192.168.1.100', so a
+  // Default source was auto-created — and auto-connected — on every fresh
+  // install, including MeshCore-only ones that have no Meshtastic node at all.
+  // The result was an endless EHOSTUNREACH reconnect loop against an address
+  // belonging to nobody. The auto-create now requires meshtasticNodeIpProvided.
   // -------------------------------------------------------------------------
-  describe('Scenario 2 — env-only fresh, no explicit IP (default 192.168.1.100 quirk)', () => {
-    it('(A) creates a Default source row even with the default IP — pins always-truthy quirk', async () => {
+  describe('Scenario 2 — fresh install, MESHTASTIC_NODE_IP never set → no source', () => {
+    it('(A) does NOT create a Default source row from the placeholder IP', async () => {
       const db = makeDbStub([]);
-      // No MESHTASTIC_NODE_IP set → env uses the default '192.168.1.100'
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
-        env: { meshtasticNodeIp: '192.168.1.100', meshtasticTcpPort: 4403 },
+        env: { meshtasticNodeIp: '192.168.1.100', meshtasticNodeIpProvided: false, meshtasticTcpPort: 4403 },
+      }));
+      expect(db.sources.createSource).not.toHaveBeenCalled();
+    });
+
+    it('(B/D/E) registry stays empty, no primary, nothing connects', async () => {
+      const db = makeDbStub([]);
+      await bootstrapSources(makeDeps({
+        db, registry,
+        makeMeshtastic: meshFactory.factory,
+        env: { meshtasticNodeIp: '192.168.1.100', meshtasticNodeIpProvided: false, meshtasticTcpPort: 4403 },
+      }));
+      expect(registry.size).toBe(0);
+      expect(getPrimaryMeshtasticManager(registry)).toBeUndefined();
+      expect(meshFactory.factory).not.toHaveBeenCalled();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Scenario 2b: the operator explicitly set MESHTASTIC_NODE_IP to a value that
+  // happens to equal the placeholder. The gate is "was it provided", not "does
+  // it differ from the default" — an explicit setting is always honored.
+  // -------------------------------------------------------------------------
+  describe('Scenario 2b — MESHTASTIC_NODE_IP explicitly set to the placeholder value', () => {
+    it('creates the Default source: the gate is wasProvided, not value-inequality', async () => {
+      const db = makeDbStub([]);
+      await bootstrapSources(makeDeps({
+        db, registry,
+        makeMeshtastic: meshFactory.factory,
+        env: { meshtasticNodeIp: '192.168.1.100', meshtasticNodeIpProvided: true, meshtasticTcpPort: 4403 },
       }));
       expect(db.sources.createSource).toHaveBeenCalledOnce();
       const createdArg = (db.sources.createSource as any).mock.calls[0][0];
       expect((createdArg.config as any).host).toBe('192.168.1.100');
-    });
-
-    it('(B/D/E) single manager registered via factory, is primary, connect() not called', async () => {
-      const db = makeDbStub([]);
-      await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
-        makeMeshtastic: meshFactory.factory,
-        env: { meshtasticNodeIp: '192.168.1.100', meshtasticTcpPort: 4403 },
-      }));
       expect(registry.size).toBe(1);
-      // WP3: primary = first makeMeshtastic instance (not fallbackManager).
       expect(getPrimaryMeshtasticManager(registry)).toBe(meshFactory.instances[0].stub);
-      expect(fallbackManager.connect).not.toHaveBeenCalled();
     });
   });
 
@@ -378,9 +386,9 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
       const row2 = makeTcpSource('src-2', '10.0.0.2');
       const db = makeDbStub([row1, row2]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
-        env: { meshtasticNodeIp: '1.2.3.4', meshtasticTcpPort: 9999 },
+        env: { meshtasticNodeIp: '1.2.3.4', meshtasticNodeIpProvided: true, meshtasticTcpPort: 9999 },
       }));
       expect(db.sources.createSource).not.toHaveBeenCalled();
     });
@@ -390,9 +398,9 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
       const row2 = makeTcpSource('src-2', '10.0.0.2');
       const db = makeDbStub([row1, row2]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
-        env: { meshtasticNodeIp: '1.2.3.4', meshtasticTcpPort: 9999 },
+        env: { meshtasticNodeIp: '1.2.3.4', meshtasticNodeIpProvided: true, meshtasticTcpPort: 9999 },
       }));
       expect(registry.size).toBe(2);
       // WP3: both sources use makeMeshtastic() — factory called twice.
@@ -408,24 +416,25 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
       const row2 = makeTcpSource('src-2', '10.0.0.2');
       const db = makeDbStub([row1, row2]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
-        env: { meshtasticNodeIp: '1.2.3.4', meshtasticTcpPort: 9999 },
+        env: { meshtasticNodeIp: '1.2.3.4', meshtasticNodeIpProvided: true, meshtasticTcpPort: 9999 },
       }));
       // WP3: primary = first instance from makeMeshtastic (not fallbackManager).
       expect(getPrimaryMeshtasticManager(registry)).toBe(meshFactory.instances[0].stub);
     });
 
-    it('(E) fallbackManager.connect() NOT called', async () => {
+    it('(E) exactly the 2 DB sources are registered — env adds nothing', async () => {
       const row1 = makeTcpSource('src-1', '10.0.0.1');
       const row2 = makeTcpSource('src-2', '10.0.0.2');
       const db = makeDbStub([row1, row2]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
-        env: { meshtasticNodeIp: '1.2.3.4', meshtasticTcpPort: 9999 },
+        env: { meshtasticNodeIp: '1.2.3.4', meshtasticNodeIpProvided: true, meshtasticTcpPort: 9999 },
       }));
-      expect(fallbackManager.connect).not.toHaveBeenCalled();
+      expect(registry.size).toBe(2);
+      expect(meshFactory.factory).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -445,7 +454,7 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
       });
       const db = makeDbStub([row]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
       }));
       expect(meshFactory.factory).toHaveBeenCalledOnce();
@@ -458,7 +467,7 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
       const row = makeTcpSource('src-normal', '10.0.0.4');
       const db = makeDbStub([row]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
       }));
       expect(meshFactory.factory).toHaveBeenCalledOnce();
@@ -476,9 +485,9 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
       const row = makeTcpSource('existing-1', '172.16.0.10');
       const db = makeDbStub([row]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
-        env: { meshtasticNodeIp: '9.9.9.9', meshtasticTcpPort: 5555 },
+        env: { meshtasticNodeIp: '9.9.9.9', meshtasticNodeIpProvided: true, meshtasticTcpPort: 5555 },
       }));
       expect(db.sources.createSource).not.toHaveBeenCalled();
     });
@@ -487,9 +496,9 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
       const row = makeTcpSource('existing-1', '172.16.0.10');
       const db = makeDbStub([row]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
-        env: { meshtasticNodeIp: '9.9.9.9', meshtasticTcpPort: 5555 },
+        env: { meshtasticNodeIp: '9.9.9.9', meshtasticNodeIpProvided: true, meshtasticTcpPort: 5555 },
       }));
       expect(meshFactory.factory).toHaveBeenCalledOnce();
       const [, factoryCfg] = meshFactory.factory.mock.calls[0] as any;
@@ -497,29 +506,33 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
       expect(factoryCfg.host).not.toBe('9.9.9.9');
     });
 
-    it('(D/E) primary = first makeMeshtastic instance, connect() not called', async () => {
+    it('(D/E) primary = first makeMeshtastic instance, env source never registered', async () => {
       const row = makeTcpSource('existing-1', '172.16.0.10');
       const db = makeDbStub([row]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
-        env: { meshtasticNodeIp: '9.9.9.9', meshtasticTcpPort: 5555 },
+        env: { meshtasticNodeIp: '9.9.9.9', meshtasticNodeIpProvided: true, meshtasticTcpPort: 5555 },
       }));
       // WP3: primary = instance from makeMeshtastic.
       expect(getPrimaryMeshtasticManager(registry)).toBe(meshFactory.instances[0].stub);
-      expect(fallbackManager.connect).not.toHaveBeenCalled();
+      // #5237: the env IP is not a second connection target.
+      expect(registry.size).toBe(1);
     });
   });
 
   // -------------------------------------------------------------------------
-  // Scenario 5: single tcp row with autoConnect:false → S4 fallback fires
+  // Scenario 5: single tcp row with autoConnect:false → nothing connects.
+  // #5237: this used to fire the S4 env-IP fallback, which overrode the very
+  // intent of autoConnect:false — the operator said "don't connect on boot"
+  // and we connected to MESHTASTIC_NODE_IP instead.
   // -------------------------------------------------------------------------
-  describe('Scenario 5 — single tcp row, autoConnect:false → S4 fallback', () => {
+  describe('Scenario 5 — single tcp row, autoConnect:false → nothing connects', () => {
     it('(B) 0 managers registered in registry (source skipped)', async () => {
       const row = makeTcpSource('src-ac-false', '10.0.0.1', 4403, { autoConnect: false });
       const db = makeDbStub([row]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
       }));
       expect(registry.size).toBe(0);
@@ -529,20 +542,25 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
       const row = makeTcpSource('src-ac-false', '10.0.0.1', 4403, { autoConnect: false });
       const db = makeDbStub([row]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
       }));
       expect(getPrimaryMeshtasticManager(registry)).toBeUndefined();
     });
 
-    it('(E) fallbackManager.connect() IS called (S4 env-IP fallback)', async () => {
+    it('(E) #5237 — nothing connects to the env IP; autoConnect:false is honored', async () => {
       const row = makeTcpSource('src-ac-false', '10.0.0.1', 4403, { autoConnect: false });
       const db = makeDbStub([row]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
+        env: { meshtasticNodeIp: '1.2.3.4', meshtasticNodeIpProvided: true, meshtasticTcpPort: 4403 },
       }));
-      expect(fallbackManager.connect).toHaveBeenCalledOnce();
+      // Even with an explicitly-set MESHTASTIC_NODE_IP, no manager is built and
+      // no connection is attempted: the only tcp source opted out of boot-connect.
+      expect(registry.size).toBe(0);
+      expect(getPrimaryMeshtasticManager(registry)).toBeUndefined();
+      expect(meshFactory.factory).not.toHaveBeenCalled();
     });
 
     it('makeMeshtastic factory NOT called (autoConnect:false source is skipped)', async () => {
@@ -551,7 +569,7 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
       const row = makeTcpSource('src-ac-false', '10.0.0.1', 4403, { autoConnect: false });
       const db = makeDbStub([row]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
       }));
       expect(meshFactory.factory).not.toHaveBeenCalled();
@@ -559,77 +577,85 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Scenario 6: meshcore-only enabled (no tcp) → S4 fallback fires
-  // Pins the env-IP wart: the fallback singleton connects to the env IP even
-  // when there are only MeshCore sources.
+  // Scenario 6: meshcore-only enabled (no tcp) → nothing connects.
+  // This is the exact shape reported in #5237: a MeshCore-only install whose
+  // logs filled with `EHOSTUNREACH 192.168.1.100:4403` forever because the S4
+  // fallback connected to the env placeholder and TcpTransport then retried
+  // on a 60s-capped backoff with no attempt limit and no way to stop it.
   // -------------------------------------------------------------------------
-  describe('Scenario 6 — meshcore-only enabled → S4 fallback fires (env-IP wart)', () => {
+  describe('Scenario 6 — meshcore-only enabled → nothing connects (#5237)', () => {
     it('(B) 0 tcp managers in registry', async () => {
       const row = makeMeshCoreSource('mc-1');
       const db = makeDbStub([row]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
       }));
-      // Registry may have 0 entries (ensureMeshCoreManagerStarted is mocked as no-op)
+      // ensureMeshCoreManagerStarted is mocked as a no-op here, so the registry
+      // is empty in this test context — and empty of tcp managers either way.
       expect(getPrimaryMeshtasticManager(registry)).toBeUndefined();
     });
 
-    it('(E) fallbackManager.connect() IS called (S4 — no tcp configured)', async () => {
+    it('(E) #5237 — no Meshtastic connection is attempted, even with the env IP set', async () => {
       const row = makeMeshCoreSource('mc-1');
       const db = makeDbStub([row]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
+        env: { meshtasticNodeIp: '192.168.1.100', meshtasticNodeIpProvided: false, meshtasticTcpPort: 4403 },
       }));
-      expect(fallbackManager.connect).toHaveBeenCalledOnce();
+      expect(meshFactory.factory).not.toHaveBeenCalled();
+      expect(getPrimaryMeshtasticManager(registry)).toBeUndefined();
+      // No extra source row is conjured either — the MeshCore row keeps count > 0.
+      expect(db.sources.createSource).not.toHaveBeenCalled();
     });
 
     it('ensureMeshCoreManagerStarted is called for the meshcore source', async () => {
       const row = makeMeshCoreSource('mc-1');
       const db = makeDbStub([row]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
       }));
       expect(ensureMeshCoreManagerStarted).toHaveBeenCalledOnce();
     });
 
-    // #4020 regression: on a MeshCore-only install the S4 fallback connect has
-    // no real Meshtastic node to reach and rejects. Before the fix that
-    // rejection escaped bootstrapSources and aborted the startup try/catch in
-    // server.ts, so every scheduler started AFTER bootstrapSources (low-battery
-    // + inactive-node notifications, backup scheduler, ...) never started —
-    // which is why MeshCore-only users never got low-battery alerts and saw no
-    // `[low-battery]` diagnostics. bootstrapSources must swallow the failure
-    // and resolve so the caller keeps starting those schedulers.
-    it('(#4020) resolves (does NOT throw) when the S4 fallback connect rejects', async () => {
+    // #4020 regression, restated for #5237. The original failure was the S4
+    // fallback connect rejecting on a MeshCore-only install and escaping
+    // bootstrapSources, which aborted the startup try/catch in server.ts — so
+    // every scheduler started AFTER bootstrapSources (low-battery +
+    // inactive-node notifications, backup scheduler, ...) never ran, and
+    // MeshCore-only users got no low-battery alerts and no `[low-battery]`
+    // diagnostics. The S4 connect is gone, so that exact path cannot reject any
+    // more; the invariant it protected still matters, so pin it on the failure
+    // that CAN still happen here — a MeshCore source failing to start.
+    it('(#4020) resolves (does NOT throw) when a source fails to start', async () => {
       const row = makeMeshCoreSource('mc-1');
       const db = makeDbStub([row]);
-      fallbackManager.connect.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+      (ensureMeshCoreManagerStarted as any).mockRejectedValueOnce(new Error('ECONNREFUSED'));
       await expect(
         bootstrapSources(makeDeps({
-          db, registry, fallbackManager: fallbackManager as any,
+          db, registry,
           makeMeshtastic: meshFactory.factory,
         })),
       ).resolves.toBeUndefined();
-      // The MeshCore source still came up — startup was not aborted mid-way.
       expect(ensureMeshCoreManagerStarted).toHaveBeenCalledOnce();
-      expect(fallbackManager.connect).toHaveBeenCalledOnce();
     });
   });
 
   // -------------------------------------------------------------------------
-  // Scenario 7: all sources disabled, count > 0 → no auto-create, S4 fires
+  // Scenario 7: all sources disabled, count > 0 → no auto-create, nothing connects.
+  // The reporter in #5237 disabled their Default Meshtastic source and still saw
+  // the env IP hammered; this pins that a disabled source stays disabled.
   // -------------------------------------------------------------------------
-  describe('Scenario 7 — all sources disabled (count>0) → no auto-create, S4 fires', () => {
+  describe('Scenario 7 — all sources disabled (count>0) → no auto-create, nothing connects', () => {
     it('(A) no new source created (count > 0, guard prevents it)', async () => {
       const row = { ...makeTcpSource('disabled-1', '10.0.0.1'), enabled: false };
       const db = makeDbStub([row]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
-        env: { meshtasticNodeIp: '1.2.3.4', meshtasticTcpPort: 4403 },
+        env: { meshtasticNodeIp: '1.2.3.4', meshtasticNodeIpProvided: true, meshtasticTcpPort: 4403 },
       }));
       expect(db.sources.createSource).not.toHaveBeenCalled();
     });
@@ -638,22 +664,24 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
       const row = { ...makeTcpSource('disabled-1', '10.0.0.1'), enabled: false };
       const db = makeDbStub([row]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
-        env: { meshtasticNodeIp: '1.2.3.4', meshtasticTcpPort: 4403 },
+        env: { meshtasticNodeIp: '1.2.3.4', meshtasticNodeIpProvided: true, meshtasticTcpPort: 4403 },
       }));
       expect(registry.size).toBe(0);
     });
 
-    it('(E) fallbackManager.connect() IS called (S4)', async () => {
+    it('(E) #5237 — disabling the only source really stops the connection', async () => {
       const row = { ...makeTcpSource('disabled-1', '10.0.0.1'), enabled: false };
       const db = makeDbStub([row]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
-        env: { meshtasticNodeIp: '1.2.3.4', meshtasticTcpPort: 4403 },
+        env: { meshtasticNodeIp: '1.2.3.4', meshtasticNodeIpProvided: true, meshtasticTcpPort: 4403 },
       }));
-      expect(fallbackManager.connect).toHaveBeenCalledOnce();
+      expect(registry.size).toBe(0);
+      expect(getPrimaryMeshtasticManager(registry)).toBeUndefined();
+      expect(meshFactory.factory).not.toHaveBeenCalled();
     });
   });
 
@@ -679,7 +707,7 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
       const tcp2 = makeTcpSource('tcp-2', '10.0.0.2');
       const db = makeDbStub([broker, tcp1, tcp2]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
       }));
       expect(registry.size).toBe(3);
@@ -691,7 +719,7 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
       const tcp2 = makeTcpSource('tcp-2', '10.0.0.2');
       const db = makeDbStub([broker, tcp1, tcp2]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
       }));
       expect(registry.getManager('broker-1')).toBe(mqttStub);
@@ -709,23 +737,24 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
       const tcp2 = makeTcpSource('tcp-2', '10.0.0.2');
       const db = makeDbStub([broker, tcp1, tcp2]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
       }));
       // WP3: primary = first TCP instance from factory (tcp-1), not fallbackManager.
       expect(getPrimaryMeshtasticManager(registry)).toBe(meshFactory.instances[0].stub);
     });
 
-    it('(E) fallbackManager.connect() NOT called', async () => {
+    it('(E) exactly the 3 DB sources are registered — nothing extra connects', async () => {
       const broker = makeBrokerSource('broker-1');
       const tcp1 = makeTcpSource('tcp-1', '10.0.0.1');
       const tcp2 = makeTcpSource('tcp-2', '10.0.0.2');
       const db = makeDbStub([broker, tcp1, tcp2]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
       }));
-      expect(fallbackManager.connect).not.toHaveBeenCalled();
+      expect(registry.size).toBe(3);
+      expect(meshFactory.factory).toHaveBeenCalledTimes(2);
     });
 
     it('start order: broker is registered before tcp managers', async () => {
@@ -754,7 +783,7 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
       const tcp1 = makeTcpSource('tcp-1', '10.0.0.1');
       const db = makeDbStub([tcp1, broker]); // deliberately out of order in DB
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: orderAwareFactory,
       }));
       expect(callOrder.indexOf('mqtt:broker-1')).toBeLessThan(
@@ -764,36 +793,37 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Scenario 9 — reticulum-only enabled (no tcp) → S4 fallback fires (WP5)
-  // Mirrors Scenario 6 (meshcore-only): pins the env-IP wart for Reticulum
-  // and asserts the autoConnect gate.
+  // Scenario 9 — reticulum-only enabled (no tcp) → nothing connects (WP5).
+  // Mirrors Scenario 6 (meshcore-only) for Reticulum, and asserts the
+  // autoConnect gate.
   // -------------------------------------------------------------------------
-  describe('Scenario 9 — reticulum-only enabled → S4 fallback fires (WP5)', () => {
+  describe('Scenario 9 — reticulum-only enabled → nothing connects (#5237)', () => {
     it('(B) 0 tcp managers in registry', async () => {
       const row = makeReticulumSource('rt-1');
       const db = makeDbStub([row]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
       }));
       expect(getPrimaryMeshtasticManager(registry)).toBeUndefined();
     });
 
-    it('(E) fallbackManager.connect() IS called (S4 — no tcp configured)', async () => {
+    it('(E) #5237 — no Meshtastic connection is attempted', async () => {
       const row = makeReticulumSource('rt-1');
       const db = makeDbStub([row]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
       }));
-      expect(fallbackManager.connect).toHaveBeenCalledOnce();
+      expect(meshFactory.factory).not.toHaveBeenCalled();
+      expect(getPrimaryMeshtasticManager(registry)).toBeUndefined();
     });
 
     it('ensureReticulumManagerStarted is called for the reticulum source', async () => {
       const row = makeReticulumSource('rt-1');
       const db = makeDbStub([row]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
       }));
       expect(ensureReticulumManagerStarted).toHaveBeenCalledOnce();
@@ -803,29 +833,29 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
       const row = makeReticulumSource('rt-1', { autoConnect: false });
       const db = makeDbStub([row]);
       await bootstrapSources(makeDeps({
-        db, registry, fallbackManager: fallbackManager as any,
+        db, registry,
         makeMeshtastic: meshFactory.factory,
       }));
       expect(ensureReticulumManagerStarted).not.toHaveBeenCalled();
-      // Still falls back to S4 since no tcp source ever configured.
-      expect(fallbackManager.connect).toHaveBeenCalledOnce();
+      // #5237: and nothing falls back to the env IP either.
+      expect(meshFactory.factory).not.toHaveBeenCalled();
+      expect(getPrimaryMeshtasticManager(registry)).toBeUndefined();
     });
 
-    // Mirrors the #4020 regression pin for MeshCore: bootstrapSources must
-    // swallow an S4 fallback-connect rejection so schedulers started AFTER
-    // it in server.ts still run on a Reticulum-only install.
-    it('resolves (does NOT throw) when the S4 fallback connect rejects', async () => {
+    // Mirrors the #4020 regression pin for MeshCore: a source that fails to
+    // start must not abort bootstrapSources, or the schedulers started AFTER
+    // it in server.ts never run on a Reticulum-only install.
+    it('resolves (does NOT throw) when the reticulum source fails to start', async () => {
       const row = makeReticulumSource('rt-1');
       const db = makeDbStub([row]);
-      fallbackManager.connect.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+      (ensureReticulumManagerStarted as any).mockRejectedValueOnce(new Error('ECONNREFUSED'));
       await expect(
         bootstrapSources(makeDeps({
-          db, registry, fallbackManager: fallbackManager as any,
+          db, registry,
           makeMeshtastic: meshFactory.factory,
         })),
       ).resolves.toBeUndefined();
       expect(ensureReticulumManagerStarted).toHaveBeenCalledOnce();
-      expect(fallbackManager.connect).toHaveBeenCalledOnce();
     });
   });
 
@@ -835,7 +865,7 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
   describe('runtime override clearing (S10)', () => {
     it('clears meshtasticNodeIpOverride and meshtasticTcpPortOverride on every boot', async () => {
       const db = makeDbStub([]);
-      await bootstrapSources(makeDeps({ db, registry, fallbackManager: fallbackManager as any, makeMeshtastic: meshFactory.factory }));
+      await bootstrapSources(makeDeps({ db, registry, makeMeshtastic: meshFactory.factory }));
       expect(db.settings.setSetting).toHaveBeenCalledWith('meshtasticNodeIpOverride', '');
       expect(db.settings.setSetting).toHaveBeenCalledWith('meshtasticTcpPortOverride', '');
     });
@@ -849,20 +879,18 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
       const row1 = makeTcpSource('src-oldest', '10.0.0.1');
       const row2 = makeTcpSource('src-newer', '10.0.0.2');
       const db = makeDbStub([row1, row2]);
-      await bootstrapSources(makeDeps({ db, registry, fallbackManager: fallbackManager as any, makeMeshtastic: meshFactory.factory }));
+      await bootstrapSources(makeDeps({ db, registry, makeMeshtastic: meshFactory.factory }));
       expect(db.sources.assignNullSourceIds).toHaveBeenCalledWith('src-oldest');
     });
 
     it('NOT called when no sources exist (empty DB on very first fresh boot)', async () => {
-      // When sourceCount===0 and no IP set to trigger auto-create, allSources stays empty.
-      // Simulate: env.meshtasticNodeIp is empty string (won't trigger auto-create).
+      // sourceCount===0 and nothing triggers the auto-create, so allSources
+      // stays empty. #5237: this is now the DEFAULT fresh-install shape, not an
+      // edge case — MESHTASTIC_NODE_IP unset means no Default row at all.
       const db = makeDbStub([]);
-      // Force getEnabledSources to return [] to avoid S4 calling connect
-      // Actually it will call fallbackManager.connect() which is fine.
       await bootstrapSources(makeDeps({
         db, registry,
-        env: { meshtasticNodeIp: '', meshtasticTcpPort: 4403 },
-        fallbackManager: fallbackManager as any,
+        env: { meshtasticNodeIp: '192.168.1.100', meshtasticNodeIpProvided: false, meshtasticTcpPort: 4403 },
         makeMeshtastic: meshFactory.factory,
       }));
       expect(db.sources.assignNullSourceIds).not.toHaveBeenCalled();

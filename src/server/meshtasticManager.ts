@@ -14955,12 +14955,19 @@ class MeshtasticManager implements ISourceManager {
 export { MeshtasticManager };
 
 /**
- * Eager fallback instance. Used ONLY when no meshtastic_tcp source is registered
- * in the sourceManagerRegistry (S4: env-IP-only fallback connect, or early module
- * access before bootstrapSources runs). Never added to the registry itself.
+ * Eager fallback instance. It exists so that
+ * `getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager`
+ * always yields a concrete manager — never undefined — when no meshtastic_tcp
+ * source is registered, or during early module access before bootstrapSources
+ * has run. Never added to the registry itself.
  *
- * Exported so server.ts can pass the concrete instance as `deps.fallbackManager`
- * to bootstrapSources for the S4 env-IP fallback connect path.
+ * #5237: it is NEVER CONNECTED at startup. It used to be handed to
+ * bootstrapSources as `deps.fallbackManager` and connected against
+ * MESHTASTIC_NODE_IP whenever no tcp source auto-connected (the "S4" path);
+ * on installs that never set that env var it dialled the placeholder
+ * 192.168.1.100 forever. That path is gone — this instance is now purely a
+ * null-object, and only a real source row produces a connection.
+ *
  * WP3: no longer registered as the primary; all tcp sources use makeMeshtastic().
  */
 export const fallbackManager = new MeshtasticManager();

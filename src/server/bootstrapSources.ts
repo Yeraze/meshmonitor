@@ -9,22 +9,24 @@
  * (including the first) are now constructed via `makeMeshtastic(id, cfg)`.
  * The legacy `configureSource(fallbackManager)` path (S2/S3) is removed.
  * `registry.setPrimaryMeshtasticSource(id)` designates the first TCP source.
- * S4 env-IP fallback (`fallbackManager.connect()`) is KEPT (Q1 resolved:
- * preserve for all-MeshCore/all-disabled-tcp installs).
  *
- * Behavior-preservation table (all rows hold after WP3):
+ * #5237 (open Q1 resolved: DROP): the S4 env-IP fallback is gone, and the
+ * fresh-install auto-create now requires an explicitly-set MESHTASTIC_NODE_IP.
+ * Both changes exist to stop MeshMonitor connecting to a node the operator
+ * never configured. See "Why no env-IP fallback" at the bottom of this file.
+ *
+ * Behavior table:
  *  - Runtime IP/port overrides are cleared on every boot (S10).
- *  - When sourceCount===0 and env.meshtasticNodeIp is truthy → auto-create
- *    a DB row named "Default" (type meshtastic_tcp). NOTE: env.meshtasticNodeIp
- *    always has a value (defaults to '192.168.1.100') so the Default row is
- *    always created on a fresh install even when no explicit IP was configured
- *    — this "always-truthy quirk" is pinned by test scenario #2.
+ *  - When sourceCount===0 AND MESHTASTIC_NODE_IP was explicitly set → auto-create
+ *    a DB row named "Default" (type meshtastic_tcp). When the env var was NOT
+ *    set, no row is created: `env.meshtasticNodeIp` carries the placeholder
+ *    default '192.168.1.100', which is nobody's real node (#5237).
  *  - When source rows exist, env is ignored for source creation.
  *  - Sources are sorted: mqtt_broker(0) < meshtastic_tcp/meshcore/reticulum(1) < mqtt_bridge(2).
  *  - ALL meshtastic_tcp sources: constructed via makeMeshtastic() uniformly.
  *  - First tcp source is designated primary via registry.setPrimaryMeshtasticSource().
  *  - autoConnect===false → skip that source for auto-connect.
- *  - No tcp source configured after loop → fallbackManager.connect() called (S4).
+ *  - No tcp source configured after loop → nothing connects (#5237).
  */
 
 import { v4 as uuidv4 } from 'uuid';
@@ -85,10 +87,18 @@ export interface BootstrapDeps {
    */
   db: BootstrapDb;
   /**
-   * Resolved environment config. Only meshtasticNodeIp and meshtasticTcpPort
-   * are read.
+   * Resolved environment config. Only meshtasticNodeIp, meshtasticNodeIpProvided
+   * and meshtasticTcpPort are read.
+   *
+   * `meshtasticNodeIpProvided` is false when MESHTASTIC_NODE_IP was never set,
+   * in which case `meshtasticNodeIp` holds the placeholder '192.168.1.100' and
+   * must not be used to create a source (#5237).
    */
-  env: { meshtasticNodeIp: string; meshtasticTcpPort: number };
+  env: {
+    meshtasticNodeIp: string;
+    meshtasticNodeIpProvided: boolean;
+    meshtasticTcpPort: number;
+  };
   /** Registry that started managers are registered into. */
   registry: SourceManagerRegistry;
   /**
@@ -97,13 +107,6 @@ export interface BootstrapDeps {
    * WP3: used uniformly for every meshtastic_tcp source.
    */
   makeMeshtastic: (id: string, cfg: MeshtasticSourceConfig) => MeshtasticManager;
-  /**
-   * The legacy singleton / unconfigured fallback instance.
-   * Used ONLY for S4: env-IP fallback connect when no tcp source auto-connects
-   * (all-MeshCore / all-disabled-tcp / autoConnect:false installs).
-   * Q1 resolved: keep (behavior-preserving for those deployment shapes).
-   */
-  fallbackManager: MeshtasticManager;
 }
 
 /**
@@ -122,13 +125,22 @@ export async function bootstrapSources(deps: BootstrapDeps): Promise<void> {
   await deps.db.settings.setSetting('meshtasticNodeIpOverride', '');
   await deps.db.settings.setSetting('meshtasticTcpPortOverride', '');
 
-  // Auto-create default source if none exist.
-  // NOTE: env.meshtasticNodeIp is always truthy (defaults to '192.168.1.100'
-  // when MESHTASTIC_NODE_IP is not set), so a Default source is created on
-  // every fresh install. This quirk is intentional and pinned by test #2.
+  // Auto-create default source if none exist AND the operator actually told us
+  // where their node is. `env.meshtasticNodeIp` is always truthy — it falls back
+  // to the placeholder '192.168.1.100' — so before #5237 every fresh install got
+  // an enabled "Default" source pointed at an address that belongs to nobody,
+  // which then retried forever. Requiring `meshtasticNodeIpProvided` means a
+  // MeshCore-only (or not-yet-configured) install boots silently and connects to
+  // nothing; the user adds their node in the UI.
+  //
+  // In practice this branch rarely fires on a fresh install, because migration
+  // 050 (`ensureDefaultSourceIdSqlite` → `buildLegacyDefaultSource`) has already
+  // inserted a "Default" row — DISABLED when MESHTASTIC_NODE_IP was not set, by
+  // the same reasoning, since discussion #2604. The gate here closes the same
+  // hole for whatever path leaves the sources table genuinely empty.
   const sourceCount = await deps.db.sources.getSourceCount();
   if (sourceCount === 0) {
-    if (deps.env.meshtasticNodeIp) {
+    if (deps.env.meshtasticNodeIpProvided) {
       await deps.db.sources.createSource({
         id: uuidv4(),
         name: 'Default',
@@ -299,32 +311,27 @@ export async function bootstrapSources(deps: BootstrapDeps): Promise<void> {
   }
 
   if (!firstTcpSourceConfigured) {
-    // S4: No TCP sources auto-connected. Fall back to the legacy singleton
-    // with env-var config. This covers all-MeshCore, all-disabled-tcp, and
-    // autoConnect:false installs. Disposition (open Q1): keep unless explicitly
-    // decided to drop in WP3 (recommendation: keep, it's the behavior-preserving choice).
+    // #5237 — "Why no env-IP fallback":
+    // This used to call `fallbackManager.connect()` against MESHTASTIC_NODE_IP
+    // (the "S4" path). It is gone. Reaching here means one of:
+    //   - the install has no Meshtastic node at all (MeshCore-only, MQTT-only);
+    //   - every meshtastic_tcp source is disabled;
+    //   - every meshtastic_tcp source has autoConnect:false.
+    // In all three the operator has said, one way or another, "do not connect" —
+    // so connecting to an env var anyway overrode their intent, and on the
+    // common case (MESHTASTIC_NODE_IP unset → placeholder 192.168.1.100) it
+    // produced an endless EHOSTUNREACH reconnect loop that no UI action could
+    // stop, because nothing ever called disconnect() on the fallback singleton.
     //
-    // #4020: this connect MUST NOT be allowed to reject out of bootstrapSources.
-    // On a MeshCore-only install there is no real Meshtastic node, so this
-    // fallback connect fails (ECONNREFUSED/timeout) and — before this guard —
-    // the rejection propagated all the way up to the startup try/catch in
-    // server.ts, aborting every scheduler started AFTER bootstrapSources
-    // (low-battery notifications, inactive-node notifications, backup scheduler,
-    // etc.). That is why MeshCore-only users never saw low-battery alerts fire
-    // and never got any `[low-battery]` diagnostics: the service was never
-    // started, so no code in it ran. The manager's own retry logic reconnects
-    // if a node ever appears, so swallow the initial failure — mirroring the
-    // per-source try/catch above ("don't let one failed source block others").
-    try {
-      await deps.fallbackManager.connect();
-      logger.debug('Meshtastic manager connected (legacy mode, no sources configured)');
-    } catch (err) {
-      logger.warn(
-        'Fallback Meshtastic connect failed (expected on MeshCore-only or node-down-at-boot installs); ' +
-          'continuing startup so global schedulers still start:',
-        err,
-      );
-    }
+    // `fallbackManager` itself is NOT retired: it remains the concrete instance
+    // behind `getPrimaryMeshtasticManager(registry) ?? fallbackManager` for
+    // consumers that need a non-undefined manager. It is simply never connected
+    // at boot. A source the user enables in the UI connects through the normal
+    // registry path like any other.
+    logger.info(
+      'No Meshtastic TCP source auto-connected — not connecting to anything. ' +
+        'Add or enable a Meshtastic source in Settings → Sources if you expected a connection.',
+    );
   } else {
     logger.debug(`Started ${enabledSources.length} source manager(s)`);
   }

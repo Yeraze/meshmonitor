@@ -58,9 +58,12 @@ MeshMonitor can be configured using environment variables. Here are the most imp
 
 ### Required Variables
 
+None. MeshMonitor boots with no environment variables set and you add your
+node(s) in **Dashboard → Sources**.
+
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `MESHTASTIC_NODE_IP` | IP address of your Meshtastic node | `192.168.1.100` |
+| `MESHTASTIC_NODE_IP` | Optional. Seeds a Meshtastic TCP source on first boot | `192.168.1.100` |
 
 ### Optional Variables
 
@@ -80,9 +83,22 @@ MeshMonitor can be configured using environment variables. Here are the most imp
 `MESHTASTIC_NODE_IP` and `MESHTASTIC_TCP_PORT` only **bootstrap the first source** on a fresh deployment. They are ignored after first boot. All subsequent source management — adding nodes, changing IPs/ports, switching connection type — happens in **Dashboard → Sources**. See [Multi-Source](/features/multi-source).
 :::
 
+::: tip 4.16.1 — set it, or leave it out
+Set `MESHTASTIC_NODE_IP` and a "Default" Meshtastic TCP source is created and
+connected on first boot. Leave it unset and **no source is created at all** —
+the Sources page starts empty and nothing is dialled.
+
+Earlier versions used `192.168.1.100` as a stand-in when the variable was
+missing, created an enabled source pointing at it, and reconnected to that
+address forever. MeshCore-only and MQTT-only installs had no way to stop the
+resulting log spam, because deleting the source only made the next restart
+recreate it. MeshMonitor now connects to a Meshtastic node only when you have
+told it about one.
+:::
+
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `MESHTASTIC_NODE_IP` | IP address used to seed the first TCP source on first boot | `192.168.1.100` |
+| `MESHTASTIC_NODE_IP` | IP address used to seed the first TCP source on first boot. Unset → no source is created | _unset_ |
 | `MESHTASTIC_TCP_PORT` | TCP port used to seed the first TCP source on first boot | `4403` |
 | `MESHTASTIC_STALE_CONNECTION_TIMEOUT` | Connection timeout in milliseconds before reconnecting if no data received | `300000` (5 minutes) |
 | `MESHTASTIC_CONNECT_TIMEOUT_MS` | Initial TCP connection timeout in milliseconds | `10000` (10 seconds) |
