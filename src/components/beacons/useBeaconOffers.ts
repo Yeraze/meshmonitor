@@ -14,7 +14,7 @@
  * Nothing here touches the mesh: beacons arrive on their own, and accepting one
  * writes a channel to the locally attached radio. No packets are sent.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiService from '../../services/api';
 import type { PublicBeaconOffer } from './types';
@@ -30,6 +30,14 @@ export interface UseBeaconOffers {
   /** Every offer on this source, hidden ones included — drives whether the
    *  button exists at all, so muting everything does not strand the un-mute. */
   totalCount: number;
+  /**
+   * True when no count has EVER come back and the last attempt failed, so a
+   * zero is "we do not know" rather than "there are none". The caller renders
+   * the button anyway in that case: hiding it would turn a broken fetch into a
+   * surface that silently does not exist, which is the same trap #4946 fixed
+   * for the list.
+   */
+  countUnknown: boolean;
   /** Every offer for the source, loaded while `listOpen`. */
   offers: PublicBeaconOffer[];
   loading: boolean;
@@ -48,23 +56,38 @@ export function useBeaconOffers(sourceId: string | null | undefined): UseBeaconO
   const { t } = useTranslation();
   const [pendingCount, setPendingCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
+  const [countUnknown, setCountUnknown] = useState(false);
   const [offers, setOffers] = useState<PublicBeaconOffer[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [listOpen, setListOpen] = useState(false);
 
+  // Whether a count has ever come back for the CURRENT source. A ref, not
+  // state: it is read inside the fetch callback and must not re-create it.
+  const loadedOnceRef = useRef(false);
+  useEffect(() => { loadedOnceRef.current = false; }, [sourceId]);
+
   const base = sourceId ? `/api/sources/${encodeURIComponent(sourceId)}/beacon-offers` : null;
 
   const loadCount = useCallback(async () => {
-    if (!base) { setPendingCount(0); setTotalCount(0); return; }
+    if (!base) { setPendingCount(0); setTotalCount(0); setCountUnknown(false); return; }
     try {
       const res = await apiService.get<Envelope<{ pending: number; total: number }>>(`${base}/count`);
       setPendingCount(res?.data?.pending ?? 0);
       setTotalCount(res?.data?.total ?? 0);
+      loadedOnceRef.current = true;
+      setCountUnknown(false);
     } catch {
       // A failed count leaves the last known badge in place. Beacons
-      // rebroadcast and the poll retries, so this self-heals; showing an error
-      // chrome on a passive badge would be louder than the problem.
+      // rebroadcast and the poll retries, so this self-heals; error chrome on a
+      // passive badge would be louder than the problem.
+      //
+      // But a count that has NEVER loaded is different: the state is still 0,
+      // and treating that as "no beacons" hides the button — and with it the
+      // only route to a muted offer — on nothing worse than one failed request.
+      // Flag it so the caller shows the button and lets the list report the
+      // real error.
+      setCountUnknown((prev) => prev || !loadedOnceRef.current);
     }
   }, [base]);
 
@@ -104,6 +127,9 @@ export function useBeaconOffers(sourceId: string | null | undefined): UseBeaconO
   const act = useCallback(async (
     nodeNum: number,
     path: string,
+    // `undefined` for the endpoints that take no body. `ApiService.request`
+    // guards the assignment with `if (body)`, so nothing is sent at all — not
+    // an empty string the route would then fail to parse.
     body: unknown,
     failKey: string,
   ) => {
@@ -145,7 +171,7 @@ export function useBeaconOffers(sourceId: string | null | undefined): UseBeaconO
   const clearError = useCallback(() => setError(null), []);
 
   return {
-    pendingCount, totalCount, offers, loading, error, clearError,
+    pendingCount, totalCount, countUnknown, offers, loading, error, clearError,
     setListOpen, dismiss, mute, restore, accept,
   };
 }

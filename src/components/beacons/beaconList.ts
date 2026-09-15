@@ -50,7 +50,9 @@ export function selectOffers(
       case 'channel':
         // Offers without a channel sort last in ascending order rather than
         // clumping at the top under an empty string — the named ones are what
-        // someone sorting by channel is looking for.
+        // someone sorting by channel is looking for. U+FFFF is the sentinel
+        // because it collates past any realistic channel name; it is deliberate,
+        // not a stray paste.
         cmp = (a.offerChannelName ?? '￿').localeCompare(b.offerChannelName ?? '￿');
         break;
       case 'firstSeenAt':

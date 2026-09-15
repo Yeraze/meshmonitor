@@ -111,6 +111,28 @@ describe('BeaconsPanel button', () => {
     expect(screen.queryByTestId('beacons-badge')).toBeNull();
   });
 
+  it('still renders the button when the count request fails outright', async () => {
+    // A failed count leaves `totalCount` at its initial 0. Treating that as
+    // "no beacons" would make a broken fetch indistinguishable from an empty
+    // mesh AND hide the only route to a muted offer — the same trap #4946 fixed
+    // for the list. The button shows; opening it surfaces the real error.
+    get.mockImplementation((url) => (url.endsWith('/count')
+      ? Promise.reject(new Error('offline'))
+      : Promise.resolve({ success: true, data: [] })));
+
+    render(<BeaconsPanel sourceId="src-a" channels={[]} />);
+
+    expect(await screen.findByTestId('beacons-button')).toBeTruthy();
+    expect(screen.queryByTestId('beacons-badge')).toBeNull();
+  });
+
+  it('hides the button on a genuine zero, not merely a zero-looking one', async () => {
+    mockApi([], { pending: 0, total: 0 });
+    render(<BeaconsPanel sourceId="src-a" channels={[]} />);
+    await waitFor(() => expect(get).toHaveBeenCalled());
+    expect(screen.queryByTestId('beacons-button')).toBeNull();
+  });
+
   it('only fetches the list once the button is clicked', async () => {
     mockApi([offer()]);
     render(<BeaconsPanel sourceId="src-a" channels={[]} />);

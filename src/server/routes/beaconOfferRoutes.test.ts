@@ -175,6 +175,25 @@ describe('mute / unmute', () => {
     expect((await agent.post(url('/12345/mute'))).body.code).toBe('BEACON_OFFER_NOT_FOUND');
   });
 
+  it('restore does NOT lift a mute — mute outranks dismiss', async () => {
+    // `/restore` clears only `dismissedAt`. On a muted row that leaves it
+    // hidden, which is the point: a mute is the stronger statement and must not
+    // be undone by the weaker action. The UI therefore routes its Restore
+    // button at `/unmute`, which clears both.
+    await seedOffer();
+    const agent = await harness.loginAs(harness.admin);
+
+    await agent.post(url(`/${NODE}/dismiss`));
+    await agent.post(url(`/${NODE}/mute`));
+
+    expect((await agent.post(url(`/${NODE}/restore`))).status).toBe(200);
+    expect(await harness.db.meshBeaconOffers.listPending(harness.sourceA)).toHaveLength(0);
+
+    const row = await harness.db.meshBeaconOffers.getOffer(harness.sourceA, NODE);
+    expect(row?.dismissedAt).toBeNull();
+    expect(row?.mutedAt).not.toBeNull();
+  });
+
   it('refuses a user without nodes:write', async () => {
     await seedOffer();
     await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceA);

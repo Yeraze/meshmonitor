@@ -128,7 +128,14 @@ router.post(
   },
 );
 
-/** POST /api/sources/:id/beacon-offers/:nodeNum/restore — undo a dismissal. */
+/**
+ * POST /api/sources/:id/beacon-offers/:nodeNum/restore — undo a dismissal.
+ *
+ * Clears `dismissedAt` ONLY, so a row that is also muted stays hidden: a mute
+ * is the stronger statement and the weaker action must not undo it. That is why
+ * the UI's Restore button calls `/unmute` instead — a user asking to see a row
+ * again should not have to know which of the two buttons hid it.
+ */
 router.post(
   '/:nodeNum/restore',
   requireAuth(),

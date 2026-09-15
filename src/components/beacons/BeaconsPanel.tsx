@@ -44,7 +44,7 @@ export default function BeaconsPanel({
   const [busy, setBusy] = useState(false);
 
   const beacons = useBeaconOffers(sourceId);
-  const { setListOpen, pendingCount, totalCount, offers } = beacons;
+  const { setListOpen, pendingCount, totalCount, countUnknown, offers } = beacons;
 
   const occupiedBySlot = useMemo(() => {
     const map = new Map<number, string>();
@@ -83,10 +83,12 @@ export default function BeaconsPanel({
   }, [beacons, pending, run]);
 
   // The button appears the moment anything has been heard, and disappears only
-  // when the table is genuinely empty for this source. `pendingCount` alone
-  // would hide the only route back to a muted beacon.
+  // when the table is genuinely EMPTY for this source. Two things it must not
+  // key on: `pendingCount`, which would hide the only route back to a muted
+  // beacon; and an unknown count, where a failed request would make the surface
+  // silently not exist rather than report the failure (#4946's lesson).
   if (!sourceId) return null;
-  if (totalCount === 0 && !open) return null;
+  if (totalCount === 0 && !countUnknown && !open) return null;
 
   return (
     <>
