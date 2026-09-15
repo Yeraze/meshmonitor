@@ -13,6 +13,25 @@ import { compileUserRegex } from '../../utils/safeRegex.js';
 import { logger } from '../../utils/logger.js';
 
 /**
+ * How one of the five node-matching filters combines with the others (#5230).
+ *
+ * - `'or'` — the historical behaviour, and still the default: the filter joins
+ *   the union, so a node matching ANY enabled `or` filter is eligible.
+ * - `'and'` — the filter becomes a scope: a node must match it, whatever else
+ *   it matches. This is what "only auto-traceroute nodes on LongTurbo" needs;
+ *   under `'or'` a channel selection cannot narrow anything, it can only widen.
+ *
+ * Absent or unrecognised values read as `'or'`, so an install that predates the
+ * setting keeps the filter logic it already had.
+ */
+export type TracerouteFilterMode = 'or' | 'and';
+
+/** Coerce a stored string to a mode, defaulting to the back-compatible 'or'. */
+export function parseTracerouteFilterMode(raw: string | null | undefined): TracerouteFilterMode {
+  return raw === 'and' ? 'and' : 'or';
+}
+
+/**
  * Resolved traceroute filter configuration. Mirrors the return type of
  * DatabaseService.getTracerouteFilterSettingsAsync.
  */
@@ -28,6 +47,11 @@ export interface TracerouteFilterConfig {
   filterRolesEnabled: boolean;
   filterHwModelsEnabled: boolean;
   filterRegexEnabled: boolean;
+  filterNodesMode: TracerouteFilterMode;
+  filterChannelsMode: TracerouteFilterMode;
+  filterRolesMode: TracerouteFilterMode;
+  filterHwModelsMode: TracerouteFilterMode;
+  filterRegexMode: TracerouteFilterMode;
   expirationHours: number;
   sortByHops: boolean;
   filterLastHeardEnabled: boolean;
@@ -124,59 +148,68 @@ export async function selectNodeNeedingTraceroute(
         }
       }
 
-      // Check if ANY filter is actually configured
-      const hasAnyFilter =
-        (filterNodesEnabled && specificNodes.length > 0) ||
-        (filterChannelsEnabled && filterChannels.length > 0) ||
-        (filterRolesEnabled && filterRoles.length > 0) ||
-        (filterHwModelsEnabled && filterHwModels.length > 0) ||
-        (filterRegexEnabled && regexMatcher !== null);
+      /**
+       * Each enabled filter is a predicate plus a combine mode (#5230).
+       *
+       * A filter only participates when it is enabled AND actually configured —
+       * an enabled-but-empty channel list is not a scope that excludes
+       * everything, it is a filter the user has not filled in yet. Treating it
+       * as a scope would silently stop all auto-traceroutes.
+       */
+      type ActiveFilter = { mode: TracerouteFilterMode; matches: (node: DbNode) => boolean };
+      const active: ActiveFilter[] = [];
 
-      // Only filter if at least one filter is configured
-      if (hasAnyFilter) {
-        eligibleNodes = eligibleNodes.filter((node) => {
-          // UNION logic: node passes if it matches ANY enabled filter
-          // Check specific nodes filter
-          if (filterNodesEnabled && specificNodes.length > 0) {
-            if (specificNodes.includes(node.nodeNum)) {
-              return true;
-            }
-          }
-
-          // Check channel filter
-          if (filterChannelsEnabled && filterChannels.length > 0) {
-            if (node.channel != null && filterChannels.includes(node.channel)) {
-              return true;
-            }
-          }
-
-          // Check role filter
-          if (filterRolesEnabled && filterRoles.length > 0) {
-            if (node.role != null && filterRoles.includes(node.role)) {
-              return true;
-            }
-          }
-
-          // Check hardware model filter
-          if (filterHwModelsEnabled && filterHwModels.length > 0) {
-            if (node.hwModel != null && filterHwModels.includes(node.hwModel)) {
-              return true;
-            }
-          }
-
-          // Check regex name filter
-          if (filterRegexEnabled && regexMatcher !== null) {
-            const name = node.longName || node.shortName || node.nodeId || '';
-            if (regexMatcher.test(name)) {
-              return true;
-            }
-          }
-
-          // Node didn't match any enabled filter
-          return false;
+      if (filterNodesEnabled && specificNodes.length > 0) {
+        active.push({
+          mode: filterCfg.filterNodesMode,
+          matches: (node) => specificNodes.includes(node.nodeNum),
         });
       }
-      // If hasAnyFilter is false, all nodes pass (no filtering applied)
+      if (filterChannelsEnabled && filterChannels.length > 0) {
+        active.push({
+          mode: filterCfg.filterChannelsMode,
+          // A node with no known channel never matches. Under 'or' that is
+          // harmless (another filter can still admit it); under 'and' it is the
+          // point — "heard on LongTurbo" cannot be true of a node we have never
+          // decoded a channel for. The UI surfaces how many nodes that excludes.
+          matches: (node) => node.channel != null && filterChannels.includes(node.channel),
+        });
+      }
+      if (filterRolesEnabled && filterRoles.length > 0) {
+        active.push({
+          mode: filterCfg.filterRolesMode,
+          matches: (node) => node.role != null && filterRoles.includes(node.role),
+        });
+      }
+      if (filterHwModelsEnabled && filterHwModels.length > 0) {
+        active.push({
+          mode: filterCfg.filterHwModelsMode,
+          matches: (node) => node.hwModel != null && filterHwModels.includes(node.hwModel),
+        });
+      }
+      if (filterRegexEnabled && regexMatcher !== null) {
+        const matcher = regexMatcher;
+        active.push({
+          mode: filterCfg.filterRegexMode,
+          matches: (node) => matcher.test(node.longName || node.shortName || node.nodeId || ''),
+        });
+      }
+
+      const andFilters = active.filter((f) => f.mode === 'and');
+      const orFilters = active.filter((f) => f.mode === 'or');
+
+      if (active.length > 0) {
+        eligibleNodes = eligibleNodes.filter((node) => {
+          // Every 'and' filter must match — these are scopes.
+          if (!andFilters.every((f) => f.matches(node))) return false;
+          // The 'or' filters keep their historical union behaviour. With none
+          // configured the clause is vacuous, so a pure-'and' config is a plain
+          // intersection rather than a set that matches nothing.
+          if (orFilters.length > 0 && !orFilters.some((f) => f.matches(node))) return false;
+          return true;
+        });
+      }
+      // With no filter configured at all, every node passes.
     }
 
     if (eligibleNodes.length === 0) {

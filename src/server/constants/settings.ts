@@ -595,6 +595,13 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'tracerouteFilterRolesEnabled',
   'tracerouteFilterHwModelsEnabled',
   'tracerouteFilterRegexEnabled',
+  // Per-filter combine mode ('or' | 'and') — #5230. Absent/invalid reads as
+  // 'or', which is the behaviour every install had before the setting existed.
+  'tracerouteFilterNodesMode',
+  'tracerouteFilterChannelsMode',
+  'tracerouteFilterRolesMode',
+  'tracerouteFilterHwModelsMode',
+  'tracerouteFilterRegexMode',
   'tracerouteExpirationHours',
   'tracerouteSortByHops',
   'tracerouteFilterLastHeardEnabled',
@@ -723,6 +730,13 @@ export const PER_SOURCE_KEYS_NOT_POSTABLE = new Set<string>([
   'tracerouteFilterRolesEnabled',
   'tracerouteFilterHwModelsEnabled',
   'tracerouteFilterRegexEnabled',
+  // Per-filter combine mode ('or' | 'and') — #5230. Absent/invalid reads as
+  // 'or', which is the behaviour every install had before the setting existed.
+  'tracerouteFilterNodesMode',
+  'tracerouteFilterChannelsMode',
+  'tracerouteFilterRolesMode',
+  'tracerouteFilterHwModelsMode',
+  'tracerouteFilterRegexMode',
   'tracerouteExpirationHours',
   'tracerouteSortByHops',
   // ── Server-managed bookkeeping, never user-set ──────────────────────────

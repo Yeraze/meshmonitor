@@ -129,10 +129,13 @@ describe('per-source settings key allowlist invariants', () => {
   // Documentation-only guard: PER_SOURCE_KEYS_NOT_POSTABLE was computed, not
   // guessed — spec §3.1(c) predicted 18 keys. `externalUrl` gained a writer
   // (#4437, WP2) and was removed from this exemption set, shrinking the count
-  // to 17. Pin the size so a silent drift (e.g. a future PER_SOURCE_SETTINGS_KEYS
-  // addition without VALID_SETTINGS_KEYS coverage) surfaces here rather than
-  // only in the exact-equality test above.
+  // to 17. #5230 added the five `tracerouteFilter*Mode` keys, which are written
+  // by POST /api/settings/traceroute-nodes like their `*Enabled` siblings and
+  // so belong in the same exemption set — 22. Pin the size so a silent drift
+  // (e.g. a future PER_SOURCE_SETTINGS_KEYS addition without
+  // VALID_SETTINGS_KEYS coverage) surfaces here rather than only in the
+  // exact-equality test above.
   it('PER_SOURCE_KEYS_NOT_POSTABLE has the expected size', () => {
-    expect(PER_SOURCE_KEYS_NOT_POSTABLE.size).toBe(17);
+    expect(PER_SOURCE_KEYS_NOT_POSTABLE.size).toBe(22);
   });
 });

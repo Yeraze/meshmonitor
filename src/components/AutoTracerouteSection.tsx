@@ -32,6 +32,23 @@ interface Node {
   };
 }
 
+/**
+ * How one filter combines with the others (#5230).
+ *
+ * `'or'` is the historical behaviour and the default: the filter joins a union,
+ * so selecting channels can only ever WIDEN the candidate pool. `'and'` makes
+ * it a scope — the node must match it whatever else it matches — which is what
+ * "only trace nodes heard on LongTurbo" needs.
+ */
+type FilterMode = 'or' | 'and';
+
+// Must match CHANNEL_DB_OFFSET in src/server/constants/meshtastic.ts. Channel
+// ids at or above it are Channel Database entries, not device channel slots.
+const CHANNEL_DB_OFFSET = 100;
+
+/** Coerce a server value to a mode; matches the backend's parse, default 'or'. */
+const asFilterMode = (raw: unknown): FilterMode => (raw === 'and' ? 'and' : 'or');
+
 interface FilterSettings {
   enabled: boolean;
   nodeNums: number[];
@@ -44,6 +61,11 @@ interface FilterSettings {
   filterRolesEnabled: boolean;
   filterHwModelsEnabled: boolean;
   filterRegexEnabled: boolean;
+  filterNodesMode: FilterMode;
+  filterChannelsMode: FilterMode;
+  filterRolesMode: FilterMode;
+  filterHwModelsMode: FilterMode;
+  filterRegexMode: FilterMode;
   filterLastHeardEnabled: boolean;
   filterLastHeardHours: number;
   filterHopsEnabled: boolean;
@@ -63,6 +85,48 @@ interface TracerouteLogEntry {
   toNodeName: string | null;
   success: boolean | null;
 }
+
+/**
+ * Per-filter AND/OR switch (#5230).
+ *
+ * `OR` keeps the filter in the union — it can only widen the pool. `AND` turns
+ * it into a scope the node must also satisfy. Rendered inside the collapsible
+ * section header, so clicks are stopped from reaching the collapse handler.
+ */
+const FilterModeToggle: React.FC<{
+  mode: FilterMode;
+  onChange: (mode: FilterMode) => void;
+  label: string;
+  testId: string;
+}> = ({ mode, onChange, label, testId }) => (
+  <span
+    style={{ display: 'inline-flex', border: '1px solid var(--color-surface-active)', borderRadius: '4px', overflow: 'hidden' }}
+    onClick={(e) => e.stopPropagation()}
+    role="group"
+    aria-label={label}
+    data-testid={testId}
+  >
+    {(['or', 'and'] as FilterMode[]).map((m) => (
+      <button
+        key={m}
+        type="button"
+        aria-pressed={mode === m}
+        onClick={(e) => { e.stopPropagation(); onChange(m); }}
+        style={{
+          padding: '0 0.35rem',
+          fontSize: '10px',
+          lineHeight: '16px',
+          border: 'none',
+          cursor: 'pointer',
+          background: mode === m ? 'var(--color-accent)' : 'transparent',
+          color: mode === m ? 'var(--color-accent-text)' : 'var(--color-text-subtle)',
+        }}
+      >
+        {m.toUpperCase()}
+      </button>
+    ))}
+  </span>
+);
 
 const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
   intervalMinutes,
@@ -92,6 +156,17 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
   const [filterRolesEnabled, setFilterRolesEnabled] = useState(true);
   const [filterHwModelsEnabled, setFilterHwModelsEnabled] = useState(true);
   const [filterRegexEnabled, setFilterRegexEnabled] = useState(true);
+
+  // Per-filter combine mode (#5230). Defaults to 'or' so an install that has
+  // never touched these keeps exactly the selection it had before.
+  const [filterNodesMode, setFilterNodesMode] = useState<FilterMode>('or');
+  const [filterChannelsMode, setFilterChannelsMode] = useState<FilterMode>('or');
+  const [filterRolesMode, setFilterRolesMode] = useState<FilterMode>('or');
+  const [filterHwModelsMode, setFilterHwModelsMode] = useState<FilterMode>('or');
+  const [filterRegexMode, setFilterRegexMode] = useState<FilterMode>('or');
+
+  // nodes.channel -> display name, for the channel picker.
+  const [channelNames, setChannelNames] = useState<Map<number, string>>(new Map());
 
   // Last heard filter
   const [filterLastHeardEnabled, setFilterLastHeardEnabled] = useState(true);
@@ -164,6 +239,51 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
     void fetchNodes();
   }, [baseUrl, csrfFetch, sourceQuery]);
 
+  /**
+   * Names for the channel picker (#5230).
+   *
+   * `nodes.channel` mixes two id spaces: 0-7 are the device's own channel slots,
+   * and anything >= CHANNEL_DB_OFFSET is `offset + channel_database.id` — the
+   * server-side decryption entries used for MQTT and bridged traffic. On a real
+   * install the virtual ids dominate, so a picker that renders "Ch 102" is
+   * unusable for the case this feature exists to serve: operators who name
+   * channels after presets and want to scope to one of them.
+   */
+  useEffect(() => {
+    const fetchChannelNames = async () => {
+      const names = new Map<number, string>();
+      try {
+        const [deviceRes, dbRes] = await Promise.all([
+          csrfFetch(`${baseUrl}/api/channels${sourceQuery}`),
+          csrfFetch(`${baseUrl}/api/channel-database`),
+        ]);
+        if (deviceRes.ok) {
+          const rows = await deviceRes.json();
+          if (Array.isArray(rows)) {
+            rows.forEach((c: { id?: number; name?: string }) => {
+              if (typeof c?.id === 'number' && c.name) names.set(c.id, c.name);
+            });
+          }
+        }
+        if (dbRes.ok) {
+          // Always the `{ success, count, data }` envelope — see
+          // _channelDatabaseHandlers.getAllChannelsHandler.
+          const body = await dbRes.json();
+          const rows = body?.data;
+          if (Array.isArray(rows)) {
+            rows.forEach((c: { id?: number; name?: string }) => {
+              if (typeof c?.id === 'number' && c.name) names.set(CHANNEL_DB_OFFSET + c.id, c.name);
+            });
+          }
+        }
+      } catch {
+        // Names are a convenience; the picker still works off raw ids.
+      }
+      setChannelNames(names);
+    };
+    void fetchChannelNames();
+  }, [baseUrl, csrfFetch, sourceQuery]);
+
   // Fetch current filter settings and schedule settings together to avoid race conditions
   useEffect(() => {
     const fetchAllSettings = async () => {
@@ -187,6 +307,12 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
           setFilterRolesEnabled(data.filterRolesEnabled !== false);
           setFilterHwModelsEnabled(data.filterHwModelsEnabled !== false);
           setFilterRegexEnabled(data.filterRegexEnabled !== false);
+          // Combine modes — anything but an explicit 'and' reads as 'or'.
+          setFilterNodesMode(asFilterMode(data.filterNodesMode));
+          setFilterChannelsMode(asFilterMode(data.filterChannelsMode));
+          setFilterRolesMode(asFilterMode(data.filterRolesMode));
+          setFilterHwModelsMode(asFilterMode(data.filterHwModelsMode));
+          setFilterRegexMode(asFilterMode(data.filterRegexMode));
           setFilterLastHeardEnabled(data.filterLastHeardEnabled !== false);
           setFilterLastHeardHours(data.filterLastHeardHours || 168);
           setFilterHopsEnabled(data.filterHopsEnabled || false);
@@ -294,6 +420,14 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
     const filterRolesEnabledChanged = filterRolesEnabled !== (initialSettings.filterRolesEnabled !== false);
     const filterHwModelsEnabledChanged = filterHwModelsEnabled !== (initialSettings.filterHwModelsEnabled !== false);
     const filterRegexEnabledChanged = filterRegexEnabled !== (initialSettings.filterRegexEnabled !== false);
+
+    // Combine-mode changes (#5230)
+    const modesChanged =
+      filterNodesMode !== asFilterMode(initialSettings.filterNodesMode) ||
+      filterChannelsMode !== asFilterMode(initialSettings.filterChannelsMode) ||
+      filterRolesMode !== asFilterMode(initialSettings.filterRolesMode) ||
+      filterHwModelsMode !== asFilterMode(initialSettings.filterHwModelsMode) ||
+      filterRegexMode !== asFilterMode(initialSettings.filterRegexMode);
     const filterLastHeardEnabledChanged = filterLastHeardEnabled !== (initialSettings.filterLastHeardEnabled !== false);
     const filterLastHeardHoursChanged = filterLastHeardHours !== (initialSettings.filterLastHeardHours || 168);
     const filterHopsEnabledChanged = filterHopsEnabled !== (initialSettings.filterHopsEnabled || false);
@@ -312,12 +446,13 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
     const scheduleEndChanged = scheduleEnd !== (initialSettings.scheduleEnd || '00:00');
 
     const changed = intervalChanged || filterEnabledChanged || nodesChanged || channelsChanged || rolesChanged || hwModelsChanged || regexChanged ||
-      filterNodesEnabledChanged || filterChannelsEnabledChanged || filterRolesEnabledChanged || filterHwModelsEnabledChanged || filterRegexEnabledChanged ||
+      modesChanged || filterNodesEnabledChanged || filterChannelsEnabledChanged || filterRolesEnabledChanged || filterHwModelsEnabledChanged || filterRegexEnabledChanged ||
       filterLastHeardEnabledChanged || filterLastHeardHoursChanged || filterHopsEnabledChanged || filterHopsMinChanged || filterHopsMaxChanged ||
       expirationHoursChanged || sortByHopsChanged || scheduleEnabledChanged || scheduleStartChanged || scheduleEndChanged;
     setHasChanges(changed);
   }, [localEnabled, localInterval, intervalMinutes, initialInterval, filterEnabled, selectedNodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex, initialSettings,
-      filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled, filterRegexEnabled,
+      filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled,
+      filterNodesMode, filterChannelsMode, filterRolesMode, filterHwModelsMode, filterRegexMode, filterRegexEnabled,
       filterLastHeardEnabled, filterLastHeardHours, filterHopsEnabled, filterHopsMin, filterHopsMax,
       expirationHours, sortByHops,
       scheduleEnabled, scheduleStart, scheduleEnd]);
@@ -336,6 +471,11 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
       setFilterNameRegex(initialSettings.filterNameRegex || '.*');
       setFilterNodesEnabled(initialSettings.filterNodesEnabled !== false);
       setFilterChannelsEnabled(initialSettings.filterChannelsEnabled !== false);
+      setFilterNodesMode(asFilterMode(initialSettings.filterNodesMode));
+      setFilterChannelsMode(asFilterMode(initialSettings.filterChannelsMode));
+      setFilterRolesMode(asFilterMode(initialSettings.filterRolesMode));
+      setFilterHwModelsMode(asFilterMode(initialSettings.filterHwModelsMode));
+      setFilterRegexMode(asFilterMode(initialSettings.filterRegexMode));
       setFilterRolesEnabled(initialSettings.filterRolesEnabled !== false);
       setFilterHwModelsEnabled(initialSettings.filterHwModelsEnabled !== false);
       setFilterRegexEnabled(initialSettings.filterRegexEnabled !== false);
@@ -382,6 +522,24 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
     return Array.from(channels).sort((a, b) => a - b);
   }, [availableNodes]);
 
+  /** "LongTurbo", or "Ch 3" / "DB #45" when the name is not known. */
+  const channelLabel = useCallback((channel: number): string => {
+    const name = channelNames.get(channel);
+    if (name) return name;
+    return channel >= CHANNEL_DB_OFFSET ? `DB #${channel - CHANNEL_DB_OFFSET}` : `Ch ${channel}`;
+  }, [channelNames]);
+
+  /**
+   * Nodes we have never decoded a channel for. Under an 'and' channel scope
+   * these are all excluded — "heard on LongTurbo" cannot be true of a node with
+   * no known channel — and on a real install this is a large bucket, so the
+   * count is surfaced rather than left as a silent collapse in the preview.
+   */
+  const nodesWithoutChannel = useMemo(
+    () => availableNodes.filter(n => n.channel === undefined || n.channel === null).length,
+    [availableNodes]
+  );
+
   const availableRolesInNodes = useMemo(() => {
     const roles = new Set<number>();
     availableNodes.forEach(node => {
@@ -425,72 +583,73 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
       });
     }
 
-    // Check if any OR filter is actually configured (mirrors backend hasAnyFilter logic)
+    /**
+     * Mirror of the backend's per-filter combine logic (#5230), so the preview
+     * count below shows what auto-traceroute will actually do. If these two
+     * drift, the preview becomes a confident lie — which is worse than no
+     * preview, because the user tunes against it.
+     *
+     * A filter participates only when enabled AND configured: an 'and' filter
+     * with nothing selected is one the user has not filled in, not a scope that
+     * excludes everything.
+     */
     let regexMatcherForCheck: RegExp | null = null;
     if (filterRegexEnabled && filterNameRegex && filterNameRegex !== '.*') {
       try { regexMatcherForCheck = new RegExp(filterNameRegex, 'i'); } catch { /* invalid */ }
     }
-    const hasAnyOrFilter =
-      (filterNodesEnabled && selectedNodeNums.length > 0) ||
-      (filterChannelsEnabled && filterChannels.length > 0) ||
-      (filterRolesEnabled && filterRoles.length > 0) ||
-      (filterHwModelsEnabled && filterHwModels.length > 0) ||
-      (filterRegexEnabled && (regexMatcherForCheck !== null || filterNameRegex === '.*'));
 
-    if (!hasAnyOrFilter) {
-      // Only AND filters active — return the entire candidate pool
+    const nodeName = (n: Node) => n.longName || n.user?.longName || n.shortName || n.user?.shortName || n.nodeId || '';
+
+    const active: Array<{ mode: FilterMode; matches: (n: Node) => boolean }> = [];
+    if (filterNodesEnabled && selectedNodeNums.length > 0) {
+      active.push({ mode: filterNodesMode, matches: (n) => selectedNodeNums.includes(n.nodeNum) });
+    }
+    if (filterChannelsEnabled && filterChannels.length > 0) {
+      active.push({
+        mode: filterChannelsMode,
+        matches: (n) => n.channel != null && filterChannels.includes(n.channel),
+      });
+    }
+    if (filterRolesEnabled && filterRoles.length > 0) {
+      active.push({
+        mode: filterRolesMode,
+        matches: (n) => { const r = getNodeRole(n); return r !== undefined && filterRoles.includes(r); },
+      });
+    }
+    if (filterHwModelsEnabled && filterHwModels.length > 0) {
+      active.push({
+        mode: filterHwModelsMode,
+        matches: (n) => { const h = getNodeHwModel(n); return h !== undefined && filterHwModels.includes(h); },
+      });
+    }
+    // `.*` is NOT a participating filter, matching the backend, which only
+    // compiles a matcher when the pattern is non-default. The old preview
+    // treated it as a match-all OR member — and since the regex filter is
+    // enabled with `.*` by DEFAULT, that silently neutralised every other OR
+    // filter: picking a channel showed the whole mesh as matching while the
+    // scheduler traced only the channel. The preview now says what will happen.
+    if (filterRegexEnabled && regexMatcherForCheck !== null) {
+      const re = regexMatcherForCheck;
+      active.push({ mode: filterRegexMode, matches: (n) => re.test(nodeName(n)) });
+    }
+
+    if (active.length === 0) {
+      // Only the always-AND filters are doing anything.
       return candidatePool;
     }
 
-    const matchingNodeNums = new Set<number>();
+    const andFilters = active.filter(f => f.mode === 'and');
+    const orFilters = active.filter(f => f.mode === 'or');
 
-    // Add specific nodes (only if this filter is enabled)
-    if (filterNodesEnabled) {
-      selectedNodeNums.forEach(num => matchingNodeNums.add(num));
-    }
+    return candidatePool.filter(n => {
+      if (!andFilters.every(f => f.matches(n))) return false;
+      if (orFilters.length > 0 && !orFilters.some(f => f.matches(n))) return false;
+      return true;
+    });
 
-    // Add nodes matching channel filter (only if this filter is enabled)
-    if (filterChannelsEnabled && filterChannels.length > 0) {
-      candidatePool.filter(n => filterChannels.includes(n.channel ?? -1))
-        .forEach(n => matchingNodeNums.add(n.nodeNum));
-    }
-
-    // Add nodes matching role filter (only if this filter is enabled)
-    if (filterRolesEnabled && filterRoles.length > 0) {
-      candidatePool.filter(n => {
-        const role = getNodeRole(n);
-        return role !== undefined && filterRoles.includes(role);
-      }).forEach(n => matchingNodeNums.add(n.nodeNum));
-    }
-
-    // Add nodes matching hardware model filter (only if this filter is enabled)
-    if (filterHwModelsEnabled && filterHwModels.length > 0) {
-      candidatePool.filter(n => {
-        const hwModel = getNodeHwModel(n);
-        return hwModel !== undefined && filterHwModels.includes(hwModel);
-      }).forEach(n => matchingNodeNums.add(n.nodeNum));
-    }
-
-    // Add nodes matching regex (only if this filter is enabled and regex is not default)
-    if (filterRegexEnabled && filterNameRegex && filterNameRegex !== '.*') {
-      try {
-        const regex = new RegExp(filterNameRegex, 'i');
-        candidatePool.filter(n => {
-          const name = n.longName || n.user?.longName || n.shortName || n.user?.shortName || n.nodeId || '';
-          return regex.test(name);
-        }).forEach(n => matchingNodeNums.add(n.nodeNum));
-      } catch {
-        // Invalid regex, ignore
-      }
-    } else if (filterRegexEnabled && filterNameRegex === '.*') {
-      // Match all - add all nodes from candidate pool
-      candidatePool.forEach(n => matchingNodeNums.add(n.nodeNum));
-    }
-
-    // Return nodes that are both in the candidate pool and match an OR filter
-    return candidatePool.filter(n => matchingNodeNums.has(n.nodeNum));
   }, [filterEnabled, selectedNodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex, availableNodes,
       filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled, filterRegexEnabled,
+      filterNodesMode, filterChannelsMode, filterRolesMode, filterHwModelsMode, filterRegexMode,
       filterLastHeardEnabled, filterLastHeardHours, filterHopsEnabled, filterHopsMin, filterHopsMax]);
 
   // Debounced matching nodes for preview (1 second delay)
@@ -564,6 +723,11 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
           filterRolesEnabled,
           filterHwModelsEnabled,
           filterRegexEnabled,
+          filterNodesMode,
+          filterChannelsMode,
+          filterRolesMode,
+          filterHwModelsMode,
+          filterRegexMode,
           filterLastHeardEnabled,
           filterLastHeardHours,
           filterHopsEnabled,
@@ -597,6 +761,11 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
         filterRolesEnabled,
         filterHwModelsEnabled,
         filterRegexEnabled,
+        filterNodesMode,
+        filterChannelsMode,
+        filterRolesMode,
+        filterHwModelsMode,
+        filterRegexMode,
         filterLastHeardEnabled,
         filterLastHeardHours,
         filterHopsEnabled,
@@ -617,7 +786,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [localEnabled, localInterval, filterEnabled, selectedNodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex, filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled, filterRegexEnabled, filterLastHeardEnabled, filterLastHeardHours, filterHopsEnabled, filterHopsMin, filterHopsMax, expirationHours, sortByHops, scheduleEnabled, scheduleStart, scheduleEnd, baseUrl, csrfFetch, showToast, t, onIntervalChange, sourceQuery]);
+  }, [localEnabled, localInterval, filterEnabled, selectedNodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex, filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled, filterRegexEnabled, filterNodesMode, filterChannelsMode, filterRolesMode, filterHwModelsMode, filterRegexMode, filterLastHeardEnabled, filterLastHeardHours, filterHopsEnabled, filterHopsMin, filterHopsMax, expirationHours, sortByHops, scheduleEnabled, scheduleStart, scheduleEnd, baseUrl, csrfFetch, showToast, t, onIntervalChange, sourceQuery]);
 
   // Register with SaveBar
   useSaveBar({
@@ -891,6 +1060,12 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                     {filterNodesEnabled && selectedNodeNums.length > 0 && (
                       <span style={badgeStyle}>{selectedNodeNums.length}</span>
                     )}
+                    <FilterModeToggle
+                      mode={filterNodesMode}
+                      onChange={setFilterNodesMode}
+                      label={t('automation.auto_traceroute.combine_mode')}
+                      testId="traceroute-mode-nodes"
+                    />
                   </span>
                 </div>
                 {expandedSections.nodes && (
@@ -977,6 +1152,12 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                     {filterChannelsEnabled && filterChannels.length > 0 && (
                       <span style={badgeStyle}>{filterChannels.length}</span>
                     )}
+                    <FilterModeToggle
+                      mode={filterChannelsMode}
+                      onChange={setFilterChannelsMode}
+                      label={t('automation.auto_traceroute.combine_mode')}
+                      testId="traceroute-mode-channels"
+                    />
                   </span>
                 </div>
                 {expandedSections.channels && (
@@ -992,9 +1173,21 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                             onChange={() => toggleArrayValue(filterChannels, channel, setFilterChannels)}
                             style={{ width: 'auto', margin: 0 }}
                           />
-                          Ch {channel} ({availableNodes.filter(n => n.channel === channel).length})
+                          {channelLabel(channel)} ({availableNodes.filter(n => n.channel === channel).length})
                         </label>
                       ))
+                    )}
+                    {/* An AND-scoped channel filter excludes every node we have
+                        never decoded a channel for. On a real mesh that is a
+                        large bucket, so say so here rather than let the preview
+                        count collapse for no visible reason (#5230). */}
+                    {filterChannelsMode === 'and' && nodesWithoutChannel > 0 && (
+                      <div
+                        style={{ flexBasis: '100%', fontSize: '11px', color: 'var(--color-warning)' }}
+                        data-testid="traceroute-channel-unknown-warning"
+                      >
+                        {t('automation.auto_traceroute.channel_unknown_excluded', { count: nodesWithoutChannel })}
+                      </div>
                     )}
                   </div>
                 )}
@@ -1022,6 +1215,12 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                     {filterRolesEnabled && filterRoles.length > 0 && (
                       <span style={badgeStyle}>{filterRoles.length}</span>
                     )}
+                    <FilterModeToggle
+                      mode={filterRolesMode}
+                      onChange={setFilterRolesMode}
+                      label={t('automation.auto_traceroute.combine_mode')}
+                      testId="traceroute-mode-roles"
+                    />
                   </span>
                 </div>
                 {expandedSections.roles && (
@@ -1071,6 +1270,12 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                     {filterHwModelsEnabled && filterHwModels.length > 0 && (
                       <span style={badgeStyle}>{filterHwModels.length}</span>
                     )}
+                    <FilterModeToggle
+                      mode={filterHwModelsMode}
+                      onChange={setFilterHwModelsMode}
+                      label={t('automation.auto_traceroute.combine_mode')}
+                      testId="traceroute-mode-hwmodels"
+                    />
                   </span>
                 </div>
                 {expandedSections.hwModels && (
@@ -1121,6 +1326,12 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                     {filterRegexEnabled && filterNameRegex !== '.*' && (
                       <span style={badgeStyle}>1</span>
                     )}
+                    <FilterModeToggle
+                      mode={filterRegexMode}
+                      onChange={setFilterRegexMode}
+                      label={t('automation.auto_traceroute.combine_mode')}
+                      testId="traceroute-mode-regex"
+                    />
                   </span>
                 </div>
                 {expandedSections.regex && (
@@ -1282,6 +1493,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                     debouncedMatchingNodes.map(node => (
                       <div
                         key={node.nodeNum}
+                        data-testid={`traceroute-match-${node.nodeNum}`}
                         style={{
                           padding: '0.35rem 0.5rem',
                           borderBottom: '1px solid var(--color-surface-hover)',
