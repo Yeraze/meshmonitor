@@ -1106,7 +1106,18 @@ export class MeshCoreNativeBackend extends EventEmitter {
       return await Promise.race([
         p,
         new Promise<T>((_resolve, reject) => {
-          to = setTimeout(() => reject(new Error(`Native command timeout: ${label}`)), timeoutMs);
+          to = setTimeout(() => {
+            // withTimeout only rejects the CALLER's promise — it does not
+            // cancel `p` or advance radioOpChain. If `label` isn't actually
+            // the op holding the chain, name the real one so this failure
+            // mode identifies itself instead of blaming whichever command
+            // happened to be queued behind the stuck op (#5243).
+            const head = this.radioOpHead;
+            if (head && head !== label) {
+              logger.warn(`[MeshCoreNative:${this.sourceId}] '${label}' timed out while radio-op '${head}' holds the chain — '${label}' never reached the serial port`);
+            }
+            reject(new Error(`Native command timeout: ${label}`));
+          }, timeoutMs);
         }),
       ]);
     } finally {
@@ -1139,10 +1150,17 @@ export class MeshCoreNativeBackend extends EventEmitter {
    *
    * The chain is an instance field, so it is inherently per-source: each source
    * owns its own MeshCoreNativeBackend (and physical connection), so this never
-   * serializes across sources — only same-connection ops wait on each other. The
-   * lock is held until the operation's own listeners tear down (bounded by each
-   * op's internal timeout, or sendCommand's outer withTimeout), so it always
-   * releases.
+   * serializes across sources — only same-connection ops wait on each other.
+   *
+   * The chain only advances when `fn`'s promise settles, and sendCommand's outer
+   * `withTimeout` does NOT settle it — that timeout rejects the CALLER's promise
+   * without cancelling `fn` or advancing the chain. An op with no timer of its
+   * own (nothing rejects/resolves until a device push arrives that never comes)
+   * therefore parks the chain for the life of the connection: every later op
+   * queued behind it sits in `.then()` and its executor — including the
+   * `sendToRadioFrame` call that does the actual write — never runs (#5243).
+   * `runExclusiveRadioOp` itself wraps `fn` in a backstop timeout so a stuck op
+   * always eventually settles the chain, even if it has no timer of its own.
    *
    * NOTE: this does not lock *library* commands (e.g. send_message via
    * sendTextMessage), which can still emit an `Err` on the shared channel. The
@@ -1152,11 +1170,40 @@ export class MeshCoreNativeBackend extends EventEmitter {
    * set_device_time ack windows are sub-millisecond.
    */
   private radioOpChain: Promise<unknown> = Promise.resolve();
+  /** Label of the radio op currently holding radioOpChain, or null when idle. */
+  private radioOpHead: string | null = null;
 
-  private runExclusiveRadioOp<T>(fn: () => Promise<T>): Promise<T> {
+  /**
+   * Backstop for ops with no timer of their own. Must stay above the largest
+   * inner timeout already in use by a runExclusiveRadioOp handler
+   * (trace_path's default is 45_000ms) so it is a safety net, not a behaviour
+   * change, for ops that already bound themselves.
+   */
+  private static readonly RADIO_OP_BACKSTOP_MS = 60_000;
+
+  private runExclusiveRadioOp<T>(fn: () => Promise<T>, label = 'radio-op'): Promise<T> {
+    const bounded = (): Promise<T> => {
+      this.radioOpHead = label;
+      return new Promise<T>((resolve, reject) => {
+        let settled = false;
+        const timer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          logger.warn(`[MeshCoreNative:${this.sourceId}] radio-op '${label}' did not settle within ${MeshCoreNativeBackend.RADIO_OP_BACKSTOP_MS}ms — releasing the chain`);
+          reject(new Error(`Radio op timeout: ${label}`));
+        }, MeshCoreNativeBackend.RADIO_OP_BACKSTOP_MS);
+        fn().then(
+          (v) => { if (!settled) { settled = true; clearTimeout(timer); resolve(v); } },
+          (e) => { if (!settled) { settled = true; clearTimeout(timer); reject(e); } },
+        );
+      }).finally(() => {
+        if (this.radioOpHead === label) this.radioOpHead = null;
+      });
+    };
     // Run after whatever is already queued, regardless of how it settled
-    // (using `fn` for both handlers means a prior rejection still releases us).
-    const run = this.radioOpChain.then(fn, fn);
+    // (using `bounded` for both handlers means a prior rejection still
+    // releases us).
+    const run = this.radioOpChain.then(bounded, bounded);
     // Advance the chain to this op's completion. Swallow settlement here so the
     // chain never carries an unhandled rejection — the caller still receives
     // `run` (and its rejection) directly.
@@ -1300,7 +1347,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
           c.once(this.constants!.ResponseCodes.Sent, onSent);
           c.once(this.constants!.ResponseCodes.Err, onErr);
           c.sendToRadioFrame(frame);
-        }));
+        }), 'discover_path');
         return { ok: true };
       }
 
@@ -1345,7 +1392,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
           c.once(this.constants!.ResponseCodes.Ok, onOk);
           c.once(this.constants!.ResponseCodes.Err, onErr);
           c.sendToRadioFrame(frame);
-        }));
+        }), 'discover_nodes');
         return { ok: true };
       }
 
@@ -1416,7 +1463,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
           c.on(K.PushCodes.BinaryResponse, onResp);
           c.once(K.ResponseCodes.Err, onErr);
           void c.sendToRadioFrame(frame);
-        }));
+        }), 'request_regions');
 
         // Parse: clock(4 LE) + NUL-terminated, comma-separated ASCII names.
         const buf = Buffer.from(responseData);
@@ -1488,7 +1535,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
           c.on(K.PushCodes.BinaryResponse, onResp);
           c.once(K.ResponseCodes.Err, onErr);
           void c.sendToRadioFrame(frame);
-        }));
+        }), 'request_owner');
 
         // Parse: clock(4 LE) + NUL-terminated "node_name\nowner_info" (ASCII).
         // The companion strips the firmware's leading 4-byte sender_timestamp
@@ -1597,7 +1644,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
           c.on(K.PushCodes.TraceData, onTraceData);
           c.once(K.ResponseCodes.Err, onErr);
           void c.sendToRadioFrame(frame);
-        }));
+        }), 'trace_path');
         return {
           ok: true,
           pathLen: result.pathLen,
@@ -1679,7 +1726,13 @@ export class MeshCoreNativeBackend extends EventEmitter {
         // trust the ack: swallow a write rejection and confirm by re-reading the
         // contact. The device's stored out_path is the ground truth — a genuine
         // firmware reject leaves it empty and still surfaces as a failure.
-        const verified = await this.runExclusiveRadioOp(async () => {
+        //
+        // Own inner timeout: none of getContacts()/setContactPath()/
+        // addOrUpdateContact() carry a timer, so a missed device push here
+        // would otherwise park radioOpChain until runExclusiveRadioOp's
+        // backstop fires (#5243) — bound it the same way request_owner does.
+        const setOutPathTimeoutMs = Number(params.timeout_ms) || 15_000;
+        const verified = await this.runExclusiveRadioOp(async () => this.withTimeout((async () => {
           const before = (await c.getContacts()) as RawDeviceContact[];
           const contact = before.find((ct) => bytesToHex(ct.publicKey) === bytesToHex(publicKey));
           if (!contact) throw new Error('Set-out-path target not in device contact list');
@@ -1723,7 +1776,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
           return !!updated
             && updated.outPathLen === expectedLen
             && bytesToHex(updated.outPath.subarray(0, path.length)) === bytesToHex(path);
-        });
+        })(), setOutPathTimeoutMs, 'set_out_path'), 'set_out_path');
 
         if (!verified) {
           // Read-back shows the device did not persist the path — a genuine
@@ -2191,6 +2244,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
         // request can't, so the two must not overlap.
         const responseData: Uint8Array = await this.runExclusiveRadioOp(
           () => c.sendBinaryRequest(publicKey, [reqType]),
+          'request_telemetry',
         );
         const mod = await loadMeshCoreJs();
         const records = mod.CayenneLpp.parse(responseData);
@@ -2270,10 +2324,11 @@ export class MeshCoreNativeBackend extends EventEmitter {
         logger.debug(`[MeshCoreNative:${this.sourceId}] set_device_time → epoch=${epoch}`);
         // Resolution depends on the radio emitting Ok or Err. A synchronous
         // send failure propagates via `.catch(reject)`; if the firmware never
-        // answers at all, the outer `withTimeout` wrapper in sendCommand() is
-        // the only safety net (surfacing a generic timeout). Same structure as
-        // discover_nodes / discover_path — serialize the Ok/Err command-ack
-        // window against other radio ops on this connection (see
+        // answers at all, runExclusiveRadioOp's own backstop timeout releases
+        // the chain (sendCommand()'s outer `withTimeout` only rejects the
+        // caller — it does not advance the chain by itself, #5243). Same
+        // structure as discover_nodes / discover_path — serialize the Ok/Err
+        // command-ack window against other radio ops on this connection (see
         // runExclusiveRadioOp) so a concurrent command's Err can't false-reject.
         await this.runExclusiveRadioOp(() => new Promise<void>((resolve, reject) => {
           const onOk = () => {
@@ -2289,7 +2344,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
           c.once(this.constants!.ResponseCodes.Ok, onOk);
           c.once(this.constants!.ResponseCodes.Err, onErr);
           c.sendCommandSetDeviceTime(epoch).catch(reject);
-        }));
+        }), 'set_device_time');
         return { ok: true };
       }
 
