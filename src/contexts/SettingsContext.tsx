@@ -18,6 +18,22 @@ import { DEFAULT_TARGET_ZOOM, DEFAULT_ZOOM_GATE_THRESHOLD } from '../utils/mapZo
 import { setDiscardInvalidPositionsDisplay } from '../utils/positionDisplayConfig';
 import { type NodeListStyle } from '../utils/nodeColor';
 import { IconStyleProvider, type IconStyle } from './IconStyleContext';
+import {
+  pickSetting,
+  TEMPERATURE_UNITS,
+  DISTANCE_UNITS,
+  POSITION_HISTORY_LINE_STYLES,
+  TIME_FORMATS,
+  DATE_FORMATS,
+  MAP_PIN_STYLES,
+  MAP_PIN_COLOR_MODES,
+  NODE_LIST_STYLES,
+  ICON_STYLES,
+  NODE_HOPS_CALCULATIONS,
+  DASHBOARD_SORT_OPTIONS,
+  SORT_FIELDS,
+  SORT_DIRECTIONS,
+} from './settingsEnums';
 import { useSource } from './SourceContext';
 import {
   NODE_DISPLAY_STRING_DEFAULTS,
@@ -528,17 +544,17 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
 
   const [temperatureUnit, setTemperatureUnitState] = useState<TemperatureUnit>(() => {
     const saved = localStorage.getItem('temperatureUnit');
-    return (saved === 'F' ? 'F' : 'C') as TemperatureUnit;
+    return pickSetting(saved, TEMPERATURE_UNITS) ?? 'C';
   });
 
   const [distanceUnit, setDistanceUnitState] = useState<DistanceUnit>(() => {
     const saved = localStorage.getItem('distanceUnit');
-    return (saved === 'mi' ? 'mi' : 'km') as DistanceUnit;
+    return pickSetting(saved, DISTANCE_UNITS) ?? 'km';
   });
 
   const [positionHistoryLineStyle, setPositionHistoryLineStyleState] = useState<PositionHistoryLineStyle>(() => {
     const saved = localStorage.getItem('positionHistoryLineStyle');
-    return (saved === 'linear' ? 'linear' : 'spline') as PositionHistoryLineStyle;
+    return pickSetting(saved, POSITION_HISTORY_LINE_STYLES) ?? 'spline';
   });
 
   const [telemetryVisualizationHours, setTelemetryVisualizationHoursState] = useState<number>(() => {
@@ -553,31 +569,28 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
 
   const [preferredSortField, setPreferredSortFieldState] = useState<SortField>(() => {
     const saved = localStorage.getItem('preferredSortField');
-    return (saved as SortField) || 'longName';
+    // Was a bare cast — the only setting unchecked on BOTH paths.
+    return pickSetting(saved, SORT_FIELDS) ?? 'longName';
   });
 
   const [preferredSortDirection, setPreferredSortDirectionState] = useState<SortDirection>(() => {
     const saved = localStorage.getItem('preferredSortDirection');
-    return (saved === 'desc' ? 'desc' : 'asc') as SortDirection;
+    return pickSetting(saved, SORT_DIRECTIONS) ?? 'asc';
   });
 
   const [preferredDashboardSortOption, setPreferredDashboardSortOptionState] = useState<DashboardSortOption>(() => {
     const saved = localStorage.getItem('preferredDashboardSortOption');
-    const validOptions: DashboardSortOption[] = ['custom', 'node-asc', 'node-desc', 'type-asc', 'type-desc'];
-    return (saved && validOptions.includes(saved as DashboardSortOption) ? saved : 'custom') as DashboardSortOption;
+    return pickSetting(saved, DASHBOARD_SORT_OPTIONS) ?? 'custom';
   });
 
   const [timeFormat, setTimeFormatState] = useState<TimeFormat>(() => {
     const saved = localStorage.getItem('timeFormat');
-    return (saved === '12' || saved === '24' ? saved : '24') as TimeFormat;
+    return pickSetting(saved, TIME_FORMATS) ?? '24';
   });
 
   const [dateFormat, setDateFormatState] = useState<DateFormat>(() => {
     const saved = localStorage.getItem('dateFormat');
-    if (saved === 'DD/MM/YYYY' || saved === 'YYYY-MM-DD') {
-      return saved as DateFormat;
-    }
-    return 'MM/DD/YYYY';
+    return pickSetting(saved, DATE_FORMATS) ?? 'MM/DD/YYYY';
   });
 
   const [mapTilesetLight, setMapTilesetLightState] = useState<TilesetId>(initialMapTilesets.light);
@@ -588,23 +601,23 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
 
   const [mapPinStyle, setMapPinStyleState] = useState<MapPinStyle>(() => {
     const saved = localStorage.getItem('mapPinStyle');
-    return (saved === 'official' ? 'official' : 'meshmonitor') as MapPinStyle;
+    return pickSetting(saved, MAP_PIN_STYLES) ?? 'meshmonitor';
   });
 
   // Defaults to 'node' so nothing changes for anyone until they ask for it.
   const [mapPinColorMode, setMapPinColorModeState] = useState<MapPinColorMode>(() => {
     const saved = localStorage.getItem('mapPinColorMode');
-    return (saved === 'hops' ? 'hops' : 'node') as MapPinColorMode;
+    return pickSetting(saved, MAP_PIN_COLOR_MODES) ?? 'node';
   });
 
   const [nodeListStyle, setNodeListStyleState] = useState<NodeListStyle>(() => {
     const saved = localStorage.getItem('nodeListStyle');
-    return (saved === 'meshtastic' || saved === 'importance' ? saved : 'monochrome') as NodeListStyle;
+    return pickSetting(saved, NODE_LIST_STYLES) ?? 'monochrome';
   });
 
   const [iconStyle, setIconStyleState] = useState<IconStyle>(() => {
     const saved = localStorage.getItem('iconStyle');
-    return (saved === 'emoji' ? 'emoji' : 'lucide') as IconStyle;
+    return pickSetting(saved, ICON_STYLES) ?? 'lucide';
   });
 
   const [neighborInfoMinZoom, setNeighborInfoMinZoomState] = useState<number>(() => {
@@ -1626,10 +1639,10 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             }
 
             if (settings.nodeHopsCalculation !== undefined) {
-              const valid: NodeHopsCalculation[] = ['nodeinfo', 'traceroute', 'messages'];
-              const value = valid.includes(settings.nodeHopsCalculation as NodeHopsCalculation)
-                ? settings.nodeHopsCalculation as NodeHopsCalculation
-                : NODE_DISPLAY_STRING_DEFAULTS.nodeHopsCalculation as NodeHopsCalculation;
+              // Already validated before this change — moved onto the shared
+              // list so there is exactly one copy of the valid values.
+              const value = pickSetting(settings.nodeHopsCalculation, NODE_HOPS_CALCULATIONS)
+                ?? (NODE_DISPLAY_STRING_DEFAULTS.nodeHopsCalculation as NodeHopsCalculation);
               setNodeHopsCalculationState(value);
               writeNodeDisplayLocal(sourceId, 'nodeHopsCalculation', value);
             }
@@ -1659,19 +1672,28 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             }
           }
 
-          if (settings.temperatureUnit) {
-            setTemperatureUnitState(settings.temperatureUnit as TemperatureUnit);
-            localStorage.setItem('temperatureUnit', settings.temperatureUnit);
+          {
+            const v = pickSetting(settings.temperatureUnit, TEMPERATURE_UNITS);
+            if (v) {
+              setTemperatureUnitState(v);
+              localStorage.setItem('temperatureUnit', v);
+            }
           }
 
-          if (settings.distanceUnit) {
-            setDistanceUnitState(settings.distanceUnit as DistanceUnit);
-            localStorage.setItem('distanceUnit', settings.distanceUnit);
+          {
+            const v = pickSetting(settings.distanceUnit, DISTANCE_UNITS);
+            if (v) {
+              setDistanceUnitState(v);
+              localStorage.setItem('distanceUnit', v);
+            }
           }
 
-          if (settings.positionHistoryLineStyle) {
-            setPositionHistoryLineStyleState(settings.positionHistoryLineStyle as PositionHistoryLineStyle);
-            localStorage.setItem('positionHistoryLineStyle', settings.positionHistoryLineStyle);
+          {
+            const v = pickSetting(settings.positionHistoryLineStyle, POSITION_HISTORY_LINE_STYLES);
+            if (v) {
+              setPositionHistoryLineStyleState(v);
+              localStorage.setItem('positionHistoryLineStyle', v);
+            }
           }
 
           if (settings.telemetryVisualizationHours) {
@@ -1706,32 +1728,44 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             }
           }
 
-          if (settings.preferredSortField) {
-            setPreferredSortFieldState(settings.preferredSortField as SortField);
-            localStorage.setItem('preferredSortField', settings.preferredSortField);
-          }
-
-          if (settings.preferredSortDirection) {
-            setPreferredSortDirectionState(settings.preferredSortDirection as SortDirection);
-            localStorage.setItem('preferredSortDirection', settings.preferredSortDirection);
-          }
-
-          if (settings.preferredDashboardSortOption) {
-            const validOptions: DashboardSortOption[] = ['custom', 'node-asc', 'node-desc', 'type-asc', 'type-desc'];
-            if (validOptions.includes(settings.preferredDashboardSortOption as DashboardSortOption)) {
-              setPreferredDashboardSortOptionState(settings.preferredDashboardSortOption as DashboardSortOption);
-              localStorage.setItem('preferredDashboardSortOption', settings.preferredDashboardSortOption);
+          {
+            const v = pickSetting(settings.preferredSortField, SORT_FIELDS);
+            if (v) {
+              setPreferredSortFieldState(v);
+              localStorage.setItem('preferredSortField', v);
             }
           }
 
-          if (settings.timeFormat) {
-            setTimeFormatState(settings.timeFormat as TimeFormat);
-            localStorage.setItem('timeFormat', settings.timeFormat);
+          {
+            const v = pickSetting(settings.preferredSortDirection, SORT_DIRECTIONS);
+            if (v) {
+              setPreferredSortDirectionState(v);
+              localStorage.setItem('preferredSortDirection', v);
+            }
           }
 
-          if (settings.dateFormat) {
-            setDateFormatState(settings.dateFormat as DateFormat);
-            localStorage.setItem('dateFormat', settings.dateFormat);
+          {
+            const v = pickSetting(settings.preferredDashboardSortOption, DASHBOARD_SORT_OPTIONS);
+            if (v) {
+              setPreferredDashboardSortOptionState(v);
+              localStorage.setItem('preferredDashboardSortOption', v);
+            }
+          }
+
+          {
+            const v = pickSetting(settings.timeFormat, TIME_FORMATS);
+            if (v) {
+              setTimeFormatState(v);
+              localStorage.setItem('timeFormat', v);
+            }
+          }
+
+          {
+            const v = pickSetting(settings.dateFormat, DATE_FORMATS);
+            if (v) {
+              setDateFormatState(v);
+              localStorage.setItem('dateFormat', v);
+            }
           }
 
           // Server-global Carto API key (#4934). Absent/blank ⇒ null (no key).
@@ -1768,9 +1802,12 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             setMapTilesetDarkState(resolveDefaultDarkTileset(nextCartoApiKey));
           }
 
-          if (settings.mapPinStyle) {
-            setMapPinStyleState(settings.mapPinStyle as MapPinStyle);
-            localStorage.setItem('mapPinStyle', settings.mapPinStyle);
+          {
+            const v = pickSetting(settings.mapPinStyle, MAP_PIN_STYLES);
+            if (v) {
+              setMapPinStyleState(v);
+              localStorage.setItem('mapPinStyle', v);
+            }
           }
 
           // Allowlist rather than a truthiness check + cast: the localStorage
@@ -1780,19 +1817,28 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
           // factory as neither branch. (The sibling mapPinStyle handler above
           // still has the older shape — noted in review of #5018, left alone
           // here rather than widening this diff.)
-          if (settings.mapPinColorMode === 'hops' || settings.mapPinColorMode === 'node') {
-            setMapPinColorModeState(settings.mapPinColorMode);
-            localStorage.setItem('mapPinColorMode', settings.mapPinColorMode);
+          {
+            const v = pickSetting(settings.mapPinColorMode, MAP_PIN_COLOR_MODES);
+            if (v) {
+              setMapPinColorModeState(v);
+              localStorage.setItem('mapPinColorMode', v);
+            }
           }
 
-          if (settings.nodeListStyle) {
-            setNodeListStyleState(settings.nodeListStyle as NodeListStyle);
-            localStorage.setItem('nodeListStyle', settings.nodeListStyle);
+          {
+            const v = pickSetting(settings.nodeListStyle, NODE_LIST_STYLES);
+            if (v) {
+              setNodeListStyleState(v);
+              localStorage.setItem('nodeListStyle', v);
+            }
           }
 
-          if (settings.iconStyle) {
-            setIconStyleState(settings.iconStyle as IconStyle);
-            localStorage.setItem('iconStyle', settings.iconStyle);
+          {
+            const v = pickSetting(settings.iconStyle, ICON_STYLES);
+            if (v) {
+              setIconStyleState(v);
+              localStorage.setItem('iconStyle', v);
+            }
           }
 
           if (settings.neighborInfoMinZoom !== undefined) {
