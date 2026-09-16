@@ -135,4 +135,36 @@ describe('SettingsContext uses the shared lists on both entry points', () => {
     const window = lines.slice(at, at + 6).join('\n');
     expect(window, key + ' seed does not use pickSetting').toContain('pickSetting(');
   });
+
+  /**
+   * Node-display settings seed from `readNodeDisplayLocal`, not
+   * `localStorage.getItem`, so the loop above cannot see them — which is
+   * exactly how nodeHopsCalculation kept an inline comparison that omitted
+   * 'nodeinfo' through the first pass of this change. Reviewed and caught on
+   * PR #5261; pinned here so the blind spot does not reopen.
+   */
+  const NODE_DISPLAY_ENUM_SETTINGS = ['nodeHopsCalculation'];
+
+  it.each(NODE_DISPLAY_ENUM_SETTINGS)('%s: every read goes through pickSetting', (key) => {
+    const lines = ctx.split('\n');
+    const reads = lines
+      .map((l, n) => ({ l, n }))
+      .filter(({ l }) => l.includes(`readNodeDisplayLocal(sourceId, '${key}')`));
+    expect(reads.length, `no readNodeDisplayLocal seed found for ${key}`).toBeGreaterThan(0);
+    for (const { n } of reads) {
+      const window = lines.slice(n, n + 6).join('\n');
+      expect(window, `${key} read at line ${n + 1} does not use pickSetting`).toContain('pickSetting(');
+    }
+  });
+
+  it('keeps no second copy of the nodeHopsCalculation values outside settingsEnums', () => {
+    // Three hand-written lists existed for this one setting and they
+    // disagreed. The shared list is the only place the values belong.
+    const hook = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/hooks/useNodeDisplaySettings.ts'),
+      'utf8',
+    );
+    expect(hook).not.toContain('VALID_NODE_HOPS_CALCULATIONS');
+    expect(hook).toContain('NODE_HOPS_CALCULATIONS');
+  });
 });

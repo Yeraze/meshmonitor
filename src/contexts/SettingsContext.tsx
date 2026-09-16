@@ -734,9 +734,12 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
 
   const [nodeHopsCalculation, setNodeHopsCalculationState] = useState<NodeHopsCalculation>(() => {
     const saved = readNodeDisplayLocal(sourceId, 'nodeHopsCalculation');
-    return (saved === 'traceroute' || saved === 'messages')
-      ? saved
-      : NODE_DISPLAY_STRING_DEFAULTS.nodeHopsCalculation as NodeHopsCalculation;
+    // This comparison used to omit 'nodeinfo'. Harmless only by coincidence —
+    // 'nodeinfo' is also the default, so a stored 'nodeinfo' landed on the
+    // right value by falling through. Change the default and it silently
+    // demotes a valid stored choice.
+    return pickSetting(saved, NODE_HOPS_CALCULATIONS)
+      ?? (NODE_DISPLAY_STRING_DEFAULTS.nodeHopsCalculation as NodeHopsCalculation);
   });
 
   // hideIncompleteNodes moved here from UIContext's showIncompleteNodes
@@ -1588,9 +1591,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     {
       const savedHops = readNodeDisplayLocal(sourceId, 'nodeHopsCalculation');
       setNodeHopsCalculationState(
-        (savedHops === 'traceroute' || savedHops === 'messages')
-          ? savedHops
-          : NODE_DISPLAY_STRING_DEFAULTS.nodeHopsCalculation as NodeHopsCalculation,
+        pickSetting(savedHops, NODE_HOPS_CALCULATIONS)
+          ?? (NODE_DISPLAY_STRING_DEFAULTS.nodeHopsCalculation as NodeHopsCalculation),
       );
     }
 
@@ -1810,13 +1812,6 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             }
           }
 
-          // Allowlist rather than a truthiness check + cast: the localStorage
-          // seed above already refuses anything that isn't 'hops', and the
-          // server path should not be the looser of the two. A stored 'foo'
-          // would otherwise be cast to MapPinColorMode and reach the icon
-          // factory as neither branch. (The sibling mapPinStyle handler above
-          // still has the older shape — noted in review of #5018, left alone
-          // here rather than widening this diff.)
           {
             const v = pickSetting(settings.mapPinColorMode, MAP_PIN_COLOR_MODES);
             if (v) {

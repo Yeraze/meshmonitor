@@ -97,6 +97,19 @@ export function pickSetting<T extends string>(
 type Covers<Union extends string, List extends readonly string[]> =
   [Exclude<Union, List[number]>] extends [never] ? true : ['missing from list:', Exclude<Union, List[number]>];
 
+/**
+ * Deliberately a runtime `const`, not a type alias.
+ *
+ * Review of #5261 suggested making this type-only to avoid shipping 13
+ * booleans. Tried it: an exported type alias is never instantiated, so
+ * TypeScript never evaluates the conditional and the check silently stops
+ * checking — removing a value from a list produced no error at all. The
+ * ASSIGNMENT is what forces each field to be `true`.
+ *
+ * A union that has outgrown its list resolves its field to
+ * `['missing from list:', <the value>]`, and `true` fails to assign to that,
+ * naming the missing value in the error. That is worth 13 booleans.
+ */
 export const _exhaustive: {
   temperatureUnit: Covers<TemperatureUnit, typeof TEMPERATURE_UNITS>;
   distanceUnit: Covers<DistanceUnit, typeof DISTANCE_UNITS>;
