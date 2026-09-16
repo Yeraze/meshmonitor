@@ -5469,5 +5469,10 @@
   "firmware.upload_not_bin": "Firmware must be a .bin file",
   "firmware.discard_upload": "Discard",
   "firmware.local_ack": "I built or obtained this file for this exact board, and I can recover the node over USB if it fails to boot.",
-  "firmware.install_uploaded": "Install uploaded firmware"
+  "firmware.install_uploaded": "Install uploaded firmware",
+  "firmware.custom_url_hint": "Must point directly at a .bin image. A GitHub file page link is converted to its raw-content URL when you save.",
+  "firmware.custom_url_warning": "MeshMonitor does not check that the downloaded file is firmware for this board. Flashing a binary built for a different board will brick the node, and recovery needs a USB cable. Make sure the URL was built for:",
+  "firmware.custom_url_rewritten": "Saved — GitHub page URL converted to its raw-content URL",
+  "firmware.custom_url_save_first": "Press Save first to store the URL",
+  "firmware.install_from_url": "Install from URL"
 }

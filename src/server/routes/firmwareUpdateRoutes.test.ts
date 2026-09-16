@@ -538,6 +538,108 @@ describe('firmwareUpdateRoutes', () => {
     });
   });
 
+  // Issue #5011 — the custom URL is a real install target now.
+  describe('POST /api/firmware/channel — custom URL validation (#5011)', () => {
+    it('rewrites a GitHub blob URL and reports that it did', async () => {
+      const res = await request(app)
+        .post('/api/firmware/channel')
+        .send({
+          channel: 'custom',
+          customUrl: 'https://github.com/o/r/blob/main/firmware.bin',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.rewritten).toBe(true);
+      expect(res.body.customUrl).toBe('https://raw.githubusercontent.com/o/r/main/firmware.bin');
+      // The rewritten URL is what gets stored, not what was typed.
+      expect(mockSetCustomUrl).toHaveBeenCalledWith('https://raw.githubusercontent.com/o/r/main/firmware.bin');
+    });
+
+    it('stores a raw URL unchanged and says it did not rewrite', async () => {
+      const url = 'https://raw.githubusercontent.com/o/r/main/firmware.bin';
+      const res = await request(app).post('/api/firmware/channel').send({ channel: 'custom', customUrl: url });
+
+      expect(res.status).toBe(200);
+      expect(res.body.rewritten).toBe(false);
+      expect(mockSetCustomUrl).toHaveBeenCalledWith(url);
+    });
+
+    it('rejects a malformed URL instead of storing it silently', async () => {
+      const res = await request(app)
+        .post('/api/firmware/channel')
+        .send({ channel: 'custom', customUrl: 'not a url' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/not a valid URL/i);
+      expect(mockSetCustomUrl).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-http scheme', async () => {
+      const res = await request(app)
+        .post('/api/firmware/channel')
+        .send({ channel: 'custom', customUrl: 'file:///etc/passwd' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/scheme/i);
+      expect(mockSetCustomUrl).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /api/firmware/update with useCustomUrl (#5011)', () => {
+    it('starts preflight against the saved URL without a targetVersion', async () => {
+      mockGetCustomUrl.mockResolvedValue('https://raw.githubusercontent.com/o/r/main/firmware.bin');
+      mockGetStatus.mockReturnValue({ state: 'awaiting-confirm', step: 'preflight', message: '', logs: [] });
+
+      const res = await request(app)
+        .post('/api/firmware/update')
+        .send({
+          useCustomUrl: true,
+          gatewayIp: '192.168.1.100',
+          hwModel: 44,
+          currentVersion: '2.7.20',
+        });
+
+      expect(res.status).toBe(200);
+      // No release lookup — a URL has no release behind it.
+      expect(mockFindReleaseByVersion).not.toHaveBeenCalled();
+      expect(mockStartPreflight).toHaveBeenCalledWith(
+        expect.objectContaining({
+          targetRelease: null,
+          customUrl: 'https://raw.githubusercontent.com/o/r/main/firmware.bin',
+        }),
+      );
+    });
+
+    it('resolves a stored blob URL to raw before preflight', async () => {
+      // Belt and braces with the save-time rewrite: a URL stored by an older
+      // build never reaches fetch in its page form.
+      mockGetCustomUrl.mockResolvedValue('https://github.com/o/r/blob/main/firmware.bin');
+      mockGetStatus.mockReturnValue({ state: 'awaiting-confirm', step: 'preflight', message: '', logs: [] });
+
+      await request(app)
+        .post('/api/firmware/update')
+        .send({ useCustomUrl: true, gatewayIp: '192.168.1.100', hwModel: 44, currentVersion: '2.7.20' });
+
+      expect(mockStartPreflight).toHaveBeenCalledWith(
+        expect.objectContaining({
+          customUrl: 'https://raw.githubusercontent.com/o/r/main/firmware.bin',
+        }),
+      );
+    });
+
+    it('refuses when no URL has been saved', async () => {
+      mockGetCustomUrl.mockResolvedValue(null);
+
+      const res = await request(app)
+        .post('/api/firmware/update')
+        .send({ useCustomUrl: true, gatewayIp: '192.168.1.100', hwModel: 44, currentVersion: '2.7.20' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/No custom firmware URL is saved/i);
+      expect(mockStartPreflight).not.toHaveBeenCalled();
+    });
+  });
+
   describe('POST /api/firmware/update/confirm', () => {
     it('should advance from preflight to backup step', async () => {
       mockGetStatus.mockReturnValue({

@@ -8,6 +8,7 @@
 import express, { Router, Request, Response } from 'express';
 import { requireAdmin } from '../auth/authMiddleware.js';
 import { firmwareUpdateService } from '../services/firmwareUpdateService.js';
+import { resolveFirmwareDownloadUrl } from '../services/firmwareUrl.js';
 import { fallbackManager } from '../meshtasticManager.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
@@ -99,14 +100,45 @@ router.post('/channel', async (req: Request, res: Response) => {
       });
     }
 
-    await firmwareUpdateService.setChannel(channel);
-
+    // #5011: validate the URL at save time and say what was stored. Saving
+    // used to accept anything in silence — including a GitHub page URL that
+    // serves HTML — and since nothing ever read the value back, the operator
+    // got no signal at any point.
+    let storedUrl: string | undefined;
+    let rewritten = false;
     if (channel === 'custom' && customUrl) {
-      await firmwareUpdateService.setCustomUrl(customUrl);
+      if (typeof customUrl !== 'string') {
+        return res.status(400).json({ success: false, error: 'customUrl must be a string' });
+      }
+      const trimmed = customUrl.trim();
+      let parsed: URL;
+      try {
+        parsed = new URL(trimmed);
+      } catch {
+        return res.status(400).json({
+          success: false,
+          error: 'That is not a valid URL. It should start with https:// and point directly at a .bin file.',
+        });
+      }
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return res.status(400).json({
+          success: false,
+          error: `Unsupported URL scheme "${parsed.protocol}". Use http:// or https://.`,
+        });
+      }
+      const resolved = resolveFirmwareDownloadUrl(trimmed);
+      storedUrl = resolved.url;
+      rewritten = resolved.rewritten;
     }
 
-    logger.debug(`[FirmwareRoutes] Channel set to "${channel}"${customUrl ? ` with URL: ${customUrl}` : ''}`);
-    return res.json({ success: true, channel });
+    await firmwareUpdateService.setChannel(channel);
+
+    if (storedUrl) {
+      await firmwareUpdateService.setCustomUrl(storedUrl);
+    }
+
+    logger.debug(`[FirmwareRoutes] Channel set to "${channel}"${storedUrl ? ` with URL: ${storedUrl}` : ''}`);
+    return res.json({ success: true, channel, customUrl: storedUrl, rewritten });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error('[FirmwareRoutes] Error setting channel:', error);
@@ -184,12 +216,14 @@ router.delete('/upload', (_req: Request, res: Response) => {
 
 router.post('/update', async (req: Request, res: Response) => {
   try {
-    const { targetVersion, gatewayIp, hwModel, currentVersion, useStagedUpload } = req.body;
-    // #5249: a staged upload carries no version, so targetVersion is not
-    // required on that path — the other three still are.
+    const { targetVersion, gatewayIp, hwModel, currentVersion, useStagedUpload, useCustomUrl } = req.body;
+    // Neither a staged upload (#5249) nor a custom URL (#5011) carries a
+    // version, so targetVersion is not required on those paths — the other
+    // three fields still are.
     const wantsStagedUpload = useStagedUpload === true;
+    const wantsCustomUrl = useCustomUrl === true;
 
-    if ((!targetVersion && !wantsStagedUpload) || !gatewayIp || hwModel === undefined || !currentVersion) {
+    if ((!targetVersion && !wantsStagedUpload && !wantsCustomUrl) || !gatewayIp || hwModel === undefined || !currentVersion) {
       return res.status(400).json({
         success: false,
         error: 'Missing required fields: targetVersion, gatewayIp, hwModel, currentVersion',
@@ -217,7 +251,20 @@ router.post('/update', async (req: Request, res: Response) => {
     // nightly build (nightly never lives in the GitHub cache). A staged upload
     // has no release to find (#5249) — its binary is already on disk.
     let targetRelease = null;
-    if (wantsStagedUpload) {
+    let resolvedCustomUrl: string | undefined;
+    if (wantsCustomUrl) {
+      const stored = await firmwareUpdateService.getCustomUrl();
+      if (!stored || !stored.trim()) {
+        return res.status(400).json({
+          success: false,
+          error: 'No custom firmware URL is saved. Enter one and press Save first.',
+        });
+      }
+      // Resolve a GitHub page URL to the raw-content URL before anything
+      // fetches it (#5011), so the status shows what will actually be
+      // requested rather than what was typed.
+      resolvedCustomUrl = resolveFirmwareDownloadUrl(stored.trim()).url;
+    } else if (wantsStagedUpload) {
       if (!firmwareUpdateService.getStagedUpload()) {
         return res.status(400).json({
           success: false,
@@ -253,13 +300,16 @@ router.post('/update', async (req: Request, res: Response) => {
       currentVersion,
       // The wizard shows this as "updating to X". An upload has no version of
       // its own, so name the file instead of inventing a version number.
-      targetVersion: wantsStagedUpload
-        ? (firmwareUpdateService.getStagedUpload()?.originalName ?? 'uploaded firmware')
-        : targetVersion,
+      targetVersion: wantsCustomUrl
+        ? (resolvedCustomUrl ?? 'custom URL')
+        : wantsStagedUpload
+          ? (firmwareUpdateService.getStagedUpload()?.originalName ?? 'uploaded firmware')
+          : targetVersion,
       targetRelease,
       gatewayIp,
       hwModel: Number(hwModel),
       useStagedUpload: wantsStagedUpload,
+      customUrl: resolvedCustomUrl,
     });
 
     const status = firmwareUpdateService.getStatus();

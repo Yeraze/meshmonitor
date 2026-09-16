@@ -155,6 +155,20 @@ const MAX_UPLOAD_FIRMWARE_BYTES = 32 * 1024 * 1024;
  */
 const STAGED_FIRMWARE_FILENAME = 'uploaded-firmware.bin';
 
+/** On-disk name for a firmware image fetched from a user-supplied URL (#5011). */
+const CUSTOM_URL_FIRMWARE_FILENAME = 'custom-firmware.bin';
+
+/**
+ * Content types a firmware binary legitimately arrives as (#5011).
+ *
+ * Servers are inconsistent: raw.githubusercontent.com serves
+ * `application/octet-stream`, some object stores send `binary/octet-stream`,
+ * and plenty send nothing at all. The check exists to catch the common
+ * mistake — an HTML page where a binary was expected — so it rejects only
+ * what is clearly a document, rather than allowlisting the long tail.
+ */
+const HTML_CONTENT_TYPE = /^\s*text\/html|^\s*application\/xhtml\+xml/i;
+
 /** Scale the unit — a small upload reading "0.00 MB" looks like a failure. */
 function formatFirmwareSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -202,6 +216,23 @@ export class FirmwareUpdateService {
   // True when the running wizard is flashing `stagedUpload` rather than a
   // release. Mirrors nightlyMode: both mean "a loose .bin, no zip".
   private localMode = false;
+  // True when the running wizard is flashing a URL the operator typed rather
+  // than a release asset (#5011). Same artifact shape as localMode — one loose
+  // `.bin`, no release metadata, no version to verify against — but the bytes
+  // come over the network instead of off disk.
+  private customMode = false;
+
+  /**
+   * The artifact is a single `.bin` with no release behind it, so there is no
+   * zip to unpack, no board name to match and no expected version.
+   *
+   * Nightly is deliberately NOT included: it is also a loose `.bin`, but it
+   * has a real version and a conforming `firmware-<board>-<x.y.z>.<sha>.bin`
+   * name, so it still goes through the matcher and the version check.
+   */
+  private get isUnversionedLooseBin(): boolean {
+    return this.localMode || this.customMode;
+  }
 
   constructor() {
     // Nothing can legitimately be staged before the process starts, so any
@@ -281,18 +312,25 @@ export class FirmwareUpdateService {
 
   /**
    * Filter releases by channel.
-   * 'stable' = non-prerelease only, 'alpha' = all, 'custom' = all.
+   * 'stable' = non-prerelease only, 'alpha' = all, 'custom'/'local' = none.
    */
   filterByChannel(releases: FirmwareRelease[], channel: FirmwareChannel): FirmwareRelease[] {
-    // #5249: 'local' lists nothing — the user supplies the binary, so there is
-    // no release feed to filter. The UI shows a file picker instead of a list.
-    if (channel === 'local') {
+    // Neither of these is a release feed, so neither lists anything:
+    //  - 'local'  (#5249) the operator supplies the binary from disk;
+    //  - 'custom' (#5011) the operator supplies a URL.
+    // The UI shows a picker or a URL field instead of a version list.
+    //
+    // 'custom' previously fell through to the `return releases` below and
+    // listed every GitHub release — identical to 'alpha'. That, together with
+    // the stored URL never being read by the install path, is why entering a
+    // custom URL appeared to do nothing at all.
+    if (channel === 'local' || channel === 'custom') {
       return [];
     }
     if (channel === 'stable') {
       return releases.filter((r) => !r.prerelease);
     }
-    // 'alpha', 'custom' and 'nightly' return all. Nightly is sourced separately
+    // 'alpha' and 'nightly' return all. Nightly is sourced separately
     // (see getReleasesForChannel); it never appears in the GitHub `releases`
     // list this operates on, so there is nothing extra to filter here.
     return releases;
@@ -536,6 +574,7 @@ export class FirmwareUpdateService {
       // usually a prelude to retrying, and making the user re-pick a 4 MB file
       // to do that would be gratuitous. The DELETE route clears it explicitly.
       this.localMode = false;
+      this.customMode = false;
       this.status = createIdleStatus();
       this.updateStatus({ message: 'Update cancelled' });
       logger.info('[FirmwareUpdateService] Update cancelled by user');
@@ -578,6 +617,7 @@ export class FirmwareUpdateService {
     // stale file staged for a later run the user never asked to repeat.
     this.clearStagedUpload();
     this.localMode = false;
+    this.customMode = false;
     this.status = createIdleStatus();
     this.updateStatus({});
     logger.info('[FirmwareUpdateService] Update completed — initiating full reconnect cycle');
@@ -965,6 +1005,12 @@ export class FirmwareUpdateService {
     hwModel: number;
     /** Flash the staged upload instead of downloading a release (#5249). */
     useStagedUpload?: boolean;
+    /**
+     * Fetch the firmware from this URL instead of a release asset (#5011).
+     * Already blob→raw resolved by the caller so the status shows what will
+     * actually be fetched.
+     */
+    customUrl?: string;
   }): void {
     if (this.status.state !== 'idle') {
       throw new Error('Cannot start preflight: state is not idle');
@@ -1007,7 +1053,19 @@ export class FirmwareUpdateService {
     // straight at it and flag nightlyMode so the download/extract steps skip
     // the unzip. Every other channel keeps the zip-then-extract flow.
     let downloadUrl: string;
-    if (params.useStagedUpload) {
+    if (params.customUrl) {
+      // #5011: the operator supplied the URL. No release to resolve an asset
+      // from, and no version to check afterwards — same shape as a local
+      // upload, just fetched rather than read off disk. The SSRF guard in
+      // executeDownload still applies, and matters more here than anywhere
+      // else in this file: this is the only download target a user types.
+      this.customMode = true;
+      this.localMode = false;
+      this.nightlyMode = false;
+      this.nightlyBinName = null;
+      downloadUrl = params.customUrl;
+    } else if (params.useStagedUpload) {
+      this.customMode = false;
       // #5249: the binary is already on disk. Nothing to resolve, nothing to
       // fetch — executeDownload copies it into the temp dir and executeExtract
       // hands it straight back. `downloadUrl` still has to be a string for the
@@ -1020,9 +1078,10 @@ export class FirmwareUpdateService {
       this.nightlyBinName = null;
       downloadUrl = `file://${this.stagedUpload.originalName}`;
     } else if (!params.targetRelease) {
-      throw new Error('No target release supplied and no uploaded firmware staged');
+      throw new Error('No target release supplied, and no uploaded firmware or custom URL given');
     } else if (params.targetRelease.isNightly) {
       this.localMode = false;
+      this.customMode = false;
       // The non-factory app-partition bin is the OTA artifact. Its name matches
       // findFirmwareBinary's strict pattern (firmware-<board>-<x.y.z>.<sha>.bin),
       // so the extract step can reuse that matcher unchanged.
@@ -1031,6 +1090,7 @@ export class FirmwareUpdateService {
       downloadUrl = `${NIGHTLY_BASE_URL}/${this.nightlyBinName}`;
     } else {
       this.localMode = false;
+      this.customMode = false;
       this.nightlyMode = false;
       this.nightlyBinName = null;
       const zipAsset = this.findFirmwareZipAsset(params.targetRelease, platform);
@@ -1234,6 +1294,23 @@ export class FirmwareUpdateService {
         throw new Error(`Download failed: HTTP ${response.status}`);
       }
 
+      // #5011: a URL the operator typed is the one download target that is
+      // routinely wrong — most often a GitHub *page* URL, which answers 200
+      // with HTML. Without this the HTML was written to disk as
+      // "firmware", and the failure only surfaced much later as an unusable
+      // image, or not at all. Release assets are not checked: their URLs come
+      // from the GitHub API, not from a person.
+      if (this.customMode) {
+        const contentType = response.headers.get('content-type') ?? '';
+        if (HTML_CONTENT_TYPE.test(contentType)) {
+          throw new Error(
+            `That URL returned a web page (${contentType.split(';')[0].trim()}), not a firmware binary. ` +
+            `If you copied it from the GitHub file view, use the "Raw" link — or paste the page URL and ` +
+            `MeshMonitor will convert it for you.`,
+          );
+        }
+      }
+
       const arrayBuffer = await response.arrayBuffer();
       const downloadSize = arrayBuffer.byteLength;
 
@@ -1252,7 +1329,14 @@ export class FirmwareUpdateService {
       // unzip and findFirmwareBinary still matches it. Every other channel
       // downloads a zip to unpack.
       let writePath: string;
-      if (this.nightlyMode && this.nightlyBinName) {
+      if (this.customMode) {
+        // #5011: one loose `.bin`, exactly like nightly and a local upload, so
+        // the extract step has nothing to unzip. Fixed on-disk name — nothing
+        // derived from the URL reaches a path.
+        const extractDir = path.resolve(path.join(tempDir, 'extracted'));
+        fs.mkdirSync(extractDir, { recursive: true });
+        writePath = path.resolve(path.join(extractDir, CUSTOM_URL_FIRMWARE_FILENAME));
+      } else if (this.nightlyMode && this.nightlyBinName) {
         const extractDir = path.resolve(path.join(tempDir, 'extracted'));
         fs.mkdirSync(extractDir, { recursive: true });
         writePath = path.resolve(path.join(extractDir, this.nightlyBinName));
@@ -1317,24 +1401,30 @@ export class FirmwareUpdateService {
       // one-file upload has no such ambiguity. Running it here would only
       // reject the `firmware.bin` a local build produces, which is exactly the
       // case this feature is for.
-      if (this.localMode) {
-        const staged = this.stagedUpload;
-        // Located by the fixed on-disk name; `matched` is only what we SHOW.
-        const displayName = staged?.originalName ?? STAGED_FIRMWARE_FILENAME;
-        const matched = displayName;
-        const firmwarePath = path.join(extractDir, STAGED_FIRMWARE_FILENAME);
+      if (this.isUnversionedLooseBin) {
+        // One file, chosen explicitly by the operator — nothing to unzip and
+        // nothing to match. findFirmwareBinary exists to pick the right
+        // board's binary out of a multi-board release zip; here it would only
+        // reject a perfectly good `firmware.bin`.
+        const onDisk = this.localMode ? STAGED_FIRMWARE_FILENAME : CUSTOM_URL_FIRMWARE_FILENAME;
+        const displayName = this.localMode
+          ? (this.stagedUpload?.originalName ?? STAGED_FIRMWARE_FILENAME)
+          : (this.status.downloadUrl ?? CUSTOM_URL_FIRMWARE_FILENAME);
+        const source = this.localMode ? 'uploaded firmware' : 'firmware from URL';
+
+        const firmwarePath = path.join(extractDir, onDisk);
         if (!fs.existsSync(firmwarePath)) {
-          throw new Error(`Uploaded firmware ${displayName} is missing from the staging directory`);
+          throw new Error(`The ${source} (${displayName}) is missing from the staging directory`);
         }
         this.updateStatus({
           state: 'awaiting-confirm',
           step: 'extract',
-          message: `Using uploaded firmware: ${matched} (not verified against ${boardName})`,
-          matchedFile: matched,
+          message: `Using ${source}: ${displayName} (not verified against ${boardName})`,
+          matchedFile: displayName,
           rejectedFiles: [],
         });
         logger.info(
-          `[FirmwareUpdateService] Installing user-uploaded firmware ${matched} on board ${boardName} — not verified`,
+          `[FirmwareUpdateService] Installing ${source} on board ${boardName} — not verified: ${displayName}`,
         );
         return firmwarePath;
       }
@@ -1771,7 +1861,7 @@ export class FirmwareUpdateService {
     // comparing that against the node's reported version would fail every
     // time and report a successful flash as an error. Report what the node is
     // now running and say plainly that nothing was checked against it.
-    if (this.localMode) {
+    if (this.isUnversionedLooseBin) {
       if (!newFirmwareVersion) {
         this.updateStatus({
           state: 'error',
@@ -1779,18 +1869,18 @@ export class FirmwareUpdateService {
           message: 'Node did not report a firmware version after the update',
           error: 'Firmware version unavailable for verification',
         });
-        logger.warn('[FirmwareUpdateService] No version reported after uploaded-firmware flash');
+        logger.warn('[FirmwareUpdateService] No version reported after loose-binary flash');
         return;
       }
       this.updateStatus({
         state: 'success',
         step: 'verify',
         message:
-          `Node is running ${newFirmwareVersion}. Uploaded firmware has no expected ` +
-          `version, so this was not verified against one.`,
+          `Node is running ${newFirmwareVersion}. This firmware has no expected ` +
+          `version, so it was not verified against one.`,
       });
       logger.info(
-        `[FirmwareUpdateService] Uploaded-firmware flash finished; node reports ${newFirmwareVersion} (unverified)`,
+        `[FirmwareUpdateService] Loose-binary flash finished; node reports ${newFirmwareVersion} (unverified)`,
       );
       return;
     }
