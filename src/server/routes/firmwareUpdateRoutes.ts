@@ -141,8 +141,14 @@ router.post(
         });
       }
 
-      const headerName = req.get('X-Firmware-Filename');
-      const originalName = headerName && headerName.trim() ? headerName.trim() : 'firmware.bin';
+      // Read the raw header and narrow it explicitly. Express types `req.get`
+      // as possibly returning string[] (set-cookie), and CodeQL flags the
+      // resulting string operations as type confusion through parameter
+      // tampering. Taking only a genuine string closes that at the boundary
+      // rather than hoping every downstream call tolerates an array.
+      const rawHeader = req.headers['x-firmware-filename'];
+      const headerName = typeof rawHeader === 'string' ? rawHeader.trim() : '';
+      const originalName = headerName.length > 0 ? headerName : 'firmware.bin';
       if (!originalName.toLowerCase().endsWith('.bin')) {
         return res.status(400).json({
           success: false,

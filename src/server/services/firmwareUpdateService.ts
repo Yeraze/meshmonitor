@@ -203,6 +203,12 @@ export class FirmwareUpdateService {
   // release. Mirrors nightlyMode: both mean "a loose .bin, no zip".
   private localMode = false;
 
+  constructor() {
+    // Nothing can legitimately be staged before the process starts, so any
+    // `firmware-upload-*` directory present now is a leftover (#5249 review).
+    this.sweepStaleUploads();
+  }
+
   private status: UpdateStatus = createIdleStatus();
   private activeProcess: ChildProcess | null = null;
   private tempDir: string | null = null;
@@ -863,6 +869,11 @@ export class FirmwareUpdateService {
     if (this.status.state !== 'idle') {
       throw new Error('Cannot stage firmware while an update is in progress');
     }
+    if (typeof originalName !== 'string') {
+      // Belt and braces with the route's own narrowing: this method is public
+      // and the name feeds string operations below.
+      throw new Error('Uploaded firmware filename must be a string');
+    }
     if (data.length === 0) {
       throw new Error('Uploaded firmware is empty');
     }
@@ -898,6 +909,28 @@ export class FirmwareUpdateService {
   getStagedUpload(): { originalName: string; size: number } | null {
     if (!this.stagedUpload) return null;
     return { originalName: this.stagedUpload.originalName, size: this.stagedUpload.size };
+  }
+
+  /**
+   * Remove `firmware-upload-*` directories left behind by a previous process.
+   *
+   * The staged file is tracked in memory, so a restart between an upload and
+   * its install orphans the directory with nothing left to find it (raised in
+   * review of #5249). Called once at construction: at that point no upload can
+   * legitimately be staged, so every such directory is stale by definition.
+   */
+  private sweepStaleUploads(): void {
+    try {
+      if (!fs.existsSync(DATA_DIR)) return;
+      for (const entry of fs.readdirSync(DATA_DIR)) {
+        if (!entry.startsWith('firmware-upload-')) continue;
+        fs.rmSync(path.join(DATA_DIR, entry), { recursive: true, force: true });
+        logger.debug(`[FirmwareUpdateService] Removed stale firmware upload directory ${entry}`);
+      }
+    } catch (err) {
+      // Never let cleanup stop the service from starting.
+      logger.warn('[FirmwareUpdateService] Failed to sweep stale firmware uploads:', err);
+    }
   }
 
   /** Delete the staged upload and its directory. Safe to call when none exists. */

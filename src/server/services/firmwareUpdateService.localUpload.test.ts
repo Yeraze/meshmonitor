@@ -160,6 +160,29 @@ describe('FirmwareUpdateService — staging an uploaded .bin (#5249)', () => {
     expect(() => service.clearStagedUpload()).not.toThrow();
   });
 
+  it('rejects a non-string filename', () => {
+    // The route narrows the header, but this method is public and the name
+    // feeds string operations. Raised by CodeQL as parameter tampering.
+    expect(() =>
+      service.stageUploadedFirmware(BIN, ['a.bin', 'b.bin'] as unknown as string),
+    ).toThrow(/must be a string/i);
+    expect(service.getStagedUpload()).toBeNull();
+  });
+
+  it('sweeps stale upload directories left by a previous process', () => {
+    // A restart between upload and install orphans the directory: the staged
+    // path lives only in memory, so nothing else would ever remove it.
+    const orphan = path.join(TEST_DATA_DIR, 'firmware-upload-orphaned');
+    fs.mkdirSync(orphan, { recursive: true });
+    fs.writeFileSync(path.join(orphan, 'uploaded-firmware.bin'), BIN);
+    expect(fs.existsSync(orphan)).toBe(true);
+
+    // Construction is the sweep point.
+    const fresh = new FirmwareUpdateService();
+    expect(fs.existsSync(orphan)).toBe(false);
+    expect(fresh.getStagedUpload()).toBeNull();
+  });
+
   it('refuses to stage while an update is already running', () => {
     // Stage, start the wizard, then try to swap the file underneath it.
     service.stageUploadedFirmware(BIN, 'firmware.bin');
