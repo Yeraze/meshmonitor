@@ -304,6 +304,12 @@ button.unified-source-pill.is-active {
   font-size: 14px;
   line-height: 1.5;
   word-break: break-word;
+  /* Message bodies carry real newlines. Without this they collapse to spaces
+     here while the per-source Channel/DM views — which set `pre-line` inline —
+     render them correctly, so the same message looked different depending on
+     which view you opened it from (#5250). `pre-line` rather than `pre-wrap`
+     to match those views: collapse runs of spaces, keep the line breaks. */
+  white-space: pre-line;
 }
 
 /* ── Clickable message card (Unified Messages) ─────────────────────────── */
@@ -488,6 +494,8 @@ button.unified-source-pill.is-active {
   line-height: 1.5;
   word-break: break-word;
   margin-bottom: 6px;
+  /* Same as the card above — the details modal shows the same text (#5250). */
+  white-space: pre-line;
 }
 
 .unified-modal__meta {
