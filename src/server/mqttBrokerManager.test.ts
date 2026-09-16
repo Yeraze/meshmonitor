@@ -46,7 +46,7 @@ vi.mock('../services/database.js', () => ({
   },
 }));
 
-import { MqttBrokerManager, resolveDownlinkHopLimit } from './mqttBrokerManager.js';
+import { MqttBrokerManager } from './mqttBrokerManager.js';
 import meshtasticProtobufService from './meshtasticProtobufService.js';
 import databaseService from '../services/database.js';
 import { PortNum } from './constants/meshtastic.js';
@@ -573,43 +573,5 @@ describe('MqttBrokerManager zero-hop injection', () => {
     const captured = await localPacketPromise;
     const decoded = meshtasticProtobufService.decodeServiceEnvelope(captured);
     expect(decoded!.packet.hopLimit).toBe(2);
-  });
-});
-
-describe('resolveDownlinkHopLimit', () => {
-  const base = {
-    listener: { port: 1883 },
-    auth: { username: 'u', password: 'p' },
-    gateway: { nodeNum: 1, nodeId: '!1', longName: 'l', shortName: 's' },
-  };
-
-  it('returns null when nothing is configured (pass-through)', () => {
-    expect(resolveDownlinkHopLimit({ ...base })).toBeNull();
-    expect(resolveDownlinkHopLimit({ ...base, zeroHopInjection: false })).toBeNull();
-  });
-
-  it('maps the legacy zeroHopInjection boolean to 0', () => {
-    expect(resolveDownlinkHopLimit({ ...base, zeroHopInjection: true })).toBe(0);
-  });
-
-  it('returns the numeric override across the whole 0-7 range', () => {
-    for (let n = 0; n <= 7; n++) {
-      expect(resolveDownlinkHopLimit({ ...base, downlinkHopLimitOverride: n })).toBe(n);
-    }
-  });
-
-  it('prefers the numeric override over the legacy boolean', () => {
-    expect(
-      resolveDownlinkHopLimit({ ...base, zeroHopInjection: true, downlinkHopLimitOverride: 4 }),
-    ).toBe(4);
-  });
-
-  it('ignores out-of-range or non-integer overrides and falls back', () => {
-    for (const bad of [-1, 8, 3.5, NaN]) {
-      expect(resolveDownlinkHopLimit({ ...base, downlinkHopLimitOverride: bad })).toBeNull();
-      expect(
-        resolveDownlinkHopLimit({ ...base, zeroHopInjection: true, downlinkHopLimitOverride: bad }),
-      ).toBe(0);
-    }
   });
 });

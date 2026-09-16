@@ -100,6 +100,45 @@ describe('resolveHopLimitPolicy', () => {
   });
 });
 
+/**
+ * The legacy "set hop_limit to N" scalar has no resolver of its own any more —
+ * `resolveHopLimitPolicy` subsumes it. These cases came from the retired
+ * `resolveDownlinkHopLimit` suite and pin the same boundaries end-to-end:
+ * whatever the stored legacy config, the forwarded value must equal what the
+ * old scalar produced, or pass through untouched.
+ */
+describe('legacy scalar equivalence', () => {
+  /** Forwarded hop limit for a config, or null for "pass through unchanged". */
+  function forwarded(config: Parameters<typeof resolveHopLimitPolicy>[0], arrived = 5): number | null {
+    const policy = resolveHopLimitPolicy(config);
+    return policy ? applyHopLimitPolicy(policy, POSITION, arrived) : null;
+  }
+
+  it('passes through when nothing is configured', () => {
+    expect(forwarded({})).toBeNull();
+    expect(forwarded({ zeroHopInjection: false })).toBeNull();
+  });
+
+  it('reproduces the scalar across the whole 0-7 range, from any arrival', () => {
+    for (let n = 0; n <= 7; n++) {
+      for (const arrived of [0, 1, 4, 7]) {
+        expect(forwarded({ downlinkHopLimitOverride: n }, arrived)).toBe(n);
+      }
+    }
+  });
+
+  it('prefers the numeric override over the legacy boolean', () => {
+    expect(forwarded({ zeroHopInjection: true, downlinkHopLimitOverride: 4 })).toBe(4);
+  });
+
+  it('falls back to the boolean when the numeric override is unusable', () => {
+    for (const bad of [-1, 8, 3.5, NaN]) {
+      expect(forwarded({ downlinkHopLimitOverride: bad })).toBeNull();
+      expect(forwarded({ zeroHopInjection: true, downlinkHopLimitOverride: bad })).toBe(0);
+    }
+  });
+});
+
 describe('applyHopLimitPolicy', () => {
   const raisePolicy: HopLimitPolicy = {
     raise: { enabled: true, target: 3, portnums: [POSITION] },

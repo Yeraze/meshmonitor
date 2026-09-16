@@ -85,27 +85,6 @@ export interface MqttBrokerSourceConfig {
  */
 export { MAX_HOP_LIMIT };
 
-/**
- * Resolve the effective downlink hop-limit override for a broker config, or
- * null for "pass through unchanged".
- *
- * @deprecated Superseded by `resolveHopLimitPolicy()` (#5188/#5190), which
- * subsumes this as `min(max(arrived, N), N)`. Kept because the Dashboard load
- * path and existing tests still read the legacy scalar directly.
- *
- * The numeric `downlinkHopLimitOverride`
- * wins; the legacy `zeroHopInjection` boolean maps to 0. Out-of-range or
- * non-integer values are ignored (the route layer rejects them on save, so
- * this only guards hand-edited or pre-validation configs).
- */
-export function resolveDownlinkHopLimit(config: MqttBrokerSourceConfig): number | null {
-  const override = config.downlinkHopLimitOverride;
-  if (typeof override === 'number' && Number.isInteger(override) && override >= 0 && override <= MAX_HOP_LIMIT) {
-    return override;
-  }
-  return config.zeroHopInjection ? 0 : null;
-}
-
 export interface MqttBrokerStatus extends SourceStatus {
   listening: boolean;
   clientCount: number;
@@ -294,18 +273,6 @@ export class MqttBrokerManager extends EventEmitter implements ISourceManager {
     await this.broker.publish(topic, payload, retained);
   }
 
-  /**
-   * Hop-limit forward transform (#3084 zero-hop, generalized in #4081).
-   * Returns a rewritten payload with `hop_limit = hopLimit` for Meshtastic
-   * ServiceEnvelopes on this broker's root topic, or null to pass the
-   * original through. Anything that isn't a decodable ServiceEnvelope
-   * (off-topic, MQTT control, malformed payload, packet already at the
-   * target value) falls through unchanged.
-   *
-   * `hop_start` is deliberately left alone: it records what the originator
-   * set, and rewriting it would corrupt the hop diagnostics every consumer
-   * derives from `hop_start - hop_limit`.
-   */
   /**
    * Apply this broker's hop-limit policy (#5188/#5190) to one Meshtastic
    * ServiceEnvelope on its way to a radio, returning the re-encoded payload or
