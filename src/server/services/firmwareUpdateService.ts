@@ -869,9 +869,17 @@ export class FirmwareUpdateService {
     if (this.status.state !== 'idle') {
       throw new Error('Cannot stage firmware while an update is in progress');
     }
+    if (!Buffer.isBuffer(data)) {
+      // `express.raw()` types req.body as `any`, so CodeQL treats every use of
+      // it here as possible type confusion through parameter tampering — a
+      // non-Buffer with a `length` would sail through the size checks below
+      // and reach writeFileSync. The route checks this too, but the check has
+      // to be at the point of use: this method is public, and a guard the
+      // analyser cannot follow across a call boundary is not a guard.
+      throw new Error('Uploaded firmware must be a binary body');
+    }
     if (typeof originalName !== 'string') {
-      // Belt and braces with the route's own narrowing: this method is public
-      // and the name feeds string operations below.
+      // Same reasoning for the name, which feeds string operations below.
       throw new Error('Uploaded firmware filename must be a string');
     }
     if (data.length === 0) {

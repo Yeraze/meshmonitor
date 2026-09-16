@@ -160,6 +160,15 @@ describe('FirmwareUpdateService — staging an uploaded .bin (#5249)', () => {
     expect(() => service.clearStagedUpload()).not.toThrow();
   });
 
+  it('rejects a non-Buffer body', () => {
+    // express.raw() gives req.body as `any`; an array with a `length` would
+    // otherwise pass the size checks and reach writeFileSync.
+    expect(() =>
+      service.stageUploadedFirmware([1, 2, 3] as unknown as Buffer, 'firmware.bin'),
+    ).toThrow(/binary body/i);
+    expect(service.getStagedUpload()).toBeNull();
+  });
+
   it('rejects a non-string filename', () => {
     // The route narrows the header, but this method is public and the name
     // feeds string operations. Raised by CodeQL as parameter tampering.
