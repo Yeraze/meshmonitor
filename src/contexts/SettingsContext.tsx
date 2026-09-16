@@ -1773,8 +1773,15 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             localStorage.setItem('mapPinStyle', settings.mapPinStyle);
           }
 
-          if (settings.mapPinColorMode) {
-            setMapPinColorModeState(settings.mapPinColorMode as MapPinColorMode);
+          // Allowlist rather than a truthiness check + cast: the localStorage
+          // seed above already refuses anything that isn't 'hops', and the
+          // server path should not be the looser of the two. A stored 'foo'
+          // would otherwise be cast to MapPinColorMode and reach the icon
+          // factory as neither branch. (The sibling mapPinStyle handler above
+          // still has the older shape — noted in review of #5018, left alone
+          // here rather than widening this diff.)
+          if (settings.mapPinColorMode === 'hops' || settings.mapPinColorMode === 'node') {
+            setMapPinColorModeState(settings.mapPinColorMode);
             localStorage.setItem('mapPinColorMode', settings.mapPinColorMode);
           }
 

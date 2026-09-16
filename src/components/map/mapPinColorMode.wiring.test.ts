@@ -63,3 +63,26 @@ describe('mapPinColorMode wiring (#5018)', () => {
     expect(iconSigLine(rel)).toContain('${mapPinStyle}');
   });
 });
+
+/**
+ * The two places a stored value enters the app must agree on what is valid.
+ * Reviewing #5018 flagged that the server-load path used a truthiness check
+ * plus an unchecked cast, so a stored `"foo"` would reach the icon factory as
+ * neither branch — while the localStorage seed beside it already allowlisted.
+ */
+describe('mapPinColorMode is allowlisted on BOTH load paths (#5018)', () => {
+  const ctx = () => read('src/contexts/SettingsContext.tsx');
+
+  it('seeds from localStorage through an allowlist', () => {
+    expect(ctx()).toMatch(/localStorage\.getItem\('mapPinColorMode'\)[\s\S]{0,200}?saved === 'hops'/);
+  });
+
+  it('accepts a server value only when it is one of the two modes', () => {
+    // Not `if (settings.mapPinColorMode)` — that admits any non-empty string.
+    expect(ctx()).toContain("settings.mapPinColorMode === 'hops' || settings.mapPinColorMode === 'node'");
+  });
+
+  it('does not cast the server value to the type unchecked', () => {
+    expect(ctx()).not.toContain('settings.mapPinColorMode as MapPinColorMode');
+  });
+});
