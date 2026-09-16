@@ -22,6 +22,12 @@ import { loadAllNodesAsDeviceInfo } from './utils/dbNodeMapper.js';
 import type { DeviceInfo } from './meshtasticManager.js';
 import { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
 import { MAX_HOP_LIMIT } from './constants/meshtastic.js';
+import {
+  applyHopLimitPolicy,
+  resolveHopLimitPolicy,
+  type HopLimitPolicy,
+  type StoredHopLimitPolicy,
+} from './mqttHopLimitPolicy.js';
 import { logger } from '../utils/logger.js';
 
 export interface MqttBrokerSourceConfig {
@@ -60,6 +66,16 @@ export interface MqttBrokerSourceConfig {
    * legacy `zeroHopInjection`) means pass through unchanged.
    */
   downlinkHopLimitOverride?: number;
+  /**
+   * Raise / clamp hop-limit policy (#5188, #5190) — the successor to the
+   * blunt `downlinkHopLimitOverride` "set" above. Both halves are opt-in and
+   * off by default. When present and enabling at least one half it wins
+   * outright; when absent the legacy fields are mapped onto their raise+clamp
+   * equivalent so pre-4.17 configs keep behaving identically. See
+   * `mqttHopLimitPolicy.ts` for the evaluation order and the `hop_start`
+   * rationale.
+   */
+  hopLimitPolicy?: StoredHopLimitPolicy;
 }
 
 /**
@@ -68,21 +84,6 @@ export interface MqttBrokerSourceConfig {
  * keep working.
  */
 export { MAX_HOP_LIMIT };
-
-/**
- * Resolve the effective downlink hop-limit override for a broker config, or
- * null for "pass through unchanged". The numeric `downlinkHopLimitOverride`
- * wins; the legacy `zeroHopInjection` boolean maps to 0. Out-of-range or
- * non-integer values are ignored (the route layer rejects them on save, so
- * this only guards hand-edited or pre-validation configs).
- */
-export function resolveDownlinkHopLimit(config: MqttBrokerSourceConfig): number | null {
-  const override = config.downlinkHopLimitOverride;
-  if (typeof override === 'number' && Number.isInteger(override) && override >= 0 && override <= MAX_HOP_LIMIT) {
-    return override;
-  }
-  return config.zeroHopInjection ? 0 : null;
-}
 
 export interface MqttBrokerStatus extends SourceStatus {
   listening: boolean;
@@ -118,6 +119,8 @@ export class MqttBrokerManager extends EventEmitter implements ISourceManager {
   private packetsDropped = 0;
   private readonly filter: MqttPacketFilter;
   private readonly distanceDeleteScheduler: DistanceDeleteScheduler;
+  private readonly hopLimitPolicy: HopLimitPolicy | null;
+  private readonly rootTopicPrefix: string;
 
   constructor(sourceId: string, sourceName: string, config: MqttBrokerSourceConfig) {
     super();
@@ -126,6 +129,8 @@ export class MqttBrokerManager extends EventEmitter implements ISourceManager {
     this.config = config;
     this.filter = new MqttPacketFilter({});
     this.distanceDeleteScheduler = new DistanceDeleteScheduler(sourceId);
+    this.rootTopicPrefix = (config.rootTopic ?? 'msh') + '/';
+    this.hopLimitPolicy = resolveHopLimitPolicy(config);
   }
 
   /** Start this source's per-source auto-delete-by-distance scheduler (#3901). */
@@ -141,15 +146,13 @@ export class MqttBrokerManager extends EventEmitter implements ISourceManager {
   async start(): Promise<void> {
     if (this.broker) return;
     await bootstrapMqttChannelDatabase(this.sourceId);
-    const rootTopicPrefix = (this.config.rootTopic ?? 'msh') + '/';
-    const hopLimitOverride = resolveDownlinkHopLimit(this.config);
     this.broker = new MqttBroker({
       port: this.config.listener.port,
       host: this.config.listener.host,
       auth: this.config.auth,
       brokerId: `meshmonitor-${this.sourceId}`,
-      forwardTransform: hopLimitOverride !== null
-        ? (topic, payload) => this.applyHopLimitOverride(rootTopicPrefix, topic, payload, hopLimitOverride)
+      forwardTransform: this.hopLimitPolicy !== null
+        ? (topic, payload) => this.transformForwardedPayload(topic, payload)
         : undefined,
     });
 
@@ -271,30 +274,38 @@ export class MqttBrokerManager extends EventEmitter implements ISourceManager {
   }
 
   /**
-   * Hop-limit forward transform (#3084 zero-hop, generalized in #4081).
-   * Returns a rewritten payload with `hop_limit = hopLimit` for Meshtastic
-   * ServiceEnvelopes on this broker's root topic, or null to pass the
-   * original through. Anything that isn't a decodable ServiceEnvelope
-   * (off-topic, MQTT control, malformed payload, packet already at the
-   * target value) falls through unchanged.
+   * Apply this broker's hop-limit policy (#5188/#5190) to one Meshtastic
+   * ServiceEnvelope on its way to a radio, returning the re-encoded payload or
+   * null when nothing changes.
    *
-   * `hop_start` is deliberately left alone: it records what the originator
-   * set, and rewriting it would corrupt the hop diagnostics every consumer
-   * derives from `hop_start - hop_limit`.
+   * Public because there are two egress paths to a radio and they must agree:
+   * Aedes `authorizeForward` for a radio subscribed as an MQTT client, and
+   * `MeshtasticManager.handleLinkedBrokerLocalPacket()` for a TCP-connected
+   * device fed through `ToRadio.mqttClientProxyMessage`. The `local-packet`
+   * event that drives the second path carries the untransformed payload on
+   * purpose — ingestion and the uplink bridge must see the wire bytes as they
+   * arrived — so that caller applies the transform itself.
    */
-  private applyHopLimitOverride(
-    rootTopicPrefix: string,
-    topic: string,
-    payload: Buffer,
-    hopLimit: number,
-  ): Buffer | null {
-    if (!topic.startsWith(rootTopicPrefix)) return null;
+  transformForwardedPayload(topic: string, payload: Buffer): Buffer | null {
+    const policy = this.hopLimitPolicy;
+    if (!policy) return null;
+    if (!topic.startsWith(this.rootTopicPrefix)) return null;
     const decoded = meshtasticProtobufService.decodeServiceEnvelope(payload, { quiet: true });
     if (!decoded || !decoded.packet) return null;
-    const packet = decoded.packet as { hopLimit?: number; hopStart?: number };
+    const packet = decoded.packet as {
+      hopLimit?: number;
+      hopStart?: number;
+      decoded?: { portnum?: number };
+    };
+    // An encrypted payload has no readable portnum. Null means "unknown":
+    // never raised, still clamped. See applyHopLimitPolicy().
+    const portnum = typeof packet.decoded?.portnum === 'number' ? packet.decoded.portnum : null;
     // proto3 omits zero on the wire, so an absent field means hop_limit 0.
-    if ((packet.hopLimit ?? 0) === hopLimit) return null;
-    packet.hopLimit = hopLimit;
+    const arrived = packet.hopLimit ?? 0;
+    const next = applyHopLimitPolicy(policy, portnum, arrived);
+    if (next === arrived) return null;
+    packet.hopLimit = next;
+    // hop_start is deliberately left alone — see mqttHopLimitPolicy.ts.
     const reencoded = meshtasticProtobufService.encodeServiceEnvelope({
       packet: decoded.packet,
       channelId: decoded.channelId,

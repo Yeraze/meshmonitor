@@ -29,6 +29,14 @@ import DashboardSidebar from '../components/Dashboard/DashboardSidebar';
 import DashboardMap from '../components/Dashboard/DashboardMap';
 import type { NodeSourceRef } from '../components/Dashboard/DashboardNodePopup';
 import { buildBridgeConfig, formFromBridgeConfig } from '../components/MQTT/mqttBridgeConfig';
+import HopLimitPolicyFields from '../components/MQTT/HopLimitPolicyFields';
+import {
+  EMPTY_HOP_LIMIT_POLICY_FORM,
+  formFromHopLimitConfig,
+  hopLimitConfigFromForm,
+  legacyHopOverrideNotice,
+  type HopLimitPolicyForm,
+} from '../components/MQTT/hopLimitPolicyForm';
 import {
   emptyObserverForm,
   observerFormFromConfig,
@@ -57,12 +65,6 @@ import { getReservedLandingPath, isReservedLandingValue } from '../utils/default
 import '../styles/dashboard.css';
 import { UiIcon } from '../components/icons';
 
-
-// Protocol max for `hop_limit` (3-bit field). IMPORTANT: this value must match
-// MAX_HOP_LIMIT in src/server/constants/meshtastic.ts, which the source-save
-// endpoint validates against. Duplicated rather than imported — pages must not
-// pull from src/server.
-const MAX_HOP_LIMIT = 7;
 
 // ---------------------------------------------------------------------------
 // DashboardInner — rendered inside SettingsProvider
@@ -205,8 +207,13 @@ function DashboardInner() {
   // the select carries the value 0–7; 0 reproduces the legacy "zero-hop
   // injection" toggle (#3084), which stored configs may still express as the
   // boolean `zeroHopInjection`.
-  const [formMqttHopOverrideEnabled, setFormMqttHopOverrideEnabled] = useState(false);
-  const [formMqttHopOverrideValue, setFormMqttHopOverrideValue] = useState(0);
+  // Hop-limit raise/clamp policy (#5188/#5190), successor to the #4081
+  // "set hop_limit to N" override. `formMqttLegacyHopNotice` carries the
+  // one-time explanation shown for a source still storing the old field.
+  const [formMqttHopPolicy, setFormMqttHopPolicy] = useState<HopLimitPolicyForm>(
+    EMPTY_HOP_LIMIT_POLICY_FORM,
+  );
+  const [formMqttLegacyHopNotice, setFormMqttLegacyHopNotice] = useState<string | null>(null);
   // Per-bridge topic-rewrite form state, surfaced inside the broker's
   // edit modal so an operator can manage all rewrites for the bridges
   // attached to this broker in one place. Keyed by bridge source id.
@@ -427,8 +434,8 @@ function DashboardInner() {
     setFormMqttUsername('');
     setFormMqttPassword('');
     setFormMqttRootTopic('msh');
-    setFormMqttHopOverrideEnabled(false);
-    setFormMqttHopOverrideValue(0);
+    setFormMqttHopPolicy(EMPTY_HOP_LIMIT_POLICY_FORM);
+    setFormMqttLegacyHopNotice(null);
     setFormMqttBridgeBrokerId('');
     setFormMqttBridgeUrl('');
     setFormMqttBridgeUsername('');
@@ -502,16 +509,11 @@ function DashboardInner() {
       // backend round-trips the existing value when the field stays empty.
       setFormMqttPassword('');
       setFormMqttRootTopic(cfg?.rootTopic ?? 'msh');
-      // Numeric override wins; fall back to the legacy boolean (= 0) so a
-      // source saved before #4081 still loads with the toggle checked.
-      const storedHopOverride = cfg?.downlinkHopLimitOverride;
-      const hasNumericOverride =
-        typeof storedHopOverride === 'number' &&
-        Number.isInteger(storedHopOverride) &&
-        storedHopOverride >= 0 &&
-        storedHopOverride <= MAX_HOP_LIMIT;
-      setFormMqttHopOverrideEnabled(hasNumericOverride || Boolean(cfg?.zeroHopInjection));
-      setFormMqttHopOverrideValue(hasNumericOverride ? storedHopOverride : 0);
+      // New raise/clamp policy wins; a pre-4.17 source loads its legacy
+      // "set to N" override as a clamp at N with the raise left off, plus a
+      // notice explaining what saving will change.
+      setFormMqttHopPolicy(formFromHopLimitConfig(cfg));
+      setFormMqttLegacyHopNotice(legacyHopOverrideNotice(cfg));
       // Build the per-bridge rewrite form data from every mqtt_bridge
       // source that points at this broker. Empty rewrites are fine —
       // the UI just shows blank inputs.
@@ -656,11 +658,11 @@ function DashboardInner() {
         auth: { username: formMqttUsername.trim(), password: formMqttPassword },
         gateway: { nodeNum, nodeId, longName: formName.trim(), shortName },
         rootTopic: formMqttRootTopic.trim() || 'msh',
-        // Write only the numeric field (#4081). Dropping the legacy
-        // `zeroHopInjection` boolean is intentional: the PUT replaces the
-        // whole config blob, so an edited source stops carrying two
-        // representations of the same setting.
-        ...(formMqttHopOverrideEnabled ? { downlinkHopLimitOverride: formMqttHopOverrideValue } : {}),
+        // Write only the new `hopLimitPolicy` shape (#5188/#5190). Dropping
+        // the legacy `downlinkHopLimitOverride` / `zeroHopInjection` fields is
+        // intentional: the PUT replaces the whole config blob, so an edited
+        // source stops carrying two representations of the same setting.
+        ...hopLimitConfigFromForm(formMqttHopPolicy),
       };
       if (editingSourceId && !formMqttPassword) {
         // Empty password on edit → tell server to keep the existing one.
@@ -1467,53 +1469,11 @@ function DashboardInner() {
                     placeholder="msh"
                   />
                 </label>
-                <label className="dashboard-form-field" style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-                  <input
-                    type="checkbox"
-                    checked={formMqttHopOverrideEnabled}
-                    onChange={(e) => setFormMqttHopOverrideEnabled(e.target.checked)}
-                    style={{ marginTop: 3 }}
-                  />
-                  <span>
-                    <span className="dashboard-form-label" style={{ display: 'block' }}>
-                      {t('source.form.mqtt_hop_limit_override', 'Override hop limit on delivery')}
-                    </span>
-                    <span style={{ fontSize: 11, color: 'var(--color-text-subtle)' }}>
-                      {t(
-                        'source.form.mqtt_hop_limit_override_help',
-                        'Rewrite hop_limit on packets the broker delivers to connected devices. 0 is zero-hop injection, matching the public Meshtastic broker — it prevents MQTT-bridged packets from being rebroadcast over RF.',
-                      )}
-                    </span>
-                  </span>
-                </label>
-                {formMqttHopOverrideEnabled && (
-                  <label className="dashboard-form-field">
-                    <span className="dashboard-form-label">
-                      {t('source.form.mqtt_hop_limit_value', 'Delivered hop limit')}
-                    </span>
-                    <select
-                      className="dashboard-form-input"
-                      value={formMqttHopOverrideValue}
-                      onChange={(e) => setFormMqttHopOverrideValue(Number(e.target.value))}
-                    >
-                      {Array.from({ length: MAX_HOP_LIMIT + 1 }, (_, n) => (
-                        <option key={n} value={n}>
-                          {n === 0
-                            ? t('source.form.mqtt_hop_limit_zero', '0 — zero-hop (no RF rebroadcast)')
-                            : String(n)}
-                        </option>
-                      ))}
-                    </select>
-                    {formMqttHopOverrideValue > 0 && (
-                      <span style={{ fontSize: 11, color: 'var(--color-caution)', marginTop: 4 }}>
-                        {t(
-                          'source.form.mqtt_hop_limit_warning',
-                          'Warning: packets arriving over MQTT may have originated on a distant, unrelated mesh. With a nonzero hop limit, every node in RF range will rebroadcast them up to this many hops — a real airtime and flood risk on a busy mesh.',
-                        )}
-                      </span>
-                    )}
-                  </label>
-                )}
+                <HopLimitPolicyFields
+                  value={formMqttHopPolicy}
+                  onChange={setFormMqttHopPolicy}
+                  legacyNotice={formMqttLegacyHopNotice}
+                />
 
                 {/* Per-bridge topic rewrites. Only meaningful when editing
                     an existing broker — a brand-new broker has no bridges
