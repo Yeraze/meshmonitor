@@ -76,7 +76,7 @@ export function SolarOverridesPanel({
                   : t('analysis.solar_monitoring.override_not_solar', 'Marked not solar')}
               </span>
               {canWrite && (
-                <button type="button" disabled={busy} onClick={() => onSet(o.node_num, null)}>
+                <button type="button" className="reports-btn reports-btn--ghost" disabled={busy} onClick={() => onSet(o.node_num, null)}>
                   {t('analysis.solar_monitoring.override_clear', 'Use auto-detection')}
                 </button>
               )}
@@ -107,6 +107,7 @@ export function SolarOverridesPanel({
           </select>
           <button
             type="button"
+            className="reports-btn"
             disabled={busy || selected === ''}
             onClick={() => {
               onSet(Number(selected), true);

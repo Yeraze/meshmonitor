@@ -547,7 +547,12 @@ const SolarNodeCard: React.FC<{
         <div className="reports-node__body">
           {canWriteOverrides && onSetOverride && (
             <div style={{ marginBottom: 8 }}>
-              <button type="button" disabled={overrideBusy} onClick={() => onSetOverride(node.manual_override ? null : false)}>
+              <button
+                type="button"
+                className="reports-btn reports-btn--ghost"
+                disabled={overrideBusy}
+                onClick={() => onSetOverride(node.manual_override ? null : false)}
+              >
                 {node.manual_override
                   ? t('analysis.solar_monitoring.override_clear', 'Use auto-detection')
                   : t('analysis.solar_monitoring.override_mark_not_solar', 'Not a solar node')}
