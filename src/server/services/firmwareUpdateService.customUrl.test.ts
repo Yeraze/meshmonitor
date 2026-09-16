@@ -274,6 +274,29 @@ describe('FirmwareUpdateService — installing from a custom URL (#5011)', () =>
     expect(service.getStatus().message).toMatch(/not verified/i);
   });
 
+  it('sets matchedFile to a usable path component, not the URL', async () => {
+    // Regression for a bug this PR's review caught. `matchedFile` is joined
+    // into the firmware path by the flash step and by retryFlash:
+    //   path.join(tempDir, 'extracted', status.matchedFile)
+    // Putting the display name there (a full URL for a custom install) built a
+    // nonsense path and would have failed the flash.
+    fetchMock.mockResolvedValue(binaryResponse(Buffer.from('firmware bytes')));
+    preflight();
+    const writtenPath = await service.executeDownload(RAW_URL);
+    const tempDir = path.dirname(path.dirname(writtenPath));
+    await service.executeExtract(path.join(tempDir, 'firmware.zip'), 'station-g2', RAW_URL);
+
+    const { matchedFile } = service.getStatus();
+    expect(matchedFile).toBe('custom-firmware.bin');
+    expect(matchedFile).not.toContain('://');
+    expect(matchedFile).not.toContain('/');
+
+    // Rebuild the path exactly as the flash route does — it must exist.
+    const flashPath = path.join(tempDir, 'extracted', matchedFile as string);
+    expect(fs.existsSync(flashPath)).toBe(true);
+    expect(flashPath).toBe(writtenPath);
+  });
+
   it('reports success on verify instead of comparing the URL to a version', async () => {
     fetchMock.mockResolvedValue(binaryResponse(Buffer.from('firmware bytes')));
     preflight();

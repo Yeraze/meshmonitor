@@ -1319,8 +1319,14 @@ export class FirmwareUpdateService {
       // gives headroom for further growth while still bounding an
       // attacker-controlled URL from exhausting disk space.
       const MAX_FIRMWARE_BYTES = 256 * 1024 * 1024;
-      if (downloadSize > MAX_FIRMWARE_BYTES) {
-        throw new Error(`Firmware download exceeds ${MAX_FIRMWARE_BYTES} byte limit (got ${downloadSize})`);
+      // A custom URL fetches ONE `.bin`, never a per-platform zip, so the
+      // 256 MB allowance (sized for release bundles carrying TFT/audio assets)
+      // is far more than it can legitimately need. Hold it to the same 32 MB
+      // as an upload — same artifact, same reasoning, and it narrows what a
+      // mistyped or hostile URL can make us write.
+      const maxBytes = this.customMode ? MAX_UPLOAD_FIRMWARE_BYTES : MAX_FIRMWARE_BYTES;
+      if (downloadSize > maxBytes) {
+        throw new Error(`Firmware download exceeds ${maxBytes} byte limit (got ${downloadSize})`);
       }
 
       const resolvedTempDir = path.resolve(tempDir);
@@ -1420,7 +1426,17 @@ export class FirmwareUpdateService {
           state: 'awaiting-confirm',
           step: 'extract',
           message: `Using ${source}: ${displayName} (not verified against ${boardName})`,
-          matchedFile: displayName,
+          // `matchedFile` is a PATH COMPONENT, not a label: the flash step and
+          // retryFlash both rebuild the firmware path as
+          // `<tempDir>/extracted/<matchedFile>`. It must therefore be the name
+          // on disk, never the display name.
+          //
+          // This bit #5249 as soon as CodeQL forced the on-disk name to a fixed
+          // constant: before that the uploaded name WAS the on-disk name, so
+          // the two were interchangeable and nothing noticed when they stopped
+          // being. A custom URL makes it obvious — the display name is a full
+          // URL, which path.join would turn into nonsense.
+          matchedFile: onDisk,
           rejectedFiles: [],
         });
         logger.info(
