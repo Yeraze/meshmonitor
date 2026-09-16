@@ -12,6 +12,7 @@ import { reticulumConfigFromSource, ensureReticulumManagerStarted } from '../ret
 import { isMeshCoreManager, isMeshtasticManager, isReticulumManager } from '../sourceManagerTypes.js';
 import { loRaCenterFrequencyMhz, REGION_SHORT_NAME } from '../../utils/loraFrequency.js';
 import { MqttBrokerManager, MAX_HOP_LIMIT, type MqttBrokerSourceConfig } from '../mqttBrokerManager.js';
+import { MAX_RAISE_TARGET, RAISEABLE_PORTNUMS } from '../mqttHopLimitPolicy.js';
 import { MqttBridgeManager, type MqttBridgeSourceConfig } from '../mqttBridgeManager.js';
 import waypointRoutes from './waypoints.js';
 import observerRoutes from './sourceObserverRoutes.js';
@@ -509,6 +510,85 @@ function validateMqttBrokerHopLimitOverride(config: Record<string, unknown>): st
   return null;
 }
 
+/**
+ * Validate the optional `hopLimitPolicy` on an mqtt_broker config
+ * (#5188 raise, #5190 clamp). Absent means "forward `hop_limit` unchanged".
+ *
+ * The raise half is the bypass: it is capped at MAX_RAISE_TARGET and may only
+ * name the four portnums firmware hop scaling operates on, so an operator
+ * cannot turn it into a general flood amplifier. The clamp half can only ever
+ * lower a hop limit, so it accepts the full 0–MAX_HOP_LIMIT range and any
+ * portnum in its exemption list.
+ */
+function validateMqttBrokerHopLimitPolicy(config: Record<string, unknown>): string | null {
+  const policy = config?.hopLimitPolicy;
+  if (policy === undefined || policy === null) return null;
+  if (typeof policy !== 'object' || Array.isArray(policy)) {
+    return 'mqtt_broker hopLimitPolicy must be an object';
+  }
+  const { raise, clamp } = policy as { raise?: unknown; clamp?: unknown };
+
+  if (raise !== undefined && raise !== null) {
+    if (typeof raise !== 'object' || Array.isArray(raise)) {
+      return 'mqtt_broker hopLimitPolicy.raise must be an object';
+    }
+    const r = raise as { enabled?: unknown; target?: unknown; portnums?: unknown };
+    if (r.enabled !== undefined && typeof r.enabled !== 'boolean') {
+      return 'mqtt_broker hopLimitPolicy.raise.enabled must be a boolean';
+    }
+    if (r.enabled === true) {
+      if (
+        typeof r.target !== 'number' ||
+        !Number.isInteger(r.target) ||
+        r.target < 1 ||
+        r.target > MAX_RAISE_TARGET
+      ) {
+        return `mqtt_broker hopLimitPolicy.raise.target must be an integer between 1 and ${MAX_RAISE_TARGET}`;
+      }
+      if (!Array.isArray(r.portnums) || r.portnums.length === 0) {
+        return 'mqtt_broker hopLimitPolicy.raise.portnums must be a non-empty array when the raise is enabled';
+      }
+      for (const p of r.portnums) {
+        if (!RAISEABLE_PORTNUMS.includes(p as number)) {
+          return `mqtt_broker hopLimitPolicy.raise.portnums may only contain ${RAISEABLE_PORTNUMS.join(', ')}`;
+        }
+      }
+    }
+  }
+
+  if (clamp !== undefined && clamp !== null) {
+    if (typeof clamp !== 'object' || Array.isArray(clamp)) {
+      return 'mqtt_broker hopLimitPolicy.clamp must be an object';
+    }
+    const c = clamp as { enabled?: unknown; max?: unknown; exemptPortnums?: unknown };
+    if (c.enabled !== undefined && typeof c.enabled !== 'boolean') {
+      return 'mqtt_broker hopLimitPolicy.clamp.enabled must be a boolean';
+    }
+    if (c.enabled === true) {
+      if (
+        typeof c.max !== 'number' ||
+        !Number.isInteger(c.max) ||
+        c.max < 0 ||
+        c.max > MAX_HOP_LIMIT
+      ) {
+        return `mqtt_broker hopLimitPolicy.clamp.max must be an integer between 0 and ${MAX_HOP_LIMIT}`;
+      }
+    }
+    if (c.exemptPortnums !== undefined && c.exemptPortnums !== null) {
+      if (!Array.isArray(c.exemptPortnums)) {
+        return 'mqtt_broker hopLimitPolicy.clamp.exemptPortnums must be an array of portnum numbers';
+      }
+      for (const p of c.exemptPortnums) {
+        if (typeof p !== 'number' || !Number.isInteger(p) || p < 0) {
+          return 'mqtt_broker hopLimitPolicy.clamp.exemptPortnums must be an array of portnum numbers';
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
 function validateMqttBridgeRewrites(config: Record<string, any>): string | null {
   const isAttached =
     typeof config.brokerSourceId === 'string' && config.brokerSourceId.trim() !== '';
@@ -882,7 +962,8 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
     // the validator then never has to reason about a null config, so adding a
     // field read to it later can't turn into a TypeError.
     if (type === 'mqtt_broker') {
-      const hopErr = validateMqttBrokerHopLimitOverride(config);
+      const hopErr =
+        validateMqttBrokerHopLimitOverride(config) ?? validateMqttBrokerHopLimitPolicy(config);
       if (hopErr) {
         return res.status(400).json({ error: hopErr });
       }
@@ -1086,7 +1167,8 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
 
       // Validate the mqtt_broker downlink hop-limit override (#4081).
       if (existing.type === 'mqtt_broker') {
-        const hopErr = validateMqttBrokerHopLimitOverride(config);
+        const hopErr =
+        validateMqttBrokerHopLimitOverride(config) ?? validateMqttBrokerHopLimitPolicy(config);
         if (hopErr) {
           return res.status(400).json({ error: hopErr });
         }

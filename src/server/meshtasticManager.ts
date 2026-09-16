@@ -1285,9 +1285,22 @@ class MeshtasticManager implements ISourceManager {
     const packetId = p.envelope.packet?.id !== undefined ? (p.envelope.packet.id >>> 0) : null;
     // Skip the echo of our OWN device's just-forwarded publish.
     if (packetId !== null && matchesMqttEcho(this.mqttLinkEchoDeviceToBroker, p.topic, packetId)) return;
+    // The broker's `local-packet` payload is deliberately untransformed — our
+    // ingestion and uplink-bridge paths must see the wire bytes as they
+    // arrived. This is an egress to a radio, though, so the linked broker's
+    // hop-limit policy (#5188/#5190) applies here exactly as it does to a
+    // radio subscribed over MQTT. Without this the policy would silently do
+    // nothing on the mqttLink topology.
+    const transformed =
+      typeof (this.mqttLinkBroker as { transformForwardedPayload?: unknown } | null)
+        ?.transformForwardedPayload === 'function'
+        ? (this.mqttLinkBroker as unknown as {
+            transformForwardedPayload(topic: string, payload: Buffer): Buffer | null;
+          }).transformForwardedPayload(p.topic, p.payload)
+        : null;
     const bytes = meshtasticProtobufService.encodeToRadioMqttClientProxyMessage({
       topic: p.topic,
-      data: p.payload,
+      data: transformed ?? p.payload,
       retained: p.retained,
     });
     if (!bytes) return;

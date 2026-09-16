@@ -1,0 +1,120 @@
+/*
+ * Hop-limit policy editor for an mqtt_broker source (#5188 / #5190).
+ *
+ * Colours use semantic theme tokens with no fallback — a hardcoded fallback
+ * silently wins whenever the token is missing, which is exactly the bug it
+ * looks like it prevents.
+ */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--color-text);
+}
+
+.toggleRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.toggleRow input[type='checkbox'] {
+  margin-top: 3px;
+  flex: none;
+}
+
+.help {
+  font-size: 11px;
+  color: var(--color-text-subtle);
+}
+
+.warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--color-caution);
+}
+
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--color-caution);
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--color-caution);
+}
+
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--color-text-subtle);
+}
+
+.confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--color-caution);
+  border-radius: 4px;
+}
+
+.confirmText {
+  font-size: 11px;
+  color: var(--color-text);
+}
+
+.confirmActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.portnumGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+
+.portnumLabel {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--color-text);
+}
+
+.indent {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-left: 22px;
+}
+
+.fieldLabel {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 3px;
+}
