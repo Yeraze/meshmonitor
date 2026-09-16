@@ -73,7 +73,8 @@ interface FirmwareStatusResponse {
   success: boolean;
   status: UpdateStatus;
   channel: FirmwareChannel;
-  customUrl: string;
+  // Null when nothing is saved — /status returns the stored setting verbatim.
+  customUrl: string | null;
   lastChecked: number | null;
   /** Null when nothing is staged (#5249). Survives a page reload. */
   stagedUpload?: StagedUpload | null;
@@ -244,6 +245,9 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
   const releases = releasesData?.releases ?? [];
   const backups = backupsData?.backups ?? [];
   const lastChecked = statusData?.lastChecked ?? null;
+  // #5011: Install fetches whatever the SERVER has stored, so gate the button
+  // on that rather than on unsaved text sitting in the input.
+  const savedCustomUrl = statusData?.customUrl ?? '';
 
   // ---- Handlers ----
 
@@ -263,7 +267,19 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
         const data = await res.json();
         throw new Error(data.error || 'Failed to save channel');
       }
-      showToast(t('firmware.channel', 'Release channel saved'), 'success');
+      // #5011: tell the operator when we rewrote a GitHub page URL into the
+      // raw-content one, rather than silently storing something different
+      // from what they typed.
+      const saved = await res.json().catch(() => null);
+      if (saved?.rewritten && saved?.customUrl) {
+        setCustomUrl(saved.customUrl);
+        showToast(
+          t('firmware.custom_url_rewritten', 'Saved — GitHub page URL converted to its raw-content URL'),
+          'success',
+        );
+      } else {
+        showToast(t('firmware.channel', 'Release channel saved'), 'success');
+      }
       void queryClient.invalidateQueries({ queryKey: ['firmware', 'status'] });
       void queryClient.invalidateQueries({ queryKey: ['firmware', 'releases'] });
     } catch (err) {
@@ -348,6 +364,29 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
       void queryClient.invalidateQueries({ queryKey: ['firmware', 'status'] });
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Error discarding upload', 'error');
+    }
+  };
+
+  /** #5011: start the wizard against the saved custom URL. */
+  const handleInstallCustomUrl = async () => {
+    try {
+      const res = await csrfFetch(`${baseUrl}/api/firmware/update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          useCustomUrl: true,
+          gatewayIp: gatewayInfo.gatewayIp,
+          hwModel: gatewayInfo.hwModel,
+          currentVersion: gatewayInfo.firmwareVersion,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to start update');
+      }
+      void queryClient.invalidateQueries({ queryKey: ['firmware', 'status'] });
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Error starting update', 'error');
     }
   };
 
@@ -677,21 +716,67 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
         </div>
       )}
 
-      {/* Custom URL Input */}
+      {/* Custom URL Input (#5011) */}
       {channel === 'custom' && (
-        <div className="setting-item">
-          <label htmlFor="firmware-custom-url">
-            {t('firmware.channel_custom', 'Custom URL')}
-          </label>
-          <input
-            id="firmware-custom-url"
-            type="url"
-            value={customUrl}
-            onChange={(e) => setCustomUrl(e.target.value)}
-            placeholder={t('firmware.custom_url_placeholder', 'https://example.com/firmware.bin')}
-            className="setting-input"
-            style={{ width: '100%' }}
-          />
+        <div className="setting-item" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <div>
+            <label htmlFor="firmware-custom-url">
+              {t('firmware.channel_custom', 'Custom URL')}
+            </label>
+            <input
+              id="firmware-custom-url"
+              type="url"
+              value={customUrl}
+              onChange={(e) => setCustomUrl(e.target.value)}
+              placeholder={t('firmware.custom_url_placeholder', 'https://example.com/firmware.bin')}
+              className="setting-input"
+              style={{ width: '100%' }}
+            />
+            <span className="setting-description">
+              {t(
+                'firmware.custom_url_hint',
+                'Must point directly at a .bin image. A GitHub file page link is converted to its raw-content URL when you save.',
+              )}
+            </span>
+          </div>
+
+          <div
+            role="alert"
+            style={{
+              padding: '0.75rem',
+              borderRadius: '6px',
+              border: '1px solid var(--color-warning)',
+              color: 'var(--color-warning)',
+              fontSize: '0.85rem',
+              lineHeight: 1.4,
+            }}
+          >
+            {t(
+              'firmware.custom_url_warning',
+              'MeshMonitor does not check that the downloaded file is firmware for this board. Flashing a binary built for a different board will brick the node, and recovery needs a USB cable. Make sure the URL was built for:',
+            )}{' '}
+            <strong>
+              {gatewayInfo.hwModel > 0
+                ? getHardwareModelName(gatewayInfo.hwModel)
+                : t('firmware.unknown_board', 'this board')}
+            </strong>
+          </div>
+
+          <div>
+            <button
+              className="save-button"
+              onClick={handleInstallCustomUrl}
+              disabled={!isOtaSupported || !savedCustomUrl}
+              data-testid="firmware-install-custom-url"
+              title={
+                savedCustomUrl
+                  ? undefined
+                  : t('firmware.custom_url_save_first', 'Press Save first to store the URL')
+              }
+            >
+              {t('firmware.install_from_url', 'Install from URL')}
+            </button>
+          </div>
         </div>
       )}
 

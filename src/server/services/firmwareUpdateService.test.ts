@@ -290,9 +290,14 @@ describe('FirmwareUpdateService', () => {
       expect(filtered).toHaveLength(2);
     });
 
-    it('should return all releases for custom channel', () => {
+    // #5011: this used to assert the custom channel returned ALL releases —
+    // the same as alpha. That was the bug, not the contract: the channel
+    // listed GitHub releases while the URL the operator typed was never read
+    // by anything, so installing from it fetched a GitHub zip instead. The
+    // custom channel is a single user-supplied URL, so it lists nothing.
+    it('should return no releases for custom channel', () => {
       const filtered = service.filterByChannel(releases, 'custom');
-      expect(filtered).toHaveLength(2);
+      expect(filtered).toHaveLength(0);
     });
   });
 

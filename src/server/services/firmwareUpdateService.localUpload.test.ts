@@ -300,11 +300,14 @@ describe('FirmwareUpdateService — preflight against a staged upload (#5249)', 
     const firmwarePath = await service.executeExtract(zipPath, 'heltec-v3', 'firmware.bin');
 
     expect(firmwarePath).toBe(writtenPath);
-    // On disk it is the fixed name; the status still reports what the user
-    // uploaded, because that is the only name they recognise.
     expect(path.basename(firmwarePath)).toBe('uploaded-firmware.bin');
     const status = service.getStatus();
-    expect(status.matchedFile).toBe('firmware.bin');
+    // `matchedFile` is a path component (the flash step joins it), so it is
+    // the on-disk name. The name the user recognises goes in the message —
+    // this assertion used to have it the other way round, which is the bug
+    // the test above now pins.
+    expect(status.matchedFile).toBe('uploaded-firmware.bin');
+    expect(status.message).toContain('firmware.bin');
     expect(status.message).toMatch(/not verified/i);
   });
 });
@@ -328,6 +331,24 @@ describe('FirmwareUpdateService — verifying an uploaded flash (#5249)', () => 
 
   afterEach(() => {
     service.clearStagedUpload();
+  });
+
+  it('sets matchedFile to the on-disk name so the flash path resolves', async () => {
+    // Regression for a bug shipped in #5249 and only caught reviewing #5011.
+    // The on-disk name became a fixed constant to satisfy CodeQL, but
+    // `matchedFile` kept the UPLOADED name — and the flash step rebuilds the
+    // firmware path as path.join(tempDir, 'extracted', matchedFile). The two
+    // used to be the same string, so nothing noticed when they diverged.
+    const writtenPath = await service.executeDownload('file://firmware.bin');
+    const tempDir = path.dirname(path.dirname(writtenPath));
+    await service.executeExtract(path.join(tempDir, 'firmware.zip'), 'heltec-v3', 'firmware.bin');
+
+    const { matchedFile } = service.getStatus();
+    expect(matchedFile).toBe('uploaded-firmware.bin');
+
+    const flashPath = path.join(tempDir, 'extracted', matchedFile as string);
+    expect(fs.existsSync(flashPath)).toBe(true);
+    expect(flashPath).toBe(writtenPath);
   });
 
   it('reports success with the running version instead of comparing to a filename', () => {
