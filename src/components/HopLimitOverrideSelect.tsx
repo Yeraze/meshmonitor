@@ -9,6 +9,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { HOP_LIMIT_OVERRIDE_MAX } from '../utils/hopLimitOverride';
+import styles from './HopLimitOverrideSelect.module.css';
 
 export interface HopLimitOverrideSelectProps {
   id: string;
@@ -28,11 +29,11 @@ export const HopLimitOverrideSelect: React.FC<HopLimitOverrideSelectProps> = ({
 }) => {
   const { t } = useTranslation();
   return (
-    <div style={{ marginTop: '1rem' }}>
-      <label htmlFor={id} style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+    <div className={styles.field}>
+      <label htmlFor={id} className={styles.label}>
         {t('automation.hop_limit_override.label', 'Hop limit')}
       </label>
-      <div style={{ marginBottom: '0.5rem', fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
+      <div className={styles.description}>
         {t(
           'automation.hop_limit_override.description',
           "How far this automated message may travel. Capped at the node's own hop limit, so it can only shorten reach, never extend it. 0 keeps it to nodes that hear this radio directly.",
@@ -43,7 +44,7 @@ export const HopLimitOverrideSelect: React.FC<HopLimitOverrideSelectProps> = ({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
-        style={{ padding: '2px 4px' }}
+        className={styles.select}
       >
         <option value="">{t('automation.hop_limit_override.inherit', "Inherit (the node's own hop limit)")}</option>
         <option value="0">{t('automation.hop_limit_override.zero', '0 — local only, no relay')}</option>
@@ -54,7 +55,7 @@ export const HopLimitOverrideSelect: React.FC<HopLimitOverrideSelectProps> = ({
         ))}
       </select>
       {value === '0' && zeroHopNote && (
-        <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: 'var(--color-caution)' }}>
+        <div className={styles.zeroNote}>
           {zeroHopNote}
         </div>
       )}

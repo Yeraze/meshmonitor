@@ -1,0 +1,31 @@
+/*
+ * Hop-limit override picker (#5121). Semantic theme tokens only, no fallbacks.
+ * Sizes mirror the neighbouring Auto-Ack fields it sits beside.
+ */
+
+.field {
+  margin-top: 1rem;
+}
+
+.label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: bold;
+}
+
+.description {
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--color-text-subtle);
+}
+
+.select {
+  padding: 2px 4px;
+  max-width: 100%;
+}
+
+.zeroNote {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--color-caution);
+}
