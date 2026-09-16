@@ -208,6 +208,7 @@ export default function DashboardMap({
 }: DashboardMapProps) {
   const {
     mapPinStyle,
+    mapPinColorMode,
     setMapTileset,
     cartoApiKey,
     overlayColors,
@@ -690,7 +691,7 @@ export default function DashboardMap({
     return {
       key: markerKey,
       position: [pos.lat, pos.lng],
-      iconSig: `${hops}|${shortName ?? ''}|${isRouter ? 1 : 0}|${roleCategory}|${node.isUnmessagable ? 1 : 0}|${mapPinStyle}`,
+      iconSig: `${hops}|${shortName ?? ''}|${isRouter ? 1 : 0}|${roleCategory}|${node.isUnmessagable ? 1 : 0}|${mapPinStyle}|${mapPinColorMode}`,
       buildIcon: () =>
         createNodeIcon({
           variant: 'meshtastic',
@@ -702,6 +703,7 @@ export default function DashboardMap({
           shortName,
           showLabel: true,
           pinStyle: mapPinStyle,
+          colorMode: mapPinColorMode,
           nodeNum: Number.isFinite(Number(node.nodeNum)) ? Number(node.nodeNum) : undefined,
         }),
       opacity: ageOpacity,

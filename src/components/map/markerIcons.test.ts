@@ -12,6 +12,7 @@ vi.mock('leaflet', () => ({
 }));
 
 import L from 'leaflet';
+import { meshtasticNodeColor } from '../../utils/nodeColor.js';
 import {
   createNodeIcon,
   createTracerouteEndpointIcon,
@@ -578,5 +579,70 @@ describe('markerIcons re-exports — extraction guard (issue #4381 WP1)', () => 
     // be caught too, not only a static import.
     expect(roleGlyphSvgSource).not.toMatch(/['"]leaflet['"]/);
     expect(roleGlyphSvgSource).not.toMatch(/['"]react['"]/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #5018 — the official pin's colour is a separate choice from its shape.
+//
+// Before this, picking the official circle forced the per-node identity colour
+// from #4880, so anyone who wanted that look lost hop distance at a glance.
+// `colorMode` decouples the two; the teardrop pin is unaffected because it has
+// only ever been hop-coloured.
+// ---------------------------------------------------------------------------
+describe('createNodeIcon — official pin colour mode (#5018)', () => {
+  const base = {
+    isSelected: false,
+    isRouter: false,
+    shortName: 'ABCD',
+    pinStyle: 'official' as const,
+    nodeNum: 0x11223344,
+  };
+
+  const htmlFor = (opts: Parameters<typeof createNodeIcon>[0]) =>
+    (createNodeIcon(opts) as unknown as { html: string }).html;
+
+  it('defaults to the per-node identity colour, preserving #4880', () => {
+    const html = htmlFor({ ...base, hops: 3 });
+    expect(html).toContain(meshtasticNodeColor(base.nodeNum));
+  });
+
+  it('fills with the hop colour when colorMode is "hops"', () => {
+    const html = htmlFor({ ...base, hops: 3, colorMode: 'hops' });
+    expect(html).toContain(getHopColor(3));
+    expect(html).not.toContain(meshtasticNodeColor(base.nodeNum));
+  });
+
+  it('uses the SAME hop colour the teardrop pin would', () => {
+    // The point of the feature: the two styles must agree on what a given hop
+    // distance looks like, or the toggle teaches the user a second colour
+    // scale for no reason.
+    for (const hops of [0, 1, 2, 3, 7]) {
+      const official = htmlFor({ ...base, hops, colorMode: 'hops' });
+      expect(official).toContain(getHopColor(hops));
+    }
+  });
+
+  it('still renders the short name — this is the official pin, not a teardrop', () => {
+    const html = htmlFor({ ...base, hops: 2, colorMode: 'hops' });
+    expect(html).toContain('ABCD');
+    expect(html).toContain('<circle');
+  });
+
+  it('lets fixedColor win over both modes', () => {
+    // fixedColor is how the Dashboard overlay and the MeshCore/Reticulum maps
+    // pin a whole layer to one colour — a different question from what a
+    // node's own colour means.
+    const html = htmlFor({ ...base, hops: 3, colorMode: 'hops', fixedColor: '#facc15' });
+    expect(html).toContain('#facc15');
+    expect(html).not.toContain(getHopColor(3));
+  });
+
+  it('leaves the teardrop pin hop-coloured regardless of colorMode', () => {
+    // 'node' is the default and must not leak the identity colour into a pin
+    // style that has never had one.
+    const html = htmlFor({ ...base, pinStyle: 'meshmonitor', hops: 4, colorMode: 'node' });
+    expect(html).toContain(getHopColor(4));
+    expect(html).not.toContain(meshtasticNodeColor(base.nodeNum));
   });
 });

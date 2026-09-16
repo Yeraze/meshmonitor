@@ -5474,5 +5474,9 @@
   "firmware.custom_url_warning": "MeshMonitor does not check that the downloaded file is firmware for this board. Flashing a binary built for a different board will brick the node, and recovery needs a USB cable. Make sure the URL was built for:",
   "firmware.custom_url_rewritten": "Saved — GitHub page URL converted to its raw-content URL",
   "firmware.custom_url_save_first": "Press Save first to store the URL",
-  "firmware.install_from_url": "Install from URL"
+  "firmware.install_from_url": "Install from URL",
+  "settings.map_pin_color_label": "Official Pin Color",
+  "settings.map_pin_color_description": "What the official pin's color means. Node Identity gives every node the same color the Android/iOS apps use, derived from its node ID. Hop Count colors it by hop distance instead, the same scale the MeshMonitor teardrop pin uses — pick this to keep hop distance readable at a glance.",
+  "settings.map_pin_color_node": "Node Identity",
+  "settings.map_pin_color_hops": "Hop Count"
 }

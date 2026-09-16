@@ -301,6 +301,7 @@ function App() {
     mapTilesetLight,
     mapTilesetDark,
     mapPinStyle,
+    mapPinColorMode,
     nodeListStyle,
     iconStyle,
     theme,
@@ -327,6 +328,7 @@ function App() {
     setDateFormat,
     setMapTilesets,
     setMapPinStyle,
+    setMapPinColorMode,
     setNodeListStyle,
     setIconStyle,
     setLanguage,
@@ -3666,6 +3668,7 @@ function App() {
                     mapTilesetLight={mapTilesetLight}
                     mapTilesetDark={mapTilesetDark}
                     mapPinStyle={mapPinStyle}
+                    mapPinColorMode={mapPinColorMode}
                     nodeListStyle={nodeListStyle}
                     iconStyle={iconStyle}
                     theme={theme}
@@ -3693,6 +3696,7 @@ function App() {
                     onDateFormatChange={setDateFormat}
                     onMapTilesetsChange={setMapTilesets}
                     onMapPinStyleChange={setMapPinStyle}
+                    onMapPinColorModeChange={setMapPinColorMode}
                     onNodeListStyleChange={setNodeListStyle}
                     onIconStyleChange={setIconStyle}
                     onLanguageChange={setLanguage}

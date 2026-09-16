@@ -47,6 +47,13 @@ export interface CreateNodeIconOptions {
   /** Source-tech variant. Defaults to 'meshtastic' — every existing caller's
    *  code path is unchanged. */
   variant?: 'meshtastic' | 'meshcore';
+  /**
+   * What the pin's colour means, for the 'official' circle only (#5018).
+   * 'node' (default) keeps the per-node identity colour from #4880; 'hops'
+   * fills the circle with the hop-distance colour instead, so the official
+   * look and at-a-glance hop distance are no longer mutually exclusive.
+   */
+  colorMode?: 'node' | 'hops';
   /** When set, overrides `getHopColor(hops)` for the 'meshtastic' variant, or
    *  supplies the badge color for the 'meshcore' variant (MeshCore mauve). */
   fixedColor?: string;
@@ -70,6 +77,7 @@ export interface CreateNodeIconOptions {
 export function createNodeIcon(options: CreateNodeIconOptions): L.DivIcon {
   const {
     hops = 999,
+    colorMode = 'node',
     isSelected = false,
     isRouter = false,
     shortName,
@@ -170,7 +178,18 @@ export function createNodeIcon(options: CreateNodeIconOptions): L.DivIcon {
     // short name switches to a luminance-picked black/white so it stays legible
     // on any generated color; the halo takes the opposite tone. Without a nodeNum
     // (or for the emoji-name case) we keep the original white circle + dark text.
-    const fillColor = nodeNum != null ? meshtasticNodeColor(nodeNum) : null;
+    // #5018: `colorMode` decides what the circle's fill MEANS. 'hops' reuses
+    // the exact colour the teardrop pin has always used, so the two styles
+    // agree on hop distance and only the shape differs. 'node' keeps #4880's
+    // per-node identity colour.
+    //
+    // `fixedColor` still wins over both — it is how the Dashboard's yellow
+    // overlay and the MeshCore/Reticulum maps pin a whole layer to one colour,
+    // which is a different question from what a node's own colour means.
+    const fillColor = fixedColor
+      ?? (colorMode === 'hops'
+        ? getHopColor(hops)
+        : (nodeNum != null ? meshtasticNodeColor(nodeNum) : null));
     const textFill = fillColor ? readableTextColor(fillColor) : '#333';
     const textHalo = fillColor ? (textFill === '#ffffff' ? '#000000' : '#ffffff') : '#ffffff';
     const circleFill = fillColor ?? 'white';

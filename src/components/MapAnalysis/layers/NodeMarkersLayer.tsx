@@ -41,7 +41,7 @@ interface HopEntry {
  */
 export default function NodeMarkersLayer() {
   const { config, selected, setSelected } = useMapAnalysisCtx();
-  const { mapPinStyle } = useSettings();
+  const { mapPinStyle, mapPinColorMode } = useSettings();
   const navigate = useNavigate();
 
   // Clicking a "Seen by" source row in the popup jumps to that source's view —
@@ -120,7 +120,7 @@ export default function NodeMarkersLayer() {
     // returns identical data doesn't churn the marker and collapse an active
     // spiderfy fan. Selection IS part of the signature, so highlighting the
     // chosen node still re-renders just that marker.
-    const iconSig = `${hops}|${isSelected ? 1 : 0}|${isRouter ? 1 : 0}|${roleCategory}|${n.isUnmessagable ? 1 : 0}|${n.shortName ?? ''}|${mapPinStyle}`;
+    const iconSig = `${hops}|${isSelected ? 1 : 0}|${isRouter ? 1 : 0}|${roleCategory}|${n.isUnmessagable ? 1 : 0}|${n.shortName ?? ''}|${mapPinStyle}|${mapPinColorMode}`;
     // A missing lastHeard sits at the floor here (treated as "oldest
     // visible"), intentionally diverging from DashboardMap where a missing
     // timestamp stays fully opaque — that surface age-gates upstream, this
@@ -152,6 +152,7 @@ export default function NodeMarkersLayer() {
           shortName: n.shortName ?? undefined,
           showLabel: true,
           pinStyle: mapPinStyle,
+          colorMode: mapPinColorMode,
           nodeNum: Number.isFinite(Number(n.nodeNum)) ? Number(n.nodeNum) : undefined,
         }),
       opacity: finalOpacity,
