@@ -240,6 +240,23 @@ describe('FirmwareUpdateService — installing from a custom URL (#5011)', () =>
     await expect(service.executeDownload(RAW_URL)).resolves.toContain('custom-firmware.bin');
   });
 
+  it('refuses a body over the 32 MB custom-URL cap', async () => {
+    // The cap was tightened from the 256 MB release-zip allowance in review:
+    // a custom URL fetches one `.bin`, never a per-platform bundle. Pinning it
+    // here so the branch is covered for this mode, not just for release zips.
+    fetchMock.mockResolvedValue(binaryResponse(Buffer.alloc(33 * 1024 * 1024)));
+    preflight();
+
+    await expect(service.executeDownload(RAW_URL)).rejects.toThrow(/exceeds 33554432 byte limit/);
+    expect(service.getStatus().state).toBe('error');
+  });
+
+  it('accepts a body under the cap that would be fine either way', async () => {
+    fetchMock.mockResolvedValue(binaryResponse(Buffer.alloc(4 * 1024 * 1024)));
+    preflight();
+    await expect(service.executeDownload(RAW_URL)).resolves.toContain('custom-firmware.bin');
+  });
+
   it('surfaces a non-200 as an error', async () => {
     fetchMock.mockResolvedValue({
       ok: false,

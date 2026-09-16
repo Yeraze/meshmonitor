@@ -73,7 +73,8 @@ interface FirmwareStatusResponse {
   success: boolean;
   status: UpdateStatus;
   channel: FirmwareChannel;
-  customUrl: string;
+  // Null when nothing is saved — /status returns the stored setting verbatim.
+  customUrl: string | null;
   lastChecked: number | null;
   /** Null when nothing is staged (#5249). Survives a page reload. */
   stagedUpload?: StagedUpload | null;
