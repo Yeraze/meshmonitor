@@ -312,9 +312,9 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
                       <MeshCoreDetails model={model} />
                     </div>
                     <LastHeardFooter lastHeard={model.lastHeard} mode="absolute" timeFormat={timeFormat} dateFormat={dateFormat} />
-                    {actions.length > 0 && <NodeActions actions={actions} />}
                   </>
                 }
+                actions={<NodeActions actions={actions} />}
               />
             </Popup>
           </>

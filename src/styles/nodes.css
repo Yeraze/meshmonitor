@@ -2148,11 +2148,22 @@
   min-width: 0;
 }
 
+/* Outlined, NOT a filled pill (#5247).
+   `NodeCardHeader` tints the header with the node's list color and sets the
+   badge's text color inline to `readableTextColor(<that header color>)`. A
+   filled badge kept its OWN dark background from this rule, so the text was
+   computed for one background and painted on another — the reported case was
+   black-on-dark-grey inside a bright green header, effectively unreadable.
+   With a transparent background the badge sits ON the header color, so the
+   inline text color is correct by construction, and `currentColor` keeps the
+   border matched to it. With no node color active the inline color is unset
+   and the accent below applies over the popup surface. */
 .node-popup-subtitle {
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--color-accent-alt);
-  background: var(--color-surface-hover);
+  background: transparent;
+  border: 1px solid currentColor;
   padding: 0.1rem 0.4rem;
   border-radius: var(--radius-sm);
   display: inline-block;
@@ -2245,16 +2256,47 @@
   transform: translateY(0);
 }
 
-/* Node Popup Danger Actions (Delete / Purge) */
-.node-popup-danger-actions {
+/* Action row, pinned below the scrolling body by `NodeCard` (#5247).
+   One compact row of icon-only buttons: the old full-width labelled stack was
+   the last thing INSIDE the scroll box, so an overflowing popup clipped it —
+   and what got cut was Delete / Purge, rendering as unlabelled red slivers.
+   `flex-shrink: 0` is what keeps the footer at full height when the flex
+   column runs short; without it the row would compress instead of the body
+   scrolling. */
+.node-popup-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0.375rem;
   margin-top: 0.5rem;
   padding-top: 0.5rem;
   border-top: 1px solid var(--color-surface-hover);
-  display: flex;
-  gap: 0.375rem;
 }
 
-.node-popup-danger-actions .popup-danger-btn {
+/* Icon-only: square, sized off the icon rather than a text label. The label
+   lives in `title`/`aria-label` (see NodeActions). */
+.node-popup-btn--icon {
+  width: auto;
+  flex: 1;
+  min-width: 0;
+  padding: 0.4rem 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+}
+
+/* The lift-on-hover from `.node-popup-btn` moves a 2px shadow around inside a
+   fixed footer; on a compact row that reads as jitter rather than feedback. */
+.node-popup-btn--icon:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+/* Delete / Purge keep their tier colors on the icon buttons — with no text
+   label, color is the only at-rest signal that these two are destructive. */
+.node-popup-actions .popup-danger-btn {
   flex: 1;
   font-size: 0.75rem;
   padding: 0.375rem 0.5rem;
@@ -2265,19 +2307,19 @@
   font-weight: 500;
 }
 
-.node-popup-danger-actions .popup-danger-btn:hover {
+.node-popup-actions .popup-danger-btn:hover {
   background: var(--color-error);
   color: var(--color-bg);
   transform: none;
   box-shadow: none;
 }
 
-.node-popup-danger-actions .popup-danger-btn-severe {
+.node-popup-actions .popup-danger-btn-severe {
   color: var(--color-danger);
   border-color: var(--color-danger);
 }
 
-.node-popup-danger-actions .popup-danger-btn-severe:hover {
+.node-popup-actions .popup-danger-btn-severe:hover {
   background: var(--color-danger);
   color: var(--color-bg);
 }

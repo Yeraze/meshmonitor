@@ -48,6 +48,51 @@ describe('NodeCard', () => {
     expect(container.firstElementChild?.className).toBe('node-popup');
   });
 
+  it('renders `actions` OUTSIDE the scrolling body (#5247)', () => {
+    // `.node-popup-content` is the scroll box. Anything inside it can be
+    // scrolled out of view, and the action row is last — which is how Delete
+    // and Purge ended up clipped into unlabelled red slivers. Being a SIBLING
+    // of the scroll box is the whole fix, so assert the relationship rather
+    // than mere presence.
+    const { container } = render(
+      <NodeCard
+        model={baseModel}
+        sections={<div data-testid="info-body">INFO</div>}
+        actions={<div data-testid="actions">ACTIONS</div>}
+      />,
+    );
+
+    const scrollBox = container.querySelector('.node-popup-content')!;
+    const actions = screen.getByTestId('actions');
+    expect(scrollBox.contains(actions)).toBe(false);
+    expect(actions.parentElement).toBe(container.querySelector('.node-popup'));
+  });
+
+  it('stays tab-less and action-less when neither is supplied', () => {
+    const { container } = render(
+      <NodeCard model={baseModel} sections={<div data-testid="info-body">INFO</div>} />,
+    );
+    expect(container.querySelector('.node-popup-tabs')).toBeNull();
+    // No stray footer node when a consumer passes no actions.
+    expect(container.querySelector('.node-popup')?.children).toHaveLength(2);
+  });
+
+  it('keeps actions visible on the traceroute tab too', () => {
+    // The footer is chrome, not tab content — switching tabs must not take the
+    // buttons away.
+    render(
+      <NodeCard
+        model={baseModel}
+        sections={<div data-testid="info-body">INFO</div>}
+        tracerouteBody={<div data-testid="tr-body">TRACEROUTE</div>}
+        actions={<div data-testid="actions">ACTIONS</div>}
+      />,
+    );
+    expect(screen.getByTestId('actions')).toBeInTheDocument();
+    fireEvent.click(screen.getByTitle('node_popup.tab_traceroute'));
+    expect(screen.getByTestId('actions')).toBeInTheDocument();
+  });
+
   it('renders a tab bar and switches between sections/tracerouteBody when tracerouteBody is present', () => {
     render(
       <NodeCard

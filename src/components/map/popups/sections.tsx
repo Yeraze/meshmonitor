@@ -523,51 +523,65 @@ const ACTION_META: Record<NodeActionKind, ActionMeta> = {
   'more-details': { icon: 'search', key: 'node_popup.more_details', defaultLabel: 'More Details' },
   'show-on-map': { icon: 'map', key: 'node_popup.show_on_map', defaultLabel: 'Show on Map' },
   'copy-nodeinfo': { icon: 'copy', key: 'nodes.copy_nodeinfo_title', defaultLabel: 'Copy NodeInfo' },
+  // Deliberately shares `more-details`' icon and label: on a MeshCore contact
+  // the DM thread IS that contact's detail view, so "More Details" is what the
+  // action means to the user even though the handler navigates to the DM.
   'navigate-to-dm': { icon: 'search', key: 'node_popup.more_details', defaultLabel: 'More Details' },
   delete: { icon: 'delete', key: 'node_popup.delete_node', defaultLabel: 'Delete', danger: 'red' },
   purge: { icon: 'alert', key: 'node_popup.purge_node', defaultLabel: 'Purge from Device', danger: 'maroon' },
 };
 
 export interface NodeActionsProps {
-  /** Each consumer supplies exactly its own button set — no boolean soup.
-   *  `delete`/`purge` are automatically grouped into a trailing
-   *  `.node-popup-danger-actions` block (matching every current renderer);
-   *  every other kind renders as a standalone `.node-popup-btn`. */
+  /** Each consumer supplies exactly its own button set — no boolean soup. */
   actions: NodeActionSpec[];
 }
 
+/**
+ * One row of icon-only buttons (#5247).
+ *
+ * Previously these were full-width labelled buttons stacked vertically, with
+ * delete/purge in a trailing block. Inside a scrolling popup body that made the
+ * destructive pair the last thing on screen, so an overflowing popup clipped
+ * them mid-button: a bare red sliver with no label, which is the worst possible
+ * rendering for "Delete" and "Purge from Device". `NodeCard` now pins this row
+ * in a footer outside the scroll box, and a single compact row is what lets it
+ * sit there without eating the info area.
+ *
+ * Icon-only, so every button needs its label reachable another way: `title`
+ * for pointer hover, `aria-label` for assistive tech. Both destructive actions
+ * additionally confirm before doing anything (`window.confirm` naming the node
+ * and its consequences — see `useSourceView.handleDeleteNode`), so a misclick
+ * on an unlabelled icon is recoverable.
+ */
 export const NodeActions: React.FC<NodeActionsProps> = ({ actions }) => {
   const { t } = useTranslation();
-  const primary = actions.filter(a => a.kind !== 'delete' && a.kind !== 'purge');
-  const danger = actions.filter(a => a.kind === 'delete' || a.kind === 'purge');
+  if (actions.length === 0) return null;
 
   return (
-    <>
-      {primary.map((a) => {
+    <div
+      className="node-popup-actions"
+      role="toolbar"
+      aria-label={t('node_popup.actions', 'Node actions')}
+    >
+      {actions.map((a) => {
         const meta = ACTION_META[a.kind];
+        const label = t(meta.key, meta.defaultLabel);
+        const dangerClass = meta.danger
+          ? ` popup-danger-btn${meta.danger === 'maroon' ? ' popup-danger-btn-severe' : ''}`
+          : '';
         return (
-          <button key={a.kind} className="node-popup-btn" onClick={a.onClick} disabled={a.disabled}>
-            <UiIcon name={meta.icon} /> {t(meta.key, meta.defaultLabel)}
+          <button
+            key={a.kind}
+            className={`node-popup-btn node-popup-btn--icon${dangerClass}`}
+            onClick={a.onClick}
+            disabled={a.disabled}
+            title={label}
+            aria-label={label}
+          >
+            <UiIcon name={meta.icon} />
           </button>
         );
       })}
-      {danger.length > 0 && (
-        <div className="node-popup-danger-actions">
-          {danger.map((a) => {
-            const meta = ACTION_META[a.kind];
-            return (
-              <button
-                key={a.kind}
-                className={`node-popup-btn popup-danger-btn${meta.danger === 'maroon' ? ' popup-danger-btn-severe' : ''}`}
-                onClick={a.onClick}
-                disabled={a.disabled}
-              >
-                <UiIcon name={meta.icon} /> {t(meta.key, meta.defaultLabel)}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </>
+    </div>
   );
 };
