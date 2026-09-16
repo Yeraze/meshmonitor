@@ -5457,5 +5457,16 @@
   "notifications.waypoint_center_label": "Measured from",
   "notifications.waypoint_center_lat_placeholder": "latitude",
   "notifications.waypoint_center_lon_placeholder": "longitude",
-  "notifications.waypoint_hint": "Leave the coordinates empty to measure from this source's own node, which follows it when mobile. You are alerted once per waypoint; rebroadcasts of one you have already seen stay silent."
+  "notifications.waypoint_hint": "Leave the coordinates empty to measure from this source's own node, which follows it when mobile. You are alerted once per waypoint; rebroadcasts of one you have already seen stay silent.",
+  "firmware.channel_local": "Local File (Upload)",
+  "firmware.local_warning": "MeshMonitor does not check that an uploaded file is firmware for this board. Flashing a binary built for a different board will brick the node, and recovery needs a USB cable. Make sure the file you pick was built for:",
+  "firmware.unknown_board": "this board",
+  "firmware.choose_file": "Choose .bin file",
+  "firmware.choose_different_file": "Choose a different file",
+  "firmware.uploading": "Uploading...",
+  "firmware.upload_ok": "Firmware uploaded",
+  "firmware.upload_not_bin": "Firmware must be a .bin file",
+  "firmware.discard_upload": "Discard",
+  "firmware.local_ack": "I built or obtained this file for this exact board, and I can recover the node over USB if it fails to boot.",
+  "firmware.install_uploaded": "Install uploaded firmware"
 }
