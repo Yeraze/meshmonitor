@@ -2294,17 +2294,8 @@
   box-shadow: none;
 }
 
-/* Node Popup Danger Actions (Delete / Purge) — legacy block, kept for the
-   `.popup-danger-btn` colors still applied to the icon buttons. */
-.node-popup-danger-actions {
-  margin-top: 0.5rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--color-surface-hover);
-  display: flex;
-  gap: 0.375rem;
-}
-
-.node-popup-danger-actions .popup-danger-btn,
+/* Delete / Purge keep their tier colors on the icon buttons — with no text
+   label, color is the only at-rest signal that these two are destructive. */
 .node-popup-actions .popup-danger-btn {
   flex: 1;
   font-size: 0.75rem;
@@ -2316,7 +2307,6 @@
   font-weight: 500;
 }
 
-.node-popup-danger-actions .popup-danger-btn:hover,
 .node-popup-actions .popup-danger-btn:hover {
   background: var(--color-error);
   color: var(--color-bg);
@@ -2324,13 +2314,11 @@
   box-shadow: none;
 }
 
-.node-popup-danger-actions .popup-danger-btn-severe,
 .node-popup-actions .popup-danger-btn-severe {
   color: var(--color-danger);
   border-color: var(--color-danger);
 }
 
-.node-popup-danger-actions .popup-danger-btn-severe:hover,
 .node-popup-actions .popup-danger-btn-severe:hover {
   background: var(--color-danger);
   color: var(--color-bg);

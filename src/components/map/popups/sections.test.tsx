@@ -450,6 +450,13 @@ describe('NodeActions (#5247 — one compact icon row)', () => {
     expect(container.querySelector('.node-popup-danger-actions')).toBeNull();
   });
 
+  it('groups the icon buttons as a labelled toolbar', () => {
+    // A bare <div> of unlabelled icon buttons gives assistive tech no way to
+    // know they belong together or what the group is for.
+    render(<><NodeActions actions={[{ kind: 'more-details', onClick: vi.fn() }]} /></>);
+    expect(screen.getByRole('toolbar', { name: /Node actions/ })).toBeInTheDocument();
+  });
+
   it('keeps each label reachable without visible text', () => {
     // Icon-only buttons are unusable and inaccessible without this: the label
     // has to survive somewhere for hover and for assistive tech.

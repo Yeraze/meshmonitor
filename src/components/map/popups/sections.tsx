@@ -523,6 +523,9 @@ const ACTION_META: Record<NodeActionKind, ActionMeta> = {
   'more-details': { icon: 'search', key: 'node_popup.more_details', defaultLabel: 'More Details' },
   'show-on-map': { icon: 'map', key: 'node_popup.show_on_map', defaultLabel: 'Show on Map' },
   'copy-nodeinfo': { icon: 'copy', key: 'nodes.copy_nodeinfo_title', defaultLabel: 'Copy NodeInfo' },
+  // Deliberately shares `more-details`' icon and label: on a MeshCore contact
+  // the DM thread IS that contact's detail view, so "More Details" is what the
+  // action means to the user even though the handler navigates to the DM.
   'navigate-to-dm': { icon: 'search', key: 'node_popup.more_details', defaultLabel: 'More Details' },
   delete: { icon: 'delete', key: 'node_popup.delete_node', defaultLabel: 'Delete', danger: 'red' },
   purge: { icon: 'alert', key: 'node_popup.purge_node', defaultLabel: 'Purge from Device', danger: 'maroon' },
@@ -555,7 +558,11 @@ export const NodeActions: React.FC<NodeActionsProps> = ({ actions }) => {
   if (actions.length === 0) return null;
 
   return (
-    <div className="node-popup-actions">
+    <div
+      className="node-popup-actions"
+      role="toolbar"
+      aria-label={t('node_popup.actions', 'Node actions')}
+    >
       {actions.map((a) => {
         const meta = ACTION_META[a.kind];
         const label = t(meta.key, meta.defaultLabel);
