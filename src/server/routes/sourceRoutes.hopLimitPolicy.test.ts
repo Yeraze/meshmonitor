@@ -79,6 +79,12 @@ describe('sourceRoutes — mqtt_broker hopLimitPolicy validation', () => {
     expect(res.body.config.hopLimitPolicy.clamp.exemptPortnums).toEqual([PortNum.TEXT_MESSAGE_APP]);
   });
 
+  it('rejects an exemption above the highest defined portnum', async () => {
+    const res = await post({ clamp: { enabled: true, max: 3, exemptPortnums: [PortNum.MAX + 1] } });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/exemptPortnums/);
+  });
+
   it('rejects a non-array exemption list', async () => {
     const res = await post({ clamp: { enabled: true, max: 3, exemptPortnums: 1 } });
     expect(res.status).toBe(400);

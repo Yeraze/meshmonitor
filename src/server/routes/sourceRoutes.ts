@@ -579,8 +579,8 @@ function validateMqttBrokerHopLimitPolicy(config: Record<string, unknown>): stri
         return 'mqtt_broker hopLimitPolicy.clamp.exemptPortnums must be an array of portnum numbers';
       }
       for (const p of c.exemptPortnums) {
-        if (typeof p !== 'number' || !Number.isInteger(p) || p < 0) {
-          return 'mqtt_broker hopLimitPolicy.clamp.exemptPortnums must be an array of portnum numbers';
+        if (typeof p !== 'number' || !Number.isInteger(p) || p < 0 || p > PortNum.MAX) {
+          return `mqtt_broker hopLimitPolicy.clamp.exemptPortnums must be an array of portnum numbers between 0 and ${PortNum.MAX}`;
         }
       }
     }

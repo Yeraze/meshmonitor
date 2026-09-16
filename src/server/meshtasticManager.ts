@@ -1291,12 +1291,15 @@ class MeshtasticManager implements ISourceManager {
     // hop-limit policy (#5188/#5190) applies here exactly as it does to a
     // radio subscribed over MQTT. Without this the policy would silently do
     // nothing on the mqttLink topology.
+    // `in` narrows the MqttBrokerManager | MqttBridgeManager union to the
+    // broker, so the call is fully type-checked — a signature change on
+    // transformForwardedPayload breaks this line rather than silently drifting.
+    // A standalone mqtt_bridge link target has no policy of its own and
+    // forwards unchanged.
+    const broker = this.mqttLinkBroker;
     const transformed =
-      typeof (this.mqttLinkBroker as { transformForwardedPayload?: unknown } | null)
-        ?.transformForwardedPayload === 'function'
-        ? (this.mqttLinkBroker as unknown as {
-            transformForwardedPayload(topic: string, payload: Buffer): Buffer | null;
-          }).transformForwardedPayload(p.topic, p.payload)
+      broker && 'transformForwardedPayload' in broker
+        ? broker.transformForwardedPayload(p.topic, p.payload)
         : null;
     const bytes = meshtasticProtobufService.encodeToRadioMqttClientProxyMessage({
       topic: p.topic,
