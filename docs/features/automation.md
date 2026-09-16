@@ -71,6 +71,14 @@ When enabled, MeshMonitor monitors all incoming messages for patterns matching t
 - **1** uses the least airtime; **3** gives the best odds of delivery on a lossy link.
 - Channel (broadcast) replies always send once — there is no ACK to wait for, so a resend would just be a duplicate.
 
+**Hop Limit**: How far the reply and the tapback may travel (Meshtastic only).
+
+- **Inherit** (default) uses the node's own hop limit, exactly as before this setting existed.
+- Any value is **capped at the node's own hop limit**, so this can only shorten reach, never extend it.
+- **0** keeps the reply local: only nodes that hear this radio directly receive it. A zero-hop sender is adjacent by definition, so replying at 0 is often all you need.
+- At **0** a DM reply is sent **once with no delivery confirmation** and is **not resent** — the firmware only honors a zero hop limit on a packet that does not ask for an ACK, so the resend attempts above do not apply.
+- **Converting to an Automation** carries this setting onto the generated tapback and reply actions.
+
 **Separate Templates for Direct vs. Multi-hop**: You can configure different acknowledgment messages for direct connections (0 hops) versus multi-hop messages. This allows you to include signal quality metrics like SNR and RSSI for direct connections while showing hop count for relayed messages.
 
 **Example Custom Templates**:
@@ -670,6 +678,12 @@ When enabled, MeshMonitor sends a scheduled message to the configured channel at
 - Choose from any available channel on your device
 - Typically use the Primary channel or a dedicated announcements channel
 - Avoid using channels meant for private or sensitive communications
+
+**Hop Limit**: How far the announcement may travel.
+
+- **Inherit** (default) uses the node's own hop limit.
+- Any value is **capped at the node's own hop limit**, so this can only shorten reach.
+- **0** keeps the announcement to nodes that hear this radio directly — useful when the status of your MeshMonitor instance matters locally but the wider mesh does not want the airtime. Announcements are channel broadcasts and are never ACKed, so 0 gives up nothing.
 
 **Announcement Message**: The text to broadcast. Supports dynamic tokens:
 

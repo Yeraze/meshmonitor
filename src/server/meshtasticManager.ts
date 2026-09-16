@@ -49,6 +49,7 @@ import { MessageQueueService } from './messageQueueService.js';
 import { resolveAutoWelcomeDelaySeconds } from './autoWelcomeDelay.js';
 import { TxDisabledError } from './errors/txDisabledError.js';
 import { resolveAutoAckPreSendDelaySeconds } from './autoAckDelay.js';
+import { clampHopLimitOverride, parseHopLimitOverride } from '../utils/hopLimitOverride.js';
 import { normalizeTriggerPatterns, normalizeTriggerChannels } from '../utils/autoResponderUtils.js';
 import { matchAutoResponderPattern } from './utils/autoResponderMatcher.js';
 import { isWithinTimeWindow } from './utils/timeWindow.js';
@@ -1430,12 +1431,13 @@ class MeshtasticManager implements ISourceManager {
       });
     }
     // Initialize message queue service with send callback
-    this.messageQueue.setSendCallback(async (text: string, destination: number, replyId?: number, channel?: number, emoji?: number) => {
+    this.messageQueue.setSendCallback(async (text: string, destination: number, replyId?: number, channel?: number, emoji?: number, hopLimitOverride?: number) => {
+      const sendOptions = hopLimitOverride !== undefined ? { hopLimitOverride } : undefined;
       // For channel messages: channel is specified, destination is 0 (undefined in sendTextMessage)
       // For DMs: channel is undefined, destination is the node number
       if (channel !== undefined) {
         // Channel message - send to channel, no specific destination
-        return await this.sendTextMessage(text, channel, undefined, replyId, emoji);
+        return await this.sendTextMessage(text, channel, undefined, replyId, emoji, undefined, undefined, sendOptions);
       } else {
         // DM - use the channel we last heard the target node on.
         // Source-scoped lookup — composite PK (nodeNum, sourceId) requires it
@@ -1443,7 +1445,7 @@ class MeshtasticManager implements ISourceManager {
         const targetNode = await databaseService.nodes.getNode(destination, this.sourceId);
         const dmChannel = (targetNode?.channel !== undefined && targetNode?.channel !== null) ? targetNode.channel : 0;
         logger.debug(`📨 Queue DM to ${destination} - Using channel: ${dmChannel}`);
-        return await this.sendTextMessage(text, dmChannel, destination, replyId, emoji);
+        return await this.sendTextMessage(text, dmChannel, destination, replyId, emoji, undefined, undefined, sendOptions);
       }
     });
 
@@ -9942,7 +9944,7 @@ class MeshtasticManager implements ISourceManager {
     return null;
   }
 
-  async sendTextMessage(text: string, channel: number = 0, destination?: number, replyId?: number, emoji?: number, userId?: number, attribution?: { sourceIp?: string | null; sourcePath?: 'http_api' | 'tcp_radio' | 'mqtt_bridge' | 'system' | null }): Promise<number> {
+  async sendTextMessage(text: string, channel: number = 0, destination?: number, replyId?: number, emoji?: number, userId?: number, attribution?: { sourceIp?: string | null; sourcePath?: 'http_api' | 'tcp_radio' | 'mqtt_bridge' | 'system' | null }, options?: { hopLimitOverride?: number }): Promise<number> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
     }
@@ -10001,7 +10003,12 @@ class MeshtasticManager implements ISourceManager {
         }
       }
 
-      const { data: textMessageData, messageId } = meshtasticProtobufService.createTextMessage(text, destination, channel, replyId, emoji, pkiEncrypted);
+      // #5121: an automated send may pin its hop count. Capped at this node's
+      // own hop limit so an override can only shorten reach, never extend it.
+      const hopLimit = clampHopLimitOverride(options?.hopLimitOverride, this.getConfiguredHopLimit());
+      const zeroHop = hopLimit === 0;
+
+      const { data: textMessageData, messageId } = meshtasticProtobufService.createTextMessage(text, destination, channel, replyId, emoji, pkiEncrypted, hopLimit);
 
       // Remember our own packet id so that if this message is overheard
       // rebroadcast, echoed by MQTT, or replayed by store-and-forward, it isn't
@@ -10069,8 +10076,12 @@ class MeshtasticManager implements ISourceManager {
           replyId: replyId || undefined,
           emoji: emoji || undefined,
           requestId: messageId, // Save requestId for routing error matching
-          wantAck: true, // Request acknowledgment for this message
-          deliveryState: 'pending', // Initial delivery state
+          // A zero-hop send goes out without an ACK request (see
+          // createTextMessage), so no routing ACK will ever arrive to move it
+          // off 'pending'. It is 'delivered' — handed to the radio — the
+          // moment transport.send returns.
+          wantAck: !zeroHop,
+          deliveryState: zeroHop ? 'delivered' : 'pending',
           createdAt: Date.now(),
           // Default attribution to 'system' when not provided (e.g. internal
           // ping/welcome/etc. callers); HTTP route passes 'http_api' + req.ip.
@@ -11072,6 +11083,12 @@ class MeshtasticManager implements ISourceManager {
       const preSendDelaySeconds = resolveAutoAckPreSendDelaySeconds(
         await settings.getSettingForSource(sourceId, 'autoAckPreSendDelaySeconds'),
       );
+      // Hop-limit override (#5121) for both the tapback and the reply below.
+      // Unset/'inherit' keeps the node's own hop limit.
+      const ackHopLimitOverride = parseHopLimitOverride(
+        await settings.getSettingForSource(sourceId, 'autoAckHopLimit'),
+      );
+
       const dispatchAck = (enqueue: () => void): void => {
         if (preSendDelaySeconds > 0) {
           setTimeout(enqueue, preSendDelaySeconds * 1000);
@@ -11108,7 +11125,8 @@ class MeshtasticManager implements ISourceManager {
           },
           isDirectMessage ? undefined : channelIndex, // channel
           1, // maxAttempts - tapbacks are best-effort, don't retry
-          1 // emoji flag = 1 for tapback/reaction
+          1, // emoji flag = 1 for tapback/reaction
+          ackHopLimitOverride,
         ));
       }
 
@@ -11158,7 +11176,10 @@ class MeshtasticManager implements ISourceManager {
           (reason: string) => {
             logger.warn(`❌ Auto-acknowledge message failed to ${replyTarget}: ${reason}`);
           },
-          replyChannel // channel: undefined for DM, channel number for channel
+          replyChannel, // channel: undefined for DM, channel number for channel
+          undefined, // maxAttempts: the queue's default (forced to 1 at hop 0)
+          undefined, // not a tapback
+          ackHopLimitOverride,
         ));
       }
 

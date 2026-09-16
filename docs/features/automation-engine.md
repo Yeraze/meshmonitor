@@ -330,6 +330,9 @@ Reacts to the triggering message with an emoji. Minimal by design — it carries
 - The **Emoji** field is hidden while hop-count mode is selected; your fixed emoji is remembered if
   you switch back to it later.
 - MeshCore sources are still skipped — MeshCore has no tapback concept on the protocol.
+- **Hop limit** *(advanced)* — how far the reaction may travel. Same rules as
+  **Hop limit** under [Send a message](#send-a-message). A zero-hop reaction to a zero-hop message is
+  the common case: the sender is adjacent by definition, so there is nothing to gain by relaying it.
 - **Send via sources** — which radios send the reaction. Leave none to use the source that
   triggered the automation — but a source **is required** for source-less triggers (System events
   and Schedules).
@@ -381,6 +384,22 @@ Sends text to a channel or as a DM, with full `{{ }}` token interpolation in the
     as a `TX_DISABLED` skip entry on the run. This mirrors Auto-Acknowledge's own queued-reply
     behavior exactly; it just means a TX-disabled source shows the action as *queued*, not
     *skipped*, so don't be surprised if the run log looks like it sent when transmit was actually off.
+
+- **Hop limit** *(advanced; Meshtastic only)* — how far the message may travel.
+  - **Inherit** (the default, and what every existing automation does) sends at the node's own
+    `lora.hop_limit`.
+  - **Capped at the sending node's own hop limit.** The firmware does not stop a client asking for
+    more hops than the node is configured for, so MeshMonitor enforces the cap itself: choosing `5`
+    on a node set to `3` sends at `3`. The override can only ever shorten reach.
+  - **`0` keeps the message local** — only nodes that hear this radio directly receive it, and none
+    relay it. Useful for status pings and replies whose audience is inherently local.
+  - **A `0` send goes out once, with no delivery confirmation.** The firmware replaces a zero hop
+    limit with the node's default whenever the packet asks for an ACK, so a zero-hop send has to
+    drop its ACK request. For a channel message that costs nothing (broadcasts are never ACKed).
+    For a **DM** it means no delivery confirmation and **no resend** — **DM resend attempts** is
+    ignored and the send skips the outgoing queue.
+  - MeshCore has no hop-limit field; the setting is ignored there. Use **MeshCore scope** to limit
+    how far a MeshCore message floods.
 
 The overall send is a **source × channel matrix**: each selected source posts to the matching local
 slot of each selected channel.

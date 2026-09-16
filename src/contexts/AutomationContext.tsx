@@ -3,6 +3,7 @@ import { AutoResponderTrigger, TimerTrigger, GeofenceTrigger } from '../componen
 import { useSource } from './SourceContext';
 import { logger } from '../utils/logger';
 import { AutoAckMatrix, DEFAULT_AUTOACK_MATRIX, settingsToMatrix } from '../utils/autoAckMatrix';
+import { hopLimitSettingValue } from '../utils/hopLimitOverride';
 
 interface AutomationContextType {
   autoAckEnabled: boolean;
@@ -27,6 +28,9 @@ interface AutomationContextType {
   setAutoAckPreSendDelaySeconds: React.Dispatch<React.SetStateAction<number>>;
   autoAckMaxAttempts: number;
   setAutoAckMaxAttempts: React.Dispatch<React.SetStateAction<number>>;
+  /** Hop-limit override (#5121): '' = inherit the node's own, else '0'–'7'. */
+  autoAckHopLimit: string;
+  setAutoAckHopLimit: React.Dispatch<React.SetStateAction<string>>;
   autoAckTestMessages: string;
   setAutoAckTestMessages: React.Dispatch<React.SetStateAction<string>>;
   autoAnnounceEnabled: boolean;
@@ -37,6 +41,9 @@ interface AutomationContextType {
   setAutoAnnounceMessage: React.Dispatch<React.SetStateAction<string>>;
   autoAnnounceChannelIndexes: number[];
   setAutoAnnounceChannelIndexes: React.Dispatch<React.SetStateAction<number[]>>;
+  /** Hop-limit override (#5121): '' = inherit the node's own, else '0'–'7'. */
+  autoAnnounceHopLimit: string;
+  setAutoAnnounceHopLimit: React.Dispatch<React.SetStateAction<string>>;
   autoAnnounceOnStart: boolean;
   setAutoAnnounceOnStart: React.Dispatch<React.SetStateAction<boolean>>;
   autoAnnounceUseSchedule: boolean;
@@ -117,11 +124,13 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
   const [autoAckCooldownSeconds, setAutoAckCooldownSeconds] = useState<number>(60);
   const [autoAckPreSendDelaySeconds, setAutoAckPreSendDelaySeconds] = useState<number>(0);
   const [autoAckMaxAttempts, setAutoAckMaxAttempts] = useState<number>(3);
+  const [autoAckHopLimit, setAutoAckHopLimit] = useState<string>('');
   const [autoAckTestMessages, setAutoAckTestMessages] = useState<string>('');
   const [autoAnnounceEnabled, setAutoAnnounceEnabled] = useState<boolean>(false);
   const [autoAnnounceIntervalHours, setAutoAnnounceIntervalHours] = useState<number>(6);
   const [autoAnnounceMessage, setAutoAnnounceMessage] = useState<string>('MeshMonitor {VERSION} online for {DURATION} {FEATURES}');
   const [autoAnnounceChannelIndexes, setAutoAnnounceChannelIndexes] = useState<number[]>([0]);
+  const [autoAnnounceHopLimit, setAutoAnnounceHopLimit] = useState<string>('');
   const [autoAnnounceOnStart, setAutoAnnounceOnStart] = useState<boolean>(false);
   const [autoAnnounceUseSchedule, setAutoAnnounceUseSchedule] = useState<boolean>(false);
   const [autoAnnounceSchedule, setAutoAnnounceSchedule] = useState<string>('0 */6 * * *');
@@ -204,12 +213,15 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
         // Clamp to [1,3] client-side too (defense in depth — the server is the
         // authoritative clamp in MessageQueueService, #4266).
         if (s.autoAckMaxAttempts !== undefined) setAutoAckMaxAttempts(Math.min(3, Math.max(1, num('autoAckMaxAttempts', 3))));
+        // A malformed stored value reads as inherit, matching the server.
+        setAutoAckHopLimit(hopLimitSettingValue(s.autoAckHopLimit));
         if (s.autoAckTestMessages !== undefined) setAutoAckTestMessages(s.autoAckTestMessages);
 
         if (s.autoAnnounceEnabled !== undefined) setAutoAnnounceEnabled(bool('autoAnnounceEnabled'));
         if (s.autoAnnounceIntervalHours !== undefined) setAutoAnnounceIntervalHours(num('autoAnnounceIntervalHours', 6));
         if (s.autoAnnounceMessage !== undefined) setAutoAnnounceMessage(s.autoAnnounceMessage);
         if (s.autoAnnounceChannelIndexes !== undefined) setAutoAnnounceChannelIndexes(jsonArr<number>('autoAnnounceChannelIndexes', [0]));
+        setAutoAnnounceHopLimit(hopLimitSettingValue(s.autoAnnounceHopLimit));
         if (s.autoAnnounceOnStart !== undefined) setAutoAnnounceOnStart(bool('autoAnnounceOnStart'));
         if (s.autoAnnounceUseSchedule !== undefined) setAutoAnnounceUseSchedule(bool('autoAnnounceUseSchedule'));
         if (s.autoAnnounceSchedule !== undefined) setAutoAnnounceSchedule(s.autoAnnounceSchedule);
@@ -263,11 +275,13 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
     autoAckCooldownSeconds, setAutoAckCooldownSeconds,
     autoAckPreSendDelaySeconds, setAutoAckPreSendDelaySeconds,
     autoAckMaxAttempts, setAutoAckMaxAttempts,
+    autoAckHopLimit, setAutoAckHopLimit,
     autoAckTestMessages, setAutoAckTestMessages,
     autoAnnounceEnabled, setAutoAnnounceEnabled,
     autoAnnounceIntervalHours, setAutoAnnounceIntervalHours,
     autoAnnounceMessage, setAutoAnnounceMessage,
     autoAnnounceChannelIndexes, setAutoAnnounceChannelIndexes,
+    autoAnnounceHopLimit, setAutoAnnounceHopLimit,
     autoAnnounceOnStart, setAutoAnnounceOnStart,
     autoAnnounceUseSchedule, setAutoAnnounceUseSchedule,
     autoAnnounceSchedule, setAutoAnnounceSchedule,
@@ -308,11 +322,13 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
     autoAckCooldownSeconds, setAutoAckCooldownSeconds,
     autoAckPreSendDelaySeconds, setAutoAckPreSendDelaySeconds,
     autoAckMaxAttempts, setAutoAckMaxAttempts,
+    autoAckHopLimit, setAutoAckHopLimit,
     autoAckTestMessages, setAutoAckTestMessages,
     autoAnnounceEnabled, setAutoAnnounceEnabled,
     autoAnnounceIntervalHours, setAutoAnnounceIntervalHours,
     autoAnnounceMessage, setAutoAnnounceMessage,
     autoAnnounceChannelIndexes, setAutoAnnounceChannelIndexes,
+    autoAnnounceHopLimit, setAutoAnnounceHopLimit,
     autoAnnounceOnStart, setAutoAnnounceOnStart,
     autoAnnounceUseSchedule, setAutoAnnounceUseSchedule,
     autoAnnounceSchedule, setAutoAnnounceSchedule,

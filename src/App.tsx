@@ -104,6 +104,7 @@ import {
 } from './utils/pendingToggles';
 import TracerouteHistoryModal from './components/TracerouteHistoryModal';
 import RouteSegmentTraceroutesModal from './components/RouteSegmentTraceroutesModal';
+import { hopLimitSettingValue } from './utils/hopLimitOverride';
 
 // Icons and helpers are now imported from utils/
 
@@ -618,6 +619,8 @@ function App() {
     setAutoAckCooldownSeconds,
     setAutoAckPreSendDelaySeconds,
     setAutoAckMaxAttempts,
+    setAutoAckHopLimit,
+    setAutoAnnounceHopLimit,
     setAutoAckTestMessages,
     setAutoAnnounceEnabled,
     setAutoAnnounceIntervalHours,
@@ -1048,6 +1051,8 @@ function App() {
           if (settings.autoAckMaxAttempts !== undefined) {
             setAutoAckMaxAttempts(Math.min(3, Math.max(1, parseInt(settings.autoAckMaxAttempts) || 3)));
           }
+          setAutoAckHopLimit(hopLimitSettingValue(settings.autoAckHopLimit));
+          setAutoAnnounceHopLimit(hopLimitSettingValue(settings.autoAnnounceHopLimit));
 
           if (settings.autoAckTestMessages) {
             setAutoAckTestMessages(settings.autoAckTestMessages);

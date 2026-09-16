@@ -26,6 +26,7 @@
  * widening the fields themselves — same pattern as
  * `nodeDbMaintenanceService.ts`.
  */
+import { parseHopLimitOverride } from '../../utils/hopLimitOverride.js';
 import type { MeshtasticManager } from '../meshtasticManager.js';
 import databaseService from '../../services/database.js';
 import { CronOrIntervalScheduler, type ScheduleMode } from './cronOrIntervalScheduler.js';
@@ -216,6 +217,12 @@ export class AutoAnnounceService {
         channelIndexes = [0];
       }
 
+      // Hop-limit override (#5121). Unset/'inherit' keeps the node's own hop
+      // limit; 0 keeps a status announcement to the local RF neighbourhood.
+      const hopLimitOverride = parseHopLimitOverride(
+        await settings.getSettingForSource(sourceId, 'autoAnnounceHopLimit'),
+      );
+
       // Replace tokens
       const replacedMessage = await this.mgr.replaceAnnouncementTokens(message);
 
@@ -233,7 +240,9 @@ export class AutoAnnounceService {
             logger.warn(`❌ Auto-announcement ${i + 1}/${channelIndexes.length} failed on channel ${channelIdx}: ${reason}`);
           },
           channelIdx, // channel number
-          1 // single attempt, no retry for broadcasts
+          1, // single attempt, no retry for broadcasts
+          undefined, // not a tapback
+          hopLimitOverride,
         );
       });
 

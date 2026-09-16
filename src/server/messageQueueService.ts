@@ -18,6 +18,8 @@ export interface QueuedMessage {
   channel?: number; // Channel index (0-7) for channel messages, undefined for DMs
   replyId?: number;
   emoji?: number; // Emoji flag (1 for tapback/reaction)
+  /** Automated-send hop-limit override (#5121); undefined inherits the node's. */
+  hopLimitOverride?: number;
   attempts: number;
   maxAttempts: number;
   enqueuedAt: number;
@@ -54,7 +56,7 @@ export class MessageQueueService {
   private cleanupInterval?: ReturnType<typeof setInterval>;
 
   // Reference to meshtasticManager for sending messages
-  private sendCallback?: (text: string, destination: number, replyId?: number, channel?: number, emoji?: number) => Promise<number>;
+  private sendCallback?: (text: string, destination: number, replyId?: number, channel?: number, emoji?: number, hopLimitOverride?: number) => Promise<number>;
 
   /**
    * @param sourceId - Owning source, for per-source `autoAckMaxAttempts` reads
@@ -67,7 +69,7 @@ export class MessageQueueService {
    * Set the callback function for sending messages
    * This should be MeshtasticManager.sendTextMessage
    */
-  setSendCallback(callback: (text: string, destination: number, replyId?: number, channel?: number, emoji?: number) => Promise<number>) {
+  setSendCallback(callback: (text: string, destination: number, replyId?: number, channel?: number, emoji?: number, hopLimitOverride?: number) => Promise<number>) {
     this.sendCallback = callback;
   }
 
@@ -102,16 +104,23 @@ export class MessageQueueService {
    * For channels: destination = 0, channel = channel index (0-7)
    * @param maxAttemptsOverride - Override the default max attempts (1 for channels, 3 for DMs).
    *                              Use 1 to disable retries, or 3 for retry with verification.
+   * @param hopLimitOverride - Pin the send's hop count (#5121). A zero-hop send
+   *                           goes out without an ACK request, so it is sent
+   *                           exactly once and reported as success as soon as
+   *                           it reaches the radio — a retry would be a blind
+   *                           resend with no way to know the first one landed.
    */
-  enqueue(text: string, destination: number, replyId?: number, onSuccess?: () => void, onFailure?: (reason: string) => void, channel?: number, maxAttemptsOverride?: number, emoji?: number): string {
+  enqueue(text: string, destination: number, replyId?: number, onSuccess?: () => void, onFailure?: (reason: string) => void, channel?: number, maxAttemptsOverride?: number, emoji?: number, hopLimitOverride?: number): string {
     const messageId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     // Channel messages don't support ACKs, so only attempt once
     // For DMs, use override if provided, otherwise the configurable `autoAckMaxAttempts`
     // default (clamped to [1,3], falls back to MAX_ATTEMPTS when unset — #4266)
-    const maxAttempts = maxAttemptsOverride !== undefined
-      ? maxAttemptsOverride
-      : (channel !== undefined ? 1 : this.resolveDmMaxAttempts());
+    const maxAttempts = hopLimitOverride === 0
+      ? 1
+      : maxAttemptsOverride !== undefined
+        ? maxAttemptsOverride
+        : (channel !== undefined ? 1 : this.resolveDmMaxAttempts());
 
     const queuedMessage: QueuedMessage = {
       id: messageId,
@@ -120,6 +129,7 @@ export class MessageQueueService {
       channel,
       replyId,
       emoji,
+      hopLimitOverride,
       attempts: 0,
       maxAttempts,
       enqueuedAt: Date.now(),
@@ -359,7 +369,7 @@ export class MessageQueueService {
       logger.debug(`📤 Sending queued message ${message.id} to ${target}${attemptInfo}`);
 
       // Send the message
-      const requestId = await this.sendCallback(message.text, message.destination, message.replyId, message.channel, message.emoji);
+      const requestId = await this.sendCallback(message.text, message.destination, message.replyId, message.channel, message.emoji, message.hopLimitOverride);
 
       // Validate requestId
       if (requestId === undefined || requestId === null || requestId <= 0) {
@@ -409,6 +419,21 @@ export class MessageQueueService {
 
       // Always remove from queue on successful send
       this.removeFromQueue(message);
+
+      // A zero-hop send carries no ACK request (#5121), so no ACK will ever
+      // resolve it. Handing it to the radio is the whole outcome: report
+      // success now rather than parking it in pendingAcks until the orphan
+      // sweep times it out as a failure.
+      if (message.hopLimitOverride === 0) {
+        if (message.onSuccess) {
+          try {
+            message.onSuccess();
+          } catch (error) {
+            logger.error(`Error calling onSuccess callback for message ${message.id}:`, error);
+          }
+        }
+        return;
+      }
 
       // Track in pending ACKs for ACK/failure handling
       message.pendingAckSince = Date.now();

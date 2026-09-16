@@ -241,6 +241,33 @@ describe('validateAutomationGraph', () => {
     }
   });
 
+  // ── hopLimit on action.sendMessage / action.tapback (#5121) ────────────────
+  it('hopLimit validates on sendMessage and tapback, and absence still validates', () => {
+    const withAction = (type: string, params: Record<string, unknown>): AutomationGraph => ({
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: {} },
+        { id: 'a', type: type as AutomationGraph['nodes'][number]['type'], params },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    });
+    for (const type of ['action.sendMessage', 'action.tapback']) {
+      // Every stored automation predates the field and must keep validating.
+      expect(validateAutomationGraph(withAction(type, { text: 'pong' })).valid).toBe(true);
+      for (const inherit of ['', 'inherit', null]) {
+        expect(validateAutomationGraph(withAction(type, { text: 'pong', hopLimit: inherit })).valid).toBe(true);
+      }
+      for (const ok of [0, '0', 3, '7']) {
+        expect(validateAutomationGraph(withAction(type, { text: 'pong', hopLimit: ok })).valid).toBe(true);
+      }
+      for (const bad of [-1, 8, '9', 'x', 1.5]) {
+        const r = validateAutomationGraph(withAction(type, { text: 'pong', hopLimit: bad }));
+        expect(r.valid).toBe(false);
+        expect(r.errors.join(' ')).toMatch(new RegExp(`${type.replace('.', '\\.')} "a" requires params\\.hopLimit`));
+      }
+    }
+  });
+
   it('rejects non-object config', () => {
     expect(validateAutomationGraph(null).valid).toBe(false);
     expect(validateAutomationGraph(42).errors[0]).toMatch(/must be an object/);
