@@ -57,6 +57,22 @@ export type PositionHistoryLineStyle = 'linear' | 'spline';
 export type TimeFormat = '12' | '24';
 export type DateFormat = 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD';
 export type MapPinStyle = 'meshmonitor' | 'official';
+
+/**
+ * What a map pin's colour MEANS (#5018).
+ *
+ * Pin shape and pin colour used to be the same choice: the official circle
+ * always took the per-node identity colour (#4880), the teardrop always took
+ * the hop-count colour. Anyone who wanted the official look lost hop distance
+ * at a glance, which is what this separates.
+ *
+ * - 'node' — per-node identity colour, the Meshtastic app algorithm.
+ * - 'hops' — hop distance, the colour the teardrop pin has always used.
+ *
+ * Only meaningful for the 'official' pin style; the teardrop is hop-coloured
+ * by construction.
+ */
+export type MapPinColorMode = 'node' | 'hops';
 export type NodeHopsCalculation = 'nodeinfo' | 'traceroute' | 'messages';
 export type AppearanceMode = 'system' | 'dark' | 'light';
 export type ActiveAppearanceMode = 'dark' | 'light';
@@ -147,6 +163,7 @@ interface SettingsContextType {
   overlayScheme: OverlayScheme;
   overlayColors: OverlayColors;
   mapPinStyle: MapPinStyle;
+  mapPinColorMode: MapPinColorMode;
   nodeListStyle: NodeListStyle;
   iconStyle: IconStyle;
   neighborInfoMinZoom: number;
@@ -229,6 +246,7 @@ interface SettingsContextType {
   setMapTileset: (tilesetId: TilesetId) => void;
   setMapTilesets: (light: TilesetId, dark: TilesetId) => void;
   setMapPinStyle: (style: MapPinStyle) => void;
+  setMapPinColorMode: (mode: MapPinColorMode) => void;
   setNodeListStyle: (style: NodeListStyle) => void;
   setIconStyle: (style: IconStyle) => void;
   setNeighborInfoMinZoom: (zoom: number) => void;
@@ -573,6 +591,12 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     return (saved === 'official' ? 'official' : 'meshmonitor') as MapPinStyle;
   });
 
+  // Defaults to 'node' so nothing changes for anyone until they ask for it.
+  const [mapPinColorMode, setMapPinColorModeState] = useState<MapPinColorMode>(() => {
+    const saved = localStorage.getItem('mapPinColorMode');
+    return (saved === 'hops' ? 'hops' : 'node') as MapPinColorMode;
+  });
+
   const [nodeListStyle, setNodeListStyleState] = useState<NodeListStyle>(() => {
     const saved = localStorage.getItem('nodeListStyle');
     return (saved === 'meshtastic' || saved === 'importance' ? saved : 'monochrome') as NodeListStyle;
@@ -908,6 +932,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const setMapPinStyle = React.useCallback((style: MapPinStyle) => {
     setMapPinStyleState(style);
     localStorage.setItem('mapPinStyle', style);
+  }, []);
+
+  const setMapPinColorMode = React.useCallback((mode: MapPinColorMode) => {
+    setMapPinColorModeState(mode);
+    localStorage.setItem('mapPinColorMode', mode);
   }, []);
 
   const setNodeListStyle = React.useCallback((style: NodeListStyle) => {
@@ -1744,6 +1773,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             localStorage.setItem('mapPinStyle', settings.mapPinStyle);
           }
 
+          if (settings.mapPinColorMode) {
+            setMapPinColorModeState(settings.mapPinColorMode as MapPinColorMode);
+            localStorage.setItem('mapPinColorMode', settings.mapPinColorMode);
+          }
+
           if (settings.nodeListStyle) {
             setNodeListStyleState(settings.nodeListStyle as NodeListStyle);
             localStorage.setItem('nodeListStyle', settings.nodeListStyle);
@@ -2069,6 +2103,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     overlayScheme,
     overlayColors,
     mapPinStyle,
+    mapPinColorMode,
     nodeListStyle,
     iconStyle,
     neighborInfoMinZoom,
@@ -2130,6 +2165,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setMapTileset,
     setMapTilesets,
     setMapPinStyle,
+    setMapPinColorMode,
     setNodeListStyle,
     setIconStyle,
     setNeighborInfoMinZoom,
@@ -2197,6 +2233,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     overlayScheme,
     overlayColors,
     mapPinStyle,
+    mapPinColorMode,
     nodeListStyle,
     iconStyle,
     neighborInfoMinZoom,
@@ -2257,6 +2294,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setMapTileset,
     setMapTilesets,
     setMapPinStyle,
+    setMapPinColorMode,
     setNodeListStyle,
     setIconStyle,
     setNeighborInfoMinZoom,
@@ -2365,6 +2403,7 @@ export const useMapSettings = () => {
     setMapTilesets: s.setMapTilesets,
     activeMapTilesetMode: s.activeMapTilesetMode,
     mapPinStyle: s.mapPinStyle, setMapPinStyle: s.setMapPinStyle,
+    mapPinColorMode: s.mapPinColorMode, setMapPinColorMode: s.setMapPinColorMode,
     nodeListStyle: s.nodeListStyle, setNodeListStyle: s.setNodeListStyle,
     iconStyle: s.iconStyle, setIconStyle: s.setIconStyle,
     neighborInfoMinZoom: s.neighborInfoMinZoom, setNeighborInfoMinZoom: s.setNeighborInfoMinZoom,

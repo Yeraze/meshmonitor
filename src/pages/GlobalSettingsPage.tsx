@@ -38,6 +38,7 @@ function GlobalSettingsInner() {
     mapTilesetLight,
     mapTilesetDark,
     mapPinStyle,
+    mapPinColorMode,
     nodeListStyle,
     iconStyle,
     theme,
@@ -62,6 +63,7 @@ function GlobalSettingsInner() {
     setDateFormat,
     setMapTilesets,
     setMapPinStyle,
+    setMapPinColorMode,
     setNodeListStyle,
     setIconStyle,
     setLanguage,
@@ -107,6 +109,7 @@ function GlobalSettingsInner() {
         mapTilesetLight={mapTilesetLight}
         mapTilesetDark={mapTilesetDark}
         mapPinStyle={mapPinStyle}
+        mapPinColorMode={mapPinColorMode}
         nodeListStyle={nodeListStyle}
         iconStyle={iconStyle}
         theme={theme}
@@ -134,6 +137,7 @@ function GlobalSettingsInner() {
         onDateFormatChange={setDateFormat}
         onMapTilesetsChange={setMapTilesets}
         onMapPinStyleChange={setMapPinStyle}
+        onMapPinColorModeChange={setMapPinColorMode}
         onNodeListStyleChange={setNodeListStyle}
         onIconStyleChange={setIconStyle}
         onLanguageChange={setLanguage}

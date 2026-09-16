@@ -556,6 +556,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setMapTileset,
     cartoApiKey,
     mapPinStyle,
+    mapPinColorMode,
     nodeListStyle,
     customTilesets,
     distanceUnit,
@@ -1688,7 +1689,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       return {
         key: markerKey,
         position,
-        iconSig: `${node.nodeNum}-${hops}-${isSelected}-${node.user?.role}-${node.isUnmessagable ? 1 : 0}-${node.user?.shortName}-${showLabel}-${shouldAnimate}-${showRoute && isSelected}-${mapPinStyle}`,
+        iconSig: `${node.nodeNum}-${hops}-${isSelected}-${node.user?.role}-${node.isUnmessagable ? 1 : 0}-${node.user?.shortName}-${showLabel}-${shouldAnimate}-${showRoute && isSelected}-${mapPinStyle}-${mapPinColorMode}`,
         buildIcon: () =>
           createNodeIcon({
             variant: 'meshtastic',
@@ -1702,6 +1703,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
             animate: shouldAnimate,
             highlightSelected: showRoute && isSelected,
             pinStyle: mapPinStyle,
+            colorMode: mapPinColorMode,
             nodeNum: node.nodeNum,
           }),
         opacity: markerOpacity,
