@@ -31,6 +31,9 @@ const {
   mockHasFlashIncompleteMarker,
   mockClearFlashIncompleteMarker,
   mockIsLocalNodeBridged,
+  mockStageUploadedFirmware,
+  mockGetStagedUpload,
+  mockClearStagedUpload,
 } = vi.hoisted(() => ({
   mockGetStatus: vi.fn(),
   mockGetChannel: vi.fn(),
@@ -59,6 +62,9 @@ const {
   mockHasFlashIncompleteMarker: vi.fn().mockReturnValue(false),
   mockClearFlashIncompleteMarker: vi.fn().mockReturnValue(0),
   mockIsLocalNodeBridged: vi.fn().mockReturnValue(false),
+  mockStageUploadedFirmware: vi.fn(),
+  mockGetStagedUpload: vi.fn().mockReturnValue(null),
+  mockClearStagedUpload: vi.fn(),
 }));
 
 // Mock auth middleware to inject admin user
@@ -118,6 +124,9 @@ vi.mock('../services/firmwareUpdateService.js', () => ({
     isStepRunning: mockIsStepRunning,
     hasFlashIncompleteMarker: mockHasFlashIncompleteMarker,
     clearFlashIncompleteMarker: mockClearFlashIncompleteMarker,
+    stageUploadedFirmware: mockStageUploadedFirmware,
+    getStagedUpload: mockGetStagedUpload,
+    clearStagedUpload: mockClearStagedUpload,
   },
   FirmwareChannel: {},
 }));
@@ -394,6 +403,138 @@ describe('firmwareUpdateRoutes', () => {
       expect(res.status).toBe(400);
       expect(res.body.success).toBe(false);
       expect(res.body.error).toMatch(/not found/i);
+    });
+  });
+
+  // Issue #5249 — flashing a .bin the user uploaded from disk.
+  describe('POST /api/firmware/upload', () => {
+    it('stages the uploaded bytes and echoes the filename and size', async () => {
+      mockStageUploadedFirmware.mockReturnValue({ originalName: 'firmware.bin', size: 4 });
+
+      const res = await request(app)
+        .post('/api/firmware/upload')
+        .set('Content-Type', 'application/octet-stream')
+        .set('X-Firmware-Filename', 'firmware.bin')
+        .send(Buffer.from([1, 2, 3, 4]));
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.stagedUpload).toEqual({ originalName: 'firmware.bin', size: 4 });
+      const [buf, name] = mockStageUploadedFirmware.mock.calls[0];
+      expect(Buffer.isBuffer(buf)).toBe(true);
+      expect(name).toBe('firmware.bin');
+    });
+
+    it('defaults the filename when the header is absent', async () => {
+      mockStageUploadedFirmware.mockReturnValue({ originalName: 'firmware.bin', size: 2 });
+
+      const res = await request(app)
+        .post('/api/firmware/upload')
+        .set('Content-Type', 'application/octet-stream')
+        .send(Buffer.from([1, 2]));
+
+      expect(res.status).toBe(200);
+      expect(mockStageUploadedFirmware.mock.calls[0][1]).toBe('firmware.bin');
+    });
+
+    it('rejects a non-.bin filename', async () => {
+      const res = await request(app)
+        .post('/api/firmware/upload')
+        .set('Content-Type', 'application/octet-stream')
+        .set('X-Firmware-Filename', 'notfirmware.zip')
+        .send(Buffer.from([1, 2]));
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/\.bin/);
+      expect(mockStageUploadedFirmware).not.toHaveBeenCalled();
+    });
+
+    it('rejects an empty body', async () => {
+      const res = await request(app)
+        .post('/api/firmware/upload')
+        .set('Content-Type', 'application/octet-stream')
+        .send(Buffer.alloc(0));
+
+      expect(res.status).toBe(400);
+      expect(mockStageUploadedFirmware).not.toHaveBeenCalled();
+    });
+
+    it('surfaces a staging failure as 400 rather than 500', async () => {
+      mockStageUploadedFirmware.mockImplementation(() => {
+        throw new Error('Cannot stage firmware while an update is in progress');
+      });
+
+      const res = await request(app)
+        .post('/api/firmware/upload')
+        .set('Content-Type', 'application/octet-stream')
+        .set('X-Firmware-Filename', 'firmware.bin')
+        .send(Buffer.from([1]));
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/update is in progress/);
+    });
+  });
+
+  describe('DELETE /api/firmware/upload', () => {
+    it('clears the staged upload', async () => {
+      const res = await request(app).delete('/api/firmware/upload');
+      expect(res.status).toBe(200);
+      expect(mockClearStagedUpload).toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /api/firmware/update with useStagedUpload (#5249)', () => {
+    it('starts preflight against the staged upload without a targetVersion', async () => {
+      mockGetStagedUpload.mockReturnValue({ originalName: 'firmware.bin', size: 4096 });
+      mockGetStatus.mockReturnValue({ state: 'awaiting-confirm', step: 'preflight', message: '', logs: [] });
+
+      const res = await request(app)
+        .post('/api/firmware/update')
+        .send({
+          useStagedUpload: true,
+          gatewayIp: '192.168.1.100',
+          hwModel: 44,
+          currentVersion: '2.7.20',
+        });
+
+      expect(res.status).toBe(200);
+      // No release lookup happens — an upload has no release to find.
+      expect(mockFindReleaseByVersion).not.toHaveBeenCalled();
+      expect(mockStartPreflight).toHaveBeenCalledWith(
+        expect.objectContaining({
+          useStagedUpload: true,
+          targetRelease: null,
+          // The filename stands in for a version so the wizard has something
+          // to display.
+          targetVersion: 'firmware.bin',
+        }),
+      );
+    });
+
+    it('refuses when nothing is staged', async () => {
+      mockGetStagedUpload.mockReturnValue(null);
+
+      const res = await request(app)
+        .post('/api/firmware/update')
+        .send({
+          useStagedUpload: true,
+          gatewayIp: '192.168.1.100',
+          hwModel: 44,
+          currentVersion: '2.7.20',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/No uploaded firmware is staged/);
+      expect(mockStartPreflight).not.toHaveBeenCalled();
+    });
+
+    it('still requires targetVersion on the normal release path', async () => {
+      const res = await request(app)
+        .post('/api/firmware/update')
+        .send({ gatewayIp: '192.168.1.100', hwModel: 44, currentVersion: '2.7.20' });
+
+      expect(res.status).toBe(400);
+      expect(mockStartPreflight).not.toHaveBeenCalled();
     });
   });
 

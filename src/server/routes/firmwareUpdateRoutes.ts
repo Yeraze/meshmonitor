@@ -5,7 +5,7 @@
  * All routes require admin authentication.
  */
 
-import { Router, Request, Response } from 'express';
+import express, { Router, Request, Response } from 'express';
 import { requireAdmin } from '../auth/authMiddleware.js';
 import { firmwareUpdateService } from '../services/firmwareUpdateService.js';
 import { fallbackManager } from '../meshtasticManager.js';
@@ -30,8 +30,11 @@ router.get('/status', async (_req: Request, res: Response) => {
     const channel = await firmwareUpdateService.getChannel();
     const customUrl = await firmwareUpdateService.getCustomUrl();
     const lastChecked = firmwareUpdateService.getLastFetchTime();
+    // #5249: lets the UI show "firmware.bin staged (3.9 MB)" after a reload,
+    // instead of losing track of an upload the server still holds.
+    const stagedUpload = firmwareUpdateService.getStagedUpload();
 
-    return res.json({ success: true, status, channel, customUrl, lastChecked });
+    return res.json({ success: true, status, channel, customUrl, lastChecked, stagedUpload });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error('[FirmwareRoutes] Error getting status:', error);
@@ -76,16 +79,16 @@ router.post('/check', async (_req: Request, res: Response) => {
 
 /**
  * POST /api/firmware/channel
- * Set release channel. Body: { channel: 'stable'|'alpha'|'custom', customUrl?: string }
+ * Set release channel. Body: { channel: 'stable'|'alpha'|'custom'|'nightly'|'local', customUrl?: string }
  */
 router.post('/channel', async (req: Request, res: Response) => {
   try {
     const { channel, customUrl } = req.body;
 
-    if (!channel || !['stable', 'alpha', 'custom', 'nightly'].includes(channel)) {
+    if (!channel || !['stable', 'alpha', 'custom', 'nightly', 'local'].includes(channel)) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid channel. Must be one of: stable, alpha, custom, nightly',
+        error: 'Invalid channel. Must be one of: stable, alpha, custom, nightly, local',
       });
     }
 
@@ -115,11 +118,78 @@ router.post('/channel', async (req: Request, res: Response) => {
  * POST /api/firmware/update
  * Start preflight check. Body: { targetVersion, gatewayIp, hwModel, currentVersion }
  */
+/**
+ * POST /api/firmware/upload
+ * Stage a firmware `.bin` uploaded from the user's disk (#5249).
+ *
+ * Body: the raw file bytes. The filename comes from the `X-Firmware-Filename`
+ * header, because a raw body carries no multipart part name. Sending the bytes
+ * raw rather than as multipart keeps this consistent with the other upload
+ * routes in the app (geojson, map styles, scripts) and avoids adding a
+ * multipart dependency for one endpoint.
+ */
+router.post(
+  '/upload',
+  express.raw({ type: '*/*', limit: '32mb' }),
+  (req: Request, res: Response) => {
+    try {
+      const body = req.body;
+      if (!Buffer.isBuffer(body) || body.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Request body must contain the firmware file bytes',
+        });
+      }
+
+      // Read the raw header and narrow it explicitly. Express types `req.get`
+      // as possibly returning string[] (set-cookie), and CodeQL flags the
+      // resulting string operations as type confusion through parameter
+      // tampering. Taking only a genuine string closes that at the boundary
+      // rather than hoping every downstream call tolerates an array.
+      const rawHeader = req.headers['x-firmware-filename'];
+      const headerName = typeof rawHeader === 'string' ? rawHeader.trim() : '';
+      const originalName = headerName.length > 0 ? headerName : 'firmware.bin';
+      if (!originalName.toLowerCase().endsWith('.bin')) {
+        return res.status(400).json({
+          success: false,
+          error: 'Firmware file must be a .bin image',
+        });
+      }
+
+      const staged = firmwareUpdateService.stageUploadedFirmware(body, originalName);
+      logger.info(`[FirmwareRoutes] Staged uploaded firmware ${staged.originalName} (${staged.size} bytes)`);
+      return res.json({ success: true, stagedUpload: staged });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error('[FirmwareRoutes] Error staging uploaded firmware:', error);
+      return res.status(400).json({ success: false, error: message });
+    }
+  },
+);
+
+/**
+ * DELETE /api/firmware/upload
+ * Discard the staged firmware upload (#5249).
+ */
+router.delete('/upload', (_req: Request, res: Response) => {
+  try {
+    firmwareUpdateService.clearStagedUpload();
+    return res.json({ success: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error('[FirmwareRoutes] Error clearing staged firmware:', error);
+    return res.status(500).json({ success: false, error: message });
+  }
+});
+
 router.post('/update', async (req: Request, res: Response) => {
   try {
-    const { targetVersion, gatewayIp, hwModel, currentVersion } = req.body;
+    const { targetVersion, gatewayIp, hwModel, currentVersion, useStagedUpload } = req.body;
+    // #5249: a staged upload carries no version, so targetVersion is not
+    // required on that path — the other three still are.
+    const wantsStagedUpload = useStagedUpload === true;
 
-    if (!targetVersion || !gatewayIp || hwModel === undefined || !currentVersion) {
+    if ((!targetVersion && !wantsStagedUpload) || !gatewayIp || hwModel === undefined || !currentVersion) {
       return res.status(400).json({
         success: false,
         error: 'Missing required fields: targetVersion, gatewayIp, hwModel, currentVersion',
@@ -144,14 +214,25 @@ router.post('/update', async (req: Request, res: Response) => {
     }
 
     // Find the target release across the cached GitHub list AND the cached
-    // nightly build (nightly never lives in the GitHub cache).
-    const targetRelease = firmwareUpdateService.findReleaseByVersion(targetVersion);
+    // nightly build (nightly never lives in the GitHub cache). A staged upload
+    // has no release to find (#5249) — its binary is already on disk.
+    let targetRelease = null;
+    if (wantsStagedUpload) {
+      if (!firmwareUpdateService.getStagedUpload()) {
+        return res.status(400).json({
+          success: false,
+          error: 'No uploaded firmware is staged. Choose a .bin file first.',
+        });
+      }
+    } else {
+      targetRelease = firmwareUpdateService.findReleaseByVersion(targetVersion);
 
-    if (!targetRelease) {
-      return res.status(400).json({
-        success: false,
-        error: `Release version "${targetVersion}" not found in cached releases. Try checking for updates first.`,
-      });
+      if (!targetRelease) {
+        return res.status(400).json({
+          success: false,
+          error: `Release version "${targetVersion}" not found in cached releases. Try checking for updates first.`,
+        });
+      }
     }
 
     // Issue #2981: refuse to start the wizard when the resolved gateway is the
@@ -170,10 +251,15 @@ router.post('/update', async (req: Request, res: Response) => {
 
     firmwareUpdateService.startPreflight({
       currentVersion,
-      targetVersion,
+      // The wizard shows this as "updating to X". An upload has no version of
+      // its own, so name the file instead of inventing a version number.
+      targetVersion: wantsStagedUpload
+        ? (firmwareUpdateService.getStagedUpload()?.originalName ?? 'uploaded firmware')
+        : targetVersion,
       targetRelease,
       gatewayIp,
       hwModel: Number(hwModel),
+      useStagedUpload: wantsStagedUpload,
     });
 
     const status = firmwareUpdateService.getStatus();

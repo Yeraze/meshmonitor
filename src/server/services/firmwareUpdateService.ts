@@ -77,7 +77,7 @@ export interface FirmwareManifest {
   targets: Array<{ board: string; platform: string }>;
 }
 
-export type FirmwareChannel = 'stable' | 'alpha' | 'custom' | 'nightly';
+export type FirmwareChannel = 'stable' | 'alpha' | 'custom' | 'nightly' | 'local';
 
 export type UpdateStep = 'preflight' | 'backup' | 'download' | 'extract' | 'flash' | 'verify';
 
@@ -135,6 +135,32 @@ const NIGHTLY_INDEX_URL = `${NIGHTLY_BASE_URL}/index.json`;
 const DEFAULT_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const INITIAL_CHECK_DELAY_MS = 30 * 1000; // 30 seconds
 const DATA_DIR = process.env.DATA_DIR || '/data';
+
+// Cap for a user-uploaded firmware image (#5249). A single ESP32 app-partition
+// binary is a few MB; the 256 MB download cap exists because official zips
+// bundle TFT/audio assets for a whole platform, which an upload never does.
+// 32 MB leaves generous headroom while bounding what one request can write.
+const MAX_UPLOAD_FIRMWARE_BYTES = 32 * 1024 * 1024;
+
+/**
+ * On-disk name for a staged upload. Fixed, and deliberately NOT derived from
+ * the name the browser sent.
+ *
+ * CodeQL flagged the original version (js/http-to-file-access): the upload's
+ * filename reached a filesystem path. It was sanitised — basename, character
+ * allowlist, prefix assertion — but "sanitised untrusted input in a path" is a
+ * weaker property than "no untrusted input in a path at all", and there was no
+ * reason to want the former. The uploaded name is display metadata only; the
+ * bytes always land here, inside a freshly-created mkdtemp directory.
+ */
+const STAGED_FIRMWARE_FILENAME = 'uploaded-firmware.bin';
+
+/** Scale the unit — a small upload reading "0.00 MB" looks like a failure. */
+function formatFirmwareSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+}
 const BACKUP_DIR = path.join(DATA_DIR, 'firmware-backups');
 
 // ---- Service ----
@@ -164,6 +190,24 @@ export class FirmwareUpdateService {
   // Expected `firmware-<board>-<version>.bin` filename for the nightly build,
   // set alongside nightlyMode so executeDownload/executeExtract agree on it.
   private nightlyBinName: string | null = null;
+
+  // A `.bin` the user uploaded from their own disk (#5249). Staged on the
+  // server before the wizard starts, so by the time startPreflight runs there
+  // is nothing to download: the "download" step copies it into place and the
+  // "extract" step hands it straight back.
+  //
+  // Single-slot on purpose — the whole wizard is single-flight, so a second
+  // upload replaces the first rather than queueing.
+  private stagedUpload: { path: string; originalName: string; size: number } | null = null;
+  // True when the running wizard is flashing `stagedUpload` rather than a
+  // release. Mirrors nightlyMode: both mean "a loose .bin, no zip".
+  private localMode = false;
+
+  constructor() {
+    // Nothing can legitimately be staged before the process starts, so any
+    // `firmware-upload-*` directory present now is a leftover (#5249 review).
+    this.sweepStaleUploads();
+  }
 
   private status: UpdateStatus = createIdleStatus();
   private activeProcess: ChildProcess | null = null;
@@ -240,6 +284,11 @@ export class FirmwareUpdateService {
    * 'stable' = non-prerelease only, 'alpha' = all, 'custom' = all.
    */
   filterByChannel(releases: FirmwareRelease[], channel: FirmwareChannel): FirmwareRelease[] {
+    // #5249: 'local' lists nothing — the user supplies the binary, so there is
+    // no release feed to filter. The UI shows a file picker instead of a list.
+    if (channel === 'local') {
+      return [];
+    }
     if (channel === 'stable') {
       return releases.filter((r) => !r.prerelease);
     }
@@ -392,7 +441,13 @@ export class FirmwareUpdateService {
    */
   async getChannel(): Promise<FirmwareChannel> {
     const stored = await databaseService.settings.getSetting('firmwareChannel');
-    if (stored === 'alpha' || stored === 'stable' || stored === 'custom' || stored === 'nightly') {
+    if (
+      stored === 'alpha' ||
+      stored === 'stable' ||
+      stored === 'custom' ||
+      stored === 'nightly' ||
+      stored === 'local'
+    ) {
       return stored;
     }
     return 'stable';
@@ -477,6 +532,10 @@ export class FirmwareUpdateService {
         this.activeProcess = null;
       }
       this.cleanupTempDir();
+      // #5249: deliberately NOT clearing the staged upload here. Cancelling is
+      // usually a prelude to retrying, and making the user re-pick a 4 MB file
+      // to do that would be gratuitous. The DELETE route clears it explicitly.
+      this.localMode = false;
       this.status = createIdleStatus();
       this.updateStatus({ message: 'Update cancelled' });
       logger.info('[FirmwareUpdateService] Update cancelled by user');
@@ -515,6 +574,10 @@ export class FirmwareUpdateService {
     const mgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
 
     this.cleanupTempDir();
+    // #5249: the upload has been flashed, so drop it. Keeping it would leave a
+    // stale file staged for a later run the user never asked to repeat.
+    this.clearStagedUpload();
+    this.localMode = false;
     this.status = createIdleStatus();
     this.updateStatus({});
     logger.info('[FirmwareUpdateService] Update completed — initiating full reconnect cycle');
@@ -786,12 +849,122 @@ export class FirmwareUpdateService {
    * Step 1: Validate hardware and set status to awaiting-confirm with preflight info.
    * Throws if state is not idle, hardware is unknown, not OTA-capable, or no zip found.
    */
+  /**
+   * Stage a `.bin` the user uploaded from disk, ready for the next wizard run
+   * (#5249).
+   *
+   * MeshMonitor does NOT verify that this binary belongs to the connected
+   * board. Every OTA-capable board is ESP32, so a legitimate upload is always
+   * an ESP-IDF app image and the header could be parsed — but a local
+   * PlatformIO build is the whole point of this feature, and those are named
+   * `firmware.bin` with no board in the name, so filename matching is useless
+   * and header matching was judged more than this needs. The UI states the
+   * expected board and requires an explicit confirmation instead; flashing a
+   * wrong-board image bricks the node, and the user owns that call.
+   *
+   * Replaces any previously staged file, deleting it first — the wizard is
+   * single-flight, so there is never a reason to keep two.
+   */
+  stageUploadedFirmware(data: Buffer, originalName: string): { originalName: string; size: number } {
+    if (this.status.state !== 'idle') {
+      throw new Error('Cannot stage firmware while an update is in progress');
+    }
+    if (!Buffer.isBuffer(data)) {
+      // `express.raw()` types req.body as `any`, so CodeQL treats every use of
+      // it here as possible type confusion through parameter tampering — a
+      // non-Buffer with a `length` would sail through the size checks below
+      // and reach writeFileSync. The route checks this too, but the check has
+      // to be at the point of use: this method is public, and a guard the
+      // analyser cannot follow across a call boundary is not a guard.
+      throw new Error('Uploaded firmware must be a binary body');
+    }
+    if (typeof originalName !== 'string') {
+      // Same reasoning for the name, which feeds string operations below.
+      throw new Error('Uploaded firmware filename must be a string');
+    }
+    if (data.length === 0) {
+      throw new Error('Uploaded firmware is empty');
+    }
+    if (data.length > MAX_UPLOAD_FIRMWARE_BYTES) {
+      throw new Error(
+        `Uploaded firmware exceeds the ${Math.round(MAX_UPLOAD_FIRMWARE_BYTES / 1024 / 1024)} MB limit ` +
+        `(got ${(data.length / 1024 / 1024).toFixed(1)} MB)`,
+      );
+    }
+
+    this.clearStagedUpload();
+
+    // The uploaded name is shown in the UI and never used as a path (see
+    // STAGED_FIRMWARE_FILENAME). Still reduce it to a basename and strip
+    // unusual characters so a crafted name cannot smuggle markup or path
+    // separators into the status message an operator reads.
+    const safeName = path.basename(originalName).replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 128)
+      || 'firmware.bin';
+
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    const stageDir = fs.mkdtempSync(path.join(DATA_DIR, 'firmware-upload-'));
+    const stagedPath = path.join(stageDir, STAGED_FIRMWARE_FILENAME);
+    fs.writeFileSync(stagedPath, data);
+
+    this.stagedUpload = { path: stagedPath, originalName: safeName, size: data.length };
+    logger.info(
+      `[FirmwareUpdateService] Staged uploaded firmware ${safeName} (${formatFirmwareSize(data.length)})`,
+    );
+    return { originalName: safeName, size: data.length };
+  }
+
+  /** The currently staged upload, if any — used by the status route and the UI. */
+  getStagedUpload(): { originalName: string; size: number } | null {
+    if (!this.stagedUpload) return null;
+    return { originalName: this.stagedUpload.originalName, size: this.stagedUpload.size };
+  }
+
+  /**
+   * Remove `firmware-upload-*` directories left behind by a previous process.
+   *
+   * The staged file is tracked in memory, so a restart between an upload and
+   * its install orphans the directory with nothing left to find it (raised in
+   * review of #5249). Called once at construction: at that point no upload can
+   * legitimately be staged, so every such directory is stale by definition.
+   */
+  private sweepStaleUploads(): void {
+    try {
+      if (!fs.existsSync(DATA_DIR)) return;
+      for (const entry of fs.readdirSync(DATA_DIR)) {
+        if (!entry.startsWith('firmware-upload-')) continue;
+        fs.rmSync(path.join(DATA_DIR, entry), { recursive: true, force: true });
+        logger.debug(`[FirmwareUpdateService] Removed stale firmware upload directory ${entry}`);
+      }
+    } catch (err) {
+      // Never let cleanup stop the service from starting.
+      logger.warn('[FirmwareUpdateService] Failed to sweep stale firmware uploads:', err);
+    }
+  }
+
+  /** Delete the staged upload and its directory. Safe to call when none exists. */
+  clearStagedUpload(): void {
+    const staged = this.stagedUpload;
+    this.stagedUpload = null;
+    if (!staged) return;
+    try {
+      fs.rmSync(path.dirname(staged.path), { recursive: true, force: true });
+    } catch (err) {
+      logger.warn('[FirmwareUpdateService] Failed to remove staged firmware upload:', err);
+    }
+  }
+
   startPreflight(params: {
     currentVersion: string;
     targetVersion: string;
-    targetRelease: FirmwareRelease;
+    /**
+     * The release being installed. Null when flashing a staged local upload
+     * (#5249) — there is no release to resolve an asset from.
+     */
+    targetRelease: FirmwareRelease | null;
     gatewayIp: string;
     hwModel: number;
+    /** Flash the staged upload instead of downloading a release (#5249). */
+    useStagedUpload?: boolean;
   }): void {
     if (this.status.state !== 'idle') {
       throw new Error('Cannot start preflight: state is not idle');
@@ -834,7 +1007,22 @@ export class FirmwareUpdateService {
     // straight at it and flag nightlyMode so the download/extract steps skip
     // the unzip. Every other channel keeps the zip-then-extract flow.
     let downloadUrl: string;
-    if (params.targetRelease.isNightly) {
+    if (params.useStagedUpload) {
+      // #5249: the binary is already on disk. Nothing to resolve, nothing to
+      // fetch — executeDownload copies it into the temp dir and executeExtract
+      // hands it straight back. `downloadUrl` still has to be a string for the
+      // status shape, so it carries the filename for the UI to display.
+      if (!this.stagedUpload) {
+        throw new Error('No uploaded firmware is staged. Upload a .bin file first.');
+      }
+      this.localMode = true;
+      this.nightlyMode = false;
+      this.nightlyBinName = null;
+      downloadUrl = `file://${this.stagedUpload.originalName}`;
+    } else if (!params.targetRelease) {
+      throw new Error('No target release supplied and no uploaded firmware staged');
+    } else if (params.targetRelease.isNightly) {
+      this.localMode = false;
       // The non-factory app-partition bin is the OTA artifact. Its name matches
       // findFirmwareBinary's strict pattern (firmware-<board>-<x.y.z>.<sha>.bin),
       // so the extract step can reuse that matcher unchanged.
@@ -842,6 +1030,7 @@ export class FirmwareUpdateService {
       this.nightlyMode = true;
       downloadUrl = `${NIGHTLY_BASE_URL}/${this.nightlyBinName}`;
     } else {
+      this.localMode = false;
       this.nightlyMode = false;
       this.nightlyBinName = null;
       const zipAsset = this.findFirmwareZipAsset(params.targetRelease, platform);
@@ -970,6 +1159,44 @@ export class FirmwareUpdateService {
    * Step 3: Download firmware zip from URL.
    * Returns the path to the downloaded zip.
    */
+  /**
+   * "Download" step for a staged local upload (#5249): copy the staged file
+   * into this run's temp dir and report it like a completed download, so the
+   * wizard's step sequence and status shape are identical to every other
+   * channel.
+   *
+   * The file is copied rather than moved so a failed or cancelled run can be
+   * retried without re-uploading.
+   */
+  private stageLocalFirmwareForInstall(): string {
+    const staged = this.stagedUpload;
+    if (!staged) {
+      throw new Error('No uploaded firmware is staged');
+    }
+    if (!fs.existsSync(staged.path)) {
+      throw new Error(`Staged firmware ${staged.originalName} is no longer on disk — upload it again`);
+    }
+
+    const tempDir = fs.mkdtempSync(path.join(DATA_DIR, 'firmware-tmp-'));
+    this.tempDir = tempDir;
+    const extractDir = path.resolve(path.join(tempDir, 'extracted'));
+    fs.mkdirSync(extractDir, { recursive: true });
+
+    // Fixed name again — nothing the browser sent reaches this path either.
+    const writePath = path.join(extractDir, STAGED_FIRMWARE_FILENAME);
+    fs.copyFileSync(staged.path, writePath);
+
+    this.updateStatus({
+      state: 'awaiting-confirm',
+      step: 'download',
+      message: `Using uploaded file ${staged.originalName} (${formatFirmwareSize(staged.size)})`,
+      downloadSize: staged.size,
+    });
+
+    logger.debug(`[FirmwareUpdateService] Staged local firmware for install: ${writePath}`);
+    return writePath;
+  }
+
   async executeDownload(downloadUrl: string): Promise<string> {
     this.updateStatus({
       state: 'in-progress',
@@ -978,6 +1205,14 @@ export class FirmwareUpdateService {
     });
 
     try {
+      // #5249: a staged upload is already on disk. Copy it into the wizard's
+      // temp dir under `extracted/` — the same place nightly writes its loose
+      // `.bin` — so the extract step has nothing to unzip. No fetch, and so
+      // no SSRF check: nothing here is a URL.
+      if (this.localMode) {
+        return this.stageLocalFirmwareForInstall();
+      }
+
       // Block SSRF targets (private IPs, link-local, loopback) and non-http(s)
       // schemes before opening a fetch. Defense in depth — downloadUrl
       // originates from release metadata but is user-influenced via release
@@ -1075,6 +1310,34 @@ export class FirmwareUpdateService {
     try {
       const extractDir = path.join(path.dirname(zipPath), 'extracted');
       fs.mkdirSync(extractDir, { recursive: true });
+
+      // #5249: a local upload is the file the user explicitly chose. There is
+      // nothing to unzip and nothing to match — findFirmwareBinary exists to
+      // pick the right board's binary out of a multi-board release zip, and a
+      // one-file upload has no such ambiguity. Running it here would only
+      // reject the `firmware.bin` a local build produces, which is exactly the
+      // case this feature is for.
+      if (this.localMode) {
+        const staged = this.stagedUpload;
+        // Located by the fixed on-disk name; `matched` is only what we SHOW.
+        const displayName = staged?.originalName ?? STAGED_FIRMWARE_FILENAME;
+        const matched = displayName;
+        const firmwarePath = path.join(extractDir, STAGED_FIRMWARE_FILENAME);
+        if (!fs.existsSync(firmwarePath)) {
+          throw new Error(`Uploaded firmware ${displayName} is missing from the staging directory`);
+        }
+        this.updateStatus({
+          state: 'awaiting-confirm',
+          step: 'extract',
+          message: `Using uploaded firmware: ${matched} (not verified against ${boardName})`,
+          matchedFile: matched,
+          rejectedFiles: [],
+        });
+        logger.info(
+          `[FirmwareUpdateService] Installing user-uploaded firmware ${matched} on board ${boardName} — not verified`,
+        );
+        return firmwarePath;
+      }
 
       // Nightly already downloaded the loose board `.bin` straight into
       // extractDir — there is no zip to unpack. Every other channel unzips the
@@ -1503,6 +1766,35 @@ export class FirmwareUpdateService {
    * Step 6: Verify that the firmware version matches the target after reboot.
    */
   verifyUpdate(newFirmwareVersion: string, targetVersion: string): void {
+    // #5249: an uploaded `.bin` has no version to expect. `targetVersion`
+    // carries its FILENAME so the wizard has something to display, and
+    // comparing that against the node's reported version would fail every
+    // time and report a successful flash as an error. Report what the node is
+    // now running and say plainly that nothing was checked against it.
+    if (this.localMode) {
+      if (!newFirmwareVersion) {
+        this.updateStatus({
+          state: 'error',
+          step: 'verify',
+          message: 'Node did not report a firmware version after the update',
+          error: 'Firmware version unavailable for verification',
+        });
+        logger.warn('[FirmwareUpdateService] No version reported after uploaded-firmware flash');
+        return;
+      }
+      this.updateStatus({
+        state: 'success',
+        step: 'verify',
+        message:
+          `Node is running ${newFirmwareVersion}. Uploaded firmware has no expected ` +
+          `version, so this was not verified against one.`,
+      });
+      logger.info(
+        `[FirmwareUpdateService] Uploaded-firmware flash finished; node reports ${newFirmwareVersion} (unverified)`,
+      );
+      return;
+    }
+
     // Guard against the empty-string false-positive: ''.includes(target) is
     // false but target.includes('') is true, so any unset arg used to pass.
     if (!newFirmwareVersion || !targetVersion) {
