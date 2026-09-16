@@ -823,6 +823,41 @@ describe('executeAction', () => {
     expect(calls[0].args).toMatchObject({ sourceId: 'srcB', channel: 3 });
   });
 
+  // ── hopLimit (#5121) ────────────────────────────────────────────────────
+  describe('hopLimit forwarding', () => {
+    it('no hopLimit param ⇒ no hopLimitOverride key on sendMessage or tapback', async () => {
+      const { calls, deps } = recorder();
+      await executeAction(node('action.sendMessage', { text: 'hi' }), ctx({ from: 5, channel: 1 }), deps);
+      await executeAction(node('action.tapback', { emoji: '👍' }), ctx({ from: 5, channel: 1, packetId: 9 }), deps);
+      expect(calls[0].args).not.toHaveProperty('hopLimitOverride');
+      expect(calls[1].args).not.toHaveProperty('hopLimitOverride');
+    });
+
+    it("'inherit' is the same as absent", async () => {
+      const { calls, deps } = recorder();
+      await executeAction(node('action.sendMessage', { text: 'hi', hopLimit: 'inherit' }), ctx({ from: 5, channel: 1 }), deps);
+      expect(calls[0].args).not.toHaveProperty('hopLimitOverride');
+    });
+
+    it("hopLimit '0' forwards a real 0 on sendMessage, not a falsy unset", async () => {
+      const { calls, deps } = recorder();
+      await executeAction(node('action.sendMessage', { text: 'hi', hopLimit: '0' }), ctx({ from: 5, channel: 1 }), deps);
+      expect(calls[0].args.hopLimitOverride).toBe(0);
+    });
+
+    it('hopLimit forwards on a tapback', async () => {
+      const { calls, deps } = recorder();
+      await executeAction(node('action.tapback', { emoji: '👍', hopLimit: 2 }), ctx({ from: 5, channel: 1, packetId: 9 }), deps);
+      expect(calls[0].args.hopLimitOverride).toBe(2);
+    });
+
+    it('a malformed stored hopLimit is treated as inherit at runtime', async () => {
+      const { calls, deps } = recorder();
+      await executeAction(node('action.sendMessage', { text: 'hi', hopLimit: '12' }), ctx({ from: 5, channel: 1 }), deps);
+      expect(calls[0].args).not.toHaveProperty('hopLimitOverride');
+    });
+  });
+
   // ── maxAttempts (#4340 Phase 3, WP3 §3.4) ───────────────────────────────
   describe('sendMessage: maxAttempts forwarding', () => {
     it('no maxAttempts param ⇒ the call shape has no maxAttempts key at all (unchanged behavior contract)', async () => {

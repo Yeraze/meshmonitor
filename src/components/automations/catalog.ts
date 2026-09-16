@@ -101,6 +101,23 @@ const COOLDOWN_SCOPE: FieldDef = {
 
 // ─── Triggers (WHEN) ─────────────────────────────────────────────────────────
 
+/**
+ * Hop-limit override field (#5121), shared by action.sendMessage and
+ * action.tapback. 'inherit' (the default, and what an absent param means) keeps
+ * the node's own hop limit. The send path caps any value at that node's
+ * configured hop limit, so this can only shorten reach — the help text says so,
+ * because an option that silently has no effect would otherwise look broken.
+ */
+const HOP_LIMIT_FIELD: FieldDef = {
+  name: 'hopLimit', label: 'Hop limit', kind: 'select', advanced: true,
+  options: [
+    { value: 'inherit', label: "Inherit (the node's own hop limit)" },
+    { value: '0', label: '0 — local only, no relay' },
+    ...[1, 2, 3, 4, 5, 6, 7].map((n) => ({ value: String(n), label: String(n) })),
+  ],
+  help: "Meshtastic only. Capped at the sending node's own hop limit, so this can only shorten how far the message travels, never extend it. 0 keeps it to nodes that hear this radio directly: it is sent once with no delivery confirmation and no resend, because the firmware only honors a zero hop limit on a send that does not ask for an ACK.",
+};
+
 export const TRIGGERS: BlockDef[] = [
   {
     type: 'trigger.message',
@@ -612,6 +629,7 @@ export const ACTIONS: BlockDef[] = [
       },
       { name: 'emoji', label: 'Emoji', kind: 'emoji', placeholder: '👍', showIf: { field: 'emojiMode', notEquals: 'hopCount' } },
       { name: 'sourceIds', label: 'Send via sources', kind: 'sendSourceMulti', help: 'Which radios send the reaction (MeshCore sources are skipped — tapbacks are Meshtastic-only). Leave none to use the source that triggered the automation — but a source IS required for source-less triggers like System events and Schedules.' },
+      HOP_LIMIT_FIELD,
     ],
   },
   {
@@ -635,8 +653,9 @@ export const ACTIONS: BlockDef[] = [
         // Only meaningful for a DM — the queue hardcodes 1 attempt for channel
         // sends. Reuses Phase 2's showIf.truthy so an unset/blank/0 `to` hides it.
         showIf: { field: 'to', truthy: true },
-        help: 'Resend this DM (1–3) until the recipient ACKs it — the same retry Auto-Acknowledge uses. Leave blank for a single send. Setting it routes the DM through the source’s outgoing queue, which also spaces sends 30 seconds apart. Meshtastic DMs only: ignored for channel messages and MeshCore.',
+        help: 'Resend this DM (1–3) until the recipient ACKs it — the same retry Auto-Acknowledge uses. Leave blank for a single send. Setting it routes the DM through the source’s outgoing queue, which also spaces sends 30 seconds apart. Meshtastic DMs only: ignored for channel messages and MeshCore, and ignored when Hop limit is 0.',
       },
+      HOP_LIMIT_FIELD,
       {
         name: 'scopeMode', label: 'MeshCore scope', kind: 'select', advanced: true,
         options: [

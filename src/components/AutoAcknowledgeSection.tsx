@@ -17,6 +17,7 @@ import {
 import { hasRE2IncompatibleConstructs } from '../utils/autoAckRegex';
 import { UiIcon } from './icons';
 import AutoAckConvertDialog from './autoack/AutoAckConvertDialog';
+import { HopLimitOverrideSelect } from './HopLimitOverrideSelect';
 
 interface AutoAcknowledgeSectionProps {
   enabled: boolean;
@@ -43,6 +44,9 @@ interface AutoAcknowledgeSectionProps {
   onPreSendDelaySecondsChange: (value: number) => void;
   maxAttempts: number;
   onMaxAttemptsChange: (value: number) => void;
+  /** Hop-limit override (#5121): '' = inherit, '0'–'7' = pinned. */
+  hopLimit?: string;
+  onHopLimitChange?: (value: string) => void;
   testMessages: string;
   onTestMessagesChange: (messages: string) => void;
 }
@@ -75,6 +79,8 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   onPreSendDelaySecondsChange,
   maxAttempts,
   onMaxAttemptsChange,
+  hopLimit = '',
+  onHopLimitChange,
   testMessages: testMessagesProp,
   onTestMessagesChange,
 }) => {
@@ -95,6 +101,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   const [localCooldownSeconds, setLocalCooldownSeconds] = useState(cooldownSeconds);
   const [localPreSendDelaySeconds, setLocalPreSendDelaySeconds] = useState(preSendDelaySeconds);
   const [localMaxAttempts, setLocalMaxAttempts] = useState(maxAttempts);
+  const [localHopLimit, setLocalHopLimit] = useState(hopLimit);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [testMessages, setTestMessages] = useState(testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
@@ -115,10 +122,11 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     setLocalCooldownSeconds(cooldownSeconds);
     setLocalPreSendDelaySeconds(preSendDelaySeconds);
     setLocalMaxAttempts(maxAttempts);
+    setLocalHopLimit(hopLimit);
     if (testMessagesProp) {
       setTestMessages(testMessagesProp);
     }
-  }, [enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, maxAttempts, testMessagesProp]);
+  }, [enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, maxAttempts, hopLimit, testMessagesProp]);
 
   // Check if any settings have changed
   useEffect(() => {
@@ -126,10 +134,11 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     const cooldownChanged = localCooldownSeconds !== cooldownSeconds;
     const preSendDelayChanged = localPreSendDelaySeconds !== preSendDelaySeconds;
     const maxAttemptsChanged = localMaxAttempts !== maxAttempts;
+    const hopLimitChanged = localHopLimit !== hopLimit;
     const matrixChanged = JSON.stringify(localMatrix) !== JSON.stringify(matrix);
-    const changed = localEnabled !== enabled || localRegex !== regex || localMessage !== message || localMessageDirect !== messageDirect || channelsChanged || localSkipIncompleteNodes !== skipIncompleteNodes || localIgnoredNodes !== (ignoredNodes || '') || matrixChanged || cooldownChanged || preSendDelayChanged || maxAttemptsChanged || testMessages !== (testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
+    const changed = localEnabled !== enabled || localRegex !== regex || localMessage !== message || localMessageDirect !== messageDirect || channelsChanged || localSkipIncompleteNodes !== skipIncompleteNodes || localIgnoredNodes !== (ignoredNodes || '') || matrixChanged || cooldownChanged || preSendDelayChanged || maxAttemptsChanged || hopLimitChanged || testMessages !== (testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
     setHasChanges(changed);
-  }, [localEnabled, localRegex, localMessage, localMessageDirect, localEnabledChannels, localSkipIncompleteNodes, localIgnoredNodes, localMatrix, localCooldownSeconds, localPreSendDelaySeconds, localMaxAttempts, testMessages, enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, maxAttempts, testMessagesProp]);
+  }, [localEnabled, localRegex, localMessage, localMessageDirect, localEnabledChannels, localSkipIncompleteNodes, localIgnoredNodes, localMatrix, localCooldownSeconds, localPreSendDelaySeconds, localMaxAttempts, localHopLimit, testMessages, enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, maxAttempts, hopLimit, testMessagesProp]);
 
   // Reset local state to props (used by SaveBar dismiss)
   const resetChanges = useCallback(() => {
@@ -144,8 +153,9 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     setLocalCooldownSeconds(cooldownSeconds);
     setLocalPreSendDelaySeconds(preSendDelaySeconds);
     setLocalMaxAttempts(maxAttempts);
+    setLocalHopLimit(hopLimit);
     setTestMessages(testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
-  }, [enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, maxAttempts, testMessagesProp]);
+  }, [enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, maxAttempts, hopLimit, testMessagesProp]);
 
   // Validate regex pattern for safety
   const validateRegex = (pattern: string): { valid: boolean; error?: string } => {
@@ -271,6 +281,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
           autoAckCooldownSeconds: String(localCooldownSeconds),
           autoAckPreSendDelaySeconds: String(localPreSendDelaySeconds),
           autoAckMaxAttempts: String(localMaxAttempts),
+          autoAckHopLimit: localHopLimit,
           autoAckTestMessages: testMessages
         })
       });
@@ -306,6 +317,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
       onCooldownSecondsChange(localCooldownSeconds);
       onPreSendDelaySecondsChange(localPreSendDelaySeconds);
       onMaxAttemptsChange(localMaxAttempts);
+      onHopLimitChange?.(localHopLimit);
       onTestMessagesChange(testMessages);
 
       setHasChanges(false);
@@ -316,7 +328,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [localRegex, localEnabled, localMessage, localMessageDirect, localEnabledChannels, localSkipIncompleteNodes, localIgnoredNodes, localMatrix, localCooldownSeconds, localPreSendDelaySeconds, localMaxAttempts, testMessages, baseUrl, csrfFetch, sourceQuery, showToast, t, onEnabledChange, onRegexChange, onMessageChange, onMessageDirectChange, onChannelsChange, onSkipIncompleteNodesChange, onIgnoredNodesChange, onMatrixChange, onCooldownSecondsChange, onPreSendDelaySecondsChange, onMaxAttemptsChange, onTestMessagesChange]);
+  }, [localRegex, localEnabled, localMessage, localMessageDirect, localEnabledChannels, localSkipIncompleteNodes, localIgnoredNodes, localMatrix, localCooldownSeconds, localPreSendDelaySeconds, localMaxAttempts, localHopLimit, testMessages, baseUrl, csrfFetch, sourceQuery, showToast, t, onEnabledChange, onRegexChange, onMessageChange, onMessageDirectChange, onChannelsChange, onSkipIncompleteNodesChange, onIgnoredNodesChange, onMatrixChange, onCooldownSecondsChange, onPreSendDelaySecondsChange, onMaxAttemptsChange, onHopLimitChange, onTestMessagesChange]);
 
   // Register with SaveBar
   useSaveBar({
@@ -589,6 +601,18 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
               </span>
             </div>
           </div>
+
+          {/* Hop-limit override (#5121) for replies and tapbacks. */}
+          <HopLimitOverrideSelect
+            id="autoAckHopLimit"
+            value={localHopLimit}
+            onChange={setLocalHopLimit}
+            disabled={!localEnabled}
+            zeroHopNote={t(
+              'automation.auto_ack.hop_limit_zero_note',
+              'At 0, DM replies are sent once with no delivery confirmation and are not resent — the resend attempts above do not apply.',
+            )}
+          />
         </div>
 
         {/* Response matrix: {Channel | Direct} × {0 hops | Multi-hop} */}

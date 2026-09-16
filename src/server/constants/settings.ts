@@ -43,6 +43,8 @@ export const VALID_SETTINGS_KEYS = [
   // to [1,3] server-side — an unbounded value would let Auto-Ack be abused as
   // a repeat-broadcast/spam mechanism. Channel sends stay hardcoded to 1.
   'autoAckMaxAttempts',
+  // Hop-limit override for Auto-Acknowledge replies and tapbacks (#5121).
+  'autoAckHopLimit',
   // Auto-ack 2x2 matrix (discussion #3564): {Channel,Direct} × {ZeroHop,MultiHop},
   // each cell with Reply / Tapback / Respond-via-DM. These supersede the legacy
   // hop-only keys above (autoAckDirect*/autoAckMultihop*/autoAckUseDM/
@@ -68,6 +70,8 @@ export const VALID_SETTINGS_KEYS = [
   'autoAnnounceMessage',
   'autoAnnounceChannelIndex',
   'autoAnnounceChannelIndexes',
+  // Hop-limit override for auto-announcements (#5121).
+  'autoAnnounceHopLimit',
   'autoAnnounceOnStart',
   'autoAnnounceUseSchedule',
   'autoAnnounceSchedule',
@@ -408,6 +412,7 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'autoAckCooldownSeconds',
   'autoAckPreSendDelaySeconds',
   'autoAckMaxAttempts',
+  'autoAckHopLimit',
   'autoAckDirectEnabled',
   'autoAckDirectMessages',
   'autoAckDirectReplyEnabled',
@@ -441,6 +446,7 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'automationAirtimeCutoffNeighborMaxHops',
   // Auto-announce
   'autoAnnounceChannelIndexes',
+  'autoAnnounceHopLimit',
   'autoAnnounceEnabled',
   'autoAnnounceIntervalHours',
   'autoAnnounceMessage',

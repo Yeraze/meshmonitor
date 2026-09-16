@@ -440,7 +440,7 @@ export class MeshtasticProtobufService {
   /**
    * Create a text message ToRadio using proper protobuf encoding
    */
-  createTextMessage(text: string, destination?: number, channel?: number, replyId?: number, emoji?: number, pkiEncrypted?: boolean): { data: Uint8Array; messageId: number } {
+  createTextMessage(text: string, destination?: number, channel?: number, replyId?: number, emoji?: number, pkiEncrypted?: boolean, hopLimit?: number): { data: Uint8Array; messageId: number } {
     const root = getProtobufRoot();
     if (!root) {
       logger.error('❌ Protobuf definitions not loaded');
@@ -473,6 +473,15 @@ export class MeshtasticProtobufService {
       };
       if (pkiEncrypted) {
         meshPacketFields.pkiEncrypted = true;
+      }
+      // Hop-limit override (#5121). Undefined leaves hop_limit unset so the
+      // firmware applies the node's own lora.hop_limit. Zero has to drop
+      // want_ack: Router.cpp rewrites hop_limit 0 on a want_ack packet from the
+      // phone API to the node default, so a zero-hop send with an ACK request
+      // would silently go out at full reach.
+      if (hopLimit !== undefined) {
+        meshPacketFields.hopLimit = hopLimit;
+        if (hopLimit === 0) meshPacketFields.wantAck = false;
       }
       const meshPacket = MeshPacket.create(meshPacketFields);
 

@@ -36,6 +36,7 @@ import { resolveAutoAckReplyRouting } from '../../utils/autoAckDecision.js';
 import { resolveAutoAckPreSendDelaySeconds } from '../../autoAckDelay.js';
 import { computeMatrixValues } from '../../migrations/093_autoack_matrix.js';
 import { isConfiguredChannel } from './channelUnify.js';
+import { parseHopLimitOverride } from '../../../utils/hopLimitOverride.js';
 
 // ─── Defaults AutoAck itself applies at runtime (meshtasticManager.ts) ────────
 // The converter must reproduce these literally rather than emitting a blank
@@ -79,6 +80,14 @@ export interface ResolvedAutoAck {
   preSendDelaySecondsRaw: string | undefined;
   /** `autoAckMaxAttempts` as read. Report-only — NEVER emitted onto a graph (§9.5, parity note 8). */
   maxAttemptsRaw: string | undefined;
+  /**
+   * `autoAckHopLimit` as read (#5121). Optional so callers built before it
+   * existed keep compiling; absent/blank/malformed means inherit. When set it is
+   * emitted as `params.hopLimit` on both the tapback and the reply, which the
+   * engine honours identically — so it is a straight conversion, not an
+   * approximation.
+   */
+  hopLimitRaw?: string;
   /**
    * Every raw value whose key participates in the 2×2 matrix (the 12
    * `autoAck{Cell}{Reply,Tapback,ReplyDm}Enabled` keys) or the pre-093 legacy
@@ -420,6 +429,15 @@ export function buildAutoAckAutomations(input: AutoAckConverterInput): AutoAckCo
   const effectiveMessage = resolveMessage(settings.message);
   const effectiveMessageDirect = resolveMessageDirect(settings.messageDirect);
   const preSendDelaySeconds = resolveAutoAckPreSendDelaySeconds(settings.preSendDelaySecondsRaw);
+  const hopLimit = parseHopLimitOverride(settings.hopLimitRaw);
+  const hopLimitParams = hopLimit !== undefined ? { hopLimit: String(hopLimit) } : {};
+  if (hopLimit !== undefined) {
+    converted.push({
+      key: 'autoAckHopLimit',
+      label: 'Hop limit',
+      detail: `Emitted as params.hopLimit = ${hopLimit} on every converted tapback and reply. Both paths cap it at the node's own hop limit, and a 0 sends once with no ACK and no resend in each.`,
+    });
+  }
   if (preSendDelaySeconds > 0) {
     approximated.push({
       key: 'autoAckPreSendDelaySeconds',
@@ -461,7 +479,7 @@ export function buildAutoAckAutomations(input: AutoAckConverterInput): AutoAckCo
 
     const actions: FormBlock[] = [];
     if (preSendDelaySeconds > 0) actions.push({ type: 'action.delay', params: { seconds: preSendDelaySeconds } });
-    if (cfg.tapback) actions.push({ type: 'action.tapback', params: { emojiMode: 'hopCount' } });
+    if (cfg.tapback) actions.push({ type: 'action.tapback', params: { emojiMode: 'hopCount', ...hopLimitParams } });
     if (cfg.reply) {
       anyReplyEmitted = true;
       const template = isZeroHop && effectiveMessageDirect ? effectiveMessageDirect : effectiveMessage;
@@ -471,7 +489,7 @@ export function buildAutoAckAutomations(input: AutoAckConverterInput): AutoAckCo
       translation.notConvertible.forEach((t) => usedNotConvertibleTokens.add(t));
       actions.push({
         type: 'action.sendMessage',
-        params: { text: translation.text, ...replyRoutingParams(isDirectCell, cfg.replyDm) },
+        params: { text: translation.text, ...replyRoutingParams(isDirectCell, cfg.replyDm), ...hopLimitParams },
       });
     }
 

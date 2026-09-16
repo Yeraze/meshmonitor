@@ -36,11 +36,11 @@ const PARITY_DEPRECATED_KEYS = [
 ].sort();
 
 describe('report cross-check sanity', () => {
-  it('every pinned key is one of the 33 autoAck* VALID_SETTINGS_KEYS entries', () => {
+  it('every pinned key is one of the 34 autoAck* VALID_SETTINGS_KEYS entries', () => {
     for (const key of [...PARITY_NOT_CONVERTIBLE_KEYS, ...PARITY_DEPRECATED_KEYS]) {
       expect(AUTOACK_KEYS, `${key} missing from VALID_SETTINGS_KEYS`).toContain(key);
     }
-    expect(AUTOACK_KEYS.length).toBe(33);
+    expect(AUTOACK_KEYS.length).toBe(34);
   });
 });
 

@@ -10,6 +10,8 @@
  * the import UI.
  */
 
+import { HOP_LIMIT_OVERRIDE_MAX, parseHopLimitOverride } from '../utils/hopLimitOverride.js';
+
 export const AUTOMATION_CONFIG_VERSION = 1;
 
 // ─── Block type catalog ──────────────────────────────────────────────────────
@@ -191,6 +193,20 @@ export function parseSendMaxAttempts(raw: unknown): number | undefined {
   const n = Number(raw);
   if (!Number.isInteger(n)) return undefined;
   return Math.min(SEND_MAX_ATTEMPTS_MAX, Math.max(SEND_MAX_ATTEMPTS_MIN, n));
+}
+
+/**
+ * Validate an optional `params.hopLimit` on action.sendMessage / action.tapback
+ * (#5121). Absent / blank / 'inherit' is always valid and means "use the node's
+ * own hop limit" — every pre-existing stored automation relies on that. A set
+ * value must be an integer 0–7; the send path additionally caps it at the
+ * node's configured hop limit (see src/utils/hopLimitOverride.ts).
+ */
+function hopLimitParamError(nodeType: string, nodeId: string, raw: unknown): string | null {
+  if (raw == null || raw === '' || raw === 'inherit') return null;
+  return parseHopLimitOverride(raw) === undefined
+    ? `${nodeType} "${nodeId}" requires params.hopLimit ∈ {inherit, 0–${HOP_LIMIT_OVERRIDE_MAX}}`
+    : null;
 }
 
 /**
@@ -507,6 +523,10 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
           if (p.emojiMode != null && !TAPBACK_EMOJI_MODES.includes(p.emojiMode as TapbackEmojiMode)) {
             errors.push(`action.tapback "${n.id}" requires params.emojiMode ∈ {fixed,hopCount}`);
           }
+          {
+            const hopErr = hopLimitParamError('action.tapback', n.id, p.hopLimit);
+            if (hopErr) errors.push(hopErr);
+          }
           break;
         case 'action.deviceReboot':
           // `seconds` is optional (Meshtastic reboot delay; MeshCore ignores it).
@@ -596,6 +616,10 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
             if (!Number.isInteger(attempts) || attempts < SEND_MAX_ATTEMPTS_MIN || attempts > SEND_MAX_ATTEMPTS_MAX) {
               errors.push(`action.sendMessage "${n.id}" requires params.maxAttempts ∈ [${SEND_MAX_ATTEMPTS_MIN}, ${SEND_MAX_ATTEMPTS_MAX}]`);
             }
+          }
+          {
+            const hopErr = hopLimitParamError('action.sendMessage', n.id, p.hopLimit);
+            if (hopErr) errors.push(hopErr);
           }
           break;
         default:

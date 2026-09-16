@@ -63,11 +63,13 @@ const AutomationTab: React.FC<AutomationTabProps> = ({ baseUrl, channels, nodes,
     autoAckCooldownSeconds, setAutoAckCooldownSeconds,
     autoAckPreSendDelaySeconds, setAutoAckPreSendDelaySeconds,
     autoAckMaxAttempts, setAutoAckMaxAttempts,
+    autoAckHopLimit, setAutoAckHopLimit,
     autoAckTestMessages, setAutoAckTestMessages,
     autoAnnounceEnabled, setAutoAnnounceEnabled,
     autoAnnounceIntervalHours, setAutoAnnounceIntervalHours,
     autoAnnounceMessage, setAutoAnnounceMessage,
     autoAnnounceChannelIndexes, setAutoAnnounceChannelIndexes,
+    autoAnnounceHopLimit, setAutoAnnounceHopLimit,
     autoAnnounceOnStart, setAutoAnnounceOnStart,
     autoAnnounceUseSchedule, setAutoAnnounceUseSchedule,
     autoAnnounceSchedule, setAutoAnnounceSchedule,
@@ -205,6 +207,8 @@ const AutomationTab: React.FC<AutomationTabProps> = ({ baseUrl, channels, nodes,
               onPreSendDelaySecondsChange={setAutoAckPreSendDelaySeconds}
               maxAttempts={autoAckMaxAttempts}
               onMaxAttemptsChange={setAutoAckMaxAttempts}
+              hopLimit={autoAckHopLimit}
+              onHopLimitChange={setAutoAckHopLimit}
               baseUrl={baseUrl}
               onEnabledChange={setAutoAckEnabled}
               onRegexChange={setAutoAckRegex}
@@ -232,6 +236,8 @@ const AutomationTab: React.FC<AutomationTabProps> = ({ baseUrl, channels, nodes,
               onIntervalChange={setAutoAnnounceIntervalHours}
               onMessageChange={setAutoAnnounceMessage}
               onChannelIndexesChange={setAutoAnnounceChannelIndexes}
+              hopLimit={autoAnnounceHopLimit}
+              onHopLimitChange={setAutoAnnounceHopLimit}
               onAnnounceOnStartChange={setAutoAnnounceOnStart}
               onUseScheduleChange={setAutoAnnounceUseSchedule}
               onScheduleChange={setAutoAnnounceSchedule}

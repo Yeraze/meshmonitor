@@ -30,12 +30,19 @@ interface QueuedSendManager {
       text: string, destination: number, replyId?: number,
       onSuccess?: () => void, onFailure?: (reason: string) => void,
       channel?: number, maxAttemptsOverride?: number, emoji?: number,
+      hopLimitOverride?: number,
     ): string;
   };
 }
 
+/** Options bag MeshtasticManager.sendTextMessage takes as its 8th argument. */
+type SendTextOptions = { hopLimitOverride?: number };
+
 interface MeshSendManager {
-  sendTextMessage(text: string, channel?: number, destination?: number, replyId?: number, emoji?: number): Promise<number>;
+  sendTextMessage(
+    text: string, channel?: number, destination?: number, replyId?: number, emoji?: number,
+    userId?: number, attribution?: undefined, options?: SendTextOptions,
+  ): Promise<number>;
   sendFavoriteNode(nodeNum: number, destinationNodeNum?: number): Promise<void>;
   sendRemoveFavoriteNode(nodeNum: number, destinationNodeNum?: number): Promise<void>;
   sendIgnoredNode(nodeNum: number, destinationNodeNum?: number): Promise<void>;
@@ -91,6 +98,7 @@ async function sendTextVia(
   emoji = 0,
   scopeOverride?: string | null,
   maxAttempts?: number,
+  hopLimitOverride?: number,
 ): Promise<unknown> {
   if (!sourceId) throw new Error('automation action requires a target source');
   const raw = resolveManager(sourceId) as
@@ -110,7 +118,11 @@ async function sendTextVia(
     //     through actionExecutor's pushOrSkipTxDisabled. Both are exactly how
     //     Auto-Acknowledge itself behaves — that IS the parity.
     const q = (raw as QueuedSendManager).messageQueue;
-    if (maxAttempts != null && dest != null && typeof q?.enqueue === 'function') {
+    const sendOptions = hopLimitOverride !== undefined ? { hopLimitOverride } : undefined;
+    // #5121: a zero-hop send carries no ACK request, so there is nothing for the
+    // queue's retry to wait on. It always takes the direct single-send path —
+    // maxAttempts is deliberately ignored rather than turned into blind resends.
+    if (maxAttempts != null && dest != null && hopLimitOverride !== 0 && typeof q?.enqueue === 'function') {
       const id = q.enqueue(
         text, dest, replyId,
         () => logger.debug(`[Automation] queued DM to !${dest.toString(16).padStart(8, '0')} delivered`),
@@ -118,10 +130,15 @@ async function sendTextVia(
         undefined,             // channel: undefined ⇒ this is a DM
         maxAttempts,
         emoji || undefined,
+        hopLimitOverride,
       );
       return { queued: true, messageId: id, maxAttempts };
     }
-    return raw.sendTextMessage(text, channel, dest, replyId, emoji);
+    // Only widen the call when an override is set, so an automation without
+    // one reaches the manager exactly as it did before #5121.
+    return sendOptions
+      ? raw.sendTextMessage(text, channel, dest, replyId, emoji, undefined, undefined, sendOptions)
+      : raw.sendTextMessage(text, channel, dest, replyId, emoji);
   }
   if (raw && typeof raw.sendMessage === 'function') {
     // MeshCore: `destination`, when a string, is the contact's public key (#4018)
@@ -146,13 +163,15 @@ async function sendTextVia(
 
 export function createMeshActionDeps(): ActionDeps {
   return {
-    async sendMessage({ sourceId, text, channel, destination, replyId, scopeOverride, maxAttempts }) {
-      return sendTextVia(sourceId, text, channel ?? 0, destination, replyId, 0, scopeOverride, maxAttempts);
+    async sendMessage({ sourceId, text, channel, destination, replyId, scopeOverride, maxAttempts, hopLimitOverride }) {
+      return sendTextVia(sourceId, text, channel ?? 0, destination, replyId, 0, scopeOverride, maxAttempts, hopLimitOverride);
     },
 
-    async sendTapback({ sourceId, emoji, channel, destination, replyId }) {
+    async sendTapback({ sourceId, emoji, channel, destination, replyId, hopLimitOverride }) {
       // emoji flag = 1 marks a tapback/reaction; route the way the trigger arrived.
-      return mgr(sourceId).sendTextMessage(emoji, channel ?? 0, destination, replyId, 1);
+      return hopLimitOverride !== undefined
+        ? mgr(sourceId).sendTextMessage(emoji, channel ?? 0, destination, replyId, 1, undefined, undefined, { hopLimitOverride })
+        : mgr(sourceId).sendTextMessage(emoji, channel ?? 0, destination, replyId, 1);
     },
 
     async manageNode({ sourceId, nodeNum, op }) {

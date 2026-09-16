@@ -437,6 +437,32 @@ describe('buildAutoAckAutomations', () => {
     expect(actions[0]).toEqual({ type: 'action.delay', params: { seconds: 45 } });
   });
 
+  // ─── (l2) hop-limit override (#5121) ────────────────────────────────────────
+  it('(l2) autoAckHopLimit is emitted onto every tapback and reply; unset emits nothing', () => {
+    const matrix = matrixWith('directZeroHop', { reply: true, tapback: true });
+
+    const unset = buildAutoAckAutomations(baseInput({ settings: baseSettings({ rawMatrixAndLegacy: matrix }) }));
+    for (const a of unset.automations[0].form.rules[0].actions) {
+      expect(a.params).not.toHaveProperty('hopLimit');
+    }
+    expect(unset.report.converted.map((c) => c.key)).not.toContain('autoAckHopLimit');
+
+    const zero = buildAutoAckAutomations(baseInput({
+      settings: baseSettings({ hopLimitRaw: '0', rawMatrixAndLegacy: matrix }),
+    }));
+    const actions = zero.automations[0].form.rules[0].actions;
+    expect(actions.find((a) => a.type === 'action.tapback')!.params.hopLimit).toBe('0');
+    expect(actions.find((a) => a.type === 'action.sendMessage')!.params.hopLimit).toBe('0');
+    expect(zero.report.converted.map((c) => c.key)).toContain('autoAckHopLimit');
+
+    const malformed = buildAutoAckAutomations(baseInput({
+      settings: baseSettings({ hopLimitRaw: '9', rawMatrixAndLegacy: matrix }),
+    }));
+    for (const a of malformed.automations[0].form.rules[0].actions) {
+      expect(a.params).not.toHaveProperty('hopLimit');
+    }
+  });
+
   // ─── (m) ───────────────────────────────────────────────────────────────────
   it('(m) translates every §4.5 token, leaving unmapped tokens verbatim', () => {
     const template = '{NUMBER_HOPS} {HOPS} {NODE_ID} {LONG_NAME} {SNR} {RSSI} {CHANNEL} {DATE} {TIME} {SHORT_NAME} {IP}';

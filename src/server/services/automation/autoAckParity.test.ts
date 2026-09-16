@@ -155,6 +155,14 @@ const AUTOACK_PARITY: Record<string, ParityRow> = {
     perSource: true, status: 'phase3',
     engine: ['type:action.sendMessage', 'param:action.sendMessage.maxAttempts'],
   },
+  // 21b — hop-limit override (#5121). Read by checkAutoAcknowledge for both the
+  // tapback and the reply; the converter emits it as params.hopLimit on each,
+  // and the engine honours it identically (capped at the node's own hop limit,
+  // 0 = one send with no ACK and no resend).
+  autoAckHopLimit: {
+    perSource: true, status: 'exists',
+    engine: ['type:action.sendMessage', 'param:action.sendMessage.hopLimit', 'param:action.tapback.hopLimit'],
+  },
   // 22 — cell = isDM==0 AND hops==0 AND viaMqtt==0. Phase 3 adds isDM/viaMqtt to
   // the field picker (they already resolved at runtime, but a converter-written
   // value rendered blank and was clobbered on first edit — see spec §9 finding 4).
@@ -251,7 +259,7 @@ describe('autoAckParity (#4340 Phase 3 exit criterion)', () => {
     // ...and a new autoAck* key added to VALID_SETTINGS_KEYS without a row here.
     const extraInTable = tableKeys.filter((k) => !settingsAutoAckKeys.includes(k));
     expect(extraInTable, `keys in AUTOACK_PARITY but not in VALID_SETTINGS_KEYS: ${extraInTable.join(', ')}`).toEqual([]);
-    expect(tableKeys.length).toBe(33);
+    expect(tableKeys.length).toBe(34);
   });
 
   it('perSource flag matches PER_SOURCE_SETTINGS_KEYS membership for every row', () => {

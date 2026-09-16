@@ -10,6 +10,7 @@ import { useSource } from '../contexts/SourceContext';
 import { useSaveBar } from '../hooks/useSaveBar';
 import { UiIcon } from './icons';
 import apiService from '../services/api';
+import { HopLimitOverrideSelect } from './HopLimitOverrideSelect';
 
 interface AutoAnnounceSectionProps {
   enabled: boolean;
@@ -28,6 +29,9 @@ interface AutoAnnounceSectionProps {
   onAnnounceOnStartChange: (announceOnStart: boolean) => void;
   onUseScheduleChange: (useSchedule: boolean) => void;
   onScheduleChange: (schedule: string) => void;
+  /** Hop-limit override (#5121): '' = inherit, '0'–'7' = pinned. */
+  hopLimit?: string;
+  onHopLimitChange?: (hopLimit: string) => void;
   // NodeInfo broadcasting props
   nodeInfoEnabled?: boolean;
   nodeInfoChannels?: number[];
@@ -56,6 +60,8 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
   onAnnounceOnStartChange,
   onUseScheduleChange,
   onScheduleChange,
+  hopLimit = '',
+  onHopLimitChange,
   // NodeInfo broadcasting props
   nodeInfoEnabled = false,
   nodeInfoChannels = [],
@@ -76,6 +82,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
   const [localAnnounceOnStart, setLocalAnnounceOnStart] = useState(announceOnStart);
   const [localUseSchedule, setLocalUseSchedule] = useState(useSchedule);
   const [localSchedule, setLocalSchedule] = useState(schedule || '0 */6 * * *');
+  const [localHopLimit, setLocalHopLimit] = useState(hopLimit);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -97,10 +104,11 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
     setLocalAnnounceOnStart(announceOnStart);
     setLocalUseSchedule(useSchedule);
     setLocalSchedule(schedule || '0 */6 * * *');
+    setLocalHopLimit(hopLimit);
     setLocalNodeInfoEnabled(nodeInfoEnabled);
     setLocalNodeInfoChannels(nodeInfoChannels);
     setLocalNodeInfoDelaySeconds(nodeInfoDelaySeconds);
-  }, [enabled, intervalHours, message, channelIndexes, announceOnStart, useSchedule, schedule, nodeInfoEnabled, nodeInfoChannels, nodeInfoDelaySeconds]);
+  }, [enabled, intervalHours, message, channelIndexes, announceOnStart, useSchedule, schedule, hopLimit, nodeInfoEnabled, nodeInfoChannels, nodeInfoDelaySeconds]);
 
   // Fetch last announcement time (per-source)
   useEffect(() => {
@@ -151,11 +159,12 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
       localAnnounceOnStart !== announceOnStart ||
       localUseSchedule !== useSchedule ||
       localSchedule !== schedule ||
+      localHopLimit !== hopLimit ||
       localNodeInfoEnabled !== nodeInfoEnabled ||
       !arraysEqual(localNodeInfoChannels, nodeInfoChannels) ||
       localNodeInfoDelaySeconds !== nodeInfoDelaySeconds;
     setHasChanges(changed);
-  }, [localEnabled, localInterval, localMessage, localChannelIndexes, localAnnounceOnStart, localUseSchedule, localSchedule, enabled, intervalHours, message, channelIndexes, announceOnStart, useSchedule, schedule, localNodeInfoEnabled, localNodeInfoChannels, localNodeInfoDelaySeconds, nodeInfoEnabled, nodeInfoChannels, nodeInfoDelaySeconds]);
+  }, [localEnabled, localInterval, localMessage, localChannelIndexes, localAnnounceOnStart, localUseSchedule, localSchedule, localHopLimit, enabled, intervalHours, message, channelIndexes, announceOnStart, useSchedule, schedule, hopLimit, localNodeInfoEnabled, localNodeInfoChannels, localNodeInfoDelaySeconds, nodeInfoEnabled, nodeInfoChannels, nodeInfoDelaySeconds]);
 
   // Reset local state to props (used by SaveBar dismiss)
   const resetChanges = useCallback(() => {
@@ -166,10 +175,11 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
     setLocalAnnounceOnStart(announceOnStart);
     setLocalUseSchedule(useSchedule);
     setLocalSchedule(schedule || '0 */6 * * *');
+    setLocalHopLimit(hopLimit);
     setLocalNodeInfoEnabled(nodeInfoEnabled);
     setLocalNodeInfoChannels(nodeInfoChannels);
     setLocalNodeInfoDelaySeconds(nodeInfoDelaySeconds);
-  }, [enabled, intervalHours, message, channelIndexes, announceOnStart, useSchedule, schedule, nodeInfoEnabled, nodeInfoChannels, nodeInfoDelaySeconds]);
+  }, [enabled, intervalHours, message, channelIndexes, announceOnStart, useSchedule, schedule, hopLimit, nodeInfoEnabled, nodeInfoChannels, nodeInfoDelaySeconds]);
 
   // Wrap handleSave for useSaveBar (needs to be defined before useSaveBar call)
   const handleSaveForSaveBar = useCallback(async () => {
@@ -198,6 +208,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
           autoAnnounceOnStart: String(localAnnounceOnStart),
           autoAnnounceUseSchedule: String(localUseSchedule),
           autoAnnounceSchedule: localSchedule,
+          autoAnnounceHopLimit: localHopLimit,
           // NodeInfo broadcasting settings
           autoAnnounceNodeInfoEnabled: String(localNodeInfoEnabled),
           autoAnnounceNodeInfoChannels: JSON.stringify(localNodeInfoChannels),
@@ -217,6 +228,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
       onAnnounceOnStartChange(localAnnounceOnStart);
       onUseScheduleChange(localUseSchedule);
       onScheduleChange(localSchedule);
+      onHopLimitChange?.(localHopLimit);
       onNodeInfoEnabledChange?.(localNodeInfoEnabled);
       onNodeInfoChannelsChange?.(localNodeInfoChannels);
       onNodeInfoDelayChange?.(localNodeInfoDelaySeconds);
@@ -229,7 +241,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [localUseSchedule, scheduleError, localEnabled, localInterval, localMessage, localChannelIndexes, localAnnounceOnStart, localSchedule, localNodeInfoEnabled, localNodeInfoChannels, localNodeInfoDelaySeconds, baseUrl, csrfFetch, showToast, t, onEnabledChange, onIntervalChange, onMessageChange, onChannelIndexesChange, onAnnounceOnStartChange, onUseScheduleChange, onScheduleChange, onNodeInfoEnabledChange, onNodeInfoChannelsChange, onNodeInfoDelayChange]);
+  }, [localUseSchedule, scheduleError, localEnabled, localInterval, localMessage, localChannelIndexes, localAnnounceOnStart, localSchedule, localHopLimit, localNodeInfoEnabled, localNodeInfoChannels, localNodeInfoDelaySeconds, baseUrl, csrfFetch, showToast, t, onEnabledChange, onIntervalChange, onMessageChange, onChannelIndexesChange, onAnnounceOnStartChange, onUseScheduleChange, onScheduleChange, onHopLimitChange, onNodeInfoEnabledChange, onNodeInfoChannelsChange, onNodeInfoDelayChange]);
 
   // Register with SaveBar
   useSaveBar({
@@ -550,6 +562,12 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
               </div>
             ))}
           </div>
+          <HopLimitOverrideSelect
+            id="autoAnnounceHopLimit"
+            value={localHopLimit}
+            onChange={setLocalHopLimit}
+            disabled={!localEnabled}
+          />
         </div>
 
         <div className="setting-item" style={{ marginTop: '1rem' }}>

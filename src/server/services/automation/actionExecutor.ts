@@ -7,6 +7,7 @@
  * unit-tested without a live node. The real deps wiring lives in meshActionDeps.ts.
  */
 import { type AutomationNode, AUTOMATION_DELAY_MAX_SECONDS, parseSendMaxAttempts } from '../../../types/automation.js';
+import { parseHopLimitOverride } from '../../../utils/hopLimitOverride.js';
 import { type EngineEvalContext, interpolateAsync, resolveOperand } from './engineContext.js';
 import { isTxDisabledError } from '../../errors/txDisabledError.js';
 import { hopCountEmoji } from '../../../utils/hopEmoji.js';
@@ -37,6 +38,12 @@ export interface ActionDeps {
      * meshActionDeps.sendTextVia.
      */
     maxAttempts?: number;
+    /**
+     * Hop-limit override (#5121), 0–7. Absent = the node's own hop limit.
+     * Meshtastic only; capped at the node's configured value. 0 sends once
+     * with no ACK request and no queue retry.
+     */
+    hopLimitOverride?: number;
   }): Promise<unknown>;
   sendTapback(a: {
     sourceId: string | null;
@@ -44,6 +51,8 @@ export interface ActionDeps {
     channel?: number;
     destination?: number;
     replyId?: number;
+    /** Hop-limit override (#5121) — see sendMessage. */
+    hopLimitOverride?: number;
   }): Promise<unknown>;
   manageNode(a: { sourceId: string | null; nodeNum: number; op: NodeManageOp }): Promise<unknown>;
   /** Ask a node/mesh for data or to announce (#3835). `target` is raw — a node # for
@@ -296,6 +305,10 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
       // test — is unchanged. Same trick as scopeArg above.
       const attempts = parseSendMaxAttempts(p.maxAttempts);
       const attemptsArg = attempts !== undefined ? { maxAttempts: attempts } : {};
+      // #5121: absent/blank/'inherit' leaves hopLimitArg empty, so every stored
+      // automation keeps sending at the node's own hop limit.
+      const hopLimit = parseHopLimitOverride(p.hopLimit);
+      const hopLimitArg = hopLimit !== undefined ? { hopLimitOverride: hopLimit } : {};
 
       // Target sources: explicit multi-select, else the legacy single source /
       // the triggering source.
@@ -330,7 +343,7 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
           // unknown), so the chosen scope governs a DM's propagation just as it does
           // a channel broadcast — dropping it forced DMs onto the source default.
           // 'inherit' still leaves scopeArg empty, so DMs default as before.
-          await pushOrSkipTxDisabled(results, () => deps.sendMessage({ sourceId: sid, text, channel: fallbackChannel, destination, replyId, ...scopeArg, ...attemptsArg }));
+          await pushOrSkipTxDisabled(results, () => deps.sendMessage({ sourceId: sid, text, channel: fallbackChannel, destination, replyId, ...scopeArg, ...attemptsArg, ...hopLimitArg }));
           continue;
         }
         const srcChannels = (await ctx.data.getChannels?.(sid)) ?? [];
@@ -338,7 +351,7 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
           if (sel.protocol && proto && sel.protocol !== proto) continue; // wrong-protocol channel
           const match = srcChannels.find((c) => c.name.toLowerCase() === sel.name.toLowerCase() && c.role !== 0);
           if (!match) continue; // channel not present on this source
-          await pushOrSkipTxDisabled(results, () => deps.sendMessage({ sourceId: sid, text, channel: match.id, destination, replyId, ...scopeArg, ...attemptsArg }));
+          await pushOrSkipTxDisabled(results, () => deps.sendMessage({ sourceId: sid, text, channel: match.id, destination, replyId, ...scopeArg, ...attemptsArg, ...hopLimitArg }));
         }
       }
 
@@ -385,6 +398,8 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
       const replyId = p.replyId != null ? await num(ctx, p.replyId) : (ctx.trigger.fields.packetId as number | undefined);
       const destination = isDM ? (ctx.trigger.fields.from as number | undefined) : undefined;
       const channel = isDM ? undefined : triggerChannel;
+      const tapbackHopLimit = parseHopLimitOverride(p.hopLimit);
+      const tapbackHopArg = tapbackHopLimit !== undefined ? { hopLimitOverride: tapbackHopLimit } : {};
 
       // Target sources: explicit multi-select, else the legacy single source /
       // the triggering source (mirrors action.sendMessage / action.requestData, #3996).
@@ -401,7 +416,7 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
           results.push({ skipped: true, reason: 'tapback is not supported on MeshCore' });
           continue;
         }
-        await pushOrSkipTxDisabled(results, () => deps.sendTapback({ sourceId: sid, emoji, channel, destination, replyId }));
+        await pushOrSkipTxDisabled(results, () => deps.sendTapback({ sourceId: sid, emoji, channel, destination, replyId, ...tapbackHopArg }));
       }
       // Unwrap the single-target case so the result shape (and run-log
       // resolvedParams) matches the original one-target behavior.

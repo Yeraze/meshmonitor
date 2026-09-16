@@ -399,3 +399,62 @@ describe('createMeshActionDeps rebootDevice — device reboot action (#3995)', (
     expect(result).toEqual({ rebooted: true, targetNodeNum: 222 });
   });
 });
+
+describe('createMeshActionDeps — hop-limit override (#5121)', () => {
+  beforeEach(() => { getManager.mockReset(); });
+
+  it('passes the override to sendTextMessage as its options argument', async () => {
+    const sendTextMessage = vi.fn().mockResolvedValue(1);
+    getManager.mockReturnValue({ sendTextMessage });
+    const deps = createMeshActionDeps();
+
+    await deps.sendMessage({ sourceId: 'mt', text: 'hi', channel: 1, hopLimitOverride: 2 });
+
+    expect(sendTextMessage).toHaveBeenCalledWith('hi', 1, undefined, undefined, 0, undefined, undefined, { hopLimitOverride: 2 });
+  });
+
+  it('carries the override through the queue when maxAttempts is set', async () => {
+    const sendTextMessage = vi.fn().mockResolvedValue(1);
+    const enqueue = vi.fn().mockReturnValue('q7');
+    getManager.mockReturnValue({ sendTextMessage, messageQueue: { enqueue } });
+    const deps = createMeshActionDeps();
+
+    await deps.sendMessage({ sourceId: 'mt', text: 'hi', channel: 0, destination: 777, maxAttempts: 3, hopLimitOverride: 1 });
+
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    expect(enqueue.mock.calls[0][8]).toBe(1); // hopLimitOverride
+    expect(sendTextMessage).not.toHaveBeenCalled();
+  });
+
+  it('bypasses the queue for a zero-hop DM — one send, no blind resends', async () => {
+    const sendTextMessage = vi.fn().mockResolvedValue(1);
+    const enqueue = vi.fn().mockReturnValue('q8');
+    getManager.mockReturnValue({ sendTextMessage, messageQueue: { enqueue } });
+    const deps = createMeshActionDeps();
+
+    await deps.sendMessage({ sourceId: 'mt', text: 'hi', channel: 0, destination: 777, maxAttempts: 3, hopLimitOverride: 0 });
+
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(sendTextMessage).toHaveBeenCalledWith('hi', 0, 777, undefined, 0, undefined, undefined, { hopLimitOverride: 0 });
+  });
+
+  it('passes the override on a tapback', async () => {
+    const sendTextMessage = vi.fn().mockResolvedValue(1);
+    getManager.mockReturnValue({ sendTextMessage });
+    const deps = createMeshActionDeps();
+
+    await deps.sendTapback({ sourceId: 'mt', emoji: '👍', channel: 2, replyId: 9, hopLimitOverride: 0 });
+
+    expect(sendTextMessage).toHaveBeenCalledWith('👍', 2, undefined, 9, 1, undefined, undefined, { hopLimitOverride: 0 });
+  });
+
+  it('keeps the original tapback call shape without an override', async () => {
+    const sendTextMessage = vi.fn().mockResolvedValue(1);
+    getManager.mockReturnValue({ sendTextMessage });
+    const deps = createMeshActionDeps();
+
+    await deps.sendTapback({ sourceId: 'mt', emoji: '👍', channel: 2, replyId: 9 });
+
+    expect(sendTextMessage).toHaveBeenCalledWith('👍', 2, undefined, 9, 1);
+  });
+});
