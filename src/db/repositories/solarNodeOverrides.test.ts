@@ -47,6 +47,33 @@ describe('SolarNodeOverridesRepository', () => {
     expect(all[0]).toMatchObject({ nodeNum: 42, isSolar: false, updatedBy: 'editor' });
   });
 
+  it('applies a write as an update when a concurrent first insert already created the row', async () => {
+    // Simulate losing the race: the row appears between our SELECT and INSERT.
+    const originalInsert = drizzleDb.insert.bind(drizzleDb);
+    let injected = false;
+    (drizzleDb as unknown as { insert: typeof drizzleDb.insert }).insert = ((table: never) => {
+      if (!injected) {
+        injected = true;
+        db.prepare('INSERT INTO solar_node_overrides (nodeNum, isSolar, updatedBy, updatedAt) VALUES (?, ?, ?, ?)').run(77, 1, 'other', 1);
+      }
+      return originalInsert(table);
+    }) as typeof drizzleDb.insert;
+
+    const saved = await repo.setAsync(77, false, 'me');
+
+    expect(saved.isSolar).toBe(false);
+    const all = await repo.getAllAsync();
+    expect(all).toHaveLength(1);
+    expect(all[0]).toMatchObject({ nodeNum: 77, isSolar: false, updatedBy: 'me' });
+  });
+
+  it('re-throws an insert failure that is not the concurrent-insert race', async () => {
+    (drizzleDb as unknown as { insert: () => never }).insert = () => {
+      throw new Error('disk full');
+    };
+    await expect(repo.setAsync(78, true)).rejects.toThrow('disk full');
+  });
+
   it('handles an unsigned nodeNum above the signed 32-bit range', async () => {
     const big = 0xfedcba98;
     await repo.setAsync(big, true);

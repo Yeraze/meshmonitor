@@ -64,15 +64,32 @@ export class SolarNodeOverridesRepository extends BaseRepository {
       .where(eq(solarNodeOverrides.nodeNum, num))
       .limit(1);
 
+    const update = () => this.db
+      .update(solarNodeOverrides)
+      .set({ isSolar, updatedBy: author, updatedAt: now })
+      .where(eq(solarNodeOverrides.nodeNum, num));
+
     if (existing.length > 0) {
-      await this.db
-        .update(solarNodeOverrides)
-        .set({ isSolar, updatedBy: author, updatedAt: now })
-        .where(eq(solarNodeOverrides.nodeNum, num));
+      await update();
     } else {
-      await this.db
-        .insert(solarNodeOverrides)
-        .values({ nodeNum: num, isSolar, updatedBy: author, updatedAt: now });
+      try {
+        await this.db
+          .insert(solarNodeOverrides)
+          .values({ nodeNum: num, isSolar, updatedBy: author, updatedAt: now });
+      } catch (err) {
+        // Two first writes for the same node can both miss the SELECT above; the
+        // loser hits the primary key. If the row now exists that is the race, so
+        // apply this write as an update. If it still doesn't, the insert failed
+        // for some other reason — surface that rather than a silent no-op update.
+        const raced = await this.db
+          .select()
+          .from(solarNodeOverrides)
+          .where(eq(solarNodeOverrides.nodeNum, num))
+          .limit(1);
+        if (raced.length === 0) throw err;
+        logger.debug(`Solar override insert for node ${num} lost a race, updating instead`);
+        await update();
+      }
     }
     logger.debug(`Set solar override for node ${num} → ${isSolar ? 'solar' : 'not solar'}`);
     return { nodeNum: num, isSolar, updatedBy: author, updatedAt: now };
