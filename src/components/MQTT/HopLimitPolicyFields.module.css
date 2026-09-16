@@ -118,3 +118,34 @@
   color: var(--color-text);
   margin-bottom: 3px;
 }
+
+/* Mirrors .dashboard-confirm-actions so the inline confirm reads as the same
+   control the delete/prune dialogs use. */
+.confirmActions button {
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.15s;
+}
+
+.confirmActions button:first-child {
+  background: transparent;
+  border: 1px solid var(--color-surface-hover);
+  color: var(--color-text-subtle);
+}
+
+.confirmActions button:first-child:hover {
+  background: var(--color-surface);
+}
+
+.confirmActions button:last-child {
+  background: var(--color-caution);
+  color: var(--color-bg);
+}
+
+.confirmActions button:last-child:hover {
+  opacity: 0.88;
+}
