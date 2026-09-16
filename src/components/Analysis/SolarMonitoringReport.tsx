@@ -7,10 +7,12 @@
  * extending the chart into the future.
  */
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import apiService from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
+import { SolarOverridesPanel, type SolarOverrideEntry, type SolarPickerNode } from './SolarOverridesPanel';
 import {
   Area,
   CartesianGrid,
@@ -58,6 +60,8 @@ interface SolarNode {
   avg_charge_rate_per_hour: number | null;
   avg_discharge_rate_per_hour: number | null;
   insufficient_solar: boolean | null;
+  /** True when the operator marked this node as solar (#3195). */
+  manual_override?: boolean;
 }
 
 interface SolarNodesAnalysis {
@@ -68,6 +72,8 @@ interface SolarNodesAnalysis {
   solar_production: SolarProductionPoint[];
   avg_charging_hours_per_day: number | null;
   avg_discharge_hours_per_day: number | null;
+  analyzed_nodes?: SolarPickerNode[];
+  manual_overrides?: SolarOverrideEntry[];
 }
 
 interface ForecastDay {
@@ -107,6 +113,11 @@ interface SolarForecastAnalysis {
 
 const SolarMonitoringReport: React.FC = () => {
   const { t } = useTranslation();
+  const { hasPermission } = useAuth();
+  const canWriteOverrides = hasPermission('settings', 'write');
+  const queryClient = useQueryClient();
+  const [overrideBusy, setOverrideBusy] = useState(false);
+  const [overrideError, setOverrideError] = useState<string | null>(null);
   const [lookbackDays, setLookbackDays] = useState(7);
   const [run, setRun] = useState(false);
   const [runForecast, setRunForecast] = useState(false);
@@ -133,6 +144,24 @@ const SolarMonitoringReport: React.FC = () => {
       ),
     enabled: runForecast,
   });
+
+  // #3195: set (true/false) or clear (null) a node's manual solar classification,
+  // then re-run whichever analyses are showing so the report reflects it.
+  const setSolarOverride = async (nodeNum: number, isSolar: boolean | null) => {
+    setOverrideBusy(true);
+    setOverrideError(null);
+    try {
+      await apiService.put(`/api/analysis/solar-overrides/${nodeNum}`, { isSolar });
+      await queryClient.invalidateQueries({ queryKey: ['solar-nodes-analysis'] });
+      await queryClient.invalidateQueries({ queryKey: ['solar-forecast-analysis'] });
+    } catch (err) {
+      setOverrideError(
+        `${t('analysis.solar_monitoring.override_failed', 'Could not save the classification:')} ${(err as Error).message}`,
+      );
+    } finally {
+      setOverrideBusy(false);
+    }
+  };
 
   return (
     <>
@@ -232,6 +261,17 @@ const SolarMonitoringReport: React.FC = () => {
         />
       )}
 
+      {data && (
+        <SolarOverridesPanel
+          overrides={data.manual_overrides ?? []}
+          analyzedNodes={data.analyzed_nodes ?? []}
+          canWrite={canWriteOverrides}
+          busy={overrideBusy}
+          error={overrideError}
+          onSet={(nodeNum, isSolar) => void setSolarOverride(nodeNum, isSolar)}
+        />
+      )}
+
       {forecast && <ForecastResults forecast={forecast} />}
 
       {data && data.solar_nodes.length === 0 && !isLoading && (
@@ -251,6 +291,9 @@ const SolarMonitoringReport: React.FC = () => {
               node={node}
               solarProduction={data.solar_production}
               forecast={forecast}
+              canWriteOverrides={canWriteOverrides}
+              overrideBusy={overrideBusy}
+              onSetOverride={(isSolar) => void setSolarOverride(node.node_num, isSolar)}
             />
           ))}
         </div>
@@ -376,7 +419,11 @@ const SolarNodeCard: React.FC<{
   node: SolarNode;
   solarProduction: SolarProductionPoint[];
   forecast?: SolarForecastAnalysis;
-}> = ({ node, solarProduction, forecast }) => {
+  canWriteOverrides?: boolean;
+  overrideBusy?: boolean;
+  onSetOverride?: (isSolar: boolean | null) => void;
+}> = ({ node, solarProduction, forecast, canWriteOverrides, overrideBusy, onSetOverride }) => {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
 
   const isPercent = node.metric_type === 'batteryLevel';
@@ -482,6 +529,11 @@ const SolarNodeCard: React.FC<{
             {node.insufficient_solar && (
               <span className="reports-node__warning"><UiIcon name="alert" size={13} /> Insufficient solar</span>
             )}
+            {node.manual_override && (
+              <span className="reports-node__meta">
+                {' '}• {t('analysis.solar_monitoring.override_solar', 'Marked solar')}
+              </span>
+            )}
           </div>
           <div className="reports-node__meta">
             Score {node.solar_score.toFixed(1)}% • {node.days_with_pattern}/
@@ -493,6 +545,23 @@ const SolarNodeCard: React.FC<{
 
       {expanded && (
         <div className="reports-node__body">
+          {canWriteOverrides && onSetOverride && (
+            <div style={{ marginBottom: 8 }}>
+              <button type="button" disabled={overrideBusy} onClick={() => onSetOverride(node.manual_override ? null : false)}>
+                {node.manual_override
+                  ? t('analysis.solar_monitoring.override_clear', 'Use auto-detection')
+                  : t('analysis.solar_monitoring.override_mark_not_solar', 'Not a solar node')}
+              </button>
+            </div>
+          )}
+          {node.chart_data.length === 0 && (
+            <div className="reports-node__meta">
+              {t(
+                'analysis.solar_monitoring.override_no_telemetry',
+                'No battery or voltage telemetry from this node in the selected window.',
+              )}
+            </div>
+          )}
           <div className="reports-node__fields">
             <Field
               label="Avg charge rate"

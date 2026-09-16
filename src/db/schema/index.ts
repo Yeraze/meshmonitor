@@ -65,6 +65,7 @@ export * from './savedRegions.js';
 
 // Operator-hosted privacy documents (global — no sourceId) (#5156)
 export * from './privacyDocuments.js';
+export * from './solarNodeOverrides.js';
 
 // Waypoints table
 export * from './waypoints.js';

@@ -71,6 +71,7 @@ import {
   AutomationHomeAnchorsRepository,
   SavedRegionsRepository,
   PrivacyDocumentsRepository,
+  SolarNodeOverridesRepository,
   SolarEstimatesRepository,
   NewsCacheRepository,
   BackupHistoryRepository,
@@ -569,6 +570,7 @@ class DatabaseService {
   public automationHomeAnchorsRepo: AutomationHomeAnchorsRepository | null = null;
   public savedRegionsRepo: SavedRegionsRepository | null = null;
   public privacyDocumentsRepo: PrivacyDocumentsRepository | null = null;
+  public solarNodeOverridesRepo: SolarNodeOverridesRepository | null = null;
   public solarEstimatesRepo: SolarEstimatesRepository | null = null;
   public newsCacheRepo: NewsCacheRepository | null = null;
   public backupHistoryRepo: BackupHistoryRepository | null = null;
@@ -681,6 +683,12 @@ class DatabaseService {
   get privacyDocuments(): PrivacyDocumentsRepository {
     if (!this.privacyDocumentsRepo) throw new Error('Database not initialized');
     return this.privacyDocumentsRepo;
+  }
+
+  /** Manual solar classification per physical node (#3195). Global — not source-scoped. */
+  get solarNodeOverrides(): SolarNodeOverridesRepository {
+    if (!this.solarNodeOverridesRepo) throw new Error('Database not initialized');
+    return this.solarNodeOverridesRepo;
   }
 
   get solarEstimates(): SolarEstimatesRepository {
@@ -1085,6 +1093,7 @@ class DatabaseService {
       this.automationHomeAnchorsRepo = new AutomationHomeAnchorsRepository(drizzleDb, this.drizzleDbType);
       this.savedRegionsRepo = new SavedRegionsRepository(drizzleDb, this.drizzleDbType);
       this.privacyDocumentsRepo = new PrivacyDocumentsRepository(drizzleDb, this.drizzleDbType);
+      this.solarNodeOverridesRepo = new SolarNodeOverridesRepository(drizzleDb, this.drizzleDbType);
       this.solarEstimatesRepo = new SolarEstimatesRepository(drizzleDb, this.drizzleDbType);
       this.newsCacheRepo = new NewsCacheRepository(drizzleDb, this.drizzleDbType);
       this.backupHistoryRepo = new BackupHistoryRepository(drizzleDb, this.drizzleDbType);

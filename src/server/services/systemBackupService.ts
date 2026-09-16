@@ -43,7 +43,9 @@ export const BACKUP_TABLES = [
   // 5156: operator-hosted privacy/terms/contact documents. Table-backed rather
   // than filesystem-backed precisely so they ride backup/restore — this list is
   // tables only, and directory-hosted assets are silently outside every backup.
-  'privacy_documents'
+  'privacy_documents',
+  // #3195: operator's manual solar classification per physical node (global).
+  'solar_node_overrides'
 ];
 
 interface SystemBackupMetadata {

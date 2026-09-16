@@ -26,6 +26,18 @@ A daily pattern is recorded when the metric shows:
 
 A node becomes a **solar candidate** when at least 50% of its analyzed days show a pattern (33% for high-efficiency candidates that consistently stay above 98%).
 
+### Manual classification
+
+Detection needs a visible charge and discharge cycle. A node whose panel and battery bank far outsize its load can sit near full all day and never show one, so it is never detected. You can tell MeshMonitor what you already know:
+
+- **Mark as solar** — in the **Manual solar classification** panel, pick a node and click **Mark as solar**. The node appears in the report with a **Marked solar** tag even if detection found nothing. Its score then reads `0` and its patterns are empty, because your flag is the only evidence; its battery or voltage chart still renders. A marked node with no telemetry in the window is listed with an empty chart, so you can see the flag took effect.
+- **Not a solar node** — expand a detected node's card and click **Not a solar node**. It drops out of the report and the forecast.
+- **Use auto-detection** — every classified node is listed in the panel. Clear one to hand the node back to detection.
+
+The picker offers only nodes that reported battery or voltage telemetry in the lookback window, since those are the only ones a flag can chart.
+
+A classification belongs to the **physical node**, not to a source: a node marked solar is solar on every source that hears it. Changing a classification needs the **Settings: write** permission. Viewers without it still see the classifications for nodes on sources they can read.
+
 ### Running the report
 
 1. Open the dashboard, click **Analysis & Reports** in the sidebar.

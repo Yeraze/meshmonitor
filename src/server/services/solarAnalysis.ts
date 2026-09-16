@@ -39,6 +39,12 @@ export interface SolarNode {
   avg_charge_rate_per_hour: number | null;
   avg_discharge_rate_per_hour: number | null;
   insufficient_solar: boolean | null;
+  /**
+   * True when the operator marked this node as solar (#3195). Such a node is
+   * reported even when the pattern detector found nothing — its score is then
+   * 0 and its patterns empty, because the manual flag is the only evidence.
+   */
+  manual_override: boolean;
 }
 
 export interface SolarProductionPoint {
@@ -54,6 +60,13 @@ export interface SolarNodesAnalysis {
   solar_production: SolarProductionPoint[];
   avg_charging_hours_per_day: number | null;
   avg_discharge_hours_per_day: number | null;
+  /**
+   * Nodes with battery/voltage telemetry in the window (#3195) — the only ones
+   * a manual "solar" flag can chart, so the report offers them in its picker.
+   */
+  analyzed_nodes: Array<{ node_num: number; node_name: string }>;
+  /** The requester-visible manual classifications, attached by the route. */
+  manual_overrides?: Array<{ node_num: number; node_name: string; is_solar: boolean }>;
 }
 
 export interface ForecastDay {
@@ -372,10 +385,64 @@ export function buildNodeNameMap(nodes: NodeNameLookup[]): Map<number, string> {
   return nodeNames;
 }
 
+/**
+ * A report entry for a node the operator marked as solar but the detector did
+ * not match (#3195) — no pattern, or below the ratio threshold with no usable
+ * metric picked. Charts whichever metric the node actually reports, preferring
+ * battery %, so the card still shows the node's behaviour over the window.
+ */
+function manualSolarEntry(
+  nodeNum: number,
+  byDate: Map<string, Map<string, MetricReading[]>> | undefined,
+  nodeNames: Map<number, string>,
+): SolarNode {
+  const metricCounts = new Map<string, number>();
+  for (const byMetric of byDate?.values() ?? []) {
+    for (const [metric, readings] of byMetric.entries()) {
+      metricCounts.set(metric, (metricCounts.get(metric) ?? 0) + readings.length);
+    }
+  }
+  const metric = metricCounts.has('batteryLevel')
+    ? 'batteryLevel'
+    : metricCounts.has('voltage')
+      ? 'voltage'
+      : ([...metricCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'batteryLevel');
+
+  const chart: SolarChartPoint[] = [];
+  for (const byMetric of byDate?.values() ?? []) {
+    for (const r of byMetric.get(metric) ?? []) {
+      chart.push({ timestamp: r.time, value: round(r.value, 3) });
+    }
+  }
+  chart.sort((a, b) => a.timestamp - b.timestamp);
+
+  return {
+    node_num: nodeNum,
+    node_name: nodeNames.get(nodeNum) ?? `!${(nodeNum >>> 0).toString(16).padStart(8, '0')}`,
+    solar_score: 0,
+    days_analyzed: byDate?.size ?? 0,
+    days_with_pattern: 0,
+    recent_patterns: [],
+    metric_type: metric,
+    metrics_detected: [],
+    chart_data: chart,
+    avg_charge_rate_per_hour: null,
+    avg_discharge_rate_per_hour: null,
+    insufficient_solar: null,
+    manual_override: true,
+  };
+}
+
+/**
+ * @param overrides - the operator's manual classification per nodeNum (#3195).
+ *   `false` removes a node from the result even when the detector matches it;
+ *   `true` includes it even when the detector does not. Absent = auto-detect.
+ */
 export function identifySolarNodes(
   telemetryRows: SolarTelemetryRow[],
   nodes: NodeNameLookup[],
   lookbackDays: number,
+  overrides?: ReadonlyMap<number, boolean>,
 ): SolarNodesAnalysis {
   const nodeNames = buildNodeNameMap(nodes);
 
@@ -423,6 +490,9 @@ export function identifySolarNodes(
   const solarCandidates: SolarNode[] = [];
 
   for (const [nodeNum, byDate] of nodeData.entries()) {
+    const override = overrides?.get(nodeNum);
+    // Marked "not solar": skip before spending any analysis on it.
+    if (override === false) continue;
     const batteryStats = newStats();
     const voltageStats = newStats();
     const inaChannels = inaChannelsByNode.get(nodeNum) ?? new Set<string>();
@@ -520,7 +590,10 @@ export function identifySolarNodes(
       }
     }
 
-    if (candidates.length === 0) continue;
+    if (candidates.length === 0) {
+      if (override === true) solarCandidates.push(manualSolarEntry(nodeNum, byDate, nodeNames));
+      continue;
+    }
 
     candidates.sort((a, b) => {
       if (b.stats.days_with_pattern !== a.stats.days_with_pattern) {
@@ -539,7 +612,9 @@ export function identifySolarNodes(
       stats.total_days > 0 && stats.high_efficiency_days >= stats.total_days / 2;
     const minPatternRatio = isMostlyHighEff ? 0.33 : 0.5;
     const patternRatio = totalDays > 0 ? daysWithPattern / totalDays : 0;
-    if (patternRatio < minPatternRatio) continue;
+    // A node the operator marked as solar keeps its computed stats even below
+    // the threshold — a weak pattern is still better evidence than none.
+    if (patternRatio < minPatternRatio && override !== true) continue;
 
     const solarScore = round((daysWithPattern / Math.max(totalDays, 1)) * 100, 1);
     const avgChargeRate =
@@ -584,7 +659,17 @@ export function identifySolarNodes(
       avg_charge_rate_per_hour: avgChargeRate,
       avg_discharge_rate_per_hour: avgDischargeRate,
       insufficient_solar: null,
+      manual_override: override === true,
     });
+  }
+
+  // Marked as solar but with no battery/voltage telemetry in the window at all.
+  // Still listed, so the operator can see the flag took effect and why the card
+  // is empty, rather than the node silently vanishing.
+  for (const [nodeNum, isSolar] of overrides?.entries() ?? []) {
+    if (isSolar && !nodeData.has(nodeNum)) {
+      solarCandidates.push(manualSolarEntry(nodeNum, undefined, nodeNames));
+    }
   }
 
   solarCandidates.sort((a, b) => b.solar_score - a.solar_score);
@@ -639,6 +724,12 @@ export function identifySolarNodes(
     solar_production: [],
     avg_charging_hours_per_day: avgChargingHoursPerDay,
     avg_discharge_hours_per_day: avgDischargeHoursPerDay,
+    analyzed_nodes: [...nodeData.keys()]
+      .map((nodeNum) => ({
+        node_num: nodeNum,
+        node_name: nodeNames.get(nodeNum) ?? `!${(nodeNum >>> 0).toString(16).padStart(8, '0')}`,
+      }))
+      .sort((a, b) => a.node_name.localeCompare(b.node_name)),
   };
 }
 
