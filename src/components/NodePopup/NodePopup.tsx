@@ -178,9 +178,9 @@ export const NodePopup: React.FC<NodePopupProps> = ({
               timeFormat={timeFormat}
               dateFormat={dateFormat}
             />
-            <NodeActions actions={actions} />
           </>
         }
+        actions={<NodeActions actions={actions} />}
         tracerouteBody={hasTracerouteFeatures ? (
           <TracerouteBody
             recentTraceroute={recentTraceroute}

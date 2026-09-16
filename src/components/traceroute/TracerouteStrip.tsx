@@ -444,24 +444,24 @@ export function TracerouteStrip({
               timeFormat={timeFormat}
               dateFormat={dateFormat}
             />
-            {onOpenNodeDetails && hovered.userId && (
-              <NodeActions
-                actions={[{
-                  kind: 'more-details',
-                  onClick: () => {
-                    const userId = hovered.userId!;
-                    // Dismiss FIRST: selecting a different node re-renders the
-                    // strip for that node's traceroute, which unmounts the
-                    // anchor glyph this popup is positioned against. A
-                    // surviving popup would be anchored to a detached element.
-                    hideNow();
-                    onOpenNodeDetails(userId);
-                  },
-                }]}
-              />
-            )}
           </>
         }
+        actions={onOpenNodeDetails && hovered.userId ? (
+          <NodeActions
+            actions={[{
+              kind: 'more-details',
+              onClick: () => {
+                const userId = hovered.userId!;
+                // Dismiss FIRST: selecting a different node re-renders the
+                // strip for that node's traceroute, which unmounts the
+                // anchor glyph this popup is positioned against. A
+                // surviving popup would be anchored to a detached element.
+                hideNow();
+                onOpenNodeDetails(userId);
+              },
+            }]}
+          />
+        ) : undefined}
       />
     );
   }, [hover, meta, distanceUnit, timeFormat, dateFormat, t, onOpenNodeDetails, hideNow, statGraph, nodeById]);

@@ -80,6 +80,10 @@ function allowAll() {
   return true;
 }
 
+// #5247: the action buttons are icon-only now, with their label in
+// `title`/`aria-label` rather than as visible text. Query by accessible name —
+// which also asserts the labels survived the move, the thing that makes an
+// icon-only control usable at all.
 describe('NodePopup (chat overlay)', () => {
   it('renders nothing when nodePopup is null', () => {
     const { container } = render(
@@ -209,7 +213,7 @@ describe('NodePopup (chat overlay)', () => {
         onClose={onClose}
       />,
     );
-    fireEvent.click(screen.getByText(/More Details/));
+    fireEvent.click(screen.getByRole('button', { name: /More Details/ }));
     expect(onDMNode).toHaveBeenCalledWith('!0000002a');
     expect(onClose).toHaveBeenCalled();
   });
@@ -229,7 +233,7 @@ describe('NodePopup (chat overlay)', () => {
         onClose={onClose}
       />,
     );
-    fireEvent.click(screen.getByText(/Show on Map/));
+    fireEvent.click(screen.getByRole('button', { name: /Show on Map/ }));
     expect(onShowOnMap).toHaveBeenCalledWith(remoteNode);
     expect(onClose).toHaveBeenCalled();
   });
@@ -271,11 +275,11 @@ describe('NodePopup (chat overlay)', () => {
         currentNodeNum={1}
       />,
     );
-    fireEvent.click(screen.getByText(/Delete/));
+    fireEvent.click(screen.getByRole('button', { name: /Delete/ }));
     expect(onDeleteNode).toHaveBeenCalledWith(42);
     expect(onClose).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByText(/Purge from Device/));
+    fireEvent.click(screen.getByRole('button', { name: /Purge from Device/ }));
     expect(onPurgeNodeFromDevice).toHaveBeenCalledWith(42);
     expect(onClose).toHaveBeenCalledTimes(2);
   });
@@ -297,8 +301,8 @@ describe('NodePopup (chat overlay)', () => {
         currentNodeNum={1}
       />,
     );
-    expect(screen.getByText(/Delete/)).toBeInTheDocument();
-    expect(screen.queryByText(/Purge from Device/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Delete/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Purge from Device/ })).not.toBeInTheDocument();
   });
 
   it('disables the run-traceroute button with the shared tooltip when txDisabled (epic #4294 Phase 2)', () => {
@@ -366,7 +370,7 @@ describe('NodePopup (chat overlay)', () => {
         currentNodeNum={1}
       />,
     );
-    expect(screen.queryByText(/Delete/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Purge from Device/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Delete/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Purge from Device/ })).not.toBeInTheDocument();
   });
 });

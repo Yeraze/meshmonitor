@@ -430,27 +430,54 @@ describe('TracerouteBody', () => {
   });
 });
 
-describe('NodeActions', () => {
-  it('renders primary actions as standalone buttons and groups delete/purge into a danger block', () => {
+describe('NodeActions (#5247 — one compact icon row)', () => {
+  it('renders every action in a single row, icons only', () => {
+    // Was: full-width labelled buttons stacked, delete/purge in a trailing
+    // block. As the last thing inside the popup's scroll box that stack was
+    // always what an overflowing popup clipped — and the pair that got cut was
+    // the destructive one, rendering as unlabelled red slivers (#5247).
     const specs: NodeActionSpec[] = [
       { kind: 'more-details', onClick: vi.fn() },
       { kind: 'delete', onClick: vi.fn() },
       { kind: 'purge', onClick: vi.fn() },
     ];
     const { container } = render(<><NodeActions actions={specs} /></>);
-    expect(screen.getByText(/More Details/)).toBeInTheDocument();
 
-    const dangerBlock = container.querySelector('.node-popup-danger-actions');
-    expect(dangerBlock).not.toBeNull();
-    expect(dangerBlock?.querySelectorAll('button')).toHaveLength(2);
-    expect(dangerBlock?.querySelector('.popup-danger-btn-severe')).not.toBeNull();
+    const row = container.querySelector('.node-popup-actions');
+    expect(row).not.toBeNull();
+    expect(row?.querySelectorAll('button')).toHaveLength(3);
+    // No stacked danger sub-block any more — one row holds all of them.
+    expect(container.querySelector('.node-popup-danger-actions')).toBeNull();
   });
 
-  it('omits the danger block entirely when no delete/purge action is supplied', () => {
+  it('keeps each label reachable without visible text', () => {
+    // Icon-only buttons are unusable and inaccessible without this: the label
+    // has to survive somewhere for hover and for assistive tech.
+    render(<><NodeActions actions={[{ kind: 'more-details', onClick: vi.fn() }]} /></>);
+
+    const btn = screen.getByRole('button', { name: /More Details/ });
+    expect(btn).toHaveAttribute('title', expect.stringMatching(/More Details/));
+    expect(btn.querySelector('svg')).not.toBeNull();
+  });
+
+  it('keeps the danger tiers distinguishable by class', () => {
+    // Colour is the only remaining signal that these two are destructive, so
+    // the tier classes have to survive the move onto the icon buttons.
     const { container } = render(
-      <><NodeActions actions={[{ kind: 'show-on-map', onClick: vi.fn() }]} /></>,
+      <><NodeActions actions={[
+        { kind: 'delete', onClick: vi.fn() },
+        { kind: 'purge', onClick: vi.fn() },
+      ]} /></>,
     );
-    expect(container.querySelector('.node-popup-danger-actions')).toBeNull();
+    expect(container.querySelectorAll('.popup-danger-btn')).toHaveLength(2);
+    expect(container.querySelector('.popup-danger-btn-severe')).not.toBeNull();
+  });
+
+  it('renders nothing at all when there are no actions', () => {
+    // The row is a footer with a top border — an empty one would draw a stray
+    // rule under the popup body.
+    const { container } = render(<><NodeActions actions={[]} /></>);
+    expect(container.querySelector('.node-popup-actions')).toBeNull();
   });
 
   it('invokes the right callback for the clicked action and respects `disabled`', () => {
@@ -458,7 +485,6 @@ describe('NodeActions', () => {
     render(
       <><NodeActions actions={[{ kind: 'delete', onClick: onDelete, disabled: true }]} /></>,
     );
-    const btn = screen.getByText(/Delete/).closest('button')!;
-    expect(btn).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Delete/ })).toBeDisabled();
   });
 });

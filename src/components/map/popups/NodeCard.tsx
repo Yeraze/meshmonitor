@@ -27,12 +27,22 @@ export interface NodeCardProps {
    *  Omit entirely (rather than passing `undefined` explicitly is fine too)
    *  for a tab-less card — `sections` then renders directly. */
   tracerouteBody?: React.ReactNode;
+  /**
+   * Action row, pinned in a footer BELOW the scrolling body (#5247).
+   *
+   * Kept out of `sections` on purpose: as the last thing inside the scroll box
+   * the buttons were always what an overflowing popup clipped, and the pair
+   * that ended up cut was Delete / Purge — rendering as unlabelled red slivers.
+   * A footer cannot be scrolled away, so the actions are either fully present
+   * or absent.
+   */
+  actions?: React.ReactNode;
   /** Extra class on the root, e.g. `node-popup-overlay` for the NodePopup
    *  chat-overlay fixed frame (WP5). */
   className?: string;
 }
 
-export const NodeCard: React.FC<NodeCardProps> = ({ model, sections, tracerouteBody, className }) => {
+export const NodeCard: React.FC<NodeCardProps> = ({ model, sections, tracerouteBody, actions, className }) => {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<NodeCardTab>('info');
 
@@ -64,6 +74,9 @@ export const NodeCard: React.FC<NodeCardProps> = ({ model, sections, tracerouteB
       <div className="node-popup-content">
         {hasTabs ? (activeTab === 'info' ? sections : tracerouteBody) : sections}
       </div>
+
+      {/* Outside `.node-popup-content` — that element is the scroll box. */}
+      {actions}
     </div>
   );
 };
