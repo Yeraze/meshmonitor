@@ -142,6 +142,19 @@ const DATA_DIR = process.env.DATA_DIR || '/data';
 // 32 MB leaves generous headroom while bounding what one request can write.
 const MAX_UPLOAD_FIRMWARE_BYTES = 32 * 1024 * 1024;
 
+/**
+ * On-disk name for a staged upload. Fixed, and deliberately NOT derived from
+ * the name the browser sent.
+ *
+ * CodeQL flagged the original version (js/http-to-file-access): the upload's
+ * filename reached a filesystem path. It was sanitised — basename, character
+ * allowlist, prefix assertion — but "sanitised untrusted input in a path" is a
+ * weaker property than "no untrusted input in a path at all", and there was no
+ * reason to want the former. The uploaded name is display metadata only; the
+ * bytes always land here, inside a freshly-created mkdtemp directory.
+ */
+const STAGED_FIRMWARE_FILENAME = 'uploaded-firmware.bin';
+
 /** Scale the unit — a small upload reading "0.00 MB" looks like a failure. */
 function formatFirmwareSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -862,18 +875,16 @@ export class FirmwareUpdateService {
 
     this.clearStagedUpload();
 
-    // Keep only the basename and strip anything that isn't a safe filename
-    // character, so a crafted name cannot escape the staging directory or
-    // smuggle path separators into the status message shown in the UI.
+    // The uploaded name is shown in the UI and never used as a path (see
+    // STAGED_FIRMWARE_FILENAME). Still reduce it to a basename and strip
+    // unusual characters so a crafted name cannot smuggle markup or path
+    // separators into the status message an operator reads.
     const safeName = path.basename(originalName).replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 128)
       || 'firmware.bin';
 
     fs.mkdirSync(DATA_DIR, { recursive: true });
     const stageDir = fs.mkdtempSync(path.join(DATA_DIR, 'firmware-upload-'));
-    const stagedPath = path.resolve(path.join(stageDir, safeName));
-    if (!stagedPath.startsWith(path.resolve(stageDir) + path.sep)) {
-      throw new Error('Refusing to stage firmware outside of the staging directory');
-    }
+    const stagedPath = path.join(stageDir, STAGED_FIRMWARE_FILENAME);
     fs.writeFileSync(stagedPath, data);
 
     this.stagedUpload = { path: stagedPath, originalName: safeName, size: data.length };
@@ -1130,10 +1141,8 @@ export class FirmwareUpdateService {
     const extractDir = path.resolve(path.join(tempDir, 'extracted'));
     fs.mkdirSync(extractDir, { recursive: true });
 
-    const writePath = path.resolve(path.join(extractDir, staged.originalName));
-    if (!writePath.startsWith(extractDir + path.sep)) {
-      throw new Error('Refusing to write firmware outside of temp directory');
-    }
+    // Fixed name again — nothing the browser sent reaches this path either.
+    const writePath = path.join(extractDir, STAGED_FIRMWARE_FILENAME);
     fs.copyFileSync(staged.path, writePath);
 
     this.updateStatus({
@@ -1269,10 +1278,12 @@ export class FirmwareUpdateService {
       // case this feature is for.
       if (this.localMode) {
         const staged = this.stagedUpload;
-        const matched = staged ? staged.originalName : path.basename(zipPath);
-        const firmwarePath = path.join(extractDir, matched);
+        // Located by the fixed on-disk name; `matched` is only what we SHOW.
+        const displayName = staged?.originalName ?? STAGED_FIRMWARE_FILENAME;
+        const matched = displayName;
+        const firmwarePath = path.join(extractDir, STAGED_FIRMWARE_FILENAME);
         if (!fs.existsSync(firmwarePath)) {
-          throw new Error(`Uploaded firmware ${matched} is missing from the staging directory`);
+          throw new Error(`Uploaded firmware ${displayName} is missing from the staging directory`);
         }
         this.updateStatus({
           state: 'awaiting-confirm',

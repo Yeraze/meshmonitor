@@ -110,6 +110,22 @@ describe('FirmwareUpdateService — staging an uploaded .bin (#5249)', () => {
     expect(staged.originalName).not.toContain('..');
   });
 
+  it('never puts the uploaded name on disk (CodeQL js/http-to-file-access)', () => {
+    // The display name and the on-disk name are deliberately decoupled: no
+    // part of what the browser sent reaches a filesystem path.
+    service.stageUploadedFirmware(BIN, 'whatever-the-user-called-it.bin');
+
+    const stageDirs = fs
+      .readdirSync(TEST_DATA_DIR)
+      .filter((d) => d.startsWith('firmware-upload-'));
+    expect(stageDirs).toHaveLength(1);
+
+    const onDisk = fs.readdirSync(path.join(TEST_DATA_DIR, stageDirs[0]));
+    expect(onDisk).toEqual(['uploaded-firmware.bin']);
+    // …while the UI still sees the name the user recognises.
+    expect(service.getStagedUpload()?.originalName).toBe('whatever-the-user-called-it.bin');
+  });
+
   it('sanitises unusual characters rather than rejecting the upload', () => {
     const staged = service.stageUploadedFirmware(BIN, 'my firmware (v2);rm -rf.bin');
     expect(staged.originalName).toMatch(/^[A-Za-z0-9._-]+$/);
@@ -252,6 +268,9 @@ describe('FirmwareUpdateService — preflight against a staged upload (#5249)', 
     const firmwarePath = await service.executeExtract(zipPath, 'heltec-v3', 'firmware.bin');
 
     expect(firmwarePath).toBe(writtenPath);
+    // On disk it is the fixed name; the status still reports what the user
+    // uploaded, because that is the only name they recognise.
+    expect(path.basename(firmwarePath)).toBe('uploaded-firmware.bin');
     const status = service.getStatus();
     expect(status.matchedFile).toBe('firmware.bin');
     expect(status.message).toMatch(/not verified/i);
