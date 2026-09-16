@@ -146,6 +146,9 @@ export const TABLE_ORDER = [
   // 5156: global operator-hosted privacy documents. No sourceId / no FK — the
   // policy describes the deployment, not a source.
   'privacy_documents',
+  // 3195: global manual solar classification per physical node. No sourceId /
+  // no FK — a solar panel belongs to the hardware, not a source.
+  'solar_node_overrides',
 ];
 
 // Tables in the 4.0 schema that carry a `sourceId` column. When the source

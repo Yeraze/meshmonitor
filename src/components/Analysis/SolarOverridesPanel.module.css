@@ -1,0 +1,77 @@
+/*
+ * Manual solar classification panel (#3195). Semantic theme tokens only, with
+ * no hardcoded fallbacks — a fallback silently wins whenever a token is
+ * missing, hiding the very bug it looks like it guards against.
+ */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--color-text);
+}
+
+.help {
+  font-size: 12px;
+  color: var(--color-text-subtle);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.itemName {
+  font-weight: 600;
+}
+
+.tag {
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-subtle);
+}
+
+.addRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.select {
+  min-width: 0;
+  max-width: 100%;
+  padding: 4px 6px;
+}
+
+.error {
+  font-size: 12px;
+  color: var(--color-error);
+}

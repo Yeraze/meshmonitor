@@ -155,6 +155,9 @@ import {
 import {
   privacyDocumentsSqlite, privacyDocumentsPostgres, privacyDocumentsMysql,
 } from './schema/privacyDocuments.js';
+import {
+  solarNodeOverridesSqlite, solarNodeOverridesPostgres, solarNodeOverridesMysql,
+} from './schema/solarNodeOverrides.js';
 
 // Waypoints table
 import {
@@ -322,6 +325,8 @@ export interface ActiveSchema {
   // Operator-hosted privacy documents (global — no sourceId) (#5156)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- matches ActiveSchema per-dialect table pattern
   privacyDocuments: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3195 dialect-union table slot, same shape as every sibling here
+  solarNodeOverrides: any;
 
   // Waypoints
   waypoints: any;
@@ -441,6 +446,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     automationHomeAnchors: automationHomeAnchorsSqlite,
     meshcoreSavedRegions: meshcoreSavedRegionsSqlite,
     privacyDocuments: privacyDocumentsSqlite,
+    solarNodeOverrides: solarNodeOverridesSqlite,
     waypoints: waypointsSqlite,
     sources: sourcesSqlite,
     estimatedPositions: estimatedPositionsSqlite,
@@ -516,6 +522,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     automationHomeAnchors: automationHomeAnchorsPostgres,
     meshcoreSavedRegions: meshcoreSavedRegionsPostgres,
     privacyDocuments: privacyDocumentsPostgres,
+    solarNodeOverrides: solarNodeOverridesPostgres,
     waypoints: waypointsPostgres,
     sources: sourcesPostgres,
     estimatedPositions: estimatedPositionsPostgres,
@@ -591,6 +598,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     automationHomeAnchors: automationHomeAnchorsMysql,
     meshcoreSavedRegions: meshcoreSavedRegionsMysql,
     privacyDocuments: privacyDocumentsMysql,
+    solarNodeOverrides: solarNodeOverridesMysql,
     waypoints: waypointsMysql,
     sources: sourcesMysql,
     estimatedPositions: estimatedPositionsMysql,

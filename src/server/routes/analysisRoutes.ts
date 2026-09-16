@@ -14,7 +14,7 @@
 import { Router, Request, Response } from 'express';
 import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
-import { optionalAuth } from '../auth/authMiddleware.js';
+import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
@@ -29,6 +29,7 @@ import type {
 import type { DbMqttPacket } from '../../db/repositories/mqttPacketLog.js';
 import {
   identifySolarNodes,
+  buildNodeNameMap,
   summarizeSolarProduction,
   computeSolarForecast,
   type SolarTelemetryRow,
@@ -498,6 +499,28 @@ router.get('/coverage-grid', async (req: Request, res: Response) => {
 });
 
 /**
+ * The operator's manual solar classifications (#3195), narrowed to nodes the
+ * requester can see on at least one permitted source.
+ *
+ * The overrides table is global and keyed by nodeNum, so without this filter a
+ * user scoped to one source could learn node numbers from a source they are
+ * not allowed to read — the analysis lists a node marked "solar" even when it
+ * has no telemetry in the window.
+ */
+async function visibleSolarOverrides(
+  allNodes: Array<{ nodeNum: unknown; sourceId?: unknown }>,
+  sourceIds: string[],
+): Promise<Map<number, boolean>> {
+  const permitted = new Set(sourceIds);
+  const visible = new Set<number>();
+  for (const n of allNodes) {
+    if (typeof n.sourceId === 'string' && permitted.has(n.sourceId)) visible.add(Number(n.nodeNum));
+  }
+  const all = await databaseService.solarNodeOverrides.getMapAsync();
+  return new Map([...all].filter(([nodeNum]) => visible.has(nodeNum)));
+}
+
+/**
  * GET /api/analysis/solar-nodes
  *
  * Identifies likely solar-powered nodes by analyzing battery and voltage
@@ -553,7 +576,14 @@ router.get('/solar-nodes', async (req: Request, res: Response) => {
       shortName: n.shortName,
     }));
 
-    const result = identifySolarNodes(rows, nodeLookup, lookbackDays);
+    const overrides = await visibleSolarOverrides(allNodes, sourceIds);
+    const result = identifySolarNodes(rows, nodeLookup, lookbackDays, overrides);
+    const nodeNames = buildNodeNameMap(nodeLookup);
+    result.manual_overrides = [...overrides].map(([nodeNum, isSolar]) => ({
+      node_num: nodeNum,
+      node_name: nodeNames.get(nodeNum) ?? `!${(nodeNum >>> 0).toString(16).padStart(8, '0')}`,
+      is_solar: isSolar,
+    }));
 
     // Overlay: hourly solar-production estimates from the forecast.solar
     // cache for the same lookback window. Returned alongside per-node chart
@@ -631,7 +661,7 @@ router.get('/solar-forecast', async (req: Request, res: Response) => {
       shortName: n.shortName,
     }));
 
-    const analysis = identifySolarNodes(rows, nodeLookup, lookbackDays);
+    const analysis = identifySolarNodes(rows, nodeLookup, lookbackDays, await visibleSolarOverrides(allNodes, sourceIds));
 
     // Need both historical (lookback window) and forecast (today + future) Wh
     const startSec = Math.floor(sinceMs / 1000);
@@ -648,6 +678,46 @@ router.get('/solar-forecast', async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Failed to compute solar forecast' });
   }
 });
+
+/**
+ * PUT /api/analysis/solar-overrides/:nodeNum
+ *
+ * Set or clear the operator's manual solar classification for a node (#3195).
+ * Body: `{ isSolar: true | false | null }` — `null` clears the override and
+ * returns the node to auto-detection.
+ *
+ * Global: the flag describes the physical node's hardware, not one source, so
+ * it takes the same global `settings:write` grant as other deployment-wide
+ * configuration.
+ */
+router.put(
+  '/solar-overrides/:nodeNum',
+  requirePermission('settings', 'write'),
+  async (req: Request, res: Response) => {
+    const raw = req.params.nodeNum;
+    const nodeNum = /^\d+$/.test(raw) ? Number(raw) : NaN;
+    if (!Number.isSafeInteger(nodeNum) || nodeNum < 0 || nodeNum > 0xffffffff) {
+      return fail(res, 400, 'INVALID_NODE_NUM', 'nodeNum must be an unsigned 32-bit integer');
+    }
+    const isSolar = req.body?.isSolar;
+    if (isSolar !== true && isSolar !== false && isSolar !== null) {
+      return fail(res, 400, 'INVALID_SOLAR_OVERRIDE', 'isSolar must be true, false, or null');
+    }
+    try {
+      if (isSolar === null) {
+        await databaseService.solarNodeOverrides.clearAsync(nodeNum);
+        logger.info(`[AnalysisRoutes] Solar override cleared for node ${nodeNum}`);
+        return ok(res, { nodeNum, isSolar: null });
+      }
+      const saved = await databaseService.solarNodeOverrides.setAsync(nodeNum, isSolar, req.user?.username ?? null);
+      logger.info(`[AnalysisRoutes] Solar override for node ${nodeNum} set to ${isSolar ? 'solar' : 'not solar'}`);
+      return ok(res, saved);
+    } catch (error) {
+      logger.error('Error in PUT /api/analysis/solar-overrides:', error);
+      return fail(res, 500, 'SOLAR_OVERRIDE_FAILED', 'Failed to save solar override');
+    }
+  },
+);
 
 router.get('/hop-counts', async (req: Request, res: Response) => {
   try {

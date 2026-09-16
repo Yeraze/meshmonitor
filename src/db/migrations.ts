@@ -185,6 +185,7 @@ import { migration as meshcoreSnrRealMigration, runMigration163Postgres, runMigr
 import { migration as spreadNodesPrefMigration, runMigration164Postgres, runMigration164Mysql } from '../server/migrations/164_user_map_preferences_spread_nodes.js';
 import { migration as waypointNotificationsMigration, runMigration165Postgres, runMigration165Mysql } from '../server/migrations/165_waypoint_notifications.js';
 import { migration as meshBeaconMuteMigration, runMigration166Postgres, runMigration166Mysql } from '../server/migrations/166_mesh_beacon_mute.js';
+import { migration as solarNodeOverridesMigration, runMigration167Postgres, runMigration167Mysql } from '../server/migrations/167_solar_node_overrides.js';
 
 // ============================================================================
 // Registry
@@ -2695,4 +2696,21 @@ registry.register({
   sqlite: (db) => meshBeaconMuteMigration.up(db),
   postgres: (client) => runMigration166Postgres(client),
   mysql: (pool) => runMigration166Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 167: `solar_node_overrides` (#3195) — the operator's manual solar
+// classification for a node, overriding the telemetry pattern detector when an
+// over-specced panel/battery never shows a charge/discharge cycle. GLOBAL (no
+// sourceId): a solar panel belongs to the physical node, and the Solar
+// Monitoring report pools telemetry across sources. Idempotent on all backends.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 167,
+  name: 'solar_node_overrides',
+  settingsKey: 'migration_167_solar_node_overrides',
+  sqlite: (db) => solarNodeOverridesMigration.up(db),
+  postgres: (client) => runMigration167Postgres(client),
+  mysql: (pool) => runMigration167Mysql(pool),
 });
