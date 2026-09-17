@@ -143,7 +143,8 @@ const parseScriptMetadata = (content: string, _filename: string): Partial<Script
     // Parse version (sanitize, max 20 chars)
     const versionMatch = metaBlock.match(/^[#/]{1,2}\s+version:\s*(.+)$/m);
     if (versionMatch) {
-      metadata.version = sanitizeMetadataValue(versionMatch[1], 20);
+      // Drop a leading "v" so the UI's own "v" prefix doesn't double it (#5255).
+      metadata.version = sanitizeMetadataValue(versionMatch[1].trim().replace(/^v(?=\d)/i, ''), 20);
     }
 
     // Parse author (sanitize, max 60 chars)

@@ -153,6 +153,10 @@ Add a `mm_meta:` block near the top of your script as comments:
 | `name` | Human-readable script name | `Weather Lookup` |
 | `emoji` | Icon/emoji for visual identification | `🌤️`, `📏`, `🔋` |
 | `language` | Programming language | `Python`, `JavaScript`, `Shell` |
+| `version` | Optional release version, shown in **Settings → Scripts** and the [User Scripts Gallery](/user-scripts) | `1.2.0` |
+| `author` | Optional author name, shown in **Settings → Scripts** | `KD2ABC` |
+
+**Versioning:** bump `version` in your script's `mm_meta` each time you publish a change. The gallery reads it straight from your repository, so a new release shows up there without a gallery pull request. Use a plain token such as `1.2.0` or `2.0.0-beta.1` (letters, digits, `.`, `+`, `-`, up to 20 characters; a leading `v` is dropped).
 
 **Benefits:**
 

@@ -40,6 +40,7 @@ Scripts are defined in `docs/.vitepress/data/user-scripts.json`:
   "language": "Python",
   "tags": ["Tag1", "Tag2"],
   "githubPath": "examples/auto-responder-scripts/script.py",
+  "version": "1.0.0",
   "exampleTrigger": "trigger, trigger {param}",
   "requirements": ["Requirement 1", "Requirement 2"],
   "author": "Author Name",
@@ -61,8 +62,9 @@ Scripts are defined in `docs/.vitepress/data/user-scripts.json`:
 2. **Set githubPath**:
    - Main repo: `examples/auto-responder-scripts/YourScript.py`
    - External: `username/repo/path/to/script.py`
-3. **Include all required fields**: name, filename, description, language, tags, etc.
-4. **Test** by viewing the gallery and verifying the script appears and code loads correctly
+3. **Version (optional)**: prefer a `version:` line in the script's own `mm_meta` block, which the gallery reads from the author's repo when the script opens. The JSON `version` is a fallback, and the only value the cards show.
+4. **Include all required fields**: name, filename, description, language, tags, etc.
+5. **Test** by viewing the gallery and verifying the script appears and code loads correctly
 
 ## Technical Details
 
