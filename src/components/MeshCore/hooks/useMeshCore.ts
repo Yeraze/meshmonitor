@@ -23,6 +23,7 @@ import { useMapContext } from '../../../contexts/MapContext';
 import { useWebSocketContext } from '../../../contexts/WebSocketContext';
 import { useToast } from '../../ToastContainer';
 import { isTxDisabledBody } from '../../../utils/txDisabled';
+import { parseJsonResponse } from '../../../utils/parseJsonResponse';
 import type {
   MeshCoreMessageEvent,
   MeshCoreContactUpdateEvent,
@@ -578,7 +579,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     if (!enabled) return false;
     try {
       const response = await csrfFetch(`${mcPrefix}/status`);
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (data.success) {
         setStatus(data.data);
         return data.data.connected ?? false;
@@ -593,7 +594,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     if (!enabled) return;
     try {
       const response = await csrfFetch(`${mcPrefix}/messages?limit=100`);
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (data.success) setMessages(data.data ?? []);
     } catch (_err) {
       console.error('Failed to fetch meshcore messages:', _err);
@@ -607,7 +608,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     if (!enabled) return false;
     try {
       const response = await csrfFetch(`${mcPrefix}/snapshot`);
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (!data.success) return false;
       const snap = data.data;
       setStatus(snap.status ?? null);
@@ -736,7 +737,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       void (async () => {
         try {
           const res = await csrfFetch(`${mcPrefix}/messages?since=${since}`);
-          const data = await res.json();
+          const data = await parseJsonResponse(res);
           if (data.success && Array.isArray(data.data) && data.data.length > 0) {
             setMessages(prev => {
               const seen = new Set(prev.map(m => m.id));
@@ -897,7 +898,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (data.success) {
         // A snapshot pull primes status/nodes/contacts/messages and the seq
         // cursor in one round trip; live updates then ride on sockets.
@@ -939,7 +940,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     setLoading(true);
     try {
       const response = await csrfFetch(`${mcPrefix}/contacts/refresh`, { method: 'POST' });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (data.success) {
         // The server now returns the same shape as GET /contacts, including
         // the synthetic local row (#4449) — stampLocal is belt-and-braces
@@ -967,7 +968,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         `${mcPrefix}/contacts/${encodeURIComponent(publicKey)}/reset-path`,
         { method: 'POST' },
       );
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (!data.success) {
         if (reportTxDisabled(response.status, data)) return false;
         setError(data.error || 'Failed to reset path');
@@ -997,7 +998,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         `${mcPrefix}/contacts/${encodeURIComponent(publicKey)}/discover-path`,
         { method: 'POST' },
       );
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (!data.success) {
         if (reportTxDisabled(response.status, data)) return false;
         setError(data.error || 'Failed to discover path');
@@ -1019,7 +1020,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode }),
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (!data.success) {
         if (reportTxDisabled(response.status, data)) return null;
         setError(data.error || 'Failed to discover nodes');
@@ -1046,7 +1047,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
   const getDiscoverable = useCallback(async (): Promise<boolean> => {
     try {
       const response = await csrfFetch(`${mcPrefix}/config/discoverable`);
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       return data.success ? !!data.enabled : false;
     } catch (_err) {
       return false;
@@ -1060,7 +1061,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled }),
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (!data.success) {
         setError(data.error || 'Failed to update discoverable setting');
         return false;
@@ -1075,7 +1076,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
   const getDefaultScope = useCallback(async (): Promise<string> => {
     try {
       const response = await csrfFetch(`${mcPrefix}/config/default-scope`);
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       return data.success ? (typeof data.scope === 'string' ? data.scope : '') : '';
     } catch (_err) {
       return '';
@@ -1089,7 +1090,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ scope }),
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (!data.success) {
         setError(data.error || 'Failed to update default scope');
         return null;
@@ -1104,7 +1105,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
   const getDefaultPathHashSize = useCallback(async (): Promise<1 | 2 | 3> => {
     try {
       const response = await csrfFetch(`${mcPrefix}/config/default-path-hash-size`);
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       const n = Number(data?.size);
       return data?.success && (n === 2 || n === 3) ? n : 1;
     } catch (_err) {
@@ -1119,7 +1120,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ size }),
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (!data.success) {
         setError(data.error || 'Failed to update default path hash size');
         return null;
@@ -1135,7 +1136,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
   const discoverRegions = useCallback(async () => {
     try {
       const response = await csrfFetch(`${mcPrefix}/regions/discover`, { method: 'POST' });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (!data.success) {
         if (reportTxDisabled(response.status, data)) return null;
         setError(data.error || 'Failed to discover regions');
@@ -1165,7 +1166,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
   const fetchSavedRegions = useCallback(async (): Promise<SavedRegion[] | null> => {
     try {
       const response = await csrfFetch(`${mcPrefix}/saved-regions`);
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (!data.success) return null;
       return Array.isArray(data.regions) ? (data.regions as SavedRegion[]) : [];
     } catch (_err) {
@@ -1180,7 +1181,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, note: note ?? null }),
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (!data.success) {
         setError(data.error || 'Failed to save region');
         return null;
@@ -1197,7 +1198,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       const response = await csrfFetch(`${mcPrefix}/saved-regions/${encodeURIComponent(String(id))}`, {
         method: 'DELETE',
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (!data.success) {
         setError(data.error || 'Failed to delete region');
         return false;
@@ -1220,7 +1221,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ publicKey, password, rememberPassword }),
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       reportTxDisabled(response.status, data);
       return {
         success: !!data.success,
@@ -1250,7 +1251,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
           ...(opts?.confirm ? { confirm: true } : {}),
         }),
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (data.success && data.data) {
         return { ok: true as const, reply: data.data.reply, elapsedMs: data.data.elapsedMs };
       }
@@ -1264,7 +1265,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
   const getRemoteAdminCapability = useCallback(async () => {
     try {
       const response = await csrfFetch(`${mcPrefix}/admin/credentials-capability`);
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (data.success && data.data) return data.data;
       return null;
     } catch (_err) {
@@ -1286,7 +1287,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
           ...(opts?.confirm ? { confirm: true } : {}),
         }),
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (data.success && data.data) {
         return { ok: true as const, reply: data.data.reply, elapsedMs: data.data.elapsedMs };
       }
@@ -1304,7 +1305,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ publicKey }),
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       reportTxDisabled(response.status, data);
       return {
         success: !!data.success,
@@ -1323,7 +1324,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         `${mcPrefix}/admin/credentials/${encodeURIComponent(publicKey)}`,
         { method: 'DELETE' },
       );
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       return !!data.success;
     } catch (_err) {
       return false;
@@ -1335,7 +1336,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       const response = await csrfFetch(
         `${mcPrefix}/admin/status/${encodeURIComponent(publicKey)}`,
       );
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (data.success && data.data) return data.data as MeshCoreRemoteStatus;
       reportTxDisabled(response.status, data);
       return null;
@@ -1350,7 +1351,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         `${mcPrefix}/contacts/${encodeURIComponent(publicKey)}/share`,
         { method: 'POST' },
       );
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (!data.success) {
         const error = data.error || 'Failed to share contact';
         if (reportTxDisabled(response.status, data)) return { ok: false, error };
@@ -1375,7 +1376,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
           body: JSON.stringify({ outPath, hashBytes }),
         },
       );
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (!data.success) {
         setError(data.error || 'Failed to set path');
         return false;
@@ -1420,7 +1421,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         `${mcPrefix}/contacts/${encodeURIComponent(publicKey)}/trace-path`,
         { method: 'POST' },
       );
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (!data.success) {
         if (reportTxDisabled(response.status, data)) return null;
         setError(data.error || 'Trace path failed');
@@ -1439,7 +1440,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         `${mcPrefix}/contacts/${encodeURIComponent(publicKey)}/ping`,
         { method: 'POST' },
       );
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (!data.success) {
         reportTxDisabled(response.status, data);
         return { ok: false, error: data.error || 'Ping failed' };
@@ -1462,7 +1463,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         `${mcPrefix}/contacts/${encodeURIComponent(publicKey)}`,
         { method: 'DELETE' },
       );
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (!data.success) {
         setError(data.error || 'Failed to remove contact');
         return false;
@@ -1487,7 +1488,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
           body: JSON.stringify({ isFavorite }),
         },
       );
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (!data.success) {
         setError(data.error || 'Failed to update favorite');
         return false;
@@ -1509,7 +1510,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       const response = await csrfFetch(
         `${mcPrefix}/contacts/${encodeURIComponent(publicKey)}/export`,
       );
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (!data.success) {
         setError(data.error || 'Failed to export contact');
         return null;
@@ -1528,7 +1529,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ advertBytes }),
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (!data.success) {
         setError(data.error || 'Failed to import contact');
         return false;
@@ -1544,7 +1545,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
   const syncDeviceTime = useCallback(async (): Promise<boolean> => {
     try {
       const response = await csrfFetch(`${mcPrefix}/config/sync-time`, { method: 'POST' });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (!data.success) {
         setError(data.error || 'Failed to sync device time');
         return false;
@@ -1569,7 +1570,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       const response = await csrfFetch(
         `${mcPrefix}/contacts/${encodeURIComponent(publicKey)}/neighbours${qs ? '?' + qs : ''}`,
       );
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (!data.success) {
         reportTxDisabled(response.status, data);
         return null;
@@ -1587,7 +1588,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ confirm: opts?.confirm ?? true }),
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (!data.success) {
         setError(data.error || 'Reboot failed');
         return false;
@@ -1602,7 +1603,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
   const exportPrivateKey = useCallback(async (): Promise<string | null> => {
     try {
       const response = await csrfFetch(`${mcPrefix}/config/private-key`);
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (!data.success) {
         setError(data.error || 'Failed to export private key');
         return null;
@@ -1621,7 +1622,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ privateKey: hexKey, confirm: opts?.confirm ?? true }),
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (!data.success) {
         setError(data.error || 'Failed to import private key');
         return false;
@@ -1636,7 +1637,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
   const sendAdvert = useCallback(async () => {
     try {
       const response = await csrfFetch(`${mcPrefix}/advert`, { method: 'POST' });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (!data.success) {
         if (reportTxDisabled(response.status, data)) return;
         setError(data.error || 'Failed to send advert');
@@ -1661,7 +1662,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
           ...(scope !== undefined ? { scope } : {}),
         }),
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (data.success) {
         await fetchMessages();
         return true;
@@ -1685,7 +1686,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       const response = await csrfFetch(`${mcPrefix}/messages/${encodeURIComponent(id)}`, {
         method: 'DELETE',
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (data.success) {
         setMessages(prev => prev.filter(m => m.id !== id));
         return true;
@@ -1703,7 +1704,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       const response = await csrfFetch(`${mcPrefix}/messages/conversation/${encodeURIComponent(publicKey)}`, {
         method: 'DELETE',
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (data.success) {
         const matches = (a?: string) => !!a && (a === publicKey || a.startsWith(publicKey) || publicKey.startsWith(a));
         setMessages(prev => prev.filter(m => !(matches(m.fromPublicKey) || matches(m.toPublicKey))));
@@ -1722,7 +1723,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       const response = await csrfFetch(`${mcPrefix}/messages/channel/${channelIdx}`, {
         method: 'DELETE',
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (data.success) {
         const key = `channel-${channelIdx}`;
         setMessages(prev => prev.filter(m => {
@@ -1743,7 +1744,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
   const purgeAllMessages = useCallback(async (): Promise<boolean> => {
     try {
       const response = await csrfFetch(`${mcPrefix}/messages`, { method: 'DELETE' });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (data.success) {
         setMessages([]);
         return true;
@@ -1763,7 +1764,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name }),
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (data.success) {
         await fetchStatus();
         return true;
@@ -1783,7 +1784,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params),
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (data.success) {
         await fetchStatus();
         return true;
@@ -1803,7 +1804,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ power }),
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (data.success) {
         await fetchStatus();
         return true;
@@ -1823,7 +1824,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ lat, lon }),
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (data.success) {
         await fetchStatus();
         return true;
@@ -1843,7 +1844,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ policy }),
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (data.success) {
         await fetchStatus();
         return true;
@@ -1867,7 +1868,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode }),
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (data.success) {
         await fetchStatus();
         return true;
@@ -1908,7 +1909,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ publicKey, password, rememberPassword }),
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       reportTxDisabled(response.status, data);
       return { success: !!data.success, persisted: data.persisted, error: data.error };
     } catch (_err) {
@@ -1923,7 +1924,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ publicKey }),
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       reportTxDisabled(response.status, data);
       return { success: !!data.success, usedStored: data.usedStored, error: data.error, code: data.code, reason: data.reason };
     } catch (_err) {
@@ -1938,7 +1939,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ roomPublicKey, text }),
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (!data.success) {
         if (reportTxDisabled(response.status, data)) return false;
         setError(data.error || 'Failed to send room post');
@@ -1954,7 +1955,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
   const getRoomCredentials = useCallback(async (): Promise<{ canRemember: boolean; stored: Array<{ publicKey: string }> } | null> => {
     try {
       const response = await csrfFetch(`${mcPrefix}/rooms/credentials`);
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (data.success) return { canRemember: data.canRemember, stored: data.stored ?? [] };
       return null;
     } catch (_err) {
@@ -1967,7 +1968,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       const response = await csrfFetch(`${mcPrefix}/rooms/credentials/${encodeURIComponent(publicKey)}`, {
         method: 'DELETE',
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       return !!data.success;
     } catch (_err) {
       return false;
@@ -1977,7 +1978,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
   const getRoomSyncConfig = useCallback(async (publicKey: string): Promise<RoomSyncConfig | null> => {
     try {
       const response = await csrfFetch(`${mcPrefix}/rooms/sync-config?publicKey=${encodeURIComponent(publicKey)}`);
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (data.success) {
         return {
           enabled: data.enabled,
@@ -1999,7 +2000,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ publicKey, enabled, intervalMinutes }),
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       return !!data.success;
     } catch (_err) {
       return false;
