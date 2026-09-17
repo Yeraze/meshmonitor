@@ -1860,6 +1860,28 @@ body {
     display: block;
   }
 
+  /* #5265: page + channel actions, on their own row under the header.
+     Only exists on mobile — the element is not rendered at wider widths, so
+     there is no desktop rule to pair with this. */
+  .channels-action-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+    padding: 0 0 0.35rem;
+  }
+
+  /* Beacons keeps its natural width and sits first; the send actions group at
+     the right so they stay under the thumb rather than beside the heading.
+     The margin goes on the WRAPPER, not on the first button — keying it to
+     `.channel-action-btn` + a sibling selector would silently break if the two
+     buttons were ever reordered (raised in review of #5265). */
+  .channels-action-row-send {
+    margin-left: auto;
+    display: flex;
+    gap: 0.5rem;
+  }
+
   /* Make channel conversation section fill remaining space */
   .channel-conversation-section {
     flex: 1;
@@ -2006,8 +2028,11 @@ body {
     box-sizing: border-box;
   }
 
+  /* NOTE: the `flex` for this element is NOT set here. A second
+     `@media (max-width: 768px)` block further down declares
+     `.message-input-container .input-with-counter` — higher specificity AND
+     later in the sheet — so anything set here loses. See #5265. */
   .input-with-counter {
-    flex: 1 1 100%; /* Full width on its own row */
     min-width: 0;
     max-width: 100%;
   }
@@ -2353,8 +2378,17 @@ body {
     gap: 0.5rem;
   }
 
+  /* #5265: the input shares one row with the emoji and send buttons.
+     `1 1 100%` gave it a full-width row of its own and wrapped the trailing
+     buttons onto a second row. With the bell and position buttons moved to
+     the action row under the header, what remains fits beside the input, so
+     the composer costs one row instead of two — which is what pays for the
+     row the action row adds.
+
+     Basis MUST be 0, not auto: a textarea's content basis is wide enough to
+     claim the row on its own, so `1 1 auto` still wrapped. */
   .message-input-container .input-with-counter {
-    flex: 1 1 100%;
+    flex: 1 1 0;
   }
 }
 

@@ -5478,5 +5478,6 @@
   "settings.map_pin_color_label": "Official Pin Color",
   "settings.map_pin_color_description": "What the official pin's color means. Node Identity gives every node the same color the Android/iOS apps use, derived from its node ID. Hop Count colors it by hop distance instead, the same scale the MeshMonitor teardrop pin uses — pick this to keep hop distance readable at a glance.",
   "settings.map_pin_color_node": "Node Identity",
-  "settings.map_pin_color_hops": "Hop Count"
+  "settings.map_pin_color_hops": "Hop Count",
+  "channels.send_placeholder_short": "Message {{name}}"
 }
