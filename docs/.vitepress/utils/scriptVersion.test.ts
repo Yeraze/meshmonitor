@@ -14,6 +14,10 @@ describe('parseMmMetaVersion (#5255)', () => {
     expect(parseMmMetaVersion(code)).toBe('1.2');
   });
 
+  it('reads a version on the last line with no trailing newline', () => {
+    expect(parseMmMetaVersion('# mm_meta:\n#   name: Tail\n#   version: 1.0')).toBe('1.0');
+  });
+
   it('returns null without a block or a version field', () => {
     expect(parseMmMetaVersion('print("hi")\n# version: 1.0\n')).toBeNull();
     expect(parseMmMetaVersion('# mm_meta:\n#   name: No Version\n')).toBeNull();
