@@ -14315,7 +14315,10 @@ class MeshtasticManager implements ISourceManager {
       // 1. Migrate messages for moved channels
       if (moves.length > 0) {
         try {
-          await databaseService.messages.migrateMessagesForChannelMoves(moves);
+          // Scoped to this source (#5183): channel slots are per source, and an
+          // unscoped migration rewrote every other source's messages in the
+          // same slots too.
+          await databaseService.messages.migrateMessagesForChannelMoves(moves, this.sourceId);
           logger.info(`📦 Message migration complete for ${moves.length} channel move(s)`);
         } catch (error) {
           logger.error('📦 Failed to migrate messages on startup:', error);
@@ -14325,7 +14328,7 @@ class MeshtasticManager implements ISourceManager {
       // 2. Migrate user permissions for moved channels
       if (moves.length > 0) {
         try {
-          await databaseService.auth.migratePermissionsForChannelMoves(moves);
+          await databaseService.auth.migratePermissionsForChannelMoves(moves, this.sourceId);
           logger.info(`🔑 Permission migration complete for ${moves.length} channel move(s)`);
         } catch (error) {
           logger.error('🔑 Failed to migrate permissions on startup:', error);

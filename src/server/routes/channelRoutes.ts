@@ -31,6 +31,7 @@ import { transformChannel } from '../utils/channelView.js';
 import { detectChannelCollisions } from '../utils/channelCollision.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { migrateAutomationChannels } from '../utils/automationChannelMigration.js';
+import { detectChannelMoves, type ChannelSnapshot } from '../utils/channelMoveDetection.js';
 import { modemPresetChannelName, CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
 import { getEncryptionStatus, getRoleName } from '../utils/channelView.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
@@ -390,44 +391,27 @@ router.get('/:id/export', requireAuth(), requireSourceId('query'), async (req: R
 });
 
 /**
- * Detect channel moves/swaps by comparing PSKs before and after a change.
- * Returns an array of {from, to} slot pairs indicating where channels moved.
- */
-function detectChannelMoves(
-  before: { id: number; psk?: string | null }[],
-  after: { id: number; psk?: string | null }[]
-): { from: number; to: number }[] {
-  const moves: { from: number; to: number }[] = [];
-
-  for (const oldCh of before) {
-    if (!oldCh.psk || oldCh.psk === '') continue;
-    const newCh = after.find(ch => ch.psk === oldCh.psk && ch.id !== oldCh.id);
-    if (newCh) {
-      // This PSK moved from oldCh.id to newCh.id
-      // Avoid duplicates (swap would register A→B and B→A)
-      if (!moves.find(m => m.from === newCh.id && m.to === oldCh.id)) {
-        moves.push({ from: oldCh.id, to: newCh.id });
-      }
-    }
-  }
-
-  return moves;
-}
-
-/**
  * Snapshot channel slots and migrate messages after a channel configuration change.
  * Call snapshotBefore() before applying changes, then migrateIfNeeded() after.
+ *
+ * Snapshots carry the channel NAME as well as the PSK, and moves are detected
+ * with the shared `detectChannelMoves` (#5183). This file used to keep its own
+ * PSK-only copy, which the shared helper had long since fixed (#3452): two
+ * channels on the same key — Channel 0 and a secondary both on the default
+ * `AQ==` — matched each other, so editing or adding ANY channel "moved" the
+ * secondary's whole message history into Channel 0, permanently.
  */
-async function snapshotChannelsBeforeChange(sourceId?: SourceScope) {
-  return (await databaseService.channels.getAllChannels(sourceId ?? ALL_SOURCES)).map(ch => ({ id: ch.id, psk: ch.psk }));
+async function snapshotChannelsBeforeChange(sourceId?: SourceScope): Promise<ChannelSnapshot[]> {
+  return (await databaseService.channels.getAllChannels(sourceId ?? ALL_SOURCES))
+    .map(ch => ({ id: ch.id, psk: ch.psk, name: ch.name }));
 }
 
 async function migrateMessagesIfChannelsMoved(
-  beforeSnapshot: { id: number; psk?: string | null }[],
+  beforeSnapshot: ChannelSnapshot[],
   sourceId?: SourceScope,
 ) {
   try {
-    const afterSnapshot = (await databaseService.channels.getAllChannels(sourceId ?? ALL_SOURCES)).map(ch => ({ id: ch.id, psk: ch.psk }));
+    const afterSnapshot = await snapshotChannelsBeforeChange(sourceId);
     const moves = detectChannelMoves(beforeSnapshot, afterSnapshot);
     if (moves.length > 0) {
       logger.debug(`📦 Detected channel move(s): ${moves.map(m => `${m.from}→${m.to}`).join(', ')}`);
@@ -985,7 +969,7 @@ router.post('/reorder', requireAuth(), requireSourceId('body'), async (req: Requ
         logger.error('📦 Failed to migrate messages after channel reorder:', error);
       }
       try {
-        await databaseService.auth.migratePermissionsForChannelMoves(moves);
+        await databaseService.auth.migratePermissionsForChannelMoves(moves, reorderSourceScope);
         logger.debug(`🔑 Permission migration complete for channel reorder`);
       } catch (error) {
         logger.error('🔑 Failed to migrate permissions after channel reorder:', error);
