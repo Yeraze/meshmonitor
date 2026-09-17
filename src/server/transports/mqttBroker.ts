@@ -61,6 +61,14 @@ export class MqttBroker extends EventEmitter {
   private server: Server | null = null;
   private listening = false;
   private lastError: string | null = null;
+  /**
+   * Every socket the listener has accepted and not yet seen close. stop() needs
+   * this: `net.Server.close()` only calls back once all existing connections
+   * have ended, and an MQTT client holds its connection open indefinitely.
+   */
+  private sockets = new Set<Socket>();
+  /** In-flight stop(), shared by concurrent callers (#5264). */
+  private stopping: Promise<void> | null = null;
 
   constructor(options: MqttBrokerOptions) {
     super();
@@ -136,7 +144,11 @@ export class MqttBroker extends EventEmitter {
       });
     });
 
+    // Bind to this lifecycle's set, not `this.sockets`, which teardown swaps out.
+    const sockets = this.sockets;
     this.server = createServer((socket: Socket) => {
+      sockets.add(socket);
+      socket.once('close', () => sockets.delete(socket));
       this.aedes!.handle(socket);
     });
 
@@ -165,20 +177,63 @@ export class MqttBroker extends EventEmitter {
     });
   }
 
-  async stop(): Promise<void> {
+  /**
+   * Stop listening and disconnect every client.
+   *
+   * Order matters (#5264). `server.close(cb)` stops accepting connections at
+   * once but only calls back when every EXISTING connection has ended. A radio,
+   * bridge or TCP-linked device keeps its MQTT socket open indefinitely, so the
+   * old stop() — which awaited `server.close` before closing Aedes — never
+   * resolved. The source PUT awaits stop(), so saving a broker hung until the
+   * browser gave up; port 1883 was already refusing connections; and because the
+   * manager was never replaced, each retry called `server.close` again on the
+   * same Server and stacked another `close` listener until Node warned.
+   *
+   * So: unbind first, close Aedes (which disconnects its clients), destroy any
+   * socket Aedes never adopted (e.g. one still mid-CONNECT), then wait for the
+   * server. Concurrent callers share one teardown, and each wait is bounded so a
+   * misbehaving client can never wedge a save again.
+   */
+  stop(): Promise<void> {
+    if (!this.stopping) {
+      this.stopping = this.teardown().finally(() => {
+        this.stopping = null;
+      });
+    }
+    return this.stopping;
+  }
+
+  private async teardown(): Promise<void> {
     this.listening = false;
-    if (this.server) {
-      await new Promise<void>((resolve) => {
-        this.server!.close(() => resolve());
-      });
-      this.server = null;
+    const server = this.server;
+    const aedes = this.aedes;
+    // Take this lifecycle's sockets and hand the instance a fresh set. If start()
+    // runs again before this teardown finishes, the new server's connections
+    // must not be tracked — and then destroyed — by the old teardown.
+    const sockets = this.sockets;
+    this.sockets = new Set<Socket>();
+    // Clear the handles up front so a start() after stop() is never refused
+    // with "already started" while a slow teardown finishes.
+    this.server = null;
+    this.aedes = null;
+
+    // Registered once per teardown, not once per stop() call.
+    const serverClosed = server
+      ? new Promise<void>((resolve) => server.close(() => resolve()))
+      : Promise.resolve();
+
+    if (aedes) {
+      await boundedWait(
+        new Promise<void>((resolve) => aedes.close(() => resolve())),
+        STOP_STEP_TIMEOUT_MS,
+        'Aedes close',
+      );
     }
-    if (this.aedes) {
-      await new Promise<void>((resolve) => {
-        this.aedes!.close(() => resolve());
-      });
-      this.aedes = null;
-    }
+
+    for (const socket of sockets) socket.destroy();
+    sockets.clear();
+
+    await boundedWait(serverClosed, STOP_STEP_TIMEOUT_MS, 'listener close');
     this.emit('closed');
   }
 
@@ -212,6 +267,27 @@ export class MqttBroker extends EventEmitter {
       lastError: this.lastError,
     };
   }
+}
+
+/**
+ * Upper bound on EACH stop() step (Aedes close, listener close), so a full stop
+ * is bounded at twice this. Teardown normally completes in milliseconds; this
+ * only matters if a client or Aedes itself never calls back, and it keeps that
+ * failure a logged warning instead of a request that never returns.
+ */
+const STOP_STEP_TIMEOUT_MS = 5000;
+
+async function boundedWait(p: Promise<void>, ms: number, label: string): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = await Promise.race([
+    p.then(() => false),
+    new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(true), ms);
+    }),
+  ]);
+  // Only needed when `p` won; clearing an already-fired timer is a no-op.
+  if (timer) clearTimeout(timer);
+  if (timedOut) logger.warn(`MQTT broker stop: ${label} did not finish within ${ms}ms; continuing`);
 }
 
 function toBuffer(payload: unknown): Buffer {
