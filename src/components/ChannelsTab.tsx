@@ -903,7 +903,13 @@ export default function ChannelsTab({
             canWrite={hasPermission('nodes', 'write')}
             nodeName={(nodeNum) => nodes.find((n) => n.nodeNum === nodeNum)?.user?.longName}
           />
-          {selectedChannel !== -1 && !mqttReadOnly && channelSendActionButtons}
+          {/* The row itself renders whenever there are channels, because
+              Beacons is channel-agnostic. The send actions need a channel and
+              a writable source, so they are gated separately — with no channel
+              selected the row shows Beacons alone, which is intended. */}
+          {selectedChannel !== -1 && !mqttReadOnly && (
+            <span className="channels-action-row-send">{channelSendActionButtons}</span>
+          )}
         </div>
       )}
 

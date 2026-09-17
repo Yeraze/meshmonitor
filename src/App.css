@@ -1872,12 +1872,14 @@ body {
   }
 
   /* Beacons keeps its natural width and sits first; the send actions group at
-     the right so they stay under the thumb rather than beside the heading. */
-  .channels-action-row .channel-action-btn {
+     the right so they stay under the thumb rather than beside the heading.
+     The margin goes on the WRAPPER, not on the first button — keying it to
+     `.channel-action-btn` + a sibling selector would silently break if the two
+     buttons were ever reordered (raised in review of #5265). */
+  .channels-action-row-send {
     margin-left: auto;
-  }
-  .channels-action-row .channel-action-btn ~ .channel-action-btn {
-    margin-left: 0;
+    display: flex;
+    gap: 0.5rem;
   }
 
   /* Make channel conversation section fill remaining space */

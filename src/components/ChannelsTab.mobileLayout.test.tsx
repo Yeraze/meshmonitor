@@ -24,6 +24,15 @@ import { render, cleanup } from '@testing-library/react';
 import ChannelsTab from './ChannelsTab';
 import type { MeshMessage } from '../types/message';
 
+// BeaconsPanel returns null without beacon data, so the real component would
+// render nothing here and an "exactly one" assertion would pass vacuously —
+// it would hold just as well if the panel were mounted twice. Stub it to a
+// marker that always renders, so the count means what the test says it means
+// (raised in review of #5265).
+vi.mock('./beacons/BeaconsPanel', () => ({
+  default: () => <button data-testid="beacons-button">Beacons</button>,
+}));
+
 vi.mock('../hooks/useServerData', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useNodes: () => ({ nodes: [], isLoading: false, error: null }),
@@ -59,7 +68,11 @@ function setViewport(mobile: boolean) {
     writable: true,
     configurable: true,
     value: (query: string) => ({
-      matches: /max-width:\s*768px/.test(query) ? mobile : !mobile,
+      // Answer ONLY the width query this component reads. Inverting every
+      // other query would also drive unrelated hooks in the tree — notably
+      // MessageEmojiButton's `pointer: fine` check — and make their behaviour
+      // an accident of this stub (raised in review of #5265).
+      matches: /max-width:\s*768px/.test(query) ? mobile : false,
       media: query,
       onchange: null,
       addEventListener: () => {},
@@ -210,7 +223,7 @@ describe('ChannelsTab mobile action row (#5265)', () => {
       setViewport(mobile);
       render(<ChannelsTab {...makeProps()} />);
       const beacons = document.querySelectorAll('[data-testid="beacons-button"]');
-      expect(beacons.length, `beacons count at mobile=${mobile}`).toBeLessThanOrEqual(1);
+      expect(beacons.length, `beacons count at mobile=${mobile}`).toBe(1);
       cleanup();
     }
   });
