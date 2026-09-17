@@ -10166,9 +10166,12 @@ class MeshtasticManager implements ISourceManager {
     }
 
     try {
-      const tracerouteData = meshtasticProtobufService.createTracerouteMessage(destination, channel);
+      // Use the node's own hop limit, like admin packets and the Meshtastic
+      // CLI, rather than a fixed 7 that out-reached everything else it sends.
+      const hopLimit = this.getConfiguredHopLimit();
+      const tracerouteData = meshtasticProtobufService.createTracerouteMessage(destination, channel, hopLimit);
 
-      logger.debug(`🔍 Traceroute packet created: ${tracerouteData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}`);
+      logger.debug(`🔍 Traceroute packet created: ${tracerouteData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, hopLimit=${hopLimit}`);
 
       await this.transport.send(tracerouteData);
 

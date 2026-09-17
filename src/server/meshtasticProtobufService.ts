@@ -6,7 +6,7 @@
  */
 import { loadProtobufDefinitions, getProtobufRoot, type FromRadio, type MeshPacket } from './protobufLoader.js';
 import { logger } from '../utils/logger.js';
-import { PortNum } from './constants/meshtastic.js';
+import { PortNum, DEFAULT_HOP_LIMIT, resolveHopLimit } from './constants/meshtastic.js';
 import { decodeTakV2Payload, takV2Variant, takV2DictName, TAK_V2_UNCOMPRESSED } from './takV2Decoder.js';
 import { safeJson } from './utils/redactSecrets.js';
 
@@ -64,9 +64,18 @@ export class MeshtasticProtobufService {
   }
 
   /**
-   * Create a traceroute request ToRadio using proper protobuf encoding
+   * Create a traceroute request ToRadio using proper protobuf encoding.
+   *
+   * @param hopLimit - pass the local node's configured hop limit
+   *   (`MeshtasticManager.getConfiguredHopLimit()`). The firmware sends a
+   *   client-built packet at whatever hop_limit it carries — it does not
+   *   substitute or cap it at `lora.hop_limit` — so this used to go out at a
+   *   hardcoded 7 regardless of the node's setting, flooding further (and
+   *   spending more airtime) than any other traffic the node originates.
+   *   Meshtastic Python resolves traceroute hops the same way, from
+   *   `localConfig.lora.hop_limit`.
    */
-  createTracerouteMessage(destination: number, channel?: number): Uint8Array {
+  createTracerouteMessage(destination: number, channel?: number, hopLimit: number = DEFAULT_HOP_LIMIT): Uint8Array {
     const root = getProtobufRoot();
     if (!root) {
       logger.error('❌ Protobuf definitions not loaded');
@@ -99,7 +108,7 @@ export class MeshtasticProtobufService {
         channel: channel || 0,
         decoded: dataMessage,
         wantAck: false, // Traceroute doesn't need ack
-        hopLimit: 7 // Default hop limit
+        hopLimit: resolveHopLimit(hopLimit),
       });
 
       // Create the ToRadio message
