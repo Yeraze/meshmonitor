@@ -44,6 +44,23 @@ interface InventoryScript {
 
 type StatusFilter = 'all' | 'used' | 'unused';
 
+/**
+ * Update status for one script (#5255). Checking reaches out to GitHub, so it
+ * only happens when an admin asks, and installing is always a separate click.
+ */
+interface ScriptUpdateStatus {
+  filename: string;
+  installedVersion: string | null;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+  sourceOrigin: 'script' | 'manual' | 'gallery' | null;
+  source: string | null;
+  sourceUrl: string | null;
+  hasBackup: boolean;
+  backupVersion: string | null;
+  error: string | null;
+}
+
 const VALID_EXTENSIONS = ['.js', '.mjs', '.py', '.sh'];
 
 const getLanguageIcon = (language: string): UiIconName => {
@@ -104,6 +121,11 @@ const ScriptsSection: React.FC<ScriptsSectionProps> = ({ baseUrl, canWrite = tru
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [updates, setUpdates] = useState<Record<string, ScriptUpdateStatus>>({});
+  const [isChecking, setIsChecking] = useState(false);
+  const [checkedAt, setCheckedAt] = useState<number | null>(null);
+  const [busyScript, setBusyScript] = useState<string | null>(null);
+  const [sourceDraft, setSourceDraft] = useState<Record<string, string>>({});
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -124,6 +146,84 @@ const ScriptsSection: React.FC<ScriptsSectionProps> = ({ baseUrl, canWrite = tru
   useEffect(() => {
     void fetchInventory();
   }, [fetchInventory]);
+
+  // #5255: ask GitHub what each script's source publishes. Manual, never on a
+  // timer, so an operator is never surprised by outbound requests.
+  const handleCheckUpdates = useCallback(async () => {
+    setIsChecking(true);
+    try {
+      const body = await apiService.get<{ scripts?: ScriptUpdateStatus[]; checkedAt?: number }>('/api/scripts/updates');
+      const byName: Record<string, ScriptUpdateStatus> = {};
+      for (const status of body.scripts ?? []) byName[status.filename] = status;
+      setUpdates(byName);
+      setCheckedAt(body.checkedAt ?? Date.now());
+
+      const available = Object.values(byName).filter(u => u.updateAvailable).length;
+      showToast(available === 0 ? 'All scripts are up to date' : `${available} update${available === 1 ? '' : 's'} available`, 'success');
+    } catch (error) {
+      console.error('Failed to check scripts for updates:', error);
+      showToast('Failed to check scripts for updates', 'error');
+    } finally {
+      setIsChecking(false);
+    }
+  }, [showToast]);
+
+  const handleUpdate = async (filename: string) => {
+    setBusyScript(filename);
+    try {
+      const response = await csrfFetch(`${baseUrl}/api/scripts/${encodeURIComponent(filename)}/update`, { method: 'POST' });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error || 'Update failed');
+      showToast(`Updated ${filename} to v${body.newVersion ?? 'the latest version'}`, 'success');
+      await fetchInventory();
+      await handleCheckUpdates();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Update failed', 'error');
+    } finally {
+      setBusyScript(null);
+    }
+  };
+
+  const handleRollback = async (filename: string) => {
+    setBusyScript(filename);
+    try {
+      const response = await csrfFetch(`${baseUrl}/api/scripts/${encodeURIComponent(filename)}/rollback`, { method: 'POST' });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error || 'Rollback failed');
+      showToast(`Restored ${filename}${body.restoredVersion ? ` to v${body.restoredVersion}` : ''}`, 'success');
+      await fetchInventory();
+      await handleCheckUpdates();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Rollback failed', 'error');
+    } finally {
+      setBusyScript(null);
+    }
+  };
+
+  const handleSaveSource = async (filename: string) => {
+    setBusyScript(filename);
+    try {
+      const response = await csrfFetch(`${baseUrl}/api/scripts/${encodeURIComponent(filename)}/source`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: sourceDraft[filename] ?? '' }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error || 'Could not save that source');
+      showToast(`Update source saved for ${filename}`, 'success');
+      setSourceDraft(prev => ({ ...prev, [filename]: '' }));
+      await handleCheckUpdates();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Could not save that source', 'error');
+    } finally {
+      setBusyScript(null);
+    }
+  };
+
+  const updateCount = useMemo(
+    () => Object.values(updates).filter(u => u.updateAvailable).length,
+    [updates]
+  );
 
   const handleImportClick = () => fileInputRef.current?.click();
 
@@ -201,6 +301,9 @@ const ScriptsSection: React.FC<ScriptsSectionProps> = ({ baseUrl, canWrite = tru
       <p className={styles.description}>
         Scripts in <code>/data/scripts/</code> available to Auto Responders, Timers, and Geofences.
         {scripts.length > 0 && ` ${scripts.length} installed, ${usedCount} in use.`}
+        {checkedAt !== null && (updateCount > 0
+          ? ` ${updateCount} update${updateCount === 1 ? '' : 's'} available.`
+          : ' All checked scripts are up to date.')}
       </p>
 
       <input
@@ -236,6 +339,15 @@ const ScriptsSection: React.FC<ScriptsSectionProps> = ({ baseUrl, canWrite = tru
           <option value="unused">Unused</option>
         </select>
 
+        <button
+          className={styles.importBtn}
+          onClick={() => void handleCheckUpdates()}
+          disabled={isChecking || scripts.length === 0}
+          title="Ask each script's source repository which version it publishes"
+        >
+          {isChecking ? 'Checking…' : <><UiIcon name="refresh" size={15} /> Check for updates</>}
+        </button>
+
         <a
           className={styles.galleryLink}
           href="https://meshmonitor.org/user-scripts.html"
@@ -257,6 +369,7 @@ const ScriptsSection: React.FC<ScriptsSectionProps> = ({ baseUrl, canWrite = tru
           {filtered.map(script => {
             const inUse = script.usedBy.length > 0;
             const isConfirming = confirmDelete === script.filename;
+            const update = updates[script.filename];
             return (
               <div key={script.path} className={styles.card}>
                 <div className={styles.cardHeader}>
@@ -281,6 +394,12 @@ const ScriptsSection: React.FC<ScriptsSectionProps> = ({ baseUrl, canWrite = tru
                     {inUse ? 'In use' : 'Unused'}
                   </span>
 
+                  {update?.updateAvailable && (
+                    <span className={`${styles.badge} ${styles.badgeUpdate}`}>
+                      v{update.latestVersion} available
+                    </span>
+                  )}
+
                   {canWrite && !isConfirming && (
                     <button
                       className={styles.deleteBtn}
@@ -291,6 +410,65 @@ const ScriptsSection: React.FC<ScriptsSectionProps> = ({ baseUrl, canWrite = tru
                     </button>
                   )}
                 </div>
+
+                {update && (
+                  <div className={styles.updateRow}>
+                    <span className={styles.updateText}>
+                      {update.source ? (
+                        <>
+                          Source:{' '}
+                          <a href={update.sourceUrl ?? '#'} target="_blank" rel="noopener noreferrer">{update.source}</a>
+                          {update.sourceOrigin === 'gallery' ? ' (from the gallery listing)' : ''}
+                          {update.sourceOrigin === 'manual' ? ' (set here)' : ''}
+                          {update.latestVersion ? ` · publishes v${update.latestVersion}` : ''}
+                        </>
+                      ) : (
+                        'No update source. Add the script\'s GitHub path to check it.'
+                      )}
+                      {update.error ? ` · ${update.error}` : ''}
+                    </span>
+
+                    {canWrite && update.updateAvailable && (
+                      <button
+                        className={styles.updateBtn}
+                        onClick={() => void handleUpdate(script.filename)}
+                        disabled={busyScript === script.filename}
+                      >
+                        {busyScript === script.filename ? 'Working…' : <><UiIcon name="download" size={13} /> Update</>}
+                      </button>
+                    )}
+
+                    {canWrite && update.hasBackup && (
+                      <button
+                        className={styles.rollbackBtn}
+                        onClick={() => void handleRollback(script.filename)}
+                        disabled={busyScript === script.filename}
+                        title={update.backupVersion ? `Restore v${update.backupVersion}` : 'Restore the previous file'}
+                      >
+                        <UiIcon name="back" size={13} /> Roll back
+                      </button>
+                    )}
+
+                    {canWrite && !update.source && (
+                      <>
+                        <input
+                          className={styles.sourceInput}
+                          type="text"
+                          value={sourceDraft[script.filename] ?? ''}
+                          onChange={e => setSourceDraft(prev => ({ ...prev, [script.filename]: e.target.value }))}
+                          placeholder="owner/repo/path/to/script.py"
+                        />
+                        <button
+                          className={styles.updateBtn}
+                          onClick={() => void handleSaveSource(script.filename)}
+                          disabled={busyScript === script.filename || !(sourceDraft[script.filename] ?? '').trim()}
+                        >
+                          Save source
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
 
                 {inUse && (
                   <ul className={styles.usageList}>

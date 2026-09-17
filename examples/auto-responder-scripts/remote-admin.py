@@ -3,6 +3,8 @@
 #   name: Remote Admin
 #   emoji: 🔧
 #   language: Python
+#   version: 1.0.0
+#   source: Yeraze/meshmonitor/examples/auto-responder-scripts/remote-admin.py
 """
 Remote Admin Script for MeshMonitor
 

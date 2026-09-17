@@ -3,6 +3,8 @@
 #   name: Battery Status Monitor
 #   emoji: 🔋
 #   language: Python
+#   version: 1.0.0
+#   source: Yeraze/meshmonitor/examples/auto-responder-scripts/battery-status.py
 """
 Battery Status Monitor for Auto Responder
 

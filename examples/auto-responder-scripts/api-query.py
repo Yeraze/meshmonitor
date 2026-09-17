@@ -3,6 +3,8 @@
 #   name: API Query Example
 #   emoji: 🔌
 #   language: Python
+#   version: 1.0.0
+#   source: Yeraze/meshmonitor/examples/auto-responder-scripts/api-query.py
 """
 API Query Script - Demonstrates using MeshMonitor's v1 API from scripts.
 

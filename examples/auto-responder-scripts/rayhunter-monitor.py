@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+# mm_meta:
+#   name: Rayhunter Monitor
+#   emoji: 📡
+#   language: Python
+#   version: 1.0.0
+#   source: Yeraze/meshmonitor/examples/auto-responder-scripts/rayhunter-monitor.py
 """
 RayHunter Monitor - Timer Trigger script for MeshMonitor
 

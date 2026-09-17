@@ -3,6 +3,8 @@
 #   name: Remote Admin (Shell)
 #   emoji: 🔧
 #   language: Shell
+#   version: 1.0.0
+#   source: Yeraze/meshmonitor/examples/auto-responder-scripts/remote-admin.sh
 #
 # Simple shell wrapper for remote admin commands
 # Works with Geofence triggers, Timer triggers, and Auto Responder.

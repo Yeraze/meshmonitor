@@ -1,4 +1,10 @@
 #!/usr/bin/env node
+// mm_meta:
+//   name: Hello World
+//   emoji: 👋
+//   language: JavaScript
+//   version: 1.0.0
+//   source: Yeraze/meshmonitor/examples/auto-responder-scripts/hello.js
 /**
  * Simple Hello World script for Auto Responder
  *

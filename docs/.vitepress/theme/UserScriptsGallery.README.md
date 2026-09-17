@@ -62,9 +62,10 @@ Scripts are defined in `docs/.vitepress/data/user-scripts.json`:
 2. **Set githubPath**:
    - Main repo: `examples/auto-responder-scripts/YourScript.py`
    - External: `username/repo/path/to/script.py`
-3. **Version (optional)**: prefer a `version:` line in the script's own `mm_meta` block, which the gallery reads from the author's repo when the script opens. The JSON `version` is a fallback, and the only value the cards show.
-4. **Include all required fields**: name, filename, description, language, tags, etc.
-5. **Test** by viewing the gallery and verifying the script appears and code loads correctly
+3. **Keep the server copy in step**: after editing `user-scripts.json`, run `npm run scripts:gallery`. The server carries a trimmed copy (`src/server/data/userScriptsGallery.json`) so it can check installed gallery scripts for updates (#5255); a test fails if the two drift.
+4. **Version (optional)**: prefer a `version:` line in the script's own `mm_meta` block, which the gallery reads from the author's repo when the script opens. The JSON `version` is a fallback, and the only value the cards show.
+5. **Include all required fields**: name, filename, description, language, tags, etc.
+6. **Test** by viewing the gallery and verifying the script appears and code loads correctly
 
 ## Technical Details
 

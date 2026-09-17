@@ -3,6 +3,8 @@
 #   name: Meshview Link Responder
 #   emoji: 🔗
 #   language: Shell
+#   version: 1.0.0
+#   source: Yeraze/meshmonitor/examples/auto-responder-scripts/meshview-link-responder.sh
 ####
 # Meshview Link Responder
 #

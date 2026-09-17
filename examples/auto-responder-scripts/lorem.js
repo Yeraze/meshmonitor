@@ -1,4 +1,10 @@
 #!/usr/bin/env node
+// mm_meta:
+//   name: Lorem Ipsum
+//   emoji: 📝
+//   language: JavaScript
+//   version: 1.0.0
+//   source: Yeraze/meshmonitor/examples/auto-responder-scripts/lorem.js
 
 /**
  * Lorem Ipsum Multi-Message Example

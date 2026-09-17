@@ -9,6 +9,12 @@ import { scriptDependencyEnv } from '../utils/scriptRunner.js';
 import { compileUserRegex } from '../../utils/safeRegex.js';
 import { normalizeTriggerPatterns } from '../../utils/autoResponderUtils.js';
 import { safeFetch, SsrfBlockedError } from '../utils/ssrfGuard.js';
+import {
+  applyScriptUpdate,
+  checkScriptForUpdate,
+  rollbackScriptUpdate,
+  setManualScriptSource,
+} from '../services/scriptUpdateService.js';
 import { getDependencyStatus, installDependencies } from '../services/scriptDependencyService.js';
 import databaseService from '../../services/database.js';
 import { computeScriptUsage, type SourceTriggers } from '../utils/scriptUsage.js';
@@ -82,6 +88,7 @@ interface ScriptMetadata {
   language: string;       // Inferred from extension or mm_meta
   version?: string;       // Version string from mm_meta, when provided
   author?: string;        // Author from mm_meta, when provided
+  source?: string;        // Update source from mm_meta (#5255), e.g. owner/repo/path
   sizeBytes?: number;     // File size on disk
   lastModified?: number;  // mtime as unix ms (proxy for "last updated")
 }
@@ -151,6 +158,14 @@ const parseScriptMetadata = (content: string, _filename: string): Partial<Script
     const authorMatch = metaBlock.match(/^[#/]{1,2}\s+author:\s*(.+)$/m);
     if (authorMatch) {
       metadata.author = sanitizeMetadataValue(authorMatch[1], 60);
+    }
+
+    // Parse the update source (#5255). `source:` and `repository:` both work,
+    // since the issue proposed the latter name. Validated when it is used, not
+    // here, so a malformed value shows in the UI instead of vanishing.
+    const sourceMatch = metaBlock.match(/^[#/]{1,2}\s+(?:source|repository):\s*(.+)$/m);
+    if (sourceMatch) {
+      metadata.source = sanitizeMetadataValue(sourceMatch[1], 200);
     }
   }
 
@@ -224,6 +239,7 @@ export const collectScripts = (): ScriptMetadata[] => {
       if (metadata.emoji) script.emoji = metadata.emoji;
       if (metadata.language) script.language = metadata.language;
       if (metadata.version) script.version = metadata.version;
+      if (metadata.source) script.source = metadata.source;
       if (metadata.author) script.author = metadata.author;
     } catch (readError) {
       logger.debug(`📜 Could not read metadata from ${file}: ${readError}`);
@@ -967,6 +983,75 @@ router.post('/scripts/dependencies/install', requirePermission('settings', 'writ
   } catch (error) {
     logger.error('[API] Error installing script dependencies:', error);
     res.status(500).json({ success: false, log: '', error: 'Failed to install script dependencies' });
+  }
+});
+
+// Script update checks and one-click updates (#5255).
+//
+// Checking reaches out to GitHub, so it is never automatic: the UI asks, an
+// admin reads the result, and installing new code needs settings:write.
+router.get('/scripts/updates', requirePermission('settings', 'read'), async (_req: Request, res: Response) => {
+  try {
+    const scriptsDir = getScriptsDirectory();
+    const scripts = collectScripts();
+    const results = await Promise.all(
+      scripts.map(script => checkScriptForUpdate(scriptsDir, {
+        filename: script.filename,
+        version: script.version ?? null,
+        source: script.source ?? null,
+      }))
+    );
+    res.json({ scripts: results, checkedAt: Date.now() });
+  } catch (error) {
+    logger.error('[API] Error checking scripts for updates:', error);
+    res.status(500).json({ error: 'Failed to check scripts for updates' });
+  }
+});
+
+// Point a script at a GitHub file, for scripts whose own mm_meta names none.
+router.put('/scripts/:filename/source', requirePermission('settings', 'write'), async (req: Request, res: Response) => {
+  const filename = path.basename(req.params.filename);
+  try {
+    if (!fs.existsSync(path.join(getScriptsDirectory(), filename))) {
+      return res.status(404).json({ error: 'Script not found' });
+    }
+    const value = typeof req.body?.source === 'string' ? req.body.source : null;
+    const parsed = await setManualScriptSource(filename, value);
+    res.json({ success: true, filename, source: parsed });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to set the update source';
+    logger.warn(`[API] Rejected update source for ${filename}: ${message}`);
+    res.status(400).json({ error: message });
+  }
+});
+
+router.post('/scripts/:filename/update', requirePermission('settings', 'write'), async (req: Request, res: Response) => {
+  const filename = path.basename(req.params.filename);
+  try {
+    const script = collectScripts().find(s => s.filename === filename);
+    if (!script) return res.status(404).json({ error: 'Script not found' });
+
+    const result = await applyScriptUpdate(getScriptsDirectory(), {
+      filename,
+      version: script.version ?? null,
+      source: script.source ?? null,
+    });
+    res.json({ success: true, ...result });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to update the script';
+    logger.error(`[API] Error updating script ${filename}: ${message}`);
+    res.status(400).json({ error: message });
+  }
+});
+
+router.post('/scripts/:filename/rollback', requirePermission('settings', 'write'), async (req: Request, res: Response) => {
+  const filename = path.basename(req.params.filename);
+  try {
+    res.json({ success: true, ...rollbackScriptUpdate(getScriptsDirectory(), filename) });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to roll back the script';
+    logger.error(`[API] Error rolling back script ${filename}: ${message}`);
+    res.status(400).json({ error: message });
   }
 });
 

@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+# mm_meta:
+#   name: Pirate Weather ADV
+#   emoji: 🌦️
+#   language: Python
+#   version: 1.0.0
+#   source: Yeraze/meshmonitor/examples/auto-responder-scripts/PirateWeatherADV.py
 """
 PirateWeatherADV — Weather script for mesh network auto-responders.
 Uses the Pirate Weather API for data and OpenStreetMap Nominatim for geocoding.
