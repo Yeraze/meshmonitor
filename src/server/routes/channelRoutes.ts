@@ -31,7 +31,7 @@ import { transformChannel } from '../utils/channelView.js';
 import { detectChannelCollisions } from '../utils/channelCollision.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { migrateAutomationChannels } from '../utils/automationChannelMigration.js';
-import { detectChannelMoves, type ChannelSnapshot } from '../utils/channelMoveDetection.js';
+import { detectChannelMoves, snapshotFromDecodedChannels, type ChannelSnapshot } from '../utils/channelMoveDetection.js';
 import { modemPresetChannelName, CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
 import { getEncryptionStatus, getRoleName } from '../utils/channelView.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
@@ -1204,10 +1204,7 @@ router.post('/import-config', requirePermission('configuration', 'write'), requi
     // Migrate messages before device reboots — build "after" from decoded config
     // since the DB won't be updated until device reconnects
     if (decoded.channels && decoded.channels.length > 0) {
-      const afterSnapshot = decoded.channels.map((ch: any, i: number) => ({
-        id: i,
-        psk: ch.psk === 'none' ? null : (ch.psk || null),
-      }));
+      const afterSnapshot = snapshotFromDecodedChannels(decoded.channels);
       const moves = detectChannelMoves(beforeSnapshot, afterSnapshot);
       if (moves.length > 0) {
         logger.debug(`📦 Detected channel move(s) from config import: ${moves.map(m => `${m.from}→${m.to}`).join(', ')}`);

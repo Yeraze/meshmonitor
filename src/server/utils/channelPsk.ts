@@ -14,7 +14,13 @@ export function channelPskToBytes(psk: string): Buffer {
   if (psk === 'none') return Buffer.from([0]);
   if (psk === 'default') return Buffer.from([1]);
   if (psk.startsWith('simple')) {
-    const num = parseInt(psk.replace('simple', ''), 10);
+    const suffix = psk.slice('simple'.length);
+    const num = Number(suffix);
+    // `simple` with no number would otherwise become Buffer.from([NaN]) = [0],
+    // silently the "no encryption" key.
+    if (!/^\d+$/.test(suffix) || num > 254) {
+      throw new Error(`Invalid simple PSK "${psk}": expected simple0 to simple254`);
+    }
     return Buffer.from([num + 1]);
   }
   return Buffer.from(psk, 'base64');

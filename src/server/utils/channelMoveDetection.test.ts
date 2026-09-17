@@ -149,3 +149,38 @@ describe('detectChannelMoves', () => {
     expect(moves).toEqual([{ from: 0, to: 4 }]);
   });
 });
+
+// #5183: config-URL imports build their "after" snapshot from decoded channels.
+import { snapshotFromDecodedChannels } from './channelMoveDetection.js';
+
+describe('snapshotFromDecodedChannels (#5183)', () => {
+  it('normalises names like the device sync, so an import move is recognised', () => {
+    const before = [
+      { id: 0, psk: 'AQ==', name: '' },
+      { id: 2, psk: 'KEY', name: 'Friends' },
+    ];
+    const after = snapshotFromDecodedChannels([
+      { name: '', psk: 'AQ==' },
+      { name: '', psk: 'none' },
+      { name: '', psk: 'none' },
+      { name: '', psk: 'none' },
+      { name: 'Friends', psk: 'KEY' },
+    ]);
+    expect(after[1]).toEqual({ id: 1, psk: null, name: 'Channel 1' });
+    expect(detectChannelMoves(before, after)).toEqual([{ from: 2, to: 4 }]);
+  });
+
+  it('does not invent a move between two channels that only share a key', () => {
+    const before = [
+      { id: 0, psk: 'AQ==', name: '' },
+      { id: 3, psk: 'AQ==', name: 'Friends' },
+    ];
+    const after = snapshotFromDecodedChannels([
+      { name: '', psk: 'AQ==' },
+      { name: '', psk: 'none' },
+      { name: '', psk: 'none' },
+      { name: 'Friends', psk: 'AQ==' },
+    ]);
+    expect(detectChannelMoves(before, after)).toEqual([]);
+  });
+});
