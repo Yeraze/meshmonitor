@@ -21,6 +21,7 @@ import {
   validateIntervalMinutes
 } from '../utils/validation.js';
 import { logger } from '../utils/logger.js';
+import { parseJsonResponse } from '../utils/parseJsonResponse.js';
 
 export type SignalTrend = 'improving' | 'stable' | 'degrading' | 'insufficient';
 
@@ -371,28 +372,15 @@ class ApiService {
     }
 
     /*
-     * Guard against the SPA fallback (#5078). A request whose path misses the
-     * `/api` prefix does not 404 — it falls through to the static catch-all and
-     * returns `index.html` with a 200. `response.json()` then fails on `<!DOCTYPE`,
-     * surfacing as an opaque parse error far from the mistyped URL. Checking the
-     * content-type turns that into a message naming the offending endpoint.
-     *
-     * Deliberately narrow: it rejects `text/html` specifically, not "anything
-     * that isn't JSON". An absent header, an absent `headers` object, or a
-     * handler that returns JSON as `text/plain` are all legitimate and must
-     * pass — only the SPA shell is the failure this catches.
+     * Guard against the SPA fallback (#5078) and any other non-JSON body. The
+     * check itself lives in `parseJsonResponse` so this and the MeshCore admin
+     * console hook (#5268) share one implementation rather than two copies that
+     * drift apart; `makeError` preserves the ApiError contract callers rely on.
      */
-    const contentType = response.headers?.get?.('content-type') || '';
-    if (contentType.includes('text/html')) {
-      throw new ApiError(
-        `Expected JSON from ${endpoint} but received HTML ("${contentType}"). ` +
-        'This usually means the request path is missing its /api prefix and was ' +
-        'served the SPA shell instead of an API response.',
-        response.status,
-      );
-    }
-
-    return response.json();
+    return parseJsonResponse<T>(response, {
+      context: endpoint,
+      makeError: (message) => new ApiError(message, response.status),
+    });
   }
 
   // Generic GET method
