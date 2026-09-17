@@ -92,6 +92,7 @@ function makeManager(port: number): MqttBrokerManager {
     auth: { username: 'mm', password: 's3cret' },
     gateway: { nodeNum: 0xdeadbeef, nodeId: '!deadbeef', longName: 'MM', shortName: 'MM' },
     rootTopic: 'msh',
+    // The reporter's broker config from #5264, so the policy-driven forwardTransform path is live.
     hopLimitPolicy: { raise: { enabled: true, target: 3, portnums: [4, 67, 71] } },
   });
 }

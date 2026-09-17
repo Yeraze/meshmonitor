@@ -66,7 +66,7 @@ export class MqttBroker extends EventEmitter {
    * this: `net.Server.close()` only calls back once all existing connections
    * have ended, and an MQTT client holds its connection open indefinitely.
    */
-  private readonly sockets = new Set<Socket>();
+  private sockets = new Set<Socket>();
   /** In-flight stop(), shared by concurrent callers (#5264). */
   private stopping: Promise<void> | null = null;
 
@@ -144,9 +144,11 @@ export class MqttBroker extends EventEmitter {
       });
     });
 
+    // Bind to this lifecycle's set, not `this.sockets`, which teardown swaps out.
+    const sockets = this.sockets;
     this.server = createServer((socket: Socket) => {
-      this.sockets.add(socket);
-      socket.once('close', () => this.sockets.delete(socket));
+      sockets.add(socket);
+      socket.once('close', () => sockets.delete(socket));
       this.aedes!.handle(socket);
     });
 
@@ -205,6 +207,11 @@ export class MqttBroker extends EventEmitter {
     this.listening = false;
     const server = this.server;
     const aedes = this.aedes;
+    // Take this lifecycle's sockets and hand the instance a fresh set. If start()
+    // runs again before this teardown finishes, the new server's connections
+    // must not be tracked — and then destroyed — by the old teardown.
+    const sockets = this.sockets;
+    this.sockets = new Set<Socket>();
     // Clear the handles up front so a start() after stop() is never refused
     // with "already started" while a slow teardown finishes.
     this.server = null;
@@ -223,8 +230,8 @@ export class MqttBroker extends EventEmitter {
       );
     }
 
-    for (const socket of this.sockets) socket.destroy();
-    this.sockets.clear();
+    for (const socket of sockets) socket.destroy();
+    sockets.clear();
 
     await boundedWait(serverClosed, STOP_STEP_TIMEOUT_MS, 'listener close');
     this.emit('closed');
@@ -263,9 +270,10 @@ export class MqttBroker extends EventEmitter {
 }
 
 /**
- * Upper bound on each stop() step. Teardown normally completes in milliseconds;
- * this only matters if a client or Aedes itself never calls back, and it keeps
- * that failure a logged warning instead of a request that never returns.
+ * Upper bound on EACH stop() step (Aedes close, listener close), so a full stop
+ * is bounded at twice this. Teardown normally completes in milliseconds; this
+ * only matters if a client or Aedes itself never calls back, and it keeps that
+ * failure a logged warning instead of a request that never returns.
  */
 const STOP_STEP_TIMEOUT_MS = 5000;
 
@@ -277,6 +285,7 @@ async function boundedWait(p: Promise<void>, ms: number, label: string): Promise
       timer = setTimeout(() => resolve(true), ms);
     }),
   ]);
+  // Only needed when `p` won; clearing an already-fired timer is a no-op.
   if (timer) clearTimeout(timer);
   if (timedOut) logger.warn(`MQTT broker stop: ${label} did not finish within ${ms}ms; continuing`);
 }

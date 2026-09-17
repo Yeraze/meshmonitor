@@ -121,6 +121,33 @@ describe('MqttBroker.stop() with connected clients (#5264)', () => {
     }
   });
 
+  it("a restart during a slow teardown does not let the old teardown destroy the new server's clients", async () => {
+    const port = await ephemeralPort();
+    const broker = await startBroker(port);
+    clients.push(await connectClient(port, 'old-radio'));
+
+    // Hold the old Aedes close open so the restart and the new client connect
+    // land squarely inside the old teardown, before it destroys its sockets.
+    const oldAedes = (broker as unknown as { aedes: { close: (cb: () => void) => void } }).aedes;
+    const realClose = oldAedes.close.bind(oldAedes);
+    let release!: () => void;
+    const held = new Promise<void>((r) => { release = r; });
+    oldAedes.close = (cb) => { void held.then(() => realClose(cb)); };
+
+    // Do not await: start the next lifecycle while the old teardown is running.
+    const stopping = broker.stop();
+    await broker.start();
+    const fresh = await connectClient(port, 'new-radio');
+    clients.push(fresh);
+    release();
+    await within(stopping, 3000);
+
+    // Give any stray destroy a moment to land.
+    await new Promise((r) => setTimeout(r, 100));
+    expect(fresh.connected).toBe(true);
+    expect(broker.getStatus().listening).toBe(true);
+  });
+
   it('can be started again after stopping', async () => {
     const port = await ephemeralPort();
     const broker = await startBroker(port);
