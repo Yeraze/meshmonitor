@@ -53,7 +53,7 @@ beforeAll(() => {
   // weather.py used by a Meshtastic auto-responder; orphan.sh used by nothing.
   fs.writeFileSync(
     path.join(scriptsDir, 'weather.py'),
-    '# mm_meta:\n#   name: Weather\n#   version: 2.1\n#   author: Alice\nprint("hi")\n'
+    '# mm_meta:\n#   name: Weather\n#   version: v2.1\n#   author: Alice\nprint("hi")\n'
   );
   fs.writeFileSync(path.join(scriptsDir, 'orphan.sh'), 'echo hi\n');
 });

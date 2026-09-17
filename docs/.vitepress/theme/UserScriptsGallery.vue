@@ -96,7 +96,9 @@
                       <span v-if="script.icon" class="script-icon">{{ script.icon }}</span>
                       {{ script.name }}
                     </h3>
-                    <span class="script-author">by {{ script.author }}</span>
+                    <span class="script-author">
+                      by {{ script.author }}<template v-if="galleryVersion(script)"> · v{{ galleryVersion(script) }}</template>
+                    </span>
                   </div>
                   <span :class="['language-badge', `lang-${script.language.toLowerCase()}`]">
                     {{ script.language }}
@@ -211,6 +213,14 @@
                   <p>{{ selectedScript.author }}</p>
                 </div>
 
+                <div class="detail-section" v-if="selectedVersion">
+                  <h3>Version</h3>
+                  <p>
+                    v{{ selectedVersion.version }}
+                    <span class="version-source">{{ selectedVersion.source === 'script' ? "(from the script's mm_meta)" : '(from the gallery listing)' }}</span>
+                  </p>
+                </div>
+
                 <div class="detail-section" v-if="selectedScript.exampleTrigger">
                   <h3>Example Trigger</h3>
                   <code class="trigger-code-large">{{ selectedScript.exampleTrigger }}</code>
@@ -307,6 +317,7 @@
 import { ref, computed, watch, onUnmounted, onMounted, nextTick } from 'vue'
 import scriptsData from '../data/user-scripts.json'
 import { validateGitHubPath } from '../utils/githubUrlValidation'
+import { cleanVersion, resolveScriptVersion } from '../utils/scriptVersion'
 
 const scripts = ref(scriptsData)
 const showScriptsModal = ref(false)
@@ -321,6 +332,14 @@ const loadingCode = ref(false)
 const codeError = ref(null)
 const codeCopied = ref(false)
 const codeElement = ref(null)
+
+// #5255: the author's mm_meta version (read once the code loads) wins over the
+// optional gallery JSON version. Cards only have the JSON value, since loading
+// every script would spend the GitHub API rate limit.
+const galleryVersion = (script) => cleanVersion(script.version)
+const selectedVersion = computed(() =>
+  selectedScript.value ? resolveScriptVersion(selectedScript.value, scriptCode.value) : null
+)
 
 // Prevent body scroll when modal is open
 watch(showScriptsModal, (isOpen) => {
@@ -1605,6 +1624,11 @@ const copyScript = async (script, event) => {
   color: var(--vp-c-text-2);
   font-weight: 500;
   opacity: 0.8;
+}
+
+.version-source {
+  font-size: 0.8rem;
+  color: var(--vp-c-text-2);
 }
 
 .script-description-compact {
