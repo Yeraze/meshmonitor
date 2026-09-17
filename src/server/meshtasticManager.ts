@@ -5883,7 +5883,7 @@ class MeshtasticManager implements ISourceManager {
     // predates the field, and left undefined then so every module stays shown.
     const excludedModules = readExcludedModules(metadata);
     localNodeInfo.excludedModules = excludedModules;
-    if (excludedModules) {
+    if (excludedModules !== undefined) {
       logger.debug(`📱 Device reports excluded modules: 0x${excludedModules.toString(16)}`);
     }
     if (this.isLocalNodeBridged()) {

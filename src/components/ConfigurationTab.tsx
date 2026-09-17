@@ -742,10 +742,11 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           );
         }
 
-        // Store supported modules info
-        if (config.supportedModules) {
-          setSupportedModules(config.supportedModules);
-        }
+        // Store supported modules info. Clear it when a response carries none,
+        // so switching sources cannot leave one device's exclusions gating
+        // another device's sections (#5065). Null reads as "unknown", which
+        // fails open and enables every section.
+        setSupportedModules(config.supportedModules ?? null);
 
         // Populate Serial config
         if (config.moduleConfig?.serial) {
