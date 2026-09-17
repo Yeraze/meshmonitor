@@ -6,6 +6,7 @@ import { logger } from '../utils/logger.js';
 import { PortNum, resolveHopLimit } from './constants/meshtastic.js';
 import { MODULE_FIELD_BY_ID } from './constants/configTypes.js';
 import { safeJson } from './utils/redactSecrets.js';
+import { channelPskToBytes } from './utils/channelPsk.js';
 
 export interface MeshtasticPosition {
   latitude_i: number;
@@ -1367,18 +1368,9 @@ class ProtobufService {
         settingsData.name = config.name;
       }
       if (config.psk !== undefined) {
-        // Handle shorthand PSK values and convert to bytes
-        if (config.psk === 'none') {
-          settingsData.psk = Buffer.from([0]);
-        } else if (config.psk === 'default') {
-          settingsData.psk = Buffer.from([1]);
-        } else if (config.psk.startsWith('simple')) {
-          const num = parseInt(config.psk.replace('simple', ''));
-          settingsData.psk = Buffer.from([num + 1]);
-        } else {
-          // Assume it's a base64 encoded key
-          settingsData.psk = Buffer.from(config.psk, 'base64');
-        }
+        // Shorthand (none/default/simpleN) or base64 — one shared translation, so
+        // the local channel row mirrored after a send stores the same key (#5183).
+        settingsData.psk = channelPskToBytes(config.psk);
       }
       if (config.uplinkEnabled !== undefined) {
         settingsData.uplinkEnabled = config.uplinkEnabled;

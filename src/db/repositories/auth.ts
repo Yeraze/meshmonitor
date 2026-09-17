@@ -956,11 +956,46 @@ export class AuthRepository extends BaseRepository {
   /**
    * Migrate channel permissions when channels are moved between slots.
    * Uses the same swap/move pattern as message migration.
+   *
+   * @param sourceId - the source whose channels moved (#5183). Channel slots are
+   *   per-source, so a move detected on one source must only rewrite that
+   *   source's `channel_N` grants. Omitting it keeps the legacy all-sources
+   *   behaviour for callers with no source context.
+   *
+   * Every re-inserted row keeps its original `sourceId`. The previous version
+   * dropped it, so a grant scoped to one source came back as a global grant on
+   * every source.
    */
-  async migratePermissionsForChannelMoves(moves: { from: number; to: number }[]): Promise<void> {
+  async migratePermissionsForChannelMoves(
+    moves: { from: number; to: number }[],
+    sourceId?: string,
+  ): Promise<void> {
     if (moves.length === 0) return;
 
     const { permissions } = this.tables;
+
+    const whereResource = (resource: string) =>
+      sourceId
+        ? and(eq(permissions.resource, resource), eq(permissions.sourceId, sourceId))
+        : eq(permissions.resource, resource);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- permission row shape varies by dialect
+    const reinsert = async (row: any, resource: string) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- insert shape varies by dialect
+      const values: any = {
+        userId: row.userId,
+        resource,
+        canViewOnMap: row.canViewOnMap,
+        canRead: row.canRead,
+        canWrite: row.canWrite,
+        grantedAt: row.grantedAt ?? Date.now(),
+        grantedBy: row.grantedBy,
+        sourceId: row.sourceId ?? null,
+      };
+      // PG/MySQL have canDelete, SQLite does not
+      if (!this.isSQLite()) values.canDelete = row.canDelete;
+      await this.db.insert(permissions).values(values);
+    };
 
     // Detect swap pairs
     const swapPairs = new Set<string>();
@@ -971,86 +1006,36 @@ export class AuthRepository extends BaseRepository {
       }
     }
 
-    // Helper: read all permissions for a resource, delete them, re-insert with new resource
-    // Uses Drizzle ORM to handle column naming differences across backends
-    // and avoids SQLite CHECK constraint on resource values (no temp values needed)
+    // Read, delete, re-insert under the new resource. Delete + re-insert avoids
+    // the SQLite CHECK constraint on resource values (no temp values needed).
     const movePermissions = async (fromResource: string, toResource: string) => {
-      const rows = await this.db
-        .select()
-        .from(permissions)
-        .where(eq(permissions.resource, fromResource));
+      const rows = await this.db.select().from(permissions).where(whereResource(fromResource));
       if (rows.length === 0) return;
-
-      await this.db.delete(permissions).where(eq(permissions.resource, fromResource));
-
-      for (const row of rows) {
-        const values: any = {
-          userId: (row as any).userId,
-          resource: toResource,
-          canViewOnMap: (row as any).canViewOnMap,
-          canRead: (row as any).canRead,
-          canWrite: (row as any).canWrite,
-          grantedAt: (row as any).grantedAt ?? Date.now(),
-          grantedBy: (row as any).grantedBy,
-        };
-        // PG/MySQL have canDelete, SQLite does not
-        if (!this.isSQLite()) {
-          values.canDelete = (row as any).canDelete;
-        }
-        await this.db.insert(permissions).values(values);
-      }
+      await this.db.delete(permissions).where(whereResource(fromResource));
+      for (const row of rows) await reinsert(row, toResource);
     };
 
-    // Process swaps using delete + re-insert (avoids CHECK constraint issues)
     const processedSwaps = new Set<string>();
     for (const move of moves) {
       const key = [Math.min(move.from, move.to), Math.max(move.from, move.to)].join(',');
       if (swapPairs.has(key) && !processedSwaps.has(key)) {
         processedSwaps.add(key);
-        const a = Math.min(move.from, move.to);
-        const b = Math.max(move.from, move.to);
-        const resourceA = 'channel_' + a;
-        const resourceB = 'channel_' + b;
+        const resourceA = 'channel_' + Math.min(move.from, move.to);
+        const resourceB = 'channel_' + Math.max(move.from, move.to);
 
         // Read both before deleting either
-        const rowsA = await this.db.select().from(permissions).where(eq(permissions.resource, resourceA));
-        const rowsB = await this.db.select().from(permissions).where(eq(permissions.resource, resourceB));
+        const rowsA = await this.db.select().from(permissions).where(whereResource(resourceA));
+        const rowsB = await this.db.select().from(permissions).where(whereResource(resourceB));
 
-        // Delete both
-        await this.db.delete(permissions).where(eq(permissions.resource, resourceA));
-        await this.db.delete(permissions).where(eq(permissions.resource, resourceB));
+        await this.db.delete(permissions).where(whereResource(resourceA));
+        await this.db.delete(permissions).where(whereResource(resourceB));
 
-        // Re-insert swapped: A's permissions → resourceB, B's → resourceA
-        for (const row of rowsA) {
-          const values: any = {
-            userId: (row as any).userId,
-            resource: resourceB,
-            canViewOnMap: (row as any).canViewOnMap,
-            canRead: (row as any).canRead,
-            canWrite: (row as any).canWrite,
-            grantedAt: (row as any).grantedAt ?? Date.now(),
-            grantedBy: (row as any).grantedBy,
-          };
-          if (!this.isSQLite()) values.canDelete = (row as any).canDelete;
-          await this.db.insert(permissions).values(values);
-        }
-        for (const row of rowsB) {
-          const values: any = {
-            userId: (row as any).userId,
-            resource: resourceA,
-            canViewOnMap: (row as any).canViewOnMap,
-            canRead: (row as any).canRead,
-            canWrite: (row as any).canWrite,
-            grantedAt: (row as any).grantedAt ?? Date.now(),
-            grantedBy: (row as any).grantedBy,
-          };
-          if (!this.isSQLite()) values.canDelete = (row as any).canDelete;
-          await this.db.insert(permissions).values(values);
-        }
+        // A's permissions → resourceB, B's → resourceA
+        for (const row of rowsA) await reinsert(row, resourceB);
+        for (const row of rowsB) await reinsert(row, resourceA);
       }
     }
 
-    // Process simple moves using delete + re-insert (consistent approach across all backends)
     for (const move of moves) {
       const key = [Math.min(move.from, move.to), Math.max(move.from, move.to)].join(',');
       if (!swapPairs.has(key)) {

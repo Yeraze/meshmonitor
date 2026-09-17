@@ -30,6 +30,7 @@ import {
   type AdminOperationResult,
 } from '../services/adminOperationService.js';
 import { isValidMeshtasticKey, derivePublicKey, normalizeMeshtasticKey } from '../utils/meshtasticKeys.js';
+import { channelPskToStoredBase64 } from '../utils/channelPsk.js';
 
 const router = express.Router();
 
@@ -598,17 +599,20 @@ router.post('/load-config', requireAdmin(), async (req, res) => {
           return res.status(400).json({ error: 'channelIndex is required for channel config' });
         }
         if (isLocalNode) {
-          // Request channel config
-          await adminLoadManager.requestConfig(0); // CHANNEL_CONFIG = 0
-          // Note: Channel config loading requires waiting for response, which is complex
-          // For now, return a placeholder
+          // Serve the local channel from the database (#5183), the same source
+          // get-channel uses. This used to send get_config_request(0) — which is
+          // DEVICE_CONFIG, not a channel — and return a blank placeholder.
+          const stored = await databaseService.channels.getChannelById(
+            Number(channelIndex),
+            adminLoadManager.sourceId,
+          );
           config = {
-            name: '',
-            psk: '',
-            role: channelIndex === 0 ? 1 : 0,
-            uplinkEnabled: false,
-            downlinkEnabled: false,
-            positionPrecision: 32
+            name: stored?.name ?? '',
+            psk: stored?.psk ?? '',
+            role: stored?.role ?? (channelIndex === 0 ? 1 : 0),
+            uplinkEnabled: stored?.uplinkEnabled ?? false,
+            downlinkEnabled: stored?.downlinkEnabled ?? false,
+            positionPrecision: stored?.positionPrecision ?? 32,
           };
         } else {
           // Remote node channel config not yet supported
@@ -1597,6 +1601,40 @@ async function executeAdminCommand(ctx: {
       debugLogApiEnabled: securityConfig.debugLogApiEnabled,
       adminChannelEnabled: securityConfig.adminChannelEnabled
     });
+  }
+
+  // For setChannel on the local node, mirror the new channel into the database
+  // (#5183). The device does not push channel changes to a connected client, so
+  // without this the Channels view and Admin Commands' own read-back (get-channel
+  // reads the DB for the local node) kept showing the old channel until the next
+  // full config sync — in practice a restart. Same write the Channels tab's PUT
+  // already makes; the next sync overwrites it with the device's own values.
+  if (command === 'setChannel' && isLocalNode && params.config) {
+    const channelIndex = Number(params.channelIndex);
+    const cfg = params.config as {
+      name?: string; psk?: string; role?: number;
+      uplinkEnabled?: boolean; downlinkEnabled?: boolean; positionPrecision?: number;
+    };
+    try {
+      await databaseService.channels.upsertChannel(
+        {
+          id: channelIndex,
+          name: cfg.name ?? '',
+          psk: cfg.psk !== undefined ? channelPskToStoredBase64(cfg.psk) : undefined,
+          role: cfg.role,
+          uplinkEnabled: cfg.uplinkEnabled ?? false,
+          downlinkEnabled: cfg.downlinkEnabled ?? false,
+          positionPrecision: cfg.positionPrecision,
+        },
+        acManager.sourceId,
+        { allowBlankName: true },
+      );
+      logger.debug(`⚙️ Mirrored local channel ${channelIndex} into the database for source ${acManager.sourceId}`);
+    } catch (error) {
+      // The device already has the change; a failed mirror only delays the UI
+      // until the next config sync, so it must not fail the command.
+      logger.warn(`⚙️ Failed to mirror local channel ${channelIndex} into the database:`, error);
+    }
   }
 
   // For setFixedPosition on the local node, immediately update the database

@@ -13,6 +13,26 @@ export interface ChannelSnapshot {
   name?: string | null;
 }
 
+/**
+ * Build an "after" snapshot from channels decoded out of a Meshtastic config
+ * URL, before they have reached the database (#5183).
+ *
+ * Names are normalised the way the device sync stores them — a blank secondary
+ * becomes `Channel N`, slot 0 stays blank — so a named channel moved by the
+ * import matches its stored row. Without a name here, PSK + name matching could
+ * never recognise a move from a URL import, and the moved channel's message
+ * history would be left behind.
+ */
+export function snapshotFromDecodedChannels(
+  channels: ReadonlyArray<{ name?: string | null; psk?: string | null }>,
+): ChannelSnapshot[] {
+  return channels.map((ch, i) => ({
+    id: i,
+    psk: ch.psk === 'none' ? null : (ch.psk || null),
+    name: ch.name || (i === 0 ? '' : `Channel ${i}`),
+  }));
+}
+
 function channelKey(ch: ChannelSnapshot): string {
   return JSON.stringify([ch.psk, ch.name || '']);
 }
