@@ -38,6 +38,18 @@ describe('parseScriptSource (#5255)', () => {
     expect(parseScriptSource('https://raw.githubusercontent.com/kd2abc/scripts/weather.py')).toBeNull();
   });
 
+  it('strips a query string and fragment without a backtracking regex', () => {
+    expect(parseScriptSource('kd2abc/scripts/weather.py?raw=1#L10')).toEqual({
+      owner: 'kd2abc', repo: 'scripts', path: 'weather.py',
+    });
+    // A pathological string returns promptly rather than backtracking.
+    const start = Date.now();
+    expect(parseScriptSource(`kd2abc/scripts/weather.py${'?'.repeat(50000)}`)).toEqual({
+      owner: 'kd2abc', repo: 'scripts', path: 'weather.py',
+    });
+    expect(Date.now() - start).toBeLessThan(1000);
+  });
+
   it('rejects anything that could point somewhere else', () => {
     for (const bad of [
       'http://evil.test/payload.py',

@@ -52,7 +52,9 @@ export function parseScriptSource(raw: unknown): ScriptSource | null {
     return null;
   }
 
-  value = value.replace(/^\/+/, '').replace(/\?.*$/, '').replace(/#.*$/, '');
+  // Split rather than regex: a query or fragment strip with `.*` on
+  // user-controlled input is a ReDoS shape, and this is unambiguously linear.
+  value = value.split('?')[0].split('#')[0].replace(/^\/+/, '');
   const parts = value.split('/').filter(Boolean);
   if (parts.length < 3) return null;
   if (parts.some(p => p === '.' || p === '..' || !SEGMENT.test(p))) return null;

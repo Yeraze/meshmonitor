@@ -76,15 +76,34 @@ for (const entry of galleryEntries as Array<{ filename: string; githubPath?: str
   if (parsed) galleryByFilename.set(entry.filename, parsed);
 }
 
+/**
+ * Script filenames are the keys of the stored sources object, so they are
+ * basenamed and screened for the keys that would reach Object.prototype.
+ */
+function safeSourceKey(filename: string): string {
+  const name = path.basename(filename);
+  if (name === '__proto__' || name === 'constructor' || name === 'prototype') {
+    throw new Error('Invalid script filename');
+  }
+  return name;
+}
+
 async function getManualSources(): Promise<Record<string, string>> {
+  // Prototype-less, so a crafted key in the stored JSON cannot reach
+  // Object.prototype when we read or write it back.
+  const empty = Object.create(null) as Record<string, string>;
   try {
     const raw = await databaseService.settings.getSetting(SCRIPT_SOURCES_SETTING);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? parsed as Record<string, string> : {};
+    if (!raw) return empty;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object') return empty;
+    for (const [key, value] of Object.entries(parsed)) {
+      if (typeof value === 'string' && key === path.basename(key)) empty[key] = value;
+    }
+    return empty;
   } catch (error) {
     logger.warn('[scripts] Could not read stored script update sources:', error);
-    return {};
+    return empty;
   }
 }
 
@@ -96,7 +115,7 @@ export async function resolveScriptSource(
   const fromMeta = parseScriptSource(metaSource);
   if (fromMeta) return { source: fromMeta, origin: 'script' };
 
-  const manual = parseScriptSource((await getManualSources())[filename]);
+  const manual = parseScriptSource((await getManualSources())[path.basename(filename)]);
   if (manual) return { source: manual, origin: 'manual' };
 
   const gallery = galleryByFilename.get(filename);
@@ -114,16 +133,17 @@ export async function resolveScriptSource(
  * hot path worth a lock.
  */
 export async function setManualScriptSource(filename: string, value: string | null): Promise<ScriptSource | null> {
+  const key = safeSourceKey(filename);
   const sources = await getManualSources();
   let parsed: ScriptSource | null = null;
   if (value === null || value.trim() === '') {
-    delete sources[filename];
+    delete sources[key];
   } else {
     parsed = parseScriptSource(value);
     if (!parsed) throw new Error('Not a GitHub file path. Use owner/repo/path/to/script.py');
-    sources[filename] = value.trim();
+    sources[key] = value.trim();
   }
-  await databaseService.settings.setSetting(SCRIPT_SOURCES_SETTING, JSON.stringify(sources));
+  await databaseService.settings.setSetting(SCRIPT_SOURCES_SETTING, JSON.stringify({ ...sources }));
   return parsed;
 }
 
@@ -281,6 +301,10 @@ export async function applyScriptUpdate(
   const filePath = path.join(scriptsDir, filename);
   if (!fs.existsSync(filePath)) throw new Error('Script not found');
 
+  // `contents` is network data, and it lands on disk where an interpreter may
+  // run it. That is the point of the feature; fetchSourceContents is what makes
+  // it defensible: the URL is rebuilt from a parsed GitHub source, the response
+  // is size-capped, and a web page or binary is refused.
   const contents = await fetchSourceContents(resolved.source);
   const newVersion = versionFromContents(contents);
 

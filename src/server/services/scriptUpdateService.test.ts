@@ -102,6 +102,20 @@ describe('setManualScriptSource (#5255)', () => {
     await expect(setManualScriptSource('weather.py', 'http://evil.test/x.py')).rejects.toThrow(/GitHub file path/);
   });
 
+  it('refuses a filename that would reach Object.prototype', async () => {
+    await expect(setManualScriptSource('__proto__', 'kd2abc/scripts/weather.py')).rejects.toThrow(/Invalid script filename/);
+    expect(h.setSetting).not.toHaveBeenCalled();
+  });
+
+  it('drops a crafted key already sitting in the stored JSON', async () => {
+    h.getSetting.mockResolvedValue(JSON.stringify({ '__proto__': { polluted: true }, '../escape.py': 'a/b/c.py', 'ok.py': 'kd2abc/scripts/ok.py' }));
+    await setManualScriptSource('weather.py', 'kd2abc/scripts/weather.py');
+
+    const written = JSON.parse(h.setSetting.mock.calls[0][1]);
+    expect(Object.keys(written).sort()).toEqual(['ok.py', 'weather.py']);
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+
   it('clears the stored source when given an empty value', async () => {
     h.getSetting.mockResolvedValue(JSON.stringify({ 'weather.py': 'kd2abc/scripts/weather.py' }));
     await setManualScriptSource('weather.py', '');
