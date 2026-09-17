@@ -1,4 +1,5 @@
 import databaseService, { type DbMessage } from '../services/database.js';
+import { moduleAvailabilityFromMask, readExcludedModules, type ExcludedModuleKey } from '../utils/excludedModules.js';
 import { buildContactRow, buildContactRowV2 } from './services/atakContactService.js';
 import meshtasticProtobufService, { formatTakPreview, formatTakV2Preview } from './meshtasticProtobufService.js';
 import { takV2Variant } from './takV2Decoder.js';
@@ -10,6 +11,20 @@ import type { ITransport } from './transports/transport.js';
 import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
 import { sourceManagerRegistry } from './sourceManagerRegistry.js';
 import { calculateDistance } from '../utils/distance.js';
+
+/**
+ * What the Config tab reads to decide which module sections it can offer.
+ * The `ExcludedModuleKey` half comes from the device's own
+ * `DeviceMetadata.excluded_modules` bitmask (#5065); the named flags are the
+ * older firmware-version gates.
+ */
+type SupportedModules = Record<ExcludedModuleKey, boolean> & {
+  statusmessage: boolean;
+  trafficManagement: boolean;
+  meshBeacon: boolean;
+  /** Legacy alias of `rangetest`, read by the Config tab since #5041. */
+  rangeTest: boolean;
+};
 import { shouldDiscardPosition } from '../utils/nullIsland.js';
 import { getDiscardInvalidPositions } from '../utils/positionIngestConfig.js';
 import { isPointInGeofence, distanceToGeofenceCenter } from '../utils/geometry.js';
@@ -1019,6 +1034,10 @@ class MeshtasticManager implements ISourceManager {
     // #3923: firmware 2.8 build capability — XEdDSA signature verification
     // compiled in. Distinguishes "cannot sign" from "did not sign this packet".
     hasXeddsa?: boolean;
+    // #5065: DeviceMetadata.excluded_modules — the bitmask of module configs
+    // this firmware build left out. Undefined until a device reports it, which
+    // means "nothing excluded"; see src/server/utils/excludedModules.ts.
+    excludedModules?: number;
     // #3684: User capability flags from the local node's NodeInfo, surfaced to the
     // frontend Config tab via getCurrentConfig().localNodeInfo.
     isUnmessagable?: boolean;
@@ -5558,7 +5577,7 @@ class MeshtasticManager implements ISourceManager {
   /**
    * Get the current device configuration
    */
-  getCurrentConfig(): { deviceConfig: any; moduleConfig: any; localNodeInfo: any; supportedModules: { statusmessage: boolean; trafficManagement: boolean; meshBeacon: boolean; rangeTest: boolean } } {
+  getCurrentConfig(): { deviceConfig: any; moduleConfig: any; localNodeInfo: any; supportedModules: SupportedModules } {
     logger.debug(`[CONFIG] getCurrentConfig called - hopLimit=${this.actualDeviceConfig?.lora?.hopLimit}`);
 
     // Apply Proto3 defaults to device config if it exists
@@ -5795,11 +5814,17 @@ class MeshtasticManager implements ISourceManager {
       logger.debug(`[CONFIG] Returning TrafficManagement config with positionMinIntervalSecs=${trafficManagementConfigWithDefaults.positionMinIntervalSecs}`);
     }
 
+    const moduleAvailability = moduleAvailabilityFromMask(this.localNodeInfo?.excludedModules);
+
     return {
       deviceConfig,
       moduleConfig,
       localNodeInfo: this.localNodeInfo,
       supportedModules: {
+        // The device's own DeviceMetadata.excluded_modules bitmask (#5065).
+        // Every key is true unless this build positively excluded that module,
+        // so an older firmware that never reports the field changes nothing.
+        ...moduleAvailability,
         // Gate on firmware version, NOT on presence of the decoded config
         // sub-message. Proto3 omits an all-default sub-message, so a fully
         // supported module whose config is untouched (the common case) would
@@ -5807,6 +5832,10 @@ class MeshtasticManager implements ISourceManager {
         statusmessage: this.supportsStatusMessage(),
         trafficManagement: this.supportsTrafficManagement(),
         meshBeacon: this.supportsMeshBeacon(),
+        // Range Test has two reasons to be unavailable, and they get separate
+        // keys because the UI explains them differently: `rangetest` (from the
+        // bitmask spread above) means this build left the module out, while
+        // `rangeTest` means firmware 2.8 dropped the module outright (#5031).
         rangeTest: this.supportsRangeTest()
       }
     };
@@ -5850,6 +5879,13 @@ class MeshtasticManager implements ISourceManager {
     // Firmware 2.8 build capability, surfaced alongside the transport flags so
     // the local node reports it the same way a remote node does (#3923).
     localNodeInfo.hasXeddsa = metadata.hasXeddsa === true;
+    // #5065: which module configs this build excluded. Absent on firmware that
+    // predates the field, and left undefined then so every module stays shown.
+    const excludedModules = readExcludedModules(metadata);
+    localNodeInfo.excludedModules = excludedModules;
+    if (excludedModules) {
+      logger.debug(`📱 Device reports excluded modules: 0x${excludedModules.toString(16)}`);
+    }
     if (this.isLocalNodeBridged()) {
       logger.debug('🌉 Connected node reports no native WiFi/Ethernet — treating as a bridged node (OTA firmware update disabled)');
     }

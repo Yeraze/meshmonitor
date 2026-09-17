@@ -1,4 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
+import ModuleAvailabilityGate from './configuration/ModuleAvailabilityGate';
+import type { ExcludedModuleKey } from '../utils/excludedModules';
+
+/**
+ * `supportedModules` from `/api/config` (#5065). Bitmask keys are optional so
+ * an older server, or a response that predates the field, reads as undefined
+ * and leaves every section enabled — the gate only acts on an explicit false.
+ */
+type SupportedModules = Partial<Record<ExcludedModuleKey, boolean>> & {
+  statusmessage: boolean;
+  trafficManagement: boolean;
+  meshBeacon: boolean;
+  rangeTest?: boolean;
+};
 import { useQueryClient } from '@tanstack/react-query';
 import { UiIcon } from './icons';
 import { useTranslation } from 'react-i18next';
@@ -300,7 +314,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   // state — a response from an older server, or a shape change, then reads as
   // "supported" rather than flashing a removal notice at a node that still has
   // the module. The consumer below tests `=== false` for the same reason.
-  const [supportedModules, setSupportedModules] = useState<{ statusmessage: boolean; trafficManagement: boolean; meshBeacon: boolean; rangeTest?: boolean } | null>(null);
+  const [supportedModules, setSupportedModules] = useState<SupportedModules | null>(null);
 
   // Serial Config State
   const [serialEnabled, setSerialEnabled] = useState(false);
@@ -2308,173 +2322,186 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         </div>
 
         <div id="config-telemetry">
-          <TelemetryConfigSection
-            configVersion={telemetryConfigVersion}
-            deviceUpdateInterval={deviceUpdateInterval}
-            setDeviceUpdateInterval={setDeviceUpdateInterval}
-            deviceTelemetryEnabled={deviceTelemetryEnabled}
-            setDeviceTelemetryEnabled={setDeviceTelemetryEnabled}
-            environmentUpdateInterval={environmentUpdateInterval}
-            setEnvironmentUpdateInterval={setEnvironmentUpdateInterval}
-            environmentMeasurementEnabled={environmentMeasurementEnabled}
-            setEnvironmentMeasurementEnabled={setEnvironmentMeasurementEnabled}
-            environmentScreenEnabled={environmentScreenEnabled}
-            setEnvironmentScreenEnabled={setEnvironmentScreenEnabled}
-            environmentDisplayFahrenheit={environmentDisplayFahrenheit}
-            setEnvironmentDisplayFahrenheit={setEnvironmentDisplayFahrenheit}
-            airQualityEnabled={airQualityEnabled}
-            setAirQualityEnabled={setAirQualityEnabled}
-            airQualityInterval={airQualityInterval}
-            setAirQualityInterval={setAirQualityInterval}
-            powerMeasurementEnabled={powerMeasurementEnabled}
-            setPowerMeasurementEnabled={setPowerMeasurementEnabled}
-            powerUpdateInterval={powerUpdateInterval}
-            setPowerUpdateInterval={setPowerUpdateInterval}
-            powerScreenEnabled={powerScreenEnabled}
-            setPowerScreenEnabled={setPowerScreenEnabled}
-            healthMeasurementEnabled={healthMeasurementEnabled}
-            setHealthMeasurementEnabled={setHealthMeasurementEnabled}
-            healthUpdateInterval={healthUpdateInterval}
-            setHealthUpdateInterval={setHealthUpdateInterval}
-            healthScreenEnabled={healthScreenEnabled}
-            setHealthScreenEnabled={setHealthScreenEnabled}
-            isSaving={isSaving}
-            onSave={handleSaveTelemetryConfig}
-          />
+          <ModuleAvailabilityGate available={supportedModules?.telemetry} moduleName="Telemetry">
+            <TelemetryConfigSection
+              configVersion={telemetryConfigVersion}
+              deviceUpdateInterval={deviceUpdateInterval}
+              setDeviceUpdateInterval={setDeviceUpdateInterval}
+              deviceTelemetryEnabled={deviceTelemetryEnabled}
+              setDeviceTelemetryEnabled={setDeviceTelemetryEnabled}
+              environmentUpdateInterval={environmentUpdateInterval}
+              setEnvironmentUpdateInterval={setEnvironmentUpdateInterval}
+              environmentMeasurementEnabled={environmentMeasurementEnabled}
+              setEnvironmentMeasurementEnabled={setEnvironmentMeasurementEnabled}
+              environmentScreenEnabled={environmentScreenEnabled}
+              setEnvironmentScreenEnabled={setEnvironmentScreenEnabled}
+              environmentDisplayFahrenheit={environmentDisplayFahrenheit}
+              setEnvironmentDisplayFahrenheit={setEnvironmentDisplayFahrenheit}
+              airQualityEnabled={airQualityEnabled}
+              setAirQualityEnabled={setAirQualityEnabled}
+              airQualityInterval={airQualityInterval}
+              setAirQualityInterval={setAirQualityInterval}
+              powerMeasurementEnabled={powerMeasurementEnabled}
+              setPowerMeasurementEnabled={setPowerMeasurementEnabled}
+              powerUpdateInterval={powerUpdateInterval}
+              setPowerUpdateInterval={setPowerUpdateInterval}
+              powerScreenEnabled={powerScreenEnabled}
+              setPowerScreenEnabled={setPowerScreenEnabled}
+              healthMeasurementEnabled={healthMeasurementEnabled}
+              setHealthMeasurementEnabled={setHealthMeasurementEnabled}
+              healthUpdateInterval={healthUpdateInterval}
+              setHealthUpdateInterval={setHealthUpdateInterval}
+              healthScreenEnabled={healthScreenEnabled}
+              setHealthScreenEnabled={setHealthScreenEnabled}
+              isSaving={isSaving}
+              onSave={handleSaveTelemetryConfig}
+            />
+          </ModuleAvailabilityGate>
         </div>
 
         <div id="config-mqtt">
-          <MQTTConfigSection
-            mqttEnabled={mqttEnabled}
-            setMqttEnabled={setMqttEnabled}
-            mqttAddress={mqttAddress}
-            setMqttAddress={setMqttAddress}
-            mqttUsername={mqttUsername}
-            setMqttUsername={setMqttUsername}
-            mqttPassword={mqttPassword}
-            setMqttPassword={setMqttPassword}
-            mqttEncryptionEnabled={mqttEncryptionEnabled}
-            setMqttEncryptionEnabled={setMqttEncryptionEnabled}
-            mqttJsonEnabled={mqttJsonEnabled}
-            setMqttJsonEnabled={setMqttJsonEnabled}
-            mqttRoot={mqttRoot}
-            setMqttRoot={setMqttRoot}
-            tlsEnabled={mqttTlsEnabled}
-            setTlsEnabled={setMqttTlsEnabled}
-            proxyToClientEnabled={mqttProxyToClientEnabled}
-            setProxyToClientEnabled={setMqttProxyToClientEnabled}
-            mapReportingEnabled={mqttMapReportingEnabled}
-            setMapReportingEnabled={setMqttMapReportingEnabled}
-            mapPublishIntervalSecs={mqttMapPublishIntervalSecs}
-            setMapPublishIntervalSecs={setMqttMapPublishIntervalSecs}
-            mapPositionPrecision={mqttMapPositionPrecision}
-            setMapPositionPrecision={setMqttMapPositionPrecision}
-            isBridged={isBridged}
-            isSaving={isSaving}
-            onSave={handleSaveMQTTConfig}
-          />
+          <ModuleAvailabilityGate available={supportedModules?.mqtt} moduleName="MQTT">
+            <MQTTConfigSection
+              mqttEnabled={mqttEnabled}
+              setMqttEnabled={setMqttEnabled}
+              mqttAddress={mqttAddress}
+              setMqttAddress={setMqttAddress}
+              mqttUsername={mqttUsername}
+              setMqttUsername={setMqttUsername}
+              mqttPassword={mqttPassword}
+              setMqttPassword={setMqttPassword}
+              mqttEncryptionEnabled={mqttEncryptionEnabled}
+              setMqttEncryptionEnabled={setMqttEncryptionEnabled}
+              mqttJsonEnabled={mqttJsonEnabled}
+              setMqttJsonEnabled={setMqttJsonEnabled}
+              mqttRoot={mqttRoot}
+              setMqttRoot={setMqttRoot}
+              tlsEnabled={mqttTlsEnabled}
+              setTlsEnabled={setMqttTlsEnabled}
+              proxyToClientEnabled={mqttProxyToClientEnabled}
+              setProxyToClientEnabled={setMqttProxyToClientEnabled}
+              mapReportingEnabled={mqttMapReportingEnabled}
+              setMapReportingEnabled={setMqttMapReportingEnabled}
+              mapPublishIntervalSecs={mqttMapPublishIntervalSecs}
+              setMapPublishIntervalSecs={setMqttMapPublishIntervalSecs}
+              mapPositionPrecision={mqttMapPositionPrecision}
+              setMapPositionPrecision={setMqttMapPositionPrecision}
+              isBridged={isBridged}
+              isSaving={isSaving}
+              onSave={handleSaveMQTTConfig}
+            />
+          </ModuleAvailabilityGate>
         </div>
 
         <div id="config-neighbor">
-          <NeighborInfoSection
-            neighborInfoEnabled={neighborInfoEnabled}
-            setNeighborInfoEnabled={setNeighborInfoEnabled}
-            neighborInfoInterval={neighborInfoInterval}
-            setNeighborInfoInterval={setNeighborInfoInterval}
-            neighborInfoTransmitOverLora={neighborInfoTransmitOverLora}
-            setNeighborInfoTransmitOverLora={setNeighborInfoTransmitOverLora}
-            isSaving={isSaving}
-            onSave={handleSaveNeighborInfoConfig}
-          />
+          <ModuleAvailabilityGate available={supportedModules?.neighborinfo} moduleName="Neighbor Info">
+            <NeighborInfoSection
+              neighborInfoEnabled={neighborInfoEnabled}
+              setNeighborInfoEnabled={setNeighborInfoEnabled}
+              neighborInfoInterval={neighborInfoInterval}
+              setNeighborInfoInterval={setNeighborInfoInterval}
+              neighborInfoTransmitOverLora={neighborInfoTransmitOverLora}
+              setNeighborInfoTransmitOverLora={setNeighborInfoTransmitOverLora}
+              isSaving={isSaving}
+              onSave={handleSaveNeighborInfoConfig}
+            />
+          </ModuleAvailabilityGate>
         </div>
 
         <div id="config-network">
-          <NetworkConfigSection
-            wifiEnabled={wifiEnabled}
-            setWifiEnabled={setWifiEnabled}
-            wifiSsid={wifiSsid}
-            setWifiSsid={setWifiSsid}
-            wifiPsk={wifiPsk}
-            setWifiPsk={setWifiPsk}
-            ntpServer={ntpServer}
-            setNtpServer={setNtpServer}
-            rsyslogServer={rsyslogServer}
-            setRsyslogServer={setRsyslogServer}
-            addressMode={addressMode}
-            setAddressMode={setAddressMode}
-            enabledProtocols={enabledProtocols}
-            setEnabledProtocols={setEnabledProtocols}
-            ipv4Address={ipv4Address}
-            setIpv4Address={setIpv4Address}
-            ipv4Gateway={ipv4Gateway}
-            setIpv4Gateway={setIpv4Gateway}
-            ipv4Subnet={ipv4Subnet}
-            setIpv4Subnet={setIpv4Subnet}
-            ipv4Dns={ipv4Dns}
-            setIpv4Dns={setIpv4Dns}
-            isBridged={isBridged}
-            isSaving={isSaving}
-            onSave={handleSaveNetworkConfig}
-          />
+          <ModuleAvailabilityGate available={supportedModules?.network} moduleName="Network">
+            <NetworkConfigSection
+              wifiEnabled={wifiEnabled}
+              setWifiEnabled={setWifiEnabled}
+              wifiSsid={wifiSsid}
+              setWifiSsid={setWifiSsid}
+              wifiPsk={wifiPsk}
+              setWifiPsk={setWifiPsk}
+              ntpServer={ntpServer}
+              setNtpServer={setNtpServer}
+              rsyslogServer={rsyslogServer}
+              setRsyslogServer={setRsyslogServer}
+              addressMode={addressMode}
+              setAddressMode={setAddressMode}
+              enabledProtocols={enabledProtocols}
+              setEnabledProtocols={setEnabledProtocols}
+              ipv4Address={ipv4Address}
+              setIpv4Address={setIpv4Address}
+              ipv4Gateway={ipv4Gateway}
+              setIpv4Gateway={setIpv4Gateway}
+              ipv4Subnet={ipv4Subnet}
+              setIpv4Subnet={setIpv4Subnet}
+              ipv4Dns={ipv4Dns}
+              setIpv4Dns={setIpv4Dns}
+              isBridged={isBridged}
+              isSaving={isSaving}
+              onSave={handleSaveNetworkConfig}
+            />
+          </ModuleAvailabilityGate>
         </div>
 
         <div id="config-extnotif">
-          <ExternalNotificationConfigSection
-            enabled={extNotifEnabled}
-            setEnabled={setExtNotifEnabled}
-            outputMs={extNotifOutputMs}
-            setOutputMs={setExtNotifOutputMs}
-            output={extNotifOutput}
-            setOutput={setExtNotifOutput}
-            active={extNotifActive}
-            setActive={setExtNotifActive}
-            alertMessage={extNotifAlertMessage}
-            setAlertMessage={setExtNotifAlertMessage}
-            alertMessageVibra={extNotifAlertMessageVibra}
-            setAlertMessageVibra={setExtNotifAlertMessageVibra}
-            alertMessageBuzzer={extNotifAlertMessageBuzzer}
-            setAlertMessageBuzzer={setExtNotifAlertMessageBuzzer}
-            alertBell={extNotifAlertBell}
-            setAlertBell={setExtNotifAlertBell}
-            alertBellVibra={extNotifAlertBellVibra}
-            setAlertBellVibra={setExtNotifAlertBellVibra}
-            alertBellBuzzer={extNotifAlertBellBuzzer}
-            setAlertBellBuzzer={setExtNotifAlertBellBuzzer}
-            usePwm={extNotifUsePwm}
-            setUsePwm={setExtNotifUsePwm}
-            nagTimeout={extNotifNagTimeout}
-            setNagTimeout={setExtNotifNagTimeout}
-            useI2sAsBuzzer={extNotifUseI2sAsBuzzer}
-            setUseI2sAsBuzzer={setExtNotifUseI2sAsBuzzer}
-            outputVibra={extNotifOutputVibra}
-            setOutputVibra={setExtNotifOutputVibra}
-            outputBuzzer={extNotifOutputBuzzer}
-            setOutputBuzzer={setExtNotifOutputBuzzer}
-            isSaving={isSaving}
-            onSave={handleSaveExternalNotificationConfig}
-          />
+          <ModuleAvailabilityGate available={supportedModules?.extnotif} moduleName="External Notification">
+            <ExternalNotificationConfigSection
+              enabled={extNotifEnabled}
+              setEnabled={setExtNotifEnabled}
+              outputMs={extNotifOutputMs}
+              setOutputMs={setExtNotifOutputMs}
+              output={extNotifOutput}
+              setOutput={setExtNotifOutput}
+              active={extNotifActive}
+              setActive={setExtNotifActive}
+              alertMessage={extNotifAlertMessage}
+              setAlertMessage={setExtNotifAlertMessage}
+              alertMessageVibra={extNotifAlertMessageVibra}
+              setAlertMessageVibra={setExtNotifAlertMessageVibra}
+              alertMessageBuzzer={extNotifAlertMessageBuzzer}
+              setAlertMessageBuzzer={setExtNotifAlertMessageBuzzer}
+              alertBell={extNotifAlertBell}
+              setAlertBell={setExtNotifAlertBell}
+              alertBellVibra={extNotifAlertBellVibra}
+              setAlertBellVibra={setExtNotifAlertBellVibra}
+              alertBellBuzzer={extNotifAlertBellBuzzer}
+              setAlertBellBuzzer={setExtNotifAlertBellBuzzer}
+              usePwm={extNotifUsePwm}
+              setUsePwm={setExtNotifUsePwm}
+              nagTimeout={extNotifNagTimeout}
+              setNagTimeout={setExtNotifNagTimeout}
+              useI2sAsBuzzer={extNotifUseI2sAsBuzzer}
+              setUseI2sAsBuzzer={setExtNotifUseI2sAsBuzzer}
+              outputVibra={extNotifOutputVibra}
+              setOutputVibra={setExtNotifOutputVibra}
+              outputBuzzer={extNotifOutputBuzzer}
+              setOutputBuzzer={setExtNotifOutputBuzzer}
+              isSaving={isSaving}
+              onSave={handleSaveExternalNotificationConfig}
+            />
+          </ModuleAvailabilityGate>
         </div>
 
         <div id="config-storeforward">
-          <StoreForwardConfigSection
-            enabled={storeForwardEnabled}
-            setEnabled={setStoreForwardEnabled}
-            heartbeat={storeForwardHeartbeat}
-            setHeartbeat={setStoreForwardHeartbeat}
-            records={storeForwardRecords}
-            setRecords={setStoreForwardRecords}
-            historyReturnMax={storeForwardHistoryReturnMax}
-            setHistoryReturnMax={setStoreForwardHistoryReturnMax}
-            historyReturnWindow={storeForwardHistoryReturnWindow}
-            setHistoryReturnWindow={setStoreForwardHistoryReturnWindow}
-            isServer={storeForwardIsServer}
-            setIsServer={setStoreForwardIsServer}
-            isSaving={isSaving}
-            onSave={handleSaveStoreForwardConfig}
-          />
+          <ModuleAvailabilityGate available={supportedModules?.storeforward} moduleName="Store & Forward">
+            <StoreForwardConfigSection
+              enabled={storeForwardEnabled}
+              setEnabled={setStoreForwardEnabled}
+              heartbeat={storeForwardHeartbeat}
+              setHeartbeat={setStoreForwardHeartbeat}
+              records={storeForwardRecords}
+              setRecords={setStoreForwardRecords}
+              historyReturnMax={storeForwardHistoryReturnMax}
+              setHistoryReturnMax={setStoreForwardHistoryReturnMax}
+              historyReturnWindow={storeForwardHistoryReturnWindow}
+              setHistoryReturnWindow={setStoreForwardHistoryReturnWindow}
+              isServer={storeForwardIsServer}
+              setIsServer={setStoreForwardIsServer}
+              isSaving={isSaving}
+              onSave={handleSaveStoreForwardConfig}
+            />
+          </ModuleAvailabilityGate>
         </div>
 
         <div id="config-rangetest">
+          <ModuleAvailabilityGate available={supportedModules?.rangetest} moduleName="Range Test">
           <RangeTestConfigSection
             enabled={rangeTestEnabled}
             setEnabled={setRangeTestEnabled}
@@ -2490,105 +2517,116 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             isSaving={isSaving}
             onSave={handleSaveRangeTestConfig}
           />
+          </ModuleAvailabilityGate>
         </div>
 
         <div id="config-cannedmsg">
-          <CannedMessageConfigSection
-            enabled={cannedMsgEnabled}
-            setEnabled={setCannedMsgEnabled}
-            rotary1Enabled={cannedMsgRotary1Enabled}
-            setRotary1Enabled={setCannedMsgRotary1Enabled}
-            inputbrokerPinA={cannedMsgInputbrokerPinA}
-            setInputbrokerPinA={setCannedMsgInputbrokerPinA}
-            inputbrokerPinB={cannedMsgInputbrokerPinB}
-            setInputbrokerPinB={setCannedMsgInputbrokerPinB}
-            inputbrokerPinPress={cannedMsgInputbrokerPinPress}
-            setInputbrokerPinPress={setCannedMsgInputbrokerPinPress}
-            inputbrokerEventCw={cannedMsgInputbrokerEventCw}
-            setInputbrokerEventCw={setCannedMsgInputbrokerEventCw}
-            inputbrokerEventCcw={cannedMsgInputbrokerEventCcw}
-            setInputbrokerEventCcw={setCannedMsgInputbrokerEventCcw}
-            inputbrokerEventPress={cannedMsgInputbrokerEventPress}
-            setInputbrokerEventPress={setCannedMsgInputbrokerEventPress}
-            updown1Enabled={cannedMsgUpdown1Enabled}
-            setUpdown1Enabled={setCannedMsgUpdown1Enabled}
-            sendBell={cannedMsgSendBell}
-            setSendBell={setCannedMsgSendBell}
-            allowInputSource={cannedMsgAllowInputSource}
-            setAllowInputSource={setCannedMsgAllowInputSource}
-            isSaving={isSaving}
-            onSave={handleSaveCannedMessageConfig}
-          />
+          <ModuleAvailabilityGate available={supportedModules?.cannedmsg} moduleName="Canned Messages">
+            <CannedMessageConfigSection
+              enabled={cannedMsgEnabled}
+              setEnabled={setCannedMsgEnabled}
+              rotary1Enabled={cannedMsgRotary1Enabled}
+              setRotary1Enabled={setCannedMsgRotary1Enabled}
+              inputbrokerPinA={cannedMsgInputbrokerPinA}
+              setInputbrokerPinA={setCannedMsgInputbrokerPinA}
+              inputbrokerPinB={cannedMsgInputbrokerPinB}
+              setInputbrokerPinB={setCannedMsgInputbrokerPinB}
+              inputbrokerPinPress={cannedMsgInputbrokerPinPress}
+              setInputbrokerPinPress={setCannedMsgInputbrokerPinPress}
+              inputbrokerEventCw={cannedMsgInputbrokerEventCw}
+              setInputbrokerEventCw={setCannedMsgInputbrokerEventCw}
+              inputbrokerEventCcw={cannedMsgInputbrokerEventCcw}
+              setInputbrokerEventCcw={setCannedMsgInputbrokerEventCcw}
+              inputbrokerEventPress={cannedMsgInputbrokerEventPress}
+              setInputbrokerEventPress={setCannedMsgInputbrokerEventPress}
+              updown1Enabled={cannedMsgUpdown1Enabled}
+              setUpdown1Enabled={setCannedMsgUpdown1Enabled}
+              sendBell={cannedMsgSendBell}
+              setSendBell={setCannedMsgSendBell}
+              allowInputSource={cannedMsgAllowInputSource}
+              setAllowInputSource={setCannedMsgAllowInputSource}
+              isSaving={isSaving}
+              onSave={handleSaveCannedMessageConfig}
+            />
+          </ModuleAvailabilityGate>
         </div>
 
         <div id="config-audio">
-          <AudioConfigSection
-            codec2Enabled={audioCodec2Enabled}
-            setCodec2Enabled={setAudioCodec2Enabled}
-            pttPin={audioPttPin}
-            setPttPin={setAudioPttPin}
-            bitrate={audioBitrate}
-            setBitrate={setAudioBitrate}
-            i2sWs={audioI2sWs}
-            setI2sWs={setAudioI2sWs}
-            i2sSd={audioI2sSd}
-            setI2sSd={setAudioI2sSd}
-            i2sDin={audioI2sDin}
-            setI2sDin={setAudioI2sDin}
-            i2sSck={audioI2sSck}
-            setI2sSck={setAudioI2sSck}
-            isSaving={isSaving}
-            onSave={handleSaveAudioConfig}
-          />
+          <ModuleAvailabilityGate available={supportedModules?.audio} moduleName="Audio">
+            <AudioConfigSection
+              codec2Enabled={audioCodec2Enabled}
+              setCodec2Enabled={setAudioCodec2Enabled}
+              pttPin={audioPttPin}
+              setPttPin={setAudioPttPin}
+              bitrate={audioBitrate}
+              setBitrate={setAudioBitrate}
+              i2sWs={audioI2sWs}
+              setI2sWs={setAudioI2sWs}
+              i2sSd={audioI2sSd}
+              setI2sSd={setAudioI2sSd}
+              i2sDin={audioI2sDin}
+              setI2sDin={setAudioI2sDin}
+              i2sSck={audioI2sSck}
+              setI2sSck={setAudioI2sSck}
+              isSaving={isSaving}
+              onSave={handleSaveAudioConfig}
+            />
+          </ModuleAvailabilityGate>
         </div>
 
         <div id="config-remotehardware">
-          <RemoteHardwareConfigSection
-            enabled={remoteHardwareEnabled}
-            setEnabled={setRemoteHardwareEnabled}
-            allowUndefinedPinAccess={remoteHardwareAllowUndefinedPinAccess}
-            setAllowUndefinedPinAccess={setRemoteHardwareAllowUndefinedPinAccess}
-            isSaving={isSaving}
-            onSave={handleSaveRemoteHardwareConfig}
-          />
+          <ModuleAvailabilityGate available={supportedModules?.remotehardware} moduleName="Remote Hardware">
+            <RemoteHardwareConfigSection
+              enabled={remoteHardwareEnabled}
+              setEnabled={setRemoteHardwareEnabled}
+              allowUndefinedPinAccess={remoteHardwareAllowUndefinedPinAccess}
+              setAllowUndefinedPinAccess={setRemoteHardwareAllowUndefinedPinAccess}
+              isSaving={isSaving}
+              onSave={handleSaveRemoteHardwareConfig}
+            />
+          </ModuleAvailabilityGate>
         </div>
 
         <div id="config-detectionsensor">
-          <DetectionSensorConfigSection
-            enabled={detectionSensorEnabled}
-            setEnabled={setDetectionSensorEnabled}
-            minimumBroadcastSecs={detectionSensorMinimumBroadcastSecs}
-            setMinimumBroadcastSecs={setDetectionSensorMinimumBroadcastSecs}
-            stateBroadcastSecs={detectionSensorStateBroadcastSecs}
-            setStateBroadcastSecs={setDetectionSensorStateBroadcastSecs}
-            sendBell={detectionSensorSendBell}
-            setSendBell={setDetectionSensorSendBell}
-            name={detectionSensorName}
-            setName={setDetectionSensorName}
-            monitorPin={detectionSensorMonitorPin}
-            setMonitorPin={setDetectionSensorMonitorPin}
-            detectionTriggerType={detectionSensorDetectionTriggerType}
-            setDetectionTriggerType={setDetectionSensorDetectionTriggerType}
-            usePullup={detectionSensorUsePullup}
-            setUsePullup={setDetectionSensorUsePullup}
-            isSaving={isSaving}
-            onSave={handleSaveDetectionSensorConfig}
-          />
+          <ModuleAvailabilityGate available={supportedModules?.detectionsensor} moduleName="Detection Sensor">
+            <DetectionSensorConfigSection
+              enabled={detectionSensorEnabled}
+              setEnabled={setDetectionSensorEnabled}
+              minimumBroadcastSecs={detectionSensorMinimumBroadcastSecs}
+              setMinimumBroadcastSecs={setDetectionSensorMinimumBroadcastSecs}
+              stateBroadcastSecs={detectionSensorStateBroadcastSecs}
+              setStateBroadcastSecs={setDetectionSensorStateBroadcastSecs}
+              sendBell={detectionSensorSendBell}
+              setSendBell={setDetectionSensorSendBell}
+              name={detectionSensorName}
+              setName={setDetectionSensorName}
+              monitorPin={detectionSensorMonitorPin}
+              setMonitorPin={setDetectionSensorMonitorPin}
+              detectionTriggerType={detectionSensorDetectionTriggerType}
+              setDetectionTriggerType={setDetectionSensorDetectionTriggerType}
+              usePullup={detectionSensorUsePullup}
+              setUsePullup={setDetectionSensorUsePullup}
+              isSaving={isSaving}
+              onSave={handleSaveDetectionSensorConfig}
+            />
+          </ModuleAvailabilityGate>
         </div>
 
         <div id="config-paxcounter">
-          <PaxcounterConfigSection
-            enabled={paxcounterEnabled}
-            setEnabled={setPaxcounterEnabled}
-            paxcounterUpdateInterval={paxcounterUpdateInterval}
-            setPaxcounterUpdateInterval={setPaxcounterUpdateInterval}
-            wifiThreshold={paxcounterWifiThreshold}
-            setWifiThreshold={setPaxcounterWifiThreshold}
-            bleThreshold={paxcounterBleThreshold}
-            setBleThreshold={setPaxcounterBleThreshold}
-            isSaving={isSaving}
-            onSave={handleSavePaxcounterConfig}
-          />
+          <ModuleAvailabilityGate available={supportedModules?.paxcounter} moduleName="Paxcounter">
+            <PaxcounterConfigSection
+              enabled={paxcounterEnabled}
+              setEnabled={setPaxcounterEnabled}
+              paxcounterUpdateInterval={paxcounterUpdateInterval}
+              setPaxcounterUpdateInterval={setPaxcounterUpdateInterval}
+              wifiThreshold={paxcounterWifiThreshold}
+              setWifiThreshold={setPaxcounterWifiThreshold}
+              bleThreshold={paxcounterBleThreshold}
+              setBleThreshold={setPaxcounterBleThreshold}
+              isSaving={isSaving}
+              onSave={handleSavePaxcounterConfig}
+            />
+          </ModuleAvailabilityGate>
         </div>
 
         <div id="config-statusmessage">
@@ -2649,43 +2687,47 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         </div>
 
         <div id="config-serial">
-          <SerialConfigSection
-            enabled={serialEnabled}
-            setEnabled={setSerialEnabled}
-            echo={serialEcho}
-            setEcho={setSerialEcho}
-            rxd={serialRxd}
-            setRxd={setSerialRxd}
-            txd={serialTxd}
-            setTxd={setSerialTxd}
-            baud={serialBaud}
-            setBaud={setSerialBaud}
-            timeout={serialTimeout}
-            setTimeout={setSerialTimeout}
-            mode={serialMode}
-            setMode={setSerialMode}
-            overrideConsoleSerialPort={serialOverrideConsoleSerialPort}
-            setOverrideConsoleSerialPort={setSerialOverrideConsoleSerialPort}
-            isSaving={isSaving}
-            onSave={handleSaveSerialConfig}
-          />
+          <ModuleAvailabilityGate available={supportedModules?.serial} moduleName="Serial">
+            <SerialConfigSection
+              enabled={serialEnabled}
+              setEnabled={setSerialEnabled}
+              echo={serialEcho}
+              setEcho={setSerialEcho}
+              rxd={serialRxd}
+              setRxd={setSerialRxd}
+              txd={serialTxd}
+              setTxd={setSerialTxd}
+              baud={serialBaud}
+              setBaud={setSerialBaud}
+              timeout={serialTimeout}
+              setTimeout={setSerialTimeout}
+              mode={serialMode}
+              setMode={setSerialMode}
+              overrideConsoleSerialPort={serialOverrideConsoleSerialPort}
+              setOverrideConsoleSerialPort={setSerialOverrideConsoleSerialPort}
+              isSaving={isSaving}
+              onSave={handleSaveSerialConfig}
+            />
+          </ModuleAvailabilityGate>
         </div>
 
         <div id="config-ambientlighting">
-          <AmbientLightingConfigSection
-            ledState={ambientLedState}
-            setLedState={setAmbientLedState}
-            current={ambientCurrent}
-            setCurrent={setAmbientCurrent}
-            red={ambientRed}
-            setRed={setAmbientRed}
-            green={ambientGreen}
-            setGreen={setAmbientGreen}
-            blue={ambientBlue}
-            setBlue={setAmbientBlue}
-            isSaving={isSaving}
-            onSave={handleSaveAmbientLightingConfig}
-          />
+          <ModuleAvailabilityGate available={supportedModules?.ambientlighting} moduleName="Ambient Lighting">
+            <AmbientLightingConfigSection
+              ledState={ambientLedState}
+              setLedState={setAmbientLedState}
+              current={ambientCurrent}
+              setCurrent={setAmbientCurrent}
+              red={ambientRed}
+              setRed={setAmbientRed}
+              green={ambientGreen}
+              setGreen={setAmbientGreen}
+              blue={ambientBlue}
+              setBlue={setAmbientBlue}
+              isSaving={isSaving}
+              onSave={handleSaveAmbientLightingConfig}
+            />
+          </ModuleAvailabilityGate>
         </div>
 
         <div id="config-security">
