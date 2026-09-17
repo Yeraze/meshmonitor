@@ -27,6 +27,7 @@ import {
   MAX_INFRA_NODE_AGE_HOURS_DEFAULT,
 } from '../constants/nodeDisplayDefaults';
 import type { NodeHopsCalculation } from '../contexts/SettingsContext';
+import { pickSetting, NODE_HOPS_CALCULATIONS } from '../contexts/settingsEnums';
 
 export interface NodeDisplaySettings {
   maxNodeAgeHours: number;
@@ -45,17 +46,12 @@ export interface NodeDisplaySettings {
   nodeDimmingMinOpacity: number;
 }
 
-const VALID_NODE_HOPS_CALCULATIONS: readonly NodeHopsCalculation[] = [
-  'nodeinfo',
-  'traceroute',
-  'messages',
-];
-
 function parseNodeHopsCalculation(raw: string | undefined): NodeHopsCalculation {
-  if (raw && (VALID_NODE_HOPS_CALCULATIONS as readonly string[]).includes(raw)) {
-    return raw as NodeHopsCalculation;
-  }
-  return NODE_DISPLAY_STRING_DEFAULTS.nodeHopsCalculation as NodeHopsCalculation;
+  // Shares NODE_HOPS_CALCULATIONS with SettingsContext. This file used to keep
+  // its own copy; SettingsContext kept two more, and one of those was missing
+  // 'nodeinfo' — three hand-written lists for one setting, disagreeing.
+  return pickSetting(raw, NODE_HOPS_CALCULATIONS)
+    ?? (NODE_DISPLAY_STRING_DEFAULTS.nodeHopsCalculation as NodeHopsCalculation);
 }
 
 /** Parse a raw `/api/settings` map into the ten values. Exported for testing. */

@@ -73,13 +73,21 @@ describe('mapPinColorMode wiring (#5018)', () => {
 describe('mapPinColorMode is allowlisted on BOTH load paths (#5018)', () => {
   const ctx = () => read('src/contexts/SettingsContext.tsx');
 
-  it('seeds from localStorage through an allowlist', () => {
-    expect(ctx()).toMatch(/localStorage\.getItem\('mapPinColorMode'\)[\s\S]{0,200}?saved === 'hops'/);
+  // The original assertions here pinned the literal comparisons this setting
+  // used. Both entry points now resolve through the shared `pickSetting` +
+  // MAP_PIN_COLOR_MODES introduced when the same gap was fixed across every
+  // enum setting, so these assert the mechanism rather than the old shape.
+  // settingsEnums.test.ts covers the generalised rule for all of them.
+
+  it('resolves the server value through the shared allowlist', () => {
+    expect(ctx()).toContain('pickSetting(settings.mapPinColorMode, MAP_PIN_COLOR_MODES)');
   });
 
-  it('accepts a server value only when it is one of the two modes', () => {
-    // Not `if (settings.mapPinColorMode)` — that admits any non-empty string.
-    expect(ctx()).toContain("settings.mapPinColorMode === 'hops' || settings.mapPinColorMode === 'node'");
+  it('seeds from localStorage through the same allowlist', () => {
+    const lines = ctx().split('\n');
+    const at = lines.findIndex((l) => l.includes("localStorage.getItem('mapPinColorMode')"));
+    expect(at).toBeGreaterThan(-1);
+    expect(lines.slice(at, at + 4).join('\n')).toContain('pickSetting(saved, MAP_PIN_COLOR_MODES)');
   });
 
   it('does not cast the server value to the type unchecked', () => {
