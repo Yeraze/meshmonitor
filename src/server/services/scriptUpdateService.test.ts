@@ -232,6 +232,65 @@ describe('applyScriptUpdate and rollback (#5255)', () => {
       .rejects.toThrow('Script not found');
   });
 
+  it('keeps a crafted filename inside the backup directory', async () => {
+    writeScript('weather.py', installed);
+    h.safeFetch.mockResolvedValue(contentsResponse(WEATHER_V2));
+
+    // A caller that skipped the route's own basename() must not be able to
+    // write the backup outside .backups/.
+    await applyScriptUpdate(dir, {
+      filename: 'weather.py',
+      version: '1.0.0',
+      source: 'kd2abc/scripts/weather.py',
+    });
+    expect(fs.existsSync(path.join(dir, '.backups', 'weather.py'))).toBe(true);
+
+    // A traversing name resolves to the same script inside the directory
+    // rather than escaping it.
+    const rolled = rollbackScriptUpdate(dir, '../../weather.py');
+    expect(rolled.filename).toBe('weather.py');
+    expect(fs.readFileSync(path.join(dir, 'weather.py'), 'utf8')).toBe(installed);
+    expect(fs.existsSync(path.join(dir, '..', 'weather.py'))).toBe(false);
+  });
+
+  it('records the version read from the replaced file, even when none was parsed', async () => {
+    writeScript('weather.py', installed);
+    h.safeFetch.mockResolvedValue(contentsResponse(WEATHER_V2));
+
+    const result = await applyScriptUpdate(dir, { filename: 'weather.py', version: null, source: 'kd2abc/scripts/weather.py' });
+    expect(result.previousVersion).toBe('1.0.0');
+  });
+
+  it('leaves no temp file behind when the write fails', async () => {
+    writeScript('weather.py', installed);
+    h.safeFetch.mockResolvedValue(contentsResponse(WEATHER_V2));
+    const writeSpy = vi.spyOn(fs, 'writeFileSync').mockImplementationOnce(() => {
+      throw new Error('disk full');
+    });
+
+    await expect(applyScriptUpdate(dir, { filename: 'weather.py', version: '1.0.0', source: 'kd2abc/scripts/weather.py' }))
+      .rejects.toThrow('disk full');
+    writeSpy.mockRestore();
+
+    expect(fs.readdirSync(dir).filter(f => f.includes('.tmp-'))).toEqual([]);
+    expect(fs.readFileSync(path.join(dir, 'weather.py'), 'utf8')).toBe(installed);
+  });
+
+  it('ignores junk in a backup record rather than passing it on', async () => {
+    writeScript('weather.py', installed);
+    fs.mkdirSync(path.join(dir, '.backups'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.backups', 'weather.py'), installed);
+    fs.writeFileSync(
+      path.join(dir, '.backups', 'weather.py.json'),
+      JSON.stringify({ previousVersion: 'x'.repeat(500), source: { not: 'a string' }, updatedAt: 'soon' })
+    );
+
+    h.safeFetch.mockResolvedValue(contentsResponse(WEATHER_V2));
+    const status = await checkScriptForUpdate(dir, { filename: 'weather.py', version: '2.0.0', source: 'kd2abc/scripts/weather.py' });
+    expect(status.hasBackup).toBe(true);
+    expect(status.backupVersion?.length).toBe(20);
+  });
+
   it('refuses a rollback with no backup', () => {
     expect(() => rollbackScriptUpdate(dir, 'weather.py')).toThrow(/No backup/);
   });

@@ -152,11 +152,12 @@ const ScriptsSection: React.FC<ScriptsSectionProps> = ({ baseUrl, canWrite = tru
   const handleCheckUpdates = useCallback(async () => {
     setIsChecking(true);
     try {
-      const body = await apiService.get<{ scripts?: ScriptUpdateStatus[]; checkedAt?: number }>('/api/scripts/updates');
+      // The endpoint uses the shared envelope, and apiService does not unwrap it.
+      const body = await apiService.get<{ data?: { scripts?: ScriptUpdateStatus[]; checkedAt?: number } }>('/api/scripts/updates');
       const byName: Record<string, ScriptUpdateStatus> = {};
-      for (const status of body.scripts ?? []) byName[status.filename] = status;
+      for (const status of body.data?.scripts ?? []) byName[status.filename] = status;
       setUpdates(byName);
-      setCheckedAt(body.checkedAt ?? Date.now());
+      setCheckedAt(body.data?.checkedAt ?? Date.now());
 
       const available = Object.values(byName).filter(u => u.updateAvailable).length;
       showToast(available === 0 ? 'All scripts are up to date' : `${available} update${available === 1 ? '' : 's'} available`, 'success');
@@ -174,9 +175,12 @@ const ScriptsSection: React.FC<ScriptsSectionProps> = ({ baseUrl, canWrite = tru
       const response = await csrfFetch(`${baseUrl}/api/scripts/${encodeURIComponent(filename)}/update`, { method: 'POST' });
       const body = await response.json();
       if (!response.ok) throw new Error(body?.error || 'Update failed');
-      showToast(`Updated ${filename} to v${body.newVersion ?? 'the latest version'}`, 'success');
+      const result = body.data ?? body;
+      showToast(`Updated ${filename} to v${result.newVersion ?? 'the latest version'}`, 'success');
+      // The response carries this script's fresh status, so refresh one card
+      // rather than re-checking every script against GitHub.
+      if (result.status) setUpdates(prev => ({ ...prev, [filename]: result.status }));
       await fetchInventory();
-      await handleCheckUpdates();
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Update failed', 'error');
     } finally {
@@ -190,9 +194,10 @@ const ScriptsSection: React.FC<ScriptsSectionProps> = ({ baseUrl, canWrite = tru
       const response = await csrfFetch(`${baseUrl}/api/scripts/${encodeURIComponent(filename)}/rollback`, { method: 'POST' });
       const body = await response.json();
       if (!response.ok) throw new Error(body?.error || 'Rollback failed');
-      showToast(`Restored ${filename}${body.restoredVersion ? ` to v${body.restoredVersion}` : ''}`, 'success');
+      const result = body.data ?? body;
+      showToast(`Restored ${filename}${result.restoredVersion ? ` to v${result.restoredVersion}` : ''}`, 'success');
+      if (result.status) setUpdates(prev => ({ ...prev, [filename]: result.status }));
       await fetchInventory();
-      await handleCheckUpdates();
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Rollback failed', 'error');
     } finally {

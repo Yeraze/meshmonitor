@@ -59,7 +59,11 @@ interface BackupRecord {
   updatedAt: number;
 }
 
-/** Gallery paths in the main repo are repo-relative; give them their owner/repo. */
+/**
+ * Gallery paths in the main repo are repo-relative; give them their owner/repo.
+ * The owner is hardcoded because the listing is this project's own; a fork that
+ * ships its own gallery would need to change it here too.
+ */
 function sourceFromGalleryPath(githubPath: string): ScriptSource | null {
   const value = githubPath.startsWith('examples/') ? `Yeraze/meshmonitor/${githubPath}` : githubPath;
   return parseScriptSource(value);
@@ -101,7 +105,14 @@ export async function resolveScriptSource(
   return null;
 }
 
-/** Store (or clear, with null) the admin-entered source for one script. */
+/**
+ * Store (or clear, with null) the admin-entered source for one script.
+ *
+ * This is a read-modify-write of one settings row. Two admins saving sources
+ * for different scripts in the same instant would leave only the later write,
+ * which is acceptable for a rarely-touched, admin-only field; it is not a
+ * hot path worth a lock.
+ */
 export async function setManualScriptSource(filename: string, value: string | null): Promise<ScriptSource | null> {
   const sources = await getManualSources();
   let parsed: ScriptSource | null = null;
@@ -167,17 +178,37 @@ export function versionFromContents(contents: string): string | null {
 }
 
 function backupPaths(scriptsDir: string, filename: string) {
+  // basename here as well as in the route: this is a public function, and a
+  // future caller that forgets would otherwise write outside the backup
+  // directory.
+  const safe = path.basename(filename);
   const dir = path.join(scriptsDir, BACKUP_DIR_NAME);
-  return { dir, file: path.join(dir, filename), meta: path.join(dir, `${filename}.json`) };
+  return { dir, file: path.join(dir, safe), meta: path.join(dir, `${safe}.json`) };
+}
+
+/** A version string we are willing to show, from a file anyone could edit. */
+function safeVersion(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim().slice(0, 20) : null;
 }
 
 function readBackupRecord(scriptsDir: string, filename: string): BackupRecord | null {
   const { file, meta } = backupPaths(scriptsDir, filename);
   if (!fs.existsSync(file)) return null;
+
+  const empty: BackupRecord = { filename, previousVersion: null, newVersion: null, source: null, updatedAt: 0 };
   try {
-    return JSON.parse(fs.readFileSync(meta, 'utf8')) as BackupRecord;
+    // The record sits on disk beside the backup, so treat its fields as
+    // untrusted: they reach a log line and an API response.
+    const raw = JSON.parse(fs.readFileSync(meta, 'utf8')) as Record<string, unknown>;
+    return {
+      filename,
+      previousVersion: safeVersion(raw.previousVersion),
+      newVersion: safeVersion(raw.newVersion),
+      source: typeof raw.source === 'string' ? raw.source.slice(0, 200) : null,
+      updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : 0,
+    };
   } catch {
-    return { filename, previousVersion: null, newVersion: null, source: null, updatedAt: 0 };
+    return empty;
   }
 }
 
@@ -240,42 +271,56 @@ export async function applyScriptUpdate(
   scriptsDir: string,
   script: { filename: string; version?: string | null; source?: string | null },
 ): Promise<{ filename: string; previousVersion: string | null; newVersion: string | null; source: string }> {
-  const resolved = await resolveScriptSource(script.filename, script.source);
+  // Every path below is built from the basename: a caller that skipped the
+  // route's own sanitising must not be able to read or write outside the
+  // scripts directory.
+  const filename = path.basename(script.filename);
+  const resolved = await resolveScriptSource(filename, script.source);
   if (!resolved) throw new Error('This script has no update source');
 
-  const filePath = path.join(scriptsDir, script.filename);
+  const filePath = path.join(scriptsDir, filename);
   if (!fs.existsSync(filePath)) throw new Error('Script not found');
 
   const contents = await fetchSourceContents(resolved.source);
   const newVersion = versionFromContents(contents);
 
-  const { dir, file, meta } = backupPaths(scriptsDir, script.filename);
+  const { dir, file, meta } = backupPaths(scriptsDir, filename);
   fs.mkdirSync(dir, { recursive: true });
+  // Read the version out of the file we are about to replace, so a rollback can
+  // name it even when the inventory never parsed one.
+  const previousVersion = versionFromContents(fs.readFileSync(filePath, 'utf8')) ?? script.version ?? null;
   fs.copyFileSync(filePath, file);
 
   const mode = fs.statSync(filePath).mode;
   const tmp = `${filePath}.tmp-${process.pid}`;
-  fs.writeFileSync(tmp, contents, { mode });
-  fs.renameSync(tmp, filePath);
+  try {
+    fs.writeFileSync(tmp, contents, { mode });
+    fs.renameSync(tmp, filePath);
+  } finally {
+    // A failed write or rename would otherwise leave the temp file behind for
+    // every attempt.
+    fs.rmSync(tmp, { force: true });
+  }
 
   const record: BackupRecord = {
-    filename: script.filename,
-    previousVersion: script.version ?? null,
+    filename,
+    previousVersion,
     newVersion,
     source: formatScriptSource(resolved.source),
     updatedAt: Date.now(),
   };
   fs.writeFileSync(meta, JSON.stringify(record, null, 2));
 
-  logger.info(`Updated script ${script.filename}: ${record.previousVersion ?? 'unknown'} -> ${newVersion ?? 'unknown'}`);
-  return { filename: script.filename, previousVersion: record.previousVersion, newVersion, source: record.source! };
+  logger.info(`Updated script ${record.filename}: ${record.previousVersion ?? 'unknown'} -> ${newVersion ?? 'unknown'}`);
+  return { filename: record.filename, previousVersion: record.previousVersion, newVersion, source: record.source ?? '' };
 }
 
 /** Put the backed-up copy back. */
 export function rollbackScriptUpdate(
   scriptsDir: string,
-  filename: string,
+  rawFilename: string,
 ): { filename: string; restoredVersion: string | null } {
+  const filename = path.basename(rawFilename);
   const { file, meta } = backupPaths(scriptsDir, filename);
   if (!fs.existsSync(file)) throw new Error('No backup to roll back to');
 
@@ -283,9 +328,13 @@ export function rollbackScriptUpdate(
   const filePath = path.join(scriptsDir, filename);
   const mode = fs.existsSync(filePath) ? fs.statSync(filePath).mode : 0o755;
   const tmp = `${filePath}.tmp-${process.pid}`;
-  fs.copyFileSync(file, tmp);
-  fs.chmodSync(tmp, mode);
-  fs.renameSync(tmp, filePath);
+  try {
+    fs.copyFileSync(file, tmp);
+    fs.chmodSync(tmp, mode);
+    fs.renameSync(tmp, filePath);
+  } finally {
+    fs.rmSync(tmp, { force: true });
+  }
 
   fs.unlinkSync(file);
   if (fs.existsSync(meta)) fs.unlinkSync(meta);

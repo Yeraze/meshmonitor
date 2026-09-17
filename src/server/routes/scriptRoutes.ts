@@ -1001,10 +1001,10 @@ router.get('/scripts/updates', requirePermission('settings', 'read'), async (_re
         source: script.source ?? null,
       }))
     );
-    res.json({ scripts: results, checkedAt: Date.now() });
+    ok(res, { scripts: results, checkedAt: Date.now() });
   } catch (error) {
     logger.error('[API] Error checking scripts for updates:', error);
-    res.status(500).json({ error: 'Failed to check scripts for updates' });
+    fail(res, 500, 'SCRIPT_UPDATE_CHECK_FAILED', 'Failed to check scripts for updates');
   }
 });
 
@@ -1013,45 +1013,61 @@ router.put('/scripts/:filename/source', requirePermission('settings', 'write'), 
   const filename = path.basename(req.params.filename);
   try {
     if (!fs.existsSync(path.join(getScriptsDirectory(), filename))) {
-      return res.status(404).json({ error: 'Script not found' });
+      return fail(res, 404, 'SCRIPT_NOT_FOUND', 'Script not found');
     }
     const value = typeof req.body?.source === 'string' ? req.body.source : null;
     const parsed = await setManualScriptSource(filename, value);
-    res.json({ success: true, filename, source: parsed });
+    ok(res, { filename, source: parsed });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to set the update source';
     logger.warn(`[API] Rejected update source for ${filename}: ${message}`);
-    res.status(400).json({ error: message });
+    fail(res, 400, 'SCRIPT_SOURCE_INVALID', message);
   }
 });
 
 router.post('/scripts/:filename/update', requirePermission('settings', 'write'), async (req: Request, res: Response) => {
   const filename = path.basename(req.params.filename);
   try {
+    const scriptsDir = getScriptsDirectory();
     const script = collectScripts().find(s => s.filename === filename);
-    if (!script) return res.status(404).json({ error: 'Script not found' });
+    if (!script) return fail(res, 404, 'SCRIPT_NOT_FOUND', 'Script not found');
 
-    const result = await applyScriptUpdate(getScriptsDirectory(), {
+    const result = await applyScriptUpdate(scriptsDir, {
       filename,
       version: script.version ?? null,
       source: script.source ?? null,
     });
-    res.json({ success: true, ...result });
+    // Hand back this script's fresh status so the UI can refresh one card
+    // instead of re-checking every script against GitHub.
+    const status = await checkScriptForUpdate(scriptsDir, {
+      filename,
+      version: result.newVersion,
+      source: script.source ?? null,
+    });
+    ok(res, { ...result, status });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to update the script';
     logger.error(`[API] Error updating script ${filename}: ${message}`);
-    res.status(400).json({ error: message });
+    fail(res, 400, 'SCRIPT_UPDATE_FAILED', message);
   }
 });
 
 router.post('/scripts/:filename/rollback', requirePermission('settings', 'write'), async (req: Request, res: Response) => {
   const filename = path.basename(req.params.filename);
   try {
-    res.json({ success: true, ...rollbackScriptUpdate(getScriptsDirectory(), filename) });
+    const scriptsDir = getScriptsDirectory();
+    const result = rollbackScriptUpdate(scriptsDir, filename);
+    const script = collectScripts().find(s => s.filename === filename);
+    const status = await checkScriptForUpdate(scriptsDir, {
+      filename,
+      version: script?.version ?? result.restoredVersion,
+      source: script?.source ?? null,
+    });
+    ok(res, { ...result, status });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to roll back the script';
     logger.error(`[API] Error rolling back script ${filename}: ${message}`);
-    res.status(400).json({ error: message });
+    fail(res, 400, 'SCRIPT_ROLLBACK_FAILED', message);
   }
 });
 

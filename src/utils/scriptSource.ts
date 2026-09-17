@@ -36,10 +36,17 @@ export function parseScriptSource(raw: unknown): ScriptSource | null {
   if (!value) return null;
 
   // Accept a github.com URL by reducing it to owner/repo/...
-  const url = value.match(/^https?:\/\/(?:www\.)?github\.com\/(.+)$/i)
-    ?? value.match(/^https?:\/\/raw\.githubusercontent\.com\/(.+)$/i);
-  if (url) {
-    value = url[1];
+  const webUrl = value.match(/^https?:\/\/(?:www\.)?github\.com\/(.+)$/i);
+  // A raw URL carries its ref as the third segment with no `blob` marker
+  // (owner/repo/REF/path), so name it explicitly rather than leaving the ref
+  // stuck on the front of the path, which would 404.
+  const rawUrl = value.match(/^https?:\/\/raw\.githubusercontent\.com\/(.+)$/i);
+  if (webUrl) {
+    value = webUrl[1];
+  } else if (rawUrl) {
+    const parts = rawUrl[1].split('/').filter(Boolean);
+    if (parts.length < 4) return null;
+    value = [parts[0], parts[1], 'blob', ...parts.slice(2)].join('/');
   } else if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) {
     // Any other scheme (file:, http: to another host, …) is not a source.
     return null;
@@ -109,7 +116,26 @@ export function compareVersions(a: string, b: string): number {
   if (pa.pre === pb.pre) return 0;
   if (pa.pre === null) return 1;   // release beats pre-release
   if (pb.pre === null) return -1;
-  return pa.pre < pb.pre ? -1 : 1;
+
+  // Compare pre-release identifiers the way semver does: dot-separated, numeric
+  // parts numerically, so beta.9 sorts before beta.10 rather than after it.
+  const ia = pa.pre.split('.');
+  const ib = pb.pre.split('.');
+  for (let i = 0; i < Math.max(ia.length, ib.length); i++) {
+    const xa = ia[i];
+    const xb = ib[i];
+    if (xa === undefined) return -1;
+    if (xb === undefined) return 1;
+    const na = /^\d+$/.test(xa);
+    const nb = /^\d+$/.test(xb);
+    if (na && nb) {
+      const d = Number(xa) - Number(xb);
+      if (d !== 0) return d < 0 ? -1 : 1;
+    } else if (xa !== xb) {
+      return xa < xb ? -1 : 1;
+    }
+  }
+  return 0;
 }
 
 /** Whether `latest` is a version worth offering over `installed`. */

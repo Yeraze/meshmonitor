@@ -26,12 +26,16 @@ describe('parseScriptSource (#5255)', () => {
     });
   });
 
-  it('parses a raw.githubusercontent URL', () => {
-    expect(parseScriptSource('https://raw.githubusercontent.com/kd2abc/scripts/main/weather.py')).toEqual({
+  it('parses a raw.githubusercontent URL, taking its branch as the ref', () => {
+    // The branch sits where `blob/<ref>` would be in a web URL. Leaving it on
+    // the front of the path would make every raw URL 404.
+    expect(parseScriptSource('https://raw.githubusercontent.com/kd2abc/scripts/main/dir/weather.py')).toEqual({
       owner: 'kd2abc',
       repo: 'scripts',
-      path: 'main/weather.py',
+      path: 'dir/weather.py',
+      ref: 'main',
     });
+    expect(parseScriptSource('https://raw.githubusercontent.com/kd2abc/scripts/weather.py')).toBeNull();
   });
 
   it('rejects anything that could point somewhere else', () => {
@@ -84,6 +88,12 @@ describe('compareVersions (#5255)', () => {
   it('sorts a pre-release before its release', () => {
     expect(compareVersions('1.2.0-beta.1', '1.2.0')).toBeLessThan(0);
     expect(compareVersions('1.2.0-beta.1', '1.2.0-beta.2')).toBeLessThan(0);
+  });
+
+  it('compares numeric pre-release parts as numbers, not text', () => {
+    expect(compareVersions('1.2.0-beta.9', '1.2.0-beta.10')).toBeLessThan(0);
+    expect(compareVersions('1.2.0-beta', '1.2.0-beta.1')).toBeLessThan(0);
+    expect(compareVersions('1.2.0-alpha.1', '1.2.0-beta.1')).toBeLessThan(0);
   });
 
   it('treats unparseable versions as equal, so nothing claims an update', () => {

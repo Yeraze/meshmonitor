@@ -80,8 +80,9 @@ describe('GET /api/scripts/updates (#5255)', () => {
     const agent = await harness.loginAs(harness.admin);
     const res = await agent.get('/api/scripts/updates');
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body.scripts)).toBe(true);
-    expect(res.body.checkedAt).toBeTypeOf('number');
+    // Shared envelope: { success, data: { scripts, checkedAt } }.
+    expect(Array.isArray(res.body.data.scripts)).toBe(true);
+    expect(res.body.data.checkedAt).toBeTypeOf('number');
   });
 });
 
@@ -120,7 +121,7 @@ describe('script update writes (#5255)', () => {
     const agent = await harness.loginAs(harness.admin);
     const res = await agent.post('/api/scripts/mm-test-weather.py/rollback');
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ success: true, filename: 'weather.py', restoredVersion: '1.0.0' });
+    expect(res.body).toMatchObject({ success: true, data: { filename: 'weather.py', restoredVersion: '1.0.0' } });
     expect(h.rollbackScriptUpdate).toHaveBeenCalledWith(expect.any(String), FILENAME);
   });
 
