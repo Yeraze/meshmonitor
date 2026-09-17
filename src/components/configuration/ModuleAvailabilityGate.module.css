@@ -1,0 +1,30 @@
+/*
+ * Shared "this firmware build excludes the module" treatment (#5065).
+ * Mirrors the Range Test removal notice from #5031: the section stays visible
+ * and explains itself, because a section that vanishes reads as a MeshMonitor
+ * bug.
+ */
+
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--color-warning);
+  border-radius: 0.5rem;
+  background-color: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  color: var(--color-warning);
+  line-height: 1.4;
+}
+
+.noticeIcon {
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+/* Grey the controls out and make them inert while the module is unavailable. */
+.disabledControls {
+  opacity: 0.4;
+  pointer-events: none;
+}

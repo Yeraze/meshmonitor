@@ -4214,6 +4214,7 @@
   "rangetest_config.save_description": "Save range test results to RangeTest.csv (ESP32 only)",
   "rangetest_config.save_button": "Save Range Test Config",
   "rangetest_config.removed_in_28": "Range Test was removed in Meshtastic 2.8 and is not available on this firmware. These settings cannot be changed.",
+  "module_availability.excluded": "{{module}} is not included in this device's firmware build, so these settings cannot be changed.",
   "cannedmsg_config.title": "Canned Messages",
   "cannedmsg_config.view_docs": "View Canned Messages Documentation",
   "cannedmsg_config.enabled": "Enable Canned Messages",
