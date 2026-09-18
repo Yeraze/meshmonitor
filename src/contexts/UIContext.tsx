@@ -37,6 +37,8 @@ interface UIContextType {
   setShowNodeFilterPopup: React.Dispatch<React.SetStateAction<boolean>>;
   isNodeListCollapsed: boolean;
   setIsNodeListCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
+  groupNodesByRole: boolean;
+  setGroupNodesByRole: React.Dispatch<React.SetStateAction<boolean>>;
   showIgnoredNodes: boolean;
   setShowIgnoredNodes: React.Dispatch<React.SetStateAction<boolean>>;
   filterRemoteAdminOnly: boolean;
@@ -111,6 +113,19 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [isNodeListCollapsed, setIsNodeListCollapsed] = useState<boolean>(() => {
     return window.innerWidth <= 768;
   });
+  // Group-by-role toggle for the Nodes panel list, off by default so the flat
+  // list is unchanged for everyone who hasn't opted in. Persisted like
+  // sortField/sortDirection above so the choice survives a reload.
+  const [groupNodesByRole, setGroupNodesByRoleState] = useState<boolean>(() => {
+    return localStorage.getItem('groupNodesByRole') === 'true';
+  });
+  const setGroupNodesByRole = React.useCallback((value: React.SetStateAction<boolean>) => {
+    setGroupNodesByRoleState(prevValue => {
+      const newValue = typeof value === 'function' ? (value as (prev: boolean) => boolean)(prevValue) : value;
+      localStorage.setItem('groupNodesByRole', newValue.toString());
+      return newValue;
+    });
+  }, []);
   // Default to hiding ignored nodes
   const [showIgnoredNodes, setShowIgnoredNodes] = useState<boolean>(false);
   const [filterRemoteAdminOnly, setFilterRemoteAdminOnly] = useState<boolean>(false);
@@ -159,6 +174,8 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
     setShowNodeFilterPopup,
     isNodeListCollapsed,
     setIsNodeListCollapsed,
+    groupNodesByRole,
+    setGroupNodesByRole,
     showIgnoredNodes,
     setShowIgnoredNodes,
     filterRemoteAdminOnly,
@@ -181,6 +198,7 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
     nodePopup, setNodePopup,
     showNodeFilterPopup, setShowNodeFilterPopup,
     isNodeListCollapsed, setIsNodeListCollapsed,
+    groupNodesByRole, setGroupNodesByRole,
     showIgnoredNodes, setShowIgnoredNodes,
     filterRemoteAdminOnly, setFilterRemoteAdminOnly,
   ]);

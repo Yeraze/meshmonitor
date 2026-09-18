@@ -7,7 +7,8 @@ import type { Marker as LeafletMarker } from 'leaflet';
 import { DeviceInfo } from '../types/device';
 import { TabType } from '../types/ui';
 import { nodePassesTransportFilter, transportCutoffSec } from '../utils/nodeTransport';
-import { getNodeTypeCategory, categoryGlyphFamily } from '../utils/nodeTypeCategory';
+import { getNodeTypeCategory, categoryGlyphFamily, NODE_TYPE_CATEGORY_META, NodeTypeCategory } from '../utils/nodeTypeCategory';
+import { buildGroupedNodeItems, countNodesByCategory, GroupedNodeListItem, RoleGroupCount } from '../utils/nodeGrouping';
 import { effectiveMapMaxAgeHours } from '../utils/mapAge';
 import { ageFilterStops, nearestAgeStopIndex, formatAgeStop } from '../utils/mapAgeSteps';
 import { downsamplePositionHistory, MAX_RENDERED_POSITION_POINTS } from '../utils/positionHistoryDownsample';
@@ -179,6 +180,96 @@ const DistanceDisplay = React.memo<{
     <span className="stat" title={t('nodes.distance')}>
       <UiIcon name="ruler" size={14} /> {distance}
     </span>
+  );
+});
+
+// Number of role categories the distribution summary gives a distinct
+// `--chart-N` colour (the app's categorical scale only defines 8 slots, and
+// per the dataviz convention categorical hues are assigned in fixed order and
+// never cycled — a 9th+ category folds into a single muted "Other" segment
+// rather than reusing an earlier colour).
+const ROLE_SUMMARY_MAX_COLORED_CATEGORIES = 8;
+
+/**
+ * Compact role-distribution summary shown above the node list when the
+ * "Group by role" toggle is on (grouping requirement #3). A single-row
+ * stacked bar (inline SVG, coloured with the app's `--chart-N` categorical
+ * custom properties so it tracks every Catppuccin variant) plus a legend of
+ * role name + count chips — the chips are the accessible source of truth
+ * (identity is never colour-alone), so the SVG itself is decorative.
+ */
+const RoleDistributionSummary = React.memo<{
+  distribution: RoleGroupCount[];
+  t: (key: string, defaultValue: string, options?: Record<string, unknown>) => string;
+}>(({ distribution, t }) => {
+  const total = distribution.reduce((sum, r) => sum + r.count, 0);
+  if (total === 0) return null;
+
+  const colored = distribution.slice(0, ROLE_SUMMARY_MAX_COLORED_CATEGORIES);
+  const overflow = distribution.slice(ROLE_SUMMARY_MAX_COLORED_CATEGORIES);
+  const otherCount = overflow.reduce((sum, r) => sum + r.count, 0);
+
+  const chips = colored.map((r, i) => {
+    const meta = NODE_TYPE_CATEGORY_META[r.category];
+    return {
+      key: r.category as string,
+      label: t(meta.labelKey, meta.label),
+      count: r.count,
+      color: `var(--chart-${i + 1})`,
+    };
+  });
+  if (otherCount > 0) {
+    chips.push({
+      key: 'other',
+      label: t('nodes.other_roles', 'Other'),
+      count: otherCount,
+      color: 'var(--color-text-disabled)',
+    });
+  }
+
+  // Lay segments out in a fixed 1000-unit viewBox with a small fixed gap
+  // between them (renders as ~2px at typical sidebar widths), stretched to
+  // fill the wrapper's actual width/height — the wrapper clips to a pill
+  // shape via border-radius + overflow:hidden, so segments themselves stay
+  // plain rectangles rather than fighting non-uniform SVG scaling with rx.
+  const VIEWBOX_WIDTH = 1000;
+  const GAP_UNITS = chips.length > 1 ? 6 : 0;
+  const usableWidth = VIEWBOX_WIDTH - GAP_UNITS * (chips.length - 1);
+  let cursor = 0;
+  const segments = chips.map((chip) => {
+    const width = Math.max((chip.count / total) * usableWidth, 0);
+    const x = cursor;
+    cursor += width + GAP_UNITS;
+    return { ...chip, x, width };
+  });
+
+  return (
+    <div className="node-role-summary">
+      <div className="node-role-summary-title">{t('nodes.role_distribution', 'Role distribution')}</div>
+      <div className="node-role-summary-bar-wrap">
+        <svg
+          viewBox={`0 0 ${VIEWBOX_WIDTH} 14`}
+          preserveAspectRatio="none"
+          className="node-role-summary-bar"
+          aria-hidden="true"
+        >
+          {segments.map((seg) => (
+            <rect key={seg.key} x={seg.x} y={0} width={seg.width} height={14} fill={seg.color}>
+              <title>{`${seg.label}: ${seg.count}`}</title>
+            </rect>
+          ))}
+        </svg>
+      </div>
+      <div className="node-role-summary-legend">
+        {chips.map((chip) => (
+          <span className="node-role-summary-chip" key={chip.key}>
+            <span className="node-role-summary-swatch" style={{ background: chip.color }} />
+            {chip.label}
+            <span className="node-role-summary-chip-count">{chip.count}</span>
+          </span>
+        ))}
+      </div>
+    </div>
   );
 });
 
@@ -540,6 +631,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setShowNodeFilterPopup,
     isNodeListCollapsed,
     setIsNodeListCollapsed,
+    groupNodesByRole,
+    setGroupNodesByRole,
     filterRemoteAdminOnly,
   } = useUI();
 
@@ -1413,11 +1506,12 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     });
   }, [sortField, sortDirection, nodeHopsCalculation, traceroutes, currentNodeNum]);
 
-  // The displayed node set: processedNodes (text filter already applied upstream)
-  // → security/channel/incomplete/remote-admin filters → favorites-first sort.
-  // Shared by the rendered list and the CSV/HTML export so they always match.
-  const displayedNodes = useMemo(() => {
-    const filtered = processedNodes.filter(node => {
+  // The filtered node set: processedNodes (text filter already applied upstream)
+  // → security/channel/incomplete/remote-admin filters. Shared by the flat
+  // list, the grouped list, the role distribution summary, and the CSV/HTML
+  // export so they always agree on which nodes are "in".
+  const filteredNodes = useMemo(() => {
+    return processedNodes.filter(node => {
       if (securityFilter === 'flaggedOnly') {
         if (!node.keyIsLowEntropy && !node.duplicateKeyDetected && !node.keySecurityIssueDetails) return false;
       }
@@ -1432,26 +1526,68 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       if (filterRemoteAdminOnly && !node.hasRemoteAdmin) return false;
       return true;
     });
-    // Favorites first, each group sorted independently (matches list rendering).
-    return [
-      ...sortNodes(filtered.filter(node => node.isFavorite)),
-      ...sortNodes(filtered.filter(node => !node.isFavorite)),
-    ];
-  }, [processedNodes, securityFilter, channelFilter, showIncompleteNodes, filterRemoteAdminOnly, sortNodes]);
+  }, [processedNodes, securityFilter, channelFilter, showIncompleteNodes, filterRemoteAdminOnly]);
+
+  // Favorites-first ordering, applied within whatever set it's handed — the
+  // whole filtered list (flat/ungrouped) or one role group's nodes (grouped).
+  const orderNodes = useCallback((nodesToOrder: DeviceInfo[]) => [
+    ...sortNodes(nodesToOrder.filter(node => node.isFavorite)),
+    ...sortNodes(nodesToOrder.filter(node => !node.isFavorite)),
+  ], [sortNodes]);
+
+  // The displayed node set for the flat (ungrouped) list and for CSV/HTML
+  // export, which always exports the flat order regardless of the grouping
+  // toggle.
+  const displayedNodes = useMemo(() => orderNodes(filteredNodes), [filteredNodes, orderNodes]);
+
+  // Grouping toggle (#5xxx): off by default, unchanged behaviour for everyone.
+  // On, nodes are bucketed by device-role/MeshCore-type category
+  // (getNodeTypeCategory — the same categorization the map/legend/filter
+  // already use) with favorites-first + field sort applied within each group.
+  const [collapsedRoleGroups, setCollapsedRoleGroups] = useState<Set<NodeTypeCategory>>(() => new Set());
+  const toggleRoleGroupCollapsed = useCallback((category: NodeTypeCategory) => {
+    setCollapsedRoleGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(category)) next.delete(category); else next.add(category);
+      return next;
+    });
+  }, []);
+
+  const roleDistribution = useMemo(
+    () => (groupNodesByRole ? countNodesByCategory(filteredNodes) : null),
+    [groupNodesByRole, filteredNodes]
+  );
+
+  // The single flat array the virtualizer renders: either plain node rows
+  // (grouping off) or group headers interleaved with their rows (grouping
+  // on). A collapsed group's rows are left out of this array entirely — not
+  // merely hidden — so the virtualizer never mounts or measures them; this is
+  // what keeps grouping from undoing the virtualization work in 6a254e78.
+  const nodeListItems = useMemo<GroupedNodeListItem<DeviceInfo>[]>(() => {
+    if (groupNodesByRole) {
+      return buildGroupedNodeItems(filteredNodes, orderNodes, collapsedRoleGroups);
+    }
+    return displayedNodes.map(node => ({ type: 'node' as const, node }));
+  }, [groupNodesByRole, filteredNodes, orderNodes, collapsedRoleGroups, displayedNodes]);
 
   // Virtualize the node list: with thousands of nodes, rendering a full DOM
   // subtree per row was measured at 179k-217k elements and made scrolling
   // the sidebar visibly janky. Rows vary in height (optional role/status
-  // lines), so this uses dynamic measurement rather than a fixed row height —
-  // see UnifiedPacketMonitorPage/PacketMonitorPanel for the same
-  // getScrollElement/measureElement pattern applied to fixed-height rows.
+  // lines, or a group header), so this uses dynamic measurement rather than a
+  // fixed row height — see UnifiedPacketMonitorPage/PacketMonitorPanel for the
+  // same getScrollElement/measureElement pattern applied to fixed-height rows.
   const nodesListRef = useRef<HTMLDivElement>(null);
   const nodesRowVirtualizer = useVirtualizer({
-    count: displayedNodes.length,
+    count: nodeListItems.length,
     getScrollElement: () => nodesListRef.current,
-    estimateSize: () => 76,
+    estimateSize: (index) => (nodeListItems[index]?.type === 'header' ? 36 : 76),
     overscan: 10,
     measureElement: (el) => el.getBoundingClientRect().height,
+    getItemKey: (index) => {
+      const item = nodeListItems[index];
+      if (!item) return index;
+      return item.type === 'header' ? `group:${item.category}` : item.node.nodeNum;
+    },
   });
 
   // Export format dropdown (Issue #3499) — a single icon button in the controls
@@ -2161,6 +2297,22 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               >
                 {t('common.filter')}
               </button>
+              <button
+                className={`filter-popup-btn${groupNodesByRole ? ' active' : ''}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.nativeEvent.stopImmediatePropagation();
+                  setGroupNodesByRole(v => !v);
+                }}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  e.nativeEvent.stopImmediatePropagation();
+                }}
+                aria-pressed={groupNodesByRole}
+                title={t('nodes.group_by_role_title', 'Group nodes by role')}
+              >
+                {t('nodes.group_by_role', 'Group by Role')}
+              </button>
               <select
                 value={sortField}
                 onChange={(e) => setSortField(e.target.value as any)}
@@ -2245,20 +2397,64 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
           )}
         </div>
         {!isNodeListCollapsed && (
+        <>
+        {groupNodesByRole && roleDistribution && roleDistribution.length > 0 && (
+          <RoleDistributionSummary distribution={roleDistribution} t={t} />
+        )}
         <div className="nodes-list" ref={nodesListRef}>
           {/* Meshtastic nodes section */}
           {shouldShowData() ? (() => {
             // Find the home node for distance calculations (use unfiltered nodes to ensure home node is found)
             const homeNode = nodes.find(n => n.user?.id === currentNodeId);
 
-            // Filtered + favorites-first sorted set, shared with the export (Issue #3499)
-            const sortedNodes = displayedNodes;
-
-            return sortedNodes.length > 0 ? (
+            return nodeListItems.length > 0 ? (
               <div style={{ height: `${nodesRowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
-              {/* Meshtastic nodes */}
+              {/* Group headers + Meshtastic nodes, flattened into one virtualized list
+                  (grouping must not undo the virtualization from 6a254e78 — see
+                  nodeListItems above). */}
               {nodesRowVirtualizer.getVirtualItems().map(virtualRow => {
-                const node = sortedNodes[virtualRow.index];
+                const item = nodeListItems[virtualRow.index];
+                if (!item) return null;
+
+                if (item.type === 'header') {
+                  const meta = NODE_TYPE_CATEGORY_META[item.category];
+                  const roleLabel = t(meta.labelKey, meta.label);
+                  const collapsed = item.collapsed;
+                  return (
+                    <div
+                      key={`group:${item.category}`}
+                      data-index={virtualRow.index}
+                      ref={nodesRowVirtualizer.measureElement}
+                      className="node-role-group-header"
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={!collapsed}
+                      onClick={() => toggleRoleGroupCollapsed(item.category)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          toggleRoleGroupCollapsed(item.category);
+                        }
+                      }}
+                      title={collapsed
+                        ? t('nodes.expand_role_group', 'Expand {{role}} group', { role: roleLabel })
+                        : t('nodes.collapse_role_group', 'Collapse {{role}} group', { role: roleLabel })}
+                    >
+                      <UiIcon name={collapsed ? 'chevronDown' : 'chevronUp'} size={14} />
+                      <span className="node-role-group-name">{roleLabel}</span>
+                      <span className="node-role-group-count">{item.count}</span>
+                    </div>
+                  );
+                }
+
+                const node = item.node;
                 // #4880: color the node box per the active Node List Style
                 // ({} for monochrome, keeping the theme look).
                 const nc = nodeColorStyle(nodeListStyle, {
@@ -2516,6 +2712,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
             </div>
           )}
         </div>
+        </>
         )}
         {/* Resize handle on right edge of sidebar */}
         {!isNodeListCollapsed && (
