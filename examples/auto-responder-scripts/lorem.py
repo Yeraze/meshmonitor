@@ -3,6 +3,8 @@
 #   name: Lorem Ipsum (Multi-Message)
 #   emoji: 📜
 #   language: Python
+#   version: 1.0.0
+#   source: Yeraze/meshmonitor/examples/auto-responder-scripts/lorem.py
 """
 Lorem Ipsum Multi-Message Example (Python)
 

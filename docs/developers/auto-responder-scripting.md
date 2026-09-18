@@ -155,6 +155,9 @@ Add a `mm_meta:` block near the top of your script as comments:
 | `language` | Programming language | `Python`, `JavaScript`, `Shell` |
 | `version` | Optional release version, shown in **Settings → Scripts** and the [User Scripts Gallery](/user-scripts) | `1.2.0` |
 | `author` | Optional author name, shown in **Settings → Scripts** | `KD2ABC` |
+| `source` | Optional GitHub path to the published file, so MeshMonitor can check for newer versions (#5255). `repository:` works too. | `KD2ABC/mesh-scripts/weather.py` |
+
+**Update checks:** with both `version` and `source` set, **Settings → Scripts** can ask GitHub which version your repository publishes and offer the operator a one-click update. MeshMonitor never updates a script on its own: an admin presses **Check for updates**, reads what changed, and presses **Update**. The replaced file is kept so the update can be rolled back. Scripts listed in the gallery are matched by filename, so they need no `source` of their own; for anything else an admin can type the GitHub path in **Settings → Scripts**.
 
 **Versioning:** bump `version` in your script's `mm_meta` each time you publish a change. The gallery reads it straight from your repository, so a new release shows up there without a gallery pull request. Use a plain token such as `1.2.0` or `2.0.0-beta.1` (letters, digits, `.`, `+`, `-`, up to 20 characters; a leading `v` is dropped).
 

@@ -3,6 +3,8 @@
 #   name: Weather Lookup
 #   emoji: 🌤️
 #   language: Python
+#   version: 1.0.0
+#   source: Yeraze/meshmonitor/examples/auto-responder-scripts/weather.py
 """
 Weather lookup script for Auto Responder
 

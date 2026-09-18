@@ -3,6 +3,8 @@
 #   name: Distance Calculator
 #   emoji: 📏
 #   language: Python
+#   version: 1.0.0
+#   source: Yeraze/meshmonitor/examples/auto-responder-scripts/distance.py
 """
 Distance Calculator Script - Uses location environment variables.
 

@@ -3,6 +3,8 @@
 #   name: Ham Conditions
 #   emoji: 📻
 #   language: Python
+#   version: 1.0.0
+#   source: Yeraze/meshmonitor/examples/auto-responder-scripts/ham.py
 """
 Ham Conditions — HF band conditions for mesh network auto-responders.
 

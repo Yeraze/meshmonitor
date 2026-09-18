@@ -1,0 +1,170 @@
+[
+  {
+    "filename": "hello.js",
+    "name": "Hello World",
+    "githubPath": "Yeraze/meshmonitor/examples/auto-responder-scripts/hello.js"
+  },
+  {
+    "filename": "info.sh",
+    "name": "System Info",
+    "githubPath": "Yeraze/meshmonitor/examples/auto-responder-scripts/info.sh"
+  },
+  {
+    "filename": "weather.py",
+    "name": "Weather Template",
+    "githubPath": "Yeraze/meshmonitor/examples/auto-responder-scripts/weather.py"
+  },
+  {
+    "filename": "lorem.js",
+    "name": "Multi-Message Demo (JavaScript)",
+    "githubPath": "Yeraze/meshmonitor/examples/auto-responder-scripts/lorem.js"
+  },
+  {
+    "filename": "lorem.py",
+    "name": "Multi-Message Demo (Python)",
+    "githubPath": "Yeraze/meshmonitor/examples/auto-responder-scripts/lorem.py"
+  },
+  {
+    "filename": "lorem.sh",
+    "name": "Multi-Message Demo (Shell)",
+    "githubPath": "Yeraze/meshmonitor/examples/auto-responder-scripts/lorem.sh"
+  },
+  {
+    "filename": "battery-status.py",
+    "name": "Battery Status Monitor",
+    "githubPath": "Yeraze/meshmonitor/examples/auto-responder-scripts/battery-status.py"
+  },
+  {
+    "filename": "PirateWeather.py",
+    "name": "Weather Bot",
+    "githubPath": "Codename-11/meshmonitor_user-scripts/PirateWeather.py"
+  },
+  {
+    "filename": "ai.py",
+    "name": "AI Assistant",
+    "githubPath": "Codename-11/meshmonitor_user-scripts/ai.py"
+  },
+  {
+    "filename": "sunrise.py",
+    "name": "Sunrise/Sunset Calculator",
+    "githubPath": "Codename-11/meshmonitor_user-scripts/sunrise.py"
+  },
+  {
+    "filename": "fun.py",
+    "name": "Fun Bot",
+    "githubPath": "Codename-11/meshmonitor_user-scripts/fun.py"
+  },
+  {
+    "filename": "commands.py",
+    "name": "Commands Directory",
+    "githubPath": "Codename-11/meshmonitor_user-scripts/commands.py"
+  },
+  {
+    "filename": "index.js",
+    "name": "MM-Weather",
+    "githubPath": "Yoss101/MM-Weather/index.js"
+  },
+  {
+    "filename": "solar-forecast.py",
+    "name": "MeshManager Solar Forecast",
+    "githubPath": "Yeraze/meshmanager/main/examples/auto-responder-scripts/solar-forecast.py"
+  },
+  {
+    "filename": "mm_radio_id_qth.py",
+    "name": "Radio Identity + QTH",
+    "githubPath": "maxhayim/meshmonitor-radio-id-qth/mm_radio_id_qth.py"
+  },
+  {
+    "filename": "mm_wx.py",
+    "name": "WX (Weather Alerts)",
+    "githubPath": "maxhayim/meshmonitor-mx-weather-alerts/mm_wx.py"
+  },
+  {
+    "filename": "index.js",
+    "name": "Carrier Outage Monitor",
+    "githubPath": "maxhayim/meshmonitor-carrier-outage/index.js"
+  },
+  {
+    "filename": "sky_and_sea_alert.py",
+    "name": "Sky and Sea Alert",
+    "githubPath": "maxhayim/meshmonitor-skyandsea-alert/sky_and_sea_alert.py"
+  },
+  {
+    "filename": "remote-admin.py",
+    "name": "Remote Admin (Python)",
+    "githubPath": "Yeraze/meshmonitor/examples/auto-responder-scripts/remote-admin.py"
+  },
+  {
+    "filename": "remote-admin.sh",
+    "name": "Remote Admin (Shell)",
+    "githubPath": "Yeraze/meshmonitor/examples/auto-responder-scripts/remote-admin.sh"
+  },
+  {
+    "filename": "memon.py",
+    "name": "MeMon - Network Health Monitor",
+    "githubPath": "DagBertelsen/MeMon/memon.py"
+  },
+  {
+    "filename": "mm_earthquake.py",
+    "name": "EQ (Earthquake Alerts)"
+  },
+  {
+    "filename": "mm_llm_bridge.py",
+    "name": "LLM Bridge",
+    "githubPath": "maxhayim/meshmonitor-llm-bridge/mm_llm_bridge.py"
+  },
+  {
+    "filename": "rayhunter-monitor.py",
+    "name": "RayHunter Monitor",
+    "githubPath": "Yeraze/meshmonitor/examples/auto-responder-scripts/rayhunter-monitor.py"
+  },
+  {
+    "filename": "meshmonitor-watchandreboot.py",
+    "name": "Watch and Reboot",
+    "githubPath": "maxhayim/meshmonitor-watchandreboot/meshmonitor-watchandreboot.py"
+  },
+  {
+    "filename": "meshmonitor_bridge_homeassistant.py",
+    "name": "Home Assistant Bridge",
+    "githubPath": "maxhayim/meshmonitor-bridge-homeassistant/meshmonitor_bridge_homeassistant.py"
+  },
+  {
+    "filename": "utilization-alert.py",
+    "name": "Utilization Alert"
+  },
+  {
+    "filename": "bbs.py",
+    "name": "Mesh DM BBS",
+    "githubPath": "TechTucson/MeshMonitor-BBS-AND-MAIL/bbs.py"
+  },
+  {
+    "filename": "mail.py",
+    "name": "Mesh Mail Bot",
+    "githubPath": "TechTucson/MeshMonitor-BBS-AND-MAIL/mail.py"
+  },
+  {
+    "filename": "PirateWeatherADV.py",
+    "name": "Pirate Weather ADV",
+    "githubPath": "Yeraze/meshmonitor/examples/auto-responder-scripts/PirateWeatherADV.py"
+  },
+  {
+    "filename": "ham.py",
+    "name": "Ham Conditions",
+    "githubPath": "Yeraze/meshmonitor/examples/auto-responder-scripts/ham.py"
+  },
+  {
+    "filename": "meshview-link-responder.sh",
+    "name": "Meshview Link Responder",
+    "githubPath": "Yeraze/meshmonitor/examples/auto-responder-scripts/meshview-link-responder.sh"
+  },
+  {
+    "filename": "border_wait.py",
+    "name": "Border Wait Times",
+    "githubPath": "KF7R/meshmonitor-nogales-bwt/border_wait.py"
+  },
+  {
+    "filename": "mm_emcomm_control.py",
+    "name": "EmComm Control",
+    "githubPath": "maxhayim/meshmonitor-emcomm-control/mm_emcomm_control.py"
+  }
+]

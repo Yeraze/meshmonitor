@@ -3,6 +3,8 @@
 #   name: Pirate Weather
 #   emoji: 🏴‍☠️
 #   language: Python
+#   version: 1.0.0
+#   source: Yeraze/meshmonitor/examples/auto-responder-scripts/PirateWeather.py
 """
 Weather script for MeshMonitor auto-responder using Pirate Weather API.
 Supports any location format using OpenStreetMap's free Nominatim geocoding service.

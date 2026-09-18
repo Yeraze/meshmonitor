@@ -3,6 +3,8 @@
 #   name: System Info
 #   emoji: ℹ️
 #   language: Shell
+#   version: 1.0.0
+#   source: Yeraze/meshmonitor/examples/auto-responder-scripts/info.sh
 # System info script for Auto Responder
 #
 # Environment variables available:

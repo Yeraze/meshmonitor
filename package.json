@@ -31,6 +31,7 @@
     "test:db:down": "docker compose -f docker-compose.test.yml down -v",
     "test:multidb": "npm run test:db:up && vitest run; code=$?; npm run test:db:down; exit $code",
     "docs:news": "node scripts/blog-to-news.mjs",
+    "scripts:gallery": "node scripts/sync-gallery.mjs",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs",

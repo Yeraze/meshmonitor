@@ -385,6 +385,9 @@ export const VALID_SETTINGS_KEYS = [
   // ReticulumRepository.upsertDestination prunes oldest-by-lastSeen beyond the
   // cap, skipping favorites (attach spec §11 risk 4).
   'reticulum_destinations_max',
+  // #5255: per-script update sources an admin typed in, as a JSON object keyed
+  // by script filename. Global, since scripts live on disk, not per source.
+  'scriptUpdateSources',
 ] as const;
 
 export type ValidSettingKey = typeof VALID_SETTINGS_KEYS[number];
