@@ -31,28 +31,30 @@ const MentionAutocomplete: React.FC<MentionAutocompleteProps> = ({
   if (candidates.length === 0) return null;
 
   return (
-    <ul className={styles.popup} id={id} role="listbox" aria-label="Mention suggestions">
+    <div className={styles.popup} id={id} role="listbox" aria-label="Mention suggestions">
       {candidates.map((candidate, index) => (
-        <li key={candidate.id} role="presentation">
-          <button
-            type="button"
-            role="option"
-            id={`${id}-option-${index}`}
-            aria-selected={index === activeIndex}
-            className={`${styles.option} ${index === activeIndex ? styles.active : ''}`}
-            // Mouse down would blur the textarea before the click landed, which
-            // loses the caret the insertion needs.
-            onMouseDown={e => e.preventDefault()}
-            onMouseEnter={() => onHover(index)}
-            onClick={() => onSelect(candidate)}
-          >
-            <span className={styles.longName}>{candidate.longName || candidate.id}</span>
-            {candidate.shortName && <span className={styles.shortName}>{candidate.shortName}</span>}
-            <span className={styles.nodeId}>{candidate.id}</span>
-          </button>
-        </li>
+        // No <li> wrapper: ARIA wants each option to be a direct child of the
+        // listbox, and a presentational wrapper between the two leaves screen
+        // readers unable to enumerate the list.
+        <button
+          key={candidate.id}
+          type="button"
+          role="option"
+          id={`${id}-option-${index}`}
+          aria-selected={index === activeIndex}
+          className={`${styles.option} ${index === activeIndex ? styles.active : ''}`}
+          // Mouse down would blur the textarea before the click landed, which
+          // loses the caret the insertion needs.
+          onMouseDown={e => e.preventDefault()}
+          onMouseEnter={() => onHover(index)}
+          onClick={() => onSelect(candidate)}
+        >
+          <span className={styles.longName}>{candidate.longName || candidate.id}</span>
+          {candidate.shortName && <span className={styles.shortName}>{candidate.shortName}</span>}
+          <span className={styles.nodeId}>{candidate.id}</span>
+        </button>
       ))}
-    </ul>
+    </div>
   );
 };
 

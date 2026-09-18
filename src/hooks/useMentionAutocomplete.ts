@@ -132,6 +132,13 @@ export function useMentionAutocomplete<T extends MentionCandidate>({
   return {
     /** Rows to render; empty means the popup is closed. */
     suggestions,
+    /**
+     * The highlighted option's DOM id for `aria-activedescendant`, so a screen
+     * reader announces what the arrow keys moved to. `listId` must match the id
+     * given to MentionAutocomplete.
+     */
+    activeDescendantId: (listId: string) =>
+      query !== null && suggestions.length > 0 ? `${listId}-option-${activeIndex}` : undefined,
     activeIndex,
     setActiveIndex,
     isOpen: query !== null && suggestions.length > 0,

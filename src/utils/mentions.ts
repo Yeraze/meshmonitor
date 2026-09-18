@@ -22,8 +22,12 @@
 /**
  * A mention token: `@!` + exactly 8 hex digits, not followed by another hex
  * digit (so `@!deadbeef00` is not read as a mention of `@!deadbeef`).
+ *
+ * Returns a fresh regex each call. A shared `/g` regex carries `lastIndex`
+ * between calls, so one caller forgetting to reset it silently skips matches
+ * in the next.
  */
-export const MENTION_TOKEN_RE = /@(![0-9a-fA-F]{8})(?![0-9a-fA-F])/g;
+export const mentionTokenRegex = (): RegExp => /@(![0-9a-fA-F]{8})(?![0-9a-fA-F])/g;
 
 /** Node id (`!ffccee11`) for a node number, in the form the token carries. */
 export function nodeIdFromNum(nodeNum: number): string {
@@ -39,9 +43,7 @@ export function mentionToken(nodeId: string): string {
 export function mentionedNodeIds(text: string | null | undefined): string[] {
   if (!text) return [];
   const ids: string[] = [];
-  MENTION_TOKEN_RE.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = MENTION_TOKEN_RE.exec(text)) !== null) {
+  for (const match of text.matchAll(mentionTokenRegex())) {
     const id = match[1].toLowerCase();
     if (!ids.includes(id)) ids.push(id);
   }
@@ -124,13 +126,20 @@ export function filterMentionCandidates<T extends MentionCandidate>(
     .slice(0, limit);
 }
 
-/** Replace the query with the node's token, and say where the caret lands. */
+/**
+ * Replace the query with the node's token, and say where the caret lands.
+ *
+ * The token ends in a space, so a space already following the query is dropped
+ * — otherwise mentioning someone mid-sentence would leave a double space in a
+ * message every recipient sees. Android's own insertion does the same.
+ */
 export function applyMention(
   text: string,
   mention: MentionQuery,
   nodeId: string,
 ): { text: string; caret: number } {
   const token = mentionToken(nodeId);
-  const next = text.slice(0, mention.start) + token + text.slice(mention.end);
+  const tail = text.slice(mention.end);
+  const next = text.slice(0, mention.start) + token + (tail.startsWith(' ') ? tail.slice(1) : tail);
   return { text: next, caret: mention.start + token.length };
 }

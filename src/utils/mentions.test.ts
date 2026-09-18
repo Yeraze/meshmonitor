@@ -98,12 +98,20 @@ describe('filterMentionCandidates (#5276)', () => {
 
 describe('applyMention (#5276)', () => {
   it('replaces the typed query with the token and puts the caret after it', () => {
+    // The token's own trailing space replaces the one already there, so the
+    // message recipients see has no double space.
     const text = 'hey @EO can you check';
     const query = findMentionQuery(text, 7)!;
     expect(applyMention(text, query, '!ffccee11')).toEqual({
-      text: 'hey @!ffccee11  can you check',
+      text: 'hey @!ffccee11 can you check',
       caret: 15,
     });
+  });
+
+  it('keeps other following punctuation as typed', () => {
+    const text = 'ask @EO?';
+    const query = findMentionQuery(text, 7)!;
+    expect(applyMention(text, query, '!ffccee11').text).toBe('ask @!ffccee11 ?');
   });
 
   it('works on a bare @ at the end of the draft', () => {

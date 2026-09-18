@@ -2213,6 +2213,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                         role="combobox"
                         aria-expanded={mentions.isOpen}
                         aria-controls={mentions.isOpen ? 'dm-mention-list' : undefined}
+                        aria-activedescendant={mentions.activeDescendantId('dm-mention-list')}
                         aria-autocomplete="list"
                         onFocus={scrollInputIntoView}
                         placeholder={t('messages.dm_placeholder', { name: getNodeName(selectedDMNode) })}

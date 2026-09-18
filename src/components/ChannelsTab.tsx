@@ -1415,6 +1415,7 @@ export default function ChannelsTab({
                               role="combobox"
                               aria-expanded={mentions.isOpen}
                               aria-controls={mentions.isOpen ? 'channel-mention-list' : undefined}
+                              aria-activedescendant={mentions.activeDescendantId('channel-mention-list')}
                               aria-autocomplete="list"
                               onFocus={scrollInputIntoView}
                               placeholder={

@@ -436,6 +436,8 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
         shortName: '',
         lastSeen: c.lastSeen ?? c.lastAdvert ?? 0,
       }))
+      // A contact with no advertised name is dropped: MeshCore mentions are
+      // written by name, so there is nothing to insert for an anonymous one.
       .filter(c => c.longName)
       .sort((a, b) => b.lastSeen - a.lastSeen)
       .map(({ id, longName, shortName }) => ({ id, longName, shortName })),
@@ -737,6 +739,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
           role="combobox"
           aria-expanded={mentions.isOpen}
           aria-controls={mentions.isOpen ? 'meshcore-mention-list' : undefined}
+          aria-activedescendant={mentions.activeDescendantId('meshcore-mention-list')}
           aria-autocomplete="list"
           onKeyDown={handleKeyDown}
           placeholder={t('meshcore.type_message', 'Type a message…')}

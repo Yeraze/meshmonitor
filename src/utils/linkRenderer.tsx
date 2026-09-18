@@ -1,6 +1,6 @@
 import React from 'react';
 import api from '../services/api.js';
-import { MENTION_TOKEN_RE } from './mentions.js';
+import { mentionTokenRegex } from './mentions.js';
 
 // URL detection regex - matches http://, https://, and www. URLs
 const URL_REGEX = /(https?:\/\/[^\s]+)|(www\.[^\s]+)/gi;
@@ -40,10 +40,9 @@ function renderMentions(
   if (!text) return [];
   const parts: React.ReactNode[] = [];
   let lastIndex = 0;
-  let match: RegExpExecArray | null;
 
-  MENTION_TOKEN_RE.lastIndex = 0;
-  while ((match = MENTION_TOKEN_RE.exec(text)) !== null) {
+  for (const match of text.matchAll(mentionTokenRegex())) {
+    if (match.index === undefined) continue;
     if (match.index > lastIndex) parts.push(text.substring(lastIndex, match.index));
 
     const nodeId = match[1].toLowerCase();
