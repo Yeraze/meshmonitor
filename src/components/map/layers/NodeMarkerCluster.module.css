@@ -1,0 +1,41 @@
+/* Node cluster bubble styling (map marker clustering perf fix). CSS module —
+ * see CLAUDE.md CSS containment rule. `NodeMarkerCluster.tsx` builds the
+ * divIcon's `html` as a plain string (leaflet.markercluster's
+ * `iconCreateFunction`, not JSX), so these class names are referenced by
+ * their hashed string value from that template rather than from markup here.
+ * Colors route entirely through the theme's `--color-accent*` custom
+ * properties (src/App.css) so the bubble matches the Catppuccin palette in
+ * every theme without any hardcoded hex here. */
+
+.bubble {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+  border: 2px solid white;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  font-weight: 700;
+  font-family: inherit;
+  line-height: 1;
+}
+
+/* Size tiers scale both the icon (set via iconSize in NodeMarkerCluster.tsx)
+ * and the bubble's saturation, so a bigger pile reads as visually "heavier"
+ * — same color-mix ramp App.css already uses for --seq-1..5. */
+.bubbleSmall {
+  font-size: 12px;
+}
+
+.bubbleMedium {
+  font-size: 13px;
+  background: color-mix(in srgb, var(--color-accent) 85%, black);
+}
+
+.bubbleLarge {
+  font-size: 14px;
+  background: color-mix(in srgb, var(--color-accent) 70%, black);
+}

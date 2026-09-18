@@ -4935,7 +4935,9 @@
     "spreadNodes": "Spread Nodes",
     "spreadNodesHelp": "Offset low-precision nodes within their accuracy area so same-cell markers do not stack. Turn off to pin every node at exactly the position it reported.",
     "showPolarGrid": "Show Polar Grid",
-    "polarGridDisabledTooltip": "Requires own node position"
+    "polarGridDisabledTooltip": "Requires own node position",
+    "clusterNodeCount_one": "{{count}} node",
+    "clusterNodeCount_other": "{{count}} nodes"
   },
   "source.header": "Sources",
   "source.add_short": "+ Add",

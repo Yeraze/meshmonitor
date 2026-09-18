@@ -45,6 +45,7 @@ import MapPositionHandler from './MapPositionHandler';
 import PolarGridOverlay from './PolarGridOverlay.js';
 import GeoJsonOverlay from './GeoJsonOverlay';
 import { NodeMarkersLayer, type NodeMarkerDescriptor } from './map/layers/NodeMarkersLayer';
+import { NodeMarkerCluster } from './map/layers/NodeMarkerCluster';
 import MeasureDistanceController from './MeasureDistanceController';
 import type { MeasurePoint } from '../utils/measureDistance';
 import { MapCenterController } from './MapCenterController';
@@ -3009,7 +3010,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               onExit={() => setMeasureActive(false)}
             />
           )}
-              <NodeMarkersLayer markers={nodeMarkers} onOmsClick={onOmsClick} />
+              <NodeMarkerCluster>
+                <NodeMarkersLayer markers={nodeMarkers} onOmsClick={onOmsClick} />
+              </NodeMarkerCluster>
 
               {/* Draw uncertainty circles for estimated positions. The "Show
                   Accuracy" map toggle now governs the radius (issue #3271
