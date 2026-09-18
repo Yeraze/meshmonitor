@@ -280,6 +280,98 @@ describe('useSourceView', () => {
     });
   });
 
+  // #5283 maintainer review: mqtt_bridge/mqtt_broker sources have no RF path
+  // — every node on them arrived over MQTT — so the RF/UDP/MQTT toggles (and
+  // the saved showMqttNodes preference in particular) must not gate
+  // visibility there. This mirrors the exact bug report: a stored
+  // showMqttNodes=false must not blank an MQTT source's map.
+  describe('MQTT-only sources bypass the RF/UDP/MQTT transport filter (#5283)', () => {
+    it('keeps an MQTT-transport node in visibleNodeNums even with every toggle off, on an mqtt_bridge source', () => {
+      mockUseSource.mockReturnValue({ sourceId: 'src-1', sourceName: 'Bridge', sourceType: 'mqtt_bridge' });
+      mockUseMapContext.mockReturnValue({
+        showPaths: false,
+        showRoute: false,
+        // The exact repro: a stored preference of false for all three.
+        showMqttNodes: false,
+        showUdpNodes: false,
+        showRfNodes: false,
+        showEstimatedPositions: true,
+        setMapCenterTarget,
+        traceroutes: [],
+        selectedNodeId: null,
+        setSelectedNodeId,
+        mapZoom: 10,
+        mapMaxAgeHours: null,
+      });
+      const mqttNode = makeNode({
+        nodeNum: 100,
+        position: { latitude: 40, longitude: -75 } as any,
+        viaMqtt: true,
+      });
+      mockUseNodes.mockReturnValue({ nodes: [mqttNode], isLoading: false, error: null });
+
+      const { result } = renderHook(() => useSourceView(baseParams()));
+
+      expect(result.current.visibleNodeNums.has(100)).toBe(true);
+    });
+
+    it('keeps the toggles in effect on a non-MQTT-only source (meshtastic_tcp)', () => {
+      mockUseSource.mockReturnValue({ sourceId: 'src-1', sourceName: 'RF', sourceType: 'meshtastic_tcp' });
+      mockUseMapContext.mockReturnValue({
+        showPaths: false,
+        showRoute: false,
+        showMqttNodes: false,
+        showUdpNodes: false,
+        showRfNodes: false,
+        showEstimatedPositions: true,
+        setMapCenterTarget,
+        traceroutes: [],
+        selectedNodeId: null,
+        setSelectedNodeId,
+        mapZoom: 10,
+        mapMaxAgeHours: null,
+      });
+      const mqttNode = makeNode({
+        nodeNum: 100,
+        position: { latitude: 40, longitude: -75 } as any,
+        viaMqtt: true,
+      });
+      mockUseNodes.mockReturnValue({ nodes: [mqttNode], isLoading: false, error: null });
+
+      const { result } = renderHook(() => useSourceView(baseParams()));
+
+      // Unchanged #3112 behaviour: an RF source still honors showMqttNodes=false.
+      expect(result.current.visibleNodeNums.has(100)).toBe(false);
+    });
+
+    it('passes an all-true transportFlags to useTraceroutePaths on an mqtt_broker source, ignoring the stored toggles', () => {
+      mockUseSource.mockReturnValue({ sourceId: 'src-1', sourceName: 'Broker', sourceType: 'mqtt_broker' });
+      mockUseMapContext.mockReturnValue({
+        showPaths: false,
+        showRoute: false,
+        showMqttNodes: false,
+        showUdpNodes: false,
+        showRfNodes: false,
+        showEstimatedPositions: true,
+        setMapCenterTarget,
+        traceroutes: [],
+        selectedNodeId: null,
+        setSelectedNodeId,
+        mapZoom: 10,
+        mapMaxAgeHours: null,
+      });
+
+      renderHook(() => useSourceView(baseParams()));
+
+      const passedParams = mockUseTraceroutePaths.mock.calls[0][0];
+      expect(passedParams.transportFlags).toEqual({
+        showRfNodes: true,
+        showUdpNodes: true,
+        showMqttNodes: true,
+      });
+    });
+  });
+
   describe('centerMapOnNode', () => {
     it('centers the map on the node effective position', () => {
       const { result } = renderHook(() => useSourceView(baseParams()));

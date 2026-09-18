@@ -44,6 +44,10 @@ const mocks = vi.hoisted(() => ({
   },
   // Segments handed to the shared TraceroutePathsLayer on the last render.
   tracerouteSegments: [] as Array<{ fromNodeNum: number; toNodeNum: number; isMqtt: boolean }>,
+  // #5283: sources backing `useDashboardSources()`, so tests can select a
+  // `mqtt_bridge`/`mqtt_broker` source by id and exercise the MQTT-only
+  // transport-filter bypass. Empty by default (pre-existing behaviour).
+  dashboardSources: [] as Array<{ id: string; name: string; type: string; enabled: boolean }>,
 }));
 
 // #5097: DashboardMap builds its own per-record traceroute segments (it renders
@@ -175,7 +179,7 @@ vi.mock('../../contexts/MapContext', () => ({
 // without a QueryClient/AuthProvider; empty data ⇒ no grid, existing assertions
 // (marker/polyline counts) are unaffected.
 vi.mock('../../hooks/useDashboardData', () => ({
-  useDashboardSources: () => ({ data: [] }),
+  useDashboardSources: () => ({ data: mocks.dashboardSources }),
   useSourceStatuses: () => new Map(),
   UNIFIED_SOURCE_ID: '__unified__',
 }));
@@ -288,6 +292,17 @@ const nodeWithZeroPosition = {
   hopsAway: 3,
   role: 1,
   lastHeard: recent,
+};
+
+// #5283: an MQTT-transport node, used to prove the transport filter is
+// skipped outright on an MQTT-only source rather than gated on showMqttNodes.
+const mqttNodeWithPosition = {
+  user: { id: 'node-mqtt', shortName: 'M1', longName: 'MQTT Node One' },
+  position: { latitude: 37.0, longitude: -82.0 },
+  hopsAway: 1,
+  role: 1,
+  lastHeard: recent,
+  transportMechanism: 5, // TX_MQTT
 };
 
 const ignoredNodeWithPosition = {
@@ -409,6 +424,7 @@ describe('DashboardMap', () => {
     mocks.terrainCaps = { enabled: false, terrainTiles: false, isLoading: false };
     mocks.rendered3DNodes.length = 0;
     mocks.geoJsonLayers.length = 0;
+    mocks.dashboardSources = [];
   });
 
   // --- Default Map Center vs auto-fit (issue #4125) ---------------------------
@@ -1079,5 +1095,85 @@ describe('DashboardMap — route segment transport filter (#5097)', () => {
     // itself carries the firmware unknown-SNR sentinel.
     mocks.mapContext.showMqttNodes = false;
     expect(renderWith([trace(TX_LORA, RAW_SENTINEL)])).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #5283 maintainer review — MQTT-only sources bypass the transport filters
+// ---------------------------------------------------------------------------
+// mqtt_bridge/mqtt_broker sources have no RF path: every node on them arrived
+// over MQTT, so the RF/UDP/MQTT toggles (and the saved `showMqttNodes`
+// preference in particular) must not be able to blank the map. This is
+// resolved from `useDashboardSources()` (not SourceContext — the Dashboard
+// route renders outside any SourceProvider), so it exercises the
+// `allSources`/`sourceId` lookup added in DashboardMap itself.
+describe('DashboardMap — MQTT-only source bypasses transport filters (#5283)', () => {
+  it('shows an MQTT-transport node even with every toggle off (the exact stored-false repro)', () => {
+    mocks.mapContext.showRfNodes = false;
+    mocks.mapContext.showUdpNodes = false;
+    mocks.mapContext.showMqttNodes = false;
+    mocks.dashboardSources = [
+      { id: 'mqtt-src', name: 'MQTT Bridge', type: 'mqtt_bridge', enabled: true },
+    ];
+
+    render(<DashboardMap {...defaultProps} sourceId="mqtt-src" nodes={[mqttNodeWithPosition]} />);
+
+    expect(screen.getAllByTestId('map-marker')).toHaveLength(1);
+    expect(screen.queryByText('No node positions')).not.toBeInTheDocument();
+  });
+
+  it('hides the RF/UDP/MQTT toggles in the Map Features panel for an mqtt_bridge source', () => {
+    mocks.dashboardSources = [
+      { id: 'mqtt-src', name: 'MQTT Bridge', type: 'mqtt_bridge', enabled: true },
+    ];
+    render(<DashboardMap {...defaultProps} sourceId="mqtt-src" />);
+
+    expect(screen.queryByText('Show RF')).not.toBeInTheDocument();
+    expect(screen.queryByText('Show UDP')).not.toBeInTheDocument();
+    expect(screen.queryByText('Show MQTT')).not.toBeInTheDocument();
+    // Unrelated toggles stay — this isn't hiding the whole panel.
+    expect(screen.getByText('Show Traceroute')).toBeInTheDocument();
+  });
+
+  it('hides the toggles for an mqtt_broker source too', () => {
+    mocks.mapContext.showRfNodes = false;
+    mocks.mapContext.showUdpNodes = false;
+    mocks.mapContext.showMqttNodes = false;
+    mocks.dashboardSources = [
+      { id: 'broker-src', name: 'MQTT Broker', type: 'mqtt_broker', enabled: true },
+    ];
+
+    render(<DashboardMap {...defaultProps} sourceId="broker-src" nodes={[mqttNodeWithPosition]} />);
+
+    expect(screen.queryByText('Show MQTT')).not.toBeInTheDocument();
+    expect(screen.getAllByTestId('map-marker')).toHaveLength(1);
+  });
+
+  it('keeps the toggles and the #3112 defaults for a non-MQTT (RF) source', () => {
+    mocks.mapContext.showMqttNodes = false;
+    mocks.dashboardSources = [
+      { id: 'rf-src', name: 'RF Source', type: 'meshtastic_tcp', enabled: true },
+    ];
+
+    render(<DashboardMap {...defaultProps} sourceId="rf-src" nodes={[mqttNodeWithPosition]} />);
+
+    expect(screen.getByText('Show RF')).toBeInTheDocument();
+    expect(screen.getByText('Show UDP')).toBeInTheDocument();
+    expect(screen.getByText('Show MQTT')).toBeInTheDocument();
+    // showMqttNodes=false on an RF source still filters MQTT-transport nodes
+    // (#3112 behaviour, unaffected by the MQTT-only bypass above).
+    expect(screen.queryAllByTestId('map-marker')).toHaveLength(0);
+  });
+
+  it('does not bypass the filter on the Unified map, which mixes sources by design', () => {
+    mocks.mapContext.showMqttNodes = false;
+    mocks.dashboardSources = [
+      { id: 'mqtt-src', name: 'MQTT Bridge', type: 'mqtt_bridge', enabled: true },
+    ];
+
+    render(<DashboardMap {...defaultProps} sourceId="__unified__" nodes={[mqttNodeWithPosition]} />);
+
+    expect(screen.getByText('Show MQTT')).toBeInTheDocument();
+    expect(screen.queryAllByTestId('map-marker')).toHaveLength(0);
   });
 });

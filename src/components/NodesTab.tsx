@@ -6,7 +6,7 @@ import L from 'leaflet';
 import type { Marker as LeafletMarker } from 'leaflet';
 import { DeviceInfo } from '../types/device';
 import { TabType } from '../types/ui';
-import { nodePassesTransportFilter, transportCutoffSec } from '../utils/nodeTransport';
+import { nodePassesTransportFilter, transportCutoffSec, isMqttOnlySourceType } from '../utils/nodeTransport';
 import { getNodeTypeCategory, categoryGlyphFamily } from '../utils/nodeTypeCategory';
 import { effectiveMapMaxAgeHours } from '../utils/mapAge';
 import { ageFilterStops, nearestAgeStopIndex, formatAgeStop } from '../utils/mapAgeSteps';
@@ -453,11 +453,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setShowMotion,
     positionHistoryPointsOnly,
     setPositionHistoryPointsOnly,
-    showMqttNodes,
+    showMqttNodes: rawShowMqttNodes,
     setShowMqttNodes,
-    showUdpNodes,
+    showUdpNodes: rawShowUdpNodes,
     setShowUdpNodes,
-    showRfNodes,
+    showRfNodes: rawShowRfNodes,
     setShowRfNodes,
     showWaypoints,
     setShowWaypoints,
@@ -541,7 +541,16 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     filterRemoteAdminOnly,
   } = useUI();
 
-  const { sourceId: currentSourceId } = useSource();
+  const { sourceId: currentSourceId, sourceType: currentSourceType } = useSource();
+
+  // mqtt_bridge/mqtt_broker sources have no RF path — every node on them
+  // arrived over MQTT, so the RF/UDP/MQTT toggles (and their saved
+  // preferences) have no meaning and can only blank the map. Skip them
+  // outright rather than trusting `showMqttNodes` et al (#5283 review).
+  const isMqttOnlySource = isMqttOnlySourceType(currentSourceType);
+  const showMqttNodes = isMqttOnlySource ? true : rawShowMqttNodes;
+  const showUdpNodes = isMqttOnlySource ? true : rawShowUdpNodes;
+  const showRfNodes = isMqttOnlySource ? true : rawShowRfNodes;
 
   // Meshtastic 2.8 renumbers nodes from MAC-derived to key-derived (#5032), so
   // an upgraded node shows up twice: a silent old row and a live new one. One
@@ -2635,30 +2644,40 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       Dismiss Traceroute
                     </button>
                   )}
-                  <label className="map-control-item">
-                    <input
-                      type="checkbox"
-                      checked={showRfNodes}
-                      onChange={(e) => setShowRfNodes(e.target.checked)}
-                    />
-                    <span>{t('map.showRf', 'Show RF')}</span>
-                  </label>
-                  <label className="map-control-item">
-                    <input
-                      type="checkbox"
-                      checked={showUdpNodes}
-                      onChange={(e) => setShowUdpNodes(e.target.checked)}
-                    />
-                    <span>{t('map.showUdp', 'Show UDP')}</span>
-                  </label>
-                  <label className="map-control-item">
-                    <input
-                      type="checkbox"
-                      checked={showMqttNodes}
-                      onChange={(e) => setShowMqttNodes(e.target.checked)}
-                    />
-                    <span>{t('map.showMqtt')}</span>
-                  </label>
+                  {/* RF/UDP/MQTT transport toggles have no meaning on an
+                      MQTT-only source (mqtt_bridge/mqtt_broker) — every node
+                      there arrived over MQTT, so the filter is skipped
+                      outright above and the controls are hidden rather than
+                      offering a toggle that can only blank the map (#5283
+                      review). */}
+                  {!isMqttOnlySource && (
+                    <>
+                      <label className="map-control-item">
+                        <input
+                          type="checkbox"
+                          checked={showRfNodes}
+                          onChange={(e) => setShowRfNodes(e.target.checked)}
+                        />
+                        <span>{t('map.showRf', 'Show RF')}</span>
+                      </label>
+                      <label className="map-control-item">
+                        <input
+                          type="checkbox"
+                          checked={showUdpNodes}
+                          onChange={(e) => setShowUdpNodes(e.target.checked)}
+                        />
+                        <span>{t('map.showUdp', 'Show UDP')}</span>
+                      </label>
+                      <label className="map-control-item">
+                        <input
+                          type="checkbox"
+                          checked={showMqttNodes}
+                          onChange={(e) => setShowMqttNodes(e.target.checked)}
+                        />
+                        <span>{t('map.showMqtt')}</span>
+                      </label>
+                    </>
+                  )}
                   <label className="map-control-item" title={unavailableIn3DTitle}>
                     <input
                       type="checkbox"

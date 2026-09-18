@@ -2,7 +2,6 @@ import React, { createContext, useContext, useState, useEffect, useMemo, ReactNo
 import { DbTraceroute, DbNeighborInfo } from '../services/database';
 import api from '../services/api';
 import { useCsrf } from './CsrfContext';
-import { useSource } from './SourceContext';
 
 export interface PositionHistoryItem {
   latitude: number;
@@ -135,13 +134,6 @@ interface MapProviderProps {
 
 export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const { getToken: getCsrfToken, refreshToken: refreshCsrfToken } = useCsrf();
-  const { sourceType } = useSource();
-
-  // mqtt_bridge / mqtt_broker sources have no RF path at all — every node
-  // they produce is MQTT-transport. Default "Show MQTT" on for those so the
-  // map isn't blank on arrival; every other source (including the null
-  // sourceType of the cross-source Dashboard) keeps the #3112 default below.
-  const isMqttOnlySource = sourceType === 'mqtt_bridge' || sourceType === 'mqtt_broker';
 
   // Initialize with defaults (will be overridden by server preferences when loaded)
   const [showPaths, setShowPathsState] = useState<boolean>(false);
@@ -151,9 +143,12 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   // Show UDP / RF defaults per #3112: RF on, UDP off, MQTT off. RF is the
   // common case; UDP and MQTT are opt-in classes so users with a busy
   // MQTT bridge or UDP multicast feed don't get a saturated map by default.
-  // Exception: a source whose only possible transport IS MQTT
-  // (isMqttOnlySource above) defaults MQTT on instead, or its map is empty.
-  const [showMqttNodes, setShowMqttNodesState] = useState<boolean>(isMqttOnlySource);
+  // mqtt_bridge/mqtt_broker sources bypass these toggles entirely (#5283
+  // review) rather than defaulting this flag on — see `isMqttOnlySourceType`
+  // in `utils/nodeTransport.ts` and its call sites in NodesTab/DashboardMap/
+  // useSourceView, which skip the filter outright instead of depending on
+  // this (or the saved) preference value.
+  const [showMqttNodes, setShowMqttNodesState] = useState<boolean>(false);
   const [showUdpNodes, setShowUdpNodesState] = useState<boolean>(false);
   const [showRfNodes, setShowRfNodesState] = useState<boolean>(true);
   // Defaults on: the badge is the feature, and a pre-migration-161 row has no

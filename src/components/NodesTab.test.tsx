@@ -53,6 +53,36 @@ describe('NodesTab', () => {
     });
   });
 
+  // #5283 maintainer review: mqtt_bridge/mqtt_broker sources have no RF path
+  // — every node on them arrived over MQTT — so the RF/UDP/MQTT toggles (and
+  // the saved showMqttNodes preference in particular) can only blank the map
+  // there. NodesTab's full map surface depends on Leaflet plus a large
+  // context stack (see the 3D describe block above for why), so this pins
+  // the source-boundary wiring the same way: the filter is skipped outright
+  // (not gated on the toggle values) and the three controls are hidden.
+  // Runtime DOM coverage for the equivalent DashboardMap panel lives in
+  // DashboardMap.test.tsx's "MQTT-only source bypasses transport filters".
+  describe('RF/UDP/MQTT transport toggles are skipped and hidden on MQTT-only sources (#5283)', () => {
+    const src = readFileSync(resolve('src/components/NodesTab.tsx'), 'utf8');
+
+    it('derives isMqttOnlySource from the source type and uses it to bypass the toggle values', () => {
+      expect(src).toContain("const isMqttOnlySource = isMqttOnlySourceType(currentSourceType);");
+      expect(src).toContain('const showMqttNodes = isMqttOnlySource ? true : rawShowMqttNodes;');
+      expect(src).toContain('const showUdpNodes = isMqttOnlySource ? true : rawShowUdpNodes;');
+      expect(src).toContain('const showRfNodes = isMqttOnlySource ? true : rawShowRfNodes;');
+    });
+
+    it('hides the Show RF / Show UDP / Show MQTT controls behind isMqttOnlySource', () => {
+      const gateAt = src.indexOf('{!isMqttOnlySource && (');
+      expect(gateAt, 'the !isMqttOnlySource gate is missing').toBeGreaterThan(-1);
+      const closeAt = src.indexOf('\n                  )}', gateAt);
+      const gated = src.slice(gateAt, closeAt);
+      expect(gated).toContain("checked={showRfNodes}");
+      expect(gated).toContain("checked={showUdpNodes}");
+      expect(gated).toContain("checked={showMqttNodes}");
+    });
+  });
+
   // #4047 Phase 7 WP11 — pins NodesTab's neighbor-link adapter: the 4-tier
   // SNR→weight/opacity table (deliberately NOT the shared layer's continuous
   // snrToNeighborOpacity curve, see utils/neighborLinks.ts) and the
