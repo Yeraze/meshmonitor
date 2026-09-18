@@ -921,7 +921,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                     </button>
                   );
                 })()}
-              {!isUnified && source.type !== 'mqtt_broker' && (
+              {!isUnified && (
                 <button
                   className="dashboard-open-btn"
                   disabled={!source.enabled}
