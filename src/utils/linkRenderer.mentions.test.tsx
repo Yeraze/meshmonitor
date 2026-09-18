@@ -3,6 +3,7 @@
  *
  * Mention chips in rendered messages (#5276).
  */
+import type React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { renderMessageWithLinks } from './linkRenderer';
@@ -53,7 +54,25 @@ describe('renderMessageWithLinks mentions (#5276)', () => {
     fireEvent.click(chip);
     fireEvent.keyDown(chip, { key: 'Enter' });
     expect(onMentionClick).toHaveBeenCalledTimes(2);
-    expect(onMentionClick).toHaveBeenCalledWith('!ffccee11');
+    expect(onMentionClick.mock.calls[0][0]).toBe('!ffccee11');
+  });
+
+  it('hands the handler the real event, which the node popup measures', () => {
+    // A synthetic stand-in has no currentTarget, so the popup had nothing to
+    // position against and the click did nothing at all.
+    // React clears currentTarget once dispatch ends, so read it inside the
+    // handler — which is also where the real consumer reads it.
+    let measured: EventTarget | null = null;
+    const onMentionClick = vi.fn((_id: string, event: React.MouseEvent | React.KeyboardEvent) => {
+      measured = event.currentTarget;
+    });
+    render(<div>{renderMessageWithLinks('@!ffccee11', { ...options, onMentionClick })}</div>);
+
+    const chip = screen.getByRole('button', { name: '@EOC Operator' });
+    fireEvent.click(chip);
+
+    expect(measured).toBe(chip);
+    expect(typeof (measured as HTMLElement).getBoundingClientRect).toBe('function');
   });
 
   it('is not clickable without a handler', () => {

@@ -13,8 +13,14 @@ const URL_REGEX = /(https?:\/\/[^\s]+)|(www\.[^\s]+)/gi;
 export interface MentionRenderOptions {
   /** Current display name for a node id, or undefined when it is unknown. */
   resolveNodeName?: (nodeId: string) => string | undefined;
-  /** Opens the node's details. Without it, the chip is not clickable. */
-  onMentionClick?: (nodeId: string) => void;
+  /**
+   * Opens the node's details. Without it, the chip is not clickable.
+   *
+   * The event is passed through because the app's node popup positions itself
+   * from `event.currentTarget` — a synthetic stand-in leaves it with nothing to
+   * measure and the click silently does nothing.
+   */
+  onMentionClick?: (nodeId: string, event: React.MouseEvent | React.KeyboardEvent) => void;
   /** The local node's id, so a mention of you stands out further. */
   selfNodeId?: string | null;
 }
@@ -52,13 +58,13 @@ function renderMentions(
         title={name ? `${name} (${nodeId})` : nodeId}
         role={clickable ? 'button' : undefined}
         tabIndex={clickable ? 0 : undefined}
-        onClick={clickable ? (e => { e.stopPropagation(); options!.onMentionClick!(nodeId); }) : undefined}
+        onClick={clickable ? (e => { e.stopPropagation(); options!.onMentionClick!(nodeId, e); }) : undefined}
         onKeyDown={clickable
           ? (e => {
               if (e.key !== 'Enter' && e.key !== ' ') return;
               e.preventDefault();
               e.stopPropagation();
-              options!.onMentionClick!(nodeId);
+              options!.onMentionClick!(nodeId, e);
             })
           : undefined}
       >

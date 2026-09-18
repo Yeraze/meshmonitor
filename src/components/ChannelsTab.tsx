@@ -154,7 +154,8 @@ export interface ChannelsTabProps {
   handleDeleteMessage: (message: MeshMessage) => Promise<void>;
   handleSendTapback: (emoji: string, message: MeshMessage) => void;
   handlePurgeChannelMessages: (channelId: number) => Promise<void>;
-  handleSenderClick: (nodeId: string, event: React.MouseEvent) => void;
+  /** Opens the node popup. The event anchors it; without one it centers. */
+  handleSenderClick: (nodeId: string, event?: React.MouseEvent | React.KeyboardEvent) => void;
   onSendBell?: (channel: number, text: string) => Promise<void>;
   onSendPosition?: (channel: number) => Promise<void>;
 
@@ -289,7 +290,10 @@ export default function ChannelsTab({
       const name = getNodeName(nodeId);
       return name && name !== nodeId ? name : undefined;
     },
-    onMentionClick: (nodeId: string) => handleSenderClick(nodeId, { stopPropagation: () => {} } as React.MouseEvent),
+    // Pass the real event: handleSenderClick measures event.currentTarget to
+    // place the node popup next to what was clicked.
+    onMentionClick: (nodeId: string, event: React.MouseEvent | React.KeyboardEvent) =>
+      handleSenderClick(nodeId, event as React.MouseEvent),
     selfNodeId: currentNodeId,
   }), [getNodeName, handleSenderClick, currentNodeId]);
 
@@ -1773,7 +1777,7 @@ export default function ChannelsTab({
           nodes={mappedNodes}
           onNodeClick={(nodeId) => {
             setDetailsState(null);
-            handleSenderClick(nodeId, { stopPropagation: () => {} } as React.MouseEvent);
+            handleSenderClick(nodeId);
           }}
           onClose={() => setDetailsState(null)}
         />

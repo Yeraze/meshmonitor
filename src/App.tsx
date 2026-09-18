@@ -3181,8 +3181,15 @@ function App() {
   };
 
   // Function to handle sender icon clicks
-  const handleSenderClick = useCallback((nodeId: string, event: React.MouseEvent) => {
-    const rect = event.currentTarget.getBoundingClientRect();
+  const handleSenderClick = useCallback((nodeId: string, event?: React.MouseEvent | React.KeyboardEvent) => {
+    // Some callers have no element to anchor to (the Message Details modal
+    // closes first, and previously passed a synthetic event with no
+    // currentTarget — which threw here and made the click do nothing at all).
+    // Fall back to the middle of the viewport so the popup still opens.
+    const target = event?.currentTarget as HTMLElement | undefined;
+    const rect = typeof target?.getBoundingClientRect === 'function'
+      ? target.getBoundingClientRect()
+      : new DOMRect(window.innerWidth / 2, window.innerHeight / 3, 0, 0);
 
     // Get actual sidebar width from the sidebar element itself
     // This handles expanded sidebar (240px) and calc() with safe-area-inset

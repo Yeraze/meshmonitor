@@ -242,7 +242,8 @@ export interface MessagesTabProps {
   handleRequestNeighborInfo: (nodeId: string) => Promise<void>;
   handleRequestTelemetry: (nodeId: string, telemetryType: 'device' | 'environment' | 'airQuality' | 'power') => Promise<void>;
   handleDeleteMessage: (message: MeshMessage) => Promise<void>;
-  handleSenderClick: (nodeId: string, event: React.MouseEvent) => void;
+  /** Opens the node popup. The event anchors it; without one it centers. */
+  handleSenderClick: (nodeId: string, event?: React.MouseEvent | React.KeyboardEvent) => void;
   handleSendTapback: (emoji: string, message: MeshMessage) => void;
   getRecentTraceroute: (nodeId: string) => TracerouteData | null;
   toggleIgnored: (node: DeviceInfo, event: React.MouseEvent) => Promise<void>;
@@ -657,7 +658,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
       const name = getNodeName(nodeId);
       return name && name !== nodeId ? name : undefined;
     },
-    onMentionClick: (nodeId: string) => handleSenderClick(nodeId, { stopPropagation: () => {} } as React.MouseEvent),
+    // Pass the real event: handleSenderClick measures event.currentTarget to
+    // place the node popup next to what was clicked.
+    onMentionClick: (nodeId: string, event: React.MouseEvent | React.KeyboardEvent) =>
+      handleSenderClick(nodeId, event as React.MouseEvent),
     selfNodeId: currentNodeId,
   }), [getNodeName, handleSenderClick, currentNodeId]);
 
@@ -2946,7 +2950,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
           nodes={mappedNodes}
           onNodeClick={(nodeId) => {
             setDetailsState(null);
-            handleSenderClick(nodeId, { stopPropagation: () => {} } as React.MouseEvent);
+            handleSenderClick(nodeId);
           }}
           onClose={() => setDetailsState(null)}
         />
