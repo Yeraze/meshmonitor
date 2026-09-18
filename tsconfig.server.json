@@ -29,6 +29,11 @@
   ],
   "exclude": [
     "src/**/*.test.ts",
+    // .tsx tests too: a component test under an included glob (src/utils, say)
+    // otherwise gets compiled by the server build, where jest-dom's matcher
+    // types are not loaded, and fails CI with errors the frontend build never
+    // shows (#5276).
+    "src/**/*.test.tsx",
     "src/**/*.spec.ts",
     "node_modules",
     "dist"

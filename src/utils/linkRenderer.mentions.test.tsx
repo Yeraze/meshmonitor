@@ -62,9 +62,9 @@ describe('renderMessageWithLinks mentions (#5276)', () => {
     // position against and the click did nothing at all.
     // React clears currentTarget once dispatch ends, so read it inside the
     // handler — which is also where the real consumer reads it.
-    let measured: EventTarget | null = null;
+    let measured: HTMLElement | undefined;
     const onMentionClick = vi.fn((_id: string, event: React.MouseEvent | React.KeyboardEvent) => {
-      measured = event.currentTarget;
+      measured = event.currentTarget as HTMLElement;
     });
     render(<div>{renderMessageWithLinks('@!ffccee11', { ...options, onMentionClick })}</div>);
 
@@ -72,7 +72,7 @@ describe('renderMessageWithLinks mentions (#5276)', () => {
     fireEvent.click(chip);
 
     expect(measured).toBe(chip);
-    expect(typeof (measured as HTMLElement).getBoundingClientRect).toBe('function');
+    expect(typeof measured?.getBoundingClientRect).toBe('function');
   });
 
   it('is not clickable without a handler', () => {
