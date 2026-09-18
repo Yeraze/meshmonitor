@@ -109,6 +109,18 @@ import { hopLimitSettingValue } from './utils/hopLimitOverride';
 
 // Icons and helpers are now imported from utils/
 
+/**
+ * `staleTime` for `checkConnectionStatus`'s `fetchQuery` read of the poll
+ * cache. Short enough that the 5s "not connected" loop, the post-reboot
+ * reconnect wait (3s cadence), and the Retry button all get a live fetch
+ * rather than an arbitrarily old cached snapshot — `usePoll()` itself is
+ * disabled whenever `connectionStatus !== 'connected'`, so nothing else
+ * refreshes this cache entry while any of those three are the ones calling.
+ * Still long enough to dedupe a call that lands within the same tick as
+ * another mount-time observer reading the same query key.
+ */
+const POLL_STATUS_STALE_TIME_MS = 3000;
+
 function App() {
   const { t } = useTranslation();
   const { authStatus, hasPermission, loading: authLoading } = useAuth();
@@ -1612,19 +1624,30 @@ function App() {
       // 4.0 multi-source mode.
       //
       // Read through queryClient.fetchQuery on usePoll's own query key/queryFn
-      // (staleTime: Infinity — accept whatever is already cached, however old,
-      // rather than treat it as stale) instead of a bare fetch. usePoll() has
-      // several always-enabled observers elsewhere (useNodes/useChannels/etc.
-      // in useServerData.ts) that already fetch this same key at mount; a bare
-      // fetch here was invisible to that cache and produced a second, fully
-      // redundant ~3MB request every time the app connected.
+      // instead of a bare fetch, so it shares/dedupes with any other observer
+      // already fetching (or holding fresh data for) this same key — e.g.
+      // useNodes/useChannels/etc. in useServerData.ts fetch it at mount.
+      //
+      // staleTime is a short, few-second window (POLL_STATUS_STALE_TIME_MS),
+      // NOT Infinity. This function is also the only thing keeping this cache
+      // entry current while not connected: `usePoll()` itself is gated by
+      // `shouldPoll = connectionStatus === 'connected'`, so it is disabled for
+      // exactly the three callers that matter here — the 5s "not connected"
+      // poll loop, the post-reboot reconnect wait, and the Retry button. With
+      // `Infinity`, once any stale connection snapshot landed in the cache it
+      // would be treated as forever-fresh and never re-fetched, so none of
+      // those three paths could ever observe the node coming back. A short
+      // staleTime still dedupes calls that land within the same few seconds
+      // (the original mount-time-triple-fetch fix this replaced), while every
+      // call spaced further apart — which is every real caller here — gets a
+      // live fetch.
       let pollData: PollData | undefined;
       let pollOk = true;
       try {
         pollData = await queryClient.fetchQuery({
           queryKey: sourcePollQueryKey(sourceId),
           queryFn: ({ signal }) => fetchPollData(csrfFetch, appBasename, sourceId, signal),
-          staleTime: Infinity,
+          staleTime: POLL_STATUS_STALE_TIME_MS,
         });
       } catch {
         pollOk = false;
