@@ -124,4 +124,47 @@ describe('userPreferencesRoutes', () => {
       expect(get.body.preferences.showAtakContacts).toBe(false);
     });
   });
+
+  /**
+   * #5283 maintainer review: the INSERT path used to default `showMqttNodes`
+   * to `false` while the READ path (a NULL column, or no row at all)
+   * defaulted it to `true`. Each map toggle POSTs only the field the user
+   * changed, so the very first time a user touched ANY other map setting, a
+   * row was created with `show_mqtt_nodes = 0` baked in — silently flipping
+   * the effective default for every source, MQTT-only ones included. The fix
+   * makes the insert default match the read default (both `true`).
+   */
+  describe('showMqttNodes insert default (#5283)', () => {
+    it('defaults to true for a user who never saved any map preference', async () => {
+      const agent = await harness.loginAs(harness.limited);
+
+      const get = await agent.get('/map-preferences');
+      expect(get.body.preferences).toBeNull();
+    });
+
+    it('does not flip showMqttNodes to false when the first-ever save touches an unrelated field', async () => {
+      const agent = await harness.loginAs(harness.limited);
+
+      // This is the exact repro: no row exists yet, and the user changes a
+      // completely unrelated map setting (e.g. "Show Paths"). That save goes
+      // through the INSERT branch, which must not silently default
+      // showMqttNodes to false.
+      const post = await agent.post('/map-preferences').send({ showPaths: true });
+      expect(post.status).toBe(200);
+
+      const get = await agent.get('/map-preferences');
+      expect(get.status).toBe(200);
+      expect(get.body.preferences).toMatchObject({ showPaths: true, showMqttNodes: true });
+    });
+
+    it('still allows a user to explicitly turn showMqttNodes off', async () => {
+      const agent = await harness.loginAs(harness.limited);
+
+      const post = await agent.post('/map-preferences').send({ showMqttNodes: false });
+      expect(post.status).toBe(200);
+
+      const get = await agent.get('/map-preferences');
+      expect(get.body.preferences).toMatchObject({ showMqttNodes: false });
+    });
+  });
 });

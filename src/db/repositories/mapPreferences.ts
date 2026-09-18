@@ -134,7 +134,7 @@ export class MapPreferencesRepository extends BaseRepository {
           showNeighborInfo: preferences.showNeighborInfo ?? false,
           showRoute: preferences.showRoute ?? true,
           showMotion: preferences.showMotion ?? true,
-          showMqttNodes: preferences.showMqttNodes ?? false,
+          showMqttNodes: preferences.showMqttNodes ?? true,
           showUdpNodes: preferences.showUdpNodes ?? false,
           showRfNodes: preferences.showRfNodes ?? true,
           showMeshcoreNodes: preferences.showMeshCoreNodes ?? true,
