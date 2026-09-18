@@ -312,6 +312,12 @@ export interface EnvironmentConfig {
   accessLogFormat: 'combined' | 'common' | 'tiny';
   accessLogFormatProvided: boolean;
 
+  // Event Audit Logging
+  eventAuditLogEnabled: boolean;
+  eventAuditLogEnabledProvided: boolean;
+  eventAuditLogPath: string;
+  eventAuditLogPathProvided: boolean;
+
   // Logging
   logLevel: 'trace' | 'debug' | 'info' | 'warn' | 'error';
   logLevelProvided: boolean;
@@ -703,6 +709,29 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
 
   const accessLogFormat = parseEnum('ACCESS_LOG_FORMAT', process.env.ACCESS_LOG_FORMAT, ['combined', 'common', 'tiny'] as const, 'combined');
 
+  // Event Audit Logging (opt-in, off by default)
+  const eventAuditLogEnabled = parseBoolean(
+    'EVENT_AUDIT_LOG_ENABLED',
+    process.env.EVENT_AUDIT_LOG_ENABLED,
+    false,
+  );
+  const eventAuditLogPath = {
+    value: process.env.EVENT_AUDIT_LOG_PATH || '/data/logs/events-audit.log',
+    wasProvided: process.env.EVENT_AUDIT_LOG_PATH !== undefined,
+  };
+
+  // Validate EVENT_AUDIT_LOG_PATH for security (absolute, no path traversal)
+  if (
+    eventAuditLogPath.value.includes('../') ||
+    !path.isAbsolute(eventAuditLogPath.value)
+  ) {
+    logger.warn(
+      `Invalid EVENT_AUDIT_LOG_PATH: ${eventAuditLogPath.value}. Must be absolute path without path traversal.`,
+    );
+    eventAuditLogPath.value = '/data/logs/events-audit.log';
+    eventAuditLogPath.wasProvided = false;
+  }
+
   // Logging
   const logLevelDefault: 'trace' | 'debug' | 'info' | 'warn' | 'error' = nodeEnv.value === 'development' ? 'debug' : 'info';
   const logLevel = parseEnum('LOG_LEVEL', process.env.LOG_LEVEL?.toLowerCase(), ['trace', 'debug', 'info', 'warn', 'error'] as const, logLevelDefault);
@@ -812,6 +841,10 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     logger.debug('   --- Access Logging ---');
     logger.debug(`   ACCESS_LOG_PATH: ${accessLogPath.value} (${src(accessLogPath.wasProvided)})`);
     logger.debug(`   ACCESS_LOG_FORMAT: ${accessLogFormat.value} (${src(accessLogFormat.wasProvided)})`);
+  }
+  if (eventAuditLogEnabled.value) {
+    logger.debug('   --- Event Audit Logging ---');
+    logger.debug(`   EVENT_AUDIT_LOG_PATH: ${eventAuditLogPath.value} (${src(eventAuditLogPath.wasProvided)})`);
   }
   if (customTitle.wasProvided || customLogoUrl.wasProvided) {
     logger.debug('   --- Branding ---');
@@ -949,6 +982,12 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     accessLogPathProvided: accessLogPath.wasProvided,
     accessLogFormat: accessLogFormat.value,
     accessLogFormatProvided: accessLogFormat.wasProvided,
+
+    // Event Audit Logging
+    eventAuditLogEnabled: eventAuditLogEnabled.value,
+    eventAuditLogEnabledProvided: eventAuditLogEnabled.wasProvided,
+    eventAuditLogPath: eventAuditLogPath.value,
+    eventAuditLogPathProvided: eventAuditLogPath.wasProvided,
 
     // Logging
     logLevel: logLevel.value,
