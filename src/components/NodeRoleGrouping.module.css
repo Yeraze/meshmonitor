@@ -1,0 +1,118 @@
+/* Node-list "Group by Role" feature (PR #5284). CSS module — do not add these
+ * rules to the global sheets (CLAUDE.md CSS containment rule). Previously
+ * landed as ~100 new lines in the frozen src/styles/nodes.css; moved here in
+ * review, matching the precedent already set for the cluster bubble
+ * (src/components/map/layers/NodeMarkerCluster.module.css).
+ */
+
+/* Group-by-role header row (grouping toggle, off by default). Sits inline in
+   the same virtualized list as the (global) .node-item rows — see
+   nodeListItems in NodesTab.tsx — so it needs its own compact row rather than
+   reusing .node-item's padding/border. */
+.groupHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-surface-active);
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  user-select: none;
+  box-sizing: border-box;
+}
+
+.groupHeader:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.groupName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.groupCount {
+  color: var(--color-text-disabled);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* Role distribution summary (grouping requirement #3) — a compact stacked
+   bar + legend shown above the list when grouping is on. Colours come from
+   the app's categorical --chart-N custom properties, so it stays correct in
+   every Catppuccin variant without a new charting dependency. */
+.summary {
+  padding: 0.5rem 0.75rem 0.75rem 0.75rem;
+  border-bottom: 1px solid var(--color-surface-active);
+}
+
+.summaryTitle {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.4rem;
+}
+
+.summaryBarWrap {
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--color-surface);
+  line-height: 0;
+}
+
+.summaryBar {
+  display: block;
+  width: 100%;
+  height: 14px;
+}
+
+.summaryLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.6rem;
+  margin-top: 0.5rem;
+}
+
+.summaryChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.summarySwatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.summaryChipCount {
+  color: var(--color-text-disabled);
+}
+
+/* Pressed state for the "Group by Role" toggle, which otherwise shares the
+   global .filter-popup-btn class with the (non-toggle) filter popup buttons —
+   applied as an additional class alongside filter-popup-btn rather than
+   adding a `.filter-popup-btn.active` rule to the global sheet. Same visual
+   language as the global `.filter-toggle-btn.active`. */
+.toggleActive {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-text);
+  font-weight: 600;
+}

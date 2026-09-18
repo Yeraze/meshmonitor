@@ -72,6 +72,7 @@ import { useNodeIdentityChanges } from '../hooks/useNodeIdentityChanges';
 import { NodeDetailsButton } from './NodeDetailsButton';
 import nodeRowStyles from './NodeRowActions.module.css';
 import nodeStatusStyles from './NodeStatusLine.module.css';
+import roleGroupingStyles from './NodeRoleGrouping.module.css';
 import { NeighborLinksLayer, type NeighborLinkDescriptor } from './map/layers/NeighborLinksLayer';
 import { AccuracyRegionsLayer, type AccuracyRegionDescriptor } from './map/layers/AccuracyRegionsLayer';
 import { NodeCard } from './map/popups/NodeCard';
@@ -245,13 +246,13 @@ const RoleDistributionSummary = React.memo<{
   });
 
   return (
-    <div className="node-role-summary">
-      <div className="node-role-summary-title">{t('nodes.role_distribution', 'Role distribution')}</div>
-      <div className="node-role-summary-bar-wrap">
+    <div className={roleGroupingStyles.summary}>
+      <div className={roleGroupingStyles.summaryTitle}>{t('nodes.role_distribution', 'Role distribution')}</div>
+      <div className={roleGroupingStyles.summaryBarWrap}>
         <svg
           viewBox={`0 0 ${VIEWBOX_WIDTH} 14`}
           preserveAspectRatio="none"
-          className="node-role-summary-bar"
+          className={roleGroupingStyles.summaryBar}
           aria-hidden="true"
         >
           {segments.map((seg) => (
@@ -261,12 +262,12 @@ const RoleDistributionSummary = React.memo<{
           ))}
         </svg>
       </div>
-      <div className="node-role-summary-legend">
+      <div className={roleGroupingStyles.summaryLegend}>
         {chips.map((chip) => (
-          <span className="node-role-summary-chip" key={chip.key}>
-            <span className="node-role-summary-swatch" style={{ background: chip.color }} />
+          <span className={roleGroupingStyles.summaryChip} key={chip.key}>
+            <span className={roleGroupingStyles.summarySwatch} style={{ background: chip.color }} />
             {chip.label}
-            <span className="node-role-summary-chip-count">{chip.count}</span>
+            <span className={roleGroupingStyles.summaryChipCount}>{chip.count}</span>
           </span>
         ))}
       </div>
@@ -1569,7 +1570,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // toggle.
   const displayedNodes = useMemo(() => orderNodes(filteredNodes), [filteredNodes, orderNodes]);
 
-  // Grouping toggle (#5xxx): off by default, unchanged behaviour for everyone.
+  // Grouping toggle: off by default, unchanged behaviour for everyone.
   // On, nodes are bucketed by device-role/MeshCore-type category
   // (getNodeTypeCategory — the same categorization the map/legend/filter
   // already use) with favorites-first + field sort applied within each group.
@@ -1591,7 +1592,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // (grouping off) or group headers interleaved with their rows (grouping
   // on). A collapsed group's rows are left out of this array entirely — not
   // merely hidden — so the virtualizer never mounts or measures them; this is
-  // what keeps grouping from undoing the virtualization work in 6a254e78.
+  // what keeps grouping from undoing the perf win of virtualizing the node
+  // list with @tanstack/react-virtual.
   const nodeListItems = useMemo<GroupedNodeListItem<DeviceInfo>[]>(() => {
     if (groupNodesByRole) {
       return buildGroupedNodeItems(filteredNodes, orderNodes, collapsedRoleGroups);
@@ -2327,7 +2329,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 {t('common.filter')}
               </button>
               <button
-                className={`filter-popup-btn${groupNodesByRole ? ' active' : ''}`}
+                className={`filter-popup-btn${groupNodesByRole ? ` ${roleGroupingStyles.toggleActive}` : ''}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   e.nativeEvent.stopImmediatePropagation();
@@ -2439,7 +2441,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
             return nodeListItems.length > 0 ? (
               <div style={{ height: `${nodesRowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
               {/* Group headers + Meshtastic nodes, flattened into one virtualized list
-                  (grouping must not undo the virtualization from 6a254e78 — see
+                  (grouping must not undo the node-list virtualization — see
                   nodeListItems above). */}
               {nodesRowVirtualizer.getVirtualItems().map(virtualRow => {
                 const item = nodeListItems[virtualRow.index];
@@ -2454,7 +2456,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       key={`group:${item.category}`}
                       data-index={virtualRow.index}
                       ref={nodesRowVirtualizer.measureElement}
-                      className="node-role-group-header"
+                      className={roleGroupingStyles.groupHeader}
                       style={{
                         position: 'absolute',
                         top: 0,
@@ -2476,9 +2478,12 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         ? t('nodes.expand_role_group', 'Expand {{role}} group', { role: roleLabel })
                         : t('nodes.collapse_role_group', 'Collapse {{role}} group', { role: roleLabel })}
                     >
-                      <UiIcon name={collapsed ? 'chevronDown' : 'chevronUp'} size={14} />
-                      <span className="node-role-group-name">{roleLabel}</span>
-                      <span className="node-role-group-count">{item.count}</span>
+                      {/* Collapsed = right-pointing chevron ("expand this"),
+                          expanded = down chevron ("collapse this") — the more
+                          common disclosure-triangle convention. */}
+                      <UiIcon name={collapsed ? 'chevronRight' : 'chevronDown'} size={14} />
+                      <span className={roleGroupingStyles.groupName}>{roleLabel}</span>
+                      <span className={roleGroupingStyles.groupCount}>{item.count}</span>
                     </div>
                   );
                 }

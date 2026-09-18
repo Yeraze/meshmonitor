@@ -1,7 +1,7 @@
 /**
  * Grouping helpers for the Nodes panel's "Group by role" toggle. Kept as pure
  * functions, separate from NodesTab, so the flattening logic that feeds the
- * virtualized list (see @tanstack/react-virtual, commit 6a254e78) is testable
+ * virtualized list (see @tanstack/react-virtual) is testable
  * without rendering the whole component.
  *
  * Categorization itself is NOT reimplemented here — {@link getNodeTypeCategory}
@@ -42,7 +42,7 @@ export type GroupedNodeListItem<T> =
 /**
  * Flatten nodes into group headers + rows for ONE virtualized list. Grouping
  * must never fall back to rendering every group's children eagerly (that
- * would undo the virtualization from 6a254e78) — a collapsed group's rows are
+ * would undo the node-list virtualization) — a collapsed group's rows are
  * omitted from the returned array entirely, not just hidden with CSS, so the
  * virtualizer never measures or mounts them.
  *
