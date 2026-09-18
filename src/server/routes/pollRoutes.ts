@@ -13,6 +13,7 @@ import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { MeshMessage } from '../../types/message.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
+import { isMqttConnectionStatusManager } from '../sourceManagerTypes.js';
 import { logger } from '../../utils/logger.js';
 import { optionalAuth, hasPermission } from '../auth/authMiddleware.js';
 import {
@@ -104,7 +105,18 @@ router.get('/poll', optionalAuth(), async (req, res) => {
       };
     } else {
       try {
-        const connectionStatus = await activeManager.getConnectionStatus();
+        // resolveSourceManager only narrows to meshtastic_tcp managers
+        // (see its docstring, invariant I2, #3962 Phase 4.2a) — an
+        // mqtt_bridge/mqtt_broker source is registered but not a
+        // MeshtasticManager, so it silently falls back to the
+        // primary/fallback manager and reports THAT manager's connection
+        // state instead of its own. Look the MQTT manager up directly via
+        // the registry, mirroring the MeshCore-narrowing pattern in
+        // channelRoutes.ts.
+        const rawPollManager = pollSourceId ? sourceManagerRegistry.getManager(pollSourceId) : null;
+        const connectionStatusManager =
+          rawPollManager && isMqttConnectionStatusManager(rawPollManager) ? rawPollManager : activeManager;
+        const connectionStatus = await connectionStatusManager.getConnectionStatus();
         // Hide nodeIp from anonymous users
         if (!req.session.userId) {
           const { nodeIp, ...statusWithoutNodeIp } = connectionStatus;

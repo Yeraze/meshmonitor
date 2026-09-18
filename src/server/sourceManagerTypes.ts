@@ -25,7 +25,10 @@ import type { ISourceManager, SourceManagerRegistry } from './sourceManagerRegis
 import type { MeshCoreManager } from './meshcoreManager.js';
 import type { MeshCoreMqttManager } from './meshcoreMqttManager.js';
 import type { MeshtasticManager } from './meshtasticManager.js';
+import type { MqttBridgeManager } from './mqttBridgeManager.js';
+import type { MqttBrokerManager } from './mqttBrokerManager.js';
 import type { ReticulumManager } from './reticulumManager.js';
+import { isMqttSourceType } from '../db/repositories/sources.js';
 
 /**
  * Narrows an ISourceManager to a **device-backed** MeshCoreManager.
@@ -86,6 +89,19 @@ export function isMeshtasticManager(m: ISourceManager): m is MeshtasticManager {
  */
 export function isReticulumManager(m: ISourceManager): m is ReticulumManager {
   return m.sourceType === 'reticulum';
+}
+
+/**
+ * Narrows an ISourceManager to the two MQTT-fed manager types (mqtt_bridge,
+ * mqtt_broker). Neither is a MeshtasticManager, so resolveSourceManager's
+ * meshtastic_tcp-only narrowing never returns them — but both implement
+ * getConnectionStatus() with the same Meshtastic-shaped return
+ * (connected/nodeResponsive/configuring/nodeIp/userDisconnected), so a caller
+ * that only needs connection status can look one up directly via
+ * sourceManagerRegistry and use it like a Meshtastic manager.
+ */
+export function isMqttConnectionStatusManager(m: ISourceManager): m is MqttBridgeManager | MqttBrokerManager {
+  return isMqttSourceType(m.sourceType);
 }
 
 /**
