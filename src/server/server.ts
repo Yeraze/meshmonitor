@@ -41,6 +41,7 @@ import { lowBatteryNotificationService } from './services/lowBatteryNotification
 import { cotFeedService } from './services/cotFeedService.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import { versionCheckService } from './services/versionCheckService.js';
+import { createAuditLogger } from './events/index.js';
 import { dynamicCspMiddleware, refreshTileHostnameCache } from './middleware/dynamicCsp.js';
 import settingsRoutes, { setSettingsCallbacks } from './routes/settingsRoutes.js';
 import { bootstrapSources } from './bootstrapSources.js';
@@ -55,6 +56,10 @@ import { installProcessSafetyNet } from './processSafetyNet.js';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
+
+// Event audit logger (opt-in, EVENT_AUDIT_LOG_ENABLED). Module-level so
+// gracefulShutdown() can stop it during the shutdown sequence.
+let auditLogger: ReturnType<typeof createAuditLogger> = null;
 
 // Load .env file in development mode
 // dotenv/config automatically loads .env from project root
@@ -397,6 +402,10 @@ setTimeout(async () => {
     // to do inline) on every pass.
     inactiveNodeNotificationService.start();
     logger.info('✅ Inactive node notification service started (per-source config, resolved per tick)');
+
+    // Start the event audit logger (opt-in, EVENT_AUDIT_LOG_ENABLED).
+    // Writes structured audit lines for 7 event types to a rotating file.
+    auditLogger = createAuditLogger();
 
     // Start low battery notification service with validation.
     // Per-user threshold is read from notification preferences at check time;
@@ -1051,6 +1060,15 @@ function gracefulShutdown(reason: string, exitCode = 0): void {
       logger.debug('✅ Meshtastic connection closed');
     } catch (error) {
       logger.error('Error disconnecting from Meshtastic:', error);
+    }
+
+    // Stop the event audit logger (unsubscribes handlers; the stream's
+    // pending writes are flushed by the stream itself on process exit).
+    try {
+      auditLogger?.stop();
+      logger.debug('✅ Event audit logger stopped');
+    } catch (error) {
+      logger.error('Error stopping event audit logger:', error);
     }
 
     // Close database connections
