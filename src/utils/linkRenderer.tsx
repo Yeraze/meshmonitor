@@ -1,15 +1,89 @@
 import React from 'react';
 import api from '../services/api.js';
+import { MENTION_TOKEN_RE } from './mentions.js';
 
 // URL detection regex - matches http://, https://, and www. URLs
 const URL_REGEX = /(https?:\/\/[^\s]+)|(www\.[^\s]+)/gi;
 
 /**
- * Renders text with clickable links for any URLs found
+ * How to render `@!<id>` mention tokens (#5276). Without this, a mention stays
+ * readable as its raw token, which is what the acceptance criteria ask for when
+ * a node is unknown.
+ */
+export interface MentionRenderOptions {
+  /** Current display name for a node id, or undefined when it is unknown. */
+  resolveNodeName?: (nodeId: string) => string | undefined;
+  /** Opens the node's details. Without it, the chip is not clickable. */
+  onMentionClick?: (nodeId: string) => void;
+  /** The local node's id, so a mention of you stands out further. */
+  selfNodeId?: string | null;
+}
+
+/**
+ * Split a plain-text run into mention chips and text (#5276).
+ *
+ * The name is resolved at render time rather than stored, so a node that gets
+ * renamed shows its new name in old messages — the token on the wire carries
+ * the id precisely so this works.
+ */
+function renderMentions(
+  text: string,
+  keyPrefix: string,
+  options?: MentionRenderOptions
+): React.ReactNode[] {
+  if (!text) return [];
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  MENTION_TOKEN_RE.lastIndex = 0;
+  while ((match = MENTION_TOKEN_RE.exec(text)) !== null) {
+    if (match.index > lastIndex) parts.push(text.substring(lastIndex, match.index));
+
+    const nodeId = match[1].toLowerCase();
+    const name = options?.resolveNodeName?.(nodeId);
+    const isSelf = !!options?.selfNodeId && options.selfNodeId.toLowerCase() === nodeId;
+    const clickable = !!options?.onMentionClick;
+
+    parts.push(
+      <span
+        key={`${keyPrefix}-mention-${match.index}`}
+        className={`message-mention${isSelf ? ' message-mention-self' : ''}`}
+        title={name ? `${name} (${nodeId})` : nodeId}
+        role={clickable ? 'button' : undefined}
+        tabIndex={clickable ? 0 : undefined}
+        onClick={clickable ? (e => { e.stopPropagation(); options!.onMentionClick!(nodeId); }) : undefined}
+        onKeyDown={clickable
+          ? (e => {
+              if (e.key !== 'Enter' && e.key !== ' ') return;
+              e.preventDefault();
+              e.stopPropagation();
+              options!.onMentionClick!(nodeId);
+            })
+          : undefined}
+      >
+        @{name || nodeId}
+      </span>
+    );
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < text.length) parts.push(text.substring(lastIndex));
+  return parts;
+}
+
+/**
+ * Renders text with clickable links for any URLs found, and `@` mentions as
+ * chips when mention options are supplied (#5276).
  * @param text - The message text to process
+ * @param mentions - Optional mention rendering behaviour
  * @returns JSX elements with URLs converted to clickable links
  */
-export function renderMessageWithLinks(text: string): React.ReactNode[] {
+export function renderMessageWithLinks(
+  text: string,
+  mentions?: MentionRenderOptions
+): React.ReactNode[] {
   if (!text) return [];
 
   // Replace bell character (0x07) with visible indicator
@@ -28,7 +102,7 @@ export function renderMessageWithLinks(text: string): React.ReactNode[] {
 
     // Add text before the URL
     if (matchIndex > lastIndex) {
-      parts.push(text.substring(lastIndex, matchIndex));
+      parts.push(...renderMentions(text.substring(lastIndex, matchIndex), `pre-${matchIndex}`, mentions));
     }
 
     // Normalize URL - add https:// if it starts with www.
@@ -56,10 +130,10 @@ export function renderMessageWithLinks(text: string): React.ReactNode[] {
 
   // Add remaining text after the last URL
   if (lastIndex < text.length) {
-    parts.push(text.substring(lastIndex));
+    parts.push(...renderMentions(text.substring(lastIndex), `tail-${lastIndex}`, mentions));
   }
 
-  // If no URLs were found, return the original text
+  // If no URLs were found, the mention pass above still produced the parts.
   return parts.length > 0 ? parts : [text];
 }
 

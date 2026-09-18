@@ -22,6 +22,9 @@ import { getUtf8ByteLength, formatByteCount, isEmoji } from '../utils/text';
 import { scrollInputIntoView } from '../utils/scrollInputIntoView';
 import { applyHomoglyphOptimization } from '../utils/homoglyph';
 import { renderMessageWithLinks } from '../utils/linkRenderer';
+import MentionAutocomplete from './mentions/MentionAutocomplete';
+import { useMentionAutocomplete } from '../hooks/useMentionAutocomplete';
+import { mentionCandidatesFromNodes } from '../utils/mentionCandidates';
 import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
 import HopCountDisplay from './HopCountDisplay';
 import LinkPreview from './LinkPreview';
@@ -267,6 +270,28 @@ export default function ChannelsTab({
   const channelMessageInputRef = useRef<HTMLTextAreaElement>(null);
 
   useAutoResizeTextarea(channelMessageInputRef, newMessage);
+
+  // #5276: `@` mention autocomplete over the nodes this source knows.
+  const mentionCandidates = useMemo(
+    () => mentionCandidatesFromNodes(nodes, currentNodeId),
+    [nodes, currentNodeId]
+  );
+  const mentions = useMentionAutocomplete({
+    value: newMessage,
+    onChange: setNewMessage,
+    textareaRef: channelMessageInputRef,
+    candidates: mentionCandidates,
+  });
+  // Resolves a mention token to the node's CURRENT name at render time, so a
+  // rename shows through in old messages.
+  const mentionRenderOptions = useMemo(() => ({
+    resolveNodeName: (nodeId: string) => {
+      const name = getNodeName(nodeId);
+      return name && name !== nodeId ? name : undefined;
+    },
+    onMentionClick: (nodeId: string) => handleSenderClick(nodeId, { stopPropagation: () => {} } as React.MouseEvent),
+    selfNodeId: currentNodeId,
+  }), [getNodeName, handleSenderClick, currentNodeId]);
 
   // State for "Jump to Bottom" button
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
@@ -1220,7 +1245,7 @@ export default function ChannelsTab({
                                     )}
                                     <div className="message-text-row">
                                       <div className="message-text" style={{ whiteSpace: 'pre-line' }}>
-                                        {renderMessageWithLinks(msg.text)}
+                                        {renderMessageWithLinks(msg.text, mentionRenderOptions)}
                                       </div>
                                       <div className="message-meta">
                                         <span className="message-time">
@@ -1363,11 +1388,30 @@ export default function ChannelsTab({
                       {/* Hide message input for Channel Database channels (read-only) - device channels are 0-7 */}
                       {hasPermission(`channel_${selectedChannel}` as ResourceType, 'write') && selectedChannel >= 0 && selectedChannel < CHANNEL_DB_OFFSET && (
                         <div className="message-input-container">
-                          <div className="input-with-counter">
+                          <div className="input-with-counter" style={{ position: 'relative' }}>
+                            <MentionAutocomplete
+                              id="channel-mention-list"
+                              candidates={mentions.suggestions}
+                              activeIndex={mentions.activeIndex}
+                              onHover={mentions.setActiveIndex}
+                              onSelect={mentions.select}
+                            />
                             <textarea
                               ref={channelMessageInputRef}
                               value={newMessage}
-                              onChange={e => setNewMessage(e.target.value)}
+                              onChange={e => {
+                                setNewMessage(e.target.value);
+                                mentions.handleChange(e.target.value, e.target.selectionStart);
+                              }}
+                              onSelect={e => mentions.syncFromCaret(
+                                e.currentTarget.value,
+                                e.currentTarget.selectionStart
+                              )}
+                              onBlur={mentions.close}
+                              role="combobox"
+                              aria-expanded={mentions.isOpen}
+                              aria-controls={mentions.isOpen ? 'channel-mention-list' : undefined}
+                              aria-autocomplete="list"
                               onFocus={scrollInputIntoView}
                               placeholder={
                                 /* #5265: the composer is one row on mobile, so
@@ -1386,6 +1430,9 @@ export default function ChannelsTab({
                               disabled={txDisabled}
                               title={txDisabled ? (txDisabledTooltip ?? t('tx_disabled.control_tooltip')) : undefined}
                               onKeyDown={e => {
+                                // The open suggestion list claims Enter/Tab/arrows
+                                // first, or picking a node would send instead.
+                                if (mentions.handleKeyDown(e)) return;
                                 if (
                                   txDisabled ||
                                   !(

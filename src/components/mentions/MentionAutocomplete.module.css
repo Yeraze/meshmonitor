@@ -1,0 +1,64 @@
+/*
+ * Mention autocomplete popup (#5276). Sits above the composer, so it must
+ * escape the input row without pushing it, and stay above the message list.
+ */
+
+.wrapper {
+  position: relative;
+}
+
+.popup {
+  position: absolute;
+  bottom: calc(100% + 0.35rem);
+  left: 0;
+  z-index: 30;
+  min-width: 14rem;
+  max-width: min(22rem, 90vw);
+  padding: 0.25rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 0.5rem;
+  background-color: var(--color-surface);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 25%);
+  list-style: none;
+  margin: 0;
+}
+
+.option {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  border: none;
+  border-radius: 0.35rem;
+  background: none;
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.option:hover,
+.active {
+  background-color: var(--color-surface-hover);
+}
+
+.longName {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shortName {
+  flex: 0 0 auto;
+  font-weight: 600;
+  color: var(--color-accent);
+}
+
+.nodeId {
+  flex: 0 0 auto;
+  font-family: monospace;
+  font-size: 0.8rem;
+  color: var(--color-text-subtle);
+}
