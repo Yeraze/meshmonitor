@@ -10,20 +10,77 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **MeshCore DM/channel retries no longer read as duplicate messages** — `MeshCoreManager`'s ack-timeout DM retry (#3977) and echo-miss channel retry (#3979) resent through meshcore.js's `sendTextMessage()`/`sendChannelTextMessage()` wrappers, which always mint a fresh `senderTimestamp` (and, for DMs, hardcode `attempt = 0`) on every call. A retransmit of an already-sent message therefore looked like a brand-new send to the recipient (and to any mesh dedup keyed on sender+timestamp), so a companion connected through the Virtual Node could see the same message arrive more than once even though it was only sent once. Retries now drive the library's lower-level `sendCommandSendTxtMsg`/`sendCommandSendChannelTxtMsg` directly, reusing the ORIGINAL send's `senderTimestamp` with an incrementing `attempt` — matching what other MeshCore clients and the firmware's own retry cadence expect. (#5202)
 - **Bundled Apprise API server no longer logs `BrokenPipeError` tracebacks** — when a notification request took longer to process than the Node client's fetch timeout (or the client otherwise disconnected early), `apprise-api.py` tried to write a response to an already-closed socket and let the resulting `BrokenPipeError` propagate, printing a noisy "Exception occurred during processing of request" traceback to the container log even though the underlying notification had already been dispatched. Response writes now swallow a broken/reset connection instead of raising. (#5184)
 
-## [4.15.2-rc2] - 2026-08-22
+## [4.16.0] - 2026-09-10
 
 ### Added
+- **Route segments honour the map transport toggles** — Show RF / UDP / MQTT now filter traceroute route segments, not only node markers. Traceroutes recorded before this release carry no transport information and are treated as RF. (#5097)
+- **Per-source unread DM badge on the Sources list**, with a per-user switch to turn it off. (#5124)
+- **Operator privacy disclosures** — publish a privacy policy, terms of service and contact document from inside MeshMonitor, either hosted or linked. (#5156)
+- **Philadelphia MeshCore 500 radio preset.** (#5137)
+- **MeshBeacon warns on non-compliant offers** — a received offer whose preset and region combination breaks the regulator's rules is now flagged. (#5103)
+- **MeshCore observer device stats** — device statistics and noise-floor telemetry read from the `/status` topic. (#5040)
+
+### Changed
+- **MeshCore TCP sources default to port 5000**, where the WiFi and Ethernet companion builds listen. Native-TCP builds still use `4403`; set the port explicitly when adding such a source. (#5160)
+- **Traffic Management moved to the firmware 2.8 non-zero-enables schema.** (#5123)
+- **Three migrations run on first boot** (160, 161, 162). All are additive and idempotent.
+
+### Fixed
+- **Large meshes no longer drop the TCP link mid config sync** (#5122) — a reporter with a ~190 node NodeDB packet-captured the disconnect, and the fix took four passes: scope the connect timeout to its own attempt so it cannot outlive it and kill a healthy socket, name every socket teardown, defer the favorite write-back so it stops injecting an admin packet into the middle of the NodeDB stream, detect a stalled sync instead of hanging with no detection at all, and retry sooner afterwards, ramping 3s to 10s to 30s so recovery takes about 16s rather than about 73s.
+- **MeshCore** — decode the RepeaterStats and Core stats fields the pinned library dropped (#5125); guard an unhandled-rejection crash from bare library rejects (#5102); refresh `lastHeard` on a telemetry round trip, not only on adverts (#5131); route MQTT ingest sources through every MeshCore read path and give them their own page (#5094, #5096); theme the MQTT ingest inputs and the channel/room row buttons (#5135, #5071).
+- **Maps and UI** — give the Leaflet credit room beside the packet monitor (#5099); stop chart panels overflowing the viewport in portrait (#5093); keep the GPIO Pin Usage sidebar inside the viewport (#5100); scope the non-scrollable-page rule to the channels tab.
+- **Configuration and data** — scope traceroute purges, and guard the sibling that never did (#5088); stamp the security load gate from the per-section load too (#5077); request the survey under `/api` so it reaches the API router (#5078).
+
+### Security
+- **Device credentials are no longer written to debug logs in the clear** — WiFi PSK, MQTT password, private key and admin key are redacted. `publicKey` still prints in full, by design. (#5141)
+
+## [4.15.2] - 2026-09-01
+
+### Added
+- **Mesh Issues Analysis** — a scheduled, passive health scan that turns telemetry, RF adjacency and per-node flags into a triaged list of findings you can act on. It costs the mesh no airtime. Phase 1 laid the foundation and the Tier A rules, Phase 2 added the Tier B RF-graph rules, and Phase 3 added the coverage preface, the dismiss UI, Tier C and the settings. Follow-ups brought the A5 cadence, pagination and an auto-close setting, a map on Router Cluster findings, a reorganised report (dashboard, tables, by-node view, bulk actions) and clickable node references with a source picker. (#4964, #4966, #4967, #4968, #4972, #4975, #4981, #5002)
 - **Device Health automation triggers + template** (#4558) — five new Automation Engine triggers built on data MeshMonitor already receives, so node-health alerts no longer need a bespoke feature: **node silent** (not heard for N minutes / heartbeat lost), **node online** (recovery), **node rebooted** (uptime reset), **node power changed** (external power lost/restored), and **battery declining** (a "not charging" trend proxy). Noise floor is now a selectable telemetry field too. A new **Device Health** starter template quick-creates the notifications — pick a source/node, toggle any of ten alerts with thresholds, and it builds one automation per alert (each still fully editable). All alerts are passive (zero mesh airtime) and restart-safe. Caveats surfaced in the UI: noise floor is local-node-only on Meshtastic; power/charging are heuristics (no charge-state field in the protocol); MeshCore reboot/power/trend detection is deferred. (#4873, #4874, #4876, #4877, #4878, #4881)
+- **Unified map controls sidebar** — the floating panels on the Dashboard map, the Nodes tab map, Map Analysis and the MeshCore map all moved into one shared sidebar. (#4909, #4914, #4919, #4920, #4921)
+- **Packet Monitor gains a full portnum filter and free-text content search**, plus a stop-capturing control on every packet monitor. (#4957, #4958, #4960, #4961)
+- **Installed Scripts inventory** in global settings, showing what is installed and what uses it. (#4942, #4956)
 - **MeshCore neighbour autopoll** — a per-node retrieval scheduler that keeps neighbour data fresh. (#4618)
+- **MeshCore additions** — a per-source Default Path Hash Size setting (#4945, #4951), a telemetry time-window selector in node details (#4970), a separate age timeout for infrastructure nodes (#4899, #4901), and truly-unscoped floods instead of the node default region (#4932, #4937).
+- **Map additions** — Zoom to Fit on the Unified and Dashboard maps (#4898, #4902), support for a Carto basemap API key (#4934, #4936), and per-node colours from the Meshtastic app algorithm for pins and node lists (#4880, #4924).
+- **"Show all" (0 = never) option for Maximum Age of Active Nodes.** (#4947, #4949)
+- **The header connection badge cycles through status, battery and airtime** (#4917, #4927), and Disconnect/Reconnect moved into the System Status popup (#4908, #4912).
+- **Restore button on Device Backup Management** — one click, no manual steps. (#4926, #4933)
+- **Nightly firmware channel** for develop (2.8.x) builds. (#4950)
 - **Reception Heard column shows seconds** — the per-source reception table on the Unified Messages page now displays `HH:MM:SS`, for relay-delay and telemetry-correlation analysis. (#4869)
 - **Unread bell in the mobile channel dropdown** — the channel picker's unread count now carries the 🔔 indicator on mobile, matching the desktop channel list. (#4660)
+- **Indonesian** joins the language picker. (#5003)
+- **Site Planner toolbar controls grouped into labelled dropdown menus.** (#4871, #4886)
+
+### Changed
+- **B1 Router Cluster now requires evidence of client overlap.** Two or more router-role nodes that hear each other but each serve a distinct set of local clients no longer flag as a cluster, so a well-sited backbone stops appearing in the report. A configurable distance guard (`routerClusterMaxLinkKm`, default 30 km) stops MQTT gluing routers 100 km apart into one finding. (#4976, #4977, #5000)
+- **C1 key-security findings carry structured evidence** — `duplicateKeyDetected` gains a `sharedWithNodes` array of `{nodeNum, name}` refs. The existing `details` string is kept for compatibility, and the UI hides it when both are present.
+- **Migration 155 runs on first boot**, clearing stale `keyMismatchDetected` flags whose fingerprint matches the PKI-error path. Genuine current PKI failures re-set the flag on the next failed DM. No user action needed.
 
 ### Fixed
+- **Key-security reads are scoped by source**, and stale flags are cleared. (#5001)
 - **3D node markers keep their role glyph across zoom** — mixing the SDF disc and non-SDF glyph rasters in one MapLibre layer made glyph markers collapse into plain discs at some zoom levels; they now render in two homogeneous layers. (#4863)
 - **ESRI satellite basemap** — damped the synthetic water-blue tint via a saturation filter, and fixed the white halo on satellite-map node labels. (#4860)
+- **Map Analysis** — better trail rendering and autozoom (#4999), and panning is preserved while measuring distance (#4965, #4998). The workspace is themed with semantic tokens instead of hardcoded dark. (#4911, #4913)
+- **`ok_to_mqtt` violations are annotated with broker classification**, removing the false positives on private brokers. (#4982, #4996)
+- **MeshCore** — stored neighbour "last heard" ages instead of showing 0s ago (#4978, #4979); the serial fd is released on a failed connect so a USB replug reconnects (#4922, #4923); `set_out_path` is verified by device read-back rather than the tag-less ack (#4631, #4906); `LogRxData` is correlated by identity, not hop count (#4883, #4905).
+- **Telemetry purges send `sourceId`**, so MeshCore purges succeed. (#4973)
+- **Scripts appear in the settings section nav.** (#4962)
+- **Beacon Offers Panel hit the wrong URL and showed nothing.** (#4946, #4952)
+- **Site Planner explains why coverage is a circle** — the budget outran the radius, or there is a DEM gap. (#4727, #4940)
+- **The MeshMonitor logo and wordmark are hidden on per-source pages.** (#4939)
+- **The Carto API key field moved to the Map settings section.** (#4938)
+- **The backup restore reboot notice comes from the actual flag.** (#4935)
+- **Node text stays legible on per-node coloured rows.** (#4928)
+- **A self-targeted `deviceReboot` is treated as a local reboot.** (#4847, #4915)
+- **The known mqtt-proxy TLS field-name bug is documented.** (#4994, #4995)
+
+## [4.15.1] - 2026-08-21
 
 ### Fixed
-- **Site Planner no longer fails with a JSON parse error** — the predictive RF coverage request was sent to `/rf/coverage` instead of `/api/rf/coverage`, so it fell through to the SPA and returned HTML, which the frontend then tried to parse as JSON (`Unexpected token '<'`). The path now includes the `/api` prefix like every other API call. (#4862)
+- **Site Planner no longer fails with a JSON parse error** — the predictive RF coverage request was sent to `/rf/coverage` instead of `/api/rf/coverage`, so it fell through to the SPA and returned HTML, which the frontend then tried to parse as JSON (`Unexpected token '<'`). The path now includes the `/api` prefix like every other API call, and the regression test was corrected — it had asserted the buggy path. (#4862)
 
 ## [4.15.0] - 2026-08-21
 
