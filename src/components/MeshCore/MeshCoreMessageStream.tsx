@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, KeyboardEvent } from 'react';
+import MentionAutocomplete from '../mentions/MentionAutocomplete';
+import { useMentionAutocomplete } from '../../hooks/useMentionAutocomplete';
 import { useTranslation } from 'react-i18next';
 import { MeshCoreMessage } from './hooks/useMeshCore';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
@@ -422,7 +424,36 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
     if (ok) setDraft('');
   };
 
+  // #5276: `@` autocomplete over known contacts. MeshCore's mention form is
+  // the name-based `@[Name]` this app already renders and prefills on reply
+  // (#3851) — deliberately NOT the Meshtastic `@!<id>` token, which has no
+  // meaning on a MeshCore mesh.
+  const mentionCandidates = useMemo(
+    () => (contacts ?? [])
+      .map(c => ({
+        id: c.publicKey,
+        longName: (c.advName ?? c.name ?? '').trim(),
+        shortName: '',
+        lastSeen: c.lastSeen ?? c.lastAdvert ?? 0,
+      }))
+      // A contact with no advertised name is dropped: MeshCore mentions are
+      // written by name, so there is nothing to insert for an anonymous one.
+      .filter(c => c.longName)
+      .sort((a, b) => b.lastSeen - a.lastSeen)
+      .map(({ id, longName, shortName }) => ({ id, longName, shortName })),
+    [contacts]
+  );
+  const mentions = useMentionAutocomplete({
+    value: draft,
+    onChange: setDraft,
+    textareaRef: inputRef,
+    candidates: mentionCandidates,
+    buildInsertion: candidate => `@[${candidate.longName}] `,
+  });
+
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    // The open suggestion list claims Enter/Tab/arrows before send does.
+    if (mentions.handleKeyDown(e)) return;
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       void handleSend();
@@ -687,12 +718,29 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
           );
         })}
       </div>
-      <div className="meshcore-send-bar" title={disabled ? disabledReason : undefined}>
+      <div className="meshcore-send-bar" title={disabled ? disabledReason : undefined} style={{ position: 'relative' }}>
+        <MentionAutocomplete
+          id="meshcore-mention-list"
+          candidates={mentions.suggestions}
+          activeIndex={mentions.activeIndex}
+          onHover={mentions.setActiveIndex}
+          onSelect={mentions.select}
+        />
         <input
           ref={inputRef}
           type="text"
           value={draft}
-          onChange={e => setDraft(e.target.value)}
+          onChange={e => {
+            setDraft(e.target.value);
+            mentions.handleChange(e.target.value, e.target.selectionStart);
+          }}
+          onSelect={e => mentions.syncFromCaret(e.currentTarget.value, e.currentTarget.selectionStart)}
+          onBlur={mentions.close}
+          role="combobox"
+          aria-expanded={mentions.isOpen}
+          aria-controls={mentions.isOpen ? 'meshcore-mention-list' : undefined}
+          aria-activedescendant={mentions.activeDescendantId('meshcore-mention-list')}
+          aria-autocomplete="list"
           onKeyDown={handleKeyDown}
           placeholder={t('meshcore.type_message', 'Type a message…')}
           disabled={disabled || sending}
