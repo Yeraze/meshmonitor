@@ -6,9 +6,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.16.1] - 2026-09-18
+
+### Added
+- **Configuration search** — find a setting without knowing which page holds it, both within a page and across all of them. (#5182, #5226)
+- **Waypoint arrival alerts** — notify when a node comes within a configurable radius of a waypoint, with dedupe so one arrival does not fire repeatedly. (#4750, #5228)
+- **@ mention autocomplete** in conversations, with the mention rendered as a chip. (#5276, #5280)
+- **Firmware from a file or a URL** — flash a `.bin` uploaded from disk (#5249, #5252), and a custom firmware URL is now a real install target rather than a link (#5011, #5257).
+- **Script update checks** — the gallery reads each script's version from the author's `mm_meta`, reports which installed scripts have a newer release, and installs one on request. (#5255, #5272, #5274)
+- **Per-automation hop-limit override** for automated sends. (#5121, #5259)
+- **MQTT hop-limit override split into a raise and a clamp**, so the two intentions no longer share one control. (#5188, #5190, #5256)
+- **Beacons list** — a table-backed list behind a button that carries the current count. (#5232, #5235)
+- **Auto-traceroute per-filter AND/OR modes and named channels.** (#5230, #5241)
+- **Choose what the official map pin's colour means** — node identity or hop count. (#5018, #5258)
+- **Mark a node as solar, or not**, overriding the automatic guess. (#3195, #5260)
+- **"Mark all read"** beside the Sources unread toggle. (#5197, #5224)
+- **Module settings are gated on the device's `excluded_modules` bitmask**, so a firmware build that cannot run a module no longer offers to configure it. (#5065, #5273)
+- **Mobile channels layout** — Beacons and the send actions move to their own row, letting the composer collapse to one line. (#5265, #5267)
+
 ### Fixed
-- **MeshCore DM/channel retries no longer read as duplicate messages** — `MeshCoreManager`'s ack-timeout DM retry (#3977) and echo-miss channel retry (#3979) resent through meshcore.js's `sendTextMessage()`/`sendChannelTextMessage()` wrappers, which always mint a fresh `senderTimestamp` (and, for DMs, hardcode `attempt = 0`) on every call. A retransmit of an already-sent message therefore looked like a brand-new send to the recipient (and to any mesh dedup keyed on sender+timestamp), so a companion connected through the Virtual Node could see the same message arrive more than once even though it was only sent once. Retries now drive the library's lower-level `sendCommandSendTxtMsg`/`sendCommandSendChannelTxtMsg` directly, reusing the ORIGINAL send's `senderTimestamp` with an incrementing `attempt` — matching what other MeshCore clients and the firmware's own retry cadence expect. (#5202)
-- **Bundled Apprise API server no longer logs `BrokenPipeError` tracebacks** — when a notification request took longer to process than the Node client's fetch timeout (or the client otherwise disconnected early), `apprise-api.py` tried to write a response to an already-closed socket and let the resulting `BrokenPipeError` propagate, printing a noisy "Exception occurred during processing of request" traceback to the container log even though the underlying notification had already been dispatched. Response writes now swallow a broken/reset connection instead of raising. (#5184)
+- **Traceroutes are sent at the node's configured hop limit**, not a fixed 7. (#5262)
+- **MeshCore** — DM and channel retries reuse the original `senderTimestamp` with an incrementing attempt, so a retransmit no longer reads as a duplicate message (#5202, #5203); `lastHeard` only moves forward and every receive path stamps it (#5242); `runExclusiveRadioOp` is bounded so a stuck radio op cannot park the chain forever (#5244); in-flight Auto-Pathfinding runs are cancelled on stop or reconnect (#5171); `/dev/serial/by-id` and `by-path` serial paths are accepted (#5172, #5174); the Repeater serial path is checked too, warn-only (#5178, #5179); the admin console reports a clear error when it receives HTML instead of JSON (#5268, #5270); snr columns widened to REAL/DOUBLE (#5175, #5176).
+- **The embedded MQTT broker stops without hanging on connected clients.** (#5264, #5266)
+- **Shared-key channels no longer swallow history**, and local edits show without a restart. (#5183, #5269)
+- **NodeInfo enrichment** — blank values no longer undo enrichment, map labels are no longer stubbed (#5231, #5234), and the count stops oscillating on repeated Fix All (#5193, #5198).
+- **MeshMonitor no longer connects to a `MESHTASTIC_NODE_IP` nobody configured.** (#5237, #5239)
+- **Enum settings are validated on both load paths, from one list**, so a bad stored value cannot reach the UI through the path that skipped the check. (#5261)
+- **`clearPacketLogs` quotes the `sourceId` identifier in its delete.** (#5238)
+- **Maps** — centre on the rendered marker and add a Spread Nodes toggle (#5177, #5181); outline the popup badge and pin its actions below the scroll (#5247, #5253).
+- **Line breaks are preserved** in the unified messages card and modal. (#5250, #5251)
+- **The channel reorder handle can be dragged on touch.** (#5233, #5240)
+- **The Add Widget picker on the dashboard scrolls.** (#5191, #5192)
+- **DM list falls back to sorting nodes by `lastHeard` descending.** (#5143)
+- **Mobile** — Security tables, the Packet Distribution toolbar and telemetry marker density on a phone (#5194, #5195, #5196, #5199), plus two global class collisions that overlapped the issue-card text (#5200).
+- **The bundled Apprise API server swallows `BrokenPipeError`** when a client disconnects early, instead of printing a traceback for a notification it already dispatched. (#5184, #5185)
+
+### Security
+- **Cross-source message leak on three endpoints** — `GET /api/messages`, `GET /api/messages/channel/:channel` (#5227) and `GET /api/messages/unread-counts` (#5225) checked permissions with **no source id at all**, then answered for the caller-supplied `?sourceId=`. A `messages:read` grant on any one source returned another source's messages, bodies included. All three now scope the check to the requested source.
+
+### Changed
+- **armv7 JS artifacts build natively rather than under QEMU**, and the armv7 Docker build has enough time to finish. (#5205, #5207)
+- **A Retag workflow** moves an alias tag without a rebuild. (#5206)
+- 11 Dependabot updates across the production and development groups.
 
 ## [4.16.0] - 2026-09-10
 
