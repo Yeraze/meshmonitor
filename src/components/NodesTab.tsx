@@ -27,6 +27,7 @@ import { buildNodeExportRows, nodesToCsv, nodesToHtml, downloadTextFile } from '
 import { useMapContext } from '../contexts/MapContext';
 import { useTelemetryNodes, useDeviceConfig, useNodes, useChannels, setNodeFieldInCache } from '../hooks/useServerData';
 import { useQueryClient } from '@tanstack/react-query';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { useUI } from '../contexts/UIContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { nodeColorStyle } from '../utils/nodeColor';
@@ -1437,6 +1438,21 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     ];
   }, [processedNodes, securityFilter, channelFilter, showIncompleteNodes, filterRemoteAdminOnly, sortNodes]);
 
+  // Virtualize the node list: with thousands of nodes, rendering a full DOM
+  // subtree per row was measured at 179k-217k elements and made scrolling
+  // the sidebar visibly janky. Rows vary in height (optional role/status
+  // lines), so this uses dynamic measurement rather than a fixed row height —
+  // see UnifiedPacketMonitorPage/PacketMonitorPanel for the same
+  // getScrollElement/measureElement pattern applied to fixed-height rows.
+  const nodesListRef = useRef<HTMLDivElement>(null);
+  const nodesRowVirtualizer = useVirtualizer({
+    count: displayedNodes.length,
+    getScrollElement: () => nodesListRef.current,
+    estimateSize: () => 76,
+    overscan: 10,
+    measureElement: (el) => el.getBoundingClientRect().height,
+  });
+
   // Export format dropdown (Issue #3499) — a single icon button in the controls
   // row reveals this menu, keeping the header compact for a rarely-used action.
   const [showExportMenu, setShowExportMenu] = useState(false);
@@ -2228,7 +2244,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
           )}
         </div>
         {!isNodeListCollapsed && (
-        <div className="nodes-list">
+        <div className="nodes-list" ref={nodesListRef}>
           {/* Meshtastic nodes section */}
           {shouldShowData() ? (() => {
             // Find the home node for distance calculations (use unfiltered nodes to ensure home node is found)
@@ -2238,9 +2254,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
             const sortedNodes = displayedNodes;
 
             return sortedNodes.length > 0 ? (
-              <>
+              <div style={{ height: `${nodesRowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
               {/* Meshtastic nodes */}
-              {sortedNodes.map(node => {
+              {nodesRowVirtualizer.getVirtualItems().map(virtualRow => {
+                const node = sortedNodes[virtualRow.index];
                 // #4880: color the node box per the active Node List Style
                 // ({} for monochrome, keeping the theme look).
                 const nc = nodeColorStyle(nodeListStyle, {
@@ -2251,8 +2268,17 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 return (
                 <div
                   key={node.nodeNum}
+                  data-index={virtualRow.index}
+                  ref={nodesRowVirtualizer.measureElement}
                   className={`node-item ${selectedNodeId === node.user?.id ? 'selected' : ''}${nc.background ? ' node-item--colored' : ''}`}
-                  style={nc.background ? { background: nc.background, color: nc.text } : undefined}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    transform: `translateY(${virtualRow.start}px)`,
+                    ...(nc.background ? { background: nc.background, color: nc.text } : undefined),
+                  }}
                   onClick={handleNodeClick(node)}
                   /* Second path to Node Details, matching MeshCore's node list
                      (#4379). Single-click is already taken — it selects the node
@@ -2477,7 +2503,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 </div>
                 );
               })}
-              </>
+              </div>
             ) : (
               <div className="no-data">
                 {securityFilter !== 'all' ? 'No nodes match security filter' : (nodesNodeFilter ? 'No nodes match filter' : 'No nodes detected')}
