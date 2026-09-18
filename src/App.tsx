@@ -77,7 +77,8 @@ import { useHealth } from './hooks/useHealth';
 import { useTxStatus } from './hooks/useTxStatus';
 import { useVersionCheck } from './hooks/useVersionCheck';
 import { useQueryClient } from '@tanstack/react-query';
-import { usePoll, type PollData } from './hooks/usePoll';
+import { usePoll, type PollData, fetchPollData, sourcePollQueryKey } from './hooks/usePoll';
+import { useCsrfFetch } from './hooks/useCsrfFetch';
 import { useNodes, useChannels, setNodeFieldInCache } from './hooks/useServerData';
 import { useSourceView } from './hooks/useSourceView';
 import { useMessagingView } from './hooks/useMessagingView';
@@ -398,6 +399,10 @@ function App() {
   const { nodes } = useNodes();
   const { channels } = useChannels();
   const queryClient = useQueryClient();
+  // Used only by checkConnectionStatus below, to read /api/poll through the
+  // same query-cache entry usePoll() uses (see fetchPollData) instead of a
+  // bare fetch the cache never sees.
+  const csrfFetch = useCsrfFetch();
 
   // Telemetry availability Sets (nodesWithTelemetry/nodesWithWeatherTelemetry/
   // nodesWithEstimatedPosition/nodesWithPKC) were sourced here directly from
@@ -1605,10 +1610,26 @@ function App() {
       // so the server reads from the correct manager — otherwise the header
       // would show the legacy singleton's status, which is "disconnected" in
       // 4.0 multi-source mode.
-      const pollQuery = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
-      const response = await authFetch(`${appBasename}/api/poll${pollQuery}`);
-      if (response.ok) {
-        const pollData = await response.json();
+      //
+      // Read through queryClient.fetchQuery on usePoll's own query key/queryFn
+      // (staleTime: Infinity — accept whatever is already cached, however old,
+      // rather than treat it as stale) instead of a bare fetch. usePoll() has
+      // several always-enabled observers elsewhere (useNodes/useChannels/etc.
+      // in useServerData.ts) that already fetch this same key at mount; a bare
+      // fetch here was invisible to that cache and produced a second, fully
+      // redundant ~3MB request every time the app connected.
+      let pollData: PollData | undefined;
+      let pollOk = true;
+      try {
+        pollData = await queryClient.fetchQuery({
+          queryKey: sourcePollQueryKey(sourceId),
+          queryFn: ({ signal }) => fetchPollData(csrfFetch, appBasename, sourceId, signal),
+          staleTime: Infinity,
+        });
+      } catch {
+        pollOk = false;
+      }
+      if (pollOk && pollData) {
         const status = pollData.connection;
 
         if (!status) {
@@ -1635,11 +1656,12 @@ function App() {
           logger.debug('⏸️  User-initiated disconnect detected');
           setConnectionStatus('user-disconnected');
 
-          // Still fetch cached data from backend on page load
-          // This ensures we show cached data even after refresh
+          // Still fetch cached data from backend on page load. This ensures
+          // we show cached data even after refresh — poll data itself is
+          // already in the query cache from the fetchQuery call above, so
+          // only the (separately-cached) channel list needs an explicit fetch.
           try {
             await fetchChannels();
-            await refetchPoll();
           } catch (error) {
             logger.error('Failed to fetch cached data while disconnected:', error);
           }
@@ -1675,10 +1697,15 @@ function App() {
                 setConnectionStatus('configuring');
                 setError(null);
 
-                // Improved initialization sequence
+                // Improved initialization sequence. Poll data itself is
+                // already in the query cache from the fetchQuery call above
+                // (or from usePoll's own always-enabled observers elsewhere) —
+                // an unconditional refetch here was the third of three
+                // redundant ~3MB /api/poll fetches firing within the first
+                // second of mount. usePoll()'s own query will pick up the
+                // cached data as soon as shouldPoll flips this hook enabled.
                 try {
                   await fetchChannels();
-                  await refetchPoll();
                   setConnectionStatus('connected');
                   logger.debug('✅ Initialization complete, status set to connected');
                 } catch (initError) {
