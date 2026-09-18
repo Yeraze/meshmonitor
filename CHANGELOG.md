@@ -75,8 +75,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **The backup restore reboot notice comes from the actual flag.** (#4935)
 - **Node text stays legible on per-node coloured rows.** (#4928)
 - **A self-targeted `deviceReboot` is treated as a local reboot.** (#4847, #4915)
-- **Relayed packets no longer have their RSSI/SNR attributed to the source node.** (#4849, #4857)
-- **ACK metadata persists for confirmed DMs in Delivery Details.** (#4851, #4855)
 - **The known mqtt-proxy TLS field-name bug is documented.** (#4994, #4995)
 
 ## [4.15.1] - 2026-08-21
