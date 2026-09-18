@@ -10,6 +10,7 @@ import { nodePassesTransportFilter, transportCutoffSec } from '../utils/nodeTran
 import { getNodeTypeCategory, categoryGlyphFamily, NODE_TYPE_CATEGORY_META, NodeTypeCategory } from '../utils/nodeTypeCategory';
 import { buildGroupedNodeItems, countNodesByCategory, GroupedNodeListItem, RoleGroupCount } from '../utils/nodeGrouping';
 import { effectiveMapMaxAgeHours } from '../utils/mapAge';
+import { resolveClusterZoomThreshold, resolveClusteredMapCenterTargetZoom } from '../utils/mapZoomAnimation';
 import { ageFilterStops, nearestAgeStopIndex, formatAgeStop } from '../utils/mapAgeSteps';
 import { downsamplePositionHistory, MAX_RENDERED_POSITION_POINTS } from '../utils/positionHistoryDownsample';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
@@ -670,6 +671,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     defaultMapCenterLon,
     defaultMapCenterZoom,
     mapCenterTargetZoom,
+    mapZoomGateThreshold,
     mapStyles,
     activeStyleId,
     activeStyleJson,
@@ -684,6 +686,33 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // transportCutoffSec) — a per-node call would drift across the filter pass.
   const transportCutoff = transportCutoffSec(effectiveMapMaxAge);
   const mapAgeCutoffSeconds = Date.now() / 1000 - effectiveMapMaxAge * 60 * 60;
+
+  // Review item 1 (PR #5284): the marker-cluster gate follows the SAME
+  // `mapZoomGateThreshold` resolution `NodeMarkersLayer` already applies to
+  // the spiderfier gate (see its `effectiveSpiderfierOptions` and the #4551
+  // note in useMarkerSpiderfier.ts), via the shared `resolveClusterZoomThreshold`
+  // helper, rather than a second reading of the setting.
+  //
+  // Decision for threshold === 0 ("no gate"): render with NO clustering at
+  // all, rather than clustering at a fixed fallback zoom. `0` is the user
+  // explicitly opting OUT of zoom-dependent interaction friction (that's
+  // what it already means for the spiderfier gate); clustering at a fixed
+  // zoom would reintroduce exactly that friction — a bubble click-to-zoom
+  // step — for the one group of users who asked not to have it. This keeps a
+  // 0-gate user's map behavior identical to pre-#5284 (every marker live and
+  // individually clickable at every zoom, via the ungated spiderfier): no
+  // clustering perf win for that specific configuration, but no regression
+  // either. Every other setting (including the DEFAULT_ZOOM_GATE_THRESHOLD
+  // fallback used when the setting is unset) gets the full clustering perf
+  // fix.
+  const resolvedClusterZoomThreshold = resolveClusterZoomThreshold(mapZoomGateThreshold);
+
+  // Review item 3 (PR #5284) — see resolveClusteredMapCenterTargetZoom's own
+  // doc comment for the full "why" and why this beats zoomToShowLayer().
+  const effectiveMapCenterTargetZoom = resolveClusteredMapCenterTargetZoom(
+    mapCenterTargetZoom,
+    resolvedClusterZoomThreshold
+  );
 
   const { hasPermission } = useAuth();
   const csrfFetch = useCsrfFetch();
@@ -3182,7 +3211,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               <MapCenterController
                 centerTarget={mapCenterTarget}
                 onCenterComplete={handleCenterComplete}
-                targetZoom={mapCenterTargetZoom}
+                targetZoom={effectiveMapCenterTargetZoom}
               />
               <TracerouteBoundsController bounds={tracerouteBounds} />
               <FitAllNodesController request={fitAllRequest} positions={fitAllPositions} />
@@ -3207,9 +3236,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               onExit={() => setMeasureActive(false)}
             />
           )}
-              <NodeMarkerCluster>
+              {resolvedClusterZoomThreshold != null ? (
+                <NodeMarkerCluster disableClusteringAtZoom={resolvedClusterZoomThreshold}>
+                  <NodeMarkersLayer markers={nodeMarkers} onOmsClick={onOmsClick} />
+                </NodeMarkerCluster>
+              ) : (
                 <NodeMarkersLayer markers={nodeMarkers} onOmsClick={onOmsClick} />
-              </NodeMarkerCluster>
+              )}
 
               {/* Draw uncertainty circles for estimated positions. The "Show
                   Accuracy" map toggle now governs the radius (issue #3271
