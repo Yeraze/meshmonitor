@@ -805,7 +805,13 @@
   padding: 0.5rem 0.75rem;
   border-bottom: 1px solid var(--color-surface-hover);
   cursor: pointer;
-  transition: all 0.2s ease;
+  /* Narrowed from `all` (#5284 review item 4): the virtualized list
+     (@tanstack/react-virtual) positions rows with an inline `transform:
+     translateY(...)`, and `transition: all` animated THAT too — rows visibly
+     slid into place on every collapse, re-sort, and re-measure. Only
+     background/color actually change on hover/selection (see
+     .node-item:hover / .node-item.selected below), so only those animate. */
+  transition: background-color 0.2s ease, color 0.2s ease;
   position: relative;
 }
 

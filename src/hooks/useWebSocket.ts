@@ -8,7 +8,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useQueryClient } from '@tanstack/react-query';
-import { sourcePollQueryKey, type PollData, type RawMessage } from './usePoll';
+import { sourcePollQueryKey, type PollData, type RawMessage, type PollTraceroute } from './usePoll';
 import { mergeNodeUpdate } from './mergeNodeUpdate';
 import type { DeviceInfo, Channel } from '../types/device';
 import { appBasename } from '../init';
@@ -150,9 +150,16 @@ interface ConnectionStatusEvent {
 }
 
 /**
- * Traceroute complete event data
+ * Traceroute complete event data. The server forwards its full DbTraceroute
+ * row verbatim as this event's payload (webSocketService.ts does
+ * `socket.emit(event.type, event.data)` with no trimming for any event type
+ * other than `message:new`) — so besides the fields every traceroute always
+ * has, it also carries the same optional fields `PollTraceroute` does
+ * (id/routePositions/transportMechanism), just not `hopCount`, which the
+ * server derives from `route` at poll-response time rather than storing.
  */
 interface TracerouteCompleteEvent {
+  id?: number;
   fromNodeNum: number;
   toNodeNum: number;
   fromNodeId: string;
@@ -161,6 +168,9 @@ interface TracerouteCompleteEvent {
   routeBack: string;
   snrTowards: string;
   snrBack: string;
+  routePositions?: string;
+  packetId?: number | null;
+  transportMechanism?: number | null;
   timestamp: number;
   createdAt: number;
 }
@@ -180,6 +190,12 @@ interface TracerouteCompleteEvent {
  * }
  * ```
  */
+/**
+ * Debounce window for the full-poll invalidation fallback used by
+ * routing:update and telemetry:batch (see scheduleDebouncedPollInvalidate).
+ */
+const POLL_INVALIDATE_DEBOUNCE_MS = 2000;
+
 export function useWebSocket(enabled: boolean = true): WebSocketState {
   const [state, setState] = useState<WebSocketState>({
     connected: false,
@@ -278,6 +294,63 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
     });
   }, [queryClient, sourceId]);
 
+  // Helper to merge a completed traceroute into the cache. The event payload
+  // is the server's full DbTraceroute row (see TracerouteCompleteEvent above)
+  // — everything PollTraceroute needs except hopCount, which we derive the
+  // same way pollRoutes.ts does: parse `route` as a JSON hop array and take
+  // its length, falling back to 999 on anything unparseable.
+  const addTracerouteToCache = useCallback((traceroute: TracerouteCompleteEvent) => {
+    const key = sourcePollQueryKey(sourceId);
+    queryClient.setQueryData<PollData>(key, (old) => {
+      if (!old) {
+        void queryClient.invalidateQueries({ queryKey: key });
+        return old;
+      }
+
+      let hopCount = 999;
+      try {
+        if (traceroute.route) {
+          const routeArray = JSON.parse(traceroute.route);
+          if (Array.isArray(routeArray)) {
+            hopCount = routeArray.length;
+          }
+        }
+      } catch {
+        hopCount = 999;
+      }
+
+      const merged: PollTraceroute = { ...traceroute, hopCount };
+      const existing = old.traceroutes ?? [];
+      // De-dup on redelivery (matched by id when present).
+      const withoutDup = merged.id != null ? existing.filter(tr => tr.id !== merged.id) : existing;
+
+      // Traceroutes are sorted timestamp DESC (see useTraceroutes.ts); this
+      // is the newest, so it goes first.
+      return { ...old, traceroutes: [merged, ...withoutDup] };
+    });
+  }, [queryClient, sourceId]);
+
+  // routing:update and telemetry:batch (below) can't be merged into the
+  // cache from their event payloads without risking wrong data — see the
+  // handlers themselves for why — so they fall back to invalidating the
+  // full poll query. Debounce that invalidation so a burst of either event
+  // (the server itself batches telemetry every 1s, and a bulk send can
+  // trigger many acks in quick succession) collapses into one ~3MB refetch
+  // instead of one per event. usePoll's own 30s WebSocket-connected backup
+  // poll already bounds worst-case staleness, so an unbounded trailing
+  // debounce (no max-wait) is fine here.
+  const invalidateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleDebouncedPollInvalidate = useCallback(() => {
+    const key = sourcePollQueryKey(sourceId);
+    if (invalidateTimeoutRef.current) {
+      clearTimeout(invalidateTimeoutRef.current);
+    }
+    invalidateTimeoutRef.current = setTimeout(() => {
+      invalidateTimeoutRef.current = null;
+      void queryClient.invalidateQueries({ queryKey: key });
+    }, POLL_INVALIDATE_DEBOUNCE_MS);
+  }, [queryClient, sourceId]);
+
   useEffect(() => {
     if (!enabled) {
       // Disconnect if not enabled
@@ -363,16 +436,34 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
       updateConnectionInCache(data);
     });
 
-    socket.on('traceroute:complete', (_data: TracerouteCompleteEvent) => {
-      void queryClient.invalidateQueries({ queryKey: sourcePollQueryKey(sourceId) });
+    // The payload is the server's full DbTraceroute row, so this is a
+    // targeted cache merge (see addTracerouteToCache) rather than a full
+    // poll invalidation/refetch.
+    socket.on('traceroute:complete', (data: TracerouteCompleteEvent) => {
+      addTracerouteToCache(data);
     });
 
+    // Can't merge: 'ack' alone doesn't say whether the DB moved the message
+    // to 'delivered' (our own radio ack) or 'confirmed' (ack from the target
+    // node, which also attaches rxSnr/rxRssi/relayNode for the Delivery
+    // Details popup — see meshtasticManager.ts's two `updateMessageDeliveryState`
+    // call sites) — the event payload has no field distinguishing the two, and
+    // guessing would show wrong/incomplete delivery info. Debounced full-poll
+    // invalidation instead.
     socket.on('routing:update', (_data: { requestId: number; status: string }) => {
-      void queryClient.invalidateQueries({ queryKey: sourcePollQueryKey(sourceId) });
+      scheduleDebouncedPollInvalidate();
     });
 
+    // Can't merge: payload is raw per-metric telemetry rows (DbTelemetry —
+    // e.g. { telemetryType: 'batteryLevel', value: 85 }), not poll's
+    // aggregated nodes[].deviceMetrics/environmentMetrics shape, and there's
+    // no client-side telemetryType→field mapping to reconstruct it correctly.
+    // (Node-level metrics themselves already stay live via node:updated,
+    // which the ingest path emits separately — this event mainly exists to
+    // refresh telemetryNodes membership for newly-telemetry-bearing nodes.)
+    // Debounced full-poll invalidation instead.
     socket.on('telemetry:batch', (_data: { [nodeNum: number]: unknown[] }) => {
-      void queryClient.invalidateQueries({ queryKey: sourcePollQueryKey(sourceId) });
+      scheduleDebouncedPollInvalidate();
     });
 
     socket.on('firmware:status', (data: unknown) => {
@@ -397,10 +488,14 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
     return () => {
       socket.disconnect();
       socketRef.current = null;
+      if (invalidateTimeoutRef.current) {
+        clearTimeout(invalidateTimeoutRef.current);
+        invalidateTimeoutRef.current = null;
+      }
     };
   // pollKey is derived from sourceId (primitive) — omit it here to avoid a new array
   // reference on every render triggering socket reconnects.
-  }, [enabled, queryClient, sourceId, updateNodeInCache, addMessageToCache, updateConnectionInCache, updateChannelInCache]);
+  }, [enabled, queryClient, sourceId, updateNodeInCache, addMessageToCache, updateConnectionInCache, updateChannelInCache, addTracerouteToCache, scheduleDebouncedPollInvalidate]);
 
   return state;
 }

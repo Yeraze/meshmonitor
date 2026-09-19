@@ -61,6 +61,50 @@ export function computeZoomAnimationDuration(currentZoom: number, targetZoom: nu
   return Math.min(duration, ZOOM_ANIMATION_DURATION_MAX_SECONDS);
 }
 
+/**
+ * Resolve the user-configurable `mapZoomGateThreshold` setting into the value
+ * `NodeMarkerCluster`'s `disableClusteringAtZoom` (and the spiderfier's own
+ * `zoomGateThreshold`, see `NodeMarkersLayer`'s `effectiveSpiderfierOptions`)
+ * expect: `0` means "no gate at all", which both systems already spell as
+ * `undefined` rather than a numeric zoom (issue #4551, PR #5284 review item
+ * 1). Shared here so the map-marker cluster wrapper and the spiderfier gate
+ * read the SAME setting the SAME way instead of each inventing its own
+ * reading of `0`.
+ */
+export function resolveClusterZoomThreshold(mapZoomGateThreshold: number): number | undefined {
+  return mapZoomGateThreshold > 0 ? mapZoomGateThreshold : undefined;
+}
+
+/**
+ * PR #5284 review item 3: a node selected from the list must still be able
+ * to open its popup even when `mapCenterTargetZoom` is set below the
+ * cluster's own disable-clustering zoom. `MapCenterController` clamps to
+ * `max(currentZoom, targetZoom)` (`computeClampedTargetZoom`); if that lands
+ * below `clusterZoomThreshold`, the target marker is still clustered —
+ * removed from the map as an individual layer entirely — so
+ * `marker.openPopup()` silently does nothing.
+ *
+ * Raises the effective target zoom to at least the cluster threshold
+ * whenever clustering is active, so `MapCenterController` always lands
+ * somewhere the marker is guaranteed to be a real, individual layer. `null`/
+ * `undefined` `clusterZoomThreshold` (clustering off — see
+ * `resolveClusterZoomThreshold`) leaves `mapCenterTargetZoom` untouched.
+ *
+ * Chosen over `clusterGroup.zoomToShowLayer()` as the less invasive of the
+ * two fixes the maintainer suggested: no cluster-group ref needs to be
+ * threaded out to the separate "open popup for selected node" effect, and it
+ * also fixes the in-map OMS click path for free since both flows share one
+ * `<MapCenterController targetZoom>`.
+ */
+export function resolveClusteredMapCenterTargetZoom(
+  mapCenterTargetZoom: number,
+  clusterZoomThreshold: number | null | undefined
+): number {
+  return clusterZoomThreshold != null
+    ? Math.max(mapCenterTargetZoom, clusterZoomThreshold)
+    : mapCenterTargetZoom;
+}
+
 /** A projected screen-space point, structurally compatible with `L.Point`. */
 export interface ScreenPoint {
   x: number;

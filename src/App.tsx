@@ -77,7 +77,8 @@ import { useHealth } from './hooks/useHealth';
 import { useTxStatus } from './hooks/useTxStatus';
 import { useVersionCheck } from './hooks/useVersionCheck';
 import { useQueryClient } from '@tanstack/react-query';
-import { usePoll, type PollData } from './hooks/usePoll';
+import { usePoll, type PollData, fetchPollData, sourcePollQueryKey } from './hooks/usePoll';
+import { useCsrfFetch } from './hooks/useCsrfFetch';
 import { useNodes, useChannels, setNodeFieldInCache } from './hooks/useServerData';
 import { useSourceView } from './hooks/useSourceView';
 import { useMessagingView } from './hooks/useMessagingView';
@@ -107,6 +108,18 @@ import RouteSegmentTraceroutesModal from './components/RouteSegmentTraceroutesMo
 import { hopLimitSettingValue } from './utils/hopLimitOverride';
 
 // Icons and helpers are now imported from utils/
+
+/**
+ * `staleTime` for `checkConnectionStatus`'s `fetchQuery` read of the poll
+ * cache. Short enough that the 5s "not connected" loop, the post-reboot
+ * reconnect wait (3s cadence), and the Retry button all get a live fetch
+ * rather than an arbitrarily old cached snapshot — `usePoll()` itself is
+ * disabled whenever `connectionStatus !== 'connected'`, so nothing else
+ * refreshes this cache entry while any of those three are the ones calling.
+ * Still long enough to dedupe a call that lands within the same tick as
+ * another mount-time observer reading the same query key.
+ */
+const POLL_STATUS_STALE_TIME_MS = 3000;
 
 function App() {
   const { t } = useTranslation();
@@ -398,6 +411,10 @@ function App() {
   const { nodes } = useNodes();
   const { channels } = useChannels();
   const queryClient = useQueryClient();
+  // Used only by checkConnectionStatus below, to read /api/poll through the
+  // same query-cache entry usePoll() uses (see fetchPollData) instead of a
+  // bare fetch the cache never sees.
+  const csrfFetch = useCsrfFetch();
 
   // Telemetry availability Sets (nodesWithTelemetry/nodesWithWeatherTelemetry/
   // nodesWithEstimatedPosition/nodesWithPKC) were sourced here directly from
@@ -1605,10 +1622,37 @@ function App() {
       // so the server reads from the correct manager — otherwise the header
       // would show the legacy singleton's status, which is "disconnected" in
       // 4.0 multi-source mode.
-      const pollQuery = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
-      const response = await authFetch(`${appBasename}/api/poll${pollQuery}`);
-      if (response.ok) {
-        const pollData = await response.json();
+      //
+      // Read through queryClient.fetchQuery on usePoll's own query key/queryFn
+      // instead of a bare fetch, so it shares/dedupes with any other observer
+      // already fetching (or holding fresh data for) this same key — e.g.
+      // useNodes/useChannels/etc. in useServerData.ts fetch it at mount.
+      //
+      // staleTime is a short, few-second window (POLL_STATUS_STALE_TIME_MS),
+      // NOT Infinity. This function is also the only thing keeping this cache
+      // entry current while not connected: `usePoll()` itself is gated by
+      // `shouldPoll = connectionStatus === 'connected'`, so it is disabled for
+      // exactly the three callers that matter here — the 5s "not connected"
+      // poll loop, the post-reboot reconnect wait, and the Retry button. With
+      // `Infinity`, once any stale connection snapshot landed in the cache it
+      // would be treated as forever-fresh and never re-fetched, so none of
+      // those three paths could ever observe the node coming back. A short
+      // staleTime still dedupes calls that land within the same few seconds
+      // (the original mount-time-triple-fetch fix this replaced), while every
+      // call spaced further apart — which is every real caller here — gets a
+      // live fetch.
+      let pollData: PollData | undefined;
+      let pollOk = true;
+      try {
+        pollData = await queryClient.fetchQuery({
+          queryKey: sourcePollQueryKey(sourceId),
+          queryFn: ({ signal }) => fetchPollData(csrfFetch, appBasename, sourceId, signal),
+          staleTime: POLL_STATUS_STALE_TIME_MS,
+        });
+      } catch {
+        pollOk = false;
+      }
+      if (pollOk && pollData) {
         const status = pollData.connection;
 
         if (!status) {
@@ -1635,11 +1679,12 @@ function App() {
           logger.debug('⏸️  User-initiated disconnect detected');
           setConnectionStatus('user-disconnected');
 
-          // Still fetch cached data from backend on page load
-          // This ensures we show cached data even after refresh
+          // Still fetch cached data from backend on page load. This ensures
+          // we show cached data even after refresh — poll data itself is
+          // already in the query cache from the fetchQuery call above, so
+          // only the (separately-cached) channel list needs an explicit fetch.
           try {
             await fetchChannels();
-            await refetchPoll();
           } catch (error) {
             logger.error('Failed to fetch cached data while disconnected:', error);
           }
@@ -1675,10 +1720,15 @@ function App() {
                 setConnectionStatus('configuring');
                 setError(null);
 
-                // Improved initialization sequence
+                // Improved initialization sequence. Poll data itself is
+                // already in the query cache from the fetchQuery call above
+                // (or from usePoll's own always-enabled observers elsewhere) —
+                // an unconditional refetch here was the third of three
+                // redundant ~3MB /api/poll fetches firing within the first
+                // second of mount. usePoll()'s own query will pick up the
+                // cached data as soon as shouldPoll flips this hook enabled.
                 try {
                   await fetchChannels();
-                  await refetchPoll();
                   setConnectionStatus('connected');
                   logger.debug('✅ Initialization complete, status set to connected');
                 } catch (initError) {
