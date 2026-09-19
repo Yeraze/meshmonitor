@@ -5,7 +5,7 @@ import { createTestDb } from '../../server/test-helpers/testDb.js';
 import { AnalysisRepository } from './analysis.js';
 
 /** Node 1 is the local node of both test sources. */
-const LOCALS = { 'src-a': 1, 'src-b': 1 };
+const LOCALS = new Map([['src-a', 1], ['src-b', 1]]);
 
 describe('AnalysisRepository.getPositions', () => {
   let repo: AnalysisRepository;

@@ -15,13 +15,14 @@ export function localNodeNumSettingKey(sourceId: string): string {
  * with no local node (MQTT, MeshCore, a TCP source that never connected) are
  * left out of the result.
  */
-export async function resolveLocalNodeNums(sourceIds: string[]): Promise<Record<string, number>> {
-  const out: Record<string, number> = {};
+export async function resolveLocalNodeNums(sourceIds: string[]): Promise<Map<string, number>> {
+  // A Map, not an object: source ids come from the request query string.
+  const out = new Map<string, number>();
   await Promise.all(
     sourceIds.map(async (sourceId) => {
       const raw = await databaseService.settings.getSetting(localNodeNumSettingKey(sourceId));
       const n = raw ? Number(raw) : NaN;
-      if (Number.isFinite(n) && n > 0) out[sourceId] = n;
+      if (Number.isFinite(n) && n > 0) out.set(sourceId, n);
     }),
   );
   return out;

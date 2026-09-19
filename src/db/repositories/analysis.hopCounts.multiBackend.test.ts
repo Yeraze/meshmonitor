@@ -98,7 +98,7 @@ function insertSql(dbType: string): string {
 }
 
 /** Node 1 is the local node of both test sources. */
-const LOCALS = { 'src-a': 1, 'src-b': 1 };
+const LOCALS = new Map([['src-a', 1], ['src-b', 1]]);
 
 type Row = [number, number, string, string, string, string | null, number, number];
 

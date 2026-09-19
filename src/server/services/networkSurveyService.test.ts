@@ -71,7 +71,7 @@ describe('buildNetworkSurvey', () => {
     // reports packets heard by OTHER radios as this radio's neighbours.
     await buildNetworkSurvey(SRC, 12);
     expect(getDirectNeighborRssiAsync).toHaveBeenCalledWith(12, SRC);
-    expect(getHopCounts).toHaveBeenCalledWith({ sourceIds: [SRC], localNodeNums: { [SRC]: 1 } });
+    expect(getHopCounts).toHaveBeenCalledWith({ sourceIds: [SRC], localNodeNums: new Map([[SRC, 1]]) });
     expect(getAllNodes).toHaveBeenCalledWith(SRC);
   });
 

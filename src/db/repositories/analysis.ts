@@ -165,7 +165,7 @@ export interface GetHopCountsArgs {
    * or a TCP source that has never learned its node) has no "local" to count
    * hops from, so it contributes no entries (#5289).
    */
-  localNodeNums: Record<string, number>;
+  localNodeNums: ReadonlyMap<string, number>;
 }
 
 /**
@@ -661,7 +661,7 @@ export class AnalysisRepository {
   async getHopCounts(args: GetHopCountsArgs): Promise<HopCountsResult> {
     const seen = new Map<string, HopEntry & { timestamp: number }>();
     for (const sourceId of args.sourceIds) {
-      const local = args.localNodeNums[sourceId];
+      const local = args.localNodeNums.get(sourceId);
       if (local === undefined || !Number.isFinite(local)) continue;
       for (const side of ['from', 'to'] as const) {
         const rows = await this.newestAnsweredPerPeer(sourceId, local, side);

@@ -470,7 +470,7 @@ describe('GET /hop-counts', () => {
     const app = createApp(adminUser);
     await request(app).get('/hop-counts');
     expect(mockDb.analysis.getHopCounts).toHaveBeenCalledWith(
-      expect.objectContaining({ localNodeNums: { 'src-a': 1 } }),
+      expect.objectContaining({ localNodeNums: new Map([['src-a', 1]]) }),
     );
   });
 
