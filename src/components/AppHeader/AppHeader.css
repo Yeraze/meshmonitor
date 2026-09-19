@@ -35,12 +35,12 @@
   border-bottom: 1px solid var(--color-surface);
   padding: 1.5rem 2rem;
   /* Add the inset rather than max()ing against it — see trap 1 above. */
-  padding-top: calc(1.5rem + env(safe-area-inset-top, 0px));
+  padding-top: calc(1.5rem + env(safe-area-inset-top, 0px) + var(--status-bar-blur-gap));
   position: fixed;
   top: 0;
   left: var(--sidebar-width);
   right: 0;
-  height: calc(var(--header-height) + env(safe-area-inset-top, 0px));
+  height: calc(var(--header-height) + env(safe-area-inset-top, 0px) + var(--status-bar-blur-gap));
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -364,7 +364,7 @@
        width before any header content is laid out. */
     padding: 1rem;
     /* Added, not max()ed — the height contract at the top of this file. */
-    padding-top: calc(1rem + env(safe-area-inset-top, 0px));
+    padding-top: calc(1rem + env(safe-area-inset-top, 0px) + var(--status-bar-blur-gap));
     /* Narrower gutter than desktop, but still a gutter — see the base rule
        (#5051): with the halves flush, clipped name text lands on the dot. */
     gap: 0.5rem;
@@ -463,7 +463,7 @@
 @media (max-height: 500px) and (orientation: landscape) {
   .app-header {
     padding: 0.5rem 1rem;
-    padding-top: calc(0.5rem + env(safe-area-inset-top, 0px));
+    padding-top: calc(0.5rem + env(safe-area-inset-top, 0px) + var(--status-bar-blur-gap));
     /*
      * Content-driven on purpose. The 768px block above hides the logo, the
      * wordmark and the node info and shrinks the badge — and a landscape phone
@@ -482,7 +482,7 @@
      * 40px + inset and stops there rather than collapsing further.
      */
     height: auto;
-    min-height: calc(var(--header-height) + env(safe-area-inset-top, 0px));
+    min-height: calc(var(--header-height) + env(safe-area-inset-top, 0px) + var(--status-bar-blur-gap));
   }
 
   .app-header h1 {

@@ -19,6 +19,12 @@ if (typeof window !== 'undefined') {
     }
   });
 }
+// Before first paint, so the top bars never render inside iOS 27's
+// home-screen status-bar blur (#5286).
+import { applyIosStandaloneBlurGap } from './utils/iosStandaloneBlurGap';
+if (typeof window !== 'undefined') {
+  applyIosStandaloneBlurGap();
+}
 // Initialize i18n after init.ts sets the base URL
 import './config/i18n';
 import React, { Suspense } from 'react';
