@@ -44,7 +44,7 @@ import {
 } from '../../hooks/useDashboardData';
 import { getSourceColor, resolveSourceColor } from '../../utils/sourceColors';
 import { getOwnNodePositions } from '../../utils/ownNodePositions';
-import { nodePassesTransportFilter } from '../../utils/nodeTransport';
+import { nodePassesTransportFilter, isMqttOnlySourceType } from '../../utils/nodeTransport';
 import {
   hopTransportClass,
   segmentPassesTransportFilter,
@@ -240,6 +240,14 @@ export default function DashboardMap({
   const isUnified = sourceId === UNIFIED_SOURCE_ID;
   const polarSourceIds = isUnified ? allSourceIds : sourceId ? [sourceId] : [];
   const sourceStatuses = useSourceStatuses(polarSourceIds);
+  // mqtt_bridge/mqtt_broker sources have no RF path — every node on them
+  // arrived over MQTT, so the RF/UDP/MQTT toggles (and their saved
+  // preferences) have no meaning and can only blank the map. Resolved from
+  // `allSources` (not SourceContext — the Dashboard route renders outside any
+  // SourceProvider, so `useSource()` would never see the selected source's
+  // type here). Never true on the Unified map, which mixes sources by design.
+  const selectedDashboardSource = allSources.find((s: DashboardSource) => s.id === sourceId);
+  const isMqttOnlySource = !isUnified && isMqttOnlySourceType(selectedDashboardSource?.type);
 
   // Tile selector + legend overlays — hidden by default, toggled from the Map
   // Features panel. Persisted under the same localStorage keys the NodesTab map
@@ -291,11 +299,11 @@ export default function DashboardMap({
     setShowRoute,
     showAccuracyRegions,
     setShowAccuracyRegions,
-    showRfNodes,
+    showRfNodes: rawShowRfNodes,
     setShowRfNodes,
-    showUdpNodes,
+    showUdpNodes: rawShowUdpNodes,
     setShowUdpNodes,
-    showMqttNodes,
+    showMqttNodes: rawShowMqttNodes,
     setShowMqttNodes,
     showNeighborInfo,
     setShowNeighborInfo,
@@ -310,6 +318,9 @@ export default function DashboardMap({
     spreadNodes,
     setSpreadNodes,
   } = useMapContext();
+  const showRfNodes = isMqttOnlySource ? true : rawShowRfNodes;
+  const showUdpNodes = isMqttOnlySource ? true : rawShowUdpNodes;
+  const showMqttNodes = isMqttOnlySource ? true : rawShowMqttNodes;
 
   // Effective map age cap from the Map Features age slider (#3322), clamped to
   // [1, maxNodeAgeHours]. null = follow the setting, so default is unchanged.
@@ -1063,30 +1074,39 @@ export default function DashboardMap({
             />
             <span>Spread Nodes</span>
           </label>
-          <label className="map-control-item">
-            <input
-              type="checkbox"
-              checked={showRfNodes}
-              onChange={(e) => setShowRfNodes(e.target.checked)}
-            />
-            <span>Show RF</span>
-          </label>
-          <label className="map-control-item">
-            <input
-              type="checkbox"
-              checked={showUdpNodes}
-              onChange={(e) => setShowUdpNodes(e.target.checked)}
-            />
-            <span>Show UDP</span>
-          </label>
-          <label className="map-control-item">
-            <input
-              type="checkbox"
-              checked={showMqttNodes}
-              onChange={(e) => setShowMqttNodes(e.target.checked)}
-            />
-            <span>Show MQTT</span>
-          </label>
+          {/* RF/UDP/MQTT transport toggles have no meaning on an MQTT-only
+              source (mqtt_bridge/mqtt_broker) — every node there arrived
+              over MQTT, so the filter is skipped outright above and the
+              controls are hidden rather than offering a toggle that can
+              only blank the map (#5283 review). */}
+          {!isMqttOnlySource && (
+            <>
+              <label className="map-control-item">
+                <input
+                  type="checkbox"
+                  checked={showRfNodes}
+                  onChange={(e) => setShowRfNodes(e.target.checked)}
+                />
+                <span>Show RF</span>
+              </label>
+              <label className="map-control-item">
+                <input
+                  type="checkbox"
+                  checked={showUdpNodes}
+                  onChange={(e) => setShowUdpNodes(e.target.checked)}
+                />
+                <span>Show UDP</span>
+              </label>
+              <label className="map-control-item">
+                <input
+                  type="checkbox"
+                  checked={showMqttNodes}
+                  onChange={(e) => setShowMqttNodes(e.target.checked)}
+                />
+                <span>Show MQTT</span>
+              </label>
+            </>
+          )}
           <label className="map-control-item" title={unavailableIn3DTitle}>
             <input
               type="checkbox"

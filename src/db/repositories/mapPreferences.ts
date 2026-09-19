@@ -39,7 +39,7 @@ export class MapPreferencesRepository extends BaseRepository {
         showNeighborInfo: row.showNeighborInfo ?? false,
         showRoute: row.showRoute ?? true,
         showMotion: row.showMotion ?? true,
-        showMqttNodes: row.showMqttNodes ?? true,
+        showMqttNodes: row.showMqttNodes ?? false,
         showUdpNodes: row.showUdpNodes ?? false,
         showRfNodes: row.showRfNodes ?? true,
         showMeshCoreNodes: row.showMeshcoreNodes ?? true,

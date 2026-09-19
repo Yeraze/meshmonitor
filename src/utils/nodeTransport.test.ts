@@ -9,6 +9,7 @@ import { describe, it, expect } from 'vitest';
 import {
   classifyNodeTransport,
   nodePassesTransportFilter,
+  isMqttOnlySourceType,
   TX_INTERNAL, TX_LORA, TX_LORA_ALT1, TX_LORA_ALT2, TX_LORA_ALT3,
   TX_MQTT, TX_MULTICAST_UDP, TX_API,
 } from './nodeTransport';
@@ -156,5 +157,34 @@ describe('nodePassesTransportFilter — additive transportClasses (Unified)', ()
         { showRfNodes: true, showUdpNodes: false, showMqttNodes: false },
       ),
     ).toBe(false);
+  });
+});
+
+/**
+ * #5283 maintainer review: `mqtt_bridge`/`mqtt_broker` sources have no RF
+ * path — every node on them arrived over MQTT — so the RF/UDP/MQTT toggles
+ * (and their saved per-user preference) have no meaning there and must be
+ * skipped outright rather than relied on for a default. Consumers gate on
+ * this helper instead of defaulting `showMqttNodes` on for these sources.
+ */
+describe('isMqttOnlySourceType', () => {
+  it('is true for mqtt_bridge', () => {
+    expect(isMqttOnlySourceType('mqtt_bridge')).toBe(true);
+  });
+
+  it('is true for mqtt_broker', () => {
+    expect(isMqttOnlySourceType('mqtt_broker')).toBe(true);
+  });
+
+  it('is false for meshtastic_tcp, meshcore, and other RF/mixed source types', () => {
+    expect(isMqttOnlySourceType('meshtastic_tcp')).toBe(false);
+    expect(isMqttOnlySourceType('meshcore')).toBe(false);
+    expect(isMqttOnlySourceType('meshcore_mqtt')).toBe(false);
+    expect(isMqttOnlySourceType('reticulum')).toBe(false);
+  });
+
+  it('is false for null/undefined (e.g. the cross-source Dashboard/Unified view)', () => {
+    expect(isMqttOnlySourceType(null)).toBe(false);
+    expect(isMqttOnlySourceType(undefined)).toBe(false);
   });
 });

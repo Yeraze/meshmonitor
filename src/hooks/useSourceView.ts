@@ -41,7 +41,7 @@ import { useNodes, useTelemetryNodes, setNodeFieldInCache } from './useServerDat
 import { useTraceroutePaths, type ThemeColors } from './useTraceroutePaths';
 import { isNodeComplete, getEffectivePosition } from '../utils/nodeHelpers';
 import { effectiveMapMaxAgeHours } from '../utils/mapAge';
-import { nodePassesTransportFilter, transportCutoffSec } from '../utils/nodeTransport';
+import { nodePassesTransportFilter, transportCutoffSec, isMqttOnlySourceType } from '../utils/nodeTransport';
 import { logger } from '../utils/logger';
 import { favoritePendingKey, pendingFavoriteRequests } from '../utils/pendingToggles';
 import { isTxDisabledBody } from '../utils/txDisabled';
@@ -139,7 +139,7 @@ export function useSourceView(params: UseSourceViewParams) {
 
   const { t } = useTranslation();
   const { showToast } = useToast();
-  const { sourceId } = useSource();
+  const { sourceId, sourceType } = useSource();
   const { currentNodeId, connectionStatus } = useData();
   // nodes is sourced from the poll cache (#3962 5.4 PR8 — DataContext no
   // longer mirrors it); queryClient is for the optimistic toggle writes
@@ -159,9 +159,9 @@ export function useSourceView(params: UseSourceViewParams) {
   const {
     showPaths,
     showRoute,
-    showMqttNodes,
-    showUdpNodes,
-    showRfNodes,
+    showMqttNodes: rawShowMqttNodes,
+    showUdpNodes: rawShowUdpNodes,
+    showRfNodes: rawShowRfNodes,
     showEstimatedPositions,
     setMapCenterTarget,
     traceroutes,
@@ -170,6 +170,14 @@ export function useSourceView(params: UseSourceViewParams) {
     mapZoom,
     mapMaxAgeHours,
   } = useMapContext();
+  // mqtt_bridge/mqtt_broker sources have no RF path — every node on them
+  // arrived over MQTT, so the RF/UDP/MQTT toggles (and their saved
+  // preferences) have no meaning and can only blank the map. Skip them
+  // outright rather than trusting `showMqttNodes` et al (#5283 review).
+  const isMqttOnlySource = isMqttOnlySourceType(sourceType);
+  const showMqttNodes = isMqttOnlySource ? true : rawShowMqttNodes;
+  const showUdpNodes = isMqttOnlySource ? true : rawShowUdpNodes;
+  const showRfNodes = isMqttOnlySource ? true : rawShowRfNodes;
   const { nodesWithTelemetry, nodesWithWeather: nodesWithWeatherTelemetry, nodesWithEstimatedPosition, nodesWithPKC } =
     useTelemetryNodes();
 

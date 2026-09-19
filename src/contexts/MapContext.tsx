@@ -140,10 +140,15 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const [showNeighborInfo, setShowNeighborInfoState] = useState<boolean>(false);
   const [showRoute, setShowRouteState] = useState<boolean>(true);
   const [showMotion, setShowMotionState] = useState<boolean>(true);
-  const [showMqttNodes, setShowMqttNodesState] = useState<boolean>(false);
   // Show UDP / RF defaults per #3112: RF on, UDP off, MQTT off. RF is the
   // common case; UDP and MQTT are opt-in classes so users with a busy
   // MQTT bridge or UDP multicast feed don't get a saturated map by default.
+  // mqtt_bridge/mqtt_broker sources bypass these toggles entirely (#5283
+  // review) rather than defaulting this flag on — see `isMqttOnlySourceType`
+  // in `utils/nodeTransport.ts` and its call sites in NodesTab/DashboardMap/
+  // useSourceView, which skip the filter outright instead of depending on
+  // this (or the saved) preference value.
+  const [showMqttNodes, setShowMqttNodesState] = useState<boolean>(false);
   const [showUdpNodes, setShowUdpNodesState] = useState<boolean>(false);
   const [showRfNodes, setShowRfNodesState] = useState<boolean>(true);
   // Defaults on: the badge is the feature, and a pre-migration-161 row has no

@@ -22,6 +22,19 @@ export const TX_API = 7;
 
 export type NodeTransportClass = 'rf' | 'udp' | 'mqtt';
 
+/**
+ * True for a source whose nodes can ONLY have arrived over MQTT
+ * (`mqtt_bridge` / `mqtt_broker`). Every node on one of these sources is
+ * MQTT-transport by construction, so the RF/UDP/MQTT toggles have no meaning
+ * there — they can only ever blank the map, never usefully filter it.
+ * Callers should skip `nodePassesTransportFilter` (and the equivalent
+ * traceroute/neighbor-link filters) entirely for these sources rather than
+ * relying on the `showMqttNodes` toggle or its saved preference (#5283 review).
+ */
+export function isMqttOnlySourceType(sourceType: string | null | undefined): boolean {
+  return sourceType === 'mqtt_bridge' || sourceType === 'mqtt_broker';
+}
+
 /** A node carrying a precomputed union of transport classes (set by the
  *  Unified merge — see `mergeUnifiedSourceData`). */
 export interface NodeTransportFields {
