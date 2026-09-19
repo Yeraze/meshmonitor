@@ -126,45 +126,50 @@ describe('userPreferencesRoutes', () => {
   });
 
   /**
-   * #5283 maintainer review: the INSERT path used to default `showMqttNodes`
-   * to `false` while the READ path (a NULL column, or no row at all)
-   * defaulted it to `true`. Each map toggle POSTs only the field the user
-   * changed, so the very first time a user touched ANY other map setting, a
-   * row was created with `show_mqtt_nodes = 0` baked in — silently flipping
-   * the effective default for every source, MQTT-only ones included. The fix
-   * makes the insert default match the read default (both `true`).
+   * #5283 maintainer review (round 2): the first fix made the INSERT default
+   * match the READ default by flipping both to `true` — that was the wrong
+   * direction. The client actually starts with `showMqttNodes = false`
+   * (`src/contexts/MapContext.tsx`, the #3112 default), so a user on a normal
+   * Meshtastic TCP source who changes any other map setting for the first
+   * time (e.g. "Show Paths") must not have `show_mqtt_nodes` implicitly
+   * turned on — that can flood a busy map with MQTT nodes the user never
+   * asked to see. MQTT-only sources bypass this filter outright (see
+   * `isMqttOnlySourceType` in `utils/nodeTransport.ts` and its call sites),
+   * so nothing depends on a `true` default anymore. The fix defaults both
+   * the insert and the read fallback to `false`.
    */
   describe('showMqttNodes insert default (#5283)', () => {
-    it('defaults to true for a user who never saved any map preference', async () => {
+    it('defaults to null (no row) for a user who never saved any map preference', async () => {
       const agent = await harness.loginAs(harness.limited);
 
       const get = await agent.get('/map-preferences');
       expect(get.body.preferences).toBeNull();
     });
 
-    it('does not flip showMqttNodes to false when the first-ever save touches an unrelated field', async () => {
+    it('defaults showMqttNodes to false when the first-ever save touches an unrelated field', async () => {
       const agent = await harness.loginAs(harness.limited);
 
-      // This is the exact repro: no row exists yet, and the user changes a
-      // completely unrelated map setting (e.g. "Show Paths"). That save goes
-      // through the INSERT branch, which must not silently default
-      // showMqttNodes to false.
+      // No row exists yet, and the user changes a completely unrelated map
+      // setting (e.g. "Show Paths"). That save goes through the INSERT
+      // branch, which must default showMqttNodes to false, matching the
+      // client's own default rather than silently turning MQTT nodes on for
+      // a normal TCP source.
       const post = await agent.post('/map-preferences').send({ showPaths: true });
       expect(post.status).toBe(200);
 
       const get = await agent.get('/map-preferences');
       expect(get.status).toBe(200);
-      expect(get.body.preferences).toMatchObject({ showPaths: true, showMqttNodes: true });
+      expect(get.body.preferences).toMatchObject({ showPaths: true, showMqttNodes: false });
     });
 
-    it('still allows a user to explicitly turn showMqttNodes off', async () => {
+    it('still allows a user to explicitly turn showMqttNodes on', async () => {
       const agent = await harness.loginAs(harness.limited);
 
-      const post = await agent.post('/map-preferences').send({ showMqttNodes: false });
+      const post = await agent.post('/map-preferences').send({ showMqttNodes: true });
       expect(post.status).toBe(200);
 
       const get = await agent.get('/map-preferences');
-      expect(get.body.preferences).toMatchObject({ showMqttNodes: false });
+      expect(get.body.preferences).toMatchObject({ showMqttNodes: true });
     });
   });
 });
