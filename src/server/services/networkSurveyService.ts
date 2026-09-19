@@ -23,6 +23,7 @@
 import databaseService from '../../services/database.js';
 import { isBogusPosition } from '../../utils/nullIsland.js';
 import { logger } from '../../utils/logger.js';
+import { resolveLocalNodeNums } from '../utils/localNodeNums.js';
 
 /** A node heard at zero hops — i.e. genuinely within direct radio range. */
 export interface DirectNeighbourSummary {
@@ -166,7 +167,8 @@ export async function buildNetworkSurvey(
   }
 
   try {
-    const { entries } = await databaseService.analysis.getHopCounts({ sourceIds: [sourceId] });
+    const localNodeNums = await resolveLocalNodeNums([sourceId]);
+    const { entries } = await databaseService.analysis.getHopCounts({ sourceIds: [sourceId], localNodeNums });
     survey.hopDistribution = bucketHops(entries);
     // Derived with Math.max rather than "last bucket": reading the tail is
     // correct only while bucketHops sorts ascending, and that coupling is

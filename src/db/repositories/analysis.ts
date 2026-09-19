@@ -160,6 +160,12 @@ export interface HopCountsResult {
 
 export interface GetHopCountsArgs {
   sourceIds: string[];
+  /**
+   * Each source's local node number. A source with no entry (MQTT, MeshCore,
+   * or a TCP source that has never learned its node) has no "local" to count
+   * hops from, so it contributes no entries (#5289).
+   */
+  localNodeNums: ReadonlyMap<string, number>;
 }
 
 /**
@@ -634,18 +640,85 @@ export class AnalysisRepository {
    * rather than falling back to an older row. Both writers store
    * `JSON.stringify(route)`, so this is unreachable short of manual database
    * edits — and grey is the honest answer for data we cannot read.
+   *
+   * Only traceroutes the source's LOCAL node took part in count (#5289). The
+   * table also holds traces between two other nodes: every traceroute an MQTT
+   * source ingests, and any response that arrives with no pending row to fill.
+   * Those rows were keyed on `toNodeNum`, which for an inserted response is
+   * the REQUESTER, so a third party's trace to its own neighbour (`route`
+   * `'[]'`) painted that third party green, however far away it was. On a
+   * real MQTT broker source that was ~40% of all nodes, and 85% of shaded
+   * nodes disagreed with their own `hopsAway`.
+   *
+   * A row involving the local node comes in two shapes, and both give the hop
+   * count between the local node and the other end:
+   * - `fromNodeNum = local`: a pending request later filled by its response;
+   *   the other end is `toNodeNum`.
+   * - `toNodeNum = local`: a response inserted with no pending row (another
+   *   client asked, or the pending row timed out); the other end is
+   *   `fromNodeNum`.
    */
   async getHopCounts(args: GetHopCountsArgs): Promise<HopCountsResult> {
-    if (args.sourceIds.length === 0) {
-      return { entries: [] };
-    }
+    const seen = new Map<string, HopEntry & { timestamp: number }>();
+    for (const sourceId of args.sourceIds) {
+      const local = args.localNodeNums.get(sourceId);
+      if (local === undefined || !Number.isFinite(local)) continue;
+      for (const side of ['from', 'to'] as const) {
+        const rows = await this.newestAnsweredPerPeer(sourceId, local, side);
+        for (const r of rows) {
+          const nodeNum = Number(r.peer);
+          if (nodeNum === local) continue;
+          const timestamp = Number(r.timestamp);
+          const key = `${sourceId}:${nodeNum}`;
+          // Two rows can share the max timestamp for one node, and the node
+          // can appear in both shapes; keep the newest, first one on a tie.
+          const prev = seen.get(key);
+          if (prev && prev.timestamp >= timestamp) continue;
 
+          // Belt-and-braces: the query already excludes NULL routes.
+          if (r.route == null) continue;
+
+          let hops: number;
+          try {
+            const arr = JSON.parse(r.route);
+            // Anything that isn't an array is corrupt, not "zero hops".
+            if (!Array.isArray(arr)) continue;
+            hops = arr.length;
+          } catch {
+            continue;
+          }
+
+          seen.set(key, { sourceId, nodeNum, hops, timestamp });
+        }
+      }
+    }
+    return {
+      entries: Array.from(seen.values(), ({ sourceId, nodeNum, hops }) => ({ sourceId, nodeNum, hops })),
+    };
+  }
+
+  /**
+   * Newest answered traceroute per peer for one source, among rows where the
+   * local node is on the given side. `peer` is the node at the other end.
+   */
+  private async newestAnsweredPerPeer(
+    sourceId: string,
+    local: number,
+    side: 'from' | 'to',
+  ): Promise<Array<{ peer: number; route: string | null; timestamp: number }>> {
     const traceroutes = pickTraceroutesTable(this.dbType);
+    const localCol = side === 'from' ? traceroutes.fromNodeNum : traceroutes.toNodeNum;
+    const peerCol = side === 'from' ? traceroutes.toNodeNum : traceroutes.fromNodeNum;
+    const scope = and(
+      eq(traceroutes.sourceId, sourceId),
+      eq(localCol, local),
+      isNotNull(traceroutes.route),
+    );
 
     /* eslint-disable @typescript-eslint/no-explicit-any -- Drizzle cross-dialect union */
     const db = this.db as any;
 
-    // Narrow to the newest ANSWERED row per (sourceId, toNodeNum) in SQL
+    // Narrow to the newest ANSWERED row per peer in SQL
     // rather than fetching the whole table and reducing in JS.
     //
     // Traceroute history is capped per node-pair by TRACEROUTE_HISTORY_LIMIT
@@ -661,58 +734,30 @@ export class AnalysisRepository {
     // branch to get wrong. Verified against all three.
     const newest = db
       .select({
-        sourceId: traceroutes.sourceId,
-        toNodeNum: traceroutes.toNodeNum,
+        peer: peerCol,
         maxTs: max(traceroutes.timestamp).as('maxTs'),
       })
       .from(traceroutes)
-      .where(and(inArray(traceroutes.sourceId, args.sourceIds), isNotNull(traceroutes.route)))
-      .groupBy(traceroutes.sourceId, traceroutes.toNodeNum)
+      .where(scope)
+      .groupBy(peerCol)
       .as('newest');
 
     const rows: any[] = await db
       .select({
-        sourceId: traceroutes.sourceId,
-        toNodeNum: traceroutes.toNodeNum,
+        peer: peerCol,
         route: traceroutes.route,
+        timestamp: traceroutes.timestamp,
       })
       .from(traceroutes)
       .innerJoin(
         newest,
         and(
-          eq(traceroutes.sourceId, newest.sourceId),
-          eq(traceroutes.toNodeNum, newest.toNodeNum),
+          eq(peerCol, newest.peer),
           eq(traceroutes.timestamp, newest.maxTs),
         ),
       )
-      .where(and(inArray(traceroutes.sourceId, args.sourceIds), isNotNull(traceroutes.route)));
+      .where(scope);
     /* eslint-enable @typescript-eslint/no-explicit-any */
-
-    const seen = new Map<string, HopEntry>();
-    for (const r of rows) {
-      const sourceId = r.sourceId ?? '';
-      if (!sourceId) continue;
-      const nodeNum = Number(r.toNodeNum);
-      const key = `${sourceId}:${nodeNum}`;
-      // Two rows can share the max timestamp for one node; either is "newest",
-      // so take the first and ignore the rest.
-      if (seen.has(key)) continue;
-
-      // Belt-and-braces: the query already excludes NULL routes.
-      if (r.route == null) continue;
-
-      let hops: number;
-      try {
-        const arr = JSON.parse(r.route);
-        // Anything that isn't an array is corrupt, not "zero hops".
-        if (!Array.isArray(arr)) continue;
-        hops = arr.length;
-      } catch {
-        continue;
-      }
-
-      seen.set(key, { sourceId, nodeNum, hops });
-    }
-    return { entries: Array.from(seen.values()) };
+    return rows;
   }
 }

@@ -97,6 +97,9 @@ function insertSql(dbType: string): string {
   return `INSERT INTO traceroutes (${quoted.join(',')}) VALUES (${placeholders})`;
 }
 
+/** Node 1 is the local node of both test sources. */
+const LOCALS = new Map([['src-a', 1], ['src-b', 1]]);
+
 type Row = [number, number, string, string, string, string | null, number, number];
 
 async function insertRows(backend: TestBackend, rows: Row[]): Promise<void> {
@@ -132,7 +135,7 @@ function runHopCountsTests(getBackend: () => TestBackend) {
     ]);
 
     const repo = new AnalysisRepository(backend.drizzleDb, backend.dbType);
-    const r = await repo.getHopCounts({ sourceIds: ['src-a'] });
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'], localNodeNums: LOCALS });
 
     expect(r.entries.find((e) => Number(e.nodeNum) === 99)?.hops).toBe(2);
   });
@@ -146,7 +149,7 @@ function runHopCountsTests(getBackend: () => TestBackend) {
     ]);
 
     const repo = new AnalysisRepository(backend.drizzleDb, backend.dbType);
-    const r = await repo.getHopCounts({ sourceIds: ['src-a'] });
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'], localNodeNums: LOCALS });
 
     expect(r.entries.find((e) => Number(e.nodeNum) === 99)?.hops).toBe(3);
   });
@@ -159,7 +162,7 @@ function runHopCountsTests(getBackend: () => TestBackend) {
     ]);
 
     const repo = new AnalysisRepository(backend.drizzleDb, backend.dbType);
-    const r = await repo.getHopCounts({ sourceIds: ['src-a'] });
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'], localNodeNums: LOCALS });
 
     expect(r.entries.find((e) => Number(e.nodeNum) === 99)).toBeUndefined();
   });
@@ -172,7 +175,7 @@ function runHopCountsTests(getBackend: () => TestBackend) {
     ]);
 
     const repo = new AnalysisRepository(backend.drizzleDb, backend.dbType);
-    const r = await repo.getHopCounts({ sourceIds: ['src-a'] });
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'], localNodeNums: LOCALS });
 
     expect(r.entries.find((e) => Number(e.nodeNum) === 77)?.hops).toBe(0);
   });
@@ -188,7 +191,7 @@ function runHopCountsTests(getBackend: () => TestBackend) {
     ]);
 
     const repo = new AnalysisRepository(backend.drizzleDb, backend.dbType);
-    const r = await repo.getHopCounts({ sourceIds: ['src-a', 'src-b'] });
+    const r = await repo.getHopCounts({ sourceIds: ['src-a', 'src-b'], localNodeNums: LOCALS });
 
     expect(r.entries.find((e) => Number(e.nodeNum) === 99 && e.sourceId === 'src-a')?.hops).toBe(1);
     expect(r.entries.find((e) => Number(e.nodeNum) === 99 && e.sourceId === 'src-b')?.hops).toBe(4);
@@ -204,9 +207,39 @@ function runHopCountsTests(getBackend: () => TestBackend) {
     ]);
 
     const repo = new AnalysisRepository(backend.drizzleDb, backend.dbType);
-    const r = await repo.getHopCounts({ sourceIds: ['src-a'] });
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'], localNodeNums: LOCALS });
 
     expect(r.entries.filter((e) => Number(e.nodeNum) === 55)).toHaveLength(1);
+  });
+
+  it('ignores traceroutes between two other nodes (#5289)', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+    await insertRows(backend, [
+      [5, 9, '!00000005', '!00000009', 'src-a', '[]', NOW, NOW],
+    ]);
+
+    const repo = new AnalysisRepository(backend.drizzleDb, backend.dbType);
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'], localNodeNums: LOCALS });
+
+    expect(r.entries).toEqual([]);
+  });
+
+  it('keys a responder→local row on the responder and keeps the newest shape (#5289)', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+    await insertRows(backend, [
+      [1, 99, '!00000001', '!00000063', 'src-a', '[10,20,30]', NOW - 5000, NOW - 5000],
+      [99, 1, '!00000063', '!00000001', 'src-a', '[10]', NOW, NOW],
+      [42, 1, '!0000002a', '!00000001', 'src-a', '[10,20]', NOW, NOW],
+    ]);
+
+    const repo = new AnalysisRepository(backend.drizzleDb, backend.dbType);
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'], localNodeNums: LOCALS });
+
+    expect(r.entries.find((e) => Number(e.nodeNum) === 99)?.hops).toBe(1);
+    expect(r.entries.find((e) => Number(e.nodeNum) === 42)?.hops).toBe(2);
+    expect(r.entries.find((e) => Number(e.nodeNum) === 1)).toBeUndefined();
   });
 
   it('restricts to the requested sources', async () => {
@@ -218,7 +251,7 @@ function runHopCountsTests(getBackend: () => TestBackend) {
     ]);
 
     const repo = new AnalysisRepository(backend.drizzleDb, backend.dbType);
-    const r = await repo.getHopCounts({ sourceIds: ['src-a'] });
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'], localNodeNums: LOCALS });
 
     expect(r.entries.find((e) => Number(e.nodeNum) === 99)).toBeDefined();
     expect(r.entries.find((e) => Number(e.nodeNum) === 42)).toBeUndefined();

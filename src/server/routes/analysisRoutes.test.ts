@@ -450,6 +450,11 @@ describe('GET /hop-counts', () => {
     vi.clearAllMocks();
     mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A, SOURCE_B]);
     mockDb.analysis.getHopCounts = vi.fn().mockResolvedValue({ entries: [] });
+    // Only src-a is a Meshtastic TCP source with a persisted local node.
+    mockDb.settings = {
+      ...mockDb.settings,
+      getSetting: vi.fn(async (key: string) => (key === 'localNodeNum_src-a' ? '1' : null)),
+    };
   });
 
   it('admin: queries all enabled sources', async () => {
@@ -458,6 +463,14 @@ describe('GET /hop-counts', () => {
     expect(res.status).toBe(200);
     expect(mockDb.analysis.getHopCounts).toHaveBeenCalledWith(
       expect.objectContaining({ sourceIds: ['src-a', 'src-b'] }),
+    );
+  });
+
+  it('passes each source\'s local node, leaving out sources without one (#5289)', async () => {
+    const app = createApp(adminUser);
+    await request(app).get('/hop-counts');
+    expect(mockDb.analysis.getHopCounts).toHaveBeenCalledWith(
+      expect.objectContaining({ localNodeNums: new Map([['src-a', 1]]) }),
     );
   });
 

@@ -11,12 +11,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const getAllNodes = vi.fn();
 const getDirectNeighborRssiAsync = vi.fn();
 const getHopCounts = vi.fn();
+const getSetting = vi.fn();
 
 vi.mock('../../services/database.js', () => ({
   default: {
     get nodes() { return { getAllNodes }; },
     get neighbors() { return { getDirectNeighborRssiAsync }; },
     get analysis() { return { getHopCounts }; },
+    get settings() { return { getSetting }; },
   },
 }));
 
@@ -28,6 +30,7 @@ beforeEach(() => {
   getAllNodes.mockReset().mockResolvedValue([]);
   getDirectNeighborRssiAsync.mockReset().mockResolvedValue(new Map());
   getHopCounts.mockReset().mockResolvedValue({ entries: [] });
+  getSetting.mockReset().mockImplementation(async (key: string) => (key === `localNodeNum_${SRC}` ? '1' : null));
 });
 
 describe('clampWindowHours', () => {
@@ -68,7 +71,7 @@ describe('buildNetworkSurvey', () => {
     // reports packets heard by OTHER radios as this radio's neighbours.
     await buildNetworkSurvey(SRC, 12);
     expect(getDirectNeighborRssiAsync).toHaveBeenCalledWith(12, SRC);
-    expect(getHopCounts).toHaveBeenCalledWith({ sourceIds: [SRC] });
+    expect(getHopCounts).toHaveBeenCalledWith({ sourceIds: [SRC], localNodeNums: new Map([[SRC, 1]]) });
     expect(getAllNodes).toHaveBeenCalledWith(SRC);
   });
 
