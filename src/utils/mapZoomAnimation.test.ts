@@ -7,6 +7,8 @@ import {
   computeClampedTargetZoom,
   computeZoomAnimationDuration,
   hasNearbyPoint,
+  resolveClusterZoomThreshold,
+  resolveClusteredMapCenterTargetZoom,
 } from './mapZoomAnimation';
 
 describe('mapZoomAnimation constants (#4046)', () => {
@@ -108,5 +110,36 @@ describe('hasNearbyPoint (#4551)', () => {
     // satisfy `0 <= 0` and gate every marker.
     expect(hasNearbyPoint(target, [{ x: 100, y: 100 }], 0)).toBe(false);
     expect(hasNearbyPoint(target, [{ x: 100, y: 100 }], -5)).toBe(false);
+  });
+});
+
+describe('resolveClusterZoomThreshold (#5284 review item 1)', () => {
+  it('passes a positive threshold through unchanged', () => {
+    expect(resolveClusterZoomThreshold(13)).toBe(13);
+    expect(resolveClusterZoomThreshold(1)).toBe(1);
+  });
+
+  it('resolves 0 ("no gate") to undefined, matching the spiderfier gate reading', () => {
+    expect(resolveClusterZoomThreshold(0)).toBeUndefined();
+  });
+
+  it('treats a negative value the same as 0 (defensive — not a valid setting value)', () => {
+    expect(resolveClusterZoomThreshold(-1)).toBeUndefined();
+  });
+});
+
+describe('resolveClusteredMapCenterTargetZoom (#5284 review item 3)', () => {
+  it('raises the target zoom to the cluster threshold when the configured target is lower', () => {
+    expect(resolveClusteredMapCenterTargetZoom(5, 13)).toBe(13);
+  });
+
+  it('leaves the configured target zoom alone when it is already at or above the cluster threshold', () => {
+    expect(resolveClusteredMapCenterTargetZoom(17, 13)).toBe(17);
+    expect(resolveClusteredMapCenterTargetZoom(13, 13)).toBe(13);
+  });
+
+  it('leaves mapCenterTargetZoom untouched when clustering is off (threshold null/undefined)', () => {
+    expect(resolveClusteredMapCenterTargetZoom(5, undefined)).toBe(5);
+    expect(resolveClusteredMapCenterTargetZoom(5, null)).toBe(5);
   });
 });

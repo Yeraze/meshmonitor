@@ -525,3 +525,30 @@
     transform: rotate(360deg);
   }
 }
+
+/*
+ * `@` mention chips (#5276). A mention is plain text on the wire — the chip is
+ * only how MeshMonitor shows it, the same way the official apps do.
+ */
+.message-mention {
+  padding: 0 0.2rem;
+  border-radius: 0.25rem;
+  background-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  color: var(--color-accent-text);
+  font-weight: 600;
+}
+
+.message-mention[role='button'] {
+  cursor: pointer;
+}
+
+.message-mention[role='button']:hover,
+.message-mention[role='button']:focus-visible {
+  background-color: color-mix(in srgb, var(--color-accent) 32%, transparent);
+}
+
+/* A mention of the local node: this is the one the operator must not miss. */
+.message-mention-self {
+  background-color: color-mix(in srgb, var(--color-warning) 28%, transparent);
+  color: var(--color-warning);
+}

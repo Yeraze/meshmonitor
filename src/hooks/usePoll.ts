@@ -223,6 +223,35 @@ export function sourcePollQueryKey(sourceId: string | null) {
 }
 
 /**
+ * Fetch the /api/poll payload for a given source. This is usePoll()'s own
+ * queryFn, extracted so callers that need poll data OUTSIDE the hook (e.g.
+ * App.tsx's checkConnectionStatus, which needs to read `connection` before
+ * usePoll's query is enabled) can go through
+ * `queryClient.fetchQuery({ queryKey: sourcePollQueryKey(sourceId), queryFn: () => fetchPollData(...) })`
+ * instead of issuing their own bare fetch. Routing through fetchQuery shares/
+ * dedupes with any other observer already fetching (or holding fresh data
+ * for) the same query key, and writes the result into the same cache entry
+ * usePoll() reads — so it doesn't cause a second, cache-invisible request.
+ */
+export async function fetchPollData(
+  authFetch: (url: string, options?: RequestInit, signal?: AbortSignal) => Promise<Response>,
+  baseUrl: string,
+  sourceId: string | null,
+  signal?: AbortSignal
+): Promise<PollData> {
+  const url = sourceId
+    ? `${baseUrl}/api/poll?sourceId=${encodeURIComponent(sourceId)}`
+    : `${baseUrl}/api/poll`;
+  const response = await authFetch(url, undefined, signal);
+
+  if (!response.ok) {
+    throw new Error(`Poll request failed: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
  * Hook to poll the consolidated /api/poll endpoint
  *
  * Uses TanStack Query for automatic request deduplication, caching, and retry.
@@ -273,19 +302,8 @@ export function usePoll({
 
   return useQuery({
     queryKey: sourceId ? ['poll', sourceId] : POLL_QUERY_KEY,
-    queryFn: async ({ signal }): Promise<PollData> => {
-      // Pass the AbortSignal to allow TanStack Query to cancel in-flight requests
-      const url = sourceId
-        ? `${baseUrl}/api/poll?sourceId=${encodeURIComponent(sourceId)}`
-        : `${baseUrl}/api/poll`;
-      const response = await authFetch(url, undefined, signal);
-
-      if (!response.ok) {
-        throw new Error(`Poll request failed: ${response.status}`);
-      }
-
-      return response.json();
-    },
+    // Pass the AbortSignal to allow TanStack Query to cancel in-flight requests
+    queryFn: ({ signal }) => fetchPollData(authFetch, baseUrl, sourceId, signal),
     enabled,
     // Use function form to prevent overlapping requests on slow networks
     // Returns false (skip refetch) if a request is currently in progress

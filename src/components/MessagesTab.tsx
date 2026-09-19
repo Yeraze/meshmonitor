@@ -37,6 +37,9 @@ import { isDeviceDbWarningMitigatable } from '../utils/deviceDbWarning';
 import { applyHomoglyphOptimization } from '../utils/homoglyph';
 import { calculateDistance, formatDistance, getDistanceToNode } from '../utils/distance';
 import { renderMessageWithLinks } from '../utils/linkRenderer';
+import MentionAutocomplete from './mentions/MentionAutocomplete';
+import { useMentionAutocomplete } from '../hooks/useMentionAutocomplete';
+import { mentionCandidatesFromNodes } from '../utils/mentionCandidates';
 import { getMessageContentMatchNodeIds } from '../utils/messageContentFilter';
 import { isNodeComplete, isInfrastructureNode, hasValidPosition, parseNodeId, formatSenderLabel } from '../utils/nodeHelpers';
 import { getEffectiveHops } from '../utils/nodeHops';
@@ -239,7 +242,8 @@ export interface MessagesTabProps {
   handleRequestNeighborInfo: (nodeId: string) => Promise<void>;
   handleRequestTelemetry: (nodeId: string, telemetryType: 'device' | 'environment' | 'airQuality' | 'power') => Promise<void>;
   handleDeleteMessage: (message: MeshMessage) => Promise<void>;
-  handleSenderClick: (nodeId: string, event: React.MouseEvent) => void;
+  /** Opens the node popup. The event anchors it; without one it centers. */
+  handleSenderClick: (nodeId: string, event?: React.MouseEvent | React.KeyboardEvent) => void;
   handleSendTapback: (emoji: string, message: MeshMessage) => void;
   getRecentTraceroute: (nodeId: string) => TracerouteData | null;
   toggleIgnored: (node: DeviceInfo, event: React.MouseEvent) => Promise<void>;
@@ -585,6 +589,18 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
 
   useAutoResizeTextarea(dmMessageInputRef, newMessage);
 
+  // #5276: `@` mention autocomplete, same behaviour as the channel composer.
+  const mentionCandidates = useMemo(
+    () => mentionCandidatesFromNodes(nodes, currentNodeId),
+    [nodes, currentNodeId]
+  );
+  const mentions = useMentionAutocomplete({
+    value: newMessage,
+    onChange: setNewMessage,
+    textareaRef: dmMessageInputRef,
+    candidates: mentionCandidates,
+  });
+
   // Honor a "Send Direct Message" focus request from the node list (#4325).
   //
   // Two paths, because the request usually arrives BEFORE the compose textarea
@@ -635,6 +651,19 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
     },
     [nodes]
   );
+
+  // Mention tokens resolve to the node's CURRENT name at render time (#5276).
+  const mentionRenderOptions = useMemo(() => ({
+    resolveNodeName: (nodeId: string) => {
+      const name = getNodeName(nodeId);
+      return name && name !== nodeId ? name : undefined;
+    },
+    // Pass the real event: handleSenderClick measures event.currentTarget to
+    // place the node popup next to what was clicked.
+    onMentionClick: (nodeId: string, event: React.MouseEvent | React.KeyboardEvent) =>
+      handleSenderClick(nodeId, event as React.MouseEvent),
+    selfNodeId: currentNodeId,
+  }), [getNodeName, handleSenderClick, currentNodeId]);
 
   const getNodeShortName = useCallback(
     (nodeId: string): string => {
@@ -2073,7 +2102,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                           >
                             <div className="message-text-row">
                               <div className="message-text" style={{ whiteSpace: 'pre-line' }}>
-                                {renderMessageWithLinks(msg.text)}
+                                {renderMessageWithLinks(msg.text, mentionRenderOptions)}
                               </div>
                               <div className="message-meta">
                                 <span className="message-time">
@@ -2161,11 +2190,31 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                 )}
                 {hasPermission('messages', 'write') && (
                   <div className="message-input-container">
-                    <div className="input-with-counter">
+                    <div className="input-with-counter" style={{ position: 'relative' }}>
+                      <MentionAutocomplete
+                        id="dm-mention-list"
+                        candidates={mentions.suggestions}
+                        activeIndex={mentions.activeIndex}
+                        onHover={mentions.setActiveIndex}
+                        onSelect={mentions.select}
+                      />
                       <textarea
                         ref={attachDmInput}
                         value={newMessage}
-                        onChange={e => setNewMessage(e.target.value)}
+                        onChange={e => {
+                          setNewMessage(e.target.value);
+                          mentions.handleChange(e.target.value, e.target.selectionStart);
+                        }}
+                        onSelect={e => mentions.syncFromCaret(
+                          e.currentTarget.value,
+                          e.currentTarget.selectionStart
+                        )}
+                        onBlur={mentions.close}
+                        role="combobox"
+                        aria-expanded={mentions.isOpen}
+                        aria-controls={mentions.isOpen ? 'dm-mention-list' : undefined}
+                        aria-activedescendant={mentions.activeDescendantId('dm-mention-list')}
+                        aria-autocomplete="list"
                         onFocus={scrollInputIntoView}
                         placeholder={t('messages.dm_placeholder', { name: getNodeName(selectedDMNode) })}
                         className="message-input"
@@ -2173,6 +2222,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                         disabled={txDisabled}
                         title={txDisabled ? (txDisabledTooltip ?? t('tx_disabled.control_tooltip')) : undefined}
                         onKeyDown={e => {
+                          // An open suggestion list claims Enter/Tab/arrows first.
+                          if (mentions.handleKeyDown(e)) return;
                           if (
                             txDisabled ||
                             !(
@@ -2900,7 +2951,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
           nodes={mappedNodes}
           onNodeClick={(nodeId) => {
             setDetailsState(null);
-            handleSenderClick(nodeId, { stopPropagation: () => {} } as React.MouseEvent);
+            handleSenderClick(nodeId);
           }}
           onClose={() => setDetailsState(null)}
         />
