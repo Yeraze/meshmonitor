@@ -4,6 +4,9 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { createTestDb } from '../../server/test-helpers/testDb.js';
 import { AnalysisRepository } from './analysis.js';
 
+/** Node 1 is the local node of both test sources. */
+const LOCALS = { 'src-a': 1, 'src-b': 1 };
+
 describe('AnalysisRepository.getPositions', () => {
   let repo: AnalysisRepository;
   let sqlite: Database.Database;
@@ -279,7 +282,7 @@ describe('AnalysisRepository.getHopCounts', () => {
     ins.run(1, 99, '!00000001', '!00000063', 'src-a', '[10,20]', now, now);
 
     const repo = new AnalysisRepository(db, 'sqlite');
-    const r = await repo.getHopCounts({ sourceIds: ['src-a'] });
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'], localNodeNums: LOCALS });
     const hop = r.entries.find((e: { nodeNum: number; sourceId: string }) => e.nodeNum === 99 && e.sourceId === 'src-a');
     expect(hop?.hops).toBe(2);
     close();
@@ -288,7 +291,7 @@ describe('AnalysisRepository.getHopCounts', () => {
   it('returns empty entries when no sources given', async () => {
     const { db, close } = createTestDb();
     const repo = new AnalysisRepository(db, 'sqlite');
-    const r = await repo.getHopCounts({ sourceIds: [] });
+    const r = await repo.getHopCounts({ sourceIds: [], localNodeNums: LOCALS });
     expect(r.entries).toEqual([]);
     close();
   });
@@ -306,7 +309,7 @@ describe('AnalysisRepository.getHopCounts', () => {
       )
       .run(1, 50, '!00000001', '!00000032', 'src-a', 'not-json', now, now);
     const repo = new AnalysisRepository(db, 'sqlite');
-    const r = await repo.getHopCounts({ sourceIds: ['src-a'] });
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'], localNodeNums: LOCALS });
     expect(r.entries.find((e: { nodeNum: number }) => e.nodeNum === 50)).toBeUndefined();
     close();
   });
@@ -321,7 +324,7 @@ describe('AnalysisRepository.getHopCounts', () => {
     ins.run(1, 51, '!00000001', '!00000033', 'src-a', '{"hops":2}', now, now);
     ins.run(1, 52, '!00000001', '!00000034', 'src-a', '7', now, now);
     const repo = new AnalysisRepository(db, 'sqlite');
-    const r = await repo.getHopCounts({ sourceIds: ['src-a'] });
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'], localNodeNums: LOCALS });
     expect(r.entries.find((e: { nodeNum: number }) => e.nodeNum === 51)).toBeUndefined();
     expect(r.entries.find((e: { nodeNum: number }) => e.nodeNum === 52)).toBeUndefined();
     close();
@@ -347,7 +350,7 @@ describe('AnalysisRepository.getHopCounts — pending traceroutes (#4570)', () =
     sqlite.prepare(INSERT).run(1, 99, '!00000001', '!00000063', 'src-a', null, now, now);
 
     const repo = new AnalysisRepository(db, 'sqlite');
-    const r = await repo.getHopCounts({ sourceIds: ['src-a'] });
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'], localNodeNums: LOCALS });
 
     // Absent entirely — the map renders a missing entry as unknown/grey.
     expect(r.entries.find((e: { nodeNum: number }) => e.nodeNum === 99)).toBeUndefined();
@@ -364,7 +367,7 @@ describe('AnalysisRepository.getHopCounts — pending traceroutes (#4570)', () =
     ins.run(1, 99, '!00000001', '!00000063', 'src-a', null, now, now); // newest, pending
 
     const repo = new AnalysisRepository(db, 'sqlite');
-    const r = await repo.getHopCounts({ sourceIds: ['src-a'] });
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'], localNodeNums: LOCALS });
 
     expect(r.entries.find((e: { nodeNum: number }) => e.nodeNum === 99)?.hops).toBe(3);
     close();
@@ -379,7 +382,7 @@ describe('AnalysisRepository.getHopCounts — pending traceroutes (#4570)', () =
     sqlite.prepare(INSERT).run(1, 77, '!00000001', '!0000004d', 'src-a', '[]', now, now);
 
     const repo = new AnalysisRepository(db, 'sqlite');
-    const r = await repo.getHopCounts({ sourceIds: ['src-a'] });
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'], localNodeNums: LOCALS });
 
     expect(r.entries.find((e: { nodeNum: number }) => e.nodeNum === 77)?.hops).toBe(0);
     close();
@@ -397,7 +400,7 @@ describe('AnalysisRepository.getHopCounts — pending traceroutes (#4570)', () =
     ins.run(1, 99, '!00000001', '!00000063', 'src-a', null, now, now);
 
     const repo = new AnalysisRepository(db, 'sqlite');
-    const r = await repo.getHopCounts({ sourceIds: ['src-a'] });
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'], localNodeNums: LOCALS });
 
     expect(r.entries.find((e: { nodeNum: number }) => e.nodeNum === 99)?.hops).toBe(2);
     close();
@@ -416,7 +419,7 @@ describe('AnalysisRepository.getHopCounts — pending traceroutes (#4570)', () =
     ins.run(1, 98, '!00000001', '!00000062', 'src-a', 'not-json', now, now);
 
     const repo = new AnalysisRepository(db, 'sqlite');
-    const r = await repo.getHopCounts({ sourceIds: ['src-a'] });
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'], localNodeNums: LOCALS });
 
     expect(r.entries.find((e: { nodeNum: number }) => e.nodeNum === 98)).toBeUndefined();
     close();
@@ -430,10 +433,75 @@ describe('AnalysisRepository.getHopCounts — pending traceroutes (#4570)', () =
     ins.run(1, 99, '!00000001', '!00000063', 'src-b', '[10,20,30,40]', now, now);
 
     const repo = new AnalysisRepository(db, 'sqlite');
-    const r = await repo.getHopCounts({ sourceIds: ['src-a', 'src-b'] });
+    const r = await repo.getHopCounts({ sourceIds: ['src-a', 'src-b'], localNodeNums: LOCALS });
 
     expect(r.entries.find((e: { nodeNum: number; sourceId: string }) => e.nodeNum === 99 && e.sourceId === 'src-a')).toBeUndefined();
     expect(r.entries.find((e: { nodeNum: number; sourceId: string }) => e.nodeNum === 99 && e.sourceId === 'src-b')?.hops).toBe(4);
+    close();
+  });
+});
+
+/**
+ * #5289 — only traceroutes the local node took part in say anything about its
+ * hop distance. MQTT sources ingest every trace on the broker, and a response
+ * with no pending row is stored responder→requester, so keying on `toNodeNum`
+ * filed a third party's trace to its own neighbour (`'[]'`) as "0 hops from
+ * us" and shaded the third party green.
+ */
+describe('AnalysisRepository.getHopCounts — local node only (#5289)', () => {
+  const INSERT =
+    'INSERT INTO traceroutes (fromNodeNum, toNodeNum, fromNodeId, toNodeId, sourceId, route, timestamp, createdAt) VALUES (?,?,?,?,?,?,?,?)';
+
+  it('ignores a traceroute between two other nodes', async () => {
+    const { sqlite, db, close } = createTestDb();
+    const now = Date.now();
+    // Node 9 traced its neighbour 5; the response is stored from=5, to=9.
+    sqlite.prepare(INSERT).run(5, 9, '!00000005', '!00000009', 'src-a', '[]', now, now);
+
+    const repo = new AnalysisRepository(db, 'sqlite');
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'], localNodeNums: LOCALS });
+
+    expect(r.entries).toEqual([]);
+    close();
+  });
+
+  it('reads a response stored responder→local against the responder', async () => {
+    // No pending row to fill (another client asked, or it timed out), so the
+    // response lands as from=responder, to=local.
+    const { sqlite, db, close } = createTestDb();
+    const now = Date.now();
+    sqlite.prepare(INSERT).run(99, 1, '!00000063', '!00000001', 'src-a', '[10,20]', now, now);
+
+    const repo = new AnalysisRepository(db, 'sqlite');
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'], localNodeNums: LOCALS });
+
+    expect(r.entries).toEqual([{ sourceId: 'src-a', nodeNum: 99, hops: 2 }]);
+    close();
+  });
+
+  it('takes the newest row across both shapes for one peer', async () => {
+    const { sqlite, db, close } = createTestDb();
+    const now = Date.now();
+    const ins = sqlite.prepare(INSERT);
+    ins.run(1, 99, '!00000001', '!00000063', 'src-a', '[10,20,30]', now - 5000, now - 5000);
+    ins.run(99, 1, '!00000063', '!00000001', 'src-a', '[10]', now, now);
+
+    const repo = new AnalysisRepository(db, 'sqlite');
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'], localNodeNums: LOCALS });
+
+    expect(r.entries).toEqual([{ sourceId: 'src-a', nodeNum: 99, hops: 1 }]);
+    close();
+  });
+
+  it('returns nothing for a source with no local node (e.g. MQTT)', async () => {
+    const { sqlite, db, close } = createTestDb();
+    const now = Date.now();
+    sqlite.prepare(INSERT).run(1, 99, '!00000001', '!00000063', 'mqtt-src', '[10]', now, now);
+
+    const repo = new AnalysisRepository(db, 'sqlite');
+    const r = await repo.getHopCounts({ sourceIds: ['mqtt-src'], localNodeNums: LOCALS });
+
+    expect(r.entries).toEqual([]);
     close();
   });
 });

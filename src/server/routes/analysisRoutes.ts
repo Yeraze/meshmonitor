@@ -37,6 +37,7 @@ import {
 } from '../services/solarAnalysis.js';
 import { parseGatewayNodeNum } from '../utils/okToMqtt.js';
 import { resolvePermittedSourceIds, parseSourcesParam } from '../utils/permittedSources.js';
+import { resolveLocalNodeNums } from '../utils/localNodeNums.js';
 import {
   classifySourceBrokerAddress,
   combineBrokerClasses,
@@ -726,7 +727,8 @@ router.get('/hop-counts', async (req: Request, res: Response) => {
     const sourceIds = requested
       ? permitted.filter((id) => requested.includes(id))
       : permitted;
-    const result = await databaseService.analysis.getHopCounts({ sourceIds });
+    const localNodeNums = await resolveLocalNodeNums(sourceIds);
+    const result = await databaseService.analysis.getHopCounts({ sourceIds, localNodeNums });
     res.json(result);
   } catch (error) {
     logger.error('Error in GET /api/analysis/hop-counts:', error);
