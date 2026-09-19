@@ -30,6 +30,8 @@ export const MESHCORE_PAYLOAD_TYPES: { value: number; label: string }[] = [
   { value: 0x07, label: 'ANON_REQ' },
   { value: 0x08, label: 'PATH' },
   { value: 0x09, label: 'TRACE' },
+  { value: 0x0a, label: 'MULTIPART' },
+  { value: 0x0b, label: 'CONTROL' },
   { value: 0x0f, label: 'RAW_CUSTOM' },
 ];
 
