@@ -17,6 +17,8 @@
  * honored in the unified view.
  */
 import type { DbNode } from '../../db/types.js';
+import { pickPositionRecord } from '../../utils/positionSelection.js';
+import { isBogusPosition } from '../../utils/nullIsland.js';
 
 const isEmpty = (v: unknown): boolean =>
   v === null || v === undefined || (typeof v === 'string' && v.trim() === '');
@@ -53,6 +55,28 @@ export function mergeNodesAcrossSources(rows: DbNode[]): DbNode[] {
           winner[key] = older[key];
         }
       }
+    }
+
+    /*
+     * Position is chosen on its own terms rather than inherited from the
+     * newest-`lastHeard` winner (#5292). `lastHeard` moves on ANY traffic, so
+     * a source holding an older, coarser fix became "newest" as soon as it
+     * heard unrelated chatter, and the unified row flipped to the coarser grid
+     * cell with no new position packet behind it. Coordinates, altitude,
+     * precision and position timestamp all come from the SAME row, so the
+     * merged row never describes a fix that is half one source's and half
+     * another's.
+     */
+    const positioned = group.filter(
+      (n) => n.latitude != null && n.longitude != null && !isBogusPosition(n.latitude, n.longitude),
+    );
+    const bestPosition = pickPositionRecord(positioned);
+    if (bestPosition) {
+      winner.latitude = bestPosition.latitude;
+      winner.longitude = bestPosition.longitude;
+      winner.altitude = bestPosition.altitude;
+      winner.positionPrecisionBits = bestPosition.positionPrecisionBits;
+      winner.positionTimestamp = bestPosition.positionTimestamp;
     }
 
     winner.isFavorite = group.some((n) => n.isFavorite === true);

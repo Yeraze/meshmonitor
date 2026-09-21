@@ -480,6 +480,16 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
         channel: effectiveChannel,
         latitude: positionIsBogus ? undefined : lat,
         longitude: positionIsBogus ? undefined : lng,
+        // #5292: persist HOW precise this fix is and WHEN it was observed.
+        // Without them an MQTT-fed row could not be compared against another
+        // source's row of the same node, so the unified view fell back to
+        // "newest lastHeard wins" and flipped between a 13-bit and a 14-bit
+        // rendering of one physical spot as unrelated traffic bumped either
+        // row. Both are dropped with the coordinates on a bogus fix — a
+        // precision or a timestamp describing a position we refused to store
+        // would outrank a real fix from another source.
+        positionPrecisionBits: positionIsBogus ? undefined : precisionBits,
+        positionTimestamp: positionIsBogus ? undefined : nowMs,
         // Drop altitude too on a bogus fix — an altitude with no trustworthy
         // horizontal position is not worth persisting.
         altitude: positionIsBogus ? undefined : (typeof alt === 'number' ? alt : undefined),

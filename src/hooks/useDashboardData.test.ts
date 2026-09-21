@@ -247,6 +247,87 @@ describe('mergeUnifiedSourceData', () => {
     expect((merged.nodes[0] as any).lastHeard).toBe(5000);
   });
 
+  it('does not let chatter on a coarse record promote its position (#5292)', () => {
+    // PARC, as reported: two sources hold the SAME physical spot at different
+    // precisions (14-bit inside the 13-bit grid cell). The coarse source has
+    // the newer lastHeard because it heard unrelated traffic, but its position
+    // observation is the same event. The unified marker must not jump to the
+    // coarser cell.
+    const merged = mergeUnifiedSourceData([
+      {
+        nodes: [
+          {
+            nodeNum: 300,
+            lastHeard: 9000,
+            positionTimestamp: 1_760_000_000_000 - 5_000,
+            positionPrecisionBits: 13,
+            position: { latitude: 44.2761216, longitude: -78.3024128 },
+          },
+        ],
+        traceroutes: [],
+        neighborInfo: [],
+        channels: [],
+      },
+      {
+        nodes: [
+          {
+            nodeNum: 300,
+            lastHeard: 1000,
+            positionTimestamp: 1_760_000_000_000,
+            positionPrecisionBits: 14,
+            position: { latitude: 44.28923, longitude: -78.31552 },
+          },
+        ],
+        traceroutes: [],
+        neighborInfo: [],
+        channels: [],
+      },
+    ]);
+    const n = merged.nodes[0] as any;
+    expect(n.position).toEqual({ latitude: 44.28923, longitude: -78.31552 });
+    expect(n.positionPrecisionBits).toBe(14);
+    // lastHeard still reports the freshest contact across sources.
+    expect(n.lastHeard).toBe(9000);
+  });
+
+  it('still takes a genuinely newer fix even when it is coarser (#5292)', () => {
+    // The other half of the rule: a node that moved and was re-heard only by
+    // the coarse source must not keep rendering its older, finer position.
+    const merged = mergeUnifiedSourceData([
+      {
+        nodes: [
+          {
+            nodeNum: 301,
+            lastHeard: 1000,
+            positionTimestamp: 1_760_000_000_000,
+            positionPrecisionBits: 16,
+            position: { latitude: 35.0, longitude: -80.0 },
+          },
+        ],
+        traceroutes: [],
+        neighborInfo: [],
+        channels: [],
+      },
+      {
+        nodes: [
+          {
+            nodeNum: 301,
+            lastHeard: 2000,
+            positionTimestamp: 1_760_000_000_000 + 3_600_000,
+            positionPrecisionBits: 13,
+            position: { latitude: 36.0, longitude: -81.0 },
+          },
+        ],
+        traceroutes: [],
+        neighborInfo: [],
+        channels: [],
+      },
+    ]);
+    const n = merged.nodes[0] as any;
+    expect(n.position).toEqual({ latitude: 36.0, longitude: -81.0 });
+    expect(n.positionPrecisionBits).toBe(13);
+  });
+
   it('ignores a Null-Island position from the freshest source and uses a real one (#02ecd5e0 Jupiter Dad)', () => {
     // Two MQTT sources report the node most recently with the 2^15 garbage
     // default (0.0032768, 0.0032768) — just outside the old 0.001 radius — while
