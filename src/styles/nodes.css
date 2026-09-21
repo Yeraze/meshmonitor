@@ -2950,3 +2950,34 @@
   transition: opacity 0.2s ease;
 }
 
+
+/*
+ * Hide the collapsed node-list arrow while the map-controls sheet covers it
+ * (#5291). Last in the file on purpose: it must outrank the unconditional
+ * `.nodes-sidebar.collapsed .sidebar-header` rule above (the cascade-order
+ * constraint in the banner at the top of this file).
+ *
+ * z-index cannot do this. The arrow sits outside `.map-container`, which is a
+ * stacking context at `z-index: 1`, so the sheet's own 1001 is confined below
+ * it — raising the sheet's value changes nothing. `MapSidebar` marks the root
+ * element instead (MAP_SHEET_OPEN_CLASS) and this rule acts on the shared
+ * ancestor. `display: none` rather than `visibility`/opacity so the arrow
+ * leaves hit-testing and the focus order too, per the issue.
+ */
+@media (max-width: 768px) {
+  :root.mm-map-sheet-open .nodes-sidebar.collapsed .sidebar-header {
+    display: none;
+  }
+}
+
+/*
+ * ...except in short landscape, where the sheet is a right-edge half-panel
+ * capped at 60% of the pane (MapSidebar.css) and never reaches the arrow in
+ * the top-left corner. Declared after the block above so it wins on a viewport
+ * matching both.
+ */
+@media (max-height: 500px) and (orientation: landscape) {
+  :root.mm-map-sheet-open .nodes-sidebar.collapsed .sidebar-header {
+    display: block;
+  }
+}

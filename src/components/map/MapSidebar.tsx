@@ -1,7 +1,26 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { UiIcon } from '../icons';
 import { useIsMobileLayoutViewport } from '../../hooks/useIsMobileViewport';
 import './MapSidebar.css';
+
+/**
+ * Root-element marker set while any map-controls panel is expanded (#5291).
+ *
+ * The panel cannot hide the collapsed node-list arrow by z-index: that arrow
+ * lives outside `.map-container`, which is a stacking context at `z-index: 1`,
+ * so the panel's own 1001 is trapped below it however high it goes. The marker
+ * lets a rule on a shared ancestor hide the arrow instead, and CSS keeps
+ * ownership of *when* — only the full-sheet breakpoint hides it, not the
+ * landscape half-sheet, which does not cover that corner.
+ */
+export const MAP_SHEET_OPEN_CLASS = 'mm-map-sheet-open';
+
+/**
+ * Counted, not a boolean: the Dashboard renders its own MapSidebar, so two can
+ * be mounted at once and the first to close would otherwise clear the marker
+ * out from under the other.
+ */
+let openSheetCount = 0;
 
 /**
  * Unified, collapsible map controls sidebar (#4909).
@@ -49,6 +68,20 @@ export function MapSidebar({
     // of the map), desktop starts expanded (#4909).
     return isMobile;
   });
+
+  useEffect(() => {
+    if (collapsed) return;
+    const root = document.documentElement;
+    openSheetCount += 1;
+    root.classList.add(MAP_SHEET_OPEN_CLASS);
+    return () => {
+      openSheetCount -= 1;
+      if (openSheetCount <= 0) {
+        openSheetCount = 0;
+        root.classList.remove(MAP_SHEET_OPEN_CLASS);
+      }
+    };
+  }, [collapsed]);
 
   const toggle = () =>
     setCollapsed((c) => {
