@@ -1611,10 +1611,21 @@
 }
 
 /* ============================================================
- * Mobile responsive — 768px breakpoint
+ * Mobile responsive — phone widths AND landscape phones
+ *
+ * This query must match the shell's bottom-bar query exactly
+ * (`src/components/Sidebar.css` and `src/components/nav/SourceNav.module.css`,
+ * both `(max-width: 768px), (max-height: 500px) and (orientation: landscape)`).
+ * While it was width-only it missed landscape, where a phone is 956 CSS px
+ * wide: the nav switched to its full-width bottom bar while
+ * `.meshcore-page-body` stayed `flex-direction: row`, so the bar took the whole
+ * row as a flex item and the content pane beside it got nothing (#5311). Same
+ * trap as #5051-#5054 — in landscape the width is the LONG axis, so a
+ * width-only mobile query never fires. `MeshCorePage.mobileQuery.test.ts` pins
+ * the three queries together.
  * ============================================================ */
 
-@media (max-width: 768px) {
+@media (max-width: 768px), (max-height: 500px) and (orientation: landscape) {
 
   /* --- Page body: toolbar moves to bottom --- */
   .meshcore-page-body {
