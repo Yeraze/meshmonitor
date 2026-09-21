@@ -49,6 +49,16 @@ const ROUTE_TYPE_NAME: Record<number, string> = Object.fromEntries(
   MESHCORE_ROUTE_TYPES.map((t) => [t.value, t.label])
 );
 
+/**
+ * CONTROL sub-types (upper nibble of the payload's first byte). Only the
+ * node-discovery pair is defined in the firmware today; the rest of the space
+ * is unallocated, so an unknown sub-type renders as hex.
+ */
+const CONTROL_SUB_TYPE_NAME: Record<number, string> = {
+  0x80: 'NODE_DISCOVER_REQ',
+  0x90: 'NODE_DISCOVER_RESP',
+};
+
 const ADV_TYPE_NAME: Record<number, string> = {
   0: 'NONE',
   1: 'CHAT',
@@ -63,6 +73,19 @@ const ENCRYPTED_MSG_TYPES = new Set([0x00, 0x01, 0x02, 0x05, 0x06, 0x07]); // RE
 
 export function meshcorePayloadTypeName(value: number): string {
   return PAYLOAD_TYPE_NAME[value] ?? `0x${value.toString(16).padStart(2, '0')}`;
+}
+/**
+ * The name of a payload type, or null when the value is not one we know.
+ *
+ * For ingest paths that store the name: `meshcore.js` names only the types it
+ * knew when it was published (nothing above TRACE, plus RAW_CUSTOM) and
+ * returns null for the rest, so a MULTIPART or CONTROL packet captured over a
+ * direct radio link lands in the packet log unnamed. Callers fall back to this
+ * and keep null for a genuinely unknown type rather than storing a hex string
+ * that reads like a name.
+ */
+export function meshcorePayloadTypeNameOrNull(value: number): string | null {
+  return PAYLOAD_TYPE_NAME[value] ?? null;
 }
 export function meshcoreRouteTypeName(value: number | undefined | null): string {
   if (typeof value !== 'number') return '—';
@@ -123,6 +146,72 @@ export interface DecodedGroupText {
   ciphertextHex: string;
 }
 
+/**
+ * MULTIPART (0x0A) framing, from the firmware's own writer/reader
+ * (`Mesh::createMultiAck` and the `PAYLOAD_TYPE_MULTIPART` case in
+ * `Mesh::onRecvPacket`):
+ *
+ *   byte 0     `remaining << 4 | inner_payload_type`
+ *   bytes 1..  the inner payload, laid out for `innerType`
+ *
+ * `remaining` counts the packets of this sequence still to come, so 0 marks
+ * the last one. The firmware only ever writes and reads an inner ACK today;
+ * any other inner type is surfaced as hex rather than guessed at.
+ */
+export interface DecodedMultipart {
+  /** Packets of this sequence still to be sent; 0 = last part. */
+  remaining: number;
+  innerType: number;
+  innerTypeName: string;
+  innerHex: string;
+  /** Present when `innerType` is ACK (0x03) and 4 bytes are available. */
+  ack?: { ackCodeHex: string };
+}
+
+/**
+ * CONTROL (0x0B) framing. The public docs give only the first byte ("upper 4
+ * bits is sub_type", the rest "typically unencrypted data"), so the field
+ * layouts below come from the firmware's node-discovery exchange — the same
+ * one MeshMonitor already speaks in `meshcoreNativeBackend` (#1027, #4516):
+ *
+ *   REQ  (0x80): [0] sub_type|prefix_only, [1] type filter bitmask,
+ *                [2..5] tag (uint32 LE), [6..9] optional `since`
+ *   RESP (0x90): [0] sub_type|node_type, [1] SNR of the request as the
+ *                responder heard it (int8, quarter-dB), [2..5] echoed tag,
+ *                [6..] public key (32 bytes, or 8 when prefix_only was asked)
+ *
+ * The lower nibble means different things per sub-type, so it is exposed raw
+ * as well as interpreted.
+ */
+export interface DecodedControl {
+  /** The whole first byte. */
+  flags: number;
+  /** Upper nibble, e.g. 0x80 = node-discovery request. */
+  subType: number;
+  subTypeName: string;
+  /** Lower nibble of `flags`, whose meaning depends on the sub-type. */
+  subFlags: number;
+  dataHex: string;
+  /** Present for a node-discovery request (0x80). */
+  discoverRequest?: {
+    /** Responders return only an 8-byte key prefix. */
+    prefixOnly: boolean;
+    /** Bitmask of `1 << advType` selecting which node types answer. */
+    filter: number;
+    tag: number;
+  };
+  /** Present for a node-discovery response (0x90). */
+  discoverResponse?: {
+    advType: number;
+    advTypeName: string;
+    /** How the responder heard the request, in dB. */
+    snr: number;
+    tag: number;
+    /** 32 bytes, or 8 when the request asked for a prefix only. */
+    publicKey: string;
+  };
+}
+
 export interface DecodedMeshCorePacket {
   header: {
     raw: number;
@@ -148,6 +237,10 @@ export interface DecodedMeshCorePacket {
     groupText?: DecodedGroupText;
     message?: { destHash: string; srcHash: string; encryptedHex: string };
     ack?: { ackCodeHex: string };
+    /** Present for MULTIPART (0x0A) only — see DecodedMultipart. */
+    multipart?: DecodedMultipart;
+    /** Present for CONTROL (0x0B) only — see DecodedControl. */
+    control?: DecodedControl;
   };
   totalBytes: number;
   errors: string[];
@@ -275,6 +368,14 @@ export function decodeMeshCorePacket(rawHex: string | null | undefined): Decoded
         encryptedHex: bytesToHex(payloadBytes.subarray(2)),
       };
     }
+  } else if (payloadType === 0x0a) {
+    // MULTIPART — part of a sequence; the first byte wraps an inner payload.
+    const multipart = decodeMultipart(payloadBytes, errors);
+    if (multipart) payload.multipart = multipart;
+  } else if (payloadType === 0x0b) {
+    // CONTROL — unencrypted control/discovery data.
+    const control = decodeControl(payloadBytes, errors);
+    if (control) payload.control = control;
   } else if (ENCRYPTED_MSG_TYPES.has(payloadType)) {
     // Plaintext (dest_hash, src_hash) prefix; the rest is encrypted.
     if (payloadBytes.length >= 2) {
@@ -301,6 +402,88 @@ export function decodeMeshCorePacket(rawHex: string | null | undefined): Decoded
     totalBytes: bytes.length,
     errors,
   };
+}
+
+function decodeMultipart(payload: Uint8Array, errors: string[]): DecodedMultipart | undefined {
+  // The firmware itself ignores a multipart payload of 2 bytes or fewer, so
+  // there is nothing to read past the wrapper byte.
+  if (payload.length < 1) {
+    errors.push('MULTIPART payload too short to decode');
+    return undefined;
+  }
+  const first = payload[0];
+  const innerType = first & 0x0f;
+  const innerBytes = payload.subarray(1);
+  const out: DecodedMultipart = {
+    remaining: first >> 4,
+    innerType,
+    innerTypeName: meshcorePayloadTypeName(innerType),
+    innerHex: bytesToHex(innerBytes),
+  };
+  if (innerType === 0x03) {
+    // Inner ACK — 4-byte CRC, the one inner type the firmware handles.
+    if (innerBytes.length >= 4) {
+      out.ack = { ackCodeHex: bytesToHex(innerBytes.subarray(0, 4)) };
+    } else {
+      errors.push('MULTIPART ACK payload too short to decode');
+    }
+  }
+  return out;
+}
+
+function decodeControl(payload: Uint8Array, errors: string[]): DecodedControl | undefined {
+  if (payload.length < 1) {
+    errors.push('CONTROL payload too short to decode');
+    return undefined;
+  }
+  const flags = payload[0];
+  const subType = flags & 0xf0;
+  const body = payload.subarray(1);
+  const out: DecodedControl = {
+    flags,
+    subType,
+    subTypeName:
+      CONTROL_SUB_TYPE_NAME[subType] ?? `0x${subType.toString(16).padStart(2, '0')}`,
+    subFlags: flags & 0x0f,
+    dataHex: bytesToHex(body),
+  };
+
+  if (subType === 0x80) {
+    // [filter][tag(4 LE)] — `since` (4 more) is optional and unused here.
+    if (body.length >= 5) {
+      out.discoverRequest = {
+        prefixOnly: (flags & 0x01) !== 0,
+        filter: body[0],
+        tag: readUint32LE(body, 1),
+      };
+    } else {
+      errors.push('CONTROL NODE_DISCOVER_REQ payload too short to decode');
+    }
+  } else if (subType === 0x90) {
+    // [snr(int8)][tag(4 LE)][pubkey(8 or 32)]
+    if (body.length >= 5) {
+      const advType = flags & 0x0f;
+      out.discoverResponse = {
+        advType,
+        advTypeName: ADV_TYPE_NAME[advType] ?? `0x${advType.toString(16)}`,
+        snr: ((body[0] << 24) >> 24) / 4,
+        tag: readUint32LE(body, 1),
+        publicKey: bytesToHex(body.subarray(5)),
+      };
+    } else {
+      errors.push('CONTROL NODE_DISCOVER_RESP payload too short to decode');
+    }
+  }
+  return out;
+}
+
+function readUint32LE(bytes: Uint8Array, offset: number): number {
+  return (
+    (bytes[offset] |
+      (bytes[offset + 1] << 8) |
+      (bytes[offset + 2] << 16) |
+      (bytes[offset + 3] << 24)) >>> 0
+  );
 }
 
 function decodeAdvert(payload: Uint8Array, errors: string[]): DecodedAdvert | undefined {

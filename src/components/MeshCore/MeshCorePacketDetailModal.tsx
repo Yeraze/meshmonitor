@@ -143,6 +143,68 @@ const MeshCorePacketDetailModal: React.FC<Props> = ({ packet, onClose }) => {
                   <Row label={t('meshcore.packets.ackCode', 'ACK code')} mono>{decoded.payload.ack.ackCodeHex}</Row>
                 )}
 
+                {decoded.payload.multipart && (
+                  <>
+                    <Row label={t('meshcore.packets.multipartRemaining', 'Parts remaining')} mono>
+                      {decoded.payload.multipart.remaining}
+                    </Row>
+                    <Row label={t('meshcore.packets.multipartInner', 'Wrapped payload')} mono>
+                      {decoded.payload.multipart.innerTypeName} ({fmtHex(decoded.payload.multipart.innerType)})
+                    </Row>
+                    {decoded.payload.multipart.ack ? (
+                      <Row label={t('meshcore.packets.ackCode', 'ACK code')} mono>
+                        {decoded.payload.multipart.ack.ackCodeHex}
+                      </Row>
+                    ) : (
+                      // Nothing decodes a wrapped type we don't handle yet, so
+                      // show its bytes here rather than making the reader find
+                      // them inside the whole-payload hex below.
+                      <Row label={t('meshcore.packets.multipartInnerHex', 'Wrapped payload (hex)')} mono wrap>
+                        {decoded.payload.multipart.innerHex || '—'}
+                      </Row>
+                    )}
+                  </>
+                )}
+
+                {decoded.payload.control && (
+                  <>
+                    <Row label={t('meshcore.packets.controlSubType', 'Control type')} mono>
+                      {decoded.payload.control.subTypeName} ({fmtHex(decoded.payload.control.subType)})
+                    </Row>
+                    {decoded.payload.control.discoverRequest && (
+                      <>
+                        <Row label={t('meshcore.packets.discoverFilter', 'Type filter')} mono>
+                          {fmtHex(decoded.payload.control.discoverRequest.filter)}
+                        </Row>
+                        <Row label={t('meshcore.packets.discoverKeyLength', 'Key requested')} mono>
+                          {decoded.payload.control.discoverRequest.prefixOnly
+                            ? t('meshcore.packets.discoverKeyPrefix', 'Prefix (8 B)')
+                            : t('meshcore.packets.discoverKeyFull', 'Full (32 B)')}
+                        </Row>
+                        <Row label={t('meshcore.packets.discoverTag', 'Tag')} mono>
+                          {decoded.payload.control.discoverRequest.tag}
+                        </Row>
+                      </>
+                    )}
+                    {decoded.payload.control.discoverResponse && (
+                      <>
+                        <Row label={t('meshcore.packets.advType', 'Advert type')} mono>
+                          {decoded.payload.control.discoverResponse.advTypeName} ({decoded.payload.control.discoverResponse.advType})
+                        </Row>
+                        <Row label={t('meshcore.packets.discoverSnrToNode', 'SNR at responder')} mono>
+                          {decoded.payload.control.discoverResponse.snr.toFixed(2)} dB
+                        </Row>
+                        <Row label={t('meshcore.packets.discoverTag', 'Tag')} mono>
+                          {decoded.payload.control.discoverResponse.tag}
+                        </Row>
+                        <Row label={t('meshcore.packets.publicKey', 'Public key')} mono wrap>
+                          {decoded.payload.control.discoverResponse.publicKey || '—'}
+                        </Row>
+                      </>
+                    )}
+                  </>
+                )}
+
                 <Row label={t('meshcore.packets.payloadHex', 'Payload (hex)')} mono wrap>{decoded.payload.hex || '—'}</Row>
               </section>
 

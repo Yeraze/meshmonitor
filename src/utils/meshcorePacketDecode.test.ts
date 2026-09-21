@@ -130,3 +130,145 @@ describe('decodeMeshCorePacket', () => {
     expect(Array.from(hexToBytes('de ad be ef'))).toEqual([0xde, 0xad, 0xbe, 0xef]);
   });
 });
+
+describe('decodeMeshCorePacket — MULTIPART (0x0a)', () => {
+  it('decodes the remaining count and the wrapped ACK', () => {
+    // payload[0] = remaining(2) << 4 | inner type ACK (0x03), then a 4-byte CRC.
+    const hex = new Builder()
+      .u8(header(0x02, 0x0a)) // DIRECT + MULTIPART
+      .u8(0xff)               // direct path, no relay hashes
+      .u8((2 << 4) | 0x03)
+      .bytes([0xde, 0xad, 0xbe, 0xef])
+      .hex();
+    const d = decodeMeshCorePacket(hex)!;
+    expect(d.header.payloadTypeName).toBe('MULTIPART');
+    expect(d.payload.multipart).toEqual({
+      remaining: 2,
+      innerType: 0x03,
+      innerTypeName: 'ACK',
+      innerHex: 'deadbeef',
+      ack: { ackCodeHex: 'deadbeef' },
+    });
+    expect(d.errors).toEqual([]);
+  });
+
+  it('names an unhandled wrapped type and leaves its bytes as hex', () => {
+    // The firmware writes only inner ACKs today, so anything else is surfaced
+    // rather than guessed at.
+    const hex = new Builder()
+      .u8(header(0x02, 0x0a))
+      .u8(0xff)
+      .u8((0 << 4) | 0x02) // last part, wrapping TXT_MSG
+      .bytes([0x01, 0x02, 0x03])
+      .hex();
+    const d = decodeMeshCorePacket(hex)!;
+    expect(d.payload.multipart?.remaining).toBe(0);
+    expect(d.payload.multipart?.innerTypeName).toBe('TXT_MSG');
+    expect(d.payload.multipart?.innerHex).toBe('010203');
+    expect(d.payload.multipart?.ack).toBeUndefined();
+  });
+
+  it('records an error for a wrapped ACK whose CRC is truncated', () => {
+    const hex = new Builder()
+      .u8(header(0x02, 0x0a))
+      .u8(0xff)
+      .u8((1 << 4) | 0x03)
+      .bytes([0xde, 0xad])
+      .hex();
+    const d = decodeMeshCorePacket(hex)!;
+    expect(d.payload.multipart?.ack).toBeUndefined();
+    expect(d.errors.join(';')).toContain('MULTIPART ACK');
+  });
+});
+
+describe('decodeMeshCorePacket — CONTROL (0x0b)', () => {
+  it('decodes a node-discovery request', () => {
+    const hex = new Builder()
+      .u8(header(0x02, 0x0b)) // DIRECT + CONTROL
+      .u8(0xff)
+      .u8(0x80)               // NODE_DISCOVER_REQ, prefix_only clear
+      .u8(0x06)               // filter: repeater (1<<2) | room server (1<<1)
+      .u32le(0x11223344)      // tag
+      .hex();
+    const d = decodeMeshCorePacket(hex)!;
+    expect(d.header.payloadTypeName).toBe('CONTROL');
+    expect(d.payload.control?.subTypeName).toBe('NODE_DISCOVER_REQ');
+    expect(d.payload.control?.discoverRequest).toEqual({
+      prefixOnly: false,
+      filter: 0x06,
+      tag: 0x11223344,
+    });
+    expect(d.payload.control?.discoverResponse).toBeUndefined();
+  });
+
+  it('reads prefix_only from the low bit of the request flags', () => {
+    const hex = new Builder()
+      .u8(header(0x02, 0x0b))
+      .u8(0xff)
+      .u8(0x81) // NODE_DISCOVER_REQ | prefix_only
+      .u8(0x02)
+      .u32le(7)
+      .hex();
+    const d = decodeMeshCorePacket(hex)!;
+    expect(d.payload.control?.discoverRequest?.prefixOnly).toBe(true);
+  });
+
+  it('decodes a node-discovery response, including a negative SNR', () => {
+    const hex = new Builder()
+      .u8(header(0x02, 0x0b))
+      .u8(0xff)
+      .u8(0x90 | 0x02)   // NODE_DISCOVER_RESP | REPEATER
+      .u8(0xf2)          // -14 as int8 → -3.5 dB
+      .u32le(0x11223344)
+      .fill(32, 0xab)    // full public key
+      .hex();
+    const d = decodeMeshCorePacket(hex)!;
+    expect(d.payload.control?.discoverResponse).toEqual({
+      advType: 2,
+      advTypeName: 'REPEATER',
+      snr: -3.5,
+      tag: 0x11223344,
+      publicKey: 'ab'.repeat(32),
+    });
+  });
+
+  it('accepts an 8-byte key when the request asked for a prefix only', () => {
+    const hex = new Builder()
+      .u8(header(0x02, 0x0b))
+      .u8(0xff)
+      .u8(0x90 | 0x01) // NODE_DISCOVER_RESP | CHAT
+      .u8(0x1c)        // +7 dB
+      .u32le(9)
+      .fill(8, 0xcd)   // prefix-only key
+      .hex();
+    const d = decodeMeshCorePacket(hex)!;
+    expect(d.payload.control?.discoverResponse?.publicKey).toBe('cd'.repeat(8));
+    expect(d.errors).toEqual([]);
+  });
+
+  it('keeps an unknown sub-type as hex rather than guessing', () => {
+    const hex = new Builder()
+      .u8(header(0x02, 0x0b))
+      .u8(0xff)
+      .u8(0x30)
+      .bytes([0xaa, 0xbb])
+      .hex();
+    const d = decodeMeshCorePacket(hex)!;
+    expect(d.payload.control?.subTypeName).toBe('0x30');
+    expect(d.payload.control?.dataHex).toBe('aabb');
+    expect(d.payload.control?.discoverRequest).toBeUndefined();
+    expect(d.errors).toEqual([]);
+  });
+
+  it('records an error for a truncated discovery response', () => {
+    const hex = new Builder()
+      .u8(header(0x02, 0x0b))
+      .u8(0xff)
+      .u8(0x90)
+      .bytes([0x01, 0x02])
+      .hex();
+    const d = decodeMeshCorePacket(hex)!;
+    expect(d.payload.control?.discoverResponse).toBeUndefined();
+    expect(d.errors.join(';')).toContain('NODE_DISCOVER_RESP');
+  });
+});

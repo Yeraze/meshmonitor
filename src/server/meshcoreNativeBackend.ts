@@ -16,6 +16,7 @@ import { createHash } from 'node:crypto';
 import { logger } from '../utils/logger.js';
 import { TxDisabledError } from './errors/txDisabledError.js';
 import { isRfBridgeCommand, MESHCORE_RECEIVE_ONLY_MESSAGE } from './constants/meshcoreTx.js';
+import { meshcorePayloadTypeNameOrNull } from '../utils/meshcorePacketDecode.js';
 
 /**
  * Error message thrown when a remote answers a login attempt with an explicit
@@ -662,7 +663,10 @@ export class MeshCoreNativeBackend extends EventEmitter {
           }
           this.emitBridgeEvent('ota_packet', {
             payload_type: pkt.payload_type,
-            payload_type_string: pkt.payload_type_string,
+            // meshcore.js names only the types it shipped with, so newer ones
+            // (MULTIPART, CONTROL) arrive null and would log unnamed.
+            payload_type_string:
+              pkt.payload_type_string ?? meshcorePayloadTypeNameOrNull(pkt.payload_type) ?? undefined,
             route_type: pkt.route_type,
             route_type_string: pkt.route_type_string,
             path_len_raw: pkt.pathLen,
