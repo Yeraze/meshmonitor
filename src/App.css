@@ -40,7 +40,18 @@
    * the node list's collapse control (#5053).
    */
   --header-height: 60px;
-  --app-header-height: calc(var(--header-height) + env(safe-area-inset-top, 0px));
+  /*
+   * Extra room below the status bar for iOS 27 home-screen web apps (#5286).
+   * There iOS draws its own blur over the top ~20px below the safe area, over
+   * whatever the page puts there, so header text in that band renders fogged.
+   * No page CSS changes the blur (measured on-device with a test page: fixed,
+   * in-flow and absent bars all blur the same). The only fix is to keep text
+   * out of the band. 0 everywhere else; `applyIosStandaloneBlurGap()` turns it
+   * on, and the `* 1000` clamp keeps it 0 when there is no top inset
+   * (landscape, where the status bar is hidden).
+   */
+  --status-bar-blur-gap: 0px;
+  --app-header-height: calc(var(--header-height) + env(safe-area-inset-top, 0px) + var(--status-bar-blur-gap));
 
   --sidebar-width: 60px;
   --banner-height: 36px;
@@ -195,6 +206,11 @@
   --chart-6: #74c7ec;
   --chart-7: #eba0ac;
   --chart-8: #f5e0dc;
+}
+
+/* See `--status-bar-blur-gap` above (#5286). */
+:root.ios-standalone-blur-gap {
+  --status-bar-blur-gap: min(20px, calc(env(safe-area-inset-top, 0px) * 1000));
 }
 
 /* ==============================

@@ -39,7 +39,7 @@
    * the moment this bar becomes content-driven it needs the same treatment
    * `useAppHeaderHeightVar` gives the app header.
    */
-  --dashboard-topbar-height: calc(var(--header-height, 64px) + env(safe-area-inset-top, 0px));
+  --dashboard-topbar-height: calc(var(--header-height, 64px) + env(safe-area-inset-top, 0px) + var(--status-bar-blur-gap));
 }
 
 .dashboard-topbar {
@@ -49,7 +49,7 @@
   gap: 12px;
   /* Horizontal insets keep the hamburger and the user menu clear of the notch
      in landscape, where safe-area-inset-left/right are non-zero (#5053). */
-  padding: env(safe-area-inset-top, 0px) calc(24px + env(safe-area-inset-right, 0px)) 0
+  padding: calc(env(safe-area-inset-top, 0px) + var(--status-bar-blur-gap)) calc(24px + env(safe-area-inset-right, 0px)) 0
     calc(24px + env(safe-area-inset-left, 0px));
   height: var(--dashboard-topbar-height);
   flex-shrink: 0;
@@ -839,7 +839,7 @@
      Keep the safe-area insets — a flat `0 8px` here re-buried the close control
      under the status bar / notch that the base rule pads for (#5053). */
   .dashboard-topbar {
-    padding: env(safe-area-inset-top, 0px) calc(8px + env(safe-area-inset-right, 0px)) 0
+    padding: calc(env(safe-area-inset-top, 0px) + var(--status-bar-blur-gap)) calc(8px + env(safe-area-inset-right, 0px)) 0
       calc(8px + env(safe-area-inset-left, 0px));
     gap: 6px;
   }
