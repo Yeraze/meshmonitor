@@ -72,7 +72,7 @@
     "leaflet": "^1.9.4",
     "leaflet.heat": "^0.2.0",
     "leaflet.markercluster": "^1.5.3",
-    "lucide-react": "^1.45.0",
+    "lucide-react": "^1.47.0",
     "maplibre-gl": "^6.9.0",
     "morgan": "^1.12.1",
     "mqtt": "^5.16.0",
