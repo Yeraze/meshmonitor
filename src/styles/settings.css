@@ -146,6 +146,13 @@
   max-width: 100%;
 }
 
+/* The Role dropdown is wider still: each row carries a name, a short
+   description and a long one. Same containment rules apply. */
+.config-custom-dropdown--wide,
+.config-custom-dropdown-menu--wide {
+  width: 800px;
+}
+
 .setting-input:focus {
   outline: none;
   border-color: var(--color-accent);

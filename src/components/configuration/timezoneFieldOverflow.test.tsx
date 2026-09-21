@@ -41,6 +41,14 @@ describe('timezone trigger markup (#5291)', () => {
   it('no longer hardcodes the width inline, so the stylesheet owns sizing', () => {
     expect(source).not.toMatch(/width:\s*'400px'/);
   });
+
+  it('gives the Role dropdown the same treatment (review follow-up)', () => {
+    // It carried an inline `800px` on both trigger and menu, so it had the
+    // same overflow waiting to be reported.
+    expect(source).not.toMatch(/width:\s*'800px'/);
+    expect(source).toMatch(/config-custom-dropdown--wide/);
+    expect(source).toMatch(/config-custom-dropdown-menu--wide/);
+  });
 });
 
 describe('timezone dropdown width (#5291)', () => {
