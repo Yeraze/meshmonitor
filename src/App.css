@@ -2108,7 +2108,10 @@ body {
     max-width: 100%;
   }
 
-  /* Narrow custom dropdowns on Device Config page on mobile */
+  /* Narrow custom dropdowns on Device Config page on mobile.
+     The `!important`s are no longer load-bearing (#5291 moved the 400px off
+     the inline styles and onto the base rule above), but they are harmless and
+     removing them is a separate change from fixing the overflow. */
   .config-custom-dropdown,
   .config-custom-dropdown-menu {
     width: 100% !important;

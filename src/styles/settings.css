@@ -126,6 +126,33 @@
   transition: border-color 0.2s, background-color 0.2s;
 }
 
+/*
+ * The custom dropdowns on Device Config (timezone, and its siblings) are wider
+ * than a plain input because their rows carry full labels.
+ *
+ * This width used to be an inline `400px` on the elements themselves (#5291).
+ * Inline styles beat stylesheets, so the mobile rule in App.css could only
+ * reach it with `!important` — and the fixed width meant a long custom POSIX
+ * timezone pushed the chevron outside the field. `max-width: 100%` keeps it
+ * inside whatever the settings column allows.
+ */
+.config-custom-dropdown {
+  width: 400px;
+  max-width: 100%;
+}
+
+.config-custom-dropdown-menu {
+  width: 400px;
+  max-width: 100%;
+}
+
+/* The Role dropdown is wider still: each row carries a name, a short
+   description and a long one. Same containment rules apply. */
+.config-custom-dropdown--wide,
+.config-custom-dropdown-menu--wide {
+  width: 800px;
+}
+
 .setting-input:focus {
   outline: none;
   border-color: var(--color-accent);

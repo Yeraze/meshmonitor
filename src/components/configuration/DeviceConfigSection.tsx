@@ -208,18 +208,20 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
         <div style={{ position: 'relative' }}>
           <div
             onClick={() => setIsRoleDropdownOpen(!isRoleDropdownOpen)}
-            className="setting-input config-custom-dropdown"
+            className="setting-input config-custom-dropdown config-custom-dropdown--wide"
             style={{
               cursor: 'pointer',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
               padding: '0.75rem',
-              minHeight: '80px',
-              width: '800px'
+              minHeight: '80px'
             }}
           >
-            <div style={{ flex: 1 }}>
+            {/* Same containment as the timezone field below (#5291): the width
+                lives in settings.css and this wrapper may shrink, so a long
+                role description cannot push the chevron out of the field. */}
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 'bold', fontSize: '1.1em', color: '#fff', marginBottom: '0.5rem' }}>
                 {ROLE_OPTIONS.find(opt => opt.value === role)?.name || 'CLIENT'}
               </div>
@@ -234,12 +236,11 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
           </div>
           {isRoleDropdownOpen && (
             <div
-              className="config-custom-dropdown-menu"
+              className="config-custom-dropdown-menu config-custom-dropdown-menu--wide"
               style={{
                 position: 'absolute',
                 top: '100%',
                 left: 0,
-                width: '800px',
                 backgroundColor: 'white',
                 border: '1px solid #ddd',
                 borderRadius: '4px',
@@ -318,12 +319,17 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
               justifyContent: 'space-between',
               alignItems: 'center',
               padding: '0.75rem',
-              minHeight: '44px',
-              width: '400px'
+              minHeight: '44px'
             }}
           >
-            <div style={{ flex: 1 }}>
-              <div style={{ color: '#fff' }}>
+            {/* minWidth: 0 lets this shrink below the POSIX string's min-content
+                width — without it the text pushed the chevron out of the field
+                on a phone, since a flex item refuses to shrink past its content
+                by default (#5291). The width itself now comes from
+                `.config-custom-dropdown` in App.css rather than an inline
+                `400px` the mobile rule had to fight with `!important`. */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ color: '#fff', overflowWrap: 'anywhere' }}>
                 {currentTimezoneLabel}
               </div>
               {tzdef && !TIMEZONE_PRESETS.find(tz => tz.value === tzdef) && (
@@ -341,7 +347,6 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
                 position: 'absolute',
                 top: '100%',
                 left: 0,
-                width: '400px',
                 backgroundColor: 'white',
                 border: '1px solid #ddd',
                 borderRadius: '4px',
@@ -418,7 +423,9 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
                     borderBottom: '1px solid #eee',
                     backgroundColor: '#e8f5e9',
                     color: '#2e7d32',
-                    fontWeight: 'bold'
+                    fontWeight: 'bold',
+                    /* A typed POSIX string has no spaces to break at (#5291). */
+                    overflowWrap: 'anywhere'
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.backgroundColor = '#c8e6c9';
@@ -467,7 +474,7 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
                       }}
                     >
                       <div style={{ color: '#000' }}>{tz.label}</div>
-                      <div style={{ fontSize: '0.75rem', color: '#666', fontFamily: 'monospace' }}>
+                      <div style={{ fontSize: '0.75rem', color: '#666', fontFamily: 'monospace', overflowWrap: 'anywhere' }}>
                         {tz.value}
                       </div>
                     </div>
