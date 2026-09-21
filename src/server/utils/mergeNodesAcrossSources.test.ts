@@ -209,6 +209,67 @@ describe('mergeNodesAcrossSources (issue #3135)', () => {
   // least as large as the biggest single source. A unified view showing fewer
   // nodes than one of its sources is dropping rows somewhere else — for the
   // real cause see unifiedNodeKey / mergeUnifiedSourceData on the client.
+  describe('position selection is independent of lastHeard (#5292)', () => {
+    it('keeps the finer fix when the coarse row merely heard other traffic', () => {
+      const rows = [
+        makeNode(300, {
+          sourceId: 'coarse',
+          lastHeard: 9000,
+          latitude: 44.2761216,
+          longitude: -78.3024128,
+          positionPrecisionBits: 13,
+          positionTimestamp: 1_760_000_000_000 - 5_000,
+        }),
+        makeNode(300, {
+          sourceId: 'fine',
+          lastHeard: 1000,
+          latitude: 44.28923,
+          longitude: -78.31552,
+          positionPrecisionBits: 14,
+          positionTimestamp: 1_760_000_000_000,
+        }),
+      ];
+      const [merged] = mergeNodesAcrossSources(rows);
+      expect(merged.latitude).toBe(44.28923);
+      expect(merged.positionPrecisionBits).toBe(14);
+      // The row itself is still the newest-lastHeard one for every other field.
+      expect(merged.lastHeard).toBe(9000);
+    });
+
+    it('takes a newer coarse fix over an older fine one', () => {
+      const rows = [
+        makeNode(301, {
+          sourceId: 'fine',
+          lastHeard: 5000,
+          latitude: 35,
+          longitude: -80,
+          positionPrecisionBits: 16,
+          positionTimestamp: 1_760_000_000_000,
+        }),
+        makeNode(301, {
+          sourceId: 'coarse',
+          lastHeard: 1000,
+          latitude: 36,
+          longitude: -81,
+          positionPrecisionBits: 13,
+          positionTimestamp: 1_760_000_000_000 + 3_600_000,
+        }),
+      ];
+      const [merged] = mergeNodesAcrossSources(rows);
+      expect(merged.latitude).toBe(36);
+      expect(merged.positionPrecisionBits).toBe(13);
+    });
+
+    it('ignores a Null-Island fix on the newest row and keeps a real one', () => {
+      const rows = [
+        makeNode(302, { sourceId: 'junk', lastHeard: 9000, latitude: 0, longitude: 0, positionTimestamp: 2000 }),
+        makeNode(302, { sourceId: 'real', lastHeard: 1000, latitude: 35, longitude: -80, positionTimestamp: 1000 }),
+      ];
+      const [merged] = mergeNodesAcrossSources(rows);
+      expect(merged.latitude).toBe(35);
+    });
+  });
+
   describe('cannot undercount relative to a single source (#4573)', () => {
     it('returns at least as many nodes as the largest contributing source', () => {
       const sourceA = [makeNode(1), makeNode(2), makeNode(3)].map((n) => ({
