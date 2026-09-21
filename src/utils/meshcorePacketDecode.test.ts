@@ -232,6 +232,20 @@ describe('decodeMeshCorePacket — CONTROL (0x0b)', () => {
     });
   });
 
+  it('accepts an 8-byte key when the request asked for a prefix only', () => {
+    const hex = new Builder()
+      .u8(header(0x02, 0x0b))
+      .u8(0xff)
+      .u8(0x90 | 0x01) // NODE_DISCOVER_RESP | CHAT
+      .u8(0x1c)        // +7 dB
+      .u32le(9)
+      .fill(8, 0xcd)   // prefix-only key
+      .hex();
+    const d = decodeMeshCorePacket(hex)!;
+    expect(d.payload.control?.discoverResponse?.publicKey).toBe('cd'.repeat(8));
+    expect(d.errors).toEqual([]);
+  });
+
   it('keeps an unknown sub-type as hex rather than guessing', () => {
     const hex = new Builder()
       .u8(header(0x02, 0x0b))

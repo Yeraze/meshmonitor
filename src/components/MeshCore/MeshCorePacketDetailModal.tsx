@@ -151,9 +151,16 @@ const MeshCorePacketDetailModal: React.FC<Props> = ({ packet, onClose }) => {
                     <Row label={t('meshcore.packets.multipartInner', 'Wrapped payload')} mono>
                       {decoded.payload.multipart.innerTypeName} ({fmtHex(decoded.payload.multipart.innerType)})
                     </Row>
-                    {decoded.payload.multipart.ack && (
+                    {decoded.payload.multipart.ack ? (
                       <Row label={t('meshcore.packets.ackCode', 'ACK code')} mono>
                         {decoded.payload.multipart.ack.ackCodeHex}
+                      </Row>
+                    ) : (
+                      // Nothing decodes a wrapped type we don't handle yet, so
+                      // show its bytes here rather than making the reader find
+                      // them inside the whole-payload hex below.
+                      <Row label={t('meshcore.packets.multipartInnerHex', 'Wrapped payload (hex)')} mono wrap>
+                        {decoded.payload.multipart.innerHex || '—'}
                       </Row>
                     )}
                   </>
