@@ -75,7 +75,7 @@
     "lucide-react": "^1.45.0",
     "maplibre-gl": "^6.9.0",
     "morgan": "^1.12.1",
-    "mqtt": "^5.15.2",
+    "mqtt": "^5.16.0",
     "mysql2": "^3.24.4",
     "node-notifier": "^10.0.1",
     "openid-client": "^6.8.8",
