@@ -307,6 +307,11 @@ function mergeNodeRecords(records: any[]): any {
         k === 'latitude' ||
         k === 'longitude' ||
         k === 'positionPrecisionBits' ||
+        // Excluded for the same reason as the rest (#5292): carried only from
+        // the record whose fix was chosen. Left in the generic loop it could
+        // be back-filled from a record whose own position was rejected, so the
+        // row would claim a fix time it has no fix for.
+        k === 'positionTimestamp' ||
         k === 'isFavorite' ||
         k === 'isIgnored' ||
         k === 'lastHeard'

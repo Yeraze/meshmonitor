@@ -89,6 +89,15 @@ export function pickPositionRecord<T extends PositionRankable>(candidates: T[]):
     const r = candidates[i];
     const at = observedAtMs(r);
 
+    /*
+     * Compared against the running best rather than every other candidate.
+     * With three or more rows the two are not the same relation in general —
+     * "within 10 minutes of" is not transitive — but the input here is rows
+     * for ONE node from sources that all heard the same transmissions, so the
+     * cluster is tight relative to the window. A candidate that sits outside
+     * the window from the running best is genuinely a different observation,
+     * which is the question this asks.
+     */
     if (Math.abs(at - bestAt) <= SAME_OBSERVATION_WINDOW_MS) {
       // Same observation as far as we can tell: finer precision wins, and a
       // newer timestamp only breaks a precision tie.

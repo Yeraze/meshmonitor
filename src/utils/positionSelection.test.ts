@@ -69,6 +69,16 @@ describe('pickPositionRecord (#5292)', () => {
     expect(pickPositionRecord([legacy, withTs])).toBe(withTs);
   });
 
+  it('ranks a legacy lastHeard-only row above an older positionTimestamp row', () => {
+    // The fallback must stay comparable with real timestamps, not merely sort
+    // legacy rows among themselves: a legacy row heard an hour after the other
+    // source's fix is genuinely the newer observation we know about.
+    const withTs = { positionPrecisionBits: 16, positionTimestamp: T };
+    const legacyNewer = { positionPrecisionBits: 13, lastHeard: T / 1000 + 3_600 };
+    expect(pickPositionRecord([withTs, legacyNewer])).toBe(legacyNewer);
+    expect(pickPositionRecord([legacyNewer, withTs])).toBe(legacyNewer);
+  });
+
   it('returns the only candidate even when it carries no timestamps at all', () => {
     const lone = { latitude: 1, longitude: 2 };
     expect(pickPositionRecord([lone])).toBe(lone);
