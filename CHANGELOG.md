@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.16.2-rc1] - 2026-09-21
+
+### Added
+- **MeshCore MULTIPART and CONTROL payloads** are decoded rather than shown as unknown types. (#5285, #5308)
+
+### Fixed
+- **MQTT-only deployments show their own data** instead of an empty dashboard. (#5283)
+- **Large node sets are usable again** — the node list is virtualized and map markers cluster at low zoom, so a mesh fed from MQTT no longer drags scrolling and panning to a crawl. `/api/poll` is also fetched once at mount rather than three times. (#5284)
+- **Map Analysis hop shading** counts hops only from traceroutes the local node took part in, so remote nodes no longer render as 0-hop. (#5289)
+- **Unified position drift** — a node's position is picked by the freshest observation rather than the newest `lastHeard`, which also reconciles manual position-request responses across sources. (#5292, #5293, #5314)
+- **iOS 27 home-screen app:** the header title no longer renders inside the system status-bar blur. (#5286)
+- **iOS 27 mobile portrait:** the collapsed node-list arrow no longer overlaps the open Map controls sheet, and a long custom POSIX timezone stays inside its field with the chevron. (#5291)
+- **MeshCore source page in landscape** now uses the mobile layout instead of keeping its desktop one, which left the nav row mid-page and the content pane empty. (#5311, #5312)
+
 ## [4.16.1] - 2026-09-18
 
 ### Added
