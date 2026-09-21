@@ -51,6 +51,8 @@ export function applyBaseUrl(htmlContent: string, baseUrl: string): string {
     .replace(/href="\/logo\.png"/g, `href="${baseUrl}/logo.png"`)
     // CORS detection script
     .replace(/src="\/cors-detection\.js"/g, `src="${baseUrl}/cors-detection.js"`)
+    // Viewport diagnostic overlay (#5310), inert without ?vpdebug=1
+    .replace(/src="\/vpdebug\.js"/g, `src="${baseUrl}/vpdebug.js"`)
     // PWA-related paths
     .replace(/href="\/manifest\.webmanifest"/g, `href="${baseUrl}/manifest.webmanifest"`)
     .replace(/src="\/registerSW\.js"/g, `src="${baseUrl}/registerSW.js"`);

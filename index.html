@@ -18,6 +18,9 @@
   <body>
     <div id="root"></div>
     <script src="/cors-detection.js"></script>
+    <!-- Viewport diagnostic for #5310. Inert unless the URL carries
+         ?vpdebug=1, so it costs one 304 on every other load. -->
+    <script src="/vpdebug.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
