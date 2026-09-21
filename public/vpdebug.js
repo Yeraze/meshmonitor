@@ -18,7 +18,23 @@
  */
 (function () {
   'use strict';
-  if (!/[?&]vpdebug=1/.test(location.search)) return;
+  /*
+   * ON BY DEFAULT in this build, which exists only to diagnose #5310.
+   *
+   * It was gated on `?vpdebug=1`, which cannot work in the environment that
+   * reproduces the bug: launching an iOS home-screen web app opens the
+   * manifest's `start_url`, so the query string is dropped before this script
+   * ever runs. The gate hid the overlay in precisely the one place it was
+   * needed. `?vpdebug=0` still turns it off, and the preference sticks per
+   * origin so the PWA remembers it across launches.
+   */
+  try {
+    if (/[?&]vpdebug=0/.test(location.search)) localStorage.setItem('vpdebug', '0');
+    else if (/[?&]vpdebug=1/.test(location.search)) localStorage.removeItem('vpdebug');
+    if (localStorage.getItem('vpdebug') === '0') return;
+  } catch (e) {
+    // Private mode / blocked storage: fall through and show the overlay.
+  }
 
   var BARS = [
     ['.sidebar', 'sidebar (fixed shell)'],
@@ -67,6 +83,8 @@
    */
   function strip(edge, color) {
     var el = document.createElement('div');
+    // Marked so the fixed-element scan below skips our own strips.
+    el.dataset.vpdebug = '1';
     el.style.cssText =
       'position:fixed;left:0;right:0;' + edge + ':0;height:3px;' +
       'background:' + color + ';z-index:2147483646;pointer-events:none;';
