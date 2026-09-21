@@ -45,7 +45,7 @@
     "@maplibre/maplibre-gl-leaflet": "^0.1.4",
     "@michaelhart/meshcore-decoder": "^0.3.0",
     "@tanstack/react-query": "^5.102.8",
-    "@tanstack/react-virtual": "^3.14.11",
+    "@tanstack/react-virtual": "^3.14.13",
     "@tmcw/togeojson": "^7.1.2",
     "@types/leaflet.heat": "^0.2.5",
     "@xmldom/xmldom": "^0.9.12",
@@ -88,11 +88,11 @@
     "re2": "^1.26.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "react-i18next": "^17.0.13",
+    "react-i18next": "^17.0.14",
     "react-leaflet": "^5.0.0",
     "react-leaflet-cluster": "^4.1.3",
     "react-markdown": "^10.1.0",
-    "react-router-dom": "^7.18.3",
+    "react-router-dom": "^7.18.4",
     "recharts": "^3.9.2",
     "remark-gfm": "^4.0.1",
     "rotating-file-stream": "^3.2.10",
@@ -164,8 +164,8 @@
     "ws": "^8.21.3"
   },
   "optionalDependencies": {
-    "@rollup/rollup-linux-arm-gnueabihf": "^4.63.1",
-    "@rollup/rollup-linux-arm64-musl": "^4.63.1",
+    "@rollup/rollup-linux-arm-gnueabihf": "^4.63.3",
+    "@rollup/rollup-linux-arm64-musl": "^4.63.3",
     "@serialport/parser-readline": "^13.0.0",
     "serialport": "^13.0.0"
   }
