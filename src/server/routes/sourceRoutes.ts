@@ -781,9 +781,11 @@ function computeSourceRadioSummary(sourceId: string): SourceRadioSummary | null 
         Number(lora.channelNum ?? 0),
         Number(lora.overrideFrequency ?? 0),
         Number(lora.frequencyOffset ?? 0),
-        Number(lora.bandwidth ?? 250),
+        Number(lora.bandwidth ?? 0),
         undefined,
         Number(lora.modemPreset ?? 0),
+        // On a preset the stored bandwidth is stale and firmware ignores it.
+        lora.usePreset === true,
       );
       const txEnabled = lora.txEnabled ?? true;
       const udpRelayEnabled = typeof mgr.isUdpBroadcastRelayEnabled === 'function'

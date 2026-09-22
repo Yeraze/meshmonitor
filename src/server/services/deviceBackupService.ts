@@ -7,6 +7,7 @@ import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { logger } from '../../utils/logger.js';
 import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
+import { MODEM_PRESET_NAMES } from '../../utils/loraFrequency.js';
 
 /**
  * Simple YAML generator for device backup
@@ -138,17 +139,7 @@ export const EnumMappings: Record<string, Record<number, string>> = {
     11: 'ROUTER_LATE',
     12: 'CLIENT_BASE'
   },
-  ModemPreset: {
-    0: 'LONG_FAST',
-    1: 'LONG_SLOW',
-    2: 'VERY_LONG_SLOW',
-    3: 'MEDIUM_SLOW',
-    4: 'MEDIUM_FAST',
-    5: 'SHORT_SLOW',
-    6: 'SHORT_FAST',
-    7: 'LONG_MODERATE',
-    8: 'SHORT_TURBO'
-  },
+  ModemPreset: MODEM_PRESET_NAMES,
   RegionCode: {
     0: 'UNSET',
     1: 'US',

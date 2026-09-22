@@ -32,9 +32,10 @@ export function calculateLoRaFrequency(
   channelNum: number,
   overrideFrequency: number,
   frequencyOffset: number,
-  bandwidth: number = 250, // Default to LongFast preset (250 kHz)
+  bandwidth: number = 250, // Only consulted for a custom config (see usePreset)
   channelName?: string,
-  modemPreset?: number
+  modemPreset?: number,
+  usePreset?: boolean
 ): string {
   // If overrideFrequency is set (non-zero), use it (takes precedence over calculated frequency)
   if (overrideFrequency && overrideFrequency > 0) {
@@ -96,8 +97,7 @@ export function calculateLoRaFrequency(
 
   const [freqStart, freqEnd] = bounds;
 
-  // Use bandwidth in kHz, default to 250 kHz (LongFast)
-  const bw = bandwidth > 0 ? bandwidth : 250;
+  const bw = resolveBandwidthKHz(bandwidth, modemPreset, usePreset, region === LORA_24_REGION);
 
   // Calculate channel spacing based on bandwidth (bw is in kHz)
   const channelSpacing = bw / 1000; // Convert to MHz
@@ -138,6 +138,122 @@ export function calculateLoRaFrequency(
   const calculatedFreq = freqStart + halfBwOffset + (slotIndex * channelSpacing) + (frequencyOffset || 0);
 
   return `${calculatedFreq.toFixed(3)} MHz`;
+}
+
+/**
+ * Modem preset enum value -> protobuf name. Source of truth:
+ * meshtastic/protobufs `config.proto` `Config.LoRaConfig.ModemPreset`.
+ *
+ * CANONICAL COPY — the read-only device-config panel (`deviceAdminService`) and
+ * the backup/restore enum mappings (`deviceBackupService`) both read from here.
+ * Those were independent hand-maintained literals that had each drifted at
+ * `SHORT_TURBO`, so a node on any preset >= 9 rendered as "Unknown (9)" and
+ * backed up as a bare number. Do not fork this table again.
+ */
+export const MODEM_PRESET_NAMES: { [key: number]: string } = {
+  0: 'LONG_FAST',
+  1: 'LONG_SLOW',      // deprecated in firmware 2.7, retained for legacy enum values
+  2: 'VERY_LONG_SLOW', // deprecated in firmware 2.5, retained for legacy enum values
+  3: 'MEDIUM_SLOW',
+  4: 'MEDIUM_FAST',
+  5: 'SHORT_SLOW',
+  6: 'SHORT_FAST',
+  7: 'LONG_MODERATE',
+  8: 'SHORT_TURBO',
+  9: 'LONG_TURBO',
+  10: 'LITE_FAST',
+  11: 'LITE_SLOW',
+  12: 'NARROW_FAST',
+  13: 'NARROW_SLOW',
+  14: 'TINY_FAST',
+  15: 'TINY_SLOW',
+  16: 'MEDIUM_TURBO'
+};
+
+/**
+ * `LONG_TURBO` -> `Long Turbo`, for the read-only LoRa config display. Derived
+ * rather than hand-listed so a new preset shows a real name the moment it is
+ * added to MODEM_PRESET_NAMES. Returns undefined for an unmapped value so the
+ * caller can render its own "Unknown (n)" fallback.
+ */
+export function modemPresetDisplayName(preset: number): string | undefined {
+  const name = MODEM_PRESET_NAMES[preset];
+  if (!name) return undefined;
+  return name
+    .split('_')
+    .map((word) => word.charAt(0) + word.slice(1).toLowerCase())
+    .join(' ');
+}
+
+/** RegionCode for the 2.4 GHz wide-LoRa band, which uses wider preset bandwidths. */
+const LORA_24_REGION = 13;
+
+/**
+ * Modem-preset LoRa bandwidth in kHz, mirroring the firmware's
+ * `modemPresetToParams()` switch (`src/mesh/MeshRadio.h`). `normal` = the
+ * sub-GHz bands; `wide` = 2.4 GHz wide-LoRa (LORA_24).
+ *
+ * CANONICAL COPY — `src/components/configuration/constants.ts` re-exports
+ * `getPresetBandwidthKHz` from here; do not fork this table. It lives in
+ * `src/utils/` rather than the frontend tree because the server needs it too
+ * (frequency display, source radio summary) and `src/components/**` is not in
+ * `tsconfig.server.json`'s include set.
+ *
+ * Presets NOT implemented in the firmware switch (VERY_LONG_SLOW, LITE_*,
+ * NARROW_*, TINY_*) fall through to the LONG_FAST default — see
+ * DEFAULT_PRESET_BW — which is exactly what firmware does with them.
+ */
+const PRESET_BANDWIDTH_KHZ: Record<number, { normal: number; wide: number }> = {
+  0: { normal: 250, wide: 812.5 },   // LONG_FAST (default)
+  1: { normal: 125, wide: 406.25 },  // LONG_SLOW
+  3: { normal: 250, wide: 812.5 },   // MEDIUM_SLOW
+  4: { normal: 250, wide: 812.5 },   // MEDIUM_FAST
+  5: { normal: 250, wide: 812.5 },   // SHORT_SLOW
+  6: { normal: 250, wide: 812.5 },   // SHORT_FAST
+  7: { normal: 125, wide: 406.25 },  // LONG_MODERATE
+  8: { normal: 500, wide: 1625 },    // SHORT_TURBO
+  9: { normal: 500, wide: 1625 },    // LONG_TURBO
+  16: { normal: 500, wide: 1625 }    // MEDIUM_TURBO
+};
+const DEFAULT_PRESET_BW = { normal: 250, wide: 812.5 }; // LONG_FAST fallback
+
+/**
+ * LoRa bandwidth (kHz) firmware would use for the given modem preset, matching
+ * modemPresetToParams(). Unknown/unimplemented presets fall back to LONG_FAST.
+ */
+export function getPresetBandwidthKHz(preset: number, wideLora: boolean): number {
+  const bw = PRESET_BANDWIDTH_KHZ[preset] ?? DEFAULT_PRESET_BW;
+  return wideLora ? bw.wide : bw.normal;
+}
+
+/**
+ * The bandwidth (kHz) the radio is ACTUALLY running at, which is not always the
+ * `bandwidth` field.
+ *
+ * `config.proto` on `use_preset`: "When enabled, the `modem_preset` fields will
+ * be adhered to, else the `bandwidth`/`spread_factor`/`coding_rate` will be
+ * taken from their respective manually defined fields." Firmware therefore
+ * ignores those three fields whenever `use_preset` is set, and it does NOT
+ * write the preset's parameters back into them — they keep whatever was last
+ * stored. A bench RAK4631 on LONG_TURBO was observed reporting
+ * `bandwidth: 250, spread_factor: 9, coding_rate: 5` (MEDIUM_FAST's parameters)
+ * while transmitting on LONG_TURBO's 500 kHz.
+ *
+ * So a reader MUST NOT trust `bandwidth` just because it is non-zero. The
+ * channel grid is bandwidth-spaced, and taking that stale 250 put the node two
+ * slots and 3.375 MHz away from where it actually was.
+ *
+ * `usePreset` left undefined means the caller does not know; the explicit field
+ * is then preferred when set, falling back to the preset.
+ */
+export function resolveBandwidthKHz(
+  bandwidth: number,
+  modemPreset: number | undefined,
+  usePreset: boolean | undefined,
+  wideLora: boolean
+): number {
+  if (usePreset !== true && bandwidth > 0) return bandwidth;
+  return getPresetBandwidthKHz(modemPreset ?? 0, wideLora);
 }
 
 /**
@@ -196,7 +312,8 @@ export function loRaCenterFrequencyMhz(
   frequencyOffset: number,
   bandwidth: number = 250,
   channelName?: string,
-  modemPreset?: number
+  modemPreset?: number,
+  usePreset?: boolean
 ): number | null {
   const formatted = calculateLoRaFrequency(
     region,
@@ -205,7 +322,8 @@ export function loRaCenterFrequencyMhz(
     frequencyOffset,
     bandwidth,
     channelName,
-    modemPreset
+    modemPreset,
+    usePreset
   );
   const freq = parseFloat(formatted);
   return Number.isFinite(freq) ? freq : null;

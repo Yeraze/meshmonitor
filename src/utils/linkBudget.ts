@@ -143,6 +143,11 @@ export const MODEM_PRESET_PARAMS: Record<number, { sf: number; bwKhz: number }> 
   11: { sf: 10, bwKhz: 125 }, // LITE_SLOW
   12: { sf: 7, bwKhz: 62.5 }, // NARROW_FAST
   13: { sf: 8, bwKhz: 62.5 }, // NARROW_SLOW
+  16: { sf: 9, bwKhz: 500 },  // MEDIUM_TURBO (params from MODEM_PRESET_OPTIONS)
+  // 14 (TINY_FAST) and 15 (TINY_SLOW) are deliberately absent: they exist in the
+  // protobuf enum but have no entry in the firmware's modemPresetToParams switch,
+  // so there is no authoritative (SF, BW) pair to cite. They fall through to
+  // `null` like any other unknown preset rather than carrying invented figures.
 };
 
 /** RX sensitivity (dBm) for a Meshtastic modem preset, or `null` if unknown. */

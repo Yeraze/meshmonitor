@@ -3,7 +3,11 @@ import {
   calculateLoRaFrequency,
   djb2Hash,
   getModemPresetChannelName,
+  getPresetBandwidthKHz,
+  resolveBandwidthKHz,
   loRaCenterFrequencyMhz,
+  modemPresetDisplayName,
+  MODEM_PRESET_NAMES,
   REGION_SHORT_NAME,
 } from './loraFrequency';
 
@@ -372,5 +376,144 @@ describe('getModemPresetChannelName (firmware DisplayFormatters.cpp parity)', ()
   it('returns undefined for unknown preset values', () => {
     expect(getModemPresetChannelName(99)).toBeUndefined();
     expect(getModemPresetChannelName(undefined)).toBeUndefined();
+  });
+});
+
+
+// Firmware honours `modem_preset` and IGNORES bandwidth/spread_factor/coding_rate
+// whenever `use_preset` is set (config.proto, LoRaConfig.use_preset), and it does
+// not write the preset's parameters back into those fields. They keep whatever was
+// last stored, so a reader must not trust `bandwidth` merely because it is set.
+describe('bandwidth follows use_preset, not the stored bandwidth field', () => {
+  describe('the reported regression, with the config the bench radio really reports', () => {
+    // Observed on a RAK4631 on LONG_TURBO: usePreset=true, modemPreset=9,
+    // bandwidth=250, spreadFactor=9, codingRate=5 (MEDIUM_FAST's leftovers),
+    // region=US, channelNum=14.
+    it('reports 908.750 MHz — LONG_TURBO is 500 kHz, whatever the stale field says', () => {
+      expect(calculateLoRaFrequency(1, 14, 0, 0, 250, undefined, 9, true)).toBe('908.750 MHz');
+    });
+
+    it('no longer reports 905.375 MHz, the answer the stale 250 produced', () => {
+      expect(calculateLoRaFrequency(1, 14, 0, 0, 250, undefined, 9, true)).not.toBe('905.375 MHz');
+    });
+
+    it('ignores the stale field whatever value it holds', () => {
+      for (const stale of [0, 125, 250, 500, 62.5]) {
+        expect(calculateLoRaFrequency(1, 14, 0, 0, stale, undefined, 9, true)).toBe('908.750 MHz');
+      }
+    });
+  });
+
+  it('derives 500 kHz for SHORT_TURBO (8) and MEDIUM_TURBO (16)', () => {
+    expect(calculateLoRaFrequency(1, 1, 0, 0, 250, undefined, 8, true)).toBe('902.250 MHz');
+    // The FCC 15.247 slot-12 combination: 902.0 + 0.25 + (11 * 0.5).
+    expect(calculateLoRaFrequency(1, 12, 0, 0, 250, undefined, 16, true)).toBe('907.750 MHz');
+  });
+
+  it('derives 125 kHz for LONG_MODERATE (7) and LONG_SLOW (1)', () => {
+    // 902.0 + 0.0625 + 0 = 902.0625 -> toFixed(3) = 902.063
+    expect(calculateLoRaFrequency(1, 1, 0, 0, 250, undefined, 7, true)).toBe('902.063 MHz');
+    expect(calculateLoRaFrequency(1, 1, 0, 0, 250, undefined, 1, true)).toBe('902.063 MHz');
+  });
+
+  it('leaves LONG_FAST (0) unchanged — it is 250 kHz, so the old answer was right', () => {
+    expect(calculateLoRaFrequency(1, 21, 0, 0, 250, undefined, 0, true))
+      .toBe(calculateLoRaFrequency(1, 21, 0, 0, 250, undefined, 0));
+  });
+
+  it('uses the wide-LoRa bandwidth for LORA_24 (region 13)', () => {
+    expect(calculateLoRaFrequency(13, 1, 0, 0, 250, undefined, 0, true)).toBe('2400.406 MHz');
+  });
+
+  it('flows through loRaCenterFrequencyMhz too (it delegates)', () => {
+    expect(loRaCenterFrequencyMhz(1, 14, 0, 0, 250, undefined, 9, true)).toBe(908.75);
+  });
+
+  // --- negative cases: a custom config must keep its manual bandwidth ---
+
+  it('honours the explicit bandwidth when usePreset is false', () => {
+    // use_preset=false is exactly when bandwidth/spread_factor/coding_rate mean
+    // something. Deriving from the leftover modemPreset here would be wrong.
+    expect(calculateLoRaFrequency(1, 14, 0, 0, 250, undefined, 9, false)).toBe('905.375 MHz');
+    expect(calculateLoRaFrequency(1, 14, 0, 0, 500, undefined, 0, false)).toBe('908.750 MHz');
+  });
+
+  it('prefers an explicit bandwidth when the caller does not say (usePreset undefined)', () => {
+    expect(calculateLoRaFrequency(1, 14, 0, 0, 250, undefined, 9)).toBe('905.375 MHz');
+  });
+
+  it('falls back to the preset when a custom config carries no bandwidth', () => {
+    expect(calculateLoRaFrequency(1, 14, 0, 0, 0, undefined, 9, false)).toBe('908.750 MHz');
+    expect(calculateLoRaFrequency(1, 14, 0, 0, 0, undefined, 9)).toBe('908.750 MHz');
+  });
+
+  it('falls back to the LONG_FAST 250 kHz grid for an unmapped or absent preset', () => {
+    expect(calculateLoRaFrequency(1, 14, 0, 0, 0, undefined, 999, true)).toBe('905.375 MHz');
+    expect(calculateLoRaFrequency(1, 14, 0, 0, 0, undefined, 12, true)).toBe('905.375 MHz');
+    expect(calculateLoRaFrequency(1, 14, 0, 0, 0)).toBe('905.375 MHz');
+  });
+
+  it('overrideFrequency still short-circuits the whole calculation', () => {
+    expect(calculateLoRaFrequency(1, 14, 906.875, 0, 250, undefined, 9, true)).toBe('906.875 MHz');
+  });
+});
+
+describe('resolveBandwidthKHz', () => {
+  it('ignores the stored field on a preset, honours it on a custom config', () => {
+    expect(resolveBandwidthKHz(250, 9, true, false)).toBe(500);   // stale field ignored
+    expect(resolveBandwidthKHz(250, 9, false, false)).toBe(250);  // manual field honoured
+    expect(resolveBandwidthKHz(250, 9, undefined, false)).toBe(250);
+    expect(resolveBandwidthKHz(0, 9, false, false)).toBe(500);    // nothing manual to honour
+  });
+
+  it('uses the wide-LoRa table for LORA_24', () => {
+    expect(resolveBandwidthKHz(0, 9, true, true)).toBe(1625);
+  });
+});
+
+describe('getPresetBandwidthKHz (canonical copy, re-exported by configuration/constants)', () => {
+  it('returns the firmware bandwidth for the implemented presets', () => {
+    expect(getPresetBandwidthKHz(0, false)).toBe(250);  // LONG_FAST
+    expect(getPresetBandwidthKHz(7, false)).toBe(125);  // LONG_MODERATE
+    expect(getPresetBandwidthKHz(9, false)).toBe(500);  // LONG_TURBO
+    expect(getPresetBandwidthKHz(16, false)).toBe(500); // MEDIUM_TURBO
+  });
+
+  it('returns the wide-LoRa bandwidth for LORA_24', () => {
+    expect(getPresetBandwidthKHz(9, true)).toBe(1625);
+  });
+
+  it('falls back to LONG_FAST for presets firmware does not implement', () => {
+    expect(getPresetBandwidthKHz(12, false)).toBe(250); // NARROW_FAST
+    expect(getPresetBandwidthKHz(999, false)).toBe(250);
+  });
+});
+
+describe('MODEM_PRESET_NAMES / modemPresetDisplayName', () => {
+  it('covers the whole protobuf ModemPreset enum, 0 through 16', () => {
+    // The drift this replaces stopped at 8, so a node on preset 9 rendered
+    // "Unknown (9)". Every value the enum defines must resolve to a name.
+    for (let preset = 0; preset <= 16; preset++) {
+      expect(MODEM_PRESET_NAMES[preset]).toBeTruthy();
+    }
+  });
+
+  it('title-cases the protobuf name for display', () => {
+    expect(modemPresetDisplayName(9)).toBe('Long Turbo');
+    expect(modemPresetDisplayName(16)).toBe('Medium Turbo');
+    expect(modemPresetDisplayName(2)).toBe('Very Long Slow');
+  });
+
+  it('keeps the display strings the panel already showed for presets 0-8', () => {
+    // Regression guard on the hand-written literal this derivation replaced.
+    expect([0, 1, 2, 3, 4, 5, 6, 7, 8].map((p) => modemPresetDisplayName(p))).toEqual([
+      'Long Fast', 'Long Slow', 'Very Long Slow', 'Medium Slow', 'Medium Fast',
+      'Short Slow', 'Short Fast', 'Long Moderate', 'Short Turbo',
+    ]);
+  });
+
+  it('returns undefined for an unmapped value so callers can render "Unknown (n)"', () => {
+    expect(modemPresetDisplayName(99)).toBeUndefined();
+    expect(modemPresetDisplayName(-1)).toBeUndefined();
   });
 });

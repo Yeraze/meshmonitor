@@ -44,7 +44,7 @@ import type { MeshtasticManager } from '../meshtasticManager.js';
 import databaseService from '../../services/database.js';
 import protobufService from '../protobufService.js';
 import { MODULE_FIELD_BY_ID } from '../constants/configTypes.js';
-import { calculateLoRaFrequency } from '../../utils/loraFrequency.js';
+import { calculateLoRaFrequency, modemPresetDisplayName, resolveBandwidthKHz } from '../../utils/loraFrequency.js';
 import { logger } from '../../utils/logger.js';
 import { safeJson } from '../utils/redactSecrets.js';
 
@@ -533,22 +533,9 @@ export class DeviceAdminService {
       15: 'UA_868'
     };
 
-    // Map modem preset enum values to strings
-    const modemPresetMap: { [key: number]: string } = {
-      0: 'Long Fast',
-      1: 'Long Slow',
-      2: 'Very Long Slow',
-      3: 'Medium Slow',
-      4: 'Medium Fast',
-      5: 'Short Slow',
-      6: 'Short Fast',
-      7: 'Long Moderate',
-      8: 'Short Turbo'
-    };
-
     // Convert enum values to human-readable strings
     const regionValue = typeof loraConfigWithDefaults.region === 'number' ? regionMap[loraConfigWithDefaults.region] || `Unknown (${loraConfigWithDefaults.region})` : loraConfigWithDefaults.region || 'Unknown';
-    const modemPresetValue = typeof loraConfigWithDefaults.modemPreset === 'number' ? modemPresetMap[loraConfigWithDefaults.modemPreset] || `Unknown (${loraConfigWithDefaults.modemPreset})` : loraConfigWithDefaults.modemPreset || 'Unknown';
+    const modemPresetValue = typeof loraConfigWithDefaults.modemPreset === 'number' ? modemPresetDisplayName(loraConfigWithDefaults.modemPreset) || `Unknown (${loraConfigWithDefaults.modemPreset})` : loraConfigWithDefaults.modemPreset || 'Unknown';
 
     const connectionAddress = await this.mgr.getConnectionAddress();
 
@@ -566,7 +553,14 @@ export class DeviceAdminService {
         modemPreset: modemPresetValue,
         hopLimit: loraConfigWithDefaults.hopLimit !== undefined ? loraConfigWithDefaults.hopLimit : 'Unknown',
         txPower: loraConfigWithDefaults.txPower !== undefined ? loraConfigWithDefaults.txPower : 'Unknown',
-        bandwidth: loraConfigWithDefaults.bandwidth || 'Unknown',
+        // The effective bandwidth, not the raw field: on a preset the stored
+        // bandwidth/spreadFactor/codingRate are stale and firmware ignores them.
+        bandwidth: resolveBandwidthKHz(
+          typeof loraConfigWithDefaults.bandwidth === 'number' ? loraConfigWithDefaults.bandwidth : 0,
+          typeof loraConfigWithDefaults.modemPreset === 'number' ? loraConfigWithDefaults.modemPreset : undefined,
+          loraConfigWithDefaults.usePreset === true,
+          loraConfigWithDefaults.region === 13
+        ),
         spreadFactor: loraConfigWithDefaults.spreadFactor || 'Unknown',
         codingRate: loraConfigWithDefaults.codingRate || 'Unknown',
         channelNum: loraConfigWithDefaults.channelNum !== undefined ? loraConfigWithDefaults.channelNum : 'Unknown',
@@ -575,9 +569,12 @@ export class DeviceAdminService {
           loraConfigWithDefaults.channelNum !== undefined ? loraConfigWithDefaults.channelNum : 0,
           loraConfigWithDefaults.overrideFrequency !== undefined ? loraConfigWithDefaults.overrideFrequency : 0,
           loraConfigWithDefaults.frequencyOffset !== undefined ? loraConfigWithDefaults.frequencyOffset : 0,
-          typeof loraConfigWithDefaults.bandwidth === 'number' && loraConfigWithDefaults.bandwidth > 0 ? loraConfigWithDefaults.bandwidth : 250,
+          typeof loraConfigWithDefaults.bandwidth === 'number' ? loraConfigWithDefaults.bandwidth : 0,
           dbChannels.find(ch => ch.id === 0)?.name || undefined,
-          typeof loraConfigWithDefaults.modemPreset === 'number' ? loraConfigWithDefaults.modemPreset : undefined
+          typeof loraConfigWithDefaults.modemPreset === 'number' ? loraConfigWithDefaults.modemPreset : undefined,
+          // Decides whether `bandwidth` above means anything: firmware ignores it
+          // (stale, not rewritten) whenever the radio is running on a preset.
+          loraConfigWithDefaults.usePreset === true
         ),
         txEnabled: loraConfigWithDefaults.txEnabled !== undefined ? loraConfigWithDefaults.txEnabled : 'Unknown',
         sx126xRxBoostedGain: loraConfigWithDefaults.sx126xRxBoostedGain !== undefined ? loraConfigWithDefaults.sx126xRxBoostedGain : 'Unknown',
