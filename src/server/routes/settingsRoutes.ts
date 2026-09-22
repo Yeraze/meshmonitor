@@ -23,6 +23,12 @@ import { ok, fail } from '../utils/apiResponse.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { validateFilterNameRegexOnSave } from '../utils/filterNameRegex.js';
 import { positionEstimationScheduler } from '../services/positionEstimationScheduler.js';
+import {
+  autoEnrichmentScheduler,
+  cronFiresAtMostHourly,
+  MIN_INTERVAL_MINUTES as AUTO_ENRICHMENT_MIN_INTERVAL_MINUTES,
+  MAX_INTERVAL_MINUTES as AUTO_ENRICHMENT_MAX_INTERVAL_MINUTES,
+} from '../services/autoEnrichmentScheduler.js';
 import { autoDeleteByDistanceService } from '../services/autoDeleteByDistanceService.js';
 import { NODE_DISPLAY_RANGES, NODE_DISPLAY_SETTING_KEYS, MAX_INFRA_NODE_AGE_HOURS_RANGE } from '../../constants/nodeDisplayDefaults.js';
 import { resolveAppriseServerUrl } from '../services/appriseNotificationService.js';
@@ -345,6 +351,37 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
       if (v !== 'true' && v !== 'false') {
         return fail(res, 400, 'INVALID_BOOLEAN_SETTING',
           `${key} must be the boolean true or false (received "${v}")`);
+      }
+    }
+
+    // Auto-Enrichment schedule floor (#5287). The scheduler clamps and rejects
+    // these again at read time; validating here as well turns a bad value into
+    // a visible 400 instead of a schedule that silently never fires.
+    if ('autoEnrichmentIntervalMinutes' in filteredSettings) {
+      const minutes = Number(filteredSettings.autoEnrichmentIntervalMinutes);
+      if (!Number.isInteger(minutes)
+        || minutes < AUTO_ENRICHMENT_MIN_INTERVAL_MINUTES
+        || minutes > AUTO_ENRICHMENT_MAX_INTERVAL_MINUTES) {
+        return fail(res, 400, 'INVALID_AUTO_ENRICHMENT_INTERVAL',
+          `autoEnrichmentIntervalMinutes must be a whole number from ${AUTO_ENRICHMENT_MIN_INTERVAL_MINUTES} to ${AUTO_ENRICHMENT_MAX_INTERVAL_MINUTES}`);
+      }
+    }
+    if ('autoEnrichmentScheduleType' in filteredSettings
+      && !['interval', 'cron'].includes(filteredSettings.autoEnrichmentScheduleType)) {
+      return fail(res, 400, 'INVALID_AUTO_ENRICHMENT_SCHEDULE_TYPE',
+        'autoEnrichmentScheduleType must be "interval" or "cron"');
+    }
+    {
+      // A cron only has to be valid when it is the schedule in effect, so a
+      // user can switch to interval mode without first clearing a bad cron.
+      const effectiveType = filteredSettings.autoEnrichmentScheduleType
+        ?? currentSettings.autoEnrichmentScheduleType;
+      const cron = filteredSettings.autoEnrichmentCron ?? currentSettings.autoEnrichmentCron ?? '';
+      if (effectiveType === 'cron'
+        && ('autoEnrichmentCron' in filteredSettings || 'autoEnrichmentScheduleType' in filteredSettings)
+        && !cronFiresAtMostHourly(cron)) {
+        return fail(res, 400, 'INVALID_AUTO_ENRICHMENT_CRON',
+          'autoEnrichmentCron must be a valid cron expression that fires at most once an hour');
       }
     }
 
@@ -1960,6 +1997,47 @@ router.post('/position-estimation/run-now', requirePermission('settings', 'write
       ? 'Position estimation already in progress'
       : 'Failed to run position estimation';
     res.status(message.includes('in progress') ? 409 : 500).json({ error: message });
+  }
+});
+
+/**
+ * Auto-Enrichment (#5287): scheduled NodeInfo Enrichment "Fix All".
+ * Settings themselves save through POST /api/settings; these report status
+ * and trigger a run outside the schedule.
+ */
+router.get('/auto-enrichment/status', requirePermission('settings', 'read'), async (_req, res) => {
+  try {
+    return ok(res, await autoEnrichmentScheduler.getStatus());
+  } catch (error) {
+    logger.error('Error fetching auto-enrichment status:', error);
+    return fail(res, 500, 'AUTO_ENRICHMENT_STATUS_FAILED', 'Failed to fetch auto-enrichment status');
+  }
+});
+
+/**
+ * Run now. Resolves after the database pass; any NodeInfo pushes follow in the
+ * background under the same per-run cap and spacing as a scheduled run.
+ * Counts as a run, so it also resets the schedule's clock.
+ */
+router.post('/auto-enrichment/run-now', requirePermission('settings', 'write'), async (req, res) => {
+  try {
+    const summary = await autoEnrichmentScheduler.runNow('manual');
+    void databaseService.auditLogAsync(
+      req.user!.id,
+      'auto_enrichment_run',
+      'settings',
+      `Ran auto-enrichment: ${summary.nodesFilled} node(s) filled, ${summary.pushesPending} push(es) queued`,
+      req.ip || null,
+      null,
+      JSON.stringify(summary),
+    );
+    return ok(res, summary);
+  } catch (error) {
+    if (error instanceof Error && /in progress/.test(error.message)) {
+      return fail(res, 409, 'AUTO_ENRICHMENT_IN_PROGRESS', 'Auto-enrichment is already running');
+    }
+    logger.error('Error running auto-enrichment:', error);
+    return fail(res, 500, 'AUTO_ENRICHMENT_RUN_FAILED', 'Failed to run auto-enrichment');
   }
 });
 

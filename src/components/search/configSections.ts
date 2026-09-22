@@ -54,6 +54,8 @@ export const GLOBAL_SETTINGS_SECTIONS = new Set([
   // Mesh Issues Analysis is a single global, cross-source batch job (#4964)
   // — same reasoning as position estimation above.
   'settings-mesh-issues',
+  // Auto-Enrichment runs one cross-source scheduler for the install (#5287).
+  'settings-auto-enrichment',
 ]);
 
 /** Settings sections that belong to a source's own Settings tab. */
@@ -116,6 +118,7 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
     { id: 'settings-analytics', label: t('settings.analytics'), keywords: ['telemetry', 'usage', 'stats'] },
     { id: 'settings-position-estimation', label: t('automation.position_estimation.title', 'Position Estimation'), keywords: ['gps', 'location', 'estimate', 'triangulation'] },
     { id: 'settings-mesh-issues', label: t('automation.mesh_issues.title', 'Mesh Issues Analysis'), keywords: ['diagnostics', 'health', 'problems'] },
+    { id: 'settings-auto-enrichment', label: t('automation.auto_enrichment.title', 'Auto-Enrichment'), keywords: ['nodeinfo', 'enrichment', 'fix all', 'schedule', 'cron'] },
     { id: 'settings-management', label: t('settings.settings_management'), keywords: ['export', 'import', 'reset'] },
     { id: 'settings-danger', label: t('settings.danger_zone'), keywords: ['delete', 'purge', 'wipe', 'reset'] },
   ];
@@ -124,7 +127,7 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
     'settings-remote-admin', 'settings-apprise-server', 'settings-elevation',
     'settings-channel-database', 'settings-scripts', 'settings-analytics',
   ]);
-  const settingsWriteOnly = new Set(['settings-position-estimation', 'settings-mesh-issues']);
+  const settingsWriteOnly = new Set(['settings-position-estimation', 'settings-mesh-issues', 'settings-auto-enrichment']);
 
   return items.filter((item) => {
     if (!inMode(item.id)) return false;
