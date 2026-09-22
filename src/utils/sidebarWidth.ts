@@ -101,3 +101,29 @@ export function resolveNodeSidebarMaxWidth(availableWidth: number, mobile: boole
     : Math.round(availableWidth * NODE_SIDEBAR_DESKTOP_MAX_FRACTION);
   return Math.max(NODE_SIDEBAR_MIN_WIDTH_PX, max);
 }
+
+/**
+ * Narrowest strip of map worth leaving beside the list on mobile. Anything
+ * thinner is a sliver you cannot use but can still tap by accident (#5316:
+ * the 380px default on a 390-430px phone left 10-50px of map whose taps went
+ * through to the map controls behind the list).
+ */
+export const NODE_SIDEBAR_MOBILE_MIN_MAP_STRIP_PX = 64;
+
+/**
+ * CSS width to render the expanded node list at.
+ *
+ * On mobile, a list that would leave less than a usable strip of map fills the
+ * container instead. A width the user dragged narrower is kept, so the list
+ * stays resizable. Desktop always gets the stored width.
+ */
+export function resolveNodeSidebarRenderWidth(
+  width: number,
+  availableWidth: number,
+  mobile: boolean,
+): string {
+  if (mobile && availableWidth - width < NODE_SIDEBAR_MOBILE_MIN_MAP_STRIP_PX) {
+    return '100%';
+  }
+  return `${width}px`;
+}

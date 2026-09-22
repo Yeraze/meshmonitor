@@ -7,6 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   resolveNodeSidebarMaxWidth,
+  resolveNodeSidebarRenderWidth,
   isMobileLayout,
   MOBILE_BREAKPOINT_PX,
   MOBILE_LANDSCAPE_MAX_HEIGHT_PX,
@@ -132,5 +133,27 @@ describe('resolveNodeSidebarMaxWidth', () => {
       expect(resolveNodeSidebarMaxWidth(v, true)).toBe(NODE_SIDEBAR_MIN_WIDTH_PX);
       expect(resolveNodeSidebarMaxWidth(v, false)).toBe(NODE_SIDEBAR_MIN_WIDTH_PX);
     });
+  });
+});
+
+describe('resolveNodeSidebarRenderWidth (#5316)', () => {
+  it.each([390, 393, 430])('fills a %ipx phone instead of leaving a sliver of map at the 380px default', (phone) => {
+    expect(resolveNodeSidebarRenderWidth(380, phone, true)).toBe('100%');
+  });
+
+  it('fills the container when a mobile drag reaches the edge', () => {
+    expect(resolveNodeSidebarRenderWidth(390, 390, true)).toBe('100%');
+  });
+
+  it('keeps a mobile width dragged narrow enough to leave usable map', () => {
+    expect(resolveNodeSidebarRenderWidth(250, 430, true)).toBe('250px');
+  });
+
+  it('keeps the stored width on a wide mobile viewport such as a landscape phone', () => {
+    expect(resolveNodeSidebarRenderWidth(380, 844, true)).toBe('380px');
+  });
+
+  it('never fills on desktop', () => {
+    expect(resolveNodeSidebarRenderWidth(380, 400, false)).toBe('380px');
   });
 });
