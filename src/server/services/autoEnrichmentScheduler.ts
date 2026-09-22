@@ -410,7 +410,7 @@ export class AutoEnrichmentScheduler {
       databaseService.settings.getSetting(STATE_KEYS.lastRunSummary),
       this.readPending(),
     ]);
-    let lastRunSummary: AutoEnrichmentRunSummary | null = null;
+    let lastRunSummary: AutoEnrichmentRunSummary | null;
     try { lastRunSummary = summaryRaw ? JSON.parse(summaryRaw) : null; } catch { lastRunSummary = null; }
 
     return {

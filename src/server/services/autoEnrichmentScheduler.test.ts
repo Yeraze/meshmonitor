@@ -74,7 +74,6 @@ function enable(extra: Record<string, string> = {}) {
 
 /** Wait for the background push phase of the current run to finish. */
 async function settle(s: AutoEnrichmentScheduler) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- reaching the private run lock is the point of this helper
   const lock = (s as any).runLock as Promise<unknown> | null;
   if (lock) await lock.catch(() => {});
 }
