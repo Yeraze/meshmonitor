@@ -42,7 +42,7 @@ import WaypointEditorModal from './WaypointEditorModal';
 import { useWaypoints } from '../hooks/useWaypoints';
 import type { Waypoint, WaypointInput } from '../types/waypoint';
 import { useResizable } from '../hooks/useResizable';
-import { resolveNodeSidebarMaxWidth, isMobileLayout, NODE_SIDEBAR_MIN_WIDTH_PX } from '../utils/sidebarWidth';
+import { resolveNodeSidebarMaxWidth, resolveNodeSidebarRenderWidth, isMobileLayout, NODE_SIDEBAR_MIN_WIDTH_PX } from '../utils/sidebarWidth';
 import ZoomHandler from './ZoomHandler';
 import MapPositionHandler from './MapPositionHandler';
 import PolarGridOverlay from './PolarGridOverlay.js';
@@ -2271,7 +2271,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       <div
         ref={sidebarRef}
         className={`nodes-sidebar nodes-anchored-sidebar ${isNodeListCollapsed ? 'collapsed' : ''} ${isSidebarResizing ? 'resizing' : ''}`}
-        style={!isNodeListCollapsed ? { width: `${sidebarWidth}px` } : undefined}
+        style={!isNodeListCollapsed ? { width: resolveNodeSidebarRenderWidth(sidebarWidth, sidebarMetrics.availableWidth, sidebarMetrics.mobile) } : undefined}
       >
         <div className="sidebar-header">
           <button

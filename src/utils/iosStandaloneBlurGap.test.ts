@@ -18,7 +18,30 @@ const IOS_26_UA =
 const IOS_28_UA =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/28.0 Mobile/15E148 Safari/604.1';
 
+// Home-screen apps can omit `Version/NN ... Safari/NNN`, leaving only the
+// frozen OS token (#5286, rc1 report).
+const NO_VERSION_FROZEN_UA =
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148';
+const NO_VERSION_IOS_17_UA =
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148';
+
 describe('needsIosStandaloneBlurGap (#5286)', () => {
+  it('is true for a home-screen app whose UA omits Version/NN behind the frozen OS token', () => {
+    expect(needsIosStandaloneBlurGap({ standalone: true, userAgent: NO_VERSION_FROZEN_UA })).toBe(true);
+  });
+
+  it('is false for a home-screen app on a pre-freeze iOS that omits Version/NN', () => {
+    expect(needsIosStandaloneBlurGap({ standalone: true, userAgent: NO_VERSION_IOS_17_UA })).toBe(false);
+  });
+
+  it('is true for a home-screen app whose UA carries neither Version/NN nor an OS token', () => {
+    expect(needsIosStandaloneBlurGap({ standalone: true, userAgent: 'Mozilla/5.0 AppleWebKit/605.1.15' })).toBe(true);
+  });
+
+  it('is false in a Safari tab even when the UA omits Version/NN', () => {
+    expect(needsIosStandaloneBlurGap({ standalone: false, userAgent: NO_VERSION_FROZEN_UA })).toBe(false);
+  });
+
   it('is true for an iOS 27 home-screen app', () => {
     expect(needsIosStandaloneBlurGap({ standalone: true, userAgent: IOS_27_UA })).toBe(true);
   });

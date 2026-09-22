@@ -20,12 +20,21 @@ interface StandaloneNavigator {
   userAgent: string;
 }
 
+/** iOS 26 froze the UA's `iPhone OS NN_N` token at 18, so 18+ may be any later release. */
+const FROZEN_OS_TOKEN_VERSION = 18;
+
 export function needsIosStandaloneBlurGap(nav: StandaloneNavigator): boolean {
   if (nav.standalone !== true) return false;
   // iOS web views report the OS release as Safari's `Version/NN` (the
   // `iPhone OS 18_7` token is frozen and no longer tracks the real version).
-  const match = /Version\/(\d+)/.exec(nav.userAgent);
-  return match !== null && Number(match[1]) >= FIRST_AFFECTED_VERSION;
+  const version = /Version\/(\d+)/.exec(nav.userAgent);
+  if (version !== null) return Number(version[1]) >= FIRST_AFFECTED_VERSION;
+  // Some home-screen apps drop the `Version/NN Safari/NNN` tokens (#5286: the
+  // gap still missed on a reporter's iOS 27 app). Without them the release is
+  // unknown, so assume the blur unless the OS token proves a pre-freeze iOS:
+  // 20px of extra padding costs less than fogged header text.
+  const os = /OS (\d+)_/.exec(nav.userAgent);
+  return os === null || Number(os[1]) >= FROZEN_OS_TOKEN_VERSION;
 }
 
 export function applyIosStandaloneBlurGap(
