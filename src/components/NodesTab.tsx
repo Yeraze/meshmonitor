@@ -29,6 +29,7 @@ import { buildNodeExportRows, nodesToCsv, nodesToHtml, downloadTextFile } from '
 import { useMapContext } from '../contexts/MapContext';
 import { useTelemetryNodes, useDeviceConfig, useNodes, useChannels, setNodeFieldInCache } from '../hooks/useServerData';
 import { useQueryClient } from '@tanstack/react-query';
+import { sourcePollQueryKey } from '../hooks/usePoll';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useUI } from '../contexts/UIContext';
 import { useSettings } from '../contexts/SettingsContext';
@@ -48,6 +49,8 @@ import PolarGridOverlay from './PolarGridOverlay.js';
 import GeoJsonOverlay from './GeoJsonOverlay';
 import { NodeMarkersLayer, type NodeMarkerDescriptor } from './map/layers/NodeMarkersLayer';
 import { NodeMarkerCluster } from './map/layers/NodeMarkerCluster';
+import { ImportContactUrlModal } from './nodes/ImportContactUrlModal';
+import importContactStyles from './nodes/ImportContactUrlModal.module.css';
 import MeasureDistanceController from './MeasureDistanceController';
 import type { MeasurePoint } from '../utils/measureDistance';
 import { MapCenterController } from './MapCenterController';
@@ -1583,6 +1586,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // On, nodes are bucketed by device-role/MeshCore-type category
   // (getNodeTypeCategory — the same categorization the map/legend/filter
   // already use) with favorites-first + field sort applied within each group.
+  // "Add node from URL" (#5317): importing a contact link is the only way to
+  // message a node this source has never heard.
+  const [showImportContactModal, setShowImportContactModal] = useState(false);
+
   const [collapsedRoleGroups, setCollapsedRoleGroups] = useState<Set<NodeTypeCategory>>(() => new Set());
   const toggleRoleGroupCollapsed = useCallback((category: NodeTypeCategory) => {
     setCollapsedRoleGroups(prev => {
@@ -2353,6 +2360,23 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               >
                 {t('nodes.group_by_role', 'Group by Role')}
               </button>
+              {currentSourceId && (
+                <button
+                  className="filter-popup-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.nativeEvent.stopImmediatePropagation();
+                    setShowImportContactModal(true);
+                  }}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    e.nativeEvent.stopImmediatePropagation();
+                  }}
+                  title={t('nodes.import_contact_title', 'Add node from URL')}
+                >
+                  {t('nodes.import_contact_button', '+ Add from URL')}
+                </button>
+              )}
               <select
                 value={sortField}
                 onChange={(e) => setSortField(e.target.value as any)}
@@ -2440,6 +2464,24 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         <>
         {groupNodesByRole && roleDistribution && roleDistribution.length > 0 && (
           <RoleDistributionSummary distribution={roleDistribution} t={t} />
+        )}
+        {showImportContactModal && currentSourceId && (
+          <ImportContactUrlModal
+            sourceId={currentSourceId}
+            onClose={() => setShowImportContactModal(false)}
+            onImported={(node, alreadyKnown) => {
+              // The row is written server-side; pull it into the list rather
+              // than reconstructing poll's node shape on the client.
+              void queryClient.invalidateQueries({ queryKey: sourcePollQueryKey(currentSourceId) });
+              const name = node?.user?.longName || node?.user?.shortName || t('nodes.import_contact_unnamed', 'node');
+              showToast(
+                alreadyKnown
+                  ? t('nodes.import_contact_updated', 'Updated {{name}} from the contact link', { name })
+                  : t('nodes.import_contact_added', 'Added {{name}}', { name }),
+                'success',
+              );
+            }}
+          />
         )}
         <div className="nodes-list" ref={nodesListRef}>
           {/* Meshtastic nodes section */}
@@ -2552,6 +2594,17 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       <div className="node-name-text">
                         <div className="node-longname">
                           {node.user?.longName || `Node ${node.nodeNum}`}
+                          {/* #5317: imported from a contact link and not yet heard.
+                              Drops away on its own once real traffic arrives, since
+                              that sets lastHeard. */}
+                          {node.importedAt && !node.lastHeard && (
+                            <span
+                              className={importContactStyles.importedBadge}
+                              title={t('nodes.imported_badge_title', 'Added from a contact link; not heard on the mesh yet')}
+                            >
+                              {t('nodes.imported_badge', 'Imported')}
+                            </span>
+                          )}
                         </div>
                         {node.user?.role !== undefined && node.user?.role !== null && getRoleName(node.user.role) && (
                           <div className="node-role" title={t('nodes.node_role')}>{getRoleName(node.user.role)}</div>

@@ -119,6 +119,85 @@ export function buildSharedContactPayload(
   };
 }
 
+/**
+ * Decode a Meshtastic contact URL into the identity it carries (#5317) — the
+ * mirror of {@link encodeSharedContactUrl}, and the reason a node can be
+ * messaged before it has ever been heard on the mesh.
+ *
+ * Accepts the `https://meshtastic.org/v/#<payload>` form and a bare payload,
+ * since a user pasting from a phone often loses the prefix. `base64url`
+ * decoding is lenient about padding, which real links omit.
+ *
+ * Throws {@link SharedContactValidationError} for anything that is not a
+ * decodable contact carrying a usable nodeNum — the caller turns that into a
+ * 400 rather than writing a junk row.
+ */
+export function decodeSharedContactUrl(url: string): SharedContactIdentity {
+  const root = getProtobufRoot();
+  if (!root) {
+    throw new Error('Protobuf definitions are not loaded');
+  }
+
+  const trimmed = (url ?? '').trim();
+  if (!trimmed) {
+    throw new SharedContactValidationError('Contact URL is empty');
+  }
+
+  // Everything after the first '#', or the whole string when there is none.
+  const hashIndex = trimmed.indexOf('#');
+  const payload = (hashIndex >= 0 ? trimmed.slice(hashIndex + 1) : trimmed).trim();
+  if (!payload) {
+    throw new SharedContactValidationError('Contact URL carries no payload');
+  }
+  if (!/^[A-Za-z0-9_-]+={0,2}$/.test(payload)) {
+    throw new SharedContactValidationError('Contact URL payload is not valid base64url');
+  }
+
+  const SharedContact = root.lookupType('meshtastic.SharedContact');
+  let decoded: Record<string, unknown>;
+  try {
+    const bytes = Buffer.from(payload, 'base64url');
+    decoded = SharedContact.decode(bytes) as unknown as Record<string, unknown>;
+  } catch {
+    throw new SharedContactValidationError('Contact URL is not a valid Meshtastic contact');
+  }
+
+  const nodeNum = Number(decoded.nodeNum ?? 0);
+  if (!isValidNodeNum(nodeNum) || nodeNum === 0 || nodeNum === MAX_NODE_NUM) {
+    throw new SharedContactValidationError('Contact URL does not identify a real Meshtastic node');
+  }
+
+  // protobufjs leaves unset scalars absent rather than zero-valued, so read
+  // defensively and keep "absent" as null rather than inventing a value.
+  const user = (decoded.user ?? {}) as Record<string, unknown>;
+  const text = (value: unknown): string | null =>
+    typeof value === 'string' && value.length > 0 ? value : null;
+  const num = (value: unknown): number | null =>
+    typeof value === 'number' && Number.isFinite(value) ? value : null;
+  const bool = (value: unknown): boolean | null =>
+    typeof value === 'boolean' ? value : null;
+
+  const publicKey = user.publicKey instanceof Uint8Array && user.publicKey.length > 0
+    ? Buffer.from(user.publicKey).toString('base64')
+    : null;
+  const macaddr = user.macaddr instanceof Uint8Array && user.macaddr.length === 6
+    ? Buffer.from(user.macaddr).toString('hex')
+    : null;
+
+  return {
+    nodeNum,
+    nodeId: `!${nodeNum.toString(16).padStart(8, '0')}`,
+    longName: text(user.longName),
+    shortName: text(user.shortName),
+    macaddr,
+    hwModel: num(user.hwModel),
+    role: num(user.role),
+    publicKey,
+    isLicensed: bool(user.isLicensed),
+    isUnmessagable: bool(user.isUnmessagable),
+  };
+}
+
 export function encodeSharedContactUrl(node: DbNode): string {
   const root = getProtobufRoot();
   if (!root) {

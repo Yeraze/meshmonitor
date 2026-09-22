@@ -1252,6 +1252,22 @@ class ApiService {
     return body.data.url;
   }
 
+  /**
+   * Import a Meshtastic contact URL into a source (#5317) — the decode side of
+   * `getMeshtasticContactUrl`, which is how a node that has never been heard
+   * gets a row to message.
+   */
+  async importMeshtasticContactUrl(
+    url: string,
+    sourceId: string,
+  ): Promise<{ node: DeviceInfo | null; alreadyKnown: boolean }> {
+    const body = await this.post<{
+      success: boolean;
+      data: { node: DeviceInfo | null; alreadyKnown: boolean };
+    }>('/api/nodes/import-contact-url', { url, sourceId });
+    return body.data;
+  }
+
   async updateTracerouteInterval(minutes: number) {
     // Validate interval minutes
     const validatedMinutes = validateIntervalMinutes(minutes);

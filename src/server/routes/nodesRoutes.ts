@@ -40,6 +40,7 @@ import {
 } from '../services/positionEstimationService.js';
 import {
   encodeSharedContactUrl,
+  decodeSharedContactUrl,
   SharedContactValidationError,
 } from '../services/sharedContactService.js';
 import { detectIdentityChanges } from '../services/nodeIdentityChangeService.js';
@@ -428,6 +429,67 @@ router.get(
         'INTERNAL_ERROR',
         'Failed to generate contact URL',
       );
+    }
+  },
+);
+
+/**
+ * POST /api/nodes/import-contact-url
+ *
+ * Import a Meshtastic contact URL (#5317) — the decode side of the
+ * `contact-url` export above. Lets a user message a node that has never been
+ * heard on this source, which is otherwise impossible: with no packet there is
+ * no row, and with no row there is no conversation to open.
+ *
+ * Sends nothing over the mesh. It writes one row, source-scoped like every
+ * other node write.
+ *
+ * `importedAt` marks the row as "added from a link, never heard", which the UI
+ * badges until real traffic arrives. Re-importing a node that already exists
+ * updates its identity fields through the usual `upsertNode` merge rather than
+ * erroring, so a newer link can repair a stale name or key — but `importedAt`
+ * is only set when the row is genuinely new, so re-importing a node that HAS
+ * been heard does not re-badge it.
+ */
+router.post(
+  '/nodes/import-contact-url',
+  requirePermission('nodes', 'write', { sourceIdFrom: 'body', requireSourceId: true }),
+  async (req, res) => {
+    try {
+      const sourceId = req.body?.sourceId as string;
+      const url = req.body?.url;
+
+      if (typeof url !== 'string' || url.trim().length === 0) {
+        return fail(res, 400, 'INVALID_CONTACT_URL', 'A contact URL is required');
+      }
+
+      const identity = decodeSharedContactUrl(url);
+      const existing = await databaseService.nodes.getNode(identity.nodeNum, sourceId);
+
+      const now = Date.now();
+      await databaseService.nodes.upsertNode({
+        nodeNum: identity.nodeNum,
+        nodeId: identity.nodeId,
+        longName: identity.longName ?? undefined,
+        shortName: identity.shortName ?? undefined,
+        hwModel: identity.hwModel ?? undefined,
+        role: identity.role ?? undefined,
+        macaddr: identity.macaddr ?? undefined,
+        publicKey: identity.publicKey ?? undefined,
+        isLicensed: identity.isLicensed ?? undefined,
+        isUnmessagable: identity.isUnmessagable ?? undefined,
+        // Only on a genuinely new row — see the note above.
+        ...(existing ? {} : { importedAt: now }),
+      }, sourceId);
+
+      const node = await databaseService.nodes.getNode(identity.nodeNum, sourceId);
+      return ok(res, { node, alreadyKnown: Boolean(existing) });
+    } catch (error) {
+      if (error instanceof SharedContactValidationError) {
+        return fail(res, 400, 'INVALID_CONTACT_URL', error.message);
+      }
+      logger.error('Error importing SharedContact URL:', error);
+      return fail(res, 500, 'INTERNAL_ERROR', 'Failed to import contact URL');
     }
   },
 );
