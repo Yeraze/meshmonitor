@@ -167,6 +167,14 @@ export interface AutoEnrichmentStatus {
   };
 }
 
+/** Thrown by runNow() while a run (including its push phase) is still going. */
+export class AutoEnrichmentInProgressError extends Error {
+  constructor() {
+    super('Auto-enrichment already in progress');
+    this.name = 'AutoEnrichmentInProgressError';
+  }
+}
+
 type Sleep = (ms: number, signal: { cancelled: boolean }) => Promise<void>;
 
 const realSleep: Sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -283,7 +291,7 @@ export class AutoEnrichmentScheduler {
    * and the next tick cannot start a second run on top of it.
    */
   async runNow(trigger: 'schedule' | 'manual' = 'manual'): Promise<AutoEnrichmentRunSummary> {
-    if (this.runLock) throw new Error('Auto-enrichment already in progress');
+    if (this.runLock) throw new AutoEnrichmentInProgressError();
 
     let resolveDbPhase!: (summary: AutoEnrichmentRunSummary) => void;
     let rejectDbPhase!: (error: unknown) => void;
@@ -349,7 +357,11 @@ export class AutoEnrichmentScheduler {
             pending.push({ nodeNum: Number(a.nodeNum), targetSourceId: a.targetSourceId });
           }
         }
-        // Bound the queue; the oldest entries go first.
+        // Bound the queue by dropping the OLDEST entries. Deliberate: the queue
+        // drains from the front, so under sustained overflow the oldest are
+        // the ones that have waited longest and are likeliest to have been
+        // heard since (which makes the push unnecessary). Dropping the newest
+        // instead would starve newly enriched nodes behind a stale backlog.
         if (pending.length > PENDING_PUSH_CAP) pending = pending.slice(pending.length - PENDING_PUSH_CAP);
       }
       await this.writePending(pending);
@@ -358,6 +370,9 @@ export class AutoEnrichmentScheduler {
       // The run counts from here: a crash during the push phase must not make
       // the next tick think the run never happened.
       await databaseService.settings.setSetting(STATE_KEYS.lastRunAt, String(startedAt));
+      // armedAt only stands in for a last run that does not exist yet; with a
+      // real one recorded it is dead state, so clear it rather than leave it.
+      await databaseService.settings.deleteSetting(STATE_KEYS.armedAt).catch(() => {});
       onDbPhaseDone({ ...summary });
 
       // Phase 2 — capped, spaced pushes.

@@ -16,6 +16,7 @@ vi.mock('../../services/database.js', () => ({
     settings: {
       getSetting: vi.fn(async (key: string) => store.get(key) ?? null),
       setSetting: vi.fn(async (key: string, value: string) => { store.set(key, value); }),
+      deleteSetting: vi.fn(async (key: string) => { store.delete(key); }),
     },
   },
 }));
@@ -142,11 +143,14 @@ describe('timer safety', () => {
     expect(analyzeEnrichment).not.toHaveBeenCalled();
     expect(store.get('autoEnrichmentArmedAt')).toBe(String(t0));
 
-    // One full period later it runs.
+    // One full period later it runs, and the armed-at stand-in is retired
+    // now that a real last run exists.
     stageFill(0);
     await s.checkAndRun(t0 + HOUR);
     await settle(s);
     expect(analyzeEnrichment).toHaveBeenCalledTimes(1);
+    expect(store.has('autoEnrichmentLastRunAt')).toBe(true);
+    expect(store.has('autoEnrichmentArmedAt')).toBe(false);
   });
 
   it('a restart does not count as a run — the persisted last run is honoured', async () => {

@@ -26,6 +26,7 @@ vi.mock('../services/autoEnrichmentScheduler.js', async (importOriginal) => {
 });
 
 import settingsRoutes from './settingsRoutes.js';
+import { AutoEnrichmentInProgressError } from '../services/autoEnrichmentScheduler.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 
 const KEYS = [
@@ -137,12 +138,22 @@ describe('Auto-Enrichment settings (#5287)', () => {
   });
 
   it('answers 409 while a run is already in progress', async () => {
-    runNow.mockRejectedValue(new Error('Auto-enrichment already in progress'));
+    runNow.mockRejectedValue(new AutoEnrichmentInProgressError());
     const agent = await harness.loginAs(harness.admin);
     const res = await agent.post('/api/settings/auto-enrichment/run-now');
 
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('AUTO_ENRICHMENT_IN_PROGRESS');
+  });
+
+  it('answers 500, not 409, for any other failure', async () => {
+    // The 409 is keyed on the error class, so an unrelated message that merely
+    // mentions "in progress" cannot be mistaken for an overlapping run.
+    runNow.mockRejectedValue(new Error('database write in progress failed'));
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.post('/api/settings/auto-enrichment/run-now');
+
+    expect(res.status).toBe(500);
   });
 
   it('does not let a user without settings:write trigger a run', async () => {

@@ -25,6 +25,7 @@ import { validateFilterNameRegexOnSave } from '../utils/filterNameRegex.js';
 import { positionEstimationScheduler } from '../services/positionEstimationScheduler.js';
 import {
   autoEnrichmentScheduler,
+  AutoEnrichmentInProgressError,
   cronFiresAtMostHourly,
   MIN_INTERVAL_MINUTES as AUTO_ENRICHMENT_MIN_INTERVAL_MINUTES,
   MAX_INTERVAL_MINUTES as AUTO_ENRICHMENT_MAX_INTERVAL_MINUTES,
@@ -2033,7 +2034,7 @@ router.post('/auto-enrichment/run-now', requirePermission('settings', 'write'), 
     );
     return ok(res, summary);
   } catch (error) {
-    if (error instanceof Error && /in progress/.test(error.message)) {
+    if (error instanceof AutoEnrichmentInProgressError) {
       return fail(res, 409, 'AUTO_ENRICHMENT_IN_PROGRESS', 'Auto-enrichment is already running');
     }
     logger.error('Error running auto-enrichment:', error);

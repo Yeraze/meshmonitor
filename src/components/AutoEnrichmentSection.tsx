@@ -60,6 +60,9 @@ interface Draft {
   pushToNodeDb: boolean;
 }
 
+/** How often to refresh status while a run is in progress. */
+const STATUS_POLL_MS = 10_000;
+
 /** Offered intervals, in hours. The server floor is one hour. */
 const INTERVAL_HOURS_OPTIONS = [1, 2, 3, 6, 12, 24, 48, 168];
 
@@ -92,13 +95,19 @@ const AutoEnrichmentSection: React.FC<AutoEnrichmentSectionProps> = ({ baseUrl }
   const [isSaving, setIsSaving] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
 
-  const fetchStatus = useCallback(async () => {
+  /**
+   * `seedForm` is true only on the first load and after a save. Every other
+   * refresh — after Run now, or while polling a run in progress — updates the
+   * status block alone, so it never overwrites edits the user has not saved.
+   */
+  const fetchStatus = useCallback(async (seedForm = false) => {
     try {
       const response = await csrfFetch(`${baseUrl}/api/settings/auto-enrichment/status`);
       if (!response.ok) return;
       const body = await response.json();
       const data: AutoEnrichmentStatus = body.data;
       setStatus(data);
+      if (!seedForm) return;
       const next = draftFrom(data);
       // A server with no cron stored yet keeps the friendly default in the field.
       if (!next.cron) next.cron = EMPTY_DRAFT.cron;
@@ -110,8 +119,18 @@ const AutoEnrichmentSection: React.FC<AutoEnrichmentSectionProps> = ({ baseUrl }
   }, [csrfFetch, baseUrl]);
 
   useEffect(() => {
-    void fetchStatus();
+    void fetchStatus(true);
   }, [fetchStatus]);
+
+  // Poll while a run is in progress — including a scheduled one the user did
+  // not start here — so the button and the last-run summary stay truthful
+  // through the push phase, which can take minutes.
+  const runInProgress = Boolean(status?.inProgress);
+  useEffect(() => {
+    if (!runInProgress) return;
+    const id = setInterval(() => { void fetchStatus(); }, STATUS_POLL_MS);
+    return () => clearInterval(id);
+  }, [runInProgress, fetchStatus]);
 
   const hasChanges =
     draft.enabled !== saved.enabled ||
@@ -137,7 +156,7 @@ const AutoEnrichmentSection: React.FC<AutoEnrichmentSectionProps> = ({ baseUrl }
       if (response.ok) {
         setSaved(draft);
         showToast(t('automation.settings_saved', 'Settings saved'), 'success');
-        void fetchStatus();
+        void fetchStatus(true);
       } else {
         // The server explains a rejected schedule (too frequent, bad cron).
         const body = await response.json().catch(() => ({}));
