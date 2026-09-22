@@ -361,6 +361,9 @@ export function useSourceView(params: UseSourceViewParams) {
     // Age filter (favorites are always visible)
     const ageFiltered = nodes.filter(node => {
       if (node.isFavorite) return true;
+      // #5317: keep an imported-but-never-heard node visible — see the same
+      // guard in useProcessedNodes.
+      if (node.importedAt && !node.lastHeard) return true;
       if (!node.lastHeard) return false;
       return node.lastHeard >= cutoffTime;
     });
