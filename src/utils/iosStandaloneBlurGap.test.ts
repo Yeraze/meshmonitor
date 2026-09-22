@@ -34,6 +34,10 @@ describe('needsIosStandaloneBlurGap (#5286)', () => {
     expect(needsIosStandaloneBlurGap({ standalone: true, userAgent: NO_VERSION_IOS_17_UA })).toBe(false);
   });
 
+  it('is true for a home-screen app whose UA carries neither Version/NN nor an OS token', () => {
+    expect(needsIosStandaloneBlurGap({ standalone: true, userAgent: 'Mozilla/5.0 AppleWebKit/605.1.15' })).toBe(true);
+  });
+
   it('is false in a Safari tab even when the UA omits Version/NN', () => {
     expect(needsIosStandaloneBlurGap({ standalone: false, userAgent: NO_VERSION_FROZEN_UA })).toBe(false);
   });
