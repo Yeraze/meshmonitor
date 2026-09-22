@@ -2,6 +2,7 @@
  * Constant data for ConfigurationTab components
  */
 import type { RoleOption, ModemPresetOption, RegionOption } from './types';
+import { getPresetBandwidthKHz } from '../../utils/loraFrequency';
 
 export const ROLE_OPTIONS: RoleOption[] = [
   {
@@ -253,32 +254,12 @@ const REGION_FREQ_INFO: Record<number, RegionFreqInfo> = {
   26: { start: 902.0, end: 907.5 }      // BR_902
 };
 
-// Modem-preset LoRa bandwidth in kHz, mirroring firmware modemPresetToParams()
-// (MeshRadio.h). `normal` = sub-GHz bands; `wide` = 2.4 GHz wide-LoRa (LORA_24).
-// Presets NOT implemented in firmware's switch (VERY_LONG_SLOW, LITE_*, NARROW_*,
-// TINY_*) fall through to the LONG_FAST default (250 kHz) — see DEFAULT_PRESET_BW.
-const PRESET_BANDWIDTH_KHZ: Record<number, { normal: number; wide: number }> = {
-  0: { normal: 250, wide: 812.5 },   // LONG_FAST (default)
-  1: { normal: 125, wide: 406.25 },  // LONG_SLOW
-  3: { normal: 250, wide: 812.5 },   // MEDIUM_SLOW
-  4: { normal: 250, wide: 812.5 },   // MEDIUM_FAST
-  5: { normal: 250, wide: 812.5 },   // SHORT_SLOW
-  6: { normal: 250, wide: 812.5 },   // SHORT_FAST
-  7: { normal: 125, wide: 406.25 },  // LONG_MODERATE
-  8: { normal: 500, wide: 1625 },    // SHORT_TURBO
-  9: { normal: 500, wide: 1625 },    // LONG_TURBO
-  16: { normal: 500, wide: 1625 }    // MEDIUM_TURBO
-};
-const DEFAULT_PRESET_BW = { normal: 250, wide: 812.5 }; // LONG_FAST fallback
-
-/**
- * LoRa bandwidth (kHz) firmware would use for the given modem preset, matching
- * modemPresetToParams(). Unknown/unimplemented presets fall back to LONG_FAST.
- */
-export function getPresetBandwidthKHz(preset: number, wideLora: boolean): number {
-  const bw = PRESET_BANDWIDTH_KHZ[preset] ?? DEFAULT_PRESET_BW;
-  return wideLora ? bw.wide : bw.normal;
-}
+// The modem-preset -> bandwidth table used to live here. It moved to
+// `src/utils/loraFrequency.ts` so the SERVER can use it too: `src/components/**`
+// is not in `tsconfig.server.json`'s include set, so a server import from this
+// file would compile but fail at runtime with ERR_MODULE_NOT_FOUND (#4655).
+// Re-exported here so this module's existing public API is unchanged.
+export { getPresetBandwidthKHz };
 
 /**
  * True if `preset` is legal for `region`, mirroring the firmware fit-check

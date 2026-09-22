@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Fixed
+- **LoRa frequency readout for any preset that is not 250 kHz wide.** Firmware ignores `bandwidth`/`spread_factor`/`coding_rate` whenever a modem preset is in use, and never writes the preset's parameters back into them, so those fields sit stale — a bench radio on Long Turbo reported Medium Fast's `250 / 9 / 5`. The frequency was computed from that stale bandwidth, and the channel grid is bandwidth-spaced, so Long Turbo, Short Turbo and Medium Turbo (500 kHz) and Long Slow / Long Moderate (125 kHz) all reported the wrong centre frequency — a US node on Long Turbo channel 14 showed 905.375 MHz while transmitting on 908.750 MHz. The bandwidth now follows `use_preset`, as firmware does; a genuine manual bandwidth is still honoured. Long Fast is 250 kHz, so it was never affected. The panel also reported the stale bandwidth itself, and now reports the effective one. (#5320, #5321)
+- **Modem presets 9-16 show their name** instead of `Unknown (9)` in the LoRa Radio Configuration panel, and back up as `LONG_TURBO` rather than a bare number. The display map, the backup enum map and the bandwidth table were three independent literals that had each drifted at `SHORT_TURBO`; they now read one canonical table in `src/utils/loraFrequency.ts`. (#5320, #5321)
+- **Restoring a backup naming a preset above `SHORT_TURBO`** (including one exported by the Meshtastic CLI) passed the preset through to the radio as a string instead of its enum number. (#5320, #5321)
+- **Medium Turbo link budget** — `rxSensitivityForModemPreset` returned no sensitivity figure for a preset the configuration UI offers. (#5320, #5321)
+
 ## [4.16.2-rc1] - 2026-09-21
 
 ### Added

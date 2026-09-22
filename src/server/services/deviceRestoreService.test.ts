@@ -109,6 +109,35 @@ describe('deviceRestoreService', () => {
     expect(result.requiresReboot).toBe(true);
   });
 
+  // deviceBackupService's ModemPreset map used to stop at SHORT_TURBO (8), so a
+  // node on a newer preset backed up as a bare number and the name never
+  // round-tripped. Both map halves now read the canonical MODEM_PRESET_NAMES.
+  it('reverses the presets that the backup enum map used to omit (9-16)', async () => {
+    for (const [name, num] of [['LONG_TURBO', 9], ['MEDIUM_TURBO', 16]] as const) {
+      const mgr = makeManager();
+      await runRestore(mgr, sampleBackup({
+        config: {
+          device: { role: 'CLIENT' },
+          lora: { usePreset: true, modemPreset: name, region: 'US', hopLimit: 3, txEnabled: true },
+        },
+      }));
+      expect(mgr.setLoRaConfig).toHaveBeenCalledWith(expect.objectContaining({ modemPreset: num }));
+    }
+  });
+
+  it('still passes through a numeric preset untouched (older backup files)', async () => {
+    // Backups written before the map was completed carry `modemPreset: 9`.
+    // toEnumNum only rewrites strings, so the number must survive verbatim.
+    const mgr = makeManager();
+    await runRestore(mgr, sampleBackup({
+      config: {
+        device: { role: 'CLIENT' },
+        lora: { usePreset: true, modemPreset: 9, region: 'US', hopLimit: 3, txEnabled: true },
+      },
+    }));
+    expect(mgr.setLoRaConfig).toHaveBeenCalledWith(expect.objectContaining({ modemPreset: 9 }));
+  });
+
   it('reverses detectionTriggerType inside a generic module section', async () => {
     const mgr = makeManager();
     await runRestore(mgr, sampleBackup());
