@@ -100,6 +100,9 @@ export const nodesSqlite = sqliteTable('nodes', {
   notes: text('notes'),
   // Time sync
   lastTimeSync: integer('lastTimeSync'),
+  // When this row was created by importing a contact URL rather than by
+  // hearing the node (#5317). NULL for every normally-discovered node.
+  importedAt: integer('importedAt'),
   // Timestamps
   createdAt: integer('createdAt').notNull(),
   updatedAt: integer('updatedAt').notNull(),
@@ -198,6 +201,8 @@ export const nodesPostgres = pgTable('nodes', {
   notes: pgText('notes'),
   // Time sync
   lastTimeSync: pgBigint('lastTimeSync', { mode: 'number' }),
+  // See the SQLite table above (#5317).
+  importedAt: pgBigint('importedAt', { mode: 'number' }),
   // Timestamps
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
@@ -295,6 +300,8 @@ export const nodesMysql = mysqlTable('nodes', {
   notes: myVarchar('notes', { length: 2000 }),
   // Time sync
   lastTimeSync: myBigint('lastTimeSync', { mode: 'number' }),
+  // See the SQLite table above (#5317).
+  importedAt: myBigint('importedAt', { mode: 'number' }),
   // Timestamps
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),

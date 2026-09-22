@@ -46,6 +46,34 @@ vi.mock('../protobufService.js', () => ({
 import { mapDbNodeToDeviceInfo, NodeDbMaintenanceService } from './nodeDbMaintenanceService.js';
 
 describe('mapDbNodeToDeviceInfo', () => {
+  /**
+   * #5317: this mapper is an explicit allowlist, so a new column reaches the
+   * client only if it is named here. `importedAt` was added to the schema, the
+   * repository and the route, and still arrived undefined in /api/poll until
+   * this line existed — the node list could not badge an imported node.
+   */
+  it('carries importedAt through so the client can badge a never-heard import', () => {
+    const result = mapDbNodeToDeviceInfo({
+      nodeNum: 0x3f60a525,
+      nodeId: '!3f60a525',
+      longName: 'Rigel',
+      shortName: 'Rig',
+      importedAt: 1_700_000_000_000,
+    });
+    expect(result.importedAt).toBe(1_700_000_000_000);
+  });
+
+  it('omits importedAt for a node that was heard rather than imported', () => {
+    const result = mapDbNodeToDeviceInfo({
+      nodeNum: 0x3f60a525,
+      nodeId: '!3f60a525',
+      longName: 'Rigel',
+      shortName: 'Rig',
+      importedAt: null,
+    });
+    expect(result.importedAt).toBeUndefined();
+  });
+
   it('passes nodeNum through verbatim (BIGINT coercion happens upstream in the repository, not here)', () => {
     const node = {
       nodeNum: 123456789,

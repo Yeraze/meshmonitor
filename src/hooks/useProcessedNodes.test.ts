@@ -193,6 +193,51 @@ describe('useProcessedNodes', () => {
       expect(result.current.processedNodes.find(n => n.nodeNum === 11111)).toBeUndefined();
     });
 
+    /**
+     * #5317: an imported contact has never been heard, so it has no lastHeard
+     * and the age filter drops it — which would make the feature pointless,
+     * since the row exists precisely so the node can be messaged before any
+     * packet arrives.
+     */
+    it('keeps a node imported from a contact URL, which has no lastHeard', () => {
+      mockUseNodesReturn.mockReturnValue({
+        nodes: [
+          ...mockNodes,
+          {
+            nodeNum: 0x3f60a525,
+            user: { id: '!3f60a525', longName: 'Rigel', shortName: 'Rig' },
+            importedAt: Date.now(),
+          } as DeviceInfo,
+        ],
+        isLoading: false,
+      });
+
+      const { result } = renderHook(() => useProcessedNodes(), {
+        wrapper: createWrapper(),
+      });
+
+      expect(result.current.processedNodes.find(n => n.nodeNum === 0x3f60a525)).toBeDefined();
+    });
+
+    it('still drops a never-heard node that was NOT imported', () => {
+      mockUseNodesReturn.mockReturnValue({
+        nodes: [
+          ...mockNodes,
+          {
+            nodeNum: 0x0badf00d,
+            user: { id: '!0badf00d', longName: 'Silent', shortName: 'SIL' },
+          } as DeviceInfo,
+        ],
+        isLoading: false,
+      });
+
+      const { result } = renderHook(() => useProcessedNodes(), {
+        wrapper: createWrapper(),
+      });
+
+      expect(result.current.processedNodes.find(n => n.nodeNum === 0x0badf00d)).toBeUndefined();
+    });
+
     it('should put favorites first', () => {
       const { result } = renderHook(() => useProcessedNodes(), {
         wrapper: createWrapper(),

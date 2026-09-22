@@ -630,6 +630,9 @@ export class NodesRepository extends BaseRepository {
         // status persists as null.
         nodeStatus: nodeData.nodeStatus ? nodeData.nodeStatus : null,
         nodeStatusUpdatedAt: this.coerceBigintField(nodeData.nodeStatusUpdatedAt),
+        // #5317: only ever set on INSERT, by the contact-URL import. A row that
+        // was heard first and imported later is not "never heard".
+        importedAt: this.coerceBigintField(nodeData.importedAt) ?? null,
         createdAt: now,
         updatedAt: now,
       } as any;
@@ -1904,6 +1907,7 @@ export class NodesRepository extends BaseRepository {
         positionLocationSource: nodeData.positionLocationSource !== undefined ? nodeData.positionLocationSource : null,
         positionTimestamp: nodeData.positionTimestamp !== undefined ? nodeData.positionTimestamp : null,
         isIgnored: wasIgnored,
+        importedAt: nodeData.importedAt || null,
         createdAt: now,
         updatedAt: now,
         sourceId: insertSourceId,

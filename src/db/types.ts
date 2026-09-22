@@ -112,6 +112,12 @@ export interface DbNode {
   hasRemoteAdmin?: boolean | null;
   lastRemoteAdminCheck?: number | null;
   remoteAdminMetadata?: string | null;
+  /**
+   * Set when the row was created by importing a Meshtastic contact URL rather
+   * than by hearing the node (#5317). Milliseconds, like `createdAt`. NULL for
+   * every normally-discovered node.
+   */
+  importedAt?: number | null;
   createdAt: number;
   updatedAt: number;
 }

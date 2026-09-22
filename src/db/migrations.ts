@@ -186,6 +186,7 @@ import { migration as spreadNodesPrefMigration, runMigration164Postgres, runMigr
 import { migration as waypointNotificationsMigration, runMigration165Postgres, runMigration165Mysql } from '../server/migrations/165_waypoint_notifications.js';
 import { migration as meshBeaconMuteMigration, runMigration166Postgres, runMigration166Mysql } from '../server/migrations/166_mesh_beacon_mute.js';
 import { migration as solarNodeOverridesMigration, runMigration167Postgres, runMigration167Mysql } from '../server/migrations/167_solar_node_overrides.js';
+import { migration as nodesImportedAtMigration, runMigration168Postgres, runMigration168Mysql } from '../server/migrations/168_nodes_imported_at.js';
 
 // ============================================================================
 // Registry
@@ -2713,4 +2714,18 @@ registry.register({
   sqlite: (db) => solarNodeOverridesMigration.up(db),
   postgres: (client) => runMigration167Postgres(client),
   mysql: (pool) => runMigration167Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 168: nodes.importedAt (#5317) — when a row came from a contact URL
+// rather than from hearing the node, so the UI can badge it until it is heard.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 168,
+  name: 'nodes_imported_at',
+  settingsKey: 'migration_168_nodes_imported_at',
+  sqlite: (db) => nodesImportedAtMigration.up(db),
+  postgres: (client) => runMigration168Postgres(client),
+  mysql: (pool) => runMigration168Mysql(pool),
 });

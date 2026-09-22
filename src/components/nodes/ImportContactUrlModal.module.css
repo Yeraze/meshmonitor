@@ -1,0 +1,153 @@
+/* "Add node from URL" dialog (#5317). CSS module per the containment rule in
+   CLAUDE.md; colours come from the theme tokens so every Catppuccin variant
+   works without a hardcoded hex. */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Above the app header (10000) and the mobile rail, like other modals. */
+  z-index: 10050;
+  padding: 1rem;
+}
+
+.modal {
+  width: min(520px, 100%);
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  background: var(--color-bg-raised);
+  color: var(--color-text);
+  border: 1px solid var(--color-surface-hover);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
+  padding: 1rem;
+  box-sizing: border-box;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.title {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.closeBtn {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+}
+
+.closeBtn:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.help {
+  margin: 0 0 0.75rem;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-active);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  padding: 0.5rem;
+  resize: vertical;
+  /* A contact link is one long unbroken token. */
+  overflow-wrap: anywhere;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.error {
+  margin-top: 0.5rem;
+  color: var(--color-error);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.cancelBtn,
+.submitBtn {
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.9rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  border: 1px solid var(--color-surface-active);
+}
+
+.cancelBtn {
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+}
+
+.cancelBtn:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.submitBtn {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-text);
+  font-weight: 600;
+}
+
+.submitBtn:disabled,
+.cancelBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/*
+ * Badge on a node row that came from an imported contact link and has not been
+ * heard yet (#5317). Without it an imported contact is indistinguishable from
+ * a node that has simply gone quiet — the row looks the same, and its "last
+ * heard" is empty rather than old.
+ *
+ * Lives in this module rather than the frozen nodes.css (CLAUDE.md).
+ */
+.importedBadge {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0 0.35rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  vertical-align: middle;
+  white-space: nowrap;
+}

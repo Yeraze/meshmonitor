@@ -149,6 +149,13 @@ export function mapDbNodeToDeviceInfo(
     logger.debug(`🔍 Node ${node.nodeNum} has remoteAdminMetadata`);
   }
 
+  // #5317: imported from a contact URL and not yet heard. Carried through so
+  // the node list can badge it — an imported row is otherwise identical to a
+  // node that has simply gone quiet.
+  if (node.importedAt !== null && node.importedAt !== undefined) {
+    deviceInfo.importedAt = Number(node.importedAt);
+  }
+
   return deviceInfo;
 }
 

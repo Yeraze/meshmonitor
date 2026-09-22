@@ -202,6 +202,12 @@ export function useProcessedNodes(options: UseProcessedNodesOptions = {}) {
       ? nodes
       : nodes.filter(node => {
           if (node.isFavorite) return true;
+          // #5317: a node imported from a contact link has never been heard —
+          // that is the point of importing it. Hiding it behind the age cutoff
+          // would make the feature useless, since the row exists precisely so
+          // it can be messaged before any packet arrives. Normal age rules
+          // resume once it IS heard, because lastHeard is then set.
+          if (node.importedAt && !node.lastHeard) return true;
           if (!node.lastHeard) return false;
           return node.lastHeard >= cutoffTime;
         });
