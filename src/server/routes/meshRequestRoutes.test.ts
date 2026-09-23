@@ -162,7 +162,10 @@ describe('POST /position/request', () => {
     const res = await request(app).post('/position/request').send({ destination: '!12345678', channel: 3 });
     expect(res.status).toBe(200);
     expect(mockManager.sendPositionRequest).toHaveBeenCalledWith(0x12345678, 3);
-    expect(databaseService.messages.insertMessage).toHaveBeenCalled();
+    expect(databaseService.messages.insertMessage).toHaveBeenCalledWith(
+      // #5101: every outbound message write stamps INTERNAL.
+      expect.objectContaining({ transportMechanism: 0 }),
+    );
   });
 
   it('returns 400 when destination missing', async () => {
@@ -194,7 +197,10 @@ describe('POST /nodeinfo/request', () => {
     const res = await request(app).post('/nodeinfo/request').send({ destination: '!12345678' });
     expect(res.status).toBe(200);
     expect(mockManager.sendNodeInfoRequest).toHaveBeenCalledWith(0x12345678, 2);
-    expect(databaseService.messages.insertMessage).toHaveBeenCalled();
+    expect(databaseService.messages.insertMessage).toHaveBeenCalledWith(
+      // #5101: every outbound message write stamps INTERNAL.
+      expect.objectContaining({ transportMechanism: 0 }),
+    );
   });
 
   it('honors an explicit channel override (the UI channel dropdown)', async () => {
