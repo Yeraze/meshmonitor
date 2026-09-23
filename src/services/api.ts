@@ -22,6 +22,7 @@ import {
 } from '../utils/validation.js';
 import { logger } from '../utils/logger.js';
 import { parseJsonResponse } from '../utils/parseJsonResponse.js';
+import type { NodeTransportClass } from '../utils/nodeTransport.js';
 
 export type SignalTrend = 'improving' | 'stable' | 'degrading' | 'insufficient';
 
@@ -45,11 +46,38 @@ export interface SignalTrendResult {
   noiseFloorRising: boolean;
 }
 
-/** `GET /api/messages/counts` response body (#5101). `total === byTransport.rf + byTransport.mqtt` always; Phase 2 adds `byTransport.udp`. */
+/** `GET /api/messages/counts` response body (#5101). `total === byTransport.rf + byTransport.udp + byTransport.mqtt` always. */
 export interface MessageCounts {
   sourceId: string;
   total: number;
-  byTransport: { rf: number; mqtt: number };
+  byTransport: { rf: number; udp: number; mqtt: number };
+}
+
+/** One labelled route-segment record (#5101 WP1 contract; WP4 fills the route). */
+export interface RouteSegmentView {
+  id: number;
+  fromNodeNum: number;
+  toNodeNum: number;
+  fromNodeId: string;
+  toNodeId: string;
+  fromNodeName: string;
+  toNodeName: string;
+  distanceKm: number;
+  timestamp: number;
+  isRecordHolder: boolean | null;
+  /** null = pre-#5101 row (reads as RF via `transport`). */
+  transportMechanism: number | null;
+  transport: NodeTransportClass;
+}
+
+/**
+ * `GET /api/route-segments/longest-active` and `.../record-holder` response
+ * body (#5101). The top-level fields are the LEGACY shape — the longest of
+ * the three `byTransport` entries, unchanged from pre-Phase-2 consumers —
+ * with `byTransport` added alongside for the per-transport UI.
+ */
+export interface RouteSegmentRecords extends RouteSegmentView {
+  byTransport: Record<NodeTransportClass, RouteSegmentView | null>;
 }
 
 export interface MeshtasticContactUrl {
@@ -1405,7 +1433,7 @@ class ApiService {
     return response.json();
   }
 
-  async getLongestActiveRouteSegment(sourceId?: string | null) {
+  async getLongestActiveRouteSegment(sourceId?: string | null): Promise<RouteSegmentRecords | null> {
     await this.ensureBaseUrl();
     const qs = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
     const response = await fetch(`${this.baseUrl}/api/route-segments/longest-active${qs}`);
@@ -1417,7 +1445,7 @@ class ApiService {
     return response.json();
   }
 
-  async getRecordHolderRouteSegment(sourceId?: string | null) {
+  async getRecordHolderRouteSegment(sourceId?: string | null): Promise<RouteSegmentRecords | null> {
     await this.ensureBaseUrl();
     const qs = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
     const response = await fetch(`${this.baseUrl}/api/route-segments/record-holder${qs}`);
@@ -1429,9 +1457,17 @@ class ApiService {
     return response.json();
   }
 
-  async clearRecordHolderSegment(sourceId?: string | null) {
+  /**
+   * Clears a source's record holder (#5101). `transport` omitted clears every
+   * class (legacy behaviour); passing one clears only that class, leaving the
+   * others intact.
+   */
+  async clearRecordHolderSegment(sourceId?: string | null, transport?: NodeTransportClass): Promise<unknown> {
     await this.ensureBaseUrl();
-    const qs = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
+    const params = new URLSearchParams();
+    if (sourceId) params.set('sourceId', sourceId);
+    if (transport) params.set('transport', transport);
+    const qs = params.toString() ? `?${params.toString()}` : '';
     const response = await fetch(`${this.baseUrl}/api/route-segments/record-holder${qs}`, {
       method: 'DELETE',
       headers: this.getHeadersWithCsrf(),

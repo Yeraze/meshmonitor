@@ -802,6 +802,28 @@ describe('ApiService BASE_URL Support', () => {
       expect(mockFetch).toHaveBeenCalledWith('/api/route-segments/longest-active');
     });
 
+    it('clearRecordHolderSegment includes sourceId and transport in the query string when both are given (#5101)', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({ success: true }));
+
+      await apiService.clearRecordHolderSegment('s1', 'mqtt');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/route-segments/record-holder?sourceId=s1&transport=mqtt',
+        expect.objectContaining({ method: 'DELETE', credentials: 'include' }),
+      );
+    });
+
+    it('clearRecordHolderSegment omits transport from the query string when not given (legacy: clears every class)', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({ success: true }));
+
+      await apiService.clearRecordHolderSegment('s1');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/route-segments/record-holder?sourceId=s1',
+        expect.objectContaining({ method: 'DELETE', credentials: 'include' }),
+      );
+    });
+
     it('getTracerouteHistory should call history endpoint with params and return the bare array unwrapped', async () => {
       const traceroutes = [{ id: 1 }];
       mockFetch.mockResolvedValue(createMockResponse(traceroutes));

@@ -56,6 +56,7 @@ const POSTGRES_CREATE = `
     "fromLongitude" DOUBLE PRECISION,
     "toLatitude" DOUBLE PRECISION,
     "toLongitude" DOUBLE PRECISION,
+    "transportMechanism" INTEGER,
     timestamp BIGINT NOT NULL,
     "createdAt" BIGINT NOT NULL,
     "sourceId" TEXT
@@ -95,6 +96,7 @@ const MYSQL_CREATE = `
     fromLongitude DOUBLE,
     toLatitude DOUBLE,
     toLongitude DOUBLE,
+    transportMechanism INT,
     timestamp BIGINT NOT NULL,
     createdAt BIGINT NOT NULL,
     sourceId VARCHAR(36)
