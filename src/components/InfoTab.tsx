@@ -11,8 +11,7 @@ import { formatDateTime } from '../utils/datetime';
 import TelemetryGraphs from './TelemetryGraphs';
 import PacketRateGraphs from './PacketRateGraphs';
 import { version } from '../../package.json';
-import apiService, { type MessageCounts } from '../services/api';
-import { formatDistance } from '../utils/distance';
+import apiService, { type MessageCounts, type RouteSegmentRecords, type RouteSegmentView } from '../services/api';
 import { logger } from '../utils/logger';
 import { useToast } from './ToastContainer';
 import { getDeviceRoleName } from '../utils/deviceRole';
@@ -24,21 +23,11 @@ import { useSource } from '../contexts/SourceContext';
 import { useDashboardSources } from '../hooks/useDashboardData';
 import { getSourceEndpointLabel } from '../utils/sourceEndpoint';
 import TransportBreakdown from './TransportBreakdown';
+import RouteSegmentRecord from './RouteSegmentRecord';
 import { countNodesByTransport, transportCutoffSec, isMqttOnlySourceType, type NodeTransportClass } from '../utils/nodeTransport';
 
 const TRANSPORT_FILTER_OPTIONS = ['all', 'rf', 'udp', 'mqtt'] as const;
-
-interface RouteSegment {
-  id: number;
-  fromNodeNum: number;
-  toNodeNum: number;
-  fromNodeId: string;
-  toNodeId: string;
-  fromNodeName: string;
-  toNodeName: string;
-  distanceKm: number;
-  timestamp: number;
-}
+const ROUTE_SEGMENT_TRANSPORT_ORDER: NodeTransportClass[] = ['rf', 'udp', 'mqtt'];
 
 interface InfoTabProps {
   connectionStatus: ConnectionStatus;
@@ -91,10 +80,10 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
     ? dashboardSources.find((s) => s.id === activeSourceId)
     : undefined;
   const displayNodeAddress = getSourceEndpointLabel(activeSource) ?? nodeAddress;
-  const [longestActiveSegment, setLongestActiveSegment] = useState<RouteSegment | null>(null);
-  const [recordHolderSegment, setRecordHolderSegment] = useState<RouteSegment | null>(null);
+  const [longestActiveSegment, setLongestActiveSegment] = useState<RouteSegmentRecords | null>(null);
+  const [recordHolderSegment, setRecordHolderSegment] = useState<RouteSegmentRecords | null>(null);
   const [loadingSegments, setLoadingSegments] = useState(false);
-  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [clearTarget, setClearTarget] = useState<NodeTransportClass | 'all' | null>(null);
   const [virtualNodeStatus, setVirtualNodeStatus] = useState<any>(null);
   const [loadingVirtualNode, setLoadingVirtualNode] = useState(false);
   const [serverInfo, setServerInfo] = useState<any>(null);
@@ -279,16 +268,23 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
     }
   }, [connectionStatus, activeSourceId]);
 
-  const handleClearRecordHolder = async () => {
-    setShowConfirmDialog(true);
+  const handleClearRecordHolder = async (target: NodeTransportClass | 'all') => {
+    setClearTarget(target);
   };
 
   const confirmClearRecordHolder = async () => {
-    setShowConfirmDialog(false);
+    const target = clearTarget;
+    setClearTarget(null);
+    if (!target) return;
     try {
-      await apiService.clearRecordHolderSegment(activeSourceId);
-      setRecordHolderSegment(null);
-      showToast(t('info.record_cleared'), 'success');
+      await apiService.clearRecordHolderSegment(activeSourceId, target === 'all' ? undefined : target);
+      // Re-fetch rather than clearing local state: clearing one class must
+      // leave the other classes' records on screen (§4.6).
+      await fetchRouteSegments();
+      showToast(
+        target === 'all' ? t('info.record_cleared') : t('info.record_cleared_transport', { transport: t(`transport.${target}`) }),
+        'success'
+      );
     } catch (error) {
       logger.error('Error clearing record holder:', error);
       if (error instanceof Error && error.message.includes('403')) {
@@ -365,17 +361,79 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
   };
 
   // Stable callbacks
-  const handleClearRecordClick = useCallback(() => {
-    void handleClearRecordHolder();
+  const handleClearRecordClick = useCallback((target: NodeTransportClass | 'all') => {
+    void handleClearRecordHolder(target);
   }, [handleClearRecordHolder]);
 
   const handleCancelConfirm = useCallback(() => {
-    setShowConfirmDialog(false);
+    setClearTarget(null);
   }, []);
 
   const handleConfirmClear = useCallback(() => {
     void confirmClearRecordHolder();
   }, [confirmClearRecordHolder]);
+
+  // Renders a "Longest Active" / "Record Holder" card: one labelled
+  // RouteSegmentRecord per non-null byTransport class (RF -> UDP -> MQTT),
+  // or a single unlabelled record for MQTT-only sources (#5101 P2 §4.6).
+  const renderRouteSegmentCard = (
+    data: RouteSegmentRecords | null,
+    timeLabel: string,
+    noDataText: string,
+    opts: { showTrophy?: boolean; withClear?: boolean } = {}
+  ): React.ReactNode => {
+    if (!data) {
+      return <p className="no-data">{noDataText}</p>;
+    }
+
+    const legacyNote = opts.withClear ? t('info.record_legacy_transport_note') : undefined;
+
+    if (!showTransport) {
+      return (
+        <RouteSegmentRecord
+          segment={data}
+          timeLabel={timeLabel}
+          distanceUnit={distanceUnit}
+          timeFormat={timeFormat}
+          dateFormat={dateFormat}
+          showTrophy={opts.showTrophy}
+          legacyNote={legacyNote}
+          onClear={opts.withClear && isAuthenticated ? () => handleClearRecordClick('all') : undefined}
+          clearLabel={t('info.clear_record')}
+          testId="route-segment-record-unlabelled"
+        />
+      );
+    }
+
+    const entries = ROUTE_SEGMENT_TRANSPORT_ORDER
+      .map((cls) => [cls, data.byTransport[cls]] as const)
+      .filter((entry): entry is [NodeTransportClass, RouteSegmentView] => entry[1] !== null);
+
+    if (entries.length === 0) {
+      return <p className="no-data">{noDataText}</p>;
+    }
+
+    return (
+      <>
+        {entries.map(([cls, segment]) => (
+          <RouteSegmentRecord
+            key={cls}
+            segment={segment}
+            transportLabel={t(`transport.${cls}`)}
+            timeLabel={timeLabel}
+            distanceUnit={distanceUnit}
+            timeFormat={timeFormat}
+            dateFormat={dateFormat}
+            showTrophy={opts.showTrophy}
+            legacyNote={legacyNote}
+            onClear={opts.withClear && isAuthenticated ? () => handleClearRecordClick(cls) : undefined}
+            clearLabel={t('info.clear_record')}
+            testId={`route-segment-record-${cls}`}
+          />
+        ))}
+      </>
+    );
+  };
 
   return (
     <div className="tab-content">
@@ -607,7 +665,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
           <p><strong>{t('info.total_messages')}</strong> {activeSourceId ? (messageCounts?.total ?? '—') : messages.length}</p>
           {showTransport && messageCounts && messageCounts.total > 0 && (
             <TransportBreakdown
-              counts={{ rf: messageCounts.byTransport.rf, mqtt: messageCounts.byTransport.mqtt }}
+              counts={{ rf: messageCounts.byTransport.rf, udp: messageCounts.byTransport.udp ?? 0, mqtt: messageCounts.byTransport.mqtt }}
               testId="info-messages-transport"
             />
           )}
@@ -1006,46 +1064,13 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
         <div className="info-section">
           <h3>{t('info.longest_route')}</h3>
           {loadingSegments && <p>{t('common.loading_indicator')}</p>}
-          {!loadingSegments && longestActiveSegment && (
-            <>
-              <p><strong>{t('info.distance')}</strong> {formatDistance(longestActiveSegment.distanceKm, distanceUnit)}</p>
-              <p><strong>{t('info.from')}</strong> {longestActiveSegment.fromNodeName} ({longestActiveSegment.fromNodeId})</p>
-              <p><strong>{t('info.to')}</strong> {longestActiveSegment.toNodeName} ({longestActiveSegment.toNodeId})</p>
-              <p style={{ fontSize: '0.85em', color: '#888' }}>
-                {t('info.last_seen')} {formatDateTime(new Date(longestActiveSegment.timestamp), timeFormat, dateFormat)}
-              </p>
-            </>
-          )}
-          {!loadingSegments && !longestActiveSegment && (
-            <p className="no-data">{t('info.no_active_routes')}</p>
-          )}
+          {!loadingSegments && renderRouteSegmentCard(longestActiveSegment, t('info.last_seen'), t('info.no_active_routes'))}
         </div>
 
         <div className="info-section">
           <h3>{t('info.record_holder')}</h3>
           {loadingSegments && <p>{t('common.loading_indicator')}</p>}
-          {!loadingSegments && recordHolderSegment && (
-            <>
-              <p><strong>{t('info.distance')}</strong> {formatDistance(recordHolderSegment.distanceKm, distanceUnit)} <UiIcon name="trophy" /></p>
-              <p><strong>{t('info.from')}</strong> {recordHolderSegment.fromNodeName} ({recordHolderSegment.fromNodeId})</p>
-              <p><strong>{t('info.to')}</strong> {recordHolderSegment.toNodeName} ({recordHolderSegment.toNodeId})</p>
-              <p style={{ fontSize: '0.85em', color: '#888' }}>
-                {t('info.achieved')} {formatDateTime(new Date(recordHolderSegment.timestamp), timeFormat, dateFormat)}
-              </p>
-              {isAuthenticated && (
-                <button
-                  onClick={handleClearRecordClick}
-                  className="danger-button"
-                  style={{ marginTop: '8px' }}
-                >
-                  {t('info.clear_record')}
-                </button>
-              )}
-            </>
-          )}
-          {!loadingSegments && !recordHolderSegment && (
-            <p className="no-data">{t('info.no_record_holder')}</p>
-          )}
+          {!loadingSegments && renderRouteSegmentCard(recordHolderSegment, t('info.achieved'), t('info.no_record_holder'), { showTrophy: true, withClear: true })}
         </div>
 
         {!deviceConfig && (
@@ -1068,7 +1093,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
         </div>
       )}
 
-      {showConfirmDialog && (
+      {clearTarget && (
         <div style={{
           position: 'fixed',
           top: 0,
@@ -1089,7 +1114,11 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
             border: '1px solid var(--color-surface-active)'
           }}>
             <h3 style={{ marginTop: 0 }}>{t('info.clear_record_title')}</h3>
-            <p>{t('info.clear_record_confirm')}</p>
+            <p>
+              {clearTarget === 'all'
+                ? t('info.clear_record_confirm')
+                : t('info.clear_record_confirm_transport', { transport: t(`transport.${clearTarget}`) })}
+            </p>
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
               <button
                 onClick={handleCancelConfirm}
