@@ -34,6 +34,7 @@ import {
   settingsNavItems,
 } from './search/configSections';
 import PositionEstimationSection from './PositionEstimationSection';
+import AutoEnrichmentSection from './AutoEnrichmentSection';
 import MeshIssuesSection from './MeshIssuesSection';
 import TapbackEmojiSettings from './TapbackEmojiSettings';
 import EmbedSettings from './settings/EmbedSettings';
@@ -2814,6 +2815,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         {show('settings-position-estimation') && canWriteSettings && (
         <div id="settings-position-estimation" className="settings-section">
           <PositionEstimationSection baseUrl={baseUrl} />
+        </div>
+        )}
+
+        {show('settings-auto-enrichment') && canWriteSettings && (
+        <div id="settings-auto-enrichment" className="settings-section">
+          <AutoEnrichmentSection baseUrl={baseUrl} />
         </div>
         )}
 

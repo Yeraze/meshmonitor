@@ -30,6 +30,7 @@ import { appriseNotificationService } from './services/appriseNotificationServic
 import { backupSchedulerService } from './services/backupSchedulerService.js';
 import { databaseMaintenanceService } from './services/databaseMaintenanceService.js';
 import { positionEstimationScheduler } from './services/positionEstimationScheduler.js';
+import { autoEnrichmentScheduler } from './services/autoEnrichmentScheduler.js';
 import { meshIssuesScheduler } from './services/meshIssuesScheduler.js';
 import { autoFavoriteManagementScheduler } from './services/autoFavoriteManagementService.js';
 import { systemRestoreService } from './services/systemRestoreService.js';
@@ -372,6 +373,12 @@ setTimeout(async () => {
     // Initialize mesh issues analysis scheduler (global, batch, passive — issue #4964)
     meshIssuesScheduler.initialize();
     logger.debug('Mesh issues scheduler initialized');
+
+    // Initialize auto-enrichment scheduler (global, opt-in — issue #5287). Arms a
+    // once-a-minute check only; a run fires only when enabled AND due against
+    // the persisted last-run time, so a restart never triggers one.
+    autoEnrichmentScheduler.initialize();
+    logger.debug('Auto-enrichment scheduler initialized');
 
     // Initialize automated remote favorites management scheduler (issue #2608)
     autoFavoriteManagementScheduler.initialize();

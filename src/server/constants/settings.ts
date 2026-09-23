@@ -157,6 +157,14 @@ export const VALID_SETTINGS_KEYS = [
   // Max acceptable uncertainty (km). Estimates whose computed radius exceeds
   // this are discarded rather than stored (issue #3271 follow-up). 0 = no limit.
   'position_estimation_max_uncertainty_km',
+  // Auto-Enrichment: scheduled NodeInfo Enrichment "Fix All" (global — #5287).
+  // Its run-state keys (last run, pending pushes) are server-owned and written
+  // directly by autoEnrichmentScheduler, so they are deliberately absent here.
+  'autoEnrichmentEnabled',
+  'autoEnrichmentScheduleType',
+  'autoEnrichmentIntervalMinutes',
+  'autoEnrichmentCron',
+  'autoEnrichmentPushToNodeDb',
   // Mesh Issues Analysis (global, batch, passive — issue #4964)
   'mesh_issues_enabled',
   'mesh_issues_frequency_hours',
@@ -673,6 +681,11 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   'position_estimation_frequency_hours',    // :141
   'position_estimation_lookback_hours',     // :141
   'position_estimation_max_uncertainty_km', // :145
+  'autoEnrichmentEnabled',                  // global scheduler (#5287)
+  'autoEnrichmentScheduleType',             // "
+  'autoEnrichmentIntervalMinutes',          // "
+  'autoEnrichmentCron',                     // "
+  'autoEnrichmentPushToNodeDb',             // "
   'mesh_issues_enabled',                    // global batch job (#4964)
   'mesh_issues_frequency_hours',            // "
   'mesh_issues_lookback_hours',             // "

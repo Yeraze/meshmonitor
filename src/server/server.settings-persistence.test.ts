@@ -183,6 +183,12 @@ function validTestValue(key: string, suffix = ''): string {
     // STRICT_BOOLEAN_SETTINGS_KEYS here too, or this round-trip test breaks
     // the same way meshcoreReceiveOnly did.
     meshcoreReceiveOnly: 'true',
+
+    // Auto-Enrichment schedule (#5287): the interval is range-checked (1 hour
+    // to 7 days), the type is an enum, and a cron must fire at most hourly.
+    autoEnrichmentScheduleType: 'interval',
+    autoEnrichmentIntervalMinutes: '360',
+    autoEnrichmentCron: '0 */6 * * *',
   };
 
   if (key in VALID_VALUES) {
