@@ -268,6 +268,9 @@ describe('MeshtasticManager - ATAK GeoChat persistence (processTakPacket)', () =
           channel: 3,
           portnum: 72,
           text: '[ATAK ALPHA] hi',
+          // #5101: RX-only path, no viaMqtt/transportMechanism on the packet
+          // -> resolveRadioPacketTransport falls back to LORA (1).
+          transportMechanism: 1,
         }),
         manager.sourceId,
       );
