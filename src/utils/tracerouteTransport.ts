@@ -54,6 +54,7 @@
  * neighbor links use.
  */
 import { classifyNodeTransport, type NodeTransportClass } from './nodeTransport.js';
+import { decomposeTracerouteLinks } from './tracerouteSegments.js';
 
 export type { NodeTransportClass };
 
@@ -127,4 +128,29 @@ export function segmentPassesTransportFilter(
  */
 export function transportFilterIsInert(flags: TransportFilterFlags): boolean {
   return flags.showRfNodes && flags.showUdpNodes && flags.showMqttNodes;
+}
+
+/** The subset of a traceroute row `reachTransportClass` needs (#5101). */
+export interface ReachTransportInput extends TracerouteTransportFields {
+  fromNodeNum: number;
+  toNodeNum: number;
+  route: string | null | undefined;
+  snrTowards: string | null | undefined;
+}
+
+/**
+ * One transport class for a whole answered route, for reach-by-hop-count
+ * (#5101). The FORWARD leg is what `hops` counts (route.length), so only its
+ * hops are consulted. Any forward hop carrying the unknown-SNR sentinel makes
+ * the route 'mqtt' — the same sentinel-wins rule as `hopTransportClass`, so a
+ * peer counts as RF-reachable only if every hop to it was RF-confirmed.
+ * Otherwise the record's own class (NULL → 'rf'). Return-leg sentinels are
+ * ignored, since `hops` does not count that leg.
+ */
+export function reachTransportClass(tr: ReachTransportInput): NodeTransportClass {
+  const forwardUnknown = decomposeTracerouteLinks({
+    fromNodeNum: tr.fromNodeNum, toNodeNum: tr.toNodeNum,
+    route: tr.route, snrTowards: tr.snrTowards,
+  }).some((l) => l.leg === 'forward' && l.snrUnknown);
+  return hopTransportClass(tracerouteTransportClass(tr), forwardUnknown);
 }
