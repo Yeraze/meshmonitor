@@ -140,6 +140,7 @@
  *   1001     .map-sidebar (MapSidebar.css) — must beat the control containers
  *   1098     this backdrop
  *   1099     .dashboard-sidebar.mobile-open
+ *   1100     .dashboard-topbar — fixed since #5286; the drawer starts below it
  *   10000+   app header, app rail, modals
  *
  * The drawer used to sit at 999, one below Leaflet's control layer, so the
