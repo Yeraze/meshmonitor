@@ -204,6 +204,12 @@ export interface DbMessage {
   viaMqtt?: boolean;
   /** Broadcast carried a verified XEdDSA signature (firmware 2.8+). */
   xeddsaSigned?: boolean;
+  /**
+   * `meshtastic.MeshPacket.TransportMechanism` the message arrived on (#5101).
+   * NULL = pre-migration row -> classify by `viaMqtt`. Outbound sends store
+   * INTERNAL (0).
+   */
+  transportMechanism?: number | null;
   rxSnr?: number;
   rxRssi?: number;
   createdAt: number;
@@ -286,6 +292,12 @@ export interface DbRouteSegment {
   toNodeId: string;
   distanceKm: number;
   isRecordHolder: boolean;
+  /**
+   * Effective `meshtastic.MeshPacket.TransportMechanism` of this hop (#5101):
+   * the traceroute record's mechanism, or MQTT (5) when the hop's arrival SNR
+   * was the unknown-SNR sentinel. NULL = pre-migration row -> RF.
+   */
+  transportMechanism?: number | null;
   timestamp: number;
   createdAt: number;
 }

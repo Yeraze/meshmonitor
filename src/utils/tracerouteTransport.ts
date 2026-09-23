@@ -53,8 +53,8 @@
  * segments) the union has one member and this collapses to the same rule the
  * neighbor links use.
  */
-import { classifyNodeTransport, type NodeTransportClass } from './nodeTransport.js';
-import { decomposeTracerouteLinks } from './tracerouteSegments.js';
+import { classifyNodeTransport, TX_MQTT, type NodeTransportClass } from './nodeTransport.js';
+import { decomposeTracerouteLinks, isUnknownSnr } from './tracerouteSegments.js';
 
 export type { NodeTransportClass };
 
@@ -153,4 +153,23 @@ export function reachTransportClass(tr: ReachTransportInput): NodeTransportClass
     route: tr.route, snrTowards: tr.snrTowards,
   }).some((l) => l.leg === 'forward' && l.snrUnknown);
   return hopTransportClass(tracerouteTransportClass(tr), forwardUnknown);
+}
+
+/**
+ * The `transportMechanism` to store on one `route_segments` row (#5101).
+ * `rawArrivalSnr` is the RAW (x4) firmware value recorded at the hop's far
+ * end — `snrTowards[i]` for segment `i` of `[requester, ...route, responder]`
+ * (or the equivalent index-aligned position in the MQTT writer's forward/
+ * return legs). Sentinel wins (see module doc): a hop whose arrival SNR is
+ * the unknown-SNR sentinel is stored as MQTT (5) regardless of the record's
+ * own mechanism. Otherwise the record's own mechanism is stored as-is, NULL
+ * passed through unchanged (reads as RF via `classifyNodeTransport`).
+ */
+export function segmentTransportMechanism(
+  recordMechanism: number | null | undefined,
+  rawArrivalSnr: number | undefined,
+): number | null {
+  const scaledSnr = rawArrivalSnr === undefined ? undefined : rawArrivalSnr / 4;
+  if (scaledSnr !== undefined && isUnknownSnr(scaledSnr)) return TX_MQTT;
+  return recordMechanism ?? null;
 }

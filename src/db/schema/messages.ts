@@ -29,6 +29,9 @@ export const messagesSqlite = sqliteTable('messages', {
   viaStoreForward: integer('viaStoreForward', { mode: 'boolean' }),
   // XEdDSA packet signing (firmware 2.8+): broadcast had a verified signature.
   xeddsaSigned: integer('xeddsaSigned', { mode: 'boolean' }),
+  // meshtastic.MeshPacket.TransportMechanism the message arrived on (#5101).
+  // NULL = pre-migration row -> classify by viaMqtt. Outbound sends store INTERNAL (0).
+  transportMechanism: integer('transportMechanism'),
   rxSnr: real('rxSnr'),
   rxRssi: real('rxRssi'),
   // Delivery tracking
@@ -75,6 +78,8 @@ export const messagesPostgres = pgTable('messages', {
   viaMqtt: pgBoolean('viaMqtt'),
   viaStoreForward: pgBoolean('viaStoreForward'),
   xeddsaSigned: pgBoolean('xeddsaSigned'),
+  // meshtastic.MeshPacket.TransportMechanism the message arrived on (#5101). See SQLite definition.
+  transportMechanism: pgInteger('transportMechanism'),
   rxSnr: pgReal('rxSnr'),
   rxRssi: pgReal('rxRssi'),
   // Delivery tracking
@@ -116,6 +121,8 @@ export const messagesMysql = mysqlTable('messages', {
   viaMqtt: myBoolean('viaMqtt'),
   viaStoreForward: myBoolean('viaStoreForward'),
   xeddsaSigned: myBoolean('xeddsaSigned'),
+  // meshtastic.MeshPacket.TransportMechanism the message arrived on (#5101). See SQLite definition.
+  transportMechanism: myInt('transportMechanism'),
   rxSnr: myDouble('rxSnr'),
   rxRssi: myDouble('rxRssi'),
   // Delivery tracking
