@@ -32,9 +32,25 @@ export interface NetworkSurvey {
   windowHours: number;
   nodes: { total: number; activeInWindow: number; withPosition: number };
   directNeighbours: DirectNeighbour[];
-  hopDistribution: Array<{ hops: number; nodeCount: number }>;
+  hopDistribution: Array<{
+    hops: number;
+    nodeCount: number;
+    /** Absent on an older fixture/response — the bar then renders as one
+     *  segment in the accent colour, today's look (#5101). */
+    byTransport?: { rf: number; udp: number; mqtt: number };
+  }>;
   maxHops: number | null;
 }
+
+/** Stacked hop-bar segment order + colour class (#5101). Literal
+ *  member-access references here (not bracket-indexed) so the stylesheet
+ *  self-check test at the bottom of NetworkSurveyPanel.test.tsx can see them. */
+const TRANSPORT_CLASSES = ['rf', 'udp', 'mqtt'] as const;
+const SEGMENT_CLASS: Record<(typeof TRANSPORT_CLASSES)[number], string> = {
+  rf: styles.surveyHopSegRf,
+  udp: styles.surveyHopSegUdp,
+  mqtt: styles.surveyHopSegMqtt,
+};
 
 export interface NetworkSurveyPanelProps {
   sourceId?: string | null;
@@ -163,20 +179,56 @@ export default function NetworkSurveyPanel({
           {survey.hopDistribution.length === 0 ? (
             <p className={styles.surveyEmpty} data-testid="survey-no-hops">{t('survey.no_hops')}</p>
           ) : (
-            <ul className={styles.surveyHops}>
-              {survey.hopDistribution.map((b) => (
-                <li key={b.hops} data-testid={`survey-hop-${b.hops}`}>
-                  <span className={styles.surveyHopLabel}>
-                    {b.hops === 0 ? t('survey.hops_direct') : t('survey.hops_n', { count: b.hops })}
+            <>
+              <ul className={styles.surveyHops}>
+                {survey.hopDistribution.map((b) => {
+                  const bt = b.byTransport;
+                  return (
+                    <li key={b.hops} data-testid={`survey-hop-${b.hops}`}>
+                      <span className={styles.surveyHopLabel}>
+                        {b.hops === 0 ? t('survey.hops_direct') : t('survey.hops_n', { count: b.hops })}
+                      </span>
+                      <span
+                        className={styles.surveyHopBar}
+                        style={{ width: `${maxBucket ? (b.nodeCount / maxBucket) * 100 : 0}%` }}
+                        role="img"
+                        aria-label={t('survey.hop_bar_label', {
+                          rf: bt?.rf ?? b.nodeCount,
+                          udp: bt?.udp ?? 0,
+                          mqtt: bt?.mqtt ?? 0,
+                        })}
+                      >
+                        {bt
+                          ? TRANSPORT_CLASSES.filter((cls) => bt[cls] > 0).map((cls) => (
+                              <span
+                                key={cls}
+                                className={`${styles.surveyHopSeg} ${SEGMENT_CLASS[cls]}`}
+                                style={{ flexGrow: bt[cls] }}
+                                data-testid={`survey-hop-${b.hops}-${cls}`}
+                              />
+                            ))
+                          : (
+                              <span
+                                className={`${styles.surveyHopSeg} ${styles.surveyHopSegFallback}`}
+                                style={{ flexGrow: 1 }}
+                              />
+                            )}
+                      </span>
+                      <span className={styles.surveyHopCount}>{b.nodeCount}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className={styles.surveyLegend}>
+                {TRANSPORT_CLASSES.map((cls) => (
+                  <span key={cls}>
+                    <span className={`${styles.surveyLegendSwatch} ${SEGMENT_CLASS[cls]}`} />
+                    {t(`transport.${cls}`)}
                   </span>
-                  <span
-                    className={styles.surveyHopBar}
-                    style={{ width: `${maxBucket ? (b.nodeCount / maxBucket) * 100 : 0}%` }}
-                  />
-                  <span className={styles.surveyHopCount}>{b.nodeCount}</span>
-                </li>
-              ))}
-            </ul>
+                ))}
+              </div>
+              <p className={styles.surveyEmpty}>{t('survey.transport_note')}</p>
+            </>
           )}
         </>
       )}
