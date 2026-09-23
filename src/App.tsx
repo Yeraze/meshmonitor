@@ -3629,6 +3629,7 @@ function App() {
                   timeFormat={timeFormat}
                   dateFormat={dateFormat}
                   isAuthenticated={authStatus?.authenticated || false}
+                  maxNodeAgeHours={maxNodeAgeHours}
                 />
               </ErrorBoundary>
             }
