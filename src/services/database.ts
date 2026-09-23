@@ -1864,6 +1864,18 @@ class DatabaseService {
     return [];
   }
 
+  /**
+   * Message counts for one source, grouped by channel and transport (#5101).
+   * Pass-through to `MessagesRepository.getMessageCountsByChannelAndTransport`
+   * — see that method for the NULL/viaMqtt merge and count-coercion rules.
+   */
+  async getMessageCountsByChannelAndTransportAsync(
+    sourceId: string,
+    excludePortnums?: number[],
+  ): Promise<Array<{ channel: number; viaMqtt: boolean; count: number }>> {
+    return this.messages.getMessageCountsByChannelAndTransport(sourceId, excludePortnums);
+  }
+
 
 
 

@@ -45,6 +45,13 @@ export interface SignalTrendResult {
   noiseFloorRising: boolean;
 }
 
+/** `GET /api/messages/counts` response body (#5101). `total === byTransport.rf + byTransport.mqtt` always; Phase 2 adds `byTransport.udp`. */
+export interface MessageCounts {
+  sourceId: string;
+  total: number;
+  byTransport: { rf: number; mqtt: number };
+}
+
 export interface MeshtasticContactUrl {
   url: string;
 }
@@ -962,6 +969,23 @@ class ApiService {
     );
     if (!response.ok) throw new Error('Failed to search messages');
     return response.json();
+  }
+
+  /**
+   * Total message count for one source, split RF/MQTT (#5101), for the Info
+   * tab's Total Messages breakdown. The server wraps the payload as
+   * `{ success, data }`; ApiService.request does not unwrap, so this reads
+   * `res.data` explicitly. `get()` does not check `response.ok` (see
+   * parseJsonResponse) — it just parses whatever JSON came back — so a 403 or
+   * 400 `fail()` body parses fine but carries no `data`, and this resolves to
+   * `null` rather than throwing. A malformed/HTML response still throws out
+   * of `get()` itself.
+   */
+  async getMessageCounts(sourceId: string): Promise<MessageCounts | null> {
+    const res = await this.get<{ success: boolean; data?: MessageCounts }>(
+      `/api/messages/counts?sourceId=${encodeURIComponent(sourceId)}`,
+    );
+    return res?.data ?? null;
   }
 
   async sendMessage(payload: {
