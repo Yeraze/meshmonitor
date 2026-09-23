@@ -27,6 +27,7 @@ route segments respect the Show RF / UDP / MQTT toggles.
 - **Network Survey:** stacked RF / UDP / MQTT bars per hop bucket.
 - **New computed series (P3):** in both the Dashboard telemetry grid and the Info tab.
 - **Classifier:** node counts use the per-transport-last timestamps (`transportLast*`, mig 126 / #4240) with additive (OR) semantics, so private-broker RF relay doesn't inflate MQTT. Legacy NULL transport reads as RF, matching `classifyNodeTransport`.
+- **Phase 2 (2026-09-23):** old record holders get a best-effort reclassify (migration 171); message class = viaMqtt wins, then mechanism 6→UDP / 5→MQTT, else RF; outbound messages stamp INTERNAL (0); also fix Longest Active showing the record copy, give MQTT sources record holders, and scope route-segment permissions per source.
 - **Mesh impact:** none — read-side analytics only; no packets, notifications or timers.
 
 ## Phases
@@ -61,3 +62,4 @@ Exit: new series render in both places; labels make the device/computed distinct
   - Survey reach classification: the forward-leg unknown-SNR sentinel wins (MQTT), else the record class; NULL = RF (`reachTransportClass`).
   - Total Messages comes from new `GET /api/messages/counts` (shares `resolveMessageReadAccess` with `GET /api/messages`); excludes TRACEROUTE_APP.
   - Follow-ups (not in this epic): poll's third copy of the message-read predicate; `/api/packets/stats/distribution` ignores per-channel permissions (pre-existing).
+- 2026-09-23: Phase 1 merged (PR #5329). Phase 2 started on `feature/5101-p2-transport-migrations`; spec TRANSPORT_BREAKDOWN_P2_SPEC.md (migrations 169–171).
