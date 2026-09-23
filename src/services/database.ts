@@ -21,6 +21,7 @@ import { computeAveragingIntervalMinutes } from '../utils/telemetryAveraging.js'
 import { buildFavoriteRetentions } from '../utils/telemetryRetention.js';
 import type { TelemetryFavorite } from '../db/repositories/telemetry.js';
 import { getMaxNodeAgeHours } from '../server/services/nodeDisplaySettings.js';
+import type { NodeTransportClass } from '../utils/nodeTransport.js';
 // Drizzle ORM imports for dual-database support
 import { drizzle as drizzleSqlite } from 'drizzle-orm/better-sqlite3';
 import * as drizzleSchema from '../db/schema/index.js';
@@ -4519,7 +4520,7 @@ class DatabaseService {
   async getPacketLogCountAsync(options: {
     portnum?: number; from_node?: number; to_node?: number; channel?: number;
     encrypted?: boolean; since?: number; relay_node?: number | 'unknown';
-    transport_mechanism?: number; sourceId?: string; search?: string;
+    transport_mechanism?: number; transportClass?: NodeTransportClass; sourceId?: string; search?: string;
   } = {}): Promise<number> {
     return this.packetLog.getPacketLogCount(options);
   }
@@ -4552,11 +4553,11 @@ class DatabaseService {
     return this.packetLogRepo.cleanupOldPacketLogs(maxAgeHours);
   }
 
-  async getPacketCountsByNodeAsync(options?: { since?: number; limit?: number; portnum?: number; sourceId?: string }): Promise<DbPacketCountByNode[]> {
+  async getPacketCountsByNodeAsync(options?: { since?: number; limit?: number; portnum?: number; sourceId?: string; transportClass?: NodeTransportClass }): Promise<DbPacketCountByNode[]> {
     return this.packetLog.getPacketCountsByNode(options);
   }
 
-  async getPacketCountsByPortnumAsync(options?: { since?: number; from_node?: number; sourceId?: string }): Promise<DbPacketCountByPortnum[]> {
+  async getPacketCountsByPortnumAsync(options?: { since?: number; from_node?: number; sourceId?: string; transportClass?: NodeTransportClass }): Promise<DbPacketCountByPortnum[]> {
     return this.packetLog.getPacketCountsByPortnum(options);
   }
 
