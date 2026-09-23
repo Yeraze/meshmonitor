@@ -84,7 +84,10 @@ interface ChannelEditState {
 
 /** Wrapper that makes a channel card draggable */
 const SortableChannelCard: React.FC<{
-  id: string;
+  // Must match the SortableContext `items` entries exactly — dnd-kit looks
+  // items up with `indexOf`, so a string id against numeric items leaves every
+  // card at index -1 and nothing shifts while dragging (#5324).
+  id: number;
   children: React.ReactNode;
 }> = ({ id, children }) => {
   const {
@@ -334,7 +337,11 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
       }, sourceId);
       // 2. Delete channel record and messages from database
       try {
-        await apiService.delete(`/api/channels/${slotId}`);
+        // The route requires sourceId; without it the 400 was swallowed below
+        // and the row and its messages were never removed (#5324).
+        if (sourceId) {
+          await apiService.delete(`/api/channels/${slotId}?sourceId=${encodeURIComponent(sourceId)}`);
+        }
       } catch {
         // DB cleanup is best-effort — channel is already disabled on device
       }
@@ -527,7 +534,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
           <SortableContext items={slotOrder} strategy={verticalListSortingStrategy}>
             <div style={{ display: 'grid', gap: '1rem' }}>
               {channelSlots.map(({ slotId, displaySlot, channel }) => (
-                <SortableChannelCard key={slotId} id={String(slotId)}>
+                <SortableChannelCard key={slotId} id={slotId}>
                   <div
                     style={{
                       border: (hasReorderChanges ? displaySlot === 0 : channel?.role === 1)
