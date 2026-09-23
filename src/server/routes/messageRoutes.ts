@@ -1128,14 +1128,14 @@ router.post('/mark-read', optionalAuth(), async (req, res) => {
 
 /**
  * GET /api/messages/counts
- * Total message count for one source, split RF/MQTT, for the Info tab's
+ * Total message count for one source, split RF/UDP/MQTT, for the Info tab's
  * Total Messages breakdown (#5101). Shares its permission gate with
  * `GET /api/messages` via `resolveMessageReadAccess` so the total can never
  * drift from what the list endpoint would actually show the same caller.
  *
  * Excludes TRACEROUTE_APP, matching the poll's message-count window
  * (`pollRoutes.ts` ~156) — traceroute rows aren't "messages" in the UI sense.
- * `total === rf + mqtt` always; Phase 2 adds `byTransport.udp`.
+ * `total === rf + udp + mqtt` always.
  */
 router.get('/counts', optionalAuth(), async (req, res) => {
   try {
@@ -1155,15 +1155,13 @@ router.get('/counts', optionalAuth(), async (req, res) => {
 
     const rows = await databaseService.getMessageCountsByChannelAndTransportAsync(sourceId, [PortNum.TRACEROUTE_APP]);
 
-    let rf = 0;
-    let mqtt = 0;
+    const byTransport = { rf: 0, udp: 0, mqtt: 0 };
     for (const row of rows) {
       if (!access.canReadChannel(row.channel)) continue;
-      if (row.viaMqtt) mqtt += row.count;
-      else rf += row.count;
+      byTransport[row.transportClass] += row.count;
     }
 
-    return ok(res, { sourceId, total: rf + mqtt, byTransport: { rf, mqtt } });
+    return ok(res, { sourceId, total: byTransport.rf + byTransport.udp + byTransport.mqtt, byTransport });
   } catch (error) {
     logger.error('Error fetching message counts:', error);
     return fail(res, 500, 'MESSAGE_COUNTS_FAILED', 'Failed to fetch message counts');

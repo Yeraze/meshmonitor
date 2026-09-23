@@ -4,10 +4,12 @@
  * Handles traceroute and route segment database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, and, desc, lt, or, isNull, gte, notInArray, count } from 'drizzle-orm';
+import { eq, and, desc, lt, or, isNull, gte, notInArray, count, sql, type SQL } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType, DbTraceroute, DbRouteSegment } from '../types.js';
 import { tracerouteParticipationKind, type TracerouteParticipation } from '../../utils/tracerouteSegments.js';
+import { classifyNodeTransport, type NodeTransportClass } from '../../utils/nodeTransport.js';
+import { transportClassCondition } from './transportSql.js';
 
 /**
  * Repository for traceroute operations
@@ -354,6 +356,7 @@ export class TraceroutesRepository extends BaseRepository {
       toNodeId: segmentData.toNodeId,
       distanceKm: segmentData.distanceKm,
       isRecordHolder: segmentData.isRecordHolder ?? false,
+      transportMechanism: segmentData.transportMechanism ?? null,
       timestamp: segmentData.timestamp,
       createdAt: segmentData.createdAt,
     };
@@ -365,15 +368,38 @@ export class TraceroutesRepository extends BaseRepository {
   }
 
   /**
-   * Get the longest currently-stored route segment, optionally scoped to a
-   * single source so each source tracks its own longest link independently.
+   * SQL condition for a route_segments transport class filter (#5101),
+   * delegating to the shared `transportClassCondition` (also used by
+   * `packet_log` in `PacketLogRepository`). `undefined` means "every class".
    */
-  async getLongestActiveRouteSegment(sourceId?: SourceScope): Promise<DbRouteSegment| null> {
+  private segmentClassWhere(cls?: NodeTransportClass): SQL | undefined {
+    const { routeSegments } = this.tables;
+    return cls ? transportClassCondition(sql`${routeSegments.transportMechanism}`, cls) : undefined;
+  }
+
+  /**
+   * Get the longest currently-stored route segment, optionally scoped to a
+   * single source (each source tracks its own longest link independently)
+   * and/or a transport class (#5101).
+   *
+   * Excludes flagged record-holder rows (finding 1, #5101): a record holder
+   * is stored as a SECOND copy of its segment with `isRecordHolder = true`,
+   * and `cleanupOldRouteSegments` spares that copy forever. Without this
+   * exclusion, once a record exists "Longest Active" returns the frozen
+   * record copy — with its old "Last seen" timestamp — for good, even after
+   * a genuinely longer non-record segment has since been seen. The ordinary
+   * (unflagged) twin of the record-setting segment stays eligible.
+   */
+  async getLongestActiveRouteSegment(sourceId?: SourceScope, transportClass?: NodeTransportClass): Promise<DbRouteSegment| null> {
     const { routeSegments } = this.tables;
     const result = await this.db
       .select()
       .from(routeSegments)
-      .where(this.withSourceScope(routeSegments, sourceId))
+      .where(and(
+        or(eq(routeSegments.isRecordHolder, false), isNull(routeSegments.isRecordHolder)),
+        this.withSourceScope(routeSegments, sourceId),
+        this.segmentClassWhere(transportClass),
+      ))
       .orderBy(desc(routeSegments.distanceKm))
       .limit(1);
 
@@ -382,10 +408,11 @@ export class TraceroutesRepository extends BaseRepository {
   }
 
   /**
-   * Get the record-holder segment, optionally scoped to a single source so
-   * each source maintains its own all-time record.
+   * Get the record-holder segment, optionally scoped to a single source
+   * and/or a transport class (#5101) — records are now kept per
+   * (source, transport class).
    */
-  async getRecordHolderRouteSegment(sourceId?: SourceScope): Promise<DbRouteSegment| null> {
+  async getRecordHolderRouteSegment(sourceId?: SourceScope, transportClass?: NodeTransportClass): Promise<DbRouteSegment| null> {
     const { routeSegments } = this.tables;
     const result = await this.db
       .select()
@@ -393,6 +420,7 @@ export class TraceroutesRepository extends BaseRepository {
       .where(and(
         eq(routeSegments.isRecordHolder, true),
         this.withSourceScope(routeSegments, sourceId),
+        this.segmentClassWhere(transportClass),
       ))
       .orderBy(desc(routeSegments.distanceKm))
       .limit(1);
@@ -458,11 +486,14 @@ export class TraceroutesRepository extends BaseRepository {
 
   /**
    * Clear record holder flags for a specific source (or all global/NULL
-   * segments when sourceId is undefined). Used by updateRecordHolderSegment
-   * so each source maintains its own record independently — unseating one
-   * source's record holder must not touch another source's.
+   * segments when sourceId is undefined), optionally narrowed to one
+   * transport class (#5101) so clearing the MQTT record does not touch the
+   * RF record. Omitted class clears every class, matching pre-#5101
+   * behaviour. Used by `updateRecordHolderIfLonger` / the route-segment
+   * routes — unseating one source's record holder must not touch another
+   * source's.
    */
-  async clearRecordHolderBySource(sourceId?: SourceScope): Promise<void> {
+  async clearRecordHolderBySource(sourceId?: SourceScope, transportClass?: NodeTransportClass): Promise<void> {
     const { routeSegments } = this.tables;
     await this.db
       .update(routeSegments)
@@ -470,7 +501,28 @@ export class TraceroutesRepository extends BaseRepository {
       .where(and(
         eq(routeSegments.isRecordHolder, true),
         this.withSourceScope(routeSegments, sourceId),
+        this.segmentClassWhere(transportClass),
       ));
+  }
+
+  /**
+   * Per-(source, transport class) all-time record (#5101). The class comes
+   * from the segment's own `transportMechanism` (NULL -> rf via
+   * `classifyNodeTransport`), so an MQTT-bridged link can never unseat an RF
+   * record and vice versa. Returns true when it set a new record.
+   *
+   * Not atomic (read -> clear -> insert), same as the pre-#5101 behaviour —
+   * writers run serially per source, so a race here is no worse than before.
+   */
+  async updateRecordHolderIfLonger(segment: DbRouteSegment, sourceId: SourceScope | undefined): Promise<boolean> {
+    const cls = classifyNodeTransport({ transportMechanism: segment.transportMechanism });
+    const current = await this.getRecordHolderRouteSegment(sourceId, cls);
+    if (!current || segment.distanceKm > current.distanceKm) {
+      await this.clearRecordHolderBySource(sourceId, cls);
+      await this.insertRouteSegment({ ...segment, isRecordHolder: true }, sourceId as string);
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -684,6 +736,7 @@ export class TraceroutesRepository extends BaseRepository {
         toNodeId: segmentData.toNodeId,
         distanceKm: segmentData.distanceKm,
         isRecordHolder: segmentData.isRecordHolder ?? false,
+        transportMechanism: segmentData.transportMechanism ?? null,
         timestamp: segmentData.timestamp,
         createdAt: segmentData.createdAt,
         sourceId: sourceId ?? null,
@@ -693,15 +746,18 @@ export class TraceroutesRepository extends BaseRepository {
 
 
   /**
-   * Synchronously return the current record-holder route segment (SQLite only).
+   * Synchronously return the current record-holder route segment (SQLite
+   * only), optionally narrowed to one transport class (#5101).
    */
-  getRecordHolderRouteSegmentSync(sourceId?: string): DbRouteSegment | null {
+  getRecordHolderRouteSegmentSync(sourceId?: string, transportClass?: NodeTransportClass): DbRouteSegment | null {
     const db = this.getSqliteDb();
     const { routeSegments } = this.tables;
     const conditions: any[] = [eq(routeSegments.isRecordHolder, true)];
     if (sourceId !== undefined) {
       conditions.push(eq(routeSegments.sourceId, sourceId));
     }
+    const classWhere = this.segmentClassWhere(transportClass);
+    if (classWhere) conditions.push(classWhere);
     const rows = db
       .select()
       .from(routeSegments)
@@ -715,15 +771,19 @@ export class TraceroutesRepository extends BaseRepository {
 
   /**
    * Synchronously clear the record-holder flag on all route segments (SQLite
-   * only). When sourceId is provided, only that source's segments are cleared.
+   * only). When sourceId is provided, only that source's segments are
+   * cleared; when transportClass is provided (#5101), only that class's
+   * flagged segments are cleared.
    */
-  clearRecordHolderSegmentSync(sourceId?: string): void {
+  clearRecordHolderSegmentSync(sourceId?: string, transportClass?: NodeTransportClass): void {
     const db = this.getSqliteDb();
     const { routeSegments } = this.tables;
     const conditions: any[] = [];
     if (sourceId !== undefined) {
       conditions.push(eq(routeSegments.sourceId, sourceId));
     }
+    const classWhere = this.segmentClassWhere(transportClass);
+    if (classWhere) conditions.push(classWhere);
     const stmt = db.update(routeSegments).set({ isRecordHolder: false } as any);
     if (conditions.length > 0) {
       stmt.where(and(...conditions)!).run();

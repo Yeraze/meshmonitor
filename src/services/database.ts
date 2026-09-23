@@ -21,7 +21,7 @@ import { computeAveragingIntervalMinutes } from '../utils/telemetryAveraging.js'
 import { buildFavoriteRetentions } from '../utils/telemetryRetention.js';
 import type { TelemetryFavorite } from '../db/repositories/telemetry.js';
 import { getMaxNodeAgeHours } from '../server/services/nodeDisplaySettings.js';
-import type { NodeTransportClass } from '../utils/nodeTransport.js';
+import { classifyNodeTransport, type NodeTransportClass } from '../utils/nodeTransport.js';
 // Drizzle ORM imports for dual-database support
 import { drizzle as drizzleSqlite } from 'drizzle-orm/better-sqlite3';
 import * as drizzleSchema from '../db/schema/index.js';
@@ -1367,10 +1367,14 @@ class DatabaseService {
   }
 
   // SQLite-only record-holder update used by the runDataMigrations bootstrap.
+  // Bootstrap segments are written with a NULL transportMechanism, so they
+  // are RF (#5101) — pass the class explicitly rather than deriving it, since
+  // classifyNodeTransport({ transportMechanism: null }) already resolves to
+  // 'rf' but the explicit literal makes the bootstrap's assumption visible.
   private updateRecordHolderSegmentSqlite(newSegment: DbRouteSegment, sourceId?: string): void {
-    const currentRecord = this.traceroutesRepo!.getRecordHolderRouteSegmentSync(sourceId) as unknown as DbRouteSegment | null;
+    const currentRecord = this.traceroutesRepo!.getRecordHolderRouteSegmentSync(sourceId, 'rf') as unknown as DbRouteSegment | null;
     if (!currentRecord || newSegment.distanceKm > currentRecord.distanceKm) {
-      this.traceroutesRepo!.clearRecordHolderSegmentSync(sourceId);
+      this.traceroutesRepo!.clearRecordHolderSegmentSync(sourceId, 'rf');
       this.traceroutesRepo!.insertRouteSegmentSync({ ...newSegment, isRecordHolder: true }, sourceId);
     }
   }
@@ -1877,14 +1881,15 @@ class DatabaseService {
   }
 
   /**
-   * Message counts for one source, grouped by channel and transport (#5101).
-   * Pass-through to `MessagesRepository.getMessageCountsByChannelAndTransport`
-   * — see that method for the NULL/viaMqtt merge and count-coercion rules.
+   * Message counts for one source, grouped by channel and transport class
+   * (#5101). Pass-through to
+   * `MessagesRepository.getMessageCountsByChannelAndTransport` — see that
+   * method for the `classifyMessageTransport` merge and count-coercion rules.
    */
   async getMessageCountsByChannelAndTransportAsync(
     sourceId: string,
     excludePortnums?: number[],
-  ): Promise<Array<{ channel: number; viaMqtt: boolean; count: number }>> {
+  ): Promise<Array<{ channel: number; transportClass: NodeTransportClass; count: number }>> {
     return this.messages.getMessageCountsByChannelAndTransport(sourceId, excludePortnums);
   }
 
@@ -5882,25 +5887,33 @@ class DatabaseService {
     await this.recordTracerouteRequest(fromNodeNum, toNodeNum, sourceId);
   }
 
-  async clearRecordHolderSegmentAsync(sourceId?: string): Promise<void> {
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.traceroutesRepo) {
-        await this.traceroutesRepo.clearRecordHolderBySource(sourceId);
-      }
-      logger.debug('🗑️ Cleared record holder route segment');
-      return;
+  /**
+   * Clear the record holder for one source (#5101: optionally narrowed to a
+   * single transport class; omitted = every class, the pre-#5101 behaviour).
+   * The SQLite `…Sync` branch was dropped (#5101 decision, §10.3): every
+   * backend now goes through `clearRecordHolderBySource`, which throws on a
+   * missing sourceId like PG/MySQL already did — the caller (route) guards
+   * this.
+   */
+  async clearRecordHolderSegmentAsync(sourceId?: string, transportClass?: NodeTransportClass): Promise<void> {
+    if (this.traceroutesRepo) {
+      await this.traceroutesRepo.clearRecordHolderBySource(sourceId, transportClass);
     }
-    this.traceroutesRepo!.clearRecordHolderSegmentSync(sourceId);
     logger.debug('🗑️ Cleared record holder route segment');
   }
 
+  /**
+   * Signature UNCHANGED from pre-#5101 (WP3 depends on this): delegates to
+   * `TraceroutesRepository.updateRecordHolderIfLonger`, which derives the
+   * transport class from the segment's own `transportMechanism` so records
+   * are now kept per (source, transport class) rather than one per source.
+   */
   async updateRecordHolderSegmentAsync(segment: DbRouteSegment, sourceId?: string): Promise<void> {
     if (!this.traceroutesRepo) return;
-    const currentRecord = await this.traceroutesRepo.getRecordHolderRouteSegment(sourceId);
-    if (!currentRecord || segment.distanceKm > currentRecord.distanceKm) {
-      await this.traceroutesRepo.clearRecordHolderBySource(sourceId);
-      await this.traceroutesRepo.insertRouteSegment({ ...segment, isRecordHolder: true }, sourceId);
-      logger.debug(`🏆 New record holder route segment: ${segment.distanceKm.toFixed(2)} km from ${segment.fromNodeId} to ${segment.toNodeId}`);
+    const isNewRecord = await this.traceroutesRepo.updateRecordHolderIfLonger(segment, sourceId);
+    if (isNewRecord) {
+      const cls = classifyNodeTransport({ transportMechanism: segment.transportMechanism });
+      logger.debug(`🏆 New ${cls} record holder route segment: ${segment.distanceKm.toFixed(2)} km from ${segment.fromNodeId} to ${segment.toNodeId}`);
     }
   }
 

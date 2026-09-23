@@ -8,9 +8,10 @@ import { eq, asc, and, or, inArray, sql, isNull, gte, gt, isNotNull, max, min, t
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../types.js';
 import { logger } from '../../utils/logger.js';
-import { getPortNumName, PortNum, TransportMechanism } from '../../server/constants/meshtastic.js';
+import { getPortNumName, PortNum } from '../../server/constants/meshtastic.js';
 import { BROADCAST_ADDR } from '../../utils/tracerouteSegments.js';
 import type { NodeTransportClass } from '../../utils/nodeTransport.js';
+import { transportClassCondition } from './transportSql.js';
 
 /**
  * Per-node hop-arrival aggregate row — Mesh Issues B6 "hop horizon" evidence
@@ -66,11 +67,11 @@ export class PacketLogRepository extends BaseRepository {
   // ============ PACKET LOG ============
 
   /**
-   * Single home for packet_log transport predicates (#5101): the exact
-   * mechanism filter (Packet Monitor) and the RF/UDP/MQTT class filter
-   * (Info tab). The class mapping mirrors classifyNodeTransport with
-   * viaMqtt absent — packet_log has no viaMqtt column: MQTT(5)→mqtt,
-   * MULTICAST_UDP(6)→udp, anything else incl. NULL→rf.
+   * packet_log transport predicates (#5101): the exact mechanism filter
+   * (Packet Monitor) plus the RF/UDP/MQTT class filter (Info tab), the
+   * latter delegated to the shared `transportClassCondition` (also used by
+   * `route_segments` in `TraceroutesRepository`) so the two tables can never
+   * drift on what counts as RF/UDP/MQTT.
    */
   private transportConditions(
     column: SQL,
@@ -78,11 +79,7 @@ export class PacketLogRepository extends BaseRepository {
   ): SQL[] {
     const out: SQL[] = [];
     if (filter.transport_mechanism !== undefined) out.push(sql`${column} = ${filter.transport_mechanism}`);
-    switch (filter.transportClass) {
-      case 'mqtt': out.push(sql`${column} = ${TransportMechanism.MQTT}`); break;
-      case 'udp': out.push(sql`${column} = ${TransportMechanism.MULTICAST_UDP}`); break;
-      case 'rf': out.push(sql`(${column} IS NULL OR ${column} NOT IN (${TransportMechanism.MQTT}, ${TransportMechanism.MULTICAST_UDP}))`); break;
-    }
+    if (filter.transportClass) out.push(transportClassCondition(column, filter.transportClass));
     return out;
   }
 
