@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import NetworkSurveyPanel from './survey/NetworkSurveyPanel';
 import { UiIcon } from './icons';
@@ -11,7 +11,7 @@ import { formatDateTime } from '../utils/datetime';
 import TelemetryGraphs from './TelemetryGraphs';
 import PacketRateGraphs from './PacketRateGraphs';
 import { version } from '../../package.json';
-import apiService from '../services/api';
+import apiService, { type MessageCounts } from '../services/api';
 import { formatDistance } from '../utils/distance';
 import { logger } from '../utils/logger';
 import { useToast } from './ToastContainer';
@@ -23,6 +23,10 @@ import PacketStatsChart, { ChartDataEntry, DISTRIBUTION_COLORS } from './PacketS
 import { useSource } from '../contexts/SourceContext';
 import { useDashboardSources } from '../hooks/useDashboardData';
 import { getSourceEndpointLabel } from '../utils/sourceEndpoint';
+import TransportBreakdown from './TransportBreakdown';
+import { countNodesByTransport, transportCutoffSec, isMqttOnlySourceType, type NodeTransportClass } from '../utils/nodeTransport';
+
+const TRANSPORT_FILTER_OPTIONS = ['all', 'rf', 'udp', 'mqtt'] as const;
 
 interface RouteSegment {
   id: number;
@@ -54,6 +58,8 @@ interface InfoTabProps {
   timeFormat?: TimeFormat;
   dateFormat?: DateFormat;
   isAuthenticated?: boolean;
+  /** Active-window cutoff for the transport breakdown decay (#5101), from `useSettings()`. */
+  maxNodeAgeHours?: number;
 }
 
 const InfoTab: React.FC<InfoTabProps> = React.memo(({
@@ -73,11 +79,13 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
   distanceUnit = 'km',
   timeFormat = '24',
   dateFormat = 'MM/DD/YYYY',
-  isAuthenticated = false
+  isAuthenticated = false,
+  maxNodeAgeHours
 }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
-  const { sourceId: activeSourceId } = useSource();
+  const { sourceId: activeSourceId, sourceType } = useSource();
+  const showTransport = !isMqttOnlySourceType(sourceType);
   const { data: dashboardSources = [] } = useDashboardSources();
   const activeSource = activeSourceId
     ? dashboardSources.find((s) => s.id === activeSourceId)
@@ -97,10 +105,17 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
   const [showPrivateKey, setShowPrivateKey] = useState(false);
   const [packetDistribution, setPacketDistribution] = useState<PacketDistributionStats | null>(null);
   const [distributionTimeRange, setDistributionTimeRange] = useState<'hour' | '24h' | 'all'>('24h');
+  const [distributionTransport, setDistributionTransport] = useState<'all' | NodeTransportClass>('all');
   const [loadingDistribution, setLoadingDistribution] = useState(false);
   const [selectedPortnum, setSelectedPortnum] = useState<number | null>(4); // Default to NODEINFO_APP
   const [portnumNodeDistribution, setPortnumNodeDistribution] = useState<PacketDistributionStats | null>(null);
   const [loadingPortnumNodes, setLoadingPortnumNodes] = useState(false);
+  const [messageCounts, setMessageCounts] = useState<MessageCounts | null>(null);
+
+  const nodeTransportTally = useMemo(
+    () => countNodesByTransport(nodes, maxNodeAgeHours ? transportCutoffSec(maxNodeAgeHours) : undefined),
+    [nodes, maxNodeAgeHours]
+  );
 
   const fetchVirtualNodeStatus = async () => {
     if (connectionStatus !== 'connected') return;
@@ -218,14 +233,15 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
       }
       // 'all' = undefined (no since filter)
 
-      const distribution = await getPacketDistributionStats(since, undefined, undefined, activeSourceId ?? undefined);
+      const transport = distributionTransport === 'all' ? undefined : distributionTransport;
+      const distribution = await getPacketDistributionStats(since, undefined, undefined, activeSourceId ?? undefined, transport);
       setPacketDistribution(distribution);
     } catch (error) {
       logger.error('Error fetching packet distribution:', error);
     } finally {
       setLoadingDistribution(false);
     }
-  }, [connectionStatus, distributionTimeRange, activeSourceId]);
+  }, [connectionStatus, distributionTimeRange, activeSourceId, distributionTransport]);
 
   const fetchPortnumNodeDistribution = useCallback(async () => {
     if (connectionStatus !== 'connected' || selectedPortnum === null) return;
@@ -240,14 +256,28 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
         since = now - 86400;
       }
 
-      const distribution = await getPacketDistributionStats(since, undefined, selectedPortnum, activeSourceId ?? undefined);
+      const transport = distributionTransport === 'all' ? undefined : distributionTransport;
+      const distribution = await getPacketDistributionStats(since, undefined, selectedPortnum, activeSourceId ?? undefined, transport);
       setPortnumNodeDistribution(distribution);
     } catch (error) {
       logger.error('Error fetching portnum node distribution:', error);
     } finally {
       setLoadingPortnumNodes(false);
     }
-  }, [connectionStatus, selectedPortnum, distributionTimeRange, activeSourceId]);
+  }, [connectionStatus, selectedPortnum, distributionTimeRange, activeSourceId, distributionTransport]);
+
+  const fetchMessageCounts = useCallback(async () => {
+    if (connectionStatus !== 'connected' || !activeSourceId) {
+      setMessageCounts(null);
+      return;
+    }
+    try {
+      const counts = await apiService.getMessageCounts(activeSourceId);
+      setMessageCounts(counts);
+    } catch (error) {
+      logger.error('Error fetching message counts:', error);
+    }
+  }, [connectionStatus, activeSourceId]);
 
   const handleClearRecordHolder = async () => {
     setShowConfirmDialog(true);
@@ -311,6 +341,12 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
       return () => clearInterval(interval);
     }
   }, [fetchPortnumNodeDistribution, selectedPortnum]);
+
+  useEffect(() => {
+    void fetchMessageCounts();
+    const interval = setInterval(fetchMessageCounts, 60000); // Refresh every minute
+    return () => clearInterval(interval);
+  }, [fetchMessageCounts]);
 
   // Helper function to format uptime
   const formatUptime = (uptimeSeconds: number): string => {
@@ -555,8 +591,26 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
         <div className="info-section">
           <h3>{t('info.network_stats')}</h3>
           <p><strong>{t('info.total_nodes')}</strong> {nodes.length}</p>
+          {showTransport && nodes.length > 0 && (
+            <TransportBreakdown
+              label={t('info.heard_via')}
+              counts={nodeTransportTally}
+              note={
+                nodeTransportTally.rf + nodeTransportTally.udp + nodeTransportTally.mqtt > nodes.length
+                  ? t('info.transport_overlap_note')
+                  : undefined
+              }
+              testId="info-nodes-transport"
+            />
+          )}
           <p><strong>{t('info.total_channels')}</strong> {channels.length}</p>
-          <p><strong>{t('info.total_messages')}</strong> {messages.length}</p>
+          <p><strong>{t('info.total_messages')}</strong> {activeSourceId ? (messageCounts?.total ?? '—') : messages.length}</p>
+          {showTransport && messageCounts && messageCounts.total > 0 && (
+            <TransportBreakdown
+              counts={{ rf: messageCounts.byTransport.rf, mqtt: messageCounts.byTransport.mqtt }}
+              testId="info-messages-transport"
+            />
+          )}
           <p><strong>{t('info.active_channels')}</strong> {getAvailableChannels().length}</p>
           {localStats?.numPacketsTx !== undefined && (
             <>
@@ -732,59 +786,85 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
             </div>
           );
 
+          // #5101: one shared selector drives both the donut cards below and
+          // the per-portnum node dropdown further down, so they never disagree
+          // about which transport slice they're showing. Hidden on MQTT-only
+          // sources, where every packet is MQTT by construction (#5283).
+          const transportButtons = showTransport ? (
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              {TRANSPORT_FILTER_OPTIONS.map((cls) => (
+                <button
+                  key={cls}
+                  onClick={() => setDistributionTransport(cls)}
+                  aria-pressed={distributionTransport === cls}
+                  data-testid={`dist-transport-${cls}`}
+                  style={timeRangeButtonStyle(distributionTransport === cls)}
+                >
+                  {t(`transport.${cls}`)}
+                </button>
+              ))}
+            </div>
+          ) : null;
+
+          // #5101: the header row (title, total, both button groups) stays on
+          // screen even when the current transport slice is empty — otherwise
+          // picking "UDP" on a mesh with no UDP traffic would remove the very
+          // buttons needed to undo it.
           return (
-            <>
-              {loadingDistribution && (
-                <div className="info-section">
-                  <p>{t('common.loading_indicator')}</p>
+            <div className="info-section-wide">
+              {/*
+                * #5195: this row is title-plus-buttons with no wrap, and a
+                * flex item will not shrink below its min-content width, so
+                * on a phone the toggle group was clipped by the card edge
+                * with "All Data" unreachable. Wrapping drops the group onto
+                * its own line instead; `rowGap` keeps the two lines apart.
+                */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', rowGap: '0.5rem', marginBottom: '0.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem', flexWrap: 'wrap', minWidth: 0 }}>
+                  <h3 style={{ margin: 0 }}>{t('info.packet_distribution', 'Packet Distribution')}</h3>
+                  <span style={{ fontSize: '0.9em', color: 'var(--color-text-subtle)', fontWeight: 600 }}>
+                    {t('info.total_packets', { count: packetDistribution.total, defaultValue: 'Total: {{count}} packets' })}
+                  </span>
                 </div>
+                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                  {transportButtons}
+                  {timeRangeButtons}
+                </div>
+              </div>
+
+              {loadingDistribution && (
+                <p>{t('common.loading_indicator')}</p>
               )}
 
               {!loadingDistribution && packetDistribution.total > 0 && (
-                <div className="info-section-wide">
-                  {/*
-                    * #5195: this row is title-plus-buttons with no wrap, and a
-                    * flex item will not shrink below its min-content width, so
-                    * on a phone the toggle group was clipped by the card edge
-                    * with "All Data" unreachable. Wrapping drops the group onto
-                    * its own line instead; `rowGap` keeps the two lines apart.
-                    */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', rowGap: '0.5rem', marginBottom: '0.75rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem', flexWrap: 'wrap', minWidth: 0 }}>
-                      <h3 style={{ margin: 0 }}>{t('info.packet_distribution', 'Packet Distribution')}</h3>
-                      <span style={{ fontSize: '0.9em', color: 'var(--color-text-subtle)', fontWeight: 600 }}>
-                        {t('info.total_packets', { count: packetDistribution.total, defaultValue: 'Total: {{count}} packets' })}
-                      </span>
-                    </div>
-                    {timeRangeButtons}
-                  </div>
-                  <div className="packet-distribution-grid">
-                    <PacketStatsChart
-                      title={t('info.packets_by_device')}
-                      data={deviceData}
-                      total={packetDistribution.total}
-                      chartId="dist-device"
-                      bare
-                      stacked
-                    />
-                    <PacketStatsChart
-                      title={t('info.packets_by_type')}
-                      data={typeData}
-                      total={packetDistribution.total}
-                      chartId="dist-type"
-                      bare
-                      stacked
-                    />
-                  </div>
+                <div className="packet-distribution-grid">
+                  <PacketStatsChart
+                    title={t('info.packets_by_device')}
+                    data={deviceData}
+                    total={packetDistribution.total}
+                    chartId="dist-device"
+                    bare
+                    stacked
+                  />
+                  <PacketStatsChart
+                    title={t('info.packets_by_type')}
+                    data={typeData}
+                    total={packetDistribution.total}
+                    chartId="dist-type"
+                    bare
+                    stacked
+                  />
                 </div>
               )}
 
               {!loadingDistribution && packetDistribution.total === 0 && (
-                <div className="info-section">
-                  <p style={{ color: '#888', fontStyle: 'italic' }}>{t('info.no_packet_data')}</p>
-                </div>
+                <p style={{ color: '#888', fontStyle: 'italic' }}>
+                  {distributionTransport === 'all'
+                    ? t('info.no_packet_data')
+                    : t('info.no_packets_for_transport', { transport: t(`transport.${distributionTransport}`) })}
+                </p>
               )}
-            </>
+            </div>
           );
         })()}
 

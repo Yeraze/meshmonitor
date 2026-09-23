@@ -97,16 +97,58 @@
   color: var(--color-text-muted);
 }
 
-/* min-height keeps a 1-node bucket visible rather than collapsing to nothing. */
+/* min-height keeps a 1-node bucket visible rather than collapsing to nothing.
+ * A flex row of segments (#5101) so a bucket with more than one transport
+ * class renders as a stacked bar instead of one solid colour. */
 .surveyHopBar {
-  display: block;
+  display: flex;
+  overflow: hidden;
   min-width: 2px;
   height: 0.7rem;
   border-radius: 2px;
+}
+
+.surveyHopSeg {
+  display: block;
+  height: 100%;
+}
+
+/* No-byTransport fallback (older fixture/response): one segment filling the
+ * whole bar, in the same accent colour the bar itself used to be. */
+.surveyHopSegFallback {
   background: var(--color-accent);
+}
+
+.surveyHopSegRf {
+  background: var(--chart-1);
+}
+
+.surveyHopSegUdp {
+  background: var(--chart-6);
+}
+
+.surveyHopSegMqtt {
+  background: var(--chart-4);
 }
 
 .surveyHopCount {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+.surveyLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.surveyLegendSwatch {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 2px;
+  margin-right: 0.3rem;
+  vertical-align: middle;
 }

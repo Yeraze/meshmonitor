@@ -1,0 +1,24 @@
+/* Transport breakdown line (#5101). Scoped module — see CLAUDE.md. */
+
+.breakdown {
+  display: flex;
+  flex-direction: column;
+  margin: 0.15rem 0 0.5rem;
+}
+
+.line {
+  font-size: 0.85em;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.label {
+  font-weight: 600;
+}
+
+.note {
+  margin-top: 0.15rem;
+  font-size: 0.8em;
+  color: var(--color-text-muted);
+  font-style: italic;
+}

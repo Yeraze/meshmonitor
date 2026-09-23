@@ -24,6 +24,7 @@ import databaseService from '../../services/database.js';
 import { isBogusPosition } from '../../utils/nullIsland.js';
 import { logger } from '../../utils/logger.js';
 import { resolveLocalNodeNums } from '../utils/localNodeNums.js';
+import type { NodeTransportClass } from '../../utils/nodeTransport.js';
 
 /** A node heard at zero hops — i.e. genuinely within direct radio range. */
 export interface DirectNeighbourSummary {
@@ -37,7 +38,9 @@ export interface DirectNeighbourSummary {
 export interface HopBucket {
   /** Hop count; 0 = direct. */
   hops: number;
+  /** Total; always === rf + udp + mqtt. Kept for back-compat. */
   nodeCount: number;
+  byTransport: { rf: number; udp: number; mqtt: number };
 }
 
 export interface NetworkSurvey {
@@ -70,20 +73,32 @@ export function clampWindowHours(raw: unknown): number {
 }
 
 /**
- * Bucket hop counts into a distribution.
+ * Bucket hop counts into a distribution, split by transport class (#5101).
+ * An entry with no `transport` (includeTransport was off, or the caller is a
+ * test fixture predating this) counts as `'rf'`, matching the record-class
+ * fallback used everywhere else in this classification (NULL → rf).
  *
  * Exported for tests: this is the one piece of real logic in the module, and
  * it is worth pinning independently of the database.
  */
-export function bucketHops(entries: Array<{ hops: number }>): HopBucket[] {
-  const counts = new Map<number, number>();
+export function bucketHops(
+  entries: Array<{ hops: number; transport?: NodeTransportClass }>,
+): HopBucket[] {
+  const counts = new Map<number, { rf: number; udp: number; mqtt: number }>();
   for (const e of entries) {
     if (!Number.isFinite(e.hops) || e.hops < 0) continue;
-    counts.set(e.hops, (counts.get(e.hops) ?? 0) + 1);
+    const cls = e.transport ?? 'rf';
+    const bucket = counts.get(e.hops) ?? { rf: 0, udp: 0, mqtt: 0 };
+    bucket[cls]++;
+    counts.set(e.hops, bucket);
   }
   return Array.from(counts.entries())
     .sort((a, b) => a[0] - b[0])
-    .map(([hops, nodeCount]) => ({ hops, nodeCount }));
+    .map(([hops, byTransport]) => ({
+      hops,
+      nodeCount: byTransport.rf + byTransport.udp + byTransport.mqtt,
+      byTransport,
+    }));
 }
 
 /**
@@ -168,7 +183,11 @@ export async function buildNetworkSurvey(
 
   try {
     const localNodeNums = await resolveLocalNodeNums([sourceId]);
-    const { entries } = await databaseService.analysis.getHopCounts({ sourceIds: [sourceId], localNodeNums });
+    const { entries } = await databaseService.analysis.getHopCounts({
+      sourceIds: [sourceId],
+      localNodeNums,
+      includeTransport: true,
+    });
     survey.hopDistribution = bucketHops(entries);
     // Derived with Math.max rather than "last bucket": reading the tail is
     // correct only while bucketHops sorts ascending, and that coupling is

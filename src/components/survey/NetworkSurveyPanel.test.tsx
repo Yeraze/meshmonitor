@@ -123,6 +123,58 @@ describe('NetworkSurveyPanel', () => {
     expect(screen.getByTestId('survey-no-hops')).toBeTruthy();
   });
 
+  it('renders a stacked hop bar with one segment per non-zero transport class', async () => {
+    renderPanel(survey({
+      hopDistribution: [
+        { hops: 0, nodeCount: 3, byTransport: { rf: 1, udp: 2, mqtt: 0 } },
+      ],
+    }));
+    await screen.findByTestId('survey-hop-0');
+    expect(screen.getByTestId('survey-hop-0-rf')).toBeTruthy();
+    expect(screen.getByTestId('survey-hop-0-udp')).toBeTruthy();
+    // Zero-count mqtt segment is skipped entirely.
+    expect(screen.queryByTestId('survey-hop-0-mqtt')).toBeNull();
+  });
+
+  it('carries the transport counts in the bar aria-label', async () => {
+    renderPanel(survey({
+      hopDistribution: [
+        { hops: 1, nodeCount: 5, byTransport: { rf: 2, udp: 1, mqtt: 2 } },
+      ],
+    }));
+    const bar = (await screen.findByTestId('survey-hop-1')).querySelector('[role="img"]');
+    expect(bar?.getAttribute('aria-label')).toBe(
+      'survey.hop_bar_label:{"rf":2,"udp":1,"mqtt":2}',
+    );
+  });
+
+  it('shows the legend only when there are hop buckets to explain', async () => {
+    renderPanel(survey({
+      hopDistribution: [{ hops: 0, nodeCount: 1, byTransport: { rf: 1, udp: 0, mqtt: 0 } }],
+    }));
+    expect(await screen.findByText('transport.rf')).toBeTruthy();
+    expect(screen.getByText('transport.udp')).toBeTruthy();
+    expect(screen.getByText('transport.mqtt')).toBeTruthy();
+    expect(screen.getByText('survey.transport_note')).toBeTruthy();
+  });
+
+  it('hides the legend when reach is unknown (no buckets)', async () => {
+    renderPanel(survey({ hopDistribution: [], maxHops: null }));
+    await screen.findByTestId('survey-no-hops');
+    expect(screen.queryByText('transport.rf')).toBeNull();
+    expect(screen.queryByText('survey.transport_note')).toBeNull();
+  });
+
+  it('renders one plain segment when a bucket carries no byTransport (older fixture)', async () => {
+    // The pre-#5101 fixture shape — must still render, one segment, no crash.
+    renderPanel(survey({
+      hopDistribution: [{ hops: 2, nodeCount: 4 }],
+    }));
+    const li = await screen.findByTestId('survey-hop-2');
+    expect(li.querySelectorAll('[role="img"] > span')).toHaveLength(1);
+    expect(screen.queryByTestId('survey-hop-2-rf')).toBeNull();
+  });
+
   it('shows an em dash for a neighbour with no RSSI rather than 0 dBm', async () => {
     renderPanel(survey());
     const row = await screen.findByTestId('survey-neighbour-287454020');

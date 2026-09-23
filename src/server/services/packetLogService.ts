@@ -1,6 +1,7 @@
 import databaseService from '../../services/database.js';
 import { DbPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../../db/types.js';
 import { logger } from '../../utils/logger.js';
+import type { NodeTransportClass } from '../../utils/nodeTransport.js';
 
 class PacketLogService {
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
@@ -131,6 +132,7 @@ class PacketLogService {
     since?: number;
     relay_node?: number | 'unknown';
     transport_mechanism?: number;
+    transportClass?: NodeTransportClass;
     sourceId?: string;
     search?: string;
   }): Promise<number> {
@@ -179,7 +181,7 @@ class PacketLogService {
   /**
    * Get packet counts grouped by node (for distribution charts)
    */
-  async getPacketCountsByNodeAsync(options?: { since?: number; limit?: number; portnum?: number; sourceId?: string }): Promise<DbPacketCountByNode[]> {
+  async getPacketCountsByNodeAsync(options?: { since?: number; limit?: number; portnum?: number; sourceId?: string; transportClass?: NodeTransportClass }): Promise<DbPacketCountByNode[]> {
     return databaseService.getPacketCountsByNodeAsync(options);
   }
 
@@ -193,7 +195,7 @@ class PacketLogService {
   /**
    * Get packet counts grouped by portnum (for distribution charts)
    */
-  async getPacketCountsByPortnumAsync(options?: { since?: number; from_node?: number; sourceId?: string }): Promise<DbPacketCountByPortnum[]> {
+  async getPacketCountsByPortnumAsync(options?: { since?: number; from_node?: number; sourceId?: string; transportClass?: NodeTransportClass }): Promise<DbPacketCountByPortnum[]> {
     return databaseService.getPacketCountsByPortnumAsync(options);
   }
 

@@ -10,6 +10,8 @@ import {
   classifyNodeTransport,
   nodePassesTransportFilter,
   isMqttOnlySourceType,
+  countNodesByTransport,
+  transportCutoffSec,
   TX_INTERNAL, TX_LORA, TX_LORA_ALT1, TX_LORA_ALT2, TX_LORA_ALT3,
   TX_MQTT, TX_MULTICAST_UDP, TX_API,
 } from './nodeTransport';
@@ -186,5 +188,57 @@ describe('isMqttOnlySourceType', () => {
   it('is false for null/undefined (e.g. the cross-source Dashboard/Unified view)', () => {
     expect(isMqttOnlySourceType(null)).toBe(false);
     expect(isMqttOnlySourceType(undefined)).toBe(false);
+  });
+});
+
+/**
+ * #5101 WP4: the Info tab's "Heard via" tally. Additive (OR) — a node with
+ * evidence on more than one transport counts once per class, so the parts
+ * can sum to more than `nodes.length`. That is the overlap the UI's note
+ * explains, not a bug here.
+ */
+describe('countNodesByTransport', () => {
+  it('counts an overlap node in both of its classes, so the sum exceeds nodes.length', () => {
+    const nodes = [
+      { transportClasses: ['rf', 'mqtt'] as const },
+      { transportClasses: ['rf'] as const },
+    ];
+    const tally = countNodesByTransport(nodes);
+    expect(tally).toEqual({ rf: 2, udp: 0, mqtt: 1 });
+    expect(tally.rf + tally.udp + tally.mqtt).toBeGreaterThan(nodes.length);
+  });
+
+  it('drops a stale class under a cutoff, keeping only the fresh one', () => {
+    const cutoff = transportCutoffSec(1, 2_000_000 * 1000); // 1h window, now = 2,000,000s
+    const node = {
+      transportLastRf: 2_000_000 - 10, // fresh
+      transportLastMqtt: 2_000_000 - 10_000, // stale (> 1h old)
+    };
+    const tally = countNodesByTransport([node], cutoff);
+    expect(tally).toEqual({ rf: 1, udp: 0, mqtt: 0 });
+  });
+
+  it('falls back to the newest class (never zero) when every transport has aged out', () => {
+    const cutoff = transportCutoffSec(1, 2_000_000 * 1000);
+    const node = {
+      transportLastRf: 2_000_000 - 100_000,
+      transportLastMqtt: 2_000_000 - 50_000, // newest of the two, still stale
+    };
+    const tally = countNodesByTransport([node], cutoff);
+    expect(tally).toEqual({ rf: 0, udp: 0, mqtt: 1 });
+  });
+
+  it('classifies a node with no stamps but viaMqtt=true as mqtt', () => {
+    const tally = countNodesByTransport([{ viaMqtt: true }]);
+    expect(tally).toEqual({ rf: 0, udp: 0, mqtt: 1 });
+  });
+
+  it('classifies a node with no stamps and no flag as rf', () => {
+    const tally = countNodesByTransport([{}]);
+    expect(tally).toEqual({ rf: 1, udp: 0, mqtt: 0 });
+  });
+
+  it('returns all-zero tally for an empty node list', () => {
+    expect(countNodesByTransport([])).toEqual({ rf: 0, udp: 0, mqtt: 0 });
   });
 });

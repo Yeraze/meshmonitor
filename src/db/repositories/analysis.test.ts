@@ -442,6 +442,75 @@ describe('AnalysisRepository.getHopCounts — pending traceroutes (#4570)', () =
 });
 
 /**
+ * `includeTransport: true` (#5101 WP2). Cross-dialect coverage lives in
+ * `analysis.hopCounts.multiBackend.test.ts`; these SQLite cases pin the
+ * wiring between the query and `reachTransportClass`.
+ */
+describe('AnalysisRepository.getHopCounts — includeTransport (#5101)', () => {
+  const INSERT =
+    'INSERT INTO traceroutes (fromNodeNum, toNodeNum, fromNodeId, toNodeId, sourceId, route, snrTowards, transportMechanism, timestamp, createdAt) VALUES (?,?,?,?,?,?,?,?,?,?)';
+
+  it('does not attach a transport key when the flag is off', async () => {
+    const { sqlite, db, close } = createTestDb();
+    const now = Date.now();
+    sqlite.prepare(INSERT).run(1, 99, '!00000001', '!00000063', 'src-a', '[10]', '[]', 5, now, now);
+    const repo = new AnalysisRepository(db, 'sqlite');
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'], localNodeNums: LOCALS });
+    const entry = r.entries.find((e: { nodeNum: number }) => e.nodeNum === 99);
+    expect(entry?.hops).toBe(1);
+    expect(entry && 'transport' in entry).toBe(false);
+    close();
+  });
+
+  it('classifies a NULL transportMechanism as rf', async () => {
+    const { sqlite, db, close } = createTestDb();
+    const now = Date.now();
+    sqlite.prepare(INSERT).run(1, 99, '!00000001', '!00000063', 'src-a', '[10]', '[]', null, now, now);
+    const repo = new AnalysisRepository(db, 'sqlite');
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'], localNodeNums: LOCALS, includeTransport: true });
+    expect(r.entries.find((e: { nodeNum: number }) => e.nodeNum === 99)?.transport).toBe('rf');
+    close();
+  });
+
+  it('classifies transportMechanism 5 as mqtt and 6 as udp', async () => {
+    const { sqlite, db, close } = createTestDb();
+    const now = Date.now();
+    const ins = sqlite.prepare(INSERT);
+    ins.run(1, 99, '!00000001', '!00000063', 'src-a', '[10]', '[]', 5, now, now);
+    ins.run(1, 88, '!00000001', '!00000058', 'src-a', '[10]', '[]', 6, now, now);
+    const repo = new AnalysisRepository(db, 'sqlite');
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'], localNodeNums: LOCALS, includeTransport: true });
+    expect(r.entries.find((e: { nodeNum: number }) => e.nodeNum === 99)?.transport).toBe('mqtt');
+    expect(r.entries.find((e: { nodeNum: number }) => e.nodeNum === 88)?.transport).toBe('udp');
+    close();
+  });
+
+  it('an RF row with a forward-hop unknown-SNR sentinel classifies as mqtt', async () => {
+    const { sqlite, db, close } = createTestDb();
+    const now = Date.now();
+    // route: one intermediate hop; snrTowards: real sample then the sentinel
+    // (-128 raw / 4 = -32) arriving at the endpoint.
+    sqlite.prepare(INSERT).run(1, 99, '!00000001', '!00000063', 'src-a', '[10]', '[40,-128]', 1, now, now);
+    const repo = new AnalysisRepository(db, 'sqlite');
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'], localNodeNums: LOCALS, includeTransport: true });
+    expect(r.entries.find((e: { nodeNum: number }) => e.nodeNum === 99)?.transport).toBe('mqtt');
+    close();
+  });
+
+  it('resolves transport for the responder→local row shape (side "to")', async () => {
+    const { sqlite, db, close } = createTestDb();
+    const now = Date.now();
+    sqlite.prepare(INSERT).run(99, 1, '!00000063', '!00000001', 'src-a', '[10,20]', '[]', 6, now, now);
+    const repo = new AnalysisRepository(db, 'sqlite');
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'], localNodeNums: LOCALS, includeTransport: true });
+    const entry = r.entries.find((e: { nodeNum: number }) => e.nodeNum === 99);
+    expect(entry?.hops).toBe(2);
+    expect(entry?.transport).toBe('udp');
+    close();
+  });
+});
+
+/**
  * #5289 — only traceroutes the local node took part in say anything about its
  * hop distance. MQTT sources ingest every trace on the broker, and a response
  * with no pending row is stored responder→requester, so keying on `toNodeNum`

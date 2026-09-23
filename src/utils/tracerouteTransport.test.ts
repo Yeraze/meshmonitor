@@ -16,6 +16,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   hopTransportClass,
+  reachTransportClass,
   segmentPassesTransportFilter,
   tracerouteTransportClass,
   transportFilterIsInert,
@@ -104,6 +105,53 @@ describe('segmentPassesTransportFilter', () => {
   it('accepts a Set, which is how the aggregated layer accumulates classes', () => {
     expect(segmentPassesTransportFilter(new Set<NodeTransportClass>(['mqtt']), RF_ONLY)).toBe(false);
     expect(segmentPassesTransportFilter(new Set<NodeTransportClass>(['mqtt', 'rf']), RF_ONLY)).toBe(true);
+  });
+});
+
+describe('reachTransportClass', () => {
+  const base = { fromNodeNum: 1, toNodeNum: 2 };
+
+  it('maps the record mechanism when no forward hop is unknown', () => {
+    expect(reachTransportClass({ ...base, transportMechanism: null, route: '[]', snrTowards: '[]' })).toBe('rf');
+    expect(reachTransportClass({ ...base, transportMechanism: TX_MQTT, route: '[]', snrTowards: '[]' })).toBe('mqtt');
+    expect(reachTransportClass({ ...base, transportMechanism: TX_MULTICAST_UDP, route: '[]', snrTowards: '[]' })).toBe('udp');
+    expect(reachTransportClass({ ...base, transportMechanism: TX_INTERNAL, route: '[]', snrTowards: '[]' })).toBe('rf');
+    expect(reachTransportClass({ ...base, transportMechanism: TX_API, route: '[]', snrTowards: '[]' })).toBe('rf');
+  });
+
+  it('an RF record with a forward sentinel reads mqtt — the sentinel wins', () => {
+    // route has one intermediate hop; snrTowards has a real sample for it
+    // and a sentinel (-128 raw / 4 = -32) arriving at the endpoint.
+    expect(reachTransportClass({
+      ...base, transportMechanism: TX_LORA, route: '[10]', snrTowards: '[40,-128]',
+    })).toBe('mqtt');
+  });
+
+  it('an empty route with a sentinel-only snrTowards still reads mqtt', () => {
+    expect(reachTransportClass({
+      ...base, transportMechanism: TX_LORA, route: '[]', snrTowards: '[-128]',
+    })).toBe('mqtt');
+  });
+
+  it('never sees a return-leg sentinel — the type has no routeBack/snrBack fields', () => {
+    // `hops` (route.length) does not count the return leg, so
+    // ReachTransportInput deliberately has no routeBack/snrBack — a sentinel
+    // that exists only there cannot reach this classifier at all.
+    expect(reachTransportClass({
+      ...base, transportMechanism: TX_LORA, route: '[10]', snrTowards: '[40,60]',
+    })).toBe('rf');
+  });
+
+  it('falls back to the record class when snrTowards is empty or absent', () => {
+    expect(reachTransportClass({ ...base, transportMechanism: TX_LORA, route: '[10]', snrTowards: '[]' })).toBe('rf');
+    expect(reachTransportClass({ ...base, transportMechanism: TX_LORA, route: '[10]', snrTowards: null })).toBe('rf');
+    expect(reachTransportClass({ ...base, transportMechanism: TX_MQTT, route: '[10]', snrTowards: undefined })).toBe('mqtt');
+  });
+
+  it('a UDP record with a forward sentinel still reads mqtt — sentinel wins', () => {
+    expect(reachTransportClass({
+      ...base, transportMechanism: TX_MULTICAST_UDP, route: '[]', snrTowards: '[-128]',
+    })).toBe('mqtt');
   });
 });
 

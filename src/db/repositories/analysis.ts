@@ -22,6 +22,8 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { MySql2Database } from 'drizzle-orm/mysql2';
 import { and, desc, gte, inArray, isNotNull, lt, max, or, eq } from 'drizzle-orm';
 import { isBogusPosition } from '../../utils/nullIsland.js';
+import { reachTransportClass } from '../../utils/tracerouteTransport.js';
+import type { NodeTransportClass } from '../../utils/nodeTransport.js';
 import {
   telemetrySqlite,
   telemetryPostgres,
@@ -152,6 +154,8 @@ export interface HopEntry {
   sourceId: string;
   nodeNum: number;
   hops: number;
+  /** Only present when `GetHopCountsArgs.includeTransport` is set (#5101). */
+  transport?: NodeTransportClass;
 }
 
 export interface HopCountsResult {
@@ -166,6 +170,12 @@ export interface GetHopCountsArgs {
    * hops from, so it contributes no entries (#5289).
    */
   localNodeNums: ReadonlyMap<string, number>;
+  /**
+   * Also classify each entry's transport via `reachTransportClass` (#5101).
+   * Default off, so the Map Analysis `/hop-counts` payload and its select
+   * list stay unchanged for callers that don't ask for it.
+   */
+  includeTransport?: boolean;
 }
 
 /**
@@ -659,12 +669,13 @@ export class AnalysisRepository {
    *   `fromNodeNum`.
    */
   async getHopCounts(args: GetHopCountsArgs): Promise<HopCountsResult> {
+    const includeTransport = args.includeTransport ?? false;
     const seen = new Map<string, HopEntry & { timestamp: number }>();
     for (const sourceId of args.sourceIds) {
       const local = args.localNodeNums.get(sourceId);
       if (local === undefined || !Number.isFinite(local)) continue;
       for (const side of ['from', 'to'] as const) {
-        const rows = await this.newestAnsweredPerPeer(sourceId, local, side);
+        const rows = await this.newestAnsweredPerPeer(sourceId, local, side, includeTransport);
         for (const r of rows) {
           const nodeNum = Number(r.peer);
           if (nodeNum === local) continue;
@@ -688,24 +699,49 @@ export class AnalysisRepository {
             continue;
           }
 
-          seen.set(key, { sourceId, nodeNum, hops, timestamp });
+          const entry: HopEntry & { timestamp: number } = { sourceId, nodeNum, hops, timestamp };
+          if (includeTransport) {
+            // The endpoints are never filtered by `buildLegHopLinks`, so
+            // rebuilding them from `side` is exact — no new tie logic.
+            entry.transport = reachTransportClass({
+              fromNodeNum: side === 'from' ? local : nodeNum,
+              toNodeNum: side === 'from' ? nodeNum : local,
+              route: r.route,
+              snrTowards: r.snrTowards ?? null,
+              transportMechanism: r.transportMechanism == null ? null : Number(r.transportMechanism),
+            });
+          }
+          seen.set(key, entry);
         }
       }
     }
     return {
-      entries: Array.from(seen.values(), ({ sourceId, nodeNum, hops }) => ({ sourceId, nodeNum, hops })),
+      entries: Array.from(seen.values(), ({ sourceId, nodeNum, hops, transport }) => {
+        const entry: HopEntry = { sourceId, nodeNum, hops };
+        if (includeTransport) entry.transport = transport;
+        return entry;
+      }),
     };
   }
 
   /**
    * Newest answered traceroute per peer for one source, among rows where the
    * local node is on the given side. `peer` is the node at the other end.
+   * `includeTransport` also selects `transportMechanism`/`snrTowards` so the
+   * caller can classify the route via `reachTransportClass` (#5101).
    */
   private async newestAnsweredPerPeer(
     sourceId: string,
     local: number,
     side: 'from' | 'to',
-  ): Promise<Array<{ peer: number; route: string | null; timestamp: number }>> {
+    includeTransport: boolean = false,
+  ): Promise<Array<{
+    peer: number;
+    route: string | null;
+    timestamp: number;
+    transportMechanism?: number | null;
+    snrTowards?: string | null;
+  }>> {
     const traceroutes = pickTraceroutesTable(this.dbType);
     const localCol = side === 'from' ? traceroutes.fromNodeNum : traceroutes.toNodeNum;
     const peerCol = side === 'from' ? traceroutes.toNodeNum : traceroutes.fromNodeNum;
@@ -747,6 +783,9 @@ export class AnalysisRepository {
         peer: peerCol,
         route: traceroutes.route,
         timestamp: traceroutes.timestamp,
+        ...(includeTransport
+          ? { transportMechanism: traceroutes.transportMechanism, snrTowards: traceroutes.snrTowards }
+          : {}),
       })
       .from(traceroutes)
       .innerJoin(

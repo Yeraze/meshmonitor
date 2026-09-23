@@ -868,6 +868,9 @@ async function ingestTraceroute(
     snrTowards: JSON.stringify(snrTowards),
     snrBack: JSON.stringify(snrBack),
     routePositions: JSON.stringify(routePositions),
+    // #5101: every row this path writes arrived over MQTT. Without this the
+    // column stays NULL, which reads as RF (classifyNodeTransport's fallback).
+    transportMechanism: TransportMechanism.MQTT,
     // Originating packet id enables correlating this trace with the same packet
     // heard on another source (e.g. a direct TCP listener) — issue #3623.
     packetId: typeof packet.id === 'number' ? packet.id >>> 0 : null,

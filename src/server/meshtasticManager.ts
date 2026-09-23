@@ -359,6 +359,19 @@ export interface DeviceInfo {
   positionEstimateUncertaintyKm?: number;
   hideFromMap?: boolean;
   isStoreForwardServer?: boolean;
+  /**
+   * Transport classification fields (#5101 WP4). The mapper builds an
+   * untyped object, so these exist here only for documentation — the actual
+   * pass-through lives in `mapDbNodeToDeviceInfo`
+   * (`nodeDbMaintenanceService.ts`). The client's `getNodeTransportClasses`
+   * (`src/utils/nodeTransport.ts`) reads all four; without them the
+   * per-source Nodes map fell back to `viaMqtt` alone (no UDP, no #4240
+   * decay).
+   */
+  transportMechanism?: number;
+  transportLastRf?: number;
+  transportLastMqtt?: number;
+  transportLastUdp?: number;
 }
 
 export interface MeshMessage {
@@ -6338,8 +6351,10 @@ class MeshtasticManager implements ISourceManager {
           spoof_suspected: spoof.spoofSuspected || undefined,
           decrypted_by: decryptedBy ?? undefined,
           decrypted_channel_id: decryptedChannelId ?? undefined,
-          // Note: ?? (nullish coalescing) correctly preserves 0 (INTERNAL), only defaults on null/undefined
-          transport_mechanism: meshPacket.transportMechanism ?? TransportMechanism.LORA,
+          // #5101: resolveRadioPacketTransport, not `?? LORA` — a packet with no
+          // explicit mechanism but viaMqtt=true arrived over the node's MQTT uplink.
+          // Still preserves an explicit 0 (INTERNAL).
+          transport_mechanism: resolveRadioPacketTransport(meshPacket),
           sourceId: this.sourceId,
         });
         } // end else (not a duplicate packet-log entry)

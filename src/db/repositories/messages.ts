@@ -268,6 +268,38 @@ export class MessagesRepository extends BaseRepository {
   }
 
   /**
+   * Message counts for one source, grouped by channel and viaMqtt (#5101).
+   * The channel axis lets the route drop channels the caller cannot read.
+   * NULL viaMqtt (pre-flag rows) is RF. Excludes `excludePortnums` the same
+   * way getMessages does (NULL portnum kept).
+   */
+  async getMessageCountsByChannelAndTransport(
+    sourceId: string,
+    excludePortnums: number[] = [],
+  ): Promise<Array<{ channel: number; viaMqtt: boolean; count: number }>> {
+    const { messages } = this.tables;
+    const whereClause = and(
+      this.withSourceScope(messages, sourceId),
+      excludePortnums.length > 0
+        ? or(isNull(messages.portnum), notInArray(messages.portnum, excludePortnums))
+        : undefined,
+    );
+    const rows = await this.db
+      .select({ channel: messages.channel, viaMqtt: messages.viaMqtt, count: count() })
+      .from(messages)
+      .where(whereClause)
+      .groupBy(messages.channel, messages.viaMqtt);
+
+    return rows.map((r: { channel: number | string | bigint; viaMqtt: boolean | number | null; count: number | string | bigint }) => ({
+      channel: Number(r.channel),
+      // PG returns boolean true/false, MySQL/SQLite return 1/0, NULL (pre-flag
+      // rows) reads as false — merged into the RF bucket by the caller.
+      viaMqtt: Number(r.viaMqtt) === 1,
+      count: Number(r.count),
+    }));
+  }
+
+  /**
    * Get the distinct `channel` numbers that have messages for a source, with a
    * per-channel message count and the most recent message timestamp. Used by
    * the Channels tab to enumerate the channel_database-backed virtual channels

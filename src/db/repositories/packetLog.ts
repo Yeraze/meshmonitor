@@ -8,8 +8,9 @@ import { eq, asc, and, or, inArray, sql, isNull, gte, gt, isNotNull, max, min, t
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../types.js';
 import { logger } from '../../utils/logger.js';
-import { getPortNumName, PortNum } from '../../server/constants/meshtastic.js';
+import { getPortNumName, PortNum, TransportMechanism } from '../../server/constants/meshtastic.js';
 import { BROADCAST_ADDR } from '../../utils/tracerouteSegments.js';
+import type { NodeTransportClass } from '../../utils/nodeTransport.js';
 
 /**
  * Per-node hop-arrival aggregate row — Mesh Issues B6 "hop horizon" evidence
@@ -65,11 +66,32 @@ export class PacketLogRepository extends BaseRepository {
   // ============ PACKET LOG ============
 
   /**
+   * Single home for packet_log transport predicates (#5101): the exact
+   * mechanism filter (Packet Monitor) and the RF/UDP/MQTT class filter
+   * (Info tab). The class mapping mirrors classifyNodeTransport with
+   * viaMqtt absent — packet_log has no viaMqtt column: MQTT(5)→mqtt,
+   * MULTICAST_UDP(6)→udp, anything else incl. NULL→rf.
+   */
+  private transportConditions(
+    column: SQL,
+    filter: { transport_mechanism?: number; transportClass?: NodeTransportClass },
+  ): SQL[] {
+    const out: SQL[] = [];
+    if (filter.transport_mechanism !== undefined) out.push(sql`${column} = ${filter.transport_mechanism}`);
+    switch (filter.transportClass) {
+      case 'mqtt': out.push(sql`${column} = ${TransportMechanism.MQTT}`); break;
+      case 'udp': out.push(sql`${column} = ${TransportMechanism.MULTICAST_UDP}`); break;
+      case 'rf': out.push(sql`(${column} IS NULL OR ${column} NOT IN (${TransportMechanism.MQTT}, ${TransportMechanism.MULTICAST_UDP}))`); break;
+    }
+    return out;
+  }
+
+  /**
    * Filter options for packet log queries
    */
   private buildPacketLogWhere(options: PacketLogFilterOptions): { conditions: any[]; } {
     const conditions: any[] = [];
-    const { portnum, from_node, to_node, channel, encrypted, since, relay_node, transport_mechanism, sourceId, untilTs, untilId, search } = options;
+    const { portnum, from_node, to_node, channel, encrypted, since, relay_node, transport_mechanism, transportClass, sourceId, untilTs, untilId, search } = options;
 
     if (sourceId !== undefined) conditions.push(sql`pl.${sql.identifier('sourceId')} = ${sourceId}`);
     // Keyset cursor — mirrors ORDER BY pl.timestamp DESC, pl.id DESC so paging never
@@ -94,9 +116,7 @@ export class PacketLogRepository extends BaseRepository {
     } else if (relay_node !== undefined) {
       conditions.push(sql`pl.relay_node = ${relay_node}`);
     }
-    if (transport_mechanism !== undefined) {
-      conditions.push(sql`pl.transport_mechanism = ${transport_mechanism}`);
-    }
+    conditions.push(...this.transportConditions(sql`pl.transport_mechanism`, { transport_mechanism, transportClass }));
     // Free-text search across the decoded content (#4958): the human-readable
     // preview and the serialized-JSON metadata (both plain TEXT in every
     // backend). Postgres LIKE is case-sensitive, so branch to ILIKE there;
@@ -632,14 +652,15 @@ export class PacketLogRepository extends BaseRepository {
    * Get packet counts grouped by from_node (for distribution charts).
    * Returns top N nodes by packet count.
    */
-  async getPacketCountsByNode(options?: { since?: number; limit?: number; portnum?: number; sourceId?: string }): Promise<DbPacketCountByNode[]> {
-    const { since, limit = 10, portnum, sourceId } = options || {};
+  async getPacketCountsByNode(options?: { since?: number; limit?: number; portnum?: number; sourceId?: string; transportClass?: NodeTransportClass }): Promise<DbPacketCountByNode[]> {
+    const { since, limit = 10, portnum, sourceId, transportClass } = options || {};
 
     try {
       const conditions: any[] = [];
       if (sourceId !== undefined) conditions.push(sql`pl.${sql.identifier('sourceId')} = ${sourceId}`);
       if (since !== undefined) conditions.push(sql`pl.timestamp >= ${since}`);
       if (portnum !== undefined) conditions.push(sql`pl.portnum = ${portnum}`);
+      conditions.push(...this.transportConditions(sql`pl.transport_mechanism`, { transportClass }));
       const whereClause = conditions.length > 0 ? this.combineConditions(conditions) : sql`1=1`;
 
       const longName = this.col('longName');
@@ -687,14 +708,15 @@ export class PacketLogRepository extends BaseRepository {
    * Get packet counts grouped by portnum (for distribution charts).
    * Includes port name from meshtastic constants.
    */
-  async getPacketCountsByPortnum(options?: { since?: number; from_node?: number; sourceId?: string }): Promise<DbPacketCountByPortnum[]> {
-    const { since, from_node, sourceId } = options || {};
+  async getPacketCountsByPortnum(options?: { since?: number; from_node?: number; sourceId?: string; transportClass?: NodeTransportClass }): Promise<DbPacketCountByPortnum[]> {
+    const { since, from_node, sourceId, transportClass } = options || {};
 
     try {
       const conditions: any[] = [];
       if (sourceId !== undefined) conditions.push(sql`${sql.identifier('sourceId')} = ${sourceId}`);
       if (since !== undefined) conditions.push(sql`timestamp >= ${since}`);
       if (from_node !== undefined) conditions.push(sql`from_node = ${from_node}`);
+      conditions.push(...this.transportConditions(sql`transport_mechanism`, { transportClass }));
       const whereClause = conditions.length > 0 ? this.combineConditions(conditions) : sql`1=1`;
 
       const rows = await this.executeQuery(sql`
@@ -883,6 +905,7 @@ export interface PacketLogFilterOptions {
   since?: number;
   relay_node?: number | 'unknown';
   transport_mechanism?: number;
+  transportClass?: NodeTransportClass;
   sourceId?: string;
   /** Free-text substring match across payload_preview + metadata (#4958). */
   search?: string;

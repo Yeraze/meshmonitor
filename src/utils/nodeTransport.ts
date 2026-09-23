@@ -174,6 +174,33 @@ export function getNodeTransportClasses(
  * MQTT off no longer hides a node that is also reachable via RF. Keep this
  * small — it's called from inside large `.filter()` chains.
  */
+export interface TransportTally {
+  rf: number;
+  udp: number;
+  mqtt: number;
+}
+
+/**
+ * Tally nodes into RF/UDP/MQTT counts for the Info tab's "Heard via"
+ * breakdown (#5101). Additive (OR): a node counts once in EVERY class it was
+ * heard on, so the parts can sum to more than `nodes.length` — that overlap
+ * is the point (see `getNodeTransportClasses`), not a bug in the caller.
+ * Pass `cutoffSec` once per render (see `transportCutoffSec`) rather than
+ * recomputing it per node.
+ */
+export function countNodesByTransport(
+  nodes: readonly NodeTransportFields[],
+  cutoffSec?: number,
+): TransportTally {
+  const tally: TransportTally = { rf: 0, udp: 0, mqtt: 0 };
+  for (const node of nodes) {
+    for (const cls of getNodeTransportClasses(node, cutoffSec)) {
+      tally[cls]++;
+    }
+  }
+  return tally;
+}
+
 export function nodePassesTransportFilter(
   node: NodeTransportFields,
   flags: { showRfNodes: boolean; showUdpNodes: boolean; showMqttNodes: boolean },
