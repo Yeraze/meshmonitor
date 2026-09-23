@@ -10,6 +10,7 @@ import {
   UnifiedPacketsResponse,
   UnifiedPacketDistribution,
 } from '../types/packet.js';
+import type { NodeTransportClass } from '../utils/nodeTransport.js';
 
 /**
  * Fetch packet logs with optional filters
@@ -146,7 +147,7 @@ export const exportPackets = async (filters?: PacketFilters): Promise<void> => {
 /**
  * Fetch packet distribution statistics (by device and by type)
  */
-export const getPacketDistributionStats = async (since?: number, from_node?: number, portnum?: number, sourceId?: string): Promise<PacketDistributionStats> => {
+export const getPacketDistributionStats = async (since?: number, from_node?: number, portnum?: number, sourceId?: string, transport?: NodeTransportClass): Promise<PacketDistributionStats> => {
   const params = new URLSearchParams();
   if (since !== undefined) {
     params.append('since', since.toString());
@@ -159,6 +160,9 @@ export const getPacketDistributionStats = async (since?: number, from_node?: num
   }
   if (sourceId !== undefined) {
     params.append('sourceId', sourceId);
+  }
+  if (transport !== undefined) {
+    params.append('transport', transport);
   }
   const query = params.toString();
   return api.get<PacketDistributionStats>(`/api/packets/stats/distribution${query ? `?${query}` : ''}`);
