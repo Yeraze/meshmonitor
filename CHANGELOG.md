@@ -6,7 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.16.2-rc2] - 2026-09-23
+
+### Added
+- **Add a node from a Meshtastic contact URL.** Paste a `meshtastic.org/v/#...` link into "+ Add from URL" in the node list to add a node this source has never heard, so it can be messaged before any packet arrives. The row carries an "Imported" badge until the node is actually heard. Nothing is sent over the mesh. (#5317, #5318)
+- **Scheduled NodeInfo Enrichment.** Settings → Auto-Enrichment runs the Enrichment "Fix All" on an interval or cron schedule. Off by default. Schedules are floored at one hour; the optional push to the device NodeDB sends at most 25 NodeInfo requests per run, 30 s apart, and the timer survives restarts and settings saves without firing early. (#5287, #5322)
+
 ### Fixed
+- **iOS home-screen app:** the node list fills the phone (#5316), and the status-bar blur gap from #5286 now also applies when the user agent carries no `Version/NN` token. (#5319)
 - **LoRa frequency readout for any preset that is not 250 kHz wide.** Firmware ignores `bandwidth`/`spread_factor`/`coding_rate` whenever a modem preset is in use, and never writes the preset's parameters back into them, so those fields sit stale — a bench radio on Long Turbo reported Medium Fast's `250 / 9 / 5`. The frequency was computed from that stale bandwidth, and the channel grid is bandwidth-spaced, so Long Turbo, Short Turbo and Medium Turbo (500 kHz) and Long Slow / Long Moderate (125 kHz) all reported the wrong centre frequency — a US node on Long Turbo channel 14 showed 905.375 MHz while transmitting on 908.750 MHz. The bandwidth now follows `use_preset`, as firmware does; a genuine manual bandwidth is still honoured. Long Fast is 250 kHz, so it was never affected. The panel also reported the stale bandwidth itself, and now reports the effective one. (#5320, #5321)
 - **Modem presets 9-16 show their name** instead of `Unknown (9)` in the LoRa Radio Configuration panel, and back up as `LONG_TURBO` rather than a bare number. The display map, the backup enum map and the bandwidth table were three independent literals that had each drifted at `SHORT_TURBO`; they now read one canonical table in `src/utils/loraFrequency.ts`. (#5320, #5321)
 - **Restoring a backup naming a preset above `SHORT_TURBO`** (including one exported by the Meshtastic CLI) passed the preset through to the radio as a string instead of its enum number. (#5320, #5321)
