@@ -5,7 +5,7 @@ import { logger } from '../../utils/logger.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { parseDestinationNum } from '../utils/parseDestination.js';
 import { resolveDestinationChannel, resolveBroadcastChannel, isValidChannelIndex } from '../utils/resolveDestinationChannel.js';
-import { PortNum } from '../constants/meshtastic.js';
+import { PortNum, TransportMechanism } from '../constants/meshtastic.js';
 import { fail } from '../utils/apiResponse.js';
 import { isTxDisabledError } from '../errors/txDisabledError.js';
 
@@ -110,6 +110,8 @@ router.post('/position/request', requirePermission('messages', 'write'), async (
         createdAt: timestamp,
         sourceIp: req.ip ?? null,
         sourcePath: 'http_api',
+        // #5101: outbound system row — every outbound message write stamps INTERNAL.
+        transportMechanism: TransportMechanism.INTERNAL,
       });
       logger.debug(`📍 Position request system message inserted successfully`);
     } else {
@@ -191,6 +193,8 @@ router.post('/nodeinfo/request', requirePermission('messages', 'write'), async (
         createdAt: timestamp,
         sourceIp: req.ip ?? null,
         sourcePath: 'http_api',
+        // #5101: outbound system row — every outbound message write stamps INTERNAL.
+        transportMechanism: TransportMechanism.INTERNAL,
       });
       logger.debug(`📇 NodeInfo request system message inserted successfully`);
     } else {

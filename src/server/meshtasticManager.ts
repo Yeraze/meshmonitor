@@ -31,6 +31,7 @@ import { isPointInGeofence, distanceToGeofenceCenter } from '../utils/geometry.j
 import { formatTime, formatDate } from '../utils/datetime.js';
 import { logger } from '../utils/logger.js';
 import { transportColumnForPacket } from '../utils/nodeTransport.js';
+import { segmentTransportMechanism } from '../utils/tracerouteTransport.js';
 import {
   parseFirmwareVersion as parseFirmwareVersionShared,
   isParsedFirmwareAtLeast,
@@ -438,6 +439,7 @@ type TextMessage = {
   sourceIp?: string | null; // Per-message ingress attribution (client IP for HTTP injects)
   sourcePath?: 'http_api' | 'tcp_radio' | 'mqtt_bridge' | 'system' | null;
   spoofSuspected?: boolean; // #2584 — claims from == our local node but arrived over RF
+  transportMechanism?: number; // #5101 — meshtastic.MeshPacket.TransportMechanism the message arrived on (outbound = INTERNAL)
 };
 
 /**
@@ -6959,6 +6961,10 @@ class MeshtasticManager implements ISourceManager {
           // #2584 — flag messages that claim to be from our own node but
           // arrived over RF (and weren't recently sent by us).
           spoofSuspected: this.assessLocalSpoof(meshPacket).spoofSuspected || undefined,
+          // #5101: a Virtual Node client's own send is outbound, not received.
+          transportMechanism: context?.virtualNodeRequestId != null
+            ? TransportMechanism.INTERNAL
+            : resolveRadioPacketTransport(meshPacket),
         };
         const wasInserted = await databaseService.messages.insertMessage(message, this.sourceId);
 
@@ -7147,6 +7153,8 @@ class MeshtasticManager implements ISourceManager {
         sourceIp: null,
         sourcePath: 'tcp_radio',
         spoofSuspected: this.assessLocalSpoof(meshPacket).spoofSuspected || undefined,
+        // #5101: RX-only path, so always a received transport.
+        transportMechanism: resolveRadioPacketTransport(meshPacket),
       };
 
       const wasInserted = await databaseService.messages.insertMessage(message, this.sourceId);
@@ -7279,6 +7287,8 @@ class MeshtasticManager implements ISourceManager {
         sourceIp: null,
         sourcePath: 'tcp_radio',
         spoofSuspected: this.assessLocalSpoof(meshPacket).spoofSuspected || undefined,
+        // #5101: RX-only path, so always a received transport.
+        transportMechanism: resolveRadioPacketTransport(meshPacket),
       };
 
       const wasInserted = await databaseService.messages.insertMessage(message, this.sourceId);
@@ -8703,6 +8713,8 @@ class MeshtasticManager implements ISourceManager {
         // Inbound traceroute response from a meshtastic node over TCP.
         sourceIp: null,
         sourcePath: 'tcp_radio' as const,
+        // #5101: excluded from message-transport counts (TRACEROUTE_APP), stamped for consistency.
+        transportMechanism: resolveRadioPacketTransport(meshPacket),
       };
 
       const wasInserted = await databaseService.messages.insertMessage(message, this.sourceId);
@@ -8888,7 +8900,9 @@ class MeshtasticManager implements ISourceManager {
               toLatitude: node2.latitude,
               toLongitude: node2.longitude,
               timestamp: timestamp,
-              createdAt: Date.now()
+              createdAt: Date.now(),
+              // #5101: per-hop transport, so records are kept per (source, transport).
+              transportMechanism: segmentTransportMechanism(tracerouteRecord.transportMechanism, snrTowards[i]),
             };
 
             await databaseService.traceroutes.insertRouteSegment(segment, this.sourceId ?? undefined);
@@ -10137,7 +10151,9 @@ class MeshtasticManager implements ISourceManager {
           // Default attribution to 'system' when not provided (e.g. internal
           // ping/welcome/etc. callers); HTTP route passes 'http_api' + req.ip.
           sourceIp: attribution?.sourceIp ?? null,
-          sourcePath: attribution?.sourcePath ?? 'system'
+          sourcePath: attribution?.sourcePath ?? 'system',
+          // #5101: every outbound Meshtastic message write stamps INTERNAL.
+          transportMechanism: TransportMechanism.INTERNAL,
         };
 
         await databaseService.messages.insertMessage(message, this.sourceId);
