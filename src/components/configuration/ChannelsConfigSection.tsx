@@ -339,7 +339,9 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
       try {
         // The route requires sourceId; without it the 400 was swallowed below
         // and the row and its messages were never removed (#5324).
-        await apiService.delete(`/api/channels/${slotId}?sourceId=${encodeURIComponent(sourceId ?? '')}`);
+        if (sourceId) {
+          await apiService.delete(`/api/channels/${slotId}?sourceId=${encodeURIComponent(sourceId)}`);
+        }
       } catch {
         // DB cleanup is best-effort — channel is already disabled on device
       }
