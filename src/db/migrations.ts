@@ -187,6 +187,9 @@ import { migration as waypointNotificationsMigration, runMigration165Postgres, r
 import { migration as meshBeaconMuteMigration, runMigration166Postgres, runMigration166Mysql } from '../server/migrations/166_mesh_beacon_mute.js';
 import { migration as solarNodeOverridesMigration, runMigration167Postgres, runMigration167Mysql } from '../server/migrations/167_solar_node_overrides.js';
 import { migration as nodesImportedAtMigration, runMigration168Postgres, runMigration168Mysql } from '../server/migrations/168_nodes_imported_at.js';
+import { migration as routeSegmentsTransportMigration, runMigration169Postgres, runMigration169Mysql } from '../server/migrations/169_route_segments_transport_mechanism.js';
+import { migration as messagesTransportMigration, runMigration170Postgres, runMigration170Mysql } from '../server/migrations/170_messages_transport_mechanism.js';
+import { migration as reclassifyRecordHoldersMigration, runMigration171Postgres, runMigration171Mysql } from '../server/migrations/171_reclassify_record_holder_transport.js';
 
 // ============================================================================
 // Registry
@@ -2728,4 +2731,48 @@ registry.register({
   sqlite: (db) => nodesImportedAtMigration.up(db),
   postgres: (client) => runMigration168Postgres(client),
   mysql: (pool) => runMigration168Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 169: `route_segments.transportMechanism` (#5101) — the effective
+// per-hop transport, plus the (sourceId, transportMechanism, distanceKm)
+// index the Info tab's per-transport record queries rely on.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 169,
+  name: 'route_segments_transport_mechanism',
+  settingsKey: 'migration_169_route_segments_transport_mechanism',
+  sqlite: (db) => routeSegmentsTransportMigration.up(db),
+  postgres: (client) => runMigration169Postgres(client),
+  mysql: (pool) => runMigration169Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 170: `messages.transportMechanism` (#5101) — the transport a
+// message arrived on, feeding the Info tab's Total Messages RF/UDP/MQTT split.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 170,
+  name: 'messages_transport_mechanism',
+  settingsKey: 'migration_170_messages_transport_mechanism',
+  sqlite: (db) => messagesTransportMigration.up(db),
+  postgres: (client) => runMigration170Postgres(client),
+  mysql: (pool) => runMigration170Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 171: best-effort reclassify of existing route_segments record
+// holders by transport (#5101 §10.1). Bounded to record-holder rows; never
+// blocks boot (whole body is try/catch'd inside the migration itself).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 171,
+  name: 'reclassify_record_holder_transport',
+  settingsKey: 'migration_171_reclassify_record_holder_transport',
+  sqlite: (db) => reclassifyRecordHoldersMigration.up(db),
+  postgres: (client) => runMigration171Postgres(client),
+  mysql: (pool) => runMigration171Mysql(pool),
 });
