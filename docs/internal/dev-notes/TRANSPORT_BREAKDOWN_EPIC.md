@@ -32,11 +32,11 @@ route segments respect the Show RF / UDP / MQTT toggles.
 ## Phases
 
 ### Phase 1 — splits that need no migration
-- [ ] Bug: MQTT-ingested traceroutes carry `transportMechanism = MQTT` (`mqttIngestion.ts`), not NULL→RF.
-- [ ] Bug: `packet_log` writes use `resolveRadioPacketTransport` so viaMqtt-only packets log as MQTT.
-- [ ] Network Survey hop histogram: stacked per-transport buckets.
-- [ ] Nodes by Packet Type donuts: transport selector backed by a server-side filter.
-- [ ] Network Stats: Total Nodes inline split; Total Messages true count with RF / MQTT split.
+- [x] Bug: MQTT-ingested traceroutes carry `transportMechanism = MQTT` (`mqttIngestion.ts`), not NULL→RF.
+- [x] Bug: `packet_log` writes use `resolveRadioPacketTransport` so viaMqtt-only packets log as MQTT.
+- [x] Network Survey hop histogram: stacked per-transport buckets.
+- [x] Nodes by Packet Type donuts: transport selector backed by a server-side filter.
+- [x] Network Stats: Total Nodes inline split; Total Messages true count with RF / MQTT split.
 
 Exit: all of the above shipped, per-source isolation tested, full suite green on SQLite + PG + MySQL.
 
@@ -56,3 +56,8 @@ Exit: new series render in both places; labels make the device/computed distinct
 ## Status log
 
 - 2026-09-23: epic planned; Phase 1 started on `feature/5101-p1-transport-widgets`.
+- 2026-09-23: Phase 1 implemented (spec: TRANSPORT_BREAKDOWN_P1_SPEC.md). Deviations/decisions:
+  - The per-source poll now passes `transportMechanism` + `transportLast*` through `mapDbNodeToDeviceInfo` (user sign-off, risk R1): the per-source map toggles now use the #4240 stamps and recognise UDP, matching the Dashboard map.
+  - Survey reach classification: the forward-leg unknown-SNR sentinel wins (MQTT), else the record class; NULL = RF (`reachTransportClass`).
+  - Total Messages comes from new `GET /api/messages/counts` (shares `resolveMessageReadAccess` with `GET /api/messages`); excludes TRACEROUTE_APP.
+  - Follow-ups (not in this epic): poll's third copy of the message-read predicate; `/api/packets/stats/distribution` ignores per-channel permissions (pre-existing).
