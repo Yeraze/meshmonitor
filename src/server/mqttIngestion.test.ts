@@ -106,7 +106,7 @@ import { setDiscardInvalidPositions, __resetDiscardInvalidPositionsForTest } fro
 import { MqttPacketFilter, type ServiceEnvelopeShape } from './mqttPacketFilter.js';
 import databaseService from '../services/database.js';
 import meshtasticProtobufService from './meshtasticProtobufService.js';
-import { CHANNEL_DB_OFFSET } from './constants/meshtastic.js';
+import { CHANNEL_DB_OFFSET, TransportMechanism } from './constants/meshtastic.js';
 
 const NODE_IN = 0x7ff80a48;
 const NODE_OUT = 0x11111111;
@@ -745,6 +745,8 @@ describe('ingestServiceEnvelope — TRACEROUTE_APP', () => {
     expect(record.route).toBe('[]');
     expect(record.snrTowards).toBe('[40]');
     expect(sourceId).toBe('bridge-1');
+    // #5101: every row this ingest path writes arrived over MQTT.
+    expect(record.transportMechanism).toBe(TransportMechanism.MQTT);
 
     const telemetryCall = (databaseService.insertTelemetryAsync as any).mock.calls
       .find((c: any[]) => c[0].telemetryType === 'messageHops');
