@@ -123,6 +123,52 @@ describe('mapDbNodeToDeviceInfo', () => {
     expect(result2.isIgnored).toBe(false);
     expect(result2.position).toEqual({ latitude: 1.5, longitude: 2.5, altitude: 10 });
   });
+
+  /**
+   * #5101 WP4 / R1: the four transport-stamp fields the client's
+   * `getNodeTransportClasses` reads. Without this pass-through the
+   * per-source Nodes map fell back to `viaMqtt` alone (no UDP, no #4240
+   * decay) — see finding 1 in TRANSPORT_BREAKDOWN_P1_SPEC.md.
+   */
+  it('passes the four transport-stamp fields through, Number-coerced', () => {
+    const node = {
+      nodeNum: 1,
+      nodeId: '!00000001',
+      longName: '',
+      shortName: '',
+      transportMechanism: 5,
+      transportLastRf: 1_700_000_000,
+      transportLastMqtt: 1_700_000_100,
+      transportLastUdp: 1_700_000_200,
+    };
+    const result: any = mapDbNodeToDeviceInfo(node);
+    expect(result.transportMechanism).toBe(5);
+    expect(result.transportLastRf).toBe(1_700_000_000);
+    expect(result.transportLastMqtt).toBe(1_700_000_100);
+    expect(result.transportLastUdp).toBe(1_700_000_200);
+  });
+
+  it('coerces PG BIGINT strings on the transport stamps to numbers', () => {
+    const node = {
+      nodeNum: 1,
+      nodeId: '!00000001',
+      longName: '',
+      shortName: '',
+      transportLastRf: '1700000000' as unknown as number,
+    };
+    const result: any = mapDbNodeToDeviceInfo(node);
+    expect(result.transportLastRf).toBe(1700000000);
+    expect(typeof result.transportLastRf).toBe('number');
+  });
+
+  it('omits the transport-stamp fields the row does not carry', () => {
+    const node = { nodeNum: 1, nodeId: '!00000001', longName: '', shortName: '' };
+    const result: any = mapDbNodeToDeviceInfo(node);
+    expect(result.transportMechanism).toBeUndefined();
+    expect(result.transportLastRf).toBeUndefined();
+    expect(result.transportLastMqtt).toBeUndefined();
+    expect(result.transportLastUdp).toBeUndefined();
+  });
 });
 
 /** Minimal fake implementing only what NodeDbMaintenanceService touches. */

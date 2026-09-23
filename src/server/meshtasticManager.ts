@@ -359,6 +359,19 @@ export interface DeviceInfo {
   positionEstimateUncertaintyKm?: number;
   hideFromMap?: boolean;
   isStoreForwardServer?: boolean;
+  /**
+   * Transport classification fields (#5101 WP4). The mapper builds an
+   * untyped object, so these exist here only for documentation — the actual
+   * pass-through lives in `mapDbNodeToDeviceInfo`
+   * (`nodeDbMaintenanceService.ts`). The client's `getNodeTransportClasses`
+   * (`src/utils/nodeTransport.ts`) reads all four; without them the
+   * per-source Nodes map fell back to `viaMqtt` alone (no UDP, no #4240
+   * decay).
+   */
+  transportMechanism?: number;
+  transportLastRf?: number;
+  transportLastMqtt?: number;
+  transportLastUdp?: number;
 }
 
 export interface MeshMessage {

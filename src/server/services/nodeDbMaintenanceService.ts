@@ -219,6 +219,13 @@ export function mapDbNodeToDeviceInfo(
     logger.debug(`🔍 Node ${node.nodeNum} has remoteAdminMetadata`);
   }
 
+  // #5101 / #4240: the client's transport classifier reads these. Without
+  // them the per-source views fell back to viaMqtt alone (no UDP, no decay).
+  // Number() because PG may return BIGINT strings for these columns.
+  for (const key of ['transportMechanism', 'transportLastRf', 'transportLastMqtt', 'transportLastUdp'] as const) {
+    if (node[key] !== null && node[key] !== undefined) deviceInfo[key] = Number(node[key]);
+  }
+
   return deviceInfo;
 }
 
