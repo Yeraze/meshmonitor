@@ -88,6 +88,16 @@ beforeEach(() => {
 });
 
 describe('TransportSeriesChart', () => {
+  it('renders the drag handle as a UiIcon svg, not the legacy ⋮⋮ glyph', () => {
+    setTelemetry([row('systemNodesHeardRf', 1_700_000_000_000, 1)]);
+    const { container } = renderCard(TRANSPORT_NODES_HEARD_TYPE);
+
+    const handle = container.querySelector('.dashboard-drag-handle');
+    expect(handle).toBeTruthy();
+    expect(handle!.querySelector('svg[data-ui-icon="dragHandle"]')).toBeTruthy();
+    expect(handle!.textContent).not.toContain('⋮');
+  });
+
   it('renders the nodes-heard chart (lines) for the nodes pseudo type', () => {
     const ts = 1_700_000_000_000;
     setTelemetry([row('systemNodesHeardRf', ts, 2), row('systemNodesHeardMqtt', ts, 1)]);

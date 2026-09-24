@@ -86,7 +86,7 @@ const TransportSeriesChart: React.FC<TransportSeriesChartProps> = ({
   const header = (
     <div className="dashboard-chart-header">
       <div className="dashboard-drag-handle" {...attributes} {...listeners}>
-        ⋮⋮
+        <UiIcon name="dragHandle" size={17} />
       </div>
       <h3 className="dashboard-chart-title" title={label}>
         {label}
