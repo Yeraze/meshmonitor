@@ -23,6 +23,19 @@ import {
 import { logger } from '../utils/logger.js';
 import { parseJsonResponse } from '../utils/parseJsonResponse.js';
 import type { NodeTransportClass } from '../utils/nodeTransport.js';
+import type { OutlierPreview, OutlierPurgeResult } from '../utils/telemetryOutliers.js';
+
+/** Body of the telemetry outlier preview/purge requests (#5333). */
+export interface TelemetryOutlierRequest {
+  sourceId: string;
+  telemetryType: string;
+  /** Omit to sweep every node on the source. */
+  nodeId?: string;
+  auto: boolean;
+  k: number;
+  min: number | null;
+  max: number | null;
+}
 
 export type SignalTrend = 'improving' | 'stable' | 'degrading' | 'insufficient';
 
@@ -1415,6 +1428,29 @@ class ApiService {
     }
 
     return response.json();
+  }
+
+  // ── Telemetry outlier purge (#5333) ──
+  // request() returns the raw `{ success, data }` body; unwrap `data` here.
+
+  async getTelemetryOutlierTypes(sourceId: string): Promise<string[]> {
+    const body = await this.request<{ data: { types: string[] } }>(
+      'GET',
+      `/api/purge/telemetry/outliers/types?sourceId=${encodeURIComponent(sourceId)}`,
+    );
+    return body.data.types;
+  }
+
+  async previewTelemetryOutliers(req: TelemetryOutlierRequest): Promise<OutlierPreview> {
+    const body = await this.request<{ data: OutlierPreview }>('POST', '/api/purge/telemetry/outliers/preview', req);
+    return body.data;
+  }
+
+  async purgeTelemetryOutliers(
+    req: TelemetryOutlierRequest & { cutoffId: number; fingerprint: string },
+  ): Promise<OutlierPurgeResult> {
+    const body = await this.request<{ data: OutlierPurgeResult }>('POST', '/api/purge/telemetry/outliers', req);
+    return body.data;
   }
 
   async purgeNeighborInfo(nodeId: string) {

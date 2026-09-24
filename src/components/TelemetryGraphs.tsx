@@ -33,6 +33,7 @@ import { buildTelemetryFilename, telemetrySeriesToCsv } from '../utils/telemetry
 import { downloadTextFile } from '../utils/nodeExport';
 import { UiIcon } from './icons';
 import DeviceCounterNote from './DeviceCounterNote';
+import TelemetryOutlierDialog from './TelemetryOutlierDialog/TelemetryOutlierDialog';
 import { isDeviceCounterType } from '../utils/deviceCounters';
 import { isTransportSeriesComponentType } from '../utils/transportSeries';
 
@@ -168,6 +169,8 @@ interface TelemetryGraphWidgetProps {
   openMenu: string | null;
   menuPosition: { x: number; y: number } | null;
   handlePurgeData: (type: string) => void;
+  /** Admin-only: open the outlier purge dialog for this chart (#5333). Absent ⇒ item hidden. */
+  handleCleanOutliers?: (type: string) => void;
   chartColors: { bg: string; surface: string; text: string };
   getTelemetryLabel: (type: string) => string;
   getColor: (type: string) => string;
@@ -198,6 +201,7 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
   openMenu,
   menuPosition,
   handlePurgeData,
+  handleCleanOutliers,
   chartColors,
   getTelemetryLabel,
   getColor,
@@ -390,6 +394,11 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
               }}
               onClick={e => e.stopPropagation()}
             >
+              {handleCleanOutliers && (
+                <button className="context-menu-item" onClick={() => handleCleanOutliers(type)}>
+                  {t('telemetry_outliers.menu_item')}
+                </button>
+              )}
               <button className="context-menu-item" onClick={() => handlePurgeData(type)}>
                 {t('telemetry.purge_data')}
               </button>
@@ -553,7 +562,10 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
     const csrfFetch = useCsrfFetch();
     const { showToast } = useToast();
     const { solarMonitoringEnabled, timeFormat } = useSettings();
-    const { hasPermission } = useAuth();
+    const { hasPermission, authStatus } = useAuth();
+    // The outlier purge routes are admin-only (#5333); hide the menu item otherwise.
+    const isAdmin = authStatus?.user?.isAdmin ?? false;
+    const [outlierType, setOutlierType] = useState<string | null>(null);
     // 'settings' is sourcey (Phase 6 #4416). This only toggles a local
     // chart/gauge display mode — it never calls a settings API — so
     // anySource is the closest mirror of "holds settings:write somewhere",
@@ -754,6 +766,12 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
         return () => document.removeEventListener('click', handleClickOutside);
       }
     }, [openMenu]);
+
+    const handleCleanOutliers = (telemetryType: string) => {
+      setOpenMenu(null);
+      setMenuPosition(null);
+      setOutlierType(telemetryType);
+    };
 
     // Handle purge data
     const handlePurgeData = async (telemetryType: string) => {
@@ -1150,6 +1168,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
                   openMenu={openMenu}
                   menuPosition={menuPosition}
                   handlePurgeData={handlePurgeData}
+                  handleCleanOutliers={isAdmin && effectiveSourceId ? handleCleanOutliers : undefined}
                   chartColors={chartColors}
                   getTelemetryLabel={getTelemetryLabel}
                   getColor={getColor}
@@ -1163,6 +1182,18 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
             </div>
           </section>
         ))}
+        {isAdmin && effectiveSourceId && (
+          <TelemetryOutlierDialog
+            isOpen={outlierType !== null}
+            onClose={() => setOutlierType(null)}
+            sourceId={effectiveSourceId}
+            telemetryType={outlierType ?? undefined}
+            nodeId={nodeId}
+            nodeLabel={nodeId}
+            getTypeLabel={getTelemetryLabel}
+            onPurged={() => void refetchTelemetry()}
+          />
+        )}
       </div>
     );
   }

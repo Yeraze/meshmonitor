@@ -49,6 +49,8 @@ import { clampCoverageRetentionDays, COVERAGE_RETENTION_DEFAULT_DAYS } from '../
 import { isMqttOnlySourceType } from '../utils/nodeTransport';
 import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSource } from '../contexts/SourceContext';
+import TelemetryOutlierDialog from './TelemetryOutlierDialog/TelemetryOutlierDialog';
+import { getTelemetryLabel } from './TelemetryChart';
 import {
   NODE_DISPLAY_SETTING_KEYS,
   NODE_DISPLAY_NUMERIC_DEFAULTS,
@@ -394,6 +396,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // sourceType (#5277 P2 WP3) gates the Coverage recording section/nav item to
   // MQTT-only sources — see isMqttOnlySourceType below.
   const { sourceId: purgeSourceId, sourceType } = useSource();
+  // #5333: outlier purge dialog (Danger Zone → Clean telemetry outliers).
+  const [outlierDialogOpen, setOutlierDialogOpen] = useState(false);
 
   // Single draft reducer replacing the 49 `local*` mirrors (Task 5.3). Lazy-initialized once from
   // the current context/props values; category-C fields (no context/prop home) start at their
@@ -3069,6 +3073,30 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               {t('settings.purge_telemetry_button')}
             </button>
           </div>
+
+          {isAdmin && (
+            <div className="danger-action">
+              <div className="danger-action-info">
+                <h4>{t('settings.clean_outliers_title')}</h4>
+                <p>{t('settings.clean_outliers_description')}</p>
+              </div>
+              <button
+                className="danger-button"
+                onClick={() => setOutlierDialogOpen(true)}
+              >
+                {t('settings.clean_outliers_button')}
+              </button>
+            </div>
+          )}
+          {isAdmin && (
+            <TelemetryOutlierDialog
+              isOpen={outlierDialogOpen}
+              onClose={() => setOutlierDialogOpen(false)}
+              sourceId={purgeSourceId}
+              sources={availableSources.map(src => ({ id: src.id, name: src.name }))}
+              getTypeLabel={getTelemetryLabel}
+            />
+          )}
 
           <div className="danger-action">
             <div className="danger-action-info">

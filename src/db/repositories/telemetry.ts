@@ -4,7 +4,7 @@
  * Handles all telemetry-related database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, lt, gte, and, desc, inArray, isNull, or, not, SQL, count, sql } from 'drizzle-orm';
+import { eq, lt, lte, gte, and, desc, inArray, isNull, or, not, SQL, count, sql } from 'drizzle-orm';
 import { ALL_SOURCES, BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType, DbTelemetry } from '../types.js';
 import { logger } from '../../utils/logger.js';
@@ -697,6 +697,116 @@ export class TelemetryRepository extends BaseRepository {
         .returning({ id: telemetry.id });
       return deleted.length > 0;
     }
+  }
+
+  // ── Outlier purge (#5333) ────────────────────────────────────────────────
+  // These take a concrete sourceId (never ALL_SOURCES): an outlier purge is
+  // always one source's data. They read the RAW telemetry table, not the
+  // averaged API output, so the analysis sees exactly the rows it may delete.
+
+  /** Ids per DELETE statement; far below every backend's bound-parameter limit. */
+  static readonly OUTLIER_DELETE_BATCH_SIZE = 500;
+
+  /**
+   * Highest telemetry row id for (sourceId, telemetryType[, nodeId]), or null
+   * when the scope is empty. The preview returns this as its cutoff so the
+   * later delete only ever considers rows that existed at preview time.
+   */
+  async getMaxTelemetryIdForType(
+    sourceId: string,
+    telemetryType: string,
+    nodeId?: string,
+  ): Promise<number | null> {
+    const { telemetry } = this.tables;
+    const conditions = [eq(telemetry.sourceId, sourceId), eq(telemetry.telemetryType, telemetryType)];
+    if (nodeId) conditions.push(eq(telemetry.nodeId, nodeId));
+    const rows = await this.db
+      .select({ maxId: sql<number | string | null>`MAX(${telemetry.id})` })
+      .from(telemetry)
+      .where(and(...conditions));
+    const raw = rows[0]?.maxId;
+    return raw === null || raw === undefined ? null : Number(raw);
+  }
+
+  /** Distinct telemetry types stored for one source, sorted. */
+  async getTelemetryTypesForSource(sourceId: string): Promise<string[]> {
+    const { telemetry } = this.tables;
+    const rows = await this.db
+      .selectDistinct({ type: telemetry.telemetryType })
+      .from(telemetry)
+      .where(eq(telemetry.sourceId, sourceId));
+    return rows.map((r: { type: string }) => r.type).sort();
+  }
+
+  /** Distinct nodeIds with at least one (sourceId, telemetryType) row at or below `maxId`. */
+  async getTelemetryNodeIdsForType(
+    sourceId: string,
+    telemetryType: string,
+    maxId: number,
+  ): Promise<string[]> {
+    const { telemetry } = this.tables;
+    const rows = await this.db
+      .selectDistinct({ nodeId: telemetry.nodeId })
+      .from(telemetry)
+      .where(and(
+        eq(telemetry.sourceId, sourceId),
+        eq(telemetry.telemetryType, telemetryType),
+        lte(telemetry.id, maxId),
+      ));
+    return rows.map((r: { nodeId: string }) => r.nodeId).sort();
+  }
+
+  /**
+   * One node's raw series for (sourceId, telemetryType), rows with id <= maxId,
+   * oldest first. Returns only the columns the outlier analysis needs.
+   */
+  async getTelemetrySeriesForOutlierScan(
+    sourceId: string,
+    telemetryType: string,
+    nodeId: string,
+    maxId: number,
+  ): Promise<Array<{ id: number; value: number; timestamp: number }>> {
+    const { telemetry } = this.tables;
+    const rows = await this.db
+      .select({ id: telemetry.id, value: telemetry.value, timestamp: telemetry.timestamp })
+      .from(telemetry)
+      .where(and(
+        eq(telemetry.sourceId, sourceId),
+        eq(telemetry.telemetryType, telemetryType),
+        eq(telemetry.nodeId, nodeId),
+        lte(telemetry.id, maxId),
+      ))
+      .orderBy(telemetry.timestamp, telemetry.id);
+    return rows.map((r: { id: number; value: number; timestamp: number }) => ({
+      id: Number(r.id),
+      value: Number(r.value),
+      timestamp: Number(r.timestamp),
+    }));
+  }
+
+  /**
+   * Delete telemetry rows by id, fenced to (sourceId, telemetryType) so an id
+   * from another source or metric can never be removed. Runs in batches of
+   * {@link TelemetryRepository.OUTLIER_DELETE_BATCH_SIZE} ids to stay far
+   * below the bound-parameter limits (SQLite 32766, PostgreSQL/MySQL 65535).
+   * Returns the number of rows deleted.
+   */
+  async deleteTelemetryByIds(sourceId: string, telemetryType: string, ids: number[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    const { telemetry } = this.tables;
+    const size = TelemetryRepository.OUTLIER_DELETE_BATCH_SIZE;
+    let deleted = 0;
+    for (let i = 0; i < ids.length; i += size) {
+      const result = await this.db
+        .delete(telemetry)
+        .where(and(
+          eq(telemetry.sourceId, sourceId),
+          eq(telemetry.telemetryType, telemetryType),
+          inArray(telemetry.id, ids.slice(i, i + size)),
+        ));
+      deleted += this.getAffectedRows(result);
+    }
+    return deleted;
   }
 
   /**

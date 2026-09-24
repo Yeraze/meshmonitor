@@ -3371,6 +3371,36 @@ class DatabaseService {
 
 
 
+  // ── Telemetry outlier purge (#5333) — thin facades over TelemetryRepository ──
+
+  async getMaxTelemetryIdForTypeAsync(sourceId: string, telemetryType: string, nodeId?: string): Promise<number | null> {
+    return this.telemetry.getMaxTelemetryIdForType(sourceId, telemetryType, nodeId);
+  }
+
+  async getTelemetryTypesForSourceAsync(sourceId: string): Promise<string[]> {
+    return this.telemetry.getTelemetryTypesForSource(sourceId);
+  }
+
+  async getTelemetryNodeIdsForTypeAsync(sourceId: string, telemetryType: string, maxId: number): Promise<string[]> {
+    return this.telemetry.getTelemetryNodeIdsForType(sourceId, telemetryType, maxId);
+  }
+
+  async getTelemetrySeriesForOutlierScanAsync(
+    sourceId: string,
+    telemetryType: string,
+    nodeId: string,
+    maxId: number,
+  ): Promise<Array<{ id: number; value: number; timestamp: number }>> {
+    return this.telemetry.getTelemetrySeriesForOutlierScan(sourceId, telemetryType, nodeId, maxId);
+  }
+
+  /** Delete telemetry rows by id within (sourceId, telemetryType); drops the source's types cache. */
+  async deleteTelemetryByIdsAsync(sourceId: string, telemetryType: string, ids: number[]): Promise<number> {
+    const deleted = await this.telemetry.deleteTelemetryByIds(sourceId, telemetryType, ids);
+    if (deleted > 0) this.invalidateTelemetryTypesCache(sourceId);
+    return deleted;
+  }
+
   /**
    * Purge all telemetry data (async version), optionally scoped to one source.
    */
