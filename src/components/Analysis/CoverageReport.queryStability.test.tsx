@@ -17,6 +17,7 @@
  * after the component settles. Real timers throughout (no fake timers): the
  * bug was a real-world render-loop, and fake timers would mask it.
  */
+import type { CoverageReceptionDto } from '../../types/coverage';
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
@@ -51,7 +52,7 @@ import {
 } from '../../services/analysisApi';
 import CoverageReport from './CoverageReport';
 
-function makeReception() {
+function makeReception(): CoverageReceptionDto {
   return {
     id: 1,
     sourceId: 'src-a',
