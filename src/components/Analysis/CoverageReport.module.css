@@ -1,0 +1,86 @@
+.activePreset {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+/* Sender options are built from live node names + !id + fix count, which
+ * can be much wider than a phone viewport (e.g. "Car-01 (!b2a78cf0) — 42").
+ * A <select>'s intrinsic (min-content) width tracks its widest <option>
+ * text, and a flex item's default `min-width: auto` refuses to shrink below
+ * that intrinsic width — so on a narrow viewport this one field, not the
+ * shared `.reports-controls` flex row, was overflowing the page. Scoped
+ * here (not in the global reports-controls styles) since this is the only
+ * field in the app whose option text length is this unbounded. */
+.senderField {
+  min-width: 0;
+  max-width: 100%;
+  flex: 1 1 160px;
+}
+
+.senderField select {
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.receiverList {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-surface);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.receiverListTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-subtle);
+}
+
+.receiverItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.retentionNote {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--color-text-subtle);
+}
+
+.guidance {
+  margin-top: 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-text);
+}
+
+.guidance p {
+  margin: 0 0 10px 0;
+}
+
+.airtimeTable {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+
+.airtimeTable th,
+.airtimeTable td {
+  border: 1px solid var(--color-surface-hover);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.guidanceFooter {
+  color: var(--color-text-subtle);
+  font-size: 12px;
+}

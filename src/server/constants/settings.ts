@@ -124,6 +124,10 @@ export const VALID_SETTINGS_KEYS = [
   'mqtt_oktomqtt_violation_max_count',
   // Rolling retention window (days) for the MeshCore position-history trail (#3852).
   'meshcore_position_history_retention_days',
+  // Rolling retention window (days) for coverage_receptions, the Coverage
+  // Report RF-reception log (#5277 P1 WP2). Global, default 7, clamped 1-90
+  // (see clampCoverageRetentionDays in src/utils/coverage.ts).
+  'coverage_retention_days',
   'solarMonitoringEnabled',
   'solarMonitoringLatitude',
   'solarMonitoringLongitude',
@@ -722,6 +726,9 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   'analyticsProvider',                      // :730-733 invalidateHtmlCache (global HTML)
   'analyticsConfig',                        // "
   'appriseApiServerUrl',                    // :632-647 "(global; #3012)"
+  // Global retention sweep (#5277), read via getSettingAsync by
+  // coverageRetentionService — no per-source variant to read.
+  'coverage_retention_days',
 ]);
 
 /**

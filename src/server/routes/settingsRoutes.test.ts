@@ -954,6 +954,23 @@ describe('settingsRoutes', () => {
       expect(res.body.data.ignoredKeys).toContain('cotFeedEnabled');
     });
 
+    // (b2) same GLOBAL_ONLY drop, for the Coverage Report retention setting
+    // (#5277 P1 WP2) — a source-scoped POST must never persist it per-source,
+    // per the §5080 bare-key trap the deny-list exists to prevent.
+    it('(b2) drops coverage_retention_days under ?sourceId= and reports it in ignoredKeys', async () => {
+      const app = createApp(adminUser);
+      const res = await request(app)
+        .post('/api/settings?sourceId=mqtt-broker-1')
+        .send({ coverage_retention_days: '30' })
+        .expect(200);
+
+      expect(databaseService.settings.setSourceSettings).toHaveBeenCalledTimes(1);
+      const [calledSourceId, calledSettings] = (databaseService.settings.setSourceSettings as any).mock.calls[0];
+      expect(calledSourceId).toBe('mqtt-broker-1');
+      expect(calledSettings).not.toHaveProperty('coverage_retention_days');
+      expect(res.body.data.ignoredKeys).toContain('coverage_retention_days');
+    });
+
     // (c) the per-source branch now audits (§3.4) — it used to return before
     // reaching the audit block at all.
     it('(c) audits a per-source write with sourceId inside details', async () => {

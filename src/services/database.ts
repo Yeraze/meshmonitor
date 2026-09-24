@@ -65,6 +65,7 @@ import {
   MeshCoreObserverCredentialsRepository,
   MessageEventsRepository,
   MeshtasticHeardRepeatersRepository,
+  CoverageReceptionsRepository,
   MeshIssuesRepository,
   DeadDropRepository,
   AutomationsRepository,
@@ -578,6 +579,7 @@ class DatabaseService {
   public meshcoreObserverCredentialsRepo: MeshCoreObserverCredentialsRepository | null = null;
   public messageEventsRepo: MessageEventsRepository | null = null;
   public meshtasticHeardRepeatersRepo: MeshtasticHeardRepeatersRepository | null = null;
+  public coverageReceptionsRepo: CoverageReceptionsRepository | null = null;
   public meshIssuesRepo: MeshIssuesRepository | null = null;
   public deadDropRepo: DeadDropRepository | null = null;
   public automationsRepo: AutomationsRepository | null = null;
@@ -658,6 +660,11 @@ class DatabaseService {
   get meshtasticHeardRepeaters(): MeshtasticHeardRepeatersRepository {
     if (!this.meshtasticHeardRepeatersRepo) throw new Error('Database not initialized');
     return this.meshtasticHeardRepeatersRepo;
+  }
+
+  get coverageReceptions(): CoverageReceptionsRepository {
+    if (!this.coverageReceptionsRepo) throw new Error('Database not initialized');
+    return this.coverageReceptionsRepo;
   }
 
   get meshIssues(): MeshIssuesRepository {
@@ -1101,6 +1108,7 @@ class DatabaseService {
       this.meshcoreObserverCredentialsRepo = new MeshCoreObserverCredentialsRepository(drizzleDb, this.drizzleDbType);
       this.messageEventsRepo = new MessageEventsRepository(drizzleDb, this.drizzleDbType);
       this.meshtasticHeardRepeatersRepo = new MeshtasticHeardRepeatersRepository(drizzleDb, this.drizzleDbType);
+      this.coverageReceptionsRepo = new CoverageReceptionsRepository(drizzleDb, this.drizzleDbType);
       this.meshIssuesRepo = new MeshIssuesRepository(drizzleDb, this.drizzleDbType);
       this.deadDropRepo = new DeadDropRepository(drizzleDb, this.drizzleDbType);
       this.automationsRepo = new AutomationsRepository(drizzleDb, this.drizzleDbType);
@@ -3735,6 +3743,23 @@ class DatabaseService {
           await this.autoFavoriteTargetsRepo.clearAllForSource(sourceId);
         } catch (err) {
           logger.error('Failed to clear auto-favorite targets during purge:', err);
+        }
+      }
+
+      // Clear Coverage Report RF receptions for the same reason (#5277 amendment
+      // 5 / D7): the table is ephemeral, per-source received-packet history, so
+      // a purged/deleted source's rows must not linger with no UI path left to
+      // reach them. `sourceId` undefined = admin global purge across every
+      // source, matching every other branch above.
+      if (this.coverageReceptionsRepo) {
+        try {
+          if (sourceId) {
+            await this.coverageReceptionsRepo.deleteForSource(sourceId);
+          } else {
+            await this.coverageReceptionsRepo.deleteAll();
+          }
+        } catch (err) {
+          logger.error('Failed to purge coverage receptions during purge:', err);
         }
       }
 

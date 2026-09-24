@@ -315,3 +315,73 @@ describe('DatabaseService.deleteNodeAsync — broadcastMessagesDeleted (Geo-Igno
     expect(remainingMessages.map(m => m.id)).toEqual(['srcA_3002_2']);
   });
 });
+
+describe('DatabaseService.purgeAllNodesAsync — coverage receptions cascade (#5277 WP3, amendment 5 / D7)', () => {
+  const receptionParams = (sourceId: string, receiverId: string, senderId: string, packetKey: string) => ({
+    sourceId,
+    protocol: 'meshtastic',
+    receiverKind: 'local',
+    receiverId,
+    senderId,
+    packetKey,
+    pathKey: 'r0:h0',
+    latitude: 37.0,
+    longitude: -122.0,
+    receivedAt: Date.now(),
+  });
+
+  beforeAll(async () => {
+    await databaseService.waitForReady();
+    for (let i = 0; i < 50 && !databaseService.coverageReceptionsRepo; i++) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    // Same reasoning as the #4629/#4633 blocks above: the purge clear is
+    // guarded by `if (this.coverageReceptionsRepo)`, so an uninitialised repo
+    // would make the cascade a silent no-op. Fail here instead of later.
+    expect(databaseService.coverageReceptionsRepo).toBeTruthy();
+  });
+
+  it('purgeAllNodesAsync() with no sourceId empties coverage_receptions across every source', async () => {
+    await databaseService.coverageReceptions.recordReception(
+      receptionParams('srcA', '!0000cova', '!0000send', 'pkt-cov-1'),
+    );
+    await databaseService.coverageReceptions.recordReception(
+      receptionParams('srcB', '!0000covb', '!0000send', 'pkt-cov-2'),
+    );
+
+    const before = await databaseService.coverageReceptions.getReceptions({
+      sourceIds: ['srcA', 'srcB'], sinceMs: 0, untilMs: Date.now() + 1000, pageSize: 10,
+    });
+    expect(before.items.length).toBe(2);
+
+    await databaseService.purgeAllNodesAsync();
+
+    const after = await databaseService.coverageReceptions.getReceptions({
+      sourceIds: ['srcA', 'srcB'], sinceMs: 0, untilMs: Date.now() + 1000, pageSize: 10,
+    });
+    expect(after.items).toEqual([]);
+  });
+
+  it('scoped to one source, clears only that source and leaves other sources\' receptions', async () => {
+    await databaseService.coverageReceptions.recordReception(
+      receptionParams('srcA', '!0000cova', '!0000send', 'pkt-cov-3'),
+    );
+    await databaseService.coverageReceptions.recordReception(
+      receptionParams('srcB', '!0000covb', '!0000send', 'pkt-cov-4'),
+    );
+
+    await databaseService.purgeAllNodesAsync('srcA');
+
+    const pageA = await databaseService.coverageReceptions.getReceptions({
+      sourceIds: ['srcA'], sinceMs: 0, untilMs: Date.now() + 1000, pageSize: 10,
+    });
+    expect(pageA.items).toEqual([]);
+
+    // Cross-source isolation — purging A must not disturb B's receptions.
+    const pageB = await databaseService.coverageReceptions.getReceptions({
+      sourceIds: ['srcB'], sinceMs: 0, untilMs: Date.now() + 1000, pageSize: 10,
+    });
+    expect(pageB.items.length).toBe(1);
+    expect(pageB.items[0].sourceId).toBe('srcB');
+  });
+});

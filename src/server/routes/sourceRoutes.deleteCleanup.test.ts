@@ -146,3 +146,60 @@ describe('DELETE /api/sources/:id — beacon offer cleanup (#4723)', () => {
     expect(await databaseService.meshBeaconOffers.listAll(harness.sourceB)).toHaveLength(1);
   });
 });
+
+/**
+ * Coverage Report RF receptions are cleaned up with the source (#5277
+ * amendment 5 / D7) — same failure mode as the node/beacon-offer purges
+ * above: `deleteSource` alone would leave that source's `coverage_receptions`
+ * rows behind forever, with no UI path left to reach them.
+ */
+describe('DELETE /api/sources/:id — coverage receptions cleanup (#5277)', () => {
+  let harness: RouteTestHarness;
+
+  const receptionParams = (sourceId: string, receiverId: string, senderId: string, packetKey: string) => ({
+    sourceId,
+    protocol: 'meshtastic',
+    receiverKind: 'local',
+    receiverId,
+    senderId,
+    packetKey,
+    pathKey: 'r0:h0',
+    latitude: 37.0,
+    longitude: -122.0,
+    receivedAt: Date.now(),
+  });
+
+  beforeEach(async () => {
+    harness = await createRouteTestApp({ mount: (app) => app.use('/', sourceRoutes) });
+    await harness.grant(harness.limited.id, 'sources', 'write');
+
+    await databaseService.coverageReceptions.recordReception(
+      receptionParams(harness.sourceA, '!0000cova', '!0000send', 'pkt-cov-del-1'),
+    );
+    await databaseService.coverageReceptions.recordReception(
+      receptionParams(harness.sourceB, '!0000covb', '!0000send', 'pkt-cov-del-2'),
+    );
+  });
+
+  afterEach(async () => {
+    await databaseService.coverageReceptions.deleteForSource(harness.sourceA).catch(() => {});
+    await databaseService.coverageReceptions.deleteForSource(harness.sourceB).catch(() => {});
+    await harness.cleanup();
+  });
+
+  it('purges the deleted source\'s coverage receptions and leaves other sources alone', async () => {
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.delete(`/${harness.sourceA}`);
+    expect(res.status).toBe(200);
+
+    const pageA = await databaseService.coverageReceptions.getReceptions({
+      sourceIds: [harness.sourceA], sinceMs: 0, untilMs: Date.now() + 1000, pageSize: 10,
+    });
+    expect(pageA.items).toEqual([]);
+
+    const pageB = await databaseService.coverageReceptions.getReceptions({
+      sourceIds: [harness.sourceB], sinceMs: 0, untilMs: Date.now() + 1000, pageSize: 10,
+    });
+    expect(pageB.items.length).toBe(1);
+  });
+});

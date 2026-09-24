@@ -1,0 +1,94 @@
+.mapWrap {
+  position: relative;
+  height: 520px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+}
+
+.receiverLabel {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.legend {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  z-index: 1000;
+  background: var(--color-bg-raised);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--color-text);
+  max-width: 240px;
+}
+
+.legendTitle {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.legendRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.legendSwatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.legendNote {
+  margin-top: 6px;
+  color: var(--color-text-subtle);
+  font-size: 11px;
+}
+
+.popup {
+  min-width: 200px;
+  max-width: 280px;
+}
+
+.popupTitle {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.popupTime {
+  font-size: 11px;
+  color: var(--color-text-subtle);
+  margin-bottom: 6px;
+}
+
+.popupList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.popupItem {
+  padding: 4px 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.popupItem:first-child {
+  border-top: none;
+}
+
+.popupReceiver {
+  font-weight: 600;
+}
+
+.popupMeta {
+  font-size: 12px;
+  color: var(--color-text-subtle);
+}

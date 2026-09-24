@@ -6,6 +6,8 @@ Three reports are currently bundled with the workspace: **Solar Monitoring Analy
 
 A fourth report, **[Mesh Issues Analysis](./mesh-issues)**, lives alongside these but is documented on its own page rather than below — it's a scheduled, passive health report (zero packets sent) covering routing, RF adjacency, and node-flag problems, with its own settings section in Global Settings rather than an on-page run control.
 
+A fifth report, **[Coverage Report](./coverage-report)**, also lives alongside these on its own page — a passive, measured coverage map built from position packets your Meshtastic radios already received, with filters over time range, sender, receiver, hops, and signal metric, and its own retention setting in Settings rather than an on-page run control.
+
 ## Solar Monitoring Analysis
 
 Identifies solar-powered nodes by analyzing battery and voltage telemetry over a configurable lookback window and looking for the characteristic morning-low → afternoon-peak charging curve, followed by overnight discharge. Ports the proven detection algorithm from MeshManager.
@@ -274,6 +276,7 @@ Error codes: `INVALID_RANGE` (400, `since` after `until`), `INVALID_SORT_FIELD` 
 ## Related
 
 - [Mesh Issues Analysis](./mesh-issues) — the scheduled, passive routing/RF/node-flag health report that shares this workspace
+- [Coverage Report](./coverage-report) — the passive, measured RF coverage map that shares this workspace
 - [Solar Monitoring](./solar-monitoring) — configuration of the forecast.solar integration that powers the production curve and forecast factor
 - [Packet Monitor](./packet-monitor#ok-to-mqtt-violation-detection) — how `ok_to_mqtt` violation detection works, including the per-packet badge in the MQTT Packet Monitor that this report complements
 - [Map Analysis](./map-analysis) — cross-source map / coverage workspace at `/analysis`

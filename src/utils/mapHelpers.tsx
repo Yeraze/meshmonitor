@@ -12,6 +12,11 @@ export { convertSpeed };
 import { isUnknownSnr, averageNonSentinelSnr, type TracerouteRenderSegment } from './tracerouteSegments.js';
 export { isUnknownSnr, averageNonSentinelSnr };
 
+// Coverage Report epic (#5277, Phase 1 WP4) — RSSI band thresholds are the
+// shared, server-safe source of truth (used by the recording/route layer
+// too), so they live in coverage.ts rather than being redeclared here.
+import { COVERAGE_RSSI_BANDS } from './coverage.js';
+
 /**
  * Scaled SNR sentinel for unknown hops. Canonical definition (with the full
  * firmware-semantics doc comment) lives in `tracerouteSegments.ts`'s
@@ -188,6 +193,20 @@ export function snrToColor(avgSnr: number | null | undefined, scale: SnrColorSca
   if (avgSnr >= 5) return scale.excellent;
   if (avgSnr >= 0) return scale.good;
   if (avgSnr >= -5) return scale.fair;
+  return scale.poor;
+}
+
+/**
+ * Map a single RSSI value (dBm) to its Coverage Report 4-band color
+ * (Decision D3, `COVERAGE_RSSI_BANDS`), using the SAME theme-aware palette
+ * as `snrToColor` (`overlayColors.snrColors`) so the two metrics' legends
+ * stay visually consistent. `null`/`undefined` resolve to `scale.noData`.
+ */
+export function rssiToColor(rssi: number | null | undefined, scale: SnrColorScale): string {
+  if (rssi == null) return scale.noData;
+  if (rssi >= COVERAGE_RSSI_BANDS.excellent) return scale.excellent;
+  if (rssi >= COVERAGE_RSSI_BANDS.good) return scale.good;
+  if (rssi >= COVERAGE_RSSI_BANDS.fair) return scale.fair;
   return scale.poor;
 }
 

@@ -44,6 +44,7 @@ import { lowBatteryNotificationService } from './services/lowBatteryNotification
 import { cotFeedService } from './services/cotFeedService.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import { versionCheckService } from './services/versionCheckService.js';
+import { coverageRetentionService } from './services/coverageRetentionService.js';
 import { dynamicCspMiddleware, refreshTileHostnameCache } from './middleware/dynamicCsp.js';
 import settingsRoutes, { setSettingsCallbacks } from './routes/settingsRoutes.js';
 import { bootstrapSources } from './bootstrapSources.js';
@@ -523,6 +524,21 @@ setTimeout(async () => {
   }
 }, 5000); // Wait 5 seconds after startup
 
+// Coverage Report retention sweep (#5277 Phase 1 WP2): hourly purge of RF
+// receptions older than the configured coverage_retention_days. The service
+// does not auto-start in its constructor (so importing it in a test never
+// spins up a live timer) — start() must be called explicitly, here, once,
+// after the DB is ready. It schedules its own first sweep 30s after start,
+// then hourly (see coverageRetentionService.ts).
+setTimeout(async () => {
+  try {
+    await databaseService.waitForReady();
+    coverageRetentionService.start();
+  } catch (error) {
+    logger.error('Error starting Coverage Report retention sweep:', error);
+  }
+}, 5000);
+
 // ==========================================
 // MeshCore local-node telemetry poller
 // ==========================================
@@ -707,6 +723,7 @@ import sourceRoutes from './routes/sourceRoutes.js';
 import unifiedRoutes from './routes/unifiedRoutes.js';
 import analysisRoutes from './routes/analysisRoutes.js';
 import meshIssuesRoutes from './routes/meshIssuesRoutes.js';
+import coverageRoutes from './routes/coverageRoutes.js';
 import elevationRoutes from './routes/elevationRoutes.js';
 import gnssRoutes from './routes/gnssRoutes.js';
 import rfCoverageRoutes from './routes/rfCoverageRoutes.js';
@@ -887,6 +904,12 @@ apiRouter.use('/unified', unifiedRoutes);
 // meshIssuesRoutes.ts header for the cross-source permission filtering.
 // NOTE: More specific route must come BEFORE general /analysis router
 apiRouter.use('/analysis/mesh-issues', meshIssuesRoutes);
+
+// Coverage Report (#5277 Phase 1 WP3) — RF-reception query API. Also more
+// specific than /analysis and must be mounted before it; does not collide
+// with /analysis/coverage-grid since Express mount paths match whole
+// segments.
+apiRouter.use('/analysis/coverage', coverageRoutes);
 
 // Cross-source analysis workspace
 apiRouter.use('/analysis', analysisRoutes);

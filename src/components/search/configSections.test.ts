@@ -49,6 +49,7 @@ describe('configSections', () => {
     const global = settingsNavItems(t, { ...baseOptions, mode: 'global' }).map((i) => i.id);
     const source = settingsNavItems(t, { ...baseOptions, mode: 'source' }).map((i) => i.id);
     expect(global).toContain('settings-language');
+    expect(global).toContain('settings-coverage');
     expect(source).toContain('settings-danger');
     expect(global.filter((id) => source.includes(id))).toEqual([]);
   });
@@ -75,6 +76,7 @@ describe('configSections', () => {
       const ids = settingsNavItems(t, { ...baseOptions, canWriteSettings: false }).map((i) => i.id);
       expect(ids).not.toContain('settings-position-estimation');
       expect(ids).not.toContain('settings-mesh-issues');
+      expect(ids).not.toContain('settings-coverage');
     });
   });
 

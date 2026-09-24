@@ -71,6 +71,11 @@ export const TABLE_ORDER = [
   'packet_log',
   // 4124: MQTT packet monitor reception log (per-gateway rows; sourceId, no FKs)
   'mqtt_packet_log',
+  // 5277 P1: Coverage Report RF-reception log (per-path rows; sourceId, no FKs).
+  // Ephemeral/regenerable like mqtt_packet_log above (not in BACKUP_TABLES,
+  // per COVERAGE_P1_SPEC.md Decision D9), but migrated rather than skipped so
+  // a backend move doesn't silently blank out an in-progress survey.
+  'coverage_receptions',
   // 4114: durable ok_to_mqtt violation history (sourceId, no FKs). Deliberately
   // migrated — unlike the transient packet logs above, this table is long-retention
   // history (90d) that the Analysis report reads, so dropping it on a backend
@@ -169,7 +174,7 @@ export const SOURCE_SCOPED_TABLES = new Set([
   'embed_profiles', 'meshcore_nodes', 'meshcore_messages',
   'meshcore_neighbor_info', 'meshcore_packet_log',
   'meshcore_heard_repeaters', 'message_events', 'meshtastic_heard_repeaters',
-  'mqtt_packet_log', 'mqtt_ok_to_mqtt_violations',
+  'mqtt_packet_log', 'mqtt_ok_to_mqtt_violations', 'coverage_receptions',
   'atak_contacts', 'mesh_beacon_offers',
   'auto_favorite_targets', 'auto_favorite_assignments',
   'dead_drop_messages',
