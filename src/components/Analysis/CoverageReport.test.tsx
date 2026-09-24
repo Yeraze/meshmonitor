@@ -253,4 +253,65 @@ describe('CoverageReport', () => {
     renderReport();
     expect(screen.queryByText(/Gateway receptions come from what each gateway itself reports/)).not.toBeInTheDocument();
   });
+
+  // #5277 Phase 3 WP3.
+  describe('MeshCore', () => {
+    it('the Hops select includes 8 (MeshCore advert flood limit)', () => {
+      renderReport();
+      const hopsSelect = screen.getByLabelText('Hops') as HTMLSelectElement;
+      const values = Array.from(hopsSelect.options).map((o) => o.value);
+      expect(values).toContain('8');
+
+      fireEvent.change(hopsSelect, { target: { value: '8' } });
+      expect(lastReceptionsFilters().hops).toBe(8);
+    });
+
+    it('abbreviates a MeshCore pubkey sender in the sender dropdown', () => {
+      const PUBKEY = 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2';
+      useCoverageSenders.mockReturnValue({
+        data: {
+          senders: [
+            { senderId: PUBKEY, senderNodeNum: null, longName: null, shortName: null, fixCount: 3, lastReceivedAt: 1 },
+          ],
+          truncated: false,
+        },
+        isLoading: false,
+        refetch: vi.fn(),
+      });
+
+      renderReport();
+      const option = screen.getByRole('option', { name: /a1b2c3d4…/ });
+      expect(option).toBeInTheDocument();
+      expect(screen.queryByRole('option', { name: new RegExp(PUBKEY) })).not.toBeInTheDocument();
+    });
+
+    it('the setup guidance panel carries the zero-hop, never-flood, MeshMonitor-button, and stored-position warnings plus the airtime figures', () => {
+      renderReport();
+      fireEvent.click(screen.getByText('Setup guidance'));
+
+      expect(screen.getByText(/Send zero-hop adverts only, one every 60 seconds or slower/)).toBeInTheDocument();
+      expect(screen.getByText(/Never flood adverts for a survey/)).toBeInTheDocument();
+      expect(screen.getByText(/advert\.zerohop/)).toBeInTheDocument();
+      expect(screen.getByText(/own Send advert button floods/)).toBeInTheDocument();
+      expect(screen.getByText(/stored advert position, not a live GPS fix/)).toBeInTheDocument();
+      expect(screen.getByText('US/Canada 910.525 MHz, SF7 BW62.5 CR5')).toBeInTheDocument();
+      expect(screen.getByText('EU/UK narrow, SF8 BW62.5 CR8')).toBeInTheDocument();
+      expect(screen.getByText('396 ms')).toBeInTheDocument();
+      expect(screen.getByText(/0\.7% of the local channel/)).toBeInTheDocument();
+      expect(screen.getByText(/Repeaters' own adverts are recorded automatically/)).toBeInTheDocument();
+    });
+
+    it('shows the MeshCore empty-state hint alongside the Meshtastic one', () => {
+      useCoverageReceptions.mockReturnValue({
+        data: { items: [], truncated: false },
+        isLoading: false,
+        refetch: vi.fn(),
+      });
+
+      renderReport();
+      expect(
+        screen.getByText('MeshCore companions record signed adverts that carry a position.'),
+      ).toBeInTheDocument();
+    });
+  });
 });

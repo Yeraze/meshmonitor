@@ -7,11 +7,22 @@
  * One `CircleMarker` per fix (a physical position, `groupReceptionsIntoFixes`
  * from `src/utils/coverage.ts`), coloured by the BEST reception among the
  * receivers currently in scope (Decision D4) using the SAME theme palette
- * `snrToColor`/`rssiToColor` share (`overlayColors.snrColors`). Receiver
+ * `snrToColor`/`rssiToColor` share (`overlayColors.snrColors`) — shared
+ * across protocols (spec §5 U4), no MeshCore-specific colour metric. Receiver
  * markers are larger, distinctly stroked `CircleMarker`s with a permanent
  * label `Tooltip`. Clicking a fix opens a `Popup` listing every reception
  * WITHIN THE CURRENT FILTER (Decision D5) — `fix.receptions` already reflects
  * whatever the caller queried, so no extra per-fix query is made here.
+ *
+ * MeshCore (#5277 Phase 3 WP3, spec §2.6): a MeshCore row's popup path line
+ * reads "Direct" (hopsAway 0) or "N hops via <lastHop>" from
+ * `parseMeshCorePathKey(pathKey)` (upper-cased, hash width kept) — never
+ * `relayHex`, which decodes a Meshtastic `relayNode` byte and is meaningless
+ * for a MeshCore path. The sender header and popup receiver fallback label
+ * both go through `formatCoverageNodeId` so a MeshCore pubkey abbreviates
+ * the same way it does in `CoverageReceiverFilter`. A `mqtt_gateway` marker
+ * backed by a MeshCore row (an Observer feed) keeps the same dashed gateway
+ * marker style but labels itself "Observer" instead of "Gateway".
  */
 import { useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -21,6 +32,7 @@ import { BaseMap } from '../map/BaseMap';
 import { useSettings } from '../../contexts/SettingsContext';
 import { snrToColor, rssiToColor } from '../../utils/mapHelpers';
 import { calculateDistance, formatDistance } from '../../utils/distance';
+import { formatCoverageNodeId, parseMeshCorePathKey } from '../../utils/coverage';
 import type { CoverageFix, CoverageMetric } from '../../utils/coverage';
 import type { CoverageReceptionDto, CoverageReceiverDto } from '../../types/coverage';
 import { receiverKey } from '../../utils/coverageReceiverFilter';
@@ -44,13 +56,33 @@ function relayHex(relayNode: number | null): string {
   return `0x${relayNode.toString(16).padStart(2, '0').toUpperCase()}`;
 }
 
-/** "Name (!id)" when a display name is known, else just "!id". `senderNames`
+/** "Name (id)" when a display name is known, else just the id. `senderNames`
  *  is keyed by senderId with an already-resolved long/short-name fallback
  *  (built by the caller from `/senders`, since that's the only endpoint
- *  that carries names — receptions/receivers don't). */
+ *  that carries names — receptions/receivers don't). The id itself goes
+ *  through `formatCoverageNodeId`: a Meshtastic `!id` is unchanged, a
+ *  MeshCore pubkey abbreviates to its first 8 hex chars. */
 function fixSenderLabel(senderId: string, senderNames: Map<string, string>): string {
   const name = senderNames.get(senderId);
-  return name ? `${name} (${senderId})` : senderId;
+  const displayId = formatCoverageNodeId(senderId);
+  return name ? `${name} (${displayId})` : displayId;
+}
+
+/** MeshCore popup path line (spec §2.6): "Direct" when zero-hop, else
+ *  "N hops via <lastHop>" from the path key's last-hop hash, upper-cased
+ *  with its hash width kept. Never calls `relayHex` — that decodes a
+ *  Meshtastic `relayNode` byte, which MeshCore rows don't carry. */
+function meshCorePathLabel(r: CoverageReceptionDto, t: ReturnType<typeof useTranslation>['t']): string {
+  if (r.hopsAway === 0) return t('analysis.coverage.direct', 'Direct');
+  if (r.hopsAway == null) return t('analysis.coverage.unknown_path', 'Unknown path');
+  const parsed = parseMeshCorePathKey(r.pathKey);
+  if (parsed?.lastHop) {
+    return t('analysis.coverage.via_meshcore_path', '{{hops}} hops via {{lastHop}}', {
+      hops: r.hopsAway,
+      lastHop: parsed.lastHop.toUpperCase(),
+    });
+  }
+  return t('analysis.coverage.relayed_unknown', 'Relayed ({{hops}} hops)', { hops: r.hopsAway });
 }
 
 /** Fit the map view to every fix + visible receiver, once per FILTER SET
@@ -142,9 +174,12 @@ export const CoverageMap: React.FC<CoverageMapProps> = ({ fixes, receivers, metr
 
         {dedupedMarkers.map((m) => {
           const isGateway = m.receiverKind === 'mqtt_gateway';
-          const kindLabel = isGateway
-            ? t('analysis.coverage.kind_gateway', 'Gateway')
-            : t('analysis.coverage.kind_local', 'Local');
+          const isObserver = isGateway && m.protocol === 'meshcore';
+          const kindLabel = isObserver
+            ? t('analysis.coverage.kind_observer', 'Observer')
+            : isGateway
+              ? t('analysis.coverage.kind_gateway', 'Gateway')
+              : t('analysis.coverage.kind_local', 'Local');
           return (
             <CircleMarker
               key={`receiver-${m.key}`}
@@ -201,23 +236,29 @@ export const CoverageMap: React.FC<CoverageMapProps> = ({ fixes, receivers, metr
                     {collapseFixReceptionsBySource(fix.receptions, sourceNameByReceiverKey).map((c) => {
                       const r = c.best;
                       const receiverInfo = dedupedByPhysicalKey.get(physicalReceiverKey(c.receiverKind, c.receiverId));
-                      const receiverLabel = receiverInfo?.label ?? c.receiverId;
+                      const receiverLabel = receiverInfo?.label ?? formatCoverageNodeId(c.receiverId);
+                      const isMeshCore = r.protocol === 'meshcore';
                       const isGateway = c.receiverKind === 'mqtt_gateway';
+                      const isObserver = isGateway && isMeshCore;
                       const direct = r.hopsAway === 0;
-                      const pathLabel = direct
-                        ? t('analysis.coverage.direct', 'Direct')
-                        : r.hopsAway != null
-                          ? r.relayNode
-                            ? t(
-                                'analysis.coverage.relayed',
-                                'Relayed ({{hops}} hops, via {{relay}})',
-                                { hops: r.hopsAway, relay: relayHex(r.relayNode) },
-                              )
-                            : // Relay byte 0 is firmware's NO_RELAY_NODE: the relayer is unknown.
-                              t('analysis.coverage.relayed_unknown', 'Relayed ({{hops}} hops)', {
-                                hops: r.hopsAway,
-                              })
-                          : t('analysis.coverage.unknown_path', 'Unknown path');
+                      // MeshCore rows never carry a Meshtastic `relayNode` byte —
+                      // their path label comes from `pathKey` instead (spec §2.6).
+                      const pathLabel = isMeshCore
+                        ? meshCorePathLabel(r, t)
+                        : direct
+                          ? t('analysis.coverage.direct', 'Direct')
+                          : r.hopsAway != null
+                            ? r.relayNode
+                              ? t(
+                                  'analysis.coverage.relayed',
+                                  'Relayed ({{hops}} hops, via {{relay}})',
+                                  { hops: r.hopsAway, relay: relayHex(r.relayNode) },
+                                )
+                              : // Relay byte 0 is firmware's NO_RELAY_NODE: the relayer is unknown.
+                                t('analysis.coverage.relayed_unknown', 'Relayed ({{hops}} hops)', {
+                                  hops: r.hopsAway,
+                                })
+                            : t('analysis.coverage.unknown_path', 'Unknown path');
                       const distanceLabel =
                         r.receiverLatitude != null && r.receiverLongitude != null
                           ? formatDistance(
@@ -236,7 +277,9 @@ export const CoverageMap: React.FC<CoverageMapProps> = ({ fixes, receivers, metr
                             {receiverLabel}
                             {isGateway && (
                               <span className={styles.gatewayBadge}>
-                                {t('analysis.coverage.kind_gateway', 'Gateway')}
+                                {isObserver
+                                  ? t('analysis.coverage.kind_observer', 'Observer')
+                                  : t('analysis.coverage.kind_gateway', 'Gateway')}
                               </span>
                             )}
                           </div>

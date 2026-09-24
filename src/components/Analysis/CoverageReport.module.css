@@ -62,6 +62,14 @@
   text-align: left;
 }
 
+/* MeshCore guidance sub-block heading (#5277 P3 WP3, spec §2.6). */
+.guidanceSubheading {
+  margin: 4px 0 8px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
 .guidanceFooter {
   color: var(--color-text-subtle);
   font-size: 12px;

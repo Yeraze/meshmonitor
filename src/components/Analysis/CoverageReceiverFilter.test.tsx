@@ -167,6 +167,82 @@ describe('CoverageReceiverFilter', () => {
     expect(within(gwRow).getByText('Gateway')).toBeInTheDocument();
   });
 
+  // #5277 Phase 3 WP3: MeshCore receivers.
+  describe('MeshCore', () => {
+    const PUBKEY = 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2';
+
+    it('shows an Observer kind badge (not Gateway) for a MeshCore mqtt_gateway row', () => {
+      const receivers = [
+        receiver({
+          receiverId: PUBKEY,
+          receiverKind: 'mqtt_gateway',
+          protocol: 'meshcore',
+          longName: 'Observer One',
+        }),
+      ];
+      renderFilter(receivers, new Set(), vi.fn());
+      openPanel();
+
+      const row = screen.getByText('Observer One').closest('li') as HTMLElement;
+      expect(within(row).getByText('Observer')).toBeInTheDocument();
+      expect(within(row).queryByText('Gateway')).not.toBeInTheDocument();
+    });
+
+    it('shows a Local kind badge (not Observer) for a MeshCore local row', () => {
+      const receivers = [
+        receiver({
+          receiverId: PUBKEY,
+          receiverKind: 'local',
+          protocol: 'meshcore',
+          longName: 'Companion One',
+        }),
+      ];
+      renderFilter(receivers, new Set(), vi.fn());
+      openPanel();
+
+      const row = screen.getByText('Companion One').closest('li') as HTMLElement;
+      expect(within(row).getByText('Local')).toBeInTheDocument();
+      expect(within(row).queryByText('Observer')).not.toBeInTheDocument();
+    });
+
+    it('shows a MeshCore protocol badge only for meshcore rows', () => {
+      const receivers = [
+        receiver({ receiverId: '!aaaaaaaa', protocol: 'meshtastic', longName: 'Meshtastic One' }),
+        receiver({ receiverId: PUBKEY, protocol: 'meshcore', longName: 'MeshCore One', sourceId: 'src-b', sourceName: 'Source B' }),
+      ];
+      renderFilter(receivers, new Set(), vi.fn());
+      openPanel();
+
+      const mtRow = screen.getByText('Meshtastic One').closest('li') as HTMLElement;
+      expect(within(mtRow).queryByText('MeshCore')).not.toBeInTheDocument();
+      const mcRow = screen.getByText('MeshCore One').closest('li') as HTMLElement;
+      expect(within(mcRow).getByText('MeshCore')).toBeInTheDocument();
+    });
+
+    it('abbreviates a pubkey receiverId to its first 8 hex chars', () => {
+      const receivers = [receiver({ receiverId: PUBKEY, protocol: 'meshcore', longName: 'MeshCore One' })];
+      renderFilter(receivers, new Set(), vi.fn());
+      openPanel();
+
+      expect(screen.getByText('a1b2c3d4…')).toBeInTheDocument();
+      expect(screen.queryByText(PUBKEY)).not.toBeInTheDocument();
+    });
+
+    it('search matches a pubkey prefix', () => {
+      const receivers = [
+        receiver({ receiverId: PUBKEY, protocol: 'meshcore', longName: 'MeshCore One' }),
+        receiver({ receiverId: '!other', protocol: 'meshtastic', longName: 'Other One' }),
+      ];
+      renderFilter(receivers, new Set(), vi.fn());
+      openPanel();
+
+      fireEvent.change(screen.getByLabelText('Search receivers'), { target: { value: 'a1b2c3' } });
+
+      expect(screen.getByText('MeshCore One')).toBeInTheDocument();
+      expect(screen.queryByText('Other One')).not.toBeInTheDocument();
+    });
+  });
+
   it('sorts rows within a group by receptionCount descending', () => {
     const receivers = [
       receiver({ receiverId: '!low', longName: 'Low', receptionCount: 2 }),
@@ -246,6 +322,40 @@ describe('CoverageReceiverFilter', () => {
       expect(screen.getByTestId('coverage-mqtt-status')).toBeInTheDocument();
       // No receivers at all -> no picker trigger.
       expect(screen.queryByRole('button', { name: /Receivers:|All receivers/ })).not.toBeInTheDocument();
+    });
+
+    // #5277 Phase 3 WP3: `protocol` is a WP2 addition to CoverageMqttSourceStatusDto
+    // (spec §4) — typed as an optional extra field here so this test compiles
+    // and passes both before and after WP2 merges (the orchestrator re-runs
+    // WP3's tests after that merge).
+    it('labels a MeshCore observer source "Observer recording" when on', () => {
+      const mqttSources: Array<CoverageMqttSourceStatusDto & { protocol?: string }> = [
+        { sourceId: 'src-a', sourceName: 'Source A', recordingEnabled: true, protocol: 'meshcore' },
+      ];
+      renderFilter(receivers, new Set(), vi.fn(), mqttSources);
+
+      const status = screen.getByTestId('coverage-mqtt-status');
+      expect(within(status).getByText('Observer recording')).toBeInTheDocument();
+      expect(within(status).queryByText('Recording')).not.toBeInTheDocument();
+    });
+
+    it('keeps the plain "Recording" label for a Meshtastic MQTT source', () => {
+      const mqttSources: Array<CoverageMqttSourceStatusDto & { protocol?: string }> = [
+        { sourceId: 'src-a', sourceName: 'Source A', recordingEnabled: true, protocol: 'meshtastic' },
+      ];
+      renderFilter(receivers, new Set(), vi.fn(), mqttSources);
+
+      const status = screen.getByTestId('coverage-mqtt-status');
+      expect(within(status).getByText('Recording')).toBeInTheDocument();
+    });
+
+    it('treats a missing protocol field as Meshtastic (pre-WP2-merge shape)', () => {
+      renderFilter(receivers, new Set(), vi.fn(), [
+        { sourceId: 'src-a', sourceName: 'Source A', recordingEnabled: true },
+      ]);
+
+      const status = screen.getByTestId('coverage-mqtt-status');
+      expect(within(status).getByText('Recording')).toBeInTheDocument();
     });
 
     it('URL-encodes the sourceId in the settings link', () => {
