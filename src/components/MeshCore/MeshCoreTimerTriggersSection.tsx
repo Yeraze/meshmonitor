@@ -8,6 +8,13 @@ import { useSaveBar } from '../../hooks/useSaveBar';
 import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
 import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
 import { isTxDisabledBody } from '../../utils/txDisabled';
+import { MeshCoreAdvertModeField } from './MeshCoreAdvertModeField';
+import {
+  DEFAULT_MESHCORE_ADVERT_MODE,
+  LEGACY_MESHCORE_ADVERT_MODE,
+  resolveMeshCoreAdvertMode,
+  type MeshCoreAdvertMode,
+} from '../../types/meshcoreAdvert';
 
 interface MeshCoreTimerTriggersSectionProps {
   baseUrl: string;
@@ -32,6 +39,8 @@ interface MeshCoreTimerTrigger {
   intervalMinutes?: number;
   responseType: 'text' | 'advert' | 'script';
   response?: string;
+  /** Advert reach for `advert` triggers. Absent on older triggers = flood. */
+  advertMode?: MeshCoreAdvertMode;
   scriptPath?: string;
   scriptArgs?: string;
   destination?: 'channel' | 'dm';
@@ -74,6 +83,7 @@ const newTrigger = (): MeshCoreTimerTrigger => ({
   intervalMinutes: 60,
   responseType: 'text',
   response: '',
+  advertMode: DEFAULT_MESHCORE_ADVERT_MODE,
   destination: 'channel',
   channelIndex: 0,
   scopeMode: 'inherit',
@@ -420,7 +430,15 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
                 {t('meshcore.automation.timers.response_type', 'Action')}
                 <select
                   value={tr.responseType}
-                  onChange={(e) => updateTrigger(tr.id, { responseType: e.target.value as 'text' | 'advert' | 'script' })}
+                  onChange={(e) => {
+                    const responseType = e.target.value as 'text' | 'advert' | 'script';
+                    // Turning an older trigger into an advert is a new advert
+                    // config: give it the zero-hop default rather than the
+                    // legacy flood an absent mode would mean.
+                    updateTrigger(tr.id, responseType === 'advert' && tr.advertMode === undefined
+                      ? { responseType, advertMode: DEFAULT_MESHCORE_ADVERT_MODE }
+                      : { responseType });
+                  }}
                   disabled={!canWrite}
                   className="meshcore-select"
                   style={{ width: '100%', marginTop: '0.25rem' }}
@@ -430,6 +448,13 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
                   <option value="script">{t('meshcore.automation.timers.response_script', 'Run script')}</option>
                 </select>
               </label>
+              {tr.responseType === 'advert' && (
+                <MeshCoreAdvertModeField
+                  value={resolveMeshCoreAdvertMode(tr.advertMode, LEGACY_MESHCORE_ADVERT_MODE)}
+                  onChange={(mode) => updateTrigger(tr.id, { advertMode: mode })}
+                  disabled={!canWrite}
+                />
+              )}
               {tr.responseType === 'text' && (
                 <label style={{ fontSize: '0.85rem' }}>
                   {t('meshcore.automation.timers.response_message', 'Message (token expansion supported)')}

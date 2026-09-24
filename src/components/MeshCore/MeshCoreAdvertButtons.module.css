@@ -1,0 +1,21 @@
+/*
+ * MeshCoreAdvertButtons. CSS module — do not add these rules to the global
+ * sheets (CLAUDE.md CSS containment rule). `.group .flood` is two classes deep
+ * so it beats the status bar's `.meshcore-status-bar button` rule.
+ */
+
+.group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.group .flood {
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+
+.group .flood:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}

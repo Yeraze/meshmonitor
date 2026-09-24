@@ -4983,7 +4983,7 @@
   "meshcore.config.telemetry_mode.device": "Device only",
   "meshcore.config.telemetry_mode.never": "Never",
   "meshcore.settings.actions": "Device actions",
-  "meshcore.settings.actions_hint": "Refresh the contact list from the device or broadcast a fresh advert.",
+  "meshcore.settings.actions_hint": "Refresh the contact list from the device, or announce this node. A zero-hop advert reaches nodes in direct radio range; a flood advert crosses the whole mesh and costs much more airtime.",
   "meshcore.discover.title": "Discover nodes",
   "meshcore.discover.hint": "Ask nodes in direct radio range to announce themselves. Responders are added as contacts. Multi-hop nodes will not appear — discovery is zero-hop.",
   "meshcore.discover.nearby": "Discover Nearby Nodes",
@@ -5690,5 +5690,14 @@
   "automation.auto_enrichment.never": "never",
   "automation.auto_enrichment.last_result": "{{nodes}} node(s) filled, {{fields}} field(s); {{sent}} NodeInfo request(s) sent",
   "automation.auto_enrichment.pending_one": "{{count}} push waiting for the next run",
-  "automation.auto_enrichment.pending_other": "{{count}} pushes waiting for the next run"
+  "automation.auto_enrichment.pending_other": "{{count}} pushes waiting for the next run",
+  "meshcore.advert.zero_hop_button": "Advert (nearby, zero-hop)",
+  "meshcore.advert.zero_hop_title": "Announce this node to nodes in direct radio range. Repeaters do not forward it.",
+  "meshcore.advert.flood_button": "Flood advert",
+  "meshcore.advert.flood_title": "Announce this node across the whole mesh. Every repeater within 8 hops forwards it.",
+  "meshcore.advert.flood_confirm": "Send a flood advert? It is repeated by every repeater within 8 hops. With 20 repeaters in reach that is about 9 s (US) / 25 s (EU) of channel time. A zero-hop advert reaches nearby nodes for a fraction of that.",
+  "meshcore.advert.mode_label": "Advert reach",
+  "meshcore.advert.mode_zero_hop": "Zero-hop (nearby nodes only)",
+  "meshcore.advert.mode_flood": "Flood (whole mesh)",
+  "meshcore.advert.flood_automated_warning": "Flood adverts are repeated by every repeater within 8 hops: with 20 repeaters in reach about 9 s (US) / 25 s (EU) of channel time each. Automated flood adverts run at most once per hour per source; extra floods are skipped."
 }

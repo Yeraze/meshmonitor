@@ -38,7 +38,7 @@ const connectedStatus: ConnectionStatus = {
 } as ConnectionStatus;
 
 describe('MeshCoreStatusBar receive-only mode', () => {
-  it('disables Send advert with a tooltip, leaves Disconnect enabled', () => {
+  it('disables both advert buttons with a tooltip, leaves Disconnect enabled', () => {
     const actions = makeActions();
     render(
       <MeshCoreStatusBar
@@ -49,10 +49,12 @@ describe('MeshCoreStatusBar receive-only mode', () => {
         receiveOnly
       />,
     );
-    const advertBtn = screen.getByText('Send advert').closest('button');
     const disconnectBtn = screen.getByText('Disconnect').closest('button');
-    expect(advertBtn).toBeDisabled();
-    expect(advertBtn).toHaveAttribute('title', TOOLTIP);
+    for (const label of ['Advert (nearby, zero-hop)', 'Flood advert']) {
+      const advertBtn = screen.getByText(label).closest('button');
+      expect(advertBtn).toBeDisabled();
+      expect(advertBtn).toHaveAttribute('title', TOOLTIP);
+    }
     expect(disconnectBtn).not.toBeDisabled();
   });
 
@@ -70,7 +72,7 @@ describe('MeshCoreStatusBar receive-only mode', () => {
     expect(screen.getByText('Receive-only')).toBeInTheDocument();
   });
 
-  it('leaves Send advert enabled and untitled, and does not render the chip, when receiveOnly is false', () => {
+  it('leaves both advert buttons enabled without the receive-only tooltip, and does not render the chip, when receiveOnly is false', () => {
     const actions = makeActions();
     render(
       <MeshCoreStatusBar
@@ -80,9 +82,11 @@ describe('MeshCoreStatusBar receive-only mode', () => {
         actions={actions as any}
       />,
     );
-    const advertBtn = screen.getByText('Send advert').closest('button');
-    expect(advertBtn).not.toBeDisabled();
-    expect(advertBtn).toHaveAttribute('title', 'Send advert');
+    for (const label of ['Advert (nearby, zero-hop)', 'Flood advert']) {
+      const advertBtn = screen.getByText(label).closest('button');
+      expect(advertBtn).not.toBeDisabled();
+      expect(advertBtn).not.toHaveAttribute('title', TOOLTIP);
+    }
     expect(screen.queryByText('Receive-only')).not.toBeInTheDocument();
   });
 });
