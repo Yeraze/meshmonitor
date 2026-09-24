@@ -99,7 +99,13 @@ import {
   recordMqttEcho,
   matchesMqttEcho,
 } from './services/mqttProxyBridge.js';
-import { isDuplicatePacketLog, packetLogDedupKey, dedupTtlForTransport } from './services/packetLogDedup.js';
+import { isDuplicatePacketLog, packetLogDedupKey, dedupTtlForTransport, isRfTransport } from './services/packetLogDedup.js';
+import {
+  isStaleCoverageRxTime,
+  computeMeshtasticHopsAway,
+  meshtasticPathKey,
+  nodeNumToId,
+} from '../utils/coverage.js';
 import { NodeDbMaintenanceService } from './services/nodeDbMaintenanceService.js';
 import { AutoAnnounceService } from './services/autoAnnounceService.js';
 import { AdminTransactionService } from './services/adminTransactionService.js';
@@ -405,6 +411,36 @@ type HeardRefloodPacket = {
   rxSnr?: number | null;
   viaMqtt?: boolean;
   transportMechanism?: number;
+};
+
+/**
+ * Minimal decoded-MeshPacket shape read by `maybeRecordCoverageReception`
+ * (#5277 Phase 1 WP2). Same rationale as `HeardRefloodPacket` above: a
+ * narrow type instead of `any`, covering both the camelCase field
+ * protobuf.js normally decodes to and the snake_case wire name some call
+ * sites in this file still fall back to.
+ */
+type CoverageReceptionPacket = {
+  from?: number | bigint | null;
+  id?: number | bigint | null;
+  relayNode?: number | null;
+  rxSnr?: number | null;
+  rx_snr?: number | null;
+  rxRssi?: number | null;
+  rx_rssi?: number | null;
+  hopStart?: number | null;
+  hop_start?: number | null;
+  hopLimit?: number | null;
+  hop_limit?: number | null;
+  rxTime?: number | bigint | null;
+  viaMqtt?: boolean;
+  transportMechanism?: number | null;
+  decoded?: { bitfield?: number | null } | null;
+};
+
+/** Minimal decoded-Position shape `maybeRecordCoverageReception` reads. */
+type CoveragePositionPayload = {
+  altitude?: number | null;
 };
 
 type TextMessage = {
@@ -1114,6 +1150,11 @@ class MeshtasticManager implements ISourceManager {
   // packets when overheard/echoed/replayed so they aren't flagged as local-node
   // spoofs (#2584). See assessLocalSpoof().
   private sentPacketIds = new SentPacketIdCache();
+
+  // Coverage Report (#5277 P1 WP2): snapshot of this source's local receiver
+  // position, refreshed at most every 60 s from the nodes table rather than
+  // on every single reception. See maybeRecordCoverageReception().
+  private coverageReceiverPos: { lat: number | null; lon: number | null; at: number } | null = null;
 
   // Auto-ping session tracking
   private autoPingSessions: Map<number, AutoPingSession> = new Map(); // keyed by requester nodeNum
@@ -5454,6 +5495,116 @@ class MeshtasticManager implements ISourceManager {
   }
 
   /**
+   * Record one RF reception of a position packet for the Coverage Report
+   * (#5277 Phase 1 WP2). Called non-blocking (`void`) from
+   * `processPositionMessageProtobuf`, immediately after `channelIndex` and
+   * `precisionBits` are known and before the telemetry inserts. Entirely
+   * wrapped in try/catch and never throws into the RX path — a repository
+   * failure here must not break telemetry insert or node upsert. Does **not**
+   * emit on `dataEventEmitter` (mesh-impact checklist §0: no spam surface).
+   *
+   * RF sources always record; there is no per-source setting gate (only the
+   * retention window, read by {@link coverageRetentionService}, is
+   * configurable). See COVERAGE_P1_SPEC.md §2.5 for the full skip-case list.
+   */
+  private async maybeRecordCoverageReception(
+    meshPacket: CoverageReceptionPacket,
+    coords: { latitude: number; longitude: number },
+    position: CoveragePositionPayload,
+    precisionBits: number | undefined,
+    channelIndex: number | undefined,
+    context?: ProcessingContext,
+  ): Promise<void> {
+    try {
+      const localNodeNum = this.localNodeInfo?.nodeNum ?? null;
+      if (localNodeNum === null) return; // (1) no local node yet
+
+      const fromNum = meshPacket.from ? Number(meshPacket.from) : 0;
+      if (fromNum === localNodeNum) return; // (2) our own position
+
+      const viaMqtt = meshPacket.viaMqtt === true || isViaMqtt(meshPacket.transportMechanism ?? undefined);
+      if (viaMqtt || !isRfTransport(resolveRadioPacketTransport(meshPacket))) return; // (3) not RF
+
+      if (context?.viaStoreForward || context?.virtualNodeRequestId != null) return; // (4) replay / VN-originated
+
+      const packetId = meshPacket.id ? Number(meshPacket.id) : null;
+      if (!packetId) return; // (5) missing or 0
+
+      const rxTimeSec = meshPacket.rxTime != null ? Number(meshPacket.rxTime) : null;
+      if (isStaleCoverageRxTime(rxTimeSec, Date.now())) return; // (6) stale replay
+
+      const rawSnr = meshPacket.rxSnr ?? meshPacket.rx_snr ?? null;
+      const snr = (rawSnr != null && rawSnr !== -128) ? rawSnr : null;
+      const rssi = meshPacket.rxRssi ?? meshPacket.rx_rssi ?? null; // keep explicit 0
+
+      const hopStart = meshPacket.hopStart ?? meshPacket.hop_start ?? null;
+      const hopLimit = meshPacket.hopLimit ?? meshPacket.hop_limit ?? null;
+      const relayNode = meshPacket.relayNode ?? null;
+      // Presence, not truthiness (D2/§2.4): a wire-present bitfield of 0 still counts.
+      const hasBitfield = typeof meshPacket.decoded?.bitfield === 'number';
+      const hopsAway = computeMeshtasticHopsAway({ hopStart, hopLimit, hasBitfield });
+      const pathKey = meshtasticPathKey(relayNode, hopsAway);
+
+      await this.refreshCoverageReceiverPos(localNodeNum);
+
+      await databaseService.coverageReceptions.recordReception({
+        sourceId: this.sourceId,
+        protocol: 'meshtastic',
+        receiverKind: 'local',
+        receiverId: nodeNumToId(localNodeNum),
+        receiverNodeNum: localNodeNum,
+        receiverLatitude: this.coverageReceiverPos?.lat ?? null,
+        receiverLongitude: this.coverageReceiverPos?.lon ?? null,
+        senderId: nodeNumToId(fromNum),
+        senderNodeNum: fromNum,
+        packetKey: String(packetId),
+        packetId,
+        pathKey,
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+        altitude: position?.altitude ?? null,
+        precisionBits: precisionBits ?? null,
+        snr,
+        rssi,
+        hopStart,
+        hopLimit,
+        hopsAway,
+        relayNode,
+        transportMechanism: resolveRadioPacketTransport(meshPacket),
+        channel: channelIndex ?? null,
+        rxTime: rxTimeSec,
+        receivedAt: Date.now(),
+      });
+    } catch (err) {
+      logger.debug('📡 Failed to record Coverage reception (non-fatal):', err);
+    }
+  }
+
+  /**
+   * Refresh {@link coverageReceiverPos} from the nodes table, at most once
+   * per 60 s — a per-manager snapshot cache so a busy survey session doesn't
+   * hit the nodes table on every single reception. Override-aware, mirroring
+   * the `hasPositionOverride` check in `processPositionMessageProtobuf`. A
+   * lookup failure is swallowed (leaves the previous cache in place, if any)
+   * so it can never break the caller's RX path.
+   */
+  private async refreshCoverageReceiverPos(localNodeNum: number): Promise<void> {
+    const now = Date.now();
+    if (this.coverageReceiverPos && now - this.coverageReceiverPos.at <= 60_000) return;
+    try {
+      const localNode = await databaseService.nodes.getNode(localNodeNum, this.sourceId);
+      const hasOverride = localNode?.positionOverrideEnabled === true
+        && localNode?.latitudeOverride != null
+        && localNode?.longitudeOverride != null;
+      const lat = hasOverride ? localNode!.latitudeOverride! : (localNode?.latitude ?? null);
+      const lon = hasOverride ? localNode!.longitudeOverride! : (localNode?.longitude ?? null);
+      this.coverageReceiverPos = { lat: lat ?? null, lon: lon ?? null, at: now };
+    } catch (err) {
+      logger.debug('📡 Failed to refresh coverage receiver position snapshot (non-fatal):', err);
+    }
+  }
+
+  /**
    * Get cached remote node config
    * @param nodeNum The remote node number
    * @returns The cached config for the remote node, or null if not available
@@ -7605,6 +7756,11 @@ class MeshtasticManager implements ISourceManager {
         const posRxSnr = (rawPosRxSnr != null && rawPosRxSnr !== -128) ? rawPosRxSnr : undefined;
         const posHopStart = meshPacket.hopStart ?? (meshPacket as any).hop_start ?? undefined;
         const posHopLimit = meshPacket.hopLimit ?? (meshPacket as any).hop_limit ?? undefined;
+
+        // Coverage Report (#5277 P1 WP2): record this RF reception. Non-blocking
+        // and independent of telemetry storage below — see maybeRecordCoverageReception
+        // for the full skip-case list and why it can never throw into this path.
+        void this.maybeRecordCoverageReception(meshPacket, coords, position, precisionBits, channelIndex, context);
 
         // Always save position to telemetry table for historical tracking
         // This ensures position history is complete regardless of precision changes
