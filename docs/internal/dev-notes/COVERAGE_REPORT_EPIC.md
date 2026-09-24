@@ -59,6 +59,14 @@ plan comment on #5277.
 - **Canvas map rendering.** Up to 10k `CircleMarker`s render as SVG in
   `CoverageMap`. Pass `preferCanvas` to `BaseMap` if browser checks show lag on
   busy MQTT sources. Deferred from P2 (Q2).
+- **SF-aware link margin (P4).** Colour by SNR above the spreading factor's
+  demod floor (SF7 ≈ −7.5 dB, SF8 ≈ −10 dB, LongFast SF11 ≈ −17.5 dB) as an
+  extra metric. P3 kept the shared SNR/RSSI bands (U4).
+- **MeshMonitor's MeshCore "Send advert" floods.** The button, the
+  auto-announce advert burst and the automation `advert` action all send
+  `SelfAdvertTypes.Flood` (`meshcoreNativeBackend.ts:1991`). Firmware defaults
+  to zero-hop. Flagged in P3 (`COVERAGE_P3_SPEC.md` §0.4), not changed; user to
+  decide on a zero-hop option, cost confirm or cooldown.
 
 ## Phase log
 

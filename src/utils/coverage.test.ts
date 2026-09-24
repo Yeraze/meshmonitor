@@ -5,6 +5,13 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
+  computeMeshCoreHopsAway,
+  meshcorePathKey,
+  parseMeshCorePathKey,
+  isMeshCorePubKeyId,
+  formatCoverageNodeId,
+  isMeshCoreReceptionRow,
+  isCoverageMqttSourceType,
   COVERAGE_MQTT_ENABLED_SETTING,
   isCoverageMqttFlagOn,
   clampCoverageRetentionDays,
@@ -247,5 +254,49 @@ describe('isCoverageMqttFlagOn', () => {
     for (const raw of [null, undefined, '', '0', 'false', 'yes', 'TRUE']) {
       expect(isCoverageMqttFlagOn(raw)).toBe(false);
     }
+  });
+});
+
+describe('MeshCore helpers (#5277 P3)', () => {
+  const PK = 'a'.repeat(64);
+
+  it('computeMeshCoreHopsAway', () => {
+    expect(computeMeshCoreHopsAway(1, 0)).toBe(0);
+    expect(computeMeshCoreHopsAway(1, 3)).toBe(3);
+    expect(computeMeshCoreHopsAway(0, 2)).toBe(2);
+    expect(computeMeshCoreHopsAway(2, 0)).toBe(0);
+    expect(computeMeshCoreHopsAway(3, 0)).toBe(0);
+    for (const [rt, hc] of [[2, 1], [5, 0], [1, null], [1, -1], [1, 1.5]] as const) {
+      expect(computeMeshCoreHopsAway(rt, hc)).toBeNull();
+    }
+  });
+
+  it('meshcorePathKey and parseMeshCorePathKey round-trip', () => {
+    expect(meshcorePathKey(0, null)).toBe('h0:-');
+    expect(meshcorePathKey(2, 'A1B2')).toBe('h2:a1b2');
+    expect(meshcorePathKey(null, 'zz')).toBe('h-:-');
+    expect(meshcorePathKey(1, 'abcdef')).toBe('h1:abcdef');
+    for (const key of ['h0:-', 'h2:a1b2', 'h-:-', 'h1:abcdef']) {
+      const parsed = parseMeshCorePathKey(key);
+      expect(parsed).not.toBeNull();
+      expect(meshcorePathKey(parsed!.hops, parsed!.lastHop)).toBe(key);
+    }
+    expect(parseMeshCorePathKey('r0:h0')).toBeNull();
+  });
+
+  it('isMeshCorePubKeyId and formatCoverageNodeId', () => {
+    expect(isMeshCorePubKeyId(PK)).toBe(true);
+    expect(isMeshCorePubKeyId(PK.toUpperCase())).toBe(true);
+    expect(isMeshCorePubKeyId('a'.repeat(63))).toBe(false);
+    expect(isMeshCorePubKeyId('!abcd1234')).toBe(false);
+    expect(formatCoverageNodeId(PK)).toBe('aaaaaaaa…');
+    expect(formatCoverageNodeId('!abcd1234')).toBe('!abcd1234');
+  });
+
+  it('isMeshCoreReceptionRow and isCoverageMqttSourceType', () => {
+    expect(isMeshCoreReceptionRow({ protocol: 'meshcore' })).toBe(true);
+    expect(isMeshCoreReceptionRow({ protocol: 'meshtastic' })).toBe(false);
+    for (const t of ['mqtt_bridge', 'mqtt_broker', 'meshcore_mqtt']) expect(isCoverageMqttSourceType(t)).toBe(true);
+    for (const t of ['meshcore', 'meshtastic_tcp', null]) expect(isCoverageMqttSourceType(t)).toBe(false);
   });
 });
