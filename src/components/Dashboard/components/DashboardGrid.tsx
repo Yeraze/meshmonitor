@@ -11,6 +11,8 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import TelemetryChart from '../../TelemetryChart';
+import TransportSeriesChart from '../../TransportSeriesChart';
+import { isTransportSeriesType } from '../../../utils/transportSeries';
 import PacketRateChart, { isPacketRateType } from '../../PacketRateChart';
 import SmartHopsChart, { isSmartHopsType } from '../../SmartHopsChart';
 import LinkQualityChart, { isLinkQualityType } from '../../LinkQualityChart';
@@ -202,6 +204,22 @@ const DashboardGrid: React.FC<DashboardGridProps> = ({
             {favorites.map(favorite => {
               const key = `${favorite.nodeId}-${favorite.telemetryType}`;
               const node = nodes.get(favorite.nodeId);
+
+              // Use TransportSeriesChart for the transport-breakdown pseudo types (#5101 P3)
+              if (isTransportSeriesType(favorite.telemetryType)) {
+                return (
+                  <TransportSeriesChart
+                    key={key}
+                    id={key}
+                    favorite={favorite}
+                    node={node}
+                    hours={hours}
+                    baseUrl={baseUrl}
+                    globalTimeRange={globalTimeRange}
+                    onRemove={onRemoveFavorite}
+                  />
+                );
+              }
 
               // Use PacketRateChart for packet rate types
               if (isPacketRateType(favorite.telemetryType)) {

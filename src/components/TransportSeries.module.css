@@ -1,0 +1,25 @@
+/*
+ * TransportSeries.module.css (#5101 Phase 3, WP4)
+ *
+ * Caption and empty-state styles for the two MeshMonitor-computed
+ * per-transport charts (TransportSeriesGraphs, TransportSeriesChart,
+ * TransportSeriesPlot). Everything else — the chart card, grid, header and
+ * favorite-star chrome — reuses the existing global `telemetry-graphs` /
+ * `graph-container` / `dashboard-chart-*` classes so the Info tab section and
+ * Dashboard card stay visually consistent with PacketRateGraphs and
+ * PacketRateChart (see CLAUDE.md CSS containment note: new work styles via a
+ * scoped module rather than growing the frozen global sheets).
+ */
+
+.caption {
+  margin: 0.1rem 0 0.4rem;
+  font-size: 0.8em;
+  color: var(--color-text-muted);
+}
+
+.empty {
+  color: var(--color-text-subtle);
+  text-align: center;
+  padding: 20px;
+  font-style: italic;
+}
