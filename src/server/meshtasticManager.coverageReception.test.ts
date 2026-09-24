@@ -334,4 +334,54 @@ describe('MeshtasticManager — Coverage Report RF-reception recording hook (#52
     await callHook(mgr);
     expect(emitCalls).toEqual([]);
   });
+
+  describe('refreshCoverageReceiverPos caching (60s)', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('does not call the node lookup again for a second reception within 60s', async () => {
+      const mgr = makeManager();
+      await callHook(mgr);
+      await callHook(mgr, { id: PACKET_ID + 1 });
+
+      expect(getNodeMock).toHaveBeenCalledTimes(1);
+      expect(recordReceptionMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('calls the node lookup again once the 60s cache has expired', async () => {
+      const mgr = makeManager();
+      await callHook(mgr);
+
+      vi.setSystemTime(new Date('2024-01-01T00:01:01.000Z')); // +61s
+      await callHook(mgr, { id: PACKET_ID + 1 });
+
+      expect(getNodeMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps the previous cached position on a lookup failure, and still records the reception', async () => {
+      const mgr = makeManager();
+      await callHook(mgr);
+      expect(recordReceptionMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ receiverLatitude: 39.9, receiverLongitude: -75.1 }),
+      );
+
+      vi.setSystemTime(new Date('2024-01-01T00:01:01.000Z')); // +61s, cache expired
+      getNodeMock.mockRejectedValueOnce(new Error('db unavailable'));
+      await callHook(mgr, { id: PACKET_ID + 1 });
+
+      expect(getNodeMock).toHaveBeenCalledTimes(2);
+      expect(recordReceptionMock).toHaveBeenCalledTimes(2);
+      // Lookup failed, so the stale 39.9/-75.1 snapshot from the first call
+      // is kept — and the reception is still recorded with it, never dropped.
+      expect(recordReceptionMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ receiverLatitude: 39.9, receiverLongitude: -75.1 }),
+      );
+    });
+  });
 });
