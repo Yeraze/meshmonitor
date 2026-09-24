@@ -47,6 +47,7 @@ import { versionCheckService } from './services/versionCheckService.js';
 import { dynamicCspMiddleware, refreshTileHostnameCache } from './middleware/dynamicCsp.js';
 import settingsRoutes, { setSettingsCallbacks } from './routes/settingsRoutes.js';
 import { bootstrapSources } from './bootstrapSources.js';
+import { transportTrafficService } from './services/transportTrafficService.js';
 import { migrateAutoResponderTriggers } from './services/autoResponderTriggerMigration.js';
 import { configureStaticServing, invalidateHtmlCache } from './staticServing.js';
 // Re-exported for backward compatibility — server.ts used to define
@@ -314,6 +315,16 @@ setTimeout(async () => {
   try {
     // Wait for database initialization (critical for PostgreSQL/MySQL where repos are async)
     await databaseService.waitForReady();
+
+    // #5101 P3 WP3: restore/recover the transport-traffic writer's checkpoints
+    // BEFORE any source manager can receive a packet (R10 — a later refactor
+    // moving this past bootstrapSources would undercount the recovered bin's
+    // nodes). Never blocks boot: log and continue on failure.
+    try {
+      await transportTrafficService.start();
+    } catch (error) {
+      logger.error('Failed to start transportTrafficService (continuing boot):', error);
+    }
 
     // Bootstrap all enabled sources (auto-creating a Default source from env
     // only when none exist AND MESHTASTIC_NODE_IP was explicitly set).
@@ -1143,7 +1154,13 @@ function gracefulShutdown(reason: string, exitCode = 0): void {
   isShuttingDown = true;
   logger.info(`🛑 Initiating graceful shutdown: ${reason} (exit ${exitCode})`);
 
-  const shutdownDependencies = (): void => {
+  // #5101 P3 WP3: start the transport-traffic writer's stop() right away,
+  // while the DB is still open. Do NOT wait for server.close() first — it
+  // waits for every open client connection (R11), which could starve the
+  // writer's final checkpoint of its 3s budget below.
+  const trafficStopped = transportTrafficService.stop();
+
+  const shutdownDependencies = async (): Promise<void> => {
     // Stop the ATAK/CoT feed server (issue #3691 Phase 3): closes the TCP
     // listener and destroys connected client sockets. Fire-and-forget —
     // stop() is async (waits on server.close()'s callback) but shutdown must
@@ -1163,6 +1180,11 @@ function gracefulShutdown(reason: string, exitCode = 0): void {
       logger.error('Error disconnecting from Meshtastic:', error);
     }
 
+    // #5101 P3 WP3: give the transport-traffic writer's final checkpoint up
+    // to 3s to land before the DB closes. The outer 10s forced-exit timer
+    // below still bounds the whole shutdown sequence regardless.
+    await Promise.race([trafficStopped, new Promise((resolve) => setTimeout(resolve, 3000))]);
+
     // Close database connections
     try {
       databaseService.close();
@@ -1181,11 +1203,11 @@ function gracefulShutdown(reason: string, exitCode = 0): void {
   if (server) {
     server.close(() => {
       logger.debug('✅ HTTP server closed');
-      shutdownDependencies();
+      void shutdownDependencies();
     });
   } else {
     logger.info('HTTP server not yet started — skipping server.close()');
-    shutdownDependencies();
+    void shutdownDependencies();
   }
 
   // Force shutdown after 10 seconds if graceful shutdown hangs

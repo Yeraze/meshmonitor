@@ -30,7 +30,7 @@ import { getDiscardInvalidPositions } from '../utils/positionIngestConfig.js';
 import { isPointInGeofence, distanceToGeofenceCenter } from '../utils/geometry.js';
 import { formatTime, formatDate } from '../utils/datetime.js';
 import { logger } from '../utils/logger.js';
-import { transportColumnForPacket } from '../utils/nodeTransport.js';
+import { transportColumnForPacket, classifyNodeTransport } from '../utils/nodeTransport.js';
 import { segmentTransportMechanism } from '../utils/tracerouteTransport.js';
 import {
   parseFirmwareVersion as parseFirmwareVersionShared,
@@ -43,6 +43,7 @@ import { sendMessagePushNotification } from './services/messagePushNotifier.js';
 import { getMaxNodeAgeHours } from './services/nodeDisplaySettings.js';
 import { deadDropService, nodeIdHex } from './services/deadDropService.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
+import { transportTrafficService } from './services/transportTrafficService.js';
 import packetLogService from './services/packetLogService.js';
 import { channelDecryptionService } from './services/channelDecryptionService.js';
 import { pkiDecryptionService } from './services/pkiDecryptionService.js';
@@ -6403,6 +6404,12 @@ class MeshtasticManager implements ISourceManager {
       // Stamp only the column for THIS packet's transport; the repository
       // carries the other two forward untouched.
       const txColumn = transportColumnForPacket(txMech, meshPacket.viaMqtt);
+      // Computed once and reused for lastHeard, [txColumn], and the #5101 P3
+      // counter gate below — previously called twice with identical args.
+      const heardSec = resolveLastHeardSec(
+        meshPacket.rxTime != null ? Number(meshPacket.rxTime) : undefined,
+        Date.now(),
+      );
 
       const nodeData: any = {
         nodeNum: fromNum,
@@ -6412,10 +6419,7 @@ class MeshtasticManager implements ISourceManager {
         // retained frame (e.g. an MQTT bridge re-injecting an offline node's old
         // telemetry). Omit lastHeard for those so upsertNode preserves the node's
         // existing value instead of resurrecting a dead node. See replayGuard.ts.
-        lastHeard: resolveLastHeardSec(
-          meshPacket.rxTime != null ? Number(meshPacket.rxTime) : undefined,
-          Date.now(),
-        ),
+        lastHeard: heardSec,
         // Update channel from every firmware-decoded packet so outbound messages (DMs,
         // traceroutes, position requests) use the channel the node is actually communicating
         // on. Previously only set from NodeInfo, which could get stuck on a secondary channel.
@@ -6426,11 +6430,18 @@ class MeshtasticManager implements ISourceManager {
         // Reuse the same resolved lastHeard so "last seen over RF" and
         // "last heard" cannot disagree (incl. the replay-guard omission case,
         // where an undefined lastHeard leaves the stamp untouched too).
-        [txColumn]: resolveLastHeardSec(
-          meshPacket.rxTime != null ? Number(meshPacket.rxTime) : undefined,
-          Date.now(),
-        ),
+        [txColumn]: heardSec,
       };
+
+      // #5101 P3: per-transport RX counter. Same gate as the stamp: a
+      // replayed frame (lastHeard undefined) and our own node's packets do
+      // not count.
+      if (heardSec !== undefined && fromNum !== this.localNodeInfo?.nodeNum) {
+        transportTrafficService.recordRx(
+          this.sourceId,
+          classifyNodeTransport({ transportMechanism: txMech, viaMqtt: meshPacket.viaMqtt }),
+        );
+      }
 
       // Only set default name if this is a brand new node
       if (!existingNode) {
