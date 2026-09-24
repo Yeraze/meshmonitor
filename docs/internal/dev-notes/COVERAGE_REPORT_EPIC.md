@@ -45,7 +45,7 @@ plan comment on #5277.
   a receiver with its SNR/RSSI; report shows gateway receivers; note that nodes
   disallowing MQTT uploads won't appear.
   *Exit:* opt-in off by default; gateway receptions shown per receiver.
-- [ ] **P3 — MeshCore receptions.** Advert positions with SNR/RSSI from the raw RX
+- [x] **P3 — MeshCore receptions.** Advert positions with SNR/RSSI from the raw RX
   feed (LOG_RX_DATA 0x88) and hops from path_len.
   *Exit:* MeshCore receptions on the report alongside Meshtastic.
 - [ ] **P4 — Gaps, surveys, summary, export.** Likely-gap lines; saved surveys
@@ -101,4 +101,28 @@ plan comment on #5277.
   failure TTL replaces the per-manager one (P1 review carry-over).
 - Browser validation on the Florida bridge: 29 gateway receivers, 34 receptions
   in 2 minutes; unticking a source group narrows `sources=`.
+
+### P3 (2026-09-24)
+
+- Spec: `COVERAGE_P3_SPEC.md`. No schema change.
+- Records ADVERT (0x04) frames that carry lat/lon: always on MeshCore companion
+  sources (`ota_packet` path), opt-in on MeshCore Observer sources (reuses
+  `coverage_mqtt_enabled`). Repeater serial sources don't record.
+- User decisions: observers in, opt-in, volume unmeasured and the toggle says
+  so; survey guidance = zero-hop adverts every 60 s, never flood; Ed25519
+  signature verified before recording (via `@michaelhart/meshcore-decoder`);
+  shared SNR bands.
+- Clockless replay guard (advert timestamps are unreliable: 1994–2103 in the
+  dev DB), mirroring firmware's `timestamp <= last` rule.
+- **Privacy gap closed:** P1/P2 routes kept any row with a null `senderNodeNum`,
+  so MeshCore rows would have skipped `viewOnMap`. `buildMeshCorePositionFilter`
+  requires a `meshcore_nodes` row for the source (admins too) plus per-source
+  `nodes:viewOnMap`.
+- Browser validation: packet monitor logged 1 positioned advert in 9 minutes;
+  coverage recorded exactly 1 (real firmware signature verified). Companion
+  receivers had no name (a companion isn't its own contact); fixed with a
+  fallback to the manager's self name, then the source name.
+- **Flagged, not changed:** MeshMonitor's own MeshCore "Send advert" button,
+  the auto-announce advert burst and the automation `advert` action all send a
+  FLOOD advert (~9–25 s of channel time per send with 20 repeaters in reach).
 
