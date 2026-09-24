@@ -81,12 +81,6 @@ export const TABLE_ORDER = [
   // history (90d) that the Analysis report reads, so dropping it on a backend
   // migration would silently erase the record of every detected violation.
   'mqtt_ok_to_mqtt_violations',
-  // 5277: Coverage Report RF-reception log (sourceId, no FKs). Migrated
-  // alongside its closest analog, mqtt_packet_log, immediately above — same
-  // per-source reception-log shape. Ephemeral/regenerable (not in
-  // BACKUP_TABLES, D9), but still worth carrying over on a backend move
-  // rather than starting the report's short retention window from empty.
-  'coverage_receptions',
   // 3691 Phase 2: per-source ATAK contact state (composite PK uid+sourceId, no FKs)
   'atak_contacts',
   // 4723: per-source MeshBeacon offers (composite PK sourceId+nodeNum, no FKs).
