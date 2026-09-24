@@ -43,7 +43,11 @@ import { ok, fail } from '../utils/apiResponse.js';
 import { resolvePermittedSourceIds, parseSourcesParam } from '../utils/permittedSources.js';
 import { buildPositionFilter, loadNodesBySource } from '../utils/positionVisibility.js';
 import { parseGatewayNodeNum } from '../utils/okToMqtt.js';
-import { clampCoverageRetentionDays, nodeNumToId } from '../../utils/coverage.js';
+import { clampCoverageRetentionDays, nodeNumToId, COVERAGE_MQTT_ENABLED_SETTING, isCoverageMqttFlagOn } from '../../utils/coverage.js';
+import { parseReceiverFilter, type CoverageReceiverFilterEntry } from '../../utils/coverageReceiverFilter.js';
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { isMqttConnectionStatusManager } from '../sourceManagerTypes.js';
+import type { DbNode } from '../../db/types.js';
 import type {
   CoverageProtocol,
   CoverageReceiverKind,
@@ -51,6 +55,7 @@ import type {
   CoverageReceptionDto,
   CoverageReceiverDto,
   CoverageSenderDto,
+  CoverageMqttSourceStatusDto,
   CoveragePage,
 } from '../../types/coverage.js';
 
@@ -142,13 +147,50 @@ function isValidCursorString(raw: string): boolean {
 
 // ── GET /receivers ──────────────────────────────────────────────────────────
 
+/**
+ * MQTT gateway-recording status for the caller's permitted sources (#5277
+ * P2 §2.7, user decision Q4). Typed-predicate discovery only — never a
+ * `source.type` string gate — and a per-source settings read, never the
+ * bare `coverage_mqtt_enabled` key (#5080). WP1 reads the settings table
+ * directly rather than importing WP2's `coverageMqttSettings.ts` TTL cache,
+ * so the two packages stay independently buildable and this response never
+ * shows a stale cached flag.
+ */
+async function loadMqttSourceStatuses(
+  sourceIds: string[],
+  sourceNameById: Map<string, string>,
+): Promise<CoverageMqttSourceStatusDto[]> {
+  if (sourceIds.length === 0) return [];
+
+  const permitted = new Set(sourceIds);
+  const mqttSourceIds = sourceManagerRegistry
+    .getAllManagers()
+    .filter(isMqttConnectionStatusManager)
+    .map((m) => m.sourceId)
+    .filter((id) => permitted.has(id));
+
+  if (mqttSourceIds.length === 0) return [];
+
+  const flags = await databaseService.settings.getSettingForSources(mqttSourceIds, COVERAGE_MQTT_ENABLED_SETTING);
+
+  return mqttSourceIds.map((id) => ({
+    sourceId: id,
+    sourceName: sourceNameById.get(id) ?? id,
+    recordingEnabled: isCoverageMqttFlagOn(flags.get(id) ?? null),
+  }));
+}
+
 router.get('/receivers', async (req: Request, res: Response) => {
   try {
     const sourceIds = await resolveSourceIds(req);
     const { sinceMs, retentionDays } = await getRetentionWindowStart();
 
     if (sourceIds.length === 0) {
-      return ok(res, { receivers: [] as CoverageReceiverDto[], retentionDays });
+      return ok(res, {
+        receivers: [] as CoverageReceiverDto[],
+        retentionDays,
+        mqttSources: [] as CoverageMqttSourceStatusDto[],
+      });
     }
 
     const [rows, nodesBySource, allSources] = await Promise.all([
@@ -160,9 +202,18 @@ router.get('/receivers', async (req: Request, res: Response) => {
     const posFilter = await buildPositionFilter(req.user, sourceIds, nodesBySource);
     const sourceNameById = new Map(allSources.map((s) => [s.id, s.name] as const));
 
+    // Build the (sourceId -> nodeNum -> node) map once rather than an O(receivers × nodes)
+    // `.find()` per receiver (§2.7 — the node lists can be large once MQTT gateway nodes are in play).
+    const nodesByNumBySource = new Map<string, Map<number, DbNode>>();
+    for (const [sourceId, nodeList] of nodesBySource) {
+      const byNum = new Map<number, DbNode>();
+      for (const n of nodeList) byNum.set(n.nodeNum, n);
+      nodesByNumBySource.set(sourceId, byNum);
+    }
+
     const receivers: CoverageReceiverDto[] = rows.map((r) => {
       const node = r.receiverNodeNum != null
-        ? nodesBySource.get(r.sourceId)?.find((n) => n.nodeNum === r.receiverNodeNum) ?? null
+        ? nodesByNumBySource.get(r.sourceId)?.get(r.receiverNodeNum) ?? null
         : null;
 
       // Current position (override-aware), falling back to the latest
@@ -202,10 +253,13 @@ router.get('/receivers', async (req: Request, res: Response) => {
         latitude,
         longitude,
         lastReceivedAt: r.lastReceivedAt,
+        receptionCount: r.receptionCount,
       };
     });
 
-    ok(res, { receivers, retentionDays });
+    const mqttSources = await loadMqttSourceStatuses(sourceIds, sourceNameById);
+
+    ok(res, { receivers, retentionDays, mqttSources });
   } catch (error) {
     logger.error('Error in GET /api/analysis/coverage/receivers:', error);
     fail(res, 500, 'INTERNAL_ERROR', 'Failed to fetch coverage receivers');
@@ -349,7 +403,24 @@ router.get('/receptions', async (req: Request, res: Response) => {
       cursor = req.query.cursor;
     }
 
-    const receiverIds = parseSourcesParam(req.query.receivers) ?? undefined;
+    // Source-scoped receiver filter (#5277 P2 §2.5), replacing P1's flat CSV
+    // `receivers=<id>,<id>` — which matched an id on EVERY source. A blank
+    // param is treated as "no filter"; anything non-blank that doesn't parse
+    // is a 400, not a silent fallback to "every receiver".
+    let receiverFilter: CoverageReceiverFilterEntry[] | undefined;
+    if (req.query.receivers !== undefined) {
+      if (typeof req.query.receivers !== 'string') {
+        return fail(res, 400, 'INVALID_RECEIVERS', 'receivers must be a single string value');
+      }
+      if (req.query.receivers.trim() !== '') {
+        const parsed = parseReceiverFilter(req.query.receivers);
+        if (parsed === null) {
+          return fail(res, 400, 'INVALID_RECEIVERS', 'receivers is malformed');
+        }
+        receiverFilter = parsed;
+      }
+    }
+
     const pageSize = clampRequestedPageSize(req.query.pageSize);
 
     if (sourceIds.length === 0) {
@@ -361,7 +432,7 @@ router.get('/receptions', async (req: Request, res: Response) => {
 
     const [page, nodesBySource] = await Promise.all([
       databaseService.coverageReceptions.getReceptions({
-        sourceIds, sinceMs, untilMs, receiverIds, senderId, hops, hopsMode, pageSize, cursor,
+        sourceIds, sinceMs, untilMs, receiverFilter, senderId, hops, hopsMode, pageSize, cursor,
       }),
       loadNodesBySource(sourceIds),
     ]);
