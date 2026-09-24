@@ -10,6 +10,7 @@ import { DatabaseType, DbNode } from '../types.js';
 import { logger } from '../../utils/logger.js';
 import { isValidNodeNum } from '../../server/constants/meshtastic.js';
 import { isBlankMacAddr } from '../../utils/nodeFieldBlanks.js';
+import type { TransportCounts } from '../../utils/transportSeries.js';
 
 /**
  * Hook for keeping an external in-memory node cache coherent with PG/MySQL writes.
@@ -394,6 +395,49 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
+   * Distinct nodes whose per-transport "last heard" stamp (#4240, mig 126) falls
+   * in `(fromSec, toSec]`. Additive: a node heard over two transports in the
+   * same window counts in both (#5101 P3 D3). Excludes `excludeNodeNum` (the
+   * local node) when given. NULL stamps never count.
+   *
+   * One Drizzle `select` with three `SUM(CASE WHEN … THEN 1 ELSE 0 END)`
+   * expressions, one per transport column, rather than three separate
+   * queries. Coerce each result with `Number(… ?? 0)`: PostgreSQL returns
+   * NUMERIC/BIGINT aggregates as strings and MySQL as decimals; the stamp
+   * columns themselves are BIGINT on PG/MySQL. `sourceId` is required (see
+   * `withSourceScope`).
+   */
+  async countNodesHeardByTransport(
+    sourceId: SourceScope,
+    fromSec: number,
+    toSec: number,
+    excludeNodeNum?: number,
+  ): Promise<TransportCounts> {
+    const { nodes } = this.tables;
+
+    const conditions = [this.withSourceScope(nodes, sourceId)];
+    if (excludeNodeNum !== undefined) {
+      conditions.push(ne(nodes.nodeNum, excludeNodeNum));
+    }
+
+    const result = await this.db
+      .select({
+        rf: sql<string | number>`SUM(CASE WHEN ${nodes.transportLastRf} > ${fromSec} AND ${nodes.transportLastRf} <= ${toSec} THEN 1 ELSE 0 END)`,
+        udp: sql<string | number>`SUM(CASE WHEN ${nodes.transportLastUdp} > ${fromSec} AND ${nodes.transportLastUdp} <= ${toSec} THEN 1 ELSE 0 END)`,
+        mqtt: sql<string | number>`SUM(CASE WHEN ${nodes.transportLastMqtt} > ${fromSec} AND ${nodes.transportLastMqtt} <= ${toSec} THEN 1 ELSE 0 END)`,
+      })
+      .from(nodes)
+      .where(and(...conditions.filter((c): c is Exclude<typeof c, undefined> => c !== undefined)));
+
+    const row = result[0] ?? {};
+    return {
+      rf: Number(row.rf ?? 0),
+      udp: Number(row.udp ?? 0),
+      mqtt: Number(row.mqtt ?? 0),
+    };
+  }
+
+  /**
    * Count nodes whose `lastHeard` falls within the given window (default 2h).
    *
    * Powers the per-source "node activity" badge in the dashboard sidebar so
@@ -586,6 +630,16 @@ export class NodesRepository extends BaseRepository {
         hopsAway: nodeData.hopsAway ?? null,
         viaMqtt: nodeData.viaMqtt ?? null,
         transportMechanism: nodeData.transportMechanism ?? null,
+        // #5101 P3 EXTRA: a brand-new node's very first packet stamps
+        // `transportLast{Rf,Mqtt,Udp}` in `nodeData` (meshtasticManager.ts
+        // ~6407) via this exact INSERT path — there is no separate
+        // "NodeInfo only" first-write. Omitting these here silently dropped
+        // that first stamp until the node's second packet hit the UPDATE
+        // branch below, undercounting `countNodesHeardByTransport` for
+        // newly-discovered nodes in the bin they first appeared.
+        transportLastRf: this.coerceBigintField(nodeData.transportLastRf),
+        transportLastMqtt: this.coerceBigintField(nodeData.transportLastMqtt),
+        transportLastUdp: this.coerceBigintField(nodeData.transportLastUdp),
         isStoreForwardServer: nodeData.isStoreForwardServer ?? null,
         // #5231: see the conflict-path note below — zero MACs store as null.
         macaddr: isBlankMacAddr(nodeData.macaddr) ? null : nodeData.macaddr,
@@ -657,6 +711,12 @@ export class NodesRepository extends BaseRepository {
         hopsAway: nodeData.hopsAway ?? null,
         viaMqtt: nodeData.viaMqtt ?? null,
         transportMechanism: nodeData.transportMechanism ?? null,
+        // #5101 P3 EXTRA: see the matching comment on `newNode` above — this
+        // is the value Drizzle applies on the ON CONFLICT DO UPDATE race path
+        // (two concurrent first-seen upserts), so it needs the same fields.
+        transportLastRf: this.coerceBigintField(nodeData.transportLastRf),
+        transportLastMqtt: this.coerceBigintField(nodeData.transportLastMqtt),
+        transportLastUdp: this.coerceBigintField(nodeData.transportLastUdp),
         isStoreForwardServer: nodeData.isStoreForwardServer ?? null,
         // #5231: an all-zero MAC joins '' as "not reported" — firmware
         // deprecated `User.macaddr` in 2.1.x and many nodes send six zero bytes.

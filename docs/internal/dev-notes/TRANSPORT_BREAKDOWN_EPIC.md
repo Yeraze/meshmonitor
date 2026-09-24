@@ -28,6 +28,7 @@ route segments respect the Show RF / UDP / MQTT toggles.
 - **New computed series (P3):** in both the Dashboard telemetry grid and the Info tab.
 - **Classifier:** node counts use the per-transport-last timestamps (`transportLast*`, mig 126 / #4240) with additive (OR) semantics, so private-broker RF relay doesn't inflate MQTT. Legacy NULL transport reads as RF, matching `classifyNodeTransport`.
 - **Phase 2 (2026-09-23):** old record holders get a best-effort reclassify (migration 171); message class = viaMqtt wins, then mechanism 6→UDP / 5→MQTT, else RF; outbound messages stamp INTERNAL (0); also fix Longest Active showing the record copy, give MQTT sources record holders, and scope route-segment permissions per source.
+- **Phase 3 (2026-09-24):** Packets RX per transport = in-memory counter at the receive seam with a DB-backed checkpoint (per-source settings row, every 30 s + on shutdown) so a restart mid-bin keeps the bin; 5-minute fixed bins (1,728 rows/day per TCP source) stored as MeshMonitor-computed telemetry; nodes heard = nodes whose `transportLast*` falls inside the bin; device widgets keep "(Device)" + a visible caption; lines for nodes, stacked area for packets; also fix Packet Rate card source scoping, favorite-retention for derived charts, Unified page "(Device)" labels.
 - **Mesh impact:** none — read-side analytics only; no packets, notifications or timers.
 
 ## Phases
@@ -49,8 +50,8 @@ Exit: all of the above shipped, per-source isolation tested, full suite green on
 Exit: migrations idempotent on all three backends; cards render per-transport records.
 
 ### Phase 3 — device counters
-- [ ] Label firmware LocalStats widgets as device (all-transport) counters.
-- [ ] New computed series: Nodes Heard per transport (from `transportLast*`), Packets RX per transport (from `packet_log`), in the Dashboard grid and the Info tab.
+- [x] Label firmware LocalStats widgets as device (all-transport) counters.
+- [x] New computed series: Nodes Heard per transport (from `transportLast*`), Packets RX per transport (from `packet_log`), in the Dashboard grid and the Info tab.
 
 Exit: new series render in both places; labels make the device/computed distinction obvious.
 
@@ -67,3 +68,10 @@ Exit: new series render in both places; labels make the device/computed distinct
   - Route-segment routes are gated on the per-source `traceroute` permission (read for the cards, write for Clear Record), not `info` — `info` is cross-source by design, so it could not scope records per source (user decision). InfoTab hides the cards without traceroute:read.
   - Longest Active no longer returns the record-holder copy; MQTT sources now set record holders; DELETE requires sourceId.
   - Dev-DB run of 171: 2 legacy records examined, both unmatched (traceroutes pruned) → remain RF with the legacy note.
+- 2026-09-24: Phase 2 merged (PR #5330). Phase 3 started on `feature/5101-p3-device-counters`; spec TRANSPORT_BREAKDOWN_P3_SPEC.md (no migration).
+- 2026-09-24: Phase 3 implemented. Deviations/findings from browser + restart validation:
+  - fw 2.8 PhoneAPI NodeDB replays (#5034) were counted as live RF packets (~70 per reconnect). The packet counter now requires `isLiveReception` (rx_time within 120 s); node stamps keep the #4192 6 h rule, so "nodes heard" still spikes in bins containing a reconnect (R12).
+  - An idle source's checkpoint never advanced, so a crash across a boundary left a hole; a zero-count checkpoint is now written when each bin opens (R13).
+  - `upsertNode`'s INSERT branch dropped `transportLast*`, so a brand-new node's first stamp was lost; fixed with a three-backend test.
+  - Verified live: two restarts inside one bin → one row per type, counts carried over; `docker kill -s KILL` across a boundary → the closed bin (incl. an idle source) recovered on start.
+- Epic complete once the Phase 3 PR merges.

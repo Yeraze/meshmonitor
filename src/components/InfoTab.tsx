@@ -10,6 +10,7 @@ import { TimeFormat, DateFormat } from '../contexts/SettingsContext';
 import { formatDateTime } from '../utils/datetime';
 import TelemetryGraphs from './TelemetryGraphs';
 import PacketRateGraphs from './PacketRateGraphs';
+import TransportSeriesGraphs from './TransportSeriesGraphs';
 import { version } from '../../package.json';
 import apiService, { type MessageCounts, type RouteSegmentRecords, type RouteSegmentView } from '../services/api';
 import { logger } from '../utils/logger';
@@ -25,6 +26,7 @@ import { useDashboardSources } from '../hooks/useDashboardData';
 import { getSourceEndpointLabel } from '../utils/sourceEndpoint';
 import TransportBreakdown from './TransportBreakdown';
 import RouteSegmentRecord from './RouteSegmentRecord';
+import DeviceCounterNote from './DeviceCounterNote';
 import { countNodesByTransport, transportCutoffSec, isMqttOnlySourceType, type NodeTransportClass } from '../utils/nodeTransport';
 
 const TRANSPORT_FILTER_OPTIONS = ['all', 'rf', 'udp', 'mqtt'] as const;
@@ -678,6 +680,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
             <>
               <p><strong>{t('info.packets_tx')}</strong> {localStats.numPacketsTx.toLocaleString()}</p>
               <p><strong>{t('info.packets_rx')}</strong> {localStats.numPacketsRx?.toLocaleString() || t('info.na')}</p>
+              <DeviceCounterNote text={t('info.device_counters_note')} testId="info-packets-device-note" />
             </>
           )}
           {localStats?.hostUptimeSeconds !== undefined && localStats?.numPacketsTx === undefined && (
@@ -759,6 +762,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
           return (
             <div className="info-section">
               <h3>{t('info.radio_statistics', 'Radio Statistics')}</h3>
+              <DeviceCounterNote text={t('info.device_counters_note')} testId="info-radio-device-note" />
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 {rxTotal > 0 && (
                   <PacketStatsChart
@@ -1098,6 +1102,12 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
       {currentNodeId && connectionStatus === 'connected' && (
         <div className="info-section-full-width">
           <PacketRateGraphs nodeId={currentNodeId} telemetryHours={telemetryHours} baseUrl={baseUrl} />
+        </div>
+      )}
+
+      {showTransport && currentNodeId && connectionStatus === 'connected' && (
+        <div className="info-section-full-width">
+          <TransportSeriesGraphs nodeId={currentNodeId} telemetryHours={telemetryHours} baseUrl={baseUrl} />
         </div>
       )}
 

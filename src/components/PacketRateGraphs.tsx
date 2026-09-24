@@ -17,6 +17,7 @@ import { useFavorites, useToggleFavorite } from '../hooks/useFavorites';
 import { useToast } from './ToastContainer';
 import { useSource } from '../contexts/SourceContext';
 import { UiIcon } from './icons';
+import DeviceCounterNote from './DeviceCounterNote';
 
 // Telemetry type constants for favorites
 export const PACKET_RATE_RX_TYPE = 'packetRateRx';
@@ -321,6 +322,7 @@ const PacketRateGraphs: React.FC<PacketRateGraphsProps> = React.memo(
     return (
       <div className="telemetry-graphs">
         <h3 className="telemetry-title">{t('info.packet_rate_graphs')}</h3>
+        <DeviceCounterNote text={t('telemetry.device_counter_note')} />
         <div className="graphs-grid">
           {hasRxData && renderChart(rxChartData, RX_METRICS, t('info.rx_rates'), PACKET_RATE_RX_TYPE)}
           {hasTxData && renderChart(txChartData, TX_METRICS, t('info.tx_rates'), PACKET_RATE_TX_TYPE)}

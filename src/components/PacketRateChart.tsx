@@ -15,6 +15,8 @@ import { formatChartAxisTimestamp } from '../utils/datetime';
 import { PACKET_RATE_RX_TYPE, PACKET_RATE_TX_TYPE } from './PacketRateGraphs';
 import type { TelemetryNodeInfo } from '../types/device';
 import { UiIcon } from './icons';
+import DeviceCounterNote from './DeviceCounterNote';
+import { useSource } from '../contexts/SourceContext';
 
 interface FavoriteChart {
   nodeId: string;
@@ -123,16 +125,20 @@ const PacketRateChart: React.FC<PacketRateChartProps> = ({
   onRemove,
 }) => {
   const { t } = useTranslation();
+  const { sourceId } = useSource();
 
   // Determine if this is RX or TX chart
   const isRxChart = favorite.telemetryType === PACKET_RATE_RX_TYPE;
   const metrics = isRxChart ? RX_METRICS : TX_METRICS;
 
-  // Fetch packet rate data
+  // Fetch packet rate data. #5101 P3 D6: without sourceId this fell back to
+  // ALL_SOURCES on the server (telemetryRoutes.ts), silently mixing every
+  // source's counters into one Dashboard card.
   const { data: rateData, isLoading, error } = usePacketRates({
     nodeId: favorite.nodeId,
     hours,
     baseUrl,
+    sourceId,
   });
 
   // Get computed CSS color values for chart styling
@@ -264,6 +270,7 @@ const PacketRateChart: React.FC<PacketRateChartProps> = ({
         >
           <UiIcon name="close" size={15} />        </button>
       </div>
+      <DeviceCounterNote text={t('telemetry.device_counter_note')} />
       <ResponsiveContainer width="100%" height={200}>
         <ComposedChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#ccc" />

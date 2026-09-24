@@ -131,11 +131,23 @@ describe('per-source settings key allowlist invariants', () => {
   // (#4437, WP2) and was removed from this exemption set, shrinking the count
   // to 17. #5230 added the five `tracerouteFilter*Mode` keys, which are written
   // by POST /api/settings/traceroute-nodes like their `*Enabled` siblings and
-  // so belong in the same exemption set — 22. Pin the size so a silent drift
+  // so belong in the same exemption set — 22. #5101 Phase 3 WP3 added
+  // `transportTrafficCheckpoint`, server-managed bookkeeping written only by
+  // `transportTrafficService.ts` — 23. Pin the size so a silent drift
   // (e.g. a future PER_SOURCE_SETTINGS_KEYS addition without
   // VALID_SETTINGS_KEYS coverage) surfaces here rather than only in the
   // exact-equality test above.
   it('PER_SOURCE_KEYS_NOT_POSTABLE has the expected size', () => {
-    expect(PER_SOURCE_KEYS_NOT_POSTABLE.size).toBe(22);
+    expect(PER_SOURCE_KEYS_NOT_POSTABLE.size).toBe(23);
+  });
+
+  // #5101 Phase 3 WP3: the transport-traffic writer's checkpoint is
+  // server-managed bookkeeping (transportTrafficService.ts), never a user
+  // setting — pin both halves so neither a future POST route nor a dropped
+  // exemption entry can silently make it writable.
+  it('transportTrafficCheckpoint is a documented exemption, never client-postable', () => {
+    const valid = new Set<string>(VALID_SETTINGS_KEYS as readonly string[]);
+    expect(PER_SOURCE_KEYS_NOT_POSTABLE.has('transportTrafficCheckpoint')).toBe(true);
+    expect(valid.has('transportTrafficCheckpoint')).toBe(false);
   });
 });

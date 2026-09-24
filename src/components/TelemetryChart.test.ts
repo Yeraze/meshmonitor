@@ -96,4 +96,15 @@ describe('getTelemetryLabel', () => {
     expect(getTelemetryLabel('rainfall24h')).toBe('Rainfall (24 hours)');
     expect(getTelemetryLabel('soilMoisture')).toBe('Soil Moisture');
   });
+
+  it('returns the explicit label for the MeshMonitor-computed transport series types (#5101 Phase 3)', () => {
+    expect(getTelemetryLabel('transportNodesHeard')).toBe('Nodes Heard by Transport (MeshMonitor)');
+    expect(getTelemetryLabel('transportPacketsRx')).toBe('Packets RX by Transport (MeshMonitor)');
+    expect(getTelemetryLabel('systemNodesHeardRf')).toBe('Nodes Heard RF (MeshMonitor)');
+    expect(getTelemetryLabel('systemNodesHeardUdp')).toBe('Nodes Heard UDP (MeshMonitor)');
+    expect(getTelemetryLabel('systemNodesHeardMqtt')).toBe('Nodes Heard MQTT (MeshMonitor)');
+    expect(getTelemetryLabel('systemPacketsRxRf')).toBe('Packets RX RF (MeshMonitor)');
+    expect(getTelemetryLabel('systemPacketsRxUdp')).toBe('Packets RX UDP (MeshMonitor)');
+    expect(getTelemetryLabel('systemPacketsRxMqtt')).toBe('Packets RX MQTT (MeshMonitor)');
+  });
 });

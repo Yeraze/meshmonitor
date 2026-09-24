@@ -12,7 +12,11 @@
  * Clear Record flow re-fetching rather than clearing local state, and the
  * traceroute:read / traceroute:write permission gates on the two cards and
  * the Clear Record button (#5101 P2 follow-up: route-segment endpoints moved
- * from `info` to per-source `traceroute` permissions).
+ * from `info` to per-source `traceroute` permissions), (#5101 Phase 3 WP2)
+ * the device-counter caption under Network Statistics Packets TX/RX and
+ * under Radio Statistics, and (#5101 Phase 3 WP5) mounting the
+ * TransportSeriesGraphs section for a connected node and hiding it for
+ * MQTT-only sources.
  *
  * @vitest-environment jsdom
  */
@@ -77,6 +81,7 @@ vi.mock('./ToastContainer', () => ({
 
 vi.mock('./TelemetryGraphs', () => ({ default: () => null }));
 vi.mock('./PacketRateGraphs', () => ({ default: () => null }));
+vi.mock('./TransportSeriesGraphs', () => ({ default: () => <div data-testid="transport-series-section" /> }));
 vi.mock('./survey/NetworkSurveyPanel', () => ({ default: () => null }));
 vi.mock('./PacketStatsChart', () => ({
   default: () => null,
@@ -241,6 +246,43 @@ describe('InfoTab hides transport UI for MQTT-only sources (#5101)', () => {
   });
 });
 
+describe('InfoTab transport-series section (#5101 Phase 3 WP5)', () => {
+  it('mounts TransportSeriesGraphs for a connected node on a full-featured source', async () => {
+    render(<InfoTab {...baseProps} nodes={[]} currentNodeId="!1" connectionStatus="connected" />);
+
+    expect(await screen.findByTestId('transport-series-section')).toBeInTheDocument();
+  });
+
+  it('does not mount TransportSeriesGraphs when there is no current node', async () => {
+    render(<InfoTab {...baseProps} nodes={[]} currentNodeId="" connectionStatus="connected" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('info.title')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('transport-series-section')).not.toBeInTheDocument();
+  });
+
+  it('does not mount TransportSeriesGraphs when disconnected', async () => {
+    render(<InfoTab {...baseProps} nodes={[]} currentNodeId="!1" connectionStatus="disconnected" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('info.title')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('transport-series-section')).not.toBeInTheDocument();
+  });
+
+  it('hides TransportSeriesGraphs for an MQTT-only source even with a current node connected', async () => {
+    mockUseSource.mockReturnValue({ sourceId: 'source-a', sourceName: 'Source A', sourceType: 'mqtt_bridge' });
+
+    render(<InfoTab {...baseProps} nodes={[]} currentNodeId="!1" connectionStatus="connected" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('info.title')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('transport-series-section')).not.toBeInTheDocument();
+  });
+});
+
 describe('InfoTab packet distribution transport selector (#5101)', () => {
   it('drives both distribution fetches with the selected transport', async () => {
     mockGetPacketDistributionStats.mockResolvedValue({
@@ -399,5 +441,55 @@ describe('InfoTab route-segment permission gates (#5101 P2 follow-up)', () => {
 
     const mqttRecord = await screen.findByTestId('route-segment-record-mqtt');
     expect(within(mqttRecord).getByRole('button')).toBeInTheDocument();
+  });
+});
+
+describe('InfoTab device counter captions (#5101 P3 WP2)', () => {
+  it('shows the device-counter note under Network Statistics Packets TX/RX', async () => {
+    mockApiService.get.mockImplementation((url: unknown) => {
+      if (typeof url === 'string' && url.includes('/api/telemetry/')) {
+        return Promise.resolve([
+          { telemetryType: 'numPacketsTx', timestamp: 1000, value: 42 },
+          { telemetryType: 'numPacketsRx', timestamp: 1000, value: 37 },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    render(<InfoTab {...baseProps} nodes={[]} currentNodeId="!1" />);
+
+    const note = await screen.findByTestId('info-packets-device-note');
+    expect(note).toHaveTextContent('info.device_counters_note');
+  });
+
+  it('shows the device-counter note under Radio Statistics', async () => {
+    mockApiService.get.mockImplementation((url: unknown) => {
+      if (typeof url === 'string' && url.includes('/api/telemetry/')) {
+        return Promise.resolve([
+          { telemetryType: 'numPacketsRx', timestamp: 1000, value: 10 },
+          { telemetryType: 'numPacketsRxBad', timestamp: 1000, value: 1 },
+          { telemetryType: 'numRxDupe', timestamp: 1000, value: 0 },
+          { telemetryType: 'numPacketsTx', timestamp: 1000, value: 8 },
+          { telemetryType: 'numTxDropped', timestamp: 1000, value: 0 },
+          { telemetryType: 'numTxRelay', timestamp: 1000, value: 2 },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    render(<InfoTab {...baseProps} nodes={[]} currentNodeId="!1" />);
+
+    const note = await screen.findByTestId('info-radio-device-note');
+    expect(note).toHaveTextContent('info.device_counters_note');
+  });
+
+  it('omits both device-counter notes when local stats have not loaded', async () => {
+    render(<InfoTab {...baseProps} nodes={[]} currentNodeId="!1" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('info.title')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('info-packets-device-note')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('info-radio-device-note')).not.toBeInTheDocument();
   });
 });

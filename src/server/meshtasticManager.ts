@@ -30,7 +30,7 @@ import { getDiscardInvalidPositions } from '../utils/positionIngestConfig.js';
 import { isPointInGeofence, distanceToGeofenceCenter } from '../utils/geometry.js';
 import { formatTime, formatDate } from '../utils/datetime.js';
 import { logger } from '../utils/logger.js';
-import { transportColumnForPacket } from '../utils/nodeTransport.js';
+import { transportColumnForPacket, classifyNodeTransport } from '../utils/nodeTransport.js';
 import { segmentTransportMechanism } from '../utils/tracerouteTransport.js';
 import {
   parseFirmwareVersion as parseFirmwareVersionShared,
@@ -43,6 +43,7 @@ import { sendMessagePushNotification } from './services/messagePushNotifier.js';
 import { getMaxNodeAgeHours } from './services/nodeDisplaySettings.js';
 import { deadDropService, nodeIdHex } from './services/deadDropService.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
+import { transportTrafficService } from './services/transportTrafficService.js';
 import packetLogService from './services/packetLogService.js';
 import { channelDecryptionService } from './services/channelDecryptionService.js';
 import { pkiDecryptionService } from './services/pkiDecryptionService.js';
@@ -73,7 +74,7 @@ import { compileUserRegex } from '../utils/safeRegex.js';
 import { shouldGateAutomations, averageStrongestNeighborUtilization, DEFAULT_AIRTIME_CUTOFF_THRESHOLD, DEFAULT_AIRTIME_CUTOFF_SOURCE, DEFAULT_NEIGHBOR_UTIL_MAX_HOPS, MAX_NEIGHBOR_UTIL_MAX_HOPS, NEIGHBOR_UTIL_SAMPLE_COUNT, type AirtimeCutoffSource, type NeighborUtilContributor } from './utils/airtimeCutoff.js';
 import { resolveLastHopName } from './utils/lastHop.js';
 import { isRelayedReception } from './utils/packetHops.js';
-import { resolveLastHeardSec } from './utils/replayGuard.js';
+import { resolveLastHeardSec, isLiveReception } from './utils/replayGuard.js';
 import { isUptimeReboot } from './utils/rebootDetection.js';
 import { isPowered, detectPowerTransition } from './utils/poweredState.js';
 import { autoAckIsZeroHop, autoAckCellKey, resolveAutoAckReplyRouting } from './utils/autoAckDecision.js';
@@ -6403,6 +6404,12 @@ class MeshtasticManager implements ISourceManager {
       // Stamp only the column for THIS packet's transport; the repository
       // carries the other two forward untouched.
       const txColumn = transportColumnForPacket(txMech, meshPacket.viaMqtt);
+      // Computed once and reused for lastHeard, [txColumn], and the #5101 P3
+      // counter gate below — previously called twice with identical args.
+      const heardSec = resolveLastHeardSec(
+        meshPacket.rxTime != null ? Number(meshPacket.rxTime) : undefined,
+        Date.now(),
+      );
 
       const nodeData: any = {
         nodeNum: fromNum,
@@ -6412,10 +6419,7 @@ class MeshtasticManager implements ISourceManager {
         // retained frame (e.g. an MQTT bridge re-injecting an offline node's old
         // telemetry). Omit lastHeard for those so upsertNode preserves the node's
         // existing value instead of resurrecting a dead node. See replayGuard.ts.
-        lastHeard: resolveLastHeardSec(
-          meshPacket.rxTime != null ? Number(meshPacket.rxTime) : undefined,
-          Date.now(),
-        ),
+        lastHeard: heardSec,
         // Update channel from every firmware-decoded packet so outbound messages (DMs,
         // traceroutes, position requests) use the channel the node is actually communicating
         // on. Previously only set from NodeInfo, which could get stuck on a secondary channel.
@@ -6426,11 +6430,30 @@ class MeshtasticManager implements ISourceManager {
         // Reuse the same resolved lastHeard so "last seen over RF" and
         // "last heard" cannot disagree (incl. the replay-guard omission case,
         // where an undefined lastHeard leaves the stamp untouched too).
-        [txColumn]: resolveLastHeardSec(
-          meshPacket.rxTime != null ? Number(meshPacket.rxTime) : undefined,
-          Date.now(),
-        ),
+        [txColumn]: heardSec,
       };
+
+      // #5101 P3: per-transport RX counter. Starts from the same gate as the
+      // stamp (a replayed frame per #4192's 6h threshold, or our own node's
+      // packets, never count) but adds a much tighter live-reception check.
+      // Firmware 2.8's PhoneAPI NodeDB replay (#5034) reuses each packet's
+      // ORIGINAL rx_time on every client reconnect and ~hourly, so anything
+      // heard within the last 6h would otherwise be replayed into the
+      // counter every time — inflating systemPacketsRx* by dozens per
+      // reconnect. isLiveReception uses a 120s window instead: tight enough
+      // to exclude the replay, loose enough for ordinary delivery jitter.
+      // Deliberately does NOT change lastHeard/transportLast* stamping —
+      // that stays on the existing, more lenient #4192 policy.
+      if (
+        heardSec !== undefined &&
+        fromNum !== this.localNodeInfo?.nodeNum &&
+        isLiveReception(meshPacket.rxTime != null ? Number(meshPacket.rxTime) : undefined, Date.now())
+      ) {
+        transportTrafficService.recordRx(
+          this.sourceId,
+          classifyNodeTransport({ transportMechanism: txMech, viaMqtt: meshPacket.viaMqtt }),
+        );
+      }
 
       // Only set default name if this is a brand new node
       if (!existingNode) {
