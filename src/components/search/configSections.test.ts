@@ -79,17 +79,25 @@ describe('configSections', () => {
       expect(ids).not.toContain('settings-coverage');
     });
 
-    // #5277 P2 WP3
-    it('shows Coverage recording only in source mode, for MQTT source types, with settings write', () => {
+    // #5277 P2 WP3, widened P3 WP4
+    it('shows Coverage recording only in source mode, for MQTT-shaped source types, with settings write', () => {
       const mqttSource = { ...baseOptions, mode: 'source' as const, sourceType: 'mqtt_broker' };
       expect(settingsNavItems(t, mqttSource).map((i) => i.id)).toContain('settings-coverage-mqtt');
 
       const bridgeSource = { ...baseOptions, mode: 'source' as const, sourceType: 'mqtt_bridge' };
       expect(settingsNavItems(t, bridgeSource).map((i) => i.id)).toContain('settings-coverage-mqtt');
 
-      // Not an MQTT-only source type.
+      // MeshCore Observer sources (#5277 P3 WP4) also get the section.
+      const observerSource = { ...baseOptions, mode: 'source' as const, sourceType: 'meshcore_mqtt' };
+      expect(settingsNavItems(t, observerSource).map((i) => i.id)).toContain('settings-coverage-mqtt');
+
+      // Not an MQTT-shaped source type.
       const tcpSource = { ...baseOptions, mode: 'source' as const, sourceType: 'meshtastic_tcp' };
       expect(settingsNavItems(t, tcpSource).map((i) => i.id)).not.toContain('settings-coverage-mqtt');
+
+      // A device-backed MeshCore companion source is not MQTT-shaped either.
+      const companionSource = { ...baseOptions, mode: 'source' as const, sourceType: 'meshcore' };
+      expect(settingsNavItems(t, companionSource).map((i) => i.id)).not.toContain('settings-coverage-mqtt');
 
       // Global mode has no single source, even if a sourceType is passed.
       expect(settingsNavItems(t, { ...baseOptions, mode: 'global' as const, sourceType: 'mqtt_broker' })
