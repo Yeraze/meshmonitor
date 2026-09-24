@@ -387,6 +387,20 @@ separate from channel sharing, which uses Meshtastic's `/e/#` URL format.
 
 **Learn More**: See [Solar Monitoring](/features/solar-monitoring) for detailed documentation, API endpoints, and troubleshooting.
 
+## Coverage Report
+
+### RF Reception Retention
+
+**Description**: Controls how many days of recorded RF receptions the [Coverage Report](/features/coverage-report) keeps before an hourly sweep deletes them. This is a single, deployment-wide setting — not per-source.
+
+**Range**: 1-90 days
+
+**Default**: 7 days
+
+**Effect**: An hourly background sweep removes receptions older than the configured window. Lowering the value **permanently deletes** older receptions on the next sweep — this cannot be undone.
+
+**Location**: Settings → Coverage Report
+
 ## Map Settings
 
 ### Map Click Zoom Gate
