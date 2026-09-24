@@ -20,8 +20,10 @@ import databaseService from '../../services/database.js';
 import {
   analyzeSeries,
   type OutlierCriteria,
-  type OutlierReason,
-  type OutlierScaleKind,
+  type OutlierNodeSummary,
+  type OutlierPreview,
+  type OutlierPreviewPoint,
+  type OutlierPurgeResult,
 } from '../../utils/telemetryOutliers.js';
 
 /** Max flagged points returned by a preview (the delete is not capped). */
@@ -34,54 +36,6 @@ export interface OutlierScope {
   telemetryType: string;
   /** One node (chart path); omit to sweep every node on the source. */
   nodeId?: string | null;
-}
-
-export interface OutlierPreviewPoint {
-  id: number;
-  nodeId: string;
-  value: number;
-  timestamp: number;
-  reason: OutlierReason;
-}
-
-export interface OutlierNodeSummary {
-  nodeId: string;
-  sampleCount: number;
-  median: number | null;
-  mad: number | null;
-  scaleKind: OutlierScaleKind;
-  flaggedCount: number;
-}
-
-export interface OutlierPreview {
-  sourceId: string;
-  telemetryType: string;
-  nodeId: string | null;
-  criteria: OutlierCriteria;
-  /** Highest row id analysed; pass back to the purge. Null when the scope is empty. */
-  cutoffId: number | null;
-  /** Hash of the flagged row ids; pass back to the purge. */
-  fingerprint: string;
-  rowsScanned: number;
-  nodesScanned: number;
-  affectedCount: number;
-  nodesAffected: number;
-  removedMin: number | null;
-  removedMax: number | null;
-  /** The series median (single-node scope only; null for a sweep). */
-  median: number | null;
-  /** The series MAD (single-node scope only). */
-  mad: number | null;
-  /** Why auto detection did or did not run (single-node scope only). */
-  scaleKind: OutlierScaleKind | null;
-  /** Nodes where auto detection was skipped for too few points / a flat series. */
-  nodesTooFew: number;
-  nodesFlat: number;
-  /** Flagged points, oldest first, capped at OUTLIER_PREVIEW_POINT_LIMIT. */
-  points: OutlierPreviewPoint[];
-  pointsTruncated: boolean;
-  /** Nodes with flagged points, most flagged first, capped at OUTLIER_PREVIEW_NODE_LIMIT. */
-  nodes: OutlierNodeSummary[];
 }
 
 interface OutlierPlan {
@@ -205,11 +159,6 @@ export class OutlierPreviewStaleError extends Error {
     super('Telemetry changed since the preview; run the preview again');
     this.name = 'OutlierPreviewStaleError';
   }
-}
-
-export interface OutlierPurgeResult {
-  deletedCount: number;
-  nodesAffected: number;
 }
 
 /**

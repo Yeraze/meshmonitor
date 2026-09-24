@@ -121,6 +121,61 @@ export function analyzeSeries(
   return { sampleCount: finite.length, median: med, mad, scaleKind, flagged };
 }
 
+// ── Wire shapes shared by the purge routes and the client ────────────────────
+
+export interface OutlierPreviewPoint {
+  id: number;
+  nodeId: string;
+  value: number;
+  timestamp: number;
+  reason: OutlierReason;
+}
+
+export interface OutlierNodeSummary {
+  nodeId: string;
+  sampleCount: number;
+  median: number | null;
+  mad: number | null;
+  scaleKind: OutlierScaleKind;
+  flaggedCount: number;
+}
+
+export interface OutlierPreview {
+  sourceId: string;
+  telemetryType: string;
+  nodeId: string | null;
+  criteria: OutlierCriteria;
+  /** Highest row id analysed; pass back to the purge. Null when the scope is empty. */
+  cutoffId: number | null;
+  /** Hash of the flagged row ids; pass back to the purge. */
+  fingerprint: string;
+  rowsScanned: number;
+  nodesScanned: number;
+  affectedCount: number;
+  nodesAffected: number;
+  removedMin: number | null;
+  removedMax: number | null;
+  /** The series median (single-node scope only; null for a sweep). */
+  median: number | null;
+  /** The series MAD (single-node scope only). */
+  mad: number | null;
+  /** Why auto detection did or did not run (single-node scope only). */
+  scaleKind: OutlierScaleKind | null;
+  /** Nodes where auto detection was skipped for too few points / a flat series. */
+  nodesTooFew: number;
+  nodesFlat: number;
+  /** Flagged points, oldest first, capped at the server's point limit. */
+  points: OutlierPreviewPoint[];
+  pointsTruncated: boolean;
+  /** Nodes with flagged points, most flagged first, capped at the server's node limit. */
+  nodes: OutlierNodeSummary[];
+}
+
+export interface OutlierPurgeResult {
+  deletedCount: number;
+  nodesAffected: number;
+}
+
 export type CriteriaValidation =
   | { ok: true; criteria: OutlierCriteria }
   | { ok: false; code: 'INVALID_AUTO' | 'INVALID_K' | 'INVALID_BOUNDS' | 'NO_CRITERIA'; message: string };
