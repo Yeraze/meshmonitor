@@ -8,9 +8,11 @@
  * transport selector driving both distribution fetches, the header/buttons
  * staying on screen when the selected transport slice is empty, the
  * per-transport route-segment records (labelled RF/UDP/MQTT, empty classes
- * hidden, MQTT-only sources render one unlabelled record), and the
- * per-transport Clear Record flow re-fetching rather than clearing local
- * state.
+ * hidden, MQTT-only sources render one unlabelled record), the per-transport
+ * Clear Record flow re-fetching rather than clearing local state, and the
+ * traceroute:read / traceroute:write permission gates on the two cards and
+ * the Clear Record button (#5101 P2 follow-up: route-segment endpoints moved
+ * from `info` to per-source `traceroute` permissions).
  *
  * @vitest-environment jsdom
  */
@@ -25,10 +27,15 @@ import type { NodeTransportClass } from '../utils/nodeTransport';
 
 // `vi.hoisted` is required because `vi.mock` factories run before any
 // module-scope `const` in this file would otherwise be initialized.
-const { mockUseSource, mockGetMessageCounts, mockGetPacketDistributionStats, mockApiService } = vi.hoisted(() => {
+const { mockUseSource, mockHasPermission, mockGetMessageCounts, mockGetPacketDistributionStats, mockApiService } = vi.hoisted(() => {
   const mockGetMessageCounts = vi.fn();
+  // Grants everything by default so the existing (pre-permission-gate) tests
+  // don't need to know about the traceroute permission; tests that exercise
+  // the gate override this per-test.
+  const mockHasPermission = vi.fn((_resource: string, _action: string) => true);
   return {
     mockUseSource: vi.fn(),
+    mockHasPermission,
     mockGetMessageCounts,
     mockGetPacketDistributionStats: vi.fn(),
     mockApiService: {
@@ -46,6 +53,10 @@ const { mockUseSource, mockGetMessageCounts, mockGetPacketDistributionStats, moc
 
 vi.mock('../contexts/SourceContext', () => ({
   useSource: () => mockUseSource(),
+}));
+
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({ hasPermission: mockHasPermission }),
 }));
 
 vi.mock('../hooks/useDashboardData', () => ({
@@ -158,6 +169,8 @@ beforeEach(() => {
   mockGetMessageCounts.mockResolvedValue(null);
   mockGetPacketDistributionStats.mockResolvedValue(disabledDistribution);
   mockUseSource.mockReturnValue({ sourceId: 'source-a', sourceName: 'Source A', sourceType: 'meshtastic_tcp' });
+  mockHasPermission.mockReset();
+  mockHasPermission.mockImplementation(() => true);
 });
 
 describe('InfoTab node transport breakdown (#5101)', () => {
@@ -342,5 +355,49 @@ describe('InfoTab per-transport Clear Record flow (#5101 P2)', () => {
     await waitFor(() => {
       expect(mockApiService.getRecordHolderRouteSegment.mock.calls.length).toBeGreaterThan(callsBefore);
     });
+  });
+});
+
+describe('InfoTab route-segment permission gates (#5101 P2 follow-up)', () => {
+  it('hides both route-segment cards and never fetches without traceroute:read', async () => {
+    mockHasPermission.mockImplementation((resource: string, action: string) =>
+      !(resource === 'traceroute' && action === 'read')
+    );
+
+    render(<InfoTab {...baseProps} nodes={[]} isAuthenticated />);
+
+    // Let any pending effects settle before asserting absence.
+    await waitFor(() => {
+      expect(screen.getByText('info.title')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('info.longest_route')).not.toBeInTheDocument();
+    expect(screen.queryByText('info.record_holder')).not.toBeInTheDocument();
+    expect(screen.queryByText('info.no_active_routes')).not.toBeInTheDocument();
+    expect(screen.queryByText('info.no_record_holder')).not.toBeInTheDocument();
+    expect(mockApiService.getLongestActiveRouteSegment).not.toHaveBeenCalled();
+    expect(mockApiService.getRecordHolderRouteSegment).not.toHaveBeenCalled();
+  });
+
+  it('shows the cards with traceroute:read but hides Clear Record without traceroute:write', async () => {
+    mockHasPermission.mockImplementation((resource: string, action: string) => {
+      if (resource === 'traceroute' && action === 'write') return false;
+      return true;
+    });
+    mockApiService.getRecordHolderRouteSegment.mockResolvedValue(makeRecords({ mqtt: makeSegmentView('mqtt') }));
+
+    render(<InfoTab {...baseProps} nodes={[]} isAuthenticated />);
+
+    const mqttRecord = await screen.findByTestId('route-segment-record-mqtt');
+    expect(within(mqttRecord).queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('shows Clear Record when traceroute:write is granted', async () => {
+    mockApiService.getRecordHolderRouteSegment.mockResolvedValue(makeRecords({ mqtt: makeSegmentView('mqtt') }));
+
+    render(<InfoTab {...baseProps} nodes={[]} isAuthenticated />);
+
+    const mqttRecord = await screen.findByTestId('route-segment-record-mqtt');
+    expect(within(mqttRecord).getByRole('button')).toBeInTheDocument();
   });
 });

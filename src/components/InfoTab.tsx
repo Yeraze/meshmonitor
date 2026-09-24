@@ -20,6 +20,7 @@ import { getPacketDistributionStats } from '../services/packetApi';
 import { PacketDistributionStats } from '../types/packet';
 import PacketStatsChart, { ChartDataEntry, DISTRIBUTION_COLORS } from './PacketStatsChart';
 import { useSource } from '../contexts/SourceContext';
+import { useAuth } from '../contexts/AuthContext';
 import { useDashboardSources } from '../hooks/useDashboardData';
 import { getSourceEndpointLabel } from '../utils/sourceEndpoint';
 import TransportBreakdown from './TransportBreakdown';
@@ -74,6 +75,9 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
   const { t } = useTranslation();
   const { showToast } = useToast();
   const { sourceId: activeSourceId, sourceType } = useSource();
+  const { hasPermission } = useAuth();
+  const canReadTraceroute = hasPermission('traceroute', 'read');
+  const canWriteTraceroute = hasPermission('traceroute', 'write');
   const showTransport = !isMqttOnlySourceType(sourceType);
   const { data: dashboardSources = [] } = useDashboardSources();
   const activeSource = activeSourceId
@@ -176,7 +180,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
   };
 
   const fetchRouteSegments = async () => {
-    if (connectionStatus !== 'connected') return;
+    if (connectionStatus !== 'connected' || !canReadTraceroute) return;
 
     setLoadingSegments(true);
     try {
@@ -299,7 +303,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
     void fetchRouteSegments();
     const interval = setInterval(fetchRouteSegments, 60000); // Refresh every minute
     return () => clearInterval(interval);
-  }, [connectionStatus, activeSourceId]);
+  }, [connectionStatus, activeSourceId, canReadTraceroute]);
 
   useEffect(() => {
     void fetchVirtualNodeStatus();
@@ -398,7 +402,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
           dateFormat={dateFormat}
           showTrophy={opts.showTrophy}
           legacyNote={legacyNote}
-          onClear={opts.withClear && isAuthenticated ? () => handleClearRecordClick('all') : undefined}
+          onClear={opts.withClear && canWriteTraceroute ? () => handleClearRecordClick('all') : undefined}
           clearLabel={t('info.clear_record')}
           testId="route-segment-record-unlabelled"
         />
@@ -426,7 +430,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
             dateFormat={dateFormat}
             showTrophy={opts.showTrophy}
             legacyNote={legacyNote}
-            onClear={opts.withClear && isAuthenticated ? () => handleClearRecordClick(cls) : undefined}
+            onClear={opts.withClear && canWriteTraceroute ? () => handleClearRecordClick(cls) : undefined}
             clearLabel={t('info.clear_record')}
             testId={`route-segment-record-${cls}`}
           />
@@ -1061,17 +1065,21 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
           }</p>
         </div>
 
-        <div className="info-section">
-          <h3>{t('info.longest_route')}</h3>
-          {loadingSegments && <p>{t('common.loading_indicator')}</p>}
-          {!loadingSegments && renderRouteSegmentCard(longestActiveSegment, t('info.last_seen'), t('info.no_active_routes'))}
-        </div>
+        {canReadTraceroute && (
+          <div className="info-section">
+            <h3>{t('info.longest_route')}</h3>
+            {loadingSegments && <p>{t('common.loading_indicator')}</p>}
+            {!loadingSegments && renderRouteSegmentCard(longestActiveSegment, t('info.last_seen'), t('info.no_active_routes'))}
+          </div>
+        )}
 
-        <div className="info-section">
-          <h3>{t('info.record_holder')}</h3>
-          {loadingSegments && <p>{t('common.loading_indicator')}</p>}
-          {!loadingSegments && renderRouteSegmentCard(recordHolderSegment, t('info.achieved'), t('info.no_record_holder'), { showTrophy: true, withClear: true })}
-        </div>
+        {canReadTraceroute && (
+          <div className="info-section">
+            <h3>{t('info.record_holder')}</h3>
+            {loadingSegments && <p>{t('common.loading_indicator')}</p>}
+            {!loadingSegments && renderRouteSegmentCard(recordHolderSegment, t('info.achieved'), t('info.no_record_holder'), { showTrophy: true, withClear: true })}
+          </div>
+        )}
 
         {!deviceConfig && (
           <div className="info-section">
