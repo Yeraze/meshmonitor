@@ -51,7 +51,14 @@ plan comment on #5277.
 - [ ] **P4 — Gaps, surveys, summary, export.** Likely-gap lines; saved surveys
   (live start or past range) exempt from retention; summary panel (heard vs
   expected, best/worst, distance-vs-SNR chart, per-receiver table); grid view;
-  CSV/GeoJSON export; "Show coverage" link on node details.
+  CSV/GeoJSON export; "Show coverage" link on node details. Also: search in the
+  sender picker (deferred from P2, Q3).
+
+## Follow-ups
+
+- **Canvas map rendering.** Up to 10k `CircleMarker`s render as SVG in
+  `CoverageMap`. Pass `preferCanvas` to `BaseMap` if browser checks show lag on
+  busy MQTT sources. Deferred from P2 (Q2).
 
 ## Phase log
 
