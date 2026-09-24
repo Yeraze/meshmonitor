@@ -87,9 +87,11 @@ describe('useCoverageData', () => {
             latitude: 26.1,
             longitude: -80.2,
             lastReceivedAt: 1_700_000_000_000,
+            receptionCount: 4,
           },
         ],
         retentionDays: 7,
+        mqttSources: [{ sourceId: 'src-mqtt', sourceName: 'MQTT Source', recordingEnabled: true }],
       });
 
       const { result } = renderHook(() => useCoverageReceivers([]), { wrapper });
@@ -97,6 +99,9 @@ describe('useCoverageData', () => {
 
       expect(result.current.data?.retentionDays).toBe(7);
       expect(result.current.data?.receivers).toHaveLength(1);
+      expect(result.current.data?.mqttSources).toEqual([
+        { sourceId: 'src-mqtt', sourceName: 'MQTT Source', recordingEnabled: true },
+      ]);
     });
   });
 
@@ -198,6 +203,57 @@ describe('useCoverageData', () => {
         { wrapper },
       );
       expect(fetchCoverageReceptionsPage).not.toHaveBeenCalled();
+    });
+
+    it('encodes receiverFilter to the wire grammar for the fetcher', async () => {
+      vi.mocked(fetchCoverageReceptionsPage).mockResolvedValueOnce({
+        items: [makeReception(1)],
+        pageSize: 1000,
+        hasMore: false,
+        nextCursor: null,
+      });
+
+      const { result } = renderHook(
+        () =>
+          useCoverageReceptions({
+            sources: [],
+            sinceMs: 0,
+            untilMs: 1,
+            receiverFilter: [{ sourceId: 'src-a', mode: 'include', receiverIds: ['!aaaaaaaa'] }],
+          }),
+        { wrapper },
+      );
+      await waitFor(() => expect(result.current.data).toBeDefined());
+
+      expect(fetchCoverageReceptionsPage).toHaveBeenCalledWith(
+        expect.objectContaining({ receiversQuery: 'src-a:+!aaaaaaaa' }),
+      );
+    });
+
+    it('drops rows whose composite key is not in clientSideFilter, and queries with no wire receiver filter', async () => {
+      vi.mocked(fetchCoverageReceptionsPage).mockResolvedValueOnce({
+        items: [makeReception(1), { ...makeReception(2), receiverId: '!other', sourceId: 'src-b' }],
+        pageSize: 1000,
+        hasMore: false,
+        nextCursor: null,
+      });
+
+      const { result } = renderHook(
+        () =>
+          useCoverageReceptions({
+            sources: [],
+            sinceMs: 0,
+            untilMs: 1,
+            clientSideFilter: new Set(['src-a|!aaaaaaaa']),
+          }),
+        { wrapper },
+      );
+      await waitFor(() => expect(result.current.data).toBeDefined());
+
+      expect(fetchCoverageReceptionsPage).toHaveBeenCalledWith(
+        expect.objectContaining({ receiversQuery: undefined }),
+      );
+      expect(result.current.data?.items.map((i) => i.id)).toEqual([1]);
     });
   });
 });
