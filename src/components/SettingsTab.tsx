@@ -44,6 +44,7 @@ import GeoJsonLayerManager from './GeoJsonLayerManager';
 import MapStyleManager from './MapStyleManager';
 import { useDashboardSources } from '../hooks/useDashboardData';
 import { DEFAULT_TERRARIUM_URL } from '../types/elevation';
+import { clampCoverageRetentionDays, COVERAGE_RETENTION_DEFAULT_DAYS } from '../utils/coverage';
 import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSource } from '../contexts/SourceContext';
 import {
@@ -137,6 +138,9 @@ interface SettingsDraft {
   localStatsIntervalMinutes: number;
   meshcoreCliTimeoutSeconds: number;
   adminRetryAttempts: number;
+  // Coverage Report retention window, in days (#5277 P1 WP2). Global, no
+  // SettingsContext prop home — same Category C pattern as the two above.
+  coverageRetentionDays: number;
   analyticsProvider: string;
   analyticsConfig: Record<string, string>;
   appriseApiServerUrl: string;
@@ -442,6 +446,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     localStatsIntervalMinutes: NODE_DISPLAY_NUMERIC_DEFAULTS.localStatsIntervalMinutes,
     meshcoreCliTimeoutSeconds: 15,
     adminRetryAttempts: 1,
+    coverageRetentionDays: COVERAGE_RETENTION_DEFAULT_DAYS,
     analyticsProvider: 'none',
     analyticsConfig: {},
     appriseApiServerUrl: '',
@@ -472,6 +477,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // (no SettingsContext prop), mirroring localStats above.
   const [initialMeshcoreCliTimeoutSeconds, setInitialMeshcoreCliTimeoutSeconds] = useState(15);
   const [initialAdminRetryAttempts, setInitialAdminRetryAttempts] = useState(1);
+  // Coverage Report retention window (#5277 P1 WP2). Same Category C pattern.
+  const [initialCoverageRetentionDays, setInitialCoverageRetentionDays] = useState(COVERAGE_RETENTION_DEFAULT_DAYS);
   const [initialAnalyticsProvider, setInitialAnalyticsProvider] = useState<string>('none');
   const [initialAnalyticsConfig, setInitialAnalyticsConfig] = useState<string>('{}');
   const [initialAppriseApiServerUrl, setInitialAppriseApiServerUrl] = useState<string>('');
@@ -598,6 +605,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           const retryAttempts = Number.isFinite(retryParsed) ? Math.min(10, Math.max(1, retryParsed)) : 1;
           updateField('adminRetryAttempts', retryAttempts);
           setInitialAdminRetryAttempts(retryAttempts);
+
+          // Load Coverage Report retention window (#5277 P1 WP2). Absent/invalid
+          // falls back to the 7-day default; clamped 1-90 like the server side.
+          const coverageRetention = clampCoverageRetentionDays(settings.coverage_retention_days);
+          updateField('coverageRetentionDays', coverageRetention);
+          setInitialCoverageRetentionDays(coverageRetention);
 
           // Load node dimming initial values from server (#4412 Phase 3 WP4(c):
           // the trio now lands on the draft via updateField, like every other
@@ -758,6 +771,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localStatsIntervalMinutes: initialLocalStatsIntervalMinutes,
       meshcoreCliTimeoutSeconds: initialMeshcoreCliTimeoutSeconds,
       adminRetryAttempts: initialAdminRetryAttempts,
+      coverageRetentionDays: initialCoverageRetentionDays,
       analyticsProvider: initialAnalyticsProvider,
       analyticsConfig: parsedAnalyticsConfig,
       appriseApiServerUrl: initialAppriseApiServerUrl,
@@ -780,6 +794,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity,
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
       initialPacketMonitorSettings, initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialMeshcoreCliTimeoutSeconds, initialAdminRetryAttempts,
+      initialCoverageRetentionDays,
       initialAnalyticsProvider, initialAnalyticsConfig, initialAppriseApiServerUrl, initialExternalUrl, initialElevationEnabled, initialElevationSourceUrl,
       initialPrivacyPolicyUrl, initialTermsOfServiceUrl, initialContactUrl,
       initialCartoApiKey, initialCotFeedEnabled, initialCotFeedPort]);
@@ -959,6 +974,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setInitialLocalStatsIntervalMinutes(d.localStatsIntervalMinutes);
     setInitialMeshcoreCliTimeoutSeconds(d.meshcoreCliTimeoutSeconds);
     setInitialAdminRetryAttempts(d.adminRetryAttempts);
+    setInitialCoverageRetentionDays(d.coverageRetentionDays);
     setInitialAnalyticsProvider(d.analyticsProvider);
     setInitialAnalyticsConfig(JSON.stringify(d.analyticsConfig));
     setInitialAppriseApiServerUrl(d.appriseApiServerUrl.trim());
@@ -1034,6 +1050,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         localStatsIntervalMinutes: draft.localStatsIntervalMinutes.toString(),
         meshcoreCliTimeoutSeconds: draft.meshcoreCliTimeoutSeconds.toString(),
         adminRetryAttempts: draft.adminRetryAttempts.toString(),
+        coverage_retention_days: String(clampCoverageRetentionDays(draft.coverageRetentionDays)),
         nodeHopsCalculation: draft.nodeHopsCalculation,
         nodeDimmingEnabled: draft.nodeDimmingEnabled ? '1' : '0',
         nodeDimmingStartHours: draft.nodeDimmingStartHours.toString(),
@@ -1291,6 +1308,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       updateField('linkPreviewsEnabled', true);
       updateField('discardInvalidPositions', true);
       updateField('meshcoreChannelRetryEnabled', false);
+      updateField('coverageRetentionDays', COVERAGE_RETENTION_DEFAULT_DAYS);
 
       // Update parent component with defaults
       onMaxNodeAgeChange(NODE_DISPLAY_NUMERIC_DEFAULTS.maxNodeAgeHours);
@@ -1323,6 +1341,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 
       // Update initial packet monitor settings
       setInitialPacketMonitorSettings({ enabled: false, maxCount: 1000, maxAgeHours: 24 });
+      setInitialCoverageRetentionDays(COVERAGE_RETENTION_DEFAULT_DAYS);
 
       showToast(t('settings.reset_success'), 'success');
     } catch (error) {
@@ -2592,6 +2611,30 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               onChange={(e) => {
                 const n = parseInt(e.target.value, 10);
                 updateField('adminRetryAttempts', Number.isNaN(n) ? 1 : Math.min(10, Math.max(1, n)));
+              }}
+              className="setting-input"
+            />
+          </div>
+        </div>}
+
+        {show('settings-coverage') && canWriteSettings && <div id="settings-coverage" className="settings-section">
+          <h3>{t('settings.coverage_section', 'Coverage Report')}</h3>
+          <div className="setting-item">
+            <label htmlFor="coverageRetentionDays">
+              {t('settings.coverage_retention_days', 'RF reception retention (days)')}
+              <span className="setting-description">
+                {t('settings.coverage_retention_help', 'How long Coverage Report RF receptions are kept before the hourly sweep deletes them. Lowering this value permanently deletes older receptions on the next sweep — that cannot be undone. Range 1-90; default 7.')}
+              </span>
+            </label>
+            <input
+              id="coverageRetentionDays"
+              type="number"
+              min="1"
+              max="90"
+              value={draft.coverageRetentionDays}
+              onChange={(e) => {
+                const n = parseInt(e.target.value, 10);
+                updateField('coverageRetentionDays', clampCoverageRetentionDays(Number.isNaN(n) ? undefined : n));
               }}
               className="setting-input"
             />

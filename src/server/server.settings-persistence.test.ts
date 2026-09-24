@@ -521,6 +521,12 @@ describe('Settings Persistence', () => {
         // at runtime by the public GET /api/privacy/links endpoint rather than
         // through SettingsContext.
         'privacyPolicyUrl', 'termsOfServiceUrl', 'contactUrl',
+        // Coverage Report retention window (#5277 P1 WP2) — loaded directly by
+        // SettingsTab into its own initial* snapshot (GLOBAL_ONLY_SETTINGS_KEYS,
+        // settings:write-gated field, no SettingsContext hook), same pattern as
+        // adminRetryAttempts above. Read server-side only by
+        // coverageRetentionService via the bare-key getSettingAsync.
+        'coverage_retention_days',
       ];
 
       const keysNotLoaded = SETTINGS_TAB_SENDS.filter(
