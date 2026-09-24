@@ -109,6 +109,7 @@ import {
   type PositionShape,
   MqttPacketFilter,
 } from './mqttPacketFilter.js';
+import { maybeRecordMqttCoverageReception } from './utils/coverageMqtt.js';
 
 /**
  * First-drop-per-node tracker for ignore/geo-ignore noise suppression (see
@@ -466,6 +467,28 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
         if (outcome !== 'kept') {
           return { ingested: false, reason: 'distance', portnum };
         }
+      }
+
+      // Coverage Report (#5277 P2, §2.6): record one gateway reception per
+      // (packet, path, gateway) for the survey map. Placed here — after the
+      // geo/ignore/distance gates and only for a non-bogus fix — so Coverage
+      // never shows a node the node table refused (Decision D2). Non-blocking
+      // and fully self-contained: never throws into ingest, never emits on
+      // dataEventEmitter, and no-ops when the per-source opt-in is off
+      // (default). See src/server/utils/coverageMqtt.ts.
+      if (!positionIsBogus && lat != null && lng != null) {
+        void maybeRecordMqttCoverageReception({
+          sourceId,
+          envelope,
+          fromNum,
+          localGatewayNodeNum: input.localGatewayNodeNum,
+          lat,
+          lng,
+          altitude: typeof alt === 'number' ? alt : null,
+          precisionBits: precisionBits ?? null,
+          channel: effectiveChannel,
+          nowMs,
+        });
       }
 
       const node: Partial<DbNode> = {

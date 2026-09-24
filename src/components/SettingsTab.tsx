@@ -20,6 +20,7 @@ import settingsStyles from './SettingsTab.module.css';
 import SystemBackupSection from './configuration/SystemBackupSection';
 import DatabaseMaintenanceSection from './configuration/DatabaseMaintenanceSection';
 import ScriptsSection from './settings/ScriptsSection';
+import CoverageMqttRecordingSection from './settings/CoverageMqttRecordingSection';
 import FirmwareUpdateSection from './configuration/FirmwareUpdateSection';
 import ChannelDatabaseSection from './configuration/ChannelDatabaseSection';
 import { CustomThemeManagement } from './CustomThemeManagement';
@@ -45,6 +46,7 @@ import MapStyleManager from './MapStyleManager';
 import { useDashboardSources } from '../hooks/useDashboardData';
 import { DEFAULT_TERRARIUM_URL } from '../types/elevation';
 import { clampCoverageRetentionDays, COVERAGE_RETENTION_DEFAULT_DAYS } from '../utils/coverage';
+import { isMqttOnlySourceType } from '../utils/nodeTransport';
 import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSource } from '../contexts/SourceContext';
 import TelemetryOutlierDialog from './TelemetryOutlierDialog/TelemetryOutlierDialog';
@@ -391,7 +393,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // Scope destructive purges to the source whose Danger Zone this is; null in
   // global mode. `useSourceQuery()` returns a query string, so read the id
   // directly rather than parsing it back out (#5088).
-  const { sourceId: purgeSourceId } = useSource();
+  // sourceType (#5277 P2 WP3) gates the Coverage recording section/nav item to
+  // MQTT-only sources — see isMqttOnlySourceType below.
+  const { sourceId: purgeSourceId, sourceType } = useSource();
   // #5333: outlier purge dialog (Danger Zone → Clean telemetry outliers).
   const [outlierDialogOpen, setOutlierDialogOpen] = useState(false);
 
@@ -1578,6 +1582,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           canWriteSettings,
           databaseType,
           firmwareOtaEnabled,
+          sourceType,
         })}
       />
       <div className="settings-content settings-multi-column">
@@ -2596,6 +2601,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </>
           )}
         </div>}
+
+        {show('settings-coverage-mqtt') && canWriteSettings && isMqttOnlySourceType(sourceType) && purgeSourceId && (
+          <CoverageMqttRecordingSection baseUrl={baseUrl} sourceId={purgeSourceId} canWrite={canWriteSettings} />
+        )}
 
         {show('settings-remote-admin') && isAdmin && <div id="settings-remote-admin" className="settings-section">
           <h3>{t('settings.remote_admin_section', 'Remote Administration')}</h3>

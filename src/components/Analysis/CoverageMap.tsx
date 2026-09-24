@@ -23,10 +23,19 @@ import { snrToColor, rssiToColor } from '../../utils/mapHelpers';
 import { calculateDistance, formatDistance } from '../../utils/distance';
 import type { CoverageFix, CoverageMetric } from '../../utils/coverage';
 import type { CoverageReceptionDto, CoverageReceiverDto } from '../../types/coverage';
+import { receiverKey } from '../../utils/coverageReceiverFilter';
+import {
+  dedupeReceiverMarkers,
+  buildDedupedReceiverIndex,
+  collapseFixReceptionsBySource,
+  physicalReceiverKey,
+} from '../../utils/coverageMapGrouping';
 import styles from './CoverageMap.module.css';
 
 const RECEIVER_STROKE = '#ffffff';
 const RECEIVER_FILL = '#89b4fa';
+const GATEWAY_STROKE = '#89b4fa';
+const GATEWAY_FILL = '#313244';
 
 /** `0x` + the last byte of the relaying node's nodeNum, uppercase — same
  *  convention as RelayNodeModal / PacketMonitorPanel. */
@@ -93,21 +102,24 @@ export const CoverageMap: React.FC<CoverageMapProps> = ({ fixes, receivers, metr
     defaultMapCenterZoom,
   } = useSettings();
 
-  const receiverById = useMemo(
-    () => new Map(receivers.map((r) => [r.receiverId, r] as const)),
-    [receivers],
-  );
+  // Physical markers: the same gateway seen via two MQTT sources collapses
+  // to one marker (Decision D7 — keyed `receiverKind|receiverId`, NOT the
+  // composite source key above).
+  const dedupedMarkers = useMemo(() => dedupeReceiverMarkers(receivers), [receivers]);
+  const dedupedByPhysicalKey = useMemo(() => buildDedupedReceiverIndex(dedupedMarkers), [dedupedMarkers]);
 
-  const visibleReceivers = useMemo(
-    () => receivers.filter((r) => r.latitude != null && r.longitude != null),
+  // sourceName lookup for the popup's "via Source A, Source B" line — the
+  // only place a reception's bare sourceId resolves to a display name.
+  const sourceNameByReceiverKey = useMemo(
+    () => new Map(receivers.map((r) => [receiverKey(r.sourceId, r.receiverId), r.sourceName] as const)),
     [receivers],
   );
 
   const boundsPoints = useMemo<Array<[number, number]>>(() => {
     const points: Array<[number, number]> = fixes.map((f) => [f.latitude, f.longitude]);
-    for (const r of visibleReceivers) points.push([r.latitude as number, r.longitude as number]);
+    for (const m of dedupedMarkers) points.push([m.latitude, m.longitude]);
     return points;
-  }, [fixes, visibleReceivers]);
+  }, [fixes, dedupedMarkers]);
 
   const center: [number, number] =
     defaultMapCenterLat != null && defaultMapCenterLon != null
@@ -128,18 +140,41 @@ export const CoverageMap: React.FC<CoverageMapProps> = ({ fixes, receivers, metr
       >
         <FitCoverageBounds points={boundsPoints} fitKey={fitKey} />
 
-        {visibleReceivers.map((r) => (
-          <CircleMarker
-            key={`receiver-${r.sourceId}-${r.receiverId}`}
-            center={[r.latitude as number, r.longitude as number]}
-            radius={9}
-            pathOptions={{ color: RECEIVER_STROKE, weight: 2, fillColor: RECEIVER_FILL, fillOpacity: 0.9 }}
-          >
-            <Tooltip permanent direction="top" offset={[0, -10]} className={styles.receiverLabel}>
-              {r.longName || r.shortName || r.receiverId}
-            </Tooltip>
-          </CircleMarker>
-        ))}
+        {dedupedMarkers.map((m) => {
+          const isGateway = m.receiverKind === 'mqtt_gateway';
+          const kindLabel = isGateway
+            ? t('analysis.coverage.kind_gateway', 'Gateway')
+            : t('analysis.coverage.kind_local', 'Local');
+          return (
+            <CircleMarker
+              key={`receiver-${m.key}`}
+              center={[m.latitude, m.longitude]}
+              radius={isGateway ? 6 : 9}
+              pathOptions={
+                isGateway
+                  ? {
+                      color: GATEWAY_STROKE,
+                      weight: 2,
+                      dashArray: '4,3',
+                      fillColor: GATEWAY_FILL,
+                      fillOpacity: 0.85,
+                    }
+                  : { color: RECEIVER_STROKE, weight: 2, fillColor: RECEIVER_FILL, fillOpacity: 0.9 }
+              }
+            >
+              {/* Hundreds of permanent gateway tooltips would bury the map
+                 (spec §2.9); only local receivers keep theirs always on. */}
+              <Tooltip
+                permanent={!isGateway}
+                direction="top"
+                offset={[0, -10]}
+                className={styles.receiverLabel}
+              >
+                {m.label} · {kindLabel}
+              </Tooltip>
+            </CircleMarker>
+          );
+        })}
 
         {fixes.map((fix) => {
           const value = metric === 'snr' ? fix.bestSnr : fix.bestRssi;
@@ -163,9 +198,11 @@ export const CoverageMap: React.FC<CoverageMapProps> = ({ fixes, receivers, metr
                     {new Date(fix.receivedAt).toLocaleString()}
                   </div>
                   <ul className={styles.popupList}>
-                    {fix.receptions.map((r) => {
-                      const receiver = receiverById.get(r.receiverId);
-                      const receiverLabel = receiver?.longName || receiver?.shortName || r.receiverId;
+                    {collapseFixReceptionsBySource(fix.receptions, sourceNameByReceiverKey).map((c) => {
+                      const r = c.best;
+                      const receiverInfo = dedupedByPhysicalKey.get(physicalReceiverKey(c.receiverKind, c.receiverId));
+                      const receiverLabel = receiverInfo?.label ?? c.receiverId;
+                      const isGateway = c.receiverKind === 'mqtt_gateway';
                       const direct = r.hopsAway === 0;
                       const pathLabel = direct
                         ? t('analysis.coverage.direct', 'Direct')
@@ -194,8 +231,15 @@ export const CoverageMap: React.FC<CoverageMapProps> = ({ fixes, receivers, metr
                             )
                           : '—';
                       return (
-                        <li key={`${r.id}`} className={styles.popupItem}>
-                          <div className={styles.popupReceiver}>{receiverLabel}</div>
+                        <li key={c.key} className={styles.popupItem}>
+                          <div className={styles.popupReceiver}>
+                            {receiverLabel}
+                            {isGateway && (
+                              <span className={styles.gatewayBadge}>
+                                {t('analysis.coverage.kind_gateway', 'Gateway')}
+                              </span>
+                            )}
+                          </div>
                           <div className={styles.popupMeta}>
                             {r.snr != null
                               ? t('analysis.coverage.snr_value', 'SNR {{value}} dB', { value: r.snr.toFixed(1) })
@@ -209,6 +253,13 @@ export const CoverageMap: React.FC<CoverageMapProps> = ({ fixes, receivers, metr
                           <div className={styles.popupMeta}>
                             {t('analysis.coverage.distance', 'Distance: {{value}}', { value: distanceLabel })}
                           </div>
+                          {c.sourceLabels.length > 1 && (
+                            <div className={styles.popupMeta}>
+                              {t('analysis.coverage.popup_via_sources', 'via {{sources}}', {
+                                sources: c.sourceLabels.join(', '),
+                              })}
+                            </div>
+                          )}
                           <div className={styles.popupMeta}>{new Date(r.receivedAt).toLocaleString()}</div>
                         </li>
                       );

@@ -5,6 +5,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
+  COVERAGE_MQTT_ENABLED_SETTING,
+  isCoverageMqttFlagOn,
   clampCoverageRetentionDays,
   COVERAGE_RETENTION_DEFAULT_DAYS,
   COVERAGE_MAX_RX_AGE_SEC,
@@ -231,5 +233,19 @@ describe('groupReceptionsIntoFixes', () => {
 
   it('returns [] for an empty input', () => {
     expect(groupReceptionsIntoFixes([])).toEqual([]);
+  });
+});
+
+describe('isCoverageMqttFlagOn', () => {
+  it('is on only for "1" and "true"', () => {
+    expect(COVERAGE_MQTT_ENABLED_SETTING).toBe('coverage_mqtt_enabled');
+    expect(isCoverageMqttFlagOn('1')).toBe(true);
+    expect(isCoverageMqttFlagOn('true')).toBe(true);
+  });
+
+  it('is off for anything else, including unset', () => {
+    for (const raw of [null, undefined, '', '0', 'false', 'yes', 'TRUE']) {
+      expect(isCoverageMqttFlagOn(raw)).toBe(false);
+    }
   });
 });

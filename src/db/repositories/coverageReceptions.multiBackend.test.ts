@@ -126,6 +126,54 @@ function runSharedTests(getCtx: () => Ctx) {
     expect(receivers[0].lastReceivedAt).toBe(NOW + 5000);
     expect(receivers[0].receiverLatitude).toBe(40.0);
     expect(receivers[0].receiverLongitude).toBe(-105.0);
+    expect(receivers[0].receptionCount).toBe(2);
+  });
+
+  it('getReceivers batches the snapshot follow-up across the 200-chunk boundary (Decision D9)', async () => {
+    const { repo } = getCtx();
+    const total = 250;
+    for (let i = 0; i < total; i++) {
+      await repo.recordReception(makeReception({
+        receiverId: `!${i.toString(16).padStart(8, '0')}`,
+        receiverNodeNum: i,
+        pathKey: `p-${i}`,
+        receiverLatitude: 40 + i * 0.001,
+        receiverLongitude: -105 - i * 0.001,
+      }));
+    }
+
+    const receivers = await repo.getReceivers({ sourceIds: ['src-a'], sinceMs: 0 });
+    expect(receivers).toHaveLength(total);
+    for (const r of receivers) {
+      const i = Number(r.receiverNodeNum);
+      expect(r.receiverLatitude).toBeCloseTo(40 + i * 0.001, 6);
+      expect(r.receiverLongitude).toBeCloseTo(-105 - i * 0.001, 6);
+      expect(r.receptionCount).toBe(1);
+    }
+  });
+
+  it('getReceptions with a receiverFilter: include on one source never leaks the same receiverId on another', async () => {
+    const { repo } = getCtx();
+    await repo.recordReception(makeReception({ sourceId: 'src-a', receiverId: '!shared', pathKey: 'pa' }));
+    await repo.recordReception(makeReception({ sourceId: 'src-b', receiverId: '!shared', pathKey: 'pb' }));
+
+    const page = await repo.getReceptions({
+      sourceIds: ['src-a', 'src-b'], sinceMs: 0, untilMs: NOW + 1, pageSize: 10,
+      receiverFilter: [{ sourceId: 'src-a', mode: 'include', receiverIds: ['!not-shared'] }],
+    });
+    // src-a is constrained to an id that doesn't match; src-b is unconstrained.
+    expect(page.items.map((r) => r.sourceId)).toEqual(['src-b']);
+  });
+
+  it('getReceptions drops a receiverFilter entry for a non-permitted source', async () => {
+    const { repo } = getCtx();
+    await repo.recordReception(makeReception({ sourceId: 'src-a', receiverId: '!a1', pathKey: 'a1' }));
+
+    const page = await repo.getReceptions({
+      sourceIds: ['src-a'], sinceMs: 0, untilMs: NOW + 1, pageSize: 10,
+      receiverFilter: [{ sourceId: 'src-b', mode: 'include', receiverIds: ['!nope'] }],
+    });
+    expect(page.items.map((r) => r.receiverId)).toEqual(['!a1']);
   });
 
   it('purgeOlderThan deletes only rows before the cutoff, across sources', async () => {

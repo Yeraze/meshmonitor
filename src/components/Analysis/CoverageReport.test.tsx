@@ -11,6 +11,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -48,12 +49,12 @@ const RECEIVERS = [
   {
     sourceId: 'src-a', sourceName: 'Source A', protocol: 'meshtastic', receiverKind: 'local',
     receiverId: '!aaaaaaaa', receiverNodeNum: 1, longName: 'Receiver One', shortName: 'R1',
-    latitude: 26.1, longitude: -80.2, lastReceivedAt: 1,
+    latitude: 26.1, longitude: -80.2, lastReceivedAt: 1, receptionCount: 5,
   },
   {
     sourceId: 'src-a', sourceName: 'Source A', protocol: 'meshtastic', receiverKind: 'local',
     receiverId: '!cccccccc', receiverNodeNum: 3, longName: 'Receiver Two', shortName: 'R2',
-    latitude: 26.3, longitude: -80.4, lastReceivedAt: 1,
+    latitude: 26.3, longitude: -80.4, lastReceivedAt: 1, receptionCount: 5,
   },
 ];
 
@@ -79,7 +80,7 @@ beforeEach(() => {
   vi.setSystemTime(NOW);
 
   useCoverageReceivers.mockReturnValue({
-    data: { receivers: RECEIVERS, retentionDays: 7 },
+    data: { receivers: RECEIVERS, retentionDays: 7, mqttSources: [] },
     isLoading: false,
     refetch: vi.fn(),
   });
@@ -105,21 +106,35 @@ function lastReceptionsFilters() {
   return calls[calls.length - 1][0];
 }
 
+function renderReport() {
+  return render(
+    <MemoryRouter>
+      <CoverageReport />
+    </MemoryRouter>,
+  );
+}
+
+/** Opens the CoverageReceiverFilter panel (composite-keyed picker, #5277 P2 WP4). */
+function openReceiverPanel() {
+  fireEvent.click(screen.getByRole('button', { name: /Receivers:|All receivers/ }));
+}
+
 describe('CoverageReport', () => {
   it('defaults to a 24h window, all receivers, no sender, no hops filter', () => {
-    render(<CoverageReport />);
+    renderReport();
 
     const filters = lastReceptionsFilters();
     expect(filters.sinceMs).toBe(NOW - 24 * 3_600_000);
     expect(filters.untilMs).toBe(NOW);
-    expect(filters.receiverIds).toBeUndefined();
+    expect(filters.receiverFilter).toBeUndefined();
+    expect(filters.clientSideFilter).toBeUndefined();
     expect(filters.senderId).toBeUndefined();
     expect(filters.hops).toBeUndefined();
     expect(filters.hopsMode).toBe('exact');
   });
 
   it('refetches with the chosen sender id when the sender select changes', () => {
-    render(<CoverageReport />);
+    renderReport();
 
     fireEvent.change(screen.getByLabelText('Sender'), { target: { value: '!bbbbbbbb' } });
 
@@ -127,7 +142,7 @@ describe('CoverageReport', () => {
   });
 
   it('refetches with an exact hops filter, then switches to "up to" mode', () => {
-    render(<CoverageReport />);
+    renderReport();
 
     fireEvent.change(screen.getByLabelText('Hops'), { target: { value: '2' } });
     expect(lastReceptionsFilters().hops).toBe(2);
@@ -137,11 +152,14 @@ describe('CoverageReport', () => {
     expect(lastReceptionsFilters().hopsMode).toBe('max');
   });
 
-  it('deselecting a receiver narrows receiverIds; deselecting all shows the selection-required banner', () => {
-    render(<CoverageReport />);
+  it('deselecting a receiver narrows the receiverFilter (composite-keyed); deselecting all shows the selection-required banner', () => {
+    renderReport();
+    openReceiverPanel();
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Receiver Two' }));
-    expect(lastReceptionsFilters().receiverIds).toEqual(['!aaaaaaaa']);
+    expect(lastReceptionsFilters().receiverFilter).toEqual([
+      { sourceId: 'src-a', mode: 'include', receiverIds: ['!aaaaaaaa'] },
+    ]);
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Receiver One' }));
     expect(screen.getByText('Select at least one receiver.')).toBeInTheDocument();
@@ -154,11 +172,12 @@ describe('CoverageReport', () => {
       refetch: vi.fn(),
     });
 
-    render(<CoverageReport />);
+    renderReport();
 
     expect(
       screen.getByText(/Showing the first 1 receptions in this window/),
     ).toBeInTheDocument();
+    expect(screen.getByText(/pick a sender to see the rest/)).toBeInTheDocument();
   });
 
   it('shows the empty state when there are no receptions and nothing is loading', () => {
@@ -168,14 +187,14 @@ describe('CoverageReport', () => {
       refetch: vi.fn(),
     });
 
-    render(<CoverageReport />);
+    renderReport();
 
     expect(screen.getByText('No RF receptions in this window.')).toBeInTheDocument();
     expect(screen.queryByTestId('coverage-map-stub')).not.toBeInTheDocument();
   });
 
   it('toggles the setup guidance panel', () => {
-    render(<CoverageReport />);
+    renderReport();
 
     expect(screen.queryByText(/Recommended survey-node settings/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByText('Setup guidance'));
@@ -186,7 +205,7 @@ describe('CoverageReport', () => {
   });
 
   it('passes the selected colour metric through to CoverageMap', () => {
-    render(<CoverageReport />);
+    renderReport();
 
     expect(screen.getByTestId('coverage-map-stub')).toHaveTextContent('metric:snr');
     fireEvent.change(screen.getByLabelText('Colour by'), { target: { value: 'rssi' } });
@@ -194,7 +213,44 @@ describe('CoverageReport', () => {
   });
 
   it('shows the retention note from the receivers query', () => {
-    render(<CoverageReport />);
+    renderReport();
     expect(screen.getByText('Data kept 7 days.')).toBeInTheDocument();
+  });
+
+  it('shows the MQTT note when a gateway receiver is present', () => {
+    useCoverageReceivers.mockReturnValue({
+      data: {
+        receivers: [
+          { ...RECEIVERS[0], receiverKind: 'mqtt_gateway' },
+        ],
+        retentionDays: 7,
+        mqttSources: [],
+      },
+      isLoading: false,
+      refetch: vi.fn(),
+    });
+
+    renderReport();
+    expect(screen.getByText(/Gateway receptions come from what each gateway itself reports/)).toBeInTheDocument();
+  });
+
+  it('shows the MQTT note when mqttSources is non-empty even with no gateway receivers yet', () => {
+    useCoverageReceivers.mockReturnValue({
+      data: {
+        receivers: RECEIVERS,
+        retentionDays: 7,
+        mqttSources: [{ sourceId: 'src-mqtt', sourceName: 'MQTT Source', recordingEnabled: true }],
+      },
+      isLoading: false,
+      refetch: vi.fn(),
+    });
+
+    renderReport();
+    expect(screen.getByText(/Gateway receptions come from what each gateway itself reports/)).toBeInTheDocument();
+  });
+
+  it('does not show the MQTT note when there are no gateway receivers and no mqttSources', () => {
+    renderReport();
+    expect(screen.queryByText(/Gateway receptions come from what each gateway itself reports/)).not.toBeInTheDocument();
   });
 });

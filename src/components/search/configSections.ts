@@ -22,6 +22,7 @@
  */
 import type { TFunction } from 'i18next';
 import type { NavItem } from '../SectionNav';
+import { isMqttOnlySourceType } from '../../utils/nodeTransport';
 
 /**
  * i18next's `t`, exactly as the tabs already hold it.
@@ -66,6 +67,10 @@ export const SOURCE_SETTINGS_SECTIONS = new Set([
   'settings-sorting', 'settings-node-display', 'settings-telemetry',
   'settings-notifications', 'settings-packet-monitor', 'settings-solar',
   'settings-firmware', 'settings-reset-ui',
+  // Coverage Report MQTT gateway-reception recording (#5277 P2 WP3) — shown
+  // only on mqtt_broker/mqtt_bridge sources (see the isMqttOnlySourceType
+  // filter below), so it lives in the source, not global, section set.
+  'settings-coverage-mqtt',
   'settings-management', 'settings-danger',
 ]);
 
@@ -80,6 +85,13 @@ export interface SettingsNavOptions {
   /** Database Maintenance is SQLite-only (it uses VACUUM). */
   databaseType?: 'sqlite' | 'postgres' | 'mysql' | null;
   firmwareOtaEnabled?: boolean;
+  /**
+   * The active source's `type` (e.g. `mqtt_broker`, `mqtt_bridge`,
+   * `meshtastic_tcp`). Gates `settings-coverage-mqtt` to MQTT-only sources
+   * (#5277 P2 WP3) via `isMqttOnlySourceType`. `undefined`/`null` hides it,
+   * matching the global-settings surface where no single source applies.
+   */
+  sourceType?: string | null;
 }
 
 /**
@@ -90,7 +102,7 @@ export interface SettingsNavOptions {
  * out deep links that land on nothing.
  */
 export function settingsNavItems(t: Translate, options: SettingsNavOptions): NavItem[] {
-  const { mode, isAdmin, canWriteSettings, databaseType, firmwareOtaEnabled } = options;
+  const { mode, isAdmin, canWriteSettings, databaseType, firmwareOtaEnabled, sourceType } = options;
   const inMode = (id: string) =>
     !mode || (mode === 'global' ? GLOBAL_SETTINGS_SECTIONS.has(id) : SOURCE_SETTINGS_SECTIONS.has(id));
 
@@ -123,6 +135,7 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
     { id: 'settings-mesh-issues', label: t('automation.mesh_issues.title', 'Mesh Issues Analysis'), keywords: ['diagnostics', 'health', 'problems'] },
     { id: 'settings-auto-enrichment', label: t('automation.auto_enrichment.title', 'Auto-Enrichment'), keywords: ['nodeinfo', 'enrichment', 'fix all', 'schedule', 'cron'] },
     { id: 'settings-coverage', label: t('settings.coverage_section', 'Coverage Report'), keywords: ['coverage', 'range test', 'retention', 'survey'] },
+    { id: 'settings-coverage-mqtt', label: t('settings.coverage_mqtt_section', 'Coverage recording'), keywords: ['coverage', 'gateway', 'mqtt', 'survey', 'range test'] },
     { id: 'settings-management', label: t('settings.settings_management'), keywords: ['export', 'import', 'reset'] },
     { id: 'settings-danger', label: t('settings.danger_zone'), keywords: ['delete', 'purge', 'wipe', 'reset'] },
   ];
@@ -131,7 +144,7 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
     'settings-remote-admin', 'settings-apprise-server', 'settings-elevation',
     'settings-channel-database', 'settings-scripts', 'settings-analytics',
   ]);
-  const settingsWriteOnly = new Set(['settings-position-estimation', 'settings-mesh-issues', 'settings-auto-enrichment', 'settings-coverage']);
+  const settingsWriteOnly = new Set(['settings-position-estimation', 'settings-mesh-issues', 'settings-auto-enrichment', 'settings-coverage', 'settings-coverage-mqtt']);
 
   return items.filter((item) => {
     if (!inMode(item.id)) return false;
@@ -140,6 +153,9 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
     // Database Maintenance uses SQLite-specific features like VACUUM.
     if (item.id === 'settings-maintenance' && databaseType !== 'sqlite') return false;
     if (item.id === 'settings-firmware' && !(isAdmin && firmwareOtaEnabled)) return false;
+    // Coverage recording only means anything on an MQTT-only source
+    // (mqtt_broker/mqtt_bridge) — see isMqttOnlySourceType (#5277 P2 WP3).
+    if (item.id === 'settings-coverage-mqtt' && !isMqttOnlySourceType(sourceType)) return false;
     return true;
   });
 }

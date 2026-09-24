@@ -22,6 +22,17 @@ export const COVERAGE_RETENTION_MIN_DAYS = 1;
 export const COVERAGE_RETENTION_MAX_DAYS = 90;
 
 /**
+ * Per-source setting that turns on MQTT gateway reception recording (#5277 P2).
+ * Off by default. Read it with `getSettingForSource`, never the bare key (#5080).
+ */
+export const COVERAGE_MQTT_ENABLED_SETTING = 'coverage_mqtt_enabled';
+
+/** True when a stored `coverage_mqtt_enabled` value means "on" ('1' or 'true'). */
+export function isCoverageMqttFlagOn(raw: string | null | undefined): boolean {
+  return raw === '1' || raw === 'true';
+}
+
+/**
  * Clamp a raw (possibly string/undefined/garbage) settings value to a valid
  * retention window in days. Non-finite input (undefined, NaN, an unparsable
  * string) falls back to the default; everything else is clamped to

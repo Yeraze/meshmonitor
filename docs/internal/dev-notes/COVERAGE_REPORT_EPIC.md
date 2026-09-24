@@ -41,7 +41,7 @@ plan comment on #5277.
   receiver. Setup guidance with airtime estimate.
   *Exit:* live RF positions appear on the report; per-source isolation test;
   retention purge test; full suite green on SQLite/PG/MySQL.
-- [ ] **P2 — MQTT gateway receptions.** Per-source opt-in; each gateway recorded as
+- [x] **P2 — MQTT gateway receptions.** Per-source opt-in; each gateway recorded as
   a receiver with its SNR/RSSI; report shows gateway receivers; note that nodes
   disallowing MQTT uploads won't appear.
   *Exit:* opt-in off by default; gateway receptions shown per receiver.
@@ -51,7 +51,14 @@ plan comment on #5277.
 - [ ] **P4 — Gaps, surveys, summary, export.** Likely-gap lines; saved surveys
   (live start or past range) exempt from retention; summary panel (heard vs
   expected, best/worst, distance-vs-SNR chart, per-receiver table); grid view;
-  CSV/GeoJSON export; "Show coverage" link on node details.
+  CSV/GeoJSON export; "Show coverage" link on node details. Also: search in the
+  sender picker (deferred from P2, Q3).
+
+## Follow-ups
+
+- **Canvas map rendering.** Up to 10k `CircleMarker`s render as SVG in
+  `CoverageMap`. Pass `preferCanvas` to `BaseMap` if browser checks show lag on
+  busy MQTT sources. Deferred from P2 (Q2).
 
 ## Phase log
 
@@ -71,3 +78,19 @@ plan comment on #5277.
   query-stability regression test.
 - Observed on live data: many packets carry no `rx_rssi`; the UI shows "—".
 - Relay byte 0 is firmware's NO_RELAY_NODE; the popup omits "via" for it.
+
+### P2 (2026-09-24)
+
+- Spec: `COVERAGE_P2_SPEC.md`. No schema change; P1's table fit gateway receivers.
+- User decisions: **no volume cap**, the toggle warning quotes measured numbers
+  (regional ~12–14k rows/day; world-wide `msh/#` ~1M/day); **live per-source
+  recording status** on the report (`/receivers` → `mqttSources`).
+- Setting `coverage_mqtt_enabled`, per source, read only via
+  `getSettingForSource(s)`; 30 s cache, fail-closed, invalidated on save.
+- Receiver filter wire format is source-scoped include/exclude (whichever is
+  shorter, ≤1000 ids, client-side fallback); receivers keyed by source+id
+  everywhere (P1 review carry-over). Shared receiver-position cache with a
+  failure TTL replaces the per-manager one (P1 review carry-over).
+- Browser validation on the Florida bridge: 29 gateway receivers, 34 receptions
+  in 2 minutes; unticking a source group narrows `sources=`.
+

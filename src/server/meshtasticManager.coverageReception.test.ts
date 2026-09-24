@@ -383,5 +383,23 @@ describe('MeshtasticManager — Coverage Report RF-reception recording hook (#52
         expect.objectContaining({ receiverLatitude: 39.9, receiverLongitude: -75.1 }),
       );
     });
+
+    // #5277 P2 §2.2 (Decision D11): the shared CoverageReceiverPositionCache
+    // adds a failure TTL the old per-manager field never had — a lookup
+    // failure with no prior good value is itself cached, so a source with no
+    // local node position yet doesn't retry the DB on every single reception.
+    it('a node lookup that throws twice within 60s calls getNode once', async () => {
+      const mgr = makeManager();
+      getNodeMock.mockRejectedValue(new Error('db unavailable'));
+
+      await callHook(mgr);
+      await callHook(mgr, { id: PACKET_ID + 1 });
+
+      expect(getNodeMock).toHaveBeenCalledTimes(1);
+      expect(recordReceptionMock).toHaveBeenCalledTimes(2);
+      expect(recordReceptionMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ receiverLatitude: null, receiverLongitude: null }),
+      );
+    });
   });
 });
