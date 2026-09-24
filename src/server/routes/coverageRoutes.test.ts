@@ -449,6 +449,77 @@ describe('Coverage Report API (#5277 WP3)', () => {
       expect(res.body.data.retentionDays).toBe(7);
     });
 
+    // ── MeshCore companion self-name fallback ───────────────────────────────
+    //
+    // A device-backed MeshCore source's own receiver row (receiverKind
+    // 'local') carries the companion's own public key as receiverId. A
+    // companion is never a contact of itself, so `meshcore_nodes` never has
+    // a row for it and the plain `mcNode?.name` lookup always misses,
+    // leaving longName null and the frontend showing the raw pubkey prefix
+    // (e.g. "a8e56073…"). The fix falls back to the registered MeshCore
+    // manager's live self name, then to the source's own name.
+    describe('MeshCore companion self-name fallback', () => {
+      const MC_SOURCE = 'rt-source-meshcore-local';
+      const MC_SELF_PUBKEY = `a8e56073${'cafebabe'.repeat(7)}`;
+
+      function makeFakeMeshCoreManager(sourceId: string, selfName: string | null): ISourceManager {
+        return {
+          sourceId,
+          sourceType: 'meshcore',
+          start: async () => {},
+          stop: async () => {},
+          getStatus: () => ({ sourceId, sourceName: sourceId, sourceType: 'meshcore', connected: true }),
+          getLocalNode: () => (selfName == null ? null : { name: selfName }),
+        } as unknown as ISourceManager;
+      }
+
+      beforeEach(async () => {
+        await harness.db.sources.createSource({
+          id: MC_SOURCE, name: 'MC Companion Source', type: 'meshcore', config: {}, enabled: true,
+        });
+        await databaseService.coverageReceptions.recordReception({
+          sourceId: MC_SOURCE,
+          protocol: 'meshcore',
+          receiverKind: 'local',
+          receiverId: MC_SELF_PUBKEY,
+          senderId: 'cafebabedeadbeef00000000000000000000000000000000000000000000af',
+          packetKey: 'mc-self-pkt-1',
+          pathKey: 'h1:1',
+          latitude: 1,
+          longitude: 2,
+          receivedAt: Date.now(),
+        });
+      });
+
+      afterEach(async () => {
+        await sourceManagerRegistry.removeManager(MC_SOURCE).catch(() => {});
+        await databaseService.coverageReceptions.deleteForSource(MC_SOURCE).catch(() => {});
+        await harness.db.sources.deleteSource(MC_SOURCE).catch(() => {});
+      });
+
+      it("falls back to the MeshCore manager's self name when no meshcore_nodes row exists", async () => {
+        await sourceManagerRegistry.addManager(makeFakeMeshCoreManager(MC_SOURCE, 'Companion Self'));
+
+        const agent = await harness.loginAs(harness.admin);
+        const res = await agent.get('/receivers');
+        expect(res.status).toBe(200);
+        const receiver = res.body.data.receivers.find((r: any) => r.receiverId === MC_SELF_PUBKEY);
+        expect(receiver).toBeDefined();
+        expect(receiver.longName).toBe('Companion Self');
+      });
+
+      it('falls back to the source name when the manager is unavailable', async () => {
+        // No manager registered for MC_SOURCE at all — the companion may not
+        // be connected yet, or the source predates a reconnect.
+        const agent = await harness.loginAs(harness.admin);
+        const res = await agent.get('/receivers');
+        expect(res.status).toBe(200);
+        const receiver = res.body.data.receivers.find((r: any) => r.receiverId === MC_SELF_PUBKEY);
+        expect(receiver).toBeDefined();
+        expect(receiver.longName).toBe('MC Companion Source');
+      });
+    });
+
     // ── mqttSources (#5277 P2 §2.7, user decision Q4) ───────────────────────
 
     describe('mqttSources', () => {

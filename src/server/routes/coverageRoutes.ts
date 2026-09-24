@@ -52,7 +52,7 @@ import {
 } from '../../utils/coverage.js';
 import { parseReceiverFilter, type CoverageReceiverFilterEntry } from '../../utils/coverageReceiverFilter.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
-import { isMqttConnectionStatusManager, isMeshCoreMqttManager } from '../sourceManagerTypes.js';
+import { isMqttConnectionStatusManager, isMeshCoreMqttManager, isMeshCoreManager } from '../sourceManagerTypes.js';
 import type { DbNode } from '../../db/types.js';
 import type { DbMeshCoreNode } from '../../db/repositories/meshcore.js';
 import type {
@@ -243,6 +243,31 @@ function findMeshCoreNodeAcrossSources(
   return null;
 }
 
+/**
+ * Display name fallback for a device-backed MeshCore source's own receiver
+ * row (`receiverKind: 'local'`). The companion's own public key never has a
+ * `meshcore_nodes` row — a companion isn't in its own contact list — so the
+ * `mcNode` lookup in the /receivers map below always misses for it, and the
+ * report would otherwise show the raw pubkey prefix (e.g. "a8e56073…").
+ *
+ * Resolves the manager's live self name (the same `getLocalNode().name` the
+ * MeshCore device routes / status bar read — narrowed via `isMeshCoreManager`,
+ * never a `source.type` string gate per this file's rule), falling back to
+ * the source's own name when the manager isn't registered or has no local
+ * node yet (e.g. mid-reconnect).
+ *
+ * Position/privacy is untouched by this: the MeshCore visibility gate
+ * (`mcFilter`) still independently nulls the coordinate pair for this row.
+ * A name fallback to the source name is fine even when the gate fails —
+ * the caller can already read the source, since it's in their permitted
+ * `sourceIds`.
+ */
+function meshCoreLocalReceiverFallbackName(sourceId: string, sourceNameById: Map<string, string>): string {
+  const manager = sourceManagerRegistry.getManager(sourceId);
+  const selfName = manager && isMeshCoreManager(manager) ? manager.getLocalNode()?.name ?? null : null;
+  return selfName || sourceNameById.get(sourceId) || sourceId;
+}
+
 router.get('/receivers', async (req: Request, res: Response) => {
   try {
     const sourceIds = await resolveSourceIds(req);
@@ -314,7 +339,8 @@ router.get('/receivers', async (req: Request, res: Response) => {
           receiverKind: r.receiverKind as CoverageReceiverKind,
           receiverId: r.receiverId,
           receiverNodeNum: r.receiverNodeNum,
-          longName: mcNode?.name ?? null,
+          longName: mcNode?.name
+            ?? (r.receiverKind === 'local' ? meshCoreLocalReceiverFallbackName(r.sourceId, sourceNameById) : null),
           shortName: null,
           latitude,
           longitude,
