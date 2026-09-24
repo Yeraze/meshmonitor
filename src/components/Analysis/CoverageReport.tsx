@@ -134,6 +134,19 @@ export const CoverageReport: React.FC = () => {
   const items = useMemo(() => receptionsQuery.data?.items ?? [], [receptionsQuery.data]);
   const fixes = useMemo(() => groupReceptionsIntoFixes(items, metric), [items, metric]);
 
+  // Identifies the current filter set for CoverageMap's fit-once-per-filter
+  // behaviour. Deliberately excludes sinceMs/untilMs (the resolved window) —
+  // those shift on every Refresh even when the filters themselves didn't
+  // change (a preset re-anchors to "now"), and Refresh must never yank the
+  // map out from under a user who has since panned/zoomed. `preset` plus the
+  // custom from/to inputs capture "which range the user picked" without the
+  // refresh-anchor noise.
+  const fitKey = useMemo(() => {
+    const receiversPart = allReceiversSelected ? 'all' : [...selectedReceiverIds].sort().join(',');
+    const rangePart = preset === 'custom' ? `custom:${customFrom}:${customTo}` : preset;
+    return `${senderId}|${receiversPart}|${hops}|${hopsMode}|${rangePart}`;
+  }, [senderId, selectedReceiverIds, allReceiversSelected, hops, hopsMode, preset, customFrom, customTo]);
+
   const isLoading = receiversQuery.isLoading || sendersQuery.isLoading || receptionsQuery.isLoading;
   const isEmpty = receptionsEnabled && !isLoading && items.length === 0;
   const retentionDays = receiversQuery.data?.retentionDays;
@@ -346,7 +359,13 @@ export const CoverageReport: React.FC = () => {
       )}
 
       {receptionsEnabled && !isLoading && !isEmpty && items.length > 0 && (
-        <CoverageMap fixes={fixes} receivers={receivers} metric={metric} senderNames={senderNames} />
+        <CoverageMap
+          fixes={fixes}
+          receivers={receivers}
+          metric={metric}
+          senderNames={senderNames}
+          fitKey={fitKey}
+        />
       )}
 
       <div className="reports-panel">

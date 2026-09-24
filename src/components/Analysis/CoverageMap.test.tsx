@@ -7,8 +7,13 @@
  * with direct/relayed + distance, and the legend's relayed-hop note.
  */
 import React from 'react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
+
+const { setViewMock, fitBoundsMock } = vi.hoisted(() => ({
+  setViewMock: vi.fn(),
+  fitBoundsMock: vi.fn(),
+}));
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -54,7 +59,7 @@ vi.mock('react-leaflet', () => ({
   ),
   Tooltip: ({ children }: { children?: React.ReactNode }) => <span>{children}</span>,
   Popup: ({ children }: { children?: React.ReactNode }) => <div data-testid="popup">{children}</div>,
-  useMap: () => ({ setView: vi.fn(), fitBounds: vi.fn() }),
+  useMap: () => ({ setView: setViewMock, fitBounds: fitBoundsMock }),
 }));
 
 import { CoverageMap } from './CoverageMap';
@@ -126,6 +131,11 @@ function reception(overrides: Partial<CoverageReceptionDto>): CoverageReceptionD
 }
 
 describe('CoverageMap', () => {
+  beforeEach(() => {
+    setViewMock.mockClear();
+    fitBoundsMock.mockClear();
+  });
+
   it('renders one CircleMarker per fix plus one per visible receiver', () => {
     const fix: CoverageFix<CoverageReceptionDto> = {
       senderId: '!bbbbbbbb',
@@ -138,7 +148,7 @@ describe('CoverageMap', () => {
       bestRssi: -85,
     };
 
-    render(<CoverageMap fixes={[fix]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} />);
+    render(<CoverageMap fixes={[fix]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} fitKey="k" />);
 
     // 2 receiver markers + 1 fix marker
     expect(screen.getAllByTestId('circle-marker')).toHaveLength(3);
@@ -156,7 +166,7 @@ describe('CoverageMap', () => {
       bestRssi: -85,
     };
 
-    render(<CoverageMap fixes={[fix]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} />);
+    render(<CoverageMap fixes={[fix]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} fitKey="k" />);
 
     const popup = within(screen.getByTestId('coverage-fix-popup'));
     expect(popup.getByText('Receiver One')).toBeInTheDocument();
@@ -177,7 +187,7 @@ describe('CoverageMap', () => {
       bestRssi: -85,
     };
 
-    render(<CoverageMap fixes={[fix]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} />);
+    render(<CoverageMap fixes={[fix]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} fitKey="k" />);
 
     expect(screen.getByText(/Relayed \(2 hops, via 0xAB\)/)).toBeInTheDocument();
   });
@@ -194,7 +204,7 @@ describe('CoverageMap', () => {
       bestRssi: -85,
     };
 
-    render(<CoverageMap fixes={[fix]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} />);
+    render(<CoverageMap fixes={[fix]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} fitKey="k" />);
 
     expect(screen.getByText('Relayed (2 hops)')).toBeInTheDocument();
     expect(screen.queryByText(/via 0x00/)).toBeNull();
@@ -212,7 +222,7 @@ describe('CoverageMap', () => {
       bestRssi: -85,
     };
 
-    render(<CoverageMap fixes={[fix]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} />);
+    render(<CoverageMap fixes={[fix]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} fitKey="k" />);
 
     expect(screen.getByText('Distance: —')).toBeInTheDocument();
   });
@@ -232,7 +242,7 @@ describe('CoverageMap', () => {
       bestRssi: -85,
     };
 
-    render(<CoverageMap fixes={[fix]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} />);
+    render(<CoverageMap fixes={[fix]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} fitKey="k" />);
 
     const popup = within(screen.getByTestId('coverage-fix-popup'));
     expect(popup.getByText('Receiver One')).toBeInTheDocument();
@@ -240,7 +250,7 @@ describe('CoverageMap', () => {
   });
 
   it('renders the relayed-hop legend note', () => {
-    render(<CoverageMap fixes={[]} receivers={[]} metric="snr" senderNames={SENDER_NAMES} />);
+    render(<CoverageMap fixes={[]} receivers={[]} metric="snr" senderNames={SENDER_NAMES} fitKey="k" />);
     expect(
       screen.getByText(
         "For receptions with 1 or more hops, colour shows the last relay's link, not the sender's position.",
@@ -249,7 +259,7 @@ describe('CoverageMap', () => {
   });
 
   it('shows the RSSI legend title when metric is rssi', () => {
-    render(<CoverageMap fixes={[]} receivers={[]} metric="rssi" senderNames={SENDER_NAMES} />);
+    render(<CoverageMap fixes={[]} receivers={[]} metric="rssi" senderNames={SENDER_NAMES} fitKey="k" />);
     expect(screen.getByTestId('coverage-legend')).toHaveTextContent('RSSI');
   });
 
@@ -265,7 +275,7 @@ describe('CoverageMap', () => {
       bestRssi: -85,
     };
 
-    render(<CoverageMap fixes={[fix]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} />);
+    render(<CoverageMap fixes={[fix]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} fitKey="k" />);
 
     const popup = within(screen.getByTestId('coverage-fix-popup'));
     expect(popup.getByText('Car-01 (!bbbbbbbb) — 2 reception(s)')).toBeInTheDocument();
@@ -286,9 +296,58 @@ describe('CoverageMap', () => {
       bestRssi: -85,
     };
 
-    render(<CoverageMap fixes={[fix]} receivers={receivers} metric="snr" senderNames={new Map()} />);
+    render(<CoverageMap fixes={[fix]} receivers={receivers} metric="snr" senderNames={new Map()} fitKey="k" />);
 
     const popup = within(screen.getByTestId('coverage-fix-popup'));
     expect(popup.getByText('!bbbbbbbb — 1 reception(s)')).toBeInTheDocument();
+  });
+
+  it('fits bounds once per fitKey, and a same-fitKey refresh does not refit', () => {
+    const fix: CoverageFix<CoverageReceptionDto> = {
+      senderId: '!bbbbbbbb',
+      packetKey: '100',
+      latitude: 26.15,
+      longitude: -80.25,
+      receivedAt: 1_700_000_000_000,
+      receptions: [reception({})],
+      bestSnr: 5.5,
+      bestRssi: -85,
+    };
+
+    const { rerender } = render(
+      <CoverageMap fixes={[fix]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} fitKey="k1" />,
+    );
+    expect(fitBoundsMock).toHaveBeenCalledTimes(1);
+
+    // A manual Refresh re-fetches the same filter set: a NEW fixes array
+    // reference, but the same fitKey. Must not yank the view again.
+    const refreshedFix = { ...fix, receptions: [reception({ id: 99 })] };
+    rerender(
+      <CoverageMap fixes={[refreshedFix]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} fitKey="k1" />,
+    );
+    expect(fitBoundsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('refits when fitKey changes (a filter change)', () => {
+    const fix: CoverageFix<CoverageReceptionDto> = {
+      senderId: '!bbbbbbbb',
+      packetKey: '100',
+      latitude: 26.15,
+      longitude: -80.25,
+      receivedAt: 1_700_000_000_000,
+      receptions: [reception({})],
+      bestSnr: 5.5,
+      bestRssi: -85,
+    };
+
+    const { rerender } = render(
+      <CoverageMap fixes={[fix]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} fitKey="k1" />,
+    );
+    expect(fitBoundsMock).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <CoverageMap fixes={[fix]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} fitKey="k2" />,
+    );
+    expect(fitBoundsMock).toHaveBeenCalledTimes(2);
   });
 });

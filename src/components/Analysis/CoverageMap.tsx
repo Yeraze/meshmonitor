@@ -13,7 +13,7 @@
  * WITHIN THE CURRENT FILTER (Decision D5) — `fix.receptions` already reflects
  * whatever the caller queried, so no extra per-fix query is made here.
  */
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import L from 'leaflet';
 import { CircleMarker, Tooltip, Popup, useMap } from 'react-leaflet';
@@ -44,18 +44,26 @@ function fixSenderLabel(senderId: string, senderNames: Map<string, string>): str
   return name ? `${name} (${senderId})` : senderId;
 }
 
-/** Fit the map view to every fix + visible receiver, once per data set. */
-const FitCoverageBounds: React.FC<{ points: Array<[number, number]> }> = ({ points }) => {
+/** Fit the map view to every fix + visible receiver, once per FILTER SET
+ *  (`fitKey`, built by the caller from sender/receivers/hops/hopsMode/time
+ *  range — never the refresh anchor). A manual Refresh re-fetches the same
+ *  filter set on a new `points` array reference, which must NOT yank the
+ *  view out from under a user who has since panned/zoomed; only a change to
+ *  the filters themselves (a new `fitKey`) re-fits. */
+const FitCoverageBounds: React.FC<{ points: Array<[number, number]>; fitKey: string }> = ({ points, fitKey }) => {
   const map = useMap();
+  const lastFittedKeyRef = useRef<string | null>(null);
   useEffect(() => {
     if (points.length === 0) return;
+    if (lastFittedKeyRef.current === fitKey) return;
+    lastFittedKeyRef.current = fitKey;
     if (points.length === 1) {
       map.setView(points[0], 13);
       return;
     }
     const bounds = L.latLngBounds(points);
     if (bounds.isValid()) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
-  }, [map, points]);
+  }, [map, points, fitKey]);
   return null;
 };
 
@@ -66,9 +74,14 @@ interface CoverageMapProps {
   /** senderId -> best display name (longName || shortName), from `/senders`.
    *  A sender with no entry falls back to its bare `!id` in the popup. */
   senderNames: Map<string, string>;
+  /** Identifies the current filter set (sender, receivers, hops, hopsMode,
+   *  time preset/custom range) but NOT the refresh anchor — see
+   *  `FitCoverageBounds`. The map view re-fits when this changes, not on
+   *  every `fixes`/`receivers` update. */
+  fitKey: string;
 }
 
-export const CoverageMap: React.FC<CoverageMapProps> = ({ fixes, receivers, metric, senderNames }) => {
+export const CoverageMap: React.FC<CoverageMapProps> = ({ fixes, receivers, metric, senderNames, fitKey }) => {
   const { t } = useTranslation();
   const {
     mapTileset,
@@ -113,7 +126,7 @@ export const CoverageMap: React.FC<CoverageMapProps> = ({ fixes, receivers, metr
         customTilesets={customTilesets}
         scrollWheelZoom
       >
-        <FitCoverageBounds points={boundsPoints} />
+        <FitCoverageBounds points={boundsPoints} fitKey={fitKey} />
 
         {visibleReceivers.map((r) => (
           <CircleMarker
