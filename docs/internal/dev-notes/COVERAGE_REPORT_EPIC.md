@@ -33,7 +33,7 @@ plan comment on #5277.
 
 ## Phases
 
-- [ ] **P1 — Meshtastic RF receptions + Coverage report.**
+- [x] **P1 — Meshtastic RF receptions + Coverage report.**
   Table (all three backends) + repository + recording in the Meshtastic POSITION
   path + retention purge + global retention setting + API + Reports → Coverage
   card: map (dots by SNR/RSSI, receiver markers), filters (sender, receiver(s),
@@ -55,4 +55,19 @@ plan comment on #5277.
 
 ## Phase log
 
-(Decisions and deviations recorded per phase.)
+### P1 (2026-09-24)
+
+- Spec: `COVERAGE_P1_SPEC.md`. Migration 172 creates `coverage_receptions`.
+- **Zero-hop detection corrected during review:** a hop_limit-0 origin arrives
+  hop_start=0, hop_limit=0, relay_node=0 (the receiver zeroes relay_node when
+  hop_start is 0). True zero-hop is told apart from pre-2.3 firmware by
+  `decoded.bitfield` presence, not by the relay byte. Receivers before fw 2.7.20
+  drop zero-hop packets; the guidance offers hop_limit 1 as the fallback.
+- `/receivers` derives receivers from recorded rows, not `source.type` strings, so
+  P2 gateways and P3 MeshCore need no change there.
+- Source deletion and purge-all-nodes delete a source's receptions.
+- Browser validation caught an endless refetch loop (time window computed from
+  `Date.now()` during render); the window now lives in state, with a
+  query-stability regression test.
+- Observed on live data: many packets carry no `rx_rssi`; the UI shows "—".
+- Relay byte 0 is firmware's NO_RELAY_NODE; the popup omits "via" for it.
