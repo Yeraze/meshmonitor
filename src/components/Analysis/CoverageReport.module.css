@@ -25,28 +25,10 @@
   text-overflow: ellipsis;
 }
 
-.receiverList {
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid var(--color-surface);
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-}
-
-.receiverListTitle {
-  font-size: 13px;
-  font-weight: 600;
+.mqttNote {
+  margin-top: 10px;
+  font-size: 12px;
   color: var(--color-text-subtle);
-}
-
-.receiverItem {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--color-text);
 }
 
 .retentionNote {

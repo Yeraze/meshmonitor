@@ -22,6 +22,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -87,9 +88,11 @@ function makeReception(): CoverageReceptionDto {
 function renderWithClient() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <QueryClientProvider client={qc}>
-      <CoverageReport />
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={qc}>
+        <CoverageReport />
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -101,10 +104,11 @@ describe('CoverageReport query stability (#5277 regression)', () => {
         {
           sourceId: 'src-a', sourceName: 'Source A', protocol: 'meshtastic', receiverKind: 'local',
           receiverId: '!aaaaaaaa', receiverNodeNum: 1, longName: 'Receiver One', shortName: 'R1',
-          latitude: 26.1, longitude: -80.2, lastReceivedAt: 1,
+          latitude: 26.1, longitude: -80.2, lastReceivedAt: 1, receptionCount: 3,
         },
       ],
       retentionDays: 7,
+      mqttSources: [],
     });
     vi.mocked(fetchCoverageSenders).mockResolvedValue({ senders: [], truncated: false });
     vi.mocked(fetchCoverageReceptionsPage).mockResolvedValue({
