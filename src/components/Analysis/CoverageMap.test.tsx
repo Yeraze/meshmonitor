@@ -182,6 +182,24 @@ describe('CoverageMap', () => {
     expect(screen.getByText(/Relayed \(2 hops, via 0xAB\)/)).toBeInTheDocument();
   });
 
+  it('omits the relay byte when firmware reports no relay (0)', () => {
+    const fix: CoverageFix<CoverageReceptionDto> = {
+      senderId: '!bbbbbbbb',
+      packetKey: '101',
+      latitude: 26.15,
+      longitude: -80.25,
+      receivedAt: 1_700_000_000_000,
+      receptions: [reception({ id: 13, hopsAway: 2, relayNode: 0 })],
+      bestSnr: 5.5,
+      bestRssi: -85,
+    };
+
+    render(<CoverageMap fixes={[fix]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} />);
+
+    expect(screen.getByText('Relayed (2 hops)')).toBeInTheDocument();
+    expect(screen.queryByText(/via 0x00/)).toBeNull();
+  });
+
   it('shows "—" for distance when the receiver snapshot position is null', () => {
     const fix: CoverageFix<CoverageReceptionDto> = {
       senderId: '!bbbbbbbb',

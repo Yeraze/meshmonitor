@@ -157,11 +157,16 @@ export const CoverageMap: React.FC<CoverageMapProps> = ({ fixes, receivers, metr
                       const pathLabel = direct
                         ? t('analysis.coverage.direct', 'Direct')
                         : r.hopsAway != null
-                          ? t(
-                              'analysis.coverage.relayed',
-                              'Relayed ({{hops}} hops, via {{relay}})',
-                              { hops: r.hopsAway, relay: relayHex(r.relayNode) },
-                            )
+                          ? r.relayNode
+                            ? t(
+                                'analysis.coverage.relayed',
+                                'Relayed ({{hops}} hops, via {{relay}})',
+                                { hops: r.hopsAway, relay: relayHex(r.relayNode) },
+                              )
+                            : // Relay byte 0 is firmware's NO_RELAY_NODE: the relayer is unknown.
+                              t('analysis.coverage.relayed_unknown', 'Relayed ({{hops}} hops)', {
+                                hops: r.hopsAway,
+                              })
                           : t('analysis.coverage.unknown_path', 'Unknown path');
                       const distanceLabel =
                         r.receiverLatitude != null && r.receiverLongitude != null

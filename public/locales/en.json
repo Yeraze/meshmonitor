@@ -4832,6 +4832,7 @@
   "analysis.coverage.popup_title": "{{sender}} — {{count}} reception(s)",
   "analysis.coverage.direct": "Direct",
   "analysis.coverage.relayed": "Relayed ({{hops}} hops, via {{relay}})",
+  "analysis.coverage.relayed_unknown": "Relayed ({{hops}} hops)",
   "analysis.coverage.unknown_path": "Unknown path",
   "analysis.coverage.snr_value": "SNR {{value}} dB",
   "analysis.coverage.snr_unknown": "SNR —",
