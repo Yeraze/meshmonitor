@@ -57,9 +57,11 @@ import type {
 const router = Router();
 router.use(optionalAuth());
 
-// Mirrors CoverageReceptionsRepository's own clamp (not exported) — used only
-// for the early "no permitted sources" response, where the repo is never
-// called so its internal clamp never runs.
+// Mirrors CoverageReceptionsRepository's own clamp (src/db/repositories/
+// coverageReceptions.ts's DEFAULT_PAGE_SIZE/MAX_PAGE_SIZE, not exported) —
+// used only for the early "no permitted sources" response, where the repo is
+// never called so its internal clamp never runs. Keep both pairs in sync by
+// hand if either changes.
 const DEFAULT_PAGE_SIZE = 1000;
 const MAX_PAGE_SIZE = 2000;
 // getSenderSummary's own limit ceiling (§2.3) — also doubles as the
