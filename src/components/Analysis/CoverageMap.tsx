@@ -35,6 +35,15 @@ function relayHex(relayNode: number | null): string {
   return `0x${relayNode.toString(16).padStart(2, '0').toUpperCase()}`;
 }
 
+/** "Name (!id)" when a display name is known, else just "!id". `senderNames`
+ *  is keyed by senderId with an already-resolved long/short-name fallback
+ *  (built by the caller from `/senders`, since that's the only endpoint
+ *  that carries names — receptions/receivers don't). */
+function fixSenderLabel(senderId: string, senderNames: Map<string, string>): string {
+  const name = senderNames.get(senderId);
+  return name ? `${name} (${senderId})` : senderId;
+}
+
 /** Fit the map view to every fix + visible receiver, once per data set. */
 const FitCoverageBounds: React.FC<{ points: Array<[number, number]> }> = ({ points }) => {
   const map = useMap();
@@ -54,9 +63,12 @@ interface CoverageMapProps {
   fixes: Array<CoverageFix<CoverageReceptionDto>>;
   receivers: CoverageReceiverDto[];
   metric: CoverageMetric;
+  /** senderId -> best display name (longName || shortName), from `/senders`.
+   *  A sender with no entry falls back to its bare `!id` in the popup. */
+  senderNames: Map<string, string>;
 }
 
-export const CoverageMap: React.FC<CoverageMapProps> = ({ fixes, receivers, metric }) => {
+export const CoverageMap: React.FC<CoverageMapProps> = ({ fixes, receivers, metric, senderNames }) => {
   const { t } = useTranslation();
   const {
     mapTileset,
@@ -129,9 +141,13 @@ export const CoverageMap: React.FC<CoverageMapProps> = ({ fixes, receivers, metr
               <Popup>
                 <div className={styles.popup} data-testid="coverage-fix-popup">
                   <div className={styles.popupTitle}>
-                    {t('analysis.coverage.popup_title', 'Fix — {{count}} reception(s)', {
+                    {t('analysis.coverage.popup_title', '{{sender}} — {{count}} reception(s)', {
+                      sender: fixSenderLabel(fix.senderId, senderNames),
                       count: fix.receptions.length,
                     })}
+                  </div>
+                  <div className={styles.popupTime} data-testid="coverage-fix-popup-time">
+                    {new Date(fix.receivedAt).toLocaleString()}
                   </div>
                   <ul className={styles.popupList}>
                     {fix.receptions.map((r) => {

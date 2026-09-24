@@ -96,6 +96,18 @@ export const CoverageReport: React.FC = () => {
   const receiversQuery = useCoverageReceivers([]);
   const sendersQuery = useCoverageSenders({ sources: [], sinceMs, untilMs });
 
+  // senderId -> best display name, for CoverageMap's fix popup header.
+  // Receptions/receivers carry no name; `/senders` is the only endpoint
+  // that does.
+  const senderNames = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const s of sendersQuery.data?.senders ?? []) {
+      const name = s.longName || s.shortName;
+      if (name) map.set(s.senderId, name);
+    }
+    return map;
+  }, [sendersQuery.data]);
+
   const receivers = useMemo(() => receiversQuery.data?.receivers ?? [], [receiversQuery.data]);
   const allReceiverIds = useMemo(() => receivers.map((r) => r.receiverId), [receivers]);
   const selectedReceiverIds = useMemo(
@@ -214,7 +226,7 @@ export const CoverageReport: React.FC = () => {
             </>
           )}
 
-          <label className="reports-controls__field">
+          <label className={`reports-controls__field ${styles.senderField}`}>
             <span>{t('analysis.coverage.sender', 'Sender')}</span>
             <select value={senderId} onChange={(e) => setSenderId(e.target.value)}>
               <option value="">{t('analysis.coverage.sender_all', 'All')}</option>
@@ -334,7 +346,7 @@ export const CoverageReport: React.FC = () => {
       )}
 
       {receptionsEnabled && !isLoading && !isEmpty && items.length > 0 && (
-        <CoverageMap fixes={fixes} receivers={receivers} metric={metric} />
+        <CoverageMap fixes={fixes} receivers={receivers} metric={metric} senderNames={senderNames} />
       )}
 
       <div className="reports-panel">

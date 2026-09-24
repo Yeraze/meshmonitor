@@ -90,6 +90,8 @@ const receivers: CoverageReceiverDto[] = [
   },
 ];
 
+const SENDER_NAMES = new Map<string, string>([['!bbbbbbbb', 'Car-01']]);
+
 function reception(overrides: Partial<CoverageReceptionDto>): CoverageReceptionDto {
   return {
     id: 1,
@@ -136,7 +138,7 @@ describe('CoverageMap', () => {
       bestRssi: -85,
     };
 
-    render(<CoverageMap fixes={[fix]} receivers={receivers} metric="snr" />);
+    render(<CoverageMap fixes={[fix]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} />);
 
     // 2 receiver markers + 1 fix marker
     expect(screen.getAllByTestId('circle-marker')).toHaveLength(3);
@@ -154,7 +156,7 @@ describe('CoverageMap', () => {
       bestRssi: -85,
     };
 
-    render(<CoverageMap fixes={[fix]} receivers={receivers} metric="snr" />);
+    render(<CoverageMap fixes={[fix]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} />);
 
     const popup = within(screen.getByTestId('coverage-fix-popup'));
     expect(popup.getByText('Receiver One')).toBeInTheDocument();
@@ -175,7 +177,7 @@ describe('CoverageMap', () => {
       bestRssi: -85,
     };
 
-    render(<CoverageMap fixes={[fix]} receivers={receivers} metric="snr" />);
+    render(<CoverageMap fixes={[fix]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} />);
 
     expect(screen.getByText(/Relayed \(2 hops, via 0xAB\)/)).toBeInTheDocument();
   });
@@ -192,7 +194,7 @@ describe('CoverageMap', () => {
       bestRssi: -85,
     };
 
-    render(<CoverageMap fixes={[fix]} receivers={receivers} metric="snr" />);
+    render(<CoverageMap fixes={[fix]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} />);
 
     expect(screen.getByText('Distance: —')).toBeInTheDocument();
   });
@@ -212,7 +214,7 @@ describe('CoverageMap', () => {
       bestRssi: -85,
     };
 
-    render(<CoverageMap fixes={[fix]} receivers={receivers} metric="snr" />);
+    render(<CoverageMap fixes={[fix]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} />);
 
     const popup = within(screen.getByTestId('coverage-fix-popup'));
     expect(popup.getByText('Receiver One')).toBeInTheDocument();
@@ -220,7 +222,7 @@ describe('CoverageMap', () => {
   });
 
   it('renders the relayed-hop legend note', () => {
-    render(<CoverageMap fixes={[]} receivers={[]} metric="snr" />);
+    render(<CoverageMap fixes={[]} receivers={[]} metric="snr" senderNames={SENDER_NAMES} />);
     expect(
       screen.getByText(
         "For receptions with 1 or more hops, colour shows the last relay's link, not the sender's position.",
@@ -229,7 +231,46 @@ describe('CoverageMap', () => {
   });
 
   it('shows the RSSI legend title when metric is rssi', () => {
-    render(<CoverageMap fixes={[]} receivers={[]} metric="rssi" />);
+    render(<CoverageMap fixes={[]} receivers={[]} metric="rssi" senderNames={SENDER_NAMES} />);
     expect(screen.getByTestId('coverage-legend')).toHaveTextContent('RSSI');
+  });
+
+  it('names the sender in the popup header, with its !id and the fix time', () => {
+    const fix: CoverageFix<CoverageReceptionDto> = {
+      senderId: '!bbbbbbbb',
+      packetKey: '100',
+      latitude: 26.15,
+      longitude: -80.25,
+      receivedAt: 1_700_000_000_000,
+      receptions: [reception({ id: 31 }), reception({ id: 32, receiverId: '!cccccccc' })],
+      bestSnr: 5.5,
+      bestRssi: -85,
+    };
+
+    render(<CoverageMap fixes={[fix]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} />);
+
+    const popup = within(screen.getByTestId('coverage-fix-popup'));
+    expect(popup.getByText('Car-01 (!bbbbbbbb) — 2 reception(s)')).toBeInTheDocument();
+    expect(popup.getByTestId('coverage-fix-popup-time')).toHaveTextContent(
+      new Date(1_700_000_000_000).toLocaleString(),
+    );
+  });
+
+  it('falls back to the bare !id in the popup header when no sender name is known', () => {
+    const fix: CoverageFix<CoverageReceptionDto> = {
+      senderId: '!bbbbbbbb',
+      packetKey: '100',
+      latitude: 26.15,
+      longitude: -80.25,
+      receivedAt: 1_700_000_000_000,
+      receptions: [reception({ id: 41 })],
+      bestSnr: 5.5,
+      bestRssi: -85,
+    };
+
+    render(<CoverageMap fixes={[fix]} receivers={receivers} metric="snr" senderNames={new Map()} />);
+
+    const popup = within(screen.getByTestId('coverage-fix-popup'));
+    expect(popup.getByText('!bbbbbbbb — 1 reception(s)')).toBeInTheDocument();
   });
 });

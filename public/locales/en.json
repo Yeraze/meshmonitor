@@ -4829,7 +4829,7 @@
   "analysis.coverage.guidance_col_tx_per_fix": "Tx per fix",
   "analysis.coverage.guidance_col_pct_per_hour": "% of channel/hour (30s interval)",
   "analysis.coverage.guidance_no_send": "MeshMonitor sends nothing for this report and never changes the survey node — it only records position packets the node already received.",
-  "analysis.coverage.popup_title": "Fix — {{count}} reception(s)",
+  "analysis.coverage.popup_title": "{{sender}} — {{count}} reception(s)",
   "analysis.coverage.direct": "Direct",
   "analysis.coverage.relayed": "Relayed ({{hops}} hops, via {{relay}})",
   "analysis.coverage.unknown_path": "Unknown path",

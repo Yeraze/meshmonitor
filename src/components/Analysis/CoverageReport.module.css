@@ -3,6 +3,28 @@
   color: var(--color-accent);
 }
 
+/* Sender options are built from live node names + !id + fix count, which
+ * can be much wider than a phone viewport (e.g. "Car-01 (!b2a78cf0) — 42").
+ * A <select>'s intrinsic (min-content) width tracks its widest <option>
+ * text, and a flex item's default `min-width: auto` refuses to shrink below
+ * that intrinsic width — so on a narrow viewport this one field, not the
+ * shared `.reports-controls` flex row, was overflowing the page. Scoped
+ * here (not in the global reports-controls styles) since this is the only
+ * field in the app whose option text length is this unbounded. */
+.senderField {
+  min-width: 0;
+  max-width: 100%;
+  flex: 1 1 160px;
+}
+
+.senderField select {
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .receiverList {
   margin-top: 14px;
   padding-top: 14px;
