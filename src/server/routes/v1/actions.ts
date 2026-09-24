@@ -16,7 +16,7 @@ import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
 import { resolveSourceManager } from '../../utils/resolveSourceManager.js';
 import { logger } from '../../../utils/logger.js';
-import { PortNum } from '../../constants/meshtastic.js';
+import { PortNum, TransportMechanism } from '../../constants/meshtastic.js';
 import { attachSource, resolvedSourceIdFromPath } from './sourceParam.js';
 import { isTxDisabledError } from '../../errors/txDisabledError.js';
 import { resolveBroadcastChannel, isValidChannelIndex } from '../../utils/resolveDestinationChannel.js';
@@ -153,6 +153,8 @@ router.post('/request-position', attachSource('messages', 'write'), async (req: 
           timestamp,
           rxTime: timestamp,
           createdAt: timestamp,
+          // #5101: outbound system row — every outbound message write stamps INTERNAL.
+          transportMechanism: TransportMechanism.INTERNAL,
         },
         sourceId
       );
@@ -212,6 +214,8 @@ router.post('/request-nodeinfo', attachSource('messages', 'write'), async (req: 
           timestamp,
           rxTime: timestamp,
           createdAt: timestamp,
+          // #5101: outbound system row — every outbound message write stamps INTERNAL.
+          transportMechanism: TransportMechanism.INTERNAL,
         },
         sourceId
       );

@@ -68,8 +68,8 @@ describe('MessagesRepository.getMessageCountsByChannelAndTransport — per-sourc
 
     const rowsA = await repo.getMessageCountsByChannelAndTransport('src-a');
     const totalA = rowsA.reduce((s, r) => s + r.count, 0);
-    const rfA = rowsA.filter((r) => !r.viaMqtt).reduce((s, r) => s + r.count, 0);
-    const mqttA = rowsA.filter((r) => r.viaMqtt).reduce((s, r) => s + r.count, 0);
+    const rfA = rowsA.filter((r) => r.transportClass === 'rf').reduce((s, r) => s + r.count, 0);
+    const mqttA = rowsA.filter((r) => r.transportClass === 'mqtt').reduce((s, r) => s + r.count, 0);
     expect(totalA).toBe(3);
     expect(rfA).toBe(2);
     expect(mqttA).toBe(1);
@@ -77,7 +77,7 @@ describe('MessagesRepository.getMessageCountsByChannelAndTransport — per-sourc
     const rowsB = await repo.getMessageCountsByChannelAndTransport('src-b');
     const totalB = rowsB.reduce((s, r) => s + r.count, 0);
     expect(totalB).toBe(2);
-    expect(rowsB.every((r) => r.viaMqtt)).toBe(true);
+    expect(rowsB.every((r) => r.transportClass === 'mqtt')).toBe(true);
   });
 
   it('returns [] for a source with no messages, even when another source has data', async () => {

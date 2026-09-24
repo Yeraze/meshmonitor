@@ -9,6 +9,7 @@ import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType, DbMessage } from '../types.js';
 import { logger } from '../../utils/logger.js';
 import { PortNum } from '../../server/constants/meshtastic.js';
+import { classifyMessageTransport, type NodeTransportClass } from '../../utils/nodeTransport.js';
 
 /**
  * Chat-like portnums that render in the DM thread view (#3691). Telemetry,
@@ -71,6 +72,12 @@ export class MessagesRepository extends BaseRepository {
     // suspect messages (avoids touching the many hardcoded test fixtures). (#2584)
     if (messageData.spoofSuspected) {
       values.spoofSuspected = true;
+    }
+    // #5101: only when known, like spoofSuspected above — keeps hand-built
+    // test fixtures without the column working. `!= null` keeps an explicit 0
+    // (TransportMechanism.INTERNAL, outbound sends).
+    if (messageData.transportMechanism != null) {
+      values.transportMechanism = messageData.transportMechanism;
     }
     if (sourceId) {
       values.sourceId = sourceId;
@@ -268,15 +275,20 @@ export class MessagesRepository extends BaseRepository {
   }
 
   /**
-   * Message counts for one source, grouped by channel and viaMqtt (#5101).
-   * The channel axis lets the route drop channels the caller cannot read.
-   * NULL viaMqtt (pre-flag rows) is RF. Excludes `excludePortnums` the same
-   * way getMessages does (NULL portnum kept).
+   * Message counts for one source, grouped by channel and transport class
+   * (#5101). The channel axis lets the route drop channels the caller cannot
+   * read. Groups by the RAW `(viaMqtt, transportMechanism)` pair in SQL
+   * (dialect boolean handling stays where Phase 1 put it) and classifies each
+   * group in TypeScript with `classifyMessageTransport` — deliberately NOT
+   * `classifyNodeTransport`, see that function's doc: here `viaMqtt` wins.
+   * Groups that land in the same `(channel, class)` bucket after
+   * classification are merged. Excludes `excludePortnums` the same way
+   * getMessages does (NULL portnum kept).
    */
   async getMessageCountsByChannelAndTransport(
     sourceId: string,
     excludePortnums: number[] = [],
-  ): Promise<Array<{ channel: number; viaMqtt: boolean; count: number }>> {
+  ): Promise<Array<{ channel: number; transportClass: NodeTransportClass; count: number }>> {
     const { messages } = this.tables;
     const whereClause = and(
       this.withSourceScope(messages, sourceId),
@@ -285,18 +297,40 @@ export class MessagesRepository extends BaseRepository {
         : undefined,
     );
     const rows = await this.db
-      .select({ channel: messages.channel, viaMqtt: messages.viaMqtt, count: count() })
+      .select({
+        channel: messages.channel,
+        viaMqtt: messages.viaMqtt,
+        transportMechanism: messages.transportMechanism,
+        count: count(),
+      })
       .from(messages)
       .where(whereClause)
-      .groupBy(messages.channel, messages.viaMqtt);
+      .groupBy(messages.channel, messages.viaMqtt, messages.transportMechanism);
 
-    return rows.map((r: { channel: number | string | bigint; viaMqtt: boolean | number | null; count: number | string | bigint }) => ({
-      channel: Number(r.channel),
-      // PG returns boolean true/false, MySQL/SQLite return 1/0, NULL (pre-flag
-      // rows) reads as false — merged into the RF bucket by the caller.
-      viaMqtt: Number(r.viaMqtt) === 1,
-      count: Number(r.count),
-    }));
+    const merged = new Map<string, { channel: number; transportClass: NodeTransportClass; count: number }>();
+    for (const r of rows as Array<{
+      channel: number | string | bigint;
+      viaMqtt: boolean | number | null;
+      transportMechanism: number | string | bigint | null;
+      count: number | string | bigint;
+    }>) {
+      const channel = Number(r.channel);
+      const transportClass = classifyMessageTransport({
+        transportMechanism: r.transportMechanism == null ? null : Number(r.transportMechanism),
+        // PG returns boolean true/false, MySQL/SQLite return 1/0, NULL
+        // (pre-flag rows) reads as false.
+        viaMqtt: Number(r.viaMqtt) === 1,
+      });
+      const key = `${channel}:${transportClass}`;
+      const existing = merged.get(key);
+      const rowCount = Number(r.count);
+      if (existing) {
+        existing.count += rowCount;
+      } else {
+        merged.set(key, { channel, transportClass, count: rowCount });
+      }
+    }
+    return Array.from(merged.values());
   }
 
   /**
@@ -448,6 +482,10 @@ export class MessagesRepository extends BaseRepository {
     };
     if ((messageData as any).spoofSuspected) {
       values.spoofSuspected = true;
+    }
+    // #5101: see insertMessage() above for the "only when known" rule.
+    if (messageData.transportMechanism != null) {
+      values.transportMechanism = messageData.transportMechanism;
     }
     if (sourceId) {
       values.sourceId = sourceId;

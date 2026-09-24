@@ -3,27 +3,39 @@
  *
  * Covers: the "Heard via" node breakdown (with its overlap note), the
  * message-count breakdown sourced from `apiService.getMessageCounts` (not
- * `messages.length`), hiding both breakdowns + the packet-distribution
- * transport selector on an MQTT-only source, the shared transport selector
- * driving both distribution fetches, and the header/buttons staying on
- * screen when the selected transport slice is empty.
+ * `messages.length`) including the UDP split, hiding both breakdowns + the
+ * packet-distribution transport selector on an MQTT-only source, the shared
+ * transport selector driving both distribution fetches, the header/buttons
+ * staying on screen when the selected transport slice is empty, the
+ * per-transport route-segment records (labelled RF/UDP/MQTT, empty classes
+ * hidden, MQTT-only sources render one unlabelled record), the per-transport
+ * Clear Record flow re-fetching rather than clearing local state, and the
+ * traceroute:read / traceroute:write permission gates on the two cards and
+ * the Clear Record button (#5101 P2 follow-up: route-segment endpoints moved
+ * from `info` to per-source `traceroute` permissions).
  *
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import InfoTab from './InfoTab';
 import type { DeviceInfo } from '../types/device';
 import type { MeshMessage } from '../types/message';
 import type { PacketDistributionStats } from '../types/packet';
-import type { MessageCounts } from '../services/api';
+import type { MessageCounts, RouteSegmentRecords, RouteSegmentView } from '../services/api';
+import type { NodeTransportClass } from '../utils/nodeTransport';
 
 // `vi.hoisted` is required because `vi.mock` factories run before any
 // module-scope `const` in this file would otherwise be initialized.
-const { mockUseSource, mockGetMessageCounts, mockGetPacketDistributionStats, mockApiService } = vi.hoisted(() => {
+const { mockUseSource, mockHasPermission, mockGetMessageCounts, mockGetPacketDistributionStats, mockApiService } = vi.hoisted(() => {
   const mockGetMessageCounts = vi.fn();
+  // Grants everything by default so the existing (pre-permission-gate) tests
+  // don't need to know about the traceroute permission; tests that exercise
+  // the gate override this per-test.
+  const mockHasPermission = vi.fn((_resource: string, _action: string) => true);
   return {
     mockUseSource: vi.fn(),
+    mockHasPermission,
     mockGetMessageCounts,
     mockGetPacketDistributionStats: vi.fn(),
     mockApiService: {
@@ -41,6 +53,10 @@ const { mockUseSource, mockGetMessageCounts, mockGetPacketDistributionStats, moc
 
 vi.mock('../contexts/SourceContext', () => ({
   useSource: () => mockUseSource(),
+}));
+
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({ hasPermission: mockHasPermission }),
 }));
 
 vi.mock('../hooks/useDashboardData', () => ({
@@ -112,6 +128,35 @@ function makeMessage(id: string): MeshMessage {
   };
 }
 
+function makeSegmentView(cls: NodeTransportClass, overrides: Partial<RouteSegmentView> = {}): RouteSegmentView {
+  const mechanism = cls === 'rf' ? 1 : cls === 'udp' ? 6 : 5;
+  return {
+    id: 1,
+    fromNodeNum: 1,
+    toNodeNum: 2,
+    fromNodeId: '!1',
+    toNodeId: '!2',
+    fromNodeName: `Node-${cls}-A`,
+    toNodeName: `Node-${cls}-B`,
+    distanceKm: 10,
+    timestamp: 1700000000000,
+    isRecordHolder: true,
+    transportMechanism: mechanism,
+    transport: cls,
+    ...overrides,
+  };
+}
+
+/** Builds a RouteSegmentRecords fixture. The top-level (legacy) fields come
+ * from whichever class is passed first among rf/udp/mqtt, matching the
+ * server's "largest distanceKm" rule closely enough for these UI tests. */
+function makeRecords(byTransport: Partial<Record<NodeTransportClass, RouteSegmentView | null>>): RouteSegmentRecords {
+  const merged: Record<NodeTransportClass, RouteSegmentView | null> = { rf: null, udp: null, mqtt: null, ...byTransport };
+  const top = merged.rf ?? merged.udp ?? merged.mqtt;
+  if (!top) throw new Error('makeRecords requires at least one non-null entry');
+  return { ...top, byTransport: merged };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockApiService.getVirtualNodeStatus.mockResolvedValue(null);
@@ -120,9 +165,12 @@ beforeEach(() => {
   mockApiService.getLongestActiveRouteSegment.mockResolvedValue(null);
   mockApiService.getRecordHolderRouteSegment.mockResolvedValue(null);
   mockApiService.getSecurityKeys.mockResolvedValue(null);
+  mockApiService.clearRecordHolderSegment.mockResolvedValue(undefined);
   mockGetMessageCounts.mockResolvedValue(null);
   mockGetPacketDistributionStats.mockResolvedValue(disabledDistribution);
   mockUseSource.mockReturnValue({ sourceId: 'source-a', sourceName: 'Source A', sourceType: 'meshtastic_tcp' });
+  mockHasPermission.mockReset();
+  mockHasPermission.mockImplementation(() => true);
 });
 
 describe('InfoTab node transport breakdown (#5101)', () => {
@@ -143,7 +191,7 @@ describe('InfoTab node transport breakdown (#5101)', () => {
 
 describe('InfoTab message transport breakdown (#5101)', () => {
   it('shows the total from apiService.getMessageCounts, not messages.length', async () => {
-    const counts: MessageCounts = { sourceId: 'source-a', total: 42, byTransport: { rf: 30, mqtt: 12 } };
+    const counts: MessageCounts = { sourceId: 'source-a', total: 42, byTransport: { rf: 30, udp: 0, mqtt: 12 } };
     mockGetMessageCounts.mockResolvedValue(counts);
 
     render(<InfoTab {...baseProps} nodes={[]} messages={[makeMessage('m1'), makeMessage('m2')]} />);
@@ -156,12 +204,23 @@ describe('InfoTab message transport breakdown (#5101)', () => {
     expect(breakdown.textContent).toContain('12');
     expect(screen.getByText('42')).toBeInTheDocument();
   });
+
+  it('includes the UDP split in the message breakdown (#5101 P2)', async () => {
+    const counts: MessageCounts = { sourceId: 'source-a', total: 15, byTransport: { rf: 5, udp: 4, mqtt: 6 } };
+    mockGetMessageCounts.mockResolvedValue(counts);
+
+    render(<InfoTab {...baseProps} nodes={[]} />);
+
+    const breakdown = await screen.findByTestId('info-messages-transport');
+    expect(breakdown.textContent).toMatch(/transport\.udp/);
+    expect(breakdown.textContent).toContain('4');
+  });
 });
 
 describe('InfoTab hides transport UI for MQTT-only sources (#5101)', () => {
   it('hides both breakdowns and the packet-distribution transport selector for sourceType mqtt_bridge', async () => {
     mockUseSource.mockReturnValue({ sourceId: 'source-a', sourceName: 'Source A', sourceType: 'mqtt_bridge' });
-    mockGetMessageCounts.mockResolvedValue({ sourceId: 'source-a', total: 5, byTransport: { rf: 0, mqtt: 5 } });
+    mockGetMessageCounts.mockResolvedValue({ sourceId: 'source-a', total: 5, byTransport: { rf: 0, udp: 0, mqtt: 5 } });
     mockGetPacketDistributionStats.mockResolvedValue({
       enabled: true,
       total: 5,
@@ -230,5 +289,115 @@ describe('InfoTab packet distribution transport selector (#5101)', () => {
     expect(screen.getByTestId('dist-transport-rf')).toBeInTheDocument();
     expect(screen.getByTestId('dist-transport-mqtt')).toBeInTheDocument();
     expect(screen.getByText('info.packet_distribution')).toBeInTheDocument();
+  });
+});
+
+describe('InfoTab route-segment records, per transport (#5101 P2)', () => {
+  it('renders one labelled record per non-null byTransport class, hiding the empty one', async () => {
+    mockApiService.getLongestActiveRouteSegment.mockResolvedValue(
+      makeRecords({ rf: makeSegmentView('rf'), mqtt: makeSegmentView('mqtt') })
+    );
+
+    render(<InfoTab {...baseProps} nodes={[]} />);
+
+    await screen.findByTestId('route-segment-record-rf');
+    expect(screen.getByTestId('route-segment-record-mqtt')).toBeInTheDocument();
+    expect(screen.queryByTestId('route-segment-record-udp')).not.toBeInTheDocument();
+  });
+
+  it('shows the no-data text when every class is null', async () => {
+    mockApiService.getLongestActiveRouteSegment.mockResolvedValue(null);
+    mockApiService.getRecordHolderRouteSegment.mockResolvedValue(null);
+
+    render(<InfoTab {...baseProps} nodes={[]} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('info.no_active_routes')).toBeInTheDocument();
+      expect(screen.getByText('info.no_record_holder')).toBeInTheDocument();
+    });
+  });
+
+  it('renders a single unlabelled record on an MQTT-only source', async () => {
+    mockUseSource.mockReturnValue({ sourceId: 'source-a', sourceName: 'Source A', sourceType: 'mqtt_bridge' });
+    mockApiService.getRecordHolderRouteSegment.mockResolvedValue(makeRecords({ mqtt: makeSegmentView('mqtt') }));
+
+    render(<InfoTab {...baseProps} nodes={[]} />);
+
+    const unlabelled = await screen.findByTestId('route-segment-record-unlabelled');
+    expect(unlabelled).not.toHaveAttribute('aria-label');
+    expect(screen.queryByTestId('route-segment-record-mqtt')).not.toBeInTheDocument();
+  });
+});
+
+describe('InfoTab per-transport Clear Record flow (#5101 P2)', () => {
+  it('clears only the clicked class and re-fetches rather than clearing local state', async () => {
+    mockApiService.getRecordHolderRouteSegment
+      .mockResolvedValueOnce(makeRecords({ mqtt: makeSegmentView('mqtt') }))
+      .mockResolvedValue(makeRecords({ mqtt: makeSegmentView('mqtt') }));
+
+    render(<InfoTab {...baseProps} nodes={[]} isAuthenticated />);
+
+    const mqttRecord = await screen.findByTestId('route-segment-record-mqtt');
+    const clearButton = within(mqttRecord).getByRole('button');
+    fireEvent.click(clearButton);
+
+    const dialogHeading = await screen.findByText('info.clear_record_title');
+    const dialog = dialogHeading.parentElement as HTMLElement;
+    expect(within(dialog).getByText(/clear_record_confirm_transport/)).toBeInTheDocument();
+
+    const confirmButton = within(dialog).getByRole('button', { name: 'info.clear_record' });
+    const callsBefore = mockApiService.getRecordHolderRouteSegment.mock.calls.length;
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => {
+      expect(mockApiService.clearRecordHolderSegment).toHaveBeenCalledWith('source-a', 'mqtt');
+    });
+    await waitFor(() => {
+      expect(mockApiService.getRecordHolderRouteSegment.mock.calls.length).toBeGreaterThan(callsBefore);
+    });
+  });
+});
+
+describe('InfoTab route-segment permission gates (#5101 P2 follow-up)', () => {
+  it('hides both route-segment cards and never fetches without traceroute:read', async () => {
+    mockHasPermission.mockImplementation((resource: string, action: string) =>
+      !(resource === 'traceroute' && action === 'read')
+    );
+
+    render(<InfoTab {...baseProps} nodes={[]} isAuthenticated />);
+
+    // Let any pending effects settle before asserting absence.
+    await waitFor(() => {
+      expect(screen.getByText('info.title')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('info.longest_route')).not.toBeInTheDocument();
+    expect(screen.queryByText('info.record_holder')).not.toBeInTheDocument();
+    expect(screen.queryByText('info.no_active_routes')).not.toBeInTheDocument();
+    expect(screen.queryByText('info.no_record_holder')).not.toBeInTheDocument();
+    expect(mockApiService.getLongestActiveRouteSegment).not.toHaveBeenCalled();
+    expect(mockApiService.getRecordHolderRouteSegment).not.toHaveBeenCalled();
+  });
+
+  it('shows the cards with traceroute:read but hides Clear Record without traceroute:write', async () => {
+    mockHasPermission.mockImplementation((resource: string, action: string) => {
+      if (resource === 'traceroute' && action === 'write') return false;
+      return true;
+    });
+    mockApiService.getRecordHolderRouteSegment.mockResolvedValue(makeRecords({ mqtt: makeSegmentView('mqtt') }));
+
+    render(<InfoTab {...baseProps} nodes={[]} isAuthenticated />);
+
+    const mqttRecord = await screen.findByTestId('route-segment-record-mqtt');
+    expect(within(mqttRecord).queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('shows Clear Record when traceroute:write is granted', async () => {
+    mockApiService.getRecordHolderRouteSegment.mockResolvedValue(makeRecords({ mqtt: makeSegmentView('mqtt') }));
+
+    render(<InfoTab {...baseProps} nodes={[]} isAuthenticated />);
+
+    const mqttRecord = await screen.findByTestId('route-segment-record-mqtt');
+    expect(within(mqttRecord).getByRole('button')).toBeInTheDocument();
   });
 });

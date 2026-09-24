@@ -297,6 +297,9 @@ describe('MeshtasticManager - ATAK V2 persistence (processTakV2Packet)', () => {
     expect(message.portnum).toBe(78);
     expect(message.text).toBe('[ATAK BRAVO-2] On station');
     expect(message.channel).toBe(2);
+    // #5101: RX-only path, no viaMqtt/transportMechanism on the packet ->
+    // resolveRadioPacketTransport falls back to LORA (1).
+    expect(message.transportMechanism).toBe(1);
     expect(mockEmitNewMessage).toHaveBeenCalledTimes(1);
   });
 

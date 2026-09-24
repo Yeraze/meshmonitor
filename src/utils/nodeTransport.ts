@@ -109,7 +109,13 @@ function transportStamps(node: NodeTransportFields): Array<[NodeTransportClass, 
   return out;
 }
 
-/** Classify a single node record's most-recent transport for the map filter. */
+/**
+ * Classify a single node record's most-recent transport for the map filter.
+ * `transportMechanism` wins over `viaMqtt` — a node last heard directly over
+ * LoRa is RF even if that same packet was also bridged to MQTT. Contrast
+ * with `classifyMessageTransport` below, which answers a different question
+ * ("did this message rely on MQTT?") and deliberately has `viaMqtt` win.
+ */
 export function classifyNodeTransport(node: {
   transportMechanism?: number | null;
   viaMqtt?: boolean | null;
@@ -124,6 +130,36 @@ export function classifyNodeTransport(node: {
   // when the new column is missing (e.g. a stub row inserted before
   // migration 066 ran on an upgraded deployment).
   if (node.viaMqtt) return 'mqtt';
+  return 'rf';
+}
+
+/**
+ * Transport class of a stored MESSAGE (#5101). Deliberately NOT
+ * `classifyNodeTransport`: here `viaMqtt` WINS.
+ *   viaMqtt true            -> 'mqtt'
+ *   else mechanism 6 (UDP)  -> 'udp'
+ *   else mechanism 5 (MQTT) -> 'mqtt'
+ *   else (NULL, 0 INTERNAL, 1-4 LoRa, 7 API) -> 'rf'
+ *
+ * A message that crossed MQTT anywhere on its way (`viaMqtt`) counts as MQTT
+ * even when the last hop to us was LoRa. That keeps the message split equal
+ * to Phase 1's `viaMqtt`-only count, with UDP carved out of RF. Node counts
+ * instead use `classifyNodeTransport` (mechanism first, so a node heard over
+ * RF is RF even if its packets were bridged), per the epic's #4240 decision.
+ * The two answer different questions: "did this message rely on MQTT?" vs
+ * "how did we hear this node?".
+ *
+ * Outbound message rows store `TransportMechanism.INTERNAL` (0) and no
+ * `viaMqtt`, which classifies RF — the same bucket Phase 1 counted them in.
+ */
+export function classifyMessageTransport(msg: {
+  transportMechanism?: number | null;
+  viaMqtt?: boolean | null;
+}): NodeTransportClass {
+  if (msg.viaMqtt) return 'mqtt';
+  const tx = msg.transportMechanism;
+  if (tx === TX_MULTICAST_UDP) return 'udp';
+  if (tx === TX_MQTT) return 'mqtt';
   return 'rf';
 }
 

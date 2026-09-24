@@ -56,6 +56,7 @@ const POSTGRES_CREATE = `
     "fromLongitude" DOUBLE PRECISION,
     "toLatitude" DOUBLE PRECISION,
     "toLongitude" DOUBLE PRECISION,
+    "transportMechanism" INTEGER,
     timestamp BIGINT NOT NULL,
     "createdAt" BIGINT NOT NULL,
     "sourceId" TEXT
@@ -95,6 +96,7 @@ const MYSQL_CREATE = `
     fromLongitude DOUBLE,
     toLatitude DOUBLE,
     toLongitude DOUBLE,
+    transportMechanism INT,
     timestamp BIGINT NOT NULL,
     createdAt BIGINT NOT NULL,
     sourceId VARCHAR(36)
@@ -629,14 +631,215 @@ function runTraceroutesTests(getBackend: () => TestBackend) {
     const deleted = await repo.cleanupOldRouteSegments(30, ALL_SOURCES);
     expect(deleted).toBe(1); // Only the old non-record-holder
 
-    // Verify: record holder and recent segment remain
+    // Verify: record holder and recent segment remain. "Longest Active"
+    // excludes the flagged record-holder copy (finding 1, #5101) — it is a
+    // frozen second copy of its segment, not a currently-active one, so the
+    // recent 3.0 km non-record segment is the longest ACTIVE one even though
+    // the record itself is longer.
     const longest = await repo.getLongestActiveRouteSegment(ALL_SOURCES);
     expect(longest).not.toBeNull();
-    expect(longest!.distanceKm).toBeCloseTo(50.0);
+    expect(longest!.distanceKm).toBeCloseTo(3.0);
 
     const recordHolder = await repo.getRecordHolderRouteSegment(ALL_SOURCES);
     expect(recordHolder).not.toBeNull();
     expect(recordHolder!.distanceKm).toBeCloseTo(50.0);
+  });
+
+  // ============ PER-TRANSPORT ROUTE SEGMENTS (#5101) ============
+
+  it('insertRouteSegment persists transportMechanism', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+
+    const now = Date.now();
+    await repo.insertRouteSegment(makeSegment({ transportMechanism: 6, timestamp: now, createdAt: now }));
+
+    const longest = await repo.getLongestActiveRouteSegment(ALL_SOURCES);
+    expect(longest).not.toBeNull();
+    expect(Number(longest!.transportMechanism)).toBe(6);
+  });
+
+  it('getRecordHolderRouteSegment / getLongestActiveRouteSegment classify each mechanism into the right transport class', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+
+    const now = Date.now();
+    const cases: Array<{ mechanism: number | null; cls: 'rf' | 'udp' | 'mqtt' }> = [
+      { mechanism: null, cls: 'rf' },
+      { mechanism: 0, cls: 'rf' },
+      { mechanism: 1, cls: 'rf' },
+      { mechanism: 5, cls: 'mqtt' },
+      { mechanism: 6, cls: 'udp' },
+      { mechanism: 7, cls: 'rf' },
+    ];
+
+    for (const [i, { mechanism }] of cases.entries()) {
+      const seg = makeSegment({
+        fromNodeNum: 9000 + i,
+        toNodeNum: 9100 + i,
+        distanceKm: 1 + i,
+        transportMechanism: mechanism ?? undefined,
+        isRecordHolder: true,
+        timestamp: now + i,
+        createdAt: now + i,
+      });
+      await repo.insertRouteSegment(seg);
+    }
+
+    for (const cls of ['rf', 'udp', 'mqtt'] as const) {
+      const expectedCount = cases.filter((c) => c.cls === cls).length;
+      // Every case for a class was inserted as a flagged record holder — the
+      // longest one for that class wins getRecordHolderRouteSegment.
+      const record = await repo.getRecordHolderRouteSegment(ALL_SOURCES, cls);
+      if (expectedCount > 0) {
+        expect(record).not.toBeNull();
+      } else {
+        expect(record).toBeNull();
+      }
+    }
+    // rf has three candidates (null, 0, 1, 7 → actually 4): the longest wins.
+    const rfRecord = await repo.getRecordHolderRouteSegment(ALL_SOURCES, 'rf');
+    expect(rfRecord).not.toBeNull();
+    const mqttRecord = await repo.getRecordHolderRouteSegment(ALL_SOURCES, 'mqtt');
+    expect(mqttRecord).not.toBeNull();
+    expect(Number(mqttRecord!.transportMechanism)).toBe(5);
+    const udpRecord = await repo.getRecordHolderRouteSegment(ALL_SOURCES, 'udp');
+    expect(udpRecord).not.toBeNull();
+    expect(Number(udpRecord!.transportMechanism)).toBe(6);
+  });
+
+  it('updateRecordHolderIfLonger: a longer MQTT segment does not unseat the RF record and becomes its own record', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+
+    const now = Date.now();
+    const rfSegment = makeSegment({ distanceKm: 10, transportMechanism: 1, timestamp: now, createdAt: now });
+    const setRf = await repo.updateRecordHolderIfLonger(rfSegment, 'src-a');
+    expect(setRf).toBe(true);
+
+    const mqttSegment = makeSegment({
+      fromNodeNum: 5001, toNodeNum: 5002,
+      distanceKm: 50, transportMechanism: 5,
+      timestamp: now + 1, createdAt: now + 1,
+    });
+    const setMqtt = await repo.updateRecordHolderIfLonger(mqttSegment, 'src-a');
+    expect(setMqtt).toBe(true);
+
+    const rfRecord = await repo.getRecordHolderRouteSegment('src-a', 'rf');
+    expect(rfRecord).not.toBeNull();
+    expect(rfRecord!.distanceKm).toBeCloseTo(10);
+
+    const mqttRecord = await repo.getRecordHolderRouteSegment('src-a', 'mqtt');
+    expect(mqttRecord).not.toBeNull();
+    expect(mqttRecord!.distanceKm).toBeCloseTo(50);
+  });
+
+  it('updateRecordHolderIfLonger: a shorter RF segment does not unseat the existing RF record', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+
+    const now = Date.now();
+    await repo.updateRecordHolderIfLonger(
+      makeSegment({ distanceKm: 20, transportMechanism: 1, timestamp: now, createdAt: now }),
+      'src-a',
+    );
+    const wasSet = await repo.updateRecordHolderIfLonger(
+      makeSegment({ fromNodeNum: 6001, toNodeNum: 6002, distanceKm: 5, transportMechanism: 1, timestamp: now + 1, createdAt: now + 1 }),
+      'src-a',
+    );
+    expect(wasSet).toBe(false);
+
+    const rfRecord = await repo.getRecordHolderRouteSegment('src-a', 'rf');
+    expect(rfRecord!.distanceKm).toBeCloseTo(20);
+  });
+
+  it('updateRecordHolderIfLonger: a longer RF segment replaces only the RF record, leaving MQTT untouched', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+
+    const now = Date.now();
+    await repo.updateRecordHolderIfLonger(
+      makeSegment({ distanceKm: 10, transportMechanism: 1, timestamp: now, createdAt: now }),
+      'src-a',
+    );
+    await repo.updateRecordHolderIfLonger(
+      makeSegment({ fromNodeNum: 7001, toNodeNum: 7002, distanceKm: 30, transportMechanism: 5, timestamp: now + 1, createdAt: now + 1 }),
+      'src-a',
+    );
+    await repo.updateRecordHolderIfLonger(
+      makeSegment({ fromNodeNum: 7003, toNodeNum: 7004, distanceKm: 25, transportMechanism: 1, timestamp: now + 2, createdAt: now + 2 }),
+      'src-a',
+    );
+
+    const rfRecord = await repo.getRecordHolderRouteSegment('src-a', 'rf');
+    expect(rfRecord!.distanceKm).toBeCloseTo(25);
+    const mqttRecord = await repo.getRecordHolderRouteSegment('src-a', 'mqtt');
+    expect(mqttRecord!.distanceKm).toBeCloseTo(30);
+  });
+
+  it('clearRecordHolderBySource(src, "mqtt") clears only the MQTT record, leaving RF', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+
+    const now = Date.now();
+    await repo.updateRecordHolderIfLonger(
+      makeSegment({ distanceKm: 10, transportMechanism: 1, timestamp: now, createdAt: now }),
+      'src-a',
+    );
+    await repo.updateRecordHolderIfLonger(
+      makeSegment({ fromNodeNum: 8001, toNodeNum: 8002, distanceKm: 30, transportMechanism: 5, timestamp: now + 1, createdAt: now + 1 }),
+      'src-a',
+    );
+
+    await repo.clearRecordHolderBySource('src-a', 'mqtt');
+
+    expect(await repo.getRecordHolderRouteSegment('src-a', 'mqtt')).toBeNull();
+    const rfRecord = await repo.getRecordHolderRouteSegment('src-a', 'rf');
+    expect(rfRecord).not.toBeNull();
+    expect(rfRecord!.distanceKm).toBeCloseTo(10);
+  });
+
+  it('clearRecordHolderBySource(src) with no class clears every class', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+
+    const now = Date.now();
+    await repo.updateRecordHolderIfLonger(
+      makeSegment({ distanceKm: 10, transportMechanism: 1, timestamp: now, createdAt: now }),
+      'src-a',
+    );
+    await repo.updateRecordHolderIfLonger(
+      makeSegment({ fromNodeNum: 8101, toNodeNum: 8102, distanceKm: 30, transportMechanism: 5, timestamp: now + 1, createdAt: now + 1 }),
+      'src-a',
+    );
+
+    await repo.clearRecordHolderBySource('src-a');
+
+    expect(await repo.getRecordHolderRouteSegment('src-a', 'rf')).toBeNull();
+    expect(await repo.getRecordHolderRouteSegment('src-a', 'mqtt')).toBeNull();
+  });
+
+  it('getLongestActiveRouteSegment ignores a flagged record-holder copy that is longer than every unflagged segment (finding 1)', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+
+    const now = Date.now();
+    // The frozen record copy: longer than anything else, but flagged.
+    await repo.insertRouteSegment(makeSegment({
+      distanceKm: 100, isRecordHolder: true, transportMechanism: 1,
+      timestamp: now, createdAt: now,
+    }));
+    // A genuinely current, unflagged segment that is shorter than the frozen
+    // record but is the longest ACTIVE one.
+    await repo.insertRouteSegment(makeSegment({
+      fromNodeNum: 9501, toNodeNum: 9502,
+      distanceKm: 15, isRecordHolder: false, transportMechanism: 1,
+      timestamp: now + 1, createdAt: now + 1,
+    }));
+
+    const longest = await repo.getLongestActiveRouteSegment(ALL_SOURCES);
+    expect(longest).not.toBeNull();
+    expect(longest!.distanceKm).toBeCloseTo(15);
   });
 }
 

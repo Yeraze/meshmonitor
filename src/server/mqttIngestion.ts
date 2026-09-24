@@ -190,9 +190,11 @@ async function insertAndAnnounceMessage(
   text: string,
   isDirectMessage: boolean,
 ): Promise<boolean> {
+  // #5101: every message on this path arrived over MQTT.
+  const row = msg.transportMechanism == null ? { ...msg, transportMechanism: TransportMechanism.MQTT } : msg;
   let inserted: boolean;
   try {
-    inserted = await databaseService.messages.insertMessage(msg, sourceId);
+    inserted = await databaseService.messages.insertMessage(row, sourceId);
   } catch (err) {
     logger.error('Failed to insert MQTT message:', err);
     return false;
@@ -200,12 +202,12 @@ async function insertAndAnnounceMessage(
   if (!inserted) return false;
 
   try {
-    dataEventEmitter.emitNewMessage(msg, sourceId);
+    dataEventEmitter.emitNewMessage(row, sourceId);
   } catch (err) {
     logger.error('Failed to emit MQTT message event:', err);
   }
   void sendMessagePushNotification({
-    message: msg,
+    message: row,
     messageText: text,
     isDirectMessage,
     sourceId,
@@ -923,6 +925,9 @@ async function persistRouteSegments(sourceId: string, fullRoute: number[], times
       toNodeId: nodeNumToId(b),
       distanceKm: distKm,
       isRecordHolder: false,
+      // #5101: every MQTT-ingested segment is MQTT — no per-hop sentinel
+      // needed, unlike the TCP writer, since this whole path is MQTT.
+      transportMechanism: TransportMechanism.MQTT,
       timestamp,
       createdAt: Date.now(),
       ...({
@@ -933,6 +938,10 @@ async function persistRouteSegments(sourceId: string, fullRoute: number[], times
       } as any),
     };
     await databaseService.insertRouteSegmentAsync(seg, sourceId);
+    // #5101 (finding 2): MQTT sources previously never set a record holder —
+    // only the TCP writer did. Mirror it here so MQTT-only sources get
+    // per-transport records too.
+    await databaseService.updateRecordHolderSegmentAsync(seg, sourceId);
   }
 }
 

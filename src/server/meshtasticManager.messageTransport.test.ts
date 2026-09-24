@@ -1,14 +1,23 @@
 /**
- * MeshtasticManager - ATAK GeoChat persistence (Phase 1 / WP2)
+ * MeshtasticManager — per-message transport stamp on `messages.transportMechanism` (#5101 P2 WP3).
  *
- * Verifies processTakPacket persists only the GeoChat oneof variant of a
- * decoded TAKPacket (PortNum.ATAK_PLUGIN, 72) as a Messages row, reusing the
- * text-message row construction (exact id format, channel/DM routing) and
- * push notification, while PLI, detail, compressed chat, and receipts are
- * never persisted and no auto-responder machinery runs (RX-only).
+ * Binding decisions (TRANSPORT_BREAKDOWN_P2_SPEC.md §10.4, finding 9):
+ *  - Every RECEIVED Meshtastic message stamps `resolveRadioPacketTransport`
+ *    (explicit `transportMechanism` wins; else `viaMqtt` -> MQTT; else LoRa).
+ *  - A Virtual Node client's own send (routed through the same RX handler,
+ *    `processTextMessageProtobuf`, via `context.virtualNodeRequestId`) is
+ *    OUTBOUND, not received, so it stamps INTERNAL (0) regardless of the
+ *    packet's own viaMqtt/transportMechanism.
+ *  - Every OUTBOUND write via `sendTextMessage` stamps INTERNAL (0).
+ *  - The dual-channel `_dbchan` copy (server-decrypted messages landing on
+ *    both a device channel and a Channel Database slot) inherits the same
+ *    value via object spread.
  *
- * Modeled on meshtasticManager.duplicate-message.test.ts (hoisted vi.mock of
- * database.js, module.fallbackManager, direct private-method calls).
+ * Mock scaffolding: `processTextMessageProtobuf` cases are copied from
+ * meshtasticManager.duplicate-message.test.ts (the canonical harness for that
+ * method); the `sendTextMessage` case is copied from
+ * meshtasticManager.deliveryEvents.test.ts (the canonical harness for that
+ * method), so both paths are driven against the REAL manager methods.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
@@ -20,6 +29,9 @@ const mockUpsertNode = vi.fn();
 const mockGetChannelById = vi.fn();
 const mockUpsertChannel = vi.fn();
 const mockMarkMessageAsRead = vi.fn();
+const mockGetByIdAsync = vi.fn();
+const mockGetAllChannels = vi.fn();
+const mockCreateTextMessage = vi.fn();
 
 vi.mock('../services/database.js', () => ({
   default: {
@@ -36,6 +48,7 @@ vi.mock('../services/database.js', () => ({
     getUserPermissionSetAsync: vi.fn(),
     settings: {
       getSetting: mockGetSetting,
+      getSettingForSource: vi.fn().mockResolvedValue(null),
       setSetting: vi.fn().mockResolvedValue(undefined),
     },
     nodes: {
@@ -50,9 +63,12 @@ vi.mock('../services/database.js', () => ({
     },
     channels: {
       getChannelById: mockGetChannelById,
-      getAllChannels: vi.fn().mockResolvedValue([]),
+      getAllChannels: mockGetAllChannels,
       upsertChannel: mockUpsertChannel,
       getChannelCount: vi.fn().mockResolvedValue(0),
+    },
+    channelDatabase: {
+      getByIdAsync: mockGetByIdAsync,
     },
     telemetry: {
       insertTelemetry: vi.fn().mockResolvedValue(undefined),
@@ -65,6 +81,9 @@ vi.mock('../services/database.js', () => ({
       updateMessageTimestamps: vi.fn().mockResolvedValue(true),
       updateMessageDeliveryState: vi.fn().mockResolvedValue(true),
     },
+    messageEvents: {
+      recordEvent: vi.fn().mockResolvedValue(undefined),
+    },
     traceroutes: {
       insertTraceroute: vi.fn().mockResolvedValue(undefined),
       insertRouteSegment: vi.fn().mockResolvedValue(undefined),
@@ -72,9 +91,6 @@ vi.mock('../services/database.js', () => ({
     neighbors: {
       upsertNeighborInfo: vi.fn().mockResolvedValue(undefined),
       deleteNeighborInfoForNode: vi.fn().mockResolvedValue(0),
-    },
-    sources: {
-      getSource: vi.fn().mockResolvedValue({ id: 'default', name: 'Default' }),
     },
     recordTracerouteRequest: vi.fn(),
     logKeyRepairAttemptAsync: vi.fn().mockResolvedValue(0),
@@ -97,6 +113,7 @@ vi.mock('../services/database.js', () => ({
     getAllGeofenceCooldownsAsync: vi.fn().mockResolvedValue([]),
     setGeofenceCooldownAsync: vi.fn().mockResolvedValue(undefined),
     markMessageAsReadAsync: vi.fn().mockResolvedValue(true),
+    upsertNodeAsync: mockUpsertNode,
   },
 }));
 
@@ -114,12 +131,14 @@ vi.mock('./meshtasticProtobufService.js', () => ({
   default: {
     initialize: vi.fn(),
     createMeshPacket: vi.fn(),
-    createTextMessage: vi.fn(),
+    createTextMessage: mockCreateTextMessage,
+    createFromRadioTextMessage: vi.fn().mockResolvedValue(null),
   },
   meshtasticProtobufService: {
     initialize: vi.fn(),
     createMeshPacket: vi.fn(),
-    createTextMessage: vi.fn(),
+    createTextMessage: mockCreateTextMessage,
+    createFromRadioTextMessage: vi.fn().mockResolvedValue(null),
   },
 }));
 
@@ -145,13 +164,13 @@ vi.mock('../utils/logger.js', () => ({
     warn: vi.fn(),
     error: vi.fn(),
     debug: vi.fn(),
+    trace: vi.fn(),
   },
 }));
 
 vi.mock('./services/notificationService.js', () => ({
   notificationService: {
     checkAndSendNotifications: vi.fn(),
-    getServiceStatus: vi.fn(() => ({ anyAvailable: false })),
   },
 }));
 
@@ -164,6 +183,7 @@ vi.mock('./services/serverEventNotificationService.js', () => ({
 
 vi.mock('./services/packetLogService.js', () => ({
   default: {
+    isEnabled: vi.fn().mockResolvedValue(false),
     logPacket: vi.fn(),
   },
 }));
@@ -215,195 +235,138 @@ vi.mock('../utils/nodeHelpers.js', () => ({
   isNodeComplete: vi.fn(),
 }));
 
-describe('MeshtasticManager - ATAK GeoChat persistence (processTakPacket)', () => {
+const LOCAL = 0x0a0a0a0a;
+const PEER = 0x22222222;
+const toNodeId = (n: number) => `!${n.toString(16).padStart(8, '0')}`;
+
+describe('MeshtasticManager — per-message transport stamp (#5101)', () => {
   let manager: any;
 
   beforeEach(async () => {
     vi.clearAllMocks();
 
-    // Default mock: node exists (so ensureMessageEndpointNodes never needs
-    // upsertNodeAsync — same convention as duplicate-message.test.ts).
     mockGetNode.mockReturnValue({
-      nodeNum: 0x1111,
-      nodeId: '!00001111',
+      nodeNum: 0x11223344,
+      nodeId: '!11223344',
       longName: 'Test Node',
       shortName: 'TEST',
     });
-
     mockGetChannelById.mockReturnValue({ id: 0, name: 'Primary', role: 1 });
+    mockGetAllChannels.mockResolvedValue([]);
+    mockGetByIdAsync.mockResolvedValue(null);
+    mockCreateTextMessage.mockReturnValue({ data: new Uint8Array([1, 2, 3]), messageId: 999 });
 
-    // Dynamic import to get a fresh module with mocks applied
     const module = await import('./meshtasticManager.js');
     manager = module.fallbackManager;
+    manager.localNodeInfo = { nodeNum: LOCAL, nodeId: toNodeId(LOCAL) };
+    manager.isConnected = true;
+    manager.transport = { send: vi.fn().mockResolvedValue(undefined) };
+    manager.sourceId = 'default';
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  const makeMeshPacket = (from: number, to: number, channel = 0, id = 42) => ({
+  const makeMeshPacket = (from: number, to: number, extra: Record<string, unknown> = {}) => ({
     from,
     to,
-    id,
-    channel,
+    id: 12345,
+    channel: 0,
     rxTime: Math.floor(Date.now() / 1000),
     decoded: {
-      portnum: 72,
+      portnum: 1,
     },
+    ...extra,
   });
 
-  describe('GeoChat persists as a message', () => {
-    it('persists a broadcast GeoChat with the exact row id / channel / portnum / text', async () => {
+  describe('processTextMessageProtobuf — received messages', () => {
+    it('stamps LoRa (1) when the packet has neither an explicit mechanism nor viaMqtt', async () => {
       mockInsertMessage.mockReturnValue(true);
+      const packet = makeMeshPacket(0x11223344, 0xffffffff);
 
-      const packet = makeMeshPacket(0x1111, 0xffffffff, 3, 42);
-      const tak = { contact: { callsign: 'ALPHA' }, chat: { message: 'hi' } };
-
-      await (manager as any).processTakPacket(packet, tak);
-
-      expect(mockInsertMessage).toHaveBeenCalledTimes(1);
-      expect(mockInsertMessage).toHaveBeenCalledWith(
-        expect.objectContaining({
-          id: `${manager.sourceId}_4369_42`,
-          channel: 3,
-          portnum: 72,
-          text: '[ATAK ALPHA] hi',
-          // #5101: RX-only path, no viaMqtt/transportMechanism on the packet
-          // -> resolveRadioPacketTransport falls back to LORA (1).
-          transportMechanism: 1,
-        }),
-        manager.sourceId,
-      );
-      expect(mockEmitNewMessage).toHaveBeenCalledTimes(1);
-    });
-
-    it('omits the callsign tag when contact is absent', async () => {
-      mockInsertMessage.mockReturnValue(true);
-
-      const packet = makeMeshPacket(0x1111, 0xffffffff, 0, 43);
-      const tak = { chat: { message: 'no contact info' } };
-
-      await (manager as any).processTakPacket(packet, tak);
+      await (manager as any).processTextMessageProtobuf(packet, 'Hello world');
 
       expect(mockInsertMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ text: '[ATAK] no contact info' }),
+        expect.objectContaining({ transportMechanism: 1 }),
         expect.anything(),
       );
     });
 
-    it('tags with sender→recipient callsigns when to_callsign is set', async () => {
+    it('stamps MQTT (5) for a packet with viaMqtt=true and no explicit mechanism', async () => {
       mockInsertMessage.mockReturnValue(true);
+      const packet = makeMeshPacket(0x11223344, 0xffffffff, { viaMqtt: true });
 
-      const packet = makeMeshPacket(0x1111, 0xffffffff, 0, 44);
-      const tak = { contact: { callsign: 'ALPHA' }, chat: { message: 'go', toCallsign: 'BRAVO' } };
-
-      await (manager as any).processTakPacket(packet, tak);
+      await (manager as any).processTextMessageProtobuf(packet, 'Bridged message');
 
       expect(mockInsertMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ text: '[ATAK ALPHA→BRAVO] go' }),
+        expect.objectContaining({ transportMechanism: 5 }),
         expect.anything(),
       );
     });
-  });
 
-  describe('DM routing', () => {
-    it('routes a GeoChat DM to channel -1 with toNodeNum from the envelope', async () => {
+    it('preserves an explicit MULTICAST_UDP (6) mechanism', async () => {
       mockInsertMessage.mockReturnValue(true);
-      mockGetNode.mockImplementation((nodeNum: number) => {
-        if (nodeNum === 0x1111) return { nodeNum: 0x1111, nodeId: '!00001111', longName: 'Sender', shortName: 'SND' };
-        if (nodeNum === 0x55667788) return { nodeNum: 0x55667788, nodeId: '!55667788', longName: 'Receiver', shortName: 'RCV' };
-        return null;
+      const packet = makeMeshPacket(0x11223344, 0xffffffff, { transportMechanism: 6 });
+
+      await (manager as any).processTextMessageProtobuf(packet, 'UDP message');
+
+      expect(mockInsertMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ transportMechanism: 6 }),
+        expect.anything(),
+      );
+    });
+
+    it('stamps INTERNAL (0) for a Virtual Node client send, even over a viaMqtt packet', async () => {
+      mockInsertMessage.mockReturnValue(true);
+      // A Virtual Node client's own outgoing send is routed through this same
+      // RX handler (context.virtualNodeRequestId set) — it must be treated as
+      // OUTBOUND regardless of what the packet itself claims about viaMqtt.
+      const packet = makeMeshPacket(LOCAL, 0xffffffff, { viaMqtt: true });
+
+      await (manager as any).processTextMessageProtobuf(packet, 'VN send', { virtualNodeRequestId: 777 });
+
+      expect(mockInsertMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ transportMechanism: 0 }),
+        expect.anything(),
+      );
+    });
+
+    it('the dual-channel _dbchan copy inherits the same transportMechanism as the primary insert', async () => {
+      mockInsertMessage.mockReturnValue(true);
+      // Server-decrypted onto a device channel slot with a matching psk+name
+      // (same recipe as meshtasticManager.positionChannel.test.ts) so the
+      // dbCopy branch (channelIndex < CHANNEL_DB_OFFSET) actually runs.
+      mockGetByIdAsync.mockResolvedValue({ id: 5, name: 'gauntlet', psk: 'SharedPSK==' });
+      mockGetAllChannels.mockResolvedValue([
+        { id: 0, name: 'LongFast', psk: 'AQ==', role: 1 },
+        { id: 2, name: 'gauntlet', psk: 'SharedPSK==', role: 2 },
+      ]);
+
+      const packet = makeMeshPacket(0x11223344, 0xffffffff, { viaMqtt: true });
+      await (manager as any).processTextMessageProtobuf(packet, 'dual-channel', {
+        decryptedBy: 'server',
+        decryptedChannelId: 5,
       });
 
-      const packet = makeMeshPacket(0x1111, 0x55667788, 3, 45);
-      const tak = { contact: { callsign: 'ALPHA' }, chat: { message: 'dm text' } };
-
-      await (manager as any).processTakPacket(packet, tak);
-
-      expect(mockInsertMessage).toHaveBeenCalledWith(
-        expect.objectContaining({
-          channel: -1,
-          toNodeNum: 0x55667788,
-        }),
-        expect.anything(),
-      );
+      expect(mockInsertMessage).toHaveBeenCalledTimes(2);
+      const primary = mockInsertMessage.mock.calls[0][0];
+      const dbCopy = mockInsertMessage.mock.calls[1][0];
+      expect(dbCopy.id).toBe(`${primary.id}_dbchan`);
+      expect(primary.transportMechanism).toBe(5);
+      expect(dbCopy.transportMechanism).toBe(5);
     });
   });
 
-  describe('non-persisted variants', () => {
-    it('does not persist a GeoChat receipt', async () => {
-      const packet = makeMeshPacket(0x1111, 0xffffffff);
-      const tak = { contact: { callsign: 'ALPHA' }, chat: { message: '', receiptType: 1, receiptForUid: 'u' } };
-
-      await (manager as any).processTakPacket(packet, tak);
-
-      expect(mockInsertMessage).not.toHaveBeenCalled();
-      expect(mockEmitNewMessage).not.toHaveBeenCalled();
-    });
-
-    it('does not persist a compressed GeoChat', async () => {
-      const packet = makeMeshPacket(0x1111, 0xffffffff);
-      const tak = { isCompressed: true, contact: { callsign: 'ALPHA' }, chat: { message: 'hi' } };
-
-      await (manager as any).processTakPacket(packet, tak);
-
-      expect(mockInsertMessage).not.toHaveBeenCalled();
-    });
-
-    it('does not persist a PLI variant', async () => {
-      const packet = makeMeshPacket(0x1111, 0xffffffff);
-      const tak = { contact: { callsign: 'ALPHA' }, pli: { latitudeI: 371234500, longitudeI: -1225432100 } };
-
-      await (manager as any).processTakPacket(packet, tak);
-
-      expect(mockInsertMessage).not.toHaveBeenCalled();
-    });
-
-    it('does not persist a detail (opaque bytes) variant', async () => {
-      const packet = makeMeshPacket(0x1111, 0xffffffff);
-      const tak = { contact: { callsign: 'ALPHA' }, detail: new Uint8Array([1, 2, 3]) };
-
-      await (manager as any).processTakPacket(packet, tak);
-
-      expect(mockInsertMessage).not.toHaveBeenCalled();
-    });
-
-    it('does not throw and does not persist when the decode failed upstream (raw Uint8Array)', async () => {
-      const packet = makeMeshPacket(0x1111, 0xffffffff);
-      const malformed = new Uint8Array([0xff, 0xff, 0xff, 0xff]);
-
-      await expect((manager as any).processTakPacket(packet, malformed)).resolves.toBeUndefined();
-
-      expect(mockInsertMessage).not.toHaveBeenCalled();
-    });
-
-    it('does not persist an empty/whitespace-only GeoChat message', async () => {
-      const packet = makeMeshPacket(0x1111, 0xffffffff);
-      const tak = { contact: { callsign: 'ALPHA' }, chat: { message: '   ' } };
-
-      await (manager as any).processTakPacket(packet, tak);
-
-      expect(mockInsertMessage).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('no auto-responder side effects (RX-only)', () => {
-    it('never calls checkAutoAcknowledge / handleAutoPingCommand / checkAutoResponder for GeoChat', async () => {
-      mockInsertMessage.mockReturnValue(true);
-
-      const ackSpy = vi.spyOn(manager, 'checkAutoAcknowledge');
-      const pingSpy = vi.spyOn(manager, 'handleAutoPingCommand');
-      const responderSpy = vi.spyOn(manager, 'checkAutoResponder');
-
-      const packet = makeMeshPacket(0x1111, 0xffffffff, 0, 46);
-      const tak = { contact: { callsign: 'ALPHA' }, chat: { message: 'hello' } };
-
-      await (manager as any).processTakPacket(packet, tak);
+  describe('sendTextMessage — outbound sends', () => {
+    it('stamps INTERNAL (0) on the outgoing row', async () => {
+      await manager.sendTextMessage('hello mesh', 0, PEER);
 
       expect(mockInsertMessage).toHaveBeenCalledTimes(1);
-      expect(ackSpy).not.toHaveBeenCalled();
-      expect(pingSpy).not.toHaveBeenCalled();
-      expect(responderSpy).not.toHaveBeenCalled();
+      expect(mockInsertMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ transportMechanism: 0 }),
+        expect.anything(),
+      );
     });
   });
 });

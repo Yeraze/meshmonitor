@@ -20,6 +20,9 @@ vi.mock('../services/database.js', () => ({
     insertTracerouteAsync: vi.fn(async () => undefined),
     insertRouteSegment: vi.fn(),
     insertRouteSegmentAsync: vi.fn(async () => undefined),
+    // #5101 (finding 2): persistRouteSegments now also calls this per stored
+    // segment, mirroring the TCP writer.
+    updateRecordHolderSegmentAsync: vi.fn(async () => undefined),
     deleteNodeAsync: vi.fn(async () => ({
       messagesDeleted: 0,
       broadcastMessagesDeleted: 0,
@@ -673,6 +676,8 @@ describe('ingestServiceEnvelope — TEXT_MESSAGE_APP tapbacks', () => {
     const inserted = (databaseService.messages.insertMessage as any).mock.calls[0][0];
     expect(inserted.emoji).toBeUndefined();
     expect(inserted.replyId).toBeUndefined();
+    // #5101: every message on this MQTT ingest path arrived over MQTT.
+    expect(inserted.transportMechanism).toBe(TransportMechanism.MQTT);
   });
 });
 
@@ -768,6 +773,68 @@ describe('ingestServiceEnvelope — TRACEROUTE_APP', () => {
   });
 });
 
+describe('ingestServiceEnvelope — TRACEROUTE_APP route segments (#5101)', () => {
+  const REQUESTER = 0x11111111;
+  const HOP = 0xaaaa2222;
+  const RESPONDER = NODE_IN;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (databaseService.nodes.getNode as any).mockImplementation(async (nodeNum: number) => {
+      const coords: Record<number, [number, number]> = {
+        [REQUESTER]: [10, 10],
+        [HOP]: [10.01, 10],
+        [RESPONDER]: [10.02, 10],
+      };
+      const c = coords[nodeNum];
+      if (!c) return null;
+      return { nodeNum, latitude: c[0], longitude: c[1] };
+    });
+  });
+
+  it('stamps MQTT on every forward+return segment and calls updateRecordHolderSegmentAsync per segment (finding 2)', async () => {
+    const { default: protobuf } = await import('./meshtasticProtobufService.js');
+    (protobuf.processPayload as any).mockImplementationOnce(() => ({
+      route: [HOP],
+      routeBack: [HOP],
+      snrTowards: [40, 20],
+      snrBack: [40, 20],
+    }));
+
+    const envelope: ServiceEnvelopeShape = {
+      channelId: 'LongFast',
+      gatewayId: '!00000001',
+      packet: {
+        id: 0x12345678,
+        from: RESPONDER,
+        to: REQUESTER,
+        channel: 0,
+        decoded: { portnum: 70 /* TRACEROUTE_APP */, payload: new Uint8Array([0]) },
+      },
+    };
+
+    const result = await ingestServiceEnvelope({ sourceId: 'bridge-1', envelope });
+    expect(result.ingested).toBe(true);
+
+    // Forward [REQUESTER, HOP, RESPONDER] -> 2 segments; return
+    // [RESPONDER, HOP, REQUESTER] -> 2 segments.
+    expect(databaseService.insertRouteSegmentAsync).toHaveBeenCalledTimes(4);
+    const inserted = (databaseService.insertRouteSegmentAsync as any).mock.calls.map((c: any[]) => c[0]);
+    for (const seg of inserted) {
+      expect(seg.transportMechanism).toBe(TransportMechanism.MQTT);
+    }
+
+    // Every inserted segment also gets a record-holder check, MQTT sources
+    // previously never did this (finding 2) — only the TCP writer did.
+    expect(databaseService.updateRecordHolderSegmentAsync).toHaveBeenCalledTimes(4);
+    const recorded = (databaseService.updateRecordHolderSegmentAsync as any).mock.calls.map((c: any[]) => c[0]);
+    expect(recorded).toEqual(inserted);
+    for (const call of (databaseService.updateRecordHolderSegmentAsync as any).mock.calls) {
+      expect(call[1]).toBe('bridge-1');
+    }
+  });
+});
+
 describe('ingestServiceEnvelope — NEIGHBORINFO_APP', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -855,6 +922,8 @@ describe('ingestServiceEnvelope — STORE_FORWARD_APP', () => {
     expect(inserted.viaMqtt).toBe(true);
     expect(inserted.viaStoreForward).toBe(true);
     expect(inserted.sourceId).toBe('bridge-1');
+    // #5101: every message on this MQTT ingest path arrived over MQTT.
+    expect(inserted.transportMechanism).toBe(TransportMechanism.MQTT);
   });
 
   it('does NOT insert a duplicate when the original message already landed', async () => {

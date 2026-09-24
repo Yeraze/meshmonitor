@@ -8,6 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   classifyNodeTransport,
+  classifyMessageTransport,
   nodePassesTransportFilter,
   isMqttOnlySourceType,
   countNodesByTransport,
@@ -48,6 +49,51 @@ describe('classifyNodeTransport', () => {
 
   it('defaults to rf when both fields are absent', () => {
     expect(classifyNodeTransport({})).toBe('rf');
+  });
+});
+
+/**
+ * #5101: message classification is deliberately NOT `classifyNodeTransport`
+ * — here `viaMqtt` wins over the mechanism, so a LoRa-delivered, MQTT-bridged
+ * message still counts as MQTT for the message split, matching Phase 1's
+ * `viaMqtt`-only count.
+ */
+describe('classifyMessageTransport', () => {
+  const mechanisms = [null, TX_INTERNAL, TX_LORA, TX_MQTT, TX_MULTICAST_UDP, TX_API];
+
+  it('viaMqtt=true is mqtt for every mechanism, including LORA(1) and MULTICAST_UDP(6)', () => {
+    for (const tx of mechanisms) {
+      expect(classifyMessageTransport({ transportMechanism: tx, viaMqtt: true })).toBe('mqtt');
+    }
+  });
+
+  it('mechanism 6 (MULTICAST_UDP) is udp when viaMqtt is not true', () => {
+    for (const viaMqtt of [null, false] as const) {
+      expect(classifyMessageTransport({ transportMechanism: TX_MULTICAST_UDP, viaMqtt })).toBe('udp');
+    }
+  });
+
+  it('mechanism 5 (MQTT) is mqtt when viaMqtt is not true', () => {
+    for (const viaMqtt of [null, false] as const) {
+      expect(classifyMessageTransport({ transportMechanism: TX_MQTT, viaMqtt })).toBe('mqtt');
+    }
+  });
+
+  it('every other mechanism (NULL, INTERNAL, LORA, API) with viaMqtt not true is rf', () => {
+    for (const tx of [null, TX_INTERNAL, TX_LORA, TX_API]) {
+      for (const viaMqtt of [null, false] as const) {
+        expect(classifyMessageTransport({ transportMechanism: tx, viaMqtt })).toBe('rf');
+      }
+    }
+  });
+
+  it('(0, null) — an outbound INTERNAL send with no viaMqtt — is rf', () => {
+    expect(classifyMessageTransport({ transportMechanism: TX_INTERNAL, viaMqtt: null })).toBe('rf');
+  });
+
+  it('pins the deliberate difference from classifyNodeTransport: (LORA, viaMqtt=true) is rf for nodes, mqtt for messages', () => {
+    expect(classifyNodeTransport({ transportMechanism: TX_LORA, viaMqtt: true })).toBe('rf');
+    expect(classifyMessageTransport({ transportMechanism: TX_LORA, viaMqtt: true })).toBe('mqtt');
   });
 });
 

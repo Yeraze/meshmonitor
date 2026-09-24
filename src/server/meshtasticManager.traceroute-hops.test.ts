@@ -488,3 +488,144 @@ describe('MeshtasticManager — traceroute intermediate hop handling (issues 261
     expect(upsertCallsFor(0xaaaa8888)).toEqual([]);
   });
 });
+
+describe('MeshtasticManager — per-hop transport on route segments (#5101)', () => {
+  let manager: any;
+
+  /** Node fixture with position data, so the segment loop actually runs. */
+  const positioned = (nodeNum: number, lat: number, lng: number) => ({
+    nodeNum,
+    nodeId: `!${nodeNum.toString(16).padStart(8, '0')}`,
+    longName: 'Node',
+    shortName: 'ND',
+    lastHeard: Math.floor(Date.now() / 1000) - 60,
+    latitude: lat,
+    longitude: lng,
+  });
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockGetSetting.mockResolvedValue('km');
+    mockInsertMessage.mockResolvedValue(true);
+    mockInsertTraceroute.mockReturnValue(undefined);
+    mockInsertRouteSegment.mockResolvedValue(undefined);
+    mockUpdateRecordHolderSegmentAsync.mockResolvedValue(undefined);
+    mockInsertTelemetry.mockResolvedValue(undefined);
+
+    const module = await import('./meshtasticManager.js');
+    manager = module.fallbackManager;
+    (manager as any).localNodeInfo = null;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const makeTraceroutePacket = (from: number, to: number, extra?: Record<string, unknown>) => ({
+    from,
+    to,
+    id: 99999,
+    channel: 0,
+    rxTime: Math.floor(Date.now() / 1000),
+    decoded: { portnum: 70, requestId: 12345 },
+    ...extra,
+  });
+
+  const fromNum = 0xdddddddd;
+  const toNum = 0x11111111;
+  const hopA = 0xaaaa1111;
+  const hopB = 0xaaaa2222;
+
+  it('stamps stored segments with the record mechanism, sentinel wins per hop', async () => {
+    mockGetNode.mockImplementation((nodeNum: number) => {
+      const coords: Record<number, [number, number]> = {
+        [toNum]: [10, 10],
+        [hopA]: [10.01, 10],
+        [hopB]: [10.02, 10],
+        [fromNum]: [10.03, 10],
+      };
+      const [lat, lng] = coords[nodeNum] ?? [10, 10];
+      return positioned(nodeNum, lat, lng);
+    });
+
+    // No viaMqtt/transportMechanism on the packet -> resolveRadioPacketTransport
+    // falls back to LORA (1).
+    const packet = makeTraceroutePacket(fromNum, toNum);
+    const routeDiscovery = {
+      route: [hopA, hopB],
+      // Non-empty so the "empty return path" guard doesn't skip segment
+      // creation entirely — content is irrelevant to this test.
+      routeBack: [hopB, hopA],
+      // fullRoute = [toNum, hopA, hopB, fromNum] -> 3 segments, snrTowards
+      // index-aligned: segment 1 (hopA -> hopB) carries the sentinel.
+      snrTowards: [40, -128, 20],
+      snrBack: [10, 10, 10],
+    };
+
+    await (manager as any).processTracerouteMessage(packet, routeDiscovery);
+
+    expect(mockInsertRouteSegment).toHaveBeenCalledTimes(3);
+    const stored = mockInsertRouteSegment.mock.calls.map(call => call[0].transportMechanism);
+    expect(stored).toEqual([1, 5, 1]);
+
+    // updateRecordHolderSegmentAsync receives the SAME segment values.
+    expect(mockUpdateRecordHolderSegmentAsync).toHaveBeenCalledTimes(3);
+    const recorded = mockUpdateRecordHolderSegmentAsync.mock.calls.map(call => call[0].transportMechanism);
+    expect(recorded).toEqual([1, 5, 1]);
+  });
+
+  it('stamps every non-sentinel hop MQTT when the traceroute record itself arrived via viaMqtt', async () => {
+    mockGetNode.mockImplementation((nodeNum: number) => {
+      const coords: Record<number, [number, number]> = {
+        [toNum]: [20, 20],
+        [hopA]: [20.01, 20],
+        [fromNum]: [20.02, 20],
+      };
+      const [lat, lng] = coords[nodeNum] ?? [20, 20];
+      return positioned(nodeNum, lat, lng);
+    });
+
+    // viaMqtt=true, no explicit transportMechanism -> resolveRadioPacketTransport
+    // resolves the record itself to MQTT (5).
+    const packet = makeTraceroutePacket(fromNum, toNum, { viaMqtt: true });
+    const routeDiscovery = {
+      route: [hopA],
+      routeBack: [hopA],
+      snrTowards: [40, 20], // no sentinel present
+      snrBack: [10, 10],
+    };
+
+    await (manager as any).processTracerouteMessage(packet, routeDiscovery);
+
+    expect(mockInsertRouteSegment).toHaveBeenCalledTimes(2);
+    const stored = mockInsertRouteSegment.mock.calls.map(call => call[0].transportMechanism);
+    expect(stored).toEqual([5, 5]);
+  });
+
+  it('preserves an explicit UDP record mechanism on non-sentinel hops', async () => {
+    mockGetNode.mockImplementation((nodeNum: number) => {
+      const coords: Record<number, [number, number]> = {
+        [toNum]: [30, 30],
+        [hopA]: [30.01, 30],
+        [fromNum]: [30.02, 30],
+      };
+      const [lat, lng] = coords[nodeNum] ?? [30, 30];
+      return positioned(nodeNum, lat, lng);
+    });
+
+    // Explicit MULTICAST_UDP (6) on the packet.
+    const packet = makeTraceroutePacket(fromNum, toNum, { transportMechanism: 6 });
+    const routeDiscovery = {
+      route: [hopA],
+      routeBack: [hopA],
+      snrTowards: [40, 20],
+      snrBack: [10, 10],
+    };
+
+    await (manager as any).processTracerouteMessage(packet, routeDiscovery);
+
+    expect(mockInsertRouteSegment).toHaveBeenCalledTimes(2);
+    const stored = mockInsertRouteSegment.mock.calls.map(call => call[0].transportMechanism);
+    expect(stored).toEqual([6, 6]);
+  });
+});

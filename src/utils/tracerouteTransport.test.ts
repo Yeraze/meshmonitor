@@ -18,6 +18,7 @@ import {
   hopTransportClass,
   reachTransportClass,
   segmentPassesTransportFilter,
+  segmentTransportMechanism,
   tracerouteTransportClass,
   transportFilterIsInert,
   type NodeTransportClass,
@@ -152,6 +153,32 @@ describe('reachTransportClass', () => {
     expect(reachTransportClass({
       ...base, transportMechanism: TX_MULTICAST_UDP, route: '[]', snrTowards: '[-128]',
     })).toBe('mqtt');
+  });
+});
+
+describe('segmentTransportMechanism', () => {
+  it('a sentinel raw arrival SNR (-128) stores MQTT (5), regardless of the record mechanism', () => {
+    expect(segmentTransportMechanism(TX_LORA, -128)).toBe(TX_MQTT);
+    expect(segmentTransportMechanism(TX_MULTICAST_UDP, -128)).toBe(TX_MQTT);
+    expect(segmentTransportMechanism(null, -128)).toBe(TX_MQTT);
+  });
+
+  it('a normal raw arrival SNR passes the record mechanism through', () => {
+    expect(segmentTransportMechanism(TX_LORA, 40)).toBe(TX_LORA);
+    expect(segmentTransportMechanism(TX_MULTICAST_UDP, 160)).toBe(TX_MULTICAST_UDP);
+  });
+
+  it('an undefined raw arrival SNR (no sample) passes the record mechanism through', () => {
+    expect(segmentTransportMechanism(TX_LORA, undefined)).toBe(TX_LORA);
+  });
+
+  it('a NULL record mechanism with no sentinel stays NULL (reads as RF)', () => {
+    expect(segmentTransportMechanism(null, 40)).toBeNull();
+    expect(segmentTransportMechanism(undefined, 40)).toBeNull();
+  });
+
+  it('a UDP record with a sentinel arrival SNR still stores MQTT — sentinel wins', () => {
+    expect(segmentTransportMechanism(TX_MULTICAST_UDP, -128)).toBe(TX_MQTT);
   });
 });
 

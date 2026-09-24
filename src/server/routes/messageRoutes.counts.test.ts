@@ -90,7 +90,7 @@ describe('GET /api/messages/counts', () => {
     expect(res.status).toBe(403);
   });
 
-  it('gives the admin the totals and the rf/mqtt split, wrapped in {success, data}', async () => {
+  it('gives the admin the totals and the rf/udp/mqtt split, wrapped in {success, data}', async () => {
     await seedMessage(harness.sourceA, 'm1', { channel: 0, viaMqtt: false });
     await seedMessage(harness.sourceA, 'm2', { channel: 0, viaMqtt: true });
     await seedMessage(harness.sourceA, 'm3', { channel: -1, portnum: PortNum.TEXT_MESSAGE_APP, viaMqtt: false });
@@ -102,7 +102,61 @@ describe('GET /api/messages/counts', () => {
     expect(res.body.success).toBe(true);
     expect(res.body.data.sourceId).toBe(harness.sourceA);
     expect(res.body.data.total).toBe(3);
-    expect(res.body.data.byTransport).toEqual({ rf: 2, mqtt: 1 });
+    expect(res.body.data.byTransport).toEqual({ rf: 2, udp: 0, mqtt: 1 });
+  });
+
+  it('total always equals rf + udp + mqtt, and udp is reported', async () => {
+    await seedMessage(harness.sourceA, 'm1', { channel: 0, transportMechanism: 6, viaMqtt: false });
+    await seedMessage(harness.sourceA, 'm2', { channel: 0, viaMqtt: false });
+    await seedMessage(harness.sourceA, 'm3', { channel: 0, viaMqtt: true });
+
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get(`/counts?sourceId=${harness.sourceA}`);
+
+    expect(res.status).toBe(200);
+    const { total, byTransport } = res.body.data;
+    expect(total).toBe(byTransport.rf + byTransport.udp + byTransport.mqtt);
+    expect(byTransport).toEqual({ rf: 1, udp: 1, mqtt: 1 });
+  });
+
+  it('a legacy row (transportMechanism NULL, viaMqtt true) counts as mqtt', async () => {
+    await seedMessage(harness.sourceA, 'm1', { channel: 0, viaMqtt: true });
+
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get(`/counts?sourceId=${harness.sourceA}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.byTransport).toEqual({ rf: 0, udp: 0, mqtt: 1 });
+  });
+
+  it('mechanism LORA(1) + viaMqtt true counts as mqtt (viaMqtt wins, §10.2)', async () => {
+    await seedMessage(harness.sourceA, 'm1', { channel: 0, transportMechanism: 1, viaMqtt: true });
+
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get(`/counts?sourceId=${harness.sourceA}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.byTransport).toEqual({ rf: 0, udp: 0, mqtt: 1 });
+  });
+
+  it('mechanism INTERNAL(0) + viaMqtt null counts as rf (outbound send)', async () => {
+    await seedMessage(harness.sourceA, 'm1', { channel: 0, transportMechanism: 0, viaMqtt: null });
+
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get(`/counts?sourceId=${harness.sourceA}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.byTransport).toEqual({ rf: 1, udp: 0, mqtt: 0 });
+  });
+
+  it('mechanism MULTICAST_UDP(6) with no viaMqtt counts as udp', async () => {
+    await seedMessage(harness.sourceA, 'm1', { channel: 0, transportMechanism: 6, viaMqtt: false });
+
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get(`/counts?sourceId=${harness.sourceA}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.byTransport).toEqual({ rf: 0, udp: 1, mqtt: 0 });
   });
 
   it('excludes TRACEROUTE_APP rows from the total, matching the poll window', async () => {
@@ -144,7 +198,7 @@ describe('GET /api/messages/counts', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.total).toBe(2);
-    expect(res.body.data.byTransport).toEqual({ rf: 1, mqtt: 1 });
+    expect(res.body.data.byTransport).toEqual({ rf: 1, udp: 0, mqtt: 1 });
   });
 
   it('a grant on sourceB does not authorise sourceA (#3745 class)', async () => {

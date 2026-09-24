@@ -40,6 +40,10 @@ export const routeSegmentsSqlite = sqliteTable('route_segments', {
   fromLongitude: real('fromLongitude'), // longitude of fromNode at recording time
   toLatitude: real('toLatitude'), // latitude of toNode at recording time
   toLongitude: real('toLongitude'), // longitude of toNode at recording time
+  // Effective meshtastic.MeshPacket.TransportMechanism of this hop (#5101):
+  // the traceroute record's mechanism, or MQTT (5) when the hop's arrival SNR
+  // was the unknown-SNR sentinel. NULL = pre-migration row -> RF.
+  transportMechanism: integer('transportMechanism'),
   timestamp: integer('timestamp').notNull(),
   createdAt: integer('createdAt').notNull(),
   // Source association (nullable — NULL = legacy default source)
@@ -79,6 +83,8 @@ export const routeSegmentsPostgres = pgTable('route_segments', {
   fromLongitude: pgDouble('fromLongitude'), // longitude of fromNode at recording time
   toLatitude: pgDouble('toLatitude'), // latitude of toNode at recording time
   toLongitude: pgDouble('toLongitude'), // longitude of toNode at recording time
+  // see SQLite definition (#5101)
+  transportMechanism: pgInteger('transportMechanism'),
   timestamp: pgBigint('timestamp', { mode: 'number' }).notNull(),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   // Source association (nullable — NULL = legacy default source)
@@ -118,6 +124,8 @@ export const routeSegmentsMysql = mysqlTable('route_segments', {
   fromLongitude: myDouble('fromLongitude'), // longitude of fromNode at recording time
   toLatitude: myDouble('toLatitude'), // latitude of toNode at recording time
   toLongitude: myDouble('toLongitude'), // longitude of toNode at recording time
+  // see SQLite definition (#5101)
+  transportMechanism: myInt('transportMechanism'),
   timestamp: myBigint('timestamp', { mode: 'number' }).notNull(),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   // Source association (nullable — NULL = legacy default source)

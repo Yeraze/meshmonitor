@@ -303,6 +303,8 @@ describe('POST /request-position', () => {
     expect(mockDb.messages.insertMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         id: `${SOURCE_A}_${LOCAL_NODE_NUM}_1001`,
+        // #5101: every outbound message write stamps INTERNAL.
+        transportMechanism: 0,
       }),
       SOURCE_A
     );
@@ -411,6 +413,8 @@ describe('POST /request-nodeinfo', () => {
       expect.objectContaining({
         id: `${SOURCE_A}_${LOCAL_NODE_NUM}_1002`,
         requestId: 2002,
+        // #5101: every outbound message write stamps INTERNAL.
+        transportMechanism: 0,
       }),
       SOURCE_A
     );

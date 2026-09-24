@@ -1,0 +1,34 @@
+/* Route segment record card (#5101 P2 WP5). Scoped module — see CLAUDE.md. */
+
+.record {
+  margin-bottom: 0.75rem;
+}
+
+.record:last-child {
+  margin-bottom: 0;
+}
+
+.transportLabel {
+  margin: 0 0 0.15rem;
+  font-weight: 600;
+  font-size: 0.85em;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.timeLine {
+  font-size: 0.85em;
+  color: var(--color-text-muted);
+}
+
+.legacyNote {
+  margin-top: 0.15rem;
+  font-size: 0.8em;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.clearButton {
+  margin-top: 8px;
+}
