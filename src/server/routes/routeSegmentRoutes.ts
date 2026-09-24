@@ -1,4 +1,4 @@
-import { Router, Request, Response, NextFunction } from 'express';
+import { Router, Request, Response } from 'express';
 import { requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { ALL_SOURCES, type SourceScope } from '../../db/repositories/index.js';
@@ -12,64 +12,20 @@ const router = Router();
 
 const TRANSPORT_CLASSES: readonly NodeTransportClass[] = ['rf', 'udp', 'mqtt'];
 
-/**
- * Exact per-source scoping for the 'info' resource (#5101 §10.3, finding 3).
- *
- * `info` is deliberately a cross-source, non-sourcey resource everywhere
- * else in the app (`SOURCEY_RESOURCES` in `src/types/permission.ts`) — the
- * shared `checkPermissionAsync` grants access on ANY per-source or global
- * `info` row it finds, ignoring which source was actually requested. That is
- * correct for the Info tab's nav gate, but route-segment/record-holder data
- * is scoped enough (per-source distances and node names) that a grant on
- * one source must not read or clear another's records — the #3745 class of
- * bug this fix closes.
- *
- * This performs the exact-match narrowing `checkPermissionAsync` does not do
- * for `info`, without touching `info`'s global semantics anywhere else.
- * `requirePermission('info', …)` still runs first as the coarse gate
- * (session/anonymous resolution, admin bypass, the base "has an info grant
- * at all" check, and — on DELETE — `requireSourceId`'s 400). This middleware
- * only narrows an already-coarsely-authorized request.
+/*
+ * Permission resource (#5101 §10.3, finding 3): these routes gate on
+ * `traceroute`, not `info`. Route segments are traceroute-derived data
+ * (each one is a hop of a stored traceroute), and `traceroute` is already a
+ * per-source ("sourcey") resource — `SOURCEY_RESOURCES` in
+ * `src/types/permission.ts` — so `checkPermissionAsync` does the real
+ * exact-match scoping itself: a grant on one source does not authorize
+ * reading or clearing another's records (the #3745 class of bug this fix
+ * closes). `info` stays a deliberately cross-source nav-gate resource
+ * everywhere else in the app and was the wrong gate for this endpoint; no
+ * route-local permission shim is needed once the resource is sourcey.
+ * Mirrors `requirePermission('traceroute', 'read', { sourceIdFrom: 'query' })`
+ * at `tracerouteRoutes.ts:58`.
  */
-function requireScopedInfoAccess(action: 'read' | 'write') {
-  return async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const user = req.user;
-      if (!user || user.isAdmin) {
-        next();
-        return;
-      }
-
-      const sourceId = req.query.sourceId as string | undefined;
-      if (!sourceId) {
-        // No source requested (legacy cross-source call) — the coarse gate
-        // already covers this; nothing further to narrow.
-        next();
-        return;
-      }
-
-      const perms = await databaseService.auth.getPermissionsForUser(user.id);
-      const grants = (p: (typeof perms)[number]): boolean =>
-        action === 'read' ? p.canRead : p.canWrite;
-      // A global grant (sourceId NULL) always authorizes, same as checkPermissionAsync.
-      const allowed = perms.some(
-        (p) => p.resource === 'info' && (!p.sourceId || p.sourceId === sourceId) && grants(p),
-      );
-
-      if (!allowed) {
-        fail(res, 403, 'FORBIDDEN', 'Insufficient permissions', {
-          required: { resource: 'info', action },
-        });
-        return;
-      }
-
-      next();
-    } catch (error) {
-      logger.error('Error checking scoped info access:', error);
-      fail(res, 500, 'INTERNAL_ERROR', 'Internal server error');
-    }
-  };
-}
 
 /**
  * Enrich one stored segment with node names and its classified transport
@@ -135,8 +91,7 @@ async function buildRecords(
 
 router.get(
   '/longest-active',
-  requirePermission('info', 'read', { sourceIdFrom: 'query' }),
-  requireScopedInfoAccess('read'),
+  requirePermission('traceroute', 'read', { sourceIdFrom: 'query' }),
   async (req: Request, res: Response) => {
     try {
       const sourceId = req.query.sourceId as string | undefined;
@@ -153,8 +108,7 @@ router.get(
 
 router.get(
   '/record-holder',
-  requirePermission('info', 'read', { sourceIdFrom: 'query' }),
-  requireScopedInfoAccess('read'),
+  requirePermission('traceroute', 'read', { sourceIdFrom: 'query' }),
   async (req: Request, res: Response) => {
     try {
       const sourceId = req.query.sourceId as string | undefined;
@@ -171,8 +125,7 @@ router.get(
 
 router.delete(
   '/record-holder',
-  requirePermission('info', 'write', { sourceIdFrom: 'query', requireSourceId: true }),
-  requireScopedInfoAccess('write'),
+  requirePermission('traceroute', 'write', { sourceIdFrom: 'query', requireSourceId: true }),
   async (req: Request, res: Response) => {
     try {
       const sourceId = req.query.sourceId as string;

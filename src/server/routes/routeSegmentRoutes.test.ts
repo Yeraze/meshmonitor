@@ -6,6 +6,15 @@
  * instead of monkey-patching `vi.mock('../../services/database.js', ...)`.
  * Template: src/server/routes/sourceRoutes.permissions.test.ts.
  *
+ * These routes gate on the `traceroute` resource, not `info` (#5101 §10.3,
+ * finding 3): route segments are traceroute-derived data, and `traceroute`
+ * is already a per-source ("sourcey") resource in `src/types/permission.ts`,
+ * so `checkPermissionAsync` does real exact-match source scoping for it — a
+ * grant on one source does not authorize another (the #3745 class of bug
+ * this closes). `info` is a deliberately cross-source nav-gate resource
+ * elsewhere in the app and was the wrong gate here; no route-local
+ * permission shim is needed once the resource is sourcey.
+ *
  * See docs/internal/dev-notes/TRANSPORT_BREAKDOWN_P2_SPEC.md §4.5 / §7 / §10.3.
  */
 
@@ -149,11 +158,11 @@ describe('routeSegmentRoutes', () => {
 
   describe('GET permission isolation (#5101 §10.3)', () => {
     beforeEach(async () => {
-      await harness.grant(harness.limited.id, 'info', 'read', harness.sourceA);
+      await harness.grant(harness.limited.id, 'traceroute', 'read', harness.sourceA);
       // No grant at all for sourceB.
     });
 
-    it('a grant on sourceA does not permit reading sourceB (403)', async () => {
+    it('a traceroute:read grant on sourceA → 200 on A, 403 on B', async () => {
       const agent = await harness.loginAs(harness.limited);
 
       const resA = await agent.get(`/longest-active?sourceId=${harness.sourceA}`);
@@ -163,7 +172,7 @@ describe('routeSegmentRoutes', () => {
       expect(resB.status).toBe(403);
     });
 
-    it('record-holder: a grant on sourceA does not permit reading sourceB (403)', async () => {
+    it('record-holder: a traceroute:read grant on sourceA → 200 on A, 403 on B', async () => {
       const agent = await harness.loginAs(harness.limited);
 
       const resA = await agent.get(`/record-holder?sourceId=${harness.sourceA}`);
@@ -171,6 +180,27 @@ describe('routeSegmentRoutes', () => {
 
       const resB = await agent.get(`/record-holder?sourceId=${harness.sourceB}`);
       expect(resB.status).toBe(403);
+    });
+
+    it('an info-only grant does not substitute for traceroute:read (403)', async () => {
+      // Reset to an info-only grant — traceroute is the gate now, not info.
+      await harness.revokeAll(harness.limited.id);
+      await harness.grant(harness.limited.id, 'info', 'read', harness.sourceA);
+
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.get(`/longest-active?sourceId=${harness.sourceA}`);
+
+      expect(res.status).toBe(403);
+    });
+
+    it('admin sees ALL_SOURCES with no sourceId (sourceId omitted)', async () => {
+      await seedSegment(harness, harness.sourceA, { fromNodeNum: 100, toNodeNum: 200, distanceKm: 5 });
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get('/longest-active');
+
+      expect(res.status).toBe(200);
+      expect(res.body).not.toBeNull();
     });
   });
 
@@ -221,16 +251,33 @@ describe('routeSegmentRoutes', () => {
       expect(res.body.code).toBe('MISSING_SOURCE_ID');
     });
 
-    it('no info:write grant → 403', async () => {
-      await harness.grant(harness.limited.id, 'info', 'read', harness.sourceA);
+    it('no traceroute:write grant → 403', async () => {
+      await harness.grant(harness.limited.id, 'traceroute', 'read', harness.sourceA);
       const agent = await harness.loginAs(harness.limited);
       const res = await agent.delete(`/record-holder?sourceId=${harness.sourceA}`);
 
       expect(res.status).toBe(403);
     });
 
-    it('info:write on sourceA does not permit clearing sourceB (403)', async () => {
+    it('an info:write grant does not substitute for traceroute:write (403)', async () => {
       await harness.grant(harness.limited.id, 'info', 'write', harness.sourceA);
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.delete(`/record-holder?sourceId=${harness.sourceA}`);
+
+      expect(res.status).toBe(403);
+    });
+
+    it('traceroute:write on sourceA can clear sourceA', async () => {
+      await harness.grant(harness.limited.id, 'traceroute', 'write', harness.sourceA);
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.delete(`/record-holder?sourceId=${harness.sourceA}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('traceroute:write on sourceA does not permit clearing sourceB (403)', async () => {
+      await harness.grant(harness.limited.id, 'traceroute', 'write', harness.sourceA);
       const agent = await harness.loginAs(harness.limited);
       const res = await agent.delete(`/record-holder?sourceId=${harness.sourceB}`);
 
