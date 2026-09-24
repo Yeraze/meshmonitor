@@ -23,12 +23,14 @@ import {
 import { groupReceptionsIntoFixes } from '../../utils/coverage';
 import type { CoverageMetric } from '../../utils/coverage';
 import type { CoverageHopsMode } from '../../types/coverage';
+import { buildReceiverQuery, receiverKey } from '../../utils/coverageReceiverFilter';
 import {
   resolveCoverageWindow,
   type CoverageRangePreset,
   type CoverageWindow,
 } from '../../utils/coverageTimeRange';
 import { CoverageMap } from './CoverageMap';
+import { CoverageReceiverFilter } from './CoverageReceiverFilter';
 import styles from './CoverageReport.module.css';
 
 const RANGE_PRESETS: Array<{ id: Exclude<CoverageRangePreset, 'custom'>; key: string; label: string }> = [
@@ -109,21 +111,38 @@ export const CoverageReport: React.FC = () => {
   }, [sendersQuery.data]);
 
   const receivers = useMemo(() => receiversQuery.data?.receivers ?? [], [receiversQuery.data]);
-  const allReceiverIds = useMemo(() => receivers.map((r) => r.receiverId), [receivers]);
-  const selectedReceiverIds = useMemo(
-    () => allReceiverIds.filter((id) => !deselectedReceiverIds.has(id)),
-    [allReceiverIds, deselectedReceiverIds],
+  const mqttSources = useMemo(() => receiversQuery.data?.mqttSources ?? [], [receiversQuery.data]);
+
+  // Source-scoped receiver filter (#5277 P2 §2.5/§2.9), built from the
+  // composite-keyed `deselectedReceiverIds` set — carry-over (a): the same
+  // receiverId on two different sources toggles independently.
+  const receiverQuery = useMemo(
+    () =>
+      buildReceiverQuery(
+        receivers.map((r) => ({ sourceId: r.sourceId, receiverId: r.receiverId })),
+        deselectedReceiverIds,
+      ),
+    [receivers, deselectedReceiverIds],
   );
-  const noReceiversSelected = allReceiverIds.length > 0 && selectedReceiverIds.length === 0;
-  const allReceiversSelected = selectedReceiverIds.length === allReceiverIds.length;
+  const selectedReceiverKeys = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of receivers) {
+      const key = receiverKey(r.sourceId, r.receiverId);
+      if (!deselectedReceiverIds.has(key)) set.add(key);
+    }
+    return set;
+  }, [receivers, deselectedReceiverIds]);
+  const allReceiversSelected = receivers.length > 0 && selectedReceiverKeys.size === receivers.length;
+  const noReceiversSelected = receivers.length > 0 && receiverQuery.noneSelected;
 
   const receptionsEnabled = !rangeInvalid && !noReceiversSelected;
   const receptionsQuery = useCoverageReceptions(
     {
-      sources: [],
+      sources: receiverQuery.sources ?? [],
       sinceMs,
       untilMs,
-      receiverIds: allReceiversSelected ? undefined : selectedReceiverIds,
+      receiverFilter: receiverQuery.receiverFilter,
+      clientSideFilter: receiverQuery.clientSideFilter ? selectedReceiverKeys : undefined,
       senderId: senderId || undefined,
       hops: hops === '' ? undefined : hops,
       hopsMode,
@@ -142,23 +161,18 @@ export const CoverageReport: React.FC = () => {
   // custom from/to inputs capture "which range the user picked" without the
   // refresh-anchor noise.
   const fitKey = useMemo(() => {
-    const receiversPart = allReceiversSelected ? 'all' : [...selectedReceiverIds].sort().join(',');
+    const receiversPart = allReceiversSelected ? 'all' : [...selectedReceiverKeys].sort().join(',');
     const rangePart = preset === 'custom' ? `custom:${customFrom}:${customTo}` : preset;
     return `${senderId}|${receiversPart}|${hops}|${hopsMode}|${rangePart}`;
-  }, [senderId, selectedReceiverIds, allReceiversSelected, hops, hopsMode, preset, customFrom, customTo]);
+  }, [senderId, selectedReceiverKeys, allReceiversSelected, hops, hopsMode, preset, customFrom, customTo]);
 
   const isLoading = receiversQuery.isLoading || sendersQuery.isLoading || receptionsQuery.isLoading;
   const isEmpty = receptionsEnabled && !isLoading && items.length === 0;
   const retentionDays = receiversQuery.data?.retentionDays;
-
-  const toggleReceiver = (id: string) => {
-    setDeselectedReceiverIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
+  const hasMqttReceivers = useMemo(
+    () => receivers.some((r) => r.receiverKind === 'mqtt_gateway') || mqttSources.length > 0,
+    [receivers, mqttSources],
+  );
 
   const handleRefresh = () => {
     // Re-anchors the window to "now" (a preset window slides forward; a
@@ -294,21 +308,19 @@ export const CoverageReport: React.FC = () => {
           </button>
         </div>
 
-        {receivers.length > 0 && (
-          <div className={styles.receiverList}>
-            <div className={styles.receiverListTitle}>
-              {t('analysis.coverage.receivers', 'Receivers')}
-            </div>
-            {receivers.map((r) => (
-              <label key={`${r.sourceId}-${r.receiverId}`} className={styles.receiverItem}>
-                <input
-                  type="checkbox"
-                  checked={!deselectedReceiverIds.has(r.receiverId)}
-                  onChange={() => toggleReceiver(r.receiverId)}
-                />
-                {r.longName || r.shortName || r.receiverId}
-              </label>
-            ))}
+        <CoverageReceiverFilter
+          receivers={receivers}
+          deselected={deselectedReceiverIds}
+          onChange={setDeselectedReceiverIds}
+          mqttSources={mqttSources}
+        />
+
+        {hasMqttReceivers && (
+          <div className={styles.mqttNote}>
+            {t(
+              'analysis.coverage.mqtt_note',
+              "Gateway receptions come from what each gateway itself reports over MQTT — nodes with \"OK to MQTT\" turned off won't appear.",
+            )}
           </div>
         )}
 
@@ -335,7 +347,7 @@ export const CoverageReport: React.FC = () => {
         <div className="reports-banner reports-banner--warning">
           {t(
             'analysis.coverage.truncated',
-            'Showing the first {{count}} receptions in this window — narrow the time range or filters to see the rest.',
+            'Showing the first {{count}} receptions in this window — narrow the time range or pick a sender to see the rest.',
             { count: items.length },
           )}
         </div>
@@ -352,7 +364,7 @@ export const CoverageReport: React.FC = () => {
           <div className="reports-banner__hint">
             {t(
               'analysis.coverage.empty_hint',
-              'Only live RF receptions recorded since this feature shipped appear here — there is no backfill from before the upgrade. Drive a route with a survey node broadcasting position while your mesh node is running to populate this report.',
+              'Only live RF receptions recorded since this feature shipped appear here — there is no backfill from before the upgrade. Drive a route with a survey node broadcasting position while your mesh node is running to populate this report. MQTT gateway sources only start recording once their per-source Coverage recording toggle is turned on.',
             )}
           </div>
         </div>
