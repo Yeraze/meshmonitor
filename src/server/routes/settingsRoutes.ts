@@ -18,6 +18,8 @@ import { parseDiscardInvalidPositions } from '../../utils/positionIngestConfig.j
 import { parseNoIndexEnabled } from '../../utils/robotsConfig.js';
 import { securityDigestService } from '../services/securityDigestService.js';
 import { invalidatePkiDmGlobalCache } from '../services/sourcePkiKeyStore.js';
+import { invalidateCoverageMqttEnabled } from '../services/coverageMqttSettings.js';
+import { COVERAGE_MQTT_ENABLED_SETTING } from '../../utils/coverage.js';
 import { VALID_SETTINGS_KEYS, GLOBAL_ONLY_SETTINGS_KEYS, stripSecretSettings } from '../constants/settings.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
@@ -976,6 +978,15 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
       // rather than waiting for the source to reconnect.
       if ('meshcoreReceiveOnly' in filteredSettings) {
         callbacks.refreshMeshcoreReceiveOnly?.(sourceId);
+      }
+
+      // Coverage Report MQTT gateway-reception recording (#5277 P2): the
+      // ingest hook reads this flag through a 30s TTL cache
+      // (coverageMqttSettings.ts) so a busy MQTT feed doesn't hit the
+      // settings table per packet — invalidate it here so a scoped save
+      // takes effect immediately rather than waiting out the TTL.
+      if (COVERAGE_MQTT_ENABLED_SETTING in filteredSettings) {
+        invalidateCoverageMqttEnabled(sourceId);
       }
 
       await auditSettingsWrite(req, currentSettings, filteredSettings, sourceId);
