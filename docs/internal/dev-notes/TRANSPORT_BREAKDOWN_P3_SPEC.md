@@ -459,11 +459,19 @@ with a comment naming the service). **Do not** add it to
 `VALID_SETTINGS_KEYS`. Bump the expected size in
 `settings.allowlist.test.ts` ("PER_SOURCE_KEYS_NOT_POSTABLE has the expected size").
 
-**Counter hook (`src/server/meshtasticManager.ts` ~6405, after `txColumn`):**
+**Counter hook (`src/server/meshtasticManager.ts` ~6436, after `txColumn`):**
 ```ts
-// #5101 P3: per-transport RX counter. Same gate as the stamp: a replayed frame
-// (lastHeard undefined) and our own node's packets do not count.
-if (heardSec !== undefined && fromNum !== this.localNodeInfo?.nodeNum) {
+// #5101 P3: per-transport RX counter. Starts from the same gate as the
+// stamp (#4192 6h replay guard + not-our-own-node) but ALSO requires
+// isLiveReception (120s) — see R12: the 6h stamp-refresh threshold alone let
+// firmware 2.8's hourly/reconnect PhoneAPI NodeDB replay (#5034) inflate the
+// counter by dozens per reconnect. Deliberately does not change
+// lastHeard/transportLast* stamping, which keeps the lenient #4192 policy.
+if (
+  heardSec !== undefined &&
+  fromNum !== this.localNodeInfo?.nodeNum &&
+  isLiveReception(meshPacket.rxTime != null ? Number(meshPacket.rxTime) : undefined, Date.now())
+) {
   transportTrafficService.recordRx(
     this.sourceId,
     classifyNodeTransport({ transportMechanism: txMech, viaMqtt: meshPacket.viaMqtt }),
@@ -473,7 +481,12 @@ if (heardSec !== undefined && fromNum !== this.localNodeInfo?.nodeNum) {
 Compute `const heardSec = resolveLastHeardSec(…)` once, and use it for
 `lastHeard`, `[txColumn]` and the gate. Today the code calls it twice with the
 same arguments. Import `classifyNodeTransport` next to
-`transportColumnForPacket`. Use `.js` on the service import.
+`transportColumnForPacket`, and `isLiveReception` next to
+`resolveLastHeardSec` (both from `./utils/replayGuard.js`). Use `.js` on the
+service import. **Post-browser-validation addendum:** `isLiveReception` and
+`LIVE_RECEPTION_WINDOW_SEC` (120s) live in `replayGuard.ts` alongside
+`resolveLastHeardSec` — see R12 for why the counter needs a second, tighter
+gate than the stamp.
 
 ### 3.5 Frontend (WP4, WP5)
 
@@ -750,7 +763,15 @@ browser validation and both restart checks, with screenshots.
 ## 10. Risks
 
 - **R1: stamp vs counter disagree.** Nodes come from DB stamps, packets from the
-  counter. Both sit behind one gate on one line, and a test pins it.
+  counter. Both sit behind one gate on one line, and a test pins it. **Updated
+  post-browser-validation (see R12): the two gates are no longer identical.**
+  Both still exclude a stale replay per the 6h `#4192` threshold and our own
+  node's packets, but the counter additionally requires `isLiveReception`
+  (120s). This is intentional, not a regression: "nodes heard" is a *stamp*,
+  where a firmware-2.8 replay refreshing it early is harmless (the node really
+  is there); "packets RX" is a *counter*, where the same replay would inflate
+  the count by dozens per reconnect. The two series can legitimately disagree
+  on a given bin for exactly this reason — see R12.
 - **R2: firmware double delivery (#4811).** The counter does not use the
   packet-log dedup map, so a packet delivered twice counts twice. It is rare.
   Document it in the service header.
@@ -779,6 +800,33 @@ browser validation and both restart checks, with screenshots.
 - **R11: shutdown hang.** `server.close()` waits for all clients. That is why
   `stop()` begins at the top of `gracefulShutdown`, not inside
   `shutdownDependencies`. The 3 s race plus the 10 s forced exit bound it.
+- **R12: firmware 2.8 PhoneAPI NodeDB replay inflated the packet counter
+  (found in browser/restart validation, fixed same PR).** Firmware 2.8's
+  `PhoneAPI` replays each NodeDB entry's cached position/telemetry as
+  synthetic LoRa packets on every client reconnect and roughly hourly
+  (firmware PR #10413/#11014, issue #5034 — see
+  `src/server/services/packetLogDedup.ts`'s header). The replay is
+  indistinguishable from a fresh reception on every field except `rx_time`,
+  which keeps the packet's ORIGINAL first-heard timestamp. The counter
+  originally reused the `#4192` replay guard (`heardSec !== undefined`,
+  a 6-hour staleness threshold meant for deciding whether to *refresh*
+  `lastHeard`), so any replay of something heard in the last 6h was counted
+  as a brand-new live reception — observed on the dev container as
+  `systemPacketsRxRf` jumping ~70 per reconnect (67 -> 134 across two
+  restarts within seconds). Fixed with a second, much tighter gate:
+  `isLiveReception(rxTimeSec, nowMs)` (`src/server/utils/replayGuard.ts`),
+  true only when `rx_time` is absent/implausible or within
+  `LIVE_RECEPTION_WINDOW_SEC` (120s) of now. `lastHeard`/`transportLast*`
+  stamping is deliberately UNCHANGED — it keeps the lenient 6h `#4192` policy,
+  since a stamp only records "the node exists", where an early refresh from a
+  replay is harmless. Net effect: **"nodes heard" still includes
+  replay-refreshed stamps (inherits the #4192 policy), while "packets RX"
+  excludes replays outright.** The two series measuring the same bin can
+  therefore diverge — e.g. a node quiet for an hour can still show up in
+  `systemNodesHeardRf` (an hourly replay refreshed its stamp) while
+  contributing 0 to `systemPacketsRxRf` for that bin. This is correct, not a
+  bug: "packets RX" answers "how much real RF traffic did we receive", and a
+  replay is not real traffic.
 
 ## 11. Deferred
 

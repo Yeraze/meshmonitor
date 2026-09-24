@@ -73,3 +73,59 @@ export function resolveLastHeardSec(
   const nowSec = Math.floor(nowMs / 1000);
   return isStaleReplayRxTime(rxTimeSec, nowMs / 1000) ? undefined : nowSec;
 }
+
+/**
+ * How far `rx_time` may lag "now" before a packet counting toward a LIVE-
+ * reception metric — currently only the #5101 P3 transport-traffic packet
+ * counter (`transportTrafficService.recordRx`) — is treated as too old to be
+ * a live reception, rather than a replay.
+ *
+ * This is deliberately a much tighter window than {@link STALE_REPLAY_THRESHOLD_SEC}
+ * (6h). That threshold answers "should this refresh `lastHeard`?", where being
+ * lenient is correct — worst case a node's `lastHeard` advances a bit early.
+ * `isLiveReception` answers a stricter question for a COUNTER: "did we just
+ * receive a NEW packet?" Firmware 2.8's PhoneAPI NodeDB replay (#5034) reuses
+ * the packet's ORIGINAL `rx_time` on every replay (hourly, and on every client
+ * reconnect — see `packetLogDedup.ts`), so a naive 6h gate counts every one of
+ * those replays as a fresh reception, inflating `systemPacketsRx*` by dozens
+ * per reconnect (observed: 67 -> 134 packets across two restarts).
+ *
+ * 120s comfortably covers ordinary delivery jitter (MQTT/broker latency,
+ * local processing, the receiving node's own small clock skew — MeshMonitor
+ * time-syncs the local node, so this is not the multi-hour drift
+ * {@link STALE_REPLAY_THRESHOLD_SEC} guards against) while staying two orders
+ * of magnitude below the replay's ~hourly cadence, so a genuine replay of a
+ * packet heard even a few minutes ago is excluded rather than double-counted
+ * (the original live reception already incremented the counter).
+ */
+export const LIVE_RECEPTION_WINDOW_SEC = 120;
+
+/**
+ * True when a packet's `rx_time` marks it as a genuinely live reception, for
+ * counters that must exclude replayed/retained frames entirely — as opposed
+ * to {@link isStaleReplayRxTime}, which decides whether to *refresh* a node's
+ * `lastHeard` stamp (a different, more lenient policy; see #4192 and the file
+ * header above). Do not use this to gate `lastHeard` or `transportLast*`
+ * stamping — that must keep using {@link resolveLastHeardSec}.
+ *
+ * A packet counts as live when:
+ *  - `rx_time` is absent or implausible (< {@link MIN_PLAUSIBLE_UNIX_SEC}) —
+ *    the node has no working clock, so it cannot be a firmware-2.8 replay
+ *    (those always carry the node's real original timestamp); treated as live
+ *    so nodes with unset clocks are not silently excluded from the counter.
+ *  - `rx_time` is within {@link LIVE_RECEPTION_WINDOW_SEC} seconds of now,
+ *    including a small future skew (the receiving node's clock running a
+ *    little ahead of the server's is normal, not a signal of a replay).
+ *
+ * @param rxTimeSec packet `rx_time` in unix seconds (or null/undefined if absent)
+ * @param nowMs current wall-clock time in milliseconds
+ */
+export function isLiveReception(
+  rxTimeSec: number | null | undefined,
+  nowMs: number,
+): boolean {
+  if (typeof rxTimeSec !== 'number' || !Number.isFinite(rxTimeSec)) return true;
+  if (rxTimeSec < MIN_PLAUSIBLE_UNIX_SEC) return true;
+  const nowSec = nowMs / 1000;
+  return nowSec - rxTimeSec <= LIVE_RECEPTION_WINDOW_SEC;
+}

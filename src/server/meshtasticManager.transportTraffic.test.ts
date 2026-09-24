@@ -101,4 +101,39 @@ describe('MeshtasticManager — transport-traffic counter hook (#5101 P3 WP3)', 
     );
     expect(mockRecordRx).not.toHaveBeenCalled();
   });
+
+  describe('firmware 2.8 PhoneAPI NodeDB replay exclusion (#5034 / live-reception fix)', () => {
+    // A replay is indistinguishable from a fresh LoRa reception on every field
+    // except rx_time, which keeps the ORIGINAL first-heard timestamp (#5034).
+    // 30 minutes is well inside the #4192 6h replay-guard threshold (so
+    // `heardSec`/the node stamp are unaffected) but well outside the 120s
+    // live-reception window the counter now uses.
+    const replayShapedRxTime = nowSec - 30 * 60;
+
+    it('does not record the counter for a replay-shaped packet (stable id, LORA, rx_time 30 min old)', async () => {
+      await manager.processMeshPacket(
+        basePacket({ id: 42, transportMechanism: TX_LORA, rxTime: replayShapedRxTime }),
+      );
+      expect(mockRecordRx).not.toHaveBeenCalled();
+    });
+
+    it('still stamps the node\'s lastHeard/transportLastRf for that same replay-shaped packet', async () => {
+      await manager.processMeshPacket(
+        basePacket({ id: 42, transportMechanism: TX_LORA, rxTime: replayShapedRxTime }),
+      );
+      expect(mockUpsertNodeAsync).toHaveBeenCalled();
+      const call = mockUpsertNodeAsync.mock.calls[mockUpsertNodeAsync.mock.calls.length - 1];
+      // stamped with "now" (not the replay's 30-min-old rx_time) — close, not
+      // exact, since resolveLastHeardSec reads a fresh Date.now() internally.
+      expect(call[0].lastHeard).toBeCloseTo(nowSec, -1);
+      expect(call[0].transportLastRf).toBeCloseTo(nowSec, -1);
+    });
+
+    it('still records a genuinely fresh packet on the same node', async () => {
+      await manager.processMeshPacket(
+        basePacket({ id: 43, transportMechanism: TX_LORA, rxTime: freshRxTime }),
+      );
+      expect(mockRecordRx).toHaveBeenCalledWith(manager.sourceId, 'rf');
+    });
+  });
 });
