@@ -152,6 +152,9 @@ describe('TransportTrafficService — timers', () => {
   it('the checkpoint fires every 30s and writes only dirty current bins', async () => {
     const h = makeHarness();
     await h.service.start();
+    // start() itself writes one "bin opened" checkpoint (R13) — isolate the
+    // 30s dirty-only cadence this test is actually about.
+    h.setSourceSetting.mockClear();
     h.service.recordRx('src-a', 'rf');
 
     await vi.advanceTimersByTimeAsync(TRANSPORT_CHECKPOINT_INTERVAL_MS);
@@ -178,10 +181,13 @@ describe('TransportTrafficService — timers', () => {
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('identity unknown'));
   });
 
-  it('stays silent when idle (no dirty bins at all)', async () => {
+  it('checkpoints an idle connected source once at bin-open (R13), then stays silent for the dirty-only cadence', async () => {
     const h = makeHarness();
     await h.service.start();
+    // The one-time "bin opened" checkpoint (R13) — not the dirty-only cadence.
+    expect(h.setSourceSetting).toHaveBeenCalledTimes(1);
 
+    h.setSourceSetting.mockClear();
     await vi.advanceTimersByTimeAsync(TRANSPORT_CHECKPOINT_INTERVAL_MS * 3);
     expect(h.setSourceSetting).not.toHaveBeenCalled();
   });
@@ -261,6 +267,63 @@ describe('TransportTrafficService — recovery', () => {
 
     expect(h.insertTelemetryAsync).not.toHaveBeenCalled();
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('unreadable'));
+  });
+});
+
+describe('TransportTrafficService — R13: "bin opened" is itself a checkpoint event', () => {
+  it('an idle source across a simulated crash at a boundary gets its closed bin recovered with zero packets + nodes-heard', async () => {
+    // First boot: a connected, known-identity source that never sees a
+    // single packet. Before R13 this left NO checkpoint for the bin it was
+    // idle through, because dirty-only checkpointAll() never fires for it.
+    const manager = makeManager();
+    const h = makeHarness({ managers: [manager] });
+    await h.service.start();
+    expect(h.setSourceSetting).toHaveBeenCalledTimes(1); // the bin-open event
+    const persistedAtBinOpen = h.setSourceSetting.mock.calls[0][2] as string;
+
+    // "Crash at a boundary": docker kill lands right as the bin closes —
+    // the process never got a chance to open (or checkpoint) the next bin.
+    vi.setSystemTime(T0 + BIN);
+
+    // "Restart": a fresh instance sees only the checkpoint from bin-open,
+    // still pointing at the now-closed bin [T0, T0+BIN).
+    const h2 = makeHarness({
+      managers: [makeManager({ connected: false, identity: null })], // no manager reconnected yet (R10)
+      checkpoints: new Map([['src-a', persistedAtBinOpen]]),
+      nodesHeard: { rf: 48, udp: 0, mqtt: 0 }, // real DB stamps — the node WAS heard, just never sent traffic through this source
+    });
+    await h2.service.start();
+
+    expect(h2.countNodesHeardByTransport).toHaveBeenCalledWith(
+      'src-a',
+      Math.floor(T0 / 1000),
+      Math.floor((T0 + BIN) / 1000),
+      1,
+    );
+    const rows = rowsByType(h2.insertTelemetryAsync);
+    expect(rows.get(TRANSPORT_SERIES_TYPES.packetsRx.rf)).toBe(0);
+    expect(rows.get(TRANSPORT_SERIES_TYPES.packetsRx.udp)).toBe(0);
+    expect(rows.get(TRANSPORT_SERIES_TYPES.packetsRx.mqtt)).toBe(0);
+    expect(rows.get(TRANSPORT_SERIES_TYPES.nodesHeard.rf)).toBe(48); // no longer a hole
+  });
+
+  it('checkpoints an idle source exactly once per bin across a rollover (start + flush), never on the 30s cadence', async () => {
+    const h = makeHarness();
+    await h.service.start();
+    expect(h.setSourceSetting).toHaveBeenCalledTimes(1); // bin-open at start()
+
+    // Well within the bin, completely idle: no extra 30s-cadence writes.
+    await vi.advanceTimersByTimeAsync(TRANSPORT_CHECKPOINT_INTERVAL_MS * 5);
+    expect(h.setSourceSetting).toHaveBeenCalledTimes(1);
+
+    // Cross the boundary (flush fires): exactly one more write, the NEW
+    // bin's bin-open event — not a second write of the just-closed bin.
+    await vi.advanceTimersByTimeAsync(BIN + 2_000 - TRANSPORT_CHECKPOINT_INTERVAL_MS * 5);
+    expect(h.setSourceSetting).toHaveBeenCalledTimes(2);
+
+    // Idle through the new bin too: still no 30s-cadence writes.
+    await vi.advanceTimersByTimeAsync(TRANSPORT_CHECKPOINT_INTERVAL_MS * 5);
+    expect(h.setSourceSetting).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -390,6 +453,8 @@ describe('TransportTrafficService — stop', () => {
     const h = makeHarness();
     const flushSpy = vi.spyOn(h.service, 'flush');
     await h.service.start();
+    // Isolate stop()'s own checkpoint from start()'s "bin opened" one (R13).
+    h.setSourceSetting.mockClear();
     h.service.recordRx('src-a', 'rf');
 
     await h.service.stop();
@@ -416,6 +481,9 @@ describe('TransportTrafficService — checkpoint crash-loss bound', () => {
   it('counts recorded after the last checkpoint are lost; earlier ones survive a simulated restart', async () => {
     const h = makeHarness();
     await h.service.start();
+    // Isolate the dirty-write checkpoint below from start()'s "bin opened"
+    // one (R13) so `mock.calls[0]` below is the rf=2 checkpoint, not it.
+    h.setSourceSetting.mockClear();
 
     h.service.recordRx('src-a', 'rf');
     h.service.recordRx('src-a', 'rf');

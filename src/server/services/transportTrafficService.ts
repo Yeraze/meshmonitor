@@ -13,7 +13,7 @@
  *
  * See `docs/internal/dev-notes/TRANSPORT_BREAKDOWN_P3_SPEC.md` §3.4 for the
  * full design this file implements (restore/recovery, the two independent
- * timers, invariant I1, and the risk log — R1-R11).
+ * timers, invariant I1, and the risk log — R1-R13).
  *
  * Invariant I1: a bin's telemetry rows are NEVER written before the bin
  * closes. The 032 unique index (sourceId, nodeNum, packetId, telemetryType)
@@ -24,6 +24,21 @@
  * R6 (documented): the synthetic `packetId` (`transportBinIndex`) is not
  * joined to `packet_log` — nothing else reads `telemetry.packetId` for
  * `system*` types, and the unique tuple already includes `telemetryType`.
+ *
+ * R13 (found in restart validation, fixed): "bin opened" is itself a
+ * checkpoint event, independent of `dirty`. An idle source's bin never goes
+ * dirty, so the original dirty-only 30s cadence never checkpointed it — its
+ * persisted checkpoint kept pointing at whatever bin it was last dirty in,
+ * possibly several bins ago. A crash landed between then and the idle bin's
+ * boundary left NO checkpoint at all for that closed bin, so `start()`'s
+ * recovery had nothing to recover from: a hole in both series for that bin,
+ * even though its nodes-heard count (from DB stamps, independent of the
+ * counter) was real. `writeBinOpenedCheckpoint` (called once per source at
+ * `start()` and once per source at each `flush()` rollover — see below) now
+ * persists a checkpoint the moment a new bin opens for a source whose
+ * identity is known, using whatever counts already exist (0 for a genuinely
+ * idle source). The existing dirty-only 30s cadence inside a bin is
+ * unchanged — this adds one upsert per source per 5-minute bin, not per 30s.
  */
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
@@ -128,6 +143,17 @@ export class TransportTrafficService {
     } catch (error) {
       logger.warn('transportTrafficService.start: restore/recovery failed, continuing without it:', error);
     }
+    try {
+      // R13: cover a known-identity source that restoreAndRecover() did not
+      // already seed a fresh `cur` checkpoint for (no prior checkpoint at
+      // all, but its manager already happens to be connected). In
+      // production start() runs before bootstrapSources connects anything
+      // (R10), so this is normally a no-op there; the recovery branch
+      // inside restoreAndRecover() is what covers the real-world case.
+      await this.ensureCurrentBinCheckpoints();
+    } catch (error) {
+      logger.warn('transportTrafficService.start: bin-open checkpoint pass failed, continuing:', error);
+    }
     this.armFlushTimer();
     this.armCheckpointTimer();
   }
@@ -165,16 +191,25 @@ export class TransportTrafficService {
         // come from the checkpoint; nodes heard are exact, since no packet
         // has arrived since shutdown so no stamp in this window has moved.
         const binEndMs = cp.binStartMs + TRANSPORT_SERIES_BIN_MS;
-        if (this.now() - binEndMs > RECOVERY_MAX_AGE_MS) continue;
-        try {
-          await this.writeBin(sourceId, binEndMs, {
-            nodeId: cp.nodeId,
-            nodeNum: cp.nodeNum,
-            packetsRx: { rf: cp.rf, udp: cp.udp, mqtt: cp.mqtt },
-          });
-        } catch (error) {
-          logger.warn(`transportTrafficService: recovery write failed for source ${sourceId}:`, error);
+        if (this.now() - binEndMs <= RECOVERY_MAX_AGE_MS) {
+          try {
+            await this.writeBin(sourceId, binEndMs, {
+              nodeId: cp.nodeId,
+              nodeNum: cp.nodeNum,
+              packetsRx: { rf: cp.rf, udp: cp.udp, mqtt: cp.mqtt },
+            });
+          } catch (error) {
+            logger.warn(`transportTrafficService: recovery write failed for source ${sourceId}:`, error);
+          }
         }
+        // R13: whether or not the closed bin's rows were recovered above
+        // (the 7-day skip only excuses the WRITE, not this), the bin that is
+        // current NOW needs its own "bin opened" checkpoint right away —
+        // this source's identity is known (it's in the checkpoint we just
+        // read) even though no manager has connected yet (R10). Without
+        // this, a source that stays idle through the whole new bin leaves
+        // the exact same hole on the NEXT restart that this fix closes now.
+        await this.writeBinOpenedCheckpoint(sourceId, cur, cp.nodeId, cp.nodeNum);
       } else {
         // cp.binStartMs > cur: the clock went backwards. Discard.
         logger.warn(`transportTrafficService: checkpoint for source ${sourceId} is in the future — clock went backwards? Discarding.`);
@@ -251,11 +286,22 @@ export class TransportTrafficService {
             ? { rf: bin.rf, udp: bin.udp, mqtt: bin.mqtt }
             : emptyCounts();
 
-          await this.writeBin(sourceId, binEndMs, {
-            nodeId: identity.nodeId,
-            nodeNum: identity.nodeNum,
-            packetsRx,
-          });
+          try {
+            await this.writeBin(sourceId, binEndMs, {
+              nodeId: identity.nodeId,
+              nodeNum: identity.nodeNum,
+              packetsRx,
+            });
+          } catch (error) {
+            logger.warn(`transportTrafficService: flush failed for source ${sourceId}:`, error);
+          }
+
+          // R13: the bin that just opened (`binEndMs`) gets its own
+          // checkpoint right away, independent of whether it ever goes
+          // dirty. Runs even when the write above failed — continuity for
+          // the NEW bin does not depend on whether the just-closed bin's
+          // telemetry made it.
+          await this.writeBinOpenedCheckpoint(sourceId, binEndMs, identity.nodeId, identity.nodeNum);
         } catch (error) {
           // One source's failure must never block another's flush.
           logger.warn(`transportTrafficService: flush failed for source ${sourceId}:`, error);
@@ -300,8 +346,10 @@ export class TransportTrafficService {
   /**
    * Checkpoint every source's current bin that is `dirty`. Public for tests.
    * At most one settings upsert per source per call, and none on an idle
-   * source. Errors per source are caught and logged; one source's DB failure
-   * never blocks another's checkpoint.
+   * source (an idle source's own "bin opened" checkpoint — see
+   * `writeBinOpenedCheckpoint` — already covers it once per bin; R13). Errors
+   * per source are caught and logged; one source's DB failure never blocks
+   * another's checkpoint.
    */
   async checkpointAll(): Promise<void> {
     const cur = binStartOf(this.now());
@@ -323,21 +371,78 @@ export class TransportTrafficService {
         continue;
       }
 
-      try {
-        const encoded = encodeTransportCheckpoint({
-          v: CHECKPOINT_VERSION,
-          binStartMs: cur,
-          nodeId: bin.nodeId,
-          nodeNum: bin.nodeNum,
-          rf: bin.rf,
-          udp: bin.udp,
-          mqtt: bin.mqtt,
-        });
-        await this.deps.db.settings.setSourceSetting(sourceId, TRANSPORT_CHECKPOINT_SETTING_KEY, encoded);
-        bin.dirty = false;
-      } catch (error) {
-        logger.warn(`transportTrafficService: checkpoint failed for source ${sourceId}:`, error);
-      }
+      await this.persistCheckpoint(sourceId, bin);
+    }
+  }
+
+  /**
+   * Encode and persist `bin` as `sourceId`'s checkpoint, then clear `dirty`.
+   * Shared by the dirty-only 30s cadence (`checkpointAll`, above) and the
+   * "bin opened" event (`writeBinOpenedCheckpoint`, below — R13). Assumes
+   * the caller has already ensured `bin.nodeId`/`bin.nodeNum` are set.
+   * Self-contained: catches and logs its own errors, never throws, so
+   * callers never need their own try/catch around it.
+   */
+  private async persistCheckpoint(sourceId: string, bin: BinState): Promise<void> {
+    if (bin.nodeId === null || bin.nodeNum === null) return;
+    try {
+      const encoded = encodeTransportCheckpoint({
+        v: CHECKPOINT_VERSION,
+        binStartMs: bin.binStartMs,
+        nodeId: bin.nodeId,
+        nodeNum: bin.nodeNum,
+        rf: bin.rf,
+        udp: bin.udp,
+        mqtt: bin.mqtt,
+      });
+      await this.deps.db.settings.setSourceSetting(sourceId, TRANSPORT_CHECKPOINT_SETTING_KEY, encoded);
+      bin.dirty = false;
+    } catch (error) {
+      logger.warn(`transportTrafficService: checkpoint failed for source ${sourceId}:`, error);
+    }
+  }
+
+  /**
+   * R13: persist a checkpoint for `binStartMs` the moment it opens for
+   * `sourceId`, independent of `dirty`. Writes whatever counts already exist
+   * for that bin — 0 for a source that is genuinely idle, or
+   * already-accumulated counts if a packet raced in between the boundary and
+   * this call (see the flush() post-boundary-packet test). Called at most
+   * once per source per bin: once at `start()` (via `ensureCurrentBinCheckpoints`
+   * or the recovery branch of `restoreAndRecover`) and once per source at
+   * each `flush()` rollover — never on the dirty-only 30s tick.
+   */
+  private async writeBinOpenedCheckpoint(
+    sourceId: string,
+    binStartMs: number,
+    nodeId: string,
+    nodeNum: number,
+  ): Promise<void> {
+    const bin = this.getOrCreateBin(sourceId, binStartMs);
+    if (bin.nodeId === null) {
+      bin.nodeId = nodeId;
+      bin.nodeNum = nodeNum;
+    }
+    await this.persistCheckpoint(sourceId, bin);
+  }
+
+  /**
+   * R13, start()-time half: for every Meshtastic TCP manager whose identity
+   * is already known but whose current bin was not already seeded by
+   * `restoreAndRecover()` (no prior checkpoint at all), open and checkpoint
+   * its current bin now. In real deployments `start()` runs before
+   * `bootstrapSources` connects anything (R10), so this is ordinarily a
+   * no-op there; it exists so the guarantee holds regardless of connection
+   * order (and is exercised directly in tests).
+   */
+  private async ensureCurrentBinCheckpoints(): Promise<void> {
+    const cur = binStartOf(this.now());
+    for (const manager of this.deps.getManagers().filter(isMeshtasticManager)) {
+      const info = manager.getLocalNodeInfo();
+      if (!info) continue;
+      const bin = this.bins.get(manager.sourceId)?.get(cur);
+      if (bin && bin.nodeId !== null) continue; // already seeded (restore, or an earlier pass this call)
+      await this.writeBinOpenedCheckpoint(manager.sourceId, cur, info.nodeId, info.nodeNum);
     }
   }
 

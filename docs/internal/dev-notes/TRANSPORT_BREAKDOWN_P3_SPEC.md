@@ -401,7 +401,42 @@ fill identity from the manager if missing. Skip the bin if identity is still
 unknown, since recovery could not key the rows. Then call
 `db.settings.setSourceSetting(sourceId, KEY, encodeTransportCheckpoint(…))`
 and clear `dirty`. That is at most one upsert per source per 30 s, and none
-on an idle source. Errors per source are caught and logged at `warn`.
+on an idle source **within a bin already checkpointed for that bin** — see
+R13 below: a bin's *first* checkpoint no longer depends on `dirty` at all.
+Errors per source are caught and logged at `warn`.
+
+**"Bin opened" checkpoint event (R13, found in restart validation).** A
+source that is idle for an entire bin never sets `dirty`, so the 30 s cadence
+above never checkpoints it — its persisted checkpoint keeps pointing at
+whatever bin it was last dirty in, possibly several bins ago. A crash landed
+between then and the idle bin's boundary left **no checkpoint for that closed
+bin at all**, so `start()`'s recovery had nothing to key off — a hole in both
+series for that bin, even though nodes-heard (from DB stamps, independent of
+the counter) was real. Fix: treat "a new bin opened for a source whose
+identity is known" as a checkpoint event in its own right, via a shared
+`writeBinOpenedCheckpoint(sourceId, binStartMs, nodeId, nodeNum)`: get-or-
+create the `BinState`, persist whatever counts already exist (0 for a
+genuinely idle source, or already-accumulated counts if a packet raced in
+between a boundary and this call), and clear `dirty` — reusing the exact same
+persist path as the 30 s cadence, just called unconditionally instead of only
+when dirty. Called from two places, both "at most once per source per bin":
+- **`start()`**, after restore/recovery: inside `restoreAndRecover`'s recovery
+  branch (`cp.binStartMs < cur`), right after attempting to write the closed
+  bin (regardless of whether that write was skipped by the 7-day guard or
+  itself failed) — the checkpoint's own identity is enough, no live manager
+  needed (R10 means none is connected yet in production at this point). A
+  second pass, `ensureCurrentBinCheckpoints()`, covers a known-identity
+  manager that restore didn't already seed a fresh `cur` bin for (no prior
+  checkpoint at all) — ordinarily a no-op in production given R10, but keeps
+  the guarantee order-independent and is exercised directly in tests.
+- **`flush()`**, right after writing the just-closed bin for each
+  known-identity source (see below) — opens/checkpoints the bin that just
+  became current, using the exact identity already resolved for the closed
+  bin's write.
+
+Cost: one extra settings upsert per source per 5-minute bin, on top of the
+existing "at most one per 30 s while dirty" cadence — the 30 s cadence itself
+is unchanged.
 
 **Crash loss bound.** A hard kill (SIGKILL, power loss, OOM) loses at most
 the **packet counts from the last 30 s** of the bin in progress. That bin is
@@ -425,6 +460,9 @@ the alignment. `flush(binEndMs)`, with `binStartMs = binEndMs - BIN`:
     packets. A quiet bin on a live link is a real zero.
   - insert each row from `buildTransportSeriesRows` via `db.insertTelemetryAsync(row, sourceId)`.
   - errors per source are caught and logged at `warn`. One source never blocks another.
+  - **R13:** then call `writeBinOpenedCheckpoint(sourceId, binEndMs, identity.nodeId,
+    identity.nodeNum)` for the bin that just became current — even when the
+    write above failed. This is what closes the idle-source recovery hole.
 - Drop `BinState`s older than the new current bin. The checkpoint row is
   **not** deleted: it is overwritten by the next bin's first checkpoint, and a
   stale one is harmless (recovery would re-insert an existing bin, a no-op).
@@ -827,6 +865,20 @@ browser validation and both restart checks, with screenshots.
   contributing 0 to `systemPacketsRxRf` for that bin. This is correct, not a
   bug: "packets RX" answers "how much real RF traffic did we receive", and a
   replay is not real traffic.
+- **R13: idle-source recovery hole (found in restart validation, fixed same
+  PR).** `docker kill -s KILL` at 14:59:32, restart at 15:00:32. Source e887
+  had 2 packets in the 14:55 bin (dirty) and recovered correctly. Source c9dd
+  had zero packets in that bin — its checkpoint was never rewritten for the
+  new bin (the dirty-only 30 s cadence never fires for an idle source), so it
+  still pointed at the already-flushed 14:50 bin. `start()`'s recovery had no
+  checkpoint to key the 14:55 bin off, so it wrote nothing: a hole in both
+  charts for c9dd for that bin, even though its nodes-heard (from DB stamps)
+  would have been 48. Fixed by making "a new bin opened for a source with a
+  known identity" a checkpoint event in its own right, independent of
+  `dirty` — see `writeBinOpenedCheckpoint` in §3.4. Cost: one extra settings
+  upsert per source per 5-minute bin. The dirty-only 30 s cadence, the 7-day
+  recovery-age guard, and invariant I1 (never write a bin's telemetry rows
+  before it closes) are all unchanged.
 
 ## 11. Deferred
 
