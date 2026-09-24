@@ -25,11 +25,6 @@
  * there). The MQTT status block labels a MeshCore observer source "Observer
  * recording" instead of "Recording" when it's on.
  *
- * `mqttSources` entries are typed against the WP2 DTO, which is gaining a
- * `protocol` field in a parallel work package (spec §4) — until that lands,
- * a missing field reads as `'meshtastic'` via the local `sourceProtocol`
- * helper below, so this component builds and behaves correctly either way.
- *
  * Pure grouping/search/sort logic lives in
  * `src/utils/coverageReceiverGroups.ts` (react-refresh/only-export-components
  * keeps this file component-only). Selection state (`deselected`, a Set of
@@ -52,18 +47,8 @@ import {
   type ReceiverGroup,
   type GroupSelectionState,
 } from '../../utils/coverageReceiverGroups';
-import type { CoverageReceiverDto, CoverageMqttSourceStatusDto, CoverageProtocol } from '../../types/coverage';
+import type { CoverageReceiverDto, CoverageMqttSourceStatusDto } from '../../types/coverage';
 import styles from './CoverageReceiverFilter.module.css';
-
-/**
- * `CoverageMqttSourceStatusDto` gains `protocol` in WP2 (parallel work
- * package, spec §4). Read it defensively so this component compiles and
- * behaves against both the pre- and post-WP2-merge shape; a source with no
- * `protocol` at all is a Meshtastic MQTT source (P2's only kind before P3).
- */
-function sourceProtocol(s: CoverageMqttSourceStatusDto): CoverageProtocol {
-  return (s as CoverageMqttSourceStatusDto & { protocol?: CoverageProtocol }).protocol ?? 'meshtastic';
-}
 
 interface CoverageReceiverFilterProps {
   receivers: CoverageReceiverDto[];
@@ -171,7 +156,7 @@ export const CoverageReceiverFilter: React.FC<CoverageReceiverFilterProps> = ({
               <span className={styles.mqttSourceName}>{s.sourceName}</span>
               <span className={s.recordingEnabled ? styles.badgeOn : styles.badgeOff}>
                 {s.recordingEnabled
-                  ? sourceProtocol(s) === 'meshcore'
+                  ? s.protocol === 'meshcore'
                     ? t('analysis.coverage.observer_recording', 'Observer recording')
                     : t('analysis.coverage.mqtt_recording', 'Recording')
                   : t('analysis.coverage.mqtt_off', 'Off')}
