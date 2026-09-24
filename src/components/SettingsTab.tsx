@@ -2598,7 +2598,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           )}
         </div>}
 
-        {show('settings-coverage-mqtt') && isMqttOnlySourceType(sourceType) && purgeSourceId && (
+        {show('settings-coverage-mqtt') && canWriteSettings && isMqttOnlySourceType(sourceType) && purgeSourceId && (
           <CoverageMqttRecordingSection baseUrl={baseUrl} sourceId={purgeSourceId} canWrite={canWriteSettings} />
         )}
 
