@@ -10,6 +10,7 @@ import { DatabaseType, DbNode } from '../types.js';
 import { logger } from '../../utils/logger.js';
 import { isValidNodeNum } from '../../server/constants/meshtastic.js';
 import { isBlankMacAddr } from '../../utils/nodeFieldBlanks.js';
+import type { TransportCounts } from '../../utils/transportSeries.js';
 
 /**
  * Hook for keeping an external in-memory node cache coherent with PG/MySQL writes.
@@ -391,6 +392,51 @@ export class NodesRepository extends BaseRepository {
     const result = await this.db.select({ count: count() }).from(nodes)
       .where(this.withSourceScope(nodes, sourceId));
     return Number(result[0].count);
+  }
+
+  /**
+   * Distinct nodes whose per-transport "last heard" stamp (#4240, mig 126) falls
+   * in `(fromSec, toSec]`. Additive: a node heard over two transports in the
+   * same window counts in both (#5101 P3 D3). Excludes `excludeNodeNum` (the
+   * local node) when given. NULL stamps never count.
+   *
+   * One Drizzle `select` with three `SUM(CASE WHEN … THEN 1 ELSE 0 END)`
+   * expressions, one per transport column, rather than three separate
+   * queries. Coerce each result with `Number(… ?? 0)`: PostgreSQL returns
+   * NUMERIC/BIGINT aggregates as strings and MySQL as decimals; the stamp
+   * columns themselves are BIGINT on PG/MySQL. `sourceId` is required (see
+   * `withSourceScope`).
+   */
+  async countNodesHeardByTransport(
+    sourceId: SourceScope,
+    fromSec: number,
+    toSec: number,
+    excludeNodeNum?: number,
+  ): Promise<TransportCounts> {
+    const { nodes } = this.tables;
+    const inWindow = (col: any) =>
+      sql<string | number>`SUM(CASE WHEN ${col} > ${fromSec} AND ${col} <= ${toSec} THEN 1 ELSE 0 END)`;
+
+    const conditions = [this.withSourceScope(nodes, sourceId)];
+    if (excludeNodeNum !== undefined) {
+      conditions.push(ne(nodes.nodeNum, excludeNodeNum));
+    }
+
+    const result = await this.db
+      .select({
+        rf: inWindow(nodes.transportLastRf),
+        udp: inWindow(nodes.transportLastUdp),
+        mqtt: inWindow(nodes.transportLastMqtt),
+      })
+      .from(nodes)
+      .where(and(...conditions.filter((c: unknown) => c !== undefined)));
+
+    const row = result[0] ?? {};
+    return {
+      rf: Number(row.rf ?? 0),
+      udp: Number(row.udp ?? 0),
+      mqtt: Number(row.mqtt ?? 0),
+    };
   }
 
   /**

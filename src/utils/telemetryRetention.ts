@@ -37,6 +37,33 @@ export const FAVORITE_STORAGE_DAYS_MAX = 90;
 /** Fallback when nothing valid is configured anywhere. */
 export const FAVORITE_STORAGE_DAYS_DEFAULT = 7;
 
+/**
+ * Favorites that name a derived chart, not a stored telemetry type (#5101 P3
+ * D7). Nothing is ever stored under `transportNodesHeard`, `transportPacketsRx`,
+ * `packetRateRx` or `packetRateTx` — those are pseudo-types the Dashboard/Info
+ * charts key a *combined* card off of. Before this expansion, favoriting one
+ * of these literal strings matched no real row, so `buildFavoriteRetentions`
+ * protected nothing and the component rows (e.g. `numPacketsRx`,
+ * `systemNodesHeardRf`) were purged at the plain 7-day window regardless of
+ * what the user configured.
+ *
+ * String literals, not imports, so this module stays dependency-free (see the
+ * file header — it must be unit-testable without a database or React tree).
+ * `telemetryRetention.test.ts` pins these literals to the real exported
+ * constants in `src/utils/transportSeries.ts` and `src/components/PacketRateGraphs.tsx`.
+ */
+const FAVORITE_COMPONENT_TYPES: Record<string, readonly string[]> = {
+  transportNodesHeard: ['systemNodesHeardRf', 'systemNodesHeardUdp', 'systemNodesHeardMqtt'],
+  transportPacketsRx: ['systemPacketsRxRf', 'systemPacketsRxUdp', 'systemPacketsRxMqtt'],
+  packetRateRx: ['numPacketsRx', 'numPacketsRxBad', 'numRxDupe'],
+  packetRateTx: ['numPacketsTx', 'numTxDropped', 'numTxRelay', 'numTxRelayCanceled'],
+};
+
+/** A pseudo favorite type expands to its component types; anything else is just itself. */
+function expandFavoriteType(telemetryType: string): readonly string[] {
+  return FAVORITE_COMPONENT_TYPES[telemetryType] ?? [telemetryType];
+}
+
 function clampStorageDays(raw: string | undefined, fallback: number): number {
   const parsed = parseInt(raw ?? '', 10);
   if (!Number.isFinite(parsed)) return fallback;
@@ -106,11 +133,13 @@ export function buildFavoriteRetentions(
   // Legacy / pre-4.x global favorites list. Carries no sourceId, so it protects
   // the matching (nodeId, telemetryType) rows on every source.
   for (const f of parseFavorites(allSettings[FAVORITES_KEY], 'global')) {
-    retentions.push({
-      nodeId: f.nodeId,
-      telemetryType: f.telemetryType,
-      cutoffTimestamp: now - globalDays * DAY_MS,
-    });
+    for (const telemetryType of expandFavoriteType(f.telemetryType)) {
+      retentions.push({
+        nodeId: f.nodeId,
+        telemetryType,
+        cutoffTimestamp: now - globalDays * DAY_MS,
+      });
+    }
   }
 
   // Per-source favorites (#5080) — where every 4.x Dashboard actually writes.
@@ -122,12 +151,14 @@ export function buildFavoriteRetentions(
       globalDays
     );
     for (const f of parseFavorites(value, `source ${sourceId}`)) {
-      retentions.push({
-        sourceId,
-        nodeId: f.nodeId,
-        telemetryType: f.telemetryType,
-        cutoffTimestamp: now - days * DAY_MS,
-      });
+      for (const telemetryType of expandFavoriteType(f.telemetryType)) {
+        retentions.push({
+          sourceId,
+          nodeId: f.nodeId,
+          telemetryType,
+          cutoffTimestamp: now - days * DAY_MS,
+        });
+      }
     }
   }
 

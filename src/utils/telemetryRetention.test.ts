@@ -5,6 +5,12 @@ import {
   FAVORITE_STORAGE_DAYS_MIN,
   FAVORITE_STORAGE_DAYS_MAX,
 } from './telemetryRetention';
+import {
+  TRANSPORT_NODES_HEARD_TYPE,
+  TRANSPORT_PACKETS_RX_TYPE,
+  TRANSPORT_SERIES_TYPES,
+} from './transportSeries';
+import { PACKET_RATE_RX_TYPE, PACKET_RATE_TX_TYPE } from '../components/PacketRateGraphs';
 
 const NOW = 1_700_000_000_000;
 const DAY = 24 * 60 * 60 * 1000;
@@ -151,5 +157,101 @@ describe('buildFavoriteRetentions (#5080)', () => {
         7
       )
     ).toEqual([]);
+  });
+});
+
+describe('buildFavoriteRetentions — pseudo favorite expansion (#5101 P3 D7)', () => {
+  it('expands a per-source transportNodesHeard favorite into its 3 component types', () => {
+    const retentions = buildFavoriteRetentions(
+      {
+        'source:src-a:telemetryFavorites': favJson('!aabbccdd', TRANSPORT_NODES_HEARD_TYPE),
+        'source:src-a:favoriteTelemetryStorageDays': '90',
+      },
+      NOW,
+      7
+    );
+
+    expect(retentions).toHaveLength(3);
+    const types = retentions.map((r) => r.telemetryType).sort();
+    expect(types).toEqual(
+      [
+        TRANSPORT_SERIES_TYPES.nodesHeard.rf,
+        TRANSPORT_SERIES_TYPES.nodesHeard.udp,
+        TRANSPORT_SERIES_TYPES.nodesHeard.mqtt,
+      ].sort()
+    );
+    for (const r of retentions) {
+      expect(r.sourceId).toBe('src-a');
+      expect(r.nodeId).toBe('!aabbccdd');
+      expect(r.cutoffTimestamp).toBe(NOW - 90 * DAY);
+    }
+  });
+
+  it('expands a per-source transportPacketsRx favorite into its 3 component types', () => {
+    const retentions = buildFavoriteRetentions(
+      { 'source:src-a:telemetryFavorites': favJson('!aabbccdd', TRANSPORT_PACKETS_RX_TYPE) },
+      NOW,
+      7
+    );
+    const types = retentions.map((r) => r.telemetryType).sort();
+    expect(types).toEqual(
+      [
+        TRANSPORT_SERIES_TYPES.packetsRx.rf,
+        TRANSPORT_SERIES_TYPES.packetsRx.udp,
+        TRANSPORT_SERIES_TYPES.packetsRx.mqtt,
+      ].sort()
+    );
+  });
+
+  it('expands the existing packetRateRx favorite into its component types (fixes the long-standing 7-day purge bug)', () => {
+    const retentions = buildFavoriteRetentions(
+      {
+        'source:src-a:telemetryFavorites': favJson('!aabbccdd', PACKET_RATE_RX_TYPE),
+        'source:src-a:favoriteTelemetryStorageDays': '60',
+      },
+      NOW,
+      7
+    );
+    const types = retentions.map((r) => r.telemetryType).sort();
+    expect(types).toEqual(['numPacketsRx', 'numPacketsRxBad', 'numRxDupe'].sort());
+    for (const r of retentions) {
+      expect(r.cutoffTimestamp).toBe(NOW - 60 * DAY);
+    }
+  });
+
+  it('expands the existing packetRateTx favorite into its component types', () => {
+    const retentions = buildFavoriteRetentions(
+      { 'source:src-a:telemetryFavorites': favJson('!aabbccdd', PACKET_RATE_TX_TYPE) },
+      NOW,
+      7
+    );
+    const types = retentions.map((r) => r.telemetryType).sort();
+    expect(types).toEqual(['numPacketsTx', 'numTxDropped', 'numTxRelay', 'numTxRelayCanceled'].sort());
+  });
+
+  it('expands a legacy global pseudo-favorite the same way as a per-source one', () => {
+    const retentions = buildFavoriteRetentions(
+      {
+        telemetryFavorites: favJson('!aabbccdd', TRANSPORT_NODES_HEARD_TYPE),
+        favoriteTelemetryStorageDays: '45',
+      },
+      NOW,
+      7
+    );
+    expect(retentions).toHaveLength(3);
+    for (const r of retentions) {
+      expect(r.sourceId).toBeUndefined();
+      expect(r.cutoffTimestamp).toBe(NOW - 45 * DAY);
+    }
+  });
+
+  it('leaves an ordinary (non-pseudo) favorite type unexpanded', () => {
+    const retentions = buildFavoriteRetentions(
+      { 'source:src-a:telemetryFavorites': favJson('!aabbccdd', 'batteryLevel') },
+      NOW,
+      7
+    );
+    expect(retentions).toHaveLength(1);
+    expect(retentions[0].telemetryType).toBe('batteryLevel');
   });
 });
