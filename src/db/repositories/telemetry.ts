@@ -728,6 +728,16 @@ export class TelemetryRepository extends BaseRepository {
     return raw === null || raw === undefined ? null : Number(raw);
   }
 
+  /** Distinct telemetry types stored for one source, sorted. */
+  async getTelemetryTypesForSource(sourceId: string): Promise<string[]> {
+    const { telemetry } = this.tables;
+    const rows = await this.db
+      .selectDistinct({ type: telemetry.telemetryType })
+      .from(telemetry)
+      .where(eq(telemetry.sourceId, sourceId));
+    return rows.map((r: { type: string }) => r.type).sort();
+  }
+
   /** Distinct nodeIds with at least one (sourceId, telemetryType) row at or below `maxId`. */
   async getTelemetryNodeIdsForType(
     sourceId: string,

@@ -119,10 +119,9 @@ router.get('/telemetry/outliers/types', async (req: Request, res: Response) => {
     if (!isIdent(sourceId)) {
       return fail(res, 400, 'MISSING_SOURCE_ID', 'sourceId is required');
     }
-    const byNode = await databaseService.getAllNodesTelemetryTypesAsync(sourceId);
-    const types = new Set<string>();
-    for (const list of byNode.values()) for (const t of list) types.add(t);
-    return ok(res, { types: [...types].sort() });
+    // Not getAllNodesTelemetryTypesAsync: its SQLite path ignores sourceId.
+    const types = await databaseService.getTelemetryTypesForSourceAsync(sourceId);
+    return ok(res, { types });
   } catch (error) {
     logger.error('Error listing telemetry types for outlier purge:', error);
     return fail(res, 500, 'INTERNAL_ERROR', 'Failed to list telemetry types');

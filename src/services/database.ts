@@ -3377,6 +3377,10 @@ class DatabaseService {
     return this.telemetry.getMaxTelemetryIdForType(sourceId, telemetryType, nodeId);
   }
 
+  async getTelemetryTypesForSourceAsync(sourceId: string): Promise<string[]> {
+    return this.telemetry.getTelemetryTypesForSource(sourceId);
+  }
+
   async getTelemetryNodeIdsForTypeAsync(sourceId: string, telemetryType: string, maxId: number): Promise<string[]> {
     return this.telemetry.getTelemetryNodeIdsForType(sourceId, telemetryType, maxId);
   }
