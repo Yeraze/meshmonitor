@@ -58,6 +58,14 @@ const SOURCE_ID_RE = /^[0-9A-Za-z_-]{1,100}$/;
 const RECEIVER_ID_RE = /^[!0-9A-Za-z_-]{1,80}$/;
 /** Total ids across every entry — matches `parseReceiverFilter`'s cap. */
 const MAX_TOTAL_IDS = 1000;
+/**
+ * Encoded `receivers` string length above which `buildReceiverQuery` falls
+ * back to client-side filtering (#5277 Phase 3 WP2 §2.5), independent of the
+ * 1000-id cap above. MeshCore receiver ids are 64-hex pubkeys (vs. `!xxxxxxxx`
+ * Meshtastic ids), so 1000 of them alone would be ~66 KB — well past Node's
+ * 16 KB request-header limit — long before hitting `MAX_TOTAL_IDS`.
+ */
+const MAX_ENCODED_LENGTH = 6000;
 
 /** Composite key used everywhere a receiver must be identified across sources (carry-over a). */
 export function receiverKey(sourceId: string, receiverId: string): string {
@@ -181,9 +189,14 @@ export function buildReceiverQuery(
     return { sources, noneSelected, clientSideFilter: true };
   }
 
+  const receiverFilter = entries.length > 0 ? entries : undefined;
+  if (receiverFilter && encodeReceiverFilter(receiverFilter).length > MAX_ENCODED_LENGTH) {
+    return { sources, noneSelected, clientSideFilter: true };
+  }
+
   return {
     sources,
-    receiverFilter: entries.length > 0 ? entries : undefined,
+    receiverFilter,
     noneSelected,
   };
 }
