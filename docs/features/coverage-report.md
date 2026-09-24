@@ -64,8 +64,14 @@ Open **Analysis & Reports** from the dashboard sidebar, then click the
 - **Sender** — narrow to one survey node, or leave on **All**. The dropdown
   shows each sender's name, `!id`, and how many fixes it produced in the
   current window.
-- **Receivers** — a checkbox list of every receiver that has heard anything
-  in the retention window, defaulting to all selected.
+- **Receivers** — every receiver that has heard anything in the retention
+  window, grouped by source and sorted by how many receptions each has. Each
+  row is marked **Local** (your own radio) or **Gateway** (an MQTT gateway).
+  Search by name or `!id`, use **Select all** / **Select none**, or tick a
+  whole source group at once. All are selected by default.
+- **MQTT recording status** — each MQTT source shows **Recording** or
+  **Off**. When it's off, **Turn on in source settings** opens that source's
+  toggle.
 - **Hops** — Any, or an exact hop count 0–7. Check **Up to this many hops**
   to turn it into a ceiling instead of an exact match.
 - **Colour by** — SNR (default) or RSSI.
@@ -102,11 +108,27 @@ backfill from data collected before that.
 
 ## What gets recorded
 
-In this release, only **Meshtastic radio (RF) sources** record receptions,
-and they do so **always** — there's no per-source toggle to turn it off, the
-way there is for the packet log. A position packet that arrived over MQTT on
-a Meshtastic source is skipped, since an MQTT-relayed copy's SNR isn't your
-radio's own reading.
+**Meshtastic radio (RF) sources** record receptions **always**. A position
+packet that arrived over MQTT on a radio source is skipped, since an
+MQTT-relayed copy's SNR isn't your radio's own reading.
+
+**MQTT sources** (broker and bridge) record only when you turn it on, per
+source, under **Settings → Coverage recording** for that source. It is off by
+default. Once on, every gateway that uplinks a position packet becomes a
+receiver, with the SNR and RSSI that gateway measured, so one drive can show
+what every gateway in the area heard.
+
+- **Volume:** a regional feed adds about 12,000–14,000 rows a day (about
+  90,000–100,000 rows, 35–50 MB, over 7 days of retention). A world-wide
+  `msh/#` feed can reach about 1 million rows a day and several GB a week.
+  There is no cap beyond retention; the toggle asks you to confirm.
+- **Not recorded:** a gateway's own position, packets a gateway reports it
+  got over MQTT or UDP, packets with a stale receive time (more than 10
+  minutes old, from a wrong gateway clock or a late queue flush), and
+  gateways on your ignore list.
+- **Missing nodes:** nodes that turn off "OK to MQTT" aren't uplinked by
+  gateways on public brokers, so they never appear.
+- Rows only start from when you turn recording on; nothing is back-filled.
 
 MeshMonitor stores **one row per distinct path**: the same fix heard
 directly and heard again relayed through a different neighbour are two
@@ -136,10 +158,9 @@ contributes nothing to the report.
 
 ## What's next
 
-Phase 1 covers Meshtastic RF receptions only. Planned follow-ups (not yet
-built, and not scheduled): MQTT gateway receivers as their own opt-in
-receiver type, MeshCore receptions, and likely-gap detection, saved surveys
-exempt from retention, a summary panel, and CSV/GeoJSON export.
+Planned follow-ups (not yet built, and not scheduled): MeshCore receptions,
+likely-gap detection, saved surveys exempt from retention, a summary panel,
+and CSV/GeoJSON export.
 
 ## Related
 
