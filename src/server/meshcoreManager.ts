@@ -58,6 +58,8 @@ import type { DbMeshCorePacket } from '../db/repositories/meshcore.js';
 import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
 import { decodeMeshCorePacket } from '../utils/meshcorePacketDecode.js';
 import { MESHCORE_SECRET_BYTES } from '../utils/meshcoreHelpers.js';
+import { MESHCORE_PAYLOAD_ADVERT } from '../utils/coverage.js';
+import { maybeRecordMeshCoreCoverageReception } from './utils/coverageMeshCore.js';
 import { parsePathHops, pathHashBytesOf, resolveRouteNames } from '../utils/meshcorePath.js';
 import { tryDecodeGroupTextPayload } from './utils/meshcoreGroupEcho.js';
 import { meshcoreAgeCutoffMs, isWithinMeshcoreAge } from '../utils/meshcoreAge.js';
@@ -2175,6 +2177,25 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // opt-in; gate persistence on the setting so we don't write a row for
       // every received packet unless the user has turned the monitor on.
       void this.handleOtaPacket(data);
+      // Coverage Report (#5277 P3): local companions record ADVERT
+      // receptions ALWAYS (D8), independent of `meshcore_packet_log_enabled`
+      // — receive-only mode does not matter either. Not reached for
+      // repeater/serial sources: they never emit `ota_packet` at all (D9,
+      // see the guard at the top of `startObserver()`), so no source-type
+      // check is needed here. Never throws into this path; never sends
+      // anything on the mesh.
+      if (data?.payload_type === MESHCORE_PAYLOAD_ADVERT) {
+        void maybeRecordMeshCoreCoverageReception({
+          sourceId: this.sourceId,
+          receiverKind: 'local',
+          receiverPubKey: this.localNode?.publicKey?.toLowerCase() ?? null,
+          receiverPosition: async () => ({
+            lat: this.localNode?.latitude ?? null,
+            lon: this.localNode?.longitude ?? null,
+          }),
+          event: data,
+        });
+      }
     } else {
       logger.debug(`[MeshCore] Unknown push event: ${event_type}`);
     }
