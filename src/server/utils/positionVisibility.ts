@@ -43,11 +43,10 @@ export interface VisibilityRow {
  * pay for `getAllNodes` once instead of twice.
  */
 export async function loadNodesBySource(sourceIds: string[]): Promise<Map<string, DbNode[]>> {
-  const map = new Map<string, DbNode[]>();
-  for (const srcId of sourceIds) {
-    map.set(srcId, await databaseService.nodes.getAllNodes(srcId));
-  }
-  return map;
+  const entries = await Promise.all(
+    sourceIds.map(async (srcId) => [srcId, await databaseService.nodes.getAllNodes(srcId)] as const),
+  );
+  return new Map(entries);
 }
 
 /**
