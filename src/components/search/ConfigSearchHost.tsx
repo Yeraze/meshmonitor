@@ -31,7 +31,10 @@ interface ConfigSearchHostProps {
 export const ConfigSearchHost: React.FC<ConfigSearchHostProps> = ({ baseUrl = '', registerOpener }) => {
   const { t } = useTranslation();
   const { authStatus, hasPermission } = useAuth();
-  const { sourceId } = useSource();
+  // sourceType (#5277 P2 WP3) gates settings-coverage-mqtt to MQTT-only
+  // sources — without it the palette would never surface that section, even
+  // while viewing an MQTT source (settingsNavItems drops it silently).
+  const { sourceId, sourceType } = useSource();
   const [isOpen, setIsOpen] = useState(false);
 
   // Shares TanStack's ['health', baseUrl] cache with App's own poll, so this is
@@ -48,13 +51,14 @@ export const ConfigSearchHost: React.FC<ConfigSearchHostProps> = ({ baseUrl = ''
     () =>
       buildConfigSurfaces(t, {
         sourceId,
+        sourceType,
         isAdmin,
         canWriteSettings,
         canUseAdmin: isAdmin,
         databaseType: health?.databaseType ?? null,
         firmwareOtaEnabled: health?.firmwareOtaEnabled ?? false,
       }),
-    [t, sourceId, isAdmin, canWriteSettings, health?.databaseType, health?.firmwareOtaEnabled],
+    [t, sourceId, sourceType, isAdmin, canWriteSettings, health?.databaseType, health?.firmwareOtaEnabled],
   );
 
   const open = useCallback(() => setIsOpen(true), []);
