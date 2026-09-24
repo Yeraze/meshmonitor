@@ -414,8 +414,6 @@ export class NodesRepository extends BaseRepository {
     excludeNodeNum?: number,
   ): Promise<TransportCounts> {
     const { nodes } = this.tables;
-    const inWindow = (col: any) =>
-      sql<string | number>`SUM(CASE WHEN ${col} > ${fromSec} AND ${col} <= ${toSec} THEN 1 ELSE 0 END)`;
 
     const conditions = [this.withSourceScope(nodes, sourceId)];
     if (excludeNodeNum !== undefined) {
@@ -424,12 +422,12 @@ export class NodesRepository extends BaseRepository {
 
     const result = await this.db
       .select({
-        rf: inWindow(nodes.transportLastRf),
-        udp: inWindow(nodes.transportLastUdp),
-        mqtt: inWindow(nodes.transportLastMqtt),
+        rf: sql<string | number>`SUM(CASE WHEN ${nodes.transportLastRf} > ${fromSec} AND ${nodes.transportLastRf} <= ${toSec} THEN 1 ELSE 0 END)`,
+        udp: sql<string | number>`SUM(CASE WHEN ${nodes.transportLastUdp} > ${fromSec} AND ${nodes.transportLastUdp} <= ${toSec} THEN 1 ELSE 0 END)`,
+        mqtt: sql<string | number>`SUM(CASE WHEN ${nodes.transportLastMqtt} > ${fromSec} AND ${nodes.transportLastMqtt} <= ${toSec} THEN 1 ELSE 0 END)`,
       })
       .from(nodes)
-      .where(and(...conditions.filter((c: unknown) => c !== undefined)));
+      .where(and(...conditions.filter((c): c is Exclude<typeof c, undefined> => c !== undefined)));
 
     const row = result[0] ?? {};
     return {
