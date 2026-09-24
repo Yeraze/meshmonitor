@@ -18,9 +18,10 @@
  * all require an explicit `sourceIds` allow-list — an empty list returns an
  * empty result rather than falling through to "every source".
  */
-import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, or, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, notInArray, or, sql, SQL } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
+import type { CoverageReceiverFilterEntry } from '../../utils/coverageReceiverFilter.js';
 
 export interface DbCoverageReception {
   id: number;
@@ -87,7 +88,15 @@ export interface GetCoverageReceptionsArgs {
   sourceIds: string[];
   sinceMs: number;
   untilMs: number;
-  receiverIds?: string[];
+  /**
+   * Source-scoped receiver filter (#5277 P2 §2.3), replacing P1's flat
+   * `receiverIds?: string[]` — which matched a receiverId on EVERY source,
+   * not just the one the caller meant. Entries whose `sourceId` is not in
+   * `sourceIds` are dropped silently (the permission intersection stays
+   * authoritative). A source with no entry is unconstrained (every one of
+   * its receivers matches).
+   */
+  receiverFilter?: CoverageReceiverFilterEntry[];
   senderId?: string;
   hops?: number;
   hopsMode?: CoverageHopsMode;
@@ -116,6 +125,8 @@ export interface CoverageReceiverRow {
   lastReceivedAt: number;
   receiverLatitude: number | null;
   receiverLongitude: number | null;
+  /** Reception rows for this receiver in the window (#5277 P2 §2.3). */
+  receptionCount: number;
 }
 
 export interface GetCoverageSenderSummaryArgs {
@@ -261,6 +272,71 @@ export class CoverageReceptionsRepository extends BaseRepository {
   }
 
   /**
+   * Build the source/receiver scoping clause for `getReceptions`
+   * (#5277 P2 §2.3): `or(inArray(sourceId, unconstrainedSources),
+   * ...entryClauses)`, where `unconstrainedSources` is `sourceIds` minus the
+   * sources that have a `receiverFilter` entry. Include → `sourceId = s AND
+   * receiverId IN (ids)`; exclude → `sourceId = s AND receiverId NOT IN
+   * (ids)` (`receiverId` is NOT NULL, so NOT IN has no NULL trap). Entries
+   * whose `sourceId` isn't in `sourceIds` are dropped — the permission
+   * intersection stays authoritative, never widened by a stale/forged entry.
+   *
+   * Returns `null` when nothing can possibly match (every entry dropped and
+   * no unconstrained sources remain, or an include entry has an empty id
+   * list) — the caller returns an empty page without querying.
+   */
+  private buildReceptionsSourceClause(
+    sourceIds: string[],
+    receiverFilter: CoverageReceiverFilterEntry[] | undefined,
+  ): SQL | null {
+    const { coverageReceptions } = this.tables;
+
+    if (!receiverFilter || receiverFilter.length === 0) {
+      return inArray(coverageReceptions.sourceId, sourceIds) ?? null;
+    }
+
+    const permitted = new Set(sourceIds);
+    const bySource = new Map<string, CoverageReceiverFilterEntry>();
+    for (const entry of receiverFilter) {
+      if (!permitted.has(entry.sourceId)) continue;
+      bySource.set(entry.sourceId, entry);
+    }
+
+    const unconstrainedSources = sourceIds.filter((id) => !bySource.has(id));
+    const parts: SQL[] = [];
+
+    if (unconstrainedSources.length > 0) {
+      const clause = inArray(coverageReceptions.sourceId, unconstrainedSources);
+      if (clause) parts.push(clause);
+    }
+
+    for (const entry of bySource.values()) {
+      if (entry.mode === 'include') {
+        // notInArray/inArray with an empty list is invalid SQL on some
+        // dialects; an empty include list matches nothing for that source,
+        // so it's simply omitted from the OR rather than queried.
+        if (entry.receiverIds.length === 0) continue;
+        const clause = and(
+          eq(coverageReceptions.sourceId, entry.sourceId),
+          inArray(coverageReceptions.receiverId, entry.receiverIds),
+        );
+        if (clause) parts.push(clause);
+      } else {
+        const clause = entry.receiverIds.length === 0
+          ? eq(coverageReceptions.sourceId, entry.sourceId)
+          : and(
+              eq(coverageReceptions.sourceId, entry.sourceId),
+              notInArray(coverageReceptions.receiverId, entry.receiverIds),
+            );
+        if (clause) parts.push(clause);
+      }
+    }
+
+    if (parts.length === 0) return null;
+    return or(...parts) ?? null;
+  }
+
+  /**
    * Paginated reception rows, newest first. Cursor pagination keyed on
    * `(receivedAt DESC, id DESC)` — concurrent inserts never cause rows to be
    * skipped or repeated across pages. `hops`/`hopsMode` filters exclude NULL
@@ -277,15 +353,17 @@ export class CoverageReceptionsRepository extends BaseRepository {
     const { coverageReceptions } = this.tables;
     const cursor = decodeCursor(args.cursor ?? null);
 
+    const sourceClause = this.buildReceptionsSourceClause(args.sourceIds, args.receiverFilter);
+    if (!sourceClause) {
+      return { items: [], pageSize, hasMore: false, nextCursor: null };
+    }
+
     const conditions = [
-      inArray(coverageReceptions.sourceId, args.sourceIds),
+      sourceClause,
       gte(coverageReceptions.receivedAt, args.sinceMs),
       lte(coverageReceptions.receivedAt, args.untilMs),
     ];
 
-    if (args.receiverIds && args.receiverIds.length > 0) {
-      conditions.push(inArray(coverageReceptions.receiverId, args.receiverIds));
-    }
     if (args.senderId) {
       conditions.push(eq(coverageReceptions.senderId, args.senderId));
     }
@@ -330,17 +408,29 @@ export class CoverageReceptionsRepository extends BaseRepository {
     return { items, pageSize, hasMore, nextCursor };
   }
 
+  /** Batch size for `getReceivers`'s follow-up snapshot fetch (#5277 P2 §2.3, Decision D9). */
+  private static readonly RECEIVERS_SNAPSHOT_CHUNK = 200;
+
   /**
    * Distinct receivers present in the retention window for the given
    * sources — derived from the table only (Decision D8: no `source.type`
    * gate). One row per `(sourceId, receiverKind, receiverId,
-   * receiverNodeNum)`, with `lastReceivedAt = MAX(receivedAt)` and the
-   * position snapshot taken from that group's most recent row that has a
-   * non-null snapshot (which can be earlier than `lastReceivedAt` itself).
+   * receiverNodeNum)`, with `lastReceivedAt = MAX(receivedAt)`,
+   * `receptionCount = COUNT(*)`, and the position snapshot taken from that
+   * group's most recent row that has a non-null snapshot (which can be
+   * earlier than `lastReceivedAt` itself).
    *
-   * Implemented as a GROUP BY followed by one bounded follow-up query per
-   * group (receivers are few) rather than a dialect-specific window
-   * function, to stay portable across SQLite/PostgreSQL/MySQL.
+   * Batched (Decision D9, #5277 P2): P1's "receivers are few" assumption
+   * doesn't hold once MQTT gateways are in the table — one query per
+   * receiver would mean hundreds of round trips per `/receivers` call.
+   * Instead: one GROUP BY (adding `lastSnapAt = MAX(CASE WHEN
+   * receiverLatitude IS NOT NULL THEN receivedAt END)` per group, portable
+   * plain SQL), then one batched OR-of-ANDs select per chunk of 200 groups
+   * that actually have a snapshot, keyed on `(sourceId, receiverKind,
+   * receiverId, receiverNodeNum, receivedAt = lastSnapAt)` — the unique
+   * index prefix `(sourceId, receiverId, …)` serves the lookup. Total query
+   * count: `1 + ceil(N/200)` where N is the number of groups with a
+   * snapshot, down from P1's `1 + N`.
    */
   async getReceivers(args: GetCoverageReceiversArgs): Promise<CoverageReceiverRow[]> {
     if (args.sourceIds.length === 0) {
@@ -357,6 +447,8 @@ export class CoverageReceptionsRepository extends BaseRepository {
         receiverNodeNum: coverageReceptions.receiverNodeNum,
         protocol: sql<string>`MAX(${coverageReceptions.protocol})`,
         lastReceivedAt: sql<number>`MAX(${coverageReceptions.receivedAt})`,
+        receptionCount: count(),
+        lastSnapAt: sql<number | null>`MAX(CASE WHEN ${coverageReceptions.receiverLatitude} IS NOT NULL THEN ${coverageReceptions.receivedAt} END)`,
       })
       .from(coverageReceptions)
       .where(and(
@@ -370,44 +462,82 @@ export class CoverageReceptionsRepository extends BaseRepository {
         coverageReceptions.receiverNodeNum,
       );
 
-    const results: CoverageReceiverRow[] = [];
-    for (const g of groups as any[]) { // eslint-disable-line @typescript-eslint/no-explicit-any -- Drizzle cross-dialect union
-      const nodeNum = g.receiverNodeNum == null ? null : Number(g.receiverNodeNum);
-      const nodeNumClause = nodeNum === null
-        ? isNull(coverageReceptions.receiverNodeNum)
-        : eq(coverageReceptions.receiverNodeNum, nodeNum);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Drizzle cross-dialect row shape
+    const groupRows = groups as any[];
+
+    /** Group key for the snapshot map — mirrors the follow-up query's WHERE. */
+    const snapKey = (sourceId: string, receiverId: string, nodeNum: number | null): string =>
+      `${sourceId}|${receiverId}|${nodeNum ?? '\u0000'}`;
+
+    const needsSnapshot = groupRows.filter((g) => g.lastSnapAt != null);
+    const snapshots = new Map<string, { receiverLatitude: number; receiverLongitude: number }>();
+
+    for (let i = 0; i < needsSnapshot.length; i += CoverageReceptionsRepository.RECEIVERS_SNAPSHOT_CHUNK) {
+      const chunk = needsSnapshot.slice(i, i + CoverageReceptionsRepository.RECEIVERS_SNAPSHOT_CHUNK);
+
+      const clauses = chunk
+        .map((g) => {
+          const nodeNum = g.receiverNodeNum == null ? null : Number(g.receiverNodeNum);
+          const nodeNumClause = nodeNum === null
+            ? isNull(coverageReceptions.receiverNodeNum)
+            : eq(coverageReceptions.receiverNodeNum, nodeNum);
+          return and(
+            eq(coverageReceptions.sourceId, g.sourceId),
+            eq(coverageReceptions.receiverKind, g.receiverKind),
+            eq(coverageReceptions.receiverId, g.receiverId),
+            nodeNumClause,
+            eq(coverageReceptions.receivedAt, Number(g.lastSnapAt)),
+            isNotNull(coverageReceptions.receiverLatitude),
+          );
+        })
+        .filter((c): c is SQL => c != null);
+
+      if (clauses.length === 0) continue;
+      const combined = or(...clauses);
+      if (!combined) continue;
 
       const snapRows = await this.db
         .select({
+          sourceId: coverageReceptions.sourceId,
+          receiverId: coverageReceptions.receiverId,
+          receiverNodeNum: coverageReceptions.receiverNodeNum,
           receiverLatitude: coverageReceptions.receiverLatitude,
           receiverLongitude: coverageReceptions.receiverLongitude,
         })
         .from(coverageReceptions)
-        .where(and(
-          eq(coverageReceptions.sourceId, g.sourceId),
-          eq(coverageReceptions.receiverKind, g.receiverKind),
-          eq(coverageReceptions.receiverId, g.receiverId),
-          nodeNumClause,
-          isNotNull(coverageReceptions.receiverLatitude),
-        ))
-        .orderBy(desc(coverageReceptions.receivedAt))
-        .limit(1);
+        .where(combined);
 
-      const snap = (snapRows as any[])[0]; // eslint-disable-line @typescript-eslint/no-explicit-any -- Drizzle cross-dialect union
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Drizzle cross-dialect row shape
+      for (const r of snapRows as any[]) {
+        const nodeNum = r.receiverNodeNum == null ? null : Number(r.receiverNodeNum);
+        const key = snapKey(r.sourceId, r.receiverId, nodeNum);
+        // Take the first row per group key — several rows can share
+        // (sourceId, receiverId, nodeNum, receivedAt) when two receptions
+        // land in the same millisecond from different senders.
+        if (!snapshots.has(key)) {
+          snapshots.set(key, {
+            receiverLatitude: Number(r.receiverLatitude),
+            receiverLongitude: Number(r.receiverLongitude),
+          });
+        }
+      }
+    }
 
-      results.push({
+    return groupRows.map((g) => {
+      const nodeNum = g.receiverNodeNum == null ? null : Number(g.receiverNodeNum);
+      const snap = snapshots.get(snapKey(g.sourceId, g.receiverId, nodeNum));
+      return {
         sourceId: g.sourceId,
         protocol: g.protocol,
         receiverKind: g.receiverKind,
         receiverId: g.receiverId,
         receiverNodeNum: nodeNum,
         lastReceivedAt: Number(g.lastReceivedAt),
-        receiverLatitude: snap ? Number(snap.receiverLatitude) : null,
-        receiverLongitude: snap ? Number(snap.receiverLongitude) : null,
-      });
-    }
-
-    return results;
+        receptionCount: Number(g.receptionCount),
+        receiverLatitude: snap ? snap.receiverLatitude : null,
+        receiverLongitude: snap ? snap.receiverLongitude : null,
+      };
+    });
   }
 
   /**
