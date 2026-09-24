@@ -1580,8 +1580,9 @@ router.delete('/:id', requirePermission('sources', 'write'), async (req: Request
     }
 
     // NOTE: `mesh_beacon_offers` (#4723) is cleaned up inside
-    // purgeAllNodesAsync above, alongside ATAK contacts (#3691) — both are
-    // per-node received state. Do not add a second call here.
+    // purgeAllNodesAsync above, alongside ATAK contacts (#3691) and Coverage
+    // Report RF receptions (#5277) — all three are per-source received state.
+    // Do not add a second call here.
 
     res.json({ success: true });
   } catch (error) {

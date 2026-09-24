@@ -3746,6 +3746,23 @@ class DatabaseService {
         }
       }
 
+      // Clear Coverage Report RF receptions for the same reason (#5277 amendment
+      // 5 / D7): the table is ephemeral, per-source received-packet history, so
+      // a purged/deleted source's rows must not linger with no UI path left to
+      // reach them. `sourceId` undefined = admin global purge across every
+      // source, matching every other branch above.
+      if (this.coverageReceptionsRepo) {
+        try {
+          if (sourceId) {
+            await this.coverageReceptionsRepo.deleteForSource(sourceId);
+          } else {
+            await this.coverageReceptionsRepo.deleteAll();
+          }
+        } catch (err) {
+          logger.error('Failed to purge coverage receptions during purge:', err);
+        }
+      }
+
       // Finally delete the nodes themselves
       if (this.nodesRepo) {
         await this.nodesRepo.deleteAllNodes(sourceId);
