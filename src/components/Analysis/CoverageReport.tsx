@@ -23,20 +23,15 @@ import {
 import { groupReceptionsIntoFixes } from '../../utils/coverage';
 import type { CoverageMetric } from '../../utils/coverage';
 import type { CoverageHopsMode } from '../../types/coverage';
+import {
+  resolveCoverageWindow,
+  type CoverageRangePreset,
+  type CoverageWindow,
+} from '../../utils/coverageTimeRange';
 import { CoverageMap } from './CoverageMap';
 import styles from './CoverageReport.module.css';
 
-type RangePreset = '1h' | '6h' | '24h' | '3d' | '7d' | 'custom';
-
-const RANGE_PRESET_MS: Record<Exclude<RangePreset, 'custom'>, number> = {
-  '1h': 3_600_000,
-  '6h': 6 * 3_600_000,
-  '24h': 24 * 3_600_000,
-  '3d': 3 * 24 * 3_600_000,
-  '7d': 7 * 24 * 3_600_000,
-};
-
-const RANGE_PRESETS: Array<{ id: Exclude<RangePreset, 'custom'>; key: string; label: string }> = [
+const RANGE_PRESETS: Array<{ id: Exclude<CoverageRangePreset, 'custom'>; key: string; label: string }> = [
   { id: '1h', key: 'range_1h', label: '1 h' },
   { id: '6h', key: 'range_6h', label: '6 h' },
   { id: '24h', key: 'range_24h', label: '24 h' },
@@ -58,7 +53,7 @@ const AIRTIME_ROWS: Array<{ hopLimit: number; txPerFix: string; perHourPct: stri
 export const CoverageReport: React.FC = () => {
   const { t } = useTranslation();
 
-  const [preset, setPreset] = useState<RangePreset>('24h');
+  const [preset, setPreset] = useState<CoverageRangePreset>('24h');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [senderId, setSenderId] = useState<string>('');
@@ -67,36 +62,36 @@ export const CoverageReport: React.FC = () => {
   const [hopsMode, setHopsMode] = useState<CoverageHopsMode>('exact');
   const [metric, setMetric] = useState<CoverageMetric>('snr');
   const [guidanceOpen, setGuidanceOpen] = useState(false);
-  const [refreshTick, setRefreshTick] = useState(0);
 
-  // Computed fresh every render (not memoized) so pressing Refresh — which
-  // only bumps `refreshTick` to force a re-render — naturally recomputes
-  // "now" without an artificial useMemo dependency.
-  let sinceMs: number;
-  let untilMs: number;
-  let rangeInvalid = false;
-  {
-    const now = Date.now();
-    if (preset === 'custom') {
-      const from = customFrom ? new Date(customFrom).getTime() : NaN;
-      const to = customTo ? new Date(customTo).getTime() : now;
-      if (!Number.isFinite(from) || !Number.isFinite(to) || to < from) {
-        sinceMs = now - RANGE_PRESET_MS['24h'];
-        untilMs = now;
-        rangeInvalid = true;
-      } else {
-        sinceMs = from;
-        untilMs = to;
-      }
-    } else {
-      sinceMs = now - RANGE_PRESET_MS[preset];
-      untilMs = now;
-    }
-  }
-  // refreshTick itself is read nowhere else — bumping it is enough to
-  // trigger the re-render above; this reference keeps that intent explicit
-  // and silences no-unused-vars.
-  void refreshTick;
+  // Resolved ONCE per discrete user action (mount / preset click / custom
+  // "Apply" / Refresh) via `resolveCoverageWindow`, and cached in state —
+  // NEVER recomputed from `Date.now()` during a plain render. See
+  // `coverageTimeRange.ts`'s doc comment: an earlier version computed
+  // sinceMs/untilMs inline on every render, which fed a numerically
+  // different value into the TanStack Query key on every render and caused
+  // an endless refetch loop (#5277 browser-validation regression) that kept
+  // Refresh permanently disabled and the map never rendering. The lazy
+  // `useState` initializer runs exactly once, at mount.
+  const [timeWindow, setTimeWindow] = useState<CoverageWindow>(() =>
+    resolveCoverageWindow('24h', Date.now()),
+  );
+  const { sinceMs, untilMs, rangeInvalid } = timeWindow;
+
+  const selectPreset = (id: Exclude<CoverageRangePreset, 'custom'>) => {
+    setPreset(id);
+    setTimeWindow(resolveCoverageWindow(id, Date.now()));
+  };
+
+  /** Switches the UI to the custom from/to inputs WITHOUT resolving a new
+   *  window — the window only changes once the user presses Apply, so
+   *  merely opening the custom picker can't itself trigger a fetch. */
+  const selectCustomPreset = () => {
+    setPreset('custom');
+  };
+
+  const applyCustomRange = () => {
+    setTimeWindow(resolveCoverageWindow('custom', Date.now(), customFrom, customTo));
+  };
 
   const receiversQuery = useCoverageReceivers([]);
   const sendersQuery = useCoverageSenders({ sources: [], sinceMs, untilMs });
@@ -141,10 +136,18 @@ export const CoverageReport: React.FC = () => {
   };
 
   const handleRefresh = () => {
-    setRefreshTick((n) => n + 1);
+    // Re-anchors the window to "now" (a preset window slides forward; a
+    // custom range is re-validated against its current from/to inputs).
+    // That alone changes sinceMs/untilMs, which changes the senders' and
+    // receptions' query keys, which TanStack Query fetches automatically —
+    // do NOT also call .refetch() on those two here: combined with the key
+    // change, an explicit refetch double-fires them (one fetch for the old
+    // key via .refetch(), one for the new key from the key change), which
+    // is exactly the bug this file's regression test guards against.
+    // `receiversQuery`'s key never depends on the time window, so it needs
+    // its own explicit refetch to actually do anything on Refresh.
+    setTimeWindow(resolveCoverageWindow(preset, Date.now(), customFrom, customTo));
     void receiversQuery.refetch();
-    void sendersQuery.refetch();
-    void receptionsQuery.refetch();
   };
 
   return (
@@ -172,7 +175,7 @@ export const CoverageReport: React.FC = () => {
                   key={p.id}
                   type="button"
                   className={`reports-btn reports-btn--ghost${preset === p.id ? ` ${styles.activePreset}` : ''}`}
-                  onClick={() => setPreset(p.id)}
+                  onClick={() => selectPreset(p.id)}
                 >
                   {t(`analysis.coverage.${p.key}`, p.label)}
                 </button>
@@ -180,7 +183,7 @@ export const CoverageReport: React.FC = () => {
               <button
                 type="button"
                 className={`reports-btn reports-btn--ghost${preset === 'custom' ? ` ${styles.activePreset}` : ''}`}
-                onClick={() => setPreset('custom')}
+                onClick={selectCustomPreset}
               >
                 {t('analysis.coverage.range_custom', 'Custom')}
               </button>
@@ -205,6 +208,9 @@ export const CoverageReport: React.FC = () => {
                   onChange={(e) => setCustomTo(e.target.value)}
                 />
               </label>
+              <button type="button" className="reports-btn reports-btn--ghost" onClick={applyCustomRange}>
+                {t('analysis.coverage.range_apply', 'Apply')}
+              </button>
             </>
           )}
 

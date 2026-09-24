@@ -4803,6 +4803,7 @@
   "analysis.coverage.range_3d": "3 days",
   "analysis.coverage.range_7d": "7 days",
   "analysis.coverage.range_custom": "Custom",
+  "analysis.coverage.range_apply": "Apply",
   "analysis.coverage.from": "From",
   "analysis.coverage.to": "To",
   "analysis.coverage.sender": "Sender",
