@@ -46,6 +46,12 @@ export interface MeshPacketShape {
   hopStart?: number;
   decoded?: { portnum?: number; payload?: Uint8Array; bitfield?: number };
   encrypted?: Uint8Array;
+  // Coverage Report MQTT recording (#5277 P2, §2.6). Types only — read via an
+  // explicit `hasOwnProperty` check (own-property presence, never a
+  // protobufjs prototype default) by `evaluateMqttCoverageReception`.
+  relayNode?: number;
+  transportMechanism?: number;
+  viaMqtt?: boolean;
 }
 
 export interface ServiceEnvelopeShape {
