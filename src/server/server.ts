@@ -44,6 +44,7 @@ import { lowBatteryNotificationService } from './services/lowBatteryNotification
 import { cotFeedService } from './services/cotFeedService.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import { versionCheckService } from './services/versionCheckService.js';
+import { coverageRetentionService } from './services/coverageRetentionService.js';
 import { dynamicCspMiddleware, refreshTileHostnameCache } from './middleware/dynamicCsp.js';
 import settingsRoutes, { setSettingsCallbacks } from './routes/settingsRoutes.js';
 import { bootstrapSources } from './bootstrapSources.js';
@@ -511,6 +512,21 @@ setTimeout(async () => {
     logger.error('Error during initial telemetry purge:', error);
   }
 }, 5000); // Wait 5 seconds after startup
+
+// Coverage Report retention sweep (#5277 Phase 1 WP2): hourly purge of RF
+// receptions older than the configured coverage_retention_days. The service
+// does not auto-start in its constructor (so importing it in a test never
+// spins up a live timer) — start() must be called explicitly, here, once,
+// after the DB is ready. It schedules its own first sweep 30s after start,
+// then hourly (see coverageRetentionService.ts).
+setTimeout(async () => {
+  try {
+    await databaseService.waitForReady();
+    coverageRetentionService.start();
+  } catch (error) {
+    logger.error('Error starting Coverage Report retention sweep:', error);
+  }
+}, 5000);
 
 // ==========================================
 // MeshCore local-node telemetry poller
