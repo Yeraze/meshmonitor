@@ -10,6 +10,7 @@ import { TimeFormat, DateFormat } from '../contexts/SettingsContext';
 import { formatDateTime } from '../utils/datetime';
 import TelemetryGraphs from './TelemetryGraphs';
 import PacketRateGraphs from './PacketRateGraphs';
+import TransportSeriesGraphs from './TransportSeriesGraphs';
 import { version } from '../../package.json';
 import apiService, { type MessageCounts, type RouteSegmentRecords, type RouteSegmentView } from '../services/api';
 import { logger } from '../utils/logger';
@@ -1101,6 +1102,12 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
       {currentNodeId && connectionStatus === 'connected' && (
         <div className="info-section-full-width">
           <PacketRateGraphs nodeId={currentNodeId} telemetryHours={telemetryHours} baseUrl={baseUrl} />
+        </div>
+      )}
+
+      {showTransport && currentNodeId && connectionStatus === 'connected' && (
+        <div className="info-section-full-width">
+          <TransportSeriesGraphs nodeId={currentNodeId} telemetryHours={telemetryHours} baseUrl={baseUrl} />
         </div>
       )}
 

@@ -277,11 +277,13 @@ function makeNode(nodeNum: number, overrides: Record<string, unknown> = {}) {
 }
 
 /**
- * `upsertNode`'s INSERT branch does not carry `transportLast*` fields — those
- * are only ever set on the UPDATE branch, matching production: a node's row
- * is created from NodeInfo (no transport stamp yet) and the stamp is applied
- * by a later, separate per-packet write. Mirror that here: insert bare, then
- * a second upsert (now an UPDATE, since the row exists) applies the stamps.
+ * `upsertNode`'s INSERT branch does carry `transportLast*` fields (#5101 P3
+ * WP3 fix, commit 7d71f450 — a brand-new node's very first packet stamps
+ * them there, not just on the UPDATE branch). This helper still seeds in two
+ * steps to model a distinct, equally real production sequence: a node's row
+ * created from NodeInfo alone (no transport stamp yet) and the stamp applied
+ * by a later, separate per-packet write. Insert bare, then a second upsert
+ * (now an UPDATE, since the row exists) applies the stamps.
  */
 async function seedNode(
   repo: NodesRepository,
