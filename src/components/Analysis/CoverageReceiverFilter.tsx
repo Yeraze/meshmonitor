@@ -15,6 +15,16 @@
  * receiver-picker trigger, which only appears once there's at least one
  * receiver to pick.
  *
+ * MeshCore (#5277 Phase 3 WP3, spec §2.6): a receiver row whose `protocol`
+ * is `'meshcore'` gets a MeshCore badge, and a `mqtt_gateway` MeshCore row
+ * (an Observer feed) shows the kind badge "Observer" instead of "Gateway".
+ * Ids display via `formatCoverageNodeId` (Meshtastic `!id` unchanged, a
+ * MeshCore pubkey abbreviated) — search still matches the full raw id
+ * (`matchesReceiverSearch` in `coverageReceiverGroups.ts` already substring
+ * -matches `receiverId` verbatim, so a pubkey-prefix search needs no change
+ * there). The MQTT status block labels a MeshCore observer source "Observer
+ * recording" instead of "Recording" when it's on.
+ *
  * Pure grouping/search/sort logic lives in
  * `src/utils/coverageReceiverGroups.ts` (react-refresh/only-export-components
  * keeps this file component-only). Selection state (`deselected`, a Set of
@@ -27,6 +37,7 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { UiIcon } from '../icons';
 import { receiverKey } from '../../utils/coverageReceiverFilter';
+import { formatCoverageNodeId } from '../../utils/coverage';
 import {
   groupReceiversBySource,
   filterReceiverGroups,
@@ -145,7 +156,9 @@ export const CoverageReceiverFilter: React.FC<CoverageReceiverFilterProps> = ({
               <span className={styles.mqttSourceName}>{s.sourceName}</span>
               <span className={s.recordingEnabled ? styles.badgeOn : styles.badgeOff}>
                 {s.recordingEnabled
-                  ? t('analysis.coverage.mqtt_recording', 'Recording')
+                  ? s.protocol === 'meshcore'
+                    ? t('analysis.coverage.observer_recording', 'Observer recording')
+                    : t('analysis.coverage.mqtt_recording', 'Recording')
                   : t('analysis.coverage.mqtt_off', 'Off')}
               </span>
               {!s.recordingEnabled && (
@@ -238,7 +251,15 @@ export const CoverageReceiverFilter: React.FC<CoverageReceiverFilterProps> = ({
                           <ul className={styles.rows}>
                             {visibleRows.map((r) => {
                               const key = receiverKey(r.sourceId, r.receiverId);
-                              const label = r.longName || r.shortName || r.receiverId;
+                              const label = r.longName || r.shortName || formatCoverageNodeId(r.receiverId);
+                              const isMeshCore = r.protocol === 'meshcore';
+                              const isGateway = r.receiverKind === 'mqtt_gateway';
+                              const isObserver = isGateway && isMeshCore;
+                              const kindLabel = isObserver
+                                ? t('analysis.coverage.kind_observer', 'Observer')
+                                : isGateway
+                                  ? t('analysis.coverage.kind_gateway', 'Gateway')
+                                  : t('analysis.coverage.kind_local', 'Local');
                               return (
                                 <li key={key} className={styles.row}>
                                   <label className={styles.rowLabel}>
@@ -249,16 +270,15 @@ export const CoverageReceiverFilter: React.FC<CoverageReceiverFilterProps> = ({
                                       aria-label={label}
                                     />
                                     <span className={styles.rowName}>{label}</span>
-                                    <span className={styles.rowId}>{r.receiverId}</span>
-                                    <span
-                                      className={
-                                        r.receiverKind === 'mqtt_gateway' ? styles.badgeGateway : styles.badgeLocal
-                                      }
-                                    >
-                                      {r.receiverKind === 'mqtt_gateway'
-                                        ? t('analysis.coverage.kind_gateway', 'Gateway')
-                                        : t('analysis.coverage.kind_local', 'Local')}
+                                    <span className={styles.rowId}>{formatCoverageNodeId(r.receiverId)}</span>
+                                    <span className={isGateway ? styles.badgeGateway : styles.badgeLocal}>
+                                      {kindLabel}
                                     </span>
+                                    {isMeshCore && (
+                                      <span className={styles.badgeMeshCore}>
+                                        {t('analysis.coverage.protocol_meshcore', 'MeshCore')}
+                                      </span>
+                                    )}
                                     <span className={styles.rowCount}>{r.receptionCount}</span>
                                   </label>
                                 </li>

@@ -190,6 +190,51 @@ function runSharedTests(getCtx: () => Ctx) {
     expect(remaining.items.map((r) => r.pathKey)).toEqual(['new']);
   });
 
+  it('round-trips a 64-hex MeshCore row (#5277 Phase 3 WP2 §2.4: repository unchanged)', async () => {
+    const { repo } = getCtx();
+    const pubkey64 = 'a'.repeat(64);
+    const otherPubkey64 = 'b'.repeat(64);
+    await repo.recordReception(makeReception({
+      protocol: 'meshcore',
+      receiverKind: 'local',
+      receiverId: pubkey64,
+      receiverNodeNum: null,
+      senderId: otherPubkey64,
+      senderNodeNum: null,
+      packetKey: 'ABCDEF0123456789', // 16-hex MeshCore packet hash
+      packetId: null,
+      pathKey: 'h2:a1b2',
+      hopStart: null,
+      hopLimit: null,
+      hopsAway: 2,
+      relayNode: null,
+      transportMechanism: null,
+      channel: null,
+      rxTime: null,
+    }));
+
+    const page = await repo.getReceptions({ sourceIds: ['src-a'], sinceMs: 0, untilMs: NOW + 1, pageSize: 10 });
+    expect(page.items).toHaveLength(1);
+    const row = page.items[0];
+    expect(row.protocol).toBe('meshcore');
+    expect(row.receiverId).toBe(pubkey64);
+    expect(row.senderId).toBe(otherPubkey64);
+    expect(row.receiverNodeNum).toBeNull();
+    expect(row.senderNodeNum).toBeNull();
+    expect(row.packetId).toBeNull();
+    expect(row.pathKey).toBe('h2:a1b2');
+
+    const receivers = await repo.getReceivers({ sourceIds: ['src-a'], sinceMs: 0 });
+    const mcReceiver = receivers.find((r) => r.receiverId === pubkey64);
+    expect(mcReceiver).toBeDefined();
+    expect(mcReceiver?.protocol).toBe('meshcore');
+
+    const senders = await repo.getSenderSummary({ sourceIds: ['src-a'], sinceMs: 0, untilMs: NOW + 1, limit: 10 });
+    const mcSender = senders.find((s) => s.senderId === otherPubkey64);
+    expect(mcSender).toBeDefined();
+    expect(mcSender?.senderNodeNum).toBeNull();
+  });
+
   it('deleteForSource removes only the target source', async () => {
     const { repo } = getCtx();
     await repo.recordReception(makeReception({ sourceId: 'src-a', pathKey: 'a1' }));

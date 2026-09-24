@@ -239,8 +239,10 @@ describe('Coverage Report API (#5277 WP3)', () => {
     });
 
     it('400 INVALID_HOPS for an out-of-range value', async () => {
+      // hops is 0-63 (#5277 P3 §2.5: widened from Meshtastic's 0-7 to also
+      // fit MeshCore flood-advert hop counts) — 9 is valid now; 64 is not.
       const agent = await harness.loginAs(harness.admin);
-      const res = await agent.get('/receptions?hops=9');
+      const res = await agent.get('/receptions?hops=64');
       expect(res.status).toBe(400);
       expect(res.body.code).toBe('INVALID_HOPS');
     });
@@ -496,12 +498,22 @@ describe('Coverage Report API (#5277 WP3)', () => {
         await harness.db.settings.deleteSetting('coverage_mqtt_enabled').catch(() => {});
       });
 
-      it('lists only the MQTT broker/bridge sources — never TCP or MeshCore MQTT', async () => {
+      it('lists the MQTT broker/bridge sources AND the MeshCore Observer source — never a device-backed meshtastic_tcp/meshcore source', async () => {
+        // #5277 P3 §2.5 (Decision U1) widens discovery to `isMeshCoreMqttManager`
+        // alongside P2's `isMqttConnectionStatusManager` — MESHCORE_MQTT
+        // (type `meshcore_mqtt`) is now included; TCP (a device-backed source)
+        // still never appears.
         const agent = await harness.loginAs(harness.admin);
         const res = await agent.get('/receivers');
         expect(res.status).toBe(200);
         const ids = res.body.data.mqttSources.map((m: any) => m.sourceId).sort();
-        expect(ids).toEqual([BRIDGE, BROKER].sort());
+        expect(ids).toEqual([BRIDGE, BROKER, MESHCORE_MQTT].sort());
+        expect(ids).not.toContain(TCP);
+
+        const broker = res.body.data.mqttSources.find((m: any) => m.sourceId === BROKER);
+        const observer = res.body.data.mqttSources.find((m: any) => m.sourceId === MESHCORE_MQTT);
+        expect(broker.protocol).toBe('meshtastic');
+        expect(observer.protocol).toBe('meshcore');
       });
 
       it('recordingEnabled reflects the per-source setting; absent defaults to false', async () => {
@@ -607,6 +619,380 @@ describe('Coverage Report API (#5277 WP3)', () => {
       expect(res.status).toBe(200);
       expect(res.body.data.senders).toEqual([]);
       expect(res.body.data.truncated).toBe(false);
+    });
+  });
+
+  // ── MeshCore privacy filter (#5277 Phase 3 WP2 §2.5, Decision D10) ─────────
+  //
+  // Before this work package, `/receptions` and `/senders` kept ANY row whose
+  // `senderNodeNum == null` — true of EVERY MeshCore row, since MeshCore
+  // coverage rows key on a pubkey, not a nodeNum. These tests are the
+  // regression coverage for that leak: a MeshCore sender must be gated on
+  // `(sourceId, publicKey)` presence in `meshcore_nodes` (everyone, admins
+  // included) plus per-source `nodes:viewOnMap` (non-admins), exactly like
+  // `maskContactPositionsForViewOnMap` (#4559) gates the MeshCore node list
+  // itself.
+  describe('MeshCore privacy filter (#5277 Phase 3 WP2 §2.5)', () => {
+    const MC_RECEIVER = 'a'.repeat(64);
+    const MC_SENDER = 'b'.repeat(64);
+    const MC_SENDER_NO_NODE = 'c'.repeat(64); // never gets a meshcore_nodes row
+    const MC_RECEIVER_B = 'd'.repeat(64);
+    const MC_SENDER_B = 'e'.repeat(64);
+
+    /**
+     * Grant `nodes:viewOnMap` on `sourceId` for `userId`. `permissions` has a
+     * UNIQUE(user_id, resource, sourceId) constraint, and the outer
+     * `beforeEach` already grants `limited` a `nodes:read` row on `sourceA`
+     * — a second `harness.grant(..., 'nodes', 'viewOnMap', ...)` call would
+     * violate it (a plain INSERT, not an upsert). Replace the row instead of
+     * inserting a second one for the same (user, resource, sourceId) key.
+     */
+    async function grantNodesViewOnMap(userId: number, sourceId: string): Promise<void> {
+      await harness.db.auth.deletePermissionsForUserByScope(userId, sourceId);
+      await harness.db.auth.createPermission({
+        userId, resource: 'nodes', canRead: true, canWrite: false, canViewOnMap: true,
+        sourceId, grantedAt: Date.now(), grantedBy: null,
+      });
+    }
+
+    beforeEach(async () => {
+      await harness.db.meshcore.upsertNode(
+        { publicKey: MC_RECEIVER, name: 'MC Receiver A', latitude: 39.0, longitude: -121.0 },
+        harness.sourceA,
+      );
+      await harness.db.meshcore.upsertNode(
+        { publicKey: MC_SENDER, name: 'MC Sender A', latitude: 39.5, longitude: -121.5 },
+        harness.sourceA,
+      );
+      await harness.db.meshcore.upsertNode(
+        { publicKey: MC_RECEIVER_B, name: 'MC Receiver B', latitude: 10.5, longitude: 20.5 },
+        harness.sourceB,
+      );
+      await harness.db.meshcore.upsertNode(
+        { publicKey: MC_SENDER_B, name: 'MC Sender B', latitude: 10.6, longitude: 20.6 },
+        harness.sourceB,
+      );
+
+      // sourceA: a normal (both sides have a meshcore_nodes row) reception...
+      await databaseService.coverageReceptions.recordReception({
+        sourceId: harness.sourceA,
+        protocol: 'meshcore',
+        receiverKind: 'local',
+        receiverId: MC_RECEIVER,
+        receiverLatitude: 39.0,
+        receiverLongitude: -121.0,
+        senderId: MC_SENDER,
+        packetKey: 'AAAAAAAAAAAAAAAA',
+        pathKey: 'h0:-',
+        latitude: 39.1,
+        longitude: -121.1,
+        receivedAt: Date.now(),
+      });
+      // ...and one from a sender with NO meshcore_nodes row (orphan case).
+      await databaseService.coverageReceptions.recordReception({
+        sourceId: harness.sourceA,
+        protocol: 'meshcore',
+        receiverKind: 'local',
+        receiverId: MC_RECEIVER,
+        receiverLatitude: 39.0,
+        receiverLongitude: -121.0,
+        senderId: MC_SENDER_NO_NODE,
+        packetKey: 'BBBBBBBBBBBBBBBB',
+        pathKey: 'h0:-',
+        latitude: 39.2,
+        longitude: -121.2,
+        receivedAt: Date.now(),
+      });
+      // sourceB: independent MeshCore reception, for the per-source isolation case.
+      await databaseService.coverageReceptions.recordReception({
+        sourceId: harness.sourceB,
+        protocol: 'meshcore',
+        receiverKind: 'local',
+        receiverId: MC_RECEIVER_B,
+        receiverLatitude: 10.5,
+        receiverLongitude: 20.5,
+        senderId: MC_SENDER_B,
+        packetKey: 'CCCCCCCCCCCCCCCC',
+        pathKey: 'h0:-',
+        latitude: 10.7,
+        longitude: 20.7,
+        receivedAt: Date.now(),
+      });
+    });
+
+    afterEach(async () => {
+      await harness.db.meshcore.deleteNode(MC_RECEIVER, harness.sourceA).catch(() => {});
+      await harness.db.meshcore.deleteNode(MC_SENDER, harness.sourceA).catch(() => {});
+      await harness.db.meshcore.deleteNode(MC_RECEIVER_B, harness.sourceB).catch(() => {});
+      await harness.db.meshcore.deleteNode(MC_SENDER_B, harness.sourceB).catch(() => {});
+    });
+
+    describe('GET /receptions', () => {
+      it('a limited user with nodes:read but no nodes:viewOnMap sees no MeshCore sender rows', async () => {
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get('/receptions');
+        expect(res.status).toBe(200);
+        const senderIds = res.body.data.items.map((r: any) => r.senderId);
+        expect(senderIds).not.toContain(MC_SENDER);
+        expect(senderIds).not.toContain(MC_SENDER_NO_NODE);
+      });
+
+      it('the same user sees the MeshCore row once nodes:viewOnMap is granted (orphan sender still dropped)', async () => {
+        await grantNodesViewOnMap(harness.limited.id, harness.sourceA);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get('/receptions');
+        expect(res.status).toBe(200);
+        const senderIds = res.body.data.items.map((r: any) => r.senderId);
+        expect(senderIds).toContain(MC_SENDER);
+        // No meshcore_nodes row for this sender — dropped for everyone, viewOnMap included.
+        expect(senderIds).not.toContain(MC_SENDER_NO_NODE);
+      });
+
+      it('a sender with no meshcore_nodes row is dropped for admin too', async () => {
+        const agent = await harness.loginAs(harness.admin);
+        const res = await agent.get('/receptions');
+        expect(res.status).toBe(200);
+        const senderIds = res.body.data.items.map((r: any) => r.senderId);
+        expect(senderIds).toContain(MC_SENDER);
+        expect(senderIds).not.toContain(MC_SENDER_NO_NODE);
+      });
+
+      it('nulls MeshCore receiver coordinates when the receiver has no meshcore_nodes row (admin)', async () => {
+        // Reuse the orphan-sender row from beforeEach as an orphan RECEIVER
+        // instead: record a fresh reception whose receiverId has no node row.
+        const orphanReceiver = 'f'.repeat(64);
+        await databaseService.coverageReceptions.recordReception({
+          sourceId: harness.sourceA,
+          protocol: 'meshcore',
+          receiverKind: 'local',
+          receiverId: orphanReceiver,
+          receiverLatitude: 39.9,
+          receiverLongitude: -121.9,
+          senderId: MC_SENDER,
+          packetKey: 'DDDDDDDDDDDDDDDD',
+          pathKey: 'h0:-',
+          latitude: 39.3,
+          longitude: -121.3,
+          receivedAt: Date.now(),
+        });
+        const agent = await harness.loginAs(harness.admin);
+        const res = await agent.get('/receptions');
+        const row = res.body.data.items.find((r: any) => r.packetKey === 'DDDDDDDDDDDDDDDD');
+        expect(row).toBeDefined();
+        expect(row.receiverLatitude).toBeNull();
+        expect(row.receiverLongitude).toBeNull();
+      });
+
+      it('per-source isolation: nodes:read + viewOnMap on A only never sees B MeshCore rows', async () => {
+        await grantNodesViewOnMap(harness.limited.id, harness.sourceA);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get('/receptions');
+        expect(res.status).toBe(200);
+        const senderIds = res.body.data.items.map((r: any) => r.senderId);
+        expect(senderIds).not.toContain(MC_SENDER_B);
+      });
+
+      it('admin with sources=B sees B MeshCore rows (per-source isolation, positive case)', async () => {
+        const agent = await harness.loginAs(harness.admin);
+        const res = await agent.get(`/receptions?sources=${harness.sourceB}`);
+        expect(res.status).toBe(200);
+        const senderIds = res.body.data.items.map((r: any) => r.senderId);
+        expect(senderIds).toContain(MC_SENDER_B);
+      });
+
+      it('Meshtastic sender-visibility behaviour is unchanged alongside MeshCore rows in the same response', async () => {
+        const agent = await harness.loginAs(harness.admin);
+        const res = await agent.get('/receptions');
+        const senderIds = res.body.data.items.map((r: any) => r.senderId);
+        // Meshtastic hidden-from-map sender (seeded in the outer beforeEach) still excluded.
+        expect(senderIds).not.toContain(nodeIdFor(SENDER_HIDDEN));
+        // Meshtastic visible sender still present.
+        expect(senderIds).toContain(nodeIdFor(SENDER_OK));
+      });
+
+      it('accepts a 64-hex MeshCore sender param, lowercasing an uppercase value', async () => {
+        await grantNodesViewOnMap(harness.limited.id, harness.sourceA);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/receptions?sender=${MC_SENDER.toUpperCase()}`);
+        expect(res.status).toBe(200);
+        expect(res.body.data.items.every((r: any) => r.senderId === MC_SENDER)).toBe(true);
+        expect(res.body.data.items.length).toBeGreaterThan(0);
+      });
+
+      it('400 INVALID_SENDER for a 63-hex value (one short of a MeshCore pubkey)', async () => {
+        const agent = await harness.loginAs(harness.admin);
+        const res = await agent.get(`/receptions?sender=${'a'.repeat(63)}`);
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe('INVALID_SENDER');
+      });
+
+      it('hops=8 is accepted (MeshCore flood-advert forward cap)', async () => {
+        const agent = await harness.loginAs(harness.admin);
+        const res = await agent.get('/receptions?hops=8');
+        expect(res.status).toBe(200);
+      });
+
+      it('400 INVALID_HOPS for hops=64 (one past the widened 0-63 range)', async () => {
+        const agent = await harness.loginAs(harness.admin);
+        const res = await agent.get('/receptions?hops=64');
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe('INVALID_HOPS');
+      });
+    });
+
+    describe('GET /senders', () => {
+      it('a limited user with nodes:read but no nodes:viewOnMap sees no MeshCore senders', async () => {
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get('/senders');
+        expect(res.status).toBe(200);
+        const senderIds = res.body.data.senders.map((s: any) => s.senderId);
+        expect(senderIds).not.toContain(MC_SENDER);
+      });
+
+      it('the same user sees the MeshCore sender, named from meshcore_nodes, once viewOnMap is granted', async () => {
+        await grantNodesViewOnMap(harness.limited.id, harness.sourceA);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get('/senders');
+        expect(res.status).toBe(200);
+        const sender = res.body.data.senders.find((s: any) => s.senderId === MC_SENDER);
+        expect(sender).toBeDefined();
+        expect(sender.longName).toBe('MC Sender A');
+        expect(sender.senderNodeNum).toBeNull();
+      });
+
+      it('a MeshCore sender with no meshcore_nodes row is dropped for admin too', async () => {
+        const agent = await harness.loginAs(harness.admin);
+        const res = await agent.get('/senders');
+        const senderIds = res.body.data.senders.map((s: any) => s.senderId);
+        expect(senderIds).not.toContain(MC_SENDER_NO_NODE);
+      });
+
+      it('per-source isolation: nodes:read + viewOnMap on A only never sees B MeshCore senders', async () => {
+        await grantNodesViewOnMap(harness.limited.id, harness.sourceA);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get('/senders');
+        const senderIds = res.body.data.senders.map((s: any) => s.senderId);
+        expect(senderIds).not.toContain(MC_SENDER_B);
+      });
+    });
+
+    describe('GET /receivers', () => {
+      it('a limited user with nodes:read but no nodes:viewOnMap gets null MeshCore receiver coordinates', async () => {
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get('/receivers');
+        expect(res.status).toBe(200);
+        const receiver = res.body.data.receivers.find((r: any) => r.receiverId === MC_RECEIVER);
+        expect(receiver).toBeDefined();
+        expect(receiver.latitude).toBeNull();
+        expect(receiver.longitude).toBeNull();
+      });
+
+      it('the same user sees the MeshCore receiver position, named from meshcore_nodes, once viewOnMap is granted', async () => {
+        await grantNodesViewOnMap(harness.limited.id, harness.sourceA);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get('/receivers');
+        const receiver = res.body.data.receivers.find((r: any) => r.receiverId === MC_RECEIVER);
+        expect(receiver).toBeDefined();
+        expect(receiver.longName).toBe('MC Receiver A');
+        expect(receiver.latitude).toBe(39.0);
+        expect(receiver.longitude).toBe(-121.0);
+      });
+
+      it('admin sees a null position for a receiver with no meshcore_nodes row', async () => {
+        const orphanReceiver = 'f'.repeat(64);
+        await databaseService.coverageReceptions.recordReception({
+          sourceId: harness.sourceA,
+          protocol: 'meshcore',
+          receiverKind: 'local',
+          receiverId: orphanReceiver,
+          receiverLatitude: 39.9,
+          receiverLongitude: -121.9,
+          senderId: MC_SENDER,
+          packetKey: 'EEEEEEEEEEEEEEEE',
+          pathKey: 'h0:-',
+          latitude: 39.4,
+          longitude: -121.4,
+          receivedAt: Date.now(),
+        });
+        const agent = await harness.loginAs(harness.admin);
+        const res = await agent.get('/receivers');
+        const receiver = res.body.data.receivers.find((r: any) => r.receiverId === orphanReceiver);
+        expect(receiver).toBeDefined();
+        expect(receiver.latitude).toBeNull();
+        expect(receiver.longitude).toBeNull();
+      });
+    });
+
+    describe('mqttSources protocol (#5277 P3 §2.5)', () => {
+      const MESHCORE_MQTT = 'rt-source-meshcore-mqtt-privacy';
+      const DEVICE_MESHCORE = 'rt-source-meshcore-device-privacy';
+
+      function makeFakeManager(sourceId: string, sourceType: string) {
+        return {
+          sourceId,
+          sourceType,
+          start: async () => {},
+          stop: async () => {},
+          getStatus: () => ({ sourceId, sourceName: sourceId, sourceType, connected: true }),
+        } as unknown as ISourceManager;
+      }
+
+      beforeEach(async () => {
+        await harness.db.sources.createSource({
+          id: MESHCORE_MQTT, name: 'MC Observer', type: 'meshcore_mqtt', config: {}, enabled: true,
+        });
+        await harness.db.sources.createSource({
+          id: DEVICE_MESHCORE, name: 'MC Device', type: 'meshcore', config: {}, enabled: true,
+        });
+        await sourceManagerRegistry.addManager(makeFakeManager(MESHCORE_MQTT, 'meshcore_mqtt'));
+        await sourceManagerRegistry.addManager(makeFakeManager(DEVICE_MESHCORE, 'meshcore'));
+      });
+
+      afterEach(async () => {
+        await sourceManagerRegistry.removeManager(MESHCORE_MQTT).catch(() => {});
+        await sourceManagerRegistry.removeManager(DEVICE_MESHCORE).catch(() => {});
+        await harness.db.sources.deleteSource(MESHCORE_MQTT).catch(() => {});
+        await harness.db.sources.deleteSource(DEVICE_MESHCORE).catch(() => {});
+      });
+
+      it("lists the MeshCore Observer source with protocol 'meshcore'; never the device-backed source", async () => {
+        const agent = await harness.loginAs(harness.admin);
+        const res = await agent.get('/receivers');
+        expect(res.status).toBe(200);
+        const ids = res.body.data.mqttSources.map((m: any) => m.sourceId);
+        expect(ids).toContain(MESHCORE_MQTT);
+        expect(ids).not.toContain(DEVICE_MESHCORE);
+        const observer = res.body.data.mqttSources.find((m: any) => m.sourceId === MESHCORE_MQTT);
+        expect(observer.protocol).toBe('meshcore');
+      });
+
+      it("a Meshtastic MQTT source's status still reports protocol 'meshtastic'", async () => {
+        const BROKER = 'rt-source-mqtt-broker-privacy';
+        await harness.db.sources.createSource({ id: BROKER, name: 'Broker', type: 'mqtt_broker', config: {}, enabled: true });
+        await sourceManagerRegistry.addManager(makeFakeManager(BROKER, 'mqtt_broker'));
+        try {
+          const agent = await harness.loginAs(harness.admin);
+          const res = await agent.get('/receivers');
+          const broker = res.body.data.mqttSources.find((m: any) => m.sourceId === BROKER);
+          expect(broker).toBeDefined();
+          expect(broker.protocol).toBe('meshtastic');
+        } finally {
+          await sourceManagerRegistry.removeManager(BROKER).catch(() => {});
+          await harness.db.sources.deleteSource(BROKER).catch(() => {});
+        }
+      });
+
+      it('a bare global coverage_mqtt_enabled row never turns the Observer source on (#5080 guard)', async () => {
+        await harness.db.settings.setSetting('coverage_mqtt_enabled', '1');
+        try {
+          const agent = await harness.loginAs(harness.admin);
+          const res = await agent.get('/receivers');
+          const observer = res.body.data.mqttSources.find((m: any) => m.sourceId === MESHCORE_MQTT);
+          expect(observer.recordingEnabled).toBe(false);
+        } finally {
+          await harness.db.settings.deleteSetting('coverage_mqtt_enabled').catch(() => {});
+        }
+      });
     });
   });
 });

@@ -120,6 +120,35 @@ describe('dedupeReceiverMarkers', () => {
     const markers = dedupeReceiverMarkers(receivers);
     expect(markers.map((m) => m.key).sort()).toEqual(['local|!x', 'mqtt_gateway|!x']);
   });
+
+  // #5277 Phase 3 WP3: MeshCore Observer markers.
+  it('carries the protocol of the best row onto the marker', () => {
+    const receivers = [
+      receiver({
+        receiverKind: 'mqtt_gateway',
+        protocol: 'meshcore',
+        receiverId: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2',
+        longName: null,
+        shortName: null,
+      }),
+    ];
+    const markers = dedupeReceiverMarkers(receivers);
+    expect(markers[0].protocol).toBe('meshcore');
+  });
+
+  it('falls back to the abbreviated pubkey when no name is known', () => {
+    const receivers = [
+      receiver({
+        receiverKind: 'mqtt_gateway',
+        protocol: 'meshcore',
+        receiverId: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2',
+        longName: null,
+        shortName: null,
+      }),
+    ];
+    const markers = dedupeReceiverMarkers(receivers);
+    expect(markers[0].label).toBe('a1b2c3d4…');
+  });
 });
 
 describe('buildDedupedReceiverIndex', () => {

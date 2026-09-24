@@ -176,5 +176,23 @@ describe('coverageReceiverFilter', () => {
       expect(result.clientSideFilter).toBe(true);
       expect(result.receiverFilter).toBeUndefined();
     });
+
+    // #5277 Phase 3 WP2 §2.5: MeshCore receiver ids are 64-hex pubkeys, far
+    // wider than Meshtastic's `!xxxxxxxx`. Well under the 1000-id cap can
+    // still blow the encoded-string cap, which exists specifically for this
+    // case — falls back from LENGTH, not count.
+    it('falls back to clientSideFilter from encoded length alone, well under the 1000-id cap (MeshCore pubkeys)', () => {
+      const pubkeyOf = (i: number): string => i.toString(16).padStart(8, '0').repeat(8).slice(0, 64);
+      const many = Array.from({ length: 200 }, (_, i) => ({
+        sourceId: 'src-a',
+        receiverId: pubkeyOf(i),
+      }));
+      // Deselect half (100) — well under MAX_TOTAL_IDS (1000), but 100 x
+      // 64-hex ids alone is ~6.5 KB once encoded, past the 6000-char cap.
+      const deselected = new Set(many.slice(0, 100).map((r) => receiverKey(r.sourceId, r.receiverId)));
+      const result = buildReceiverQuery(many, deselected);
+      expect(result.clientSideFilter).toBe(true);
+      expect(result.receiverFilter).toBeUndefined();
+    });
   });
 });

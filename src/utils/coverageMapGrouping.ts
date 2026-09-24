@@ -9,6 +9,7 @@
  */
 import type { CoverageReceiverDto, CoverageReceptionDto } from '../types/coverage.js';
 import { receiverKey } from './coverageReceiverFilter.js';
+import { formatCoverageNodeId } from './coverage.js';
 
 /** Groups a physical receiver regardless of which source(s) reported it. */
 export function physicalReceiverKey(receiverKind: string, receiverId: string): string {
@@ -19,6 +20,10 @@ export interface DedupedReceiverMarker {
   key: string; // physicalReceiverKey
   receiverKind: CoverageReceiverDto['receiverKind'];
   receiverId: string;
+  /** Protocol of the row this marker's position/name came from (#5277 P3
+   *  WP3). Drives CoverageMap's "Observer" vs "Gateway" tooltip label for a
+   *  `mqtt_gateway` marker. */
+  protocol: CoverageReceiverDto['protocol'];
   latitude: number;
   longitude: number;
   label: string;
@@ -58,9 +63,10 @@ export function dedupeReceiverMarkers(receivers: CoverageReceiverDto[]): Deduped
       key,
       receiverKind: r.receiverKind,
       receiverId: r.receiverId,
+      protocol: r.protocol,
       latitude: r.latitude as number,
       longitude: r.longitude as number,
-      label: r.longName || r.shortName || r.receiverId,
+      label: r.longName || r.shortName || formatCoverageNodeId(r.receiverId),
       lastReceivedAt: r.lastReceivedAt,
       sourceIds: group.sourceIds,
     });

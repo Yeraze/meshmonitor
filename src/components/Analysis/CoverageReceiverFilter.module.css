@@ -217,6 +217,23 @@
   color: var(--color-accent);
 }
 
+/* MeshCore protocol tag (#5277 Phase 3 WP3) — separate from the Local/
+ * Gateway/Observer kind badge above; matches the `--color-caution` token
+ * used for the MeshCore protocol badge elsewhere (nodes.css
+ * `.protocol-meshcore`). */
+.badgeMeshCore {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--color-caution) 18%, transparent);
+  color: var(--color-caution);
+}
+
 .rowCount {
   color: var(--color-text-subtle);
   font-size: 11px;
