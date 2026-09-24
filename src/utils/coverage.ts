@@ -26,8 +26,15 @@ export const COVERAGE_RETENTION_MAX_DAYS = 90;
  * retention window in days. Non-finite input (undefined, NaN, an unparsable
  * string) falls back to the default; everything else is clamped to
  * `[COVERAGE_RETENTION_MIN_DAYS, COVERAGE_RETENTION_MAX_DAYS]`.
+ *
+ * `null` is handled explicitly (WP3 fix, #5277): `databaseService.getSettingAsync`
+ * returns `null` — not `undefined` — for a key that has never been saved, and
+ * `Number(null)` coerces to `0` (finite), which would otherwise clamp the
+ * unset-setting case down to the 1-day minimum instead of the intended 7-day
+ * default.
  */
 export function clampCoverageRetentionDays(raw: unknown): number {
+  if (raw === null || raw === undefined) return COVERAGE_RETENTION_DEFAULT_DAYS;
   const n = typeof raw === 'number' ? raw : Number(raw);
   if (!Number.isFinite(n)) return COVERAGE_RETENTION_DEFAULT_DAYS;
   return Math.max(

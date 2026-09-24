@@ -22,6 +22,10 @@ describe('clampCoverageRetentionDays', () => {
     expect(clampCoverageRetentionDays(undefined)).toBe(COVERAGE_RETENTION_DEFAULT_DAYS);
   });
 
+  it('falls back to the default for null (WP3 #5277: getSettingAsync returns null, not undefined, for an unset key)', () => {
+    expect(clampCoverageRetentionDays(null)).toBe(COVERAGE_RETENTION_DEFAULT_DAYS);
+  });
+
   it('falls back to the default for a non-numeric string', () => {
     expect(clampCoverageRetentionDays('abc')).toBe(COVERAGE_RETENTION_DEFAULT_DAYS);
   });

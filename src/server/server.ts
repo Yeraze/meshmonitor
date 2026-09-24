@@ -712,6 +712,7 @@ import sourceRoutes from './routes/sourceRoutes.js';
 import unifiedRoutes from './routes/unifiedRoutes.js';
 import analysisRoutes from './routes/analysisRoutes.js';
 import meshIssuesRoutes from './routes/meshIssuesRoutes.js';
+import coverageRoutes from './routes/coverageRoutes.js';
 import elevationRoutes from './routes/elevationRoutes.js';
 import gnssRoutes from './routes/gnssRoutes.js';
 import rfCoverageRoutes from './routes/rfCoverageRoutes.js';
@@ -892,6 +893,12 @@ apiRouter.use('/unified', unifiedRoutes);
 // meshIssuesRoutes.ts header for the cross-source permission filtering.
 // NOTE: More specific route must come BEFORE general /analysis router
 apiRouter.use('/analysis/mesh-issues', meshIssuesRoutes);
+
+// Coverage Report (#5277 Phase 1 WP3) — RF-reception query API. Also more
+// specific than /analysis and must be mounted before it; does not collide
+// with /analysis/coverage-grid since Express mount paths match whole
+// segments.
+apiRouter.use('/analysis/coverage', coverageRoutes);
 
 // Cross-source analysis workspace
 apiRouter.use('/analysis', analysisRoutes);
