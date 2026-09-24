@@ -135,7 +135,7 @@ class FakeManager extends EventEmitter implements MeshCoreVirtualNodeManager {
   }) {
     return this.setOtherParamsMock(params) as Promise<boolean>;
   }
-  sendAdvert() { return this.sendAdvertMock() as Promise<boolean>; }
+  sendAdvert(mode: 'zero_hop' | 'flood') { return this.sendAdvertMock(mode) as Promise<boolean>; }
   exportPrivateKey() { return this.exportPrivateKeyMock() as Promise<string | null>; }
   loginToNode(publicKey: string, password: string) {
     return this.loginToNodeMock(publicKey, password) as Promise<MeshCoreLoginResult | null>;
@@ -761,8 +761,27 @@ describe('MeshCoreVirtualNodeServer — SendSelfAdvert forwarding (#3904)', () =
     await server?.stop();
   });
 
-  // [code, type] — type 1 = flood; the manager always floods so the byte is ignored.
+  // [code, type] — type 1 = flood, 0 (or absent) = zero-hop, as on real firmware.
   const advertFrame: number[] = [CommandCodes.SendSelfAdvert, 1];
+
+  it('forwards type byte 1 as a flood advert', async () => {
+    await startWith(true);
+    await client.request(advertFrame);
+    expect(manager.sendAdvertMock).toHaveBeenCalledWith('flood');
+  });
+
+  it('forwards type byte 0 as a zero-hop advert', async () => {
+    await startWith(true);
+    const res = await client.request([CommandCodes.SendSelfAdvert, 0]);
+    expect(res[0]).toBe(ResponseCodes.Ok);
+    expect(manager.sendAdvertMock).toHaveBeenCalledWith('zero_hop');
+  });
+
+  it('treats a missing type byte as zero-hop (firmware default)', async () => {
+    await startWith(true);
+    await client.request([CommandCodes.SendSelfAdvert]);
+    expect(manager.sendAdvertMock).toHaveBeenCalledWith('zero_hop');
+  });
 
   it('forwards SendSelfAdvert to manager.sendAdvert and replies Ok', async () => {
     await startWith(true);
