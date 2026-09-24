@@ -104,7 +104,8 @@ export function analyzeSeries(
   let scaleKind: OutlierScaleKind;
   if (!criteria.auto) scaleKind = 'off';
   else if (finite.length < OUTLIER_MIN_SAMPLES) scaleKind = 'too_few';
-  else if (!mad) scaleKind = 'flat';
+  // MAD 0 is a flat series; null (no finite points) is already caught by too_few.
+  else if (mad === null || mad === 0) scaleKind = 'flat';
   else scaleKind = 'mad';
 
   const threshold = scaleKind === 'mad' ? criteria.k * (mad as number) : null;
