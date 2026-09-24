@@ -1,0 +1,230 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-surface);
+  min-width: 0;
+}
+
+/* ── MQTT recording status (spec §2.9, user decision Q4) ─────────────── */
+
+.mqttStatus {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mqttStatusRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.mqttSourceName {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.badgeOn,
+.badgeOff {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.badgeOn {
+  background: color-mix(in srgb, var(--color-success) 18%, transparent);
+  color: var(--color-success);
+}
+
+.badgeOff {
+  background: var(--color-surface-hover);
+  color: var(--color-text-subtle);
+}
+
+.mqttLink {
+  color: var(--color-accent);
+  font-size: 12px;
+  text-decoration: underline;
+}
+
+/* ── Receiver picker trigger + panel ─────────────────────────────────── */
+
+.filterWrap {
+  position: relative;
+  min-width: 0;
+}
+
+.panel {
+  position: relative;
+  margin-top: 8px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-raised);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.searchRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  min-width: 0;
+}
+
+.searchInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 13px;
+  outline: none;
+}
+
+.bulkRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.groups {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.group {
+  border: 1px solid var(--color-surface-hover);
+  border-radius: 6px;
+  padding: 6px 8px;
+  min-width: 0;
+}
+
+.groupHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.collapseToggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 2px;
+  color: var(--color-text-subtle);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.groupName {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.groupCount {
+  font-size: 12px;
+  color: var(--color-text-subtle);
+  flex-shrink: 0;
+}
+
+.rows {
+  list-style: none;
+  margin: 6px 0 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.row {
+  min-width: 0;
+}
+
+.rowLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0 3px 20px;
+  font-size: 12px;
+  color: var(--color-text);
+  cursor: pointer;
+  min-width: 0;
+}
+
+.rowName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.rowId {
+  color: var(--color-text-subtle);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.badgeLocal,
+.badgeGateway {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.badgeLocal {
+  background: var(--color-surface-hover);
+  color: var(--color-text-subtle);
+}
+
+.badgeGateway {
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  color: var(--color-accent);
+}
+
+.rowCount {
+  color: var(--color-text-subtle);
+  font-size: 11px;
+  flex-shrink: 0;
+  min-width: 2.5em;
+  text-align: right;
+}
+
+.showAllBtn {
+  margin-top: 6px;
+}

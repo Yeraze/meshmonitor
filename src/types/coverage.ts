@@ -66,6 +66,22 @@ export interface CoverageReceiverDto {
   latitude: number | null;
   longitude: number | null;
   lastReceivedAt: number;
+  /** Reception rows for this receiver in the retention window (#5277 P2 §2.3/§2.4). */
+  receptionCount: number;
+}
+
+/**
+ * Live per-source MQTT gateway-recording status (#5277 P2, user decision
+ * Q4), returned alongside `/receivers`. Limited to the MQTT sources the
+ * caller can read; found via the typed `isMqttConnectionStatusManager`
+ * predicate over the source manager registry, never a `source.type` string
+ * gate, and read with `getSettingForSources` (per-source, never the bare
+ * `coverage_mqtt_enabled` key — #5080).
+ */
+export interface CoverageMqttSourceStatusDto {
+  sourceId: string;
+  sourceName: string;
+  recordingEnabled: boolean;
 }
 
 /** A distinct sender seen in the window, enriched with a name. */

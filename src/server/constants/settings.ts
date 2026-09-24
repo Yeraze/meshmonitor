@@ -128,6 +128,11 @@ export const VALID_SETTINGS_KEYS = [
   // Report RF-reception log (#5277 P1 WP2). Global, default 7, clamped 1-90
   // (see clampCoverageRetentionDays in src/utils/coverage.ts).
   'coverage_retention_days',
+  // Opt-in MQTT gateway-reception recording for the Coverage Report (#5277
+  // P2, per-source, MQTT sources only, default off). Read via
+  // getSettingForSource, never the bare key (#5080) — see
+  // src/server/services/coverageMqttSettings.ts.
+  'coverage_mqtt_enabled',
   'solarMonitoringEnabled',
   'solarMonitoringLatitude',
   'solarMonitoringLongitude',
@@ -647,6 +652,9 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'remoteLocalStatsFilterRegexEnabled',
   'remoteLocalStatsFilterLastHeardEnabled',
   'remoteLocalStatsFilterLastHeardHours',
+  // Coverage Report MQTT gateway-reception recording (#5277 P2). Per-source,
+  // MQTT sources only, default off. Read via coverageMqttSettings.ts.
+  'coverage_mqtt_enabled',
 ] as const;
 
 export type PerSourceSettingKey = typeof PER_SOURCE_SETTINGS_KEYS[number];

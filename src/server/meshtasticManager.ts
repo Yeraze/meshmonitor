@@ -107,6 +107,7 @@ import {
   meshtasticPathKey,
   nodeNumToId,
 } from '../utils/coverage.js';
+import { CoverageReceiverPositionCache } from './utils/coverageReceiverPositionCache.js';
 import { NodeDbMaintenanceService } from './services/nodeDbMaintenanceService.js';
 import { AutoAnnounceService } from './services/autoAnnounceService.js';
 import { AdminTransactionService } from './services/adminTransactionService.js';
@@ -1152,10 +1153,11 @@ class MeshtasticManager implements ISourceManager {
   // spoofs (#2584). See assessLocalSpoof().
   private sentPacketIds = new SentPacketIdCache();
 
-  // Coverage Report (#5277 P1 WP2): snapshot of this source's local receiver
-  // position, refreshed at most every 60 s from the nodes table rather than
-  // on every single reception. See maybeRecordCoverageReception().
-  private coverageReceiverPos: { lat: number | null; lon: number | null; at: number } | null = null;
+  // Coverage Report (#5277 P1 WP2, swapped to the shared cache in P2 §2.2):
+  // this source's local receiver position, refreshed at most every 60 s from
+  // the nodes table rather than on every single reception, with a failure
+  // TTL and single-flight loading. See maybeRecordCoverageReception().
+  private readonly coverageReceiverPosCache = new CoverageReceiverPositionCache({ maxEntries: 4 });
 
   // Auto-ping session tracking
   private autoPingSessions: Map<number, AutoPingSession> = new Map(); // keyed by requester nodeNum
@@ -5546,7 +5548,7 @@ class MeshtasticManager implements ISourceManager {
       const hopsAway = computeMeshtasticHopsAway({ hopStart, hopLimit, hasBitfield });
       const pathKey = meshtasticPathKey(relayNode, hopsAway);
 
-      await this.refreshCoverageReceiverPos(localNodeNum);
+      const receiverPos = await this.coverageReceiverPosCache.get(this.sourceId, localNodeNum);
 
       await databaseService.coverageReceptions.recordReception({
         sourceId: this.sourceId,
@@ -5554,8 +5556,8 @@ class MeshtasticManager implements ISourceManager {
         receiverKind: 'local',
         receiverId: nodeNumToId(localNodeNum),
         receiverNodeNum: localNodeNum,
-        receiverLatitude: this.coverageReceiverPos?.lat ?? null,
-        receiverLongitude: this.coverageReceiverPos?.lon ?? null,
+        receiverLatitude: receiverPos.lat,
+        receiverLongitude: receiverPos.lon,
         senderId: nodeNumToId(fromNum),
         senderNodeNum: fromNum,
         packetKey: String(packetId),
@@ -5578,30 +5580,6 @@ class MeshtasticManager implements ISourceManager {
       });
     } catch (err) {
       logger.debug('📡 Failed to record Coverage reception (non-fatal):', err);
-    }
-  }
-
-  /**
-   * Refresh {@link coverageReceiverPos} from the nodes table, at most once
-   * per 60 s — a per-manager snapshot cache so a busy survey session doesn't
-   * hit the nodes table on every single reception. Override-aware, mirroring
-   * the `hasPositionOverride` check in `processPositionMessageProtobuf`. A
-   * lookup failure is swallowed (leaves the previous cache in place, if any)
-   * so it can never break the caller's RX path.
-   */
-  private async refreshCoverageReceiverPos(localNodeNum: number): Promise<void> {
-    const now = Date.now();
-    if (this.coverageReceiverPos && now - this.coverageReceiverPos.at <= 60_000) return;
-    try {
-      const localNode = await databaseService.nodes.getNode(localNodeNum, this.sourceId);
-      const hasOverride = localNode?.positionOverrideEnabled === true
-        && localNode?.latitudeOverride != null
-        && localNode?.longitudeOverride != null;
-      const lat = hasOverride ? localNode!.latitudeOverride! : (localNode?.latitude ?? null);
-      const lon = hasOverride ? localNode!.longitudeOverride! : (localNode?.longitude ?? null);
-      this.coverageReceiverPos = { lat: lat ?? null, lon: lon ?? null, at: now };
-    } catch (err) {
-      logger.debug('📡 Failed to refresh coverage receiver position snapshot (non-fatal):', err);
     }
   }
 

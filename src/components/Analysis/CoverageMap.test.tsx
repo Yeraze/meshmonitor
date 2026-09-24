@@ -52,12 +52,19 @@ vi.mock('../map/BaseMap', () => ({
 }));
 
 vi.mock('react-leaflet', () => ({
-  CircleMarker: ({ children, center, ...rest }: any) => (
-    <div data-testid={rest['data-testid'] ?? 'circle-marker'} data-center={center.join(',')}>
+  CircleMarker: ({ children, center, radius, pathOptions, ...rest }: any) => (
+    <div
+      data-testid={rest['data-testid'] ?? 'circle-marker'}
+      data-center={center.join(',')}
+      data-radius={radius}
+      data-dash={pathOptions?.dashArray ?? ''}
+    >
       {children}
     </div>
   ),
-  Tooltip: ({ children }: { children?: React.ReactNode }) => <span>{children}</span>,
+  Tooltip: ({ children, permanent }: { children?: React.ReactNode; permanent?: boolean }) => (
+    <span data-permanent={permanent ? 'true' : 'false'}>{children}</span>
+  ),
   Popup: ({ children }: { children?: React.ReactNode }) => <div data-testid="popup">{children}</div>,
   useMap: () => ({ setView: setViewMock, fitBounds: fitBoundsMock }),
 }));
@@ -79,6 +86,7 @@ const receivers: CoverageReceiverDto[] = [
     latitude: 26.1,
     longitude: -80.2,
     lastReceivedAt: 1,
+    receptionCount: 5,
   },
   {
     sourceId: 'src-a',
@@ -92,6 +100,7 @@ const receivers: CoverageReceiverDto[] = [
     latitude: 26.3,
     longitude: -80.4,
     lastReceivedAt: 1,
+    receptionCount: 5,
   },
 ];
 
@@ -349,5 +358,94 @@ describe('CoverageMap', () => {
       <CoverageMap fixes={[fix]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} fitKey="k2" />,
     );
     expect(fitBoundsMock).toHaveBeenCalledTimes(2);
+  });
+
+  describe('cross-source gateway collapsing (#5277 Phase 2 WP4, Decision D7)', () => {
+    const gatewayReceivers: CoverageReceiverDto[] = [
+      {
+        sourceId: 'src-a', sourceName: 'Source A', protocol: 'meshtastic', receiverKind: 'mqtt_gateway',
+        receiverId: '!gw1', receiverNodeNum: 9, longName: 'Gateway One', shortName: 'GW1',
+        latitude: 26.2, longitude: -80.3, lastReceivedAt: 100, receptionCount: 20,
+      },
+      {
+        sourceId: 'src-b', sourceName: 'Source B', protocol: 'meshtastic', receiverKind: 'mqtt_gateway',
+        receiverId: '!gw1', receiverNodeNum: 9, longName: 'Gateway One', shortName: 'GW1',
+        latitude: 26.2, longitude: -80.3, lastReceivedAt: 200, receptionCount: 15,
+      },
+    ];
+
+    it('renders one marker for the same physical gateway seen via two sources', () => {
+      render(<CoverageMap fixes={[]} receivers={gatewayReceivers} metric="snr" senderNames={SENDER_NAMES} fitKey="k" />);
+      expect(screen.getAllByTestId('circle-marker')).toHaveLength(1);
+    });
+
+    it('styles a gateway marker with a dashed stroke, a smaller radius, and a hover (non-permanent) tooltip', () => {
+      render(<CoverageMap fixes={[]} receivers={gatewayReceivers} metric="snr" senderNames={SENDER_NAMES} fitKey="k" />);
+      const marker = screen.getByTestId('circle-marker');
+      expect(marker).toHaveAttribute('data-dash', '4,3');
+      expect(marker).toHaveAttribute('data-radius', '6');
+      expect(marker.querySelector('span')).toHaveAttribute('data-permanent', 'false');
+    });
+
+    it('a local receiver marker keeps a permanent tooltip and no dash', () => {
+      render(<CoverageMap fixes={[]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} fitKey="k" />);
+      const markers = screen.getAllByTestId('circle-marker');
+      for (const marker of markers) {
+        expect(marker).toHaveAttribute('data-dash', '');
+        expect(marker.querySelector('span')).toHaveAttribute('data-permanent', 'true');
+      }
+    });
+
+    it('collapses receptions from two sources for the same gateway+path into one popup line with a Gateway badge and a via-sources note', () => {
+      const fix: CoverageFix<CoverageReceptionDto> = {
+        senderId: '!bbbbbbbb',
+        packetKey: '100',
+        latitude: 26.15,
+        longitude: -80.25,
+        receivedAt: 1_700_000_000_000,
+        receptions: [
+          reception({
+            id: 1, sourceId: 'src-a', receiverKind: 'mqtt_gateway', receiverId: '!gw1', pathKey: 'r0:h0',
+            snr: 3, receiverLatitude: 26.2, receiverLongitude: -80.3,
+          }),
+          reception({
+            id: 2, sourceId: 'src-b', receiverKind: 'mqtt_gateway', receiverId: '!gw1', pathKey: 'r0:h0',
+            snr: 8, receiverLatitude: 26.2, receiverLongitude: -80.3,
+          }),
+        ],
+        bestSnr: 8,
+        bestRssi: -85,
+      };
+
+      render(
+        <CoverageMap fixes={[fix]} receivers={gatewayReceivers} metric="snr" senderNames={SENDER_NAMES} fitKey="k" />,
+      );
+
+      const popup = within(screen.getByTestId('coverage-fix-popup'));
+      // One collapsed line, not two.
+      expect(popup.getAllByText('Gateway One')).toHaveLength(1);
+      expect(popup.getByText('Gateway')).toBeInTheDocument();
+      expect(popup.getByText('via Source A, Source B')).toBeInTheDocument();
+      // The representative row is the higher-SNR one (id 2, snr 8).
+      expect(popup.getByText(/SNR 8\.0 dB/)).toBeInTheDocument();
+    });
+
+    it('does not show a via-sources line for a single-source (local) reception', () => {
+      const fix: CoverageFix<CoverageReceptionDto> = {
+        senderId: '!bbbbbbbb',
+        packetKey: '100',
+        latitude: 26.15,
+        longitude: -80.25,
+        receivedAt: 1_700_000_000_000,
+        receptions: [reception({ id: 1 })],
+        bestSnr: 5.5,
+        bestRssi: -85,
+      };
+
+      render(<CoverageMap fixes={[fix]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} fitKey="k" />);
+      const popup = within(screen.getByTestId('coverage-fix-popup'));
+      expect(popup.queryByText(/^via /)).not.toBeInTheDocument();
+      expect(popup.queryByText('Gateway')).not.toBeInTheDocument();
+    });
   });
 });

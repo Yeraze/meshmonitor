@@ -78,6 +78,27 @@ describe('configSections', () => {
       expect(ids).not.toContain('settings-mesh-issues');
       expect(ids).not.toContain('settings-coverage');
     });
+
+    // #5277 P2 WP3
+    it('shows Coverage recording only in source mode, for MQTT source types, with settings write', () => {
+      const mqttSource = { ...baseOptions, mode: 'source' as const, sourceType: 'mqtt_broker' };
+      expect(settingsNavItems(t, mqttSource).map((i) => i.id)).toContain('settings-coverage-mqtt');
+
+      const bridgeSource = { ...baseOptions, mode: 'source' as const, sourceType: 'mqtt_bridge' };
+      expect(settingsNavItems(t, bridgeSource).map((i) => i.id)).toContain('settings-coverage-mqtt');
+
+      // Not an MQTT-only source type.
+      const tcpSource = { ...baseOptions, mode: 'source' as const, sourceType: 'meshtastic_tcp' };
+      expect(settingsNavItems(t, tcpSource).map((i) => i.id)).not.toContain('settings-coverage-mqtt');
+
+      // Global mode has no single source, even if a sourceType is passed.
+      expect(settingsNavItems(t, { ...baseOptions, mode: 'global' as const, sourceType: 'mqtt_broker' })
+        .map((i) => i.id)).not.toContain('settings-coverage-mqtt');
+
+      // Gated on settings:write like the other batch-job sections.
+      expect(settingsNavItems(t, { ...mqttSource, canWriteSettings: false }).map((i) => i.id))
+        .not.toContain('settings-coverage-mqtt');
+    });
   });
 
   describe('buildConfigSurfaces', () => {

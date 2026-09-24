@@ -5,6 +5,7 @@ import type {
   CoverageSenderDto,
   CoverageReceptionDto,
   CoveragePage,
+  CoverageMqttSourceStatusDto,
 } from '../types/coverage.js';
 
 export interface Paginated<T> {
@@ -113,12 +114,12 @@ export async function fetchCoverageGrid(
 
 export async function fetchCoverageReceivers(
   args: { sources: string[]; signal?: AbortSignal },
-): Promise<{ receivers: CoverageReceiverDto[]; retentionDays: number }> {
+): Promise<{ receivers: CoverageReceiverDto[]; retentionDays: number; mqttSources: CoverageMqttSourceStatusDto[] }> {
   const p = new URLSearchParams();
   if (args.sources.length) p.set('sources', args.sources.join(','));
   const body = await authedGet<{
     success: boolean;
-    data: { receivers: CoverageReceiverDto[]; retentionDays: number };
+    data: { receivers: CoverageReceiverDto[]; retentionDays: number; mqttSources: CoverageMqttSourceStatusDto[] };
   }>(`/api/analysis/coverage/receivers?${p.toString()}`, args.signal);
   return body.data;
 }
@@ -148,7 +149,13 @@ export interface FetchCoverageReceptionsPageArgs {
   sources: string[];
   sinceMs: number;
   untilMs: number;
-  receiverIds?: string[];
+  /**
+   * Pre-encoded `receivers` wire grammar (`src:+id,id;src:-id,id` — WP1's
+   * `encodeReceiverFilter`, `src/utils/coverageReceiverFilter.ts`), NOT a
+   * raw id list — P1's flat CSV matched an id on every source, which the
+   * server no longer accepts (#5277 P2 §2.5/D8).
+   */
+  receiversQuery?: string;
   senderId?: string;
   hops?: number;
   hopsMode?: CoverageHopsMode;
@@ -164,7 +171,7 @@ export async function fetchCoverageReceptionsPage(
   if (args.sources.length) p.set('sources', args.sources.join(','));
   p.set('since', String(args.sinceMs));
   p.set('until', String(args.untilMs));
-  if (args.receiverIds && args.receiverIds.length) p.set('receivers', args.receiverIds.join(','));
+  if (args.receiversQuery) p.set('receivers', args.receiversQuery);
   if (args.senderId) p.set('sender', args.senderId);
   if (args.hops !== undefined) p.set('hops', String(args.hops));
   if (args.hopsMode) p.set('hopsMode', args.hopsMode);

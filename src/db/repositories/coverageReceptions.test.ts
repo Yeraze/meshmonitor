@@ -5,7 +5,7 @@
  * separately by `172_create_coverage_receptions.pgmysql.test.ts` and
  * `coverageReceptions.multiBackend.test.ts`.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type Database from 'better-sqlite3';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import {
@@ -156,15 +156,79 @@ describe('CoverageReceptionsRepository', () => {
       expect(page.items[0].senderId).toBe('!dddddddd');
     });
 
-    it('filters by receiverIds', async () => {
+    it('filters by an include receiverFilter entry', async () => {
       await repo.recordReception(makeReception({ receiverId: '!aaaaaaaa', pathKey: 'p1' }));
       await repo.recordReception(makeReception({ receiverId: '!cccccccc', pathKey: 'p2' }));
 
       const page = await repo.getReceptions({
-        sourceIds: ['src-a'], sinceMs: 0, untilMs: NOW + 1, receiverIds: ['!cccccccc'], pageSize: 10,
+        sourceIds: ['src-a'], sinceMs: 0, untilMs: NOW + 1, pageSize: 10,
+        receiverFilter: [{ sourceId: 'src-a', mode: 'include', receiverIds: ['!cccccccc'] }],
       });
       expect(page.items).toHaveLength(1);
       expect(page.items[0].receiverId).toBe('!cccccccc');
+    });
+
+    it('filters by an exclude receiverFilter entry', async () => {
+      await repo.recordReception(makeReception({ receiverId: '!aaaaaaaa', pathKey: 'p1' }));
+      await repo.recordReception(makeReception({ receiverId: '!cccccccc', pathKey: 'p2' }));
+
+      const page = await repo.getReceptions({
+        sourceIds: ['src-a'], sinceMs: 0, untilMs: NOW + 1, pageSize: 10,
+        receiverFilter: [{ sourceId: 'src-a', mode: 'exclude', receiverIds: ['!cccccccc'] }],
+      });
+      expect(page.items).toHaveLength(1);
+      expect(page.items[0].receiverId).toBe('!aaaaaaaa');
+    });
+
+    it('the same receiverId on two sources: an include on A never leaks B (P1 bug fix)', async () => {
+      await repo.recordReception(makeReception({ sourceId: 'src-a', receiverId: '!shared', pathKey: 'pa' }));
+      await repo.recordReception(makeReception({ sourceId: 'src-b', receiverId: '!shared', pathKey: 'pb' }));
+
+      const page = await repo.getReceptions({
+        sourceIds: ['src-a', 'src-b'], sinceMs: 0, untilMs: NOW + 1, pageSize: 10,
+        receiverFilter: [{ sourceId: 'src-a', mode: 'include', receiverIds: ['!shared'] }],
+      });
+      // src-a is constrained to !shared (matches); src-b has no entry, so it
+      // stays fully unconstrained and its !shared row also matches.
+      expect(page.items.map((r) => r.sourceId).sort()).toEqual(['src-a', 'src-b']);
+    });
+
+    it('a mixed include/exclude filter across two sources applies each independently', async () => {
+      await repo.recordReception(makeReception({ sourceId: 'src-a', receiverId: '!a1', pathKey: 'a1' }));
+      await repo.recordReception(makeReception({ sourceId: 'src-a', receiverId: '!a2', pathKey: 'a2' }));
+      await repo.recordReception(makeReception({ sourceId: 'src-b', receiverId: '!b1', pathKey: 'b1' }));
+      await repo.recordReception(makeReception({ sourceId: 'src-b', receiverId: '!b2', pathKey: 'b2' }));
+
+      const page = await repo.getReceptions({
+        sourceIds: ['src-a', 'src-b'], sinceMs: 0, untilMs: NOW + 1, pageSize: 10,
+        receiverFilter: [
+          { sourceId: 'src-a', mode: 'include', receiverIds: ['!a1'] },
+          { sourceId: 'src-b', mode: 'exclude', receiverIds: ['!b1'] },
+        ],
+      });
+      expect(page.items.map((r) => r.receiverId).sort()).toEqual(['!a1', '!b2']);
+    });
+
+    it('drops a receiverFilter entry whose sourceId is not in the permitted sourceIds', async () => {
+      await repo.recordReception(makeReception({ sourceId: 'src-a', receiverId: '!a1', pathKey: 'a1' }));
+
+      const page = await repo.getReceptions({
+        sourceIds: ['src-a'], sinceMs: 0, untilMs: NOW + 1, pageSize: 10,
+        // src-b isn't permitted — this entry must be dropped, not widen the query.
+        receiverFilter: [{ sourceId: 'src-b', mode: 'include', receiverIds: ['!nope'] }],
+      });
+      // src-a has no entry of its own, so it stays fully unconstrained.
+      expect(page.items.map((r) => r.receiverId)).toEqual(['!a1']);
+    });
+
+    it('an empty result when every entry is dropped and no source is unconstrained', async () => {
+      await repo.recordReception(makeReception({ sourceId: 'src-a', receiverId: '!a1', pathKey: 'a1' }));
+
+      const page = await repo.getReceptions({
+        sourceIds: ['src-a'], sinceMs: 0, untilMs: NOW + 1, pageSize: 10,
+        receiverFilter: [{ sourceId: 'src-a', mode: 'include', receiverIds: [] }],
+      });
+      expect(page.items).toEqual([]);
     });
 
     it('hops "exact" matches only the given hop count', async () => {
@@ -276,6 +340,68 @@ describe('CoverageReceptionsRepository', () => {
       // ...but the snapshot falls back to the newest row that HAS one.
       expect(receivers[0].receiverLatitude).toBe(40.0);
       expect(receivers[0].receiverLongitude).toBe(-105.0);
+    });
+
+    it('a receiver with no snapshot ever recorded has null coordinates', async () => {
+      await repo.recordReception(makeReception({
+        pathKey: 'p1', receiverLatitude: null, receiverLongitude: null,
+      }));
+
+      const receivers = await repo.getReceivers({ sourceIds: ['src-a'], sinceMs: 0 });
+      expect(receivers).toHaveLength(1);
+      expect(receivers[0].receiverLatitude).toBeNull();
+      expect(receivers[0].receiverLongitude).toBeNull();
+    });
+
+    it('receptionCount counts every row in the group, not just distinct fixes', async () => {
+      await repo.recordReception(makeReception({ pathKey: 'p1' }));
+      await repo.recordReception(makeReception({ pathKey: 'p2' }));
+      await repo.recordReception(makeReception({ pathKey: 'p3' }));
+
+      const receivers = await repo.getReceivers({ sourceIds: ['src-a'], sinceMs: 0 });
+      expect(receivers).toHaveLength(1);
+      expect(receivers[0].receptionCount).toBe(3);
+    });
+
+    it('handles 250+ distinct receivers, crossing the 200-chunk boundary, with the right snapshot per receiver (Decision D9)', async () => {
+      const total = 250;
+      for (let i = 0; i < total; i++) {
+        const id = `!${i.toString(16).padStart(8, '0')}`;
+        await repo.recordReception(makeReception({
+          receiverId: id,
+          receiverNodeNum: i,
+          pathKey: `p-${i}`,
+          receiverLatitude: 40 + i * 0.001,
+          receiverLongitude: -105 - i * 0.001,
+        }));
+      }
+
+      const receivers = await repo.getReceivers({ sourceIds: ['src-a'], sinceMs: 0 });
+      expect(receivers).toHaveLength(total);
+      for (const r of receivers) {
+        const i = Number(r.receiverNodeNum);
+        expect(r.receiverLatitude).toBeCloseTo(40 + i * 0.001, 6);
+        expect(r.receiverLongitude).toBeCloseTo(-105 - i * 0.001, 6);
+        expect(r.receptionCount).toBe(1);
+      }
+    });
+
+    it('bounds the query count to 1 + ceil(N/200) for the snapshot follow-up', async () => {
+      const total = 450; // ceil(450/200) = 3 follow-up chunks
+      for (let i = 0; i < total; i++) {
+        await repo.recordReception(makeReception({
+          receiverId: `!${i.toString(16).padStart(8, '0')}`,
+          receiverNodeNum: i,
+          pathKey: `p-${i}`,
+        }));
+      }
+
+      const selectSpy = vi.spyOn(drizzleDb, 'select');
+      const receivers = await repo.getReceivers({ sourceIds: ['src-a'], sinceMs: 0 });
+      expect(receivers).toHaveLength(total);
+      // 1 GROUP BY query + ceil(450/200) = 3 batched snapshot queries.
+      expect(selectSpy).toHaveBeenCalledTimes(4);
+      selectSpy.mockRestore();
     });
   });
 

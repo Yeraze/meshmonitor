@@ -15,6 +15,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import coverageRoutes from './coverageRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 import databaseService from '../../services/database.js';
+import { sourceManagerRegistry, type ISourceManager } from '../sourceManagerRegistry.js';
 
 function nodeIdFor(num: number): string {
   return `!${num.toString(16).padStart(8, '0')}`;
@@ -293,6 +294,75 @@ describe('Coverage Report API (#5277 WP3)', () => {
       expect(res.status).toBe(200);
       expect(res.body.data.pageSize).toBe(2000);
     });
+
+    // ── receivers grammar (#5277 P2 §2.5/§2.7) ──────────────────────────────
+
+    it('400 INVALID_RECEIVERS for a malformed receivers filter', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get('/receptions?receivers=not-a-valid-filter');
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('INVALID_RECEIVERS');
+      expect(res.body.success).toBe(false);
+    });
+
+    it('400 INVALID_RECEIVERS when the filter exceeds 1000 ids', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const ids = Array.from({ length: 1001 }, (_, i) => `!${i.toString(16).padStart(8, '0')}`).join(',');
+      const res = await agent.get(`/receptions?receivers=${encodeURIComponent(`${harness.sourceA}:+${ids}`)}`);
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('INVALID_RECEIVERS');
+    });
+
+    it('applies a new-grammar include filter, source-scoped', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      // Scope both `sources` and `receivers` to sourceA so an unconstrained
+      // sourceB (no entry in the filter = fully selected) can't contribute rows.
+      const filter = encodeURIComponent(`${harness.sourceA}:+${nodeIdFor(RECEIVER)}`);
+      const res = await agent.get(`/receptions?sources=${harness.sourceA}&receivers=${filter}`);
+      expect(res.status).toBe(200);
+      expect(res.body.data.items.every((r: any) => r.receiverId === nodeIdFor(RECEIVER))).toBe(true);
+      expect(res.body.data.items.length).toBeGreaterThan(0);
+    });
+
+    it('an include entry is scoped by sourceId — the same receiverId string on another (constrained) source never leaks in (P1 bug fix)', async () => {
+      // Record a reception on sourceB using the SAME receiverId STRING as
+      // sourceA's RECEIVER (independent networks can coincidentally reuse a
+      // node number / derived !hex id). The P1 bug applied `receiverIds`
+      // globally, so a filter for that id would have matched this row too
+      // even though sourceB is explicitly constrained to a different id.
+      await databaseService.coverageReceptions.recordReception({
+        sourceId: harness.sourceB,
+        protocol: 'meshtastic',
+        receiverKind: 'local',
+        receiverId: nodeIdFor(RECEIVER),
+        receiverNodeNum: RECEIVER,
+        senderId: nodeIdFor(B_SENDER),
+        senderNodeNum: B_SENDER,
+        packetKey: 'pkt-b-shared-receiver-id',
+        pathKey: 'r0:h0',
+        latitude: 11.0,
+        longitude: 21.0,
+        receivedAt: Date.now(),
+      });
+
+      const agent = await harness.loginAs(harness.admin);
+      // sourceA constrained to RECEIVER; sourceB explicitly constrained to an
+      // unrelated id, so it is NOT left "unconstrained" (which would trivially
+      // include everything) — this is what actually exercises the fix.
+      const filter = encodeURIComponent(
+        `${harness.sourceA}:+${nodeIdFor(RECEIVER)};${harness.sourceB}:+${nodeIdFor(B_RECEIVER)}`,
+      );
+      const res = await agent.get(`/receptions?sources=${harness.sourceA},${harness.sourceB}&receivers=${filter}`);
+      expect(res.status).toBe(200);
+      expect(res.body.data.items.some((r: any) => r.packetKey === 'pkt-b-shared-receiver-id')).toBe(false);
+      expect(res.body.data.items.some((r: any) => r.receiverId === nodeIdFor(RECEIVER) && r.sourceId === harness.sourceA)).toBe(true);
+    });
+
+    it('a blank receivers param is treated as no filter', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get('/receptions?receivers=');
+      expect(res.status).toBe(200);
+    });
   });
 
   // ── GET /receivers ──────────────────────────────────────────────────────
@@ -351,6 +421,15 @@ describe('Coverage Report API (#5277 WP3)', () => {
       expect(receiver.longitude).toBe(-122.0);
     });
 
+    it('includes receptionCount, one row per reception carrying this receiver', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get('/receivers');
+      const receiver = res.body.data.receivers.find((r: any) => r.receiverId === nodeIdFor(RECEIVER));
+      expect(receiver).toBeDefined();
+      // pkt-ok, pkt-hidden-sender, pkt-private-sender, pkt-ch1-sender all seed with receiverId RECEIVER.
+      expect(receiver.receptionCount).toBe(4);
+    });
+
     it("nulls a receiver's coordinates when the receiver node is not visible to the caller", async () => {
       const agent = await harness.loginAs(harness.limited);
       const res = await agent.get('/receivers');
@@ -366,6 +445,110 @@ describe('Coverage Report API (#5277 WP3)', () => {
       expect(res.status).toBe(200);
       expect(res.body.data.receivers).toEqual([]);
       expect(res.body.data.retentionDays).toBe(7);
+    });
+
+    // ── mqttSources (#5277 P2 §2.7, user decision Q4) ───────────────────────
+
+    describe('mqttSources', () => {
+      function makeFakeManager(sourceId: string, sourceType: string): ISourceManager {
+        return {
+          sourceId,
+          sourceType,
+          start: async () => {},
+          stop: async () => {},
+          getStatus: () => ({ sourceId, sourceName: sourceId, sourceType, connected: true }),
+        } as unknown as ISourceManager;
+      }
+
+      const BROKER = 'rt-source-mqtt-broker';
+      const BRIDGE = 'rt-source-mqtt-bridge';
+      const TCP = 'rt-source-mqtt-tcp';
+      const MESHCORE_MQTT = 'rt-source-meshcore-mqtt';
+
+      beforeEach(async () => {
+        await harness.db.sources.createSource({ id: BROKER, name: 'Broker', type: 'mqtt_broker', config: {}, enabled: true });
+        await harness.db.sources.createSource({ id: BRIDGE, name: 'Bridge', type: 'mqtt_bridge', config: {}, enabled: true });
+        await harness.db.sources.createSource({ id: TCP, name: 'TCP', type: 'meshtastic_tcp', config: {}, enabled: true });
+        await harness.db.sources.createSource({ id: MESHCORE_MQTT, name: 'MC MQTT', type: 'meshcore_mqtt', config: {}, enabled: true });
+
+        await sourceManagerRegistry.addManager(makeFakeManager(BROKER, 'mqtt_broker'));
+        await sourceManagerRegistry.addManager(makeFakeManager(BRIDGE, 'mqtt_bridge'));
+        await sourceManagerRegistry.addManager(makeFakeManager(TCP, 'meshtastic_tcp'));
+        await sourceManagerRegistry.addManager(makeFakeManager(MESHCORE_MQTT, 'meshcore_mqtt'));
+
+        await harness.db.settings.setSourceSetting(BROKER, 'coverage_mqtt_enabled', '1');
+      });
+
+      afterEach(async () => {
+        await sourceManagerRegistry.removeManager(BROKER).catch(() => {});
+        await sourceManagerRegistry.removeManager(BRIDGE).catch(() => {});
+        await sourceManagerRegistry.removeManager(TCP).catch(() => {});
+        await sourceManagerRegistry.removeManager(MESHCORE_MQTT).catch(() => {});
+        await harness.db.sources.deleteSource(BROKER).catch(() => {});
+        await harness.db.sources.deleteSource(BRIDGE).catch(() => {});
+        await harness.db.sources.deleteSource(TCP).catch(() => {});
+        await harness.db.sources.deleteSource(MESHCORE_MQTT).catch(() => {});
+        // Settings rows are namespaced by these fixed source ids and persist
+        // in the singleton DB across tests — clear them so one test's write
+        // (e.g. the 'true' string case) can't leak into the next.
+        await harness.db.settings.deleteSourceSettings(BROKER).catch(() => {});
+        await harness.db.settings.deleteSourceSettings(BRIDGE).catch(() => {});
+        await harness.db.settings.deleteSetting('coverage_mqtt_enabled').catch(() => {});
+      });
+
+      it('lists only the MQTT broker/bridge sources — never TCP or MeshCore MQTT', async () => {
+        const agent = await harness.loginAs(harness.admin);
+        const res = await agent.get('/receivers');
+        expect(res.status).toBe(200);
+        const ids = res.body.data.mqttSources.map((m: any) => m.sourceId).sort();
+        expect(ids).toEqual([BRIDGE, BROKER].sort());
+      });
+
+      it('recordingEnabled reflects the per-source setting; absent defaults to false', async () => {
+        const agent = await harness.loginAs(harness.admin);
+        const res = await agent.get('/receivers');
+        const broker = res.body.data.mqttSources.find((m: any) => m.sourceId === BROKER);
+        const bridge = res.body.data.mqttSources.find((m: any) => m.sourceId === BRIDGE);
+        expect(broker.recordingEnabled).toBe(true);
+        expect(bridge.recordingEnabled).toBe(false);
+      });
+
+      it("'true' string also reads as enabled", async () => {
+        await harness.db.settings.setSourceSetting(BRIDGE, 'coverage_mqtt_enabled', 'true');
+        const agent = await harness.loginAs(harness.admin);
+        const res = await agent.get('/receivers');
+        const bridge = res.body.data.mqttSources.find((m: any) => m.sourceId === BRIDGE);
+        expect(bridge.recordingEnabled).toBe(true);
+      });
+
+      it('a global bare-key coverage_mqtt_enabled row never turns a source on (#5080 guard)', async () => {
+        await harness.db.settings.setSetting('coverage_mqtt_enabled', '1');
+        const agent = await harness.loginAs(harness.admin);
+        const res = await agent.get('/receivers');
+        const bridge = res.body.data.mqttSources.find((m: any) => m.sourceId === BRIDGE);
+        expect(bridge.recordingEnabled).toBe(false);
+      });
+
+      it('a limited user with nodes:read on the broker only never sees the bridge status', async () => {
+        await harness.grant(harness.limited.id, 'nodes', 'read', BROKER);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get('/receivers');
+        const ids = res.body.data.mqttSources.map((m: any) => m.sourceId);
+        expect(ids).toEqual([BROKER]);
+      });
+
+      it('listed even when the source has no receptions', async () => {
+        const agent = await harness.loginAs(harness.admin);
+        const res = await agent.get('/receivers?sources=' + BROKER);
+        expect(res.body.data.receivers).toEqual([]);
+        expect(res.body.data.mqttSources.map((m: any) => m.sourceId)).toEqual([BROKER]);
+      });
+
+      it('[] for an anonymous user with no grants', async () => {
+        const agent = await harness.loginAs(null);
+        const res = await agent.get('/receivers');
+        expect(res.body.data.mqttSources).toEqual([]);
+      });
     });
   });
 
