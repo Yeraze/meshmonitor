@@ -87,11 +87,11 @@ class CoverageRetentionService {
    * `GLOBAL_ONLY_SETTINGS_KEYS`, so there is no per-source variant to read.
    */
   async getRetentionDays(): Promise<number> {
-    const raw = await databaseService.getSettingAsync('coverage_retention_days');
     // getSettingAsync returns `null` for a missing key; clampCoverageRetentionDays
-    // treats `Number(null)` as the finite value 0 (clamping to the 1-day floor,
-    // NOT the intended 7-day default), so normalise the miss to `undefined` first.
-    return clampCoverageRetentionDays(raw ?? undefined);
+    // treats `null` (as well as `undefined`) as "missing" and returns the
+    // 7-day default, so no normalisation is needed here.
+    const raw = await databaseService.getSettingAsync('coverage_retention_days');
+    return clampCoverageRetentionDays(raw);
   }
 }
 
