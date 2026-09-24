@@ -42,9 +42,9 @@ route segments respect the Show RF / UDP / MQTT toggles.
 Exit: all of the above shipped, per-source isolation tested, full suite green on SQLite + PG + MySQL.
 
 ### Phase 2 — migrations
-- [ ] `route_segments` transport column, set per hop; legacy NULL = RF.
-- [ ] Record holder per (source, transport); Record Holder + Longest Active cards show per-transport records.
-- [ ] `messages.transportMechanism` stamped at ingest; Total Messages gains the UDP split.
+- [x] `route_segments` transport column, set per hop; legacy NULL = RF.
+- [x] Record holder per (source, transport); Record Holder + Longest Active cards show per-transport records.
+- [x] `messages.transportMechanism` stamped at ingest; Total Messages gains the UDP split.
 
 Exit: migrations idempotent on all three backends; cards render per-transport records.
 
@@ -63,3 +63,7 @@ Exit: new series render in both places; labels make the device/computed distinct
   - Total Messages comes from new `GET /api/messages/counts` (shares `resolveMessageReadAccess` with `GET /api/messages`); excludes TRACEROUTE_APP.
   - Follow-ups (not in this epic): poll's third copy of the message-read predicate; `/api/packets/stats/distribution` ignores per-channel permissions (pre-existing).
 - 2026-09-23: Phase 1 merged (PR #5329). Phase 2 started on `feature/5101-p2-transport-migrations`; spec TRANSPORT_BREAKDOWN_P2_SPEC.md (migrations 169–171).
+- 2026-09-23: Phase 2 implemented (migrations 169 route_segments.transportMechanism + index, 170 messages.transportMechanism, 171 best-effort record-holder reclassify). Deviations/decisions:
+  - Route-segment routes are gated on the per-source `traceroute` permission (read for the cards, write for Clear Record), not `info` — `info` is cross-source by design, so it could not scope records per source (user decision). InfoTab hides the cards without traceroute:read.
+  - Longest Active no longer returns the record-holder copy; MQTT sources now set record holders; DELETE requires sourceId.
+  - Dev-DB run of 171: 2 legacy records examined, both unmatched (traceroutes pruned) → remain RF with the legacy note.
