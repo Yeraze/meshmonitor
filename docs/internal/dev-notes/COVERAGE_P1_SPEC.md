@@ -78,7 +78,7 @@ Table `coverage_receptions`, three Drizzle definitions (`coverageReceptionsSqlit
 | senderNodeNum | INTEGER | BIGINT | BIGINT | yes | Meshtastic only (privacy gate key) |
 | packetKey | TEXT | TEXT | VARCHAR(80) | no | Meshtastic `String(packetId)`; MeshCore packet hash (P3) |
 | packetId | INTEGER | BIGINT | BIGINT | yes | Meshtastic packet id (uint32) |
-| pathKey | TEXT | TEXT | VARCHAR(32) | no | per-path identity (§2.4); never NULL |
+| pathKey | TEXT | TEXT | VARCHAR(80) | no | per-path identity (§2.4); never NULL. Widened from VARCHAR(32) — P3 MeshCore path keys can run longer than Meshtastic's |
 | latitude / longitude | REAL | DOUBLE PRECISION | DOUBLE | no | the fix |
 | altitude | REAL | REAL | DOUBLE | yes | |
 | precisionBits | INTEGER | INTEGER | INT | yes | |
@@ -93,7 +93,7 @@ Table `coverage_receptions`, three Drizzle definitions (`coverageReceptionsSqlit
 | receivedAt | INTEGER | BIGINT | BIGINT | no | server receive time, **unix ms** (window, cursor, purge) |
 
 Indexes:
-- UNIQUE `cov_rx_path_uniq (sourceId, receiverId, senderId, packetKey, pathKey)`. `receiverId` is part of the key because a P2 MQTT source has many gateways. MySQL key length is about 1.3 KB, under the 3072-byte limit.
+- UNIQUE `cov_rx_path_uniq (sourceId, receiverId, senderId, packetKey, pathKey)`. `receiverId` is part of the key because a P2 MQTT source has many gateways. Column widths: sourceId(64) + receiverId(80) + senderId(80) + packetKey(80) + pathKey(80) = 384 chars; at 4 bytes/char (utf8mb4) that's 1536 bytes, under MySQL's 3072-byte index-key limit.
 - `cov_rx_received_idx (receivedAt)`: the global purge.
 - `cov_rx_source_received_idx (sourceId, receivedAt)`: the window query and `getReceivers`.
 - `cov_rx_sender_received_idx (senderId, receivedAt)`: the sender filter.

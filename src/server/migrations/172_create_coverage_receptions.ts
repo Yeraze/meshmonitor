@@ -142,7 +142,7 @@ export async function runMigration172Mysql(pool: import('mysql2/promise').Pool):
       senderNodeNum BIGINT,
       packetKey VARCHAR(80) NOT NULL,
       packetId BIGINT,
-      pathKey VARCHAR(32) NOT NULL,
+      pathKey VARCHAR(80) NOT NULL,
       latitude DOUBLE NOT NULL,
       longitude DOUBLE NOT NULL,
       altitude DOUBLE,

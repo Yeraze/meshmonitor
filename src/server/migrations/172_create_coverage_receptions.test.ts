@@ -152,7 +152,7 @@ describe('Migration 172 — coverage_receptions', () => {
       expect(ddl).toMatch(/receiverId VARCHAR\(80\) NOT NULL/);
       expect(ddl).toMatch(/senderId VARCHAR\(80\) NOT NULL/);
       expect(ddl).toMatch(/packetKey VARCHAR\(80\) NOT NULL/);
-      expect(ddl).toMatch(/pathKey VARCHAR\(32\) NOT NULL/);
+      expect(ddl).toMatch(/pathKey VARCHAR\(80\) NOT NULL/);
       expect(absentConn.release).toHaveBeenCalled();
     });
 

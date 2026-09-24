@@ -142,7 +142,7 @@ export const coverageReceptionsMysql = mysqlTable('coverage_receptions', {
   senderNodeNum: myBigint('senderNodeNum', { mode: 'number' }),
   packetKey: myVarchar('packetKey', { length: 80 }).notNull(),
   packetId: myBigint('packetId', { mode: 'number' }),
-  pathKey: myVarchar('pathKey', { length: 32 }).notNull(),
+  pathKey: myVarchar('pathKey', { length: 80 }).notNull(),
   latitude: myDouble('latitude').notNull(),
   longitude: myDouble('longitude').notNull(),
   altitude: myDouble('altitude'),
