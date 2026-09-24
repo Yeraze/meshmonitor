@@ -10,6 +10,7 @@ import SolarMonitoringReport from './SolarMonitoringReport';
 import NodeInfoEnrichmentReport from './NodeInfoEnrichmentReport';
 import MqttViolationsReport from './MqttViolationsReport';
 import MeshIssuesReport from './MeshIssuesReport';
+import CoverageReport from './CoverageReport';
 import { UiIcon, type UiIconName } from '../icons';
 
 type AnalysisType =
@@ -17,6 +18,7 @@ type AnalysisType =
   | 'nodeinfo-enrichment'
   | 'mqtt-oktomqtt-violations'
   | 'mesh-issues'
+  | 'coverage'
   | null;
 
 interface AnalysisCard {
@@ -66,6 +68,15 @@ const AnalysisTab: React.FC = () => {
         'Flag wrongly-roled or poorly placed routers, airtime abusers, and infrastructure nodes on failing power — from passively collected data only.',
       ),
       icon: 'alert',
+    },
+    {
+      id: 'coverage',
+      title: t('analysis.coverage.title', 'Coverage Report'),
+      description: t(
+        'analysis.coverage.description',
+        'Map RF receptions of position packets — how far your mesh actually reaches, and how well each receiver hears it. Built from a survey node driving your coverage area, not sent by MeshMonitor.',
+      ),
+      icon: 'radioSignal',
     },
   ];
 
@@ -125,6 +136,21 @@ const AnalysisTab: React.FC = () => {
           <UiIcon name="back" size={16} /> {t('analysis.back_to_reports', 'Back to reports')}
         </button>
         <MeshIssuesReport />
+      </div>
+    );
+  }
+
+  if (selected === 'coverage') {
+    return (
+      <div className="reports-section">
+        <button
+          type="button"
+          className="reports-section__back"
+          onClick={() => setSelected(null)}
+        >
+          <UiIcon name="back" size={16} /> {t('analysis.back_to_reports', 'Back to reports')}
+        </button>
+        <CoverageReport />
       </div>
     );
   }

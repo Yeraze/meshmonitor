@@ -1,0 +1,64 @@
+.activePreset {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.receiverList {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-surface);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.receiverListTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-subtle);
+}
+
+.receiverItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.retentionNote {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--color-text-subtle);
+}
+
+.guidance {
+  margin-top: 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-text);
+}
+
+.guidance p {
+  margin: 0 0 10px 0;
+}
+
+.airtimeTable {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+
+.airtimeTable th,
+.airtimeTable td {
+  border: 1px solid var(--color-surface-hover);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.guidanceFooter {
+  color: var(--color-text-subtle);
+  font-size: 12px;
+}

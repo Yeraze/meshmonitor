@@ -17,6 +17,7 @@ import {
   generateHeadingAwarePath,
   generatePositionHistoryArrows,
   snrToColor,
+  rssiToColor,
   weightBySnr,
   weightByUsage,
   weightByOccurrence,
@@ -160,6 +161,46 @@ describe('mapHelpers', () => {
     it('returns poor below -5', () => {
       expect(snrToColor(-5.1, scale)).toBe(scale.poor);
       expect(snrToColor(-20, scale)).toBe(scale.poor);
+    });
+  });
+
+  describe('rssiToColor (Coverage Report #5277, COVERAGE_RSSI_BANDS)', () => {
+    const scale: SnrColorScale = {
+      excellent: '#22c55e',
+      good: '#eab308',
+      fair: '#f97316',
+      poor: '#ef4444',
+      noData: '#6c7086',
+    };
+
+    it('returns noData for null/undefined', () => {
+      expect(rssiToColor(null, scale)).toBe(scale.noData);
+      expect(rssiToColor(undefined, scale)).toBe(scale.noData);
+    });
+
+    it('returns excellent at and above the -90dBm threshold', () => {
+      expect(rssiToColor(-90, scale)).toBe(scale.excellent);
+      expect(rssiToColor(-50, scale)).toBe(scale.excellent);
+      expect(rssiToColor(0, scale)).toBe(scale.excellent);
+    });
+
+    it('returns good in [-105, -90)', () => {
+      expect(rssiToColor(-105, scale)).toBe(scale.good);
+      expect(rssiToColor(-90.1, scale)).toBe(scale.good);
+    });
+
+    it('returns fair in [-115, -105)', () => {
+      expect(rssiToColor(-115, scale)).toBe(scale.fair);
+      expect(rssiToColor(-105.1, scale)).toBe(scale.fair);
+    });
+
+    it('returns poor below -115', () => {
+      expect(rssiToColor(-115.1, scale)).toBe(scale.poor);
+      expect(rssiToColor(-140, scale)).toBe(scale.poor);
+    });
+
+    it('keeps a genuine 0 dBm reading (explicit-presence, not falsy) out of noData', () => {
+      expect(rssiToColor(0, scale)).not.toBe(scale.noData);
     });
   });
 

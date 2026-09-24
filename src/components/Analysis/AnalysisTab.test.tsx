@@ -35,6 +35,9 @@ vi.mock('./MqttViolationsReport', () => ({
 vi.mock('./MeshIssuesReport', () => ({
   default: () => <div data-testid="mesh-issues-report">Mesh issues report</div>,
 }));
+vi.mock('./CoverageReport', () => ({
+  default: () => <div data-testid="coverage-report">Coverage report</div>,
+}));
 
 import AnalysisTab from './AnalysisTab';
 
@@ -46,6 +49,23 @@ describe('AnalysisTab', () => {
     expect(screen.getByText('NodeInfo Enrichment')).toBeInTheDocument();
     expect(screen.getByText('ok_to_mqtt Violations')).toBeInTheDocument();
     expect(screen.getByText('Mesh Issues')).toBeInTheDocument();
+    expect(screen.getByText('Coverage Report')).toBeInTheDocument();
+  });
+
+  it('clicking the Coverage Report card swaps to the report, and the back button returns to the grid', async () => {
+    const user = userEvent.setup();
+    render(<AnalysisTab />);
+
+    await user.click(screen.getByText('Coverage Report'));
+
+    expect(screen.getByTestId('coverage-report')).toBeInTheDocument();
+    expect(screen.queryByText('Solar Monitoring Analysis')).not.toBeInTheDocument();
+
+    const backButton = screen.getByText('Back to reports');
+    await user.click(backButton);
+
+    expect(screen.queryByTestId('coverage-report')).not.toBeInTheDocument();
+    expect(screen.getByText('Coverage Report')).toBeInTheDocument();
   });
 
   it('clicking the Mesh Issues card swaps to the report, and the back button returns to the grid', async () => {
