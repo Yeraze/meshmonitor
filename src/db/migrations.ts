@@ -190,6 +190,7 @@ import { migration as nodesImportedAtMigration, runMigration168Postgres, runMigr
 import { migration as routeSegmentsTransportMigration, runMigration169Postgres, runMigration169Mysql } from '../server/migrations/169_route_segments_transport_mechanism.js';
 import { migration as messagesTransportMigration, runMigration170Postgres, runMigration170Mysql } from '../server/migrations/170_messages_transport_mechanism.js';
 import { migration as reclassifyRecordHoldersMigration, runMigration171Postgres, runMigration171Mysql } from '../server/migrations/171_reclassify_record_holder_transport.js';
+import { migration as createCoverageReceptionsMigration, runMigration172Postgres, runMigration172Mysql } from '../server/migrations/172_create_coverage_receptions.js';
 
 // ============================================================================
 // Registry
@@ -2775,4 +2776,19 @@ registry.register({
   sqlite: (db) => reclassifyRecordHoldersMigration.up(db),
   postgres: (client) => runMigration171Postgres(client),
   mysql: (pool) => runMigration171Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 172: create `coverage_receptions` (Coverage Report epic #5277,
+// Phase 1 WP1) — one row per (packet, path, receiver) RF reception, recorded
+// from the live Meshtastic RX path. No backfill; starts empty. PER-SOURCE.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 172,
+  name: 'create_coverage_receptions',
+  settingsKey: 'migration_172_create_coverage_receptions',
+  sqlite: (db) => createCoverageReceptionsMigration.up(db),
+  postgres: (client) => runMigration172Postgres(client),
+  mysql: (pool) => runMigration172Mysql(pool),
 });

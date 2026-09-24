@@ -124,6 +124,9 @@ import {
 import {
   meshtasticHeardRepeatersSqlite, meshtasticHeardRepeatersPostgres, meshtasticHeardRepeatersMysql,
 } from './schema/meshtasticHeardRepeaters.js';
+import {
+  coverageReceptionsSqlite, coverageReceptionsPostgres, coverageReceptionsMysql,
+} from './schema/coverageReceptions.js';
 
 // Mesh Issues findings (global — no sourceId) (epic #4964 Phase 1 WP1)
 import {
@@ -304,6 +307,10 @@ export interface ActiveSchema {
   // Meshtastic Heard-By (#4816 Phase 4 WP1)
   meshtasticHeardRepeaters: any;
 
+  // Coverage Report RF receptions (#5277 Phase 1 WP1)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5277 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
+  coverageReceptions: any;
+
   // Mesh Issues findings (global — no sourceId) (epic #4964 Phase 1 WP1)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4964 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   meshIssues: any;
@@ -437,6 +444,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreHeardRepeaters: meshcoreHeardRepeatersSqlite,
     messageEvents: messageEventsSqlite,
     meshtasticHeardRepeaters: meshtasticHeardRepeatersSqlite,
+    coverageReceptions: coverageReceptionsSqlite,
     meshIssues: meshIssuesSqlite,
     embedProfiles: embedProfilesSqlite,
     automations: automationsSqlite,
@@ -513,6 +521,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreHeardRepeaters: meshcoreHeardRepeatersPostgres,
     messageEvents: messageEventsPostgres,
     meshtasticHeardRepeaters: meshtasticHeardRepeatersPostgres,
+    coverageReceptions: coverageReceptionsPostgres,
     meshIssues: meshIssuesPostgres,
     embedProfiles: embedProfilesPostgres,
     automations: automationsPostgres,
@@ -589,6 +598,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreHeardRepeaters: meshcoreHeardRepeatersMysql,
     messageEvents: messageEventsMysql,
     meshtasticHeardRepeaters: meshtasticHeardRepeatersMysql,
+    coverageReceptions: coverageReceptionsMysql,
     meshIssues: meshIssuesMysql,
     embedProfiles: embedProfilesMysql,
     automations: automationsMysql,
