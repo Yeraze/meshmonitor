@@ -117,7 +117,7 @@ wins, later copies aren't merged in.
 
 ## Retention
 
-Open **Settings → Coverage Report** to set how many days of receptions are
+Open **Global Settings → Coverage Report** to set how many days of receptions are
 kept, from **1 to 90**, default **7**. This is a single, deployment-wide
 setting, not a per-source one. An hourly background sweep deletes rows older
 than the configured window. **Lowering the value deletes older data on the
@@ -149,4 +149,4 @@ exempt from retention, a summary panel, and CSV/GeoJSON export.
   the same visibility rules from
 - [Packet Monitor](./packet-monitor) — the opt-in per-source packet logs,
   a different feature with its own retention model
-- [Settings](./settings) — where the retention window is configured
+- [Global Settings](./global-settings) — where the retention window is configured

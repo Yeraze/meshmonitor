@@ -66,6 +66,15 @@ Position Estimation moved here from the per-source Automation tab — it's a sin
 
 Estimate locations for GPS-less nodes by pooling traceroute and NeighborInfo geometry across **all** Meshtastic sources. Controls: enable, calculation frequency, lookback window, a **Maximum acceptable accuracy** cutoff (discards low-confidence estimates), and **Recalculate now**. Gated by `settings:write`. See [Position Estimation](/features/position-estimation).
 
+### Coverage Report
+
+A single **RF reception retention** field, 1–90 days (default 7), controlling
+how long the [Coverage Report](/features/coverage-report) keeps recorded
+receptions before an hourly sweep deletes them. It's a global, deployment-wide
+setting, not a per-source one. Lowering the value **permanently deletes**
+older receptions on the next sweep — the field warns about this before you
+save. Gated by `settings:write`.
+
 ## Per-source settings (for comparison)
 
 Anything that depends on *which* node you're connected to lives on the source, not here. Open **Dashboard → Edit Source** for:
