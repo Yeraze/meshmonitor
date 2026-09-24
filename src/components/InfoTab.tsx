@@ -25,6 +25,7 @@ import { useDashboardSources } from '../hooks/useDashboardData';
 import { getSourceEndpointLabel } from '../utils/sourceEndpoint';
 import TransportBreakdown from './TransportBreakdown';
 import RouteSegmentRecord from './RouteSegmentRecord';
+import DeviceCounterNote from './DeviceCounterNote';
 import { countNodesByTransport, transportCutoffSec, isMqttOnlySourceType, type NodeTransportClass } from '../utils/nodeTransport';
 
 const TRANSPORT_FILTER_OPTIONS = ['all', 'rf', 'udp', 'mqtt'] as const;
@@ -678,6 +679,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
             <>
               <p><strong>{t('info.packets_tx')}</strong> {localStats.numPacketsTx.toLocaleString()}</p>
               <p><strong>{t('info.packets_rx')}</strong> {localStats.numPacketsRx?.toLocaleString() || t('info.na')}</p>
+              <DeviceCounterNote text={t('info.device_counters_note')} testId="info-packets-device-note" />
             </>
           )}
           {localStats?.hostUptimeSeconds !== undefined && localStats?.numPacketsTx === undefined && (
@@ -759,6 +761,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
           return (
             <div className="info-section">
               <h3>{t('info.radio_statistics', 'Radio Statistics')}</h3>
+              <DeviceCounterNote text={t('info.device_counters_note')} testId="info-radio-device-note" />
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 {rxTotal > 0 && (
                   <PacketStatsChart

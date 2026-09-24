@@ -34,6 +34,8 @@ import { downloadTextFile } from '../utils/nodeExport';
 import TelemetryGauge from './TelemetryGauge';
 import TelemetryNumericLabel from './TelemetryNumericLabel';
 import { UiIcon } from './icons';
+import DeviceCounterNote from './DeviceCounterNote';
+import { isDeviceCounterType } from '../utils/deviceCounters';
 
 interface FavoriteChart {
   nodeId: string;
@@ -121,6 +123,15 @@ const TELEMETRY_LABELS: Record<string, string> = {
   // MeshMonitor system metrics (calculated by MeshMonitor)
   systemNodeCount: 'Active Nodes (MeshMonitor)',
   systemDirectNodeCount: 'Direct Nodes (MeshMonitor)',
+  // MeshMonitor-computed per-transport traffic series (#5101 Phase 3)
+  transportNodesHeard: 'Nodes Heard by Transport (MeshMonitor)',
+  transportPacketsRx: 'Packets RX by Transport (MeshMonitor)',
+  systemNodesHeardRf: 'Nodes Heard RF (MeshMonitor)',
+  systemNodesHeardUdp: 'Nodes Heard UDP (MeshMonitor)',
+  systemNodesHeardMqtt: 'Nodes Heard MQTT (MeshMonitor)',
+  systemPacketsRxRf: 'Packets RX RF (MeshMonitor)',
+  systemPacketsRxUdp: 'Packets RX UDP (MeshMonitor)',
+  systemPacketsRxMqtt: 'Packets RX MQTT (MeshMonitor)',
   // Signal quality
   snr: 'Signal-to-Noise Ratio (SNR)',
   snr_local: 'SNR - Local (Our Measurements)',
@@ -711,6 +722,10 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
               <UiIcon name="close" size={15} />            </button>
           </div>
         </div>
+
+        {isDeviceCounterType(favorite.telemetryType) && (
+          <DeviceCounterNote text={t('telemetry.device_counter_note')} />
+        )}
 
         {mode === 'gauge' ? (
           latest ? (

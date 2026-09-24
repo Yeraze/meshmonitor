@@ -32,6 +32,9 @@ import {
 import { buildTelemetryFilename, telemetrySeriesToCsv } from '../utils/telemetryChartCsv';
 import { downloadTextFile } from '../utils/nodeExport';
 import { UiIcon } from './icons';
+import DeviceCounterNote from './DeviceCounterNote';
+import { isDeviceCounterType } from '../utils/deviceCounters';
+import { isTransportSeriesComponentType } from '../utils/transportSeries';
 
 /** Telemetry types that represent discrete integer values where fractional display is meaningless */
 const INTEGER_TELEMETRY_TYPES = new Set([
@@ -394,6 +397,8 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
           )}
         </div>
       </div>
+
+      {isDeviceCounterType(type) && <DeviceCounterNote text={t('telemetry.device_counter_note')} />}
 
       {mode === 'gauge' ? (
         latest ? (
@@ -1028,6 +1033,14 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
 
       // paxcounterBle is combined into the paxcounterWifi chart
       if (type === 'paxcounterBle') {
+        return false;
+      }
+
+      // MeshMonitor-computed transport series component types are the raw
+      // per-class rows behind the combined TransportSeriesGraphs charts
+      // (#5101 Phase 3); only the local node ever has them, so they'd
+      // otherwise clutter its graph list as six single-line charts.
+      if (isTransportSeriesComponentType(type)) {
         return false;
       }
 

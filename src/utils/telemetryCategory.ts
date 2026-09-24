@@ -143,6 +143,9 @@ const TYPE_CATEGORY: Record<string, TelemetryCategory> = {
   systemPacketsRxRf: 'network',
   systemPacketsRxUdp: 'network',
   systemPacketsRxMqtt: 'network',
+  // #5101 P3 WP2: pseudo favorite types for the combined charts above.
+  transportNodesHeard: 'network',
+  transportPacketsRx: 'network',
   paxcounterWifi: 'network',
   paxcounterBle: 'network',
   paxcounterUptime: 'network',

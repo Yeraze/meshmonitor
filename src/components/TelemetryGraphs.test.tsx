@@ -1068,4 +1068,55 @@ describe('TelemetryGraphs Component', () => {
       expect(active).toHaveAttribute('aria-pressed', 'true');
     });
   });
+
+  describe('device counter captions and transport series filtering (#5101 P3 WP2)', () => {
+    const mockDeviceCounterData = (url: string) => {
+      if (url.includes('/api/settings')) {
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      }
+      if (url.includes('/api/solar/estimates')) {
+        return Promise.resolve({ ok: true, json: async () => ({ count: 0, estimates: [] }) });
+      }
+      if (url.includes('/api/csrf-token')) {
+        return Promise.resolve({ ok: true, json: async () => ({ token: 'test-csrf-token' }) });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => [
+          { nodeId: mockNodeId, telemetryType: 'batteryLevel', timestamp: Date.now() - 3600000, value: 85 },
+          { nodeId: mockNodeId, telemetryType: 'numPacketsRx', timestamp: Date.now() - 3600000, value: 42 },
+          { nodeId: mockNodeId, telemetryType: 'systemNodesHeardRf', timestamp: Date.now() - 3600000, value: 3 },
+          { nodeId: mockNodeId, telemetryType: 'systemNodesHeardUdp', timestamp: Date.now() - 3600000, value: 1 },
+          { nodeId: mockNodeId, telemetryType: 'systemPacketsRxMqtt', timestamp: Date.now() - 3600000, value: 5 },
+        ],
+      });
+    };
+
+    it('shows the device-counter caption on the numPacketsRx widget but not on batteryLevel', async () => {
+      (global.fetch as Mock).mockImplementation(mockDeviceCounterData);
+
+      renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
+
+      await screen.findByText('Battery Level');
+      // Only the one device-counter type (numPacketsRx) among the fetched
+      // rows should surface the caption.
+      expect(screen.getAllByText('telemetry.device_counter_note')).toHaveLength(1);
+    });
+
+    it('does not draw the transport series component types as their own single-line graphs', async () => {
+      (global.fetch as Mock).mockImplementation(mockDeviceCounterData);
+
+      renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
+
+      await screen.findByText('Battery Level');
+      // Component types feed the combined TransportSeriesGraphs charts
+      // elsewhere; they must not also appear as single-metric graphs here.
+      expect(screen.queryByText('Nodes Heard RF (MeshMonitor)')).not.toBeInTheDocument();
+      expect(screen.queryByText('Nodes Heard UDP (MeshMonitor)')).not.toBeInTheDocument();
+      expect(screen.queryByText('Packets RX MQTT (MeshMonitor)')).not.toBeInTheDocument();
+      // batteryLevel and the device-counter numPacketsRx graph are unaffected.
+      expect(screen.getByText('Battery Level')).toBeInTheDocument();
+      expect(screen.getByText('Packets RX (Device)')).toBeInTheDocument();
+    });
+  });
 });

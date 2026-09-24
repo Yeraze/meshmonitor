@@ -48,18 +48,27 @@ const TYPE_LABELS: Record<string, string> = {
   rssi: 'RSSI',
   linkQuality: 'Link Q',
   messageHops: 'Hops',
-  // LocalStats
-  numOnlineNodes: 'Nodes Online',
+  // LocalStats. The five that are also plotted per-transport (#5101 Phase 3,
+  // D8) carry "(Device)" here so a reader isn't left assuming this combined
+  // figure and the RF/UDP/MQTT lines below it should add up.
+  numOnlineNodes: 'Nodes Online (Device)',
   numTotalNodes: 'Nodes Total',
-  numPacketsTx: 'Packets TX',
-  numPacketsRx: 'Packets RX',
-  numPacketsRxBad: 'Bad RX',
-  numRxDupe: 'Dup RX',
+  numPacketsTx: 'Packets TX (Device)',
+  numPacketsRx: 'Packets RX (Device)',
+  numPacketsRxBad: 'Bad RX (Device)',
+  numRxDupe: 'Dup RX (Device)',
   numTxRelay: 'TX Relay',
   numTxRelayCanceled: 'TX Relay X',
   numTxDropped: 'TX Drop',
   heapTotalBytes: 'Heap Total',
   heapFreeBytes: 'Heap Free',
+  // MeshMonitor-computed per-transport traffic series (#5101 Phase 3)
+  systemNodesHeardRf: 'Heard RF',
+  systemNodesHeardUdp: 'Heard UDP',
+  systemNodesHeardMqtt: 'Heard MQTT',
+  systemPacketsRxRf: 'RX RF',
+  systemPacketsRxUdp: 'RX UDP',
+  systemPacketsRxMqtt: 'RX MQTT',
   // MeshCore. Other mc_* types still fall back to their raw key here; this one
   // is labelled because an MQTT ingest source has no other telemetry surface —
   // it has no local node, so the per-source Node Info page does not apply.

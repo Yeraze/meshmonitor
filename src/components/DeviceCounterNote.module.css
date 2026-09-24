@@ -1,0 +1,7 @@
+/* Device counter caption (#5101 Phase 3 WP2). Scoped module — see CLAUDE.md. */
+
+.note {
+  margin: 0.1rem 0 0.4rem;
+  font-size: 0.8em;
+  color: var(--color-text-muted);
+}
