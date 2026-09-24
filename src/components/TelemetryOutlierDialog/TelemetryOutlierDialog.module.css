@@ -30,11 +30,16 @@
 
 .field {
   display: flex;
-  flex: 1 1 180px;
   flex-direction: column;
   gap: 4px;
   min-width: 0;
   font-size: 13px;
+}
+
+/* The 180px basis is a WIDTH only inside a horizontal .row; in a column
+   fieldset it would become a 180px-tall field. */
+.row > .field {
+  flex: 1 1 180px;
 }
 
 .check {
