@@ -112,6 +112,17 @@ export type {
   DbMeshtasticHeardRepeater,
   RecordMeshtasticHeardRepeaterParams,
 } from './meshtasticHeardRepeaters.js';
+export { CoverageReceptionsRepository } from './coverageReceptions.js';
+export type {
+  DbCoverageReception,
+  RecordCoverageReceptionParams,
+  GetCoverageReceptionsArgs,
+  CoverageReceptionsPage,
+  GetCoverageReceiversArgs,
+  CoverageReceiverRow,
+  GetCoverageSenderSummaryArgs,
+  CoverageSenderSummaryRow,
+} from './coverageReceptions.js';
 export { MeshIssuesRepository } from './meshIssues.js';
 export type {
   DbMeshIssue,

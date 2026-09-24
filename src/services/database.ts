@@ -65,6 +65,7 @@ import {
   MeshCoreObserverCredentialsRepository,
   MessageEventsRepository,
   MeshtasticHeardRepeatersRepository,
+  CoverageReceptionsRepository,
   MeshIssuesRepository,
   DeadDropRepository,
   AutomationsRepository,
@@ -578,6 +579,7 @@ class DatabaseService {
   public meshcoreObserverCredentialsRepo: MeshCoreObserverCredentialsRepository | null = null;
   public messageEventsRepo: MessageEventsRepository | null = null;
   public meshtasticHeardRepeatersRepo: MeshtasticHeardRepeatersRepository | null = null;
+  public coverageReceptionsRepo: CoverageReceptionsRepository | null = null;
   public meshIssuesRepo: MeshIssuesRepository | null = null;
   public deadDropRepo: DeadDropRepository | null = null;
   public automationsRepo: AutomationsRepository | null = null;
@@ -658,6 +660,11 @@ class DatabaseService {
   get meshtasticHeardRepeaters(): MeshtasticHeardRepeatersRepository {
     if (!this.meshtasticHeardRepeatersRepo) throw new Error('Database not initialized');
     return this.meshtasticHeardRepeatersRepo;
+  }
+
+  get coverageReceptions(): CoverageReceptionsRepository {
+    if (!this.coverageReceptionsRepo) throw new Error('Database not initialized');
+    return this.coverageReceptionsRepo;
   }
 
   get meshIssues(): MeshIssuesRepository {
@@ -1101,6 +1108,7 @@ class DatabaseService {
       this.meshcoreObserverCredentialsRepo = new MeshCoreObserverCredentialsRepository(drizzleDb, this.drizzleDbType);
       this.messageEventsRepo = new MessageEventsRepository(drizzleDb, this.drizzleDbType);
       this.meshtasticHeardRepeatersRepo = new MeshtasticHeardRepeatersRepository(drizzleDb, this.drizzleDbType);
+      this.coverageReceptionsRepo = new CoverageReceptionsRepository(drizzleDb, this.drizzleDbType);
       this.meshIssuesRepo = new MeshIssuesRepository(drizzleDb, this.drizzleDbType);
       this.deadDropRepo = new DeadDropRepository(drizzleDb, this.drizzleDbType);
       this.automationsRepo = new AutomationsRepository(drizzleDb, this.drizzleDbType);
