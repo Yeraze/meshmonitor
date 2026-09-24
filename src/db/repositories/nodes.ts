@@ -630,6 +630,16 @@ export class NodesRepository extends BaseRepository {
         hopsAway: nodeData.hopsAway ?? null,
         viaMqtt: nodeData.viaMqtt ?? null,
         transportMechanism: nodeData.transportMechanism ?? null,
+        // #5101 P3 EXTRA: a brand-new node's very first packet stamps
+        // `transportLast{Rf,Mqtt,Udp}` in `nodeData` (meshtasticManager.ts
+        // ~6407) via this exact INSERT path — there is no separate
+        // "NodeInfo only" first-write. Omitting these here silently dropped
+        // that first stamp until the node's second packet hit the UPDATE
+        // branch below, undercounting `countNodesHeardByTransport` for
+        // newly-discovered nodes in the bin they first appeared.
+        transportLastRf: this.coerceBigintField(nodeData.transportLastRf),
+        transportLastMqtt: this.coerceBigintField(nodeData.transportLastMqtt),
+        transportLastUdp: this.coerceBigintField(nodeData.transportLastUdp),
         isStoreForwardServer: nodeData.isStoreForwardServer ?? null,
         // #5231: see the conflict-path note below — zero MACs store as null.
         macaddr: isBlankMacAddr(nodeData.macaddr) ? null : nodeData.macaddr,
@@ -701,6 +711,12 @@ export class NodesRepository extends BaseRepository {
         hopsAway: nodeData.hopsAway ?? null,
         viaMqtt: nodeData.viaMqtt ?? null,
         transportMechanism: nodeData.transportMechanism ?? null,
+        // #5101 P3 EXTRA: see the matching comment on `newNode` above — this
+        // is the value Drizzle applies on the ON CONFLICT DO UPDATE race path
+        // (two concurrent first-seen upserts), so it needs the same fields.
+        transportLastRf: this.coerceBigintField(nodeData.transportLastRf),
+        transportLastMqtt: this.coerceBigintField(nodeData.transportLastMqtt),
+        transportLastUdp: this.coerceBigintField(nodeData.transportLastUdp),
         isStoreForwardServer: nodeData.isStoreForwardServer ?? null,
         // #5231: an all-zero MAC joins '' as "not reported" — firmware
         // deprecated `User.macaddr` in 2.1.x and many nodes send six zero bytes.
