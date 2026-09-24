@@ -363,13 +363,16 @@ export async function maybeRecordMeshCoreCoverageReception(
     // compare, paying for nothing else in this function.
     if (input.event.payload_type !== MESHCORE_PAYLOAD_ADVERT) return;
 
+    // One clock read for the stale check, the replay guard and the stored row.
+    const nowMs = Date.now();
+
     const evalResult = evaluateMeshCoreCoverageReception({
       sourceId: input.sourceId,
       receiverKind: input.receiverKind,
       receiverPubKey: input.receiverPubKey ? input.receiverPubKey.toLowerCase() : null,
       event: input.event,
       observerTimestampMs: input.observerTimestampMs,
-      nowMs: Date.now(),
+      nowMs,
       isOwnPublicKey: defaultIsOwnPublicKey,
       discardNullIsland: getDiscardInvalidPositions(),
     });
@@ -394,7 +397,7 @@ export async function maybeRecordMeshCoreCoverageReception(
     if (!verified) return; // bad-signature
 
     const guardKey = `${row.sourceId}|${row.receiverId}|${row.senderId}`;
-    if (!replayGuard.check(guardKey, advert.timestamp, row.packetKey, Date.now())) return; // replay
+    if (!replayGuard.check(guardKey, advert.timestamp, row.packetKey, nowMs)) return; // replay
 
     const rawPos = await input.receiverPosition();
     const discardReceiverPos = shouldDiscardPosition(rawPos.lat, rawPos.lon, undefined, getDiscardInvalidPositions());
@@ -410,7 +413,7 @@ export async function maybeRecordMeshCoreCoverageReception(
       altitude: null,
       precisionBits: null,
       channel: null,
-      receivedAt: Date.now(),
+      receivedAt: nowMs,
     });
   } catch (err) {
     logger.debug(`📡 Failed to record MeshCore Coverage reception (non-fatal): ${err}`);
