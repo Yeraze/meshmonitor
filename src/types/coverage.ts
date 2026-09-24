@@ -71,17 +71,19 @@ export interface CoverageReceiverDto {
 }
 
 /**
- * Live per-source MQTT gateway-recording status (#5277 P2, user decision
- * Q4), returned alongside `/receivers`. Limited to the MQTT sources the
- * caller can read; found via the typed `isMqttConnectionStatusManager`
- * predicate over the source manager registry, never a `source.type` string
- * gate, and read with `getSettingForSources` (per-source, never the bare
- * `coverage_mqtt_enabled` key — #5080).
+ * Live per-source MQTT/observer gateway-recording status (#5277 P2 + P3
+ * §2.5), returned alongside `/receivers`. Limited to the sources the caller
+ * can read; found via the typed `isMqttConnectionStatusManager` /
+ * `isMeshCoreMqttManager` predicates over the source manager registry, never
+ * a `source.type` string gate, and read with `getSettingForSources`
+ * (per-source, never the bare `coverage_mqtt_enabled` key — #5080).
  */
 export interface CoverageMqttSourceStatusDto {
   sourceId: string;
   sourceName: string;
   recordingEnabled: boolean;
+  /** `'meshcore'` for a MeshCore Observer (`meshcore_mqtt`) source; `'meshtastic'` otherwise (P3 §2.5). */
+  protocol: CoverageProtocol;
 }
 
 /** A distinct sender seen in the window, enriched with a name. */

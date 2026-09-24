@@ -4,6 +4,13 @@
  * position rule, the failure-TTL / stale-value-survives-a-failure carry-over
  * fix (b), the LRU bound, single-flight loading, and key isolation across
  * sources.
+ *
+ * Also covers the optional `loader` constructor override (#5277 P3, §2.3),
+ * which lets a MeshCore Observer source resolve a 64-hex public-key
+ * receiver instead of a Meshtastic `nodeNum`. A custom loader shares every
+ * other piece of machinery (TTL, failure TTL, LRU, single-flight) with the
+ * default one unchanged — see `coverageMeshCore.ts` for the real MeshCore
+ * loader that plugs in here.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
@@ -200,5 +207,76 @@ describe('CoverageReceiverPositionCache', () => {
     expect(a).toEqual({ lat: 1, lon: 1 });
     expect(b).toEqual({ lat: 2, lon: 2 });
     expect(getNodeMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('custom loader (#5277 P3, §2.3)', () => {
+  const PUBLIC_KEY = 'ab'.repeat(32);
+
+  beforeEach(() => {
+    getNodeMock.mockReset();
+  });
+
+  it('uses the injected loader instead of the Meshtastic default, keyed by a string', async () => {
+    const customLoader = vi.fn().mockResolvedValue({ lat: 10, lon: 20 });
+    const cache = new CoverageReceiverPositionCache({ loader: customLoader });
+
+    const pos = await cache.get(SOURCE_A, PUBLIC_KEY);
+
+    expect(pos).toEqual({ lat: 10, lon: 20 });
+    expect(customLoader).toHaveBeenCalledWith(SOURCE_A, PUBLIC_KEY);
+    expect(getNodeMock).not.toHaveBeenCalled();
+  });
+
+  it('stringifies a numeric key the same way as its string form (same cache entry)', async () => {
+    const customLoader = vi.fn().mockResolvedValue({ lat: 5, lon: 6 });
+    const cache = new CoverageReceiverPositionCache({ loader: customLoader });
+
+    await cache.get(SOURCE_A, '123');
+    await cache.get(SOURCE_A, 123);
+
+    expect(customLoader).toHaveBeenCalledTimes(1);
+  });
+
+  it('shares TTL, failure-TTL, LRU and single-flight machinery with a custom loader', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
+    try {
+      const customLoader = vi.fn().mockResolvedValue({ lat: 1, lon: 2 });
+      const cache = new CoverageReceiverPositionCache({ loader: customLoader, ttlMs: 60_000 });
+
+      await cache.get(SOURCE_A, PUBLIC_KEY);
+      await cache.get(SOURCE_A, PUBLIC_KEY); // within TTL, no reload
+      expect(customLoader).toHaveBeenCalledTimes(1);
+
+      vi.setSystemTime(new Date('2024-01-01T00:01:01.000Z')); // +61s
+      await cache.get(SOURCE_A, PUBLIC_KEY);
+      expect(customLoader).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a failing custom loader resolves to null coordinates rather than throwing', async () => {
+    const customLoader = vi.fn().mockRejectedValue(new Error('meshcore lookup failed'));
+    const cache = new CoverageReceiverPositionCache({ loader: customLoader });
+
+    await expect(cache.get(SOURCE_A, PUBLIC_KEY)).resolves.toEqual({ lat: null, lon: null });
+  });
+
+  it('the default loader is unaffected when no custom loader is supplied', async () => {
+    getNodeMock.mockResolvedValue({
+      latitude: 39.9,
+      longitude: -75.1,
+      positionOverrideEnabled: false,
+      latitudeOverride: null,
+      longitudeOverride: null,
+    });
+    const cache = new CoverageReceiverPositionCache();
+
+    const pos = await cache.get(SOURCE_A, NODE_NUM);
+
+    expect(pos).toEqual({ lat: 39.9, lon: -75.1 });
+    expect(getNodeMock).toHaveBeenCalledWith(NODE_NUM, SOURCE_A);
   });
 });

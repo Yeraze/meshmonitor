@@ -59,6 +59,12 @@ import { createHash } from 'node:crypto';
 import { ChannelCrypto } from '@michaelhart/meshcore-decoder';
 import { ALL_SOURCES } from '../db/repositories/base.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
+import { MESHCORE_PAYLOAD_ADVERT } from '../utils/coverage.js';
+import {
+  maybeRecordMeshCoreCoverageReception,
+  getMeshCoreObserverReceiverPosition,
+} from './utils/coverageMeshCore.js';
+import { isCoverageMqttEnabled } from './services/coverageMqttSettings.js';
 import { logger } from '../utils/logger.js';
 
 /** Persisted `sources.config` shape for a `meshcore_mqtt` source. */
@@ -352,6 +358,11 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
       void this.persistPacket(decoded);
       void this.ingestAdvert(decoded);
       void this.ingestChannelMessage(decoded);
+      // Coverage Report (#5277 P3): opt-in per source (U1), reusing P2's
+      // `coverage_mqtt_enabled` toggle. The advert-type check runs BEFORE the
+      // flag read so the (cached, but still a lookup) flag check only ever
+      // sees adverts, not every packet on the feed.
+      if (decoded.event.payload_type === MESHCORE_PAYLOAD_ADVERT) void this.recordCoverage(decoded);
     } catch (err) {
       this.stats.rejected++;
       logger.debug(`[MeshCoreMqtt:${this.sourceId}] failed to handle message:`, err);
@@ -465,6 +476,39 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
       this.stats.advertsIngested++;
     } catch (err) {
       logger.debug(`[MeshCoreMqtt:${this.sourceId}] failed to ingest advert:`, err);
+    }
+  }
+
+  /**
+   * Coverage Report (#5277 P3, U1): record this Observer's reception of a
+   * positioned, signed ADVERT. Off by default — gated on the same per-source
+   * `coverage_mqtt_enabled` opt-in P2 uses for Meshtastic MQTT gateways, so
+   * the toggle, its cache/invalidation, and the `mqttSources` status row are
+   * all shared unchanged.
+   *
+   * The observer's own receiver position comes from THIS source's
+   * `meshcore_nodes` row for its pubkey (written by `ingestAdvert` above
+   * when the feed carries the observer's own advert) — an observer
+   * MeshMonitor has never seen a NodeInfo/advert for gets no marker, same as
+   * a Meshtastic gateway lacking a NodeInfo in P2.
+   *
+   * Never throws into the ingest path; never emits on `dataEventEmitter`.
+   */
+  private async recordCoverage(decoded: IngestedObserverPacket): Promise<void> {
+    try {
+      if (!(await isCoverageMqttEnabled(this.sourceId))) return;
+
+      const originIdLower = decoded.originId.toLowerCase();
+      await maybeRecordMeshCoreCoverageReception({
+        sourceId: this.sourceId,
+        receiverKind: 'mqtt_gateway',
+        receiverPubKey: originIdLower,
+        receiverPosition: () => getMeshCoreObserverReceiverPosition(this.sourceId, originIdLower),
+        event: decoded.event,
+        observerTimestampMs: decoded.timestamp ? Date.parse(decoded.timestamp) || null : null,
+      });
+    } catch (err) {
+      logger.debug(`[MeshCoreMqtt:${this.sourceId}] failed to record Coverage reception:`, err);
     }
   }
 

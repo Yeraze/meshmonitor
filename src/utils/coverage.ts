@@ -273,3 +273,67 @@ export function groupReceptionsIntoFixes<T extends CoverageReceptionLike>(
   }
   return fixes;
 }
+
+// ---------------------------------------------------------------------------
+// MeshCore (#5277 P3)
+// ---------------------------------------------------------------------------
+
+/** MeshCore payload type for ADVERT frames (the only positioned packet P3 records). */
+export const MESHCORE_PAYLOAD_ADVERT = 0x04;
+
+/** MeshCore header route types (low 2 bits). */
+export const MESHCORE_ROUTE_TRANSPORT_FLOOD = 0;
+export const MESHCORE_ROUTE_FLOOD = 1;
+export const MESHCORE_ROUTE_DIRECT = 2;
+export const MESHCORE_ROUTE_TRANSPORT_DIRECT = 3;
+
+/**
+ * Hops for a received MeshCore advert. Adverts are zero-hop (DIRECT with an
+ * empty path) or flood (path = relays so far). Anything else is unknown.
+ */
+export function computeMeshCoreHopsAway(
+  routeType: number | null | undefined,
+  hopCount: number | null | undefined,
+): number | null {
+  if (hopCount == null || !Number.isInteger(hopCount) || hopCount < 0) return null;
+  if (routeType === MESHCORE_ROUTE_FLOOD || routeType === MESHCORE_ROUTE_TRANSPORT_FLOOD) return hopCount;
+  if ((routeType === MESHCORE_ROUTE_DIRECT || routeType === MESHCORE_ROUTE_TRANSPORT_DIRECT) && hopCount === 0) return 0;
+  return null;
+}
+
+/** `h<hops|->:<lastHopHex|->`, lowercase hex, hash width kept. Never empty; ≤ 12 chars. */
+export function meshcorePathKey(hopsAway: number | null, lastHopHex: string | null): string {
+  const hop = lastHopHex && /^[0-9a-fA-F]{2,6}$/.test(lastHopHex) ? lastHopHex.toLowerCase() : '-';
+  return `h${hopsAway ?? '-'}:${hop}`;
+}
+
+/** Inverse of `meshcorePathKey`; null when the string is not a MeshCore path key. */
+export function parseMeshCorePathKey(pathKey: string): { hops: number | null; lastHop: string | null } | null {
+  const m = /^h(\d+|-):([0-9a-f]{2,6}|-)$/.exec(pathKey);
+  if (!m) return null;
+  return { hops: m[1] === '-' ? null : Number(m[1]), lastHop: m[2] === '-' ? null : m[2] };
+}
+
+/** A MeshCore public key as stored in coverage rows: 64 hex chars. */
+export function isMeshCorePubKeyId(id: string | null | undefined): boolean {
+  return typeof id === 'string' && /^[0-9a-fA-F]{64}$/.test(id);
+}
+
+/** Short display label: Meshtastic `!xxxxxxxx` unchanged; a pubkey → first 8 hex + '…'. */
+export function formatCoverageNodeId(id: string): string {
+  return isMeshCorePubKeyId(id) ? `${id.slice(0, 8).toLowerCase()}…` : id;
+}
+
+/** True for a MeshCore coverage row (row data, not a source-type gate). */
+export function isMeshCoreReceptionRow(row: { protocol: string }): boolean {
+  return row.protocol === 'meshcore';
+}
+
+/**
+ * Source types whose Coverage recording is the per-source `coverage_mqtt_enabled`
+ * opt-in (P2 MQTT sources + P3 MeshCore observers). Frontend display gate only;
+ * the server finds these sources with the typed manager predicates.
+ */
+export function isCoverageMqttSourceType(sourceType: string | null | undefined): boolean {
+  return sourceType === 'mqtt_bridge' || sourceType === 'mqtt_broker' || sourceType === 'meshcore_mqtt';
+}

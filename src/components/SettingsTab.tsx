@@ -45,8 +45,7 @@ import GeoJsonLayerManager from './GeoJsonLayerManager';
 import MapStyleManager from './MapStyleManager';
 import { useDashboardSources } from '../hooks/useDashboardData';
 import { DEFAULT_TERRARIUM_URL } from '../types/elevation';
-import { clampCoverageRetentionDays, COVERAGE_RETENTION_DEFAULT_DAYS } from '../utils/coverage';
-import { isMqttOnlySourceType } from '../utils/nodeTransport';
+import { clampCoverageRetentionDays, COVERAGE_RETENTION_DEFAULT_DAYS, isCoverageMqttSourceType } from '../utils/coverage';
 import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSource } from '../contexts/SourceContext';
 import TelemetryOutlierDialog from './TelemetryOutlierDialog/TelemetryOutlierDialog';
@@ -393,8 +392,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // Scope destructive purges to the source whose Danger Zone this is; null in
   // global mode. `useSourceQuery()` returns a query string, so read the id
   // directly rather than parsing it back out (#5088).
-  // sourceType (#5277 P2 WP3) gates the Coverage recording section/nav item to
-  // MQTT-only sources — see isMqttOnlySourceType below.
+  // sourceType (#5277 P2 WP3, widened P3 WP4) gates the Coverage recording
+  // section/nav item to MQTT-shaped sources — see isCoverageMqttSourceType
+  // below.
   const { sourceId: purgeSourceId, sourceType } = useSource();
   // #5333: outlier purge dialog (Danger Zone → Clean telemetry outliers).
   const [outlierDialogOpen, setOutlierDialogOpen] = useState(false);
@@ -2602,8 +2602,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           )}
         </div>}
 
-        {show('settings-coverage-mqtt') && canWriteSettings && isMqttOnlySourceType(sourceType) && purgeSourceId && (
-          <CoverageMqttRecordingSection baseUrl={baseUrl} sourceId={purgeSourceId} canWrite={canWriteSettings} />
+        {show('settings-coverage-mqtt') && canWriteSettings && isCoverageMqttSourceType(sourceType) && purgeSourceId && (
+          <CoverageMqttRecordingSection
+            baseUrl={baseUrl}
+            sourceId={purgeSourceId}
+            canWrite={canWriteSettings}
+            sourceType={sourceType}
+          />
         )}
 
         {show('settings-remote-admin') && isAdmin && <div id="settings-remote-admin" className="settings-section">

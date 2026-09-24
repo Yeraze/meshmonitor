@@ -20,7 +20,7 @@ import {
   useCoverageSenders,
   useCoverageReceptions,
 } from '../../hooks/useCoverageData';
-import { groupReceptionsIntoFixes } from '../../utils/coverage';
+import { groupReceptionsIntoFixes, formatCoverageNodeId } from '../../utils/coverage';
 import type { CoverageMetric } from '../../utils/coverage';
 import type { CoverageHopsMode } from '../../types/coverage';
 import { buildReceiverQuery, receiverKey } from '../../utils/coverageReceiverFilter';
@@ -41,7 +41,10 @@ const RANGE_PRESETS: Array<{ id: Exclude<CoverageRangePreset, 'custom'>; key: st
   { id: '7d', key: 'range_7d', label: '7 days' },
 ];
 
-const HOPS_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7];
+// 8 = MeshCore's advert flood limit (`flood_max_advert`, COVERAGE_P3_SPEC.md
+// §0.2) — one hop past Meshtastic's own max of 7, so a MeshCore multi-hop
+// advert always has a value on this list (#5277 P3 WP3, spec §2.6).
+const HOPS_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8];
 
 /** The Meshtastic hop_limit / airtime-cost table (spec §0), shown in the
  *  collapsible setup guidance panel. Multipliers are the spec's own rough
@@ -50,6 +53,16 @@ const AIRTIME_ROWS: Array<{ hopLimit: number; txPerFix: string; perHourPct: stri
   { hopLimit: 0, txPerFix: '1', perHourPct: '~2%' },
   { hopLimit: 1, txPerFix: '2-4', perHourPct: '~4-8%' },
   { hopLimit: 3, txPerFix: '4-8', perHourPct: '~8-16%' },
+];
+
+/** MeshCore per-advert airtime table (COVERAGE_P3_SPEC.md §0.3), shown in a
+ *  MeshCore-specific block in the setup guidance panel below the Meshtastic
+ *  table. Advert size ranges 111-135 bytes (short name to a full 32-char
+ *  name); figures are the spec's own Semtech-formula computations. */
+const MESHCORE_AIRTIME_ROWS: Array<{ preset: string; b111: string; b123: string; b135: string }> = [
+  { preset: 'US/Canada 910.525 MHz, SF7 BW62.5 CR5', b111: '396 ms', b123: '426 ms', b135: '467 ms' },
+  { preset: 'EU/UK narrow, SF8 BW62.5 CR8', b111: '1.07 s', b123: '1.16 s', b135: '1.26 s' },
+  { preset: 'Legacy EU, SF11 BW250 CR5', b111: '1.09 s', b123: '1.17 s', b135: '1.26 s' },
 ];
 
 export const CoverageReport: React.FC = () => {
@@ -258,10 +271,14 @@ export const CoverageReport: React.FC = () => {
             <select value={senderId} onChange={(e) => setSenderId(e.target.value)}>
               <option value="">{t('analysis.coverage.sender_all', 'All')}</option>
               {(sendersQuery.data?.senders ?? []).map((s) => {
-                const label = s.longName || s.shortName || s.senderId;
+                // A MeshCore sender's id is a 64-hex pubkey; formatCoverageNodeId
+                // abbreviates it the same way CoverageReceiverFilter/CoverageMap
+                // do (#5277 P3 WP3, spec §2.6). A Meshtastic `!id` is unchanged.
+                const displaySenderId = formatCoverageNodeId(s.senderId);
+                const label = s.longName || s.shortName || displaySenderId;
                 return (
                   <option key={s.senderId} value={s.senderId}>
-                    {label} ({s.senderId}) — {s.fixCount}
+                    {label} ({displaySenderId}) — {s.fixCount}
                   </option>
                 );
               })}
@@ -367,6 +384,12 @@ export const CoverageReport: React.FC = () => {
               'Only live RF receptions recorded since this feature shipped appear here — there is no backfill from before the upgrade. Drive a route with a survey node broadcasting position while your mesh node is running to populate this report. MQTT gateway sources only start recording once their per-source Coverage recording toggle is turned on.',
             )}
           </div>
+          <div className="reports-banner__hint">
+            {t(
+              'analysis.coverage.empty_hint_meshcore',
+              'MeshCore companions record signed adverts that carry a position.',
+            )}
+          </div>
         </div>
       )}
 
@@ -422,6 +445,72 @@ export const CoverageReport: React.FC = () => {
                 ))}
               </tbody>
             </table>
+
+            {/* MeshCore block (#5277 P3 WP3, spec §2.6 / user decision U2):
+               a survey advert is a manual, one-shot broadcast, not a timed
+               background send like Meshtastic's position packets — so the
+               guidance here is about HOW to send one safely, not a setting
+               to change on the node. */}
+            <h4 className={styles.guidanceSubheading}>
+              {t('analysis.coverage.meshcore_guidance_title', 'MeshCore')}
+            </h4>
+            <p>
+              {t(
+                'analysis.coverage.meshcore_guidance_zero_hop',
+                'Send zero-hop adverts only, one every 60 seconds or slower. Never flood adverts for a survey: every repeater within 8 hops repeats each flood advert.',
+              )}
+            </p>
+            <p>
+              {t(
+                'analysis.coverage.meshcore_guidance_how_to_send',
+                'To send a zero-hop advert: in the companion app, use its advert action and pick the zero-hop option, not flood. On a repeater used as a survey node, use the CLI command advert.zerohop, not advert (which floods).',
+              )}
+            </p>
+            <p>
+              {t(
+                'analysis.coverage.meshcore_guidance_button_floods',
+                "MeshMonitor's own Send advert button floods. Don't use it for surveys.",
+              )}
+            </p>
+            <p>
+              {t(
+                'analysis.coverage.meshcore_guidance_stored_position',
+                "An advert carries the node's stored advert position, not a live GPS fix. Update the node's location before each advert.",
+              )}
+            </p>
+            <table className={styles.airtimeTable}>
+              <thead>
+                <tr>
+                  <th>{t('analysis.coverage.meshcore_guidance_col_preset', 'Preset')}</th>
+                  <th>{t('analysis.coverage.meshcore_guidance_col_111', '111 B')}</th>
+                  <th>{t('analysis.coverage.meshcore_guidance_col_123', '123 B')}</th>
+                  <th>{t('analysis.coverage.meshcore_guidance_col_135', '135 B')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {MESHCORE_AIRTIME_ROWS.map((row) => (
+                  <tr key={row.preset}>
+                    <td>{row.preset}</td>
+                    <td>{row.b111}</td>
+                    <td>{row.b123}</td>
+                    <td>{row.b135}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p>
+              {t(
+                'analysis.coverage.meshcore_guidance_survey_pct',
+                'A survey sending one zero-hop advert every 60 seconds uses about 0.7% of the local channel on the US preset, up to 1.9% on EU narrow.',
+              )}
+            </p>
+            <p className={styles.guidanceFooter}>
+              {t(
+                'analysis.coverage.meshcore_guidance_repeaters_auto',
+                "Repeaters' own adverts are recorded automatically. MeshMonitor never sends adverts for you.",
+              )}
+            </p>
+
             <p className={styles.guidanceFooter}>
               {t(
                 'analysis.coverage.guidance_no_send',

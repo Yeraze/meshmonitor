@@ -448,4 +448,147 @@ describe('CoverageMap', () => {
       expect(popup.queryByText('Gateway')).not.toBeInTheDocument();
     });
   });
+
+  describe('MeshCore (#5277 Phase 3 WP3, spec §2.6)', () => {
+    const PUBKEY = 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2';
+    const meshcoreReceivers: CoverageReceiverDto[] = [
+      {
+        sourceId: 'src-mc', sourceName: 'Source MC', protocol: 'meshcore', receiverKind: 'local',
+        receiverId: PUBKEY, receiverNodeNum: null, longName: 'Companion One', shortName: null,
+        latitude: 26.1, longitude: -80.2, lastReceivedAt: 1, receptionCount: 5,
+      },
+    ];
+
+    function meshcoreReception(overrides: Partial<CoverageReceptionDto>): CoverageReceptionDto {
+      return reception({
+        protocol: 'meshcore',
+        receiverId: PUBKEY,
+        receiverKind: 'local',
+        receiverNodeNum: null,
+        senderId: PUBKEY,
+        senderNodeNum: null,
+        packetId: null,
+        relayNode: null,
+        ...overrides,
+      });
+    }
+
+    it('shows "Direct" for a zero-hop MeshCore reception', () => {
+      const fix: CoverageFix<CoverageReceptionDto> = {
+        senderId: PUBKEY,
+        packetKey: '100',
+        latitude: 26.15,
+        longitude: -80.25,
+        receivedAt: 1_700_000_000_000,
+        receptions: [meshcoreReception({ id: 1, hopsAway: 0, pathKey: 'h0:-' })],
+        bestSnr: 5.5,
+        bestRssi: -85,
+      };
+
+      render(<CoverageMap fixes={[fix]} receivers={meshcoreReceivers} metric="snr" senderNames={new Map()} fitKey="k" />);
+      const popup = within(screen.getByTestId('coverage-fix-popup'));
+      expect(popup.getByText('Direct')).toBeInTheDocument();
+    });
+
+    it('shows "N hops via <lastHop>" from the pathKey, upper-cased, for a relayed MeshCore reception', () => {
+      const fix: CoverageFix<CoverageReceptionDto> = {
+        senderId: PUBKEY,
+        packetKey: '100',
+        latitude: 26.15,
+        longitude: -80.25,
+        receivedAt: 1_700_000_000_000,
+        receptions: [meshcoreReception({ id: 2, hopsAway: 2, pathKey: 'h2:a1b2' })],
+        bestSnr: 5.5,
+        bestRssi: -85,
+      };
+
+      render(<CoverageMap fixes={[fix]} receivers={meshcoreReceivers} metric="snr" senderNames={new Map()} fitKey="k" />);
+      expect(screen.getByText('2 hops via A1B2')).toBeInTheDocument();
+      // Never calls relayHex (Meshtastic's `0x..` convention) on a MeshCore row.
+      expect(screen.queryByText(/0x/)).not.toBeInTheDocument();
+    });
+
+    it('never calls relayHex for a MeshCore row even when relayNode happens to be set', () => {
+      const fix: CoverageFix<CoverageReceptionDto> = {
+        senderId: PUBKEY,
+        packetKey: '100',
+        latitude: 26.15,
+        longitude: -80.25,
+        receivedAt: 1_700_000_000_000,
+        receptions: [meshcoreReception({ id: 3, hopsAway: 1, pathKey: 'h1:aa', relayNode: 0xab })],
+        bestSnr: 5.5,
+        bestRssi: -85,
+      };
+
+      render(<CoverageMap fixes={[fix]} receivers={meshcoreReceivers} metric="snr" senderNames={new Map()} fitKey="k" />);
+      expect(screen.getByText('1 hops via AA')).toBeInTheDocument();
+      expect(screen.queryByText(/via 0x/)).not.toBeInTheDocument();
+    });
+
+    it('abbreviates the sender pubkey in the popup header via formatCoverageNodeId', () => {
+      const fix: CoverageFix<CoverageReceptionDto> = {
+        senderId: PUBKEY,
+        packetKey: '100',
+        latitude: 26.15,
+        longitude: -80.25,
+        receivedAt: 1_700_000_000_000,
+        receptions: [meshcoreReception({ id: 4, hopsAway: 0, pathKey: 'h0:-' })],
+        bestSnr: 5.5,
+        bestRssi: -85,
+      };
+
+      render(<CoverageMap fixes={[fix]} receivers={meshcoreReceivers} metric="snr" senderNames={new Map()} fitKey="k" />);
+      const popup = within(screen.getByTestId('coverage-fix-popup'));
+      expect(popup.getByText('a1b2c3d4… — 1 reception(s)')).toBeInTheDocument();
+      expect(popup.queryByText(new RegExp(PUBKEY))).not.toBeInTheDocument();
+    });
+
+    it('an Observer (mqtt_gateway + meshcore) marker keeps the dashed gateway style and labels itself "Observer"', () => {
+      const observerReceivers: CoverageReceiverDto[] = [
+        {
+          sourceId: 'src-obs', sourceName: 'Source Observer', protocol: 'meshcore', receiverKind: 'mqtt_gateway',
+          receiverId: PUBKEY, receiverNodeNum: null, longName: 'Observer One', shortName: null,
+          latitude: 26.2, longitude: -80.3, lastReceivedAt: 1, receptionCount: 5,
+        },
+      ];
+
+      render(<CoverageMap fixes={[]} receivers={observerReceivers} metric="snr" senderNames={new Map()} fitKey="k" />);
+      const marker = screen.getByTestId('circle-marker');
+      expect(marker).toHaveAttribute('data-dash', '4,3');
+      expect(marker).toHaveTextContent('Observer One · Observer');
+      expect(marker).not.toHaveTextContent('Gateway');
+    });
+
+    it('a MeshCore mqtt_gateway popup badge reads "Observer", not "Gateway"', () => {
+      const observerReceivers: CoverageReceiverDto[] = [
+        {
+          sourceId: 'src-obs', sourceName: 'Source Observer', protocol: 'meshcore', receiverKind: 'mqtt_gateway',
+          receiverId: PUBKEY, receiverNodeNum: null, longName: 'Observer One', shortName: null,
+          latitude: 26.2, longitude: -80.3, lastReceivedAt: 1, receptionCount: 5,
+        },
+      ];
+      const fix: CoverageFix<CoverageReceptionDto> = {
+        senderId: PUBKEY,
+        packetKey: '100',
+        latitude: 26.15,
+        longitude: -80.25,
+        receivedAt: 1_700_000_000_000,
+        receptions: [
+          meshcoreReception({
+            id: 5, hopsAway: 0, pathKey: 'h0:-', receiverKind: 'mqtt_gateway', sourceId: 'src-obs',
+            receiverLatitude: 26.2, receiverLongitude: -80.3,
+          }),
+        ],
+        bestSnr: 5.5,
+        bestRssi: -85,
+      };
+
+      render(
+        <CoverageMap fixes={[fix]} receivers={observerReceivers} metric="snr" senderNames={new Map()} fitKey="k" />,
+      );
+      const popup = within(screen.getByTestId('coverage-fix-popup'));
+      expect(popup.getByText('Observer')).toBeInTheDocument();
+      expect(popup.queryByText('Gateway')).not.toBeInTheDocument();
+    });
+  });
 });

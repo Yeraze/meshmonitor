@@ -51,6 +51,28 @@ shown for reference only — it is not recommended for surveying.
 The report's own **Setup guidance** panel (collapsed by default, below the
 map) repeats this same recommendation and table.
 
+### Surveying with a MeshCore node
+
+MeshCore nodes report their position only in **adverts**, and a companion
+has no advert timer, so the driver sends them by hand.
+
+- **Send zero-hop adverts only**, about **once every 60 seconds**. In the
+  MeshCore app, use the zero-hop advert option; on a repeater, use the CLI
+  command `advert.zerohop`, never `advert`.
+- **Never flood adverts for a survey.** A flood advert is rebroadcast by
+  every repeater in reach (up to 8 hops): with 20 repeaters that is about
+  9 s of channel time per advert on a US preset, 25 s on an EU preset.
+- **MeshMonitor's own "Send advert" button floods**, so don't use it for a
+  survey.
+- **An advert carries the node's stored advert position**, not a live GPS
+  fix. Make sure the node updates its advert location as it moves.
+
+| Advert | Channel time per advert | Every 60 s |
+| --- | --- | --- |
+| Zero-hop, US (SF7/BW62.5) | ~0.4–0.5 s | ~0.7% |
+| Zero-hop, EU (SF8/BW62.5/CR8) | ~1.1–1.3 s | ~1.9% |
+| Flood, 20 repeaters in reach | ~9 s (US) / ~25 s (EU) | 15–40% |
+
 ## Reading the report
 
 Open **Analysis & Reports** from the dashboard sidebar, then click the
@@ -118,6 +140,17 @@ default. Once on, every gateway that uplinks a position packet becomes a
 receiver, with the SNR and RSSI that gateway measured, so one drive can show
 what every gateway in the area heard.
 
+**MeshCore companion sources** record adverts that carry a position,
+**always**. Each advert's signature is checked first; an advert that fails
+the check, or an older advert re-sent later (for example a shared contact),
+is not recorded. Your companion's own advert coming back is skipped too.
+Repeater serial sources don't record.
+
+**MeshCore Observer sources** record only when you turn it on, per source,
+under **Settings → Coverage recording**, off by default. Each observer shows
+as its own receiver, labelled **Observer**. How many rows an observer feed
+adds hasn't been measured yet, and the toggle says so.
+
 - **Volume:** a regional feed adds about 12,000–14,000 rows a day (about
   90,000–100,000 rows, 35–50 MB, over 7 days of retention). A world-wide
   `msh/#` feed can reach about 1 million rows a day and several GB a week.
@@ -156,11 +189,16 @@ without "view on map" enabled are all excluded, using the same checks as
 see its receivers, senders, or receptions at all — a source you can't read
 contributes nothing to the report.
 
+MeshCore positions follow the same rule as the MeshCore map: the node must
+be a known contact of that source, and you need **view on map** permission
+for the source (admins have it everywhere). A MeshCore node the source
+doesn't know never appears, even for an admin.
+
 ## What's next
 
-Planned follow-ups (not yet built, and not scheduled): MeshCore receptions,
-likely-gap detection, saved surveys exempt from retention, a summary panel,
-and CSV/GeoJSON export.
+Planned follow-ups (not yet built, and not scheduled): likely-gap
+detection, saved surveys exempt from retention, a summary panel, and
+CSV/GeoJSON export.
 
 ## Related
 

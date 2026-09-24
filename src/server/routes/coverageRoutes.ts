@@ -41,13 +41,20 @@ import { optionalAuth } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { resolvePermittedSourceIds, parseSourcesParam } from '../utils/permittedSources.js';
-import { buildPositionFilter, loadNodesBySource } from '../utils/positionVisibility.js';
+import {
+  buildPositionFilter, loadNodesBySource,
+  buildMeshCorePositionFilter, loadMeshCoreNodesBySource,
+} from '../utils/positionVisibility.js';
 import { parseGatewayNodeNum } from '../utils/okToMqtt.js';
-import { clampCoverageRetentionDays, nodeNumToId, COVERAGE_MQTT_ENABLED_SETTING, isCoverageMqttFlagOn } from '../../utils/coverage.js';
+import {
+  clampCoverageRetentionDays, nodeNumToId, COVERAGE_MQTT_ENABLED_SETTING, isCoverageMqttFlagOn,
+  isMeshCoreReceptionRow, isMeshCorePubKeyId,
+} from '../../utils/coverage.js';
 import { parseReceiverFilter, type CoverageReceiverFilterEntry } from '../../utils/coverageReceiverFilter.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
-import { isMqttConnectionStatusManager } from '../sourceManagerTypes.js';
+import { isMqttConnectionStatusManager, isMeshCoreMqttManager, isMeshCoreManager } from '../sourceManagerTypes.js';
 import type { DbNode } from '../../db/types.js';
+import type { DbMeshCoreNode } from '../../db/repositories/meshcore.js';
 import type {
   CoverageProtocol,
   CoverageReceiverKind,
@@ -108,13 +115,15 @@ function parseTimeParam(raw: unknown, fallback: number): number | null {
 }
 
 /**
- * `sender` query param: a `!xxxxxxxx` id or a decimal node number, normalised
- * to `!xxxxxxxx` (the form `coverage_receptions.senderId` stores). Returns
- * `null` on anything unparseable.
+ * `sender` query param: a `!xxxxxxxx` id, a decimal node number (normalised
+ * to `!xxxxxxxx`, the form Meshtastic `coverage_receptions.senderId` rows
+ * store), or a 64-hex MeshCore public key (lowercased, the form MeshCore
+ * rows store — #5277 P3 §2.5). Returns `null` on anything unparseable.
  */
 function parseSenderParam(raw: unknown): string | null {
   if (typeof raw !== 'string' || raw.trim() === '') return null;
   const trimmed = raw.trim();
+  if (isMeshCorePubKeyId(trimmed)) return trimmed.toLowerCase();
   if (trimmed.startsWith('!')) {
     const nodeNum = parseGatewayNodeNum(trimmed);
     return nodeNum === null ? null : nodeNumToId(nodeNum);
@@ -148,13 +157,18 @@ function isValidCursorString(raw: string): boolean {
 // ── GET /receivers ──────────────────────────────────────────────────────────
 
 /**
- * MQTT gateway-recording status for the caller's permitted sources (#5277
- * P2 §2.7, user decision Q4). Typed-predicate discovery only — never a
- * `source.type` string gate — and a per-source settings read, never the
- * bare `coverage_mqtt_enabled` key (#5080). WP1 reads the settings table
- * directly rather than importing WP2's `coverageMqttSettings.ts` TTL cache,
- * so the two packages stay independently buildable and this response never
- * shows a stale cached flag.
+ * MQTT / MeshCore Observer gateway-recording status for the caller's
+ * permitted sources (#5277 P2 §2.7 + P3 §2.5, user decisions Q4/U1).
+ * Typed-predicate discovery only — never a `source.type` string gate — and
+ * a per-source settings read, never the bare `coverage_mqtt_enabled` key
+ * (#5080). Reads the settings table directly rather than importing
+ * `coverageMqttSettings.ts`'s TTL cache, so this response never shows a
+ * stale cached flag.
+ *
+ * `isMeshCoreMqttManager` widens discovery to MeshCore Observer
+ * (`meshcore_mqtt`) sources alongside P2's MQTT broker/bridge sources — a
+ * device-backed `meshcore` source (`isMeshCoreManager`) never matches
+ * either predicate and never appears here.
  */
 async function loadMqttSourceStatuses(
   sourceIds: string[],
@@ -163,21 +177,95 @@ async function loadMqttSourceStatuses(
   if (sourceIds.length === 0) return [];
 
   const permitted = new Set(sourceIds);
-  const mqttSourceIds = sourceManagerRegistry
+  const candidates = sourceManagerRegistry
     .getAllManagers()
-    .filter(isMqttConnectionStatusManager)
-    .map((m) => m.sourceId)
-    .filter((id) => permitted.has(id));
+    .filter((m) => isMqttConnectionStatusManager(m) || isMeshCoreMqttManager(m))
+    .filter((m) => permitted.has(m.sourceId));
 
-  if (mqttSourceIds.length === 0) return [];
+  if (candidates.length === 0) return [];
 
+  const mqttSourceIds = candidates.map((m) => m.sourceId);
+  const protocolById = new Map<string, CoverageProtocol>(
+    candidates.map((m) => [m.sourceId, isMeshCoreMqttManager(m) ? 'meshcore' : 'meshtastic']),
+  );
   const flags = await databaseService.settings.getSettingForSources(mqttSourceIds, COVERAGE_MQTT_ENABLED_SETTING);
 
   return mqttSourceIds.map((id) => ({
     sourceId: id,
     sourceName: sourceNameById.get(id) ?? id,
     recordingEnabled: isCoverageMqttFlagOn(flags.get(id) ?? null),
+    protocol: protocolById.get(id) ?? 'meshtastic',
   }));
+}
+
+// ── MeshCore privacy helpers (#5277 Phase 3 WP2 §2.5, Decision D10) ────────
+//
+// Every helper below branches on ROW DATA — the row's own `protocol` column
+// (`isMeshCoreReceptionRow`) or, where a query doesn't select `protocol`
+// (`getSenderSummary`), the row's own `senderId` format (`isMeshCorePubKeyId`,
+// a 64-hex pubkey vs. Meshtastic's `!xxxxxxxx`). NEVER a `source.type` string
+// gate — a source can carry rows of only one protocol today, but the gate
+// must keep working unchanged if that ever stops being true.
+
+/** Distinct sourceIds that actually have a MeshCore row among `rows` — avoids loading `meshcore_nodes` for sources with none (§2.5). */
+function meshCoreSourceIdsFromReceptionRows(rows: Array<{ sourceId: string; protocol: string }>): string[] {
+  const ids = new Set<string>();
+  for (const r of rows) if (isMeshCoreReceptionRow(r)) ids.add(r.sourceId);
+  return Array.from(ids);
+}
+
+/** Same as above, for `getSenderSummary` rows, which carry no `protocol` column. */
+function meshCoreSourceIdsFromSenderRows(rows: Array<{ sourceId: string; senderId: string }>): string[] {
+  const ids = new Set<string>();
+  for (const r of rows) if (isMeshCorePubKeyId(r.senderId)) ids.add(r.sourceId);
+  return Array.from(ids);
+}
+
+/**
+ * Load MeshCore nodes for `mcSourceIds` only (empty list short-circuits —
+ * `loadMeshCoreNodesBySource([])` would just return an empty map, but the
+ * Promise.all callers below skip the DB round trip entirely).
+ */
+async function loadMeshCoreNodesIfAny(mcSourceIds: string[]): Promise<Map<string, DbMeshCoreNode[]>> {
+  return mcSourceIds.length > 0 ? loadMeshCoreNodesBySource(mcSourceIds) : new Map();
+}
+
+/** First-match-wins node lookup across every source in the map for a pubkey — mirrors the fixCount merge's documented cross-source "upper bound" semantics for /senders, where the per-row sourceId is lost after merging. */
+function findMeshCoreNodeAcrossSources(
+  pubkey: string,
+  mcNodesBySource: Map<string, DbMeshCoreNode[]>,
+): DbMeshCoreNode | null {
+  const key = pubkey.toLowerCase();
+  for (const nodes of mcNodesBySource.values()) {
+    const found = nodes.find((n) => n.publicKey.toLowerCase() === key);
+    if (found) return found;
+  }
+  return null;
+}
+
+/**
+ * Display name fallback for a device-backed MeshCore source's own receiver
+ * row (`receiverKind: 'local'`). The companion's own public key never has a
+ * `meshcore_nodes` row — a companion isn't in its own contact list — so the
+ * `mcNode` lookup in the /receivers map below always misses for it, and the
+ * report would otherwise show the raw pubkey prefix (e.g. "a8e56073…").
+ *
+ * Resolves the manager's live self name (the same `getLocalNode().name` the
+ * MeshCore device routes / status bar read — narrowed via `isMeshCoreManager`,
+ * never a `source.type` string gate per this file's rule), falling back to
+ * the source's own name when the manager isn't registered or has no local
+ * node yet (e.g. mid-reconnect).
+ *
+ * Position/privacy is untouched by this: the MeshCore visibility gate
+ * (`mcFilter`) still independently nulls the coordinate pair for this row.
+ * A name fallback to the source name is fine even when the gate fails —
+ * the caller can already read the source, since it's in their permitted
+ * `sourceIds`.
+ */
+function meshCoreLocalReceiverFallbackName(sourceId: string, sourceNameById: Map<string, string>): string {
+  const manager = sourceManagerRegistry.getManager(sourceId);
+  const selfName = manager && isMeshCoreManager(manager) ? manager.getLocalNode()?.name ?? null : null;
+  return selfName || sourceNameById.get(sourceId) || sourceId;
 }
 
 router.get('/receivers', async (req: Request, res: Response) => {
@@ -199,7 +287,14 @@ router.get('/receivers', async (req: Request, res: Response) => {
       databaseService.sources.getAllSources(),
     ]);
 
-    const posFilter = await buildPositionFilter(req.user, sourceIds, nodesBySource);
+    const mcSourceIds = meshCoreSourceIdsFromReceptionRows(rows);
+    const [posFilter, mcNodesBySource] = await Promise.all([
+      buildPositionFilter(req.user, sourceIds, nodesBySource),
+      loadMeshCoreNodesIfAny(mcSourceIds),
+    ]);
+    const mcFilter = mcSourceIds.length > 0
+      ? await buildMeshCorePositionFilter(req.user, mcSourceIds, mcNodesBySource)
+      : null;
     const sourceNameById = new Map(allSources.map((s) => [s.id, s.name] as const));
 
     // Build the (sourceId -> nodeNum -> node) map once rather than an O(receivers × nodes)
@@ -211,7 +306,49 @@ router.get('/receivers', async (req: Request, res: Response) => {
       nodesByNumBySource.set(sourceId, byNum);
     }
 
+    // (sourceId:lowercasePubKey -> DbMeshCoreNode), for the MeshCore branch below.
+    const mcNodeByKey = new Map<string, DbMeshCoreNode>();
+    for (const [sourceId, nodeList] of mcNodesBySource) {
+      for (const n of nodeList) mcNodeByKey.set(`${sourceId}:${n.publicKey.toLowerCase()}`, n);
+    }
+
     const receivers: CoverageReceiverDto[] = rows.map((r) => {
+      if (isMeshCoreReceptionRow(r)) {
+        // MeshCore branch (§2.5 D10): name and current position come from
+        // `meshcore_nodes` (no override concept there), else the latest
+        // reception snapshot. `mcFilter` folds presence (#4163-equivalent —
+        // no `meshcore_nodes` row means no marker anywhere, admins included)
+        // and, for non-admins, per-source `nodes:viewOnMap` into one check;
+        // failing it nulls the coordinate pair, same asymmetry as the
+        // Meshtastic branch below (name is never nulled by the gate).
+        const mcNode = mcNodeByKey.get(`${r.sourceId}:${r.receiverId.toLowerCase()}`) ?? null;
+        let latitude: number | null = mcNode?.latitude ?? null;
+        let longitude: number | null = mcNode?.longitude ?? null;
+        if (latitude == null || longitude == null) {
+          latitude = r.receiverLatitude;
+          longitude = r.receiverLongitude;
+        }
+        if (!mcFilter || !mcFilter({ sourceId: r.sourceId, publicKey: r.receiverId })) {
+          latitude = null;
+          longitude = null;
+        }
+        return {
+          sourceId: r.sourceId,
+          sourceName: sourceNameById.get(r.sourceId) ?? r.sourceId,
+          protocol: r.protocol as CoverageProtocol,
+          receiverKind: r.receiverKind as CoverageReceiverKind,
+          receiverId: r.receiverId,
+          receiverNodeNum: r.receiverNodeNum,
+          longName: mcNode?.name
+            ?? (r.receiverKind === 'local' ? meshCoreLocalReceiverFallbackName(r.sourceId, sourceNameById) : null),
+          shortName: null,
+          latitude,
+          longitude,
+          lastReceivedAt: r.lastReceivedAt,
+          receptionCount: r.receptionCount,
+        };
+      }
+
       const node = r.receiverNodeNum != null
         ? nodesByNumBySource.get(r.sourceId)?.get(r.receiverNodeNum) ?? null
         : null;
@@ -300,16 +437,34 @@ router.get('/senders', async (req: Request, res: Response) => {
       loadNodesBySource(sourceIds),
     ]);
 
-    const posFilter = await buildPositionFilter(req.user, sourceIds, nodesBySource);
+    // `getSenderSummary` rows carry no `protocol` column (§2.4: repository
+    // unchanged), so MeshCore rows are identified by `senderId`'s own shape
+    // (`isMeshCorePubKeyId` — a 64-hex pubkey), not a source-type gate.
+    const mcSourceIds = meshCoreSourceIdsFromSenderRows(rows);
+    const [posFilter, mcNodesBySource] = await Promise.all([
+      buildPositionFilter(req.user, sourceIds, nodesBySource),
+      loadMeshCoreNodesIfAny(mcSourceIds),
+    ]);
+    const mcFilter = mcSourceIds.length > 0
+      ? await buildMeshCorePositionFilter(req.user, mcSourceIds, mcNodesBySource)
+      : null;
 
     // Merge by senderId across sources: sum fixCount (an upper bound —
-    // documented in the repo/spec), max lastReceivedAt. A group whose
-    // (sourceId, senderNodeNum) fails the visibility gate is dropped
-    // entirely (never merged in); a null senderNodeNum can't be gated and is
-    // always kept, mirroring the receiver-with-no-nodeNum carve-out above.
+    // documented in the repo/spec), max lastReceivedAt.
+    //
+    // A Meshtastic group whose (sourceId, senderNodeNum) fails the
+    // visibility gate is dropped entirely (never merged in); a null
+    // senderNodeNum can't be gated and is always kept — this carve-out is
+    // Meshtastic-only. Every MeshCore row has a null senderNodeNum (§2.5:
+    // this was the P1 privacy gap — "null senderNodeNum always kept" would
+    // otherwise let every MeshCore sender bypass viewOnMap), so MeshCore
+    // rows are gated on `(sourceId, senderId)` via `mcFilter` instead, and a
+    // failure drops the row before it's ever merged in, for admins too.
     const merged = new Map<string, MergedSender>();
     for (const row of rows) {
-      if (row.senderNodeNum != null && !posFilter({ sourceId: row.sourceId, nodeNum: row.senderNodeNum })) {
+      if (isMeshCorePubKeyId(row.senderId)) {
+        if (!mcFilter || !mcFilter({ sourceId: row.sourceId, publicKey: row.senderId })) continue;
+      } else if (row.senderNodeNum != null && !posFilter({ sourceId: row.sourceId, nodeNum: row.senderNodeNum })) {
         continue;
       }
       const existing = merged.get(row.senderId);
@@ -334,6 +489,20 @@ router.get('/senders', async (req: Request, res: Response) => {
 
     const senders: CoverageSenderDto[] = Array.from(merged.values())
       .map((m) => {
+        if (isMeshCorePubKeyId(m.senderId)) {
+          // MeshCore branch (§2.5): name from `meshcore_nodes`, no
+          // per-node number to key off — first-match-wins across the
+          // sources that passed the gate above (see helper docstring).
+          const mcNode = findMeshCoreNodeAcrossSources(m.senderId, mcNodesBySource);
+          return {
+            senderId: m.senderId,
+            senderNodeNum: null,
+            longName: mcNode?.name ?? null,
+            shortName: null,
+            fixCount: m.fixCount,
+            lastReceivedAt: m.lastReceivedAt,
+          };
+        }
         const nm = m.senderNodeNum != null ? names.get(m.senderNodeNum) : undefined;
         return {
           senderId: m.senderId,
@@ -372,8 +541,11 @@ router.get('/receptions', async (req: Request, res: Response) => {
     let hops: number | undefined;
     if (req.query.hops !== undefined) {
       const n = Number(req.query.hops);
-      if (!Number.isInteger(n) || n < 0 || n > 7) {
-        return fail(res, 400, 'INVALID_HOPS', 'hops must be an integer between 0 and 7');
+      // 0-63: widened from Meshtastic's 0-7 to also fit MeshCore flood-advert
+      // hop counts (§0.2's flood_max_advert=8 forward cap, `flood.max`
+      // default 64) — Meshtastic rows never report hopsAway above 7 anyway.
+      if (!Number.isInteger(n) || n < 0 || n > 63) {
+        return fail(res, 400, 'INVALID_HOPS', 'hops must be an integer between 0 and 63');
       }
       hops = n;
     }
@@ -390,7 +562,7 @@ router.get('/receptions', async (req: Request, res: Response) => {
     if (req.query.sender !== undefined) {
       const parsed = parseSenderParam(req.query.sender);
       if (parsed === null) {
-        return fail(res, 400, 'INVALID_SENDER', 'sender must be a !hex node id or a decimal node number');
+        return fail(res, 400, 'INVALID_SENDER', 'sender must be a !hex node id, a decimal node number, or a 64-hex MeshCore public key');
       }
       senderId = parsed;
     }
@@ -437,17 +609,38 @@ router.get('/receptions', async (req: Request, res: Response) => {
       loadNodesBySource(sourceIds),
     ]);
 
-    const posFilter = await buildPositionFilter(req.user, sourceIds, nodesBySource);
+    const mcSourceIds = meshCoreSourceIdsFromReceptionRows(page.items);
+    const [posFilter, mcNodesBySource] = await Promise.all([
+      buildPositionFilter(req.user, sourceIds, nodesBySource),
+      loadMeshCoreNodesIfAny(mcSourceIds),
+    ]);
+    const mcFilter = mcSourceIds.length > 0
+      ? await buildMeshCorePositionFilter(req.user, mcSourceIds, mcNodesBySource)
+      : null;
 
     // Post-filter on the sender's visibility, same gate as /positions
     // (§2.9.3) — a page can come back shorter than pageSize; the client
     // keeps paging on hasMore. Receiver coordinates are nulled (not
     // filtered) using the same predicate against receiverNodeNum.
+    //
+    // MeshCore rows (§2.5 D10) branch on `isMeshCoreReceptionRow` and gate on
+    // `(sourceId, senderId/receiverId)` via `mcFilter` instead: a MeshCore
+    // row's `senderNodeNum` is always null, so the Meshtastic
+    // "null nodeNum is always kept" carve-out must never apply to it — that
+    // was the P1 privacy gap this work package closes. A sender that fails
+    // the gate drops the whole row (for admins too); a receiver that fails
+    // it only nulls the coordinate pair, mirroring the Meshtastic branch.
     const items: CoverageReceptionDto[] = page.items
-      .filter((row) => row.senderNodeNum == null || posFilter({ sourceId: row.sourceId, nodeNum: row.senderNodeNum }))
+      .filter((row) => {
+        if (isMeshCoreReceptionRow(row)) {
+          return !!mcFilter && mcFilter({ sourceId: row.sourceId, publicKey: row.senderId });
+        }
+        return row.senderNodeNum == null || posFilter({ sourceId: row.sourceId, nodeNum: row.senderNodeNum });
+      })
       .map((row) => {
-        const receiverVisible = row.receiverNodeNum == null
-          || posFilter({ sourceId: row.sourceId, nodeNum: row.receiverNodeNum });
+        const receiverVisible = isMeshCoreReceptionRow(row)
+          ? !!mcFilter && mcFilter({ sourceId: row.sourceId, publicKey: row.receiverId })
+          : row.receiverNodeNum == null || posFilter({ sourceId: row.sourceId, nodeNum: row.receiverNodeNum });
         return {
           ...row,
           protocol: row.protocol as CoverageProtocol,

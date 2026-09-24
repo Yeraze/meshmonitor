@@ -25,12 +25,27 @@
  *   nulls — a transient DB hiccup must not blank out a receiver's position
  *   on the map.
  * - **Single-flight:** concurrent `get()` calls for the same key while a
- *   lookup is in flight share one `databaseService.nodes.getNode` call
- *   instead of stampeding it (e.g. ten copies of one packet arriving from
- *   different gateways in one MQTT burst, all resolving the SAME gateway's
- *   position).
+ *   lookup is in flight share one lookup call instead of stampeding it
+ *   (e.g. ten copies of one packet arriving from different gateways in one
+ *   MQTT burst, all resolving the SAME gateway's position).
  *
  * See docs/internal/dev-notes/COVERAGE_P2_SPEC.md §2.2 and Decision D11.
+ *
+ * ## Optional `loader` (#5277 P3, §2.3)
+ *
+ * The key was always `${sourceId}|${key}`, but `key` was hardwired to a
+ * Meshtastic `nodeNum` (number) resolved via `databaseService.nodes.getNode`.
+ * A MeshCore Observer receiver is identified by a 64-hex public key
+ * (string), resolved via `databaseService.meshcore.getNodeByPublicKeyAndSource`
+ * instead — a different table, a different key type, and a different
+ * bogus-position rule (the MeshCore loader filters through
+ * `shouldDiscardPosition`, which the Meshtastic default does not). Rather
+ * than special-case the type inside this class, the constructor takes an
+ * optional `loader` that replaces the Meshtastic-specific lookup entirely;
+ * everything else (TTL, failure TTL, LRU, single-flight) applies unchanged
+ * to either loader. The default loader is exactly today's
+ * `nodes.getNode(Number(key), sourceId)` path, so every existing
+ * caller/test is unaffected.
  */
 
 import databaseService from '../../services/database.js';
@@ -70,21 +85,35 @@ export function nodeCoveragePosition(node: DbNode | null | undefined): ReceiverP
   return { lat: lat ?? null, lon: lon ?? null };
 }
 
+/** Today's Meshtastic lookup path, unchanged, as the default loader. */
+async function defaultReceiverPositionLoader(sourceId: string, key: string): Promise<ReceiverPos> {
+  const node = await databaseService.nodes.getNode(Number(key), sourceId);
+  return nodeCoveragePosition(node);
+}
+
 export class CoverageReceiverPositionCache {
   private readonly cache: LruCache<string, CacheEntry>;
   private readonly ttlMs: number;
   private readonly failureTtlMs: number;
   private readonly inFlight = new Map<string, Promise<ReceiverPos>>();
+  private readonly loader: (sourceId: string, key: string) => Promise<ReceiverPos>;
 
-  constructor(opts?: { ttlMs?: number; failureTtlMs?: number; maxEntries?: number }) {
+  constructor(opts?: {
+    ttlMs?: number;
+    failureTtlMs?: number;
+    maxEntries?: number;
+    loader?: (sourceId: string, key: string) => Promise<ReceiverPos>;
+  }) {
     this.ttlMs = opts?.ttlMs ?? DEFAULT_TTL_MS;
     this.failureTtlMs = opts?.failureTtlMs ?? DEFAULT_FAILURE_TTL_MS;
     this.cache = new LruCache<string, CacheEntry>(opts?.maxEntries ?? DEFAULT_MAX_ENTRIES);
+    this.loader = opts?.loader ?? defaultReceiverPositionLoader;
   }
 
   /** Never throws — a lookup failure resolves to the best available (possibly null) position. */
-  async get(sourceId: string, nodeNum: number): Promise<ReceiverPos> {
-    const key = `${sourceId}|${nodeNum}`;
+  async get(sourceId: string, receiverKey: number | string): Promise<ReceiverPos> {
+    const keyStr = String(receiverKey);
+    const key = `${sourceId}|${keyStr}`;
     const now = Date.now();
 
     const cached = this.cache.get(key);
@@ -97,8 +126,7 @@ export class CoverageReceiverPositionCache {
 
     const loader = (async (): Promise<ReceiverPos> => {
       try {
-        const node = await databaseService.nodes.getNode(nodeNum, sourceId);
-        const pos = nodeCoveragePosition(node);
+        const pos = await this.loader(sourceId, keyStr);
         this.cache.set(key, { pos, at: Date.now(), ttl: this.ttlMs });
         return pos;
       } catch (err) {
