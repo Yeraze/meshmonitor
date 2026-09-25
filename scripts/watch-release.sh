@@ -144,6 +144,7 @@ is_terminal_failure() {
 }
 
 last_summary=""
+last_missing=""
 
 while true; do
   TIMESTAMP=$(date '+%H:%M:%S')
