@@ -20,6 +20,17 @@ export const BACKUP_TABLES = [
   // foreign key, so a future restore must recreate source definitions
   // before inserting any source-scoped rows.
   'sources',
+  // #5277 P4b (U5): saved surveys — small, global (no sourceId FK) metadata.
+  'coverage_surveys',
+  // #5277 P4b (U3): NOT a raw table dump — see FILTERED_EXPORTERS below.
+  // Exports only the receptions that fall inside a saved survey's effective
+  // window (any source, `id` omitted — the PG-sequence-trap avoidance
+  // documented on FILTERED_EXPORTERS). Restore still DELETEs the whole table
+  // first, same as every other table here, so non-survey receptions are lost
+  // on restore — regenerable, and a restore already rewinds time. Kept next
+  // to `coverage_surveys` for readability; there is no FK ordering
+  // requirement between the two.
+  'coverage_receptions',
   'nodes',
   'messages',
   'channels',
@@ -47,6 +58,31 @@ export const BACKUP_TABLES = [
   // #3195: operator's manual solar classification per physical node (global).
   'solar_node_overrides'
 ];
+
+/**
+ * Per-table exporter overrides (#5277 P4b WP2, spec §2b.6, decision U3).
+ *
+ * `coverage_receptions` is excluded from the generic `SELECT * FROM
+ * coverage_receptions` path below: the table can be arbitrarily large (every
+ * RF reception ever recorded, bounded only by the retention sweep), while a
+ * backup only needs the rows inside a saved survey's window. Depends on
+ * `databaseService.coverageSurveys` / the repository's `exportSurveyReceptions`
+ * method — WP1 (spec §2b.4), not yet present in this worktree; see this
+ * file's git history / PR body for the resulting (expected) `tsc` errors.
+ *
+ * `id` is intentionally omitted from the exported rows by
+ * `exportSurveyReceptions` itself (not here) — see `systemRestoreService.ts`
+ * and spec §2b.6 for the PG-sequence-trap rationale: restore never resets a
+ * PostgreSQL serial sequence, and `insertIgnore`'s target-less
+ * `onConflictDoNothing()` would otherwise silently drop future receptions
+ * whose fresh id collides with a restored one.
+ */
+const FILTERED_EXPORTERS: Record<string, () => Promise<unknown[]>> = {
+  coverage_receptions: async () => {
+    const windows = await databaseService.coverageSurveys.getExemptionWindows(Date.now());
+    return databaseService.coverageReceptions.exportSurveyReceptions(windows);
+  },
+};
 
 interface SystemBackupMetadata {
   backupVersion: string;
@@ -183,6 +219,11 @@ class SystemBackupService {
    */
   private async exportTable(tableName: string): Promise<any[]> {
     try {
+      const filteredExporter = FILTERED_EXPORTERS[tableName];
+      if (filteredExporter) {
+        return this.normalizeRows(await filteredExporter());
+      }
+
       const dbType = databaseService.getDatabaseType();
 
       if (dbType === 'postgres') {
