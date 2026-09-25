@@ -200,3 +200,68 @@ export function buildReceiverQuery(
     noneSelected,
   };
 }
+
+/**
+ * Inverse of `buildReceiverQuery`/`encodeReceiverFilter`, for restoring a
+ * saved survey's receiver view (#5277 P4b WP3, COVERAGE_P4_SPEC.md §2b.7).
+ * `raw` is a `CoverageSurveyDto.receivers` value: the encoded wire string the
+ * survey was saved with, or `null` meaning "every receiver".
+ *
+ * `entries` is the CURRENT full receiver set (`{ sourceId, receiverId }` for
+ * every receiver known today, in any order) — the report's default-all-
+ * selected convention: a receiver with no deselect entry is on. For each
+ * entry, a matching `+include` filter deselects every id NOT listed; a
+ * matching `-exclude` filter deselects exactly the listed ids; a source with
+ * no filter entry at all is left fully selected.
+ *
+ * Lossy on one edge, by design (not a bug to fix here): `buildReceiverQuery`
+ * drops a FULLY deselected source from the encoded string entirely (no `+`/
+ * `-` entry — same wire shape as a source that simply had no receivers at
+ * save time), so re-selecting the survey cannot tell "every receiver of this
+ * source was deliberately excluded" apart from "this source wasn't part of
+ * the filter" and defaults that source back to fully selected. `receivers`
+ * is documented as a view preference only (`CoverageSurveyDto.receivers`),
+ * so this is an acceptable approximation rather than a round-trip contract.
+ *
+ * `raw` failing `parseReceiverFilter` (corrupted/edited-out-of-band row) is
+ * also treated as "every receiver" — fails open to the same default the
+ * report already uses for a brand-new session, rather than hiding every
+ * receiver.
+ */
+export function deselectedFromReceiverFilter(
+  raw: string | null,
+  entries: Array<{ sourceId: string; receiverId: string }>,
+): Set<string> {
+  const deselected = new Set<string>();
+  if (!raw) return deselected;
+
+  const parsed = parseReceiverFilter(raw);
+  if (!parsed) return deselected;
+
+  const bySource = new Map<string, string[]>();
+  for (const e of entries) {
+    const existing = bySource.get(e.sourceId);
+    if (existing) existing.push(e.receiverId);
+    else bySource.set(e.sourceId, [e.receiverId]);
+  }
+
+  const filterBySource = new Map(parsed.map((f) => [f.sourceId, f] as const));
+
+  for (const [sourceId, ids] of bySource) {
+    const filter = filterBySource.get(sourceId);
+    if (!filter) continue; // no entry for this source = fully selected
+
+    if (filter.mode === 'include') {
+      const kept = new Set(filter.receiverIds);
+      for (const id of ids) {
+        if (!kept.has(id)) deselected.add(receiverKey(sourceId, id));
+      }
+    } else {
+      for (const id of filter.receiverIds) {
+        if (ids.includes(id)) deselected.add(receiverKey(sourceId, id));
+      }
+    }
+  }
+
+  return deselected;
+}

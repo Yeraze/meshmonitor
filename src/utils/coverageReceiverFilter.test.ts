@@ -3,6 +3,7 @@ import {
   encodeReceiverFilter,
   parseReceiverFilter,
   buildReceiverQuery,
+  deselectedFromReceiverFilter,
   receiverKey,
   type CoverageReceiverFilterEntry,
 } from './coverageReceiverFilter.js';
@@ -193,6 +194,61 @@ describe('coverageReceiverFilter', () => {
       const result = buildReceiverQuery(many, deselected);
       expect(result.clientSideFilter).toBe(true);
       expect(result.receiverFilter).toBeUndefined();
+    });
+  });
+
+  // #5277 P4b WP3 (COVERAGE_P4_SPEC.md §2b.7) — restoring a saved survey's
+  // receiver view.
+  describe('deselectedFromReceiverFilter', () => {
+    const ENTRIES = [
+      { sourceId: 'src-a', receiverId: '!aaaaaaaa' },
+      { sourceId: 'src-a', receiverId: '!bbbbbbbb' },
+      { sourceId: 'src-b', receiverId: '!cccccccc' },
+    ];
+
+    it('returns an empty set for null (every receiver selected)', () => {
+      expect(deselectedFromReceiverFilter(null, ENTRIES)).toEqual(new Set());
+    });
+
+    it('returns an empty set for malformed input (fails open to every receiver selected)', () => {
+      expect(deselectedFromReceiverFilter('not-a-valid-filter', ENTRIES)).toEqual(new Set());
+    });
+
+    it('an include entry deselects every id of that source NOT listed', () => {
+      const result = deselectedFromReceiverFilter('src-a:+!aaaaaaaa', ENTRIES);
+      expect(result).toEqual(new Set([receiverKey('src-a', '!bbbbbbbb')]));
+    });
+
+    it('an exclude entry deselects exactly the listed ids', () => {
+      const result = deselectedFromReceiverFilter('src-a:-!bbbbbbbb', ENTRIES);
+      expect(result).toEqual(new Set([receiverKey('src-a', '!bbbbbbbb')]));
+    });
+
+    it('a source with no filter entry is left fully selected', () => {
+      const result = deselectedFromReceiverFilter('src-a:+!aaaaaaaa', ENTRIES);
+      expect(result.has(receiverKey('src-b', '!cccccccc'))).toBe(false);
+    });
+
+    it('round-trips buildReceiverQuery output through encode -> deselectedFromReceiverFilter', () => {
+      const deselected = new Set([receiverKey('src-a', '!bbbbbbbb')]);
+      const built = buildReceiverQuery(ENTRIES, deselected);
+      const encoded = built.receiverFilter ? encodeReceiverFilter(built.receiverFilter) : null;
+      expect(deselectedFromReceiverFilter(encoded, ENTRIES)).toEqual(deselected);
+    });
+
+    it('a filter entry for a source no longer present in entries is ignored', () => {
+      const result = deselectedFromReceiverFilter('src-z:+!zzzzzzzz', ENTRIES);
+      expect(result).toEqual(new Set());
+    });
+
+    it('a fully-deselected source is lost on restore (documented lossy edge): buildReceiverQuery drops it from the encoded string entirely, so it comes back fully selected', () => {
+      const deselected = new Set([receiverKey('src-b', '!cccccccc')]);
+      const built = buildReceiverQuery(ENTRIES, deselected);
+      // src-b was fully deselected -> no entry at all in receiverFilter.
+      expect(built.receiverFilter ?? []).toEqual([]);
+      const encoded = built.receiverFilter ? encodeReceiverFilter(built.receiverFilter) : null;
+      const restored = deselectedFromReceiverFilter(encoded, ENTRIES);
+      expect(restored.has(receiverKey('src-b', '!cccccccc'))).toBe(false);
     });
   });
 });
