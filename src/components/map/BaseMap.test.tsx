@@ -16,9 +16,10 @@ vi.mock('react-leaflet', () => ({
     <div
       data-testid="map-container"
       data-scrollwheel={String(props.scrollWheelZoom)}
-      data-own-option-keys={['scrollWheelZoom', 'doubleClickZoom', 'zoomControl', 'attributionControl']
+      data-own-option-keys={['scrollWheelZoom', 'doubleClickZoom', 'zoomControl', 'attributionControl', 'preferCanvas']
         .filter((k) => k in props)
         .join(',')}
+      data-prefer-canvas={String((props as { preferCanvas?: boolean }).preferCanvas)}
     >
       {children}
     </div>
@@ -312,6 +313,31 @@ describe('BaseMap', () => {
   it('includes only the interaction options that were explicitly passed', () => {
     render(<BaseMap center={[0, 0]} zoom={3} scrollWheelZoom={false} zoomControl />);
     expect(screen.getByTestId('map-container').getAttribute('data-own-option-keys')).toBe('scrollWheelZoom,zoomControl');
+  });
+
+  // preferCanvas passthrough (#5277 Coverage Report P4a WP2, decision A6):
+  // a mount-only Leaflet Map option, so it follows the same
+  // omit-when-undefined rule as the other interaction options above — an
+  // explicit `preferCanvas: undefined` would override Leaflet's own default.
+  it('omits preferCanvas by default', () => {
+    render(<BaseMap center={[0, 0]} zoom={3} />);
+    const container = screen.getByTestId('map-container');
+    expect(container.getAttribute('data-own-option-keys')).toBe('');
+    expect(container.getAttribute('data-prefer-canvas')).toBe('undefined');
+  });
+
+  it('forwards preferCanvas to MapContainer when explicitly set', () => {
+    render(<BaseMap center={[0, 0]} zoom={3} preferCanvas />);
+    const container = screen.getByTestId('map-container');
+    expect(container.getAttribute('data-own-option-keys')).toBe('preferCanvas');
+    expect(container.getAttribute('data-prefer-canvas')).toBe('true');
+  });
+
+  it('forwards an explicit preferCanvas={false} distinctly from omitting it', () => {
+    render(<BaseMap center={[0, 0]} zoom={3} preferCanvas={false} />);
+    const container = screen.getByTestId('map-container');
+    expect(container.getAttribute('data-own-option-keys')).toBe('preferCanvas');
+    expect(container.getAttribute('data-prefer-canvas')).toBe('false');
   });
 
   // 8. Icon fix applied (unmocked icon module, real leaflet)
