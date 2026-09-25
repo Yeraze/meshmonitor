@@ -126,3 +126,23 @@ plan comment on #5277.
   the auto-announce advert burst and the automation `advert` action all send a
   FLOOD advert (~9–25 s of channel time per send with 20 repeaters in reach).
 
+### P4a (2026-09-25)
+
+- Spec: `COVERAGE_P4_SPEC.md` (P4 split: P4a no schema change; P4b saved surveys).
+- All analysis runs in the browser on already-loaded, privacy-filtered
+  receptions: gaps (`coverageGaps.ts`), summary, metre grid, CSV/GeoJSON
+  export (formula-injection guard), deep link. No new endpoint.
+- Gap rule (U1): interval = configured, else P25 of spacings (≥5, clamped
+  15–900 s), else 30 s / 60 s; gap = > max(2.5× interval, 60 s), ≤ 30 min,
+  moved ≥ 200 m. Thresholds only in `src/utils/coverage.ts`.
+- `preferCanvas` on the coverage map; recording toggle and "Show coverage"
+  deep link from node details; sender search via `SearchableSelect`; the
+  recording toggle now uses the shared `Modal` instead of `window.confirm`.
+- Session crashed mid-phase with 6 agents running; all resumed from their
+  worktrees. Vitest under jsdom cannot `vi.mock` a module missing on disk
+  (resolution fails before the mock registry), so parallel packages that
+  import each other can't run their tests until merged.
+- **Flagged, outside the epic:** PostgreSQL restore never resets id
+  sequences; `insertIgnore` on PG (`onConflictDoNothing()` without a target)
+  can then silently drop new inserts into restored serial tables.
+
