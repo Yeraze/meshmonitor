@@ -13,17 +13,18 @@
  * so both endpoints are exercised through the same mount this epic ships —
  * `coverageRoutes.ts` mounts `coverageSurveyRoutes` at `/surveys` itself.
  *
- * `databaseService.coverageSurveys` doesn't exist in this worktree yet (WP1,
- * parallel worktree) — stood in with `createFakeCoverageSurveysRepo()`; see
- * that file's header. Everything else (auth, permissions, nodes,
- * coverage_receptions) is real.
+ * `databaseService.coverageSurveys` is the REAL `CoverageSurveysRepository`
+ * (WP1, migration 173 runs on the harness's singleton `:memory:` DB). Per
+ * CLAUDE.md "Route Test Harness", real SQL end to end. `coverage_surveys` is
+ * a GLOBAL table with no per-test reset in the harness, so `afterEach`
+ * deletes every row this file created (alongside the existing
+ * `coverage_receptions` cleanup).
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import coverageRoutes from './coverageRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 import databaseService from '../../services/database.js';
-import { createFakeCoverageSurveysRepo, type FakeCoverageSurveysRepo } from '../test-helpers/fakeCoverageSurveysRepo.js';
 
 function nodeIdFor(num: number): string {
   return `!${num.toString(16).padStart(8, '0')}`;
@@ -33,15 +34,12 @@ const nowSec = (): number => Math.floor(Date.now() / 1000);
 
 describe('Coverage surveys — per-source isolation (#5277 P4b WP2)', () => {
   let harness: RouteTestHarness;
-  let fakeSurveys: FakeCoverageSurveysRepo;
 
   const A_RECEIVER = 0x64000001;
   const A_SENDER = 0x64000002;
 
   beforeEach(async () => {
     harness = await createRouteTestApp({ mount: (app) => app.use('/', coverageRoutes) });
-    fakeSurveys = createFakeCoverageSurveysRepo();
-    (databaseService as unknown as { coverageSurveys: FakeCoverageSurveysRepo }).coverageSurveys = fakeSurveys;
 
     // limited is permitted on sourceB only — NOT sourceA, where the sender lives.
     await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceB);
@@ -73,7 +71,7 @@ describe('Coverage surveys — per-source isolation (#5277 P4b WP2)', () => {
       receivedAt: Date.now(),
     });
 
-    await fakeSurveys.createSurvey({
+    await databaseService.coverageSurveys.createSurvey({
       name: 'sourceA-only survey',
       senderId: nodeIdFor(A_SENDER),
       startAt: Date.now() - 3600_000,
@@ -87,6 +85,10 @@ describe('Coverage surveys — per-source isolation (#5277 P4b WP2)', () => {
 
   afterEach(async () => {
     await databaseService.coverageReceptions.deleteForSource(harness.sourceA).catch(() => {});
+    // coverage_surveys is a GLOBAL table with no per-test reset in the
+    // harness — delete every row this file created.
+    const allSurveys = await databaseService.coverageSurveys.listSurveys();
+    await Promise.all(allSurveys.map((s) => databaseService.coverageSurveys.deleteSurvey(s.id)));
     await harness.cleanup();
   });
 

@@ -5,19 +5,19 @@
  * Uses the real-middleware harness (`createRouteTestApp`) for
  * session/auth/permissions and the real `nodes` / `meshcore` tables — same
  * template as `coverageRoutes.test.ts` / `sourceRoutes.permissions.test.ts`.
- * `databaseService.coverageSurveys` does not exist in this worktree yet
- * (WP1, built in a separate worktree in parallel), so it is stood in with
- * `createFakeCoverageSurveysRepo()` (`../test-helpers/fakeCoverageSurveysRepo.js`)
- * assigned directly onto the live singleton — see that file's header for the
- * WP1 hand-off note. Everything else in this test (auth, sessions,
- * permissions, node visibility) is real.
+ * `databaseService.coverageSurveys` is the REAL `CoverageSurveysRepository`
+ * (WP1, migration 173 runs on the harness's singleton `:memory:` DB just like
+ * every other migration) — per CLAUDE.md "Route Test Harness", a fake that
+ * re-implements the logic under test can't catch regressions in it, so this
+ * exercises real SQL end to end. `coverage_surveys` is a GLOBAL table with no
+ * per-file reset between tests (the harness only resets permissions/sources
+ * in `cleanup()`), so `afterEach` deletes every row this file created.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import coverageSurveyRoutes from './coverageSurveyRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 import databaseService from '../../services/database.js';
-import { createFakeCoverageSurveysRepo, type FakeCoverageSurveysRepo } from '../test-helpers/fakeCoverageSurveysRepo.js';
 import {
   COVERAGE_SURVEY_MAX_RANGE_MS, COVERAGE_SURVEY_MAX_PER_USER, COVERAGE_SURVEY_MAX_TOTAL,
 } from '../../utils/coverage.js';
@@ -30,7 +30,6 @@ const nowSec = (): number => Math.floor(Date.now() / 1000);
 
 describe('Coverage Survey Routes (#5277 P4b WP2)', () => {
   let harness: RouteTestHarness;
-  let fakeSurveys: FakeCoverageSurveysRepo;
   let otherUserCounter = 0;
 
   const SENDER = 0x63000001;
@@ -51,10 +50,6 @@ describe('Coverage Survey Routes (#5277 P4b WP2)', () => {
 
   beforeEach(async () => {
     harness = await createRouteTestApp({ mount: (app) => app.use('/', coverageSurveyRoutes) });
-    fakeSurveys = createFakeCoverageSurveysRepo();
-    // WP1 dependency stand-in (see file header) — `coverageSurveys` isn't a
-    // typed property of DatabaseService in this worktree yet.
-    (databaseService as unknown as { coverageSurveys: FakeCoverageSurveysRepo }).coverageSurveys = fakeSurveys;
 
     // One `permissions` row per (userId, resource, sourceId) — canRead and
     // canViewOnMap live on the SAME row, so granting both in one call (rather
@@ -79,6 +74,12 @@ describe('Coverage Survey Routes (#5277 P4b WP2)', () => {
   });
 
   afterEach(async () => {
+    // coverage_surveys is a GLOBAL table (#5277 §2b.1) with no per-test
+    // reset in the harness — delete every row this file created so an
+    // earlier test's leftover survey can never leak into a later test's
+    // "how many surveys are visible" assertion.
+    const allSurveys = await databaseService.coverageSurveys.listSurveys();
+    await Promise.all(allSurveys.map((s) => databaseService.coverageSurveys.deleteSurvey(s.id)));
     await harness.cleanup();
   });
 
@@ -95,7 +96,7 @@ describe('Coverage Survey Routes (#5277 P4b WP2)', () => {
 
     it('own survey is visible to its creator even when the sender is not', async () => {
       const otherUserId = await createOtherUser();
-      const created = await fakeSurveys.createSurvey({
+      const created = await databaseService.coverageSurveys.createSurvey({
         name: 'Hidden sender survey', senderId: nodeIdFor(SENDER_HIDDEN),
         startAt: Date.now() - 60_000, endAt: Date.now(), receivers: null, intervalSec: null, notes: null,
         createdBy: otherUserId,
@@ -111,7 +112,7 @@ describe('Coverage Survey Routes (#5277 P4b WP2)', () => {
 
     it('a non-creator without visibility into the sender does not see the survey', async () => {
       const otherUserId = await createOtherUser();
-      await fakeSurveys.createSurvey({
+      await databaseService.coverageSurveys.createSurvey({
         name: 'Hidden sender survey', senderId: nodeIdFor(SENDER_HIDDEN),
         startAt: Date.now() - 60_000, endAt: Date.now(), receivers: null, intervalSec: null, notes: null,
         createdBy: otherUserId,
@@ -126,7 +127,7 @@ describe('Coverage Survey Routes (#5277 P4b WP2)', () => {
 
     it('a non-creator WITH visibility into the sender sees the survey (but cannot edit)', async () => {
       const otherUserId = await createOtherUser();
-      const created = await fakeSurveys.createSurvey({
+      const created = await databaseService.coverageSurveys.createSurvey({
         name: 'Visible sender survey', senderId: nodeIdFor(SENDER),
         startAt: Date.now() - 60_000, endAt: Date.now(), receivers: null, intervalSec: null, notes: null,
         createdBy: otherUserId,
@@ -143,7 +144,7 @@ describe('Coverage Survey Routes (#5277 P4b WP2)', () => {
     });
 
     it('admin sees every survey, including ones for invisible/nonexistent senders', async () => {
-      await fakeSurveys.createSurvey({
+      await databaseService.coverageSurveys.createSurvey({
         name: 'Ghost sender', senderId: MC_SENDER, // no meshcore_nodes row at all
         startAt: Date.now() - 60_000, endAt: Date.now(), receivers: null, intervalSec: null, notes: null,
         createdBy: null,
@@ -156,7 +157,7 @@ describe('Coverage Survey Routes (#5277 P4b WP2)', () => {
     });
 
     it('never exposes the raw createdBy user id', async () => {
-      const created = await fakeSurveys.createSurvey({
+      const created = await databaseService.coverageSurveys.createSurvey({
         name: 'S', senderId: nodeIdFor(SENDER),
         startAt: Date.now() - 60_000, endAt: Date.now(), receivers: null, intervalSec: null, notes: null,
         createdBy: harness.limited.id,
@@ -241,19 +242,30 @@ describe('Coverage Survey Routes (#5277 P4b WP2)', () => {
     });
 
     it('SURVEY_LIMIT_REACHED when the per-user cap is hit', async () => {
-      vi.spyOn(fakeSurveys, 'countSurveysByUser').mockResolvedValue(COVERAGE_SURVEY_MAX_PER_USER);
-      const agent = await harness.loginAs(harness.limited);
-      const res = await agent.post('/').send({ name: 'Over cap', senderId: nodeIdFor(SENDER), live: true });
-      expect(res.status).toBe(409);
-      expect(res.body.code).toBe('SURVEY_LIMIT_REACHED');
+      // databaseService.coverageSurveys is the shared singleton repo instance
+      // (persists across tests in this file) — restore the spy explicitly so
+      // the stub doesn't leak into a later test.
+      const spy = vi.spyOn(databaseService.coverageSurveys, 'countSurveysByUser').mockResolvedValue(COVERAGE_SURVEY_MAX_PER_USER);
+      try {
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.post('/').send({ name: 'Over cap', senderId: nodeIdFor(SENDER), live: true });
+        expect(res.status).toBe(409);
+        expect(res.body.code).toBe('SURVEY_LIMIT_REACHED');
+      } finally {
+        spy.mockRestore();
+      }
     });
 
     it('SURVEY_LIMIT_REACHED when the total cap is hit', async () => {
-      vi.spyOn(fakeSurveys, 'countSurveys').mockResolvedValue(COVERAGE_SURVEY_MAX_TOTAL);
-      const agent = await harness.loginAs(harness.limited);
-      const res = await agent.post('/').send({ name: 'Over cap', senderId: nodeIdFor(SENDER), live: true });
-      expect(res.status).toBe(409);
-      expect(res.body.code).toBe('SURVEY_LIMIT_REACHED');
+      const spy = vi.spyOn(databaseService.coverageSurveys, 'countSurveys').mockResolvedValue(COVERAGE_SURVEY_MAX_TOTAL);
+      try {
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.post('/').send({ name: 'Over cap', senderId: nodeIdFor(SENDER), live: true });
+        expect(res.status).toBe(409);
+        expect(res.body.code).toBe('SURVEY_LIMIT_REACHED');
+      } finally {
+        spy.mockRestore();
+      }
     });
 
     it('INVALID_SURVEY when neither live nor a startAt/endAt pair is given', async () => {
@@ -349,7 +361,7 @@ describe('Coverage Survey Routes (#5277 P4b WP2)', () => {
     });
 
     it('creator can edit name/notes/intervalSec/receivers', async () => {
-      const created = await fakeSurveys.createSurvey({
+      const created = await databaseService.coverageSurveys.createSurvey({
         name: 'Old', senderId: nodeIdFor(SENDER), startAt: Date.now() - 1000, endAt: null,
         receivers: null, intervalSec: null, notes: null, createdBy: harness.limited.id,
       });
@@ -362,7 +374,7 @@ describe('Coverage Survey Routes (#5277 P4b WP2)', () => {
     });
 
     it('a non-creator, non-admin gets FORBIDDEN', async () => {
-      const created = await fakeSurveys.createSurvey({
+      const created = await databaseService.coverageSurveys.createSurvey({
         name: 'Old', senderId: nodeIdFor(SENDER), startAt: Date.now() - 1000, endAt: null,
         receivers: null, intervalSec: null, notes: null, createdBy: harness.limited.id,
       });
@@ -374,7 +386,7 @@ describe('Coverage Survey Routes (#5277 P4b WP2)', () => {
     });
 
     it('admin can edit any survey', async () => {
-      const created = await fakeSurveys.createSurvey({
+      const created = await databaseService.coverageSurveys.createSurvey({
         name: 'Old', senderId: nodeIdFor(SENDER), startAt: Date.now() - 1000, endAt: null,
         receivers: null, intervalSec: null, notes: null, createdBy: harness.limited.id,
       });
@@ -385,7 +397,7 @@ describe('Coverage Survey Routes (#5277 P4b WP2)', () => {
     });
 
     it('cannot rename to an empty or over-length name', async () => {
-      const created = await fakeSurveys.createSurvey({
+      const created = await databaseService.coverageSurveys.createSurvey({
         name: 'Old', senderId: nodeIdFor(SENDER), startAt: Date.now() - 1000, endAt: null,
         receivers: null, intervalSec: null, notes: null, createdBy: harness.limited.id,
       });
@@ -400,7 +412,7 @@ describe('Coverage Survey Routes (#5277 P4b WP2)', () => {
 
   describe('POST /:id/stop', () => {
     it('creator can stop a live survey', async () => {
-      const created = await fakeSurveys.createSurvey({
+      const created = await databaseService.coverageSurveys.createSurvey({
         name: 'Live', senderId: nodeIdFor(SENDER), startAt: Date.now() - 1000, endAt: null,
         receivers: null, intervalSec: null, notes: null, createdBy: harness.limited.id,
       });
@@ -412,7 +424,7 @@ describe('Coverage Survey Routes (#5277 P4b WP2)', () => {
     });
 
     it('SURVEY_NOT_LIVE for an already-stopped survey', async () => {
-      const created = await fakeSurveys.createSurvey({
+      const created = await databaseService.coverageSurveys.createSurvey({
         name: 'Stopped', senderId: nodeIdFor(SENDER), startAt: Date.now() - 2000, endAt: Date.now() - 1000,
         receivers: null, intervalSec: null, notes: null, createdBy: harness.limited.id,
       });
@@ -423,7 +435,7 @@ describe('Coverage Survey Routes (#5277 P4b WP2)', () => {
     });
 
     it('a non-creator, non-admin gets FORBIDDEN', async () => {
-      const created = await fakeSurveys.createSurvey({
+      const created = await databaseService.coverageSurveys.createSurvey({
         name: 'Live', senderId: nodeIdFor(SENDER), startAt: Date.now() - 1000, endAt: null,
         receivers: null, intervalSec: null, notes: null, createdBy: harness.limited.id,
       });
@@ -446,18 +458,18 @@ describe('Coverage Survey Routes (#5277 P4b WP2)', () => {
 
   describe('DELETE /:id', () => {
     it('creator can delete their survey', async () => {
-      const created = await fakeSurveys.createSurvey({
+      const created = await databaseService.coverageSurveys.createSurvey({
         name: 'To delete', senderId: nodeIdFor(SENDER), startAt: Date.now() - 1000, endAt: null,
         receivers: null, intervalSec: null, notes: null, createdBy: harness.limited.id,
       });
       const agent = await harness.loginAs(harness.limited);
       const res = await agent.delete(`/${created.id}`);
       expect(res.status).toBe(200);
-      expect(await fakeSurveys.getSurvey(created.id)).toBeNull();
+      expect(await databaseService.coverageSurveys.getSurvey(created.id)).toBeNull();
     });
 
     it('a non-creator, non-admin gets FORBIDDEN and the row survives', async () => {
-      const created = await fakeSurveys.createSurvey({
+      const created = await databaseService.coverageSurveys.createSurvey({
         name: 'To delete', senderId: nodeIdFor(SENDER), startAt: Date.now() - 1000, endAt: null,
         receivers: null, intervalSec: null, notes: null, createdBy: harness.limited.id,
       });
@@ -466,18 +478,18 @@ describe('Coverage Survey Routes (#5277 P4b WP2)', () => {
       const res = await agent.delete(`/${created.id}`);
       expect(res.status).toBe(403);
       expect(res.body.code).toBe('FORBIDDEN');
-      expect(await fakeSurveys.getSurvey(created.id)).not.toBeNull();
+      expect(await databaseService.coverageSurveys.getSurvey(created.id)).not.toBeNull();
     });
 
     it('admin can delete any survey', async () => {
-      const created = await fakeSurveys.createSurvey({
+      const created = await databaseService.coverageSurveys.createSurvey({
         name: 'To delete', senderId: nodeIdFor(SENDER), startAt: Date.now() - 1000, endAt: null,
         receivers: null, intervalSec: null, notes: null, createdBy: harness.limited.id,
       });
       const agent = await harness.loginAs(harness.admin);
       const res = await agent.delete(`/${created.id}`);
       expect(res.status).toBe(200);
-      expect(await fakeSurveys.getSurvey(created.id)).toBeNull();
+      expect(await databaseService.coverageSurveys.getSurvey(created.id)).toBeNull();
     });
 
     it('SURVEY_NOT_FOUND for an unknown id', async () => {
@@ -488,7 +500,7 @@ describe('Coverage Survey Routes (#5277 P4b WP2)', () => {
     });
 
     it('anonymous → 401', async () => {
-      const created = await fakeSurveys.createSurvey({
+      const created = await databaseService.coverageSurveys.createSurvey({
         name: 'To delete', senderId: nodeIdFor(SENDER), startAt: Date.now() - 1000, endAt: null,
         receivers: null, intervalSec: null, notes: null, createdBy: harness.limited.id,
       });
