@@ -87,12 +87,21 @@ vi.mock('../../services/analysisApi', () => ({
   fetchCoverageReceivers: vi.fn(),
   fetchCoverageSenders: vi.fn(),
   fetchCoverageReceptionsPage: vi.fn(),
+  fetchCoverageSurveys: vi.fn(),
+}));
+
+// #5277 P4b WP3: CoverageReport now also calls useCoverageSurveys(). Stubbed
+// out here (its own query-stability behaviour has no bearing on THIS
+// regression test) the same way the P4a WP3 components above are stubbed.
+vi.mock('./CoverageSurveyBar', () => ({
+  CoverageSurveyBar: () => <div data-testid="coverage-survey-bar-stub" />,
 }));
 
 import {
   fetchCoverageReceivers,
   fetchCoverageSenders,
   fetchCoverageReceptionsPage,
+  fetchCoverageSurveys,
 } from '../../services/analysisApi';
 import CoverageReport from './CoverageReport';
 
@@ -160,6 +169,7 @@ describe('CoverageReport query stability (#5277 regression)', () => {
       hasMore: false,
       nextCursor: null,
     });
+    vi.mocked(fetchCoverageSurveys).mockResolvedValue([]);
   });
 
   it('fetches each endpoint exactly once on mount, renders the map, and fetches exactly once more per Refresh click', async () => {
@@ -175,6 +185,7 @@ describe('CoverageReport query stability (#5277 regression)', () => {
     expect(fetchCoverageReceivers).toHaveBeenCalledTimes(1);
     expect(fetchCoverageSenders).toHaveBeenCalledTimes(1);
     expect(fetchCoverageReceptionsPage).toHaveBeenCalledTimes(1);
+    expect(fetchCoverageSurveys).toHaveBeenCalledTimes(1);
 
     // Refresh must be enabled once loading has settled (it stayed
     // permanently disabled under the render-loop bug).
@@ -186,6 +197,7 @@ describe('CoverageReport query stability (#5277 regression)', () => {
     await waitFor(() => expect(fetchCoverageReceivers).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(fetchCoverageSenders).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(fetchCoverageReceptionsPage).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(fetchCoverageSurveys).toHaveBeenCalledTimes(2));
 
     // Settle again after Refresh and confirm nothing kept looping.
     await act(async () => {
@@ -194,5 +206,6 @@ describe('CoverageReport query stability (#5277 regression)', () => {
     expect(fetchCoverageReceivers).toHaveBeenCalledTimes(2);
     expect(fetchCoverageSenders).toHaveBeenCalledTimes(2);
     expect(fetchCoverageReceptionsPage).toHaveBeenCalledTimes(2);
+    expect(fetchCoverageSurveys).toHaveBeenCalledTimes(2);
   });
 });

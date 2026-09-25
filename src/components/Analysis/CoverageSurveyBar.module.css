@@ -1,0 +1,141 @@
+/*
+ * CoverageSurveyBar — saved-survey controls for the Coverage Report
+ * (#5277 P4b WP3). CSS module per CLAUDE.md containment; semantic tokens
+ * with no fallback. Layout matches the reusable `.reports-controls` /
+ * `.reports-btn` global classes this bar sits alongside, wrapping onto its
+ * own lines at narrow widths (390px) rather than a fixed multi-column grid.
+ */
+
+.wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-surface-hover);
+}
+
+.pickerField {
+  min-width: 0;
+  max-width: 100%;
+  flex: 1 1 200px;
+}
+
+.pickerField :global([data-searchable-select]) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.liveBadge {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
+  color: var(--color-success);
+  font-size: 12px;
+  font-weight: 600;
+  width: 100%;
+}
+
+.liveDot {
+  flex-shrink: 0;
+}
+
+.liveAutoEnd {
+  color: var(--color-text-subtle);
+  font-weight: 400;
+}
+
+/* Start / Save / Edit / Delete dialogs. */
+
+.formDialog {
+  max-width: 480px;
+}
+
+.modalNote {
+  margin: 0 0 0.9rem 0;
+  color: var(--color-text-subtle);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.formField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-bottom: 0.9rem;
+  color: var(--color-text);
+  font-size: 0.85rem;
+}
+
+.formField input,
+.formField textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.45rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--color-surface-active);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.formField textarea {
+  resize: vertical;
+}
+
+.errorText {
+  color: var(--color-error);
+  font-size: 0.78rem;
+}
+
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 0.4rem;
+}
+
+.primaryButton,
+.secondaryButton,
+.dangerButton {
+  padding: 0.5rem 1.1rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.primaryButton {
+  background: var(--color-accent);
+  color: var(--color-bg);
+  border-color: var(--color-accent);
+}
+
+.primaryButton:disabled,
+.dangerButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.secondaryButton {
+  background: transparent;
+  color: var(--color-text);
+  border-color: var(--color-surface-active);
+}
+
+.dangerButton {
+  background: var(--color-error);
+  color: var(--color-bg);
+  border-color: var(--color-error);
+}
