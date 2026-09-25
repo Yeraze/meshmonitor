@@ -94,7 +94,7 @@ describe('MeshCoreTimerTriggersSection advert mode', () => {
   it('shows a legacy advert trigger (no advertMode) as flood, with the warning', async () => {
     csrfFetchMock.mockReset().mockImplementation(mockFetch([{ ...base, id: 'a1', name: 'Old advert', responseType: 'advert' }]));
     render(<MeshCoreTimerTriggersSection baseUrl="" sourceId="src1" />);
-    await waitFor(() => expect(screen.getByRole('radio', { name: 'Flood (whole mesh)' })).toBeChecked());
+    await waitFor(() => expect(screen.getByRole('radio', { name: 'Flood (whole mesh, costly)' })).toBeChecked());
     expect(screen.getByRole('note')).toHaveTextContent(/at most once per hour per source/);
   });
 
@@ -104,6 +104,7 @@ describe('MeshCoreTimerTriggersSection advert mode', () => {
     await waitFor(() => expect(actionSelects()).toHaveLength(1));
     fireEvent.change(actionSelects()[0], { target: { value: 'advert' } });
     expect(screen.getByRole('radio', { name: 'Zero-hop (nearby nodes only)' })).toBeChecked();
+    expect(screen.queryByRole('note')).toBeNull();
 
     const triggers = await savedTriggers();
     expect(triggers[0]).toMatchObject({ id: 't1', responseType: 'advert', advertMode: 'zero_hop' });

@@ -57,7 +57,7 @@ function mockFetch(data: Record<string, unknown>) {
 }
 
 const zeroHop = () => screen.getByRole('radio', { name: 'Zero-hop (nearby nodes only)' });
-const flood = () => screen.getByRole('radio', { name: 'Flood (whole mesh)' });
+const flood = () => screen.getByRole('radio', { name: 'Flood (whole mesh, costly)' });
 
 describe('MeshCoreAutoAnnounceSection advert mode', () => {
   beforeEach(() => {
@@ -68,7 +68,7 @@ describe('MeshCoreAutoAnnounceSection advert mode', () => {
     csrfFetchMock.mockReset().mockImplementation(mockFetch({ enabled: true, channelIndexes: [0], advertEnabled: false, advertMode: 'zero_hop' }));
     render(<MeshCoreAutoAnnounceSection baseUrl="" sourceId="src1" />);
     await waitFor(() => expect(csrfFetchMock).toHaveBeenCalled());
-    expect(screen.queryByRole('radio', { name: 'Flood (whole mesh)' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: 'Flood (whole mesh, costly)' })).toBeNull();
   });
 
   it('shows a legacy (flood) burst as flood, with the warning', async () => {

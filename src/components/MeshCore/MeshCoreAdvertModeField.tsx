@@ -12,8 +12,8 @@ interface MeshCoreAdvertModeFieldProps {
 
 /**
  * Zero-hop / Flood choice for an AUTOMATED advert (auto-announce burst, timer
- * trigger). The Flood option carries its airtime cost and the server-side
- * floor (one automated flood per hour per source) right next to it.
+ * trigger). While Flood is selected, its airtime cost and the server-side
+ * floor (one automated flood per hour per source) show right under it.
  */
 export const MeshCoreAdvertModeField: React.FC<MeshCoreAdvertModeFieldProps> = ({ value, onChange, disabled = false }) => {
   const { t } = useTranslation();
@@ -42,17 +42,19 @@ export const MeshCoreAdvertModeField: React.FC<MeshCoreAdvertModeFieldProps> = (
           onChange={() => onChange('flood')}
           disabled={disabled}
         />
-        <span>{t('meshcore.advert.mode_flood', 'Flood (whole mesh)')}</span>
+        <span>{t('meshcore.advert.mode_flood', 'Flood (whole mesh, costly)')}</span>
       </label>
-      <div className={styles.warning} role="note">
-        <UiIcon name="alert" size={14} />
-        <span>
-          {t(
-            'meshcore.advert.flood_automated_warning',
-            'Flood adverts are repeated by every repeater within 8 hops: with 20 repeaters in reach about 9 s (US) / 25 s (EU) of channel time each. Automated flood adverts run at most once per hour per source; extra floods are skipped.',
-          )}
-        </span>
-      </div>
+      {value === 'flood' && (
+        <div className={styles.warning} role="note">
+          <UiIcon name="alert" size={14} />
+          <span>
+            {t(
+              'meshcore.advert.flood_automated_warning',
+              'Flood adverts are repeated by every repeater within 8 hops: with 20 repeaters in reach about 9 s (US) / 25 s (EU) of channel time each. Automated flood adverts run at most once per hour per source; extra floods are skipped.',
+            )}
+          </span>
+        </div>
+      )}
     </fieldset>
   );
 };
