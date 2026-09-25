@@ -192,6 +192,7 @@ import { migration as messagesTransportMigration, runMigration170Postgres, runMi
 import { migration as reclassifyRecordHoldersMigration, runMigration171Postgres, runMigration171Mysql } from '../server/migrations/171_reclassify_record_holder_transport.js';
 import { migration as createCoverageReceptionsMigration, runMigration172Postgres, runMigration172Mysql } from '../server/migrations/172_create_coverage_receptions.js';
 import { migration as createCoverageSurveysMigration, runMigration173Postgres, runMigration173Mysql } from '../server/migrations/173_create_coverage_surveys.js';
+import { migration as resetPostgresSequencesMigration, runMigration174Postgres, runMigration174Mysql } from '../server/migrations/174_reset_postgres_sequences.js';
 
 // ============================================================================
 // Registry
@@ -2807,4 +2808,20 @@ registry.register({
   sqlite: (db) => createCoverageSurveysMigration.up(db),
   postgres: (client) => runMigration173Postgres(client),
   mysql: (pool) => runMigration173Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 174: advance PostgreSQL SERIAL/IDENTITY sequences past existing
+// ids. Repairs installs restored before restorePostgres() reset sequences
+// itself (explicit-id INSERTs never advance a PG sequence). Forward-only and
+// idempotent. SQLite / MySQL: no-op.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 174,
+  name: 'reset_postgres_sequences',
+  settingsKey: 'migration_174_reset_postgres_sequences',
+  sqlite: (db) => resetPostgresSequencesMigration.up(db),
+  postgres: (client) => runMigration174Postgres(client),
+  mysql: (pool) => runMigration174Mysql(pool),
 });

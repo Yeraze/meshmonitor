@@ -24,6 +24,7 @@ import { drizzle as drizzleSqlite } from 'drizzle-orm/better-sqlite3';
 import { drizzle as drizzleMysql } from 'drizzle-orm/mysql2';
 import * as schema from '../db/schema/index.js';
 import { TABLE_ORDER, SOURCE_SCOPED_TABLES, SKIP_TABLES } from './migrationTables.js';
+import { resetPostgresSequences } from '../server/migrations/postgresSequences.js';
 
 // Column name mappings from SQLite (snake_case) to PostgreSQL (camelCase)
 // Only needed for tables where SQLite uses different naming conventions
@@ -395,49 +396,25 @@ async function connectMySQL(url: string): Promise<{ db: any; pool: mysql.Pool }>
 }
 
 /**
- * Reset PostgreSQL sequences to max ID values after migration
- * This prevents primary key conflicts when new rows are inserted
- * Dynamically discovers sequences from database catalog rather than hardcoding
+ * Reset PostgreSQL sequences past the migrated ids so new rows don't collide.
+ * The discovery + setval logic is shared with the PostgreSQL restore path and
+ * migration 174 (see src/server/migrations/postgresSequences.ts).
  */
-async function resetPostgresSequences(pool: Pool): Promise<void> {
+async function resetPostgresSequencesAfterMigration(pool: Pool): Promise<void> {
   console.log('\n🔄 Resetting PostgreSQL sequences...');
 
   const client = await pool.connect();
   try {
-    // Dynamically find all tables with serial/identity columns
-    // This query finds sequences owned by table columns (created by SERIAL or IDENTITY)
-    const sequenceResult = await client.query(`
-      SELECT
-        t.relname as table_name,
-        a.attname as column_name,
-        pg_get_serial_sequence(t.relname::text, a.attname::text) as sequence_name
-      FROM pg_class t
-      JOIN pg_attribute a ON a.attrelid = t.oid
-      JOIN pg_namespace n ON t.relnamespace = n.oid
-      WHERE n.nspname = 'public'
-        AND t.relkind = 'r'
-        AND a.attnum > 0
-        AND NOT a.attisdropped
-        AND pg_get_serial_sequence(t.relname::text, a.attname::text) IS NOT NULL
-    `);
+    // Autocommit client: a failed setval doesn't poison later statements, so
+    // log it and carry on as before.
+    const { checked, advanced } = await resetPostgresSequences(client, {
+      onError: (sequenceName, err) => {
+        console.log(`  ⚠️ Could not reset sequence ${sequenceName}: ${err.message}`);
+      },
+    });
 
-    let resetCount = 0;
-    for (const row of sequenceResult.rows) {
-      const { table_name, column_name, sequence_name } = row;
-      try {
-        await client.query(
-          `SELECT setval($1, COALESCE((SELECT MAX("${column_name}") FROM "${table_name}"), 1))`,
-          [sequence_name]
-        );
-        resetCount++;
-      } catch (err) {
-        // Log but continue - some sequences may have special constraints
-        console.log(`  ⚠️ Could not reset sequence ${sequence_name}: ${(err as Error).message}`);
-      }
-    }
-
-    if (resetCount > 0) {
-      console.log(`  ✅ Reset ${resetCount} sequences to match migrated data`);
+    if (checked > 0) {
+      console.log(`  ✅ Checked ${checked} sequences, advanced ${advanced} to match migrated data`);
     } else {
       console.log('  ℹ️ No sequences found to reset');
     }
@@ -1102,7 +1079,7 @@ async function migrate(options: MigrationOptions): Promise<void> {
 
     // Reset PostgreSQL sequences to prevent primary key conflicts
     if (isPostgresTarget && targetPgDb && !options.dryRun) {
-      await resetPostgresSequences(targetPgDb.pool);
+      await resetPostgresSequencesAfterMigration(targetPgDb.pool);
     }
 
     // Reset MySQL auto_increment values to prevent primary key conflicts
