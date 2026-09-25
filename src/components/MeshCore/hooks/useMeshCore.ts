@@ -208,6 +208,19 @@ export interface RoomSyncConfig {
   lastError: RoomSyncFailureReason | null;
 }
 
+/** Response of `addContactToDevice` (#5349). `code` is the server's machine
+ *  code on failure — `CONTACT_TABLE_FULL_CONFIRM` means "ask the user, then
+ *  retry with confirmFull". */
+export interface AddContactToDeviceResponse {
+  success: boolean;
+  status?: string;
+  code?: string;
+  error?: string;
+  count?: number;
+  maxContacts?: number | null;
+  evicted?: string[];
+}
+
 export interface MeshCoreActions {
   connect: () => Promise<boolean>;
   disconnect: () => Promise<void>;
@@ -264,6 +277,9 @@ export interface MeshCoreActions {
   /** Remove a contact from the device's contact list. Resolves `true` when
    *  the device ACKed the removal; `false` for any error. */
   removeContact: (publicKey: string) => Promise<boolean>;
+  /** Add a node to the companion radio's own contact list so the radio can
+   *  log in to / query / message it (#5349). Local write, no airtime. */
+  addContactToDevice: (publicKey: string, confirmFull?: boolean) => Promise<AddContactToDeviceResponse>;
   /** Toggle the favorite flag for a node (issue #3588). Persists the local
    *  favorite (which pins the node to the top of the list) and, for a
    *  connected Companion source, also sets the firmware favourite bit so the
@@ -1473,6 +1489,44 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch, reportTxDisabled]);
 
+  const addContactToDevice = useCallback(async (
+    publicKey: string,
+    confirmFull = false,
+  ): Promise<AddContactToDeviceResponse> => {
+    try {
+      const response = await csrfFetch(
+        `${mcPrefix}/contacts/${encodeURIComponent(publicKey)}/add-to-device`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirmFull }),
+        },
+      );
+      const body = await parseJsonResponse(response);
+      if (!body.success) {
+        return {
+          success: false,
+          code: body.code,
+          error: body.error,
+          count: body.count,
+          maxContacts: body.maxContacts,
+        };
+      }
+      const data = (body.data ?? {}) as { status?: string; count?: number; maxContacts?: number | null; evicted?: string[] };
+      // The server pushes contact updates too; mark it locally so the panel
+      // re-enables login without waiting for the push.
+      const existing = contactsRef.current.get(publicKey);
+      if (existing) {
+        const updated = { ...existing, onDevice: true };
+        contactsRef.current.set(publicKey, updated);
+        setContacts(Array.from(contactsRef.current.values()));
+      }
+      return { success: true, ...data };
+    } catch (_err) {
+      return { success: false, error: 'Network error' };
+    }
+  }, [mcPrefix, csrfFetch]);
+
   const removeContact = useCallback(async (publicKey: string): Promise<boolean> => {
     try {
       const response = await csrfFetch(
@@ -2056,6 +2110,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       traceContactPath,
       pingContactZeroHop,
       removeContact,
+      addContactToDevice,
       setNodeFavorite,
       exportContact,
       importContact,

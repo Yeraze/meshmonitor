@@ -74,6 +74,10 @@ interface MeshCoreRemoteConsoleProps {
    *  Phase 2). Threaded to MeshCoreRemoteStatsPanel; WP3 wires the actual
    *  gating of the login buttons, the console body, and the ACL form. */
   receiveOnly?: boolean;
+  /** True when the node is known NOT to be in the companion's own contact
+   *  list (#5349). The radio cannot send a login, status request, or CLI
+   *  command to it, so those controls are disabled with an explanation. */
+  notOnDevice?: boolean;
 }
 
 export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
@@ -81,8 +85,17 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
   contactName,
   actions,
   receiveOnly = false,
+  notOnDevice = false,
 }) => {
   const { t } = useTranslation();
+  // Controls that make the radio address this node are unavailable when
+  // receive-only is on OR the radio doesn't hold the node (#5349).
+  const blocked = receiveOnly || notOnDevice;
+  const blockedTitle = receiveOnly
+    ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.')
+    : notOnDevice
+      ? t('meshcore.not_on_device.control_tooltip', "This node is not in the radio's contact list. Add it to the radio first.")
+      : undefined;
   const [capability, setCapability] = useState<CapabilitySnapshot | null>(null);
   const [loggedIn, setLoggedIn] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
@@ -229,6 +242,15 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
         </div>
       )}
 
+      {notOnDevice && (
+        <div className="mrc-banner mrc-banner-warn" role="status">
+          {t(
+            'meshcore.not_on_device.console_banner',
+            "The radio can't log in to this node: it is not in the radio's contact list. Add it to the radio first.",
+          )}
+        </div>
+      )}
+
       {capability && !capability.canRemember && (
         <div className="mrc-banner mrc-banner-info" role="status">
           {t('meshcore.remoteConsole.persistence_disabled_hint', 'Saving passwords is disabled. ')}
@@ -247,8 +269,8 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
               type="button"
               className="mrc-btn-primary"
               onClick={() => void handleLoginWithSaved()}
-              disabled={loginBusy || receiveOnly}
-              title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
+              disabled={loginBusy || blocked}
+              title={blockedTitle}
             >
               {loginBusy
                 ? t('meshcore.remoteConsole.logging_in', 'Logging in…')
@@ -258,8 +280,8 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
               type="button"
               className="mrc-btn-secondary"
               onClick={() => setShowLogin(true)}
-              disabled={loginBusy || receiveOnly}
-              title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
+              disabled={loginBusy || blocked}
+              title={blockedTitle}
             >
               {t('meshcore.remoteConsole.login_different', 'Use a different password')}
             </button>
@@ -269,8 +291,8 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
             type="button"
             className="mrc-btn-primary"
             onClick={() => setShowLogin(true)}
-            disabled={receiveOnly}
-            title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
+            disabled={blocked}
+            title={blockedTitle}
           >
             {t('meshcore.remoteConsole.login_button', 'Log in to {{name}}', { name: contactName })}
           </button>
@@ -291,10 +313,8 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
         targetName={contactName}
         runCommand={runCommand}
         actionCatalog={loggedIn ? REMOTE_ACTION_CATALOG : []}
-        disabled={!loggedIn || receiveOnly}
-        disabledPlaceholder={receiveOnly
-          ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.')
-          : undefined}
+        disabled={!loggedIn || blocked}
+        disabledPlaceholder={blockedTitle}
       />
 
       {loggedIn && <MeshCoreAclManager bodyRef={bodyRef} disabled={receiveOnly} />}
@@ -354,8 +374,8 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
                 type="button"
                 className="mrc-btn-primary"
                 onClick={() => void handleLogin()}
-                disabled={loginBusy || receiveOnly}
-                title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
+                disabled={loginBusy || blocked}
+                title={blockedTitle}
               >
                 {loginBusy
                   ? t('meshcore.remoteConsole.logging_in', 'Logging in…')

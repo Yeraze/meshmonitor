@@ -562,6 +562,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                 onPingZeroHop={actions.pingContactZeroHop}
                 onDiscoverPath={actions.discoverContactPath}
                 onRemoveContact={actions.removeContact}
+                onAddToDevice={actions.addContactToDevice}
                 onExportContact={actions.exportContact}
                 onGetNeighbours={actions.getNeighbours}
                 canWriteNodes={canWriteNodes && connected}
