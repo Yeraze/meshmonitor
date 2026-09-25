@@ -543,33 +543,49 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
   }), []);
 
   const recomputeNodes = useCallback(() => {
-    // Rebuild the node list from in-memory contacts. Contacts carry no
-    // favorite flag (it lives server-side, issue #3588), so carry forward the
-    // last-known isFavorite per publicKey from the previous nodes state — a
-    // contact push must not transiently un-pin a favorite before the next
-    // snapshot poll reconciles from the DB.
+    // MERGE the live in-memory contacts into the current node list — never
+    // rebuild the list from contacts alone (#5349). `nodes` comes from the
+    // snapshot's `getAllNodes()` (durable meshcore_nodes rows ∪ live
+    // contacts), while `contactsRef` only mirrors the companion's contact
+    // table plus pushes. Rebuilding from contacts dropped every node known
+    // only from the DB on the first contact/local-node push (the "13 nodes,
+    // then 6, then 7 until you refresh" report) and replaced DB-only fields
+    // (favorite, battery, advType, name) with contact defaults.
     setNodes(prev => {
-      const favByKey = new Map(prev.map(n => [n.publicKey, n.isFavorite]));
-      // Likewise carry forward the last-known name. A re-discovered node
-      // returns from the device with an empty adv_name (discovery responses
-      // carry only key+type; the name follows via a later advert), so
-      // contactToNode() resolves it to "Unknown" and would clobber the good
-      // name live until a page reload re-reads it from the DB. Keep the prior
-      // real name in that gap.
-      const nameByKey = new Map(
-        prev.filter(n => n.name && n.name !== 'Unknown').map(n => [n.publicKey, n.name]),
-      );
+      const prevByKey = new Map(prev.map(n => [n.publicKey, n]));
       const merged: MeshCoreNode[] = [];
-      if (localNodeRef.current) merged.push(localNodeRef.current);
+      const covered = new Set<string>();
+      const local = localNodeRef.current;
+      if (local) {
+        const base = prevByKey.get(local.publicKey);
+        merged.push(base ? { ...base, ...local } : local);
+        covered.add(local.publicKey);
+      }
       for (const c of contactsRef.current.values()) {
-        const node = contactToNode(c);
-        const fav = favByKey.get(c.publicKey);
-        if (fav !== undefined) node.isFavorite = fav;
-        if (node.name === 'Unknown') {
-          const prevName = nameByKey.get(c.publicKey);
-          if (prevName) node.name = prevName;
-        }
-        merged.push(node);
+        const base = prevByKey.get(c.publicKey);
+        const live = contactToNode(c);
+        merged.push({
+          ...base,
+          ...live,
+          // A re-discovered node returns from the device with an empty
+          // adv_name (discovery responses carry only key+type), so keep the
+          // prior real name rather than regressing it to "Unknown".
+          name: live.name !== 'Unknown' ? live.name : (base?.name || live.name),
+          // An advert that carried no type must not erase a known type
+          // (e.g. the DB says repeater) — only a real value overrides.
+          advType: c.advType ?? base?.advType ?? 0,
+          lastHeard: live.lastHeard ?? base?.lastHeard,
+          rssi: live.rssi ?? base?.rssi,
+          snr: live.snr ?? base?.snr,
+          // Favorites live server-side (issue #3588), not on contacts.
+          isFavorite: base?.isFavorite,
+        });
+        covered.add(c.publicKey);
+      }
+      // Keep every row the snapshot knew about that no contact covers — the
+      // DB-only nodes (not in the companion's contact table).
+      for (const n of prev) {
+        if (!covered.has(n.publicKey)) merged.push(n);
       }
       return merged;
     });
@@ -1471,6 +1487,9 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       setContacts(prev => prev.filter(c => c.publicKey !== publicKey));
       contactsRef.current.delete(publicKey);
       recomputeNodes();
+      // recomputeNodes() keeps DB-only rows (#5349); the server deleted this
+      // node's row too, so drop it explicitly.
+      setNodes(prev => prev.filter(n => n.publicKey !== publicKey));
       return true;
     } catch (_err) {
       setError('Failed to remove contact');
