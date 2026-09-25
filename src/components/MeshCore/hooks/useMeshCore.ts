@@ -152,6 +152,9 @@ export interface MeshCoreMessage {
   scopeCode?: number | null;
   /** Region name resolved from the scope code; null = unscoped or unknown scope (#3742 Ph2). */
   scopeName?: string | null;
+  /** MeshCore packet hash (16 uppercase hex) of the received frame, when matched
+   *  (#5357). Live events only — not persisted, so absent on reloaded history. */
+  packetHash?: string;
   /**
    * MeshMonitor's own wall clock (ms) at the moment this message was created or
    * observed — NOT the sender's clock.

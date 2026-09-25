@@ -856,6 +856,30 @@ to something usable. Prefer it (or `{{ trigger.fromName }}`) over the **raw iden
   `!hex` id; on MeshCore the sender's public key — or, for a channel message (which carries no
   per-sender key on the wire), the synthetic `channel-<idx>` slot key, **not** a sender identity.
 
+### MeshCore packet hash — `{{ trigger.packetHash }}`
+
+On a MeshCore **message** trigger, `{{ trigger.packetHash }}` is the MeshCore **packet hash** of the
+frame the message arrived in: 16 uppercase hex characters (e.g. `3A24AED15A9CB70A`), computed the
+same way as the MeshCore firmware and the reference packet-capture tool. MeshCore analyzers key
+packets on it, so it links a received message to its packet page:
+
+```
+https://map.meshcore.com.hr/#/packets/{{ trigger.packetHash }}
+```
+
+That map looks packets up without regard to case, so the uppercase hash works as-is.
+
+- **MeshCore only.** Empty on Meshtastic (use `{{ trigger.packetId }}` there).
+- **Channel messages:** exact. MeshMonitor decrypts the raw frame with the channel's key and only
+  takes the hash when the frame decrypts to this exact message. Messages from an MQTT-ingested
+  MeshCore source are exact too — the hash comes from the raw bytes on the wire.
+- **Direct messages:** **best-effort.** A DM is encrypted with the sender's key, which the companion
+  never hands out, so MeshMonitor matches the frame by the sender's 1-byte hash and the hop count.
+  Two DMs from senders sharing that byte, in the same second or two, could swap hashes.
+- **Empty** when the raw frame couldn't be matched: room-server posts, messages the device
+  queued while MeshMonitor was disconnected (they arrive with no raw frame), channel frames that
+  didn't verify, and our own outbound messages.
+
 ### In-builder validation
 
 Token-bearing fields render with live highlighting so typos surface immediately:

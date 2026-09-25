@@ -252,6 +252,12 @@ export function buildMeshCoreMessageContext(
     scopeCode,
     scopeName: msg.scopeName ?? undefined,
     scoped: scopeCode != null && scopeCode !== 0,
+    // #5357: MeshCore packet hash (16 UPPERCASE hex) of the frame this message
+    // arrived in — the key map.meshcore.com.hr/#/packets/<hash> and other
+    // analyzers use. Undefined when the raw frame couldn't be matched (room
+    // posts, backlog synced after reconnect, unverified channel frames); for
+    // companion DMs it is best-effort (sender src_hash + path_len correlation).
+    packetHash: msg.packetHash || undefined,
     protocol: 'meshcore',
     protocolShort: 'MC',
     sourceId,
