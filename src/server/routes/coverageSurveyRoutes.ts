@@ -10,35 +10,10 @@
  * See `docs/internal/dev-notes/COVERAGE_P4_SPEC.md` §2b.5 for the route
  * table and §2b.1-§2b.4 for why the table is global and what it stores.
  *
- * ## WP1 dependency (IMPORTANT — read before "fixing" a tsc error here)
- *
- * This file depends on `databaseService.coverageSurveys`
- * (`CoverageSurveysRepository`, spec §2b.2-§2b.4), which is Work Package 1
- * of P4b — schema, migration 173, and the repository itself. WP1 is being
- * built in a separate worktree in parallel and is **not present** in this
- * one. Until it merges, `npx tsc -p tsconfig.server.json --noEmit` reports:
- *
- *   - `Property 'coverageSurveys' does not exist on type 'DatabaseService'`
- *     at every `databaseService.coverageSurveys.*` call site below.
- *   - An excess-property error on `getReceivers({ ..., untilMs })` in
- *     `coverageRoutes.ts` (`GetCoverageReceiversArgs` needs `untilMs` added).
- *
- * Both are expected and listed in the PR body; they resolve once WP1 merges
- * and this file's calls type-check against the real repository.
- *
- * The exact repository surface this file calls, mirroring spec §2b.4:
- *   createSurvey(p: CreateSurveyParams): Promise<DbCoverageSurvey>
- *   getSurvey(id): Promise<DbCoverageSurvey | null>
- *   listSurveys(): Promise<DbCoverageSurvey[]>          // newest startAt first
- *   updateSurvey(id, patch: { name?, notes?, intervalSec?, receivers?, endAt? }): Promise<boolean>
- *   deleteSurvey(id): Promise<boolean>
- *   countSurveys(): Promise<number>
- *   countSurveysByUser(userId): Promise<number>
- *   getLiveSurveyForSender(senderId, nowMs): Promise<DbCoverageSurvey | null>
- *
- * `DbCoverageSurvey` and `CreateSurveyParams` are declared locally below
- * (not imported — `src/db/repositories/coverageSurveys.ts` doesn't exist in
- * this worktree yet) mirroring the column list in spec §2b.2.
+ * Talks to `databaseService.coverageSurveys` (`CoverageSurveysRepository`,
+ * `src/db/repositories/coverageSurveys.ts`, WP1). `DbCoverageSurvey` /
+ * `CreateCoverageSurveyParams` / `UpdateCoverageSurveyPatch` are imported
+ * from there rather than redeclared here.
  */
 import { Router, Request, Response } from 'express';
 import databaseService from '../../services/database.js';
@@ -62,45 +37,13 @@ import {
 } from '../../utils/coverage.js';
 import { parseReceiverFilter } from '../../utils/coverageReceiverFilter.js';
 import type { CoverageSurveyDto, CreateCoverageSurveyBody, UpdateCoverageSurveyBody } from '../../types/coverage.js';
+import type {
+  DbCoverageSurvey,
+  CreateCoverageSurveyParams,
+  UpdateCoverageSurveyPatch,
+} from '../../db/repositories/coverageSurveys.js';
 
 const router = Router();
-
-// ── WP1 repository shape (mirrored locally — see file header) ──────────────
-
-/** Mirrors `CoverageSurveysRepository`'s row shape (spec §2b.2/§2b.4). */
-interface DbCoverageSurvey {
-  id: string;
-  name: string;
-  senderId: string;
-  startAt: number;
-  endAt: number | null;
-  receivers: string | null;
-  intervalSec: number | null;
-  notes: string | null;
-  createdBy: number | null;
-  createdAt: number;
-  updatedAt: number;
-}
-
-/** `createSurvey`'s param shape — everything but `id`/`createdAt`/`updatedAt`, which the repository assigns (mirrors `automations.ts`'s `createAutomation`). */
-interface CreateSurveyParams {
-  name: string;
-  senderId: string;
-  startAt: number;
-  endAt: number | null;
-  receivers: string | null;
-  intervalSec: number | null;
-  notes: string | null;
-  createdBy: number | null;
-}
-
-interface UpdateSurveyPatch {
-  name?: string;
-  notes?: string | null;
-  intervalSec?: number | null;
-  receivers?: string | null;
-  endAt?: number | null;
-}
 
 // ── Shared helpers ───────────────────────────────────────────────────────
 
@@ -302,7 +245,13 @@ router.post('/', requireAuth(), async (req: Request, res: Response) => {
       }
     }
 
-    // One live survey per sender.
+    // One live survey per sender. Application-level (check-then-insert), not
+    // a DB constraint — a partial unique index (`WHERE endAt IS NULL`) isn't
+    // portable to MySQL, which this project also supports. Two simultaneous
+    // POSTs for the same sender can both pass this check and both insert, so
+    // the invariant is best-effort, not guaranteed. Worst case is a duplicate
+    // live survey for one sender (visible/stoppable/deletable like any
+    // other); no data loss.
     if (endAt === null) {
       const liveExisting = await databaseService.coverageSurveys.getLiveSurveyForSender(senderId, nowMs);
       if (liveExisting) {
@@ -324,7 +273,7 @@ router.post('/', requireAuth(), async (req: Request, res: Response) => {
 
     const created: DbCoverageSurvey = await databaseService.coverageSurveys.createSurvey({
       name, senderId, startAt, endAt, receivers, intervalSec, notes, createdBy: req.user!.id,
-    } satisfies CreateSurveyParams);
+    } satisfies CreateCoverageSurveyParams);
 
     void databaseService.auditLogAsync(
       req.user!.id,
@@ -352,7 +301,7 @@ router.patch('/:id', requireAuth(), async (req: Request, res: Response) => {
     }
 
     const body = (req.body ?? {}) as Partial<UpdateCoverageSurveyBody>;
-    const patch: UpdateSurveyPatch = {};
+    const patch: UpdateCoverageSurveyPatch = {};
 
     if (body.name !== undefined) {
       const name = typeof body.name === 'string' ? body.name.trim() : '';

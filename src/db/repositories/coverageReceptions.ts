@@ -626,6 +626,8 @@ export class CoverageReceptionsRepository extends BaseRepository {
     const conditions: SQL[] = [lt(coverageReceptions.receivedAt, cutoffMs)];
 
     if (exemptions.length > 0) {
+      // One clause per survey — `COVERAGE_SURVEY_MAX_TOTAL` (500) bounds how
+      // large this OR-list (and the resulting `not(or(...))` NOT-list) can get.
       const exemptionClauses = exemptions
         .map((w) => and(
           eq(coverageReceptions.senderId, w.senderId),
