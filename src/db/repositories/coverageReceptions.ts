@@ -18,7 +18,7 @@
  * all require an explicit `sourceIds` allow-list — an empty list returns an
  * empty result rather than falling through to "every source".
  */
-import { and, count, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, notInArray, or, sql, SQL } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, not, notInArray, or, sql, SQL } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 import type { CoverageReceiverFilterEntry } from '../../utils/coverageReceiverFilter.js';
@@ -142,6 +142,20 @@ export interface CoverageSenderSummaryRow {
   senderNodeNum: number | null;
   fixCount: number;
   lastReceivedAt: number;
+}
+
+/**
+ * A retention-exemption window: rows for `senderId` whose `receivedAt` falls
+ * in `[startAt, endAt]` survive `purgeOlderThan`'s cutoff regardless of age
+ * (#5277 Phase 4b WP1). Structurally identical to
+ * `CoverageSurveysRepository`'s `CoverageSurveyExemptionWindow` — duck-typed
+ * on purpose, not imported, so this repository stays free of a survey
+ * import (the spec's "single seam, no cross-repo coupling").
+ */
+export interface CoverageRetentionExemptionWindow {
+  senderId: string;
+  startAt: number;
+  endAt: number;
 }
 
 const MIN_PAGE_SIZE = 1;
@@ -583,16 +597,78 @@ export class CoverageReceptionsRepository extends BaseRepository {
 
   /**
    * Delete every row older than `cutoffMs` (by `receivedAt`), across ALL
-   * sources — retention is global by design. This is the single purge seam:
-   * a future saved-survey exemption (P4) is added here and nowhere else.
-   * Returns the number of rows deleted.
+   * sources — retention is global by design. This is the single purge seam
+   * (#5277 Phase 1 WP2 / Phase 4b WP1): `exemptions` — one window per saved
+   * survey, keyed on sender + effective window, spanning every source —
+   * protects a survey's receptions from the sweep even when they fall
+   * outside the retention cutoff. `coverageRetentionService` is the only
+   * caller that passes a non-empty `exemptions`; an empty/omitted list is
+   * exactly P1's original behaviour (no NULL trap: `senderId` and
+   * `receivedAt` are NOT NULL on this table). Returns the number of rows
+   * deleted.
    */
-  async purgeOlderThan(cutoffMs: number): Promise<number> {
+  async purgeOlderThan(cutoffMs: number, exemptions: CoverageRetentionExemptionWindow[] = []): Promise<number> {
     const { coverageReceptions } = this.tables;
+
+    const conditions: SQL[] = [lt(coverageReceptions.receivedAt, cutoffMs)];
+
+    if (exemptions.length > 0) {
+      const exemptionClauses = exemptions
+        .map((w) => and(
+          eq(coverageReceptions.senderId, w.senderId),
+          gte(coverageReceptions.receivedAt, w.startAt),
+          lte(coverageReceptions.receivedAt, w.endAt),
+        ))
+        .filter((c): c is SQL => c != null);
+
+      if (exemptionClauses.length > 0) {
+        const combined = or(...exemptionClauses);
+        if (combined) conditions.push(not(combined));
+      }
+    }
+
     const result = await this.db
       .delete(coverageReceptions)
-      .where(lt(coverageReceptions.receivedAt, cutoffMs));
+      .where(and(...conditions));
     return this.getAffectedRows(result);
+  }
+
+  /**
+   * Backup export (#5277 Phase 4b WP1, Decision U3): rows inside ANY
+   * survey's effective window, across every source, with the `id` column
+   * OMITTED. Restore inserts these rows with fresh ids — see migration 173's
+   * header / COVERAGE_P4_SPEC.md §2b.6 for the PG-sequence trap this avoids
+   * (restored explicit ids never bump the serial sequence, and a later
+   * `recordReception` whose auto-assigned id collides would otherwise be
+   * silently dropped by `insertIgnore`'s target-less `onConflictDoNothing()`).
+   * Returns `[]` immediately when there are no windows — no survey means no
+   * exportable receptions, and an empty `or()` is invalid SQL.
+   */
+  async exportSurveyReceptions(windows: CoverageRetentionExemptionWindow[]): Promise<Omit<DbCoverageReception, 'id'>[]> {
+    if (windows.length === 0) return [];
+
+    const { coverageReceptions } = this.tables;
+    const clauses = windows
+      .map((w) => and(
+        eq(coverageReceptions.senderId, w.senderId),
+        gte(coverageReceptions.receivedAt, w.startAt),
+        lte(coverageReceptions.receivedAt, w.endAt),
+      ))
+      .filter((c): c is SQL => c != null);
+
+    if (clauses.length === 0) return [];
+    const combined = or(...clauses);
+    if (!combined) return [];
+
+    const rows = await this.db
+      .select()
+      .from(coverageReceptions)
+      .where(combined);
+
+    return (rows as any[]).map((r) => { // eslint-disable-line @typescript-eslint/no-explicit-any -- Drizzle cross-dialect row shape
+      const { id: _id, ...rest } = this.mapReception(r);
+      return rest;
+    });
   }
 
   /**

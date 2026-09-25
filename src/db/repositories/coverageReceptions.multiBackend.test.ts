@@ -248,6 +248,54 @@ function runSharedTests(getCtx: () => Ctx) {
     expect(aPage.items).toHaveLength(0);
     expect(bPage.items).toHaveLength(1);
   });
+
+  it('purgeOlderThan with a survey exemption window: the not(or(and…)) SQL runs on this dialect (#5277 Phase 4b WP1)', async () => {
+    const { repo } = getCtx();
+    await repo.recordReception(makeReception({
+      sourceId: 'src-a', senderId: '!survey01', pathKey: 'in-window', receivedAt: NOW - 100_000,
+    }));
+    await repo.recordReception(makeReception({
+      sourceId: 'src-b', senderId: '!survey01', pathKey: 'in-window-other-source', receivedAt: NOW - 100_000,
+    }));
+    await repo.recordReception(makeReception({
+      sourceId: 'src-a', senderId: '!other-sender', pathKey: 'wrong-sender', receivedAt: NOW - 100_000,
+    }));
+    await repo.recordReception(makeReception({
+      sourceId: 'src-a', senderId: '!survey01', pathKey: 'before-window', receivedAt: NOW - 300_000,
+    }));
+
+    const deleted = await repo.purgeOlderThan(NOW - 1000, [
+      { senderId: '!survey01', startAt: NOW - 200_000, endAt: NOW - 50_000 },
+    ]);
+    // Two rows fall outside the exemption ("wrong-sender" and "before-window").
+    expect(deleted).toBe(2);
+
+    const remaining = await repo.getReceptions({
+      sourceIds: ['src-a', 'src-b'], sinceMs: 0, untilMs: NOW, pageSize: 100,
+    });
+    expect(remaining.items.map((r) => r.pathKey).sort()).toEqual(['in-window', 'in-window-other-source']);
+  });
+
+  it('exportSurveyReceptions returns in-window rows with id omitted, across sources', async () => {
+    const { repo } = getCtx();
+    await repo.recordReception(makeReception({
+      sourceId: 'src-a', senderId: '!survey01', pathKey: 'in-a', receivedAt: NOW - 100_000,
+    }));
+    await repo.recordReception(makeReception({
+      sourceId: 'src-b', senderId: '!survey01', pathKey: 'in-b', receivedAt: NOW - 100_000,
+    }));
+    await repo.recordReception(makeReception({
+      sourceId: 'src-a', senderId: '!survey01', pathKey: 'out-of-window', receivedAt: NOW - 500_000,
+    }));
+
+    const rows = await repo.exportSurveyReceptions([
+      { senderId: '!survey01', startAt: NOW - 200_000, endAt: NOW - 50_000 },
+    ]);
+    expect(rows.map((r) => r.pathKey).sort()).toEqual(['in-a', 'in-b']);
+    for (const row of rows) {
+      expect('id' in row).toBe(false);
+    }
+  });
 }
 
 describe.skipIf(!postgresAvailable)('CoverageReceptionsRepository — PostgreSQL (container)', () => {
