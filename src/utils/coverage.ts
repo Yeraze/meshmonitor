@@ -358,3 +358,26 @@ export const COVERAGE_GRID_CELL_SIZES_M = [100, 250, 500, 1000] as const;
 export const COVERAGE_GRID_DEFAULT_CELL_M = 250;
 export const COVERAGE_CHART_MAX_POINTS = 3000;
 export const COVERAGE_CHART_MAX_SERIES = 7;     // + "Other"
+
+// ---------------------------------------------------------------------------
+// Saved surveys (#5277 P4b, user decision U4)
+// ---------------------------------------------------------------------------
+
+/** A live survey ends itself this long after it started (read-time, no timer). */
+export const COVERAGE_SURVEY_LIVE_MAX_MS = 24 * 3_600_000;
+/** Longest time range a saved (past) survey may cover. */
+export const COVERAGE_SURVEY_MAX_RANGE_MS = 7 * 86_400_000;
+export const COVERAGE_SURVEY_MAX_PER_USER = 50;
+export const COVERAGE_SURVEY_MAX_TOTAL = 500;
+
+/**
+ * When a survey actually ends. A stopped or saved survey ends at `endAt`; a
+ * live one (`endAt` null) runs until now, capped at start + LIVE_MAX. Worked
+ * out at read time from the stored start, so a restart or save can neither
+ * extend nor reset it.
+ */
+export function effectiveSurveyEndAt(s: { startAt: number; endAt: number | null }, nowMs: number): number {
+  if (s.endAt != null) return s.endAt;
+  return Math.min(nowMs, s.startAt + COVERAGE_SURVEY_LIVE_MAX_MS);
+}
+

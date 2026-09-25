@@ -127,6 +127,9 @@ import {
 import {
   coverageReceptionsSqlite, coverageReceptionsPostgres, coverageReceptionsMysql,
 } from './schema/coverageReceptions.js';
+import {
+  coverageSurveysSqlite, coverageSurveysPostgres, coverageSurveysMysql,
+} from './schema/coverageSurveys.js';
 
 // Mesh Issues findings (global — no sourceId) (epic #4964 Phase 1 WP1)
 import {
@@ -311,6 +314,10 @@ export interface ActiveSchema {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5277 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   coverageReceptions: any;
 
+  // Coverage Report saved surveys, global — no sourceId (#5277 Phase 4b WP1)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5277 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
+  coverageSurveys: any;
+
   // Mesh Issues findings (global — no sourceId) (epic #4964 Phase 1 WP1)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4964 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   meshIssues: any;
@@ -445,6 +452,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     messageEvents: messageEventsSqlite,
     meshtasticHeardRepeaters: meshtasticHeardRepeatersSqlite,
     coverageReceptions: coverageReceptionsSqlite,
+    coverageSurveys: coverageSurveysSqlite,
     meshIssues: meshIssuesSqlite,
     embedProfiles: embedProfilesSqlite,
     automations: automationsSqlite,
@@ -522,6 +530,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     messageEvents: messageEventsPostgres,
     meshtasticHeardRepeaters: meshtasticHeardRepeatersPostgres,
     coverageReceptions: coverageReceptionsPostgres,
+    coverageSurveys: coverageSurveysPostgres,
     meshIssues: meshIssuesPostgres,
     embedProfiles: embedProfilesPostgres,
     automations: automationsPostgres,
@@ -599,6 +608,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     messageEvents: messageEventsMysql,
     meshtasticHeardRepeaters: meshtasticHeardRepeatersMysql,
     coverageReceptions: coverageReceptionsMysql,
+    coverageSurveys: coverageSurveysMysql,
     meshIssues: meshIssuesMysql,
     embedProfiles: embedProfilesMysql,
     automations: automationsMysql,

@@ -66,12 +66,18 @@ class CoverageRetentionService {
    * Remove `coverage_receptions` rows older than the configured retention
    * window. Never throws — a purge failure is logged, not propagated, so it
    * can never take down the interval timer that calls it.
+   *
+   * Loads the saved-survey exemption windows (#5277 Phase 4b WP1,
+   * `effectiveSurveyEndAt` resolved at `Date.now()`) and passes them to the
+   * single purge seam so a survey's receptions survive the sweep even when
+   * they fall outside the retention cutoff.
    */
   async runCleanup(): Promise<void> {
     try {
       const retentionDays = await this.getRetentionDays();
       const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
-      const removed = await databaseService.coverageReceptions.purgeOlderThan(cutoff);
+      const exemptions = await databaseService.coverageSurveys.getExemptionWindows(Date.now());
+      const removed = await databaseService.coverageReceptions.purgeOlderThan(cutoff, exemptions);
       if (removed > 0) {
         logger.debug(`🧹 Coverage Report retention sweep: removed ${removed} old reception(s)`);
       }

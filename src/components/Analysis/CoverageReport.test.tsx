@@ -46,6 +46,49 @@ vi.mock('../../hooks/useCoverageData', () => ({
   useCoverageReceptions: (...args: unknown[]) => useCoverageReceptions(...args),
 }));
 
+// #5277 P4b WP3: CoverageReport's own survey query. `CoverageSurveyBar` is
+// stubbed below with a way to trigger `onSelectSurvey`, so these tests can
+// drive CoverageReport's survey-applying wiring without depending on the
+// bar's own internals (covered separately in CoverageSurveyBar.test.tsx).
+const useCoverageSurveys = vi.fn();
+vi.mock('../../hooks/useCoverageSurveys', () => ({
+  useCoverageSurveys: (...args: unknown[]) => useCoverageSurveys(...args),
+}));
+
+vi.mock('./CoverageSurveyBar', () => ({
+  CoverageSurveyBar: ({ selectedSurveyId, onSelectSurvey, senderId, currentReceiversEncoded }: any) => (
+    <div data-testid="coverage-survey-bar-stub" data-selected={selectedSurveyId ?? ''} data-sender={senderId}>
+      receiversEncoded:{currentReceiversEncoded ?? 'null'}
+      <button
+        type="button"
+        onClick={() =>
+          onSelectSurvey({
+            id: 'survey-1',
+            name: 'Drive around town',
+            senderId: '!bbbbbbbb',
+            startAt: 1_699_999_000_000,
+            endAt: 1_699_999_500_000,
+            receivers: 'src-a:+!aaaaaaaa',
+            intervalSec: 45,
+            notes: null,
+            createdAt: 1,
+            updatedAt: 1,
+            effectiveEndAt: 1_699_999_500_000,
+            isLive: false,
+            canEdit: true,
+            createdByMe: true,
+          })
+        }
+      >
+        pick survey-1
+      </button>
+      <button type="button" onClick={() => onSelectSurvey(null)}>
+        clear survey
+      </button>
+    </div>
+  ),
+}));
+
 vi.mock('./CoverageMap', () => ({
   CoverageMap: ({ fixes, receivers, metric, fitKey, gaps, view, gridCells }: any) => (
     <div
@@ -171,6 +214,11 @@ beforeEach(() => {
   });
   useCoverageReceptions.mockReturnValue({
     data: { items: [makeReception(1), makeReception(2)], truncated: false },
+    isLoading: false,
+    refetch: vi.fn(),
+  });
+  useCoverageSurveys.mockReturnValue({
+    data: [],
     isLoading: false,
     refetch: vi.fn(),
   });
@@ -524,6 +572,141 @@ describe('CoverageReport', () => {
       expect(
         screen.getByText('MeshCore companions record signed adverts that carry a position.'),
       ).toBeInTheDocument();
+    });
+  });
+
+  // #5277 P4b WP3 (COVERAGE_P4_SPEC.md §2b.7) — survey selection wiring.
+  // The bar's own picker/start/save/edit/delete UI is covered in
+  // CoverageSurveyBar.test.tsx; these tests only exercise what CoverageReport
+  // itself does with `onSelectSurvey`.
+  describe('saved surveys (survey selection wiring)', () => {
+    it('picking a survey sets the sender and the window to the survey range', () => {
+      renderReport();
+
+      fireEvent.click(screen.getByText('pick survey-1'));
+
+      const filters = lastReceptionsFilters();
+      expect(filters.senderId).toBe('!bbbbbbbb');
+      expect(filters.sinceMs).toBe(1_699_999_000_000);
+      expect(filters.untilMs).toBe(1_699_999_500_000);
+      expect(screen.getByTestId('coverage-survey-bar-stub')).toHaveAttribute('data-selected', 'survey-1');
+    });
+
+    it('picking a survey restores its receiver filter via deselectedFromReceiverFilter', () => {
+      renderReport();
+      fireEvent.click(screen.getByText('pick survey-1'));
+
+      // The stub survey's receivers = 'src-a:+!aaaaaaaa' -> only !aaaaaaaa
+      // included, so !cccccccc (Receiver Two) is deselected.
+      expect(lastReceptionsFilters().receiverFilter).toEqual([
+        { sourceId: 'src-a', mode: 'include', receiverIds: ['!aaaaaaaa'] },
+      ]);
+    });
+
+    it('passes the selected survey intervalSec through to detectCoverageGaps as configuredIntervalSec', () => {
+      renderReport();
+      fireEvent.click(screen.getByText('pick survey-1'));
+
+      expect(detectCoverageGaps).toHaveBeenLastCalledWith(
+        expect.any(Array),
+        expect.objectContaining({ configuredIntervalSec: 45 }),
+      );
+    });
+
+    it('clearing the survey selection (onSelectSurvey(null)) leaves sender/window as they were', () => {
+      renderReport();
+      fireEvent.click(screen.getByText('pick survey-1'));
+      expect(lastReceptionsFilters().senderId).toBe('!bbbbbbbb');
+
+      fireEvent.click(screen.getByText('clear survey'));
+
+      expect(screen.getByTestId('coverage-survey-bar-stub')).toHaveAttribute('data-selected', '');
+      // Sender/window are untouched by clearing — only a manual change resets them.
+      expect(lastReceptionsFilters().senderId).toBe('!bbbbbbbb');
+    });
+
+    it('manually changing the sender clears the survey selection', async () => {
+      const user = userEvent.setup({ delay: null });
+      renderReport();
+      fireEvent.click(screen.getByText('pick survey-1'));
+      expect(screen.getByTestId('coverage-survey-bar-stub')).toHaveAttribute('data-selected', 'survey-1');
+
+      await selectSender(user, 'Sender One', /Sender One/);
+
+      expect(screen.getByTestId('coverage-survey-bar-stub')).toHaveAttribute('data-selected', '');
+    });
+
+    it('manually picking a time-range preset clears the survey selection', () => {
+      renderReport();
+      fireEvent.click(screen.getByText('pick survey-1'));
+      expect(screen.getByTestId('coverage-survey-bar-stub')).toHaveAttribute('data-selected', 'survey-1');
+
+      fireEvent.click(screen.getByRole('button', { name: '6 h' }));
+
+      expect(screen.getByTestId('coverage-survey-bar-stub')).toHaveAttribute('data-selected', '');
+    });
+
+    it('passes an encoded receiver filter string down to the survey bar for "Save as survey"', () => {
+      renderReport();
+      openReceiverPanel();
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Receiver Two' }));
+
+      expect(screen.getByTestId('coverage-survey-bar-stub')).toHaveTextContent(
+        'receiversEncoded:src-a:+!aaaaaaaa',
+      );
+    });
+
+    it('refetches the survey list on Refresh', () => {
+      const refetchSurveys = vi.fn();
+      useCoverageSurveys.mockReturnValue({ data: [], isLoading: false, refetch: refetchSurveys });
+      renderReport();
+
+      fireEvent.click(screen.getByRole('button', { name: /Refresh/i }));
+      expect(refetchSurveys).toHaveBeenCalled();
+    });
+  });
+
+  // #5277 P4b WP3 — deep link `survey=<uuid>` opens that survey once its
+  // data has loaded (extends the P4a deep-link describe block above with
+  // the one field P4a only parsed and ignored).
+  describe('deep link (survey=)', () => {
+    it('applies a matching survey from initialLink.survey once the survey list loads', () => {
+      useCoverageSurveys.mockReturnValue({
+        data: [
+          {
+            id: 'deep-link-survey',
+            name: 'Deep linked',
+            senderId: '!bbbbbbbb',
+            startAt: 1_699_000_000_000,
+            endAt: 1_699_000_600_000,
+            receivers: null,
+            intervalSec: null,
+            notes: null,
+            createdAt: 1,
+            updatedAt: 1,
+            effectiveEndAt: 1_699_000_600_000,
+            isLive: false,
+            canEdit: true,
+            createdByMe: true,
+          },
+        ],
+        isLoading: false,
+        refetch: vi.fn(),
+      });
+
+      renderReport({ initialLink: { survey: 'deep-link-survey' } });
+
+      const filters = lastReceptionsFilters();
+      expect(filters.senderId).toBe('!bbbbbbbb');
+      expect(filters.sinceMs).toBe(1_699_000_000_000);
+      expect(filters.untilMs).toBe(1_699_000_600_000);
+      expect(screen.getByTestId('coverage-survey-bar-stub')).toHaveAttribute('data-selected', 'deep-link-survey');
+    });
+
+    it('does nothing when the deep-linked survey id is not found in the loaded list', () => {
+      renderReport({ initialLink: { survey: 'missing-survey' } });
+
+      expect(screen.getByTestId('coverage-survey-bar-stub')).toHaveAttribute('data-selected', '');
     });
   });
 });

@@ -122,7 +122,15 @@ export type {
   CoverageReceiverRow,
   GetCoverageSenderSummaryArgs,
   CoverageSenderSummaryRow,
+  CoverageRetentionExemptionWindow,
 } from './coverageReceptions.js';
+export { CoverageSurveysRepository } from './coverageSurveys.js';
+export type {
+  DbCoverageSurvey,
+  CreateCoverageSurveyParams,
+  UpdateCoverageSurveyPatch,
+  CoverageSurveyExemptionWindow,
+} from './coverageSurveys.js';
 export { MeshIssuesRepository } from './meshIssues.js';
 export type {
   DbMeshIssue,
