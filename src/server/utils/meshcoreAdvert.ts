@@ -24,16 +24,22 @@ export class MeshCoreZeroHopAdvertUnsupportedError extends Error {
 export type RepeaterAdvertReplyOutcome = 'zero_hop' | 'flood' | 'error' | 'unknown';
 
 /**
- * Classify a repeater's reply to `advert` / `advert.zerohop`. MeshCore's
- * CommonCLI answers "OK - zerohop advert sent" for `advert.zerohop` and
- * "OK - Advert sent" for `advert`; firmware without the zero-hop verb matches
- * `advert.zerohop` on its `advert` prefix and gives the flood reply. An empty
- * reply (CLI timeout) is `unknown`.
+ * Classify a repeater's reply to `advert` / `advert.zerohop`.
+ *
+ * MeshCore firmware replies (src/helpers/CommonCLI.cpp):
+ *   - `advert.zerohop` → "OK - zerohop advert sent"
+ *   - `advert`         → "OK - Advert sent"
+ * Firmware that predates `advert.zerohop` matches it on its `advert` prefix,
+ * FLOODS, and gives the flood reply. The two matches are mutually exclusive
+ * (the flood match excludes "zerohop"), so the result never depends on check
+ * order. An empty reply (CLI timeout) is `unknown`.
  */
 export function classifyRepeaterAdvertReply(reply: string): RepeaterAdvertReplyOutcome {
   const text = reply.toLowerCase();
-  if (text.includes('zerohop advert sent')) return 'zero_hop';
-  if (text.includes('advert sent')) return 'flood';
+  const zeroHop = text.includes('zerohop advert sent');
+  const flood = text.includes('advert sent') && !text.includes('zerohop');
+  if (zeroHop) return 'zero_hop';
+  if (flood) return 'flood';
   if (text.includes('error') || text.includes('unknown')) return 'error';
   return 'unknown';
 }

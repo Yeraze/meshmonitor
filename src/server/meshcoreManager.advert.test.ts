@@ -120,11 +120,20 @@ describe('MeshCore advert reach + automated flood floor', () => {
   });
 
   describe('classifyRepeaterAdvertReply', () => {
-    it('classifies the CommonCLI replies', () => {
-      expect(classifyRepeaterAdvertReply('  -> OK - zerohop advert sent')).toBe('zero_hop');
-      expect(classifyRepeaterAdvertReply('  -> OK - Advert sent')).toBe('flood');
-      expect(classifyRepeaterAdvertReply('Error: busy')).toBe('error');
-      expect(classifyRepeaterAdvertReply('')).toBe('unknown');
+    it.each([
+      ['  -> OK - zerohop advert sent', 'zero_hop'],   // advert.zerohop on current firmware
+      ['OK - ZEROHOP ADVERT SENT', 'zero_hop'],        // case-insensitive
+      ['  -> OK - Advert sent', 'flood'],              // advert, or advert.zerohop on old firmware
+      ['Error: busy', 'error'],
+      ['Unknown command', 'error'],
+      ['', 'unknown'],                                 // CLI timeout, nothing read
+      ['  -> >', 'unknown'],
+    ])('%j → %s', (reply, outcome) => {
+      expect(classifyRepeaterAdvertReply(reply)).toBe(outcome);
+    });
+
+    it('never reads a zerohop reply as a flood', () => {
+      expect(classifyRepeaterAdvertReply('OK - zerohop advert sent')).not.toBe('flood');
     });
   });
 
