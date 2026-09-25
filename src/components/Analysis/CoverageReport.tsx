@@ -20,7 +20,7 @@
  * WP5) — never re-applied after mount, same rule as the query-stability fix
  * on `timeWindow` below.
  */
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import {
@@ -28,16 +28,23 @@ import {
   useCoverageSenders,
   useCoverageReceptions,
 } from '../../hooks/useCoverageData';
+import { useCoverageSurveys } from '../../hooks/useCoverageSurveys';
 import {
   groupReceptionsIntoFixes,
   formatCoverageNodeId,
+  effectiveSurveyEndAt,
   COVERAGE_GRID_CELL_SIZES_M,
   COVERAGE_GRID_DEFAULT_CELL_M,
   isMeshCorePubKeyId,
 } from '../../utils/coverage';
 import type { CoverageMetric } from '../../utils/coverage';
-import type { CoverageHopsMode } from '../../types/coverage';
-import { buildReceiverQuery, receiverKey } from '../../utils/coverageReceiverFilter';
+import type { CoverageHopsMode, CoverageSurveyDto } from '../../types/coverage';
+import {
+  buildReceiverQuery,
+  deselectedFromReceiverFilter,
+  encodeReceiverFilter,
+  receiverKey,
+} from '../../utils/coverageReceiverFilter';
 import {
   resolveCoverageWindow,
   type CoverageRangePreset,
@@ -59,6 +66,7 @@ import { CoverageReceiverFilter } from './CoverageReceiverFilter';
 import { CoverageSummaryPanel } from './CoverageSummaryPanel';
 import { CoverageDistanceChart } from './CoverageDistanceChart';
 import { CoverageExportButtons } from './CoverageExportButtons';
+import { CoverageSurveyBar } from './CoverageSurveyBar';
 import SearchableSelect, { type SearchableSelectOption } from '../common/SearchableSelect';
 import styles from './CoverageReport.module.css';
 
@@ -125,6 +133,29 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
   const [view, setView] = useState<CoverageMapView>('dots');
   const [cellSize, setCellSize] = useState<CoverageGridCellSizeM>(COVERAGE_GRID_DEFAULT_CELL_M);
 
+  // Saved surveys (#5277 P4b WP3, spec §2b.7). `selectedSurvey` holds the
+  // FULL DTO, not just an id looked up from `surveysQuery` below, on
+  // purpose: `applySurvey` (and the bar's Start/Save/Stop/Edit onSuccess
+  // callbacks, which also call back through `onSelectSurvey`) always hand
+  // this the freshest row directly, and `surveysQuery`'s own cache can lag
+  // one refetch behind a just-created/just-mutated row (its invalidation is
+  // async). Deriving `selectedSurvey` by re-looking the id up in
+  // `surveysQuery.data` would momentarily lose `intervalSec`/`isLive`/etc.
+  // right after Start or Save, before that refetch lands. A manual sender or
+  // window change clears it (see the wrapped setters further down), matching
+  // "picking a survey applies it; changing anything by hand detaches it"
+  // (spec §2b.7).
+  //
+  // Starts `null`, even with a `survey=` deep link — NOT the deep-linked id
+  // itself. The survey list has to load first to know whether that id is
+  // real; the effect below is what sets this once it's confirmed to exist,
+  // same "seed once, from confirmed data" rule as the sender synthetic-
+  // option handling above, just one tick later than a lazy `useState` can
+  // reach (the list is a network fetch, not a prop already in hand).
+  const [selectedSurvey, setSelectedSurvey] = useState<CoverageSurveyDto | null>(null);
+  const selectedSurveyId = selectedSurvey?.id ?? null;
+  const appliedInitialSurveyRef = useRef(false);
+
   // Resolved ONCE per discrete user action (mount / preset click / custom
   // "Apply" / Refresh) via `resolveCoverageWindow`, and cached in state —
   // NEVER recomputed from `Date.now()` during a plain render. See
@@ -139,21 +170,33 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
   );
   const { sinceMs, untilMs, rangeInvalid } = timeWindow;
 
+  // A manual range or sender change is "changing the window/sender by hand"
+  // (spec §2b.7) — it detaches whatever survey is currently applied. This
+  // does NOT run when `applySurvey` itself sets these (it sets
+  // `selectedSurveyId` directly, never through these wrapped setters).
   const selectPreset = (id: Exclude<CoverageRangePreset, 'custom'>) => {
     setPreset(id);
     setTimeWindow(resolveCoverageWindow(id, Date.now()));
+    setSelectedSurvey(null);
   };
 
   /** Switches the UI to the custom from/to inputs WITHOUT resolving a new
    *  window — the window only changes once the user presses Apply, so
-   *  merely opening the custom picker can't itself trigger a fetch. */
+   *  merely opening the custom picker can't itself trigger a fetch (and
+   *  doesn't detach a selected survey either). */
   const selectCustomPreset = () => {
     setPreset('custom');
   };
 
   const applyCustomRange = () => {
     setTimeWindow(resolveCoverageWindow('custom', Date.now(), customFrom, customTo));
+    setSelectedSurvey(null);
   };
+
+  const handleSenderChange = useCallback((id: string) => {
+    setSenderId(id);
+    setSelectedSurvey(null);
+  }, []);
 
   const receiversQuery = useCoverageReceivers([]);
   const sendersQuery = useCoverageSenders({ sources: [], sinceMs, untilMs });
@@ -240,6 +283,76 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
   const allReceiversSelected = receivers.length > 0 && selectedReceiverKeys.size === receivers.length;
   const noReceiversSelected = receivers.length > 0 && receiverQuery.noneSelected;
 
+  // Encoded wire form of the CURRENT receiver selection — what "Save as
+  // survey" stores on the new row (spec §2b.7: "sender + current window +
+  // current receiver filter"). `null` = every receiver, same convention as
+  // `CoverageSurveyDto.receivers`. When the picker fell back to
+  // `clientSideFilter` (well past the 1000-id / 6000-char cap, spec §2.5),
+  // there is no encodable filter to save — the survey is saved with every
+  // receiver instead of failing outright; it is a view preference, not a
+  // privacy boundary (spec §2b.1).
+  const currentReceiversEncoded = useMemo(
+    () =>
+      receiverQuery.clientSideFilter || !receiverQuery.receiverFilter
+        ? null
+        : encodeReceiverFilter(receiverQuery.receiverFilter),
+    [receiverQuery],
+  );
+
+  // Saved surveys (#5277 P4b WP3, spec §2b.7). `surveysQuery` itself is only
+  // read here for the deep-link lookup below (and to hand `.refetch` to
+  // Refresh) — everyday selection reads/writes go through `selectedSurvey`
+  // state above, not this query's cache (see that state's doc comment).
+  const surveysQuery = useCoverageSurveys();
+
+  /** Applies a picked/started/saved/stopped survey to the report's own
+   *  sender/window/receiver state — the one place all four ever change
+   *  together. Sets `selectedSurvey` directly (never through the wrapped
+   *  `handleSenderChange`/`selectPreset`/`applyCustomRange` setters above,
+   *  which would immediately clear it again). */
+  const applySurvey = useCallback(
+    (survey: CoverageSurveyDto) => {
+      setSelectedSurvey(survey);
+      setSenderId(survey.senderId);
+      setTimeWindow({
+        sinceMs: survey.startAt,
+        untilMs: effectiveSurveyEndAt(survey, Date.now()),
+        rangeInvalid: false,
+      });
+      setDeselectedReceiverIds(
+        deselectedFromReceiverFilter(
+          survey.receivers,
+          receivers.map((r) => ({ sourceId: r.sourceId, receiverId: r.receiverId })),
+        ),
+      );
+    },
+    [receivers],
+  );
+
+  const handleSelectSurvey = useCallback(
+    (survey: CoverageSurveyDto | null) => {
+      if (!survey) {
+        setSelectedSurvey(null);
+        return;
+      }
+      applySurvey(survey);
+    },
+    [applySurvey],
+  );
+
+  // Deep link `survey=<uuid>` (spec §2a.5/§2b.7): applied once, as soon as
+  // the survey list has loaded and contains it. Runs at most once per mount
+  // (the ref guard) — a survey that no longer exists, or hasn't loaded yet
+  // on the first pass, is simply left unapplied rather than retried forever.
+  useEffect(() => {
+    if (appliedInitialSurveyRef.current) return;
+    if (!initialLink?.survey) return;
+    if (!surveysQuery.data) return; // still loading
+    appliedInitialSurveyRef.current = true;
+    const found = surveysQuery.data.find((s) => s.id === initialLink.survey);
+    if (found) applySurvey(found);
+  }, [initialLink?.survey, surveysQuery.data, applySurvey]);
+
   const receptionsEnabled = !rangeInvalid && !noReceiversSelected;
   const receptionsQuery = useCoverageReceptions(
     {
@@ -275,9 +388,12 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
   // (MeshCore senders are 64-hex public keys), never a source type (spec
   // §2a.2). The gap rule's default interval (30 s vs 60 s) depends on it.
   const protocol = isMeshCorePubKeyId(senderId) ? 'meshcore' : 'meshtastic';
+  // A selected survey's configured interval overrides the observed/default
+  // estimate (spec §2b.7/§2a.2's `configured` source).
+  const configuredIntervalSec = selectedSurvey?.intervalSec ?? undefined;
   const gapResult = useMemo(
-    () => (singleSender ? detectCoverageGaps(fixesAsGapInputs, { protocol }) : null),
-    [singleSender, fixesAsGapInputs, protocol],
+    () => (singleSender ? detectCoverageGaps(fixesAsGapInputs, { protocol, configuredIntervalSec }) : null),
+    [singleSender, fixesAsGapInputs, protocol, configuredIntervalSec],
   );
   const summary = useMemo(() => summarizeCoverage(items), [items]);
   const gridCells = useMemo(
@@ -348,9 +464,24 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
     // key via .refetch(), one for the new key from the key change), which
     // is exactly the bug this file's regression test guards against.
     // `receiversQuery`'s key never depends on the time window, so it needs
-    // its own explicit refetch to actually do anything on Refresh.
-    setTimeWindow(resolveCoverageWindow(preset, Date.now(), customFrom, customTo));
+    // its own explicit refetch to actually do anything on Refresh — same
+    // reasoning applies to `surveysQuery` (#5277 P4b WP3).
+    //
+    // A selected LIVE survey re-anchors to its own effective end (spec
+    // §2b.7: "live -> now at resolve time; Refresh re-anchors") instead of
+    // the preset — its `startAt` never moves, only how far `effectiveEndAt`
+    // has crept since it was last resolved.
+    if (selectedSurvey) {
+      setTimeWindow({
+        sinceMs: selectedSurvey.startAt,
+        untilMs: effectiveSurveyEndAt(selectedSurvey, Date.now()),
+        rangeInvalid: false,
+      });
+    } else {
+      setTimeWindow(resolveCoverageWindow(preset, Date.now(), customFrom, customTo));
+    }
     void receiversQuery.refetch();
+    void surveysQuery.refetch();
   };
 
   return (
@@ -421,7 +552,7 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
             <span>{t('analysis.coverage.sender', 'Sender')}</span>
             <SearchableSelect
               value={senderId}
-              onChange={setSenderId}
+              onChange={handleSenderChange}
               options={senderOptions}
               emptyLabel={t('analysis.coverage.sender_all', 'All')}
               placeholder={t('analysis.coverage.sender_search_placeholder', 'Search senders')}
@@ -517,6 +648,16 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
             disabled={items.length === 0}
           />
         </div>
+
+        <CoverageSurveyBar
+          senderId={senderId}
+          senderLabel={senderId ? (senderNames.get(senderId) ?? formatCoverageNodeId(senderId)) : ''}
+          currentSinceMs={sinceMs}
+          currentUntilMs={untilMs}
+          currentReceiversEncoded={currentReceiversEncoded}
+          selectedSurveyId={selectedSurveyId}
+          onSelectSurvey={handleSelectSurvey}
+        />
 
         <CoverageReceiverFilter
           receivers={receivers}
