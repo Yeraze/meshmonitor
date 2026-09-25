@@ -62,7 +62,6 @@ class MockConnection extends EventEmitter {
   public binaryRequests: Array<{ key: Uint8Array; req: number[] }> = [];
   public syncNextMessageQueue: any[] = [];
   public setDeviceTimeCalls: number[] = [];
-  public advertCalls: number[] = [];
   public setDeviceTimeErr = false;
   public deviceTimeResponse: { epochSecs: number } | null = { epochSecs: 1700000000 };
   public statsResponse: any = {
@@ -159,10 +158,6 @@ class MockConnection extends EventEmitter {
   // The backend drives set_device_time via this low-level send and then waits
   // for an Ok/Err response event (issue #3570). Emit on the next tick so the
   // backend's once() listeners are attached first.
-  async sendAdvert(type: number) {
-    this.advertCalls.push(type);
-  }
-
   async sendCommandSetDeviceTime(epochSecs: number) {
     this.setDeviceTimeCalls.push(epochSecs);
     setTimeout(() => {
@@ -473,7 +468,7 @@ describe('MeshCoreNativeBackend', () => {
 
     expect((await backend.sendCommand('send_advert', { mode: 'zero_hop' })).success).toBe(true);
     expect((await backend.sendCommand('send_advert', { mode: 'flood' })).success).toBe(true);
-    expect(conn.advertCalls).toEqual([SelfAdvertTypes.ZeroHop, SelfAdvertTypes.Flood]);
+    expect(conn.sentAdverts).toEqual([SelfAdvertTypes.ZeroHop, SelfAdvertTypes.Flood]);
   });
 
   it('send_advert refuses a missing mode instead of guessing', async () => {
@@ -484,7 +479,7 @@ describe('MeshCoreNativeBackend', () => {
     const resp = await backend.sendCommand('send_advert', {});
     expect(resp.success).toBe(false);
     expect(resp.error).toMatch(/requires mode/);
-    expect(conn.advertCalls).toEqual([]);
+    expect(conn.sentAdverts).toEqual([]);
   });
 
   it('set_device_time resolves on Ok and forwards the epoch', async () => {
