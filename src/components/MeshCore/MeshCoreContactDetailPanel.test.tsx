@@ -5,6 +5,7 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { MeshCoreContactDetailPanel } from './MeshCoreContactDetailPanel';
 import type { MeshCoreContact } from '../../utils/meshcoreHelpers';
 
@@ -27,7 +28,13 @@ vi.mock('../../contexts/SourceContext', () => ({
 }));
 
 vi.mock('../../services/api', () => ({
-  default: { get: vi.fn().mockRejectedValue(new Error('no stub configured')) },
+  default: {
+    get: vi.fn().mockRejectedValue(new Error('no stub configured')),
+    // Called at import by ../../init (pulled in transitively via
+    // ShowCoverageLink, #5277 P4a WP5); stubbed so the module loads under
+    // this mock, matching the pattern in NodeDetailsBlock's split suites.
+    setBaseUrl: vi.fn(),
+  },
 }));
 import api from '../../services/api';
 
@@ -609,4 +616,40 @@ describe('MeshCoreContactDetailPanel', () => {
     expect(screen.queryByText('0s ago')).toBeNull();
   });
 
+  /**
+   * "Show coverage" deep link (#5277 P4a WP5, spec §2a.8) — opens the
+   * Coverage Report for this contact's lowercased pubkey. It's shown
+   * unconditionally (no write permission or path-known gate), matching
+   * "visible in read-only embeds too" from the spec.
+   */
+  describe('"Show coverage" link', () => {
+    it('is built from the lowercased public key, inside a Router', () => {
+      const contact: MeshCoreContact = { publicKey: PK, advType: 1 };
+      render(
+        <MemoryRouter>
+          <MeshCoreContactDetailPanel contact={contact} publicKey={PK.toUpperCase()} />
+        </MemoryRouter>,
+      );
+      const link = screen.getByRole('link', { name: /show coverage/i });
+      expect(decodeURIComponent(link.getAttribute('href') ?? '')).toBe(
+        `/reports?report=coverage&sender=${PK}&range=24h`,
+      );
+    });
+
+    it('falls back to a plain <a> without throwing when rendered without a Router', () => {
+      const contact: MeshCoreContact = { publicKey: PK, advType: 1 };
+      render(<MeshCoreContactDetailPanel contact={contact} publicKey={PK} />);
+      const link = screen.getByRole('link', { name: /show coverage/i });
+      expect(link.tagName).toBe('A');
+      expect(decodeURIComponent(link.getAttribute('href') ?? '')).toContain(`sender=${PK}`);
+    });
+
+    it('is shown even with no write permissions and no action handlers wired up (read-only embed)', () => {
+      const contact: MeshCoreContact = { publicKey: PK, advType: 1 };
+      render(
+        <MeshCoreContactDetailPanel contact={contact} publicKey={PK} canWriteNodes={false} />,
+      );
+      expect(screen.getByRole('link', { name: /show coverage/i })).toBeInTheDocument();
+    });
+  });
 });
