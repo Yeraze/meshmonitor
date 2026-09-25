@@ -77,6 +77,7 @@ import {
   MESHCORE_AUTOMATED_FLOOD_ADVERT_MIN_INTERVAL_MS,
 } from '../types/meshcoreAdvert.js';
 import { MeshCoreZeroHopAdvertUnsupportedError, classifyRepeaterAdvertReply } from './utils/meshcoreAdvert.js';
+import { plausibleMeshCoreTimeMs, isPlausibleMeshCoreTimeMs } from './utils/meshcoreTimestamp.js';
 
 // Dynamic imports for optional serialport dependency
 // These are loaded only when MeshCore is enabled to avoid requiring native build tools
@@ -1877,7 +1878,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         fromName: senderContact?.advName ?? senderContact?.name ?? undefined,
         toPublicKey: this.localNode?.publicKey || 'local',
         text: data.text,
-        timestamp: data.sender_timestamp ? data.sender_timestamp * 1000 : Date.now(),
+        // Falls back to our own receipt clock when the remote's clock is
+        // missing or implausible (unsynced RTC drifted years off, #5339) —
+        // otherwise a broken sender clock pins this message at a bogus sort
+        // position forever (see messageOrder.ts, which sorts on `timestamp`).
+        timestamp: plausibleMeshCoreTimeMs(data.sender_timestamp),
         // Our own clock, for ordering. `timestamp` above is the REMOTE's and
         // only whole-seconds, so it cannot order against our ms-precision
         // sends (see components/MeshCore/messageOrder.ts).
@@ -1934,7 +1939,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         fromPublicKey: MeshCoreManager.channelPublicKey(data.channel_idx),
         fromName,
         text: body,
-        timestamp: data.sender_timestamp ? data.sender_timestamp * 1000 : Date.now(),
+        // See the contact_message case above (#5339): falls back to receipt
+        // time when the sender's clock is missing or implausible.
+        timestamp: plausibleMeshCoreTimeMs(data.sender_timestamp),
         // Our own clock, for ordering. `timestamp` above is the REMOTE's and
         // only whole-seconds, so it cannot order against our ms-precision
         // sends (see components/MeshCore/messageOrder.ts).
@@ -1979,7 +1986,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         fromName: authorName,
         toPublicKey: roomFullKey,
         text: data.text,
-        timestamp: data.sender_timestamp ? data.sender_timestamp * 1000 : Date.now(),
+        // See the contact_message case above (#5339): falls back to receipt
+        // time when the sender's clock is missing or implausible.
+        timestamp: plausibleMeshCoreTimeMs(data.sender_timestamp),
         // Our own clock, for ordering. `timestamp` above is the REMOTE's and
         // only whole-seconds, so it cannot order against our ms-precision
         // sends (see components/MeshCore/messageOrder.ts).
@@ -3405,12 +3414,19 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           // Preserve the real Last Heard across reconnect (#3645). The companion
           // reports each contact's last advert time (epoch seconds) — use it for
           // lastSeen instead of the reconnect wall-clock, which previously reset
-          // every node's Last Heard to "now". Falls back to now only when the
-          // device didn't report an advert time. (Guard handles a value already
+          // every node's Last Heard to "now". Falls back to now when the device
+          // didn't report an advert time, OR when it did but the value can't be
+          // a real receive time (unsynced RTC drifted years off, #5339) — an
+          // implausible lastSeen doesn't just display wrong, it wrecks Last
+          // Heard sort order and the node-visibility max-age filter for as long
+          // as that drifted value sticks around. (Guard handles a value already
           // in ms, mirroring MeshCoreContactDetailPanel.)
           const advertSec = typeof c.last_advert === 'number' ? c.last_advert : 0;
-          const advertMs = advertSec > 0
+          const rawAdvertMs = advertSec > 0
             ? (advertSec < 1e12 ? advertSec * 1000 : advertSec)
+            : undefined;
+          const advertMs = rawAdvertMs !== undefined && isPlausibleMeshCoreTimeMs(rawAdvertMs, nowMs)
+            ? rawAdvertMs
             : undefined;
           this.contacts.set(c.public_key, {
             publicKey: c.public_key,
