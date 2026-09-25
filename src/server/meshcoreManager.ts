@@ -66,7 +66,7 @@ import { MESHCORE_SECRET_BYTES } from '../utils/meshcoreHelpers.js';
 import { MESHCORE_PAYLOAD_ADVERT } from '../utils/coverage.js';
 import { maybeRecordMeshCoreCoverageReception } from './utils/coverageMeshCore.js';
 import { parsePathHops, pathHashBytesOf, resolveRouteNames } from '../utils/meshcorePath.js';
-import { tryDecodeGroupTextPayload } from './utils/meshcoreGroupEcho.js';
+import { MESHCORE_PUBLIC_CHANNEL_SECRET, tryDecodeGroupTextPayload } from './utils/meshcoreGroupEcho.js';
 import { meshcoreAgeCutoffMs, isWithinMeshcoreAge } from '../utils/meshcoreAge.js';
 import { safeJson } from './utils/redactSecrets.js';
 import {
@@ -717,6 +717,17 @@ export interface MeshCoreMessage {
   /** Region name resolved from `scopeCode` against this source's known scopes;
    *  null = unscoped, or scoped-but-unknown (then the UI shows `#<code-hex>`). */
   scopeName?: string | null;
+  /**
+   * MeshCore packet hash of the received frame (#5357): 16 UPPERCASE hex chars,
+   * `calculateMeshCorePacketHash` — the key map.meshcore.com.hr and other
+   * MeshCore analyzers use. Set only when the raw frame was matched to this
+   * message: channel messages verified by decrypting the frame (companion) or
+   * taken from the MQTT envelope's raw bytes; DMs best-effort (sender src_hash
+   * + path_len). Undefined for room posts, messages synced from the device's
+   * offline queue after a reconnect, outbound messages, and anything unmatched.
+   * In-memory/event only — not persisted to meshcore_messages.
+   */
+  packetHash?: string;
 }
 
 export interface MeshCoreStatus {
@@ -993,6 +1004,15 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   // the synchronous inbound-message path resolves with no DB round-trip;
   // refreshed on connect and whenever a scope changes.
   private knownScopes: Set<string> = new Set();
+  /**
+   * In-memory copy of this source's MeshCore channel secrets (slot → 16-byte
+   * AES key), read from the `channels` table (#5357). The native backend's
+   * channel-recv handler is synchronous and has no DB access, so it verifies a
+   * channel message against the buffered GRP_TXT frames through
+   * {@link resolveChannelSecret}, which reads only this cache. Primed on connect
+   * and rebuilt after every channel sync (MeshCore has no channel-change push).
+   */
+  private channelSecrets: Map<number, Uint8Array> = new Map();
 
   /** Cached per-source `meshcoreReceiveOnly`. Sync-readable; refreshed on connect and on settings write. */
   private receiveOnly = false;
@@ -1340,6 +1360,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // Prime the known-scope cache so the first received message can resolve its
     // scope name without a DB round-trip (#3742 Phase 2).
     await this.refreshKnownScopes();
+    // Same for the channel-secret cache the backend verifies channel messages
+    // with (#5357), so messages that arrive before the first channel sync still
+    // get their packet hash.
+    await this.refreshChannelSecrets();
 
     logger.info(`[MeshCore] Connecting via ${this.config.connectionType}...`);
     this.connectionState = 'connecting';
@@ -1768,6 +1792,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
     const backend = new MeshCoreNativeBackend(this.sourceId, backendConfig);
     this.nativeBackend = backend;
+    // Channel messages are matched to their raw frame by decrypting it (#5357);
+    // the backend reads secrets through this sync lookup, never the DB.
+    backend.setChannelSecretResolver((idx) => this.resolveChannelSecret(idx));
 
     // Native backend emits bridge-shaped push events; route them through
     // the manager's existing event handler.
@@ -1868,6 +1895,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         routePath: observedRoute,
         scopeCode: scope.scopeCode,
         scopeName: scope.scopeName,
+        // Best-effort for DMs (src_hash + path_len correlation, #5357).
+        packetHash: typeof data.packet_hash === 'string' ? data.packet_hash : undefined,
       };
       this.addMessage(message);
       this.emit('message', message);
@@ -1923,6 +1952,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         routePath: route,
         scopeCode: scope.scopeCode,
         scopeName: scope.scopeName,
+        // Set only when the backend verified the raw frame by decrypting it (#5357).
+        packetHash: typeof data.packet_hash === 'string' ? data.packet_hash : undefined,
       };
       this.addMessage(message);
       this.emit('message', message);
@@ -2374,6 +2405,35 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Rebuild {@link channelSecrets} from this source's `channels` rows (#5357).
+   * Never throws; on failure the previous cache stays in place.
+   */
+  private async refreshChannelSecrets(): Promise<void> {
+    try {
+      const rows = await databaseService.channels.getAllChannels(this.sourceId);
+      const next = new Map<number, Uint8Array>();
+      for (const row of rows) {
+        if (!row.psk) continue;
+        const buf = Buffer.from(row.psk, 'base64');
+        if (buf.length === MESHCORE_SECRET_BYTES) next.set(row.id, new Uint8Array(buf));
+      }
+      this.channelSecrets = next;
+    } catch (err) {
+      logger.debug(`[MeshCore:${this.sourceId}] refreshChannelSecrets failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Synchronous channel-secret lookup handed to the native backend (#5357).
+   * Slot 0 falls back to the well-known Public secret: the firmware seeds slot 0
+   * with it but reports the slot like an empty one, so no PSK is stored for it.
+   * A wrong secret only means the frame fails to verify — never a false match.
+   */
+  private resolveChannelSecret(channelIdx: number): Uint8Array | null {
+    return this.channelSecrets.get(channelIdx) ?? (channelIdx === 0 ? MESHCORE_PUBLIC_CHANNEL_SECRET : null);
   }
 
   /**
@@ -2865,6 +2925,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         'Re-run a sync once the device is responsive to reconcile properly.',
       );
     }
+
+    await this.refreshChannelSecrets();
 
     logger.debug(
       `[MeshCore:${this.sourceId}] Synced ${configured.length} configured channel(s) from device ` +

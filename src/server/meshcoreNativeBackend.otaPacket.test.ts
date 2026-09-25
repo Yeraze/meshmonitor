@@ -16,6 +16,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { EventEmitter } from 'events';
 import { MeshCoreNativeBackend, __setMeshCoreModule } from './meshcoreNativeBackend.js';
+import { encodeGroupTextPayload } from './utils/meshcoreGroupEcho.js';
 
 const ResponseCodes = {
   Ok: 0, Err: 1, ContactsStart: 2, Contact: 3, EndOfContacts: 4,
@@ -98,6 +99,19 @@ function installMockModule(): void {
   });
 }
 
+// Channel messages are matched by decrypting the buffered GRP_TXT frame
+// (#5357), so channel fixtures carry a real encrypted payload for this secret
+// and the backend is handed a resolver for slot 0.
+const CH0_SECRET = Uint8Array.from(Buffer.from('00112233445566778899aabbccddeeff', 'hex'));
+
+/** Mock-layout GRP_TXT frame whose payload decrypts to `"<sender>: <text>"` at `ts`. */
+function grpFrame(route: number, pathLen: number, path: number[], sender: string, text: string, ts: number): Uint8Array {
+  const payload = Buffer.from(encodeGroupTextPayload(CH0_SECRET, sender, text, ts), 'hex');
+  return Uint8Array.from([0x05, route, pathLen, ...path, ...payload]);
+}
+
+const hex = (b: Uint8Array): string => Buffer.from(b).toString('hex');
+
 async function connectedBackend(): Promise<{ backend: MeshCoreNativeBackend; conn: MockConnection; events: any[] }> {
   const backend = new MeshCoreNativeBackend('src-otapkt', {
     connectionType: 'serial',
@@ -105,6 +119,7 @@ async function connectedBackend(): Promise<{ backend: MeshCoreNativeBackend; con
   });
   const events: any[] = [];
   backend.on('event', (e) => events.push(e));
+  backend.setChannelSecretResolver((idx) => (idx === 0 ? CH0_SECRET : null));
   await backend.connect();
   // The backend constructs the connection internally; grab it back off the
   // private field for emitting pushes.
@@ -176,7 +191,7 @@ describe('MeshCoreNativeBackend — ota_packet capture', () => {
   it('carries the buffered LogRxData SNR onto a channel_message event', async () => {
     const { conn, events } = await connectedBackend();
     // Channel messages ride GRP_TXT (0x05) on the wire, not TXT_MSG (0x02).
-    const raw = Uint8Array.from([0x05, 0x01, 0x02, 0xa3, 0x7f]);
+    const raw = grpFrame(0x01, 0x02, [0xa3, 0x7f], 'Alice', 'ping', 1800);
     conn.emit(PushCodes.LogRxData, { lastSnr: -3.5, lastRssi: -88, raw });
     conn.emit(ResponseCodes.ChannelMsgRecv, {
       channelIdx: 0,
@@ -199,7 +214,7 @@ describe('MeshCoreNativeBackend — ota_packet capture', () => {
     // miss" users saw was a coincidental stale TXT_MSG buffer being matched.
     const { conn, events } = await connectedBackend();
     // GRP_TXT (0x05), FLOOD, packed pathLen=0x42 (2-byte hashes, 2 hops).
-    const raw = Uint8Array.from([0x05, 0x01, 0x42, 0xde, 0xad, 0xbe, 0xef]);
+    const raw = grpFrame(0x01, 0x42, [0xde, 0xad, 0xbe, 0xef], 'Carol', 'routed hello', 2000);
     conn.emit(PushCodes.LogRxData, { lastSnr: 3.25, lastRssi: -55, raw });
     conn.emit(ResponseCodes.ChannelMsgRecv, {
       channelIdx: 0,
@@ -220,7 +235,7 @@ describe('MeshCoreNativeBackend — ota_packet capture', () => {
     // "(direct)" downstream, matching the DM direct-path behavior.
     const { conn, events } = await connectedBackend();
     // GRP_TXT (0x05), DIRECT, pathLen=0xff (sent direct, no relay hashes).
-    const raw = Uint8Array.from([0x05, 0x02, 0xff]);
+    const raw = grpFrame(0x02, 0xff, [], 'Dave', 'direct hello', 2100);
     conn.emit(PushCodes.LogRxData, { lastSnr: 7.0, lastRssi: -38, raw });
     conn.emit(ResponseCodes.ChannelMsgRecv, {
       channelIdx: 0,
@@ -289,9 +304,9 @@ describe('MeshCoreNativeBackend — ota_packet capture', () => {
     // both, matched to their recvs by hop count.
     const { conn, events } = await connectedBackend();
     // Packet A: GRP_TXT FLOOD, 2-byte hashes, 2 hops (packed 0x42).
-    const rawA = Uint8Array.from([0x05, 0x01, 0x42, 0xde, 0xad, 0xbe, 0xef]);
+    const rawA = grpFrame(0x01, 0x42, [0xde, 0xad, 0xbe, 0xef], 'Alice', 'first', 3000);
     // Packet B: GRP_TXT FLOOD, 1-byte hash, 1 hop (packed 0x01).
-    const rawB = Uint8Array.from([0x05, 0x01, 0x01, 0xaa]);
+    const rawB = grpFrame(0x01, 0x01, [0xaa], 'Bob', 'second', 3100);
     // Both LogRxData pushes land BEFORE either recv (the clobber window).
     conn.emit(PushCodes.LogRxData, { lastSnr: 3.25, lastRssi: -55, raw: rawA });
     conn.emit(PushCodes.LogRxData, { lastSnr: 7.0, lastRssi: -38, raw: rawB });
@@ -304,11 +319,11 @@ describe('MeshCoreNativeBackend — ota_packet capture', () => {
     // First message keeps packet A's path + SNR + raw bytes (not clobbered).
     expect(msgs[0].data.path_hops).toEqual(['dead', 'beef']);
     expect(msgs[0].data.snr).toBe(3.25);
-    expect(msgs[0].data.raw_hex).toBe('050142deadbeef');
+    expect(msgs[0].data.raw_hex).toBe(hex(rawA));
     // Second message keeps packet B's.
     expect(msgs[1].data.path_hops).toEqual(['aa']);
     expect(msgs[1].data.snr).toBe(7.0);
-    expect(msgs[1].data.raw_hex).toBe('050101aa');
+    expect(msgs[1].data.raw_hex).toBe(hex(rawB));
   });
 
   it('GCs a buffered path older than the age backstop (poison never consumed)', async () => {
@@ -426,7 +441,7 @@ describe('MeshCoreNativeBackend — ota_packet capture', () => {
   it('attaches the buffered path for a 2-byte-hash flood channel_message (issue #3710)', async () => {
     const { conn, events } = await connectedBackend();
     // GRP_TXT (0x05), FLOOD, packed pathLen=0x42 (2-byte hashes, 2 hops).
-    const raw = Uint8Array.from([0x05, 0x01, 0x42, 0xad, 0xb0, 0x12, 0x34]);
+    const raw = grpFrame(0x01, 0x42, [0xad, 0xb0, 0x12, 0x34], 'Bob', 'routed ping', 1800);
     conn.emit(PushCodes.LogRxData, { lastSnr: -2.0, lastRssi: -70, raw });
     conn.emit(ResponseCodes.ChannelMsgRecv, {
       channelIdx: 0,
@@ -477,8 +492,8 @@ describe('MeshCoreNativeBackend — RSSI on received messages (#4504)', () => {
 
   // TXT_MSG, DIRECT, pathLen 0xff → 0 hops.
   const directTxt = () => Uint8Array.from([0x02, 0x02, 0xff]);
-  // GRP_TXT, DIRECT, pathLen 0xff → 0 hops.
-  const directGrp = () => Uint8Array.from([0x05, 0x02, 0xff]);
+  // GRP_TXT, DIRECT, pathLen 0xff → 0 hops; decrypts to "Eve: yo" @ 1700000002.
+  const directGrp = () => grpFrame(0x02, 0xff, [], 'Eve', 'yo', 1700000002);
 
   it('attaches RSSI (with SNR) to a DM from the preceding LogRxData', async () => {
     const { conn, events } = await connectedBackend();
@@ -497,7 +512,7 @@ describe('MeshCoreNativeBackend — RSSI on received messages (#4504)', () => {
     const { conn, events } = await connectedBackend();
     conn.emit(PushCodes.LogRxData, { lastSnr: 4, lastRssi: -61, raw: directGrp() });
     conn.emit(ResponseCodes.ChannelMsgRecv, {
-      channelIdx: 0, pathLen: 0xff, txtType: 0, senderTimestamp: 1700000002, text: 'yo',
+      channelIdx: 0, pathLen: 0xff, txtType: 0, senderTimestamp: 1700000002, text: 'Eve: yo',
     });
 
     const msg = events.find((e) => e.event_type === 'channel_message');
@@ -608,16 +623,17 @@ describe('MeshCoreNativeBackend — LogRxData→recv correlation (#4883)', () =>
     expect(msg.data.snr).toBe(8);
   });
 
-  it('correlates channel (GRP_TXT) messages FIFO oldest-first', async () => {
+  it('correlates channel (GRP_TXT) messages by decrypted content, not buffer order (#5357)', async () => {
     const { conn, events } = await connectedBackend();
-    conn.emit(PushCodes.LogRxData, { lastSnr: 4, lastRssi: -50, raw: Uint8Array.from([0x05, 0x01, 0x01, 0xc1]) });
-    conn.emit(PushCodes.LogRxData, { lastSnr: 5, lastRssi: -45, raw: Uint8Array.from([0x05, 0x01, 0x01, 0xc2]) });
-    conn.emit(ResponseCodes.ChannelMsgRecv, { channelIdx: 0, text: 'a', senderTimestamp: 1, pathLen: 0x01 });
-    conn.emit(ResponseCodes.ChannelMsgRecv, { channelIdx: 0, text: 'b', senderTimestamp: 2, pathLen: 0x01 });
+    conn.emit(PushCodes.LogRxData, { lastSnr: 4, lastRssi: -50, raw: grpFrame(0x01, 0x01, [0xc1], 'A', 'a', 1) });
+    conn.emit(PushCodes.LogRxData, { lastSnr: 5, lastRssi: -45, raw: grpFrame(0x01, 0x01, [0xc2], 'B', 'b', 2) });
+    // Recvs arrive in the OPPOSITE order to the buffered frames.
+    conn.emit(ResponseCodes.ChannelMsgRecv, { channelIdx: 0, text: 'B: b', senderTimestamp: 2, pathLen: 0x01 });
+    conn.emit(ResponseCodes.ChannelMsgRecv, { channelIdx: 0, text: 'A: a', senderTimestamp: 1, pathLen: 0x01 });
 
     const msgs = events.filter((e) => e.event_type === 'channel_message');
     expect(msgs).toHaveLength(2);
-    expect(msgs[0].data.path_hops).toEqual(['c1']); // oldest buffer → first recv
-    expect(msgs[1].data.path_hops).toEqual(['c2']);
+    expect(msgs[0].data.path_hops).toEqual(['c2']);
+    expect(msgs[1].data.path_hops).toEqual(['c1']);
   });
 });

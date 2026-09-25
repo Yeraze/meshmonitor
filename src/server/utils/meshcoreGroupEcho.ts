@@ -44,6 +44,39 @@ const GROUP_TEXT_HEADER_SIZE = 5;
 const SECRET_BUFFER_SIZE = 32;
 
 /**
+ * The well-known secret of MeshCore's slot-0 "Public" channel. Companion
+ * firmware seeds slot 0 with it on every boot (`MyMesh::begin` →
+ * `addChannel("Public", PUBLIC_GROUP_PSK)`, base64 `izOH6cXN6mrJ5e26oRXNcg==`)
+ * but reports that slot like an empty one, so MeshMonitor stores no PSK for it.
+ * Callers use this as the slot-0 fallback when no stored secret exists.
+ */
+export const MESHCORE_PUBLIC_CHANNEL_SECRET: Uint8Array = new Uint8Array(
+  Buffer.from('izOH6cXN6mrJ5e26oRXNcg==', 'base64'),
+);
+
+/**
+ * Longest text (UTF-8 bytes) a companion channel-recv frame can be trusted to
+ * carry whole. The firmware caps the frame at MAX_FRAME_SIZE (172) and cuts the
+ * text to fit after an 8-byte (v1) or 11-byte (v3) header, so a text this long
+ * may be a truncated copy of the packet body.
+ */
+const COMPANION_RECV_TEXT_SAFE_BYTES = 160;
+
+/**
+ * True when a decrypted GRP_TXT body is the same text the companion reported in
+ * its ChannelMsgRecv frame (`"<senderName>: <text>"` in both). Exact match,
+ * except that a recv text long enough to have hit the frame cap only needs to
+ * be a prefix of the body (a cut mid-character decodes to U+FFFD, stripped).
+ */
+export function groupTextBodyMatchesRecv(decodedBody: string, recvText: unknown): boolean {
+  if (typeof recvText !== 'string' || recvText.length === 0) return false;
+  if (decodedBody === recvText) return true;
+  if (Buffer.byteLength(recvText, 'utf8') < COMPANION_RECV_TEXT_SAFE_BYTES) return false;
+  const trimmed = recvText.replace(/�+$/u, '');
+  return trimmed.length > 0 && decodedBody.startsWith(trimmed);
+}
+
+/**
  * Derive the 1-byte MeshCore channel hash from a channel secret: the first byte
  * of SHA-256 over the secret (`BaseChatMesh::addChannel`). For MeshMonitor's
  * 16-byte AES-128 PSKs this hashes the 16 stored bytes.

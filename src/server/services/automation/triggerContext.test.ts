@@ -483,6 +483,30 @@ describe('multi-channel trigger filter (#3974)', () => {
   });
 });
 
+describe('packetHash token (#5357)', () => {
+  it('exposes the MeshCore packet hash when the message carries one', () => {
+    const ctx = buildMeshCoreMessageContext(
+      mcMsg({ fromPublicKey: 'channel-0', packetHash: '931D5DA9D6054F49' }),
+      'default',
+      1,
+    );
+    expect(ctx.fields.packetHash).toBe('931D5DA9D6054F49');
+  });
+
+  it('is undefined on a MeshCore message with no matched frame', () => {
+    const ctx = buildMeshCoreMessageContext(mcMsg({ fromPublicKey: 'aabbcc', toPublicKey: 'me' }), 'default', 1);
+    expect(ctx.fields.packetHash).toBeUndefined();
+    // An empty string is treated as absent too.
+    const empty = buildMeshCoreMessageContext(mcMsg({ fromPublicKey: 'aabbcc', packetHash: '' }), 'default', 1);
+    expect(empty.fields.packetHash).toBeUndefined();
+  });
+
+  it('is undefined on a Meshtastic message', () => {
+    const ctx = buildMessageContext(msg(), 'default', 1);
+    expect(ctx.fields.packetHash).toBeUndefined();
+  });
+});
+
 describe('buildMeshCoreMessageContext (#3833)', () => {
   it('maps a channel message: synthetic from, channel index, broadcast, scope', () => {
     const ctx = buildMeshCoreMessageContext(

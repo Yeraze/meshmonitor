@@ -50,6 +50,7 @@ vi.mock('./transports/mqttBrokerClient.js', () => ({
 }));
 
 import { MeshCoreMqttManager } from './meshcoreMqttManager.js';
+import { calculateMeshCorePacketHash } from './services/meshcoreObserverPacket.js';
 
 const SECRET_HEX = '0123456789abcdef0123456789abcdef'; // 16 bytes
 const SECRET_B64 = Buffer.from(SECRET_HEX, 'hex').toString('base64');
@@ -126,6 +127,22 @@ describe('channel message ingest (#5040 Phase 4)', () => {
     // Sender's timestamp, not ingest time.
     expect(row.timestamp).toBe(1_700_000_000_000);
     expect(mgr.getIngestStats().channelMessages).toBe(1);
+  });
+
+  it('puts the exact packet hash on the emitted message but not on the DB row (#5357)', async () => {
+    await started();
+    const frame = grpTxtFrame(1_700_000_000, 'Alice: hash me');
+    lastClient!.deliver(`meshcore/MCO/${OBSERVER_A}/packets`, msg(frame));
+    await settle();
+
+    const expected = calculateMeshCorePacketHash(frame);
+    expect(expected).toMatch(/^[0-9A-F]{16}$/);
+    expect(emitMeshCoreMessage).toHaveBeenCalledTimes(1);
+    expect(emitMeshCoreMessage.mock.calls[0][0].packetHash).toBe(expected);
+    // meshcore_messages has no hash column: the insert row keeps its shape.
+    const [row] = insertMessage.mock.calls[0];
+    expect(row).not.toHaveProperty('packetHash');
+    expect(row).toMatchObject({ text: 'hash me', fromName: 'Alice', messageType: 'channel' });
   });
 
   it('gives two observers of the SAME message one id — so it collapses to one row', async () => {

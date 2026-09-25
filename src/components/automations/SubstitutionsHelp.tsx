@@ -38,6 +38,7 @@ export const TRIGGER_TOKENS: Record<string, Array<[string, string]>> = {
     ['decryptedBy', 'Channel/key that decrypted it'], ['protocol', 'meshtastic or meshcore'],
     ['protocolShort', 'Short protocol code: MT (Meshtastic) or MC (MeshCore)'],
     ['scopeName', 'Region/scope name (MeshCore)'],
+    ['packetHash', 'MeshCore only: packet hash, 16 uppercase hex chars — matches map.meshcore.com.hr/#/packets/<hash>. Best-effort for DMs; empty when the raw frame could not be matched (room posts, messages synced after a reconnect)'],
     ['scopeCode', 'Region/scope code — 0 = unscoped (MeshCore)'], ['scoped', 'true if sent with a region (MeshCore)'],
   ],
   'trigger.telemetry': [['nodeNum', 'Node number'], ['telemetryType', 'Metric name'], ['value', 'Reading value'], ['unit', 'Unit']],

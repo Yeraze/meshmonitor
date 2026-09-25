@@ -59,6 +59,7 @@ import { createHash } from 'node:crypto';
 import { ChannelCrypto } from '@michaelhart/meshcore-decoder';
 import { ALL_SOURCES } from '../db/repositories/base.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
+import { meshCorePacketHashOrUndefined } from './services/meshcoreObserverPacket.js';
 import { MESHCORE_PAYLOAD_ADVERT } from '../utils/coverage.js';
 import {
   maybeRecordMeshCoreCoverageReception,
@@ -590,7 +591,11 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
       const inserted = await databaseService.meshcore.insertMessage(row, this.sourceId);
       if (!inserted) return; // A different observer's copy already landed.
       this.stats.channelMessages++;
-      dataEventEmitter.emitMeshCoreMessage(row, this.sourceId);
+      // The packet hash (#5357) rides the event only: added AFTER the insert so
+      // the DB row keeps its shape (meshcore_messages has no hash column). The
+      // raw frame came straight off the wire, so the hash is exact.
+      const packetHash = meshCorePacketHashOrUndefined(decoded.event.raw_hex);
+      dataEventEmitter.emitMeshCoreMessage({ ...row, packetHash }, this.sourceId);
     } catch (err) {
       logger.debug(`[MeshCoreMqtt:${this.sourceId}] failed to ingest channel message:`, err);
     }
