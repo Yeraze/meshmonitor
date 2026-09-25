@@ -23,6 +23,7 @@ import {
   isChannelPseudoKey,
 } from './meshcoreUnreadStore';
 import { UiIcon } from '../icons';
+import { uniquePrefixMatch } from '../../utils/meshcoreKeyMatch';
 
 interface MeshCoreDirectMessagesViewProps {
   messages: MeshCoreMessage[];
@@ -153,10 +154,9 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     return (key: string): string => {
       if (!key) return key;
       if (contactsByKey.has(key)) return key;
-      for (const c of contacts) {
-        if (c.publicKey && c.publicKey.startsWith(key)) return c.publicKey;
-      }
-      return key;
+      // Unique match only (#5349): an ambiguous prefix keeps its own entry
+      // rather than merging into whichever colliding contact comes first.
+      return uniquePrefixMatch(contacts, key)?.publicKey ?? key;
     };
   }, [contacts, contactsByKey]);
 

@@ -2336,8 +2336,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       const heardBy: Array<{ hash: string; name?: string | null; snr?: number | null }> = [];
 
       for (const hash of match.pathHops) {
-        const contact = this.resolveContactByPrefix(hash);
-        const name = contact?.advName ?? contact?.name ?? null;
+        const name = this.nameForRelayHash(hash);
         const merged = await databaseService.meshcore.recordHeardRepeater({
           sourceId: this.sourceId,
           messageId: match.messageId,
@@ -5683,16 +5682,50 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   }
 
   /**
-   * Find a contact whose publicKey starts with the given hex prefix.
+   * Find THE contact whose publicKey starts with the given hex prefix.
+   *
+   * Returns `undefined` when nothing matches AND when more than one contact
+   * matches (#5349). Picking the first of several would silently attribute a
+   * name, a reply, or a DM to whichever colliding contact happened to be
+   * inserted first. The MeshCore frames that carry a 6-byte prefix practically
+   * never collide, but 1-3 byte route hashes routinely do on a busy mesh.
+   * Callers that can disambiguate with extra context (e.g. "only repeaters")
+   * should use `resolveContactsByPrefix` and choose themselves.
    */
   resolveContactByPrefix(prefix: string): MeshCoreContact | undefined {
     if (!prefix) return undefined;
     const exact = this.contacts.get(prefix);
     if (exact) return exact;
+    const matches = this.resolveContactsByPrefix(prefix);
+    return matches.length === 1 ? matches[0] : undefined;
+  }
+
+  /**
+   * Friendly name for a 1-3 byte route-hop hash, or null when it cannot be
+   * attributed to exactly one relay (#5349). Hop hashes collide routinely on a
+   * busy mesh, and only a repeater or room server can appear in a path, so the
+   * candidates are narrowed to those before requiring a unique match.
+   */
+  nameForRelayHash(hash: string): string | null {
+    const relays = this.resolveContactsByPrefix(hash).filter(
+      (c) => c.advType === MeshCoreDeviceType.REPEATER || c.advType === MeshCoreDeviceType.ROOM_SERVER,
+    );
+    if (relays.length !== 1) return null;
+    return relays[0].advName || relays[0].name || null;
+  }
+
+  /**
+   * Every contact whose publicKey starts with the given hex prefix
+   * (case-insensitive). Empty prefix matches nothing.
+   */
+  resolveContactsByPrefix(prefix: string): MeshCoreContact[] {
+    if (!prefix) return [];
+    const needle = prefix.toLowerCase();
+    const out: MeshCoreContact[] = [];
     for (const c of this.contacts.values()) {
-      if (c.publicKey.startsWith(prefix)) return c;
+      if (c.publicKey && c.publicKey.toLowerCase().startsWith(needle)) out.push(c);
     }
-    return undefined;
+    return out;
   }
 
   /**

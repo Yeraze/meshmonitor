@@ -2569,15 +2569,14 @@ export class MeshCoreNativeBackend extends EventEmitter {
     if (normalized.length === 64) {
       return Uint8Array.from(hexToBytes(normalized));
     }
-    // Look up by prefix from the contact list.
+    // Look up by prefix from the contact list. Require a UNIQUE match
+    // (#5349): picking the first of several contacts sharing the prefix
+    // would address the command to the wrong node.
     const contacts: any[] = await this.connection.getContacts();
-    for (const ct of contacts) {
-      const fullHex = bytesToHex(ct.publicKey);
-      if (fullHex.startsWith(normalized)) {
-        return ct.publicKey instanceof Uint8Array ? ct.publicKey : Uint8Array.from(ct.publicKey);
-      }
-    }
-    return null;
+    const matches = contacts.filter((ct) => bytesToHex(ct.publicKey).startsWith(normalized));
+    if (matches.length !== 1) return null;
+    const pk = matches[0].publicKey;
+    return pk instanceof Uint8Array ? pk : Uint8Array.from(pk);
   }
 
   /**

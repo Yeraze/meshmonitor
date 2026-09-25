@@ -12,6 +12,7 @@ import MessageDetailsModal from '../diagnostics/MessageDetailsModal';
 import { UiIcon } from '../icons';
 import UnreadDivider from '../messages/UnreadDivider';
 import { resolveUnreadAnchorId, shouldSuppressDivider } from '../../utils/unreadAnchor';
+import { uniquePrefixMatch } from '../../utils/meshcoreKeyMatch';
 
 interface MeshCoreMessageStreamProps {
   messages: MeshCoreMessage[];
@@ -156,7 +157,9 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
     }
     return (key: string): string | null => {
       if (!key) return null;
-      const hit = exact.get(key) ?? list.find(c => c.publicKey && c.publicKey.startsWith(key));
+      // Unique prefix match only (#5349) — never name a message after the
+      // first of several contacts sharing its prefix.
+      const hit = exact.get(key) ?? uniquePrefixMatch(list, key);
       if (!hit) return null;
       return hit.advName || hit.name || null;
     };
@@ -168,7 +171,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
     return (key: string): string => {
       if (!key) return key;
       if (exact.has(key)) return key;
-      const hit = list.find(c => c.publicKey && c.publicKey.startsWith(key));
+      const hit = uniquePrefixMatch(list, key);
       return hit?.publicKey ?? key;
     };
   }, [contacts]);
