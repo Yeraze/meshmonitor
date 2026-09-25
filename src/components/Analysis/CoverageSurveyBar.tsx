@@ -32,6 +32,7 @@ import {
   useStopSurvey,
   useDeleteSurvey,
 } from '../../hooks/useCoverageSurveys';
+import { useNow } from '../../hooks/useNow';
 import { COVERAGE_SURVEY_LIVE_MAX_MS, COVERAGE_SURVEY_MAX_RANGE_MS } from '../../utils/coverage';
 import { formatDuration } from '../../utils/telemetryFormat';
 import {
@@ -64,6 +65,13 @@ export interface CoverageSurveyBarProps {
 
 type ModalKind = 'start' | 'save' | 'edit' | 'delete' | null;
 
+/** How often the live badge's elapsed-time label re-renders. Display-only —
+ *  this never touches a query key or triggers a fetch (see `useNow`'s doc
+ *  comment). 30 s matches the granularity `formatDuration` actually shows
+ *  (its smallest unit is minutes), so a faster tick would repaint more
+ *  often than the label could ever visibly change. */
+const SURVEY_LIVE_TICK_MS = 30_000;
+
 export const CoverageSurveyBar: React.FC<CoverageSurveyBarProps> = ({
   senderId,
   senderLabel,
@@ -93,6 +101,14 @@ export const CoverageSurveyBar: React.FC<CoverageSurveyBarProps> = ({
     () => surveys.find((s) => s.id === selectedSurveyId) ?? null,
     [surveys, selectedSurveyId],
   );
+
+  // Ticks the live badge's "elapsed" label (#5277 review follow-up, PR
+  // #5353) — a bare `Date.now()` read at render only updates when
+  // something ELSE re-renders this component, so the label froze. Only
+  // ticks while a live survey is actually selected and shown; the
+  // auto-end timestamp below is a fixed target time, not something that
+  // needs a live clock. Display-only: `now` never reaches a query key.
+  const now = useNow(SURVEY_LIVE_TICK_MS, Boolean(selectedSurvey?.isLive));
 
   const surveyOptions = useMemo<SearchableSelectOption[]>(
     () =>
@@ -320,7 +336,7 @@ export const CoverageSurveyBar: React.FC<CoverageSurveyBarProps> = ({
         <div className={styles.liveBadge} data-testid="coverage-survey-live-badge">
           <UiIcon name="radioSignal" size={12} className={styles.liveDot} />
           {t('analysis.coverage.survey_live_elapsed', 'Live — {{elapsed}} elapsed', {
-            elapsed: formatDuration(Math.max(0, (Date.now() - selectedSurvey.startAt) / 1000)),
+            elapsed: formatDuration(Math.max(0, (now - selectedSurvey.startAt) / 1000)),
           })}
           <span className={styles.liveAutoEnd}>
             {t('analysis.coverage.survey_live_auto_end', 'Auto-ends at {{time}}', {

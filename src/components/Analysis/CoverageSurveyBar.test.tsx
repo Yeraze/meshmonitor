@@ -175,6 +175,46 @@ describe('CoverageSurveyBar', () => {
       expect(within(badge).getByText(/Auto-ends at/)).toBeInTheDocument();
     });
 
+    // #5277 review follow-up (PR #5353): the elapsed label used to read
+    // Date.now() only at render, so it froze until something else
+    // re-rendered the bar. useNow() now ticks it forward on its own.
+    it('the elapsed label advances on its own as time passes (useNow tick), without a manual re-render', () => {
+      vi.useFakeTimers();
+      try {
+        const startAt = Date.now();
+        const survey = makeSurvey({ isLive: true, endAt: null, startAt });
+        h.surveysData = [survey];
+        renderBar({ selectedSurveyId: survey.id });
+
+        const badge = screen.getByTestId('coverage-survey-live-badge');
+        expect(within(badge).getByText(/Live — 0m elapsed/)).toBeInTheDocument();
+
+        act(() => {
+          vi.advanceTimersByTime(60_000);
+        });
+
+        expect(within(badge).getByText(/Live — 1m elapsed/)).toBeInTheDocument();
+
+        act(() => {
+          vi.advanceTimersByTime(4 * 60_000);
+        });
+
+        expect(within(badge).getByText(/Live — 5m elapsed/)).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('does not tick (no interval running) when no live survey is selected', () => {
+      vi.useFakeTimers();
+      try {
+        renderBar({ selectedSurveyId: null });
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('shows Stop for a live survey the viewer can edit, and calls stopSurvey.mutate on click', () => {
       const survey = makeSurvey({ isLive: true, endAt: null, canEdit: true });
       h.surveysData = [survey];
