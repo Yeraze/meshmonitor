@@ -11,7 +11,7 @@
  * rather than a hand-rolled mock.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import coverageRoutes from './coverageRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 import databaseService from '../../services/database.js';
@@ -447,6 +447,85 @@ describe('Coverage Report API (#5277 WP3)', () => {
       expect(res.status).toBe(200);
       expect(res.body.data.receivers).toEqual([]);
       expect(res.body.data.retentionDays).toBe(7);
+    });
+
+    // ── since/until (#5277 P4b WP2, spec §2b.5/A11) ─────────────────────────
+    //
+    // A survey older than the retention window would otherwise have no
+    // receivers listed. `since` narrowing already works against the real,
+    // unmodified `CoverageReceptionsRepository.getReceivers` (it has always
+    // taken `sinceMs`); `until` is a WP1 dependency (`GetCoverageReceiversArgs`
+    // needs an `untilMs` field added) — that repo call is spied on, not
+    // mocked, so this only asserts the route passes `untilMs` through, not
+    // that the (not-yet-implemented) upper bound actually filters rows.
+    describe('since/until', () => {
+      const OLD_RECEIVER = 0x61000099;
+      const TEN_DAYS_MS = 10 * 86_400_000;
+
+      beforeEach(async () => {
+        await harness.db.nodes.upsertNode({
+          nodeNum: OLD_RECEIVER, nodeId: nodeIdFor(OLD_RECEIVER), longName: 'Old Receiver', shortName: 'OR',
+          channel: 0, latitude: 1.0, longitude: 2.0, lastHeard: nowSec(),
+        } as any, harness.sourceA);
+        await databaseService.coverageReceptions.recordReception({
+          sourceId: harness.sourceA,
+          protocol: 'meshtastic',
+          receiverKind: 'local',
+          receiverId: nodeIdFor(OLD_RECEIVER),
+          receiverNodeNum: OLD_RECEIVER,
+          receiverLatitude: 1.0,
+          receiverLongitude: 2.0,
+          senderId: nodeIdFor(SENDER_OK),
+          senderNodeNum: SENDER_OK,
+          packetKey: 'pkt-old',
+          pathKey: 'r0:h0',
+          latitude: 1.5,
+          longitude: 2.5,
+          receivedAt: Date.now() - TEN_DAYS_MS,
+        });
+      });
+
+      it('default window (retentionDays) excludes a reception outside it', async () => {
+        const agent = await harness.loginAs(harness.admin);
+        const res = await agent.get('/receivers');
+        const ids = res.body.data.receivers.map((r: any) => r.receiverId);
+        expect(ids).not.toContain(nodeIdFor(OLD_RECEIVER));
+      });
+
+      it('?since= widens the window past the default retention days', async () => {
+        const agent = await harness.loginAs(harness.admin);
+        const res = await agent.get(`/receivers?since=${Date.now() - TEN_DAYS_MS - 3600_000}`);
+        expect(res.status).toBe(200);
+        const ids = res.body.data.receivers.map((r: any) => r.receiverId);
+        expect(ids).toContain(nodeIdFor(OLD_RECEIVER));
+      });
+
+      it('passes untilMs through to CoverageReceptionsRepository.getReceivers', async () => {
+        const spy = vi.spyOn(databaseService.coverageReceptions, 'getReceivers');
+        try {
+          const untilMs = Date.now() - 1000;
+          const agent = await harness.loginAs(harness.admin);
+          await agent.get(`/receivers?until=${untilMs}`);
+          expect(spy).toHaveBeenCalledWith(expect.objectContaining({ untilMs }));
+        } finally {
+          spy.mockRestore();
+        }
+      });
+
+      it('400s on a non-numeric since', async () => {
+        const agent = await harness.loginAs(harness.admin);
+        const res = await agent.get('/receivers?since=not-a-number');
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe('INVALID_TIME_RANGE');
+      });
+
+      it('400s when until is before since', async () => {
+        const agent = await harness.loginAs(harness.admin);
+        const now = Date.now();
+        const res = await agent.get(`/receivers?since=${now}&until=${now - 60_000}`);
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe('INVALID_TIME_RANGE');
+      });
     });
 
     // ── MeshCore companion self-name fallback ───────────────────────────────
