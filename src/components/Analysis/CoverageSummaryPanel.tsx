@@ -83,7 +83,7 @@ export const CoverageSummaryPanel: React.FC<CoverageSummaryPanelProps> = ({
           {gapResult && (
             <span className={styles.tileCaption}>
               {t('analysis.coverage.summary_interval', 'Interval {{seconds}} s ({{source}})', {
-                seconds: gapResult.intervalSec,
+                seconds: Math.round(gapResult.intervalSec),
                 source: t(...INTERVAL_SOURCE_KEY[gapResult.intervalSource]),
               })}
             </span>

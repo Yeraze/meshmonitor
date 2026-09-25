@@ -135,6 +135,19 @@ describe('CoverageSummaryPanel', () => {
     expect(screen.getByText('Interval 60 s (configured)')).toBeInTheDocument();
   });
 
+  it('rounds an observed interval to whole seconds', () => {
+    render(
+      <CoverageSummaryPanel
+        summary={summary()}
+        gapResult={gapResult({ intervalSource: 'observed', intervalSec: 766.6245 })}
+        receivers={[]}
+        distanceUnit="km"
+        truncated={false}
+      />,
+    );
+    expect(screen.getByText('Interval 767 s (observed)')).toBeInTheDocument();
+  });
+
   it('shows the truncated note using the reception count when truncated', () => {
     render(
       <CoverageSummaryPanel
