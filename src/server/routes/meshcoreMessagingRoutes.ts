@@ -16,7 +16,7 @@ import { logger } from '../../utils/logger.js';
 import { requireAuth, optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import { meshcoreDeviceLimiter, messageLimiter } from '../middleware/rateLimiters.js';
 import { getMeshCoreCredentialStore } from '../services/meshcoreCredentialStore.js';
-import { managerFor, VALIDATION, isValidPublicKey, isValidMessage, auditMeshcoreEvent,
+import { failContactNotOnDevice, managerFor, VALIDATION, isValidPublicKey, isValidMessage, auditMeshcoreEvent,
   requireMeshcoreChannelAccess, canAccessMeshcoreChannel, requireMeshcoreTx, failIfTxDisabled } from './meshcoreRouteShared.js';
 
 const router = Router({ mergeParams: true });
@@ -391,6 +391,7 @@ router.post('/rooms/login', meshcoreDeviceLimiter, requireAuth(), requirePermiss
     }
 
     const outcome = await managerFor(req, res).loginToRoomWithOutcome(publicKey, password);
+    if (outcome === 'not_on_device') return failContactNotOnDevice(res);
     if (outcome === 'rejected') {
       // Worth saying plainly: "login failed" sent people hunting for a radio
       // problem when the room server had simply refused the password.
@@ -461,6 +462,7 @@ router.post('/rooms/login-with-saved', meshcoreDeviceLimiter, requireAuth(), req
     }
 
     const outcome = await managerFor(req, res).loginToRoomWithOutcome(publicKey, result.password);
+    if (outcome === 'not_on_device') return failContactNotOnDevice(res);
     if (outcome === 'rejected') {
       // The room server answered and said no. Distinguished from silence so
       // the UI can offer to forget the password rather than suggest retrying.

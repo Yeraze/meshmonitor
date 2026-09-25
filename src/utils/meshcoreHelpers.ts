@@ -30,6 +30,13 @@ export interface MeshCoreContact {
    * it. `undefined` reads as falsy = "not local", the safe default.
    */
   isLocal?: boolean;
+  /**
+   * Whether this contact is in the companion radio's own contact table
+   * (#5349). `false` = known not to be (heard via an advert the radio chose
+   * not to store, or evicted by the radio): the radio cannot log in to,
+   * query, or message it until it is added. `undefined` = unknown.
+   */
+  onDevice?: boolean;
 }
 
 /**

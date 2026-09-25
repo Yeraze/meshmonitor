@@ -17,6 +17,12 @@ import { logger } from '../utils/logger.js';
 import { TxDisabledError } from './errors/txDisabledError.js';
 import { isRfBridgeCommand, MESHCORE_RECEIVE_ONLY_MESSAGE } from './constants/meshcoreTx.js';
 import { meshcorePayloadTypeNameOrNull } from '../utils/meshcorePacketDecode.js';
+import {
+  MESHCORE_CONTACT_NOT_ON_DEVICE,
+  MESHCORE_DEVICE_TABLE_FULL,
+  MESHCORE_ERR_CODE_NOT_FOUND,
+  MESHCORE_ERR_CODE_TABLE_FULL,
+} from './meshcoreDeviceContactErrors.js';
 
 /**
  * Error message thrown when a remote answers a login attempt with an explicit
@@ -792,6 +798,24 @@ export class MeshCoreNativeBackend extends EventEmitter {
       });
     });
 
+    // CONTACT_DELETED (0x8F) and CONTACTS_FULL (0x90) — not in meshcore.js
+    // PushCodes, so read them off the raw frame stream (#5349). Firmware
+    // (examples/companion_radio/MyMesh.cpp):
+    //   0x8F [pub_key 32B] — the firmware evicted this contact to make room
+    //                        (only when "overwrite oldest" is enabled; it never
+    //                        evicts a favourite)
+    //   0x90               — a new contact could not be stored: table full
+    const PUSH_CONTACT_DELETED = 0x8F;
+    const PUSH_CONTACTS_FULL = 0x90;
+    this.connection.on('rx', (frame: Uint8Array) => {
+      if (!frame || frame.length < 1) return;
+      if (frame[0] === PUSH_CONTACT_DELETED && frame.length >= 33) {
+        this.emitBridgeEvent('contact_deleted', { public_key: bytesToHex(frame.slice(1, 33)) });
+      } else if (frame[0] === PUSH_CONTACTS_FULL && frame.length === 1) {
+        this.emitBridgeEvent('contacts_full', {});
+      }
+    });
+
     // PathDiscoveryResponse (0x8D) — not in meshcore.js PushCodes, so we
     // intercept raw frames. Contains the bidirectional paths discovered by
     // CMD_SEND_PATH_DISCOVERY_REQ (52). Frame format:
@@ -914,7 +938,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
             try {
               const existing: any[] = await c.getContacts();
               if (existing.some((ct) => bytesToHex(ct.publicKey) === publicKey)) return;
-              await c.addOrUpdateContact(publicKeyBytes, nodeType, 0, 0xff, new Uint8Array(64), '', 0, 0, 0);
+              await this.addNewDeviceContact(c, { publicKey: publicKeyBytes, type: nodeType });
             } catch (err) {
               // meshcore.js's uncorrelated global Ok/Err ack can reject this
               // promise with NO argument when a concurrent command's Err frame
@@ -2018,6 +2042,9 @@ export class MeshCoreNativeBackend extends EventEmitter {
         if (!fullKey) {
           throw new Error(`Contact not found for public key ${to.substring(0, 12)}…`);
         }
+        // The firmware addresses the CLI text from its own contact table; a
+        // target it doesn't hold fails instantly with no RF (#5349).
+        await this.requireDeviceContact(c, fullKey);
         await c.sendTextMessage(fullKey, text, K.TxtTypes.CliData);
         return { sent: true };
       }
@@ -2025,6 +2052,12 @@ export class MeshCoreNativeBackend extends EventEmitter {
       case 'login': {
         const publicKey = await this.resolvePublicKey(params.public_key as string);
         if (!publicKey) throw new Error('Login target not found');
+        // CMD_SEND_LOGIN resolves the target against the companion's own
+        // contact table; one it doesn't hold is answered at once with
+        // ERR_CODE_NOT_FOUND and nothing goes out over the air. Check first so
+        // the caller gets a clear reason instead of a bare "login failed"
+        // (#5349). Local serial read only — no airtime.
+        await this.requireDeviceContact(c, publicKey);
         // meshcore.js resolves login() with the parsed LoginSuccess push. On
         // firmware >= 1.16 that carries the remote's is_admin flag and firmware
         // version level, which the Virtual Node must relay so the app grants
@@ -2042,6 +2075,9 @@ export class MeshCoreNativeBackend extends EventEmitter {
         // can act on immediately instead of retrying a password that will
         // never be accepted.
         const rejected = this.awaitLoginRejection(publicKey);
+        // meshcore.js rejects login() with NO argument on any Err frame, so
+        // capture the firmware error code ourselves to explain the failure.
+        const errCode = this.captureErrCode(c);
         try {
           const login = await Promise.race([
             c.login(publicKey, String(params.password ?? '')) as Promise<{
@@ -2059,14 +2095,24 @@ export class MeshCoreNativeBackend extends EventEmitter {
             acl_permissions: login?.aclPermissions,
             firmware_ver_level: login?.firmwareVerLevel,
           };
+        } catch (err) {
+          // The contact was on the device a moment ago but the firmware says
+          // otherwise (evicted in between) — same clear reason.
+          if (errCode.get() === MESHCORE_ERR_CODE_NOT_FOUND) {
+            throw new Error(MESHCORE_CONTACT_NOT_ON_DEVICE, { cause: err });
+          }
+          throw err;
         } finally {
           rejected.cancel();
+          errCode.stop();
         }
       }
 
       case 'get_status': {
         const publicKey = await this.resolvePublicKey(params.public_key as string);
         if (!publicKey) throw new Error('Status target not found');
+        // Same contact-table lookup as login (#5349): fail clearly, no RF.
+        await this.requireDeviceContact(c, publicKey);
         // Serialize + dedupe on this connection: the library's getStatus listens
         // on the shared, tag-less StatusResponse event with a `.once` handler, so
         // overlapping requests cannibalize each other's response and spam the
@@ -2235,11 +2281,19 @@ export class MeshCoreNativeBackend extends EventEmitter {
         const manufParts = rawManuf.split('\u0000').filter((s) => s.length > 0);
         const model = manufParts[0] ?? '';
         const verString = manufParts[1];
+        // DeviceInfo byte 2 is MAX_CONTACTS / 2 on protocol v3+ firmware
+        // (companion_radio MyMesh.cpp); meshcore.js lumps it into `reserved`.
+        const reserved = info?.reserved as Uint8Array | number[] | undefined;
+        const maxContacts =
+          typeof info?.firmwareVer === 'number' && info.firmwareVer >= 3 && reserved && reserved.length > 0
+            ? Number(reserved[0]) * 2
+            : undefined;
         return {
           'fw ver': info?.firmwareVer,
           fw_build: info?.firmware_build_date,
           model,
           ver: verString,
+          max_contacts: maxContacts,
         };
       }
 
@@ -2296,6 +2350,64 @@ export class MeshCoreNativeBackend extends EventEmitter {
         }
         await c.deleteChannel(idx);
         return { ok: true };
+      }
+
+      case 'has_contact': {
+        // Is this key in the companion's saved contact table? (#5349)
+        // Local serial read — no airtime.
+        const hex = String(params.public_key ?? '').toLowerCase();
+        if (!/^[0-9a-f]{64}$/.test(hex)) throw new Error('has_contact requires a 64-hex public_key');
+        const contacts = (await c.getContacts()) as RawDeviceContact[];
+        return {
+          on_device: contacts.some((ct) => bytesToHex(ct.publicKey) === hex),
+          count: contacts.length,
+        };
+      }
+
+      case 'add_contact': {
+        // Explicit "Add to radio" (#5349). The manager owns the policy (full
+        // table confirmation, favourite protection); this is the device IO.
+        const hex = String(params.public_key ?? '').toLowerCase();
+        if (!/^[0-9a-f]{64}$/.test(hex)) throw new Error('add_contact requires a 64-hex public_key');
+        const type = Number(params.adv_type);
+        // Refuse ADV_TYPE_NONE (0): the firmware's transient-slot eviction
+        // for it ignores favourites.
+        if (!Number.isInteger(type) || type < 1 || type > 4) {
+          throw new Error('add_contact requires adv_type 1-4');
+        }
+        const before = (await c.getContacts()) as RawDeviceContact[];
+        if (before.some((ct) => bytesToHex(ct.publicKey) === hex)) {
+          return { added: false, already: true, count: before.length, evicted: [] };
+        }
+        const errCode = this.captureErrCode(c);
+        let ackFailed = false;
+        try {
+          await this.addNewDeviceContact(c, {
+            publicKey: Uint8Array.from(hexToBytes(hex)),
+            type,
+            name: typeof params.name === 'string' ? params.name.slice(0, 31) : '',
+            favorite: params.favorite === true,
+            latitude: typeof params.latitude === 'number' ? params.latitude : null,
+            longitude: typeof params.longitude === 'number' ? params.longitude : null,
+          });
+        } catch (err) {
+          if (errCode.get() === MESHCORE_ERR_CODE_TABLE_FULL) throw new Error(MESHCORE_DEVICE_TABLE_FULL, { cause: err });
+          // meshcore.js's Ok/Err ack is uncorrelated — a foreign Err can
+          // reject this with no argument. The read-back below is authoritative.
+          ackFailed = true;
+          logger.debug(`[MeshCore:native] add_contact ack error (verifying by read-back): ${String(err)}`);
+        } finally {
+          errCode.stop();
+        }
+        const after = (await c.getContacts()) as RawDeviceContact[];
+        const afterHex = new Set(after.map((ct) => bytesToHex(ct.publicKey)));
+        if (!afterHex.has(hex)) {
+          throw new Error(ackFailed ? 'The radio refused to store the contact' : 'The radio did not store the contact');
+        }
+        const evicted = before
+          .map((ct) => bytesToHex(ct.publicKey))
+          .filter((k) => !afterHex.has(k));
+        return { added: true, already: false, count: after.length, evicted };
       }
 
       case 'remove_contact': {
@@ -2569,6 +2681,85 @@ export class MeshCoreNativeBackend extends EventEmitter {
     };
   }
 
+  /**
+   * Store a contact the companion does not hold yet, via CMD_ADD_UPDATE_CONTACT
+   * (opcode 9). Local serial write — nothing goes on the air. Shared by the
+   * discovery auto-add and the explicit "Add to radio" action (#5349).
+   *
+   * - Flood path (out_path_len 0xFF = OUT_PATH_UNKNOWN): the device learns the
+   *   route from the next exchange.
+   * - lastAdvert 0, so the node's next advert is not dropped by the firmware's
+   *   replay guard (`timestamp <= last_advert_timestamp`, BaseChatMesh.cpp)
+   *   and refreshes name/type/position.
+   * - `favorite` sets flags bit 0, which the firmware's eviction honours.
+   *
+   * When the table is full, the firmware (BaseChatMesh::allocateContactSlot)
+   * either overwrites the oldest NON-favourite contact (only if "overwrite
+   * oldest" is enabled; it pushes 0x8F for the evicted one) or refuses with
+   * ERR_CODE_TABLE_FULL. Never pass type 0 (ADV_TYPE_NONE): that takes the
+   * firmware's transient-slot path, whose eviction does NOT check favourites.
+   */
+  private async addNewDeviceContact(
+    connection: AnyConnection,
+    opts: {
+      publicKey: Uint8Array;
+      type: number;
+      name?: string;
+      favorite?: boolean;
+      latitude?: number | null;
+      longitude?: number | null;
+    },
+  ): Promise<void> {
+    const toFixed = (deg: number | null | undefined): number =>
+      typeof deg === 'number' && Number.isFinite(deg) ? Math.round(deg * 1e6) : 0;
+    await connection.addOrUpdateContact(
+      opts.publicKey,
+      opts.type,
+      opts.favorite ? 0x01 : 0,
+      0xff,
+      new Uint8Array(64),
+      opts.name ?? '',
+      0,
+      toFixed(opts.latitude),
+      toFixed(opts.longitude),
+    );
+  }
+
+  /**
+   * Throw MESHCORE_CONTACT_NOT_ON_DEVICE unless `publicKey` is in the
+   * companion's saved contact table (#5349). The firmware resolves login /
+   * status / DM targets from that table only, so a missing contact would fail
+   * instantly with a bare Err frame. Local serial read — no airtime.
+   */
+  private async requireDeviceContact(connection: AnyConnection, publicKey: Uint8Array): Promise<void> {
+    const targetHex = bytesToHex(publicKey);
+    const contacts = (await connection.getContacts()) as RawDeviceContact[];
+    if (!contacts.some((ct) => bytesToHex(ct.publicKey) === targetHex)) {
+      throw new Error(MESHCORE_CONTACT_NOT_ON_DEVICE);
+    }
+  }
+
+  /**
+   * Record the errCode of the next firmware Err frame (meshcore.js emits
+   * `{ errCode }` on ResponseCodes.Err but its command wrappers reject with no
+   * argument). The Err frame carries no request tag, so this is best-effort
+   * attribution for the command in flight. Always call `stop()`.
+   */
+  private captureErrCode(connection: AnyConnection): { get: () => number | null; stop: () => void } {
+    let code: number | null = null;
+    const errEvent = this.constants?.ResponseCodes?.Err;
+    const onErr = (resp: { errCode?: number | null } | undefined) => {
+      if (code === null && typeof resp?.errCode === 'number') code = resp.errCode;
+    };
+    if (errEvent !== undefined) connection.on(errEvent, onErr);
+    return {
+      get: () => code,
+      stop: () => {
+        if (errEvent !== undefined) connection.off(errEvent, onErr);
+      },
+    };
+  }
+
   private async resolvePublicKey(hexKey: string): Promise<Uint8Array | null> {
     if (!hexKey || !this.connection) return null;
     const normalized = hexKey.toLowerCase();
@@ -2576,15 +2767,14 @@ export class MeshCoreNativeBackend extends EventEmitter {
     if (normalized.length === 64) {
       return Uint8Array.from(hexToBytes(normalized));
     }
-    // Look up by prefix from the contact list.
+    // Look up by prefix from the contact list. Require a UNIQUE match
+    // (#5349): picking the first of several contacts sharing the prefix
+    // would address the command to the wrong node.
     const contacts: any[] = await this.connection.getContacts();
-    for (const ct of contacts) {
-      const fullHex = bytesToHex(ct.publicKey);
-      if (fullHex.startsWith(normalized)) {
-        return ct.publicKey instanceof Uint8Array ? ct.publicKey : Uint8Array.from(ct.publicKey);
-      }
-    }
-    return null;
+    const matches = contacts.filter((ct) => bytesToHex(ct.publicKey).startsWith(normalized));
+    if (matches.length !== 1) return null;
+    const pk = matches[0].publicKey;
+    return pk instanceof Uint8Array ? pk : Uint8Array.from(pk);
   }
 
   /**

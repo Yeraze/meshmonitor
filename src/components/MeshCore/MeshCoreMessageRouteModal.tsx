@@ -25,6 +25,7 @@ import { useDialogA11y } from '../../hooks/useDialogA11y';
 import { BaseMap } from '../map/BaseMap';
 import { UiIcon } from '../icons';
 import './MeshCorePacketMonitor.css';
+import { uniquePrefixMatch } from '../../utils/meshcoreKeyMatch';
 
 interface Props {
   message: MeshCoreMessage;
@@ -100,9 +101,8 @@ const MeshCoreMessageRouteModal: React.FC<Props> = ({ message, fromLabel, contac
     const points: FlowPoint[] = [];
     // Guard the prefix match: startsWith('') is true for EVERY key, so an
     // empty fromPublicKey must not adopt an arbitrary contact as the sender.
-    const senderContact = message.fromPublicKey
-      ? contacts.find((c) => c.publicKey && c.publicKey.startsWith(message.fromPublicKey))
-      : undefined;
+    // uniquePrefixMatch also refuses an ambiguous prefix (#5349).
+    const senderContact = uniquePrefixMatch(contacts, message.fromPublicKey);
     const senderPos = contactPosition(senderContact);
     if (senderPos) points.push({ label: fromLabel, lat: senderPos.lat, lon: senderPos.lon, kind: 'endpoint' });
     points.push(...hopPoints);

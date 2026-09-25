@@ -59,7 +59,9 @@ class StatusMockConnection extends EventEmitter {
     return this.selfInfoToEmit;
   }
   async getContacts() {
-    return [];
+    // get_status first checks the target is in the radio's contact table
+    // (#5349), so the device must hold the keys these tests query.
+    return [KEY_A, KEY_B].map((hex) => ({ publicKey: Uint8Array.from(Buffer.from(hex, 'hex')) }));
   }
 
   getStatus(key: Uint8Array): Promise<any> {
