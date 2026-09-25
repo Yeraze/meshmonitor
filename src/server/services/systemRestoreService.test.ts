@@ -251,6 +251,73 @@ describe('systemRestoreService.restoreFromBackup - SQLite success', () => {
   });
 });
 
+// ─── restoreFromBackup — coverage_receptions (#5277 P4b WP2) ─────────────────
+//
+// Spec §2b.6 / decision U3/A8: `exportSurveyReceptions` (WP1) omits the `id`
+// column from every exported row so a restore can never re-insert an
+// explicit id that collides with a live PostgreSQL sequence value (the
+// target-less `onConflictDoNothing()` in `insertIgnore` would otherwise
+// silently swallow the resulting insert — the "PG sequence trap"). Restore
+// itself needs no coverage-specific code: it already builds its INSERT
+// column list from `Object.keys(data[0])`, so an `id`-less backup row simply
+// never appears in that list and the database assigns a fresh id. This test
+// asserts that structural guarantee at the SQLite level (mocked `db.prepare`
+// call capture) — the PG-specific "does the sequence actually stay ahead of
+// a live insert" behavior needs a real PostgreSQL connection and belongs to
+// WP1's repository-level multi-backend test, not this mocked service test.
+describe('systemRestoreService.restoreFromBackup — coverage_receptions (PG sequence trap avoidance)', () => {
+  it('is in the SQLite restore allowlist and its INSERT statement omits the id column for an id-less backup row', async () => {
+    const row = { sourceId: 's1', senderId: '!aabbccdd', receivedAt: 1234, snr: 4.5 }; // no `id`
+    mockBackupService.getBackupMetadata.mockResolvedValue({
+      ...validMetadata,
+      tables: ['coverage_receptions'],
+      checksums: { coverage_receptions: 'x' },
+    });
+    fsMock.existsSync.mockImplementation(
+      (p: unknown) => typeof p === 'string' && p.endsWith('coverage_receptions.json')
+    );
+    fsMock.readFileSync.mockImplementation((p: unknown) => {
+      if (typeof p === 'string' && p.endsWith('coverage_receptions.json')) return JSON.stringify([row]);
+      return '[]';
+    });
+
+    const result = await systemRestoreService.restoreFromBackup('survey-backup');
+    expect(result.success).toBe(true);
+    expect(result.tablesRestored).toBe(1);
+    expect(result.rowsRestored).toBe(1);
+
+    const insertSql = mockDb.db.prepare.mock.calls
+      .map(([sql]) => sql as string)
+      .find((sql) => sql.startsWith('INSERT INTO coverage_receptions'));
+    expect(insertSql).toBeDefined();
+    expect(insertSql).not.toContain('id');
+    // Every other exported column is still present.
+    for (const col of Object.keys(row)) {
+      expect(insertSql).toContain(col);
+    }
+  });
+
+  it('does not skip coverage_receptions as "not in backup allowlist" (regression guard)', async () => {
+    // Before this WP, coverage_receptions wasn't in BACKUP_TABLES, so
+    // restoreSQLite's allowlist check would have logged "Skipping table not
+    // in backup allowlist" and left tablesRestored at 0 even for a
+    // zero-row (but present) table.
+    mockBackupService.getBackupMetadata.mockResolvedValue({
+      ...validMetadata,
+      tables: ['coverage_receptions'],
+      checksums: { coverage_receptions: 'x' },
+    });
+    fsMock.existsSync.mockImplementation(
+      (p: unknown) => typeof p === 'string' && p.endsWith('coverage_receptions.json')
+    );
+    fsMock.readFileSync.mockReturnValue('[]');
+
+    const result = await systemRestoreService.restoreFromBackup('empty-survey-backup');
+    expect(result.success).toBe(true);
+    expect(result.tablesRestored).toBe(1);
+  });
+});
+
 // ─── canRestore ───────────────────────────────────────────────────────────────
 
 describe('systemRestoreService.canRestore', () => {

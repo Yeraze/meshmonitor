@@ -45,9 +45,9 @@ import {
   buildPositionFilter, loadNodesBySource,
   buildMeshCorePositionFilter, loadMeshCoreNodesBySource,
 } from '../utils/positionVisibility.js';
-import { parseGatewayNodeNum } from '../utils/okToMqtt.js';
+import { parseSenderParam } from '../utils/coverageSenderParam.js';
 import {
-  clampCoverageRetentionDays, nodeNumToId, COVERAGE_MQTT_ENABLED_SETTING, isCoverageMqttFlagOn,
+  clampCoverageRetentionDays, COVERAGE_MQTT_ENABLED_SETTING, isCoverageMqttFlagOn,
   isMeshCoreReceptionRow, isMeshCorePubKeyId,
 } from '../../utils/coverage.js';
 import { parseReceiverFilter, type CoverageReceiverFilterEntry } from '../../utils/coverageReceiverFilter.js';
@@ -65,9 +65,17 @@ import type {
   CoverageMqttSourceStatusDto,
   CoveragePage,
 } from '../../types/coverage.js';
+import coverageSurveyRoutes from './coverageSurveyRoutes.js';
 
 const router = Router();
 router.use(optionalAuth());
+
+// Saved surveys (#5277 Coverage Report epic, Phase 4b WP2) — mounted here
+// (not on apiRouter directly) so it inherits this router's optionalAuth()
+// for GET /surveys (anonymous → [], others gated by sender visibility) while
+// its write routes layer their own requireAuth() on top. Final path:
+// `/api/analysis/coverage/surveys`.
+router.use('/surveys', coverageSurveyRoutes);
 
 // Mirrors CoverageReceptionsRepository's own clamp (src/db/repositories/
 // coverageReceptions.ts's DEFAULT_PAGE_SIZE/MAX_PAGE_SIZE, not exported) —
@@ -112,26 +120,6 @@ function parseTimeParam(raw: unknown, fallback: number): number | null {
   if (typeof raw !== 'string' || raw.trim() === '') return fallback;
   const n = Number(raw);
   return Number.isFinite(n) ? n : null;
-}
-
-/**
- * `sender` query param: a `!xxxxxxxx` id, a decimal node number (normalised
- * to `!xxxxxxxx`, the form Meshtastic `coverage_receptions.senderId` rows
- * store), or a 64-hex MeshCore public key (lowercased, the form MeshCore
- * rows store — #5277 P3 §2.5). Returns `null` on anything unparseable.
- */
-function parseSenderParam(raw: unknown): string | null {
-  if (typeof raw !== 'string' || raw.trim() === '') return null;
-  const trimmed = raw.trim();
-  if (isMeshCorePubKeyId(trimmed)) return trimmed.toLowerCase();
-  if (trimmed.startsWith('!')) {
-    const nodeNum = parseGatewayNodeNum(trimmed);
-    return nodeNum === null ? null : nodeNumToId(nodeNum);
-  }
-  if (!/^\d+$/.test(trimmed)) return null;
-  const nodeNum = Number(trimmed);
-  if (!Number.isFinite(nodeNum) || nodeNum > 0xffffffff) return null;
-  return nodeNumToId(nodeNum >>> 0);
 }
 
 /**
@@ -271,7 +259,23 @@ function meshCoreLocalReceiverFallbackName(sourceId: string, sourceNameById: Map
 router.get('/receivers', async (req: Request, res: Response) => {
   try {
     const sourceIds = await resolveSourceIds(req);
-    const { sinceMs, retentionDays } = await getRetentionWindowStart();
+    const { sinceMs: defaultSinceMs, retentionDays } = await getRetentionWindowStart();
+
+    // Optional `since`/`until` (#5277 P4b WP2, spec §2b.5): a survey older
+    // than the retention window has rows only inside the survey's own
+    // window, so the retention-window default would otherwise miss its
+    // receivers entirely. Absent params keep the P1-P3 behaviour (retention
+    // window through now). Same numeric-unix-ms validation as
+    // `/senders`/`/receptions` below.
+    const nowMs = Date.now();
+    const sinceMs = parseTimeParam(req.query.since, defaultSinceMs);
+    const untilMs = parseTimeParam(req.query.until, nowMs);
+    if (sinceMs === null || untilMs === null) {
+      return fail(res, 400, 'INVALID_TIME_RANGE', 'since/until must be numeric unix-ms timestamps');
+    }
+    if (untilMs < sinceMs) {
+      return fail(res, 400, 'INVALID_TIME_RANGE', 'until must not be before since');
+    }
 
     if (sourceIds.length === 0) {
       return ok(res, {
@@ -282,7 +286,12 @@ router.get('/receivers', async (req: Request, res: Response) => {
     }
 
     const [rows, nodesBySource, allSources] = await Promise.all([
-      databaseService.coverageReceptions.getReceivers({ sourceIds, sinceMs }),
+      // WP1 dependency (spec §2b.4/§2b.5, not yet merged into this
+      // worktree): `GetCoverageReceiversArgs` needs an optional `untilMs`
+      // field added so an old survey's window is honoured instead of
+      // defaulting to "through now". Until that lands, this is an excess
+      // property and `tsc` will flag it — expected, see PR body.
+      databaseService.coverageReceptions.getReceivers({ sourceIds, sinceMs, untilMs }),
       loadNodesBySource(sourceIds),
       databaseService.sources.getAllSources(),
     ]);
