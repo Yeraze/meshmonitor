@@ -40,6 +40,49 @@ vi.mock('./CoverageMap', () => ({
   CoverageMap: () => <div data-testid="coverage-map-stub" />,
 }));
 
+vi.mock('../../contexts/SettingsContext', () => ({
+  useSettings: () => ({ distanceUnit: 'km' }),
+}));
+
+// P4a WP1/WP3 modules (COVERAGE_P4_SPEC.md §2a) — separate worktrees that
+// merge before this WP; their real files do not exist here. Trivial
+// stand-ins so CoverageReport's OWN query-stability behaviour (the thing
+// this file actually regression-tests) is what's under test, not these.
+vi.mock('../../utils/coverageGaps', () => ({
+  detectCoverageGaps: vi.fn(() => ({
+    intervalSec: 30,
+    intervalSource: 'default',
+    gaps: [],
+    breaks: 0,
+    heard: 0,
+    expected: 0,
+  })),
+}));
+vi.mock('../../utils/coverageSummary', () => ({
+  summarizeCoverage: vi.fn(() => ({
+    fixesHeard: 0,
+    receptions: 0,
+    bestSnr: null,
+    worstSnr: null,
+    bestRssi: null,
+    worstRssi: null,
+    receivers: [],
+    distancePoints: [],
+  })),
+}));
+vi.mock('../../utils/coverageGrid', () => ({
+  binFixesToGrid: vi.fn(() => []),
+}));
+vi.mock('./CoverageSummaryPanel', () => ({
+  CoverageSummaryPanel: () => <div data-testid="coverage-summary-panel-stub" />,
+}));
+vi.mock('./CoverageDistanceChart', () => ({
+  CoverageDistanceChart: () => <div data-testid="coverage-distance-chart-stub" />,
+}));
+vi.mock('./CoverageExportButtons', () => ({
+  CoverageExportButtons: () => <div data-testid="coverage-export-buttons-stub" />,
+}));
+
 vi.mock('../../services/analysisApi', () => ({
   fetchCoverageReceivers: vi.fn(),
   fetchCoverageSenders: vi.fn(),

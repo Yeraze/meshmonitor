@@ -83,9 +83,9 @@ Open **Analysis & Reports** from the dashboard sidebar, then click the
 - **Time range** — presets (1 h, 6 h, 24 h default, 3 days, 7 days) or a
   custom from/to range with an **Apply** button. Nothing refetches until you
   click a preset, click Apply, or click Refresh.
-- **Sender** — narrow to one survey node, or leave on **All**. The dropdown
-  shows each sender's name, `!id`, and how many fixes it produced in the
-  current window.
+- **Sender** — narrow to one survey node, or leave on **All**. Type to
+  search by name or id; each entry shows the sender's name, id, and how many
+  fixes it produced in the current window.
 - **Receivers** — every receiver that has heard anything in the retention
   window, grouped by source and sorted by how many receptions each has. Each
   row is marked **Local** (your own radio) or **Gateway** (an MQTT gateway).
@@ -97,6 +97,9 @@ Open **Analysis & Reports** from the dashboard sidebar, then click the
 - **Hops** — Any, or an exact hop count 0–7. Check **Up to this many hops**
   to turn it into a ceiling instead of an exact match.
 - **Colour by** — SNR (default) or RSSI.
+- **View** — **Dots** (one per fix) or **Grid** (see below), with a cell size
+  of 100 m, 250 m, 500 m or 1 km for the grid.
+- **Export** — download the loaded receptions as CSV or GeoJSON (see below).
 - **Refresh** — re-runs the current filters against the latest data. The
   report does not poll in the background.
 
@@ -127,6 +130,57 @@ will load (about 10,000 rows); narrow the time range or filters to see the
 rest. An **empty state** explains that only receptions recorded since you
 upgraded to a MeshMonitor version with this feature appear — there is no
 backfill from data collected before that.
+
+### Likely gaps
+
+Pick one sender and the map draws **dashed lines** between consecutive
+fixes where the next fix arrived much later than expected: a likely dead
+zone. Hover a line to see how long the gap was and roughly how many fixes
+went missing.
+
+- **Expected interval:** the sender's usual spacing between fixes, taken
+  from its recent fixes (at least 5 spacings, 15 s to 15 min). With fewer,
+  it assumes 30 s for Meshtastic and 60 s for MeshCore.
+- **What counts as a gap:** a spacing longer than 2.5 × that interval and
+  longer than 60 s, but no more than 30 minutes (longer is treated as a
+  break in the drive), where the sender moved at least 200 m. A node parked
+  in one spot isn't a dead zone: smart position sends nothing while it sits
+  still.
+- Gaps count against the receivers you have ticked, so unticking a receiver
+  can reveal gaps that another receiver was covering.
+
+### Summary
+
+Below the map, the **Summary** shows fixes heard, receptions, and best and
+worst SNR and RSSI. With one sender picked it adds fixes heard against
+fixes expected, the interval it used, and the number of likely gaps.
+
+The **Receivers** table lists each receiver with the fixes it heard, its
+median SNR, and its furthest direct (0-hop) reception.
+
+The **Distance vs SNR** chart plots every direct reception whose receiver
+position is known, one colour per receiver (the seven busiest, then
+"Other"). Above about 3,000 points it shows an even sample and says so.
+
+### Grid view
+
+**Grid** replaces the dots with square cells. Each cell is coloured by the
+median of the best reading of each fix inside it, which evens out repeated
+drives over the same roads. Hover a cell for its median and fix count.
+
+### Export
+
+**CSV** and **GeoJSON** download exactly what the report has loaded, after
+your filters and privacy rules. If the report hit its load limit, the
+export is limited too and says so. Names that start with `=`, `+`, `-` or `@`
+are escaped in the CSV so a spreadsheet won't treat them as formulas.
+
+### Opening from node details
+
+A node's details panel (Meshtastic and MeshCore) has a **Show coverage**
+link. It opens this report with that node as the sender for the last 24
+hours. The same view can be shared as a link:
+`/reports?report=coverage&sender=<id>&range=24h`.
 
 ## What gets recorded
 
@@ -196,9 +250,8 @@ doesn't know never appears, even for an admin.
 
 ## What's next
 
-Planned follow-ups (not yet built, and not scheduled): likely-gap
-detection, saved surveys exempt from retention, a summary panel, and
-CSV/GeoJSON export.
+Planned follow-up: **saved surveys** (a named sender and time range whose
+receptions are kept past the retention period).
 
 ## Related
 

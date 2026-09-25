@@ -300,3 +300,15 @@ describe('MeshCore helpers (#5277 P3)', () => {
     for (const t of ['meshcore', 'meshtastic_tcp', null]) expect(isCoverageMqttSourceType(t)).toBe(false);
   });
 });
+
+describe('groupReceptionsIntoFixes firstReceivedAt (#5277 P4a)', () => {
+  it('keeps the earliest reception time as firstReceivedAt', () => {
+    const base = { senderId: '!aaaaaaaa', packetKey: '1', latitude: 1, longitude: 2, snr: 5, rssi: -90 };
+    const [fix] = groupReceptionsIntoFixes([
+      { ...base, receivedAt: 1_000_003_000 },
+      { ...base, receivedAt: 1_000_000_000 },
+    ]);
+    expect(fix.firstReceivedAt).toBe(1_000_000_000);
+    expect(fix.receivedAt).toBe(1_000_003_000);
+  });
+});

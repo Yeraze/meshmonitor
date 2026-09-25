@@ -1,16 +1,23 @@
 /**
  * @vitest-environment jsdom
  *
- * CoverageReport (#5277, Phase 1 WP4). `useCoverageData` hooks and
+ * CoverageReport (#5277, Phase 1 WP4; gaps/summary/grid/export/deep-link
+ * wired in P4a WP4, COVERAGE_P4_SPEC.md §2a.7). `useCoverageData` hooks and
  * `CoverageMap` (Leaflet-heavy, tested separately in CoverageMap.test.tsx)
  * are mocked so this file focuses on CoverageReport's own filter wiring:
  * default params, sender/hops changes refetching with the right args, the
- * truncation banner, the empty state, the guidance toggle, and the metric
- * toggle reaching CoverageMap.
+ * truncation banner, the empty state, the guidance toggle, the metric
+ * toggle reaching CoverageMap, and the P4a additions (sender search, view
+ * toggle, deep-link seeding). The P4a pure analysis functions
+ * (`coverageGaps`/`coverageSummary`/`coverageGrid`, WP1) and the summary
+ * panel / chart / export buttons (WP3) are mocked too — WP1 and WP3 land in
+ * separate worktrees and merge before this WP, so their real modules do not
+ * exist in this isolated worktree; the mocks here stand in for both.
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('react-i18next', () => ({
@@ -25,6 +32,10 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
+vi.mock('../../contexts/SettingsContext', () => ({
+  useSettings: () => ({ distanceUnit: 'km' }),
+}));
+
 const useCoverageReceivers = vi.fn();
 const useCoverageSenders = vi.fn();
 const useCoverageReceptions = vi.fn();
@@ -36,9 +47,69 @@ vi.mock('../../hooks/useCoverageData', () => ({
 }));
 
 vi.mock('./CoverageMap', () => ({
-  CoverageMap: ({ fixes, receivers, metric }: any) => (
-    <div data-testid="coverage-map-stub">
-      fixes:{fixes.length} receivers:{receivers.length} metric:{metric}
+  CoverageMap: ({ fixes, receivers, metric, fitKey, gaps, view, gridCells }: any) => (
+    <div
+      data-testid="coverage-map-stub"
+      data-fit-key={fitKey}
+      data-gaps-length={gaps ? gaps.length : 'undefined'}
+      data-grid-cells-length={gridCells ? gridCells.length : 'undefined'}
+    >
+      fixes:{fixes.length} receivers:{receivers.length} metric:{metric} view:{view}
+    </div>
+  ),
+}));
+
+// WP1 pure analysis utils — do not exist as real files in this isolated
+// worktree (they merge from a separate WP1 worktree before WP4). Minimal
+// fakes that are enough for CoverageReport's own wiring assertions;
+// WP1 owns the real behavioural tests (coverageGaps.test.ts etc).
+const detectCoverageGaps = vi.fn((fixes: any[]) => ({
+  intervalSec: 30,
+  intervalSource: 'default',
+  gaps: [],
+  breaks: 0,
+  heard: fixes.length,
+  expected: fixes.length,
+}));
+const summarizeCoverage = vi.fn((items: any[]) => ({
+  fixesHeard: items.length,
+  receptions: items.length,
+  bestSnr: null,
+  worstSnr: null,
+  bestRssi: null,
+  worstRssi: null,
+  receivers: [],
+  distancePoints: [],
+}));
+const binFixesToGrid = vi.fn(() => []);
+
+vi.mock('../../utils/coverageGaps', () => ({
+  detectCoverageGaps: (...args: unknown[]) => (detectCoverageGaps as any)(...args),
+}));
+vi.mock('../../utils/coverageSummary', () => ({
+  summarizeCoverage: (...args: unknown[]) => (summarizeCoverage as any)(...args),
+}));
+vi.mock('../../utils/coverageGrid', () => ({
+  binFixesToGrid: (...args: unknown[]) => (binFixesToGrid as any)(...args),
+}));
+
+// WP3 components — same isolated-worktree situation as the WP1 utils above.
+vi.mock('./CoverageSummaryPanel', () => ({
+  CoverageSummaryPanel: ({ summary, gapResult, truncated }: any) => (
+    <div data-testid="coverage-summary-panel-stub">
+      fixesHeard:{summary?.fixesHeard} gapResult:{gapResult ? 'set' : 'null'} truncated:{String(truncated)}
+    </div>
+  ),
+}));
+vi.mock('./CoverageDistanceChart', () => ({
+  CoverageDistanceChart: ({ points }: any) => (
+    <div data-testid="coverage-distance-chart-stub">points:{points?.length ?? 0}</div>
+  ),
+}));
+vi.mock('./CoverageExportButtons', () => ({
+  CoverageExportButtons: ({ disabled, items }: any) => (
+    <div data-testid="coverage-export-buttons-stub">
+      disabled:{String(disabled)} items:{items?.length ?? 0}
     </div>
   ),
 }));
@@ -76,8 +147,17 @@ function makeReception(id: number) {
 const NOW = 1_700_000_000_000;
 
 beforeEach(() => {
-  vi.useFakeTimers();
-  vi.setSystemTime(NOW);
+  // A spy on Date.now (not vi.useFakeTimers) — real timers stay real, which
+  // userEvent's internal async waits need (#5277 P4a WP4: several tests
+  // below drive the sender SearchableSelect through real userEvent clicks/
+  // typing, which hang under fake timers unless every internal wait is
+  // manually advanced). The component itself only ever reads Date.now(),
+  // never a timer, so this is enough to make the default 24h window
+  // deterministic.
+  vi.spyOn(Date, 'now').mockReturnValue(NOW);
+  detectCoverageGaps.mockClear();
+  summarizeCoverage.mockClear();
+  binFixesToGrid.mockClear();
 
   useCoverageReceivers.mockReturnValue({
     data: { receivers: RECEIVERS, retentionDays: 7, mqttSources: [] },
@@ -97,7 +177,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  vi.useRealTimers();
+  vi.restoreAllMocks();
   vi.clearAllMocks();
 });
 
@@ -106,10 +186,10 @@ function lastReceptionsFilters() {
   return calls[calls.length - 1][0];
 }
 
-function renderReport() {
+function renderReport(props: React.ComponentProps<typeof CoverageReport> = {}) {
   return render(
     <MemoryRouter>
-      <CoverageReport />
+      <CoverageReport {...props} />
     </MemoryRouter>,
   );
 }
@@ -117,6 +197,16 @@ function renderReport() {
 /** Opens the CoverageReceiverFilter panel (composite-keyed picker, #5277 P2 WP4). */
 function openReceiverPanel() {
   fireEvent.click(screen.getByRole('button', { name: /Receivers:|All receivers/ }));
+}
+
+/** Opens the sender SearchableSelect, types `query`, and clicks the option
+ *  matching `optionName` (#5277 P4a WP4, spec §2a.7 — replaced the native
+ *  `<select>` this test file used to drive with `fireEvent.change`). */
+async function selectSender(user: ReturnType<typeof userEvent.setup>, query: string, optionName: RegExp | string) {
+  const combobox = screen.getByRole('combobox', { name: 'Sender' });
+  await user.click(combobox);
+  if (query) await user.type(combobox, query);
+  await user.click(screen.getByRole('option', { name: optionName }));
 }
 
 describe('CoverageReport', () => {
@@ -133,12 +223,25 @@ describe('CoverageReport', () => {
     expect(filters.hopsMode).toBe('exact');
   });
 
-  it('refetches with the chosen sender id when the sender select changes', () => {
+  it('refetches with the chosen sender id when a sender is picked from the SearchableSelect', async () => {
+    const user = userEvent.setup({ delay: null });
     renderReport();
 
-    fireEvent.change(screen.getByLabelText('Sender'), { target: { value: '!bbbbbbbb' } });
+    await selectSender(user, 'Sender One', /Sender One/);
 
     expect(lastReceptionsFilters().senderId).toBe('!bbbbbbbb');
+  });
+
+  it('filters the sender list by typed text (SearchableSelect search box)', async () => {
+    const user = userEvent.setup({ delay: null });
+    renderReport();
+
+    const combobox = screen.getByRole('combobox', { name: 'Sender' });
+    await user.click(combobox);
+    await user.type(combobox, 'zzz-no-match');
+
+    expect(screen.getByText('No matching senders')).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Sender One/ })).not.toBeInTheDocument();
   });
 
   it('refetches with an exact hops filter, then switches to "up to" mode', () => {
@@ -254,6 +357,113 @@ describe('CoverageReport', () => {
     expect(screen.queryByText(/Gateway receptions come from what each gateway itself reports/)).not.toBeInTheDocument();
   });
 
+  // #5277 P4a WP4 (COVERAGE_P4_SPEC.md §2a.7).
+  describe('gaps / summary / grid / export wiring', () => {
+    it('gapResult is null with no sender selected, and set once a single sender is chosen', async () => {
+      const user = userEvent.setup({ delay: null });
+      renderReport();
+
+      expect(detectCoverageGaps).not.toHaveBeenCalled();
+      expect(screen.getByTestId('coverage-summary-panel-stub')).toHaveTextContent('gapResult:null');
+
+      await selectSender(user, 'Sender One', /Sender One/);
+
+      expect(detectCoverageGaps).toHaveBeenCalled();
+      expect(screen.getByTestId('coverage-summary-panel-stub')).toHaveTextContent('gapResult:set');
+    });
+
+    it('always computes the summary panel from all loaded items, sender selected or not', () => {
+      renderReport();
+      expect(summarizeCoverage).toHaveBeenCalledWith(
+        expect.arrayContaining([expect.objectContaining({ id: 1 }), expect.objectContaining({ id: 2 })]),
+      );
+      expect(screen.getByTestId('coverage-summary-panel-stub')).toHaveTextContent('fixesHeard:2');
+    });
+
+    it('passes truncated through to the summary panel', () => {
+      useCoverageReceptions.mockReturnValue({
+        data: { items: [makeReception(1)], truncated: true },
+        isLoading: false,
+        refetch: vi.fn(),
+      });
+      renderReport();
+      expect(screen.getByTestId('coverage-summary-panel-stub')).toHaveTextContent('truncated:true');
+    });
+
+    it('export buttons are disabled with no items, and carry the loaded items otherwise', () => {
+      useCoverageReceptions.mockReturnValue({
+        data: { items: [], truncated: false },
+        isLoading: false,
+        refetch: vi.fn(),
+      });
+      renderReport();
+      expect(screen.getByTestId('coverage-export-buttons-stub')).toHaveTextContent('disabled:true');
+    });
+
+    it('the view toggle defaults to Dots; switching to Grid shows the cell-size select, calls binFixesToGrid, and leaves fitKey unchanged', () => {
+      renderReport();
+
+      expect(screen.getByTestId('coverage-map-stub')).toHaveTextContent('view:dots');
+      expect(screen.queryByLabelText('Cell size')).not.toBeInTheDocument();
+      const fitKeyBefore = screen.getByTestId('coverage-map-stub').getAttribute('data-fit-key');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Grid' }));
+
+      expect(screen.getByTestId('coverage-map-stub')).toHaveTextContent('view:grid');
+      expect(binFixesToGrid).toHaveBeenCalled();
+      expect(screen.getByLabelText('Cell size')).toBeInTheDocument();
+      const fitKeyAfter = screen.getByTestId('coverage-map-stub').getAttribute('data-fit-key');
+      // fitKey must NOT change on a view toggle (spec §2a.7 — the map must
+      // not re-fit just because the user switched Dots/Grid).
+      expect(fitKeyAfter).toBe(fitKeyBefore);
+    });
+
+    it('the cell-size select defaults to 250 m and offers 100/250/500/1000', () => {
+      renderReport();
+      fireEvent.click(screen.getByRole('button', { name: 'Grid' }));
+
+      const select = screen.getByLabelText('Cell size') as HTMLSelectElement;
+      expect(select.value).toBe('250');
+      expect(Array.from(select.options).map((o) => o.value)).toEqual(['100', '250', '500', '1000']);
+    });
+  });
+
+  // #5277 P4a WP4 (COVERAGE_P4_SPEC.md §2a.7) — deep-link seeding.
+  describe('deep link (initialLink)', () => {
+    it('seeds the sender and time-range preset once at mount from initialLink', () => {
+      renderReport({ initialLink: { sender: '!bbbbbbbb', range: '6h' } });
+
+      const filters = lastReceptionsFilters();
+      expect(filters.senderId).toBe('!bbbbbbbb');
+      expect(filters.sinceMs).toBe(NOW - 6 * 3_600_000);
+      expect(filters.untilMs).toBe(NOW);
+    });
+
+    it('shows a synthetic option, keyed by the formatted id, for a deep-linked sender absent from /senders', async () => {
+      const user = userEvent.setup({ delay: null });
+      renderReport({ initialLink: { sender: '!deadbeef' } });
+
+      const combobox = screen.getByRole('combobox', { name: 'Sender' });
+      // Selected-but-closed state shows the option's own label, which for a
+      // synthetic entry is just the formatted id (no name/fix-count known).
+      expect(combobox).toHaveValue('!deadbeef');
+
+      await user.click(combobox);
+      expect(within(screen.getByRole('listbox')).getByRole('option', { name: '!deadbeef' })).toBeInTheDocument();
+    });
+
+    it('does not add a synthetic option when the deep-linked sender IS present in /senders', async () => {
+      const user = userEvent.setup({ delay: null });
+      renderReport({ initialLink: { sender: '!bbbbbbbb' } });
+
+      const combobox = screen.getByRole('combobox', { name: 'Sender' });
+      await user.click(combobox);
+      const options = within(screen.getByRole('listbox')).getAllByRole('option');
+      // "All" + the one real sender — no duplicate/synthetic entry.
+      expect(options).toHaveLength(2);
+    });
+  });
+
   // #5277 Phase 3 WP3.
   describe('MeshCore', () => {
     it('the Hops select includes 8 (MeshCore advert flood limit)', () => {
@@ -266,7 +476,8 @@ describe('CoverageReport', () => {
       expect(lastReceptionsFilters().hops).toBe(8);
     });
 
-    it('abbreviates a MeshCore pubkey sender in the sender dropdown', () => {
+    it('abbreviates a MeshCore pubkey sender in the sender dropdown', async () => {
+      const user = userEvent.setup({ delay: null });
       const PUBKEY = 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2';
       useCoverageSenders.mockReturnValue({
         data: {
@@ -280,6 +491,7 @@ describe('CoverageReport', () => {
       });
 
       renderReport();
+      await user.click(screen.getByRole('combobox', { name: 'Sender' }));
       const option = screen.getByRole('option', { name: /a1b2c3d4…/ });
       expect(option).toBeInTheDocument();
       expect(screen.queryByRole('option', { name: new RegExp(PUBKEY) })).not.toBeInTheDocument();
