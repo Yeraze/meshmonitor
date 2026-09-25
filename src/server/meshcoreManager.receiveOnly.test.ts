@@ -385,7 +385,7 @@ const GUARD_CASES: GuardCase[] = [
   {
     name: 'sendAdvert',
     setup: (m) => { internals(m).connected = true; },
-    invoke: (m) => m.sendAdvert(),
+    invoke: (m) => m.sendAdvert('zero_hop'),
   },
   { name: 'resetContactPath', setup: companionConnectedSetup, invoke: (m) => m.resetContactPath(HEX_PUBKEY) },
   { name: 'discoverContactPath', setup: companionConnectedSetup, invoke: (m) => m.discoverContactPath(HEX_PUBKEY) },

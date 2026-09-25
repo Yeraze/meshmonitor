@@ -12,6 +12,7 @@ import { type EngineEvalContext, interpolateAsync, resolveOperand } from './engi
 import { isTxDisabledError } from '../../errors/txDisabledError.js';
 import { hopCountEmoji } from '../../../utils/hopEmoji.js';
 import { tokenizeArgv } from '../../utils/argvTokenizer.js';
+import { type MeshCoreAdvertMode, LEGACY_MESHCORE_ADVERT_MODE, resolveMeshCoreAdvertMode } from '../../../types/meshcoreAdvert.js';
 
 export type NodeManageOp = 'favorite' | 'unfavorite' | 'ignore' | 'unignore' | 'delete';
 
@@ -63,6 +64,8 @@ export interface ActionDeps {
     target: string;
     channel: number;
     telemetryType?: TelemetryKind;
+    /** MeshCore advert reach for op `advert` (Meshtastic ignores it). */
+    advertMode?: MeshCoreAdvertMode;
   }): Promise<unknown>;
   /** Reboot the physical device behind a source (#3995). `seconds` is the
    *  Meshtastic reboot delay; MeshCore ignores it. `targetNodeNum` (#4126) is an
@@ -447,6 +450,11 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
       const telemetryType = ['device', 'environment', 'airQuality', 'power'].includes(String(p.telemetryType))
         ? (String(p.telemetryType) as TelemetryKind) : undefined;
       const channel = (await num(ctx, p.channel)) ?? triggerChannel;
+      // MeshCore advert reach. Absent = an action saved before the field
+      // existed → flood (legacy); new blocks are seeded with zero_hop.
+      const advertMode = op === 'advert'
+        ? resolveMeshCoreAdvertMode(p.advertMode, LEGACY_MESHCORE_ADVERT_MODE)
+        : undefined;
 
       // Target source(s): explicit multi-select else the trigger source — lets a
       // source-less schedule/system trigger pick which radio to send via.
@@ -473,7 +481,7 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
           }
           if (!target) throw new Error(`action.requestData: no target node for "${op}"`);
         }
-        await pushOrSkipTxDisabled(results, () => deps.requestData({ sourceId: sid, op, target, channel, telemetryType: op === 'telemetry' ? telemetryType : undefined }));
+        await pushOrSkipTxDisabled(results, () => deps.requestData({ sourceId: sid, op, target, channel, telemetryType: op === 'telemetry' ? telemetryType : undefined, ...(advertMode ? { advertMode } : {}) }));
       }
       return results.length === 1 ? results[0] : results;
     }

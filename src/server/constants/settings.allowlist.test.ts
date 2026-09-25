@@ -138,7 +138,7 @@ describe('per-source settings key allowlist invariants', () => {
   // VALID_SETTINGS_KEYS coverage) surfaces here rather than only in the
   // exact-equality test above.
   it('PER_SOURCE_KEYS_NOT_POSTABLE has the expected size', () => {
-    expect(PER_SOURCE_KEYS_NOT_POSTABLE.size).toBe(23);
+    expect(PER_SOURCE_KEYS_NOT_POSTABLE.size).toBe(24);
   });
 
   // #5101 Phase 3 WP3: the transport-traffic writer's checkpoint is
@@ -149,5 +149,13 @@ describe('per-source settings key allowlist invariants', () => {
     const valid = new Set<string>(VALID_SETTINGS_KEYS as readonly string[]);
     expect(PER_SOURCE_KEYS_NOT_POSTABLE.has('transportTrafficCheckpoint')).toBe(true);
     expect(valid.has('transportTrafficCheckpoint')).toBe(false);
+  });
+
+  // The automated flood-advert floor must not be clearable from the client:
+  // a POST /api/settings that reset it would re-arm an hourly flood.
+  it('meshcoreLastFloodAdvertAt is server-managed, never client-postable', () => {
+    const valid = new Set<string>(VALID_SETTINGS_KEYS as readonly string[]);
+    expect(PER_SOURCE_KEYS_NOT_POSTABLE.has('meshcoreLastFloodAdvertAt')).toBe(true);
+    expect(valid.has('meshcoreLastFloodAdvertAt')).toBe(false);
   });
 });

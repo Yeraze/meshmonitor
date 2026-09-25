@@ -150,9 +150,9 @@ GET  /contacts/:publicKey/neighbours           ← GET, not POST
 POST /admin/login | /admin/login-with-saved
 POST /admin/cli
 GET  /admin/status/:publicKey                  ← GET, not POST
-POST /cli                                      (only the `advert` verb; every
+POST /cli                                      (only the `advert` / `advert.zerohop` verbs; every
                                                  other local CLI verb still works)
-POST /advert
+POST /advert                                   (body `{ mode: 'zero_hop' | 'flood' }`; missing = zero_hop)
 POST /automation/announce/send | /automation/timers/:triggerId/run
 ```
 

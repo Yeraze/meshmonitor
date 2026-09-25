@@ -168,13 +168,23 @@ export function FieldInput({ field, value, onChange, variables, sources, channel
             triggerType={triggerType} variableNames={varNames} onChange={onChange} />
         : <textarea className="ae-textarea" value={(value ?? '') as string} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />;
       break;
-    case 'select':
+    case 'select': {
+      const effective = (value ?? field.absentValue ?? '') as string;
+      const warning = field.warningByValue?.[effective];
       control = (
-        <select className="ae-select" value={(value ?? '') as string} onChange={(e) => onChange(e.target.value)}>
-          {(field.options ?? []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
+        <>
+          <select className="ae-select" value={effective} onChange={(e) => onChange(e.target.value)}>
+            {(field.options ?? []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          {warning && (
+            <div className="ae-field-warn" role="note">
+              <UiIcon name="alert" size={14} /> <span>{warning}</span>
+            </div>
+          )}
+        </>
       );
       break;
+    }
     case 'fieldselect':
       control = (
         <select className="ae-select" value={(value ?? '') as string} onChange={(e) => onChange(e.target.value)}>

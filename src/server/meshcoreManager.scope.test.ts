@@ -324,10 +324,24 @@ describe('MeshCoreManager — Phase 2: scope on originated flood traffic (#3667)
 
   it('asserts the default scope before a companion advert', async () => {
     const { manager, bridgeCalls } = makeManager({ defaultScope: 'berlin' });
-    const ok = await manager.sendAdvert();
+    const ok = await manager.sendAdvert('flood');
     expect(ok).toBe(true);
     expect(seq(bridgeCalls, 'send_advert')).toEqual(['set_flood_scope', 'send_advert']);
     expect(scopeOf(bridgeCalls)).toEqual(['berlin']);
+  });
+
+  it('sends a zero-hop advert without asserting a scope (never forwarded)', async () => {
+    const { manager, bridgeCalls } = makeManager({ defaultScope: 'berlin' });
+    const ok = await manager.sendAdvert('zero_hop');
+    expect(ok).toBe(true);
+    expect(seq(bridgeCalls, 'send_advert')).toEqual(['send_advert']);
+    expect(bridgeCalls.find(c => c.cmd === 'send_advert')?.params).toEqual({ mode: 'zero_hop' });
+  });
+
+  it('passes mode flood to the backend for a flood advert', async () => {
+    const { manager, bridgeCalls } = makeManager({ defaultScope: 'berlin' });
+    await manager.sendAdvert('flood');
+    expect(bridgeCalls.find(c => c.cmd === 'send_advert')?.params).toEqual({ mode: 'flood' });
   });
 
   it('asserts the default scope before a remote login', async () => {
@@ -344,7 +358,7 @@ describe('MeshCoreManager — Phase 2: scope on originated flood traffic (#3667)
 
   it('asserts unscoped (null) for originated traffic when no default scope is set', async () => {
     const { manager, bridgeCalls } = makeManager({});
-    await manager.sendAdvert();
+    await manager.sendAdvert('flood');
     expect(scopeOf(bridgeCalls)).toEqual([null]);
   });
 
@@ -371,7 +385,7 @@ describe('MeshCoreManager — Phase 2: scope on originated flood traffic (#3667)
     const { manager, bridgeCalls } = makeManager({ channelScopes: { 1: 'muenchen' }, defaultScope: 'berlin', floodScopeDelayMs: 5 });
     // Advert first, then a channel message — both serialise on the same lock.
     await Promise.all([
-      manager.sendAdvert(),
+      manager.sendAdvert('flood'),
       manager.sendMessage('hi', undefined, 1),
     ]);
     // Each scope is asserted immediately before its own send — never interleaved.
@@ -383,7 +397,7 @@ describe('MeshCoreManager — Phase 2: scope on originated flood traffic (#3667)
 
   it('does not emit the advert when the scope assertion fails', async () => {
     const { manager, bridgeCalls } = makeManager({ defaultScope: 'berlin', failFloodScopeTimes: 1 });
-    const ok = await manager.sendAdvert();
+    const ok = await manager.sendAdvert('flood');
     expect(ok).toBe(false);
     expect(bridgeCalls.some(c => c.cmd === 'send_advert')).toBe(false);
   });

@@ -425,6 +425,7 @@ Asks a node to report data — the automation equivalent of the manual request b
 - **Request** — what to ask for: **Telemetry**, **Position (Meshtastic)**, **Traceroute / path**,
   **Node info exchange (Meshtastic)**, **Neighbor info**, or **Announce self (advert)**.
 - **Telemetry type** — which metric set to ask for, when the request is **Telemetry**.
+- **Advert reach (MeshCore)** — for **Announce self (advert)** on a MeshCore source: **Zero-hop** (nearby nodes only, the default for new actions) or **Flood** (whole mesh). Actions saved before this option existed flood. Automated floods run at most once per hour per source; a flood inside that hour is skipped and the step fails with the reason. See [MeshCore adverts](/features/meshcore#automated-flood-limit). Meshtastic ignores this option.
 - **Via sources** — which radio(s) to send the request through. Leave empty to use the triggering
   source — but a source **is required** for source-less triggers (Schedule / System).
 - **Target node** — node # (Meshtastic) or contact public key (MeshCore). Leave blank to target the

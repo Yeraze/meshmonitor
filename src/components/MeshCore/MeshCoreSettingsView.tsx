@@ -8,6 +8,7 @@ import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { UiIcon } from '../icons';
 import { MeshCoreNodeDisplaySection } from './MeshCoreNodeDisplaySection';
 import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
+import { MeshCoreAdvertButtons } from './MeshCoreAdvertButtons';
 
 // MeshCoreDeviceType.COMPANION — active discovery is companion-only.
 const DEVICE_TYPE_COMPANION = 1;
@@ -366,19 +367,17 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
         <h3>{t('meshcore.settings.actions', 'Device actions')}</h3>
         <p className="hint">
           {t('meshcore.settings.actions_hint',
-            'Refresh the contact list from the device or broadcast a fresh advert.')}
+            'Refresh the contact list from the device, or announce this node. A zero-hop advert reaches nodes in direct radio range; a flood advert crosses the whole mesh and costs much more airtime.')}
         </p>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button onClick={() => void actions.refreshContacts()} disabled={!connected || loading}>
             {t('meshcore.refresh', 'Refresh contacts')}
           </button>
-          <button
-            onClick={() => void actions.sendAdvert()}
+          <MeshCoreAdvertButtons
+            onSend={(mode) => actions.sendAdvert(mode)}
             disabled={!connected || loading || receiveOnly}
-            title={receiveOnlyTooltip}
-          >
-            {t('meshcore.send_advert', 'Send advert')}
-          </button>
+            disabledTitle={receiveOnlyTooltip}
+          />
         </div>
       </div>
 

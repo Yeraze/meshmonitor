@@ -16,6 +16,7 @@ import { appriseNotificationService } from '../appriseNotificationService.js';
 import { runScript as runUserScript } from '../../utils/scriptRunner.js';
 import { logger } from '../../../utils/logger.js';
 import type { ActionDeps } from './actionExecutor.js';
+import { type MeshCoreAdvertMode, LEGACY_MESHCORE_ADVERT_MODE } from '../../../types/meshcoreAdvert.js';
 
 /**
  * A Meshtastic manager's per-source outgoing queue (meshtasticManager.ts:1107,
@@ -63,7 +64,8 @@ interface MeshCoreSendManager {
   requestRemoteTelemetry(publicKey: string, timeoutSecs?: number): Promise<unknown>;
   traceContactPath(publicKey: string): Promise<unknown>;
   requestNeighbors(publicKey?: string): Promise<unknown>;
-  sendAdvert(): Promise<unknown>;
+  /** Floor-checked advert for automated senders (see MeshCoreManager.sendAutomatedAdvert). */
+  sendAutomatedAdvert(mode: MeshCoreAdvertMode, origin: string): Promise<{ sent: boolean; reason?: string }>;
 }
 
 /**
@@ -191,7 +193,7 @@ export function createMeshActionDeps(): ActionDeps {
       }
     },
 
-    async requestData({ sourceId, op, target, channel, telemetryType }) {
+    async requestData({ sourceId, op, target, channel, telemetryType, advertMode }) {
       if (!sourceId) throw new Error('automation action requires a target source');
       const raw = resolveManager(sourceId) as
         (Partial<MeshSendManager> & Partial<MeshCoreSendManager>) | undefined;
@@ -220,7 +222,13 @@ export function createMeshActionDeps(): ActionDeps {
           case 'telemetry': return raw.requestRemoteTelemetry!(key);
           case 'traceroute': return raw.traceContactPath!(key);
           case 'neighbors': return raw.requestNeighbors!(key || undefined);
-          case 'advert': return raw.sendAdvert!();
+          case 'advert': {
+            // Absent mode = action saved before the field existed → flood (legacy).
+            const result = await raw.sendAutomatedAdvert!(advertMode ?? LEGACY_MESHCORE_ADVERT_MODE, 'Automation advert action');
+            // Skipped by the flood floor (or failed): fail the step with the reason.
+            if (!result.sent) throw new Error(result.reason ?? 'advert failed');
+            return result;
+          }
           default: throw new Error(`request op "${op}" not supported on MeshCore`);
         }
       }
