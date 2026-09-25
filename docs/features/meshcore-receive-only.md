@@ -31,7 +31,7 @@ Good reasons to run a MeshCore source this way:
 - Contact, route, telemetry, and dashboard updates learned from RF traffic
 - The connection itself, over USB or TCP — the source stays connected
 - **Local serial configuration**: device name, radio parameters, TX power, coordinates, channel create/edit/delete, RTC sync, device stats, reboot, and contact import/export
-- The **local serial CLI**, except the synthetic `advert` verb (see [What is blocked](#what-is-blocked))
+- The **local serial CLI**, except the `advert` and `advert.zerohop` verbs (see [What is blocked](#what-is-blocked))
 - **Read-only Virtual Node access** — see [below](#virtual-node-access)
 
 ## What is blocked
