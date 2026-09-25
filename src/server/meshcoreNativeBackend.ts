@@ -2092,7 +2092,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
           // The contact was on the device a moment ago but the firmware says
           // otherwise (evicted in between) — same clear reason.
           if (errCode.get() === MESHCORE_ERR_CODE_NOT_FOUND) {
-            throw new Error(MESHCORE_CONTACT_NOT_ON_DEVICE);
+            throw new Error(MESHCORE_CONTACT_NOT_ON_DEVICE, { cause: err });
           }
           throw err;
         } finally {
@@ -2384,7 +2384,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
             longitude: typeof params.longitude === 'number' ? params.longitude : null,
           });
         } catch (err) {
-          if (errCode.get() === MESHCORE_ERR_CODE_TABLE_FULL) throw new Error(MESHCORE_DEVICE_TABLE_FULL);
+          if (errCode.get() === MESHCORE_ERR_CODE_TABLE_FULL) throw new Error(MESHCORE_DEVICE_TABLE_FULL, { cause: err });
           // meshcore.js's Ok/Err ack is uncorrelated — a foreign Err can
           // reject this with no argument. The read-back below is authoritative.
           ackFailed = true;
