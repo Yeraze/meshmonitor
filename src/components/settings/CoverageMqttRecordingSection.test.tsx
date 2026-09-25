@@ -4,18 +4,20 @@
  * on `mqtt_broker`/`mqtt_bridge` sources, and MeshCore observer receptions
  * (#5277 P3 WP4, spec §2.7/§3) on a `meshcore_mqtt` source.
  *
- * Covers: loads the current value on mount, enabling asks confirm and POSTs
- * '1' (cancel posts nothing), disabling posts '0' without confirm, the
- * MQTT warning quotes the measured numbers and links global retention, a
- * successful save invalidates the receivers query, and the MeshCore observer
- * copy swaps in for `meshcore_mqtt` — its warning says the volume is
- * unmeasured and never quotes the Meshtastic MQTT numbers.
+ * Covers: loads the current value on mount, enabling opens a styled confirm
+ * dialog (#5277 P4a WP6) and POSTs '1' only on its confirm button (Cancel
+ * and Escape both leave the toggle off and post nothing), disabling posts
+ * '0' without opening any dialog, the MQTT warning quotes the measured
+ * numbers and links global retention, a successful save invalidates the
+ * receivers query, and the MeshCore observer copy swaps in for
+ * `meshcore_mqtt` — its warning and confirm dialog say the volume is
+ * unmeasured and never quote the Meshtastic MQTT numbers.
  *
  * @vitest-environment jsdom
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { CoverageMqttRecordingSection } from './CoverageMqttRecordingSection';
 
@@ -130,15 +132,36 @@ describe('CoverageMqttRecordingSection', () => {
     await waitFor(() => expect(screen.getByRole('checkbox')).toBeChecked());
   });
 
-  it('enabling asks for confirmation and POSTs "1" on confirm', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+  it('enabling opens a styled confirm dialog with the title, body paragraphs and buttons', async () => {
     h.apiGet.mockResolvedValue({});
     renderSection();
     await waitFor(() => expect(screen.getByRole('checkbox')).not.toBeChecked());
 
     screen.getByRole('checkbox').click();
 
-    expect(confirmSpy).toHaveBeenCalled();
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Turn on coverage recording?')).toBeInTheDocument();
+    // Body text is the unchanged settings.coverage_mqtt_enable_confirm string, split
+    // into paragraphs on blank lines, with the trailing "Continue?" line dropped.
+    expect(within(dialog).getByText('Record MQTT gateway receptions for the Coverage Report?')).toBeInTheDocument();
+    expect(within(dialog).getByText(/A regional feed adds about/)).toBeInTheDocument();
+    expect(within(dialog).queryByText('Continue?')).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Turn on recording' })).toBeInTheDocument();
+    // No save yet — nothing happens until the confirm button is clicked.
+    expect(h.csrfFetch).not.toHaveBeenCalled();
+    expect(screen.getByRole('checkbox')).not.toBeChecked();
+  });
+
+  it('enabling POSTs "1" when the dialog is confirmed', async () => {
+    h.apiGet.mockResolvedValue({});
+    renderSection();
+    await waitFor(() => expect(screen.getByRole('checkbox')).not.toBeChecked());
+
+    screen.getByRole('checkbox').click();
+    const dialog = await screen.findByRole('dialog');
+    within(dialog).getByRole('button', { name: 'Turn on recording' }).click();
+
     await waitFor(() => expect(h.csrfFetch).toHaveBeenCalled());
     const [url, init] = h.csrfFetch.mock.calls[0];
     expect(url).toBe('/api/settings?sourceId=src-a');
@@ -146,45 +169,59 @@ describe('CoverageMqttRecordingSection', () => {
     expect(JSON.parse(init.body)).toEqual({ coverage_mqtt_enabled: '1' });
 
     await waitFor(() => expect(screen.getByRole('checkbox')).toBeChecked());
-    confirmSpy.mockRestore();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('enabling posts nothing when the confirm is cancelled', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  it('enabling posts nothing when the dialog is cancelled', async () => {
     h.apiGet.mockResolvedValue({});
     renderSection();
     await waitFor(() => expect(screen.getByRole('checkbox')).not.toBeChecked());
 
     screen.getByRole('checkbox').click();
+    const dialog = await screen.findByRole('dialog');
+    within(dialog).getByRole('button', { name: 'Cancel' }).click();
 
-    expect(confirmSpy).toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(h.csrfFetch).not.toHaveBeenCalled();
     expect(screen.getByRole('checkbox')).not.toBeChecked();
-    confirmSpy.mockRestore();
   });
 
-  it('disabling posts "0" without asking for confirmation', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm');
+  it('enabling posts nothing when the dialog is closed with Escape', async () => {
+    h.apiGet.mockResolvedValue({});
+    renderSection();
+    await waitFor(() => expect(screen.getByRole('checkbox')).not.toBeChecked());
+
+    screen.getByRole('checkbox').click();
+    await screen.findByRole('dialog');
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(h.csrfFetch).not.toHaveBeenCalled();
+    expect(screen.getByRole('checkbox')).not.toBeChecked();
+  });
+
+  it('disabling posts "0" without opening the confirm dialog', async () => {
     h.apiGet.mockResolvedValue({ coverage_mqtt_enabled: '1' });
     renderSection();
     await waitFor(() => expect(screen.getByRole('checkbox')).toBeChecked());
 
     screen.getByRole('checkbox').click();
 
-    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     await waitFor(() => expect(h.csrfFetch).toHaveBeenCalled());
     const [, init] = h.csrfFetch.mock.calls[0];
     expect(JSON.parse(init.body)).toEqual({ coverage_mqtt_enabled: '0' });
-    confirmSpy.mockRestore();
   });
 
   it('invalidates the receivers query after a successful save', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     h.apiGet.mockResolvedValue({});
     renderSection();
     await waitFor(() => expect(screen.getByRole('checkbox')).not.toBeChecked());
 
     screen.getByRole('checkbox').click();
+    const dialog = await screen.findByRole('dialog');
+    within(dialog).getByRole('button', { name: 'Turn on recording' }).click();
 
     await waitFor(() => expect(h.invalidateQueries).toHaveBeenCalledWith({
       queryKey: ['analysis', 'coverageReport', 'receivers'],
@@ -258,18 +295,20 @@ describe('CoverageMqttRecordingSection', () => {
       expect(screen.queryByText(/OK to MQTT/)).not.toBeInTheDocument();
     });
 
-    it('enabling asks for confirmation with the observer wording and POSTs "1"', async () => {
-      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    it('enabling opens the dialog with the observer wording and POSTs "1" on confirm', async () => {
       h.apiGet.mockResolvedValue({});
       renderSection({ sourceType: 'meshcore_mqtt', sourceId: 'src-observer' });
       await waitFor(() => expect(screen.getByRole('checkbox')).not.toBeChecked());
 
       screen.getByRole('checkbox').click();
 
-      expect(confirmSpy).toHaveBeenCalled();
-      const confirmText = confirmSpy.mock.calls[0][0] as string;
-      expect(confirmText).toMatch(/have not measured how many rows/);
-      expect(confirmText).not.toMatch(/12,000/);
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByText('Turn on coverage recording?')).toBeInTheDocument();
+      expect(within(dialog).getByText(/have not measured how many rows/)).toBeInTheDocument();
+      const dialogText = dialog.textContent ?? '';
+      expect(dialogText).not.toMatch(/12,000/);
+
+      within(dialog).getByRole('button', { name: 'Turn on recording' }).click();
 
       await waitFor(() => expect(h.csrfFetch).toHaveBeenCalled());
       const [url, init] = h.csrfFetch.mock.calls[0];
@@ -278,22 +317,19 @@ describe('CoverageMqttRecordingSection', () => {
       expect(JSON.parse(init.body)).toEqual({ coverage_mqtt_enabled: '1' });
 
       await waitFor(() => expect(screen.getByRole('checkbox')).toBeChecked());
-      confirmSpy.mockRestore();
     });
 
-    it('disabling posts "0" without asking for confirmation', async () => {
-      const confirmSpy = vi.spyOn(window, 'confirm');
+    it('disabling posts "0" without opening the confirm dialog', async () => {
       h.apiGet.mockResolvedValue({ coverage_mqtt_enabled: '1' });
       renderSection({ sourceType: 'meshcore_mqtt' });
       await waitFor(() => expect(screen.getByRole('checkbox')).toBeChecked());
 
       screen.getByRole('checkbox').click();
 
-      expect(confirmSpy).not.toHaveBeenCalled();
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
       await waitFor(() => expect(h.csrfFetch).toHaveBeenCalled());
       const [, init] = h.csrfFetch.mock.calls[0];
       expect(JSON.parse(init.body)).toEqual({ coverage_mqtt_enabled: '0' });
-      confirmSpy.mockRestore();
     });
   });
 });
