@@ -166,5 +166,15 @@
     "filename": "mm_emcomm_control.py",
     "name": "EmComm Control",
     "githubPath": "maxhayim/meshmonitor-emcomm-control/mm_emcomm_control.py"
+  },
+  {
+    "filename": "Discord_Webhook_DM.js",
+    "name": "Discord Webhook DM",
+    "githubPath": "coinraiser/MeshMonitor-Discord/Discord_Webhook_DM.js"
+  },
+  {
+    "filename": "Discord_Webhook_PUBLIC.js",
+    "name": "Discord Webhook PUBLIC",
+    "githubPath": "coinraiser/MeshMonitor-Discord/Discord_Webhook_PUBLIC.js"
   }
 ]
