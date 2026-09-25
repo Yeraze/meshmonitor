@@ -13,6 +13,8 @@
   color: var(--color-text);
   font-family: var(--font-family, sans-serif);
   overflow: hidden;
+  /* Room for the fixed `.dashboard-topbar` — see the note on that rule (#5286). */
+  padding-top: var(--dashboard-topbar-height);
 
   /*
    * Real on-screen height of `.dashboard-topbar` (#5053).
@@ -52,7 +54,18 @@
   padding: calc(env(safe-area-inset-top, 0px) + var(--status-bar-blur-gap)) calc(24px + env(safe-area-inset-right, 0px)) 0
     calc(24px + env(safe-area-inset-left, 0px));
   height: var(--dashboard-topbar-height);
-  flex-shrink: 0;
+  /*
+   * Fixed, not in-flow (#5286). An iOS 27 home-screen app fogs page content
+   * under its status bar, but when a fixed bar touches the top edge it tints
+   * the band with that bar's colour instead. The per-source `.app-header` is
+   * fixed and renders crisp; this bar in the flex column rendered fogged at
+   * the same height. Above the mobile drawer (1099) and Leaflet controls.
+   */
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1100;
   background: var(--color-bg-raised);
   border-bottom: 1px solid var(--color-surface);
 }
@@ -127,6 +140,7 @@
  *   1001     .map-sidebar (MapSidebar.css) — must beat the control containers
  *   1098     this backdrop
  *   1099     .dashboard-sidebar.mobile-open
+ *   1100     .dashboard-topbar — fixed since #5286; the drawer starts below it
  *   10000+   app header, app rail, modals
  *
  * The drawer used to sit at 999, one below Leaflet's control layer, so the
