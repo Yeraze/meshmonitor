@@ -768,7 +768,7 @@
     "exampleTrigger": "A new direct message is received (Automation Engine: trigger \"A message is received\", rule \"is a direct message\" = true, action \"Run Script\")",
     "requirements": [
       "Node.js 18+ (included in MeshMonitor, for global fetch)",
-      "dotenv npm package",
+      "dotenv npm package — add it to /data/scripts/package.json and install it from Script Dependencies (it is not resolvable by default)",
       ".env file alongside the script with WEBHOOK_ID and WEBHOOK_TOKEN from a Discord webhook URL",
       "Automation Engine action configured to pass --snr, --rssi, --hops, --fromName, and --text CLI arguments from trigger substitution tokens"
     ],
@@ -791,7 +791,7 @@
     "exampleTrigger": "A new channel message is received (Automation Engine: trigger \"A message is received\", action \"Run Script\")",
     "requirements": [
       "Node.js 18+ (included in MeshMonitor, for global fetch)",
-      "dotenv npm package",
+      "dotenv npm package — add it to /data/scripts/package.json and install it from Script Dependencies (it is not resolvable by default)",
       ".env file alongside the script with WEBHOOK_ID and WEBHOOK_TOKEN from a Discord webhook URL",
       "Automation Engine action configured to pass --snr, --rssi, --hops, --fromName, and --text CLI arguments from trigger substitution tokens"
     ],
