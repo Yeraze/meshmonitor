@@ -33,6 +33,7 @@ import {
   formatCoverageNodeId,
   COVERAGE_GRID_CELL_SIZES_M,
   COVERAGE_GRID_DEFAULT_CELL_M,
+  isMeshCorePubKeyId,
 } from '../../utils/coverage';
 import type { CoverageMetric } from '../../utils/coverage';
 import type { CoverageHopsMode } from '../../types/coverage';
@@ -270,11 +271,10 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
       })),
     [fixes],
   );
-  // Protocol comes from the fixes' own rows, never a source type (spec
-  // §2a.2): a source can carry both Meshtastic and MeshCore rows depending
-  // on manager type, and the gap rule's default interval (30 s vs 60 s)
-  // must track the sender's own protocol.
-  const protocol = items[0]?.protocol ?? 'meshtastic';
+  // Gaps only run for a single sender, so its protocol follows from its id
+  // (MeshCore senders are 64-hex public keys), never a source type (spec
+  // §2a.2). The gap rule's default interval (30 s vs 60 s) depends on it.
+  const protocol = isMeshCorePubKeyId(senderId) ? 'meshcore' : 'meshtastic';
   const gapResult = useMemo(
     () => (singleSender ? detectCoverageGaps(fixesAsGapInputs, { protocol }) : null),
     [singleSender, fixesAsGapInputs, protocol],
