@@ -47,3 +47,52 @@
   color: var(--color-accent);
   font-weight: 600;
 }
+
+/* Styled confirm dialog (#5277 P4a WP6) replacing window.confirm. */
+
+.confirmDialog {
+  max-width: 480px;
+}
+
+.confirmParagraph {
+  margin: 0 0 0.75rem 0;
+  color: var(--color-text);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.confirmParagraph:last-of-type {
+  margin-bottom: 1rem;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+.primaryButton,
+.secondaryButton {
+  padding: 0.5rem 1.1rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.primaryButton {
+  background: var(--color-accent);
+  color: var(--color-bg);
+  border-color: var(--color-accent);
+}
+
+.primaryButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.secondaryButton {
+  background: transparent;
+  color: var(--color-text);
+  border-color: var(--color-surface-active);
+}

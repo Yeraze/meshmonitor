@@ -6,8 +6,28 @@ import apiService from '../../services/api';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useToast } from '../ToastContainer';
 import { UiIcon } from '../icons';
+import Modal from '../common/Modal';
 import { COVERAGE_MQTT_ENABLED_SETTING, isCoverageMqttFlagOn } from '../../utils/coverage';
 import styles from './CoverageMqttRecordingSection.module.css';
+
+/**
+ * Splits a confirm message into paragraphs on blank lines, dropping a
+ * trailing "Continue?" line. That line read naturally as the last sentence
+ * of a `window.confirm()` prompt; it is redundant once a real "Turn on
+ * recording" button replaces the browser dialog (#5277 P4a WP6). The two
+ * message keys themselves stay unchanged so their text is shared with any
+ * other surface that still quotes them verbatim.
+ */
+function splitConfirmParagraphs(text: string): string[] {
+  const paragraphs = text
+    .split('\n\n')
+    .map((paragraph) => paragraph.trim())
+    .filter((paragraph) => paragraph.length > 0);
+  if (paragraphs.length > 0 && paragraphs[paragraphs.length - 1] === 'Continue?') {
+    paragraphs.pop();
+  }
+  return paragraphs;
+}
 
 interface CoverageMqttRecordingSectionProps {
   /** App base URL (appBasename), as every other self-saving section takes it. */
@@ -63,6 +83,10 @@ export const CoverageMqttRecordingSection: React.FC<CoverageMqttRecordingSection
   // the safe side, matching the server-side cache (coverageMqttSettings.ts).
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
+  // Enabling is the direction that grows the database (spec U1), so it is
+  // gated behind a styled confirm dialog quoting the same warning text as
+  // below. Disabling is always safe and needs no confirm.
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,31 +104,27 @@ export const CoverageMqttRecordingSection: React.FC<CoverageMqttRecordingSection
     return () => { cancelled = true; };
   }, [sourceId]);
 
-  // Enabling is the direction that grows the database (spec U1), so it is
-  // the one gated behind window.confirm, quoting the same warning text as
-  // below. Disabling is always safe and needs no confirm.
-  const handleToggle = useCallback(async (next: boolean) => {
-    if (next && !window.confirm(isObserver
-      ? t(
-        'settings.coverage_observer_enable_confirm',
-        'Record MeshCore observer receptions for the Coverage Report?\n\n' +
-        'Each observer that hears a MeshCore advert with a position adds one row, and many ' +
-        'observers can hear one advert over several paths. We have not measured how many rows a ' +
-        'MeshCore region feed produces; watch your database size after turning this on. Rows are ' +
-        'kept for the Coverage retention period, a global setting under Settings → Coverage Report.\n\n' +
-        'Continue?',
-      )
-      : t(
-        'settings.coverage_mqtt_enable_confirm',
-        'Record MQTT gateway receptions for the Coverage Report?\n\n' +
-        'Each gateway that hears a position packet adds one row. A regional feed adds about ' +
-        '12,000–14,000 rows a day: about 90,000–100,000 rows (35–50 MB) over a 7-day retention. ' +
-        'A world-wide msh/# feed can reach about 1 million rows a day and several GB a week. ' +
-        'Rows are kept for the Coverage retention period, a global setting under Settings → Coverage Report.\n\n' +
-        'Continue?',
-      ))) {
-      return;
-    }
+  const confirmMessage = isObserver
+    ? t(
+      'settings.coverage_observer_enable_confirm',
+      'Record MeshCore observer receptions for the Coverage Report?\n\n' +
+      'Each observer that hears a MeshCore advert with a position adds one row, and many ' +
+      'observers can hear one advert over several paths. We have not measured how many rows a ' +
+      'MeshCore region feed produces; watch your database size after turning this on. Rows are ' +
+      'kept for the Coverage retention period, a global setting under Settings → Coverage Report.\n\n' +
+      'Continue?',
+    )
+    : t(
+      'settings.coverage_mqtt_enable_confirm',
+      'Record MQTT gateway receptions for the Coverage Report?\n\n' +
+      'Each gateway that hears a position packet adds one row. A regional feed adds about ' +
+      '12,000–14,000 rows a day: about 90,000–100,000 rows (35–50 MB) over a 7-day retention. ' +
+      'A world-wide msh/# feed can reach about 1 million rows a day and several GB a week. ' +
+      'Rows are kept for the Coverage retention period, a global setting under Settings → Coverage Report.\n\n' +
+      'Continue?',
+    );
+
+  const performSave = useCallback(async (next: boolean) => {
     setSaving(true);
     try {
       const res = await csrfFetch(
@@ -158,6 +178,26 @@ export const CoverageMqttRecordingSection: React.FC<CoverageMqttRecordingSection
     }
   }, [baseUrl, sourceId, csrfFetch, queryClient, showToast, t, isObserver]);
 
+  const handleToggle = useCallback((next: boolean) => {
+    if (next) {
+      // Enabling opens the styled confirm dialog instead of saving right
+      // away; the checkbox stays reflecting `enabled` (still off) until the
+      // user confirms.
+      setConfirmOpen(true);
+      return;
+    }
+    void performSave(false);
+  }, [performSave]);
+
+  const handleCancelEnable = useCallback(() => {
+    setConfirmOpen(false);
+  }, []);
+
+  const handleConfirmEnable = useCallback(() => {
+    setConfirmOpen(false);
+    void performSave(true);
+  }, [performSave]);
+
   return (
     <div id="settings-coverage-mqtt" className="settings-section">
       <h3>{t('settings.coverage_mqtt_section', 'Coverage recording')}</h3>
@@ -168,7 +208,7 @@ export const CoverageMqttRecordingSection: React.FC<CoverageMqttRecordingSection
             type="checkbox"
             checked={enabled ?? false}
             disabled={!canWrite || saving || enabled === null}
-            onChange={(e) => void handleToggle(e.target.checked)}
+            onChange={(e) => handleToggle(e.target.checked)}
           />
           <span>
             {isObserver
@@ -199,6 +239,30 @@ export const CoverageMqttRecordingSection: React.FC<CoverageMqttRecordingSection
             )}
         </p>
       </div>
+
+      <Modal
+        isOpen={confirmOpen}
+        onClose={handleCancelEnable}
+        title={t('settings.coverage_enable_confirm_title', 'Turn on coverage recording?')}
+        className={styles.confirmDialog}
+      >
+        {splitConfirmParagraphs(confirmMessage).map((paragraph, idx) => (
+          <p key={idx} className={styles.confirmParagraph}>{paragraph}</p>
+        ))}
+        <div className={styles.actions}>
+          <button type="button" className={styles.secondaryButton} onClick={handleCancelEnable}>
+            {t('common.cancel', 'Cancel')}
+          </button>
+          <button
+            type="button"
+            className={styles.primaryButton}
+            onClick={handleConfirmEnable}
+            disabled={saving}
+          >
+            {t('settings.coverage_enable_confirm_ok', 'Turn on recording')}
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 };
