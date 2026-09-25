@@ -233,6 +233,41 @@ than the configured window. **Lowering the value deletes older data on the
 next sweep, and that cannot be undone** — the settings field warns about
 this before you save.
 
+Receptions inside a **saved survey** are kept past this window until the
+survey is deleted (see below).
+
+## Saved surveys
+
+A survey is one sender over one time window, with a name, optional notes and
+an optional broadcast interval. Save one to keep a drive past the retention
+period and come back to it later.
+
+- **Start survey** starts a live survey for the selected sender now. It runs
+  until you press **Stop survey**, and ends on its own after 24 hours.
+- **Save as survey** saves the time range you're looking at, up to 7 days.
+- Picking a survey from the **Survey** list sets the sender, the time window
+  and the receivers you had ticked when it was saved. If you gave it a
+  broadcast interval, gap detection uses that instead of guessing.
+- **Edit** changes the name, notes or interval; **Delete** removes the
+  survey. Its receptions stay recorded and go back to the normal retention
+  sweep.
+- A survey can be shared as a link: `/reports?report=coverage&survey=<id>`.
+
+**Who can do what:** anyone logged in who can see the sender on a map can
+save a survey for it. Only the person who created a survey, or an admin, can
+edit, stop or delete it. You see your own surveys plus any survey whose
+sender you can see; visitors who aren't logged in see none. Each user can
+keep 50 surveys, with 500 across the install, and a sender can have only
+one live survey at a time.
+
+**What's kept:** every reception of the survey's sender inside its time
+window, on every source, whatever receivers were ticked when it was saved.
+Deleting a source, or purging its nodes, still removes that source's
+receptions; the survey stays and shows what's left.
+
+**Backups** include saved surveys and the receptions inside their windows.
+Other receptions are not backed up.
+
 ## Privacy
 
 A position only appears on the Coverage Report if it would also appear on
@@ -247,11 +282,6 @@ MeshCore positions follow the same rule as the MeshCore map: the node must
 be a known contact of that source, and you need **view on map** permission
 for the source (admins have it everywhere). A MeshCore node the source
 doesn't know never appears, even for an admin.
-
-## What's next
-
-Planned follow-up: **saved surveys** (a named sender and time range whose
-receptions are kept past the retention period).
 
 ## Related
 
