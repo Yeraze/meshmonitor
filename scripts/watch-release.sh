@@ -1,21 +1,32 @@
 #!/bin/bash
 # watch-release.sh — Poll release workflow status.
 #
-# Blocks until every release-triggered workflow completes, exits early on
-# the first failure, and exits 0 only when every workflow ended in
-# `success` or `skipped`. Filters to runs triggered by `release` events
-# (release.yml, docker-publish.yml, desktop-release.yml — not the docs
-# deploy, which fires on `push`).
+# Blocks until every release-triggered workflow for TAG completes, exits early
+# on the first failure, and exits 0 only when every workflow ended in
+# `success` or `skipped`.
 #
 # Usage: ./scripts/watch-release.sh [-q] [TAG]
 #
 # Examples:
 #   ./scripts/watch-release.sh -q v4.1.1
-#   ./scripts/watch-release.sh                  # watches latest release
+#   ./scripts/watch-release.sh                  # watches the latest release
 #
-# The TAG argument is informational only — it appears in log lines and
-# notifications. Workflow filtering is by `--event release`, so any release
-# you publish will be monitored regardless of which tag you pass.
+# Runs are matched to TAG by COMMIT, not by workflow name. The tag is resolved
+# to its commit SHA, runs are listed with `gh run list --commit <sha>`, and only
+# `release`-event runs are kept, newest per workflow name (a re-created release
+# leaves an older run of the same workflow on the same commit).
+#
+# Why: the old version listed the last N `--event release` runs across ALL
+# releases and ignored TAG. Right after `gh release create`, the new tag's runs
+# had not registered yet, so the previous release's finished runs were read as
+# "all green" (v4.16.2-rc2 and rc3 both reported a false pass). `gh run list
+# --event release` was also observed returning stale pages that omitted recent
+# releases entirely.
+#
+# A PASS also requires every expected workflow to have registered a run. The
+# expected set is every workflow in .github/workflows whose `on:` block has a
+# `release:` trigger (override with WATCH_RELEASE_EXPECTED="Name A,Name B"), so
+# a PASS can't be declared while some release workflows haven't started yet.
 #
 # Exit codes:
 #   0 — all release workflows completed and none failed
@@ -31,8 +42,10 @@
 #
 # Tunables (env vars):
 #   WATCH_RELEASE_INTERVAL   poll interval in seconds (default 60)
-#   WATCH_RELEASE_LIMIT      number of recent release-event runs to inspect
-#                            (default 10)
+#   WATCH_RELEASE_LIMIT      runs to list for the tag's commit (default 50)
+#   WATCH_RELEASE_EXPECTED   comma-separated workflow names that must all
+#                            register before a PASS (default: parsed from
+#                            .github/workflows `on: release` triggers)
 #   WATCH_RELEASE_RETRIES    attempts per GitHub API call before giving up
 #                            (default 3)
 #   WATCH_RELEASE_BACKOFF    base seconds between retries, multiplied by attempt
@@ -54,7 +67,7 @@ fi
 
 TAG="${1:-}"
 INTERVAL="${WATCH_RELEASE_INTERVAL:-60}"
-LIMIT="${WATCH_RELEASE_LIMIT:-10}"
+LIMIT="${WATCH_RELEASE_LIMIT:-50}"
 RETRIES="${WATCH_RELEASE_RETRIES:-3}"
 BACKOFF="${WATCH_RELEASE_BACKOFF:-5}"
 
@@ -84,13 +97,41 @@ retry_api() {
   done
 }
 
-if [ -n "$TAG" ]; then
-  log "Watching release workflows for tag: $TAG"
-else
-  log "Watching latest release workflows"
+if [ -z "$TAG" ]; then
+  if ! TAG=$(retry_api gh release list --limit 1 --json tagName -q '.[0].tagName') || [ -z "$TAG" ]; then
+    echo "✗ Could not determine the latest release tag" >&2
+    exit 2
+  fi
 fi
 
-log "Polling every ${INTERVAL}s (limit ${LIMIT})..."
+if ! SHA=$(retry_api gh api "repos/{owner}/{repo}/commits/$TAG" -q .sha) || [ -z "$SHA" ]; then
+  echo "✗ Could not resolve tag $TAG to a commit (does the release/tag exist?)" >&2
+  exit 2
+fi
+
+# Workflows that must each register a run before a PASS can be declared.
+EXPECTED=()
+if [ -n "${WATCH_RELEASE_EXPECTED:-}" ]; then
+  IFS=',' read -r -a EXPECTED <<< "$WATCH_RELEASE_EXPECTED"
+else
+  REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo .)
+  for wf in "$REPO_ROOT"/.github/workflows/*.yml "$REPO_ROOT"/.github/workflows/*.yaml; do
+    [ -f "$wf" ] || continue
+    # `release:` as a direct child of the top-level `on:` block.
+    if awk '/^on:/{on=1;next} on&&/^[^[:space:]#]/{on=0} on&&/^  release:/{found=1} END{exit !found}' "$wf"; then
+      name=$(awk -F': *' '/^name:/{sub(/^name: */,""); gsub(/^["\x27]|["\x27]$/,""); print; exit}' "$wf")
+      [ -n "$name" ] && EXPECTED+=("$name")
+    fi
+  done
+fi
+
+log "Watching release workflows for tag: $TAG (commit ${SHA:0:8})"
+if [ "${#EXPECTED[@]}" -gt 0 ]; then
+  log "Expecting: $(IFS=', '; echo "${EXPECTED[*]}")"
+else
+  log "No expected workflow list found — will pass once every registered run is green"
+fi
+log "Polling every ${INTERVAL}s..."
 log ""
 
 # Treat anything other than `success` or `skipped` as a failure once a workflow
@@ -110,15 +151,16 @@ while true; do
   # Retried rather than fatal-on-first-error: release builds (multi-arch Docker,
   # Desktop, LXC) run long enough that a single network blip is expected, and
   # losing the watch to it is what pushes callers into hand-rolling their own.
-  if ! RESULTS=$(retry_api gh run list --limit "$LIMIT" --event release \
-                   --json databaseId,name,conclusion,status,createdAt \
-                   -q '.[] | "\(.databaseId)|\(.name)|\(.status)|\(.conclusion)"'); then
+  # Newest release-event run per workflow name, for this tag's commit only.
+  if ! RESULTS=$(retry_api gh run list --commit "$SHA" --limit "$LIMIT" \
+                   --json databaseId,name,event,conclusion,status,createdAt \
+                   -q '[.[] | select(.event == "release")] | group_by(.name) | map(max_by(.createdAt)) | .[] | "\(.databaseId)|\(.name)|\(.status)|\(.conclusion)"'); then
     echo "✗ gh run list failed after $RETRIES attempts — giving up" >&2
     exit 2
   fi
 
   if [ -z "$RESULTS" ]; then
-    log "[$TIMESTAMP] No release workflows found yet — waiting..."
+    log "[$TIMESTAMP] No release workflows for ${SHA:0:8} yet — waiting..."
     sleep "$INTERVAL"
     continue
   fi
@@ -165,6 +207,20 @@ while true; do
       notify-send "Release Failed" "${TAG:-latest} — $FAILED_NAME" --urgency=critical 2>/dev/null || true
     fi
     exit 1
+  fi
+
+  # A workflow that hasn't registered a run yet is not complete.
+  MISSING=()
+  for exp in "${EXPECTED[@]}"; do
+    grep -qF "|$exp|" <<< "$RESULTS" || MISSING+=("$exp")
+  done
+  if [ "${#MISSING[@]}" -gt 0 ]; then
+    ALL_COMPLETE=false
+    missing_note="  … not started yet: $(IFS=', '; echo "${MISSING[*]}")"
+    if [ "$missing_note" != "${last_missing:-}" ]; then
+      log "[$TIMESTAMP]$missing_note"
+      last_missing="$missing_note"
+    fi
   fi
 
   if $ALL_COMPLETE; then
