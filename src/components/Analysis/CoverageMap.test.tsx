@@ -48,7 +48,11 @@ vi.mock('../../contexts/SettingsContext', () => ({
 }));
 
 vi.mock('../map/BaseMap', () => ({
-  BaseMap: ({ children }: { children?: React.ReactNode }) => <div data-testid="base-map">{children}</div>,
+  BaseMap: ({ children, preferCanvas }: { children?: React.ReactNode; preferCanvas?: boolean }) => (
+    <div data-testid="base-map" data-prefer-canvas={String(preferCanvas)}>
+      {children}
+    </div>
+  ),
 }));
 
 vi.mock('react-leaflet', () => ({
@@ -58,6 +62,27 @@ vi.mock('react-leaflet', () => ({
       data-center={center.join(',')}
       data-radius={radius}
       data-dash={pathOptions?.dashArray ?? ''}
+    >
+      {children}
+    </div>
+  ),
+  Polyline: ({ children, positions, pathOptions }: any) => (
+    <div
+      data-testid="gap-polyline"
+      data-positions={JSON.stringify(positions)}
+      data-color={pathOptions?.color ?? ''}
+      data-dash={pathOptions?.dashArray ?? ''}
+      data-weight={pathOptions?.weight ?? ''}
+    >
+      {children}
+    </div>
+  ),
+  Rectangle: ({ children, bounds, pathOptions }: any) => (
+    <div
+      data-testid="grid-cell"
+      data-bounds={JSON.stringify(bounds)}
+      data-fill={pathOptions?.fillColor ?? ''}
+      data-fill-opacity={pathOptions?.fillOpacity ?? ''}
     >
       {children}
     </div>
@@ -72,6 +97,7 @@ vi.mock('react-leaflet', () => ({
 import { CoverageMap } from './CoverageMap';
 import type { CoverageFix } from '../../utils/coverage';
 import type { CoverageReceptionDto, CoverageReceiverDto } from '../../types/coverage';
+import type { CoverageGap, CoverageGridCell } from '../../types/coverageAnalysis';
 
 const receivers: CoverageReceiverDto[] = [
   {
@@ -589,6 +615,221 @@ describe('CoverageMap', () => {
       const popup = within(screen.getByTestId('coverage-fix-popup'));
       expect(popup.getByText('Observer')).toBeInTheDocument();
       expect(popup.queryByText('Gateway')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('gaps + grid view (#5277 Phase 4a WP2, spec §2a.6)', () => {
+    const gap: CoverageGap = {
+      from: { packetKey: '100', firstReceivedAt: 1_700_000_000_000, latitude: 26.1, longitude: -80.2 },
+      to: { packetKey: '105', firstReceivedAt: 1_700_000_150_000, latitude: 26.11, longitude: -80.21 },
+      durationSec: 150,
+      distanceM: 250,
+      missedEstimate: 4,
+    };
+
+    it('always passes preferCanvas to BaseMap (decision A6)', () => {
+      render(<CoverageMap fixes={[]} receivers={[]} metric="snr" senderNames={new Map()} fitKey="k" />);
+      expect(screen.getByTestId('base-map')).toHaveAttribute('data-prefer-canvas', 'true');
+    });
+
+    it('renders no gap polylines when gaps is omitted', () => {
+      render(<CoverageMap fixes={[]} receivers={[]} metric="snr" senderNames={new Map()} fitKey="k" />);
+      expect(screen.queryByTestId('gap-polyline')).not.toBeInTheDocument();
+    });
+
+    it('renders one dashed Polyline per gap with the right endpoints, weight and tooltip', () => {
+      render(
+        <CoverageMap fixes={[]} receivers={[]} metric="snr" senderNames={new Map()} fitKey="k" gaps={[gap]} />,
+      );
+      const line = screen.getByTestId('gap-polyline');
+      expect(line).toHaveAttribute(
+        'data-positions',
+        JSON.stringify([
+          [26.1, -80.2],
+          [26.11, -80.21],
+        ]),
+      );
+      expect(line).toHaveAttribute('data-dash', '6 6');
+      expect(line).toHaveAttribute('data-weight', '2');
+      expect(line).toHaveTextContent('Likely gap: 2 min 30 s, about 4 fixes missed');
+    });
+
+    it('falls back to the default neutral colour for the gap line when no CSS var resolves (jsdom)', () => {
+      render(
+        <CoverageMap fixes={[]} receivers={[]} metric="snr" senderNames={new Map()} fitKey="k" gaps={[gap]} />,
+      );
+      expect(screen.getByTestId('gap-polyline')).toHaveAttribute('data-color', '#6c7086');
+    });
+
+    it('formats a sub-minute gap duration without a minutes component', () => {
+      const shortGap: CoverageGap = { ...gap, durationSec: 45, missedEstimate: 1 };
+      render(
+        <CoverageMap fixes={[]} receivers={[]} metric="snr" senderNames={new Map()} fitKey="k" gaps={[shortGap]} />,
+      );
+      expect(screen.getByTestId('gap-polyline')).toHaveTextContent('Likely gap: 45 s, about 1 fixes missed');
+    });
+
+    it('draws gap polylines before markers so they sit under them (Leaflet stacks by add order)', () => {
+      const fix: CoverageFix<CoverageReceptionDto> = {
+        senderId: '!bbbbbbbb',
+        packetKey: '100',
+        latitude: 26.15,
+        longitude: -80.25,
+        receivedAt: 1_700_000_000_000,
+        receptions: [reception({})],
+        bestSnr: 5.5,
+        bestRssi: -85,
+      };
+      render(
+        <CoverageMap
+          fixes={[fix]}
+          receivers={receivers}
+          metric="snr"
+          senderNames={SENDER_NAMES}
+          fitKey="k"
+          gaps={[gap]}
+        />,
+      );
+      const baseMap = screen.getByTestId('base-map');
+      const nodes = Array.from(baseMap.querySelectorAll('[data-testid]'));
+      const gapIndex = nodes.findIndex((n) => n.getAttribute('data-testid') === 'gap-polyline');
+      const markerIndex = nodes.findIndex((n) => n.getAttribute('data-testid') === 'circle-marker');
+      expect(gapIndex).toBeGreaterThanOrEqual(0);
+      expect(markerIndex).toBeGreaterThan(gapIndex);
+    });
+
+    describe('grid view', () => {
+      const gridCells: CoverageGridCell[] = [
+        { key: '1:1', south: 26.1, west: -80.2, north: 26.11, east: -80.19, medianValue: -4.5, fixCount: 6 },
+        { key: '2:2', south: 26.2, west: -80.3, north: 26.21, east: -80.29, medianValue: null, fixCount: 3 },
+      ];
+
+      it('does not render grid cells in the default (dots) view even when gridCells is passed', () => {
+        render(
+          <CoverageMap
+            fixes={[]}
+            receivers={[]}
+            metric="snr"
+            senderNames={new Map()}
+            fitKey="k"
+            gridCells={gridCells}
+          />,
+        );
+        expect(screen.queryByTestId('grid-cell')).not.toBeInTheDocument();
+      });
+
+      it('renders one Rectangle per cell in grid view, coloured by median value', () => {
+        render(
+          <CoverageMap
+            fixes={[]}
+            receivers={[]}
+            metric="snr"
+            senderNames={new Map()}
+            fitKey="k"
+            view="grid"
+            gridCells={gridCells}
+          />,
+        );
+        const cells = screen.getAllByTestId('grid-cell');
+        expect(cells).toHaveLength(2);
+        expect(cells[0]).toHaveAttribute(
+          'data-bounds',
+          JSON.stringify([
+            [26.1, -80.2],
+            [26.11, -80.19],
+          ]),
+        );
+        expect(cells[0]).toHaveAttribute('data-fill', '#f97316'); // -4.5 dB => fair band
+        expect(cells[0]).toHaveAttribute('data-fill-opacity', '0.55');
+        expect(cells[0]).toHaveTextContent('Median SNR -4.5 dB · 6 fixes');
+      });
+
+      it('shows the no-data tooltip and the noData band colour for a cell with a null median', () => {
+        render(
+          <CoverageMap
+            fixes={[]}
+            receivers={[]}
+            metric="snr"
+            senderNames={new Map()}
+            fitKey="k"
+            view="grid"
+            gridCells={gridCells}
+          />,
+        );
+        const cells = screen.getAllByTestId('grid-cell');
+        expect(cells[1]).toHaveAttribute('data-fill', '#6c7086');
+        expect(cells[1]).toHaveTextContent('No SNR data · 3 fixes');
+      });
+
+      it('colours grid cells with the RSSI band and unit when metric is rssi', () => {
+        render(
+          <CoverageMap
+            fixes={[]}
+            receivers={[]}
+            metric="rssi"
+            senderNames={new Map()}
+            fitKey="k"
+            view="grid"
+            gridCells={[
+              { key: '3:3', south: 26.3, west: -80.4, north: 26.31, east: -80.39, medianValue: -70, fixCount: 2 },
+            ]}
+          />,
+        );
+        const cell = screen.getByTestId('grid-cell');
+        expect(cell).toHaveTextContent('Median RSSI -70.0 dBm · 2 fixes');
+        expect(cell).toHaveAttribute('data-fill', '#22c55e'); // -70 dBm => excellent band
+      });
+
+      it('hides fix dots but still shows receiver markers in grid view', () => {
+        const fix: CoverageFix<CoverageReceptionDto> = {
+          senderId: '!bbbbbbbb',
+          packetKey: '100',
+          latitude: 26.15,
+          longitude: -80.25,
+          receivedAt: 1_700_000_000_000,
+          receptions: [reception({})],
+          bestSnr: 5.5,
+          bestRssi: -85,
+        };
+        render(
+          <CoverageMap
+            fixes={[fix]}
+            receivers={receivers}
+            metric="snr"
+            senderNames={SENDER_NAMES}
+            fitKey="k"
+            view="grid"
+          />,
+        );
+        // Only the 2 receiver markers — no fix dot, no popup.
+        expect(screen.getAllByTestId('circle-marker')).toHaveLength(2);
+        expect(screen.queryByTestId('coverage-fix-popup')).not.toBeInTheDocument();
+      });
+
+      it('shows fix dots (not rectangles) in the default dots view even when gridCells is passed', () => {
+        const fix: CoverageFix<CoverageReceptionDto> = {
+          senderId: '!bbbbbbbb',
+          packetKey: '100',
+          latitude: 26.15,
+          longitude: -80.25,
+          receivedAt: 1_700_000_000_000,
+          receptions: [reception({})],
+          bestSnr: 5.5,
+          bestRssi: -85,
+        };
+        render(
+          <CoverageMap
+            fixes={[fix]}
+            receivers={receivers}
+            metric="snr"
+            senderNames={SENDER_NAMES}
+            fitKey="k"
+            gridCells={gridCells}
+          />,
+        );
+        expect(screen.getAllByTestId('circle-marker')).toHaveLength(3); // 2 receivers + 1 fix
+        expect(screen.queryByTestId('grid-cell')).not.toBeInTheDocument();
+      });
     });
   });
 });
