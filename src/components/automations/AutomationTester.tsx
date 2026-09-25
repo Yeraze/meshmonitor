@@ -373,7 +373,9 @@ function ActionView({ a }: { a: SimResult['actions'][number] }) {
     const tt = op === 'telemetry' && p.telemetryType ? ` (${String(p.telemetryType)})` : '';
     // advert announces broadly (and MeshCore adverts carry no channel) — omit the target/channel.
     const tgt = op === 'advert' ? '' : ` to ${p.target ? `node ${p.target}` : '(triggering node)'} on ch ${p.channel ?? 0}`;
-    headline = `Request ${op}${tt}${tgt}`;
+    // MeshCore advert reach; an action saved before the field existed floods.
+    const reach = op === 'advert' ? ` (${String(p.advertMode ?? 'flood') === 'zero_hop' ? 'zero-hop' : 'flood'})` : '';
+    headline = `Request ${op}${tt}${reach}${tgt}`;
   } else if (a.type === 'action.deviceReboot') {
     headline = `Reboot device${p.seconds != null ? ` (delay ${String(p.seconds)}s)` : ''}`;
   }

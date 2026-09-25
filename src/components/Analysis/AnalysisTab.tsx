@@ -3,14 +3,27 @@
  *
  * Mirrors the MeshManager AnalysisPage card grid: each report is selectable
  * from the grid and rendered full-screen when active.
+ *
+ * Coverage deep link (#5277 P4a WP4, spec §2a.7): `/reports?report=coverage&
+ * sender=…&range=…` opens straight to the Coverage Report, pre-filtered.
+ * `parseCoverageDeepLink` (WP1) is the only thing that reads the params — it
+ * returns `null` unless `report=coverage`, so every other report's URL
+ * (today none use query params) is untouched. The initial `selected` is
+ * seeded from the link ONCE via a lazy `useState` initializer; the router's
+ * `useSearchParams` value is otherwise only consulted to build the prop
+ * `CoverageReport` reads at ITS OWN mount, never re-applied to `selected` on
+ * a later params change — same query-stability rule CoverageReport's
+ * `timeWindow` already documents.
  */
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 import SolarMonitoringReport from './SolarMonitoringReport';
 import NodeInfoEnrichmentReport from './NodeInfoEnrichmentReport';
 import MqttViolationsReport from './MqttViolationsReport';
 import MeshIssuesReport from './MeshIssuesReport';
 import CoverageReport from './CoverageReport';
+import { parseCoverageDeepLink } from '../../utils/coverageDeepLink';
 import { UiIcon, type UiIconName } from '../icons';
 
 type AnalysisType =
@@ -30,7 +43,13 @@ interface AnalysisCard {
 
 const AnalysisTab: React.FC = () => {
   const { t } = useTranslation();
-  const [selected, setSelected] = useState<AnalysisType>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Recomputed only when the URL's search params actually change (react-router
+  // hands back a new URLSearchParams instance on navigation) — not on every
+  // render, and NOT stored back into a query key anywhere, so this has none
+  // of the render-loop shape the #5277 query-stability fix guards against.
+  const coverageLink = useMemo(() => parseCoverageDeepLink(searchParams), [searchParams]);
+  const [selected, setSelected] = useState<AnalysisType>(() => (coverageLink ? 'coverage' : null));
 
   const reports: AnalysisCard[] = [
     {
@@ -146,11 +165,18 @@ const AnalysisTab: React.FC = () => {
         <button
           type="button"
           className="reports-section__back"
-          onClick={() => setSelected(null)}
+          onClick={() => {
+            // Clears report=/sender=/range= so Back does not reopen the
+            // report on the next render (spec §2a.7) — without this, the
+            // deep link that opened the report would still be in the URL
+            // and `coverageLink` would still be truthy.
+            setSearchParams({}, { replace: true });
+            setSelected(null);
+          }}
         >
           <UiIcon name="back" size={16} /> {t('analysis.back_to_reports', 'Back to reports')}
         </button>
-        <CoverageReport />
+        <CoverageReport initialLink={coverageLink ?? undefined} />
       </div>
     );
   }

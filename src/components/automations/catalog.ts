@@ -26,6 +26,15 @@ export interface FieldDef {
    */
   placeholderByTrigger?: Record<string, string>;
   help?: string;
+  /**
+   * `select` only: the option shown when the param is ABSENT (a block saved
+   * before the field existed), so the UI shows what the server will actually
+   * do instead of the browser's first option. New blocks are still seeded with
+   * the first option by defaultParams().
+   */
+  absentValue?: string;
+  /** `select` only: a warning rendered next to the control while the (effective) value matches a key. */
+  warningByValue?: Record<string, string>;
   advanced?: boolean;
   /** This `text`/`textarea` field accepts `{{ }}` tokens → highlight + typo-check. */
   tokens?: boolean;
@@ -713,6 +722,22 @@ export const ACTIONS: BlockDef[] = [
           { value: 'power', label: 'Power' },
         ],
         help: 'Used when Request = Telemetry (Meshtastic). e.g. "Environment" for a remote weather sensor (#3835).',
+      },
+      {
+        name: 'advertMode', label: 'Advert reach (MeshCore)', kind: 'select',
+        // Values mirror MeshCoreAdvertMode in src/types/meshcoreAdvert.ts.
+        // 'zero_hop' MUST be first: defaultParams() seeds it on new blocks.
+        options: [
+          { value: 'zero_hop', label: 'Zero-hop (nearby nodes only)' },
+          { value: 'flood', label: 'Flood (whole mesh)' },
+        ],
+        // Actions saved before this field existed have always flooded.
+        absentValue: 'flood',
+        showIf: { field: 'op', equals: 'advert' },
+        warningByValue: {
+          flood: 'Flood adverts are repeated by every repeater within 8 hops: with 20 repeaters in reach about 9 s (US) / 25 s (EU) of channel time each. Automated flood adverts run at most once per hour per source; extra floods are skipped and the step fails.',
+        },
+        help: 'Zero-hop reaches nodes in direct radio range; flood crosses the whole mesh. Meshtastic ignores this.',
       },
       { name: 'sourceIds', label: 'Via sources', kind: 'sendSourceMulti', help: 'Which radio(s) to send the request through. Leave none to use the triggering source — but a source IS required for source-less triggers (Schedule / System).' },
       { name: 'to', label: 'Target node', kind: 'text', tokens: true, advanced: true, placeholder: 'blank = triggering node; {{ trigger.from }}', help: 'Node # (Meshtastic) or contact public key (MeshCore). Leave blank to target the triggering node. Not used for "Announce self".' },

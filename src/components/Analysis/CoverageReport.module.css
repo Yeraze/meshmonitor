@@ -5,9 +5,8 @@
 
 /* Sender options are built from live node names + !id + fix count, which
  * can be much wider than a phone viewport (e.g. "Car-01 (!b2a78cf0) — 42").
- * A <select>'s intrinsic (min-content) width tracks its widest <option>
- * text, and a flex item's default `min-width: auto` refuses to shrink below
- * that intrinsic width — so on a narrow viewport this one field, not the
+ * A flex item's default `min-width: auto` refuses to shrink below its
+ * intrinsic content width — so on a narrow viewport this one field, not the
  * shared `.reports-controls` flex row, was overflowing the page. Scoped
  * here (not in the global reports-controls styles) since this is the only
  * field in the app whose option text length is this unbounded. */
@@ -17,12 +16,21 @@
   flex: 1 1 160px;
 }
 
-.senderField select {
+/* SearchableSelect (#5277 P4a WP4 — replaced the plain <select> here) already
+ * sets width: 100% / min-width: 150px on its own root in
+ * SearchableSelect.module.css; the wrapping field just needs to be free to
+ * shrink below that in the shared `.reports-controls` flex row, same
+ * reasoning as the rule above. */
+.senderField :global([data-searchable-select]) {
   min-width: 0;
   max-width: 100%;
-  width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
+}
+
+/* Dots/Grid view toggle (#5277 P4a WP4, spec §2a.7): two ghost buttons side
+ * by side, matching the time-range preset row's look. */
+.viewToggle {
+  display: flex;
+  gap: 6px;
 }
 
 .mqttNote {

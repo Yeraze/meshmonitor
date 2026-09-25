@@ -1,0 +1,23 @@
+/* ShowCoverageLink (#5277 P4a WP5) — scoped narrowly per CLAUDE.md; the
+   global node-details sheets are frozen, so this stays a CSS module. */
+.link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--color-accent);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.link:hover {
+  color: var(--color-accent-hover);
+  text-decoration: underline;
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm, 4px);
+}

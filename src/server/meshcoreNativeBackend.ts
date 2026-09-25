@@ -2011,9 +2011,16 @@ export class MeshCoreNativeBackend extends EventEmitter {
         return { ok: true, size };
       }
 
-      case 'send_advert':
-        await c.sendAdvert(K.SelfAdvertTypes.Flood);
-        return { sent: true };
+      case 'send_advert': {
+        // Reach is explicit: a missing or unknown mode is a caller bug, and
+        // guessing would risk a flood nobody asked for.
+        const mode = params.mode;
+        if (mode !== 'zero_hop' && mode !== 'flood') {
+          throw new Error(`send_advert requires mode 'zero_hop' or 'flood' (got ${String(mode)})`);
+        }
+        await c.sendAdvert(mode === 'flood' ? K.SelfAdvertTypes.Flood : K.SelfAdvertTypes.ZeroHop);
+        return { sent: true, mode };
+      }
 
       case 'send_cli': {
         // Remote-admin: send a CLI command to a distant node as an encrypted

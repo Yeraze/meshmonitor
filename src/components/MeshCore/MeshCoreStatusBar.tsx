@@ -2,6 +2,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { ConnectionStatus, MeshCoreActions } from './hooks/useMeshCore';
 import { UiIcon } from '../icons';
+import { MeshCoreAdvertButtons } from './MeshCoreAdvertButtons';
 
 interface MeshCoreStatusBarProps {
   status: ConnectionStatus | null;
@@ -54,13 +55,11 @@ export const MeshCoreStatusBar: React.FC<MeshCoreStatusBarProps> = ({
       <div className="meshcore-status-bar-right">
         {connected ? (
           <>
-            <button
-              onClick={() => void actions.sendAdvert()}
+            <MeshCoreAdvertButtons
+              onSend={(mode) => actions.sendAdvert(mode)}
               disabled={loading || receiveOnly}
-              title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : t('meshcore.send_advert', 'Send advert')}
-            >
-              {t('meshcore.send_advert', 'Send advert')}
-            </button>
+              disabledTitle={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
+            />
             <button
               className="disconnect"
               onClick={() => void actions.disconnect()}

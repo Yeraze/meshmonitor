@@ -13,7 +13,7 @@
  * Behavior is driven by the connected firmware (server-side dispatch in
  * MeshCoreManager.sendLocalCliCommand):
  *   - Repeater / Room Server → device's native text CLI.
- *   - Companion → small synthetic CLI (ver, stats, clock, advert, help).
+ *   - Companion → small synthetic CLI (ver, stats, clock, advert.zerohop, advert, help).
  *
  * The command catalog adapts to the device type so users see buttons for
  * commands that actually work on their hardware.
@@ -32,7 +32,9 @@ const COMPANION_ACTION_CATALOG: ActionCommand[] = [
   { key: 'ver',    labelKey: 'meshcore.localConsole.action.ver',    defaultLabel: 'Version', command: 'ver' },
   { key: 'stats',  labelKey: 'meshcore.localConsole.action.stats',  defaultLabel: 'Stats',   command: 'stats' },
   { key: 'clock',  labelKey: 'meshcore.localConsole.action.clock',  defaultLabel: 'Clock',   command: 'clock' },
-  { key: 'advert', labelKey: 'meshcore.localConsole.action.advert', defaultLabel: 'Send advert', command: 'advert' },
+  // One click sends the cheap zero-hop advert; a flood (`advert`) must be typed,
+  // or sent from the status bar's confirmed "Flood advert" button.
+  { key: 'advert', labelKey: 'meshcore.localConsole.action.advert_zerohop', defaultLabel: 'Zero-hop advert', command: 'advert.zerohop' },
   { key: 'help',   labelKey: 'meshcore.localConsole.action.help',   defaultLabel: 'Help',    command: 'help' },
 ];
 
@@ -44,7 +46,7 @@ const REPEATER_ACTION_CATALOG: ActionCommand[] = [
   { key: 'stats',     labelKey: 'meshcore.remoteConsole.action.stats',     defaultLabel: 'Stats',    command: 'stats' },
   { key: 'neighbors', labelKey: 'meshcore.remoteConsole.action.neighbors', defaultLabel: 'Neighbors', command: 'neighbors' },
   { key: 'clock',     labelKey: 'meshcore.remoteConsole.action.clock',     defaultLabel: 'Clock',    command: 'clock' },
-  { key: 'advert',    labelKey: 'meshcore.remoteConsole.action.advert',    defaultLabel: 'Send advert', command: 'advert' },
+  { key: 'advert',    labelKey: 'meshcore.localConsole.action.advert_zerohop', defaultLabel: 'Zero-hop advert', command: 'advert.zerohop' },
   { key: 'reboot',    labelKey: 'meshcore.remoteConsole.action.reboot',    defaultLabel: 'Reboot',   command: 'reboot', danger: true },
 ];
 
@@ -112,7 +114,7 @@ export const MeshCoreLocalConsole: React.FC<MeshCoreLocalConsoleProps> = ({
   const bodyRef = useRef<CliConsoleBodyHandle | null>(null);
 
   const basePlaceholder = deviceType === 1
-    ? t('meshcore.localConsole.companion_placeholder', 'Type a command (ver, stats, clock, advert, help)')
+    ? t('meshcore.localConsole.companion_placeholder', 'Type a command (ver, stats, clock, advert.zerohop, advert, help)')
     : t('meshcore.localConsole.repeater_placeholder', 'Type a CLI command (ver, stats, neighbors, advert…)');
   const enabledPlaceholder = receiveOnly
     ? `${basePlaceholder} ${t(

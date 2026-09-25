@@ -9,6 +9,8 @@ import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
 import { MESHCORE_AUTOMATION_TOKENS } from './meshcoreAutomationTokens';
 import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
 import { isTxDisabledBody } from '../../utils/txDisabled';
+import { MeshCoreAdvertModeField } from './MeshCoreAdvertModeField';
+import { DEFAULT_MESHCORE_ADVERT_MODE, isMeshCoreAdvertMode, type MeshCoreAdvertMode } from '../../types/meshcoreAdvert';
 
 interface MeshCoreAutoAnnounceSectionProps {
   baseUrl: string;
@@ -29,6 +31,8 @@ interface AutoAnnounceSettings {
   schedule: string;
   advertEnabled: boolean;
   advertDelaySeconds: number;
+  /** Reach of the advert burst. The server reports flood for a burst saved before this existed. */
+  advertMode: MeshCoreAdvertMode;
   /** MeshCore scope/region for the announcement (#3833). No trigger, so no 'trigger' mode. */
   scopeMode: ScopeMode;
   scopeName: string;
@@ -52,6 +56,7 @@ const DEFAULTS: AutoAnnounceSettings = {
   schedule: DEFAULT_SCHEDULE,
   advertEnabled: false,
   advertDelaySeconds: 30,
+  advertMode: DEFAULT_MESHCORE_ADVERT_MODE,
   scopeMode: 'inherit',
   scopeName: '',
 };
@@ -103,6 +108,10 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
           schedule: json.data.schedule || DEFAULT_SCHEDULE,
           advertEnabled: !!json.data.advertEnabled,
           advertDelaySeconds: typeof json.data.advertDelaySeconds === 'number' ? json.data.advertDelaySeconds : 30,
+          // An older server omits advertMode; its enabled bursts flood.
+          advertMode: isMeshCoreAdvertMode(json.data.advertMode)
+            ? json.data.advertMode
+            : (json.data.advertEnabled ? 'flood' : DEFAULT_MESHCORE_ADVERT_MODE),
           scopeMode: (json.data.scopeMode as ScopeMode) || 'inherit',
           scopeName: json.data.scopeName || '',
         };
@@ -175,6 +184,7 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
       settings.schedule !== initial.schedule ||
       settings.advertEnabled !== initial.advertEnabled ||
       settings.advertDelaySeconds !== initial.advertDelaySeconds ||
+      settings.advertMode !== initial.advertMode ||
       settings.scopeMode !== initial.scopeMode ||
       settings.scopeName !== initial.scopeName,
     );
@@ -212,6 +222,7 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
             schedule: settings.schedule,
             advertEnabled: settings.advertEnabled,
             advertDelaySeconds: settings.advertDelaySeconds,
+            advertMode: settings.advertMode,
             scopeMode: settings.scopeMode,
             scopeName: settings.scopeName,
           }),
@@ -595,6 +606,15 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
               <span style={{ fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
                 {t('meshcore.automation.announce.advert_delay', 'seconds delay (0–600)')}
               </span>
+            </div>
+          )}
+          {settings.advertEnabled && (
+            <div style={{ marginTop: '0.5rem', marginLeft: '1.75rem' }}>
+              <MeshCoreAdvertModeField
+                value={settings.advertMode}
+                onChange={(mode) => update('advertMode', mode)}
+                disabled={disabled || !canWrite}
+              />
             </div>
           )}
         </div>

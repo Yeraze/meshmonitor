@@ -330,7 +330,7 @@ The Configuration tab gets a **Device console** for the locally connected node. 
 | Local firmware | Console behavior |
 |---|---|
 | Repeater / Room Server | Forwards to the device's native serial CLI via `sendRepeaterCommand`. Same command set as a remote Repeater. |
-| Companion | A small synthetic interpreter on the server side maps `ver` / `stats [core\|radio\|packets]` / `clock` / `advert` / `help` to existing companion-protocol bridge commands and formats the response as text. Mutating verbs (`set name`, `set radio` …) are intentionally NOT in the synthetic CLI — the existing form fields on the same Configuration tab handle those with proper validation. |
+| Companion | A small synthetic interpreter on the server side maps `ver` / `stats [core\|radio\|packets]` / `clock` / `advert.zerohop` / `advert` / `help` to existing companion-protocol bridge commands and formats the response as text. Mutating verbs (`set name`, `set radio` …) are intentionally NOT in the synthetic CLI — the existing form fields on the same Configuration tab handle those with proper validation. |
 
 No login flow: the connection is physical (USB serial or direct TCP), so there's no admin password concept. Gated on the existing `configuration:write` permission.
 
@@ -436,6 +436,23 @@ The filter combines several optional controls, each independently toggleable:
 
 The controls combine intuitively: **last heard**, **hop range** and **signal quality** first *narrow* the pool of contacts, then the **selected-contacts** list and **name regex** *include* any contact matching either of them. If you turn the filter on without configuring a selected-contacts list or a name regex, every contact surviving the narrowing filters is targeted. A live **matching targets** preview shows how many contacts the current settings would target, updating as you edit. All settings are per-source and saved from the shared MeshCore Automations save bar.
 
+## Adverts
+
+An advert announces this node so others can add it as a contact. MeshMonitor sends two kinds:
+
+- **Zero-hop** reaches only nodes in direct radio range. No repeater forwards it, so it costs one transmission (roughly 0.4–1.3 s of channel time).
+- **Flood** is forwarded by every repeater within 8 hops. With 20 repeaters in reach that is about 9 s (US presets) or 25 s (EU presets) of shared channel time for a single advert.
+
+The status bar and **Configuration → Device actions** offer **Advert (nearby, zero-hop)** as the main button. **Flood advert** sits beside it and asks you to confirm, stating the cost, before it sends. In the device console, `advert.zerohop` sends a zero-hop advert and `advert` sends a flood; the console's quick-action button sends the zero-hop one.
+
+Repeater firmware that predates the `advert.zerohop` CLI verb floods when asked for a zero-hop advert. MeshMonitor spots this from the repeater's reply, reports that a flood went out, and refuses further zero-hop requests to that repeater until it reconnects. Update the repeater firmware to fix it.
+
+### Automated flood limit
+
+Automated adverts (the auto-announce advert burst, timer triggers, and the automation **Announce self (advert)** action) can pick zero-hop or flood. New settings default to zero-hop. Settings saved before this choice existed keep flooding, as they always did.
+
+Automated floods are limited to **one per hour per source**. The time of the last flood lives in the database, so restarting MeshMonitor or saving settings does not reset it. Any flood counts toward the hour, including a manual one. When an automated flood falls inside the hour, MeshMonitor skips it (it does not send a zero-hop advert instead) and logs why; a timer trigger records the reason as its last error, and an automation step fails with it. Zero-hop adverts have no such limit, and a manual flood is never blocked.
+
 ## Auto-Announce
 
 The **Automation** view also hosts a per-source Auto-Announce that periodically broadcasts a status message to one or more MeshCore channels:
@@ -443,7 +460,7 @@ The **Automation** view also hosts a per-source Auto-Announce that periodically 
 - **Scheduling** — choose either a simple interval (every N hours, 1–168) or a standard 5-field cron expression. An optional *announce on connection* fires a single message whenever the source reconnects.
 - **Message template** — the message body supports token expansion. Available tokens: `{VERSION}`, `{DURATION}`, `{CONTACTCOUNT}`, `{COMPANIONCOUNT}`, `{REPEATERCOUNT}`, `{ROOMCOUNT}`, `{NODE_NAME}`, `{NODE_ID}`. A live preview shows the rendered text, and clickable token buttons insert at the cursor.
 - **Target channels** — the announcement is broadcast to every selected channel each run.
-- **Optional advert burst** — fire a MeshCore advert N seconds (0–600) after each announcement so neighbours rediscover the node.
+- **Optional advert burst** — fire a MeshCore advert N seconds (0–600) after each announcement so neighbours rediscover the node. Choose **Zero-hop** (default) or **Flood**; see [Automated flood limit](#automated-flood-limit).
 - **Send Now** — manually fire the configured announcement for testing without waiting for the schedule.
 
 ## Auto-Responder
@@ -472,7 +489,7 @@ A hop MeshMonitor cannot resolve stays as raw hex. When several repeaters share 
 Timer Triggers schedule recurring actions independent of incoming traffic:
 
 - **Per-trigger schedule** — each trigger runs on its own cron or interval.
-- **Three actions** — send a **text** message (token expansion supported) to a channel or contact, fire a MeshCore **advert**, or **run a script** (token-expanded args).
+- **Three actions** — send a **text** message (token expansion supported) to a channel or contact, fire a MeshCore **advert** (zero-hop by default, or flood; see [Automated flood limit](#automated-flood-limit)), or **run a script** (token-expanded args).
 - **Last-run telemetry** — the UI surfaces the last fire time and outcome per trigger.
 
 ## Automated Channel-Send Auto-Retry
@@ -605,7 +622,7 @@ This is fixed in 4.5 — source create/update/delete/connect/disconnect endpoint
 ### No nodes appearing
 - Verify your MeshCore device is properly flashed and operating.
 - Check that the radio frequency and parameters match other nodes in your mesh.
-- Try sending an advert to announce your presence on the network.
+- Try sending an advert to announce your presence on the network. A zero-hop advert reaches nodes in direct range; use a flood advert only if distant nodes need to find you.
 
 ### Radio parameter changes "revert" on save
 Earlier 4.x versions had a hook-dependency bug where Phase 3 push events overwrote staged radio/location edits before Save fired. Fixed in 4.5.

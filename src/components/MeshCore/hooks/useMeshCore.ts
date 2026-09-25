@@ -24,6 +24,7 @@ import { useWebSocketContext } from '../../../contexts/WebSocketContext';
 import { useToast } from '../../ToastContainer';
 import { isTxDisabledBody } from '../../../utils/txDisabled';
 import { parseJsonResponse } from '../../../utils/parseJsonResponse';
+import type { MeshCoreAdvertMode } from '../../../types/meshcoreAdvert';
 import type {
   MeshCoreMessageEvent,
   MeshCoreContactUpdateEvent,
@@ -305,7 +306,8 @@ export interface MeshCoreActions {
   exportPrivateKey: () => Promise<string | null>;
   /** Import an Ed25519 private key onto the device. Destructive — replaces identity. */
   importPrivateKey: (hexKey: string, opts?: { confirm?: boolean }) => Promise<boolean>;
-  sendAdvert: () => Promise<void>;
+  /** Send a self-advert. `zero_hop` = nearby only; `flood` = whole mesh (costly). */
+  sendAdvert: (mode: MeshCoreAdvertMode) => Promise<void>;
   /** Send a message. `scope` is an optional one-off region/scope override
    *  (#3701) for THIS send only — it is not persisted to the channel; the next
    *  send re-asserts the channel/default scope. Omit (or pass `undefined`) for
@@ -1707,9 +1709,13 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
-  const sendAdvert = useCallback(async () => {
+  const sendAdvert = useCallback(async (mode: MeshCoreAdvertMode) => {
     try {
-      const response = await csrfFetch(`${mcPrefix}/advert`, { method: 'POST' });
+      const response = await csrfFetch(`${mcPrefix}/advert`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      });
       const data = await parseJsonResponse(response);
       if (!data.success) {
         if (reportTxDisabled(response.status, data)) return;

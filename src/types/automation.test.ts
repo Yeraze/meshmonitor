@@ -105,6 +105,24 @@ describe('validateAutomationGraph', () => {
     expect(validateAutomationGraph(withReboot({ targetNodeNum: 1.5 })).valid).toBe(false);
   });
 
+  it('action.requestData: optional advertMode validates present/absent', () => {
+    const withReq = (params: Record<string, unknown>): AutomationGraph => ({
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.schedule', params: { cron: '0 3 * * *' } },
+        { id: 'a', type: 'action.requestData', params },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    });
+    // absent → valid (pre-existing actions keep validating; they run as flood)
+    expect(validateAutomationGraph(withReq({ op: 'advert' })).valid).toBe(true);
+    expect(validateAutomationGraph(withReq({ op: 'advert', advertMode: 'zero_hop' })).valid).toBe(true);
+    expect(validateAutomationGraph(withReq({ op: 'advert', advertMode: 'flood' })).valid).toBe(true);
+    const bad = validateAutomationGraph(withReq({ op: 'advert', advertMode: 'multi_hop' }));
+    expect(bad.valid).toBe(false);
+    expect(bad.errors.join(' ')).toMatch(/advertMode/);
+  });
+
   // ── action.tapback emojiMode (#4340) ────────────────────────────────────
   it('action.tapback: emojiMode validates when present, and absence still validates', () => {
     const withTapback = (params: Record<string, unknown>): AutomationGraph => ({

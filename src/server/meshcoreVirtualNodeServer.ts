@@ -3,6 +3,7 @@ import { EventEmitter } from 'events';
 import { logger } from '../utils/logger.js';
 import databaseService from '../services/database.js';
 import type { MeshCoreNode, TelemetryMode, MeshCoreContact, MeshCoreMessage, MeshCoreStatus, MeshCoreLoginResult } from './meshcoreManager.js';
+import type { MeshCoreAdvertMode } from '../types/meshcoreAdvert.js';
 import {
   CommandCodes,
   ErrorCodes,
@@ -103,8 +104,8 @@ export interface MeshCoreVirtualNodeManager {
     telemetryModeEnv: number;
     advLocPolicy: number;
   }): Promise<boolean>;
-  /** Broadcast a self-advertisement from the physical node (flood). */
-  sendAdvert(): Promise<boolean>;
+  /** Broadcast a self-advertisement from the physical node with the given reach. */
+  sendAdvert(mode: MeshCoreAdvertMode): Promise<boolean>;
   /**
    * Read the physical node's Ed25519 private key as a 128-char hex string, or
    * null when the node refused / is disconnected / its firmware was built
@@ -591,9 +592,9 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
           // Broadcasting a self-advert is a normal (non-admin) operation on a
           // real node — like sending a message — so it is NOT gated on
           // allowAdminCommands (issue #3904 follow-up). Forward to the physical
-          // node and ack; the flood type byte in the payload is ignored since
-          // the manager always floods.
-          void this.handleSendSelfAdvert(clientId);
+          // node and ack, honouring the app's type byte like real firmware:
+          // 1 = flood, anything else (or absent) = zero-hop.
+          void this.handleSendSelfAdvert(clientId, command.payload.length >= 2 && command.payload[1] === 1 ? 'flood' : 'zero_hop');
           break;
         case CommandCodes.SendLogin:
           // Remote-node authentication (issue #3904). Not gated on
@@ -861,10 +862,12 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
    * `allowAdminCommands`. Replies Ok when the node accepted the advert,
    * Err(BadState) if the manager reported failure or threw (issue #3904).
    */
-  private async handleSendSelfAdvert(clientId: string): Promise<void> {
+  private async handleSendSelfAdvert(clientId: string, mode: MeshCoreAdvertMode): Promise<void> {
     if (this.refuseIfReceiveOnly(clientId, 'SendSelfAdvert')) return;
     try {
-      const ok = await this.options.manager.sendAdvert();
+      // A client app's advert is a manual send, so the automated flood floor
+      // does not apply (sendAdvert still stamps the flood time).
+      const ok = await this.options.manager.sendAdvert(mode);
       if (!ok) {
         logger.warn(`[MeshCore VN ${this.sourceId}] SendSelfAdvert from ${clientId} not sent by node`);
         this.send(clientId, encodeErr(ErrorCodes.BadState));

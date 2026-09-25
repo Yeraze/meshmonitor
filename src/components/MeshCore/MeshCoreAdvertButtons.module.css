@@ -1,0 +1,53 @@
+/*
+ * MeshCoreAdvertButtons. CSS module — do not add these rules to the global
+ * sheets (CLAUDE.md CSS containment rule). `.group .flood` is two classes deep
+ * so it beats the status bar's `.meshcore-status-bar button` rule.
+ */
+
+.group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.group .flood {
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+
+.group .flood:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+/* Flood confirmation dialog (rendered in a portal on <body>). */
+.confirmText {
+  margin: 0 0 1rem;
+  line-height: 1.45;
+}
+
+.confirmActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+.cancelButton,
+.confirmButton {
+  padding: 0.5rem 1.1rem;
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.cancelButton {
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+
+.confirmButton {
+  background: var(--color-warning);
+  color: var(--color-bg);
+  border: 1px solid var(--color-warning);
+}

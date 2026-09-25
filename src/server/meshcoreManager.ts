@@ -69,6 +69,14 @@ import { parsePathHops, pathHashBytesOf, resolveRouteNames } from '../utils/mesh
 import { tryDecodeGroupTextPayload } from './utils/meshcoreGroupEcho.js';
 import { meshcoreAgeCutoffMs, isWithinMeshcoreAge } from '../utils/meshcoreAge.js';
 import { safeJson } from './utils/redactSecrets.js';
+import {
+  type MeshCoreAdvertMode,
+  isMeshCoreAdvertMode,
+  resolveMeshCoreAdvertMode,
+  LEGACY_MESHCORE_ADVERT_MODE,
+  MESHCORE_AUTOMATED_FLOOD_ADVERT_MIN_INTERVAL_MS,
+} from '../types/meshcoreAdvert.js';
+import { MeshCoreZeroHopAdvertUnsupportedError, classifyRepeaterAdvertReply } from './utils/meshcoreAdvert.js';
 
 // Dynamic imports for optional serialport dependency
 // These are loaded only when MeshCore is enabled to avoid requiring native build tools
@@ -380,6 +388,12 @@ export interface MeshCoreTimerTrigger extends MeshCoreAutomationScopeConfig {
    */
   responseType: 'text' | 'advert' | 'script';
   response?: string;
+  /**
+   * Advert reach when `responseType === 'advert'`. Absent on triggers saved
+   * before the field existed — those keep flooding (LEGACY_MESHCORE_ADVERT_MODE)
+   * and fall under the automated flood floor. New triggers default to zero_hop.
+   */
+  advertMode?: MeshCoreAdvertMode;
   /** Script filename inside /data/scripts (responseType === 'script'). */
   scriptPath?: string;
   /** Whitespace-separated argv passed to the script. Token-expanded. */
@@ -965,6 +979,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   // and stateful, two concurrent sends with different scopes must not interleave.
   private activeFloodScope: string | null | undefined = undefined;
   private sendScopeLock: Promise<unknown> = Promise.resolve();
+  // Serialises the automated flood-advert floor's read-check-send so two
+  // automated floods firing together cannot both pass the check.
+  private floodAdvertGate: Promise<unknown> = Promise.resolve();
+  // Set when a repeater answered `advert.zerohop` with the legacy flood reply
+  // (firmware that predates the verb prefix-matches it as `advert`). Further
+  // zero-hop requests are refused rather than flooding again. In memory only:
+  // after a restart the first zero-hop attempt re-detects it.
+  private repeaterZeroHopAdvertUnsupported = false;
   // Known scope/region names for this source (#3742 Phase 2): the candidate set
   // a received message's transport code is matched against to resolve its scope
   // name. Sourced from per-channel scopes + the source default scope. Cached so
@@ -4115,9 +4137,25 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   }
 
   /**
-   * Send an advert
+   * Send a self-advert with an explicit reach (see src/types/meshcoreAdvert.ts).
+   *
+   * - Companion: CMD_SEND_SELF_ADVERT with type byte 0 (zero-hop) or 1 (flood).
+   *   Only floods carry the default scope (#3667); zero-hop is never forwarded,
+   *   so scope does not apply to it.
+   * - Repeater: CLI `advert.zerohop` or `advert`. Firmware that predates
+   *   `advert.zerohop` prefix-matches it as `advert` and FLOODS — detected from
+   *   the reply and thrown as MeshCoreZeroHopAdvertUnsupportedError rather than
+   *   reported as a zero-hop success.
+   *
+   * Every successful flood (manual or automated) stamps
+   * `meshcoreLastFloodAdvertAt`, the per-source floor that
+   * {@link sendAutomatedAdvert} checks. Manual callers use this method directly
+   * and are not blocked by that floor.
    */
-  async sendAdvert(): Promise<boolean> {
+  async sendAdvert(mode: MeshCoreAdvertMode): Promise<boolean> {
+    if (!isMeshCoreAdvertMode(mode)) {
+      throw new Error(`Invalid advert mode: ${String(mode)}`);
+    }
     if (!this.connected) {
       return false;
     }
@@ -4125,28 +4163,99 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     this.requireTransmit();
 
     if (this.deviceType === MeshCoreDeviceType.REPEATER) {
+      if (mode === 'zero_hop' && this.repeaterZeroHopAdvertUnsupported) {
+        throw new MeshCoreZeroHopAdvertUnsupportedError(false);
+      }
+      let reply: string;
       try {
-        await this.sendRepeaterCommand('advert');
-        logger.debug('[MeshCore] Advert sent (Repeater)');
+        reply = await this.sendRepeaterCommand(mode === 'flood' ? 'advert' : 'advert.zerohop');
+      } catch (error) {
+        logger.error('[MeshCore] Failed to send advert:', error);
+        return false;
+      }
+      const outcome = classifyRepeaterAdvertReply(reply);
+      if (mode === 'zero_hop' && outcome === 'flood') {
+        // Old firmware: the request went out as a FLOOD. Count it against the
+        // floor and refuse further zero-hop requests on this connection.
+        this.repeaterZeroHopAdvertUnsupported = true;
+        await this.recordFloodAdvert();
+        logger.error(`[MeshCore:${this.sourceId}] Repeater firmware does not support advert.zerohop — it sent a FLOOD advert instead. Update the repeater firmware.`);
+        throw new MeshCoreZeroHopAdvertUnsupportedError(true);
+      }
+      if (outcome === 'error') {
+        logger.error(`[MeshCore:${this.sourceId}] Repeater rejected ${mode} advert: ${reply}`);
+        return false;
+      }
+      if (mode === 'flood') await this.recordFloodAdvert();
+      logger.debug(`[MeshCore] ${mode} advert sent (Repeater)`);
+      return true;
+    }
+
+    try {
+      const send = () => this.sendBridgeCommand('send_advert', { mode });
+      // Floods carry the default scope (#3667). Zero-hop is never forwarded,
+      // so it only needs ordering with other sends, not a scope assertion.
+      const response = mode === 'flood'
+        ? await this.sendWithDefaultScope(send)
+        : await this.runSerialized(send);
+      if (response.success) {
+        if (mode === 'flood') await this.recordFloodAdvert();
+        logger.debug(`[MeshCore] ${mode} advert sent (Companion)`);
         return true;
-      } catch (error) {
-        logger.error('[MeshCore] Failed to send advert:', error);
-        return false;
       }
-    } else {
-      try {
-        // Adverts flood, so they carry the default scope (#3667). Repeaters
-        // (handled above) scope via their own `region` config instead.
-        const response = await this.sendWithDefaultScope(() => this.sendBridgeCommand('send_advert', {}));
-        if (response.success) {
-          logger.debug('[MeshCore] Advert sent (Companion)');
-          return true;
-        }
-        return false;
-      } catch (error) {
-        logger.error('[MeshCore] Failed to send advert:', error);
-        return false;
+      return false;
+    } catch (error) {
+      logger.error('[MeshCore] Failed to send advert:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Advert entry point for AUTOMATED senders (auto-announce burst, timer
+   * triggers, automation actions). Zero-hop passes straight through. A flood
+   * is allowed at most once per MESHCORE_AUTOMATED_FLOOD_ADVERT_MIN_INTERVAL_MS
+   * per source, measured from the last flood of ANY origin as persisted in the
+   * DB — so restarts and settings saves cannot reset it. A flood inside the
+   * window is skipped (not downgraded) and reported as not sent.
+   *
+   * Errors from sendAdvert (receive-only, unsupported zero-hop) propagate so
+   * each caller's existing error handling applies.
+   */
+  async sendAutomatedAdvert(mode: MeshCoreAdvertMode, origin: string): Promise<{ sent: boolean; reason?: string }> {
+    if (mode !== 'flood') {
+      const ok = await this.sendAdvert(mode);
+      return ok ? { sent: true } : { sent: false, reason: 'advert failed' };
+    }
+    const task = this.floodAdvertGate.then(async () => {
+      const last = await this.getLastFloodAdvertAt();
+      const elapsed = last === null ? null : Date.now() - last;
+      // |elapsed| so a clock that stepped backwards cannot block floods for
+      // longer than one window.
+      if (elapsed !== null && Math.abs(elapsed) < MESHCORE_AUTOMATED_FLOOD_ADVERT_MIN_INTERVAL_MS) {
+        const minutes = Math.max(0, Math.round(elapsed / 60000));
+        const reason = `flood advert skipped: last flood was ${minutes} min ago (automated flood adverts are limited to one per ${MESHCORE_AUTOMATED_FLOOD_ADVERT_MIN_INTERVAL_MS / 60000} min)`;
+        logger.info(`[MeshCore:${this.sourceId}] ${origin}: ${reason}`);
+        return { sent: false, reason };
       }
+      const ok = await this.sendAdvert('flood');
+      return ok ? { sent: true } : { sent: false, reason: 'advert failed' };
+    });
+    this.floodAdvertGate = task.then(() => undefined, () => undefined);
+    return task;
+  }
+
+  /** Last flood advert time (ms) for this source, or null if none/unparseable. */
+  async getLastFloodAdvertAt(): Promise<number | null> {
+    const raw = await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreLastFloodAdvertAt');
+    const n = raw ? Number(raw) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+
+  private async recordFloodAdvert(): Promise<void> {
+    try {
+      await databaseService.settings.setSourceSetting(this.sourceId, 'meshcoreLastFloodAdvertAt', String(Date.now()));
+    } catch (err) {
+      logger.error(`[MeshCore:${this.sourceId}] Failed to record flood advert time: ${(err as Error).message}`);
     }
   }
 
@@ -6297,6 +6406,13 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // (sender_timestamp=0 → "clock cannot go backwards"); rewrite it to the
       // absolute `time <epoch>` verb so the RTC actually gets set (#3954).
       const reply = await this.sendRepeaterCommand(this.rewriteClockSync(trimmed), timeoutMs);
+      // A flood advert typed at the console counts against the automated
+      // flood floor like any other manual flood. Judge by the reply, not the
+      // verb: firmware without `advert.zerohop` floods on it too.
+      const verb = trimmed.split(/\s+/)[0]?.toLowerCase() ?? '';
+      if ((verb === 'advert' || verb === 'advert.zerohop') && classifyRepeaterAdvertReply(reply) === 'flood') {
+        await this.recordFloodAdvert();
+      }
       return { reply, elapsedMs: Date.now() - sentAt };
     }
 
@@ -6354,10 +6470,15 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       return `${epoch}\n${new Date(epoch * 1000).toISOString()}`;
     }
 
-    if (verb === 'advert') {
-      const response = await this.sendBridgeCommand('send_advert', {});
-      if (!response.success) throw new Error(response.error || 'send_advert failed');
-      return 'Advert sent (flood)';
+    // Same verbs as the repeater firmware CLI: `advert` floods,
+    // `advert.zerohop` stays in direct radio range. Both go through
+    // sendAdvert() so a flood carries the default scope and stamps the
+    // automated flood floor like any other manual flood.
+    if (verb === 'advert' || verb === 'advert.zerohop') {
+      const mode: MeshCoreAdvertMode = verb === 'advert' ? 'flood' : 'zero_hop';
+      const ok = await this.sendAdvert(mode);
+      if (!ok) throw new Error('send_advert failed');
+      return mode === 'flood' ? 'Advert sent (flood)' : 'Advert sent (zero-hop)';
     }
 
     if (verb === 'help' || verb === '?') {
@@ -6366,7 +6487,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         '  ver           — firmware version + model',
         '  stats [core|radio|packets] — local device stats',
         '  clock         — device time',
-        '  advert        — broadcast a flood advert',
+        '  advert.zerohop — advert to nodes in direct radio range',
+        '  advert        — flood advert across the whole mesh (costly)',
         '  help          — this list',
       ].join('\n');
     }
@@ -7853,6 +7975,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // Optional advert burst N seconds after the announcement.
     const advertEnabled = (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoAnnounceAdvertEnabled')) === 'true';
     if (advertEnabled) {
+      // Absent mode = a burst configured before the field existed → flood (legacy).
+      const advertMode = resolveMeshCoreAdvertMode(
+        await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoAnnounceAdvertMode'),
+        LEGACY_MESHCORE_ADVERT_MODE,
+      );
       const delayRaw = await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoAnnounceAdvertDelaySeconds');
       const delaySec = Math.max(0, Math.min(600, parseInt(delayRaw || '30', 10) || 30));
       if (this.autoAnnounceAdvertTimer) clearTimeout(this.autoAnnounceAdvertTimer);
@@ -7865,7 +7992,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           return;
         }
         if (!this.connected) return;
-        void this.sendAdvert().catch((err: Error) => {
+        void this.sendAutomatedAdvert(advertMode, 'Auto-announce advert burst').then((r) => {
+          if (!r.sent && r.reason) {
+            logger.debug(`[MeshCore:${this.sourceId}] Auto-announce: advert burst not sent: ${r.reason}`);
+          }
+        }).catch((err: Error) => {
           logger.warn(`[MeshCore:${this.sourceId}] Auto-announce: advert burst failed: ${err.message}`);
         });
       }, delaySec * 1000);
@@ -8010,8 +8141,13 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     let reason: string | undefined;
     try {
       if (trigger.responseType === 'advert') {
-        ok = await this.sendAdvert();
-        if (!ok) reason = 'advert failed';
+        // Absent mode = trigger saved before the field existed → flood (legacy).
+        const result = await this.sendAutomatedAdvert(
+          resolveMeshCoreAdvertMode(trigger.advertMode, LEGACY_MESHCORE_ADVERT_MODE),
+          `Timer trigger ${trigger.id}`,
+        );
+        ok = result.sent;
+        if (!ok) reason = result.reason ?? 'advert failed';
       } else if (trigger.responseType === 'script') {
         if (!trigger.scriptPath) {
           ok = false;

@@ -461,6 +461,27 @@ describe('MeshCoreNativeBackend', () => {
     expect(unhandled).toHaveLength(0);
   });
 
+  it('send_advert maps mode to the CMD_SEND_SELF_ADVERT type byte', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', { connectionType: 'serial', serialPort: '/dev/ttyUSB0' });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+
+    expect((await backend.sendCommand('send_advert', { mode: 'zero_hop' })).success).toBe(true);
+    expect((await backend.sendCommand('send_advert', { mode: 'flood' })).success).toBe(true);
+    expect(conn.sentAdverts).toEqual([SelfAdvertTypes.ZeroHop, SelfAdvertTypes.Flood]);
+  });
+
+  it('send_advert refuses a missing mode instead of guessing', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', { connectionType: 'serial', serialPort: '/dev/ttyUSB0' });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+
+    const resp = await backend.sendCommand('send_advert', {});
+    expect(resp.success).toBe(false);
+    expect(resp.error).toMatch(/requires mode/);
+    expect(conn.sentAdverts).toEqual([]);
+  });
+
   it('set_device_time resolves on Ok and forwards the epoch', async () => {
     const backend = new MeshCoreNativeBackend('src-1', {
       connectionType: 'serial',

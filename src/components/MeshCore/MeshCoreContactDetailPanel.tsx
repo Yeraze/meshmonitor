@@ -19,6 +19,7 @@ import type { AddContactToDeviceResponse, MeshCoreActions, TracePathResult, Zero
 import api from '../../services/api';
 import '../NodeDetailsBlock.css';
 import { UiIcon } from '../icons';
+import { ShowCoverageLink } from '../Analysis/ShowCoverageLink';
 
 const DEVICE_TYPE_KEYS: Record<number, string> = {
   0: 'meshcore.device_type.unknown',
@@ -564,9 +565,12 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   return (
     <div className="node-details-block meshcore-contact-detail-panel">
       <div className="node-details-header">
-        <h3 className="node-details-title">
-          {t('meshcore.contact_details.title', 'Contact Details')}
-        </h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <h3 className="node-details-title">
+            {t('meshcore.contact_details.title', 'Contact Details')}
+          </h3>
+          <ShowCoverageLink senderId={publicKey.toLowerCase()} />
+        </div>
         <button
           className="node-details-toggle"
           onClick={() => setIsCollapsed(prev => !prev)}
