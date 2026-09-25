@@ -23,6 +23,11 @@ import { CronOrIntervalScheduler, type ScheduleMode } from './services/cronOrInt
 import { replaceMeshCoreAnnounceTokens } from './utils/meshcoreAnnounceTokens.js';
 import { runScript, type RunScriptResult } from './utils/scriptRunner.js';
 import { MeshCoreNativeBackend, MESHCORE_LOGIN_REJECTED, type BridgeShapedEvent } from './meshcoreNativeBackend.js';
+import {
+  MESHCORE_CONTACT_NOT_ON_DEVICE,
+  MESHCORE_DEVICE_TABLE_FULL,
+  MeshCoreContactNotOnDeviceError,
+} from './meshcoreDeviceContactErrors.js';
 import { resolveMessageScope } from './meshcoreScopeResolve.js';
 import { TxDisabledError } from './errors/txDisabledError.js';
 import { isRfBridgeCommand, isTransmittingLocalCliVerb, MESHCORE_RECEIVE_ONLY_MESSAGE } from './constants/meshcoreTx.js';
@@ -539,6 +544,17 @@ export interface MeshCoreContact {
    * in sync.
    */
   deviceFavorite?: boolean;
+  /**
+   * Whether this contact is in the companion's saved contact table (#5349).
+   * The firmware resolves login / status / DM targets from that table only.
+   *  - `true`: read from `get_contacts`, or a 0x80 Advert push (the firmware
+   *    sends 0x80 only for contacts it stored).
+   *  - `false`: a 0x8A NewAdvert push (the firmware sends 0x8A only for a
+   *    contact it did NOT store — manual-add mode, hop limit, or table full),
+   *    or a 0x8F CONTACT_DELETED eviction.
+   *  - `undefined`: unknown (e.g. seeded from the DB).
+   */
+  onDevice?: boolean;
 }
 
 /** Sentinel RSSI (dBm) below which a configured `rssiMin` threshold is a no-op. */
@@ -830,7 +846,31 @@ export interface MeshCoreLoginResult {
  *                 a marginal link and says nothing about whether the password
  *                 is correct, so callers must back off rather than conclude.
  */
-export type MeshCoreLoginOutcome = 'ok' | 'rejected' | 'no_reply';
+/**
+ * - `ok`: logged in.
+ * - `rejected`: the remote answered with an explicit refusal (0x86).
+ * - `no_reply`: nothing came back (lossy link, remote offline).
+ * - `not_on_device`: the companion does not hold the target in its contact
+ *   table, so it could not send the login at all (#5349). Nothing was
+ *   transmitted; retrying cannot help until the contact is added.
+ */
+export type MeshCoreLoginOutcome = 'ok' | 'rejected' | 'no_reply' | 'not_on_device';
+
+/** Result of `MeshCoreManager.addContactToDevice` (#5349). */
+export type AddContactToDeviceResult =
+  | { status: 'added'; evicted: string[]; count: number; maxContacts: number | null }
+  | { status: 'already_on_device' }
+  /** The table is full (or its capacity is unknown): ask the user first. */
+  | { status: 'confirm_full'; count: number; maxContacts: number | null }
+  /** Blocked: these MeshMonitor favourites lack the device favourite bit. */
+  | { status: 'favorites_unprotected'; unprotected: string[] }
+  /** The firmware refused: table full and "overwrite oldest" off. */
+  | { status: 'table_full'; count: number; maxContacts: number | null }
+  /** No known advert type — adding as ADV_TYPE_NONE would bypass favourites. */
+  | { status: 'unknown_type' }
+  | { status: 'not_found' }
+  | { status: 'unavailable' }
+  | { status: 'failed'; error: string };
 
 /**
  * MeshCore Manager class
@@ -938,6 +978,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   // Shared state
   private localNode: MeshCoreNode | null = null;
   private contacts: Map<string, MeshCoreContact> = new Map();
+  /** Last "contact table full" (0x90) warning, ms — rate-limits the log (#5349). */
+  private lastContactsFullWarnAt = 0;
+  private static readonly CONTACTS_FULL_WARN_INTERVAL_MS = 10 * 60 * 1000;
   /**
    * Recently-removed contacts (lowercased publicKey → tombstone-expiry ms).
    * When a contact still lives on the companion's saved-contact list, an
@@ -1924,6 +1967,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           latitude: data.latitude ?? existing.latitude,
           longitude: data.longitude ?? existing.longitude,
           lastSeen: Date.now(),
+          // Firmware sends 0x80 (contact_advertised) only for a contact it
+          // stored, and 0x8A (contact_added) only for one it did NOT store
+          // (#5349) — so this is the authoritative "in the radio's table" bit.
+          onDevice: event_type === 'contact_advertised',
         };
         this.contacts.set(publicKey, updated);
         // Mirror to meshcore_nodes so per-source consumers (telemetry
@@ -1964,6 +2011,33 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           this.schedulePathRefresh(publicKey);
         }
         logger.debug(`[MeshCore] ${event_type} for ${publicKey} (${data.adv_name ?? ''})`);
+      }
+    } else if (event_type === 'contact_deleted') {
+      // 0x8F: the firmware evicted this contact to make room for a new one
+      // ("overwrite oldest" is on; it never evicts a favourite). Keep the row
+      // — the node still exists on the mesh — but mark it as no longer in the
+      // radio's table so the UI stops offering login/status on it (#5349).
+      const publicKey = String(data.public_key ?? '').toLowerCase();
+      const existing = publicKey ? this.contacts.get(publicKey) : undefined;
+      logger.info(
+        `[MeshCore:${this.sourceId}] Radio evicted contact ${publicKey.substring(0, 12)}… from its full contact table`,
+      );
+      if (existing) {
+        const updated: MeshCoreContact = { ...existing, onDevice: false };
+        this.contacts.set(publicKey, updated);
+        this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
+        dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
+      }
+    } else if (event_type === 'contacts_full') {
+      // 0x90: an advertised node could not be stored — the table is full and
+      // "overwrite oldest" is off. It still arrives as a 0x8A (onDevice=false).
+      // Warn at most once per window so a busy mesh doesn't flood the log.
+      if (Date.now() - this.lastContactsFullWarnAt >= MeshCoreManager.CONTACTS_FULL_WARN_INTERVAL_MS) {
+        this.lastContactsFullWarnAt = Date.now();
+        logger.warn(
+          `[MeshCore:${this.sourceId}] The radio's contact table is full — newly heard nodes are not being ` +
+          `stored and cannot be logged in to or messaged until added (remove unused contacts, or add them explicitly).`,
+        );
       }
     } else if (event_type === 'cli_reply') {
       // Remote-admin: a contact message with txtType=CliData. Routed here by
@@ -3269,6 +3343,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
             pathLen: c.path_len ?? null,
             flags: typeof c.flags === 'number' ? c.flags : undefined,
             deviceFavorite: c.favorite === true,
+            // Read straight from the device's contact table (#5349).
+            onDevice: true,
           });
         }
         // Mirror every contact to meshcore_nodes so stale stub rows
@@ -4941,6 +5017,144 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   }
 
   /**
+   * Add a node MeshMonitor knows about (heard via an advert the radio did not
+   * store, evicted earlier, or known only from the DB) to the companion's own
+   * contact table, so the radio can log in to / query / message it (#5349).
+   * Local serial write via CMD_ADD_UPDATE_CONTACT — nothing is transmitted.
+   *
+   * Full-table policy (the firmware behaviour is in BaseChatMesh.cpp
+   * `allocateContactSlot` / companion MyMesh.cpp CMD_ADD_UPDATE_CONTACT):
+   *  - Not full: the contact is simply added.
+   *  - Full, "overwrite oldest" ON: the firmware evicts the oldest contact
+   *    whose favourite bit (flags & 0x01) is CLEAR — never a favourite.
+   *  - Full, "overwrite oldest" OFF (or every contact is a favourite): the
+   *    firmware refuses with ERR_CODE_TABLE_FULL; nothing changes.
+   * So a favourite can only be evicted if MeshMonitor's favourite never
+   * reached the device bit. When the table is full (or its capacity can't be
+   * read) we therefore:
+   *  1. require `confirmFull` (the UI's confirm step), and
+   *  2. re-sync MeshMonitor favourites onto the device (refreshContacts →
+   *     reconcileDeviceFavorites) and verify every favourite the radio holds
+   *     now carries the bit. If any does not, the add is BLOCKED.
+   * The added contact carries the favourite bit itself when it is a
+   * MeshMonitor favourite. ADV_TYPE_NONE (unknown type) is refused because the
+   * firmware's eviction for that type ignores favourites.
+   */
+  async addContactToDevice(
+    publicKey: string,
+    opts: { confirmFull?: boolean } = {},
+  ): Promise<AddContactToDeviceResult> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION || !this.connected) {
+      return { status: 'unavailable' };
+    }
+    const key = publicKey.toLowerCase();
+
+    // What we know about the node: the live contact first, else the DB row.
+    const live = this.contacts.get(key);
+    const dbNode = await databaseService.meshcore.getNodeByPublicKeyAndSource(key, this.sourceId);
+    if (!live && !dbNode) return { status: 'not_found' };
+    const advType = live?.advType ?? (dbNode?.advType as MeshCoreDeviceType | null | undefined) ?? null;
+    if (advType === null || advType < 1 || advType > 4) return { status: 'unknown_type' };
+    const name = live?.advName || live?.name || dbNode?.name || '';
+    const latitude = live?.latitude ?? dbNode?.latitude ?? null;
+    const longitude = live?.longitude ?? dbNode?.longitude ?? null;
+    const isFavorite = dbNode?.isFavorite === true;
+
+    const table = await this.sendBridgeCommand('has_contact', { public_key: key });
+    if (!table.success || !table.data) {
+      return { status: 'failed', error: table.error || 'Could not read the radio contact list' };
+    }
+    if (table.data.on_device === true) {
+      await this.markContactOnDevice(key, true);
+      return { status: 'already_on_device' };
+    }
+
+    const count = typeof table.data.count === 'number' ? table.data.count : 0;
+    const maxContacts = (await this.deviceQuery())?.maxContacts ?? null;
+    const full = maxContacts === null || count >= maxContacts;
+    if (full) {
+      if (!opts.confirmFull) {
+        return { status: 'confirm_full', count, maxContacts };
+      }
+      // Make sure the firmware's own eviction guard covers every favourite:
+      // refreshContacts() re-asserts MeshMonitor favourites onto the device
+      // (reconcileDeviceFavorites), then a fresh read VERIFIES the bits —
+      // the in-memory mirror is updated optimistically, so it is not proof.
+      await this.refreshContacts();
+      const verify = await this.sendBridgeCommand('get_contacts', {});
+      if (!verify.success || !Array.isArray(verify.data)) {
+        return { status: 'failed', error: 'Could not verify favourite protection on the radio' };
+      }
+      const deviceFav = new Map<string, boolean>(
+        (verify.data as Array<{ public_key: string; favorite?: boolean }>).map((c) => [
+          String(c.public_key).toLowerCase(),
+          c.favorite === true,
+        ]),
+      );
+      const favKeys = (await databaseService.meshcore.getNodesBySource(this.sourceId))
+        .filter((n) => n.isFavorite === true)
+        .map((n) => n.publicKey.toLowerCase());
+      // A favourite the radio doesn't hold can't be evicted; one it holds
+      // without the bit could be.
+      const unprotected = favKeys.filter((k) => deviceFav.has(k) && deviceFav.get(k) !== true);
+      if (unprotected.length > 0) {
+        logger.warn(
+          `[MeshCore:${this.sourceId}] Add-to-radio blocked: ${unprotected.length} favourite(s) are not ` +
+          `protected on the radio and could be evicted from its full contact list`,
+        );
+        return { status: 'favorites_unprotected', unprotected };
+      }
+    }
+
+    // Snapshot before the add so an eviction can be reported with a name.
+    const beforeAdd = new Map(this.contacts);
+    const response = await this.sendBridgeCommand('add_contact', {
+      public_key: key,
+      adv_type: advType,
+      name,
+      favorite: isFavorite,
+      latitude,
+      longitude,
+    });
+    if (!response.success) {
+      if (response.error === MESHCORE_DEVICE_TABLE_FULL) return { status: 'table_full', count, maxContacts };
+      return { status: 'failed', error: response.error || 'The radio did not store the contact' };
+    }
+    const evicted: string[] = Array.isArray(response.data?.evicted) ? response.data.evicted : [];
+    logger.info(
+      `[MeshCore:${this.sourceId}] Added ${key.substring(0, 12)}… to the radio's contact list` +
+      (evicted.length > 0 ? ` (radio evicted ${evicted.length} non-favourite contact(s))` : ''),
+    );
+
+    // Mirror the device list, then tell the UI about the added and evicted rows
+    // (refreshContacts itself emits no per-contact events).
+    await this.refreshContacts();
+    await this.markContactOnDevice(key, true);
+    for (const k of evicted) {
+      const prev = beforeAdd.get(k) ?? { publicKey: k };
+      const gone: MeshCoreContact = { ...prev, onDevice: false };
+      this.emit('contacts_updated', { sourceId: this.sourceId, contact: gone });
+      dataEventEmitter.emitMeshCoreContactUpdated(gone, this.sourceId);
+    }
+    return {
+      status: 'added',
+      evicted,
+      count: typeof response.data?.count === 'number' ? response.data.count : count + 1,
+      maxContacts,
+    };
+  }
+
+  /** Set a contact's `onDevice` flag and broadcast it (#5349). */
+  private async markContactOnDevice(publicKey: string, onDevice: boolean): Promise<void> {
+    const existing = this.contacts.get(publicKey);
+    if (!existing) return;
+    const updated: MeshCoreContact = { ...existing, onDevice };
+    this.contacts.set(publicKey, updated);
+    this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
+    dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
+  }
+
+  /**
    * Remove a contact from the device's contact list. On success, the
    * in-memory contact map and meshcore_nodes row are cleared. Companion only.
    */
@@ -5391,6 +5605,34 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   }
 
   /**
+   * `loginToNode` plus WHY it failed, for routes that report the reason to
+   * the user (#5349: "not in the radio's contact list" vs "no reply").
+   */
+  async loginToNodeDetailed(
+    publicKey: string,
+    password: string,
+  ): Promise<{ result: MeshCoreLoginResult | null; outcome: MeshCoreLoginOutcome }> {
+    return this.loginToNodeWithOutcome(publicKey, password);
+  }
+
+  /**
+   * Is `publicKey` in the companion's saved contact table? (#5349)
+   * `null` when that can't be determined (not a connected Companion, or the
+   * read failed). Local serial read — no airtime.
+   */
+  async isContactOnDevice(publicKey: string): Promise<boolean | null> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) return null;
+    try {
+      const response = await this.sendBridgeCommand('has_contact', { public_key: publicKey.toLowerCase() });
+      if (!response.success || !response.data) return null;
+      return response.data.on_device === true;
+    } catch (err) {
+      logger.debug(`[MeshCore:${this.sourceId}] has_contact failed: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
+  /**
    * `loginToNode` plus WHY it failed.
    *
    * Kept separate so the boolean/nullable contract every existing caller
@@ -5435,9 +5677,20 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           outcome: 'ok',
         };
       }
+      if (response.error === MESHCORE_CONTACT_NOT_ON_DEVICE) {
+        // The companion could not even send the login: it resolves the target
+        // from its own contact table and doesn't hold this one (#5349).
+        logger.warn(
+          `[MeshCore:${this.sourceId}] Login to ${publicKey.substring(0, 12)}… not sent: ` +
+          `the node is not in the radio's contact list`,
+        );
+        return { result: null, outcome: 'not_on_device' };
+      }
       const rejected = response.error === MESHCORE_LOGIN_REJECTED;
       if (rejected) {
         logger.debug(`[MeshCore] Node ${publicKey.substring(0, 8)}… refused the password`);
+      } else {
+        logger.debug(`[MeshCore] Login to ${publicKey.substring(0, 8)}… failed: ${response.error ?? 'no reply'}`);
       }
       return { result: null, outcome: rejected ? 'rejected' : 'no_reply' };
     } catch (error) {
@@ -5450,8 +5703,19 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * Request status from a remote node
    */
   async requestNodeStatus(publicKey: string): Promise<MeshCoreStatus | null> {
+    return (await this.requestNodeStatusDetailed(publicKey)).status;
+  }
+
+  /**
+   * `requestNodeStatus` plus whether it failed because the node is not in the
+   * radio's contact list (#5349) — the one failure worth telling the user
+   * about specifically, since nothing was transmitted.
+   */
+  async requestNodeStatusDetailed(
+    publicKey: string,
+  ): Promise<{ status: MeshCoreStatus | null; notOnDevice: boolean }> {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
-      return null;
+      return { status: null, notOnDevice: false };
     }
 
     this.requireTransmit();
@@ -5461,9 +5725,19 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         public_key: publicKey,
       }, 15000);
 
+      if (!response.success && response.error === MESHCORE_CONTACT_NOT_ON_DEVICE) {
+        // Debug, not warn: the remote-telemetry scheduler polls on a timer
+        // and would otherwise repeat this every cycle.
+        logger.debug(
+          `[MeshCore:${this.sourceId}] Status request to ${publicKey.substring(0, 12)}… not sent: ` +
+          `the node is not in the radio's contact list`,
+        );
+        return { status: null, notOnDevice: true };
+      }
+
       if (response.success && response.data) {
         const d = response.data;
-        return {
+        const status: MeshCoreStatus = {
           batteryMv: d.bat_mv,
           uptimeSecs: d.up_secs,
           queueLen: d.queue_len,
@@ -5488,11 +5762,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           radioSf: d.radio_sf,
           radioCr: d.radio_cr,
         };
+        return { status, notOnDevice: false };
       }
-      return null;
+      return { status: null, notOnDevice: false };
     } catch (error) {
       logger.error('[MeshCore] Status request failed:', error);
-      return null;
+      return { status: null, notOnDevice: false };
     }
   }
 
@@ -5613,6 +5888,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       if (outcome === 'rejected') {
         logger.warn(`[MeshCore] Room ${publicKey.substring(0, 8)}… refused the password — not retrying`);
         return 'rejected';
+      }
+      if (outcome === 'not_on_device') {
+        // Nothing was sent, and retrying cannot help until the room server
+        // is added to the radio's contact list (#5349).
+        return 'not_on_device';
       }
       if (attempt < maxAttempts) {
         logger.warn(`[MeshCore] Room login attempt ${attempt}/${maxAttempts} got no reply for ${publicKey.substring(0, 8)}…, retrying`);
@@ -5962,7 +6242,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           if (!resp.success) {
             clearTimeout(timer);
             this.pendingCliReplies.delete(prefixKey);
-            reject(new Error(resp.error || 'send_cli failed'));
+            reject(
+              resp.error === MESHCORE_CONTACT_NOT_ON_DEVICE
+                ? new MeshCoreContactNotOnDeviceError(fullKey)
+                : new Error(resp.error || 'send_cli failed'),
+            );
           }
           // Success means the firmware accepted the outbound frame; the
           // actual reply still arrives asynchronously via cli_reply.

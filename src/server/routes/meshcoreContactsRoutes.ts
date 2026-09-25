@@ -617,6 +617,89 @@ router.delete(
 );
 
 /**
+ * POST /api/sources/:id/meshcore/contacts/:publicKey/add-to-device
+ *
+ * Add a node MeshMonitor knows about to the companion radio's own contact
+ * table, so the radio can log in to / query / message it (#5349). Local
+ * serial write (CMD_ADD_UPDATE_CONTACT) — nothing is transmitted, so no
+ * receive-only gate. Same `nodes:write` scoping as the other contact-table
+ * edits (remove / import).
+ *
+ * Body: { confirmFull?: boolean }
+ *
+ * When the radio's table is full (or its capacity can't be read) the first
+ * call answers 409 CONTACT_TABLE_FULL_CONFIRM with { count, maxContacts };
+ * the UI confirms and repeats with confirmFull:true. Favourites are never
+ * put at risk: see MeshCoreManager.addContactToDevice.
+ */
+router.post(
+  '/contacts/:publicKey/add-to-device',
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const publicKey = String(req.params.publicKey ?? '').toLowerCase();
+      if (!isValidPublicKey(publicKey)) {
+        return fail(res, 400, 'INVALID_PUBLIC_KEY', 'Invalid public key format (expected 64-character hex string)');
+      }
+      const confirmFull = (req.body as { confirmFull?: unknown } | undefined)?.confirmFull === true;
+      const result = await managerFor(req, res).addContactToDevice(publicKey, { confirmFull });
+      auditMeshcoreEvent(req, 'meshcore_contact_add_to_device', 'configuration', {
+        sourceId: req.params.id,
+        publicKey,
+        confirmFull,
+        status: result.status,
+        ...(result.status === 'added' ? { evicted: result.evicted } : {}),
+      });
+      switch (result.status) {
+        case 'added':
+          return ok(res, result);
+        case 'already_on_device':
+          return ok(res, result);
+        case 'confirm_full':
+          return fail(
+            res,
+            409,
+            'CONTACT_TABLE_FULL_CONFIRM',
+            result.maxContacts === null
+              ? "Couldn't read how many contacts the radio can hold. If its list is full, adding may replace the oldest non-favourite contact (or the radio will refuse)."
+              : `The radio's contact list is full (${result.count}/${result.maxContacts}). Adding may replace the oldest non-favourite contact (or the radio will refuse).`,
+            { count: result.count, maxContacts: result.maxContacts },
+          );
+        case 'favorites_unprotected':
+          return fail(
+            res,
+            409,
+            'FAVORITES_NOT_PROTECTED',
+            'Not added: some favourites are not yet protected on the radio, so a full contact list could evict them. Try again once the radio has synced.',
+            { unprotected: result.unprotected },
+          );
+        case 'table_full':
+          return fail(
+            res,
+            409,
+            'CONTACT_TABLE_FULL',
+            "The radio refused: its contact list is full and it is not set to replace old contacts (or every contact is a favourite). Remove a contact first.",
+            { count: result.count, maxContacts: result.maxContacts },
+          );
+        case 'unknown_type':
+          return fail(res, 422, 'UNKNOWN_NODE_TYPE', 'The node type is unknown, so it cannot be added yet. Wait for it to advertise.');
+        case 'not_found':
+          return fail(res, 404, 'CONTACT_NOT_FOUND', 'Unknown node');
+        case 'unavailable':
+          return fail(res, 409, 'COMPANION_NOT_CONNECTED', 'Adding contacts needs a connected Companion radio');
+        default:
+          return fail(res, 502, 'ADD_CONTACT_FAILED', result.error);
+      }
+    } catch (error) {
+      logger.error('[API] Error adding contact to device:', error);
+      return fail(res, 500, 'ADD_CONTACT_FAILED', 'Failed to add contact to the radio');
+    }
+  },
+);
+
+/**
  * GET /api/sources/:id/meshcore/contacts/:publicKey/export
  *
  * Export a contact as a signed advert blob suitable for sharing via

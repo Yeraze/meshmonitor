@@ -95,9 +95,11 @@ function makeStubManager(sourceId: string) {
 
     // ---- admin ----
     loginToNode: async (..._args: unknown[]) => true,
+    loginToNodeDetailed: async (..._args: unknown[]) => ({ result: {}, outcome: 'ok' as const }),
     sendCliCommand: async (..._args: unknown[]) => ({ reply: 'ok', elapsedMs: 1 }),
     sendLocalCliCommand: async (command: string) => ({ reply: `ok:${command}`, elapsedMs: 1 }),
     requestNodeStatus: async (..._args: unknown[]) => ({ battery: 100 }),
+    requestNodeStatusDetailed: async (..._args: unknown[]) => ({ status: { battery: 100 }, notOnDevice: false }),
 
     // ---- device ----
     connect: async () => true,

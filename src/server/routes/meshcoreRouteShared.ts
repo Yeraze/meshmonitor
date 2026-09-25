@@ -21,6 +21,7 @@ import { logger } from '../../utils/logger.js';
 import { fail } from '../utils/apiResponse.js';
 import { TX_DISABLED_CODE, isTxDisabledError } from '../errors/txDisabledError.js';
 import { MESHCORE_RECEIVE_ONLY_MESSAGE } from '../constants/meshcoreTx.js';
+import { CONTACT_NOT_ON_DEVICE_MESSAGE } from '../meshcoreDeviceContactErrors.js';
 import { hasPermission } from '../auth/authMiddleware.js';
 import type { User } from '../../types/auth.js';
 
@@ -165,6 +166,18 @@ export function failIfTxDisabled(res: Response, error: unknown): boolean {
     return true;
   }
   return false;
+}
+
+/** Machine code for "the radio doesn't hold this contact" (#5349). */
+export const CONTACT_NOT_ON_DEVICE_CODE = 'CONTACT_NOT_ON_DEVICE';
+
+/**
+ * 409 CONTACT_NOT_ON_DEVICE: the companion resolves login / status / CLI
+ * targets from its own contact table and does not hold this one, so nothing
+ * was (or could be) sent (#5349).
+ */
+export function failContactNotOnDevice(res: Response): void {
+  fail(res, 409, CONTACT_NOT_ON_DEVICE_CODE, CONTACT_NOT_ON_DEVICE_MESSAGE);
 }
 
 /**
