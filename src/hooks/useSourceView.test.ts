@@ -182,6 +182,17 @@ describe('useSourceView', () => {
       expect(nodeNums).not.toContain(200); // stale non-favorite is dropped
     });
 
+    it('keeps all nodes when max node age is zero (#5338)', () => {
+      const stale = makeNode({ nodeNum: 200, lastHeard: 1 });
+      const neverHeard = makeNode({ nodeNum: 300, lastHeard: 0 });
+      mockUseNodes.mockReturnValue({ nodes: [makeNode(), stale, neverHeard], isLoading: false, error: null });
+      mockUseSettings.mockReturnValue({ maxNodeAgeHours: 0, distanceUnit: 'metric', showIncompleteNodes: true });
+
+      const { result } = renderHook(() => useSourceView(baseParams()));
+
+      expect(result.current.processedNodes.map(n => n.nodeNum).sort()).toEqual([100, 200, 300]);
+    });
+
     it('applies nodesNodeFilter text search only when activeTab is "nodes"', () => {
       const nodeA = makeNode({ nodeNum: 100, user: { id: '!64', longName: 'Alpha', shortName: 'A' } });
       const nodeB = makeNode({ nodeNum: 200, user: { id: '!c8', longName: 'Bravo', shortName: 'B' } });
