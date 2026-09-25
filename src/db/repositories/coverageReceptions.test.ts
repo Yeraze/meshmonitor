@@ -316,6 +316,42 @@ describe('CoverageReceptionsRepository', () => {
       expect(receivers).toEqual([]);
     });
 
+    it('untilMs omitted is unbounded — includes a row that a bound would exclude (#5277 Phase 4b WP2)', async () => {
+      await repo.recordReception(makeReception({ receiverId: '!aaaaaaaa', pathKey: 'p1', receivedAt: NOW + 100_000 }));
+      const receivers = await repo.getReceivers({ sourceIds: ['src-a'], sinceMs: 0 });
+      expect(receivers).toHaveLength(1);
+    });
+
+    it('untilMs excludes a row received after it', async () => {
+      await repo.recordReception(makeReception({ receiverId: '!aaaaaaaa', pathKey: 'p1', receivedAt: NOW + 100_000 }));
+      const receivers = await repo.getReceivers({ sourceIds: ['src-a'], sinceMs: 0, untilMs: NOW });
+      expect(receivers).toEqual([]);
+    });
+
+    it('untilMs is inclusive at the boundary', async () => {
+      await repo.recordReception(makeReception({ receiverId: '!aaaaaaaa', pathKey: 'p1', receivedAt: NOW }));
+      const receivers = await repo.getReceivers({ sourceIds: ['src-a'], sinceMs: 0, untilMs: NOW });
+      expect(receivers).toHaveLength(1);
+    });
+
+    it('with untilMs, lastReceivedAt and the snapshot both stay within the window (an old survey re-queried later)', async () => {
+      await repo.recordReception(makeReception({
+        pathKey: 'p1', receivedAt: NOW, receiverLatitude: 40.0, receiverLongitude: -105.0,
+      }));
+      // A newer reception, outside the survey's window, must not leak into
+      // either lastReceivedAt or the position snapshot when untilMs is given.
+      await repo.recordReception(makeReception({
+        pathKey: 'p2', receivedAt: NOW + 50_000, receiverLatitude: 41.0, receiverLongitude: -106.0,
+      }));
+
+      const receivers = await repo.getReceivers({ sourceIds: ['src-a'], sinceMs: 0, untilMs: NOW + 1000 });
+      expect(receivers).toHaveLength(1);
+      expect(receivers[0].lastReceivedAt).toBe(NOW);
+      expect(receivers[0].receiverLatitude).toBe(40.0);
+      expect(receivers[0].receiverLongitude).toBe(-105.0);
+      expect(receivers[0].receptionCount).toBe(1);
+    });
+
     it('lastReceivedAt is the MAX(receivedAt) across the group', async () => {
       await repo.recordReception(makeReception({ pathKey: 'p1', receivedAt: NOW }));
       await repo.recordReception(makeReception({ pathKey: 'p2', receivedAt: NOW + 5000 }));

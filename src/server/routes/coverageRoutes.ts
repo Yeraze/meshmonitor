@@ -286,11 +286,9 @@ router.get('/receivers', async (req: Request, res: Response) => {
     }
 
     const [rows, nodesBySource, allSources] = await Promise.all([
-      // WP1 dependency (spec §2b.4/§2b.5, not yet merged into this
-      // worktree): `GetCoverageReceiversArgs` needs an optional `untilMs`
-      // field added so an old survey's window is honoured instead of
-      // defaulting to "through now". Until that lands, this is an excess
-      // property and `tsc` will flag it — expected, see PR body.
+      // `untilMs` (§2b.4/§2b.5): an old survey's window is honoured instead
+      // of defaulting to "through now", so its receivers still show up in
+      // the filter list and on the map.
       databaseService.coverageReceptions.getReceivers({ sourceIds, sinceMs, untilMs }),
       loadNodesBySource(sourceIds),
       databaseService.sources.getAllSources(),

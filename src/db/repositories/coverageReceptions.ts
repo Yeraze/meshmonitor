@@ -114,6 +114,14 @@ export interface CoverageReceptionsPage {
 export interface GetCoverageReceiversArgs {
   sourceIds: string[];
   sinceMs: number;
+  /**
+   * Optional upper bound (#5277 Phase 4b WP2, `/receivers?since=&until=`) —
+   * a survey older than the retention window has rows only inside its own
+   * window, so without this its receivers would be missing from the filter
+   * list and the map. Omitted = unbounded (through now), matching the
+   * original P1/P2 behaviour.
+   */
+  untilMs?: number;
 }
 
 export interface CoverageReceiverRow {
@@ -453,6 +461,14 @@ export class CoverageReceptionsRepository extends BaseRepository {
 
     const { coverageReceptions } = this.tables;
 
+    const windowConditions = [
+      inArray(coverageReceptions.sourceId, args.sourceIds),
+      gte(coverageReceptions.receivedAt, args.sinceMs),
+    ];
+    if (args.untilMs !== undefined) {
+      windowConditions.push(lte(coverageReceptions.receivedAt, args.untilMs));
+    }
+
     const groups = await this.db
       .select({
         sourceId: coverageReceptions.sourceId,
@@ -465,10 +481,7 @@ export class CoverageReceptionsRepository extends BaseRepository {
         lastSnapAt: sql<number | null>`MAX(CASE WHEN ${coverageReceptions.receiverLatitude} IS NOT NULL THEN ${coverageReceptions.receivedAt} END)`,
       })
       .from(coverageReceptions)
-      .where(and(
-        inArray(coverageReceptions.sourceId, args.sourceIds),
-        gte(coverageReceptions.receivedAt, args.sinceMs),
-      ))
+      .where(and(...windowConditions))
       .groupBy(
         coverageReceptions.sourceId,
         coverageReceptions.receiverKind,

@@ -129,6 +129,30 @@ function runSharedTests(getCtx: () => Ctx) {
     expect(receivers[0].receptionCount).toBe(2);
   });
 
+  it('getReceivers with untilMs excludes rows outside the window and keeps the in-window snapshot (#5277 Phase 4b WP2)', async () => {
+    const { repo } = getCtx();
+    await repo.recordReception(makeReception({
+      receiverId: '!aabbccdd', pathKey: 'p1', receivedAt: NOW,
+      receiverLatitude: 40.0, receiverLongitude: -105.0,
+    }));
+    await repo.recordReception(makeReception({
+      receiverId: '!aabbccdd', pathKey: 'p2', receivedAt: NOW + 50_000,
+      receiverLatitude: 41.0, receiverLongitude: -106.0,
+    }));
+
+    const bounded = await repo.getReceivers({ sourceIds: ['src-a'], sinceMs: 0, untilMs: NOW + 1000 });
+    expect(bounded).toHaveLength(1);
+    expect(bounded[0].lastReceivedAt).toBe(NOW);
+    expect(bounded[0].receiverLatitude).toBe(40.0);
+    expect(bounded[0].receiverLongitude).toBe(-105.0);
+    expect(bounded[0].receptionCount).toBe(1);
+
+    const unbounded = await repo.getReceivers({ sourceIds: ['src-a'], sinceMs: 0 });
+    expect(unbounded).toHaveLength(1);
+    expect(unbounded[0].lastReceivedAt).toBe(NOW + 50_000);
+    expect(unbounded[0].receptionCount).toBe(2);
+  });
+
   it('getReceivers batches the snapshot follow-up across the 200-chunk boundary (Decision D9)', async () => {
     const { repo } = getCtx();
     const total = 250;
