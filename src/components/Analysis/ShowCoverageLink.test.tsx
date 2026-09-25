@@ -1,12 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * See the WP1-dependency banner atop ShowCoverageLink.tsx: the component
- * uses a local, spec-matching implementation of `buildCoverageReportPath` /
- * `parseCoverageDeepLink` (WP1's real module isn't resolvable in this
- * worktree and, under jsdom, a missing static import breaks Vitest's
- * collection step even when mocked). These tests exercise that real
- * behaviour directly rather than mocking it away.
+ * Exercises the real `coverageDeepLink` builder/parser rather than mocking it.
  */
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
