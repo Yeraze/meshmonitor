@@ -5699,5 +5699,6 @@
   "meshcore.advert.mode_label": "Advert reach",
   "meshcore.advert.mode_zero_hop": "Zero-hop (nearby nodes only)",
   "meshcore.advert.mode_flood": "Flood (whole mesh)",
-  "meshcore.advert.flood_automated_warning": "Flood adverts are repeated by every repeater within 8 hops: with 20 repeaters in reach about 9 s (US) / 25 s (EU) of channel time each. Automated flood adverts run at most once per hour per source; extra floods are skipped."
+  "meshcore.advert.flood_automated_warning": "Flood adverts are repeated by every repeater within 8 hops: with 20 repeaters in reach about 9 s (US) / 25 s (EU) of channel time each. Automated flood adverts run at most once per hour per source; extra floods are skipped.",
+  "meshcore.localConsole.action.advert_zerohop": "Zero-hop advert"
 }

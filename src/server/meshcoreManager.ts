@@ -6068,6 +6068,13 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // (sender_timestamp=0 → "clock cannot go backwards"); rewrite it to the
       // absolute `time <epoch>` verb so the RTC actually gets set (#3954).
       const reply = await this.sendRepeaterCommand(this.rewriteClockSync(trimmed), timeoutMs);
+      // A flood advert typed at the console counts against the automated
+      // flood floor like any other manual flood. Judge by the reply, not the
+      // verb: firmware without `advert.zerohop` floods on it too.
+      const verb = trimmed.split(/\s+/)[0]?.toLowerCase() ?? '';
+      if ((verb === 'advert' || verb === 'advert.zerohop') && classifyRepeaterAdvertReply(reply) === 'flood') {
+        await this.recordFloodAdvert();
+      }
       return { reply, elapsedMs: Date.now() - sentAt };
     }
 
@@ -6125,10 +6132,15 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       return `${epoch}\n${new Date(epoch * 1000).toISOString()}`;
     }
 
-    if (verb === 'advert') {
-      const response = await this.sendBridgeCommand('send_advert', {});
-      if (!response.success) throw new Error(response.error || 'send_advert failed');
-      return 'Advert sent (flood)';
+    // Same verbs as the repeater firmware CLI: `advert` floods,
+    // `advert.zerohop` stays in direct radio range. Both go through
+    // sendAdvert() so a flood carries the default scope and stamps the
+    // automated flood floor like any other manual flood.
+    if (verb === 'advert' || verb === 'advert.zerohop') {
+      const mode: MeshCoreAdvertMode = verb === 'advert' ? 'flood' : 'zero_hop';
+      const ok = await this.sendAdvert(mode);
+      if (!ok) throw new Error('send_advert failed');
+      return mode === 'flood' ? 'Advert sent (flood)' : 'Advert sent (zero-hop)';
     }
 
     if (verb === 'help' || verb === '?') {
@@ -6137,7 +6149,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         '  ver           — firmware version + model',
         '  stats [core|radio|packets] — local device stats',
         '  clock         — device time',
-        '  advert        — broadcast a flood advert',
+        '  advert.zerohop — advert to nodes in direct radio range',
+        '  advert        — flood advert across the whole mesh (costly)',
         '  help          — this list',
       ].join('\n');
     }

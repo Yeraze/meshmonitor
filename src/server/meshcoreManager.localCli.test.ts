@@ -68,6 +68,17 @@ describe('sendLocalCliCommand', () => {
   });
 
   describe('Repeater dispatch', () => {
+    it.each([
+      ['advert', '  -> OK - Advert sent', true],
+      ['advert.zerohop', '  -> OK - Advert sent', true], // old firmware floods on it
+      ['advert.zerohop', '  -> OK - zerohop advert sent', false],
+    ])('`%s` answered %j records a flood: %s', async (cmd, reply, flooded) => {
+      const { manager } = makeRepeaterManager({ [cmd]: reply });
+      const record = vi.spyOn(manager as any, 'recordFloodAdvert').mockResolvedValue(undefined);
+      await manager.sendLocalCliCommand(cmd);
+      expect(record).toHaveBeenCalledTimes(flooded ? 1 : 0);
+    });
+
     it('forwards the command to sendRepeaterCommand verbatim', async () => {
       const { manager, repeaterCalls } = makeRepeaterManager({
         'stats': '  -> packets_sent: 42\n  -> packets_recv: 91',
@@ -137,13 +148,25 @@ describe('sendLocalCliCommand', () => {
       expect(result.reply).toContain('unavailable');
     });
 
-    it('triggers a flood advert on `advert`', async () => {
+    it('triggers a flood advert on `advert` (same verb as the repeater CLI)', async () => {
       const { manager, bridgeCalls } = makeCompanionManager({
+        set_flood_scope: { success: true, data: {} },
         send_advert: { success: true, data: { sent: true } },
       });
       const result = await manager.sendLocalCliCommand('advert');
-      expect(bridgeCalls[0].cmd).toBe('send_advert');
-      expect(result.reply).toMatch(/sent/i);
+      const advert = bridgeCalls.find(c => c.cmd === 'send_advert');
+      expect(advert?.params).toEqual({ mode: 'flood' });
+      expect(result.reply).toMatch(/sent \(flood\)/i);
+    });
+
+    it('triggers a zero-hop advert on `advert.zerohop`', async () => {
+      const { manager, bridgeCalls } = makeCompanionManager({
+        send_advert: { success: true, data: { sent: true } },
+      });
+      const result = await manager.sendLocalCliCommand('advert.zerohop');
+      expect(bridgeCalls.map(c => c.cmd)).toEqual(['send_advert']);
+      expect(bridgeCalls[0].params).toEqual({ mode: 'zero_hop' });
+      expect(result.reply).toMatch(/zero-hop/i);
     });
 
     it('returns a help string on `help`', async () => {

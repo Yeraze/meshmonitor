@@ -149,7 +149,7 @@ describe('isRfBridgeCommand (#4547)', () => {
 });
 
 describe('isTransmittingLocalCliVerb (#4547)', () => {
-  it.each(['advert', 'ADVERT', ' advert '])('returns true for %j', (cmd) => {
+  it.each(['advert', 'ADVERT', ' advert ', 'advert.zerohop', 'ADVERT.ZEROHOP'])('returns true for %j', (cmd) => {
     expect(isTransmittingLocalCliVerb(cmd)).toBe(true);
   });
 

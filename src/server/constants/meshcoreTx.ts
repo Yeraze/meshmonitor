@@ -49,7 +49,7 @@ export function isRfBridgeCommand(cmd: string): boolean {
 }
 
 /** Local-CLI verbs (Companion synthetic CLI and Repeater serial CLI) that transmit. */
-export const RF_LOCAL_CLI_VERBS: ReadonlySet<string> = new Set(['advert']);
+export const RF_LOCAL_CLI_VERBS: ReadonlySet<string> = new Set(['advert', 'advert.zerohop']);
 
 export function isTransmittingLocalCliVerb(command: string): boolean {
   const verb = command.trim().split(/\s+/)[0]?.toLowerCase() ?? '';
