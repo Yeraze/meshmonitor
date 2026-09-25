@@ -52,6 +52,9 @@ export * from './meshtasticHeardRepeaters.js';
 // Coverage Report RF receptions (#5277 Phase 1 WP1)
 export * from './coverageReceptions.js';
 
+// Coverage Report saved surveys (global — no sourceId) (#5277 Phase 4b WP1)
+export * from './coverageSurveys.js';
+
 // Mesh Issues findings (global — no sourceId) (epic #4964 Phase 1 WP1)
 export * from './meshIssues.js';
 
