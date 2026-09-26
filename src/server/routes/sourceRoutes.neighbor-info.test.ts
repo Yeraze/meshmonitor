@@ -358,6 +358,23 @@ describe('GET /:id/neighbor-info', () => {
     expect(res.body).toEqual([]);
   });
 
+  it('keeps every record when maxNodeAge is 0 ("never / show all", #5338)', async () => {
+    const staleMs = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const ni = makeNeighborRecord({ nodeNum: 111, neighborNodeNum: 222, timestamp: staleMs });
+
+    mockDb.sources.getSource.mockResolvedValue(MOCK_SOURCE);
+    mockDb.neighbors.getAllNeighborInfo.mockResolvedValue([ni]);
+    mockDb.settings.getSettingForSource.mockResolvedValue('0');
+    mockDb.nodes.getNodesByNums.mockImplementation(async (nums: number[]) =>
+      new Map(nums.map(n => [n, makeNode(n)]))
+    );
+
+    const res = await request(createApp()).get('/src-abc/neighbor-info');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+  });
+
   it('falls back to hex node ID when node has no nodeId or longName', async () => {
     const ni = makeNeighborRecord({ nodeNum: 0xabcdef01, neighborNodeNum: 0x12345678 });
 
