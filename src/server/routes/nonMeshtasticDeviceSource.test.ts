@@ -62,6 +62,7 @@ describe('non-Meshtastic sources never borrow the primary device (#5367)', () =>
       setNodeOwner: vi.fn().mockResolvedValue(undefined),
       setDeviceConfig: vi.fn().mockResolvedValue(undefined),
       rebootDevice: vi.fn().mockResolvedValue(undefined),
+      purgeNodeDb: vi.fn().mockResolvedValue(undefined),
       sendRebootCommand: vi.fn().mockResolvedValue(undefined),
       startDistanceDeleteScheduler: vi.fn().mockResolvedValue(undefined),
       stopDistanceDeleteScheduler: vi.fn(),
@@ -141,6 +142,55 @@ describe('non-Meshtastic sources never borrow the primary device (#5367)', () =>
     });
   });
 
+  describe('GET /config (public, DB-backed, unguarded by design)', () => {
+    // /config reads identity from the DB, keyed strictly by the caller's own
+    // sourceId (`source:<id>:localNodeNum` + the node row for that source),
+    // with no fallback to the global key or the primary manager. So a broker
+    // id cannot pick up the TCP node's identity, even when the TCP node's
+    // localNodeNum is stored under every key style and the broker has heard
+    // that node over MQTT. It stays unguarded: it also serves baseUrl/port.
+    const TCP_NODE_NUM = 0xbf85a9d1;
+
+    beforeEach(async () => {
+      const row = {
+        nodeNum: TCP_NODE_NUM,
+        nodeId: TCP_NODE_ID,
+        longName: TCP_LONG_NAME,
+        shortName: 'SKYM',
+        firmwareVersion: TCP_FIRMWARE,
+        rebootCount: 3,
+        lastHeard: Math.floor(Date.now() / 1000),
+      };
+      await harness.db.nodes.upsertNode(row, harness.sourceA);
+      await harness.db.nodes.upsertNode(row, BROKER_SOURCE_ID);
+      await harness.db.settings.setSourceSetting(harness.sourceA, 'localNodeNum', String(TCP_NODE_NUM));
+      await harness.db.settings.setSetting(`localNodeNum_${harness.sourceA}`, String(TCP_NODE_NUM));
+      await harness.db.settings.setSetting('localNodeNum', String(TCP_NODE_NUM));
+    });
+
+    afterEach(async () => {
+      await harness.db.settings.deleteSetting('localNodeNum');
+      await harness.db.settings.deleteSetting(`localNodeNum_${harness.sourceA}`);
+      await harness.db.settings.deleteSetting(`source:${harness.sourceA}:localNodeNum`);
+    });
+
+    it('returns no local node identity for an mqtt_broker sourceId', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get('/config').query({ sourceId: BROKER_SOURCE_ID });
+      expect(res.status).toBe(200);
+      expect(res.body.localNodeInfo).toBeUndefined();
+      expect(res.body.deviceMetadata).toBeUndefined();
+      expect(JSON.stringify(res.body)).not.toContain(TCP_NODE_ID);
+    });
+
+    it('returns the TCP source\'s own identity for that source (positive control)', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get('/config').query({ sourceId: harness.sourceA });
+      expect(res.status).toBe(200);
+      expect(res.body.localNodeInfo).toMatchObject({ nodeId: TCP_NODE_ID, longName: TCP_LONG_NAME });
+    });
+  });
+
   describe('device routes refuse an mqtt_broker sourceId', () => {
     it('GET /config/current', async () => {
       const agent = await harness.loginAs(harness.admin);
@@ -186,6 +236,14 @@ describe('non-Meshtastic sources never borrow the primary device (#5367)', () =>
       const res = await agent.post('/device/reboot').send({ sourceId: BROKER_SOURCE_ID });
       expect(res.status).toBe(400);
       expect(tcpManager.rebootDevice).not.toHaveBeenCalled();
+    });
+
+    it('POST /device/purge-nodedb does not purge the primary TCP node', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post('/device/purge-nodedb').send({ sourceId: BROKER_SOURCE_ID });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('SOURCE_NOT_MESHTASTIC');
+      expect(tcpManager.purgeNodeDb).not.toHaveBeenCalled();
     });
 
     it('POST /admin/reboot does not send a reboot through the primary TCP node', async () => {

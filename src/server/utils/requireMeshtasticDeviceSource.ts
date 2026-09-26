@@ -9,7 +9,7 @@ import { isMeshtasticManager } from '../sourceManagerTypes.js';
  * an id `resolveSourceManager()` hands back the primary Meshtastic TCP
  * manager, which is another source's device (#5367).
  */
-export function isNonMeshtasticSource(sourceId: string | undefined | null): boolean {
+function isNonMeshtasticSource(sourceId: string | undefined | null): boolean {
   if (!sourceId) return false;
   const manager = sourceManagerRegistry.getManager(sourceId);
   return !!manager && !isMeshtasticManager(manager);
