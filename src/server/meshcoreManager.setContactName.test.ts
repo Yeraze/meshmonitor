@@ -57,6 +57,16 @@ describe('MeshCoreManager — setContactName (#5350)', () => {
     expect(manager.getContacts().find((c) => c.publicKey === PK)?.advName).toBe('Old');
   });
 
+  it('rejects a name over 31 UTF-8 bytes without a bridge call', async () => {
+    const { manager, bridgeCalls } = makeManager({});
+    // 16 two-byte characters = 32 bytes, though only 16 chars long.
+    expect(await manager.setContactName(PK, 'é'.repeat(16))).toBe(false);
+    expect(bridgeCalls).toHaveLength(0);
+    // Exactly 31 bytes is accepted.
+    expect(await manager.setContactName(PK, 'x'.repeat(31))).toBe(true);
+    expect(bridgeCalls).toHaveLength(1);
+  });
+
   it('short-circuits for a non-Companion or disconnected source', async () => {
     const repeater = makeManager({ deviceType: MeshCoreDeviceType.REPEATER });
     expect(await repeater.manager.setContactName(PK, 'x')).toBe(false);

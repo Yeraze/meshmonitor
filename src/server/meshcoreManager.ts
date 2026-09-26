@@ -5373,6 +5373,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       return false;
     }
     if (!this.connected) return false;
+    // Firmware ContactInfo.name is char[32] incl. the NUL terminator.
+    if (Buffer.byteLength(name, 'utf8') > 31) {
+      logger.warn(`[MeshCore:${this.sourceId}] setContactName: name longer than 31 UTF-8 bytes`);
+      return false;
+    }
     try {
       const response = await this.sendBridgeCommand('set_contact_name', { public_key: publicKey, name });
       if (!response.success) {
