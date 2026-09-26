@@ -193,6 +193,8 @@ import { migration as reclassifyRecordHoldersMigration, runMigration171Postgres,
 import { migration as createCoverageReceptionsMigration, runMigration172Postgres, runMigration172Mysql } from '../server/migrations/172_create_coverage_receptions.js';
 import { migration as createCoverageSurveysMigration, runMigration173Postgres, runMigration173Mysql } from '../server/migrations/173_create_coverage_surveys.js';
 import { migration as resetPostgresSequencesMigration, runMigration174Postgres, runMigration174Mysql } from '../server/migrations/174_reset_postgres_sequences.js';
+import { migration as addNodeAircraftClassificationMigration, runMigration175Postgres, runMigration175Mysql } from '../server/migrations/175_add_node_aircraft_classification.js';
+import { migration as userMapPreferencesAircraftDisplayModeMigration, runMigration176Postgres, runMigration176Mysql } from '../server/migrations/176_user_map_preferences_aircraft_display_mode.js';
 
 // ============================================================================
 // Registry
@@ -2824,4 +2826,35 @@ registry.register({
   sqlite: (db) => resetPostgresSequencesMigration.up(db),
   postgres: (client) => runMigration174Postgres(client),
   mysql: (pool) => runMigration174Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 175: likely-aircraft classification columns on `nodes`
+// (#5364/#5365 Phase 1 WP1). Five nullable columns, no default, no index —
+// `upsertNode` never writes them (like `mobile`/`notes`); only the aircraft
+// classification repository methods do.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 175,
+  name: 'add_node_aircraft_classification',
+  settingsKey: 'migration_175_add_node_aircraft_classification',
+  sqlite: (db) => addNodeAircraftClassificationMigration.up(db),
+  postgres: (client) => runMigration175Postgres(client),
+  mysql: (pool) => runMigration175Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 176: `user_map_preferences.aircraft_display_mode` (#5364/#5365
+// Phase 1 WP1, decision D12) — per-user Show/Mark/Hide choice for the
+// likely-aircraft map control. NULL reads as 'mark'.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 176,
+  name: 'user_map_preferences_aircraft_display_mode',
+  settingsKey: 'migration_176_user_map_preferences_aircraft_display_mode',
+  sqlite: (db) => userMapPreferencesAircraftDisplayModeMigration.up(db),
+  postgres: (client) => runMigration176Postgres(client),
+  mysql: (pool) => runMigration176Mysql(pool),
 });
