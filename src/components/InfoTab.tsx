@@ -90,7 +90,10 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
   const activeSource = activeSourceId
     ? dashboardSources.find((s) => s.id === activeSourceId)
     : undefined;
-  const displayNodeAddress = getSourceEndpointLabel(activeSource) ?? nodeAddress;
+  // `nodeAddress` is the server's Meshtastic node IP (the env default when the
+  // source row has no host). An MQTT-only source has no node, so only show
+  // an address its own config supplies (#5367).
+  const displayNodeAddress = getSourceEndpointLabel(activeSource) ?? (isMqttOnlySource ? null : nodeAddress);
   const [longestActiveSegment, setLongestActiveSegment] = useState<RouteSegmentRecords | null>(null);
   const [recordHolderSegment, setRecordHolderSegment] = useState<RouteSegmentRecords | null>(null);
   const [loadingSegments, setLoadingSegments] = useState(false);
@@ -452,7 +455,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
       <div className="device-info">
         <div className="info-section">
           <h3>{t('info.connection_status')}</h3>
-          {isAuthenticated && (
+          {isAuthenticated && displayNodeAddress && (
             <p><strong>{t('info.node_address')}</strong> {displayNodeAddress}</p>
           )}
           {isMqttOnlySource && (

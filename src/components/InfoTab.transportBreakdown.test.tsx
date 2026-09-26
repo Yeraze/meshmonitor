@@ -510,15 +510,18 @@ describe('InfoTab never shows device identity on an MQTT-only source (#5367)', (
     expect(screen.queryByText('SKYM - AUX - LT')).not.toBeInTheDocument();
     expect(screen.queryByText('2.8.1.d3b4b34')).not.toBeInTheDocument();
     expect(screen.queryByText('info.lora_config')).not.toBeInTheDocument();
+    // The server's Meshtastic node IP is not this source's address.
+    expect(screen.queryByText('192.168.1.1')).not.toBeInTheDocument();
     expect(mockApiService.getSecurityKeys).not.toHaveBeenCalled();
   });
 
   it('still shows the device identity for a meshtastic_tcp source', async () => {
     mockUseSource.mockReturnValue({ sourceId: 'source-a', sourceName: 'Source A', sourceType: 'meshtastic_tcp' });
 
-    render(<InfoTab {...baseProps} nodes={[]} deviceConfig={foreignDeviceConfig} />);
+    render(<InfoTab {...baseProps} nodes={[]} isAuthenticated deviceConfig={foreignDeviceConfig} />);
 
     expect(await screen.findByText('!bf85a9d1')).toBeInTheDocument();
+    expect(screen.getByText('192.168.1.1')).toBeInTheDocument();
     expect(screen.queryByText('info.lora_config')).toBeInTheDocument();
     expect(screen.queryByTestId('info-no-local-node')).not.toBeInTheDocument();
   });
