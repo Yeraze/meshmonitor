@@ -1222,6 +1222,36 @@ describe('MeshCoreChannelsView — display order (#5385, #5379)', () => {
     expect(actions.sendMessage).not.toHaveBeenCalled();
   });
 
+  it('loads each source its own sort mode when the source changes', async () => {
+    csrfFetchMock.mockImplementation(orderFetch());
+    localStorage.setItem('meshmonitor-meshcore-channel-sort-mode-src-a', 'name');
+    const { container, rerender } = renderView();
+    await waitFor(() => expect(rowNames(container)).toEqual(['# alpha', '# Public', '# zulu']));
+
+    rerender(
+      <MeshCoreChannelsView
+        messages={[]}
+        contacts={contacts}
+        status={makeStatus()}
+        actions={makeActions()}
+        baseUrl=""
+        sourceId="src-b"
+      />,
+    );
+    await waitFor(() => expect((screen.getByLabelText('Sort channels by') as HTMLSelectElement).value).toBe('device'));
+    await waitFor(() => expect(rowNames(container)).toEqual(['# Public', '# zulu', '# alpha']));
+  });
+
+  it('hides the Reorder button when there is only one channel', async () => {
+    csrfFetchMock.mockImplementation((url: string) => {
+      if (url.includes('/channels/all')) return Promise.resolve(jsonResponse([{ id: 0, name: 'Public' }]));
+      return Promise.resolve(jsonResponse({ success: true, data: [] }));
+    });
+    renderView();
+    await waitFor(() => expect(screen.getByText('# Public')).toBeTruthy());
+    expect(screen.queryByRole('button', { name: /Reorder/ })).toBeNull();
+  });
+
   it('cancel discards the draft order', async () => {
     csrfFetchMock.mockImplementation(orderFetch());
     const { container } = renderView();

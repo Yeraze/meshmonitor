@@ -304,6 +304,12 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   // Fetch accurate per-channel message counts for the list badges whenever the
   // channel set changes or the source (re)connects.
   const channelIdsKey = displayChannels.map(c => c.id).join(',');
+  // The reorder panel snapshots the channel list when it opens. If the set of
+  // channels changes underneath it (reconnect re-sync adds or drops a slot),
+  // close it rather than let a stale draft be saved.
+  useEffect(() => {
+    setReordering(false);
+  }, [channelIdsKey]);
   useEffect(() => {
     if (!sourceId || !channelIdsKey) return;
     let cancelled = false;
