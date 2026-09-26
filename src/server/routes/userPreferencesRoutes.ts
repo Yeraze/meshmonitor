@@ -14,6 +14,7 @@ import { logger } from '../../utils/logger.js';
 import { optionalAuth, requireAuth } from '../auth/authMiddleware.js';
 import { getMapTilesetValidationError, normalizeMapTilesetPayload } from '../utils/mapTilesetPreferences.js';
 import { fail } from '../utils/apiResponse.js';
+import { isAircraftDisplayMode } from '../../utils/aircraftClassification.js';
 
 const router = express.Router();
 
@@ -41,7 +42,7 @@ router.post('/map-preferences', requireAuth(), async (req, res) => {
       return fail(res, 403, 'ANONYMOUS_USER', 'Cannot save preferences for anonymous user');
     }
 
-    const { mapTileset, mapTilesetLight, mapTilesetDark, showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showUdpNodes, showRfNodes, showMeshCoreNodes, showWaypoints, showAnimations, showAccuracyRegions, showEstimatedPositions, showAtakContacts, positionHistoryPointsOnly, positionHistoryHours, mapMaxAgeHours, unreadIndicatorEnabled, spreadNodes } = req.body;
+    const { mapTileset, mapTilesetLight, mapTilesetDark, showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showUdpNodes, showRfNodes, showMeshCoreNodes, showWaypoints, showAnimations, showAccuracyRegions, showEstimatedPositions, showAtakContacts, positionHistoryPointsOnly, positionHistoryHours, mapMaxAgeHours, unreadIndicatorEnabled, spreadNodes, aircraftDisplayMode } = req.body;
 
     // Validate boolean values
     const booleanFields = { showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showUdpNodes, showRfNodes, showMeshCoreNodes, showWaypoints, showAnimations, showAccuracyRegions, showEstimatedPositions, showAtakContacts, positionHistoryPointsOnly, unreadIndicatorEnabled, spreadNodes };
@@ -67,6 +68,11 @@ router.post('/map-preferences', requireAuth(), async (req, res) => {
       return fail(res, 400, 'INVALID_PREFERENCE', 'mapMaxAgeHours must be a number or null');
     }
 
+    // Validate aircraftDisplayMode (optional 'show' | 'mark' | 'hide' | null)
+    if (aircraftDisplayMode !== undefined && aircraftDisplayMode !== null && !isAircraftDisplayMode(aircraftDisplayMode)) {
+      return fail(res, 400, 'INVALID_PREFERENCE', 'aircraftDisplayMode must be show, mark, or hide');
+    }
+
     // Save preferences
     const normalizedTilesets = normalizeMapTilesetPayload({ mapTileset, mapTilesetLight, mapTilesetDark });
     await databaseService.saveMapPreferencesAsync(req.user!.id, {
@@ -89,6 +95,7 @@ router.post('/map-preferences', requireAuth(), async (req, res) => {
       mapMaxAgeHours,
       unreadIndicatorEnabled,
       spreadNodes,
+      aircraftDisplayMode,
     });
 
     // Deliberately NOT `ok(res)`: that emits a bare `{ success: true }` and

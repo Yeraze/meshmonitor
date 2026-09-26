@@ -172,4 +172,46 @@ describe('userPreferencesRoutes', () => {
       expect(get.body.preferences).toMatchObject({ showMqttNodes: true });
     });
   });
+
+  /**
+   * #5364/#5365 D12: the likely-aircraft map display choice. Server-persisted
+   * per user, mirrored to localStorage for anonymous viewers by the frontend.
+   */
+  describe('aircraftDisplayMode (#5364/#5365)', () => {
+    it('saves and returns aircraftDisplayMode="hide"', async () => {
+      const agent = await harness.loginAs(harness.limited);
+
+      const post = await agent.post('/map-preferences').send({ aircraftDisplayMode: 'hide' });
+      expect(post.status).toBe(200);
+
+      const get = await agent.get('/map-preferences');
+      expect(get.body.preferences).toMatchObject({ aircraftDisplayMode: 'hide' });
+    });
+
+    it('400s on an invalid aircraftDisplayMode value', async () => {
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.post('/map-preferences').send({ aircraftDisplayMode: 'bogus' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('INVALID_PREFERENCE');
+    });
+
+    it('defaults to "mark" for a user who never saved it', async () => {
+      const agent = await harness.loginAs(harness.limited);
+      await agent.post('/map-preferences').send({ showPaths: true });
+
+      const get = await agent.get('/map-preferences');
+      expect(get.body.preferences.aircraftDisplayMode).toBe('mark');
+    });
+
+    it('leaves aircraftDisplayMode untouched when a save omits it', async () => {
+      const agent = await harness.loginAs(harness.limited);
+
+      await agent.post('/map-preferences').send({ aircraftDisplayMode: 'show' });
+      await agent.post('/map-preferences').send({ showPaths: true });
+
+      const get = await agent.get('/map-preferences');
+      expect(get.body.preferences).toMatchObject({ aircraftDisplayMode: 'show', showPaths: true });
+    });
+  });
 });
