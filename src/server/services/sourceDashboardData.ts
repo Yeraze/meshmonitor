@@ -246,7 +246,10 @@ export async function buildSourceNeighborInfo(
   const neighborInfo = await databaseService.neighbors.getAllNeighborInfo(source.id);
 
   const resolvedMaxAge = maxNodeAgeHours ?? await getMaxNodeAgeHours(databaseService.settings, source.id);
-  const cutoffTime = Math.floor(Date.now() / 1000) - resolvedMaxAge * 60 * 60;
+  // maxNodeAgeHours of 0 = "never / show all" (#4947, #5338): no cutoff.
+  const cutoffTime = resolvedMaxAge <= 0
+    ? -Infinity
+    : Math.floor(Date.now() / 1000) - resolvedMaxAge * 60 * 60;
 
   const linkKeys = new Set(neighborInfo.map(ni => `${ni.nodeNum}-${ni.neighborNodeNum}`));
 

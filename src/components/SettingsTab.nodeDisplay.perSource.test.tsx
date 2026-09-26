@@ -43,7 +43,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, within, fireEvent, waitFor } from '@testing-library/react';
 import SettingsTab from './SettingsTab';
 import { SourceProvider } from '../contexts/SourceContext';
-import { NODE_DISPLAY_SETTING_KEYS } from '../constants/nodeDisplayDefaults';
+import { NODE_DISPLAY_SETTING_KEYS, SETTINGS_TAB_PER_SOURCE_KEYS } from '../constants/nodeDisplayDefaults';
 
 // ---------------------------------------------------------------------------
 // Contexts / hooks — same isolation strategy as SettingsTab.elevation.test.tsx
@@ -308,6 +308,36 @@ describe('SettingsTab — scoped GET (#4412 Phase 3 WP4a)', () => {
   });
 });
 
+describe('SettingsTab — TX-target window when the node window is 0 (#5376)', () => {
+  it('loads the stored per-source value, shows the TX warning, and saves an edit on the scoped POST', async () => {
+    serverSettings = { txTargetMaxAgeHoursWhenUnlimited: '72' };
+    render(
+      <SourceProvider sourceId="source-a" sourceType="meshtastic_tcp">
+        <SettingsTab {...baseProps} mode="source" />
+      </SourceProvider>
+    );
+
+    const input = await waitFor(() => {
+      const el = document.getElementById('txTargetMaxAgeHoursWhenUnlimited') as HTMLInputElement;
+      expect(el.value).toBe('72');
+      return el;
+    });
+    expect(input.min).toBe('1');
+    expect(input.max).toBe('720');
+    expect(document.querySelector('[data-testid="tx-target-window-warning"]')).not.toBeNull();
+
+    fireEvent.change(input, { target: { value: '12' } });
+    expect(saveBarCapture.current).not.toBeNull();
+    await saveBarCapture.current!.onSave();
+
+    const calls = csrfFetchMock.mock.calls as [string, RequestInit][];
+    const scopedCall = calls.find(([url]) => url.includes('sourceId='));
+    const globalCall = calls.find(([url]) => !url.includes('sourceId='));
+    expect(JSON.parse(scopedCall![1].body as string).txTargetMaxAgeHoursWhenUnlimited).toBe('12');
+    expect(JSON.parse(globalCall![1].body as string)).not.toHaveProperty('txTargetMaxAgeHoursWhenUnlimited');
+  });
+});
+
 describe('SettingsTab — split save (#4412 Phase 3 WP4b)', () => {
   it('save in source mode issues two POSTs: the scoped one carries exactly the ten Node Display keys, the unscoped one carries none of them', async () => {
     serverSettings = { localStatsIntervalMinutes: '45' };
@@ -340,10 +370,15 @@ describe('SettingsTab — split save (#4412 Phase 3 WP4b)', () => {
     // The non-negotiable assertion (spec §2.2 R6 / §4.4): by COUNT and by
     // NAME against NODE_DISPLAY_SETTING_KEYS itself, not a hand-copied list —
     // a key silently dropping from the scoped POST must fail this.
-    expect(Object.keys(scopedBody).sort()).toEqual([...NODE_DISPLAY_SETTING_KEYS].sort());
+    // #5376 adds the per-source TX-target window to the scoped body.
+    expect(Object.keys(scopedBody).sort()).toEqual([...SETTINGS_TAB_PER_SOURCE_KEYS].sort());
     for (const key of NODE_DISPLAY_SETTING_KEYS) {
+      expect(scopedBody).toHaveProperty(key);
+    }
+    for (const key of SETTINGS_TAB_PER_SOURCE_KEYS) {
       expect(globalBody).not.toHaveProperty(key);
     }
+    expect(scopedBody.txTargetMaxAgeHoursWhenUnlimited).toBe('24');
     // Sanity: the unscoped body still carries ordinary global keys.
     expect(globalBody).toHaveProperty('temperatureUnit');
   });

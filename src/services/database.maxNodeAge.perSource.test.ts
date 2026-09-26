@@ -13,7 +13,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { DatabaseService } from './database.js';
-import { getMaxNodeAgeHours } from '../server/services/nodeDisplaySettings.js';
+import { getMaxNodeAgeHours, getTxTargetMaxAgeHours } from '../server/services/nodeDisplaySettings.js';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -186,5 +186,105 @@ describe('DatabaseService - maxNodeAgeHours is per-source (#4412 Phase 2 WP3)', 
     // Source B has no per-source row and must resolve to the hardcoded
     // default (24), never to the global row's 72 nor source A's 1.
     expect(sourceBHours).toBe(24);
+  });
+});
+
+/**
+ * #5376: maxNodeAgeHours = 0 means "unlimited" for display. Before the fix the
+ * TX-selecting jobs computed cutoff = now and found no targets at all. They now
+ * fall back to the per-source `txTargetMaxAgeHoursWhenUnlimited` bound (default
+ * 24h) rather than widening to every node ever heard.
+ */
+describe('DatabaseService - TX-target window when maxNodeAgeHours is 0 (#5376)', () => {
+  let dbService: DatabaseService;
+  let testDbPath: string;
+
+  const hoursAgo = (h: number) => Math.floor(Date.now() / 1000) - h * 60 * 60;
+
+  beforeEach(() => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'meshmonitor-txwindow-'));
+    testDbPath = path.join(tmpDir, 'test.db');
+    process.env.DATABASE_PATH = testDbPath;
+    dbService = new DatabaseService();
+    seedSource(dbService.db, SOURCE_A, 'Source A');
+    seedSource(dbService.db, SOURCE_B, 'Source B');
+  });
+
+  afterEach(() => {
+    if (dbService && dbService.db) dbService.db.close();
+    if (testDbPath && fs.existsSync(testDbPath)) {
+      fs.rmSync(path.dirname(testDbPath), { recursive: true, force: true });
+    }
+    delete process.env.DATABASE_PATH;
+  });
+
+  it('getTxTargetMaxAgeHours: the node window when > 0, else the per-source bound (default 24)', async () => {
+    await dbService.settings.setSourceSettings(SOURCE_A, { maxNodeAgeHours: '72', txTargetMaxAgeHoursWhenUnlimited: '5' });
+    await dbService.settings.setSourceSettings(SOURCE_B, { maxNodeAgeHours: '0' });
+    expect(await getTxTargetMaxAgeHours(dbService.settings, SOURCE_A)).toBe(72);
+    expect(await getTxTargetMaxAgeHours(dbService.settings, SOURCE_B)).toBe(24);
+
+    await dbService.settings.setSourceSettings(SOURCE_B, { txTargetMaxAgeHoursWhenUnlimited: '168' });
+    expect(await getTxTargetMaxAgeHours(dbService.settings, SOURCE_B)).toBe(168);
+    // The bound is per-source: it never leaks to another source.
+    await dbService.settings.setSourceSettings(SOURCE_A, { maxNodeAgeHours: '0' });
+    expect(await getTxTargetMaxAgeHours(dbService.settings, SOURCE_A)).toBe(5);
+  });
+
+  it('getNodeNeedingRemoteAdminCheckAsync targets recent nodes, not none and not stale ones', async () => {
+    insertNode(dbService.db, REMOTE_NODE_NUM_A, '!0000006f', SOURCE_A, { lastHeard: hoursAgo(2), publicKey: 'pk-a' });
+    insertNode(dbService.db, REMOTE_NODE_NUM_B, '!000000de', SOURCE_A, { lastHeard: hoursAgo(72), publicKey: 'pk-b' });
+    await dbService.settings.setSourceSettings(SOURCE_A, { maxNodeAgeHours: '0' });
+
+    // Default 24h bound: the 2h-old node is a target (was none before #5376).
+    const first = await dbService.getNodeNeedingRemoteAdminCheckAsync(LOCAL_NODE_NUM, SOURCE_A);
+    expect(first?.nodeNum).toBe(REMOTE_NODE_NUM_A);
+
+    // Only the 72h-old node remains; the 24h bound keeps it out.
+    await dbService.updateNodeRemoteAdminStatusAsync(REMOTE_NODE_NUM_A, false, null, SOURCE_A);
+    expect(await dbService.getNodeNeedingRemoteAdminCheckAsync(LOCAL_NODE_NUM, SOURCE_A)).toBeNull();
+
+    // Raise the bound and it becomes a target.
+    await dbService.settings.setSourceSettings(SOURCE_A, { txTargetMaxAgeHoursWhenUnlimited: '96' });
+    const second = await dbService.getNodeNeedingRemoteAdminCheckAsync(LOCAL_NODE_NUM, SOURCE_A);
+    expect(second?.nodeNum).toBe(REMOTE_NODE_NUM_B);
+  });
+
+  it('getNodeNeedingTracerouteAsync targets recent nodes, not none and not stale ones', async () => {
+    insertNode(dbService.db, REMOTE_NODE_NUM_A, '!0000006f', SOURCE_A, { lastHeard: hoursAgo(2) });
+    insertNode(dbService.db, REMOTE_NODE_NUM_B, '!000000de', SOURCE_B, { lastHeard: hoursAgo(72) });
+    await dbService.settings.setSourceSettings(SOURCE_A, { maxNodeAgeHours: '0' });
+    await dbService.settings.setSourceSettings(SOURCE_B, { maxNodeAgeHours: '0' });
+
+    expect((await dbService.getNodeNeedingTracerouteAsync(LOCAL_NODE_NUM, SOURCE_A))?.nodeNum).toBe(REMOTE_NODE_NUM_A);
+    expect(await dbService.getNodeNeedingTracerouteAsync(LOCAL_NODE_NUM, SOURCE_B)).toBeNull();
+
+    await dbService.settings.setSourceSettings(SOURCE_B, { txTargetMaxAgeHoursWhenUnlimited: '96' });
+    expect((await dbService.getNodeNeedingTracerouteAsync(LOCAL_NODE_NUM, SOURCE_B))?.nodeNum).toBe(REMOTE_NODE_NUM_B);
+  });
+
+  it('getNodesNeedingRemoteLocalStatsAsync uses the TX bound when the node window is 0', async () => {
+    insertNode(dbService.db, REMOTE_NODE_NUM_A, '!0000006f', SOURCE_A, { lastHeard: hoursAgo(2) });
+    insertNode(dbService.db, REMOTE_NODE_NUM_B, '!000000de', SOURCE_A, { lastHeard: hoursAgo(72) });
+    await dbService.settings.setSourceSettings(SOURCE_A, { maxNodeAgeHours: '0' });
+    await dbService.setRemoteLocalStatsFilterSettingsAsync({
+      enabled: true,
+      nodeNums: [],
+      filterRoles: [],
+      filterNameRegex: '.*',
+      filterNodesEnabled: false,
+      filterRolesEnabled: false,
+      filterFavoriteEnabled: false,
+      filterRegexEnabled: false,
+    }, SOURCE_A);
+
+    // Default 24h bound → 1 day.
+    const nodes = await dbService.getNodesNeedingRemoteLocalStatsAsync(LOCAL_NODE_NUM, SOURCE_A);
+    expect(nodes.map((n) => n.nodeNum)).toEqual([REMOTE_NODE_NUM_A]);
+
+    // 96h bound → 4 days: both.
+    await dbService.settings.setSourceSettings(SOURCE_A, { txTargetMaxAgeHoursWhenUnlimited: '96' });
+    const wider = await dbService.getNodesNeedingRemoteLocalStatsAsync(LOCAL_NODE_NUM, SOURCE_A);
+    expect(wider.map((n) => n.nodeNum).sort((a, b) => a - b)).toEqual([REMOTE_NODE_NUM_A, REMOTE_NODE_NUM_B]);
   });
 });

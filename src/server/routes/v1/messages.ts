@@ -539,7 +539,7 @@ router.post('/', messageLimiter, async (req: Request, res: Response) => {
       );
 
       // Get local node info to construct messageId
-      const localNodeNum = await databaseService.settings.getSetting('localNodeNum');
+      const localNodeNum = await databaseService.settings.getLocalNodeNumForSource(activeManager.sourceId);
       const messageId = localNodeNum ? `${localNodeNum}_${requestId}` : requestId.toString();
 
       logger.debug(`📤 v1 API: Sent message via API token (user: ${req.user?.username}, requestId: ${requestId})`);

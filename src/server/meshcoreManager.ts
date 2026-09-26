@@ -77,6 +77,7 @@ import {
   MESHCORE_AUTOMATED_FLOOD_ADVERT_MIN_INTERVAL_MS,
 } from '../types/meshcoreAdvert.js';
 import { MeshCoreZeroHopAdvertUnsupportedError, classifyRepeaterAdvertReply } from './utils/meshcoreAdvert.js';
+import { plausibleMeshCoreTimeMs, plausibleMeshCoreTimeMsOrUndefined } from '../utils/meshcoreTimestamp.js';
 
 // Dynamic imports for optional serialport dependency
 // These are loaded only when MeshCore is enabled to avoid requiring native build tools
@@ -923,6 +924,19 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   // this session. Guards against re-notifying when a brand-new contact
   // re-advertises before the in-memory contact store reflects it.
   private notifiedNewNodes: Set<string> = new Set();
+  // Public keys first seen WITHOUT a display name, whose "new node"
+  // notification is waiting for the name to arrive (#5340). In the default
+  // auto-add-contacts mode the firmware reports a newly heard node with a
+  // pubkey-only 0x80 push, so the name only shows up on the follow-up
+  // get_contacts re-read (or a later advert). Without this set that deferred
+  // notification was dropped for good, because by then the contact is known.
+  private pendingNewNodeNotifications: Set<string> = new Set();
+  // True while connect() is loading the contact list (DB seed + device
+  // get_contacts). Adverts that race ahead of that sync are for contacts we
+  // can't yet tell apart from already-known ones, so they must not count as
+  // new-node discoveries — otherwise every reconnect could re-notify for known
+  // nodes (#5340).
+  private newNodeNotifySuppressed: boolean = false;
 
   // Repeater: direct serial
   private serialPort: InstanceType<typeof import('serialport').SerialPort> | null = null;
@@ -1405,8 +1419,15 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // full. Seeding first means the DM list mirrors the known contacts when
       // the live sync degrades; a successful refresh then replaces it with the
       // device-authoritative list.
-      await this.seedContactsFromDb();
-      await this.refreshContacts();
+      // Adverts that land during this sync are part of the known contact set,
+      // not new discoveries — hold new-node notifications until it finishes.
+      this.newNodeNotifySuppressed = true;
+      try {
+        await this.seedContactsFromDb();
+        await this.refreshContacts();
+      } finally {
+        this.newNodeNotifySuppressed = false;
+      }
       // Pull the device's channel list and mirror it into the DB. MeshCore has
       // no push event for channel changes, so re-sync is connect-time and
       // after every local write. Failure here is non-fatal.
@@ -1540,6 +1561,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         manager: this,
         allowAdminCommands: vn.allowAdminCommands,
         allowPkiExport: vn.allowPkiExport,
+        allowPkiImport: vn.allowPkiImport,
       });
       await this.virtualNodeServer.start();
     } catch (err) {
@@ -1758,6 +1780,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     this.deviceType = MeshCoreDeviceType.UNKNOWN;
     this.localNode = null;
     this.contacts.clear();
+    this.pendingNewNodeNotifications.clear();
     this.guestLoggedInNodes.clear();
     this.roomLoggedInNodes.clear();
 
@@ -1877,7 +1900,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         fromName: senderContact?.advName ?? senderContact?.name ?? undefined,
         toPublicKey: this.localNode?.publicKey || 'local',
         text: data.text,
-        timestamp: data.sender_timestamp ? data.sender_timestamp * 1000 : Date.now(),
+        // Falls back to our own receipt clock when the remote's clock is
+        // missing or implausible (unsynced RTC drifted years off, #5339) —
+        // otherwise a broken sender clock pins this message at a bogus sort
+        // position forever (see messageOrder.ts, which sorts on `timestamp`).
+        timestamp: plausibleMeshCoreTimeMs(data.sender_timestamp),
         // Our own clock, for ordering. `timestamp` above is the REMOTE's and
         // only whole-seconds, so it cannot order against our ms-precision
         // sends (see components/MeshCore/messageOrder.ts).
@@ -1934,7 +1961,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         fromPublicKey: MeshCoreManager.channelPublicKey(data.channel_idx),
         fromName,
         text: body,
-        timestamp: data.sender_timestamp ? data.sender_timestamp * 1000 : Date.now(),
+        // See the contact_message case above (#5339): falls back to receipt
+        // time when the sender's clock is missing or implausible.
+        timestamp: plausibleMeshCoreTimeMs(data.sender_timestamp),
         // Our own clock, for ordering. `timestamp` above is the REMOTE's and
         // only whole-seconds, so it cannot order against our ms-precision
         // sends (see components/MeshCore/messageOrder.ts).
@@ -1979,7 +2008,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         fromName: authorName,
         toPublicKey: roomFullKey,
         text: data.text,
-        timestamp: data.sender_timestamp ? data.sender_timestamp * 1000 : Date.now(),
+        // See the contact_message case above (#5339): falls back to receipt
+        // time when the sender's clock is missing or implausible.
+        timestamp: plausibleMeshCoreTimeMs(data.sender_timestamp),
         // Our own clock, for ordering. `timestamp` above is the REMOTE's and
         // only whole-seconds, so it cannot order against our ms-precision
         // sends (see components/MeshCore/messageOrder.ts).
@@ -2034,7 +2065,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         void this.persistContact(updated);
         this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
         dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
-        if (!wasKnown) {
+        // A key first seen without a name is parked in
+        // pendingNewNodeNotifications; a later named advert resolves it (#5340).
+        if (!this.newNodeNotifySuppressed
+          && (!wasKnown || this.pendingNewNodeNotifications.has(publicKey))) {
           void this.notifyNewNodeDiscovered(updated);
         }
         // A node whose advert didn't carry its name/type — the full record
@@ -2698,8 +2732,16 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     try {
       const publicKey = contact.publicKey;
       if (!publicKey || this.notifiedNewNodes.has(publicKey)) return;
-      const displayName = contact.advName ?? contact.name ?? null;
-      if (!displayName) return; // defer until we have a meaningful name
+      // `||` not `??`: firmware reports a nameless contact as "" (#3756).
+      const displayName = contact.advName || contact.name || null;
+      if (!displayName) {
+        // Defer until a name arrives. The auto-add 0x80 push carries only the
+        // pubkey; the follow-up get_contacts re-read (refreshContacts) or a
+        // later named advert resolves this via the pending set (#5340).
+        this.pendingNewNodeNotifications.add(publicKey);
+        return;
+      }
+      this.pendingNewNodeNotifications.delete(publicKey);
       this.notifiedNewNodes.add(publicKey);
 
       const deviceTypeLabel = contact.advType != null
@@ -2723,6 +2765,24 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       logger.warn(
         `[MeshCore:${this.sourceId}] notifyNewNodeDiscovered(${contact.publicKey.substring(0, 16)}…) failed: ${(err as Error).message}`,
       );
+    }
+  }
+
+  /**
+   * Fire the deferred "new node" notification for every pending key whose
+   * contact now has a display name (#5340). Keys still nameless stay pending;
+   * keys whose contact vanished (e.g. removed) are dropped.
+   */
+  private flushPendingNewNodeNotifications(): void {
+    for (const publicKey of Array.from(this.pendingNewNodeNotifications)) {
+      const contact = this.contacts.get(publicKey);
+      if (!contact) {
+        this.pendingNewNodeNotifications.delete(publicKey);
+        continue;
+      }
+      if (contact.advName || contact.name) {
+        void this.notifyNewNodeDiscovered(contact);
+      }
     }
   }
 
@@ -3394,8 +3454,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // intermittently collapses to 1 node. (DB rows survive either way; this
       // keeps the in-memory map authoritative too.)
       if (response.success && Array.isArray(response.data) && response.data.length > 0) {
+        // Snapshot the previously known lastSeen per key before clearing —
+        // a contact sync is a local read of the device's saved contact list,
+        // not evidence a node was just heard, so a contact with no reported
+        // advert time must keep whatever we already knew, not jump to now.
+        const previousLastSeen = new Map(
+          Array.from(this.contacts.entries(), ([key, contact]) => [key, contact.lastSeen]),
+        );
         this.contacts.clear();
-        const nowMs = Date.now();
         for (const c of response.data) {
           // Skip contacts the user just removed that still linger on the
           // companion's saved-contact list — re-adding them here is exactly
@@ -3405,13 +3471,20 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           // Preserve the real Last Heard across reconnect (#3645). The companion
           // reports each contact's last advert time (epoch seconds) — use it for
           // lastSeen instead of the reconnect wall-clock, which previously reset
-          // every node's Last Heard to "now". Falls back to now only when the
-          // device didn't report an advert time. (Guard handles a value already
-          // in ms, mirroring MeshCoreContactDetailPanel.)
+          // every node's Last Heard to "now". When the device didn't report an
+          // advert time, keep the last value we knew about instead of stamping
+          // "now" (#5341) — the forward-only guard in upsertNode() can't catch
+          // that, since Date.now() always looks like forward progress. (Guard
+          // handles a value already in ms, mirroring MeshCoreContactDetailPanel.)
           const advertSec = typeof c.last_advert === 'number' ? c.last_advert : 0;
-          const advertMs = advertSec > 0
+          const rawAdvertMs = advertSec > 0
             ? (advertSec < 1e12 ? advertSec * 1000 : advertSec)
             : undefined;
+          // `last_advert` is the SENDER's clock. One that can't be a real
+          // receive time (unsynced RTC drifted years off, #5339) counts as no
+          // advert time at all: trusting it wrecks Last Heard sort order and
+          // the max-age filter for as long as the drifted value sticks around.
+          const advertMs = plausibleMeshCoreTimeMsOrUndefined(rawAdvertMs);
           this.contacts.set(c.public_key, {
             publicKey: c.public_key,
             advName: c.adv_name,
@@ -3422,7 +3495,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
             latitude: c.latitude,
             longitude: c.longitude,
             lastAdvert: advertSec > 0 ? advertSec : undefined,
-            lastSeen: advertMs ?? nowMs,
+            lastSeen: advertMs ?? previousLastSeen.get(c.public_key),
             outPath: c.out_path ?? null,
             pathLen: c.path_len ?? null,
             flags: typeof c.flags === 'number' ? c.flags : undefined,
@@ -3440,6 +3513,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           Array.from(this.contacts.values()).map((c) => this.persistContact(c)),
         );
         logger.debug(`[MeshCore] Refreshed ${this.contacts.size} contacts`);
+        // Resolve new-node notifications that were waiting on a name (#5340).
+        // Only keys already parked as genuinely new are considered, so a bulk
+        // contact sync never notifies for the rest of the list.
+        this.flushPendingNewNodeNotifications();
         // Sync the firmware favourite bit with MeshMonitor's local favourites
         // now that we have fresh device flags. Runs on connect (backfilling
         // existing favourites onto the device) and on every subsequent refresh.
@@ -3476,7 +3553,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           snr: n.snr ?? undefined,
           latitude: n.latitude ?? undefined,
           longitude: n.longitude ?? undefined,
-          lastSeen: n.lastHeard ?? undefined,
+          // Drop a drifted value stored before #5339 rather than seed it.
+          lastSeen: plausibleMeshCoreTimeMsOrUndefined(n.lastHeard),
           outPath: n.outPath ?? null,
           pathLen: n.pathLen ?? null,
         });
@@ -4348,11 +4426,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       }
       const existing = this.contacts.get(publicKey);
       if (existing) {
+        // Leave lastSeen alone (#5341): a path reset is a local write to the
+        // companion, not evidence the node was heard. The DM-ack-timeout retry
+        // calls this precisely BECAUSE the node went silent, so stamping "now"
+        // here bumped an offline node's Last Heard on every failed DM.
         const updated: MeshCoreContact = {
           ...existing,
           outPath: null,
           pathLen: null,
-          lastSeen: Date.now(),
         };
         this.contacts.set(publicKey, updated);
         void this.persistContact(updated);
@@ -5168,11 +5249,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       const hex = hopTokens.join(',');
       const existing = this.contacts.get(publicKey);
       if (existing) {
+        // Leave lastSeen alone (#5341): set_out_path is a serial-only write to
+        // the companion, not a reception from the node.
         const updated: MeshCoreContact = {
           ...existing,
           outPath: hex,
           pathLen: hopCount,
-          lastSeen: Date.now(),
         };
         this.contacts.set(publicKey, updated);
         void this.persistContact(updated);
@@ -5356,6 +5438,46 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       return true;
     } catch (error) {
       logger.error('[MeshCore] removeContact threw:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Rename a contact in the device's saved contact table, keeping its type,
+   * flags, route and advert fields as the device holds them. On success the
+   * in-memory contact + meshcore_nodes row take the new name. Companion only;
+   * a local serial write (no RF), so receive-only mode does not block it.
+   * Used by the Virtual Node's AddUpdateContact relay (#5350).
+   */
+  async setContactName(publicKey: string, name: string): Promise<boolean> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
+      logger.warn('[MeshCore] Set-contact-name requires Companion firmware');
+      return false;
+    }
+    if (!this.connected) return false;
+    // Firmware ContactInfo.name is char[32] incl. the NUL terminator.
+    if (Buffer.byteLength(name, 'utf8') > 31) {
+      logger.warn(`[MeshCore:${this.sourceId}] setContactName: name longer than 31 UTF-8 bytes`);
+      return false;
+    }
+    try {
+      const response = await this.sendBridgeCommand('set_contact_name', { public_key: publicKey, name });
+      if (!response.success) {
+        logger.warn(`[MeshCore] set_contact_name failed for ${publicKey.substring(0, 16)}…: ${response.error}`);
+        return false;
+      }
+      const existing = this.contacts.get(publicKey);
+      if (existing) {
+        const updated: MeshCoreContact = { ...existing, advName: name, name };
+        this.contacts.set(publicKey, updated);
+        void this.persistContact(updated);
+        this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
+        dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
+      }
+      logger.debug(`[MeshCore:${this.sourceId}] Renamed contact ${publicKey.substring(0, 16)}…`);
+      return true;
+    } catch (error) {
+      logger.error('[MeshCore] setContactName threw:', error);
       return false;
     }
   }
@@ -7114,7 +7236,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           publicKey: n.publicKey,
           name: n.name || 'Unknown',
           advType: (n.advType ?? MeshCoreDeviceType.UNKNOWN) as MeshCoreDeviceType,
-          lastHeard: n.lastHeard ?? undefined,
+          // A drifted value stored before #5339 would pin this node at the top
+          // (or bottom) of Last Heard sort and dodge the max-age filter.
+          lastHeard: plausibleMeshCoreTimeMsOrUndefined(n.lastHeard),
           rssi: n.rssi ?? undefined,
           snr: n.snr ?? undefined,
           latitude: n.latitude ?? undefined,

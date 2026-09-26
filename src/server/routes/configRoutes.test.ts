@@ -13,6 +13,7 @@ import configRoutes from './configRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 import { sourceManagerRegistry, type ISourceManager } from '../sourceManagerRegistry.js';
 import { TxDisabledError } from '../errors/txDisabledError.js';
+import { MeshtasticManager } from '../meshtasticManager.js';
 
 describe('configRoutes', () => {
   let harness: RouteTestHarness;
@@ -52,21 +53,60 @@ describe('configRoutes', () => {
         },
         harness.sourceA,
       );
-      await harness.db.settings.setSourceSetting(harness.sourceA, 'localNodeNum', '2732916556');
+      // Persist under the exact key the manager writes on connect (#5377),
+      // taken from a real manager rather than restated here.
+      const writerKey = new MeshtasticManager(harness.sourceA).localNodeSettingKey('localNodeNum');
+      expect(writerKey).toBe(`localNodeNum_${harness.sourceA}`);
+      await harness.db.settings.setSetting(writerKey, '2732916556');
+      try {
+        const agent = await harness.loginAs(harness.admin);
+        const res = await agent.get('/').query({ sourceId: harness.sourceA });
 
-      const agent = await harness.loginAs(harness.admin);
-      const res = await agent.get('/').query({ sourceId: harness.sourceA });
+        expect(res.status).toBe(200);
+        expect(res.body.localNodeInfo).toEqual({
+          nodeId: '!a2e175b8',
+          longName: 'Test Node',
+          shortName: 'TEST',
+        });
+        expect(res.body.deviceMetadata).toEqual({
+          firmwareVersion: '2.3.0',
+          rebootCount: 5,
+        });
 
-      expect(res.status).toBe(200);
-      expect(res.body.localNodeInfo).toEqual({
-        nodeId: '!a2e175b8',
-        longName: 'Test Node',
-        shortName: 'TEST',
-      });
-      expect(res.body.deviceMetadata).toEqual({
-        firmwareVersion: '2.3.0',
-        rebootCount: 5,
-      });
+        // Source isolation: source B has no local node of its own and must
+        // not inherit source A's.
+        const resB = await agent.get('/').query({ sourceId: harness.sourceB });
+        expect(resB.body.localNodeInfo).toBeUndefined();
+      } finally {
+        await harness.db.settings.deleteSetting(writerKey);
+      }
+    });
+
+    it('falls back to the migration-050 per-source row for a source not reconnected since (#5377)', async () => {
+      await harness.db.nodes.upsertNode(
+        {
+          nodeNum: 2732916557,
+          nodeId: '!a2e175b9',
+          longName: 'Legacy Node',
+          shortName: 'LEG',
+          lastHeard: Math.floor(Date.now() / 1000),
+        },
+        harness.sourceA,
+      );
+      await harness.db.settings.setSourceSetting(harness.sourceA, 'localNodeNum', '2732916557');
+      try {
+        const agent = await harness.loginAs(harness.admin);
+        const res = await agent.get('/').query({ sourceId: harness.sourceA });
+
+        expect(res.status).toBe(200);
+        expect(res.body.localNodeInfo).toEqual({
+          nodeId: '!a2e175b9',
+          longName: 'Legacy Node',
+          shortName: 'LEG',
+        });
+      } finally {
+        await harness.db.settings.deleteSetting(`source:${harness.sourceA}:localNodeNum`);
+      }
     });
 
     it('handles a missing localNodeNum gracefully', async () => {

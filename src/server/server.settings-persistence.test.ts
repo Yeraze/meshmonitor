@@ -21,7 +21,7 @@ import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { VALID_SETTINGS_KEYS } from './constants/settings.js';
-import { NODE_DISPLAY_SETTING_KEYS } from '../constants/nodeDisplayDefaults.js';
+import { NODE_DISPLAY_SETTING_KEYS, SETTINGS_TAB_PER_SOURCE_KEYS } from '../constants/nodeDisplayDefaults.js';
 
 // ─── Database mock ────────────────────────────────────────────────────────
 // In-memory store that mimics setSetting / getAllSettings round-trip
@@ -130,6 +130,7 @@ function validTestValue(key: string, suffix = ''): string {
     autoAckIgnoredNodes: '!b29fa8d4,!a1b2c3d4',
     maxNodeAgeHours: '24',
     maxInfraNodeAgeHours: '168',
+    txTargetMaxAgeHoursWhenUnlimited: '48',
     inactiveNodeThresholdHours: '24',
     inactiveNodeCheckIntervalMinutes: '60',
     inactiveNodeCooldownHours: '24',
@@ -306,14 +307,14 @@ function extractSettingsTabPartition(): { nodeDisplayBody: Record<string, unknow
   // this test file (verified via lint:ci), so no disable directive is needed.
   const runPartition = new Function(
     'settings',
-    'NODE_DISPLAY_SETTING_KEYS',
+    'SETTINGS_TAB_PER_SOURCE_KEYS',
     `${runnableJs}\nreturn { nodeDisplayBody, globalBody };`
   ) as (settings: Record<string, string>, keys: readonly string[]) => {
     nodeDisplayBody: Record<string, unknown>;
     globalBody: Record<string, unknown>;
   };
 
-  return runPartition(settingsFixture, NODE_DISPLAY_SETTING_KEYS);
+  return runPartition(settingsFixture, SETTINGS_TAB_PER_SOURCE_KEYS);
 }
 
 /**
@@ -498,6 +499,9 @@ describe('Settings Persistence', () => {
         'homoglyphEnabled',
         // Local stats interval — backend reads directly
         'localStatsIntervalMinutes',
+        // TX-target window when maxNodeAgeHours is 0 (#5376) — SettingsTab loads
+        // it straight from the settings API; only the TX-selecting jobs read it.
+        'txTargetMaxAgeHoursWhenUnlimited',
         // MeshCore CLI console reply-timeout (#4027) — loaded directly by
         // SettingsTab and read server-side by the /cli routes, not via SettingsContext.
         'meshcoreCliTimeoutSeconds',
@@ -560,20 +564,24 @@ describe('Settings Persistence', () => {
     // Executes the ACTUAL nodeDisplayBody/globalBody split extracted from
     // SettingsTab.tsx's handleSave (see extractSettingsTabPartition above),
     // not a re-implementation of it. Order of importance per the spec: (1)
-    // is the non-negotiable assertion — every one of
-    // NODE_DISPLAY_SETTING_KEYS's entries (the frozen ten Node Display keys
-    // plus the three likely-aircraft keys, #5364/#5365 Phase 1 WP5 — 13
-    // total) lands in the scoped body, by COUNT AND NAME against the
-    // constant itself, so this cannot degrade into a subset check or drift
-    // from the constant.
-    it('(1) every NODE_DISPLAY_SETTING_KEYS entry — and only those — lands in the scoped nodeDisplayBody', () => {
+    // is the non-negotiable assertion — every SETTINGS_TAB_PER_SOURCE_KEYS
+    // entry (the frozen ten Node Display keys, the three likely-aircraft keys
+    // from #5364/#5365, and the #5376 TX-target window) lands in the scoped
+    // body, by COUNT AND NAME against the constant itself, so this cannot
+    // degrade into a subset check or drift from the constant.
+    it('(1) every SETTINGS_TAB_PER_SOURCE_KEYS entry — and only those — lands in the scoped nodeDisplayBody', () => {
       const { nodeDisplayBody } = extractSettingsTabPartition();
-      expect(Object.keys(nodeDisplayBody).sort()).toEqual([...NODE_DISPLAY_SETTING_KEYS].sort());
+      expect(Object.keys(nodeDisplayBody).sort()).toEqual([...SETTINGS_TAB_PER_SOURCE_KEYS].sort());
+      // Every Node Display key (frozen ten + aircraft three) is there, plus the #5376 TX-target window.
+      for (const key of NODE_DISPLAY_SETTING_KEYS) {
+        expect(nodeDisplayBody).toHaveProperty(key);
+      }
+      expect(nodeDisplayBody).toHaveProperty('txTargetMaxAgeHoursWhenUnlimited');
     });
 
     it('(2) none of the NODE_DISPLAY_SETTING_KEYS entries land in the unscoped globalBody', () => {
       const { globalBody } = extractSettingsTabPartition();
-      for (const key of NODE_DISPLAY_SETTING_KEYS) {
+      for (const key of SETTINGS_TAB_PER_SOURCE_KEYS) {
         expect(globalBody).not.toHaveProperty(key);
       }
     });
@@ -581,7 +589,7 @@ describe('Settings Persistence', () => {
     it('(3) every other key SettingsTab sends lands in the unscoped globalBody', () => {
       const { globalBody } = extractSettingsTabPartition();
       const nonNodeDisplayKeys = SETTINGS_TAB_SENDS.filter(
-        (key) => !(NODE_DISPLAY_SETTING_KEYS as readonly string[]).includes(key)
+        (key) => !(SETTINGS_TAB_PER_SOURCE_KEYS as readonly string[]).includes(key)
       );
       for (const key of nonNodeDisplayKeys) {
         expect(globalBody).toHaveProperty(key);

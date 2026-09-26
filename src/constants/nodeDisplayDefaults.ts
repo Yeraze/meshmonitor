@@ -188,3 +188,50 @@ export function parseNodeDisplayBoolean(
   if (raw === '0' || raw === 'false') return false;
   return NODE_DISPLAY_BOOLEAN_DEFAULTS[key];
 }
+
+/**
+ * TX-target age window used when `maxNodeAgeHours` is 0 ("unlimited", #5376).
+ *
+ * `maxNodeAgeHours = 0` means "show every node" for display. The jobs that
+ * pick nodes to TRANSMIT to (auto-traceroute, the remote-admin scanner, remote
+ * LocalStats polling) must not widen to every node ever heard, so when the
+ * node window is unlimited they fall back to this per-source window instead.
+ * It does not change how often those jobs fire (their timers set that), only
+ * which nodes they may target.
+ *
+ * Like `maxInfraNodeAgeHours`, it lives OUTSIDE the frozen ten-key Node Display
+ * seed: a standalone per-source setting that falls through to the default when
+ * unstored. 0 is NOT valid here: this is the bound, not another "unlimited".
+ */
+export const TX_TARGET_MAX_AGE_HOURS_WHEN_UNLIMITED_DEFAULT = 24;
+export const TX_TARGET_MAX_AGE_HOURS_WHEN_UNLIMITED_RANGE = { min: 1, max: 720, integer: true } as const;
+
+/**
+ * Every key SettingsTab saves through the per-source (`?sourceId=`) POST: the
+ * frozen ten Node Display keys plus later standalone per-source keys. The GET
+ * route also keeps these out of the global back-fill (no runtime global
+ * fallback, #4412 Phase 3 D5).
+ */
+export const SETTINGS_TAB_PER_SOURCE_KEYS = [
+  ...NODE_DISPLAY_SETTING_KEYS,
+  'txTargetMaxAgeHoursWhenUnlimited',
+] as const;
+
+/** Parse a stored value. null/empty/NaN/out-of-range → the default. */
+export function parseTxTargetMaxAgeHoursWhenUnlimited(raw: string | null | undefined): number {
+  const fallback = TX_TARGET_MAX_AGE_HOURS_WHEN_UNLIMITED_DEFAULT;
+  if (raw === null || raw === undefined || raw === '') return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return fallback;
+  const R = TX_TARGET_MAX_AGE_HOURS_WHEN_UNLIMITED_RANGE;
+  if (n < R.min || n > R.max) return fallback;
+  return Math.trunc(n);
+}
+
+/**
+ * The age window (hours, always > 0) that TX-selecting jobs use: the node
+ * window itself, or the fallback when the node window is 0 / unlimited.
+ */
+export function resolveTxTargetMaxAgeHours(maxNodeAgeHours: number, fallbackHours: number): number {
+  return Number.isFinite(maxNodeAgeHours) && maxNodeAgeHours > 0 ? maxNodeAgeHours : fallbackHours;
+}

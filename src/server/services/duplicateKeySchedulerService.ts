@@ -270,7 +270,7 @@ class DuplicateKeySchedulerService {
     try {
       logger.debug(`🔐 [${sourceId}] Running spam detection...`);
 
-      const localNodeNumStr = await databaseService.settings.getSettingForSource(sourceId, 'localNodeNum');
+      const localNodeNumStr = await databaseService.settings.getLocalNodeNumForSource(sourceId);
       const localNodeNum = localNodeNumStr ? parseInt(localNodeNumStr, 10) : null;
 
       const packetCounts = await databaseService.getPacketCountsPerNodeLastHourAsync(sourceId);

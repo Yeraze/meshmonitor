@@ -23,6 +23,10 @@ import {
   MAX_INFRA_NODE_AGE_HOURS_DEFAULT,
   MAX_INFRA_NODE_AGE_HOURS_RANGE,
   parseMaxInfraNodeAgeHours,
+  parseTxTargetMaxAgeHoursWhenUnlimited,
+  resolveTxTargetMaxAgeHours,
+  SETTINGS_TAB_PER_SOURCE_KEYS,
+  TX_TARGET_MAX_AGE_HOURS_WHEN_UNLIMITED_DEFAULT,
 } from './nodeDisplayDefaults.js';
 import { NODE_DISPLAY_SEED } from '../server/migrations/131_seed_per_source_node_display.js';
 import {
@@ -211,5 +215,35 @@ describe('maxInfraNodeAgeHours (#4899)', () => {
     expect(parseMaxInfraNodeAgeHours('-1')).toBe(720);         // below min → default
     expect(parseMaxInfraNodeAgeHours('99999')).toBe(720);      // above max → default
     expect(parseMaxInfraNodeAgeHours('48.9')).toBe(48);        // truncated to integer
+  });
+});
+
+describe('TX-target window when maxNodeAgeHours is 0 (#5376)', () => {
+  it('parseTxTargetMaxAgeHoursWhenUnlimited: default 24, range 1..720, 0 is NOT valid', () => {
+    expect(TX_TARGET_MAX_AGE_HOURS_WHEN_UNLIMITED_DEFAULT).toBe(24);
+    expect(parseTxTargetMaxAgeHoursWhenUnlimited(null)).toBe(24);
+    expect(parseTxTargetMaxAgeHoursWhenUnlimited('')).toBe(24);
+    expect(parseTxTargetMaxAgeHoursWhenUnlimited('garbage')).toBe(24);
+    expect(parseTxTargetMaxAgeHoursWhenUnlimited('0')).toBe(24);   // the bound can't be "unlimited"
+    expect(parseTxTargetMaxAgeHoursWhenUnlimited('721')).toBe(24);
+    expect(parseTxTargetMaxAgeHoursWhenUnlimited('1')).toBe(1);
+    expect(parseTxTargetMaxAgeHoursWhenUnlimited('720')).toBe(720);
+    expect(parseTxTargetMaxAgeHoursWhenUnlimited('48.9')).toBe(48);
+  });
+
+  it('resolveTxTargetMaxAgeHours: node window when > 0, else the fallback', () => {
+    expect(resolveTxTargetMaxAgeHours(72, 24)).toBe(72);
+    expect(resolveTxTargetMaxAgeHours(0, 24)).toBe(24);
+    expect(resolveTxTargetMaxAgeHours(0, 168)).toBe(168);
+    expect(resolveTxTargetMaxAgeHours(-5, 24)).toBe(24);
+    expect(resolveTxTargetMaxAgeHours(Number.NaN, 24)).toBe(24);
+  });
+
+  it('SETTINGS_TAB_PER_SOURCE_KEYS = the Node Display keys plus the TX-target window', () => {
+    expect(SETTINGS_TAB_PER_SOURCE_KEYS).toEqual([...NODE_DISPLAY_SETTING_KEYS, 'txTargetMaxAgeHoursWhenUnlimited']);
+    // The frozen ten stay ten (migration 131 seed parity); the three
+    // likely-aircraft keys (#5364/#5365) ride on top of them.
+    expect(NODE_DISPLAY_SEEDED_KEYS).toHaveLength(10);
+    expect(NODE_DISPLAY_SETTING_KEYS).toHaveLength(13);
   });
 });

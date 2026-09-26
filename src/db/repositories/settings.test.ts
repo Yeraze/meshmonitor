@@ -10,7 +10,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, beforeAll } from 'vitest';
 import * as schema from '../schema/index.js';
-import { SettingsRepository } from './settings.js';
+import { SettingsRepository, localNodeNumSettingKey } from './settings.js';
 import {
   TestBackend,
   createPostgresBackend,
@@ -402,6 +402,36 @@ function runSettingsTests(getBackend: () => TestBackend) {
     expect(Object.getPrototypeOf({})).toBe(Object.prototype);
     expect(Object.prototype.hasOwnProperty.call(result, '__proto__')).toBe(true);
     expect(Object.getOwnPropertyDescriptor(result, '__proto__')?.value).toBe('pwned');
+  });
+
+  it('getLocalNodeNumForSource - reads the key the manager writes, not the source: namespace (#5377)', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+
+    expect(localNodeNumSettingKey('src-a')).toBe('localNodeNum_src-a');
+    expect(localNodeNumSettingKey('default')).toBe('localNodeNum');
+
+    await repo.setSetting('localNodeNum_src-a', '111');
+    await repo.setSetting('localNodeNum', '999');
+
+    expect(await repo.getLocalNodeNumForSource('src-a')).toBe('111');
+    // The old read path never saw the manager's row.
+    expect(await repo.getSettingForSource('src-a', 'localNodeNum')).toBeNull();
+    // No source → the bare global key.
+    expect(await repo.getLocalNodeNumForSource(null)).toBe('999');
+    // A source with no row of its own never inherits the global one.
+    expect(await repo.getLocalNodeNumForSource('src-b')).toBeNull();
+  });
+
+  it('getLocalNodeNumForSource - falls back to the migration-050 row, current key wins (#5377)', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+
+    await repo.setSourceSetting('src-a', 'localNodeNum', '222');
+    expect(await repo.getLocalNodeNumForSource('src-a')).toBe('222');
+
+    await repo.setSetting('localNodeNum_src-a', '333');
+    expect(await repo.getLocalNodeNumForSource('src-a')).toBe('333');
   });
 
   it('getSettingForSources - batched multi-source hit/miss for one key', async () => {

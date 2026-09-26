@@ -18,6 +18,7 @@ vi.mock('../services/database.js', () => ({
   default: {
     meshcore: {
       upsertNode: (...args: unknown[]) => upsertNode(...args),
+      getNodesBySource: vi.fn().mockResolvedValue([]),
     },
     sources: {
       getSource: (...args: unknown[]) => getSource(...args),
@@ -373,5 +374,139 @@ describe('MeshCoreManager contact persistence (issue #3092)', () => {
       }),
       'src-a',
     );
+  });
+});
+
+/**
+ * Issue #5340: in the companion's default auto-add-contacts mode the firmware
+ * reports a newly heard node with a pubkey-only 0x80 push (no name). The
+ * notification was deferred for want of a name and then dropped for good,
+ * because by the time the name arrived the contact was already "known".
+ */
+describe('MeshCoreManager new-node notification for nameless first adverts (issue #5340)', () => {
+  const NEW_KEY = 'b'.repeat(64);
+
+  function companion(contacts: Array<Record<string, unknown>>): MeshCoreManager {
+    const m = new MeshCoreManager('src-a');
+    (m as any).deviceType = MeshCoreDeviceType.COMPANION;
+    (m as any).sendBridgeCommand = async (cmd: string) => {
+      if (cmd === 'get_contacts') return { success: true, data: contacts };
+      return { success: true };
+    };
+    return m;
+  }
+
+  function pubkeyOnlyAdvert(m: MeshCoreManager, key: string): void {
+    // Exactly what the native backend emits for PushCodes.Advert (0x80).
+    dispatchBridgeEvent(m, { event_type: 'contact_advertised', data: { public_key: key } });
+    // The advert schedules a debounced get_contacts re-read; tests drive
+    // refreshContacts() directly instead.
+    (m as any).clearPathRefreshTimer();
+  }
+
+  beforeEach(() => {
+    notifyNewMeshCoreNode.mockClear();
+  });
+
+  it('notifies once the get_contacts re-read supplies the name', async () => {
+    const m = companion([
+      { public_key: NEW_KEY, adv_name: 'FreshRepeater', adv_type: MeshCoreDeviceType.REPEATER },
+    ]);
+    pubkeyOnlyAdvert(m, NEW_KEY);
+    await flush();
+    expect(notifyNewMeshCoreNode).not.toHaveBeenCalled();
+
+    await m.refreshContacts();
+    await flush();
+    expect(notifyNewMeshCoreNode).toHaveBeenCalledTimes(1);
+    expect(notifyNewMeshCoreNode).toHaveBeenCalledWith(
+      NEW_KEY, 'FreshRepeater', 'Repeater', 'src-a', 'Source A',
+    );
+
+    // Later refreshes and adverts never re-notify.
+    await m.refreshContacts();
+    dispatchBridgeEvent(m, {
+      event_type: 'contact_advertised',
+      data: { public_key: NEW_KEY, adv_name: 'FreshRepeater' },
+    });
+    await flush();
+    expect(notifyNewMeshCoreNode).toHaveBeenCalledTimes(1);
+  });
+
+  it('notifies when a later advert carries the name', async () => {
+    const m = companion([]);
+    pubkeyOnlyAdvert(m, NEW_KEY);
+    await flush();
+    expect(notifyNewMeshCoreNode).not.toHaveBeenCalled();
+
+    dispatchBridgeEvent(m, {
+      event_type: 'contact_added',
+      data: { public_key: NEW_KEY, adv_name: 'FreshCompanion', adv_type: MeshCoreDeviceType.COMPANION },
+    });
+    await flush();
+    expect(notifyNewMeshCoreNode).toHaveBeenCalledTimes(1);
+    expect(notifyNewMeshCoreNode.mock.calls[0][1]).toBe('FreshCompanion');
+  });
+
+  it('a bulk contact sync notifies only for the one genuinely new node', async () => {
+    const bulk = Array.from({ length: 200 }, (_, i) => ({
+      public_key: i.toString(16).padStart(64, '0'),
+      adv_name: `Node ${i}`,
+      adv_type: MeshCoreDeviceType.COMPANION,
+    }));
+    const m = companion([
+      ...bulk,
+      { public_key: NEW_KEY, adv_name: 'FreshRepeater', adv_type: MeshCoreDeviceType.REPEATER },
+    ]);
+    // A newly heard node's pubkey-only advert, then the get_contacts re-read
+    // that returns the whole 201-entry list.
+    pubkeyOnlyAdvert(m, NEW_KEY);
+    await m.refreshContacts();
+    await flush();
+    expect(notifyNewMeshCoreNode).toHaveBeenCalledTimes(1);
+    expect(notifyNewMeshCoreNode.mock.calls[0][0]).toBe(NEW_KEY);
+  });
+
+  it('a plain contact sync with nothing pending never notifies', async () => {
+    const m = companion(Array.from({ length: 200 }, (_, i) => ({
+      public_key: i.toString(16).padStart(64, '0'),
+      adv_name: `Node ${i}`,
+    })));
+    await m.refreshContacts();
+    await flush();
+    expect(notifyNewMeshCoreNode).not.toHaveBeenCalled();
+  });
+
+  it('adverts that race ahead of the connect-time contact sync never notify', async () => {
+    const m = companion([
+      { public_key: NEW_KEY, adv_name: 'KnownRepeater', adv_type: MeshCoreDeviceType.REPEATER },
+    ]);
+    // connect() holds this flag while it seeds from the DB and runs get_contacts.
+    (m as any).newNodeNotifySuppressed = true;
+    pubkeyOnlyAdvert(m, NEW_KEY);
+    dispatchBridgeEvent(m, {
+      event_type: 'contact_added',
+      data: { public_key: 'c'.repeat(64), adv_name: 'AlsoKnown' },
+    });
+    await m.refreshContacts();
+    (m as any).newNodeNotifySuppressed = false;
+    await flush();
+    expect(notifyNewMeshCoreNode).not.toHaveBeenCalled();
+
+    // And nothing was parked to fire on a later refresh either.
+    await m.refreshContacts();
+    await flush();
+    expect(notifyNewMeshCoreNode).not.toHaveBeenCalled();
+  });
+
+  it('drops a pending key whose contact is gone without notifying', async () => {
+    const m = companion([]);
+    pubkeyOnlyAdvert(m, NEW_KEY);
+    expect((m as any).pendingNewNodeNotifications.has(NEW_KEY)).toBe(true);
+    (m as any).contacts.delete(NEW_KEY);
+    (m as any).flushPendingNewNodeNotifications();
+    await flush();
+    expect((m as any).pendingNewNodeNotifications.has(NEW_KEY)).toBe(false);
+    expect(notifyNewMeshCoreNode).not.toHaveBeenCalled();
   });
 });

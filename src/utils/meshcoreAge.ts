@@ -15,6 +15,8 @@
  * `* 1000` at any call site.
  */
 
+import { isPlausibleMeshCoreTimeMs } from './meshcoreTimestamp.js';
+
 /** Any row that can answer "when was this last heard?". All fields optional. */
 export interface MeshCoreAgeSource {
   /** epoch ms — meshcore_nodes.lastHeard / MergedRow.lastHeard */
@@ -42,6 +44,7 @@ const LAST_ADVERT_MS_THRESHOLD = 1e12;
  * DB value) prepended, so a MergedRow and a raw contact resolve identically.
  *
  * `0` is treated as "unknown" (falsy), matching useProcessedNodes' `!node.lastHeard`.
+ * An implausible `lastAdvert` (drifted sender clock, #5339) is also unknown.
  */
 export function meshcoreLastHeardMs(row: MeshCoreAgeSource): number | null {
   if (row.lastHeard != null && row.lastHeard !== 0) {
@@ -51,9 +54,12 @@ export function meshcoreLastHeardMs(row: MeshCoreAgeSource): number | null {
     return row.lastSeen;
   }
   if (row.lastAdvert != null && row.lastAdvert !== 0) {
-    return row.lastAdvert < LAST_ADVERT_MS_THRESHOLD
+    const advertMs = row.lastAdvert < LAST_ADVERT_MS_THRESHOLD
       ? row.lastAdvert * 1000
       : row.lastAdvert;
+    // `lastAdvert` is the SENDER's clock, not ours. A drifted RTC (years off,
+    // #5339) is no evidence of when we heard the node, so treat it as unknown.
+    return isPlausibleMeshCoreTimeMs(advertMs) ? advertMs : null;
   }
   return null;
 }

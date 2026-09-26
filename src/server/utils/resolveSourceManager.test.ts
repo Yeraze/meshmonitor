@@ -37,7 +37,7 @@ vi.mock('../sourceManagerTypes.js', async () => {
   };
 });
 
-import { resolveSourceManager } from './resolveSourceManager.js';
+import { resolveSourceManager, resolveOwnMeshtasticManager } from './resolveSourceManager.js';
 
 describe('resolveSourceManager', () => {
   beforeEach(() => {
@@ -93,5 +93,39 @@ describe('resolveSourceManager', () => {
     expect(resolveSourceManager(undefined)).toBeDefined();
     expect(resolveSourceManager(null)).toBeDefined();
     expect(resolveSourceManager('some-id')).toBeDefined();
+  });
+});
+
+describe('resolveOwnMeshtasticManager (#5367)', () => {
+  const primary = { sourceId: 'mt-primary', sourceType: 'meshtastic_tcp' };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    h.mockGetPrimaryMeshtasticManager.mockReturnValue(primary);
+  });
+
+  it('returns the registered Meshtastic manager for its own sourceId', () => {
+    const own = { sourceId: 'mt-b', sourceType: 'meshtastic_tcp' };
+    h.mockRegistry.getManager.mockReturnValue(own);
+    expect(resolveOwnMeshtasticManager('mt-b')).toBe(own);
+  });
+
+  it.each(['mqtt_broker', 'mqtt_bridge', 'meshcore', 'reticulum'])(
+    'returns null, never the primary, for a registered %s source',
+    (sourceType) => {
+      h.mockRegistry.getManager.mockReturnValue({ sourceId: 'other', sourceType });
+      expect(resolveOwnMeshtasticManager('other')).toBeNull();
+    },
+  );
+
+  it('returns null, never the primary, for a sourceId with no live manager', () => {
+    h.mockRegistry.getManager.mockReturnValue(undefined);
+    expect(resolveOwnMeshtasticManager('gone')).toBeNull();
+  });
+
+  it('keeps the legacy primary resolution when no sourceId is given', () => {
+    expect(resolveOwnMeshtasticManager(undefined)).toBe(primary);
+    h.mockGetPrimaryMeshtasticManager.mockReturnValue(undefined);
+    expect(resolveOwnMeshtasticManager(null)).toBe(h.mockFallbackManager);
   });
 });

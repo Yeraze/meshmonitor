@@ -914,6 +914,29 @@ describe('settingsRoutes', () => {
       });
     });
 
+    // (a1) #5376: TX-target window used when maxNodeAgeHours is 0. It bounds
+    // which nodes MeshMonitor transmits to, so 0 ("no bound") is rejected.
+    describe('(a1) txTargetMaxAgeHoursWhenUnlimited range validation (#5376)', () => {
+      it.each([0, -1, 721, 1.5, 'abc', ''])('rejects %s with 400 INVALID_TX_TARGET_MAX_AGE_HOURS', async (value) => {
+        const app = createApp(adminUser);
+        const res = await request(app)
+          .post('/api/settings')
+          .send({ txTargetMaxAgeHoursWhenUnlimited: value as any })
+          .expect(400);
+
+        expect(res.body.code).toBe('INVALID_TX_TARGET_MAX_AGE_HOURS');
+        expect(databaseService.settings.setSettings).not.toHaveBeenCalled();
+      });
+
+      it.each([1, 24, 168, 720])('accepts %s with 200', async (value) => {
+        const app = createApp(adminUser);
+        await request(app)
+          .post('/api/settings')
+          .send({ txTargetMaxAgeHoursWhenUnlimited: String(value) })
+          .expect(200);
+      });
+    });
+
     // (a2) automationAirtimeCutoffNeighborMaxHops range validation (#4801):
     // 0-7 inclusive is accepted; anything else 400s and the setter callback
     // must not run.

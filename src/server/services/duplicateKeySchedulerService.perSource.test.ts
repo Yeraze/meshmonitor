@@ -41,6 +41,7 @@ const h = vi.hoisted(() => ({
   getPacketCountsMock: vi.fn(),
   getLatestTimestampsMock: vi.fn(),
   getSettingForSourceMock: vi.fn(),
+  getLocalNodeNumForSourceMock: vi.fn(),
   updateNodeSecurityFlagsMock: vi.fn().mockResolvedValue(undefined),
   updateNodeLowEntropyFlagMock: vi.fn().mockResolvedValue(undefined),
   updateNodeSpamFlagsAsyncMock: vi.fn().mockResolvedValue(undefined),
@@ -49,7 +50,7 @@ const h = vi.hoisted(() => ({
 }));
 const {
   getNodesWithPublicKeysMock, getAllNodesMock, getPacketCountsMock,
-  getLatestTimestampsMock, getSettingForSourceMock,
+  getLatestTimestampsMock, getSettingForSourceMock, getLocalNodeNumForSourceMock,
   updateNodeSecurityFlagsMock, updateNodeLowEntropyFlagMock,
   updateNodeSpamFlagsAsyncMock, updateNodeTimeOffsetFlagsAsyncMock,
   getAllManagersMock,
@@ -71,6 +72,7 @@ vi.mock('../../services/database.js', () => ({
     settings: {
       getSetting: vi.fn().mockResolvedValue(null),
       getSettingForSource: h.getSettingForSourceMock,
+      getLocalNodeNumForSource: h.getLocalNodeNumForSourceMock,
     },
   }
 }));
@@ -115,6 +117,8 @@ describe('duplicateKeySchedulerService per-source', () => {
       if (!sourceId) return null;
       return settingsBySource[sourceId]?.[key] ?? null;
     });
+    getLocalNodeNumForSourceMock.mockImplementation(async (sourceId: string | null | undefined) =>
+      (sourceId ? settingsBySource[sourceId]?.localNodeNum : null) ?? null);
     updateNodeSecurityFlagsMock.mockResolvedValue(undefined);
     updateNodeLowEntropyFlagMock.mockResolvedValue(undefined);
     updateNodeSpamFlagsAsyncMock.mockResolvedValue(undefined);
@@ -146,9 +150,9 @@ describe('duplicateKeySchedulerService per-source', () => {
   it('spam detection uses per-source localNodeNum', async () => {
     await duplicateKeySchedulerService.runScanAllSources();
 
-    // Verify getSettingForSource was called with the right sourceIds
-    expect(getSettingForSourceMock).toHaveBeenCalledWith('src-A', 'localNodeNum');
-    expect(getSettingForSourceMock).toHaveBeenCalledWith('src-B', 'localNodeNum');
+    // Verify the canonical local-node accessor was read per source (#5377)
+    expect(getLocalNodeNumForSourceMock).toHaveBeenCalledWith('src-A');
+    expect(getLocalNodeNumForSourceMock).toHaveBeenCalledWith('src-B');
   });
 
   it('per-source isScanning map prevents collision on same source but allows different sources', async () => {

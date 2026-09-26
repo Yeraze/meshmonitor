@@ -20,7 +20,10 @@ router.get('/', requirePermission('info', 'read'), async (req: Request, res: Res
       databaseService.settings,
       neighborInfoSourceId ?? null,
     );
-    const cutoffTime = Math.floor(Date.now() / 1000) - maxNodeAgeHours * 60 * 60;
+    // maxNodeAgeHours of 0 = "never / show all" (#4947, #5338): no cutoff.
+    const cutoffTime = maxNodeAgeHours <= 0
+      ? -Infinity
+      : Math.floor(Date.now() / 1000) - maxNodeAgeHours * 60 * 60;
 
     const linkKeys = new Set(neighborInfo.map(ni => `${ni.nodeNum}-${ni.neighborNodeNum}`));
 

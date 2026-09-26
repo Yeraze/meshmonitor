@@ -716,11 +716,13 @@ function App() {
       // mirrors checkPermissionAsync's union branch for the same routes.
       settings: () => hasPermission('settings', 'read', { anySource: true }),
       automation: () => !isMqttBridge && hasPermission('automation', 'read'),
-      configuration: () => !isMqttBridge && hasPermission('configuration', 'read'),
+      // An MQTT broker has no local radio either: Device Config and Remote
+      // Admin there would reach the primary TCP source's device (#5367).
+      configuration: () => !isMqtt && hasPermission('configuration', 'read'),
       'mqtt-config': () => isMqttBridge && hasPermission('sources', 'read'),
       notifications: () => isAuthenticated,
       users: () => isAdmin,
-      admin: () => !isMqttBridge && isAdmin,
+      admin: () => !isMqtt && isAdmin,
       audit: () => hasPermission('audit', 'read'),
       security: () => hasPermission('security', 'read'),
       packetmonitor: () => isMqtt
@@ -3522,6 +3524,7 @@ function App() {
         onConfigSearchClick={() => openConfigSearchRef.current?.()}
         hasReadableVirtualChannels={channelDatabaseEntries.length > 0}
         mqttReadOnly={isMqttBridge}
+        hideDeviceConfig={isMqtt}
       />
 
       <main id="main-content" className="app-main">

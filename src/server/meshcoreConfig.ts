@@ -45,6 +45,13 @@ export interface MeshCoreSourceConfig {
      * default.
      */
     allowPkiExport?: boolean;
+    /**
+     * Allow connected apps to REPLACE the node's identity via
+     * ImportPrivateKey(24). SECURITY-SENSITIVE and irreversible; its own flag,
+     * separate from `allowPkiExport` and `allowAdminCommands` (#5350). Off by
+     * default.
+     */
+    allowPkiImport?: boolean;
   };
   observer?: MeshCoreObserverConfig;
 }
@@ -294,6 +301,7 @@ export function virtualNodeConfigFromSource(cfg: MeshCoreSourceConfig): MeshCore
     port: typeof vn.port === 'number' && vn.port > 0 ? vn.port : DEFAULT_VIRTUAL_NODE_PORT,
     allowAdminCommands: vn.allowAdminCommands === true,
     allowPkiExport: vn.allowPkiExport === true,
+    allowPkiImport: vn.allowPkiImport === true,
   };
 }
 

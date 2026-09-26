@@ -26,12 +26,32 @@
  *
  * Display continues to use `timestamp` — the sender's stated time is still the
  * honest thing to show.
+ *
+ * One exception (#5339): a stated time that could not have been real when we
+ * observed the message — a sender RTC drifted years into the future, or stuck
+ * before MeshCore existed — is replaced by `receivedAt` for ordering.
+ * Otherwise a single "2038" message sits at the bottom of the channel for the
+ * next twelve years. The server already applies this rule at ingest; it is
+ * repeated here so rows stored before that fix sort correctly too.
  */
 import type { MeshCoreMessage } from './hooks/useMeshCore';
+import { isPlausibleMeshCoreTimeMs } from '../../utils/meshcoreTimestamp';
+
+/**
+ * The stated time used for ordering: `timestamp`, unless it is implausible
+ * relative to when we observed the message, in which case `receivedAt`.
+ */
+function orderingTime(m: Pick<MeshCoreMessage, 'timestamp' | 'receivedAt'>): number {
+  const stated = m.timestamp ?? 0;
+  if (typeof m.receivedAt === 'number' && !isPlausibleMeshCoreTimeMs(stated, m.receivedAt)) {
+    return m.receivedAt;
+  }
+  return stated;
+}
 
 /** Whole-second bucket of a message's stated time. */
-function timestampSecond(m: Pick<MeshCoreMessage, 'timestamp'>): number {
-  return Math.floor((m.timestamp ?? 0) / 1000);
+function timestampSecond(m: Pick<MeshCoreMessage, 'timestamp' | 'receivedAt'>): number {
+  return Math.floor(orderingTime(m) / 1000);
 }
 
 /**

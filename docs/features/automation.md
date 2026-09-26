@@ -479,7 +479,7 @@ Scan results appear in the Node Details panel for each node:
 
 **No Nodes Being Scanned**:
 - Verify nodes have public keys (required for admin communication)
-- Check that nodes are "active" (heard within the configured maxNodeAgeHours)
+- Check that nodes are "active" (heard within the configured maxNodeAgeHours). When the node window is 0 (show all nodes), the scanner, Auto-Traceroute and remote LocalStats use the **Transmit target window** setting instead (default 24 hours)
 - Ensure the scanner is enabled and saved
 
 **All Scans Failing**:

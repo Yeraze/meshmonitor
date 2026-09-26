@@ -16,12 +16,13 @@ import { requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
+import { requireMeshtasticDeviceSource } from '../utils/requireMeshtasticDeviceSource.js';
 import { deviceBackupService } from '../services/deviceBackupService.js';
 import { backupFileService } from '../services/backupFileService.js';
 
 const router: Router = Router();
 
-router.get('/device-config', requirePermission('configuration', 'read'), async (req: Request, res: Response) => {
+router.get('/device-config', requirePermission('configuration', 'read'), requireMeshtasticDeviceSource('query'), async (req: Request, res: Response) => {
   try {
     const dcSourceId = req.query.sourceId as string | undefined;
     const dcManager = resolveSourceManager(dcSourceId);
@@ -40,7 +41,7 @@ router.get('/device-config', requirePermission('configuration', 'read'), async (
 // Export complete device configuration as YAML backup
 // Compatible with Meshtastic CLI --export-config format
 // Query param ?save=true will save to disk instead of just downloading
-router.get('/device/backup', requirePermission('configuration', 'read'), async (req: Request, res: Response) => {
+router.get('/device/backup', requirePermission('configuration', 'read'), requireMeshtasticDeviceSource('query'), async (req: Request, res: Response) => {
   try {
     const saveToFile = req.query.save === 'true';
     const backupSourceId = req.query.sourceId as string | undefined;
@@ -87,7 +88,7 @@ router.get('/device/backup', requirePermission('configuration', 'read'), async (
   }
 });
 
-router.post('/device/reboot', requirePermission('configuration', 'write'), async (req: Request, res: Response) => {
+router.post('/device/reboot', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req: Request, res: Response) => {
   try {
     const { seconds: rebootSeconds, sourceId: rebootSourceId } = req.body || {};
     const seconds = rebootSeconds || 10;
@@ -100,7 +101,7 @@ router.post('/device/reboot', requirePermission('configuration', 'write'), async
   }
 });
 
-router.post('/device/purge-nodedb', requirePermission('configuration', 'write'), async (req: Request, res: Response) => {
+router.post('/device/purge-nodedb', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req: Request, res: Response) => {
   try {
     const { seconds: purgeSeconds, sourceId: purgeSourceId } = req.body || {};
     const seconds = purgeSeconds || 0;

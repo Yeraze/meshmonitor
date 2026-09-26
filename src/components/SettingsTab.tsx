@@ -51,11 +51,14 @@ import { useSource } from '../contexts/SourceContext';
 import TelemetryOutlierDialog from './TelemetryOutlierDialog/TelemetryOutlierDialog';
 import { getTelemetryLabel } from './TelemetryChart';
 import {
-  NODE_DISPLAY_SETTING_KEYS,
+  SETTINGS_TAB_PER_SOURCE_KEYS,
   NODE_DISPLAY_NUMERIC_DEFAULTS,
   NODE_DISPLAY_STRING_DEFAULTS,
   parseNodeDisplayNumber,
   parseNodeDisplayBoolean,
+  parseTxTargetMaxAgeHoursWhenUnlimited,
+  TX_TARGET_MAX_AGE_HOURS_WHEN_UNLIMITED_DEFAULT,
+  TX_TARGET_MAX_AGE_HOURS_WHEN_UNLIMITED_RANGE,
 } from '../constants/nodeDisplayDefaults';
 import {
   parseAircraftSettings,
@@ -152,6 +155,9 @@ interface SettingsDraft {
   packetLogMaxAgeHours: number;
   homoglyphEnabled: boolean;
   localStatsIntervalMinutes: number;
+  // TX-target window when maxNodeAgeHours is 0 ("unlimited", #5376). Per-source,
+  // server-only — same Category C pattern as localStatsIntervalMinutes.
+  txTargetMaxAgeHoursWhenUnlimited: number;
   meshcoreCliTimeoutSeconds: number;
   adminRetryAttempts: number;
   // Coverage Report retention window, in days (#5277 P1 WP2). Global, no
@@ -468,6 +474,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     packetLogMaxAgeHours: 24,
     homoglyphEnabled: false,
     localStatsIntervalMinutes: NODE_DISPLAY_NUMERIC_DEFAULTS.localStatsIntervalMinutes,
+    txTargetMaxAgeHoursWhenUnlimited: TX_TARGET_MAX_AGE_HOURS_WHEN_UNLIMITED_DEFAULT,
     meshcoreCliTimeoutSeconds: 15,
     adminRetryAttempts: 1,
     coverageRetentionDays: COVERAGE_RETENTION_DEFAULT_DAYS,
@@ -497,6 +504,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [initialPacketMonitorSettings, setInitialPacketMonitorSettings] = useState({ enabled: false, maxCount: 1000, maxAgeHours: 24 });
   const [initialHomoglyphEnabled, setInitialHomoglyphEnabled] = useState(false);
   const [initialLocalStatsIntervalMinutes, setInitialLocalStatsIntervalMinutes] = useState<number>(NODE_DISPLAY_NUMERIC_DEFAULTS.localStatsIntervalMinutes);
+  const [initialTxTargetMaxAgeHoursWhenUnlimited, setInitialTxTargetMaxAgeHoursWhenUnlimited] = useState<number>(TX_TARGET_MAX_AGE_HOURS_WHEN_UNLIMITED_DEFAULT);
   // MeshCore CLI console reply-timeout (seconds), issue #4027. Local-only server-backed setting
   // (no SettingsContext prop), mirroring localStats above.
   const [initialMeshcoreCliTimeoutSeconds, setInitialMeshcoreCliTimeoutSeconds] = useState(15);
@@ -623,6 +631,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           const statsInterval = parseNodeDisplayNumber('localStatsIntervalMinutes', settings.localStatsIntervalMinutes);
           updateField('localStatsIntervalMinutes', statsInterval);
           setInitialLocalStatsIntervalMinutes(statsInterval);
+
+          // Load the TX-target window used when the node window is unlimited (#5376).
+          const txTargetHours = parseTxTargetMaxAgeHoursWhenUnlimited(settings.txTargetMaxAgeHoursWhenUnlimited);
+          updateField('txTargetMaxAgeHoursWhenUnlimited', txTargetHours);
+          setInitialTxTargetMaxAgeHoursWhenUnlimited(txTargetHours);
 
           // Load MeshCore CLI console timeout (#4027). Absent/invalid => 15s default.
           const cliTimeoutParsed = parseInt(settings.meshcoreCliTimeoutSeconds || '15', 10);
@@ -821,6 +834,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       packetLogMaxAgeHours: initialPacketMonitorSettings.maxAgeHours,
       homoglyphEnabled: initialHomoglyphEnabled,
       localStatsIntervalMinutes: initialLocalStatsIntervalMinutes,
+      txTargetMaxAgeHoursWhenUnlimited: initialTxTargetMaxAgeHoursWhenUnlimited,
       meshcoreCliTimeoutSeconds: initialMeshcoreCliTimeoutSeconds,
       adminRetryAttempts: initialAdminRetryAttempts,
       coverageRetentionDays: initialCoverageRetentionDays,
@@ -846,7 +860,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity,
       initialAircraftDetectionEnabled, initialAircraftAglThresholdMeters, initialAircraftMslThresholdMeters,
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
-      initialPacketMonitorSettings, initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialMeshcoreCliTimeoutSeconds, initialAdminRetryAttempts,
+      initialPacketMonitorSettings, initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialTxTargetMaxAgeHoursWhenUnlimited,
+      initialMeshcoreCliTimeoutSeconds, initialAdminRetryAttempts,
       initialCoverageRetentionDays,
       initialAnalyticsProvider, initialAnalyticsConfig, initialAppriseApiServerUrl, initialExternalUrl, initialElevationEnabled, initialElevationSourceUrl,
       initialPrivacyPolicyUrl, initialTermsOfServiceUrl, initialContactUrl,
@@ -1028,6 +1043,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setInitialPacketMonitorSettings({ enabled: d.packetLogEnabled, maxCount: d.packetLogMaxCount, maxAgeHours: d.packetLogMaxAgeHours });
     setInitialHomoglyphEnabled(d.homoglyphEnabled);
     setInitialLocalStatsIntervalMinutes(d.localStatsIntervalMinutes);
+    setInitialTxTargetMaxAgeHoursWhenUnlimited(d.txTargetMaxAgeHoursWhenUnlimited);
     setInitialMeshcoreCliTimeoutSeconds(d.meshcoreCliTimeoutSeconds);
     setInitialAdminRetryAttempts(d.adminRetryAttempts);
     setInitialCoverageRetentionDays(d.coverageRetentionDays);
@@ -1104,6 +1120,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         hideIncompleteNodes: draft.hideIncompleteNodes ? '1' : '0',
         homoglyphEnabled: String(draft.homoglyphEnabled),
         localStatsIntervalMinutes: draft.localStatsIntervalMinutes.toString(),
+        txTargetMaxAgeHoursWhenUnlimited: draft.txTargetMaxAgeHoursWhenUnlimited.toString(),
         meshcoreCliTimeoutSeconds: draft.meshcoreCliTimeoutSeconds.toString(),
         adminRetryAttempts: draft.adminRetryAttempts.toString(),
         coverage_retention_days: String(clampCoverageRetentionDays(draft.coverageRetentionDays)),
@@ -1134,16 +1151,18 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         cotFeedPort: String(draft.cotFeedPort),
       };
 
-      // Node Display keys are per-source (#4412 Phase 3); everything else keeps
-      // today's unscoped global behaviour. Partition — never a second literal, the
-      // single `const settings = {…}` block above is source-extracted by
+      // Node Display keys are per-source (#4412 Phase 3), as is the #5376
+      // TX-target window; everything else keeps today's unscoped global
+      // behaviour. Partition — never a second literal, the single
+      // `const settings = {…}` block above is source-extracted by
       // server.settings-persistence.test.ts (which also statically executes this
-      // partition to assert it routes exactly NODE_DISPLAY_SETTING_KEYS — the
-      // frozen ten plus the three likely-aircraft keys, #5364/#5365 Phase 1 WP5).
+      // partition to assert it routes exactly SETTINGS_TAB_PER_SOURCE_KEYS —
+      // NODE_DISPLAY_SETTING_KEYS, including the three likely-aircraft keys
+      // from #5364/#5365, plus the TX-target window from #5376).
       const nodeDisplayBody: Record<string, unknown> = {};
       const globalBody: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(settings)) {
-        if ((NODE_DISPLAY_SETTING_KEYS as readonly string[]).includes(k)) {
+        if ((SETTINGS_TAB_PER_SOURCE_KEYS as readonly string[]).includes(k)) {
           nodeDisplayBody[k] = v;
         } else {
           globalBody[k] = v;
@@ -2297,6 +2316,26 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               max="720"
               value={draft.maxNodeAgeHours}
               onChange={(e) => updateField('maxNodeAgeHours', parseInt(e.target.value))}
+              className="setting-input"
+            />
+          </div>
+          <div className="setting-item">
+            <label htmlFor="txTargetMaxAgeHoursWhenUnlimited">
+              {t('settings.tx_target_window_label')}
+              <span className="setting-description">{t('settings.tx_target_window_description')}</span>
+              <span className={settingsStyles.txWarning} data-testid="tx-target-window-warning">
+                <UiIcon name="alert" />
+                {t('settings.tx_target_window_warning')}
+              </span>
+            </label>
+            <input
+              id="txTargetMaxAgeHoursWhenUnlimited"
+              type="number"
+              min={TX_TARGET_MAX_AGE_HOURS_WHEN_UNLIMITED_RANGE.min}
+              max={TX_TARGET_MAX_AGE_HOURS_WHEN_UNLIMITED_RANGE.max}
+              step="1"
+              value={draft.txTargetMaxAgeHoursWhenUnlimited}
+              onChange={(e) => updateField('txTargetMaxAgeHoursWhenUnlimited', parseInt(e.target.value))}
               className="setting-input"
             />
           </div>

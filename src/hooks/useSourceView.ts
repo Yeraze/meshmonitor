@@ -358,15 +358,19 @@ export function useSourceView(params: UseSourceViewParams) {
   const processedNodes = useMemo((): DeviceInfo[] => {
     const cutoffTime = Date.now() / 1000 - maxNodeAgeHours * 60 * 60;
 
-    // Age filter (favorites are always visible)
-    const ageFiltered = nodes.filter(node => {
-      if (node.isFavorite) return true;
-      // #5317: keep an imported-but-never-heard node visible — see the same
-      // guard in useProcessedNodes.
-      if (node.importedAt && !node.lastHeard) return true;
-      if (!node.lastHeard) return false;
-      return node.lastHeard >= cutoffTime;
-    });
+    // maxNodeAgeHours of 0 = "never / show all" (#4947). Keep this
+    // per-source view aligned with useProcessedNodes.
+    const ageFiltered =
+      maxNodeAgeHours <= 0
+        ? nodes
+        : nodes.filter(node => {
+            if (node.isFavorite) return true;
+            // #5317: keep an imported-but-never-heard node visible — see the same
+            // guard in useProcessedNodes.
+            if (node.importedAt && !node.lastHeard) return true;
+            if (!node.lastHeard) return false;
+            return node.lastHeard >= cutoffTime;
+          });
 
     // Only apply nodesNodeFilter when Nodes tab is active
     // Messages tab will apply its own messagesNodeFilter

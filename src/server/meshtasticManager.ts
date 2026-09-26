@@ -3682,10 +3682,12 @@ class MeshtasticManager implements ISourceManager {
 
     try {
       const maxNodeAgeHours = await getMaxNodeAgeHours(databaseService.settings, this.sourceId);
-      const maxNodeAgeDays = maxNodeAgeHours / 24;
       // Scope to this source so systemNodeCount telemetry reflects only nodes visible
-      // to this manager, not a cross-source union.
-      const nodes = await databaseService.nodes.getActiveNodes(maxNodeAgeDays, this.sourceId);
+      // to this manager, not a cross-source union. maxNodeAgeHours 0 = "unlimited"
+      // (#4947, #5376): count every node, as the Nodes list shows them all.
+      const nodes = maxNodeAgeHours > 0
+        ? await databaseService.nodes.getActiveNodes(maxNodeAgeHours / 24, this.sourceId)
+        : await databaseService.nodes.getHeardNodes(this.sourceId);
       const nodeCount = nodes.length;
       const directCount = nodes.filter((n: any) => n.hopsAway === 0).length;
       const now = Date.now();

@@ -15,6 +15,7 @@ vi.mock('../../services/database.js', () => ({
     },
     settings: {
       getSettingForSource: vi.fn(),
+      getLocalNodeNumForSource: vi.fn(),
     },
     getDirectNeighborStatsAsync: vi.fn(),
     getTelemetryByNodeAveragedAsync: vi.fn(),
@@ -172,6 +173,7 @@ describe('GET /telemetry/available/nodes', () => {
     );
     (databaseService.getAllEstimatedPositionsAsync as any).mockResolvedValue([]);
     (databaseService.settings.getSettingForSource as any).mockResolvedValue(null);
+    (databaseService.settings.getLocalNodeNumForSource as any).mockResolvedValue(null);
 
     const res = await request(app).get('/telemetry/available/nodes');
     expect(res.status).toBe(200);

@@ -9,6 +9,18 @@ import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 
 /**
+ * The settings key a Meshtastic source persists its local node number under
+ * (#5377). Mirrors `MeshtasticManager.localNodeSettingKey('localNodeNum')`:
+ * the legacy `default` source keeps the bare key, every other source is
+ * suffixed. This is NOT the `source:{id}:` namespace that getSettingForSource
+ * reads, so read it through getLocalNodeNumForSource, never
+ * getSettingForSource(id, 'localNodeNum').
+ */
+export function localNodeNumSettingKey(sourceId: string): string {
+  return sourceId && sourceId !== 'default' ? `localNodeNum_${sourceId}` : 'localNodeNum';
+}
+
+/**
  * Repository for settings operations
  */
 export class SettingsRepository extends BaseRepository {
@@ -240,6 +252,23 @@ export class SettingsRepository extends BaseRepository {
    * after upgrade). Migration 050 promotes legacy globals into the default
    * source's namespace so single-source pre-4.x users keep their config.
    */
+  /**
+   * The local node number a Meshtastic source persisted on connect (#5377).
+   *
+   * Reads the key the manager actually writes (`localNodeNum_{id}`, see
+   * localNodeNumSettingKey). Falls back to `source:{id}:localNodeNum`, the
+   * one-time snapshot migration 050 promoted from the pre-4.x global key, for
+   * an install whose source has not reconnected since. Pass null/undefined to
+   * read the bare global key. Never falls back from a source to the global
+   * key: that would hand one source's node to another (MQTT, MeshCore).
+   */
+  async getLocalNodeNumForSource(sourceId: string | null | undefined): Promise<string | null> {
+    if (!sourceId) return await this.getSetting('localNodeNum');
+    const current = await this.getSetting(localNodeNumSettingKey(sourceId));
+    if (current) return current;
+    return await this.getSetting(`${this.sourcePrefix(sourceId)}localNodeNum`);
+  }
+
   async getSettingForSource(sourceId: string | null | undefined, key: string): Promise<string | null> {
     if (sourceId) {
       return await this.getSetting(`${this.sourcePrefix(sourceId)}${key}`);

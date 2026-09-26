@@ -348,6 +348,7 @@ describe('MeshCore Analyzer Observer fieldset (#4457 Phase 3, multi-broker #5014
       port: 5000,
       allowAdminCommands: true,
       allowPkiExport: false,
+      allowPkiImport: false,
     });
   });
 

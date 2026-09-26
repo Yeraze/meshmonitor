@@ -23,6 +23,11 @@ describe('meshcoreAge', () => {
       expect(meshcoreLastHeardMs({ lastAdvert: 1_700_000_000_000 })).toBe(1_700_000_000_000);
     });
 
+    it('treats a drifted-clock lastAdvert as unknown (#5339)', () => {
+      expect(meshcoreLastHeardMs({ lastAdvert: 3_700_000_000 })).toBeNull(); // ~2087
+      expect(meshcoreLastHeardMs({ lastAdvert: 947_894_400 })).toBeNull(); // 2000-01-15
+    });
+
     it('returns null when all fields are absent, null, or 0', () => {
       expect(meshcoreLastHeardMs({})).toBeNull();
       expect(meshcoreLastHeardMs({ lastHeard: null, lastSeen: null, lastAdvert: null })).toBeNull();
