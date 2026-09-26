@@ -7,6 +7,7 @@
 import { downsamplePositionHistory } from '../../utils/positionHistoryDownsample.js';
 
 /** Lookback bounds and default, in hours. Telemetry retention is 7 days. */
+// Keep these three in step with the client copies in src/components/map/aircraftTrails.ts.
 export const AIRCRAFT_TRAIL_MIN_HOURS = 1;
 export const AIRCRAFT_TRAIL_MAX_HOURS = 168;
 export const AIRCRAFT_TRAIL_DEFAULT_HOURS = 6;

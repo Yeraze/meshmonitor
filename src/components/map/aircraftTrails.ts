@@ -12,6 +12,7 @@ import { colorForKey } from '../../utils/trailColor';
 import { isAgedOutAircraft, type AgedOutAircraftFields } from './agedOutAircraft';
 
 /** Lookback bounds and default, in hours (D2). Telemetry retention is 7 days. */
+// Keep these three in step with the server copies in src/server/utils/aircraftTrails.ts.
 export const AIRCRAFT_TRAIL_MIN_HOURS = 1;
 export const AIRCRAFT_TRAIL_MAX_HOURS = 168;
 export const DEFAULT_AIRCRAFT_TRAIL_HOURS = 6;

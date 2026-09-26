@@ -36,6 +36,9 @@ const defaultFormatTooltip = (label: string, ts: number): string =>
 /** The fixes to put arrows on, each with the heading it was flying. */
 function arrowItems(trail: AircraftTrailDescriptor): PositionHistoryItem[] {
   const n = trail.positions.length;
+  // A heading needs two fixes. The descriptor builder already drops shorter
+  // trails; this keeps a one-point trail from drawing a north-pointing arrow.
+  if (n < 2) return [];
   return arrowIndices(n, ARROWS_PER_TRAIL).map((i) => {
     const from = trail.positions[i === 0 ? 0 : i - 1];
     const to = trail.positions[i === 0 ? Math.min(1, n - 1) : i];

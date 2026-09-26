@@ -45,6 +45,9 @@ router.get('/trails', async (req: Request, res: Response) => {
       return ok(res, { trails: [] });
     }
 
+    // Two steps on purpose: the query below takes source ids and node numbers
+    // as separate lists, so it can return a node number from a source where
+    // that node is NOT flagged. `wanted` keeps only the flagged pairs.
     const wanted = new Set(pairs.map((p) => `${p.sourceId}:${p.nodeNum}`));
     const trailSourceIds = Array.from(new Set(pairs.map((p) => p.sourceId)));
     const rows = await databaseService.analysis.getPositionsForNodes({
