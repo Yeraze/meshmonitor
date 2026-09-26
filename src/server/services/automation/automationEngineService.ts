@@ -42,6 +42,7 @@ import {
   buildNodeOnlineContext,
   buildNodeRebootedContext,
   buildNodePowerChangedContext,
+  buildBecameLikelyAircraftContext,
   buildBatteryTrendContext,
   buildScheduleContext,
   messageMatchesFilter,
@@ -56,6 +57,7 @@ import {
 } from './triggerContext.js';
 import type { MeshCoreMessage } from '../../meshcoreManager.js';
 import type { ReticulumMessageRow } from '../../../db/repositories/reticulum.js';
+import type { NodeAircraftData } from '../dataEventEmitter.js';
 import { scheduleCron, validateCron } from '../../utils/cronScheduler.js';
 import { haversineKm, geofenceFires, pointInShape, geofenceCenter, normalizeGeofenceParams, normalizeGeofenceAnchor, shapeFromWaypoint, type GeofenceMode, type GeofenceShape } from './geo.js';
 import { evaluateGraph, type EvaluatorHooks } from './graphEvaluator.js';
@@ -990,6 +992,23 @@ export class AutomationEngineService {
   ): Promise<number> {
     const ctx = buildNodeRebootedContext(nodeNum, publicKey, previousUptimeSeconds, uptimeSeconds, sourceId, this.now());
     return this.runTrigger(ctx);
+  }
+
+  /**
+   * A node's altitude crossed into the likely-aircraft flagged state
+   * (`trigger.becameLikelyAircraft`, #5364/#5365 Phase 1 WP3). Detection
+   * (classification, hysteresis, and the `previous !== true && current ===
+   * true` transition check) already happened at the classification-queue
+   * seam (`aircraftClassificationService.ts`, only for `reason: 'position'`
+   * jobs — backfill and settings recomputes never reach here), so this is a
+   * pure event entry point: build the context and fire.
+   *
+   * No self-origin guard (#3914) here — same family as {@link onNodeRebooted}:
+   * no automation action can change a node's reported altitude, so there is no
+   * self-trigger loop to guard against.
+   */
+  async onBecameLikelyAircraft(d: NodeAircraftData, sourceId: string | null): Promise<number> {
+    return this.runTrigger(buildBecameLikelyAircraftContext(d, sourceId, this.now()));
   }
 
   /**

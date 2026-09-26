@@ -12,6 +12,7 @@ import {
   selectNewFavorites,
   selectRefavorites,
   ackStatusLabel,
+  buildExcludedSet,
 } from './autoFavoriteManagementService.js';
 import type { DbTraceroute, DbAutoFavoriteAssignment } from '../../db/types.js';
 
@@ -206,6 +207,36 @@ describe('selectNewFavorites', () => {
       max: 1,
     });
     expect(picked).toEqual([20]);
+  });
+});
+
+describe('buildExcludedSet (#5364/#5365 Phase 1 WP3, spec §4.12)', () => {
+  it('always excludes the target itself, even with no aircraft candidates', () => {
+    const nodesByNum = new Map([[21, { likelyAircraft: false }]]);
+    expect(buildExcludedSet(20, nodesByNum, true)).toEqual(new Set([20]));
+  });
+
+  it('excludes a candidate flagged likelyAircraft when the exclusion is active', () => {
+    const nodesByNum = new Map<number, { likelyAircraft?: boolean | null } | null | undefined>([
+      [21, { likelyAircraft: true }],
+      [22, { likelyAircraft: false }],
+      [23, { likelyAircraft: null }],
+      [24, null],
+    ]);
+    expect(buildExcludedSet(20, nodesByNum, true)).toEqual(new Set([20, 21]));
+  });
+
+  it('does not exclude anyone for aircraft when the exclusion is inactive', () => {
+    const nodesByNum = new Map([[21, { likelyAircraft: true }]]);
+    expect(buildExcludedSet(20, nodesByNum, false)).toEqual(new Set([20]));
+  });
+
+  it('normalizes a stored 0/1 (SQLite) likelyAircraft value the same as a boolean', () => {
+    const nodesByNum = new Map<number, { likelyAircraft?: boolean | null } | null | undefined>([
+      [21, { likelyAircraft: 1 as unknown as boolean }],
+      [22, { likelyAircraft: 0 as unknown as boolean }],
+    ]);
+    expect(buildExcludedSet(20, nodesByNum, true)).toEqual(new Set([20, 21]));
   });
 });
 

@@ -447,3 +447,339 @@ describe('FavoritesService.autoFavoriteSweep — re-entrancy guard', () => {
     expect(setSourceSetting).toHaveBeenCalledWith('src-1', 'autoFavoriteNodes', JSON.stringify([]));
   });
 });
+
+// ─── Likely-aircraft Auto-Favorite exclusion (#5364/#5365 Phase 1 WP3) ───────
+//
+// `checkAutoFavorite`'s add-side gate + `autoFavoriteSweep`'s two-strike
+// removal (D19, spec §4.11). A "healthy" tracked node (0-hop, RF, recently
+// heard, not locked) is used as the baseline so ONLY the aircraft path can
+// drive `shouldRemove` — every other sweep reason is deliberately absent.
+
+describe('FavoritesService — likely-aircraft exclusion: checkAutoFavorite gate', () => {
+  function enableAutoFavorite(overrides: Record<string, string | null> = {}) {
+    const settings: Record<string, string | null> = {
+      autoFavoriteEnabled: 'true',
+      autoFavoriteNodes: '[]',
+      aircraftDetectionEnabled: 'true',
+      autoFavoriteExcludeAircraft: 'true',
+      ...overrides,
+    };
+    getSettingForSource.mockImplementation(async (_src: string, key: string) => settings[key] ?? null);
+    getSetting.mockResolvedValue(null);
+  }
+
+  function eligibleAircraftTarget(overrides: Record<string, unknown> = {}) {
+    return {
+      role: ROUTER, hopsAway: 0, viaMqtt: false, isFavorite: false, favoriteLocked: false,
+      likelyAircraft: true,
+      ...overrides,
+    };
+  }
+
+  it('skips a flagged target when the exclusion is active (both switches on, the default)', async () => {
+    enableAutoFavorite();
+    getNode.mockImplementation(async (nodeNum: number) => {
+      if (nodeNum === 111) return { role: ROUTER };
+      if (nodeNum === 5) return eligibleAircraftTarget();
+      return null;
+    });
+    const mgr = makeFakeManager();
+    const svc = new FavoritesService(mgr as any, makeFakeAdminTx() as any);
+    wireCircular(mgr, svc);
+
+    await svc.checkAutoFavorite(5, '!00000005');
+
+    expect(setNodeFavorite).not.toHaveBeenCalled();
+    expect(mgr.addAutoFavoritingNode).not.toHaveBeenCalled();
+  });
+
+  it('favorites a flagged target when autoFavoriteExcludeAircraft is off', async () => {
+    enableAutoFavorite({ autoFavoriteExcludeAircraft: 'false' });
+    getNode.mockImplementation(async (nodeNum: number) => {
+      if (nodeNum === 111) return { role: ROUTER };
+      if (nodeNum === 5) return eligibleAircraftTarget();
+      return null;
+    });
+    const mgr = makeFakeManager();
+    const svc = new FavoritesService(mgr as any, makeFakeAdminTx() as any);
+    wireCircular(mgr, svc);
+
+    await svc.checkAutoFavorite(5, '!00000005');
+
+    expect(setNodeFavorite).toHaveBeenCalledWith(5, true, 'src-1', false);
+  });
+
+  it('favorites a flagged target when aircraftDetectionEnabled is off', async () => {
+    enableAutoFavorite({ aircraftDetectionEnabled: 'false' });
+    getNode.mockImplementation(async (nodeNum: number) => {
+      if (nodeNum === 111) return { role: ROUTER };
+      if (nodeNum === 5) return eligibleAircraftTarget();
+      return null;
+    });
+    const mgr = makeFakeManager();
+    const svc = new FavoritesService(mgr as any, makeFakeAdminTx() as any);
+    wireCircular(mgr, svc);
+
+    await svc.checkAutoFavorite(5, '!00000005');
+
+    expect(setNodeFavorite).toHaveBeenCalledWith(5, true, 'src-1', false);
+  });
+
+  it('favorites a non-flagged target normally (exclusion active but likelyAircraft is not true)', async () => {
+    enableAutoFavorite();
+    getNode.mockImplementation(async (nodeNum: number) => {
+      if (nodeNum === 111) return { role: ROUTER };
+      if (nodeNum === 5) return eligibleAircraftTarget({ likelyAircraft: null });
+      return null;
+    });
+    const mgr = makeFakeManager();
+    const svc = new FavoritesService(mgr as any, makeFakeAdminTx() as any);
+    wireCircular(mgr, svc);
+
+    await svc.checkAutoFavorite(5, '!00000005');
+
+    expect(setNodeFavorite).toHaveBeenCalledWith(5, true, 'src-1', false);
+  });
+});
+
+describe('FavoritesService — likely-aircraft exclusion: autoFavoriteSweep two-strike removal (D19)', () => {
+  const NODE = 7000000001;
+  const T0 = 1_700_000_000_000; // arbitrary fixed epoch ms
+  const GAP_45MIN = 45 * 60_000;
+
+  /** A healthy 0-hop RF node so only the aircraft path can drive removal. */
+  function healthyTrackedNode(overrides: Record<string, unknown> = {}) {
+    return {
+      nodeNum: NODE,
+      nodeId: '!'+NODE.toString(16).padStart(8, '0'),
+      longName: 'Plane?',
+      favoriteLocked: false,
+      hopsAway: 0,
+      viaMqtt: false,
+      lastHeard: Math.floor(Date.now() / 1000),
+      likelyAircraft: true,
+      aircraftBasis: 'agl',
+      heightAboveGround: 3000,
+      altitude: 3500,
+      ...overrides,
+    };
+  }
+
+  /** Stateful settings store shared by getSettingForSource/setSourceSetting for one test. */
+  function makeStore(overrides: Record<string, string | null> = {}) {
+    const store: Record<string, string | null> = {
+      autoFavoriteEnabled: 'true',
+      autoFavoriteNodes: JSON.stringify([NODE]),
+      autoFavoriteStaleHours: '72',
+      aircraftDetectionEnabled: 'true',
+      autoFavoriteExcludeAircraft: 'true',
+      autoFavoriteAircraftStrikes: '{}',
+      ...overrides,
+    };
+    getSettingForSource.mockImplementation(async (_src: string, key: string) => store[key] ?? null);
+    setSourceSetting.mockImplementation(async (_src: string, key: string, value: string) => { store[key] = value; });
+    getSetting.mockResolvedValue(null);
+    return store;
+  }
+
+  function makeSweepSvc(nodeOverrides: Record<string, unknown> = {}) {
+    getNode.mockImplementation(async (nodeNum: number) => {
+      if (nodeNum === NODE) return healthyTrackedNode(nodeOverrides);
+      return null;
+    });
+    const mgr = makeFakeManager();
+    const adminTx = makeFakeAdminTx();
+    const svc = new FavoritesService(mgr as any, adminTx as any);
+    wireCircular(mgr, svc);
+    return { svc, mgr, adminTx };
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('(a) flagged once → kept, one strike persisted', async () => {
+    const store = makeStore();
+    const { svc } = makeSweepSvc();
+
+    await svc.autoFavoriteSweep();
+
+    expect(setNodeFavorite).not.toHaveBeenCalledWith(NODE, false, 'src-1', false);
+    expect(JSON.parse(store.autoFavoriteAircraftStrikes!)).toEqual({ [String(NODE)]: { count: 1, lastAt: T0 } });
+  });
+
+  it('(b) flagged at T and T+60min → removed at the second sweep, reason names the aircraft', async () => {
+    const store = makeStore();
+    const { svc } = makeSweepSvc();
+
+    await svc.autoFavoriteSweep(); // T: strike 1, kept
+    expect(setNodeFavorite).not.toHaveBeenCalledWith(NODE, false, 'src-1', false);
+
+    vi.setSystemTime(T0 + 60 * 60_000);
+    await svc.autoFavoriteSweep(); // T+60min: strike 2, removed
+
+    expect(setNodeFavorite).toHaveBeenCalledWith(NODE, false, 'src-1', false);
+    expect(JSON.parse(store.autoFavoriteNodes!)).toEqual([]);
+    expect(JSON.parse(store.autoFavoriteAircraftStrikes!)).toEqual({});
+  });
+
+  it('(c) restart in between: fresh service instance still removes at T+60min (strike survives)', async () => {
+    makeStore();
+    const first = makeSweepSvc();
+    await first.svc.autoFavoriteSweep(); // T: strike 1 on instance A
+
+    vi.setSystemTime(T0 + 60 * 60_000);
+    // A brand-new FavoritesService instance — same settings store (same mocks) — simulates a restart.
+    const second = makeSweepSvc();
+    await second.svc.autoFavoriteSweep(); // T+60min: strike 2 on instance B, removed
+
+    expect(setNodeFavorite).toHaveBeenCalledWith(NODE, false, 'src-1', false);
+  });
+
+  it('(d) a settings save in between (POST drops the strikes key) does not reset the streak', async () => {
+    const store = makeStore();
+    const { svc } = makeSweepSvc();
+    await svc.autoFavoriteSweep(); // T: strike 1
+
+    // Simulate the settings route: a POST body containing `autoFavoriteAircraftStrikes`
+    // is dropped server-side (not in VALID_SETTINGS_KEYS) — nothing calls
+    // setSourceSetting for that key, so the store value is untouched.
+    expect(JSON.parse(store.autoFavoriteAircraftStrikes!)).toEqual({ [String(NODE)]: { count: 1, lastAt: T0 } });
+
+    vi.setSystemTime(T0 + 60 * 60_000);
+    await svc.autoFavoriteSweep(); // T+60min: strike 2, removed
+
+    expect(setNodeFavorite).toHaveBeenCalledWith(NODE, false, 'src-1', false);
+  });
+
+  it('(e) flagged at T, cleared at T+60min, flagged again at T+120min → kept (streak reset by the clear)', async () => {
+    makeStore();
+    getNode.mockImplementation(async (nodeNum: number) => {
+      if (nodeNum !== NODE) return null;
+      const now = Date.now();
+      if (now === T0 + 60 * 60_000) return healthyTrackedNode({ likelyAircraft: false, aircraftBasis: null });
+      return healthyTrackedNode();
+    });
+    const mgr = makeFakeManager();
+    const svc = new FavoritesService(mgr as any, makeFakeAdminTx() as any);
+    wireCircular(mgr, svc);
+
+    await svc.autoFavoriteSweep(); // T: strike 1
+    vi.setSystemTime(T0 + 60 * 60_000);
+    await svc.autoFavoriteSweep(); // T+60min: not flagged, strike cleared
+    vi.setSystemTime(T0 + 120 * 60_000);
+    await svc.autoFavoriteSweep(); // T+120min: flagged again, back to strike 1
+
+    expect(setNodeFavorite).not.toHaveBeenCalledWith(NODE, false, 'src-1', false);
+  });
+
+  it('(f) a boot/reconnect sweep 1 minute after the first does not add a second strike', async () => {
+    const store = makeStore();
+    const { svc } = makeSweepSvc();
+    await svc.autoFavoriteSweep(); // T: strike 1
+
+    vi.setSystemTime(T0 + 60_000); // 1 minute later — well under the 45-min gap
+    await svc.autoFavoriteSweep();
+
+    expect(JSON.parse(store.autoFavoriteAircraftStrikes!)).toEqual({ [String(NODE)]: { count: 1, lastAt: T0 } });
+    expect(setNodeFavorite).not.toHaveBeenCalledWith(NODE, false, 'src-1', false);
+  });
+
+  it('(g) a favoriteLocked flagged node is never struck and never removed', async () => {
+    const store = makeStore();
+    getNode.mockImplementation(async (nodeNum: number) => {
+      if (nodeNum === NODE) return healthyTrackedNode({ favoriteLocked: true });
+      return null;
+    });
+    const mgr = makeFakeManager();
+    const svc = new FavoritesService(mgr as any, makeFakeAdminTx() as any);
+    wireCircular(mgr, svc);
+
+    await svc.autoFavoriteSweep();
+    vi.setSystemTime(T0 + GAP_45MIN);
+    await svc.autoFavoriteSweep();
+
+    expect(setNodeFavorite).not.toHaveBeenCalled();
+    expect(JSON.parse(store.autoFavoriteAircraftStrikes!)).toEqual({});
+  });
+
+  it('(h) a user favourite NOT in autoFavoriteNodes with the flag is untouched — the sweep only iterates the tracked list', async () => {
+    const OTHER = 7000000003;
+    const store = makeStore(); // autoFavoriteNodes = [NODE] only; OTHER is a manual/user favourite
+    getNode.mockImplementation(async (nodeNum: number) => {
+      if (nodeNum === NODE) return healthyTrackedNode({ likelyAircraft: false, aircraftBasis: null }); // keep NODE inert this sweep
+      if (nodeNum === OTHER) return healthyTrackedNode({ nodeNum: OTHER, likelyAircraft: true }); // never visited
+      return null;
+    });
+    const mgr = makeFakeManager();
+    const svc = new FavoritesService(mgr as any, makeFakeAdminTx() as any);
+    wireCircular(mgr, svc);
+
+    await svc.autoFavoriteSweep();
+
+    expect(getNode).not.toHaveBeenCalledWith(OTHER, 'src-1');
+    expect(setNodeFavorite).not.toHaveBeenCalledWith(OTHER, false, 'src-1', false);
+    expect(JSON.parse(store.autoFavoriteAircraftStrikes!)[String(OTHER)]).toBeUndefined();
+  });
+
+  it('(i) switching the exclusion off clears all strikes at the next sweep; switching back on needs two fresh sweeps', async () => {
+    const store = makeStore();
+    const { svc } = makeSweepSvc();
+    await svc.autoFavoriteSweep(); // T: strike 1
+    expect(JSON.parse(store.autoFavoriteAircraftStrikes!)).toEqual({ [String(NODE)]: { count: 1, lastAt: T0 } });
+
+    store.autoFavoriteExcludeAircraft = 'false';
+    vi.setSystemTime(T0 + GAP_45MIN);
+    await svc.autoFavoriteSweep(); // exclusion off → flagged=false for every node → strike deleted
+    expect(JSON.parse(store.autoFavoriteAircraftStrikes!)).toEqual({});
+    expect(setNodeFavorite).not.toHaveBeenCalledWith(NODE, false, 'src-1', false);
+
+    store.autoFavoriteExcludeAircraft = 'true';
+    vi.setSystemTime(T0 + 2 * GAP_45MIN);
+    await svc.autoFavoriteSweep(); // fresh strike 1 (not yet 2)
+    expect(JSON.parse(store.autoFavoriteAircraftStrikes!)).toEqual({ [String(NODE)]: { count: 1, lastAt: T0 + 2 * GAP_45MIN } });
+    expect(setNodeFavorite).not.toHaveBeenCalledWith(NODE, false, 'src-1', false);
+
+    vi.setSystemTime(T0 + 3 * GAP_45MIN);
+    await svc.autoFavoriteSweep(); // second fresh sweep → removed
+    expect(setNodeFavorite).toHaveBeenCalledWith(NODE, false, 'src-1', false);
+  });
+
+  it('(j) Auto-Favorite disabled resets strikes to {} alongside the tracking list', async () => {
+    const store = makeStore();
+    const { svc } = makeSweepSvc();
+    await svc.autoFavoriteSweep(); // T: strike 1
+    expect(JSON.parse(store.autoFavoriteAircraftStrikes!)).toEqual({ [String(NODE)]: { count: 1, lastAt: T0 } });
+
+    store.autoFavoriteEnabled = 'false';
+    vi.setSystemTime(T0 + GAP_45MIN);
+    await svc.autoFavoriteSweep();
+
+    expect(store.autoFavoriteAircraftStrikes).toBe('{}');
+    expect(store.autoFavoriteNodes).toBe('[]');
+  });
+
+  it('(k) strike keys for nodes that left the provenance list are pruned', async () => {
+    const OTHER = 7000000002;
+    const store = makeStore({ autoFavoriteNodes: JSON.stringify([NODE, OTHER]) });
+    getNode.mockImplementation(async (nodeNum: number) => {
+      if (nodeNum === NODE) return healthyTrackedNode();
+      if (nodeNum === OTHER) return healthyTrackedNode({ nodeNum: OTHER, likelyAircraft: false, aircraftBasis: null, lastHeard: 1 }); // stale → removed this sweep
+      return null;
+    });
+    const mgr = makeFakeManager();
+    const svc = new FavoritesService(mgr as any, makeFakeAdminTx() as any);
+    wireCircular(mgr, svc);
+
+    await svc.autoFavoriteSweep(); // NODE gets strike 1; OTHER is stale and removed this sweep
+
+    expect(setNodeFavorite).toHaveBeenCalledWith(OTHER, false, 'src-1', false);
+    const strikes = JSON.parse(store.autoFavoriteAircraftStrikes!);
+    expect(strikes).toEqual({ [String(NODE)]: { count: 1, lastAt: T0 } });
+    expect(strikes[String(OTHER)]).toBeUndefined();
+  });
+});

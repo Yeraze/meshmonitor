@@ -264,6 +264,15 @@ export const TRIGGERS: BlockDef[] = [
     ],
   },
   {
+    type: 'trigger.becameLikelyAircraft',
+    label: 'A node becomes a likely aircraft',
+    description: 'Fires once when a node’s reported altitude puts it more than the source’s AGL threshold above the terrain (or above the MSL fallback when terrain elevation is unavailable). Sends nothing to the mesh; fires again only after the node drops back below the threshold. Meshtastic only. A wide MQTT feed can see many aircraft at once — narrow it with “Source is one of…”.',
+    fields: [
+      COOLDOWN,
+      COOLDOWN_SCOPE,
+    ],
+  },
+  {
     type: 'trigger.leftHome',
     label: 'A watched node leaves its home position',
     description: 'Fires when a hand-selected node moves farther than a threshold from its home/anchor position. Home is seeded from position-history inliers when available (else the first live fix), then gently averaged while within half the threshold. Use “Reset homes from history” on a saved automation to clear and re-seed. Default threshold is 300 m.',
@@ -336,7 +345,7 @@ export const TRIGGERS: BlockDef[] = [
 
 // ─── Comparison field registry (event / node / latest-telemetry) ─────────────
 
-const SUBJECT_NODE_TRIGGERS = ['trigger.message', 'trigger.nodeDiscovered', 'trigger.nodeUpdated', 'trigger.telemetry', 'trigger.geofence', 'trigger.becameMobile', 'trigger.leftHome', 'trigger.meshBeacon', 'trigger.nodeStale', 'trigger.nodeOnline', 'trigger.nodeRebooted', 'trigger.nodePowerChanged', 'trigger.batteryTrend'];
+const SUBJECT_NODE_TRIGGERS = ['trigger.message', 'trigger.nodeDiscovered', 'trigger.nodeUpdated', 'trigger.telemetry', 'trigger.geofence', 'trigger.becameMobile', 'trigger.leftHome', 'trigger.meshBeacon', 'trigger.nodeStale', 'trigger.nodeOnline', 'trigger.nodeRebooted', 'trigger.nodePowerChanged', 'trigger.batteryTrend', 'trigger.becameLikelyAircraft'];
 const hasSubjectNode = (t: string) => SUBJECT_NODE_TRIGGERS.includes(t);
 
 const EVENT_NUMERIC: Record<string, FieldOpt[]> = {
@@ -398,6 +407,13 @@ const EVENT_NUMERIC: Record<string, FieldOpt[]> = {
     { value: 'latestLevel', label: 'Latest battery (%)' },
   ],
   'trigger.becameMobile': [{ value: 'nodeNum', label: 'Node #' }, { value: 'mobile', label: 'Mobile flag (1)' }, { value: 'previousMobile', label: 'Previous mobile flag' }],
+  'trigger.becameLikelyAircraft': [
+    { value: 'nodeNum', label: 'Node #' },
+    { value: 'altitude', label: 'Altitude (m MSL)' },
+    { value: 'heightAboveGround', label: 'Height above ground (m, AGL basis only)' },
+    { value: 'groundElevation', label: 'Ground elevation (m)' },
+    { value: 'thresholdM', label: 'Threshold crossed (m)' },
+  ],
   'trigger.leftHome': [
     { value: 'nodeNum', label: 'Node #' },
     { value: 'distanceMeters', label: 'Distance from home (m)' },
@@ -614,6 +630,7 @@ export const CONDITIONS: BlockDef[] = [
 const MOVEMENT_MESSAGE_HINTS: Record<string, string> = {
   'trigger.leftHome': 'A quiet little node {{ node.longName }} has left the Shire and gone off on an unexpected adventure.',
   'trigger.becameMobile': 'A wild stationary node {{ node.longName }} just uprooted itself and headed towards Isengard!',
+  'trigger.becameLikelyAircraft': '{{ node.longName }} is {{ trigger.heightAboveGround }} m above the ground, probably flying.',
 };
 
 // ─── Actions (THEN) ──────────────────────────────────────────────────────────

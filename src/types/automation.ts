@@ -32,7 +32,8 @@ export type TriggerType =
   | 'trigger.nodeOnline'
   | 'trigger.nodeRebooted'
   | 'trigger.nodePowerChanged'
-  | 'trigger.batteryTrend';
+  | 'trigger.batteryTrend'
+  | 'trigger.becameLikelyAircraft';
 
 export type ConditionType =
   | 'condition.always'
@@ -84,6 +85,7 @@ export const TRIGGER_TYPES: readonly TriggerType[] = [
   'trigger.nodeRebooted',
   'trigger.nodePowerChanged',
   'trigger.batteryTrend',
+  'trigger.becameLikelyAircraft',
 ];
 
 export const CONDITION_TYPES: readonly ConditionType[] = [
