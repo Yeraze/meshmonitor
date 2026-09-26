@@ -86,3 +86,16 @@ describe('userMapPreferences — per-theme tilesets (#4096)', () => {
     }
   });
 });
+
+describe('userMapPreferences — aircraftDisplayMode (#5364/#5365, migration 176)', () => {
+  it('maps JS `aircraftDisplayMode` → SQL column `aircraft_display_mode` on all three backends', () => {
+    for (const table of [
+      schema.userMapPreferencesSqlite,
+      schema.userMapPreferencesPostgres,
+      schema.userMapPreferencesMysql,
+    ]) {
+      const col = (table as unknown as { aircraftDisplayMode: { name: string } }).aircraftDisplayMode;
+      expect(col.name).toBe('aircraft_display_mode');
+    }
+  });
+});
