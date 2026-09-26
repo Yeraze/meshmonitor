@@ -117,7 +117,6 @@ const SOURCE_A = 'src-a';
 const SOURCE_B = 'src-b';
 const FROM_NUM = 0x11111111;
 const GATEWAY_1 = '!00000001';
-const GATEWAY_1_NUM = 0x00000001;
 const GATEWAY_2 = '!00000002';
 const GATEWAY_3 = '!00000003';
 
