@@ -72,6 +72,15 @@ export interface NodeCardModel {
   /** Whether the node is favorited — used by the "importance" node-list color
    *  style (#4880) to keep favorites vivid regardless of hop distance. */
   isFavorite?: boolean;
+  /** Likely-aircraft classification (#5364/#5365 Phase 1). Meshtastic only —
+   *  always false for a MeshCore contact. Optional (like `isFavorite`) so
+   *  callers that build a `NodeCardModel` literal directly (e.g.
+   *  `TracerouteStrip`) don't need to set every aircraft field. */
+  likelyAircraft?: boolean;
+  /** `'agl' | 'msl' | 'unknown'`, null when unclassified. */
+  aircraftBasis?: string | null;
+  /** `altitude − groundElevation`, signed; only set when `aircraftBasis === 'agl'`. */
+  heightAboveGround?: number | null;
 }
 
 export type NodeCardVariant = 'meshtastic' | 'meshcore';
@@ -148,6 +157,12 @@ function toMeshtasticModel(raw: unknown, opts?: ToNodeCardModelOptions): NodeCar
 
   const sources = Array.isArray(node.sources) ? (node.sources as NodeSourceRef[]) : undefined;
 
+  // Likely-aircraft classification (#5364/#5365 Phase 1) — flat top-level
+  // fields (no nested equivalent), matching `dbNodeMapper`'s DTO shape.
+  const likelyAircraft = node.likelyAircraft === true;
+  const aircraftBasis = typeof node.aircraftBasis === 'string' ? node.aircraftBasis : null;
+  const heightAboveGround = typeof node.heightAboveGround === 'number' ? node.heightAboveGround : null;
+
   return {
     longName,
     shortName,
@@ -166,6 +181,9 @@ function toMeshtasticModel(raw: unknown, opts?: ToNodeCardModelOptions): NodeCar
     lastHeard,
     sources,
     isFavorite: node.isFavorite === true,
+    likelyAircraft,
+    aircraftBasis,
+    heightAboveGround,
   };
 }
 
@@ -185,6 +203,9 @@ function toMeshCoreModel(raw: unknown): NodeCardModel {
     nodeId: publicKey || undefined,
     lastHeard: lastSeen !== undefined ? Math.floor(lastSeen / 1000) : null,
     meshcore: { publicKey, rssi, snr, pathLen, outPath, lastSeen },
+    // Aircraft classification is Meshtastic-only (D2, #5364/#5365) — a
+    // MeshCore contact is never flagged.
+    likelyAircraft: false,
   };
 }
 

@@ -25,6 +25,7 @@ import { useNodeListStyle } from '../../../contexts/SettingsContext';
 import { nodeColorStyle } from '../../../utils/nodeColor';
 import type { NodeCardModel, NodeSourceRef } from './nodeCardModel';
 import { UiIcon, type UiIconName } from '../../icons';
+import { formatAircraftSummary } from '../../../utils/aircraftClassification';
 
 /* ------------------------------------------------------------------ */
 /* Header                                                              */
@@ -191,6 +192,12 @@ export const SignalItems: React.FC<SignalItemsProps> = ({
         <div className="node-popup-item">
           <span className="node-popup-icon"><UiIcon name="altitude" /></span>
           <span className="node-popup-value">{model.altitude}m</span>
+        </div>
+      )}
+      {showAltitude && model.likelyAircraft && (
+        <div className="node-popup-item node-popup-item-full">
+          <span className="node-popup-icon"><UiIcon name="aircraft" /></span>
+          <span className="node-popup-value">{formatAircraftSummary(model, t)}</span>
         </div>
       )}
       {showPrecision && (
