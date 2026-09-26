@@ -9,7 +9,8 @@ const en = JSON.parse(readFileSync(`${process.cwd()}/public/locales/en.json`, 'u
 
 describe('node-age control wording (en)', () => {
   it('labels the sidebar activity stat as a fixed 2h, non-filter stat', () => {
-    expect(en['source.node_activity_recent']).toBe('{{active}}/{{total}} active (last 2h)');
+    expect(en['source.node_activity_count']).toBe('{{active}}/{{total}}');
+    expect(en['source.node_activity_window']).toBe('active · 2h');
     expect(en['source.node_activity_recent_title']).toMatch(/last 2 hours/);
     expect(en['source.node_activity_recent_title']).toMatch(/does not filter/);
   });

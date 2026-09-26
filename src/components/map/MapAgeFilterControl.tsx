@@ -50,10 +50,7 @@ export default function MapAgeFilterControl({
   const title = t('map.ageFilter', { defaultValue: 'Map age filter' });
 
   return (
-    <div
-      className="map-control-item"
-      style={{ flexDirection: 'column', alignItems: 'stretch', gap: '0.25rem' }}
-    >
+    <div className={`map-control-item ${styles.control}`}>
       <span>{title}</span>
       <div className="position-history-slider">
         <input

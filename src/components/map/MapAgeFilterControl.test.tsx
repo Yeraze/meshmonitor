@@ -29,6 +29,8 @@ describe('MapAgeFilterControl', () => {
     expect(slider).toHaveAttribute('aria-valuetext', 'All (24h from Settings)');
     expect(screen.getByTestId('map-age-showing')).toHaveTextContent('Showing: All (24h from Settings)');
     expect(screen.getByText("Narrows the Settings node window. It can't widen it.")).toBeInTheDocument();
+    // Scoped spacing class sits beside the shared row class (both panels).
+    expect(slider.closest('.map-control-item')?.className).toMatch(/control/);
   });
 
   it('shows the narrowed window when the slider sits below the Settings cap', () => {
