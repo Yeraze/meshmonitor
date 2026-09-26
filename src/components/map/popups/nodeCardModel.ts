@@ -81,6 +81,11 @@ export interface NodeCardModel {
   aircraftBasis?: string | null;
   /** `altitude − groundElevation`, signed; only set when `aircraftBasis === 'agl'`. */
   heightAboveGround?: number | null;
+  /** #5364/#5365 Phase 2: ignored by the aircraft age-out sweep
+   *  (`isIgnored && aircraftAgedOutAt != null`). */
+  aircraftAgedOut?: boolean;
+  /** #5364/#5365 Phase 2: carries the sticky "reclassified as fixed" mark. */
+  aircraftFixed?: boolean;
 }
 
 export type NodeCardVariant = 'meshtastic' | 'meshcore';
@@ -162,6 +167,9 @@ function toMeshtasticModel(raw: unknown, opts?: ToNodeCardModelOptions): NodeCar
   const likelyAircraft = node.likelyAircraft === true;
   const aircraftBasis = typeof node.aircraftBasis === 'string' ? node.aircraftBasis : null;
   const heightAboveGround = typeof node.heightAboveGround === 'number' ? node.heightAboveGround : null;
+  // Phase 2 marks (#5364/#5365): same predicate as the map's aged-out filter.
+  const aircraftAgedOut = node.isIgnored === true && typeof node.aircraftAgedOutAt === 'number';
+  const aircraftFixed = typeof node.aircraftFixedAt === 'number';
 
   return {
     longName,
@@ -184,6 +192,8 @@ function toMeshtasticModel(raw: unknown, opts?: ToNodeCardModelOptions): NodeCar
     likelyAircraft,
     aircraftBasis,
     heightAboveGround,
+    aircraftAgedOut,
+    aircraftFixed,
   };
 }
 

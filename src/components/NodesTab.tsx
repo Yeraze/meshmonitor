@@ -13,6 +13,7 @@ import { effectiveMapMaxAgeHours } from '../utils/mapAge';
 import { resolveClusterZoomThreshold, resolveClusteredMapCenterTargetZoom } from '../utils/mapZoomAnimation';
 import MapAgeFilterControl from './map/MapAgeFilterControl';
 import MapAircraftDisplayControl from './map/MapAircraftDisplayControl';
+import { isAgedOutAircraft, AGED_OUT_AIRCRAFT_OPACITY } from './map/agedOutAircraft';
 import NodeAgeWindowSuffix from './NodeAgeWindowSuffix';
 import { downsamplePositionHistory, MAX_RENDERED_POSITION_POINTS } from '../utils/positionHistoryDownsample';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
@@ -93,6 +94,12 @@ import { logger } from '../utils/logger';
 
 interface NodesTabProps {
   processedNodes: DeviceInfo[];
+  /**
+   * Aged-out likely aircraft (#5364/#5365 Phase 2) that pass every node filter
+   * except the ignored one, from useSourceView. Drawn on the map only when the
+   * Map Features "Show aged-out" checkbox is on.
+   */
+  agedOutAircraftNodes?: DeviceInfo[];
   shouldShowData: () => boolean;
   centerMapOnNode: (node: DeviceInfo) => void;
   toggleFavorite: (node: DeviceInfo, event: React.MouseEvent) => Promise<void>;
@@ -519,6 +526,7 @@ const WaypointMapEventBridge: React.FC<{
 
 const NodesTabComponent: React.FC<NodesTabProps> = ({
   processedNodes,
+  agedOutAircraftNodes,
   shouldShowData,
   centerMapOnNode,
   toggleFavorite,
@@ -573,6 +581,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setSpreadNodes,
     aircraftDisplayMode,
     setAircraftDisplayMode,
+    showAgedOutAircraft,
+    setShowAgedOutAircraft,
     pendingCenterNodeNum,
     setPendingCenterNodeNum,
     showPolarGrid,
@@ -1688,13 +1698,23 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
   // Calculate nodes with position - uses effective position (respects position overrides, Issue #1526)
   // #3549: per-node "Hide from Map" suppresses the marker only; the node remains in the list above.
-  const nodesWithPosition = processedNodes.filter(node => !node.hideFromMap && hasValidEffectivePosition(node));
+  const processedWithPosition = processedNodes.filter(node => !node.hideFromMap && hasValidEffectivePosition(node));
+  // #5364/#5365 Phase 2: aged-out aircraft join the map set only while "Show
+  // aged-out" is on, so they never shift other markers' precision offsets
+  // when the checkbox is off.
+  const agedOutWithPosition = (agedOutAircraftNodes ?? []).filter(
+    node => !node.hideFromMap && hasValidEffectivePosition(node),
+  );
+  const nodesWithPosition = showAgedOutAircraft && agedOutWithPosition.length > 0
+    ? [...processedWithPosition, ...agedOutWithPosition]
+    : processedWithPosition;
 
   // Likely-aircraft count for the Map Features hint line (#5364/#5365 Phase 1
   // WP4) — counted pre-Hide, so the number reflects everything classified,
-  // not just what the current display mode happens to show.
+  // not just what the current display mode happens to show. Aged-out
+  // aircraft have their own count (below).
   const aircraftCountOnMap = useMemo(
-    () => nodesWithPosition.filter((n) => n.likelyAircraft === true).length,
+    () => nodesWithPosition.filter((n) => n.likelyAircraft === true && !isAgedOutAircraft(n)).length,
     [nodesWithPosition],
   );
 
@@ -1793,23 +1813,32 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // marker-key fallback convention).
   // The visible+positioned node set — the shared source of truth for both the
   // 2D marker descriptors below and the #4704 3D node features.
-  const visibleMapNodes = nodesWithPosition
-    .filter(node => {
-      // Apply standard filters
-      if (!nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes }, transportCutoff)) return false;
-      if (!showIncompleteNodes && !isNodeComplete(node)) return false;
-      if (!showEstimatedPositions && node.user?.id && nodesWithEstimatedPosition.has(node.user.id)) return false;
-      // When traceroute is active, only show nodes involved in the traceroute
-      if (tracerouteNodeNums && !tracerouteNodeNums.has(node.nodeNum)) return false;
-      // Map Features age slider (#3322): hide markers older than the
-      // chosen age. Favorites are always shown, matching the standard
-      // node age filter. Default (slider at max) is a no-op.
-      if (!node.isFavorite && node.lastHeard && node.lastHeard < mapAgeCutoffSeconds) return false;
-      // Likely-aircraft Hide (#5364/#5365 Phase 1 WP4): suppress the marker,
-      // except a favourite is never hidden by this toggle.
-      if (aircraftDisplayMode === 'hide' && node.likelyAircraft === true && !node.isFavorite) return false;
-      return true;
-    });
+  const passesMapFilters = (node: DeviceInfo): boolean => {
+    // Apply standard filters
+    if (!nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes }, transportCutoff)) return false;
+    if (!showIncompleteNodes && !isNodeComplete(node)) return false;
+    if (!showEstimatedPositions && node.user?.id && nodesWithEstimatedPosition.has(node.user.id)) return false;
+    // When traceroute is active, only show nodes involved in the traceroute
+    if (tracerouteNodeNums && !tracerouteNodeNums.has(node.nodeNum)) return false;
+    // #5364/#5365 Phase 2: an aged-out aircraft is older than any useful
+    // age window by definition, and "Show aged-out" is its own switch, so
+    // neither the age slider nor Hide applies to it.
+    if (isAgedOutAircraft(node)) return true;
+    // Map Features age slider (#3322): hide markers older than the
+    // chosen age. Favorites are always shown, matching the standard
+    // node age filter. Default (slider at max) is a no-op.
+    if (!node.isFavorite && node.lastHeard && node.lastHeard < mapAgeCutoffSeconds) return false;
+    // Likely-aircraft Hide (#5364/#5365 Phase 1 WP4): suppress the marker,
+    // except a favourite is never hidden by this toggle.
+    if (aircraftDisplayMode === 'hide' && node.likelyAircraft === true && !node.isFavorite) return false;
+    return true;
+  };
+  const visibleMapNodes = nodesWithPosition.filter(passesMapFilters);
+  // "N aged out" hint (#5364/#5365 Phase 2): counted from the SAME filtered
+  // set the map draws with the checkbox on — never from every node (the
+  // Phase 1 count bug) — and independent of the checkbox itself.
+  const agedOutCountOnMap = [...processedWithPosition, ...agedOutWithPosition]
+    .filter(node => isAgedOutAircraft(node) && passesMapFilters(node)).length;
   // #4704: node features for the 3D surface — the same visible+positioned set
   // the 2D markers use, at the same (precision-offset) positions from
   // `nodePositions`. Computed unconditionally (no hooks); only consumed in 3D.
@@ -1885,16 +1914,20 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       // Likely-aircraft badge (#5364/#5365 Phase 1 WP4): 'show' never marks;
       // 'mark'/'hide' both badge a flagged node still on the map (Hide already
       // removed non-favourites above, so a badged node here is a favourite).
-      const markAircraft = aircraftDisplayMode !== 'show' && node.likelyAircraft === true;
+      // An aged-out aircraft (Phase 2) is always badged and dimmed.
+      const agedOut = isAgedOutAircraft(node);
+      const markAircraft = agedOut || (aircraftDisplayMode !== 'show' && node.likelyAircraft === true);
 
       // Calculate opacity based on last heard time
-      const markerOpacity = calculateNodeOpacity(
-        node.lastHeard,
-        nodeDimmingEnabled,
-        nodeDimmingStartHours,
-        nodeDimmingMinOpacity,
-        maxNodeAgeHours
-      );
+      const markerOpacity = agedOut
+        ? AGED_OUT_AIRCRAFT_OPACITY
+        : calculateNodeOpacity(
+            node.lastHeard,
+            nodeDimmingEnabled,
+            nodeDimmingStartHours,
+            nodeDimmingMinOpacity,
+            maxNodeAgeHours
+          );
 
       // Hide popup when showRoute is enabled and node has a valid traceroute,
       // since TracerouteBoundsController zooms to fit the route.
@@ -2917,6 +2950,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                     mode={aircraftDisplayMode}
                     onChange={setAircraftDisplayMode}
                     aircraftCount={aircraftCountOnMap}
+                    showAgedOut={showAgedOutAircraft}
+                    onShowAgedOutChange={setShowAgedOutAircraft}
+                    agedOutCount={agedOutCountOnMap}
                   />
                   <label className="map-control-item">
                     <input
