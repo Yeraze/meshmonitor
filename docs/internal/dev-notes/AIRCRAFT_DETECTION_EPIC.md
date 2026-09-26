@@ -32,6 +32,9 @@ A mountaintop repeater must **not** be treated as an aircraft.
 - **Age-out (P2):** off by default, per source. When enabled, the action is
   **Ignore** (reversible, and reviewable via "show aged-out"). Delete is an
   explicit opt-in.
+- **Phase 1 refinements (user, 2026-09-26):** the detection settings live in Settings → Node Display (per-source), and Auto-Favorite has its own "Exclude likely aircraft" switch, on by default, that only applies while detection is on.
+  - An auto-added node is removed only after being flagged at **two consecutive sweeps** at least 45 min apart. Strikes are persisted per source, so a restart or settings save can't reset them.
+  - Hide mode keeps favourites visible, MQTT sources are classified, the startup backfill runs, and the hysteresis is fixed at max(50 m, 10%).
 - **Out of scope:** ADS-B / OpenSky cross-referencing, split into #5374.
 - **Mesh impact:** the feature itself sends nothing. The automation event only
   feeds automations, which carry their own existing rate limits and cooldowns.
@@ -66,3 +69,4 @@ A mountaintop repeater must **not** be treated as an aircraft.
 ## Status log
 
 - 2026-09-26: epic planned; ADS-B split to #5374; Phase 1 started on `feature/aircraft-p1-classifier`.
+- 2026-09-26: Phase 1 spec approved (AIRCRAFT_P1_SPEC.md; migrations 175–176). Follow-up found: every reconnect schedules an extra hourly Auto-Favorite sweep timer (pre-existing; the strike rule's 45 min gap makes it harmless for this feature).
