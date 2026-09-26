@@ -514,6 +514,20 @@ By default the MeshCore Virtual Node is **read-and-message only**: read operatio
 
 Enabling **Allow admin commands** forwards those configuration commands through to the real node. Only enable it on a trusted LAN where you control every device that can reach the port — any connected app would then be able to reconfigure your node.
 
+*Since 4.16 (#5350).* The same toggle also covers contact-list edits and reboot, because the node's contact list is shared with everyone who uses this source in MeshMonitor:
+
+| App action | Allow admin commands off | Allow admin commands on |
+|------------|--------------------------|-------------------------|
+| Delete contact | Refused | Removes it from the node and from MeshMonitor |
+| Rename contact / toggle favourite | Refused | Applied (favourites follow MeshMonitor's own favourite) |
+| Reset path | Refused | Clears the cached route |
+| Import contact (URL / QR) | Refused | Adds the contact |
+| Reboot node | Refused | Reboots the node; MeshMonitor reconnects |
+| Share contact, export contact, read stats | Allowed | Allowed |
+| Import private key, raw-data send | Always refused | Always refused |
+
+Setting a manual route or per-contact telemetry permissions from the app is not relayed; use the MeshMonitor web UI for those. Share contact sends one zero-hop advert, so receive-only mode refuses it.
+
 ### Safety: receive-only mode
 
 *New in 4.14 (#4547).* When the source has [Receive-only mode](/features/meshcore-receive-only) turned on, the Virtual Node keeps serving reads — identity, contacts, channels, message sync, device info, battery, time, config setters, PKI export where enabled, and the live OTA packet feed — but refuses the nine commands that would transmit (sending messages, self-adverts, remote logins, trace path, telemetry and status requests, and neighbour requests). A connected app gets a clean, immediate refusal instead of a silent drop or a hung request.

@@ -5360,6 +5360,41 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     }
   }
 
+  /**
+   * Rename a contact in the device's saved contact table, keeping its type,
+   * flags, route and advert fields as the device holds them. On success the
+   * in-memory contact + meshcore_nodes row take the new name. Companion only;
+   * a local serial write (no RF), so receive-only mode does not block it.
+   * Used by the Virtual Node's AddUpdateContact relay (#5350).
+   */
+  async setContactName(publicKey: string, name: string): Promise<boolean> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
+      logger.warn('[MeshCore] Set-contact-name requires Companion firmware');
+      return false;
+    }
+    if (!this.connected) return false;
+    try {
+      const response = await this.sendBridgeCommand('set_contact_name', { public_key: publicKey, name });
+      if (!response.success) {
+        logger.warn(`[MeshCore] set_contact_name failed for ${publicKey.substring(0, 16)}…: ${response.error}`);
+        return false;
+      }
+      const existing = this.contacts.get(publicKey);
+      if (existing) {
+        const updated: MeshCoreContact = { ...existing, advName: name, name };
+        this.contacts.set(publicKey, updated);
+        void this.persistContact(updated);
+        this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
+        dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
+      }
+      logger.debug(`[MeshCore:${this.sourceId}] Renamed contact ${publicKey.substring(0, 16)}…`);
+      return true;
+    } catch (error) {
+      logger.error('[MeshCore] setContactName threw:', error);
+      return false;
+    }
+  }
+
   /** Tombstone a removed contact so `get_contacts` re-sync won't resurrect it (#3878). */
   private tombstoneContact(publicKey: string): void {
     if (!publicKey) return;

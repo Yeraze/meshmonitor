@@ -2,7 +2,18 @@ import { Server, Socket } from 'net';
 import { EventEmitter } from 'events';
 import { logger } from '../utils/logger.js';
 import databaseService from '../services/database.js';
-import type { MeshCoreNode, TelemetryMode, MeshCoreContact, MeshCoreMessage, MeshCoreStatus, MeshCoreLoginResult } from './meshcoreManager.js';
+import type {
+  MeshCoreNode,
+  TelemetryMode,
+  MeshCoreContact,
+  MeshCoreMessage,
+  MeshCoreStatus,
+  MeshCoreLoginResult,
+  ShareContactResult,
+  MeshCoreStatsCore,
+  MeshCoreStatsRadio,
+  MeshCoreStatsPackets,
+} from './meshcoreManager.js';
 import type { MeshCoreAdvertMode } from '../types/meshcoreAdvert.js';
 import {
   CommandCodes,
@@ -56,6 +67,17 @@ import {
   parseGetNeighboursReq,
   encodeBinaryResponsePush,
   encodeNeighboursPayload,
+  encodeExportContact,
+  encodeStatsCore,
+  encodeStatsRadio,
+  encodeStatsPackets,
+  StatsTypes,
+  parseContactKeyCommand,
+  parseExportContact,
+  parseImportContact,
+  parseAddUpdateContact,
+  parseReboot,
+  parseGetStats,
   type ParsedCommand,
   type SendBinaryReqCmd,
 } from './meshcoreCompanionCodec.js';
@@ -169,6 +191,28 @@ export interface MeshCoreVirtualNodeManager {
     command: string,
     opts?: { timeoutMs?: number },
   ): Promise<{ reply: string; elapsedMs: number }>;
+  // Contact-table and device commands relayed for the companion app (#5350).
+  // Units and semantics match the MeshCoreManager methods of the same name.
+  /** Remove a contact from the device's saved contact table. */
+  removeContact(publicKey: string): Promise<boolean>;
+  /** Clear a contact's cached route (firmware CMD_RESET_PATH). */
+  resetContactPath(publicKey: string): Promise<boolean>;
+  /** Rename a contact in the device's saved contact table. */
+  setContactName(publicKey: string, name: string): Promise<boolean>;
+  /** Set/clear MeshMonitor's favourite (authoritative) and push it to the device bit. */
+  setNodeFavorite(publicKey: string, isFavorite: boolean): Promise<void>;
+  /** Re-broadcast a contact's advert as one zero-hop packet (transmits). */
+  shareContact(publicKey: string): Promise<ShareContactResult>;
+  /** Signed advert bytes for a contact, or for the local node when null. */
+  exportContact(publicKey: string | null): Promise<number[] | null>;
+  /** Add a contact from a signed advert blob. */
+  importContact(advertBytes: number[]): Promise<boolean>;
+  /** Reboot the physical companion. */
+  rebootDevice(): Promise<boolean>;
+  /** Local-node counters (serial reads, no RF). */
+  getStatsCore(): Promise<MeshCoreStatsCore | null>;
+  getStatsRadio(): Promise<MeshCoreStatsRadio | null>;
+  getStatsPackets(): Promise<MeshCoreStatsPackets | null>;
   /** EventEmitter surface — the manager emits 'message' with a MeshCoreMessage. */
   on(event: 'message', listener: (msg: MeshCoreMessage) => void): unknown;
   off(event: 'message', listener: (msg: MeshCoreMessage) => void): unknown;
@@ -193,6 +237,18 @@ export interface OtaPacketEvent {
   snr?: number | null;
   rssi?: number | null;
   raw_hex?: string | null;
+}
+
+/**
+ * Thrown from a `handleConfigCommand` apply callback to refuse a command with a
+ * specific companion error code (e.g. NotFound for an unknown contact) instead
+ * of the generic IllegalArg / BadState mapping.
+ */
+class VnCommandError extends Error {
+  constructor(readonly errCode: number, message: string) {
+    super(message);
+    this.name = 'VnCommandError';
+  }
 }
 
 /** Reverse map of command codes → names, for human-readable command logging. */
@@ -669,6 +725,68 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
             this.options.manager.setOtherParams(parseSetOtherParams(command.payload)),
           );
           break;
+        // Contact-table mutations (#5350). These edit the companion's saved
+        // contact list, which MeshMonitor shares with every user of this
+        // source (RemoveContact also deletes the meshcore_nodes row). The VN
+        // port has no per-client auth, so they sit behind allowAdminCommands
+        // with the Set* commands above.
+        case CommandCodes.RemoveContact:
+          void this.handleConfigCommand(clientId, command, () => {
+            const key = this.requireKnownContact(parseContactKeyCommand(command.payload, 'RemoveContact').publicKey);
+            return this.options.manager.removeContact(key);
+          });
+          break;
+        case CommandCodes.ResetPath:
+          void this.handleConfigCommand(clientId, command, () => {
+            const key = this.requireKnownContact(parseContactKeyCommand(command.payload, 'ResetPath').publicKey);
+            return this.options.manager.resetContactPath(key);
+          });
+          break;
+        case CommandCodes.ImportContact:
+          void this.handleConfigCommand(clientId, command, () => {
+            const { advertBytes } = parseImportContact(command.payload);
+            return this.options.manager.importContact(Array.from(advertBytes));
+          });
+          break;
+        case CommandCodes.AddUpdateContact:
+          void this.handleConfigCommand(clientId, command, () => this.applyAddUpdateContact(command));
+          break;
+        case CommandCodes.Reboot:
+          // Restarts the physical node, which drops MeshMonitor's own link and
+          // every other VN client until it reconnects. Same gate as the other
+          // device-level admin commands. Firmware sends nothing on success, so
+          // we reply only on refusal / failure (see handleReboot).
+          void this.handleReboot(clientId, command);
+          break;
+        // Read-only relays (#5350): no state change, no RF. Not gated.
+        case CommandCodes.ExportContact:
+          void this.handleExportContact(clientId, command);
+          break;
+        case CommandCodes.GetStats:
+          void this.handleGetStats(clientId, command);
+          break;
+        case CommandCodes.ShareContact:
+          // One zero-hop advert per request, the same class of action as
+          // SendSelfAdvert, so not gated on allowAdminCommands; receive-only
+          // mode still refuses it.
+          void this.handleShareContact(clientId, command);
+          break;
+        case CommandCodes.ImportPrivateKey:
+          // Replacing the node's identity is permanent and would hand its
+          // mesh identity to whoever holds the imported key. Never served over
+          // the VN port: reply Disabled(15), byte-identical to firmware built
+          // without ENABLE_PRIVATE_KEY_IMPORT, so meshcore.js rejects with
+          // "disabled" instead of a generic error (#5350).
+          logger.debug(`[MeshCore VN ${this.sourceId}] ImportPrivateKey refused from ${clientId} (not offered over VN)`);
+          this.send(clientId, encodeDisabled());
+          break;
+        case CommandCodes.SendRawData:
+          // Arbitrary raw-packet injection onto the mesh. No manager path exists
+          // and MeshMonitor has no way to vet the payload, so it is refused
+          // explicitly (#5350) rather than falling through to the default.
+          logger.debug(`[MeshCore VN ${this.sourceId}] SendRawData refused from ${clientId} (not offered over VN)`);
+          this.send(clientId, encodeErr(ErrorCodes.UnsupportedCmd));
+          break;
         default:
           logger.debug(`[MeshCore VN ${this.sourceId}] unsupported command ${command.code} from ${clientId}`);
           this.send(clientId, encodeErr(ErrorCodes.UnsupportedCmd));
@@ -742,12 +860,17 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
 
   /** Fire-and-forget audit row for a served key export. Never throws. */
   private auditPkiExport(clientId: string): void {
+    this.auditVnAction(clientId, 'meshcore_vn_export_private_key');
+  }
+
+  /** Fire-and-forget audit row for a sensitive VN-client action. Never throws. */
+  private auditVnAction(clientId: string, action: string): void {
     try {
       const ip = this.clients.get(clientId)?.socket.remoteAddress ?? null;
       void this.db
         .auditLogAsync?.(
           null,
-          'meshcore_vn_export_private_key',
+          action,
           'configuration',
           JSON.stringify({ sourceId: this.sourceId, clientId }),
           ip,
@@ -809,6 +932,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
    * outcome into a companion response:
    *   - admin disabled          → Err(UnsupportedCmd) (explicit, not a silent hang)
    *   - parse failure (throws)  → Err(IllegalArg)
+   *   - VnCommandError (throws)  → Err(its errCode), e.g. NotFound for an unknown contact
    *   - manager returns false    → Err(BadState)
    *   - manager throws           → Err(BadState)
    *   - success                  → Ok
@@ -836,6 +960,11 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
       // would escape this catch and be mis-reported as BadState below.
       applied = apply();
     } catch (parseErr) {
+      if (parseErr instanceof VnCommandError) {
+        logger.debug(`[MeshCore VN ${this.sourceId}] ${name} from ${clientId} refused: ${parseErr.message}`);
+        this.send(clientId, encodeErr(parseErr.errCode));
+        return;
+      }
       logger.warn(`[MeshCore VN ${this.sourceId}] ${name} bad payload from ${clientId}: ${(parseErr as Error).message}`);
       this.send(clientId, encodeErr(ErrorCodes.IllegalArg));
       return;
@@ -850,6 +979,11 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
       logger.debug(`[MeshCore VN ${this.sourceId}] ${name} from ${clientId} forwarded to node`);
       this.send(clientId, encodeOk());
     } catch (err) {
+      if (err instanceof VnCommandError) {
+        logger.debug(`[MeshCore VN ${this.sourceId}] ${name} from ${clientId} refused: ${err.message}`);
+        this.send(clientId, encodeErr(err.errCode));
+        return;
+      }
       logger.warn(`[MeshCore VN ${this.sourceId}] ${name} from ${clientId} failed: ${(err as Error).message}`);
       this.send(clientId, encodeErr(ErrorCodes.BadState));
     }
@@ -877,6 +1011,231 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
       this.send(clientId, encodeOk());
     } catch (err) {
       logger.warn(`[MeshCore VN ${this.sourceId}] SendSelfAdvert from ${clientId} failed: ${(err as Error).message}`);
+      this.send(clientId, encodeErr(ErrorCodes.BadState));
+    }
+  }
+
+  // ───────────────────── contact / device commands (#5350) ─────────────────────
+
+  /**
+   * Resolve a full 64-hex public key from an app frame to the key the manager
+   * stores it under. Throws VnCommandError(NotFound) for a contact this node
+   * does not hold, which is the firmware's own reply for an unknown key.
+   */
+  private requireKnownContact(publicKeyHex: string): string {
+    const key = this.resolveContactKey(publicKeyHex);
+    if (!key) throw new VnCommandError(ErrorCodes.NotFound, `unknown contact ${publicKeyHex.substring(0, 12)}…`);
+    return key;
+  }
+
+  /**
+   * AddUpdateContact(9) apply step, run inside handleConfigCommand (so it is
+   * already behind allowAdminCommands). A real node overwrites the whole
+   * contact record from the frame. We cannot relay it verbatim: MeshMonitor
+   * owns the favourite bit (reconcileDeviceFavorites), and the path the app
+   * echoes back is the hop count we advertised in GetContacts, not the packed
+   * out_path_len the device stores for multi-byte hashes. Writing the frame
+   * as-is could silently corrupt the route or drop a favourite.
+   *
+   * So the frame is diffed against the contact as this VN advertised it, and
+   * only the edits the app UI actually makes are applied, each through the
+   * manager method that already handles it safely:
+   *   - name changed              → setContactName (rename)
+   *   - favourite bit changed     → setNodeFavorite (MeshMonitor + device bit)
+   *   - route set to UNKNOWN (-1) → resetContactPath
+   * type / coords / advert time are app echoes and are ignored. A manual route
+   * or a telemetry-permission change is not relayed: if that is the ONLY
+   * change, reply Err(UnsupportedCmd) rather than claim an edit we did not
+   * make; alongside a supported edit it is skipped and logged.
+   *
+   * Unknown contacts get Err(NotFound). Adding a brand-new contact from the
+   * app is not relayed here; ImportContact (signed advert) is the supported
+   * add path, and MeshMonitor's own "Add to radio" owns the table-full policy.
+   *
+   * Parsing and the diff run synchronously so a malformed frame throws before
+   * any await (→ IllegalArg) and a refusal throws a VnCommandError.
+   */
+  private applyAddUpdateContact(command: ParsedCommand): Promise<boolean> {
+    const req = parseAddUpdateContact(command.payload);
+    const key = this.requireKnownContact(req.publicKey);
+    const contact = this.options.manager.getContacts().find((c) => c.publicKey === key);
+    if (!contact) throw new VnCommandError(ErrorCodes.NotFound, `unknown contact ${key.substring(0, 12)}…`);
+
+    const currentName = contact.advName || contact.name || '';
+    const rename = req.advName !== currentName ? req.advName : undefined;
+    if (rename !== undefined && Buffer.byteLength(rename, 'utf8') > 31) {
+      throw new VnCommandError(ErrorCodes.IllegalArg, 'contact name longer than 31 bytes');
+    }
+
+    const currentFlags = contact.flags ?? (contact.deviceFavorite ? 0x01 : 0);
+    const currentFav = contact.deviceFavorite ?? (currentFlags & 0x01) === 0x01;
+    const wantFav = (req.flags & 0x01) === 0x01;
+    const favorite = wantFav !== currentFav ? wantFav : undefined;
+    const permsChanged = contact.flags !== undefined && (req.flags & ~0x01 & 0xff) !== (currentFlags & ~0x01 & 0xff);
+
+    // Mirror handleGetContacts: hop count, or -1 (OUT_PATH_UNKNOWN).
+    const advertisedLen = contact.pathLen == null ? -1 : contact.pathLen;
+    const advertisedPath = hexToBytes(contact.outPath);
+    const resetPath = req.outPathLen === -1 && advertisedLen !== -1;
+    const routeChanged =
+      req.outPathLen !== -1 &&
+      (req.outPathLen !== advertisedLen || !req.outPath.subarray(0, advertisedPath.length).equals(advertisedPath));
+
+    const unsupported = [routeChanged && 'manual route', permsChanged && 'telemetry permissions'].filter(Boolean);
+    const hasEdit = rename !== undefined || favorite !== undefined || resetPath;
+    if (!hasEdit) {
+      if (unsupported.length > 0) {
+        throw new VnCommandError(ErrorCodes.UnsupportedCmd, `${unsupported.join(' + ')} edits are not relayed`);
+      }
+      // Nothing changed: a real node would rewrite the same record and ack.
+      return Promise.resolve(true);
+    }
+    if (unsupported.length > 0) {
+      logger.debug(
+        `[MeshCore VN ${this.sourceId}] AddUpdateContact ${key.substring(0, 12)}…: ignoring ${unsupported.join(' + ')} change`,
+      );
+    }
+
+    const manager = this.options.manager;
+    return (async () => {
+      if (rename !== undefined && !(await manager.setContactName(key, rename))) return false;
+      if (favorite !== undefined) await manager.setNodeFavorite(key, favorite);
+      if (resetPath && !(await manager.resetContactPath(key))) return false;
+      return true;
+    })();
+  }
+
+  /**
+   * Reboot(19): restart the physical companion. Gated on allowAdminCommands
+   * like the other device-level admin commands; the frame must carry the
+   * firmware's "reboot" confirmation string (else IllegalArg). Firmware writes
+   * nothing on success (the device just restarts, and meshcore.js resolves
+   * after 1s without an Err), so we reply only on refusal or failure.
+   */
+  private async handleReboot(clientId: string, command: ParsedCommand): Promise<void> {
+    if (!this.allowAdminCommands) {
+      logger.debug(`[MeshCore VN ${this.sourceId}] Reboot blocked from ${clientId} (allowAdminCommands off)`);
+      this.send(clientId, encodeErr(ErrorCodes.UnsupportedCmd));
+      return;
+    }
+    try {
+      parseReboot(command.payload);
+    } catch (err) {
+      logger.warn(`[MeshCore VN ${this.sourceId}] Reboot bad payload from ${clientId}: ${(err as Error).message}`);
+      this.send(clientId, encodeErr(ErrorCodes.IllegalArg));
+      return;
+    }
+    try {
+      const ok = await this.options.manager.rebootDevice();
+      if (!ok) {
+        logger.warn(`[MeshCore VN ${this.sourceId}] Reboot from ${clientId} not accepted by node`);
+        this.send(clientId, encodeErr(ErrorCodes.BadState));
+        return;
+      }
+      // Operator-visible: this drops MeshMonitor's link to the node.
+      this.auditVnAction(clientId, 'meshcore_vn_reboot');
+      logger.info(`[MeshCore VN ${this.sourceId}] Reboot requested by VN client ${clientId} (allowAdminCommands on)`);
+    } catch (err) {
+      logger.warn(`[MeshCore VN ${this.sourceId}] Reboot from ${clientId} failed: ${(err as Error).message}`);
+      this.send(clientId, encodeErr(ErrorCodes.BadState));
+    }
+  }
+
+  /**
+   * ExportContact(17): hand back a signed advert for a contact (or for the
+   * local node when the frame carries no key) as ExportContact(11). Read-only,
+   * no RF, not gated: the self advert is what the node broadcasts anyway.
+   *   - unknown contact → Err(NotFound)   (firmware parity)
+   *   - node gave nothing / threw → Err(BadState)
+   */
+  private async handleExportContact(clientId: string, command: ParsedCommand): Promise<void> {
+    const { publicKey } = parseExportContact(command.payload);
+    let key: string | null = null;
+    if (publicKey) {
+      const resolved = this.resolveContactKey(publicKey);
+      if (!resolved) {
+        this.send(clientId, encodeErr(ErrorCodes.NotFound));
+        return;
+      }
+      key = resolved;
+    }
+    try {
+      const bytes = await this.options.manager.exportContact(key);
+      if (!bytes || bytes.length === 0) {
+        logger.debug(`[MeshCore VN ${this.sourceId}] ExportContact from ${clientId}: node returned nothing`);
+        this.send(clientId, encodeErr(ErrorCodes.BadState));
+        return;
+      }
+      this.send(clientId, encodeExportContact(bytes));
+    } catch (err) {
+      logger.warn(`[MeshCore VN ${this.sourceId}] ExportContact from ${clientId} failed: ${(err as Error).message}`);
+      this.send(clientId, encodeErr(ErrorCodes.BadState));
+    }
+  }
+
+  /**
+   * GetStats(56): relay the local node's core / radio / packet counters as a
+   * Stats(24) response. Serial reads only, no RF, not gated.
+   *   - short frame or unknown sub-type → Err(IllegalArg)  (firmware parity)
+   *   - node gave nothing / threw       → Err(BadState)
+   */
+  private async handleGetStats(clientId: string, command: ParsedCommand): Promise<void> {
+    let statsType: number;
+    try {
+      ({ statsType } = parseGetStats(command.payload));
+    } catch {
+      this.send(clientId, encodeErr(ErrorCodes.IllegalArg));
+      return;
+    }
+    const m = this.options.manager;
+    try {
+      let frame: Buffer | null = null;
+      if (statsType === StatsTypes.Core) {
+        const s = await m.getStatsCore();
+        frame = s ? encodeStatsCore(s) : null;
+      } else if (statsType === StatsTypes.Radio) {
+        const s = await m.getStatsRadio();
+        frame = s ? encodeStatsRadio(s) : null;
+      } else if (statsType === StatsTypes.Packets) {
+        const s = await m.getStatsPackets();
+        frame = s ? encodeStatsPackets(s) : null;
+      } else {
+        this.send(clientId, encodeErr(ErrorCodes.IllegalArg));
+        return;
+      }
+      this.send(clientId, frame ?? encodeErr(ErrorCodes.BadState));
+    } catch (err) {
+      logger.warn(`[MeshCore VN ${this.sourceId}] GetStats(${statsType}) from ${clientId} failed: ${(err as Error).message}`);
+      this.send(clientId, encodeErr(ErrorCodes.BadState));
+    }
+  }
+
+  /**
+   * ShareContact(16): re-broadcast a saved contact's advert as ONE zero-hop
+   * packet so nearby nodes can add it. Transmits, so receive-only mode refuses
+   * it first; otherwise ungated, like SendSelfAdvert.
+   *   - unknown contact → Err(NotFound)   (firmware parity)
+   *   - node refused / threw → Err(BadState)
+   */
+  private async handleShareContact(clientId: string, command: ParsedCommand): Promise<void> {
+    if (this.refuseIfReceiveOnly(clientId, 'ShareContact')) return;
+    let key: string;
+    try {
+      key = this.requireKnownContact(parseContactKeyCommand(command.payload, 'ShareContact').publicKey);
+    } catch (err) {
+      this.send(clientId, encodeErr(err instanceof VnCommandError ? err.errCode : ErrorCodes.IllegalArg));
+      return;
+    }
+    try {
+      const result = await this.options.manager.shareContact(key);
+      if (!result.ok) {
+        logger.warn(`[MeshCore VN ${this.sourceId}] ShareContact from ${clientId} failed: ${result.error ?? 'unknown'}`);
+        this.send(clientId, encodeErr(ErrorCodes.BadState));
+        return;
+      }
+      this.send(clientId, encodeOk());
+    } catch (err) {
+      logger.warn(`[MeshCore VN ${this.sourceId}] ShareContact from ${clientId} failed: ${(err as Error).message}`);
       this.send(clientId, encodeErr(ErrorCodes.BadState));
     }
   }
@@ -1190,7 +1549,10 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
       this.send(clientId, encodeContact({
         publicKey: pubKeyHexToBytes(c.publicKey),
         type: c.advType ?? 1,
-        flags: 0,
+        // The device's real flags byte (bit 0 = favourite, bits 1..7 =
+        // telemetry permissions) so an app that echoes it back in
+        // AddUpdateContact sees the true state (#5350).
+        flags: c.flags ?? (c.deviceFavorite ? 0x01 : 0),
         // OUT_PATH_UNKNOWN (-1) when no cached route, else the hop count.
         outPathLen: c.pathLen == null ? -1 : c.pathLen,
         outPath: c.outPath ? hexToBytes(c.outPath) : Buffer.alloc(0),

@@ -162,6 +162,33 @@ class FakeManager extends EventEmitter implements MeshCoreVirtualNodeManager {
       neighbours: { publicKeyPrefix: string; heardSecondsAgo: number; snr: number }[];
     } | null>;
   }
+  // Contact-table / device command mocks (#5350).
+  removeContactMock = vi.fn().mockResolvedValue(true);
+  resetContactPathMock = vi.fn().mockResolvedValue(true);
+  setContactNameMock = vi.fn().mockResolvedValue(true);
+  setNodeFavoriteMock = vi.fn().mockResolvedValue(undefined);
+  shareContactMock = vi.fn().mockResolvedValue({ ok: true });
+  exportContactMock = vi.fn().mockResolvedValue([0x11, 0x22, 0x33]);
+  importContactMock = vi.fn().mockResolvedValue(true);
+  rebootDeviceMock = vi.fn().mockResolvedValue(true);
+  getStatsCoreMock = vi.fn().mockResolvedValue({ batteryMv: 4012, uptimeSecs: 3600, errors: 3, queueLen: 2 });
+  getStatsRadioMock = vi.fn().mockResolvedValue({ noiseFloor: -118, lastRssi: -90, lastSnr: 6.25, txAirSecs: 12, rxAirSecs: 34 });
+  getStatsPacketsMock = vi.fn().mockResolvedValue({
+    recv: 100, sent: 50, floodTx: 10, directTx: 40, floodRx: 60, directRx: 40, recvErrors: 7,
+  });
+  removeContact(publicKey: string) { return this.removeContactMock(publicKey) as Promise<boolean>; }
+  resetContactPath(publicKey: string) { return this.resetContactPathMock(publicKey) as Promise<boolean>; }
+  setContactName(publicKey: string, name: string) { return this.setContactNameMock(publicKey, name) as Promise<boolean>; }
+  setNodeFavorite(publicKey: string, isFavorite: boolean) {
+    return this.setNodeFavoriteMock(publicKey, isFavorite) as Promise<void>;
+  }
+  shareContact(publicKey: string) { return this.shareContactMock(publicKey) as Promise<{ ok: boolean; error?: string }>; }
+  exportContact(publicKey: string | null) { return this.exportContactMock(publicKey) as Promise<number[] | null>; }
+  importContact(advertBytes: number[]) { return this.importContactMock(advertBytes) as Promise<boolean>; }
+  rebootDevice() { return this.rebootDeviceMock() as Promise<boolean>; }
+  getStatsCore() { return this.getStatsCoreMock() as Promise<Record<string, number> | null>; }
+  getStatsRadio() { return this.getStatsRadioMock() as Promise<Record<string, number> | null>; }
+  getStatsPackets() { return this.getStatsPacketsMock() as Promise<Record<string, number | null> | null>; }
   sendCliCommandMock = vi.fn().mockResolvedValue({ reply: 'ok', elapsedMs: 42 });
   sendCliCommand(publicKey: string, command: string, opts?: { timeoutMs?: number }) {
     return this.sendCliCommandMock(publicKey, command, opts) as Promise<{ reply: string; elapsedMs: number }>;
@@ -2298,5 +2325,398 @@ describe('MeshCoreVirtualNodeServer — per-client message delivery (#4535)', ()
     manager.emitMessage(selfChannelMessage('A sent then left', 'gone-1'));
     expect((await pushB)[0]).toBe(PushCodes.MsgWaiting);
     expect((await syncOne(clientB))[0]).toBe(ResponseCodes.ChannelMsgRecv);
+  });
+});
+
+// Issue #5350: ten companion commands used to fall through to the default
+// Err(UnsupportedCmd). Each now has an explicit behaviour: contact-table edits
+// relay behind allowAdminCommands, read-only ones relay ungated, and the two
+// the VN will never serve (ImportPrivateKey, SendRawData) refuse with a
+// specific, firmware-shaped reply. Frames are built with meshcore.js's own
+// `sendCommand*` encoders so the byte layout is the one a real app sends.
+describe('MeshCoreVirtualNodeServer — contact / device commands (#5350)', () => {
+  let server: MeshCoreVirtualNodeServer;
+  let client: TestClient;
+  let manager: FakeManager;
+
+  const KEY = 'b1'.repeat(32); // SAMPLE_CONTACTS[0]
+  const KEY_BYTES = Buffer.from(KEY, 'hex');
+  const UNKNOWN_KEY_BYTES = Buffer.from('ee'.repeat(32), 'hex');
+
+  async function startWith(
+    opts: { allowAdminCommands?: boolean; allowPkiExport?: boolean; contacts?: MeshCoreContact[] } = {},
+  ): Promise<void> {
+    manager = new FakeManager(LOCAL_NODE, opts.contacts ?? SAMPLE_CONTACTS);
+    server = new MeshCoreVirtualNodeServer({
+      port: 0,
+      manager,
+      databaseService: CHANNELS_DB,
+      allowAdminCommands: opts.allowAdminCommands ?? true,
+      allowPkiExport: opts.allowPkiExport ?? false,
+    });
+    await server.start();
+    client = new TestClient();
+    await client.connect(server.getListeningPort()!);
+    await waitForClients(server, 1);
+  }
+
+  afterEach(async () => {
+    client?.close();
+    await server?.stop();
+  });
+
+  /** Capture the bytes a meshcore.js `sendCommand*` call would put on the wire. */
+  async function appFrame(build: (conn: any) => Promise<void>): Promise<number[]> {
+    const conn: any = new (Connection as any)();
+    let out: Uint8Array | undefined;
+    conn.sendToRadioFrame = async (bytes: Uint8Array) => { out = bytes; };
+    await build(conn);
+    return Array.from(out!);
+  }
+
+  /** Decode a response payload through meshcore.js's own parser. */
+  function decode(code: number, payload: Buffer): Promise<any> {
+    return new Promise((resolve) => {
+      const conn: any = new (Connection as any)();
+      conn.once(code, (event: any) => resolve(event));
+      conn.onFrameReceived(new Uint8Array(payload));
+    });
+  }
+
+  /** AddUpdateContact frame echoing SAMPLE_CONTACTS[0] as the VN advertised it, with overrides. */
+  function addUpdateFrame(o: { name?: string; flags?: number; outPathLen?: number; outPath?: number[]; key?: Buffer } = {}) {
+    const outPath = new Uint8Array(64);
+    (o.outPath ?? [0xa3, 0x7f]).forEach((b, i) => { outPath[i] = b; });
+    return appFrame((c) => c.sendCommandAddUpdateContact(
+      o.key ?? KEY_BYTES,
+      Constants.AdvType.Repeater,
+      o.flags ?? 0,
+      o.outPathLen ?? 2,
+      outPath,
+      o.name ?? 'Repeater North',
+      1_750_000_000,
+      degreesToFixed(40.1),
+      degreesToFixed(-105.2),
+    ));
+  }
+
+  function expectErr(res: Buffer, code: number) {
+    expect(res[0]).toBe(ResponseCodes.Err);
+    expect(res[1]).toBe(code);
+  }
+
+  describe('RemoveContact (15)', () => {
+    it('relays to manager.removeContact and replies Ok', async () => {
+      await startWith();
+      const res = await client.request(await appFrame((c) => c.sendCommandRemoveContact(KEY_BYTES)));
+      expect(res[0]).toBe(ResponseCodes.Ok);
+      expect(manager.removeContactMock).toHaveBeenCalledWith(KEY);
+    });
+
+    it('is blocked with Err(UnsupportedCmd) when allowAdminCommands is off', async () => {
+      await startWith({ allowAdminCommands: false });
+      const res = await client.request(await appFrame((c) => c.sendCommandRemoveContact(KEY_BYTES)));
+      expectErr(res, ErrorCodes.UnsupportedCmd);
+      expect(manager.removeContactMock).not.toHaveBeenCalled();
+    });
+
+    it('replies Err(NotFound) for a contact the node does not hold', async () => {
+      await startWith();
+      const res = await client.request(await appFrame((c) => c.sendCommandRemoveContact(UNKNOWN_KEY_BYTES)));
+      expectErr(res, ErrorCodes.NotFound);
+      expect(manager.removeContactMock).not.toHaveBeenCalled();
+    });
+
+    it('replies Err(BadState) when the node refuses', async () => {
+      await startWith();
+      manager.removeContactMock.mockResolvedValueOnce(false);
+      const res = await client.request(await appFrame((c) => c.sendCommandRemoveContact(KEY_BYTES)));
+      expectErr(res, ErrorCodes.BadState);
+    });
+
+    it('replies Err(IllegalArg) on a short frame', async () => {
+      await startWith();
+      const res = await client.request([CommandCodes.RemoveContact, 0xb1, 0xb1]);
+      expectErr(res, ErrorCodes.IllegalArg);
+    });
+  });
+
+  describe('ResetPath (13)', () => {
+    it('relays to manager.resetContactPath and replies Ok', async () => {
+      await startWith();
+      const res = await client.request(await appFrame((c) => c.sendCommandResetPath(KEY_BYTES)));
+      expect(res[0]).toBe(ResponseCodes.Ok);
+      expect(manager.resetContactPathMock).toHaveBeenCalledWith(KEY);
+    });
+
+    it('is blocked when allowAdminCommands is off', async () => {
+      await startWith({ allowAdminCommands: false });
+      const res = await client.request(await appFrame((c) => c.sendCommandResetPath(KEY_BYTES)));
+      expectErr(res, ErrorCodes.UnsupportedCmd);
+      expect(manager.resetContactPathMock).not.toHaveBeenCalled();
+    });
+
+    it('replies Err(NotFound) for an unknown contact', async () => {
+      await startWith();
+      const res = await client.request(await appFrame((c) => c.sendCommandResetPath(UNKNOWN_KEY_BYTES)));
+      expectErr(res, ErrorCodes.NotFound);
+    });
+  });
+
+  describe('AddUpdateContact (9)', () => {
+    it('applies a rename through manager.setContactName only', async () => {
+      await startWith();
+      const res = await client.request(await addUpdateFrame({ name: 'North Hill' }));
+      expect(res[0]).toBe(ResponseCodes.Ok);
+      expect(manager.setContactNameMock).toHaveBeenCalledWith(KEY, 'North Hill');
+      expect(manager.setNodeFavoriteMock).not.toHaveBeenCalled();
+      expect(manager.resetContactPathMock).not.toHaveBeenCalled();
+    });
+
+    it('routes a favourite toggle through setNodeFavorite (MeshMonitor owns favourites)', async () => {
+      await startWith();
+      const res = await client.request(await addUpdateFrame({ flags: 0x01 }));
+      expect(res[0]).toBe(ResponseCodes.Ok);
+      expect(manager.setNodeFavoriteMock).toHaveBeenCalledWith(KEY, true);
+      expect(manager.setContactNameMock).not.toHaveBeenCalled();
+    });
+
+    it('routes a route set to OUT_PATH_UNKNOWN through resetContactPath', async () => {
+      await startWith();
+      const res = await client.request(await addUpdateFrame({ outPathLen: 0xff, outPath: [] }));
+      expect(res[0]).toBe(ResponseCodes.Ok);
+      expect(manager.resetContactPathMock).toHaveBeenCalledWith(KEY);
+    });
+
+    it('acks an unchanged echo without touching the node', async () => {
+      await startWith();
+      const res = await client.request(await addUpdateFrame());
+      expect(res[0]).toBe(ResponseCodes.Ok);
+      expect(manager.setContactNameMock).not.toHaveBeenCalled();
+      expect(manager.setNodeFavoriteMock).not.toHaveBeenCalled();
+      expect(manager.resetContactPathMock).not.toHaveBeenCalled();
+    });
+
+    // A verbatim relay would write the app's hop count over the device's
+    // packed out_path_len. Refuse rather than claim an edit we did not make.
+    it('refuses a manual-route-only edit with Err(UnsupportedCmd)', async () => {
+      await startWith();
+      const res = await client.request(await addUpdateFrame({ outPathLen: 1, outPath: [0x42] }));
+      expectErr(res, ErrorCodes.UnsupportedCmd);
+      expect(manager.setContactNameMock).not.toHaveBeenCalled();
+      expect(manager.resetContactPathMock).not.toHaveBeenCalled();
+    });
+
+    it('applies a rename and skips a route change sent alongside it', async () => {
+      await startWith();
+      const res = await client.request(await addUpdateFrame({ name: 'North Hill', outPathLen: 1, outPath: [0x42] }));
+      expect(res[0]).toBe(ResponseCodes.Ok);
+      expect(manager.setContactNameMock).toHaveBeenCalledWith(KEY, 'North Hill');
+    });
+
+    it('refuses a telemetry-permission-only edit when the device flags are known', async () => {
+      await startWith({ contacts: [{ ...SAMPLE_CONTACTS[0], flags: 0x00, deviceFavorite: false }] });
+      const res = await client.request(await addUpdateFrame({ flags: 0x02 }));
+      expectErr(res, ErrorCodes.UnsupportedCmd);
+      expect(manager.setNodeFavoriteMock).not.toHaveBeenCalled();
+    });
+
+    it('replies Err(NotFound) for a contact the node does not hold (adding is not relayed)', async () => {
+      await startWith();
+      const res = await client.request(await addUpdateFrame({ key: UNKNOWN_KEY_BYTES, name: 'New' }));
+      expectErr(res, ErrorCodes.NotFound);
+      expect(manager.setContactNameMock).not.toHaveBeenCalled();
+    });
+
+    it('replies Err(IllegalArg) on a short frame', async () => {
+      await startWith();
+      const res = await client.request([CommandCodes.AddUpdateContact, ...KEY_BYTES, 1, 0, 0]);
+      expectErr(res, ErrorCodes.IllegalArg);
+    });
+
+    it('replies Err(BadState) when the rename is not applied', async () => {
+      await startWith();
+      manager.setContactNameMock.mockResolvedValueOnce(false);
+      const res = await client.request(await addUpdateFrame({ name: 'North Hill' }));
+      expectErr(res, ErrorCodes.BadState);
+    });
+
+    it('is blocked when allowAdminCommands is off', async () => {
+      await startWith({ allowAdminCommands: false });
+      const res = await client.request(await addUpdateFrame({ name: 'North Hill' }));
+      expectErr(res, ErrorCodes.UnsupportedCmd);
+      expect(manager.setContactNameMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('GetContacts flags', () => {
+    it('advertises the device flags byte instead of a hardcoded 0', async () => {
+      await startWith({ contacts: [{ ...SAMPLE_CONTACTS[0], flags: 0x03, deviceFavorite: true }] });
+      client.send([CommandCodes.GetContacts]);
+      const frames = await client.expectFrames(3);
+      const contact = await decode(ResponseCodes.Contact, frames[1]);
+      expect(contact.flags).toBe(0x03);
+    });
+  });
+
+  describe('ImportContact (18)', () => {
+    it('relays the advert bytes and replies Ok', async () => {
+      await startWith();
+      const advert = Array.from({ length: 110 }, (_, i) => i & 0xff);
+      const res = await client.request(await appFrame((c) => c.sendCommandImportContact(new Uint8Array(advert))));
+      expect(res[0]).toBe(ResponseCodes.Ok);
+      expect(manager.importContactMock).toHaveBeenCalledWith(advert);
+    });
+
+    it('replies Err(IllegalArg) on an advert shorter than the firmware minimum', async () => {
+      await startWith();
+      const res = await client.request([CommandCodes.ImportContact, 1, 2, 3]);
+      expectErr(res, ErrorCodes.IllegalArg);
+      expect(manager.importContactMock).not.toHaveBeenCalled();
+    });
+
+    it('is blocked when allowAdminCommands is off', async () => {
+      await startWith({ allowAdminCommands: false });
+      const res = await client.request([CommandCodes.ImportContact, ...Array(110).fill(1)]);
+      expectErr(res, ErrorCodes.UnsupportedCmd);
+    });
+  });
+
+  describe('ShareContact (16)', () => {
+    it('relays without allowAdminCommands (like SendSelfAdvert) and replies Ok', async () => {
+      await startWith({ allowAdminCommands: false });
+      const res = await client.request(await appFrame((c) => c.sendCommandShareContact(KEY_BYTES)));
+      expect(res[0]).toBe(ResponseCodes.Ok);
+      expect(manager.shareContactMock).toHaveBeenCalledWith(KEY);
+    });
+
+    it('is refused with Err(BadState) in receive-only mode, before reaching the node', async () => {
+      await startWith();
+      manager.receiveOnlyMock.mockReturnValue(true);
+      const res = await client.request(await appFrame((c) => c.sendCommandShareContact(KEY_BYTES)));
+      expectErr(res, ErrorCodes.BadState);
+      expect(manager.shareContactMock).not.toHaveBeenCalled();
+    });
+
+    it('replies Err(NotFound) for an unknown contact and Err(BadState) on node failure', async () => {
+      await startWith();
+      expectErr(await client.request(await appFrame((c) => c.sendCommandShareContact(UNKNOWN_KEY_BYTES))), ErrorCodes.NotFound);
+      manager.shareContactMock.mockResolvedValueOnce({ ok: false, error: 'no ack' });
+      expectErr(await client.request(await appFrame((c) => c.sendCommandShareContact(KEY_BYTES))), ErrorCodes.BadState);
+    });
+  });
+
+  describe('ExportContact (17)', () => {
+    it('exports the local identity when no key is given, as an ExportContact(11) response', async () => {
+      await startWith({ allowAdminCommands: false });
+      const res = await client.request(await appFrame((c) => c.sendCommandExportContact()));
+      expect(res[0]).toBe(ResponseCodes.ExportContact);
+      const decoded = await decode(ResponseCodes.ExportContact, res);
+      expect(Array.from(decoded.advertPacketBytes)).toEqual([0x11, 0x22, 0x33]);
+      expect(manager.exportContactMock).toHaveBeenCalledWith(null);
+    });
+
+    it('exports a known contact by key', async () => {
+      await startWith();
+      const res = await client.request(await appFrame((c) => c.sendCommandExportContact(KEY_BYTES)));
+      expect(res[0]).toBe(ResponseCodes.ExportContact);
+      expect(manager.exportContactMock).toHaveBeenCalledWith(KEY);
+    });
+
+    it('replies Err(NotFound) for an unknown contact and Err(BadState) when the node gives nothing', async () => {
+      await startWith();
+      expectErr(await client.request(await appFrame((c) => c.sendCommandExportContact(UNKNOWN_KEY_BYTES))), ErrorCodes.NotFound);
+      manager.exportContactMock.mockResolvedValueOnce(null);
+      expectErr(await client.request(await appFrame((c) => c.sendCommandExportContact())), ErrorCodes.BadState);
+    });
+  });
+
+  describe('Reboot (19)', () => {
+    // Firmware writes nothing on success; the next frame the client sees must
+    // be the reply to its NEXT command.
+    it('relays to manager.rebootDevice and replies nothing on success', async () => {
+      await startWith();
+      client.send(await appFrame((c) => c.sendCommandReboot()));
+      const next = await client.request([CommandCodes.GetDeviceTime]);
+      expect(next[0]).toBe(ResponseCodes.CurrTime);
+      expect(manager.rebootDeviceMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('is blocked with Err(UnsupportedCmd) when allowAdminCommands is off', async () => {
+      await startWith({ allowAdminCommands: false });
+      const res = await client.request(await appFrame((c) => c.sendCommandReboot()));
+      expectErr(res, ErrorCodes.UnsupportedCmd);
+      expect(manager.rebootDeviceMock).not.toHaveBeenCalled();
+    });
+
+    it('requires the "reboot" confirmation string', async () => {
+      await startWith();
+      const res = await client.request([CommandCodes.Reboot, ...Buffer.from('rebooX')]);
+      expectErr(res, ErrorCodes.IllegalArg);
+      expect(manager.rebootDeviceMock).not.toHaveBeenCalled();
+    });
+
+    it('replies Err(BadState) when the node does not accept it', async () => {
+      await startWith();
+      manager.rebootDeviceMock.mockResolvedValueOnce(false);
+      const res = await client.request(await appFrame((c) => c.sendCommandReboot()));
+      expectErr(res, ErrorCodes.BadState);
+    });
+  });
+
+  describe('ImportPrivateKey (24) and SendRawData (25)', () => {
+    it('refuses ImportPrivateKey with Disabled(15) even with every flag on', async () => {
+      await startWith({ allowAdminCommands: true, allowPkiExport: true });
+      const res = await client.request(await appFrame((c) => c.sendCommandImportPrivateKey(new Uint8Array(64).fill(7))));
+      expect(res[0]).toBe(ResponseCodes.Disabled);
+      expect(res.length).toBe(1);
+    });
+
+    it('refuses SendRawData with Err(UnsupportedCmd) even with allowAdminCommands on', async () => {
+      await startWith();
+      const res = await client.request(
+        await appFrame((c) => c.sendCommandSendRawData(new Uint8Array([0x01]), new Uint8Array([1, 2, 3, 4]))),
+      );
+      expectErr(res, ErrorCodes.UnsupportedCmd);
+    });
+  });
+
+  describe('GetStats (56)', () => {
+    it('encodes core stats in the firmware layout (errors u16 between uptime and queue)', async () => {
+      await startWith({ allowAdminCommands: false });
+      const res = await client.request(await appFrame((c) => c.sendCommandGetStats(Constants.StatsTypes.Core)));
+      expect(res[0]).toBe(ResponseCodes.Stats);
+      expect(res[1]).toBe(Constants.StatsTypes.Core);
+      expect(res.readUInt16LE(2)).toBe(4012);
+      expect(res.readUInt32LE(4)).toBe(3600);
+      expect(res.readUInt16LE(8)).toBe(3);
+      expect(res[10]).toBe(2);
+      expect(res.length).toBe(11);
+    });
+
+    it('round-trips radio stats through meshcore.js (SNR in quarter-dB)', async () => {
+      await startWith();
+      const res = await client.request(await appFrame((c) => c.sendCommandGetStats(Constants.StatsTypes.Radio)));
+      const decoded = await decode(ResponseCodes.Stats, res);
+      expect(decoded.type).toBe(Constants.StatsTypes.Radio);
+      expect(decoded.data).toEqual({ noiseFloor: -118, lastRssi: -90, lastSnr: 6.25, txAirSecs: 12, rxAirSecs: 34 });
+    });
+
+    it('round-trips packet stats through meshcore.js', async () => {
+      await startWith();
+      const res = await client.request(await appFrame((c) => c.sendCommandGetStats(Constants.StatsTypes.Packets)));
+      const decoded = await decode(ResponseCodes.Stats, res);
+      expect(decoded.data).toEqual({
+        recv: 100, sent: 50, nSentFlood: 10, nSentDirect: 40, nRecvFlood: 60, nRecvDirect: 40, nRecvErrors: 7,
+      });
+    });
+
+    it('replies Err(IllegalArg) for an unknown or missing sub-type, Err(BadState) when the node gives nothing', async () => {
+      await startWith();
+      expectErr(await client.request([CommandCodes.GetStats, 9]), ErrorCodes.IllegalArg);
+      expectErr(await client.request([CommandCodes.GetStats]), ErrorCodes.IllegalArg);
+      manager.getStatsCoreMock.mockResolvedValueOnce(null);
+      expectErr(await client.request([CommandCodes.GetStats, 0]), ErrorCodes.BadState);
+    });
   });
 });
