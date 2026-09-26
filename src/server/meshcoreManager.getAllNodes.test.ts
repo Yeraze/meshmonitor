@@ -89,6 +89,25 @@ describe('MeshCoreManager.getAllNodes (node-list-collapses-to-1 regression)', ()
     });
   });
 
+  it('drops a drifted lastHeard stored before #5339 instead of serving it', async () => {
+    const now = Date.now();
+    getNodesBySource.mockResolvedValue([
+      // Written by a sender RTC drifted to ~2087 before ingest checked clocks.
+      { publicKey: KEY_B, name: 'Future', isLocalNode: false, lastHeard: 3_700_000_000_000 },
+      // Stuck at 2000-01-15.
+      { publicKey: KEY_C, name: 'Past', isLocalNode: false, lastHeard: 947_894_400_000 },
+      { publicKey: KEY_LOCAL, name: 'Sane', isLocalNode: false, lastHeard: now - 60_000 },
+    ]);
+
+    const m = new MeshCoreManager('src-a');
+    const nodes = await m.getAllNodes();
+    const byKey = new Map(nodes.map((n) => [n.publicKey, n]));
+
+    expect(byKey.get(KEY_B)?.lastHeard).toBeUndefined();
+    expect(byKey.get(KEY_C)?.lastHeard).toBeUndefined();
+    expect(byKey.get(KEY_LOCAL)?.lastHeard).toBe(now - 60_000);
+  });
+
   it('overlays live in-memory contacts over persisted rows without duplicating, preserving DB-only fields', async () => {
     // Persisted (stale) row carries battery; in-memory advert carries a fresher name.
     getNodesBySource.mockResolvedValue([

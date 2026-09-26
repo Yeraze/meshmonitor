@@ -96,6 +96,27 @@ describe('MeshCoreRepository — lastHeard is monotonic (#5131)', () => {
     await repo.upsertNode({ publicKey: KEY, name: 'rarely-adverts', lastHeard: advertTime }, SOURCE);
     expect(await readLastHeard()).toBe(telemetryTime);
   });
+
+  // #5339: before ingest checked device clocks, a drifted sender RTC could
+  // store a lastHeard years in the future. "Only forward" must not freeze
+  // that value until the year it names.
+  it('replaces a stored far-future lastHeard (drifted RTC) with a real observation (#5339)', async () => {
+    const now = Date.now();
+    const drifted = now + 60 * 365 * 24 * 3600_000; // ~60 years ahead
+    await repo.upsertNode({ publicKey: KEY, lastHeard: drifted }, SOURCE);
+
+    await repo.upsertNode({ publicKey: KEY, lastHeard: now }, SOURCE);
+    expect(await readLastHeard()).toBe(now);
+  });
+
+  it('still keeps a stored lastHeard that is only slightly ahead (ordinary skew)', async () => {
+    const now = Date.now();
+    const skewed = now + 3600_000; // 1h ahead: within tolerance
+    await repo.upsertNode({ publicKey: KEY, lastHeard: skewed }, SOURCE);
+
+    await repo.upsertNode({ publicKey: KEY, lastHeard: now }, SOURCE);
+    expect(await readLastHeard()).toBe(skewed);
+  });
 });
 
 describe('MeshCoreRepository.markHeard (#5131)', () => {
