@@ -604,6 +604,37 @@ describe('ingestServiceEnvelope — TEXT_MESSAGE_APP directed vs broadcast chann
     expect(inserted.toNodeNum).toBe(0x11223344);
   });
 
+  it('stores hopStart/hopLimit on the message row (#5366)', async () => {
+    // Regression: MQTT ingest dropped the hop header, so every MQTT reception
+    // in Unified Messages showed "hop count unknown".
+    const env = textEnvelopeTo(0xffffffff);
+    env.packet!.hopStart = 5;
+    env.packet!.hopLimit = 2;
+    await ingestServiceEnvelope({ sourceId: 'bridge-1', envelope: env });
+    const inserted = (databaseService.messages.insertMessage as any).mock.calls[0][0];
+    expect(inserted.hopStart).toBe(5);
+    expect(inserted.hopLimit).toBe(2);
+  });
+
+  it('accepts snake_case hop_start/hop_limit from a bridge (#5366)', async () => {
+    const env = textEnvelopeTo(0xffffffff);
+    (env.packet as any).hop_start = 3;
+    (env.packet as any).hop_limit = 3;
+    await ingestServiceEnvelope({ sourceId: 'bridge-1', envelope: env });
+    const inserted = (databaseService.messages.insertMessage as any).mock.calls[0][0];
+    expect(inserted.hopStart).toBe(3);
+    expect(inserted.hopLimit).toBe(3);
+  });
+
+  it('leaves hopStart unset (unknown, not 0) when the packet has none (#5366)', async () => {
+    const env = textEnvelopeTo(0xffffffff);
+    env.packet!.hopLimit = 3;
+    await ingestServiceEnvelope({ sourceId: 'bridge-1', envelope: env });
+    const inserted = (databaseService.messages.insertMessage as any).mock.calls[0][0];
+    expect(inserted.hopStart).toBeUndefined();
+    expect(inserted.hopLimit).toBe(3);
+  });
+
   it('leaves a broadcast message on its channel (not -1)', async () => {
     const result = await ingestServiceEnvelope({ sourceId: 'bridge-1', envelope: textEnvelopeTo(0xffffffff) });
     expect(result.ingested).toBe(true);
