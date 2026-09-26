@@ -918,6 +918,24 @@ class ApiService {
     return result.url;
   }
 
+  /**
+   * Likely-aircraft flight trails (#5364/#5365 Phase 3). `sourceIds` narrows
+   * to those sources; the server intersects it with what the caller may read.
+   * Unwraps the `ok()` envelope.
+   */
+  async getAircraftTrails(
+    hours: number,
+    sourceIds?: string[] | null,
+  ): Promise<Array<{ sourceId: string; nodeNum: number; points: Array<{ lat: number; lon: number; alt: number | null; ts: number }> }>> {
+    const params = new URLSearchParams({ hours: String(hours) });
+    if (sourceIds && sourceIds.length > 0) params.set('sources', sourceIds.join(','));
+    const body = await this.get<{
+      success: boolean;
+      data?: { trails?: Array<{ sourceId: string; nodeNum: number; points: Array<{ lat: number; lon: number; alt: number | null; ts: number }> }> };
+    }>(`/api/aircraft/trails?${params}`);
+    return body?.data?.trails ?? [];
+  }
+
   async getMessages(limit: number = 100, sourceId?: string | null): Promise<MeshMessage[]> {
     await this.ensureBaseUrl();
     const params = new URLSearchParams({ limit: String(limit) });

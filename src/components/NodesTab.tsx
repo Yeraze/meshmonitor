@@ -13,6 +13,8 @@ import { effectiveMapMaxAgeHours } from '../utils/mapAge';
 import { resolveClusterZoomThreshold, resolveClusteredMapCenterTargetZoom } from '../utils/mapZoomAnimation';
 import MapAgeFilterControl from './map/MapAgeFilterControl';
 import MapAircraftDisplayControl from './map/MapAircraftDisplayControl';
+import AircraftTrailsLayer from './map/layers/AircraftTrailsLayer';
+import { useAircraftTrailLayer } from './map/useAircraftTrailLayer';
 import { isAgedOutAircraft, AGED_OUT_AIRCRAFT_OPACITY } from './map/agedOutAircraft';
 import NodeAgeWindowSuffix from './NodeAgeWindowSuffix';
 import { downsamplePositionHistory, MAX_RENDERED_POSITION_POINTS } from '../utils/positionHistoryDownsample';
@@ -583,6 +585,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setAircraftDisplayMode,
     showAgedOutAircraft,
     setShowAgedOutAircraft,
+    showAircraftTrails,
+    setShowAircraftTrails,
+    aircraftTrailHours,
+    setAircraftTrailHours,
     pendingCenterNodeNum,
     setPendingCenterNodeNum,
     showPolarGrid,
@@ -2319,6 +2325,17 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   const effective3D = viewMode === '3d' && canUse3D;
   const unavailableIn3DTitle = effective3D ? 'Not available in 3D' : undefined;
 
+  // Flight trails (#5364/#5365 Phase 3): one per aircraft this map draws a
+  // marker for. `visibleMapNodes` is already past Hide / age / transport /
+  // "Show aged-out", so trails follow every one of those filters. Outside a
+  // SourceProvider (no source id) the nodes can come from any source, so the
+  // trails merge like the Unified map's.
+  const aircraftTrailLayer = useAircraftTrailLayer({
+    drawnNodes: visibleMapNodes,
+    mode: currentSourceId ? { kind: 'source', sourceId: currentSourceId } : { kind: 'unified' },
+    available: !effective3D,
+  });
+
   return (
     <div ref={splitViewRef} className="nodes-split-view nodes-anchored-view">
       {/* Anchored Node List Sidebar */}
@@ -2954,6 +2971,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                     showAgedOut={showAgedOutAircraft}
                     onShowAgedOutChange={setShowAgedOutAircraft}
                     agedOutCount={agedOutCountOnMap}
+                    showTrails={showAircraftTrails}
+                    onShowTrailsChange={setShowAircraftTrails}
+                    trailHours={aircraftTrailHours}
+                    onTrailHoursChange={setAircraftTrailHours}
                   />
                   <label className="map-control-item">
                     <input
@@ -3346,6 +3367,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               onExit={() => setMeasureActive(false)}
             />
           )}
+              {/* Flight trails (#5364/#5365 Phase 3), below the node markers. */}
+              {showAircraftTrails && (
+                <AircraftTrailsLayer
+                  trails={aircraftTrailLayer.trails}
+                  formatTooltip={aircraftTrailLayer.formatTooltip}
+                />
+              )}
               {resolvedClusterZoomThreshold != null ? (
                 <NodeMarkerCluster disableClusteringAtZoom={resolvedClusterZoomThreshold}>
                   <NodeMarkersLayer markers={nodeMarkers} onOmsClick={onOmsClick} />
