@@ -177,6 +177,20 @@ export interface DbNode {
   /** #5317: set when the row came from an imported contact URL and the node has not been heard yet. */
   importedAt?: number | null;
   isLicensed?: boolean; // #3684: User.is_licensed — amateur-radio licensed operator
+  /**
+   * Likely-aircraft classification (#5364/#5365, migration 175). `true` =
+   * likely aircraft, `false` = classified as not, `null`/`undefined` = never
+   * classified / unknown / detection off for this source.
+   */
+  likelyAircraft?: boolean | null;
+  /** `'agl' | 'msl' | 'unknown'`, null when unclassified. */
+  aircraftBasis?: string | null;
+  /** DEM metres at the classified point; null if not sampled. */
+  groundElevation?: number | null;
+  /** `altitude − groundElevation`, signed; null unless basis is `'agl'`. */
+  heightAboveGround?: number | null;
+  /** Epoch ms of the last classification write; the backfill key. */
+  aircraftClassifiedAt?: number | null;
   // Remote admin discovery (Migration 055)
   hasRemoteAdmin?: boolean; // Has remote admin access
   lastRemoteAdminCheck?: number; // Unix timestamp ms of last check
@@ -5458,6 +5472,8 @@ class DatabaseService {
     positionHistoryPointsOnly?: boolean;
       unreadIndicatorEnabled?: boolean;
       spreadNodes?: boolean;
+      /** Likely-aircraft map display choice (#5364/#5365). Null clears to the 'mark' default. */
+      aircraftDisplayMode?: 'show' | 'mark' | 'hide' | null;
   }): Promise<void> {
     return this.mapPreferences!.saveMapPreferences(userId, preferences);
   }
