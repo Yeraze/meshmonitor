@@ -74,6 +74,7 @@ import {
   Package,
   Pause,
   Pin,
+  Plane,
   Play,
   Plus,
   Power,
@@ -133,6 +134,7 @@ export interface UiIconDefinition {
 export const UI_ICON_DEFINITIONS = {
   accessibility: { lucide: Accessibility, emoji: '♿️', usage: 'accessibility and inclusive design' },
   activity: { lucide: Activity, emoji: '📈', usage: 'packet and activity monitoring' },
+  aircraft: { lucide: Plane, emoji: '✈️', usage: 'likely-aircraft nodes' },
   airQuality: { lucide: AirVent, emoji: '💨', usage: 'air-quality telemetry' },
   alarm: { lucide: AlarmClock, emoji: '⏰', usage: 'scheduled and timed actions' },
   announcement: { lucide: Megaphone, emoji: '📢', usage: 'announcements and notification sources' },

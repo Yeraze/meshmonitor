@@ -428,6 +428,84 @@ describe('createNodeIcon — unmessageable badge (#4295)', () => {
   });
 });
 
+describe('createNodeIcon — likely-aircraft badge (#5364/#5365 Phase 1 WP4)', () => {
+  const iconHtml = (isLikelyAircraft: boolean, pinStyle: 'meshmonitor' | 'official') =>
+    (createNodeIcon({
+      variant: 'meshtastic',
+      hops: 1,
+      roleCategory: 'mtClient',
+      shortName: 'X',
+      pinStyle,
+      isLikelyAircraft,
+    }) as unknown as { html: string }).html;
+
+  it('adds the aircraft-badge overlay in meshmonitor style when isLikelyAircraft is true', () => {
+    expect(iconHtml(true, 'meshmonitor')).toContain('#1f6feb');
+    expect(iconHtml(false, 'meshmonitor')).not.toContain('#1f6feb');
+  });
+
+  it('adds the aircraft-badge overlay in official style when isLikelyAircraft is true', () => {
+    expect(iconHtml(true, 'official')).toContain('#1f6feb');
+    expect(iconHtml(false, 'official')).not.toContain('#1f6feb');
+  });
+
+  it('defaults to no badge when isLikelyAircraft is omitted', () => {
+    const icon = createNodeIcon({
+      variant: 'meshtastic',
+      hops: 1,
+      roleCategory: 'mtClient',
+      shortName: 'X',
+    }) as unknown as { html: string };
+    expect(icon.html).not.toContain('#1f6feb');
+  });
+
+  it('places the badge in the top-left corner, clear of the top-right unmessageable badge and the bottom-right role badge', () => {
+    const icon = createNodeIcon({
+      variant: 'meshtastic',
+      hops: 1,
+      roleCategory: 'mtRouter',
+      shortName: 'RTR1',
+      pinStyle: 'official',
+      isUnmessagable: true,
+      isLikelyAircraft: true,
+    }) as unknown as { html: string };
+    // All three badges coexist: role badge bottom-right, unmessageable badge
+    // top-right, aircraft badge top-left.
+    expect(icon.html).toContain('bottom: -2px');
+    expect(icon.html).toContain('top: -2px');
+    expect(icon.html).toContain('right: -2px');
+    expect(icon.html).toContain('left: -2px');
+    expect(icon.html).toContain('#d64545');
+    expect(icon.html).toContain('#1f6feb');
+  });
+
+  it('meshcore variant ignores isLikelyAircraft', () => {
+    const icon = createNodeIcon({
+      variant: 'meshcore',
+      roleCategory: 'standard',
+      isLikelyAircraft: true,
+    }) as unknown as { html: string };
+    expect(icon.html).not.toContain('#1f6feb');
+  });
+
+  it('unflagged output is byte-identical to omitting isLikelyAircraft entirely', () => {
+    const withFalse = createNodeIcon({
+      variant: 'meshtastic',
+      hops: 1,
+      roleCategory: 'mtClient',
+      shortName: 'X',
+      isLikelyAircraft: false,
+    }) as unknown as { html: string };
+    const omitted = createNodeIcon({
+      variant: 'meshtastic',
+      hops: 1,
+      roleCategory: 'mtClient',
+      shortName: 'X',
+    }) as unknown as { html: string };
+    expect(withFalse.html).toBe(omitted.html);
+  });
+});
+
 describe('createNodeIcon — official pinStyle keeps the short-name visible for infra roles (#4154)', () => {
   it('ROUTER short name is NOT suppressed by the role glyph in official style', () => {
     const icon = createNodeIcon({

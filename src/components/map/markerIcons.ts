@@ -6,6 +6,7 @@ import {
   roleGlyphMarkerSvg,
   getHopColor,
   unmessageableBadgeSvg,
+  aircraftBadgeSvg,
 } from '../../utils/roleGlyphSvg.js';
 import { meshtasticNodeColor, readableTextColor } from '../../utils/nodeColor.js';
 
@@ -14,7 +15,7 @@ import { meshtasticNodeColor, readableTextColor } from '../../utils/nodeColor.js
 // pulling Leaflet into their bundle/tests. Re-exported here so every existing
 // importer of `markerIcons` (MapLegend, createNodeIcon callers, tests) keeps
 // its current import path unchanged.
-export { roleGlyphInnerSvg, roleGlyphMarkerSvg, getHopColor, unmessageableBadgeSvg };
+export { roleGlyphInnerSvg, roleGlyphMarkerSvg, getHopColor, unmessageableBadgeSvg, aircraftBadgeSvg };
 
 /** Default MeshCore badge color (mauve), matching the pre-migration
  *  `MeshCoreMap.tsx` `MESHCORE_COLOR` constant. Callers pass `fixedColor`
@@ -38,6 +39,8 @@ export interface CreateNodeIconOptions {
   /** When true, overlay a "no direct messages" badge on the marker (issue
    *  #4295). Meshtastic variant only. */
   isUnmessagable?: boolean;
+  /** Overlay a "likely aircraft" badge (#5365). Meshtastic variant only. */
+  isLikelyAircraft?: boolean;
   /** uint32 node number. When set on the 'official' (Meshtastic) pin style, the
    *  circle is filled with the per-node Meshtastic app color (issue #4880)
    *  instead of white, and the short name switches to a luminance-picked
@@ -87,6 +90,7 @@ export function createNodeIcon(options: CreateNodeIconOptions): L.DivIcon {
     pinStyle = 'meshmonitor',
     roleCategory,
     isUnmessagable = false,
+    isLikelyAircraft = false,
     variant = 'meshtastic',
     fixedColor,
     labelName,
@@ -166,6 +170,24 @@ export function createNodeIcon(options: CreateNodeIconOptions): L.DivIcon {
         filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));
         pointer-events: none;
       ">${unmessageableBadgeSvg(unmessageableBadgeSize)}</div>
+    ` : '';
+
+  // Likely-aircraft overlay (#5364/#5365 Phase 1 WP4): a top-left badge, clear
+  // of the top-right unmessageable badge and the bottom-right official role
+  // badge. Same size/markup treatment as the unmessageable badge, mirrored to
+  // the opposite top corner. Meshtastic variant only (MeshCore branch returns
+  // above this point).
+  const aircraftBadgeSize = Math.round(size * 0.4);
+  const aircraftBadge = isLikelyAircraft ? `
+      <div style="
+        position: absolute;
+        top: -2px;
+        left: -2px;
+        width: ${aircraftBadgeSize}px;
+        height: ${aircraftBadgeSize}px;
+        filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));
+        pointer-events: none;
+      ">${aircraftBadgeSvg(aircraftBadgeSize)}</div>
     ` : '';
 
   // Official Meshtastic style: Circle with always-visible label
@@ -265,6 +287,7 @@ export function createNodeIcon(options: CreateNodeIconOptions): L.DivIcon {
         ${emojiOverlay}
         ${roleBadge}
         ${unmessageableBadge}
+        ${aircraftBadge}
       </div>
     `;
 
@@ -343,6 +366,7 @@ export function createNodeIcon(options: CreateNodeIconOptions): L.DivIcon {
       ${markerSvg}
       ${label}
       ${unmessageableBadge}
+      ${aircraftBadge}
     </div>
   `;
 
