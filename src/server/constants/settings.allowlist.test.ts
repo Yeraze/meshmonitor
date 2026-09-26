@@ -127,18 +127,19 @@ describe('per-source settings key allowlist invariants', () => {
   });
 
   // Documentation-only guard: PER_SOURCE_KEYS_NOT_POSTABLE was computed, not
-  // guessed — spec §3.1(c) predicted 18 keys. `externalUrl` gained a writer
-  // (#4437, WP2) and was removed from this exemption set, shrinking the count
-  // to 17. #5230 added the five `tracerouteFilter*Mode` keys, which are written
-  // by POST /api/settings/traceroute-nodes like their `*Enabled` siblings and
-  // so belong in the same exemption set — 22. #5101 Phase 3 WP3 added
-  // `transportTrafficCheckpoint`, server-managed bookkeeping written only by
-  // `transportTrafficService.ts` — 23. Pin the size so a silent drift
+  // guessed — spec §3.1(c) predicted 18 keys, and it has grown one documented
+  // exemption at a time since (see the git history of this test for the
+  // running count). #5364/#5365 (likely-aircraft, Phase 1 WP1) added
+  // `autoFavoriteAircraftStrikes` — the two-strike-sweep bookkeeping written
+  // only by `favoritesService.ts` — bringing the count to 25. The other four
+  // aircraft keys (`aircraftDetectionEnabled`, `aircraftAglThresholdMeters`,
+  // `aircraftMslThresholdMeters`, `autoFavoriteExcludeAircraft`) are POST-able
+  // and do NOT belong in this exemption set. Pin the size so a silent drift
   // (e.g. a future PER_SOURCE_SETTINGS_KEYS addition without
   // VALID_SETTINGS_KEYS coverage) surfaces here rather than only in the
   // exact-equality test above.
   it('PER_SOURCE_KEYS_NOT_POSTABLE has the expected size', () => {
-    expect(PER_SOURCE_KEYS_NOT_POSTABLE.size).toBe(24);
+    expect(PER_SOURCE_KEYS_NOT_POSTABLE.size).toBe(25);
   });
 
   // #5101 Phase 3 WP3: the transport-traffic writer's checkpoint is
@@ -157,5 +158,34 @@ describe('per-source settings key allowlist invariants', () => {
     const valid = new Set<string>(VALID_SETTINGS_KEYS as readonly string[]);
     expect(PER_SOURCE_KEYS_NOT_POSTABLE.has('meshcoreLastFloodAdvertAt')).toBe(true);
     expect(valid.has('meshcoreLastFloodAdvertAt')).toBe(false);
+  });
+
+  // #5364/#5365 D19: the two-strike counter must not be resettable from the
+  // client — a POST that clears it would let a re-flagged plane get
+  // auto-favorited again immediately instead of waiting out two real sweeps.
+  it('autoFavoriteAircraftStrikes is server-managed, never client-postable', () => {
+    const valid = new Set<string>(VALID_SETTINGS_KEYS as readonly string[]);
+    const perSource = new Set<string>(PER_SOURCE_SETTINGS_KEYS as readonly string[]);
+    expect(PER_SOURCE_KEYS_NOT_POSTABLE.has('autoFavoriteAircraftStrikes')).toBe(true);
+    expect(valid.has('autoFavoriteAircraftStrikes')).toBe(false);
+    expect(perSource.has('autoFavoriteAircraftStrikes')).toBe(true);
+  });
+
+  // #5364/#5365: the other four aircraft keys ARE ordinary POST-able
+  // per-source settings — only the strikes bookkeeping is exempt.
+  it('the four aircraft detection/exclusion keys are per-source-postable, not exempt', () => {
+    const valid = new Set<string>(VALID_SETTINGS_KEYS as readonly string[]);
+    const perSource = new Set<string>(PER_SOURCE_SETTINGS_KEYS as readonly string[]);
+    for (const key of [
+      'aircraftDetectionEnabled',
+      'aircraftAglThresholdMeters',
+      'aircraftMslThresholdMeters',
+      'autoFavoriteExcludeAircraft',
+    ]) {
+      expect(valid.has(key)).toBe(true);
+      expect(perSource.has(key)).toBe(true);
+      expect(PER_SOURCE_KEYS_NOT_POSTABLE.has(key)).toBe(false);
+      expect(GLOBAL_ONLY_SETTINGS_KEYS.has(key)).toBe(false);
+    }
   });
 });
