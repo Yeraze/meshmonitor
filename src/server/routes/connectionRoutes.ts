@@ -6,6 +6,7 @@ import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMeshtasticManager, isMqttConnectionStatusManager } from '../sourceManagerTypes.js';
 import { requireMeshtasticDeviceSource } from '../utils/requireMeshtasticDeviceSource.js';
+import { getEnvironmentConfig } from '../config/environment.js';
 
 const NOT_CONNECTED = {
   connected: false,
@@ -29,7 +30,6 @@ async function nonMeshtasticConnectionStatus(sourceId: string | undefined): Prom
   if (mgr && isMqttConnectionStatusManager(mgr)) return { ...(await mgr.getConnectionStatus()) };
   return { ...NOT_CONNECTED };
 }
-import { getEnvironmentConfig } from '../config/environment.js';
 
 const router = Router();
 
