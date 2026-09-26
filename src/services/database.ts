@@ -1659,9 +1659,7 @@ class DatabaseService {
     const oneHourAgo = Date.now() - 3600000;
 
     // Get local node number (per-source if provided) to exclude internal traffic
-    const localNodeNumStr = sourceId
-      ? await this.settings.getSettingForSource(sourceId, 'localNodeNum')
-      : this.getSetting('localNodeNum');
+    const localNodeNumStr = await this.settings.getLocalNodeNumForSource(sourceId);
     const localNodeNum = localNodeNumStr ? parseInt(localNodeNumStr, 10) : null;
 
     return this.packetLogRepo!.getPacketCountsPerNodeSince({
@@ -1679,8 +1677,8 @@ class DatabaseService {
   async getTopBroadcastersAsync(limit: number = 5, sourceId?: string): Promise<Array<{ nodeNum: number; shortName: string | null; longName: string | null; packetCount: number }>> {
     const oneHourAgo = Date.now() - 3600000;
 
-    // Get local node number to exclude internal traffic
-    const localNodeNumStr = this.getSetting('localNodeNum');
+    // Get local node number (per-source if provided) to exclude internal traffic
+    const localNodeNumStr = await this.settings.getLocalNodeNumForSource(sourceId);
     const localNodeNum = localNodeNumStr ? parseInt(localNodeNumStr, 10) : null;
 
     return this.packetLogRepo!.getTopBroadcastersSince({

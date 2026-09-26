@@ -376,9 +376,8 @@ router.get('/telemetry/available/nodes', requirePermission('info', 'read'), asyn
     // Get the local node ID to ensure it's always marked as secure.
     // Read per-source so multi-source deployments don't always show the first
     // source's local node as "secure local node" for every source view.
-    const localNodeNumStr = await databaseService.settings.getSettingForSource(
+    const localNodeNumStr = await databaseService.settings.getLocalNodeNumForSource(
       telAvailSourceId ?? null,
-      'localNodeNum'
     );
     let localNodeId: string | null = null;
     if (localNodeNumStr) {

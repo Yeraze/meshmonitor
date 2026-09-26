@@ -453,7 +453,7 @@ describe('GET /hop-counts', () => {
     // Only src-a is a Meshtastic TCP source with a persisted local node.
     mockDb.settings = {
       ...mockDb.settings,
-      getSetting: vi.fn(async (key: string) => (key === 'localNodeNum_src-a' ? '1' : null)),
+      getLocalNodeNumForSource: vi.fn(async (id: string) => (id === 'src-a' ? '1' : null)),
     };
   });
 

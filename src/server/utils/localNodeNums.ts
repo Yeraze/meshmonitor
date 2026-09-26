@@ -1,13 +1,8 @@
 import databaseService from '../../services/database.js';
 
-/**
- * The settings key a Meshtastic source persists its local node number under.
- * Mirrors `MeshtasticManager.localNodeSettingKey('localNodeNum')`: the legacy
- * `default` source keeps the bare key, every other source is suffixed.
- */
-export function localNodeNumSettingKey(sourceId: string): string {
-  return sourceId && sourceId !== 'default' ? `localNodeNum_${sourceId}` : 'localNodeNum';
-}
+// Canonical key helper lives on the settings repository so database.ts can
+// share it without an import cycle (#5377). Re-exported for existing callers.
+export { localNodeNumSettingKey } from '../../db/repositories/settings.js';
 
 /**
  * Each source's local node number, read from what its manager persisted on
@@ -20,7 +15,7 @@ export async function resolveLocalNodeNums(sourceIds: string[]): Promise<Map<str
   const out = new Map<string, number>();
   await Promise.all(
     sourceIds.map(async (sourceId) => {
-      const raw = await databaseService.settings.getSetting(localNodeNumSettingKey(sourceId));
+      const raw = await databaseService.settings.getLocalNodeNumForSource(sourceId);
       const n = raw ? Number(raw) : NaN;
       if (Number.isFinite(n) && n > 0) out.set(sourceId, n);
     }),

@@ -85,6 +85,7 @@ vi.mock('../services/database.js', () => ({
     // inline check is a no-op for this suite.
     settings: {
       getSettingForSource: async () => null,
+      getLocalNodeNumForSource: async () => null,
     },
     setNodeIgnoredAsync: vi.fn(async () => undefined),
   },

@@ -66,6 +66,7 @@ vi.mock('../services/database.js', () => ({
     // inline check is a no-op for this suite's wiring/branching assertions.
     settings: {
       getSettingForSource: vi.fn(async () => null),
+      getLocalNodeNumForSource: vi.fn(async () => null),
     },
     setNodeIgnoredAsync: vi.fn(async () => undefined),
   },

@@ -12,7 +12,10 @@ const addDistanceDeleteLogEntry = vi.fn();
 
 vi.mock('../../services/database.js', () => ({
   default: {
-    settings: { getSettingForSource: (...a: unknown[]) => getSettingForSource(...a) },
+    settings: {
+      getSettingForSource: (...a: unknown[]) => getSettingForSource(...a),
+      getLocalNodeNumForSource: (id: unknown) => getSettingForSource(id, 'localNodeNum'),
+    },
     nodes: { getAllNodes: (...a: unknown[]) => getAllNodes(...a) },
     misc: { addDistanceDeleteLogEntry: (...a: unknown[]) => addDistanceDeleteLogEntry(...a) },
     deleteNodeAsync: vi.fn(),

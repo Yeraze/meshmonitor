@@ -18,7 +18,9 @@ vi.mock('../../services/database.js', () => ({
     get nodes() { return { getAllNodes }; },
     get neighbors() { return { getDirectNeighborRssiAsync }; },
     get analysis() { return { getHopCounts }; },
-    get settings() { return { getSetting }; },
+    get settings() {
+      return { getSetting, getLocalNodeNumForSource: (id: string) => getSetting(`localNodeNum_${id}`) };
+    },
   },
 }));
 

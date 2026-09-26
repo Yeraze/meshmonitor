@@ -37,9 +37,8 @@ router.get('/', optionalAuth(), async (req, res) => {
     // is rendering, rather than whichever source happened to write the
     // global localNodeNum setting last.
     const configSourceId = req.query.sourceId as string | undefined;
-    const localNodeNumStr = await databaseService.settings.getSettingForSource(
+    const localNodeNumStr = await databaseService.settings.getLocalNodeNumForSource(
       configSourceId ?? null,
-      'localNodeNum',
     );
 
     let deviceMetadata = undefined;
