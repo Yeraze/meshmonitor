@@ -19,6 +19,7 @@ import channelRoutes from './channelRoutes.js';
 import deviceStatusRoutes from './deviceStatusRoutes.js';
 import pollRoutes from './pollRoutes.js';
 import nodesRoutes from './nodesRoutes.js';
+import announceRoutes from './announceRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 import { sourceManagerRegistry, type ISourceManager } from '../sourceManagerRegistry.js';
 
@@ -55,6 +56,7 @@ describe('non-Meshtastic sources never transmit through the primary radio (#5375
       commitEditSettings: vi.fn().mockResolvedValue(undefined),
       refreshNodeDatabase: vi.fn().mockResolvedValue(undefined),
       sendFavoriteNode: vi.fn().mockResolvedValue(undefined),
+      sendAutoAnnouncement: vi.fn().mockResolvedValue(undefined),
       sendRemoveFavoriteNode: vi.fn().mockResolvedValue(undefined),
       startDistanceDeleteScheduler: vi.fn().mockResolvedValue(undefined),
       stopDistanceDeleteScheduler: vi.fn(),
@@ -87,6 +89,7 @@ describe('non-Meshtastic sources never transmit through the primary radio (#5375
         app.use('/', deviceStatusRoutes);
         app.use('/', pollRoutes);
         app.use('/', nodesRoutes);
+        app.use('/announce', announceRoutes);
       },
     });
     await harness.db.sources.createSource({
@@ -131,6 +134,22 @@ describe('non-Meshtastic sources never transmit through the primary radio (#5375
       expect(tcpManager.sendTraceroute).not.toHaveBeenCalled();
     });
 
+    it('POST /nodes/:id/send-key-warning does not send over the primary radio', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post(`/nodes/${PEER_NODE_ID}/send-key-warning`).send({ sourceId: BROKER_SOURCE_ID });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('SOURCE_NOT_MESHTASTIC');
+      expect(tcpManager.sendTextMessage).not.toHaveBeenCalled();
+    });
+
+    it('POST /announce/send does not announce over the primary radio', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post('/announce/send').send({ sourceId: BROKER_SOURCE_ID });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('SOURCE_NOT_MESHTASTIC');
+      expect(tcpManager.sendAutoAnnouncement).not.toHaveBeenCalled();
+    });
+
     it('POST /position/request does not request over the primary radio', async () => {
       const agent = await harness.loginAs(harness.admin);
       const res = await agent.post('/position/request').send({ sourceId: BROKER_SOURCE_ID, destination: PEER_NODE_NUM });
@@ -150,6 +169,14 @@ describe('non-Meshtastic sources never transmit through the primary radio (#5375
       const res = await agent.put('/channels/1').send({ sourceId: BROKER_SOURCE_ID, name: 'renamed' });
       expect(res.status).toBe(200);
       expect(res.body.channel?.name).toBe('renamed');
+      expect(tcpManager.setChannelConfig).not.toHaveBeenCalled();
+    });
+
+    it('POST /channels/:slot/import saves the broker row but never pushes it to the primary radio', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post('/channels/2/import').send({ sourceId: BROKER_SOURCE_ID, channel: { name: 'imported', psk: 'AQ==' } });
+      expect(res.status).toBe(200);
+      expect(res.body.channel?.name).toBe('imported');
       expect(tcpManager.setChannelConfig).not.toHaveBeenCalled();
     });
 
