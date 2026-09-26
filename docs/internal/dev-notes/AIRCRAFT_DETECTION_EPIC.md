@@ -1,0 +1,68 @@
+# Likely-Aircraft Detection Epic (#5364, #5365)
+
+## Goal
+
+Recognise Meshtastic nodes that are probably airborne (aircraft, balloons,
+drones) and handle them sensibly:
+- keep them out of Auto-Favorite (#5364);
+- show them distinctly on the map, and let the user filter them (#5365);
+- age out stale ones;
+- draw their flight paths.
+
+A mountaintop repeater must **not** be treated as an aircraft.
+
+## Decisions (user, 2026-09-26)
+
+- **Classifier:** height above ground (AGL) = `nodes.altitude` (m MSL) − DEM ground
+  elevation at the node's position (`ElevationProvider.sample`).
+  - A node is **likely aircraft** when AGL > threshold. The default threshold is **500 m**, configurable.
+  - If elevation is unavailable (disabled, offline, or the fetch fails), fall back to
+    MSL altitude > **5000 m** (configurable).
+  - Movement confirms the flag and drives reclassification; a node that is still heard but stationary becomes a fixed station (P2).
+- **Map default: mark.** Likely-aircraft nodes get an aircraft badge on their normal
+  marker, so the marker can still be clicked through to the node.
+  - A Show / Mark / Hide control goes in **both** Map Features panels
+    (NodesTab and DashboardMap), following the `MapAgeFilterControl` shared-component precedent.
+- **Auto-Favorite:** the exclusion is **on by default** whenever Auto-Favorite is on.
+  - Likely aircraft are never auto-added.
+  - Auto-added ones are removed at the next sweep.
+  - User favourites and locked favourites are never touched.
+- **Automation event:** a "became likely aircraft" trigger, modelled on
+  `becameMobile`. It fires once per transition into the likely-aircraft state.
+- **Age-out (P2):** off by default, per source. When enabled, the action is
+  **Ignore** (reversible, and reviewable via "show aged-out"). Delete is an
+  explicit opt-in.
+- **Out of scope:** ADS-B / OpenSky cross-referencing, split into #5374.
+- **Mesh impact:** the feature itself sends nothing. The automation event only
+  feeds automations, which carry their own existing rate limits and cooldowns.
+  - Elevation lookups are outbound HTTP tile fetches (AWS Terrarium by default,
+    cached). They are not mesh traffic, and they respect `elevationEnabled`.
+
+## Phases
+
+### Phase 1: classifier, Auto-Favorite exclusion, map badge and filter
+- [ ] Server-computed per-node classification, persisted per source:
+  - AGL, the ground elevation used, and the classification basis (`agl` / `msl` / `unknown`).
+  - Recomputed on position updates; the tile cache is reused.
+- [ ] Per-source settings: enable, AGL threshold (default 500 m), MSL fallback (default 5000 m).
+- [ ] Auto-Favorite: an add gate, plus a sweep removal reason that uses the `autoFavoriteNodes` provenance list.
+- [ ] Map: an aircraft badge via `createNodeIcon` (following the isUnmessagable pattern, and included in `iconSig`), and a Show / Mark / Hide control in both Map Features panels.
+- [ ] Automation trigger "became likely aircraft".
+
+**Exit:** the classifier is unit-tested (AGL, MSL fallback, elevation unavailable, mountaintop case), per-source isolation is tested, and the badge and filter are verified in both panels in the browser.
+
+### Phase 2: age-out and reclassify as fixed
+- [ ] A per-source age-out service modelled on `autoDeleteByDistance`: likely aircraft + position older than 24 h + not heard recently → Ignore (or Delete).
+- [ ] Reclassify as fixed: a likely-aircraft node that is still heard and has been stationary for 24 h / N fixes stops being flagged.
+- [ ] A "Show aged-out" review toggle.
+
+**Exit:** the timer persists across restarts, and saving settings does not re-arm it (see the CLAUDE.md mesh checklist). Favourites and the local node are protected.
+
+### Phase 3: flight trails
+- [ ] Trails for likely-aircraft nodes, reusing `PositionTrailsLayer` and the position history, in both map panels.
+
+**Exit:** trails render for moving suspects and expire with the retention window.
+
+## Status log
+
+- 2026-09-26: epic planned; ADS-B split to #5374; Phase 1 started on `feature/aircraft-p1-classifier`.
