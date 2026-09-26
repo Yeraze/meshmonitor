@@ -924,6 +924,19 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   // this session. Guards against re-notifying when a brand-new contact
   // re-advertises before the in-memory contact store reflects it.
   private notifiedNewNodes: Set<string> = new Set();
+  // Public keys first seen WITHOUT a display name, whose "new node"
+  // notification is waiting for the name to arrive (#5340). In the default
+  // auto-add-contacts mode the firmware reports a newly heard node with a
+  // pubkey-only 0x80 push, so the name only shows up on the follow-up
+  // get_contacts re-read (or a later advert). Without this set that deferred
+  // notification was dropped for good, because by then the contact is known.
+  private pendingNewNodeNotifications: Set<string> = new Set();
+  // True while connect() is loading the contact list (DB seed + device
+  // get_contacts). Adverts that race ahead of that sync are for contacts we
+  // can't yet tell apart from already-known ones, so they must not count as
+  // new-node discoveries — otherwise every reconnect could re-notify for known
+  // nodes (#5340).
+  private newNodeNotifySuppressed: boolean = false;
 
   // Repeater: direct serial
   private serialPort: InstanceType<typeof import('serialport').SerialPort> | null = null;
@@ -1406,8 +1419,15 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // full. Seeding first means the DM list mirrors the known contacts when
       // the live sync degrades; a successful refresh then replaces it with the
       // device-authoritative list.
-      await this.seedContactsFromDb();
-      await this.refreshContacts();
+      // Adverts that land during this sync are part of the known contact set,
+      // not new discoveries — hold new-node notifications until it finishes.
+      this.newNodeNotifySuppressed = true;
+      try {
+        await this.seedContactsFromDb();
+        await this.refreshContacts();
+      } finally {
+        this.newNodeNotifySuppressed = false;
+      }
       // Pull the device's channel list and mirror it into the DB. MeshCore has
       // no push event for channel changes, so re-sync is connect-time and
       // after every local write. Failure here is non-fatal.
@@ -1759,6 +1779,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     this.deviceType = MeshCoreDeviceType.UNKNOWN;
     this.localNode = null;
     this.contacts.clear();
+    this.pendingNewNodeNotifications.clear();
     this.guestLoggedInNodes.clear();
     this.roomLoggedInNodes.clear();
 
@@ -2043,7 +2064,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         void this.persistContact(updated);
         this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
         dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
-        if (!wasKnown) {
+        // A key first seen without a name is parked in
+        // pendingNewNodeNotifications; a later named advert resolves it (#5340).
+        if (!this.newNodeNotifySuppressed
+          && (!wasKnown || this.pendingNewNodeNotifications.has(publicKey))) {
           void this.notifyNewNodeDiscovered(updated);
         }
         // A node whose advert didn't carry its name/type — the full record
@@ -2707,8 +2731,16 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     try {
       const publicKey = contact.publicKey;
       if (!publicKey || this.notifiedNewNodes.has(publicKey)) return;
-      const displayName = contact.advName ?? contact.name ?? null;
-      if (!displayName) return; // defer until we have a meaningful name
+      // `||` not `??`: firmware reports a nameless contact as "" (#3756).
+      const displayName = contact.advName || contact.name || null;
+      if (!displayName) {
+        // Defer until a name arrives. The auto-add 0x80 push carries only the
+        // pubkey; the follow-up get_contacts re-read (refreshContacts) or a
+        // later named advert resolves this via the pending set (#5340).
+        this.pendingNewNodeNotifications.add(publicKey);
+        return;
+      }
+      this.pendingNewNodeNotifications.delete(publicKey);
       this.notifiedNewNodes.add(publicKey);
 
       const deviceTypeLabel = contact.advType != null
@@ -2732,6 +2764,24 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       logger.warn(
         `[MeshCore:${this.sourceId}] notifyNewNodeDiscovered(${contact.publicKey.substring(0, 16)}…) failed: ${(err as Error).message}`,
       );
+    }
+  }
+
+  /**
+   * Fire the deferred "new node" notification for every pending key whose
+   * contact now has a display name (#5340). Keys still nameless stay pending;
+   * keys whose contact vanished (e.g. removed) are dropped.
+   */
+  private flushPendingNewNodeNotifications(): void {
+    for (const publicKey of Array.from(this.pendingNewNodeNotifications)) {
+      const contact = this.contacts.get(publicKey);
+      if (!contact) {
+        this.pendingNewNodeNotifications.delete(publicKey);
+        continue;
+      }
+      if (contact.advName || contact.name) {
+        void this.notifyNewNodeDiscovered(contact);
+      }
     }
   }
 
@@ -3462,6 +3512,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           Array.from(this.contacts.values()).map((c) => this.persistContact(c)),
         );
         logger.debug(`[MeshCore] Refreshed ${this.contacts.size} contacts`);
+        // Resolve new-node notifications that were waiting on a name (#5340).
+        // Only keys already parked as genuinely new are considered, so a bulk
+        // contact sync never notifies for the rest of the list.
+        this.flushPendingNewNodeNotifications();
         // Sync the firmware favourite bit with MeshMonitor's local favourites
         // now that we have fresh device flags. Runs on connect (backfilling
         // existing favourites onto the device) and on every subsequent refresh.
