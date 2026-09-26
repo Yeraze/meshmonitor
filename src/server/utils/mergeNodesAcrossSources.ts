@@ -77,6 +77,14 @@ export function mergeNodesAcrossSources(rows: DbNode[]): DbNode[] {
       winner.altitude = bestPosition.altitude;
       winner.positionPrecisionBits = bestPosition.positionPrecisionBits;
       winner.positionTimestamp = bestPosition.positionTimestamp;
+      // #5364/#5365: the aircraft flag describes THIS position, so it comes
+      // from the same row — unconditionally, including null. Otherwise the
+      // empty-field backfill loop above could splice in another source's
+      // flag for a source that hasn't been classified yet.
+      winner.likelyAircraft = bestPosition.likelyAircraft ?? null;
+      winner.aircraftBasis = bestPosition.aircraftBasis ?? null;
+      winner.groundElevation = bestPosition.groundElevation ?? null;
+      winner.heightAboveGround = bestPosition.heightAboveGround ?? null;
     }
 
     winner.isFavorite = group.some((n) => n.isFavorite === true);

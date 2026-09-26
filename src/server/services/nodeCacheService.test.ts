@@ -92,6 +92,81 @@ describe('NodeCacheService', () => {
       expect(converted.batteryLevel).toBeUndefined();
       expect(converted.sourceId).toBe('src-a'); // falls back to the hook's sourceId
     });
+
+    /**
+     * #3684: `isUnmessagable`/`isLicensed` were missing from this projection
+     * entirely — a PG/MySQL install's sync-method node cache never carried
+     * them, even though the underlying repo row does.
+     */
+    it('carries isUnmessagable and isLicensed through', () => {
+      const converted = cache.fromRepoNode(
+        {
+          nodeNum: 8,
+          nodeId: '!00000008',
+          longName: 'Rigel',
+          shortName: 'Rig',
+          hwModel: 1,
+          isUnmessagable: true,
+          isLicensed: true,
+          sourceId: 'src-a',
+          createdAt: 1,
+          updatedAt: 2,
+        },
+        'src-a'
+      );
+      expect(converted.isUnmessagable).toBe(true);
+      expect(converted.isLicensed).toBe(true);
+    });
+
+    /** #5364/#5365: the likely-aircraft classification fields. */
+    it('carries the aircraft classification fields through', () => {
+      const converted = cache.fromRepoNode(
+        {
+          nodeNum: 9,
+          nodeId: '!00000009',
+          longName: 'Aircraft Node',
+          shortName: 'AC',
+          hwModel: 1,
+          likelyAircraft: true,
+          aircraftBasis: 'agl',
+          groundElevation: 200,
+          heightAboveGround: 3000,
+          aircraftClassifiedAt: 1_700_000_000_000,
+          sourceId: 'src-a',
+          createdAt: 1,
+          updatedAt: 2,
+        },
+        'src-a'
+      );
+      expect(converted.likelyAircraft).toBe(true);
+      expect(converted.aircraftBasis).toBe('agl');
+      expect(converted.groundElevation).toBe(200);
+      expect(converted.heightAboveGround).toBe(3000);
+      expect(converted.aircraftClassifiedAt).toBe(1_700_000_000_000);
+    });
+
+    it('converts a null classification to undefined (never classified)', () => {
+      const converted = cache.fromRepoNode(
+        {
+          nodeNum: 10,
+          nodeId: '!0000000a',
+          longName: 'Node',
+          shortName: 'N',
+          hwModel: 1,
+          likelyAircraft: null,
+          aircraftBasis: null,
+          groundElevation: null,
+          heightAboveGround: null,
+          aircraftClassifiedAt: null,
+          sourceId: 'src-a',
+          createdAt: 1,
+          updatedAt: 2,
+        },
+        'src-a'
+      );
+      expect(converted.likelyAircraft).toBeUndefined();
+      expect(converted.aircraftBasis).toBeUndefined();
+    });
   });
 
   describe('patchMobility', () => {
