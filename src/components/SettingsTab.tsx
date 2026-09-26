@@ -2274,6 +2274,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               type="number"
               min={TX_TARGET_MAX_AGE_HOURS_WHEN_UNLIMITED_RANGE.min}
               max={TX_TARGET_MAX_AGE_HOURS_WHEN_UNLIMITED_RANGE.max}
+              step="1"
               value={draft.txTargetMaxAgeHoursWhenUnlimited}
               onChange={(e) => updateField('txTargetMaxAgeHoursWhenUnlimited', parseInt(e.target.value))}
               className="setting-input"
