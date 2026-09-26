@@ -193,15 +193,20 @@ page.
 
 ### Node Age Filter
 
-The **Maximum age** slider in the **Map Features** panel hides node markers
+The **Map age filter** slider in the **Map Features** panel hides node markers
 last heard before the window it defines. Rather than one linear hour-per-tick
-(unusable once you reach weeks), the slider snaps to human-scale stops — 1h,
-3h, 6h, 12h, 1d, 3d, 7d, 14d, and 30d/All — so it stays usable whether you're
-narrowing to the last hour or reaching out to a month. The top stop always
-matches your **Max Node Age** setting, so the slider can never select an age
-the setting would filter out anyway.
+(unusable once you reach weeks), the slider snaps to human-scale stops (1h,
+3h, 6h, 12h, 24h, 3d, 7d, 14d, and 30d) so it stays usable whether you're
+narrowing to the last hour or reaching out to a month. The line under the
+slider says what the map shows right now, such as `Showing: last 6h`.
 
-**Show all** (0) — the **Maximum Age of Active Nodes** setting in **Settings → Nodes** accepts `0` to mean "no age cap". At `0` the slider tops out at an unbounded "All" stop and MeshMonitor never hides a node for being stale. Useful for post-mortem review of a mesh you don't intend to prune.
+The slider can only **narrow** the **Node list & map window** setting
+(**Settings → Node Display**), never widen it. Its top stop follows that
+setting and says so: `All (24h from Settings)`.
+
+**Show all** (0): the **Node list & map window** setting accepts `0` to mean "no age cap". At `0` the slider's top stop reads `All (no limit in Settings)` and MeshMonitor never hides a node for being stale. Useful for post-mortem review of a mesh you don't intend to prune.
+
+The `active/total (last 2h)` badge on each source card in the sidebar is a separate, fixed 2-hour activity stat. It is informational only and does not filter the list or the map.
 
 ### GNSS Satellite Overlay
 

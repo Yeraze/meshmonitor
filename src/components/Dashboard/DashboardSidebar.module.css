@@ -18,3 +18,29 @@
 .linkWithIcon > [data-ui-icon] {
   flex-shrink: 0;
 }
+
+/*
+ * Source-card status row (#5344). The activity pill ("190/6202 active · 2h")
+ * can outgrow the row beside "Connected" on a narrow sidebar (200px minimum,
+ * 260px mobile drawer), so let it wrap onto its own line instead of clipping.
+ */
+.statusRow {
+  flex-wrap: wrap;
+  row-gap: 3px;
+}
+
+.activityBadge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  max-width: 100%;
+}
+
+.activityCount {
+  font-variant-numeric: tabular-nums;
+}
+
+.activityWindow {
+  font-weight: 400;
+  opacity: 0.85;
+}

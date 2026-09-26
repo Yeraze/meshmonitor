@@ -11,7 +11,8 @@ import { getNodeTypeCategory, categoryGlyphFamily, NODE_TYPE_CATEGORY_META, Node
 import { buildGroupedNodeItems, countNodesByCategory, GroupedNodeListItem, RoleGroupCount } from '../utils/nodeGrouping';
 import { effectiveMapMaxAgeHours } from '../utils/mapAge';
 import { resolveClusterZoomThreshold, resolveClusteredMapCenterTargetZoom } from '../utils/mapZoomAnimation';
-import { ageFilterStops, nearestAgeStopIndex, formatAgeStop } from '../utils/mapAgeSteps';
+import MapAgeFilterControl from './map/MapAgeFilterControl';
+import NodeAgeWindowSuffix from './NodeAgeWindowSuffix';
 import { downsamplePositionHistory, MAX_RENDERED_POSITION_POINTS } from '../utils/positionHistoryDownsample';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHistoryArrows, snrToColor } from '../utils/mapHelpers.tsx';
@@ -2304,7 +2305,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               }).length;
               const isFiltered = securityFilter !== 'all' || !showIncompleteNodes || filterRemoteAdminOnly;
               return isFiltered ? `${filteredCount}/${processedNodes.length}` : processedNodes.length;
-            })()})</h3>
+            })()})<NodeAgeWindowSuffix hours={maxNodeAgeHours} /></h3>
           </div>
           )}
           {!isNodeListCollapsed && (
@@ -2877,51 +2878,15 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       <span>3D Terrain</span>
                     </label>
                   )}
-                  {/* Map Features age slider (#3322): hides node markers,
+                  {/* Map Features age filter (#3322, #5344): hides node markers,
                       traceroutes, and route segments older than the chosen age.
-                      Ranges 1h–maxNodeAgeHours (settings); default = max ("All"). */}
-                  {(() => {
-                    // Non-linear discrete stops (1h..30d) instead of a linear
-                    // per-hour tick — see mapAgeSteps (#4770). Bounded by the
-                    // per-source maxNodeAgeHours setting.
-                    // maxNodeAgeHours of 0 = "never / show all" (#4947): the
-                    // stops then include an unlimited ("All") top; keep it 0 so
-                    // ageFilterStops/formatAgeStop take their unlimited branch.
-                    const maxHours = maxNodeAgeHours <= 0 ? 0 : Math.max(1, Math.round(maxNodeAgeHours));
-                    const stops = ageFilterStops(maxHours);
-                    const topIndex = stops.length - 1;
-                    const currentIndex = !Number.isFinite(effectiveMapMaxAge)
-                      ? topIndex
-                      : nearestAgeStopIndex(stops, Math.max(1, Math.round(effectiveMapMaxAge)));
-                    const label = (idx: number) =>
-                      formatAgeStop(stops[idx], maxHours, t('map.maxAgeAll', 'All'));
-                    return (
-                      <div className="map-control-item" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '0.25rem' }}>
-                        <span>{t('map.maximumAge', 'Maximum age')}</span>
-                        <div className="position-history-slider">
-                          <input
-                            type="range"
-                            min={0}
-                            max={topIndex}
-                            step={1}
-                            value={currentIndex}
-                            aria-label={t('map.maximumAge', 'Maximum age')}
-                            aria-valuemin={0}
-                            aria-valuemax={topIndex}
-                            aria-valuenow={currentIndex}
-                            aria-valuetext={label(currentIndex)}
-                            disabled={topIndex < 1}
-                            onChange={(e) => {
-                              const idx = parseInt(e.target.value, 10);
-                              // Top stop == the setting cap → store null so the map follows the setting.
-                              setMapMaxAgeHours(idx >= topIndex ? null : stops[idx]);
-                            }}
-                          />
-                          <span className="slider-value">{label(currentIndex)}</span>
-                        </div>
-                      </div>
-                    );
-                  })()}
+                      Shared with DashboardMap; can only narrow the Settings
+                      window. */}
+                  <MapAgeFilterControl
+                    maxNodeAgeHours={maxNodeAgeHours}
+                    effectiveMaxAgeHours={effectiveMapMaxAge}
+                    onChange={setMapMaxAgeHours}
+                  />
                   <label className="map-control-item">
                     <input
                       type="checkbox"

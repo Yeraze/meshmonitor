@@ -1177,3 +1177,23 @@ describe('DashboardMap — MQTT-only source bypasses transport filters (#5283)',
     expect(screen.queryAllByTestId('map-marker')).toHaveLength(0);
   });
 });
+
+// #5344: the Map Features age filter is the shared MapAgeFilterControl (also
+// used by NodesTab). The global i18n mock echoes keys, so this pins which
+// label the top ("All") stop picks; en.json wording is covered by
+// MapAgeFilterControl.test.tsx.
+describe('DashboardMap — Map age filter names the Settings window (#5344)', () => {
+  it('reads "All (… from Settings)" at the top stop for a finite Settings window', () => {
+    render(<DashboardMap {...defaultProps} maxNodeAgeHours={24} />);
+    const slider = screen.getByRole('slider', { name: 'map.ageFilter' });
+    expect(slider).toHaveAttribute('aria-valuetext', 'map.ageAllFromSettings');
+    expect(screen.getByTestId('map-age-showing')).toBeInTheDocument();
+    expect(screen.getByText('map.ageFilterHint')).toBeInTheDocument();
+  });
+
+  it('reads "no limit in Settings" when the Settings window is 0 (show all)', () => {
+    render(<DashboardMap {...defaultProps} maxNodeAgeHours={0} />);
+    const slider = screen.getByRole('slider', { name: 'map.ageFilter' });
+    expect(slider).toHaveAttribute('aria-valuetext', 'map.ageAllUnlimited');
+  });
+});
