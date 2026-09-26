@@ -25,7 +25,7 @@ A mountaintop repeater must **not** be treated as an aircraft.
     (NodesTab and DashboardMap), following the `MapAgeFilterControl` shared-component precedent.
 - **Auto-Favorite:** the exclusion is **on by default** whenever Auto-Favorite is on.
   - Likely aircraft are never auto-added.
-  - Auto-added ones are removed at the next sweep.
+  - Auto-added ones are removed after two consecutive sweeps (see Phase 1 refinements).
   - User favourites and locked favourites are never touched.
 - **Automation event:** a "became likely aircraft" trigger, modelled on
   `becameMobile`. It fires once per transition into the likely-aircraft state.
