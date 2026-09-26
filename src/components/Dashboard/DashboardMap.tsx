@@ -372,7 +372,7 @@ export default function DashboardMap({
   // this keeps every downstream 3D GeoJSON input referentially stable (#4794).
   // The age reference advances whenever node polling or a filter setting changes,
   // which is when the visible set can meaningfully change.
-  const { nodesWithPosition, nowMs, cutoffTime } = useMemo(() => {
+  const { nodesWithPosition, nowMs, cutoffTime, aircraftCountOnMap } = useMemo(() => {
     const referenceNowMs = Date.now();
     const ageCutoffTime = referenceNowMs / 1000 - effectiveMaxAge * 60 * 60;
     const infraCutoffTime = referenceNowMs / 1000 - effectiveInfraMaxAge * 60 * 60;
@@ -387,16 +387,23 @@ export default function DashboardMap({
       }
       return n.lastHeard >= ageCutoffTime;
     };
-    const nodesWithTruePos = nodes
+    const eligible = nodes
       .filter((n) => !n.isIgnored)
       .filter((n) => !n.hideFromMap) // #3549: per-node "Hide from Map" suppresses the marker only
-      // Likely-aircraft Hide (#5364/#5365 Phase 1 WP4): suppress the marker,
-      // except a favourite is never hidden by this toggle.
-      .filter((n) => !(aircraftDisplayMode === 'hide' && n.likelyAircraft === true && !n.isFavorite))
       .filter(passesAgeGate)
       .filter((n) => nodePassesTransportFilter(n, { showRfNodes, showUdpNodes, showMqttNodes }, ageCutoffTime))
       .map((n) => ({ node: n, truePos: getNodeLatLng(n) }))
       .filter((e): e is { node: any; truePos: { lat: number; lng: number } } => e.truePos !== null);
+    // Likely-aircraft count for the Map Features hint line (#5364/#5365 Phase 1
+    // WP4): counted BEFORE the Hide filter so the number stays put when the
+    // user toggles Hide, but after every other map filter so it only counts
+    // nodes that would actually be drawn (the age window in particular).
+    const aircraftCount = eligible.filter((e) => e.node.likelyAircraft === true).length;
+    // Likely-aircraft Hide: suppress the marker, except a favourite is never
+    // hidden by this toggle.
+    const nodesWithTruePos = eligible.filter(
+      (e) => !(aircraftDisplayMode === 'hide' && e.node.likelyAircraft === true && !e.node.isFavorite),
+    );
 
     // #4016/#4155: offset obscured low-precision markers within their accuracy cell
     // via the shared occupancy-gated helper — lone nodes stay centered, 2+ same-cell
@@ -415,21 +422,13 @@ export default function DashboardMap({
       { enabled: spreadNodes },
     ).map(({ item: node, latLng }) => ({ node, pos: { lat: latLng[0], lng: latLng[1] } }));
 
-    return { nodesWithPosition: positionedNodes, nowMs: referenceNowMs, cutoffTime: ageCutoffTime };
+    return { nodesWithPosition: positionedNodes, nowMs: referenceNowMs, cutoffTime: ageCutoffTime, aircraftCountOnMap: aircraftCount };
   // `spreadNodes` (#5177) changes every resolved position without changing any
   // node, so it has to be a dependency or toggling it leaves the markers put.
   }, [nodes, effectiveMaxAge, effectiveInfraMaxAge, infraNever, showRfNodes, showUdpNodes, showMqttNodes, spreadNodes, aircraftDisplayMode]);
 
   // Array form of node positions for MapBoundsUpdater (fit bounds).
   const nodePositions: [number, number][] = nodesWithPosition.map((e) => [e.pos.lat, e.pos.lng]);
-
-  // Likely-aircraft count for the Map Features hint line (#5364/#5365 Phase 1
-  // WP4) — counted from the full incoming node set (pre-Hide), matching
-  // NodesTab's "everything classified" semantics.
-  const aircraftCountOnMap = useMemo(
-    () => nodes.filter((n) => n.likelyAircraft === true).length,
-    [nodes],
-  );
 
   // #4704: node markers for the 3D surface — same visible+positioned node list
   // the 2D markers use, mapped to the shape `Base3DMap` expects. Computed
