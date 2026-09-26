@@ -138,6 +138,16 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   // contacts. Build a publicKey -> isFavorite lookup so favorited peers can be
   // pinned to the top of the DM list (issue #3620), mirroring the Meshtastic
   // DM list and the MeshCore node list.
+  // #5390: durable First Heard (epoch ms) lives on the node rows, not the
+  // live contact records, so the detail panel reads it from here.
+  const firstHeardByKey = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const n of nodes) {
+      if (n.publicKey && typeof n.firstHeard === 'number') map.set(n.publicKey, n.firstHeard);
+    }
+    return map;
+  }, [nodes]);
+
   const favoriteByKey = useMemo(() => {
     const map = new Map<string, boolean>();
     for (const n of nodes) {
@@ -578,6 +588,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                   getRemoteStatus: actions.getRemoteStatus,
                 }}
                 receiveOnly={receiveOnly}
+                firstHeard={firstHeardByKey.get(selected)}
               />
               {!!sourceId && typeof baseUrl === 'string' && isRealNodeKey(selected) && (
                 <>

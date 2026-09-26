@@ -99,6 +99,9 @@ interface MeshCoreContactDetailPanelProps {
    *  gating of the six RF buttons on this panel (Reset/Share/Trace/Ping/
    *  Discover path/Neighbours). */
   receiveOnly?: boolean;
+  /** #5390: when this source first heard the node, epoch MILLISECONDS (the
+   *  durable `meshcore_nodes.firstHeard`). Unset hides the row. */
+  firstHeard?: number;
 }
 
 const COLLAPSED_KEY = 'meshcoreContactDetailsCollapsed';
@@ -122,6 +125,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   remoteAdminActions,
   canRemoteAdmin = false,
   receiveOnly = false,
+  firstHeard,
 }) => {
   const { t } = useTranslation();
   const { timeFormat, dateFormat } = useSettings();
@@ -976,6 +980,14 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
             <div className="node-detail-card">
               <div className="node-detail-label">{t('node_details.last_heard', 'Last Heard')}</div>
               <div className="node-detail-value">{formatTimestamp(lastSeen)}</div>
+            </div>
+          )}
+
+          {/* First Heard (#5390) */}
+          {typeof firstHeard === 'number' && (
+            <div className="node-detail-card" data-testid="meshcore-first-heard">
+              <div className="node-detail-label">{t('node_details.first_heard', 'First Heard')}</div>
+              <div className="node-detail-value">{formatTimestamp(firstHeard)}</div>
             </div>
           )}
 

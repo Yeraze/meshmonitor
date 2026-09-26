@@ -311,7 +311,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
                     <div className="node-popup-grid">
                       <MeshCoreDetails model={model} />
                     </div>
-                    <LastHeardFooter lastHeard={model.lastHeard} mode="absolute" timeFormat={timeFormat} dateFormat={dateFormat} />
+                    <LastHeardFooter lastHeard={model.lastHeard} firstHeard={model.firstHeard} mode="absolute" timeFormat={timeFormat} dateFormat={dateFormat} />
                   </>
                 }
                 actions={<NodeActions actions={actions} />}

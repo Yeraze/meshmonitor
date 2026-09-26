@@ -797,6 +797,16 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
             </div>
           )}
 
+          {/* First Heard (#5390) — Unix seconds, like lastHeard */}
+          {typeof node.firstHeard === 'number' && (
+            <div className="node-detail-card" data-testid="node-first-heard">
+              <div className="node-detail-label">{t('node_details.first_heard', 'First Heard')}</div>
+              <div className="node-detail-value">
+                {formatLastHeard(node.firstHeard)}
+              </div>
+            </div>
+          )}
+
           {/* Notes (#3921) — editable when permitted, otherwise read-only */}
           {(canEditNotes && onSaveNotes) ? (
             <div className="node-detail-card node-detail-card-2col node-detail-notes">

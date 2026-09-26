@@ -344,9 +344,23 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
    *  the map's centering / polar-grid origin never loses the local node.
    *  Uses `isLocal` (#4438), not the `(local)` naming convention. */
   const visibleKeys = useMemo(() => new Set(aged.map(r => r.publicKey)), [aged]);
+  // #5390: First Heard lives on the durable node rows, not the live contact
+  // records — copy it across so the map popup can show it.
+  const firstHeardByKey = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const n of nodes) {
+      if (n.publicKey && typeof n.firstHeard === 'number') map.set(n.publicKey, n.firstHeard);
+    }
+    return map;
+  }, [nodes]);
   const visibleContacts = useMemo(
-    () => contacts.filter(c => visibleKeys.has(c.publicKey) || c.isLocal === true),
-    [contacts, visibleKeys],
+    () => contacts
+      .filter(c => visibleKeys.has(c.publicKey) || c.isLocal === true)
+      .map(c => {
+        const firstHeard = firstHeardByKey.get(c.publicKey);
+        return firstHeard !== undefined && c.firstHeard === undefined ? { ...c, firstHeard } : c;
+      }),
+    [contacts, visibleKeys, firstHeardByKey],
   );
 
   const mobileClass = mobileShowContent ? 'mobile-show-content' : 'mobile-show-list';

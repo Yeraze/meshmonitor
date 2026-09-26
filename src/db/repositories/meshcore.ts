@@ -10,6 +10,7 @@ import { DatabaseType } from '../types.js';
 import { shouldDiscardPosition } from '../../utils/nullIsland.js';
 import { getDiscardInvalidPositions } from '../../utils/positionIngestConfig.js';
 import { isFutureDriftedMeshCoreTimeMs } from '../../utils/meshcoreTimestamp.js';
+import { resolveFirstHeard } from '../../utils/firstHeard.js';
 
 /**
  * meshcore_nodes columns where an incoming `null` in upsertNode means "clear
@@ -48,6 +49,8 @@ export interface DbMeshCoreNode {
   rssi?: number | null;
   snr?: number | null;
   lastHeard?: number | null;
+  /** #5390: earliest reception on this source, epoch MILLISECONDS (like lastHeard). Set once. */
+  firstHeard?: number | null;
   hasAdminAccess?: boolean | null;
   lastAdminCheck?: number | null;
   isLocalNode?: boolean | null;
@@ -480,6 +483,13 @@ export class MeshCoreRepository extends BaseRepository {
       // sender RTC wrote year 2087 here before ingest checked it, and "only
       // forward" would then freeze that value until 2087. Any real
       // observation replaces it.
+      // #5390: `firstHeard` is stamped once and never overwritten. Resolve
+      // it before the forward-only guard below drops a stale lastHeard: an
+      // older reading is still evidence of an earlier reception.
+      delete updateSet.firstHeard;
+      const firstHeard = resolveFirstHeard(existing.firstHeard, existing.lastHeard, effectiveNode.lastHeard, 'ms', now);
+      if (firstHeard !== undefined) updateSet.firstHeard = firstHeard;
+
       if (
         typeof updateSet.lastHeard === 'number' &&
         typeof existing.lastHeard === 'number' &&
@@ -497,6 +507,8 @@ export class MeshCoreRepository extends BaseRepository {
         .insert(meshcoreNodes)
         .values({
           ...node,
+          // #5390: first reception, epoch ms; null until a plausible lastHeard.
+          firstHeard: resolveFirstHeard(null, null, node.lastHeard, 'ms', now) ?? null,
           sourceId,
           createdAt: now,
           updatedAt: now,

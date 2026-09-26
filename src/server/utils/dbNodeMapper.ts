@@ -43,6 +43,8 @@ export function mapDbNodeToDeviceInfo(
       noiseFloor,
     },
     lastHeard: node.lastHeard,
+    // #5390: Unix seconds, like lastHeard. null = never stamped (unknown).
+    firstHeard: node.firstHeard != null ? Number(node.firstHeard) : undefined,
     snr: node.snr,
     rssi: node.rssi,
   };

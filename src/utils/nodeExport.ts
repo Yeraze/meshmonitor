@@ -49,6 +49,7 @@ export interface NodeExportRow {
   latitude: string;
   longitude: string;
   lastHeard: string;
+  firstHeard: string;
 }
 
 /** Ordered column definitions shared by CSV and HTML output. */
@@ -68,6 +69,7 @@ export const NODE_EXPORT_COLUMNS: { key: keyof NodeExportRow; label: string }[] 
   { key: 'latitude', label: 'Latitude' },
   { key: 'longitude', label: 'Longitude' },
   { key: 'lastHeard', label: 'Last Heard' },
+  { key: 'firstHeard', label: 'First Heard' },
 ];
 
 /** Format a node number as a Meshtastic hex id (e.g. !a1b2c3d4). */
@@ -116,6 +118,8 @@ export function buildNodeExportRows(
       latitude: pos.latitude != null ? pos.latitude.toFixed(6) : '',
       longitude: pos.longitude != null ? pos.longitude.toFixed(6) : '',
       lastHeard: node.lastHeard ? formatLastHeard(node.lastHeard) : '',
+      // #5390: Unix seconds, same formatter as lastHeard. Empty = unknown.
+      firstHeard: node.firstHeard ? formatLastHeard(node.firstHeard) : '',
     };
   });
 }

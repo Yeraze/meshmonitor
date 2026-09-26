@@ -37,6 +37,11 @@ export interface MeshCoreContact {
    * query, or message it until it is added. `undefined` = unknown.
    */
   onDevice?: boolean;
+  /**
+   * #5390: when this source first heard the node, epoch MILLISECONDS. Not on
+   * the wire contact record; views copy it in from the durable node row.
+   */
+  firstHeard?: number;
 }
 
 /**

@@ -140,6 +140,8 @@ export interface DbNode {
   channelUtilization?: number;
   airUtilTx?: number;
   lastHeard?: number;
+  /** #5390: earliest reception on this source, Unix SECONDS. Set once. */
+  firstHeard?: number;
   snr?: number;
   rssi?: number;
   lastTracerouteRequest?: number;

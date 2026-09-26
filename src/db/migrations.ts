@@ -196,6 +196,7 @@ import { migration as resetPostgresSequencesMigration, runMigration174Postgres, 
 import { migration as addNodeAircraftClassificationMigration, runMigration175Postgres, runMigration175Mysql } from '../server/migrations/175_add_node_aircraft_classification.js';
 import { migration as userMapPreferencesAircraftDisplayModeMigration, runMigration176Postgres, runMigration176Mysql } from '../server/migrations/176_user_map_preferences_aircraft_display_mode.js';
 import { migration as addNodeAircraftAgeOutMigration, runMigration177Postgres, runMigration177Mysql } from '../server/migrations/177_add_node_aircraft_ageout.js';
+import { migration as addNodeFirstHeardMigration, runMigration178Postgres, runMigration178Mysql } from '../server/migrations/178_add_node_first_heard.js';
 
 // ============================================================================
 // Registry
@@ -2873,4 +2874,19 @@ registry.register({
   sqlite: (db) => addNodeAircraftAgeOutMigration.up(db),
   postgres: (client) => runMigration177Postgres(client),
   mysql: (pool) => runMigration177Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 178: `firstHeard` on `nodes` (Unix seconds) and `meshcore_nodes`
+// (epoch ms) (#5390). Per-source, set once by the repositories; backfilled from
+// the earlier of createdAt / lastHeard for rows that have been heard.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 178,
+  name: 'add_node_first_heard',
+  settingsKey: 'migration_178_add_node_first_heard',
+  sqlite: (db) => addNodeFirstHeardMigration.up(db),
+  postgres: (client) => runMigration178Postgres(client),
+  mysql: (pool) => runMigration178Mysql(pool),
 });

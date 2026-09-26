@@ -190,6 +190,13 @@ describe('toNodeCardModel — meshcore', () => {
     expect(model.meshcore?.outPath).toBeUndefined();
   });
 
+  it('normalizes firstHeard (#5390) from epoch ms to seconds on both variants', () => {
+    expect(toNodeCardModel({ publicKey: 'k', firstHeard: 1_700_000_000_999 }, 'meshcore').firstHeard).toBe(1_700_000_000);
+    expect(toNodeCardModel({ publicKey: 'k' }, 'meshcore').firstHeard).toBeNull();
+    const mt = toNodeCardModel({ nodeNum: 1, user: { id: '!00000001' }, firstHeard: 1_700_000_000 }, 'meshtastic');
+    expect(mt.firstHeard).toBe(1_700_000_000);
+  });
+
   it('has no meshtastic-only fields set', () => {
     const model = toNodeCardModel({ publicKey: 'k', advName: 'Bob' }, 'meshcore');
     expect(model.hops).toBeUndefined();
