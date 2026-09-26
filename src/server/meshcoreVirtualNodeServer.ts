@@ -1087,7 +1087,9 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
       if (unsupported.length > 0) {
         throw new VnCommandError(ErrorCodes.UnsupportedCmd, `${unsupported.join(' + ')} edits are not relayed`);
       }
-      // Nothing changed: a real node would rewrite the same record and ack.
+      // No relayable edit: name, favourite and route match what we advertised.
+      // Differences in type / coords / advert time are app echoes we ignore on
+      // purpose (see above), so ack as a real node would for an identical record.
       return Promise.resolve(true);
     }
     if (unsupported.length > 0) {
