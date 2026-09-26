@@ -318,6 +318,26 @@ describe('DatabaseService - Phase 6 Per-Source Isolation (composite PK)', async 
       const node = await dbService.nodes.getNode(9005, SOURCE_A);
       expect((node as any).isIgnored).toBeFalsy();
     });
+
+    // #5364/#5365 Phase 2: the aged-out mark means "ignored by the age-out
+    // sweep". A hand un-ignore keeps it (so the sweep won't re-ignore during
+    // the same silence); a hand ignore drops it, so the map's "Show aged-out"
+    // never mistakes a manual ignore for an aged-out aircraft.
+    it('hand un-ignore keeps the aircraft aged-out mark; hand ignore clears it', async () => {
+      insertNode(dbService.db, 9006, '!0000232e', 'plane', SOURCE_A, {});
+      await dbService.addAircraftIgnoreAsync(9006, SOURCE_A, '!0000232e', 'plane', 'PLN');
+      await dbService.markAircraftAgedOutAsync(9006, SOURCE_A, 1_800_000_000_000);
+
+      await dbService.setNodeIgnoredAsync(9006, false, SOURCE_A);
+      let node = await dbService.nodes.getNode(9006, SOURCE_A);
+      expect((node as any).isIgnored).toBeFalsy();
+      expect(Number((node as any).aircraftAgedOutAt)).toBe(1_800_000_000_000);
+
+      await dbService.setNodeIgnoredAsync(9006, true, SOURCE_A);
+      node = await dbService.nodes.getNode(9006, SOURCE_A);
+      expect((node as any).isIgnored).toBeTruthy();
+      expect((node as any).aircraftAgedOutAt ?? null).toBeNull();
+    });
   });
 
   describe('Migration 029 round-trip', async () => {

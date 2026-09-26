@@ -68,8 +68,8 @@ describe('NODE_DISPLAY_SETTING_KEYS (seeded + aircraft)', () => {
     ]);
   });
 
-  it('has exactly thirteen entries with no duplicates', () => {
-    expect(NODE_DISPLAY_SETTING_KEYS.length).toBe(13);
+  it('has exactly sixteen entries with no duplicates', () => {
+    expect(NODE_DISPLAY_SETTING_KEYS.length).toBe(16);
     expect(new Set(NODE_DISPLAY_SETTING_KEYS).size).toBe(NODE_DISPLAY_SETTING_KEYS.length);
   });
 
@@ -242,8 +242,8 @@ describe('TX-target window when maxNodeAgeHours is 0 (#5376)', () => {
   it('SETTINGS_TAB_PER_SOURCE_KEYS = the Node Display keys plus the TX-target window', () => {
     expect(SETTINGS_TAB_PER_SOURCE_KEYS).toEqual([...NODE_DISPLAY_SETTING_KEYS, 'txTargetMaxAgeHoursWhenUnlimited']);
     // The frozen ten stay ten (migration 131 seed parity); the three
-    // likely-aircraft keys (#5364/#5365) ride on top of them.
+    // likely-aircraft keys (#5364/#5365) ride on top of them (3 in P1, 3 in P2).
     expect(NODE_DISPLAY_SEEDED_KEYS).toHaveLength(10);
-    expect(NODE_DISPLAY_SETTING_KEYS).toHaveLength(13);
+    expect(NODE_DISPLAY_SETTING_KEYS).toHaveLength(16);
   });
 });

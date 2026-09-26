@@ -7,6 +7,7 @@ import {
   DEFAULT_AIRCRAFT_DISPLAY_MODE,
   type AircraftDisplayMode,
 } from '../utils/aircraftClassification';
+import { readShowAgedOutAircraft, writeShowAgedOutAircraft } from '../components/map/agedOutAircraft';
 
 export interface PositionHistoryItem {
   latitude: number;
@@ -82,6 +83,13 @@ interface MapContextType {
    */
   aircraftDisplayMode: AircraftDisplayMode;
   setAircraftDisplayMode: (mode: AircraftDisplayMode) => void;
+  /**
+   * "Show aged-out" (#5364/#5365 Phase 2): draw likely aircraft the age-out
+   * sweep ignored (`isIgnored && aircraftAgedOutAt != null`), dimmed. Per
+   * viewer, localStorage only.
+   */
+  showAgedOutAircraft: boolean;
+  setShowAgedOutAircraft: (value: boolean) => void;
   /**
    * A "centre the map on this node" request, by nodeNum (#5177). Distinct from
    * `mapCenterTarget`, which is a raw lat/lng: a low-precision node's MARKER is
@@ -180,6 +188,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
       return DEFAULT_AIRCRAFT_DISPLAY_MODE;
     }
   });
+  // #5364/#5365 Phase 2: per-viewer "Show aged-out" map toggle (localStorage only).
+  const [showAgedOutAircraft, setShowAgedOutAircraftState] = useState<boolean>(readShowAgedOutAircraft);
   // #5177: transient (not persisted) cross-tab centre-on-node request.
   const [pendingCenterNodeNum, setPendingCenterNodeNum] = useState<number | null>(null);
   const [showMeshCoreNodes, setShowMeshCoreNodesState] = useState<boolean>(true);
@@ -283,6 +293,11 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     }
     void savePreferenceToServer({ aircraftDisplayMode: value });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- #5365 same temporal-dead-zone reason as the sibling setters: `savePreferenceToServer` is declared below this callback
+  }, []);
+
+  const setShowAgedOutAircraft = React.useCallback((value: boolean) => {
+    setShowAgedOutAircraftState(value);
+    writeShowAgedOutAircraft(value);
   }, []);
 
   const setShowRfNodes = React.useCallback((value: boolean) => {
@@ -575,6 +590,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     setMapMaxAgeHours,
     aircraftDisplayMode,
     setAircraftDisplayMode,
+    showAgedOutAircraft,
+    setShowAgedOutAircraft,
   }), [
     showPaths, setShowPaths,
     showNeighborInfo, setShowNeighborInfo,
@@ -606,6 +623,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     positionHistoryHours, setPositionHistoryHours,
     mapMaxAgeHours, setMapMaxAgeHours,
     aircraftDisplayMode, setAircraftDisplayMode,
+    showAgedOutAircraft, setShowAgedOutAircraft,
   ]);
 
   return (

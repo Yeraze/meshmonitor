@@ -234,6 +234,11 @@ export const VALID_SETTINGS_KEYS = [
   'aircraftDetectionEnabled',
   'aircraftAglThresholdMeters',
   'aircraftMslThresholdMeters',
+  // Aircraft age-out (#5364/#5365 Phase 2). LastRunAt/LastResult are
+  // server-written and live only in PER_SOURCE_SETTINGS_KEYS.
+  'aircraftAgeOutEnabled',
+  'aircraftAgeOutHours',
+  'aircraftAgeOutAction',
   // Auto-Favorite exclusion for likely aircraft (#5364/#5365 D14), Automation
   // -> Auto Favorite section.
   'autoFavoriteExcludeAircraft',
@@ -507,6 +512,13 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'aircraftDetectionEnabled',
   'aircraftAglThresholdMeters',
   'aircraftMslThresholdMeters',
+  // Aircraft age-out (#5364/#5365 Phase 2). The last two are written only by
+  // aircraftAgeOutService (PER_SOURCE_KEYS_NOT_POSTABLE).
+  'aircraftAgeOutEnabled',
+  'aircraftAgeOutHours',
+  'aircraftAgeOutAction',
+  'aircraftAgeOutLastRunAt',
+  'aircraftAgeOutLastResult',
   // Auto-heap-management
   'autoHeapManagementEnabled',
   'autoHeapManagementThresholdBytes',
@@ -812,6 +824,8 @@ export const PER_SOURCE_KEYS_NOT_POSTABLE = new Set<string>([
   'transportTrafficCheckpoint', // transportTrafficService.ts checkpointAll/restoreAndRecover (#5101 P3 WP3)
   'meshcoreLastFloodAdvertAt', // meshcoreManager.ts recordFloodAdvert (automated flood-advert floor)
   'autoFavoriteAircraftStrikes', // favoritesService.ts autoFavoriteSweep (#5364/#5365 D19 two-strike rule)
+  'aircraftAgeOutLastRunAt',  // aircraftAgeOutService.ts runSweep (#5364/#5365 Phase 2; persisted so a restart is not a run)
+  'aircraftAgeOutLastResult', // aircraftAgeOutService.ts runSweep (#5364/#5365 Phase 2; JSON counts for the settings status line)
 ]);
 
 /**

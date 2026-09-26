@@ -48,6 +48,12 @@ export const AIRCRAFT_NODE_DISPLAY_KEYS = [
   'aircraftDetectionEnabled',
   'aircraftAglThresholdMeters',
   'aircraftMslThresholdMeters',
+  // Phase 2 age-out (#5364/#5365). The server-written
+  // `aircraftAgeOutLastRunAt`/`aircraftAgeOutLastResult` are NOT here: they
+  // are read-only status, never posted from the form.
+  'aircraftAgeOutEnabled',
+  'aircraftAgeOutHours',
+  'aircraftAgeOutAction',
 ] as const;
 export type AircraftNodeDisplayKey = typeof AIRCRAFT_NODE_DISPLAY_KEYS[number];
 

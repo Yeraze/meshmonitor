@@ -132,6 +132,13 @@ export interface DbNode {
   heightAboveGround?: number | null;
   /** Epoch ms of the last classification write; the backfill key. */
   aircraftClassifiedAt?: number | null;
+  /** Epoch ms the age-out sweep ignored this node (#5364/#5365 Phase 2); null when not aged out. */
+  aircraftAgedOutAt?: number | null;
+  /** Epoch ms the "confirmed fixed" rule fired (Phase 2 D4); null when not marked. */
+  aircraftFixedAt?: number | null;
+  /** Anchor of the fixed mark; null when not marked. */
+  aircraftFixedLatitude?: number | null;
+  aircraftFixedLongitude?: number | null;
   createdAt: number;
   updatedAt: number;
 }

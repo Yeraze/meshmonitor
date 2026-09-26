@@ -45,6 +45,7 @@ import { nodePassesTransportFilter, transportCutoffSec, isMqttOnlySourceType } f
 import { logger } from '../utils/logger';
 import { favoritePendingKey, pendingFavoriteRequests } from '../utils/pendingToggles';
 import { isTxDisabledBody } from '../utils/txDisabled';
+import { isAgedOutAircraft } from '../components/map/agedOutAircraft';
 
 export interface UseSourceViewParams {
   /** The deployment base path — App passes `appBasename` (#3962 5.4 PR8
@@ -355,7 +356,13 @@ export function useSourceView(params: UseSourceViewParams) {
   );
 
   // Get processed (filtered and sorted) nodes
-  const processedNodes = useMemo((): DeviceInfo[] => {
+  // #5364/#5365 Phase 2: `agedOutAircraftNodes` is the set the NodesTab map
+  // adds when "Show aged-out" is on — ignored-by-age-out aircraft that pass
+  // every OTHER filter here, so the map and its "N aged out" hint agree.
+  const { processedNodes, agedOutAircraftNodes } = useMemo((): {
+    processedNodes: DeviceInfo[];
+    agedOutAircraftNodes: DeviceInfo[];
+  } => {
     const cutoffTime = Date.now() / 1000 - maxNodeAgeHours * 60 * 60;
 
     // maxNodeAgeHours of 0 = "never / show all" (#4947). Keep this
@@ -377,7 +384,7 @@ export function useSourceView(params: UseSourceViewParams) {
     const textFiltered = activeTab === 'nodes' ? filterNodes(ageFiltered, nodesNodeFilter) : ageFiltered;
 
     // Apply advanced filters
-    const advancedFiltered = textFiltered.filter(node => {
+    const passesAdvancedFilters = (node: DeviceInfo, allowAgedOut: boolean): boolean => {
       const nodeId = node.user?.id;
       const isShowMode = nodeFilters.filterMode === 'show';
 
@@ -461,7 +468,9 @@ export function useSourceView(params: UseSourceViewParams) {
       // Ignored nodes filter - hide ignored nodes by default
       // When showIgnored is false (default): hide ignored nodes
       // When showIgnored is true: show ignored nodes
-      if (!nodeFilters.showIgnored && node.isIgnored) {
+      // #5364/#5365 Phase 2: `allowAgedOut` lets an aged-out aircraft through
+      // for the map-only "Show aged-out" list; manual/geo ignores never pass.
+      if (!nodeFilters.showIgnored && node.isIgnored && !(allowAgedOut && isAgedOutAircraft(node))) {
         return false;
       }
 
@@ -489,7 +498,17 @@ export function useSourceView(params: UseSourceViewParams) {
       }
 
       return true;
-    });
+    };
+    const advancedFiltered = textFiltered.filter(node => passesAdvancedFilters(node, false));
+
+    // Aged-out aircraft skip the age window (they are older than it by
+    // definition) but pass the text and advanced filters like any other node.
+    // Nodes already in the list (showIgnored on, still inside the window) are
+    // not repeated.
+    const inList = new Set(advancedFiltered.map(node => node.nodeNum));
+    const agedOutCandidates = nodes.filter(node => isAgedOutAircraft(node) && !inList.has(node.nodeNum));
+    const agedOutText = activeTab === 'nodes' ? filterNodes(agedOutCandidates, nodesNodeFilter) : agedOutCandidates;
+    const agedOut = agedOutText.filter(node => passesAdvancedFilters(node, true));
 
     // Separate favorites from non-favorites
     const favorites = advancedFiltered.filter(node => node.isFavorite);
@@ -500,7 +519,10 @@ export function useSourceView(params: UseSourceViewParams) {
     const sortedNonFavorites = sortNodes(nonFavorites, sortField, sortDirection);
 
     // Concatenate: favorites first, then non-favorites
-    return [...sortedFavorites, ...sortedNonFavorites];
+    return {
+      processedNodes: [...sortedFavorites, ...sortedNonFavorites],
+      agedOutAircraftNodes: agedOut,
+    };
   }, [
     nodes,
     maxNodeAgeHours,
@@ -762,6 +784,7 @@ export function useSourceView(params: UseSourceViewParams) {
 
   return {
     processedNodes,
+    agedOutAircraftNodes,
     shouldShowData,
     centerMapOnNode,
     toggleFavorite,

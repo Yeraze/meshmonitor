@@ -32,6 +32,15 @@ div.control {
   color: var(--color-text);
 }
 
+.control .agedOutOption {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--color-text);
+}
+
 .control .hint {
   font-size: 0.75rem;
   font-weight: 400;

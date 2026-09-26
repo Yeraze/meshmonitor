@@ -34,6 +34,7 @@ import {
   SettingsRepository,
   ChannelsRepository,
   NodesRepository,
+  type AircraftAgeOutCandidate,
   MessagesRepository,
   TelemetryRepository,
   AuthRepository,
@@ -191,6 +192,13 @@ export interface DbNode {
   heightAboveGround?: number | null;
   /** Epoch ms of the last classification write; the backfill key. */
   aircraftClassifiedAt?: number | null;
+  /** Epoch ms the age-out sweep ignored this node (#5364/#5365 Phase 2); null when not aged out. */
+  aircraftAgedOutAt?: number | null;
+  /** Epoch ms the "confirmed fixed" rule fired (Phase 2 D4); null when not marked. */
+  aircraftFixedAt?: number | null;
+  /** Anchor of the fixed mark; null when not marked. */
+  aircraftFixedLatitude?: number | null;
+  aircraftFixedLongitude?: number | null;
   // Remote admin discovery (Migration 055)
   hasRemoteAdmin?: boolean; // Has remote admin access
   lastRemoteAdminCheck?: number; // Unix timestamp ms of last check
@@ -5708,6 +5716,46 @@ class DatabaseService {
   }
 
 
+  // ============ Aircraft age-out + fixed mark (#5364/#5365 Phase 2) ============
+
+  async markAircraftAgedOutAsync(nodeNum: number, sourceId: string, atMs: number): Promise<void> {
+    return this.nodes.markAircraftAgedOut(nodeNum, sourceId, atMs);
+  }
+
+  async clearAircraftAgedOutAsync(nodeNum: number, sourceId: string): Promise<void> {
+    return this.nodes.clearAircraftAgedOut(nodeNum, sourceId);
+  }
+
+  async setAircraftFixedAsync(
+    nodeNum: number,
+    sourceId: string,
+    fixed: { atMs: number; lat: number; lon: number } | null,
+  ): Promise<void> {
+    return this.nodes.setAircraftFixed(nodeNum, sourceId, fixed);
+  }
+
+  async listAircraftAgeOutCandidatesAsync(sourceId: string): Promise<AircraftAgeOutCandidate[]> {
+    return this.nodes.listAircraftAgeOutCandidates(sourceId);
+  }
+
+  async getAircraftAgedOutAtAsync(nodeNum: number, sourceId: string): Promise<number | null> {
+    return this.nodes.getAircraftAgedOutAt(nodeNum, sourceId);
+  }
+
+  async addAircraftIgnoreAsync(
+    nodeNum: number,
+    sourceId: string,
+    nodeId: string,
+    longName?: string,
+    shortName?: string,
+  ): Promise<boolean> {
+    return this.ignoredNodes.addAircraftIgnoreAsync(nodeNum, sourceId, nodeId, longName, shortName);
+  }
+
+  async liftAircraftIgnoreAsync(nodeNum: number, sourceId: string): Promise<boolean> {
+    return this.ignoredNodes.liftAircraftIgnoreAsync(nodeNum, sourceId);
+  }
+
   async setNodeIgnoredAsync(nodeNum: number, isIgnored: boolean, sourceId: string): Promise<void> {
     // Get the node info for the persistent ignore list
     const node = await this.nodes.getNode(nodeNum, sourceId) as unknown as DbNode | null;
@@ -5724,6 +5772,16 @@ class DatabaseService {
 
     // Update the node row (isIgnored flag) + in-memory cache for all dialects.
     await this.nodes.setNodeIgnored(nodeNum, isIgnored, sourceId);
+
+    // #5364/#5365 Phase 2: a hand un-ignore KEEPS the "aged out" mark. With
+    // isIgnored false the map no longer draws the node as aged out, and the
+    // sweep reads the mark as "already aged out during this silence", so it
+    // won't re-ignore the node an hour later. The mark stops counting once
+    // the node is heard again (lastHeard moves past it). A hand IGNORE drops
+    // the mark: the node is now a manual ignore, not an aged-out aircraft.
+    if (isIgnored) {
+      await this.nodes.clearAircraftAgedOutMark(nodeNum, sourceId);
+    }
 
     logger.debug(`${isIgnored ? '🚫' : '✅'} Node ${nodeNum}@${sourceId} ignored status set to: ${isIgnored}`);
   }

@@ -132,6 +132,10 @@ describe('NodeCacheService', () => {
           groundElevation: 200,
           heightAboveGround: 3000,
           aircraftClassifiedAt: 1_700_000_000_000,
+          aircraftAgedOutAt: 1_700_000_001_000,
+          aircraftFixedAt: 1_700_000_002_000,
+          aircraftFixedLatitude: 40.5,
+          aircraftFixedLongitude: -105.25,
           sourceId: 'src-a',
           createdAt: 1,
           updatedAt: 2,
@@ -143,6 +147,11 @@ describe('NodeCacheService', () => {
       expect(converted.groundElevation).toBe(200);
       expect(converted.heightAboveGround).toBe(3000);
       expect(converted.aircraftClassifiedAt).toBe(1_700_000_000_000);
+      // #5364/#5365 Phase 2.
+      expect(converted.aircraftAgedOutAt).toBe(1_700_000_001_000);
+      expect(converted.aircraftFixedAt).toBe(1_700_000_002_000);
+      expect(converted.aircraftFixedLatitude).toBe(40.5);
+      expect(converted.aircraftFixedLongitude).toBe(-105.25);
     });
 
     it('converts a null classification to undefined (never classified)', () => {

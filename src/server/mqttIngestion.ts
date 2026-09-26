@@ -17,7 +17,7 @@ import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { sendMessagePushNotification } from './services/messagePushNotifier.js';
 import mqttPacketLogService from './services/mqttPacketLogService.js';
 import { autoDeleteByDistanceService } from './services/autoDeleteByDistanceService.js';
-import { aircraftClassificationService } from './services/aircraftClassificationService.js';
+import { aircraftAgeOutService } from './services/aircraftAgeOutService.js';
 import databaseService from '../services/database.js';
 import { isBlankMacAddr } from '../utils/nodeFieldBlanks.js';
 
@@ -530,8 +530,12 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
         // Likely-aircraft classification (#5364/#5365): non-throwing,
         // coalescing queue — see aircraftClassificationService.ts. Only for a
         // trustworthy fix with an altitude to classify.
-        if (!positionIsBogus && typeof alt === 'number') {
-          aircraftClassificationService.schedule(sourceId, fromNum);
+        const hasAlt = !positionIsBogus && typeof alt === 'number';
+        // Phase 2 D3: a LIVE, trustworthy fix lifts an aged-out aircraft's
+        // DB-only ignore (retained/replayed frames never count), then queues
+        // the classification only when there is an altitude, as before.
+        if (!positionIsBogus) {
+          aircraftAgeOutService.handlePositionReception(sourceId, fromNum, packet.rxTime, Date.now(), { classify: hasAlt });
         }
       }).catch(err => logger.error('MQTT upsertNode failed:', err));
       return { ingested: true, portnum };

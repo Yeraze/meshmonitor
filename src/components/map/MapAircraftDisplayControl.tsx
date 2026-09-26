@@ -11,6 +11,9 @@
  *  - 'mark'  — badge on the marker (default).
  *  - 'hide'  — marker suppressed, EXCEPT for favourites (a user's own
  *              favourite is never hidden by this toggle).
+ *
+ * Phase 2 adds a "Show aged-out" checkbox: aircraft the age-out sweep ignored
+ * are drawn dimmed, with the badge, even in 'show' or 'hide' mode.
  */
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
@@ -23,12 +26,24 @@ interface MapAircraftDisplayControlProps {
   onChange: (mode: AircraftDisplayMode) => void;
   /** Count of likely-aircraft nodes in the current (pre-hide) set, for the hint line. */
   aircraftCount?: number;
+  /**
+   * "Show aged-out" checkbox (#5364/#5365 Phase 2). Rendered only when
+   * `onShowAgedOutChange` is given. When on, likely aircraft the age-out sweep
+   * ignored are drawn dimmed despite the ignored filter.
+   */
+  showAgedOut?: boolean;
+  onShowAgedOutChange?: (value: boolean) => void;
+  /** Aged-out aircraft the map would draw with the checkbox on (same filtered set). */
+  agedOutCount?: number;
 }
 
 export default function MapAircraftDisplayControl({
   mode,
   onChange,
   aircraftCount,
+  showAgedOut = false,
+  onShowAgedOutChange,
+  agedOutCount,
 }: MapAircraftDisplayControlProps) {
   const { t } = useTranslation();
   const title = t('map.aircraftDisplay', { defaultValue: 'Likely aircraft' });
@@ -63,12 +78,25 @@ export default function MapAircraftDisplayControl({
           </label>
         ))}
       </div>
+      {onShowAgedOutChange && (
+        <label className={styles.agedOutOption} data-testid="map-aircraft-show-aged-out">
+          <input
+            type="checkbox"
+            checked={showAgedOut}
+            onChange={(e) => onShowAgedOutChange(e.target.checked)}
+          />
+          <span>{t('map.aircraftShowAgedOut', { defaultValue: 'Show aged-out' })}</span>
+        </label>
+      )}
       <span className={styles.hint}>
         {t('map.aircraftHint', {
           defaultValue: "Flagged when a node is more than the source's threshold above the terrain.",
         })}
         {aircraftCount != null
           ? ` ${t('map.aircraftCount', { count: aircraftCount, defaultValue: '{{count}} on the map.' })}`
+          : ''}
+        {onShowAgedOutChange && agedOutCount != null
+          ? ` ${t('map.aircraftAgedOutCount', { count: agedOutCount, defaultValue: '{{count}} aged out.' })}`
           : ''}
       </span>
     </div>

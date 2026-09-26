@@ -324,7 +324,11 @@ function mergeNodeRecords(records: any[]): any {
         k === 'likelyAircraft' ||
         k === 'aircraftBasis' ||
         k === 'groundElevation' ||
-        k === 'heightAboveGround'
+        k === 'heightAboveGround' ||
+        // Phase 2 (#5364/#5365): the age-out and fixed marks belong to the
+        // same classification, so they come from the same record too.
+        k === 'aircraftAgedOutAt' ||
+        k === 'aircraftFixedAt'
       ) {
         continue;
       }
@@ -401,6 +405,8 @@ function mergeNodeRecords(records: any[]): any {
     merged.aircraftBasis = withPosition.aircraftBasis ?? null;
     merged.groundElevation = withPosition.groundElevation ?? null;
     merged.heightAboveGround = withPosition.heightAboveGround ?? null;
+    merged.aircraftAgedOutAt = withPosition.aircraftAgedOutAt ?? null;
+    merged.aircraftFixedAt = withPosition.aircraftFixedAt ?? null;
   }
 
   merged.lastHeard = sortedNewestFirst.reduce(

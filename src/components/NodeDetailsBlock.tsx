@@ -598,6 +598,22 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
           </div>
         )}
 
+        {/* Aircraft age-out / fixed marks (#5364/#5365 Phase 2) */}
+        {node.isIgnored && node.aircraftAgedOutAt != null && (
+          <div className="node-detail-card" data-testid="node-details-aircraft-aged-out">
+            <div className="node-detail-label">
+              <UiIcon name="aircraft" size={14} /> {t('node_popup.aircraft_aged_out', 'Aged out (likely aircraft)')}
+            </div>
+          </div>
+        )}
+        {node.aircraftFixedAt != null && (
+          <div className="node-detail-card" data-testid="node-details-aircraft-fixed">
+            <div className="node-detail-label">
+              <UiIcon name="aircraft" size={14} /> {t('node_popup.aircraft_fixed', 'Reclassified as fixed')}
+            </div>
+          </div>
+        )}
+
         {/* Channel */}
         {node.channel !== undefined && (
           <div className="node-detail-card">

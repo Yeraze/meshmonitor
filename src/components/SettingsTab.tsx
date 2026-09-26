@@ -66,7 +66,16 @@ import {
   AIRCRAFT_MSL_RANGE,
   DEFAULT_AIRCRAFT_AGL_THRESHOLD_M,
   DEFAULT_AIRCRAFT_MSL_THRESHOLD_M,
+  parseAircraftAgeOutSettings,
+  parseAircraftAgeOutLastResult,
+  isAircraftAgeOutAction,
+  AIRCRAFT_AGE_OUT_HOURS_DEFAULT,
+  AIRCRAFT_AGE_OUT_HOURS_RANGE,
+  DEFAULT_AIRCRAFT_AGE_OUT_ACTION,
+  type AircraftAgeOutAction,
+  type AircraftAgeOutLastResult,
 } from '../utils/aircraftClassification';
+import { formatDateTime } from '../utils/datetime';
 
 type DistanceUnit = 'km' | 'mi';
 type PositionHistoryLineStyle = 'linear' | 'spline';
@@ -143,6 +152,10 @@ interface SettingsDraft {
   aircraftDetectionEnabled: boolean;
   aircraftAglThresholdMeters: number;
   aircraftMslThresholdMeters: number;
+  // Aircraft age-out (#5364/#5365 Phase 2) — same per-source routing.
+  aircraftAgeOutEnabled: boolean;
+  aircraftAgeOutHours: number;
+  aircraftAgeOutAction: AircraftAgeOutAction;
   solarMonitoringEnabled: boolean;
   solarMonitoringLatitude: number;
   solarMonitoringLongitude: number;
@@ -464,6 +477,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     aircraftDetectionEnabled: true,
     aircraftAglThresholdMeters: DEFAULT_AIRCRAFT_AGL_THRESHOLD_M,
     aircraftMslThresholdMeters: DEFAULT_AIRCRAFT_MSL_THRESHOLD_M,
+    aircraftAgeOutEnabled: false,
+    aircraftAgeOutHours: AIRCRAFT_AGE_OUT_HOURS_DEFAULT,
+    aircraftAgeOutAction: DEFAULT_AIRCRAFT_AGE_OUT_ACTION,
     solarMonitoringEnabled,
     solarMonitoringLatitude,
     solarMonitoringLongitude,
@@ -532,6 +548,15 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [initialAircraftDetectionEnabled, setInitialAircraftDetectionEnabled] = useState(true);
   const [initialAircraftAglThresholdMeters, setInitialAircraftAglThresholdMeters] = useState(DEFAULT_AIRCRAFT_AGL_THRESHOLD_M);
   const [initialAircraftMslThresholdMeters, setInitialAircraftMslThresholdMeters] = useState(DEFAULT_AIRCRAFT_MSL_THRESHOLD_M);
+  // Aircraft age-out (#5364/#5365 Phase 2): same Category C pattern. The
+  // last-run pair is server-written and read-only here (not in the draft).
+  const [initialAircraftAgeOutEnabled, setInitialAircraftAgeOutEnabled] = useState(false);
+  const [initialAircraftAgeOutHours, setInitialAircraftAgeOutHours] = useState(AIRCRAFT_AGE_OUT_HOURS_DEFAULT);
+  const [initialAircraftAgeOutAction, setInitialAircraftAgeOutAction] = useState<AircraftAgeOutAction>(DEFAULT_AIRCRAFT_AGE_OUT_ACTION);
+  const [aircraftAgeOutLastRun, setAircraftAgeOutLastRun] = useState<{
+    at: number | null;
+    result: AircraftAgeOutLastResult | null;
+  }>({ at: null, result: null });
   // #4934: deployment-wide Carto API key (no context/prop home, same admin-field
   // pattern as elevationSourceUrl above). Default '' (unset).
   const [initialCartoApiKey, setInitialCartoApiKey] = useState('');
@@ -732,6 +757,25 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           updateField('aircraftMslThresholdMeters', aircraft.mslThresholdM);
           setInitialAircraftMslThresholdMeters(aircraft.mslThresholdM);
 
+          // Aircraft age-out (#5364/#5365 Phase 2). Off / 24 h / ignore
+          // when unset, per parseAircraftAgeOutSettings.
+          const ageOut = parseAircraftAgeOutSettings({
+            enabled: settings.aircraftAgeOutEnabled,
+            hours: settings.aircraftAgeOutHours,
+            action: settings.aircraftAgeOutAction,
+          });
+          updateField('aircraftAgeOutEnabled', ageOut.enabled);
+          setInitialAircraftAgeOutEnabled(ageOut.enabled);
+          updateField('aircraftAgeOutHours', ageOut.hours);
+          setInitialAircraftAgeOutHours(ageOut.hours);
+          updateField('aircraftAgeOutAction', ageOut.action);
+          setInitialAircraftAgeOutAction(ageOut.action);
+          const lastRunAt = Number(settings.aircraftAgeOutLastRunAt);
+          setAircraftAgeOutLastRun({
+            at: Number.isFinite(lastRunAt) && lastRunAt > 0 ? lastRunAt : null,
+            result: parseAircraftAgeOutLastResult(settings.aircraftAgeOutLastResult),
+          });
+
           // #4934: deployment-wide Carto basemap API key. Admins receive the
           // unmasked value (it is not secret-stripped).
           const cartoApiKey = typeof settings.cartoApiKey === 'string' ? settings.cartoApiKey : '';
@@ -824,6 +868,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       aircraftDetectionEnabled: initialAircraftDetectionEnabled,
       aircraftAglThresholdMeters: initialAircraftAglThresholdMeters,
       aircraftMslThresholdMeters: initialAircraftMslThresholdMeters,
+      aircraftAgeOutEnabled: initialAircraftAgeOutEnabled,
+      aircraftAgeOutHours: initialAircraftAgeOutHours,
+      aircraftAgeOutAction: initialAircraftAgeOutAction,
       solarMonitoringEnabled,
       solarMonitoringLatitude,
       solarMonitoringLongitude,
@@ -859,6 +906,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       linkPreviewsEnabled, discardInvalidPositions, noIndexEnabled, meshcoreChannelRetryEnabled, showIncompleteNodes,
       nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity,
       initialAircraftDetectionEnabled, initialAircraftAglThresholdMeters, initialAircraftMslThresholdMeters,
+      initialAircraftAgeOutEnabled, initialAircraftAgeOutHours, initialAircraftAgeOutAction,
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
       initialPacketMonitorSettings, initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialTxTargetMaxAgeHoursWhenUnlimited,
       initialMeshcoreCliTimeoutSeconds, initialAdminRetryAttempts,
@@ -1040,6 +1088,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setInitialAircraftDetectionEnabled(d.aircraftDetectionEnabled);
     setInitialAircraftAglThresholdMeters(d.aircraftAglThresholdMeters);
     setInitialAircraftMslThresholdMeters(d.aircraftMslThresholdMeters);
+    setInitialAircraftAgeOutEnabled(d.aircraftAgeOutEnabled);
+    setInitialAircraftAgeOutHours(d.aircraftAgeOutHours);
+    setInitialAircraftAgeOutAction(d.aircraftAgeOutAction);
     setInitialPacketMonitorSettings({ enabled: d.packetLogEnabled, maxCount: d.packetLogMaxCount, maxAgeHours: d.packetLogMaxAgeHours });
     setInitialHomoglyphEnabled(d.homoglyphEnabled);
     setInitialLocalStatsIntervalMinutes(d.localStatsIntervalMinutes);
@@ -1137,6 +1188,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         aircraftDetectionEnabled: draft.aircraftDetectionEnabled ? 'true' : 'false',
         aircraftAglThresholdMeters: String(draft.aircraftAglThresholdMeters),
         aircraftMslThresholdMeters: String(draft.aircraftMslThresholdMeters),
+        // Aircraft age-out (#5364/#5365 Phase 2). The server-written
+        // aircraftAgeOutLastRunAt/LastResult are never posted.
+        aircraftAgeOutEnabled: draft.aircraftAgeOutEnabled ? 'true' : 'false',
+        aircraftAgeOutHours: String(draft.aircraftAgeOutHours),
+        aircraftAgeOutAction: draft.aircraftAgeOutAction,
         analyticsProvider: draft.analyticsProvider,
         analyticsConfig: JSON.stringify(draft.analyticsConfig),
         appriseApiServerUrl: draft.appriseApiServerUrl.trim(),
@@ -2558,6 +2614,81 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             )}
             <p className="setting-description">
               {t('settings.aircraft.help_effects', 'Flagged nodes get an aircraft badge on the map and can be hidden in Map Features. Auto-Favorite exclusion is set in Automation → Auto Favorite.')}
+            </p>
+          </div>
+
+          {/* Aircraft age-out (#5364/#5365 Phase 2). DB-only: nothing is sent
+              to any radio. */}
+          <div className="setting-item" data-testid="aircraft-age-out">
+            <label>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                <input
+                  id="aircraftAgeOutEnabled"
+                  type="checkbox"
+                  checked={draft.aircraftAgeOutEnabled}
+                  disabled={!draft.aircraftDetectionEnabled}
+                  onChange={(e) => updateField('aircraftAgeOutEnabled', e.target.checked)}
+                  style={{ cursor: 'pointer' }}
+                />
+                {t('settings.aircraft.age_out_enabled', 'Age out likely aircraft')}
+              </span>
+            </label>
+            <p className="setting-description">
+              {t('settings.aircraft.age_out_help', 'A likely aircraft not heard for this many hours is ignored or deleted. Favorites and your own node are never aged out. An ignored aircraft comes back when it sends a new position.')}
+            </p>
+          </div>
+          <div className="setting-item">
+            <label htmlFor="aircraftAgeOutHours">
+              {t('settings.aircraft.age_out_hours_label', 'Age out after (hours)')}
+            </label>
+            <input
+              id="aircraftAgeOutHours"
+              type="number"
+              min={AIRCRAFT_AGE_OUT_HOURS_RANGE.min}
+              max={AIRCRAFT_AGE_OUT_HOURS_RANGE.max}
+              step="1"
+              disabled={!draft.aircraftDetectionEnabled || !draft.aircraftAgeOutEnabled}
+              value={draft.aircraftAgeOutHours}
+              onChange={(e) => updateField(
+                'aircraftAgeOutHours',
+                Math.min(AIRCRAFT_AGE_OUT_HOURS_RANGE.max, Math.max(AIRCRAFT_AGE_OUT_HOURS_RANGE.min, Math.round(parseFloat(e.target.value)) || AIRCRAFT_AGE_OUT_HOURS_DEFAULT)),
+              )}
+              className="setting-input"
+            />
+          </div>
+          <div className="setting-item">
+            <label htmlFor="aircraftAgeOutAction">
+              {t('settings.aircraft.age_out_action_label', 'Action')}
+            </label>
+            <select
+              id="aircraftAgeOutAction"
+              disabled={!draft.aircraftDetectionEnabled || !draft.aircraftAgeOutEnabled}
+              value={draft.aircraftAgeOutAction}
+              onChange={(e) => {
+                if (isAircraftAgeOutAction(e.target.value)) updateField('aircraftAgeOutAction', e.target.value);
+              }}
+              className="setting-input"
+            >
+              <option value="ignore">{t('settings.aircraft.age_out_action_ignore', 'Ignore')}</option>
+              <option value="delete">{t('settings.aircraft.age_out_action_delete', 'Delete')}</option>
+            </select>
+            {draft.aircraftAgeOutAction === 'delete' && (
+              <p className="setting-description" style={{ color: 'var(--color-warning)' }} data-testid="aircraft-age-out-delete-warning">
+                {t('settings.aircraft.age_out_delete_warning', 'Delete removes the node and all its history, including positions. Ignore can be undone.')}
+              </p>
+            )}
+          </div>
+          <div className="setting-item">
+            <p className="setting-description" data-testid="aircraft-age-out-last-run">
+              {aircraftAgeOutLastRun.at == null
+                ? t('settings.aircraft.age_out_last_run_never', 'Last run: not yet.')
+                : t('settings.aircraft.age_out_last_run', {
+                    time: formatDateTime(new Date(aircraftAgeOutLastRun.at), timeFormat, dateFormat),
+                    agedOut: (aircraftAgeOutLastRun.result?.agedOut ?? 0) + (aircraftAgeOutLastRun.result?.deleted ?? 0),
+                    fixed: aircraftAgeOutLastRun.result?.fixed ?? 0,
+                    lifted: aircraftAgeOutLastRun.result?.lifted ?? 0,
+                    defaultValue: 'Last run: {{time}}. {{agedOut}} aged out, {{fixed}} reclassified as fixed, {{lifted}} returned.',
+                  })}
             </p>
           </div>
         </div>}

@@ -38,6 +38,12 @@ export interface AircraftClassification {
   groundElevation: number | null;
   /** Signed; only set when basis === 'agl'. */
   heightAboveGround: number | null;
+  /**
+   * Phase 2 (D4): true when the node carried a "confirmed fixed" anchor and
+   * the current position is more than `AIRCRAFT_FIXED_RELEASE_M` from it. The
+   * caller must clear the mark; the rest of the result is the normal verdict.
+   */
+  releaseFixed?: boolean;
 }
 
 function isFiniteNumber(v: unknown): v is number {
@@ -83,6 +89,101 @@ export function parseAircraftSettings(raw: {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Phase 2: age-out and reclassify as fixed (AIRCRAFT_P2_SPEC.md)
+// ---------------------------------------------------------------------------
+
+export type AircraftAgeOutAction = 'ignore' | 'delete';
+export const AIRCRAFT_AGE_OUT_ACTIONS: readonly AircraftAgeOutAction[] = ['ignore', 'delete'];
+export const AIRCRAFT_AGE_OUT_HOURS_DEFAULT = 24;
+export const AIRCRAFT_AGE_OUT_HOURS_RANGE = { min: 6, max: 168 } as const;
+export const DEFAULT_AIRCRAFT_AGE_OUT_ACTION: AircraftAgeOutAction = 'ignore';
+
+/** A node marked as fixed stays not-aircraft while within this distance of its anchor. */
+export const AIRCRAFT_FIXED_RELEASE_M = 1000;
+/** Max bounding-box diagonal for a set of fixes to count as stationary. */
+export const AIRCRAFT_FIXED_SPAN_M = 200;
+/** Minimum number of fixes before the stationary rule can fire. */
+export const AIRCRAFT_FIXED_MIN_FIXES = 3;
+/** The fixed rule looks at the last 24 h of fixes and needs a node heard in that window. */
+export const AIRCRAFT_FIXED_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+export interface AircraftAgeOutSettings {
+  enabled: boolean;
+  hours: number;
+  action: AircraftAgeOutAction;
+}
+
+/** Counts from the last sweep, persisted as JSON in `aircraftAgeOutLastResult`. */
+export interface AircraftAgeOutLastResult {
+  agedOut: number;
+  fixed: number;
+  lifted: number;
+  deleted: number;
+}
+
+export function isAircraftAgeOutAction(v: unknown): v is AircraftAgeOutAction {
+  return typeof v === 'string' && (AIRCRAFT_AGE_OUT_ACTIONS as readonly string[]).includes(v);
+}
+
+/**
+ * Parse the raw per-source age-out setting strings. Off unless explicitly
+ * `'true'` (D2: off by default); hours clamp into 6–168; any action other
+ * than an explicit `'delete'` reads as `'ignore'` (delete is opt-in).
+ */
+export function parseAircraftAgeOutSettings(raw: {
+  enabled?: string | null;
+  hours?: string | null;
+  action?: string | null;
+}): AircraftAgeOutSettings {
+  return {
+    enabled: raw.enabled === 'true',
+    hours: parseThreshold(raw.hours, AIRCRAFT_AGE_OUT_HOURS_DEFAULT, AIRCRAFT_AGE_OUT_HOURS_RANGE),
+    action: raw.action === 'delete' ? 'delete' : DEFAULT_AIRCRAFT_AGE_OUT_ACTION,
+  };
+}
+
+/** Parse the persisted last-result JSON; null on missing or malformed input. */
+export function parseAircraftAgeOutLastResult(raw: string | null | undefined): AircraftAgeOutLastResult | null {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw);
+    if (!v || typeof v !== 'object') return null;
+    const num = (x: unknown) => (isFiniteNumber(x) ? x : 0);
+    return { agedOut: num(v.agedOut), fixed: num(v.fixed), lifted: num(v.lifted), deleted: num(v.deleted) };
+  } catch {
+    return null;
+  }
+}
+
+/** Great-circle distance in metres (haversine). */
+export function distanceMeters(a: { lat: number; lon: number }, b: { lat: number; lon: number }): number {
+  const R = 6371000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLon = toRad(b.lon - a.lon);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+/**
+ * D4 fixed rule: true when there are at least `AIRCRAFT_FIXED_MIN_FIXES`
+ * finite fixes and the diagonal of their bounding box is under
+ * `AIRCRAFT_FIXED_SPAN_M`. Non-finite fixes are dropped before counting.
+ */
+export function isStationaryFix(positions: ReadonlyArray<{ lat: number; lon: number }>): boolean {
+  const fixes = positions.filter(p => isFiniteNumber(p.lat) && isFiniteNumber(p.lon));
+  if (fixes.length < AIRCRAFT_FIXED_MIN_FIXES) return false;
+  let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
+  for (const p of fixes) {
+    if (p.lat < minLat) minLat = p.lat;
+    if (p.lat > maxLat) maxLat = p.lat;
+    if (p.lon < minLon) minLon = p.lon;
+    if (p.lon > maxLon) maxLon = p.lon;
+  }
+  return distanceMeters({ lat: minLat, lon: minLon }, { lat: maxLat, lon: maxLon }) < AIRCRAFT_FIXED_SPAN_M;
+}
+
 /** max(50, round(0.1 × threshold)) — D8. */
 export function aircraftHysteresisM(thresholdM: number): number {
   return Math.max(50, Math.round(thresholdM * 0.1));
@@ -97,6 +198,28 @@ export function aircraftHysteresisM(thresholdM: number): number {
  * service) handles disable, keeping this function total and easy to test.
  */
 export function classifyAircraft(input: {
+  altitudeM: number | null | undefined;
+  groundElevationM: number | null | undefined;
+  settings: AircraftSettings;
+  previous?: AircraftPrevious | null;
+  /** Phase 2 "confirmed fixed" anchor (D4); null/undefined when not marked. */
+  fixedAnchor?: { lat: number; lon: number } | null;
+  /** The node's current effective position, compared against `fixedAnchor`. */
+  position?: { lat: number; lon: number } | null;
+}): AircraftClassification {
+  const base = classifyAircraftCore(input);
+  const anchor = input.fixedAnchor;
+  if (!anchor || !isFiniteNumber(anchor.lat) || !isFiniteNumber(anchor.lon)) return base;
+  const pos = input.position;
+  const hasPos = !!pos && isFiniteNumber(pos.lat) && isFiniteNumber(pos.lon);
+  // No usable position: we cannot tell it moved, so the mark holds.
+  if (!hasPos || distanceMeters(anchor, pos!) <= AIRCRAFT_FIXED_RELEASE_M) {
+    return { ...base, likelyAircraft: base.likelyAircraft === null ? null : false };
+  }
+  return { ...base, releaseFixed: true };
+}
+
+function classifyAircraftCore(input: {
   altitudeM: number | null | undefined;
   groundElevationM: number | null | undefined;
   settings: AircraftSettings;

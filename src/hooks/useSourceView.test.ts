@@ -220,6 +220,54 @@ describe('useSourceView', () => {
       expect(onMessagesTab.current.processedNodes.map(n => n.nodeNum).sort()).toEqual([100, 200]);
     });
 
+    describe('agedOutAircraftNodes (#5364/#5365 Phase 2 "Show aged-out")', () => {
+      const oldSec = Math.floor(Date.now() / 1000) - 72 * 3600; // older than the 24 h window
+
+      it('lists aged-out aircraft that processedNodes drops, skipping the age window', () => {
+        const agedOut = makeNode({ nodeNum: 200, isIgnored: true, likelyAircraft: true, aircraftAgedOutAt: 1, lastHeard: oldSec });
+        const manual = makeNode({ nodeNum: 300, isIgnored: true, lastHeard: oldSec });
+        const fresh = makeNode({ nodeNum: 100 });
+        mockUseNodes.mockReturnValue({ nodes: [fresh, agedOut, manual], isLoading: false, error: null });
+
+        const { result } = renderHook(() => useSourceView(baseParams()));
+        expect(result.current.processedNodes.map(n => n.nodeNum)).toEqual([100]);
+        // Only the aged-out one; a manual ignore never comes back through this list.
+        expect(result.current.agedOutAircraftNodes.map(n => n.nodeNum)).toEqual([200]);
+      });
+
+      it('an aircraft flagged but not ignored is not in the aged-out list', () => {
+        const flagged = makeNode({ nodeNum: 200, isIgnored: false, likelyAircraft: true, aircraftAgedOutAt: 1 });
+        mockUseNodes.mockReturnValue({ nodes: [flagged], isLoading: false, error: null });
+        const { result } = renderHook(() => useSourceView(baseParams()));
+        expect(result.current.agedOutAircraftNodes).toEqual([]);
+      });
+
+      it('applies the other node filters to aged-out nodes (text search)', () => {
+        const a = makeNode({ nodeNum: 200, isIgnored: true, aircraftAgedOutAt: 1, lastHeard: oldSec, user: { id: '!c8', longName: 'Alpha', shortName: 'A' } });
+        const b = makeNode({ nodeNum: 300, isIgnored: true, aircraftAgedOutAt: 1, lastHeard: oldSec, user: { id: '!12c', longName: 'Bravo', shortName: 'B' } });
+        mockUseNodes.mockReturnValue({ nodes: [a, b], isLoading: false, error: null });
+        mockUseUI.mockReturnValue({
+          activeTab: 'nodes',
+          nodesNodeFilter: 'Bravo',
+          sortField: 'longName',
+          sortDirection: 'asc',
+          setTracerouteLoading,
+        });
+        const { result } = renderHook(() => useSourceView(baseParams()));
+        expect(result.current.agedOutAircraftNodes.map(n => n.nodeNum)).toEqual([300]);
+      });
+
+      it('does not repeat a node already in processedNodes (showIgnored on)', () => {
+        const agedOut = makeNode({ nodeNum: 200, isIgnored: true, aircraftAgedOutAt: 1 });
+        mockUseNodes.mockReturnValue({ nodes: [agedOut], isLoading: false, error: null });
+        const { result } = renderHook(() =>
+          useSourceView(baseParams({ nodeFilters: { ...defaultNodeFilters, showIgnored: true } })),
+        );
+        expect(result.current.processedNodes.map(n => n.nodeNum)).toEqual([200]);
+        expect(result.current.agedOutAircraftNodes).toEqual([]);
+      });
+    });
+
     it('sorts favorites before non-favorites', () => {
       const favorite = makeNode({ nodeNum: 200, isFavorite: true, user: { id: '!c8', longName: 'Zeta', shortName: 'Z' } });
       const nonFavorite = makeNode({ nodeNum: 100, isFavorite: false, user: { id: '!64', longName: 'Alpha', shortName: 'A' } });

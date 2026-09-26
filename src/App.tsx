@@ -935,6 +935,7 @@ function App() {
   // these same handlers) work; see src/hooks/useSourceView.ts.
   const {
     processedNodes,
+    agedOutAircraftNodes,
     shouldShowData,
     centerMapOnNode,
     toggleFavorite,
@@ -3689,6 +3690,7 @@ function App() {
               <ErrorBoundary fallbackTitle="Nodes failed to load">
                 <NodesTab
                   processedNodes={processedNodes}
+                  agedOutAircraftNodes={agedOutAircraftNodes}
                   shouldShowData={shouldShowData}
                   centerMapOnNode={centerMapOnNode}
                   toggleFavorite={toggleFavorite}

@@ -199,6 +199,11 @@ function validTestValue(key: string, suffix = ''): string {
     aircraftAglThresholdMeters: '500',
     aircraftMslThresholdMeters: '5000',
     autoFavoriteExcludeAircraft: 'true',
+    // Aircraft age-out (#5364/#5365 Phase 2): strict boolean, hours 6-168,
+    // action 'ignore' | 'delete'.
+    aircraftAgeOutEnabled: 'true',
+    aircraftAgeOutHours: '24',
+    aircraftAgeOutAction: 'ignore',
   };
 
   if (key in VALID_VALUES) {
@@ -546,6 +551,9 @@ describe('Settings Persistence', () => {
         // elevationEnabled/elevationSourceUrl above. Read server-side by
         // aircraftClassificationService and the settings route's validation.
         'aircraftDetectionEnabled', 'aircraftAglThresholdMeters', 'aircraftMslThresholdMeters',
+        // Aircraft age-out (#5364/#5365 Phase 2) — same Category C pattern;
+        // read server-side by aircraftAgeOutService.
+        'aircraftAgeOutEnabled', 'aircraftAgeOutHours', 'aircraftAgeOutAction',
       ];
 
       const keysNotLoaded = SETTINGS_TAB_SENDS.filter(

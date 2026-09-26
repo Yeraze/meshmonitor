@@ -14,6 +14,7 @@ import DashboardNodePopup, { type NodeSourceRef } from '../../Dashboard/Dashboar
 import { NodeMarkersLayer as SharedNodeMarkersLayer, type NodeMarkerDescriptor } from '../../map/layers/NodeMarkersLayer';
 import { useMapContextOptional } from '../../../contexts/MapContext';
 import { DEFAULT_AIRCRAFT_DISPLAY_MODE } from '../../../utils/aircraftClassification';
+import { isAgedOutAircraft, AGED_OUT_AIRCRAFT_OPACITY } from '../../map/agedOutAircraft';
 import '../../../styles/nodes.css'; // `.node-popup-*` classes used by DashboardNodePopup
 
 interface HopEntry {
@@ -122,7 +123,10 @@ export default function NodeMarkersLayer() {
     const roleCategory = getNodeTypeCategory(n);
     const markerKey = keyOf(n);
     // Likely-aircraft badge (#5364/#5365 Phase 1 WP4): 'show' never marks.
-    const markAircraft = aircraftMode !== 'show' && n.likelyAircraft === true;
+    // Aged-out aircraft (Phase 2) are only here when "Show aged-out" is on:
+    // always badged, and dimmed below.
+    const agedOut = isAgedOutAircraft(n);
+    const markAircraft = agedOut || (aircraftMode !== 'show' && n.likelyAircraft === true);
     // Reuse cached icon/position unless an input changed, so a poll that
     // returns identical data doesn't churn the marker and collapse an active
     // spiderfy fan. Selection IS part of the signature, so highlighting the
@@ -132,11 +136,13 @@ export default function NodeMarkersLayer() {
     // visible"), intentionally diverging from DashboardMap where a missing
     // timestamp stays fully opaque — that surface age-gates upstream, this
     // one fades every marker across the raw slider window instead.
-    const markerOpacity = !fadeByAge
-      ? 1
-      : n.lastHeard != null
-        ? markerAgeOpacity(windowEndMs, windowStartMs, n.lastHeard * 1000)
-        : MIN_MARKER_OPACITY;
+    const markerOpacity = agedOut
+      ? AGED_OUT_AIRCRAFT_OPACITY
+      : !fadeByAge
+        ? 1
+        : n.lastHeard != null
+          ? markerAgeOpacity(windowEndMs, windowStartMs, n.lastHeard * 1000)
+          : MIN_MARKER_OPACITY;
     // Selection dimming (issue #3788 WP-C): applied via the leaflet `opacity`
     // prop only — NOT folded into `iconSig`/the divIcon — so the spiderfy fan
     // and icon cache don't churn when the selection changes. Empty selection

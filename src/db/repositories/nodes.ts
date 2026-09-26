@@ -92,6 +92,33 @@ export interface AircraftReclassifyRow {
   altitudeOverride: number | null;
   latitude: number | null;
   longitude: number | null;
+  /** Phase 2 "confirmed fixed" anchor (D4); both null when not marked. */
+  aircraftFixedLatitude: number | null;
+  aircraftFixedLongitude: number | null;
+}
+
+/**
+ * One flagged node as read by {@link NodesRepository.listAircraftAgeOutCandidates}
+ * (#5364/#5365 Phase 2) — what the age-out sweep needs to decide, protect,
+ * ignore, and anchor a fixed mark.
+ */
+export interface AircraftAgeOutCandidate {
+  nodeNum: number;
+  nodeId: string;
+  longName: string | null;
+  shortName: string | null;
+  /** Unix **seconds**. */
+  lastHeard: number | null;
+  isFavorite: boolean;
+  isIgnored: boolean;
+  aircraftAgedOutAt: number | null;
+  positionOverrideEnabled: boolean | null;
+  latitudeOverride: number | null;
+  longitudeOverride: number | null;
+  altitudeOverride: number | null;
+  latitude: number | null;
+  longitude: number | null;
+  altitude: number | null;
 }
 
 /**
@@ -2143,6 +2170,8 @@ export class NodesRepository extends BaseRepository {
         altitudeOverride: nodes.altitudeOverride,
         latitude: nodes.latitude,
         longitude: nodes.longitude,
+        aircraftFixedLatitude: nodes.aircraftFixedLatitude,
+        aircraftFixedLongitude: nodes.aircraftFixedLongitude,
       })
       .from(nodes)
       .where(and(
@@ -2188,6 +2217,9 @@ export class NodesRepository extends BaseRepository {
         isNotNull(nodes.aircraftBasis),
         isNotNull(nodes.heightAboveGround),
         isNotNull(nodes.aircraftClassifiedAt),
+        // Phase 2: disabling detection also drops the "confirmed fixed" mark.
+        // Aged-out ignores (`aircraftAgedOutAt`) are deliberately kept.
+        isNotNull(nodes.aircraftFixedAt),
       ),
     );
     // Node numbers are needed only for the cache sync below; the UPDATE uses
@@ -2202,7 +2234,15 @@ export class NodesRepository extends BaseRepository {
     const nodeNums = (toClear as Array<{ nodeNum: number }>).map((r) => r.nodeNum);
     await this.db
       .update(nodes)
-      .set({ likelyAircraft: null, aircraftBasis: null, heightAboveGround: null, aircraftClassifiedAt: null })
+      .set({
+        likelyAircraft: null,
+        aircraftBasis: null,
+        heightAboveGround: null,
+        aircraftClassifiedAt: null,
+        aircraftFixedAt: null,
+        aircraftFixedLatitude: null,
+        aircraftFixedLongitude: null,
+      })
       .where(classified);
 
     for (const nodeNum of nodeNums) {
@@ -2210,5 +2250,123 @@ export class NodesRepository extends BaseRepository {
     }
 
     return nodeNums.length;
+  }
+
+  // ============ Aircraft age-out + fixed mark (#5364/#5365 Phase 2) ============
+
+  /**
+   * Record that the age-out sweep ignored this node: sets `isIgnored` and
+   * `aircraftAgedOutAt`. The matching `ignored_nodes` row is written
+   * separately by `IgnoredNodesRepository.addAircraftIgnoreAsync`. Does not
+   * bump `updatedAt` (not node activity).
+   */
+  async markAircraftAgedOut(nodeNum: number, sourceId: string, atMs: number): Promise<void> {
+    const { nodes } = this.tables;
+    await this.db
+      .update(nodes)
+      .set({ isIgnored: true, aircraftAgedOutAt: this.coerceBigintField(atMs) })
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
+    await this.syncCacheNode(nodeNum, sourceId);
+  }
+
+  /** Undo {@link markAircraftAgedOut}: `isIgnored = false`, `aircraftAgedOutAt = null`. */
+  async clearAircraftAgedOut(nodeNum: number, sourceId: string): Promise<void> {
+    const { nodes } = this.tables;
+    await this.db
+      .update(nodes)
+      .set({ isIgnored: false, aircraftAgedOutAt: null })
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
+    await this.syncCacheNode(nodeNum, sourceId);
+  }
+
+  /**
+   * Null only `aircraftAgedOutAt` (leaves `isIgnored` to the caller). Used by
+   * the manual un-ignore path so a hand-lifted aircraft stops reading as
+   * "aged out".
+   */
+  async clearAircraftAgedOutMark(nodeNum: number, sourceId: string): Promise<void> {
+    const { nodes } = this.tables;
+    await this.db
+      .update(nodes)
+      .set({ aircraftAgedOutAt: null })
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId), isNotNull(nodes.aircraftAgedOutAt)));
+    await this.syncCacheNode(nodeNum, sourceId);
+  }
+
+  /**
+   * Set (or, with `null`, clear) the "confirmed fixed" mark (D4). Setting it
+   * also clears `likelyAircraft`, since the fixed rule says the node is not an
+   * aircraft. Clearing it leaves `likelyAircraft` alone for the classifier.
+   */
+  async setAircraftFixed(
+    nodeNum: number,
+    sourceId: string,
+    fixed: { atMs: number; lat: number; lon: number } | null,
+  ): Promise<void> {
+    const { nodes } = this.tables;
+    const set = fixed
+      ? {
+          aircraftFixedAt: this.coerceBigintField(fixed.atMs),
+          aircraftFixedLatitude: fixed.lat,
+          aircraftFixedLongitude: fixed.lon,
+          likelyAircraft: false,
+        }
+      : { aircraftFixedAt: null, aircraftFixedLatitude: null, aircraftFixedLongitude: null };
+    await this.db
+      .update(nodes)
+      .set(set)
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
+    await this.syncCacheNode(nodeNum, sourceId);
+  }
+
+  /**
+   * Every row in this source flagged `likelyAircraft = true`, ignored or not
+   * (the sweep filters in memory). Carries the effective-position inputs for
+   * the fixed-mark anchor.
+   */
+  async listAircraftAgeOutCandidates(sourceId: string): Promise<AircraftAgeOutCandidate[]> {
+    const { nodes } = this.tables;
+    const rows = await this.db
+      .select({
+        nodeNum: nodes.nodeNum,
+        nodeId: nodes.nodeId,
+        longName: nodes.longName,
+        shortName: nodes.shortName,
+        lastHeard: nodes.lastHeard,
+        isFavorite: nodes.isFavorite,
+        isIgnored: nodes.isIgnored,
+        aircraftAgedOutAt: nodes.aircraftAgedOutAt,
+        positionOverrideEnabled: nodes.positionOverrideEnabled,
+        latitudeOverride: nodes.latitudeOverride,
+        longitudeOverride: nodes.longitudeOverride,
+        altitudeOverride: nodes.altitudeOverride,
+        latitude: nodes.latitude,
+        longitude: nodes.longitude,
+        altitude: nodes.altitude,
+      })
+      .from(nodes)
+      .where(and(eq(nodes.sourceId, sourceId), eq(nodes.likelyAircraft, true)));
+
+    return rows.map((r: typeof rows[number]) => ({
+      ...r,
+      nodeNum: Number(r.nodeNum),
+      lastHeard: r.lastHeard == null ? null : Number(r.lastHeard),
+      isFavorite: Boolean(r.isFavorite),
+      isIgnored: Boolean(r.isIgnored),
+      aircraftAgedOutAt: r.aircraftAgedOutAt == null ? null : Number(r.aircraftAgedOutAt),
+      positionOverrideEnabled: r.positionOverrideEnabled == null ? null : Boolean(r.positionOverrideEnabled),
+    }));
+  }
+
+  /** `aircraftAgedOutAt` for one row, or null (row missing or not aged out). */
+  async getAircraftAgedOutAt(nodeNum: number, sourceId: string): Promise<number | null> {
+    const { nodes } = this.tables;
+    const rows = await this.db
+      .select({ aircraftAgedOutAt: nodes.aircraftAgedOutAt })
+      .from(nodes)
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)))
+      .limit(1);
+    const v = (rows as Array<{ aircraftAgedOutAt: number | null }>)[0]?.aircraftAgedOutAt;
+    return v == null ? null : Number(v);
   }
 }

@@ -343,6 +343,34 @@ describe('mergeNodesAcrossSources (issue #3135)', () => {
       expect(merged.likelyAircraft).toBeNull();
       expect(merged.aircraftBasis).toBeNull();
     });
+
+    // #5364/#5365 Phase 2: the aged-out and fixed marks ride with the same row.
+    it('takes aircraftAgedOutAt/aircraftFixedAt from the position row, never back-filled', () => {
+      const rows = [
+        makeNode(402, {
+          sourceId: 'best',
+          lastHeard: 1000,
+          latitude: 35,
+          longitude: -80,
+          positionTimestamp: 2_000_000,
+          aircraftAgedOutAt: 1_700_000_000_000,
+          aircraftFixedAt: null,
+        }),
+        makeNode(402, {
+          sourceId: 'other',
+          lastHeard: 9000,
+          latitude: 36,
+          longitude: -81,
+          positionTimestamp: 1000,
+          aircraftAgedOutAt: null,
+          aircraftFixedAt: 1_700_000_000_500,
+        }),
+      ];
+      const [merged] = mergeNodesAcrossSources(rows);
+      expect(merged.latitude).toBe(35);
+      expect(merged.aircraftAgedOutAt).toBe(1_700_000_000_000);
+      expect(merged.aircraftFixedAt).toBeNull();
+    });
   });
 
   describe('cannot undercount relative to a single source (#4573)', () => {

@@ -40,12 +40,17 @@ vi.mock('./tcpTransport.js', () => ({
 
 // Per-source blocklist mirror lives here; tests drive `blocklist`. Hoisted so the
 // vi.mock factory below (also hoisted) can close over them.
-const { blocklist, upsertNode, isIgnoredCached } = vi.hoisted(() => {
+const { blocklist, aircraftReason, upsertNode, isIgnoredCached, getIgnoreReasonCached } = vi.hoisted(() => {
   const blocklist = new Set<number>();
+  // #5364/#5365 Phase 2: nodes whose cached ignore reason is 'aircraft'.
+  const aircraftReason = new Set<number>();
   return {
     blocklist,
+    aircraftReason,
     upsertNode: vi.fn().mockResolvedValue(undefined),
     isIgnoredCached: vi.fn((nodeNum: number, _sourceId: string) => blocklist.has(nodeNum)),
+    getIgnoreReasonCached: vi.fn((nodeNum: number, _sourceId: string) =>
+      blocklist.has(nodeNum) ? (aircraftReason.has(nodeNum) ? 'aircraft' : 'manual') : null),
   };
 });
 
@@ -67,7 +72,7 @@ vi.mock('../services/database.js', () => {
       getActiveNodes: vi.fn().mockResolvedValue([]),
       getAllNodes: vi.fn().mockResolvedValue([]),
     },
-    ignoredNodes: { isIgnoredCached },
+    ignoredNodes: { isIgnoredCached, getIgnoreReasonCached },
   };
   return { default: shared, databaseService: shared };
 });
@@ -112,6 +117,7 @@ describe('MeshtasticManager — re-apply ignore to local node (#2601)', () => {
 
   beforeEach(() => {
     blocklist.clear();
+    aircraftReason.clear();
     upsertNode.mockClear();
     isIgnoredCached.mockClear();
   });
@@ -162,6 +168,20 @@ describe('MeshtasticManager — re-apply ignore to local node (#2601)', () => {
     expect(mgr.sendIgnoredNode).toHaveBeenCalledTimes(1);
     // ...but the DB flag is kept ignored on both passes.
     expect(upsertNode.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(upsertNode.mock.calls.at(-1)?.[0].isIgnored).toBe(true);
+  });
+
+  // #5364/#5365 Phase 2 D1: an aircraft age-out ignore is DB-only. Pushing it
+  // to the radio would make the device drop the node's packets, so the
+  // live-position auto-lift could never fire.
+  it('never pushes an aircraft (age-out) ignore to the device, but keeps the DB flag', async () => {
+    blocklist.add(NODE);
+    aircraftReason.add(NODE);
+    const mgr = seedManager();
+
+    await mgr.processNodeInfoProtobuf({ num: NODE, isIgnored: false });
+
+    expect(mgr.sendIgnoredNode).not.toHaveBeenCalled();
     expect(upsertNode.mock.calls.at(-1)?.[0].isIgnored).toBe(true);
   });
 });

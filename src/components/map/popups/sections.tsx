@@ -200,6 +200,19 @@ export const SignalItems: React.FC<SignalItemsProps> = ({
           <span className="node-popup-value">{formatAircraftSummary(model, t)}</span>
         </div>
       )}
+      {/* #5364/#5365 Phase 2: age-out and fixed marks, same gate as above. */}
+      {showAltitude && model.aircraftAgedOut && (
+        <div className="node-popup-item node-popup-item-full" data-testid="node-popup-aircraft-aged-out">
+          <span className="node-popup-icon"><UiIcon name="aircraft" /></span>
+          <span className="node-popup-value">{t('node_popup.aircraft_aged_out', 'Aged out (likely aircraft)')}</span>
+        </div>
+      )}
+      {showAltitude && model.aircraftFixed && (
+        <div className="node-popup-item node-popup-item-full" data-testid="node-popup-aircraft-fixed">
+          <span className="node-popup-icon"><UiIcon name="aircraft" /></span>
+          <span className="node-popup-value">{t('node_popup.aircraft_fixed', 'Reclassified as fixed')}</span>
+        </div>
+      )}
       {showPrecision && (
         <div className="node-popup-item">
           <span className="node-popup-icon" title={t('node_popup.position_accuracy', 'Position accuracy')}><UiIcon name="target" /></span>

@@ -85,6 +85,11 @@ export function mergeNodesAcrossSources(rows: DbNode[]): DbNode[] {
       winner.aircraftBasis = bestPosition.aircraftBasis ?? null;
       winner.groundElevation = bestPosition.groundElevation ?? null;
       winner.heightAboveGround = bestPosition.heightAboveGround ?? null;
+      // Phase 2: the aged-out and fixed marks travel with the same row too.
+      winner.aircraftAgedOutAt = bestPosition.aircraftAgedOutAt ?? null;
+      winner.aircraftFixedAt = bestPosition.aircraftFixedAt ?? null;
+      winner.aircraftFixedLatitude = bestPosition.aircraftFixedLatitude ?? null;
+      winner.aircraftFixedLongitude = bestPosition.aircraftFixedLongitude ?? null;
     }
 
     winner.isFavorite = group.some((n) => n.isFavorite === true);

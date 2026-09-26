@@ -111,6 +111,12 @@ export const nodesSqlite = sqliteTable('nodes', {
   groundElevation: real('groundElevation'),
   heightAboveGround: real('heightAboveGround'),
   aircraftClassifiedAt: integer('aircraftClassifiedAt'),
+  // Aircraft age-out + "confirmed fixed" mark (#5364/#5365 Phase 2,
+  // migration 177). Never written by `upsertNode`.
+  aircraftAgedOutAt: integer('aircraftAgedOutAt'),
+  aircraftFixedAt: integer('aircraftFixedAt'),
+  aircraftFixedLatitude: real('aircraftFixedLatitude'),
+  aircraftFixedLongitude: real('aircraftFixedLongitude'),
   // Timestamps
   createdAt: integer('createdAt').notNull(),
   updatedAt: integer('updatedAt').notNull(),
@@ -218,6 +224,11 @@ export const nodesPostgres = pgTable('nodes', {
   groundElevation: pgDoublePrecision('groundElevation'),
   heightAboveGround: pgDoublePrecision('heightAboveGround'),
   aircraftClassifiedAt: pgBigint('aircraftClassifiedAt', { mode: 'number' }),
+  // Aircraft age-out + fixed mark (migration 177). See the SQLite table above.
+  aircraftAgedOutAt: pgBigint('aircraftAgedOutAt', { mode: 'number' }),
+  aircraftFixedAt: pgBigint('aircraftFixedAt', { mode: 'number' }),
+  aircraftFixedLatitude: pgDoublePrecision('aircraftFixedLatitude'),
+  aircraftFixedLongitude: pgDoublePrecision('aircraftFixedLongitude'),
   // Timestamps
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
@@ -324,6 +335,11 @@ export const nodesMysql = mysqlTable('nodes', {
   groundElevation: myDouble('groundElevation'),
   heightAboveGround: myDouble('heightAboveGround'),
   aircraftClassifiedAt: myBigint('aircraftClassifiedAt', { mode: 'number' }),
+  // Aircraft age-out + fixed mark (migration 177). See the SQLite table above.
+  aircraftAgedOutAt: myBigint('aircraftAgedOutAt', { mode: 'number' }),
+  aircraftFixedAt: myBigint('aircraftFixedAt', { mode: 'number' }),
+  aircraftFixedLatitude: myDouble('aircraftFixedLatitude'),
+  aircraftFixedLongitude: myDouble('aircraftFixedLongitude'),
   // Timestamps
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),

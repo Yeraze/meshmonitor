@@ -142,6 +142,13 @@ export interface DeviceInfo {
   groundElevation?: number;
   /** `altitude − groundElevation`, signed. Only set when `aircraftBasis === 'agl'`. */
   heightAboveGround?: number;
+  /**
+   * ms epoch when the aircraft age-out sweep ignored this node (#5364/#5365
+   * Phase 2). Set only while that ignore stands; null/absent otherwise.
+   */
+  aircraftAgedOutAt?: number | null;
+  /** ms epoch when the node was reclassified as fixed (sticky mark); null/absent = no mark. */
+  aircraftFixedAt?: number | null;
 }
 
 export interface Channel {

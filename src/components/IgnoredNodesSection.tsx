@@ -16,8 +16,16 @@ interface IgnoredNode {
   shortName: string | null;
   ignoredAt: number;
   ignoredBy: string | null;
-  reason: 'manual' | 'geo';
+  reason: 'manual' | 'geo' | 'aircraft';
 }
+
+/** Badge colours per reason; unknown reasons render like 'manual'. */
+const REASON_BADGE: Record<string, { background: string; color: string }> = {
+  geo: { background: 'var(--color-accent)', color: 'var(--color-bg)' },
+  // #5364/#5365 Phase 2: ignored by the aircraft age-out sweep.
+  aircraft: { background: 'var(--color-warning)', color: 'var(--color-bg)' },
+  manual: { background: 'var(--color-surface-active)', color: 'var(--color-text-subtle)' },
+};
 
 const IgnoredNodesSection: React.FC<IgnoredNodesSectionProps> = ({ baseUrl }) => {
   const { t } = useTranslation();
@@ -33,7 +41,20 @@ const IgnoredNodesSection: React.FC<IgnoredNodesSectionProps> = ({ baseUrl }) =>
   const [removingNodeNum, setRemovingNodeNum] = useState<number | null>(null);
 
   const geoCount = ignoredNodes.filter(n => n.reason === 'geo').length;
-  const manualCount = ignoredNodes.length - geoCount;
+  const aircraftCount = ignoredNodes.filter(n => n.reason === 'aircraft').length;
+  const manualCount = ignoredNodes.length - geoCount - aircraftCount;
+
+  const reasonLabel = (reason: string): string => {
+    switch (reason) {
+      case 'geo':
+        return t('automation.ignored_nodes.reason_geo', 'Geo filter');
+      case 'aircraft':
+        return t('automation.ignored_nodes.reason_aircraft', 'Aged-out aircraft');
+      case 'manual':
+      default:
+        return t('automation.ignored_nodes.reason_manual', 'Manual');
+    }
+  };
 
   const sourceQuery = currentSourceId ? `?sourceId=${encodeURIComponent(currentSourceId)}` : '';
 
@@ -159,6 +180,8 @@ const IgnoredNodesSection: React.FC<IgnoredNodesSectionProps> = ({ baseUrl }) =>
                 geo: geoCount,
                 manual: manualCount,
               })}
+              {aircraftCount > 0 &&
+                ` · ${t('automation.ignored_nodes.count_aircraft', '{{count}} aged-out aircraft', { count: aircraftCount })}`}
             </div>
           </div>
         </div>
@@ -223,17 +246,17 @@ const IgnoredNodesSection: React.FC<IgnoredNodesSectionProps> = ({ baseUrl }) =>
                       {new Date(node.ignoredAt).toLocaleString()}
                     </td>
                     <td style={{ padding: '0.4rem 0.75rem' }}>
-                      <span style={{
-                        fontSize: '11px',
-                        padding: '0.15rem 0.4rem',
-                        background: node.reason === 'geo' ? 'var(--color-accent)' : 'var(--color-surface-active)',
-                        color: node.reason === 'geo' ? 'var(--color-bg)' : 'var(--color-text-subtle)',
-                        borderRadius: '4px',
-                        fontWeight: 'bold',
-                      }}>
-                        {node.reason === 'geo'
-                          ? t('automation.ignored_nodes.reason_geo', 'Geo filter')
-                          : t('automation.ignored_nodes.reason_manual', 'Manual')}
+                      <span
+                        data-testid={`ignored-reason-${node.nodeNum}`}
+                        style={{
+                          fontSize: '11px',
+                          padding: '0.15rem 0.4rem',
+                          ...(REASON_BADGE[node.reason] ?? REASON_BADGE.manual),
+                          borderRadius: '4px',
+                          fontWeight: 'bold',
+                        }}
+                      >
+                        {reasonLabel(node.reason)}
                       </span>
                     </td>
                     <td style={{ padding: '0.4rem 0.75rem', textAlign: 'center' }}>

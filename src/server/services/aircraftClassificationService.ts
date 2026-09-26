@@ -55,7 +55,7 @@ export const GROUND_MEMO_MAX = 20_000;
 export const BACKFILL_DELAY_MS = 120_000;
 
 /** Non-Meshtastic source types the D11 backfill and reclassify never touch (D2). */
-const AIRCRAFT_EXCLUDED_SOURCE_TYPES = new Set(['meshcore', 'meshcore_mqtt', 'reticulum']);
+export const AIRCRAFT_EXCLUDED_SOURCE_TYPES: ReadonlySet<string> = new Set(['meshcore', 'meshcore_mqtt', 'reticulum']);
 
 interface PendingJob {
   sourceId: string;
@@ -90,12 +90,33 @@ function isFiniteNum(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v);
 }
 
+/**
+ * Phase 2 (D4): the node's "confirmed fixed" anchor, or null when it carries
+ * no mark. `aircraftFixedAt` alone is not enough — both coordinates must be
+ * finite (PG/MySQL may hand back numeric strings, so coerce).
+ */
+function fixedAnchorOf(row: {
+  aircraftFixedLatitude?: number | string | null;
+  aircraftFixedLongitude?: number | string | null;
+}): { lat: number; lon: number } | null {
+  if (row.aircraftFixedLatitude == null || row.aircraftFixedLongitude == null) return null;
+  const lat = Number(row.aircraftFixedLatitude);
+  const lon = Number(row.aircraftFixedLongitude);
+  return Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null;
+}
+
+function positionOf(eff: { latitude?: number | null; longitude?: number | null }): { lat: number; lon: number } | null {
+  return isFiniteNum(eff.latitude) && isFiniteNum(eff.longitude) ? { lat: eff.latitude, lon: eff.longitude } : null;
+}
+
 export interface AircraftClassificationDeps {
   getNode(nodeNum: number, sourceId: string): Promise<DbNode | null>;
   writeClassification(nodeNum: number, sourceId: string, c: AircraftClassificationWrite): Promise<void>;
   listForReclassify(sourceId: string): Promise<AircraftReclassifyRow[]>;
   listUnclassifiedWithAltitude(sourceId: string): Promise<number[]>;
   clearClassification(sourceId: string): Promise<number>;
+  /** Phase 2 (D4): clear (null) the "confirmed fixed" mark when the node moved beyond the release radius. */
+  setFixed(nodeNum: number, sourceId: string, fixed: { atMs: number; lat: number; lon: number } | null): Promise<void>;
   getSourceSetting(sourceId: string, key: string): Promise<string | null>;
   getGlobalSetting(key: string): Promise<string | null>;
   listSources(): Promise<Array<{ id: string; type: string }>>;
@@ -115,6 +136,7 @@ function defaultDeps(): AircraftClassificationDeps {
     listUnclassifiedWithAltitude: (sourceId) =>
       databaseService.nodes.getUnclassifiedNodeNumsWithAltitude(sourceId),
     clearClassification: (sourceId) => databaseService.nodes.clearAircraftClassification(sourceId),
+    setFixed: (nodeNum, sourceId, fixed) => databaseService.setAircraftFixedAsync(nodeNum, sourceId, fixed),
     getSourceSetting: (sourceId, key) => databaseService.settings.getSettingForSource(sourceId, key),
     getGlobalSetting: (key) => databaseService.settings.getSetting(key),
     listSources: async () =>
@@ -427,7 +449,14 @@ export class AircraftClassificationService {
       groundElevationM: ctx.groundElevationM,
       settings,
       previous,
+      fixedAnchor: fixedAnchorOf(node),
+      position: positionOf(eff),
     });
+    if (c.releaseFixed) {
+      // Moved more than AIRCRAFT_FIXED_RELEASE_M from the anchor: drop the
+      // mark and let this verdict stand.
+      await this.deps.setFixed(job.nodeNum, job.sourceId, null);
+    }
 
     const prevBasis = (node.aircraftBasis as string | null | undefined) ?? null;
     const prevGround = node.groundElevation ?? null;
@@ -503,7 +532,12 @@ export class AircraftClassificationService {
             groundElevationM: row.groundElevation,
             settings,
             previous,
+            fixedAnchor: fixedAnchorOf(row),
+            position: positionOf(eff),
           });
+          if (c.releaseFixed) {
+            await this.deps.setFixed(row.nodeNum, sourceId, null);
+          }
 
           const prevGround = row.groundElevation ?? null;
           const prevHag = row.heightAboveGround ?? null;

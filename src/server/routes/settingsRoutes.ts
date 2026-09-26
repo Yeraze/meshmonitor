@@ -35,7 +35,12 @@ import {
 import { autoDeleteByDistanceService } from '../services/autoDeleteByDistanceService.js';
 import { NODE_DISPLAY_RANGES, SETTINGS_TAB_PER_SOURCE_KEYS, MAX_INFRA_NODE_AGE_HOURS_RANGE, TX_TARGET_MAX_AGE_HOURS_WHEN_UNLIMITED_RANGE } from '../../constants/nodeDisplayDefaults.js';
 import { resolveAppriseServerUrl } from '../services/appriseNotificationService.js';
-import { AIRCRAFT_AGL_RANGE, AIRCRAFT_MSL_RANGE } from '../../utils/aircraftClassification.js';
+import {
+  AIRCRAFT_AGL_RANGE,
+  AIRCRAFT_MSL_RANGE,
+  AIRCRAFT_AGE_OUT_HOURS_RANGE,
+  isAircraftAgeOutAction,
+} from '../../utils/aircraftClassification.js';
 import { aircraftClassificationService } from '../services/aircraftClassificationService.js';
 
 // ─── Tile URL validation ─────────────────────────────────────────────────
@@ -356,6 +361,8 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
       // typo'd value should 400 rather than silently read as false.
       'aircraftDetectionEnabled',
       'autoFavoriteExcludeAircraft',
+      // Aircraft age-out (#5364/#5365 Phase 2): ignores or deletes nodes.
+      'aircraftAgeOutEnabled',
     ] as const;
 
     for (const key of STRICT_BOOLEAN_SETTINGS_KEYS) {
@@ -501,6 +508,24 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
         return fail(res, 400, 'INVALID_AIRCRAFT_MSL_THRESHOLD',
           `aircraftMslThresholdMeters must be between ${R.min} and ${R.max} meters`);
       }
+    }
+
+    // Aircraft age-out (#5364/#5365 Phase 2). Whole hours in 6–168, and an
+    // explicit 'ignore' | 'delete' — 'delete' is destructive, so a typo must
+    // 400 rather than fall back silently.
+    if ('aircraftAgeOutHours' in filteredSettings) {
+      const raw = String(filteredSettings.aircraftAgeOutHours).trim();
+      const hours = raw === '' ? NaN : Number(raw);
+      const R = AIRCRAFT_AGE_OUT_HOURS_RANGE;
+      if (!Number.isInteger(hours) || hours < R.min || hours > R.max) {
+        return fail(res, 400, 'INVALID_AIRCRAFT_AGE_OUT_HOURS',
+          `aircraftAgeOutHours must be a whole number between ${R.min} and ${R.max}`);
+      }
+    }
+    if ('aircraftAgeOutAction' in filteredSettings
+      && !isAircraftAgeOutAction(filteredSettings.aircraftAgeOutAction)) {
+      return fail(res, 400, 'INVALID_AIRCRAFT_AGE_OUT_ACTION',
+        `aircraftAgeOutAction must be 'ignore' or 'delete'`);
     }
 
     // #5376: TX-target window used when maxNodeAgeHours is 0 ("unlimited").

@@ -129,14 +129,15 @@ describe('per-source settings key allowlist invariants', () => {
   });
 
   // #5364/#5365 Phase 1 WP5: pins the seeded/routed split itself — the
-  // routed set is exactly the frozen ten plus the three aircraft keys, in
+  // routed set is exactly the frozen ten plus the six aircraft keys (three
+  // P1 detection keys, three P2 age-out keys), in
   // that order, with no third source of keys sneaking in.
   it('NODE_DISPLAY_SETTING_KEYS equals NODE_DISPLAY_SEEDED_KEYS + AIRCRAFT_NODE_DISPLAY_KEYS', () => {
     expect(NODE_DISPLAY_SETTING_KEYS).toEqual([
       ...NODE_DISPLAY_SEEDED_KEYS,
       ...AIRCRAFT_NODE_DISPLAY_KEYS,
     ]);
-    expect(NODE_DISPLAY_SETTING_KEYS.length).toBe(13);
+    expect(NODE_DISPLAY_SETTING_KEYS.length).toBe(16);
   });
 
   // `localStatsIntervalMinutes` predates this work item (already read
@@ -160,7 +161,8 @@ describe('per-source settings key allowlist invariants', () => {
   // VALID_SETTINGS_KEYS coverage) surfaces here rather than only in the
   // exact-equality test above.
   it('PER_SOURCE_KEYS_NOT_POSTABLE has the expected size', () => {
-    expect(PER_SOURCE_KEYS_NOT_POSTABLE.size).toBe(25);
+    // #5364/#5365 Phase 2 added aircraftAgeOutLastRunAt + aircraftAgeOutLastResult.
+    expect(PER_SOURCE_KEYS_NOT_POSTABLE.size).toBe(27);
   });
 
   // #5101 Phase 3 WP3: the transport-traffic writer's checkpoint is

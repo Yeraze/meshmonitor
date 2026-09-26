@@ -281,6 +281,8 @@ describe('mergeUnifiedSourceData', () => {
             aircraftBasis: 'agl',
             groundElevation: 200,
             heightAboveGround: 3000,
+            aircraftAgedOutAt: 1_700_000_000_000,
+            aircraftFixedAt: 1_700_000_100_000,
           },
         ],
         traceroutes: [],
@@ -299,6 +301,9 @@ describe('mergeUnifiedSourceData', () => {
     expect(node.aircraftBasis).toBeNull();
     expect(node.groundElevation).toBeNull();
     expect(node.heightAboveGround).toBeNull();
+    // Phase 2 marks follow the same record (#5364/#5365).
+    expect(node.aircraftAgedOutAt).toBeNull();
+    expect(node.aircraftFixedAt).toBeNull();
   });
 
   it('carries altitude + aircraft fields through when the classified record IS the chosen position', () => {
@@ -316,6 +321,8 @@ describe('mergeUnifiedSourceData', () => {
             aircraftBasis: 'agl',
             groundElevation: 200,
             heightAboveGround: 3000,
+            aircraftAgedOutAt: 1_700_000_000_000,
+            aircraftFixedAt: 1_700_000_100_000,
           },
         ],
         traceroutes: [],
@@ -329,6 +336,8 @@ describe('mergeUnifiedSourceData', () => {
     expect(node.aircraftBasis).toBe('agl');
     expect(node.groundElevation).toBe(200);
     expect(node.heightAboveGround).toBe(3000);
+    expect(node.aircraftAgedOutAt).toBe(1_700_000_000_000);
+    expect(node.aircraftFixedAt).toBe(1_700_000_100_000);
   });
 
   it('does not let chatter on a coarse record promote its position (#5292)', () => {

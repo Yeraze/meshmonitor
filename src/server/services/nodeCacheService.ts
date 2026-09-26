@@ -104,6 +104,11 @@ export class NodeCacheService {
       groundElevation: node.groundElevation ?? undefined,
       heightAboveGround: node.heightAboveGround ?? undefined,
       aircraftClassifiedAt: node.aircraftClassifiedAt ?? undefined,
+      // #5364/#5365 Phase 2: age-out + fixed mark.
+      aircraftAgedOutAt: node.aircraftAgedOutAt ?? undefined,
+      aircraftFixedAt: node.aircraftFixedAt ?? undefined,
+      aircraftFixedLatitude: node.aircraftFixedLatitude ?? undefined,
+      aircraftFixedLongitude: node.aircraftFixedLongitude ?? undefined,
       sourceId: node.sourceId ?? sourceId,
       createdAt: node.createdAt,
       updatedAt: node.updatedAt,
