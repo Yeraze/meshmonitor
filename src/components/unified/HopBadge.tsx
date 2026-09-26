@@ -30,6 +30,7 @@ export default function HopBadge({ reception, sourceName }: HopBadgeProps) {
       role="img"
       data-testid="unified-hop-badge"
     >
+      {/* Direct shows 0 to keep the badge purely numeric; the label says "direct". */}
       {hops != null ? hops : '?'}
     </span>
   );
