@@ -458,6 +458,9 @@ function runAircraftTests(getBackend: () => TestBackend) {
     expect(node130?.heightAboveGround).toBeNull();
     // Ground elevation is cheap DEM data, kept so a re-enable doesn't need a re-fetch.
     expect(node130?.groundElevation).toBe(200);
+    // Cleared so the startup backfill re-covers the row after a re-enable.
+    expect(node130?.aircraftClassifiedAt ?? null).toBeNull();
+    expect(await repo.getUnclassifiedNodeNumsWithAltitude(SOURCE)).toContain(130);
   });
 
   it('clearAircraftClassification returns 0 and is a no-op when nothing is classified', async () => {

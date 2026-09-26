@@ -170,7 +170,11 @@ export function formatAircraftSummary(
     const height = formatHeightMeters(m.heightAboveGround);
     return t('node_popup.aircraft_agl', 'Likely aircraft · {{height}} above ground', { height });
   }
-  const altitude = isFiniteNumber(m.altitude) ? m.altitude : 0;
-  const height = formatHeightMeters(altitude);
+  // No usable height (e.g. the altitude was cleared after classification):
+  // say only "Likely aircraft" rather than print a made-up "0 m".
+  if (!isFiniteNumber(m.altitude)) {
+    return t('node_popup.aircraft', 'Likely aircraft');
+  }
+  const height = formatHeightMeters(m.altitude);
   return t('node_popup.aircraft_msl', 'Likely aircraft · {{height}} above sea level', { height });
 }

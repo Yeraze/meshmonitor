@@ -245,4 +245,9 @@ describe('formatAircraftSummary', () => {
     const summary = formatAircraftSummary({ aircraftBasis: 'msl', altitude: 6100 }, t as any);
     expect(summary).toBe('Likely aircraft · 6.1 km above sea level');
   });
+
+  it('no usable height -> plain "Likely aircraft", never "0 m"', () => {
+    expect(formatAircraftSummary({ aircraftBasis: 'msl', altitude: null }, t as any)).toBe('Likely aircraft');
+    expect(formatAircraftSummary({ aircraftBasis: 'agl', heightAboveGround: null }, t as any)).toBe('Likely aircraft');
+  });
 });

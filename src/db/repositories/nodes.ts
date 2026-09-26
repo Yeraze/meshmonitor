@@ -2174,30 +2174,36 @@ export class NodesRepository extends BaseRepository {
    * Clear the classification for every row in a source (D7: detection turned
    * off for this source). `groundElevation` is kept — cheap DEM data, not a
    * user-facing flag, so re-enabling detection later doesn't need a re-fetch
-   * for nodes that haven't moved. Returns the number of rows actually
-   * changed and syncs the PG/MySQL node cache for each.
+   * for nodes that haven't moved. `aircraftClassifiedAt` IS cleared, so the
+   * startup backfill picks these rows up again if a later re-enable's
+   * recompute doesn't finish. Returns the number of rows actually changed
+   * and syncs the PG/MySQL node cache for each.
    */
   async clearAircraftClassification(sourceId: string): Promise<number> {
     const { nodes } = this.tables;
+    const classified = and(
+      eq(nodes.sourceId, sourceId),
+      or(
+        isNotNull(nodes.likelyAircraft),
+        isNotNull(nodes.aircraftBasis),
+        isNotNull(nodes.heightAboveGround),
+        isNotNull(nodes.aircraftClassifiedAt),
+      ),
+    );
+    // Node numbers are needed only for the cache sync below; the UPDATE uses
+    // the same predicate rather than a (possibly huge) `IN (...)` list.
     const toClear = await this.db
       .select({ nodeNum: nodes.nodeNum })
       .from(nodes)
-      .where(and(
-        eq(nodes.sourceId, sourceId),
-        or(
-          isNotNull(nodes.likelyAircraft),
-          isNotNull(nodes.aircraftBasis),
-          isNotNull(nodes.heightAboveGround),
-        ),
-      ));
+      .where(classified);
 
     if (toClear.length === 0) return 0;
 
     const nodeNums = (toClear as Array<{ nodeNum: number }>).map((r) => r.nodeNum);
     await this.db
       .update(nodes)
-      .set({ likelyAircraft: null, aircraftBasis: null, heightAboveGround: null })
-      .where(and(eq(nodes.sourceId, sourceId), inArray(nodes.nodeNum, nodeNums)));
+      .set({ likelyAircraft: null, aircraftBasis: null, heightAboveGround: null, aircraftClassifiedAt: null })
+      .where(classified);
 
     for (const nodeNum of nodeNums) {
       await this.syncCacheNode(Number(nodeNum), sourceId);

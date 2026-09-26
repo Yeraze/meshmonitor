@@ -1380,6 +1380,7 @@
   "relay_modal.no_direct_neighbors": "No direct neighbors found. We haven't received any zero-hop packets recently to identify potential relays.",
   "relay_modal.rssi_estimate_note": "Note: Sorted by RSSI proximity. Nodes with similar RSSI to this message are more likely to be the relay.",
   "node_popup.node_fallback": "Node {{nodeNum}}",
+  "node_popup.aircraft": "Likely aircraft",
   "node_popup.aircraft_agl": "Likely aircraft · {{height}} above ground",
   "node_popup.aircraft_msl": "Likely aircraft · {{height}} above sea level",
   "node_popup.id": "ID",
