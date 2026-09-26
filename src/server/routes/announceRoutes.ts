@@ -3,10 +3,12 @@ import { requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
+import { requireMeshtasticDeviceSource } from '../utils/requireMeshtasticDeviceSource.js';
 
 const router = Router();
 
-router.post('/send', requirePermission('automation', 'write'), async (req: Request, res: Response) => {
+// Sends through the source's own radio; no primary-radio fallback (#5375).
+router.post('/send', requirePermission('automation', 'write'), requireMeshtasticDeviceSource('body', 'announcements'), async (req: Request, res: Response) => {
   try {
     const { sourceId: announceSourceId } = req.body;
     const announceManager = resolveSourceManager(announceSourceId);

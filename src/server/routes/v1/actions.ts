@@ -15,6 +15,7 @@
 import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
 import { resolveSourceManager } from '../../utils/resolveSourceManager.js';
+import { refuseNonMeshtasticSource } from '../../utils/requireMeshtasticDeviceSource.js';
 import { logger } from '../../../utils/logger.js';
 import { PortNum, TransportMechanism } from '../../constants/meshtastic.js';
 import { attachSource, resolvedSourceIdFromPath } from './sourceParam.js';
@@ -86,6 +87,8 @@ router.post('/traceroute', attachSource('traceroute', 'write'), async (req: Requ
       return res.status(400).json({ success: false, error: 'Destination node is required (destination, nodeId, or nodeNum)' });
     }
 
+    // No primary-radio fallback for MQTT/other non-Meshtastic sources (#5375).
+    if (refuseNonMeshtasticSource(res, sourceId, 'mesh requests')) return;
     const manager = resolveSourceManager(sourceId);
     // Traceroutes must traverse a channel every intermediate node can decrypt
     // and relay, or those nodes can't append to the route and show up as
@@ -125,6 +128,8 @@ router.post('/request-position', attachSource('messages', 'write'), async (req: 
       return res.status(400).json({ success: false, error: 'Destination node is required (destination, nodeId, or nodeNum)' });
     }
 
+    // No primary-radio fallback for MQTT/other non-Meshtastic sources (#5375).
+    if (refuseNonMeshtasticSource(res, sourceId, 'mesh requests')) return;
     const manager = resolveSourceManager(sourceId);
     const node = await databaseService.nodes.getNode(destinationNum, sourceId);
     const channel = (typeof req.body.channel === 'number' && req.body.channel >= 0 && req.body.channel <= 7)
@@ -187,6 +192,8 @@ router.post('/request-nodeinfo', attachSource('messages', 'write'), async (req: 
       return res.status(400).json({ success: false, error: 'Destination node is required (destination, nodeId, or nodeNum)' });
     }
 
+    // No primary-radio fallback for MQTT/other non-Meshtastic sources (#5375).
+    if (refuseNonMeshtasticSource(res, sourceId, 'mesh requests')) return;
     const manager = resolveSourceManager(sourceId);
     const node = await databaseService.nodes.getNode(destinationNum, sourceId);
     const channel = (typeof req.body.channel === 'number' && req.body.channel >= 0 && req.body.channel <= 7)
@@ -248,6 +255,8 @@ router.post('/request-neighbors', attachSource('traceroute', 'write'), async (re
       return res.status(400).json({ success: false, error: 'Destination node is required (destination, nodeId, or nodeNum)' });
     }
 
+    // No primary-radio fallback for MQTT/other non-Meshtastic sources (#5375).
+    if (refuseNonMeshtasticSource(res, sourceId, 'mesh requests')) return;
     const manager = resolveSourceManager(sourceId);
     const localNodeNum = manager.getLocalNodeInfo()?.nodeNum;
     const node = await databaseService.nodes.getNode(destinationNum, sourceId);

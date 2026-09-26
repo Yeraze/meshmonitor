@@ -11,7 +11,7 @@ import { fallbackManager } from './meshtasticManager.js';
 import { MeshtasticManager } from './meshtasticManager.js';
 import { sourceManagerRegistry } from './sourceManagerRegistry.js';
 import { getPrimaryMeshtasticManager } from './sourceManagerTypes.js';
-import { resolveSourceManager } from './utils/resolveSourceManager.js';
+import { resolveOwnMeshtasticManager } from './utils/resolveSourceManager.js';
 import { createRequire } from 'module';
 import { logger } from '../utils/logger.js';
 import { setDiscardInvalidPositions, parseDiscardInvalidPositions } from '../utils/positionIngestConfig.js';
@@ -988,8 +988,9 @@ setSettingsCallbacks({
   setTracerouteInterval: (interval) =>
     (getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager).setTracerouteInterval(interval),
   setRemoteAdminScannerInterval: (interval, sourceId) => {
-    const mgr = resolveSourceManager(sourceId);
-    mgr.setRemoteAdminScannerInterval(interval);
+    // Own radio only: the scanner transmits admin probes, so a non-Meshtastic
+    // source must never re-arm the primary's scanner (#5375).
+    resolveOwnMeshtasticManager(sourceId)?.setRemoteAdminScannerInterval(interval);
   },
   setLocalStatsInterval: (interval, sourceId) => {
     const mgr = sourceId

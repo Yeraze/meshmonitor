@@ -4,7 +4,7 @@ import { logger } from '../../utils/logger.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { requireMeshtasticDeviceSource } from '../utils/requireMeshtasticDeviceSource.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
-import { isMeshCoreManager } from '../sourceManagerTypes.js';
+import { isMeshCoreManager, isMeshtasticManager } from '../sourceManagerTypes.js';
 
 const router = Router();
 
@@ -23,6 +23,15 @@ router.get('/device/tx-status', optionalAuth(), async (req: Request, res: Respon
       if (mgr && isMeshCoreManager(mgr)) {
         const canTx = mgr.canTransmit();
         res.json({ txEnabled: canTx, udpRelayEnabled: false, canTransmit: canTx });
+        return;
+      }
+      // Any other non-Meshtastic source (mqtt_broker, mqtt_bridge,
+      // meshcore_mqtt, reticulum) has no local radio. resolveSourceManager()
+      // would report the PRIMARY TCP radio's TX state for it (#5375). Report
+      // honestly that it cannot transmit; `hasLocalRadio: false` lets the UI
+      // say why instead of blaming the LoRa config.
+      if (mgr && !isMeshtasticManager(mgr)) {
+        res.json({ txEnabled: false, udpRelayEnabled: false, canTransmit: false, hasLocalRadio: false });
         return;
       }
     }

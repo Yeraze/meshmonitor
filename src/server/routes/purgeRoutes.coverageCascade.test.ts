@@ -20,6 +20,7 @@ import databaseService from '../../services/database.js';
 const mockManager = { refreshNodeDatabase: vi.fn().mockResolvedValue(undefined) };
 vi.mock('../utils/resolveSourceManager.js', () => ({
   resolveSourceManager: vi.fn(() => mockManager),
+  resolveOwnMeshtasticManager: vi.fn(() => mockManager),
 }));
 
 const receptionParams = (sourceId: string, receiverId: string, senderId: string, packetKey: string) => ({

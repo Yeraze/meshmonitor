@@ -32,6 +32,7 @@ import { logger } from '../../utils/logger.js';
 import { optionalAuth, requireAuth, requirePermission, hasPermission } from '../auth/authMiddleware.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
+import { refuseNonMeshtasticSource } from '../utils/requireMeshtasticDeviceSource.js';
 import type { ResourceType } from '../../types/permission.js';
 
 const router = Router({ mergeParams: true });
@@ -251,6 +252,10 @@ router.post(
           required: { resource: channelResource, action: 'write' },
         });
       }
+
+      // Accepting writes a channel to the source's own radio. An MQTT
+      // broker/bridge source has none; never write the primary's (#5375).
+      if (refuseNonMeshtasticSource(res, sourceId, 'channel writes')) return;
 
       const offer = await databaseService.meshBeaconOffers.getOffer(sourceId, nodeNum);
       if (!offer) return fail(res, 404, 'BEACON_OFFER_NOT_FOUND', 'No beacon offer from that node on this source');

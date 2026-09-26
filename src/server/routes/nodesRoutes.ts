@@ -23,7 +23,8 @@ import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { fallbackManager } from '../meshtasticManager.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
-import { resolveSourceManager } from '../utils/resolveSourceManager.js';
+import { resolveSourceManager, resolveOwnMeshtasticManager } from '../utils/resolveSourceManager.js';
+import { requireMeshtasticDeviceSource } from '../utils/requireMeshtasticDeviceSource.js';
 import { isMeshCoreManager, getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
 import { filterNodesByChannelPermission, enhanceNodeForClient, checkNodeChannelAccess, attachUptimeToNodes } from '../utils/nodeEnhancer.js';
 import { pivotPositionHistory } from '../utils/positionHistoryPivot.js';
@@ -871,8 +872,11 @@ router.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write', { sou
     let deviceSyncStatus: 'success' | 'failed' | 'skipped' = 'skipped';
     let deviceSyncError: string | undefined;
 
-    if (syncToDevice) {
-      const favManager = resolveSourceManager(favSourceId);
+    // Device sync goes to THIS source's own radio only. An MQTT broker/bridge
+    // source has none, so the sync is skipped instead of favoriting the node on
+    // the primary TCP radio (#5375).
+    const favManager = syncToDevice ? resolveOwnMeshtasticManager(favSourceId) : null;
+    if (favManager) {
       try {
         if (isFavorite) {
           await favManager.sendFavoriteNode(nodeNum, destinationNodeNum);
@@ -1116,8 +1120,10 @@ router.post('/nodes/:nodeId/ignored', requirePermission('nodes', 'write', { sour
     let deviceSyncStatus: 'success' | 'failed' | 'skipped' = 'skipped';
     let deviceSyncError: string | undefined;
 
-    if (syncToDevice) {
-      const ignoreManager = resolveSourceManager(ignoreSourceId);
+    // Device sync goes to THIS source's own radio only; skipped for a source
+    // with no local Meshtastic device (#5375).
+    const ignoreManager = syncToDevice ? resolveOwnMeshtasticManager(ignoreSourceId) : null;
+    if (ignoreManager) {
       try {
         if (isIgnored) {
           await ignoreManager.sendIgnoredNode(nodeNum, destinationNodeNum);
@@ -1594,7 +1600,7 @@ router.delete('/nodes/:nodeId/neighbors', requirePermission('nodes', 'write', { 
 });
 
 // Manually scan a node for remote admin capability
-router.post('/nodes/:nodeNum/scan-remote-admin', requirePermission('settings', 'write'), async (req, res) => {
+router.post('/nodes/:nodeNum/scan-remote-admin', requirePermission('settings', 'write'), requireMeshtasticDeviceSource('either', 'mesh requests'), async (req, res) => {
   try {
     const { nodeNum } = req.params;
     const parsedNodeNum = parseInt(nodeNum, 10);
@@ -1652,7 +1658,7 @@ router.post('/nodes/:nodeNum/scan-remote-admin', requirePermission('settings', '
 });
 
 // Send key security warning DM to a specific node
-router.post('/nodes/:nodeId/send-key-warning', requirePermission('messages', 'write'), async (req, res) => {
+router.post('/nodes/:nodeId/send-key-warning', requirePermission('messages', 'write'), requireMeshtasticDeviceSource('body', 'message sends'), async (req, res) => {
   try {
     const { nodeId } = req.params;
 
@@ -1817,7 +1823,7 @@ router.post('/nodes/scan-duplicate-keys', requirePermission('nodes', 'write'), a
 // Device configuration endpoint
 // ==========================================
 // Refresh nodes from device endpoint
-router.post('/nodes/refresh', requirePermission('nodes', 'write'), async (req, res) => {
+router.post('/nodes/refresh', requirePermission('nodes', 'write'), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     logger.debug('🔄 Manual node database refresh requested...');
 

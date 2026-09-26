@@ -66,7 +66,10 @@ router.get('/poll', optionalAuth(), async (req, res) => {
     // Pre-compute shared values used across multiple sections
     const user = (req as any).user;
     const userId = req.user?.id ?? null;
-    const localNodeInfo = activeManager.getLocalNodeInfo();
+    // Unread DM counting keys off THIS source's own node. A source with no
+    // local node (MQTT broker/bridge) skips DM-to-local counting instead of
+    // counting the primary TCP node's DMs (#5375).
+    const localNodeInfo = deviceManager?.getLocalNodeInfo() ?? null;
     // Nodes are stored per-source (composite PK (nodeNum, sourceId) since migration
     // 029). Scope strictly to this source so two sources with overlapping meshes
     // each show only what they have actually heard. When no sourceId is given

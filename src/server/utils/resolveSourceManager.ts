@@ -15,6 +15,12 @@ import { isMeshtasticManager, getPrimaryMeshtasticManager } from '../sourceManag
  *   back because MeshCore sources use isMeshCoreManager-narrowed lookups
  *   in their own routes.
  *
+ * Because of that fallback, NEVER use this to transmit or to write device
+ * config for a caller-supplied sourceId: an MQTT broker/bridge id would act on
+ * the primary TCP radio (#5367, #5375). Guard those routes with
+ * `requireMeshtasticDeviceSource()` / `refuseNonMeshtasticSource()`, or use
+ * {@link resolveOwnMeshtasticManager} and skip the device step on null.
+ *
  * Centralizes the inline pattern that previously appeared in 60+ handlers.
  * NEVER returns undefined (invariant I2, #3962 Phase 4.2a) — every caller
  * relies on a non-optional manager instance.
