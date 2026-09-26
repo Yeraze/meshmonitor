@@ -11,8 +11,8 @@
  * `last_advert` that isn't a real receive time at all (years in the past or
  * future). Trusting it verbatim, as the #3645 fix originally did, wrecks
  * Last Heard sort order and the node-visibility max-age filter for as long
- * as that bogus value sticks around — so an implausible advert time falls
- * back to now, the same as a missing one always has.
+ * as that bogus value sticks around — so an implausible advert time is
+ * treated the same as a missing one.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
@@ -91,7 +91,7 @@ describe('MeshCoreManager — Last Heard preserved across reconnect (#3645)', ()
     expect(m.getContact(KEY)?.lastSeen).toBe(fixedNow);
   });
 
-  it('falls back to now when the reported advert time is implausibly far in the past (#5339)', async () => {
+  it('ignores a reported advert time implausibly far in the past (#5339)', async () => {
     const fixedNow = 1_800_000_000_000; // ms
     vi.setSystemTime(fixedNow);
     // A companion with an unsynced RTC reporting year 2000 — below the
@@ -104,10 +104,17 @@ describe('MeshCoreManager — Last Heard preserved across reconnect (#3645)', ()
 
     await m.refreshContacts();
 
-    expect(m.getContact(KEY)?.lastSeen).toBe(fixedNow);
+    // The drifted value must reach neither memory nor the DB. (What replaces
+    // it, now or the last known value, is the no-advert-time rule's call;
+    // #5341 owns that.)
+    expect(m.getContact(KEY)?.lastSeen).not.toBe(advertSec * 1000);
+    expect(upsertNode).not.toHaveBeenCalledWith(
+      expect.objectContaining({ lastHeard: advertSec * 1000 }),
+      'src-a',
+    );
   });
 
-  it('falls back to now when the reported advert time is implausibly far in the future (#5339)', async () => {
+  it('ignores a reported advert time implausibly far in the future (#5339)', async () => {
     const fixedNow = 1_800_000_000_000; // ms
     vi.setSystemTime(fixedNow);
     // A companion with a drifted RTC reporting year 2087.
@@ -119,7 +126,14 @@ describe('MeshCoreManager — Last Heard preserved across reconnect (#3645)', ()
 
     await m.refreshContacts();
 
-    expect(m.getContact(KEY)?.lastSeen).toBe(fixedNow);
+    // The drifted value must reach neither memory nor the DB. (What replaces
+    // it, now or the last known value, is the no-advert-time rule's call;
+    // #5341 owns that.)
+    expect(m.getContact(KEY)?.lastSeen).not.toBe(advertSec * 1000);
+    expect(upsertNode).not.toHaveBeenCalledWith(
+      expect.objectContaining({ lastHeard: advertSec * 1000 }),
+      'src-a',
+    );
   });
 
   it('accepts an advert time within a day of now (ordinary clock skew, not drift)', async () => {
