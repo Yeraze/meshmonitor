@@ -3394,8 +3394,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // intermittently collapses to 1 node. (DB rows survive either way; this
       // keeps the in-memory map authoritative too.)
       if (response.success && Array.isArray(response.data) && response.data.length > 0) {
+        // Snapshot the previously known lastSeen per key before clearing —
+        // a contact sync is a local read of the device's saved contact list,
+        // not evidence a node was just heard, so a contact with no reported
+        // advert time must keep whatever we already knew, not jump to now.
+        const previousLastSeen = new Map(
+          Array.from(this.contacts.entries(), ([key, contact]) => [key, contact.lastSeen]),
+        );
         this.contacts.clear();
-        const nowMs = Date.now();
         for (const c of response.data) {
           // Skip contacts the user just removed that still linger on the
           // companion's saved-contact list — re-adding them here is exactly
@@ -3405,9 +3411,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           // Preserve the real Last Heard across reconnect (#3645). The companion
           // reports each contact's last advert time (epoch seconds) — use it for
           // lastSeen instead of the reconnect wall-clock, which previously reset
-          // every node's Last Heard to "now". Falls back to now only when the
-          // device didn't report an advert time. (Guard handles a value already
-          // in ms, mirroring MeshCoreContactDetailPanel.)
+          // every node's Last Heard to "now". When the device didn't report an
+          // advert time, keep the last value we knew about instead of stamping
+          // "now" (#5341) — the forward-only guard in upsertNode() can't catch
+          // that, since Date.now() always looks like forward progress. (Guard
+          // handles a value already in ms, mirroring MeshCoreContactDetailPanel.)
           const advertSec = typeof c.last_advert === 'number' ? c.last_advert : 0;
           const advertMs = advertSec > 0
             ? (advertSec < 1e12 ? advertSec * 1000 : advertSec)
@@ -3422,7 +3430,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
             latitude: c.latitude,
             longitude: c.longitude,
             lastAdvert: advertSec > 0 ? advertSec : undefined,
-            lastSeen: advertMs ?? nowMs,
+            lastSeen: advertMs ?? previousLastSeen.get(c.public_key),
             outPath: c.out_path ?? null,
             pathLen: c.path_len ?? null,
             flags: typeof c.flags === 'number' ? c.flags : undefined,
@@ -4348,11 +4356,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       }
       const existing = this.contacts.get(publicKey);
       if (existing) {
+        // Leave lastSeen alone (#5341): a path reset is a local write to the
+        // companion, not evidence the node was heard. The DM-ack-timeout retry
+        // calls this precisely BECAUSE the node went silent, so stamping "now"
+        // here bumped an offline node's Last Heard on every failed DM.
         const updated: MeshCoreContact = {
           ...existing,
           outPath: null,
           pathLen: null,
-          lastSeen: Date.now(),
         };
         this.contacts.set(publicKey, updated);
         void this.persistContact(updated);
@@ -5168,11 +5179,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       const hex = hopTokens.join(',');
       const existing = this.contacts.get(publicKey);
       if (existing) {
+        // Leave lastSeen alone (#5341): set_out_path is a serial-only write to
+        // the companion, not a reception from the node.
         const updated: MeshCoreContact = {
           ...existing,
           outPath: hex,
           pathLen: hopCount,
-          lastSeen: Date.now(),
         };
         this.contacts.set(publicKey, updated);
         void this.persistContact(updated);
