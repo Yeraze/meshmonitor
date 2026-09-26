@@ -25,9 +25,11 @@ See [Multi-Source → Connection Types](/features/multi-source) for the full lis
 
 ## Node Display
 
-### Maximum Age of Active Nodes
+### Node list & map window
 
-**Description**: Controls which nodes appear in the Node List based on their last activity.
+**Description**: The default time window for the Nodes list and the map. Nodes not heard within it are hidden. The Nodes list header shows the active window (for example `Nodes (122) · last 24h`, or `· all` at `0`). The map's **Map age filter** can narrow this window but never widen it.
+
+*Formerly labeled "Maximum Age of Active Nodes".*
 
 **Range**: 0-168 hours (`0` = show all, no age cap)
 
