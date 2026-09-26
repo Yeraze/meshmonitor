@@ -3,7 +3,7 @@ import { requireAdmin } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { logger } from '../../utils/logger.js';
-import { resolveSourceManager } from '../utils/resolveSourceManager.js';
+import { resolveOwnMeshtasticManager } from '../utils/resolveSourceManager.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { validateOutlierCriteria, type OutlierCriteria } from '../../utils/telemetryOutliers.js';
 import {
@@ -23,8 +23,10 @@ router.post('/nodes', async (req: Request, res: Response) => {
     // intentional cross-source: purge stats reflect global total before wipe
     const nodeCount = await databaseService.nodes.getNodeCount(ALL_SOURCES);
     await databaseService.purgeAllNodesAsync(purgeNodesSourceId);
-    const purgeNodesManager = resolveSourceManager(purgeNodesSourceId);
-    await purgeNodesManager.refreshNodeDatabase();
+    // Re-sync from THIS source's own radio. A non-Meshtastic source has none;
+    // asking the primary TCP radio to refresh would be the wrong device (#5375).
+    const purgeNodesManager = resolveOwnMeshtasticManager(purgeNodesSourceId);
+    await purgeNodesManager?.refreshNodeDatabase();
 
     void databaseService.auditLogAsync(
       req.user!.id,

@@ -15,6 +15,7 @@ const mockManager = vi.hoisted(() => ({
 }));
 vi.mock('../utils/resolveSourceManager.js', () => ({
   resolveSourceManager: vi.fn(() => mockManager),
+  resolveOwnMeshtasticManager: vi.fn(() => mockManager),
 }));
 
 // --- channelView: passthrough projection so we can assert psk stripping logic indirectly ---
@@ -132,7 +133,10 @@ beforeEach(() => {
   mockDb.messages.getDistinctChannelsForSource.mockResolvedValue([]);
   mockDb.getChannelDatabasePermissionsForUserAsSetAsync.mockResolvedValue({});
   mockDb.sources.getSource.mockResolvedValue({ type: 'meshtastic_tcp' });
-  mockSourceRegistry.getManager.mockReturnValue(mockMeshcoreManager);
+  // MeshCore ids resolve to the MeshCore manager; every other id is a
+  // Meshtastic source, so the SOURCE_NOT_MESHTASTIC guard (#5375) lets it by.
+  mockSourceRegistry.getManager.mockImplementation(((id: string) =>
+    id === 'mc-1' || id === 'meshcore-1' ? mockMeshcoreManager : { sourceType: 'meshtastic_tcp' }) as any);
 });
 
 describe('GET /channels and /channels/all', () => {

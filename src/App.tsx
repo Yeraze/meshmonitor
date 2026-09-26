@@ -280,7 +280,11 @@ function App() {
   // instead so the banner stays honest about how packets leave (#4394).
   const { isTxDisabled, isUdpRelay } = useTxStatus({ baseUrl, sourceId });
   // MQTT-bridge sources are never gated (different transport, not affected by radio TX state)
-  const txGated = isTxDisabled && !isMqttBridge;
+  // MQTT broker/bridge sources have no local radio, so every send is gated.
+  // The server refuses them with SOURCE_NOT_MESHTASTIC rather than sending
+  // through the primary TCP radio (#5375); disabling the controls here says
+  // why up front instead of failing on click.
+  const txGated = isTxDisabled || isMqtt;
 
   // MeshCore has no LoRa Configuration screen, so the Meshtastic-worded
   // tooltip/toast point a MeshCore operator at a remedy that does not exist
@@ -290,7 +294,9 @@ function App() {
   // unchanged.
   const isMeshCoreSource = sourceType === 'meshcore';
   const txDisabledTooltip = t(
-    isMeshCoreSource ? 'meshcore.receive_only.control_tooltip' : 'tx_disabled.control_tooltip'
+    isMqtt
+      ? 'tx_disabled.no_local_radio_tooltip'
+      : isMeshCoreSource ? 'meshcore.receive_only.control_tooltip' : 'tx_disabled.control_tooltip'
   );
 
   // Check for version updates. TanStack Query's refetchInterval replaces the
@@ -3387,14 +3393,18 @@ function App() {
         onFetchSystemStatus={fetchSystemStatus}
         onShowLoginModal={() => setShowLoginModal(true)}
         onLogout={() => setActiveTab('nodes')}
-        onNodeClick={handleNodeClick}
+        // The node-info modal shows and edits a TCP node address; an MQTT
+        // source has none (#5375).
+        onNodeClick={isMqtt ? undefined : handleNodeClick}
         sourceName={sourceName}
         onBackToSources={sourceId ? () => navigate('/', { state: { showList: true } }) : undefined}
         mqttReadOnly={isMqttBridge}
       />
 
       <AppBanners
-        isTxDisabled={isTxDisabled}
+        // The TX-disabled banner blames the LoRa config; an MQTT source has no
+        // radio at all, so the disabled controls' tooltip explains it instead.
+        isTxDisabled={isTxDisabled && !isMqtt}
         isUdpRelay={isUdpRelay}
         isMeshCore={isMeshCoreSource}
         configIssues={configIssues}
@@ -3987,7 +3997,9 @@ function App() {
         systemStatus={systemStatus}
         onClose={() => setShowStatusModal(false)}
         connectionStatus={connectionStatus}
-        canManageConnection={hasPermission('connection', 'write')}
+        // An MQTT source has no radio link of its own; disconnect/reconnect
+        // would act on the primary radio, so the server refuses them (#5375).
+        canManageConnection={hasPermission('connection', 'write') && !isMqtt}
         onDisconnect={handleDisconnect}
         onReconnect={handleReconnect}
       />

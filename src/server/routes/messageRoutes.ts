@@ -8,7 +8,8 @@ import { logger } from '../../utils/logger.js';
 import { RequestHandler } from 'express';
 import { ResourceType } from '../../types/permission.js';
 import { fallbackManager } from '../meshtasticManager.js';
-import { resolveSourceManager } from '../utils/resolveSourceManager.js';
+import { resolveSourceManager, resolveOwnMeshtasticManager } from '../utils/resolveSourceManager.js';
+import { refuseNonMeshtasticSource, isNonMeshtasticSource } from '../utils/requireMeshtasticDeviceSource.js';
 import { optionalAuth, requirePermission, hasPermission } from '../auth/authMiddleware.js';
 import {
   getUserReadableVirtualChannelIds,
@@ -1051,7 +1052,9 @@ router.get('/direct/:nodeId1/:nodeId2', requirePermission('messages', 'read'), a
 router.post('/mark-read', optionalAuth(), async (req, res) => {
   try {
     const { messageIds, channelId, nodeId, beforeTimestamp, allDMs, sourceId: markReadSourceId } = req.body;
-    const markReadManager = resolveSourceManager(markReadSourceId);
+    // The local node is THIS source's own node. A non-Meshtastic source has
+    // none; falling back to the primary would mark the primary's DMs (#5375).
+    const markReadManager = resolveOwnMeshtasticManager(markReadSourceId);
 
     // If marking by channelId, check per-channel read permission. Virtual
     // (Channel Database) channels use per-entry `canRead` grants rather than a
@@ -1100,8 +1103,11 @@ router.post('/mark-read', optionalAuth(), async (req, res) => {
       markedCount = messageIds.length;
     } else if (allDMs) {
       // Mark ALL DMs as read
-      const localNodeInfo = markReadManager.getLocalNodeInfo();
+      const localNodeInfo = markReadManager?.getLocalNodeInfo() ?? null;
       if (!localNodeInfo) {
+        // No local node on an MQTT/other non-Meshtastic source: there are no
+        // DMs to or from "us", so there is nothing to mark.
+        if (isNonMeshtasticSource(markReadSourceId)) return res.json({ marked: 0 });
         return res.status(500).json({ error: 'Local node not connected' });
       }
       markedCount = await databaseService.markAllDMMessagesAsReadAsync(localNodeInfo.nodeId, userId);
@@ -1110,8 +1116,11 @@ router.post('/mark-read', optionalAuth(), async (req, res) => {
       markedCount = await databaseService.markChannelMessagesAsReadAsync(channelId, userId, beforeTimestamp, markReadSourceId);
     } else if (nodeId) {
       // Mark all DMs with a node as read (permission already checked above)
-      const localNodeInfo = markReadManager.getLocalNodeInfo();
+      const localNodeInfo = markReadManager?.getLocalNodeInfo() ?? null;
       if (!localNodeInfo) {
+        // No local node on an MQTT/other non-Meshtastic source: there are no
+        // DMs to or from "us", so there is nothing to mark.
+        if (isNonMeshtasticSource(markReadSourceId)) return res.json({ marked: 0 });
         return res.status(500).json({ error: 'Local node not connected' });
       }
       markedCount = await databaseService.markDMMessagesAsReadAsync(localNodeInfo.nodeId, nodeId, userId, beforeTimestamp);
@@ -1221,8 +1230,11 @@ router.get('/unread-counts', optionalAuth(), async (req, res) => {
     // source can keep a badge lit for messages that aren't visible in the
     // current source's tab.
     const excludeMqtt = req.query.excludeMqtt === 'true';
+    // DMs count against THIS source's own node. A non-Meshtastic source has no
+    // local node, so DM-to-local counting is skipped rather than counting the
+    // primary TCP node's DMs (#5375).
     const unreadManager = resolveSourceManager(unreadSourceId);
-    const localNodeInfo = unreadManager.getLocalNodeInfo();
+    const localNodeInfo = resolveOwnMeshtasticManager(unreadSourceId)?.getLocalNodeInfo() ?? null;
 
     const result: {
       channels?: { [channelId: number]: number };
@@ -1568,7 +1580,8 @@ router.get('/first-unread', optionalAuth(), async (req, res) => {
     const userId = req.user?.id ?? null;
     const excludeMqtt = req.query.excludeMqtt === 'true';
     const manager = resolveSourceManager(scopedSourceId);
-    const localNodeInfo = manager.getLocalNodeInfo();
+    // THIS source's own node only; none on a non-Meshtastic source (#5375).
+    const localNodeInfo = resolveOwnMeshtasticManager(scopedSourceId)?.getLocalNodeInfo() ?? null;
 
     const raw = await databaseService.getFirstUnreadTimestampsAsync(
       userId,
@@ -1703,6 +1716,11 @@ router.post('/send', optionalAuth(), async (req, res) => {
         });
       }
     }
+
+    // An MQTT broker/bridge (or any non-Meshtastic) source has no radio of its
+    // own; resolveSourceManager() would hand back the PRIMARY TCP manager and
+    // transmit through a radio the user did not pick (#5375). Refuse instead.
+    if (await refuseNonMeshtasticSource(res, reqSourceId, 'message sends')) return;
 
     // Route to the correct source manager when sourceId is provided
     const activeManager = (resolveSourceManager(reqSourceId));

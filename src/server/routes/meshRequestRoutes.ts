@@ -8,10 +8,15 @@ import { resolveDestinationChannel, resolveBroadcastChannel, isValidChannelIndex
 import { PortNum, TransportMechanism } from '../constants/meshtastic.js';
 import { fail } from '../utils/apiResponse.js';
 import { isTxDisabledError } from '../errors/txDisabledError.js';
+import { requireMeshtasticDeviceSource } from '../utils/requireMeshtasticDeviceSource.js';
+
+// Every route here transmits through the source's radio. An MQTT broker/bridge
+// sourceId would otherwise resolve to the PRIMARY TCP radio (#5375).
+const noLocalRadioGuard = requireMeshtasticDeviceSource('body', 'mesh requests');
 
 const router = Router();
 
-router.post('/traceroute', requirePermission('traceroute', 'write'), async (req: Request, res: Response) => {
+router.post('/traceroute', requirePermission('traceroute', 'write'), noLocalRadioGuard, async (req: Request, res: Response) => {
   try {
     const { destination, sourceId: traceSourceId } = req.body;
     if (!destination) {
@@ -55,7 +60,7 @@ router.post('/traceroute', requirePermission('traceroute', 'write'), async (req:
 });
 
 // Position request endpoint
-router.post('/position/request', requirePermission('messages', 'write'), async (req: Request, res: Response) => {
+router.post('/position/request', requirePermission('messages', 'write'), noLocalRadioGuard, async (req: Request, res: Response) => {
   try {
     const { destination, sourceId: posSourceId } = req.body;
     if (!destination) {
@@ -139,7 +144,7 @@ router.post('/position/request', requirePermission('messages', 'write'), async (
 });
 
 // NodeInfo request endpoint (Exchange Node Info - triggers key exchange)
-router.post('/nodeinfo/request', requirePermission('messages', 'write'), async (req: Request, res: Response) => {
+router.post('/nodeinfo/request', requirePermission('messages', 'write'), noLocalRadioGuard, async (req: Request, res: Response) => {
   try {
     const { destination, sourceId: niSourceId } = req.body;
     if (!destination) {
@@ -226,7 +231,7 @@ router.post('/nodeinfo/request', requirePermission('messages', 'write'), async (
 const neighborInfoRequestTimestamps = new Map<number, number>();
 const NEIGHBOR_INFO_RATE_LIMIT_MS = 180_000;
 
-router.post('/neighborinfo/request', requirePermission('traceroute', 'write'), async (req: Request, res: Response) => {
+router.post('/neighborinfo/request', requirePermission('traceroute', 'write'), noLocalRadioGuard, async (req: Request, res: Response) => {
   try {
     const { destination } = req.body;
     if (!destination) {
@@ -304,7 +309,7 @@ router.post('/neighborinfo/request', requirePermission('traceroute', 'write'), a
 });
 
 // Telemetry request endpoint (request telemetry from remote node)
-router.post('/telemetry/request', requirePermission('messages', 'write'), async (req: Request, res: Response) => {
+router.post('/telemetry/request', requirePermission('messages', 'write'), noLocalRadioGuard, async (req: Request, res: Response) => {
   try {
     const { destination, telemetryType, sourceId: telSourceId } = req.body;
     if (!destination) {

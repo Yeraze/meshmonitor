@@ -25,6 +25,7 @@ vi.mock('../../services/database.js', () => ({
 const mockManager = { refreshNodeDatabase: vi.fn() };
 vi.mock('../utils/resolveSourceManager.js', () => ({
   resolveSourceManager: vi.fn(() => mockManager),
+  resolveOwnMeshtasticManager: vi.fn(() => mockManager),
 }));
 
 const mockDb = databaseService as unknown as {

@@ -6,6 +6,7 @@ import { backupFileService } from '../services/backupFileService.js';
 import { systemBackupService } from '../services/systemBackupService.js';
 import { deviceRestoreService } from '../services/deviceRestoreService.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
+import { requireMeshtasticDeviceSource } from '../utils/requireMeshtasticDeviceSource.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { logger } from '../../utils/logger.js';
 
@@ -138,7 +139,7 @@ backupRouter.delete('/delete/:filename', requirePermission('configuration', 'wri
 // Restore a saved backup to the connected local device (#4926).
 // Writes each config section back via admin messages. Overwrites current
 // device config, so the frontend confirms before calling this.
-backupRouter.post('/restore/:filename', requirePermission('configuration', 'write'), async (req: Request, res: Response) => {
+backupRouter.post('/restore/:filename', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req: Request, res: Response) => {
   try {
     const { filename } = req.params;
 

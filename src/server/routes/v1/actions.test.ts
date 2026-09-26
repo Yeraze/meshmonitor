@@ -83,6 +83,7 @@ vi.mock('../../utils/resolveSourceManager.js', () => ({
 import databaseService from '../../../services/database.js';
 import { resolveSourceManager } from '../../utils/resolveSourceManager.js';
 import actionsRouter from './actions.js';
+import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
 
 const mockDb = databaseService as any;
 const mockResolveSourceManager = resolveSourceManager as ReturnType<typeof vi.fn>;
@@ -162,6 +163,19 @@ afterEach(() => {
 // ══════════════════════════════════════════════════════════════════════════════
 // POST /traceroute
 // ══════════════════════════════════════════════════════════════════════════════
+
+// #5375: send / radio-write routes refuse a source with a row but no live
+// manager (it would otherwise fall back to the primary radio). Every source
+// these tests name is a live Meshtastic source, so give each one a manager.
+let liveManagerSpy: ReturnType<typeof vi.spyOn> | undefined;
+beforeEach(() => {
+  const original = sourceManagerRegistry.getManager.bind(sourceManagerRegistry);
+  liveManagerSpy = vi.spyOn(sourceManagerRegistry, 'getManager').mockImplementation(((id: string) =>
+    original(id) ?? ({ sourceId: id, sourceType: 'meshtastic_tcp' } as never)) as typeof sourceManagerRegistry.getManager);
+});
+afterEach(() => {
+  liveManagerSpy?.mockRestore();
+});
 
 describe('POST /traceroute', () => {
   it('returns 200 and calls sendTraceroute with correct args', async () => {

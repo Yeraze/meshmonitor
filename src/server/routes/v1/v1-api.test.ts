@@ -271,6 +271,8 @@ vi.mock('../../meshtasticManager.js', () => {
     // meshtastic_tcp source is registered in this route-only unit test, so
     // resolution always falls through to fallbackManager below.
     fallbackManager: {
+      sourceId: 'test-source',
+      sourceType: 'meshtastic_tcp',
       sendTextMessage: vi.fn(async (text: string, channel: number, destination?: number, replyId?: number, emoji?: number, userId?: number) => {
         // Simulate returning a message ID
         return 123456789;
@@ -338,6 +340,8 @@ vi.mock('../../services/solarMonitoringService.js', () => {
 
 // Import after mocking
 import v1Router from './index.js';
+import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
+import { fallbackManager as mockedFallbackManager } from '../../meshtasticManager.js';
 
 let app: express.Application;
 
@@ -350,6 +354,19 @@ beforeEach(async () => {
 
 afterEach(() => {
   vi.clearAllMocks();
+});
+
+// #5375: send / radio-write routes refuse a source with a row but no live
+// manager (it would otherwise fall back to the primary radio). Every source
+// these tests name is a live Meshtastic source, so give each one a manager.
+let liveManagerSpy: ReturnType<typeof vi.spyOn> | undefined;
+beforeEach(() => {
+  const original = sourceManagerRegistry.getManager.bind(sourceManagerRegistry);
+  liveManagerSpy = vi.spyOn(sourceManagerRegistry, 'getManager').mockImplementation(((id: string) =>
+    original(id) ?? (id === 'test-source' ? (mockedFallbackManager as never) : undefined)) as typeof sourceManagerRegistry.getManager);
+});
+afterEach(() => {
+  liveManagerSpy?.mockRestore();
 });
 
 describe('V1 API Authentication', () => {

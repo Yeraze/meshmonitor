@@ -12,15 +12,16 @@ import express from 'express';
 import request from 'supertest';
 import databaseService from '../../services/database.js';
 
-vi.mock('../utils/resolveSourceManager.js', () => ({
-  resolveSourceManager: () => ({
+vi.mock('../utils/resolveSourceManager.js', () => {
+  const manager = () => ({
     getLocalNodeInfo: () => ({ nodeId: '!me' }),
     getAllNodesAsync: async () => [
       { nodeNum: 1, user: { id: '!peer' } },
       { nodeNum: 2, user: { id: '!hidden' } },
     ],
-  }),
-}));
+  });
+  return { resolveSourceManager: manager, resolveOwnMeshtasticManager: manager };
+});
 
 vi.mock('../utils/nodeEnhancer.js', () => ({
   // Only `!peer` is visible to the caller; `!hidden` is filtered by channel

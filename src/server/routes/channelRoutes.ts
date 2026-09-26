@@ -29,7 +29,8 @@ import { logger } from '../../utils/logger.js';
 import { optionalAuth, requireAuth, requirePermission, hasPermission } from '../auth/authMiddleware.js';
 import { transformChannel } from '../utils/channelView.js';
 import { detectChannelCollisions } from '../utils/channelCollision.js';
-import { resolveSourceManager } from '../utils/resolveSourceManager.js';
+import { resolveSourceManager, resolveOwnMeshtasticManager } from '../utils/resolveSourceManager.js';
+import { requireMeshtasticDeviceSource } from '../utils/requireMeshtasticDeviceSource.js';
 import { migrateAutomationChannels } from '../utils/automationChannelMigration.js';
 import { detectChannelMoves, snapshotFromDecodedChannels, type ChannelSnapshot } from '../utils/channelMoveDetection.js';
 import { modemPresetChannelName, CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
@@ -611,21 +612,27 @@ router.put('/:id', requireAuth(), requireSourceId('body'), async (req: Request, 
       { allowBlankName: true },
     );
 
-    // Send channel configuration to Meshtastic device
-    const chanUpdateManager = (resolveSourceManager(chanSourceId));
-    try {
-      await chanUpdateManager.setChannelConfig(channelId, {
-        name: updatedChannelData.name,
-        psk: updatedChannelData.psk === '' ? undefined : updatedChannelData.psk,
-        role: updatedChannelData.role,
-        uplinkEnabled: updatedChannelData.uplinkEnabled,
-        downlinkEnabled: updatedChannelData.downlinkEnabled,
-        positionPrecision: updatedChannelData.positionPrecision,
-      });
-      logger.debug(`✅ Sent channel ${channelId} configuration to device`);
-    } catch (deviceError) {
-      logger.error(`⚠️ Failed to send channel ${channelId} config to device:`, deviceError);
-      // Continue even if device update fails - database is updated
+    // Send channel configuration to THIS source's own Meshtastic device. An
+    // MQTT broker/bridge source has none: the row above is saved, and the push
+    // is skipped rather than landing on the primary TCP radio (#5375).
+    const chanUpdateManager = resolveOwnMeshtasticManager(chanSourceId);
+    if (chanUpdateManager) {
+      try {
+        await chanUpdateManager.setChannelConfig(channelId, {
+          name: updatedChannelData.name,
+          psk: updatedChannelData.psk === '' ? undefined : updatedChannelData.psk,
+          role: updatedChannelData.role,
+          uplinkEnabled: updatedChannelData.uplinkEnabled,
+          downlinkEnabled: updatedChannelData.downlinkEnabled,
+          positionPrecision: updatedChannelData.positionPrecision,
+        });
+        logger.debug(`✅ Sent channel ${channelId} configuration to device`);
+      } catch (deviceError) {
+        logger.error(`⚠️ Failed to send channel ${channelId} config to device:`, deviceError);
+        // Continue even if device update fails - database is updated
+      }
+    } else {
+      logger.debug(`ℹ️ Channel ${channelId} saved for source ${chanSourceId}; no local Meshtastic device, push skipped`);
     }
 
     // Migrate messages if channel PSK moved to a different slot (per-source — #3712)
@@ -801,21 +808,26 @@ router.post('/:slotId/import', requireAuth(), requireSourceId('body'), async (re
     // Import channel to the specified slot in database (scoped to source — #3712)
     await databaseService.channels.upsertChannel(importedChannelData, importScopedSourceId);
 
-    // Send channel configuration to Meshtastic device
-    const importManager = (resolveSourceManager(importSourceId));
-    try {
-      await importManager.setChannelConfig(slotId, {
-        name: importedChannelData.name,
-        psk: importedChannelData.psk,
-        role: importedChannelData.role,
-        uplinkEnabled: importedChannelData.uplinkEnabled,
-        downlinkEnabled: importedChannelData.downlinkEnabled,
-        positionPrecision: importedChannelData.positionPrecision,
-      });
-      logger.debug(`✅ Sent imported channel ${slotId} configuration to device`);
-    } catch (deviceError) {
-      logger.error(`⚠️ Failed to send imported channel ${slotId} config to device:`, deviceError);
-      // Continue even if device update fails - database is updated
+    // Send channel configuration to THIS source's own Meshtastic device; skip
+    // the push (row still saved) when the source has none (#5375).
+    const importManager = resolveOwnMeshtasticManager(importSourceId);
+    if (importManager) {
+      try {
+        await importManager.setChannelConfig(slotId, {
+          name: importedChannelData.name,
+          psk: importedChannelData.psk,
+          role: importedChannelData.role,
+          uplinkEnabled: importedChannelData.uplinkEnabled,
+          downlinkEnabled: importedChannelData.downlinkEnabled,
+          positionPrecision: importedChannelData.positionPrecision,
+        });
+        logger.debug(`✅ Sent imported channel ${slotId} configuration to device`);
+      } catch (deviceError) {
+        logger.error(`⚠️ Failed to send imported channel ${slotId} config to device:`, deviceError);
+        // Continue even if device update fails - database is updated
+      }
+    } else {
+      logger.debug(`ℹ️ Channel ${slotId} imported for source ${importSourceId}; no local Meshtastic device, push skipped`);
     }
 
     // Migrate messages if channel PSK moved to a different slot (per-source — #3712)
@@ -831,7 +843,7 @@ router.post('/:slotId/import', requireAuth(), requireSourceId('body'), async (re
 });
 
 // Reorder device channel slots (drag-and-drop)
-router.post('/reorder', requireAuth(), requireSourceId('body'), async (req: Request, res: Response) => {
+router.post('/reorder', requireAuth(), requireSourceId('body'), requireMeshtasticDeviceSource('body'), async (req: Request, res: Response) => {
   try {
     const { newOrder, sourceId: reorderSourceId } = req.body;
 
@@ -1007,7 +1019,7 @@ router.post('/decode-url', requirePermission('configuration', 'read'), async (re
 });
 
 // Encode current configuration to Meshtastic URL
-router.post('/encode-url', requirePermission('configuration', 'read'), requireSourceId('body'), async (req: Request, res: Response) => {
+router.post('/encode-url', requirePermission('configuration', 'read'), requireSourceId('body'), requireMeshtasticDeviceSource('body'), async (req: Request, res: Response) => {
   try {
     const { channelIds, includeLoraConfig, sourceId: encodeUrlSourceId } = req.body;
     const encodeUrlManager = resolveSourceManager(encodeUrlSourceId);
@@ -1088,7 +1100,7 @@ router.post('/encode-url', requirePermission('configuration', 'read'), requireSo
 });
 
 // Import configuration from URL
-router.post('/import-config', requirePermission('configuration', 'write'), requireSourceId('body'), async (req: Request, res: Response) => {
+router.post('/import-config', requirePermission('configuration', 'write'), requireSourceId('body'), requireMeshtasticDeviceSource('body'), async (req: Request, res: Response) => {
   try {
     const { url: configUrl, sourceId: configSourceId } = req.body;
 
@@ -1252,7 +1264,7 @@ router.post('/import-config', requirePermission('configuration', 'write'), requi
 });
 
 // Manual channel-database refresh
-router.post('/refresh', requirePermission('messages', 'write'), async (req: Request, res: Response) => {
+router.post('/refresh', requirePermission('messages', 'write'), requireMeshtasticDeviceSource('body'), async (req: Request, res: Response) => {
   try {
     logger.debug('🔄 Manual channel refresh requested...');
 

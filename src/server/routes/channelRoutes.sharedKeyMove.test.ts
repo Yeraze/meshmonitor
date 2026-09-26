@@ -16,6 +16,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 const setChannelConfig = vi.fn().mockResolvedValue(undefined);
 vi.mock('../utils/resolveSourceManager.js', () => ({
   resolveSourceManager: () => ({ setChannelConfig, sourceId: 'rt-source-a' }),
+  resolveOwnMeshtasticManager: () => ({ setChannelConfig, sourceId: 'rt-source-a' }),
 }));
 
 import channelRoutes from './channelRoutes.js';

@@ -22,7 +22,7 @@ import { invalidateCoverageMqttEnabled } from '../services/coverageMqttSettings.
 import { COVERAGE_MQTT_ENABLED_SETTING } from '../../utils/coverage.js';
 import { VALID_SETTINGS_KEYS, GLOBAL_ONLY_SETTINGS_KEYS, stripSecretSettings } from '../constants/settings.js';
 import { ok, fail } from '../utils/apiResponse.js';
-import { resolveSourceManager } from '../utils/resolveSourceManager.js';
+import { resolveOwnMeshtasticManager } from '../utils/resolveSourceManager.js';
 import { validateFilterNameRegexOnSave } from '../utils/filterNameRegex.js';
 import { positionEstimationScheduler } from '../services/positionEstimationScheduler.js';
 import {
@@ -1375,8 +1375,9 @@ router.post('/traceroute-interval', requirePermission('settings', 'write'), (req
       return res.status(400).json({ error: 'Invalid interval. Must be between 0 and 60 minutes (0 = disabled).' });
     }
 
-    const traceIntervalManager = (resolveSourceManager(traceIntervalSourceId));
-    traceIntervalManager.setTracerouteInterval(intervalMinutes);
+    // Apply only to THIS source's own radio. A non-Meshtastic source has none;
+    // re-arming the primary's scheduler would change its airtime (#5375).
+    resolveOwnMeshtasticManager(traceIntervalSourceId)?.setTracerouteInterval(intervalMinutes);
     res.json({ success: true, intervalMinutes });
   } catch (error) {
     logger.error('Error setting traceroute interval:', error);
@@ -1390,8 +1391,8 @@ router.post('/remote-localstats-interval', requirePermission('settings', 'write'
     if (typeof intervalMinutes !== 'number' || intervalMinutes < 0 || intervalMinutes > 1440) {
       return res.status(400).json({ error: 'Invalid interval. Must be between 0 and 1440 minutes (0 = disabled).' });
     }
-    const rlsIntervalManager = (resolveSourceManager(rlsIntervalSourceId));
-    rlsIntervalManager.setRemoteLocalStatsInterval(intervalMinutes);
+    // Own radio only; never the primary's scheduler (#5375).
+    resolveOwnMeshtasticManager(rlsIntervalSourceId)?.setRemoteLocalStatsInterval(intervalMinutes);
     res.json({ success: true, intervalMinutes });
   } catch (error) {
     logger.error('Error setting remote LocalStats interval:', error);
@@ -1843,8 +1844,12 @@ router.post('/time-sync-nodes', requirePermission('settings', 'write'), async (r
 
     // Update the meshtastic manager interval if connected
     const timeSyncSourceId = sourceId;
-    const timeSyncManager = resolveSourceManager(timeSyncSourceId);
-    if (intervalMinutes !== undefined) {
+    // Own radio only; a non-Meshtastic source never re-arms the primary's
+    // time-sync scheduler (#5375).
+    const timeSyncManager = resolveOwnMeshtasticManager(timeSyncSourceId);
+    if (!timeSyncManager) {
+      // Settings are saved above; there is no local radio to apply them to.
+    } else if (intervalMinutes !== undefined) {
       timeSyncManager.setTimeSyncInterval(enabled ? Number(intervalMinutes) : 0);
     } else if (enabled !== undefined) {
       // If only enabled/disabled changed, use existing interval (per-source with global fallback)
@@ -1870,7 +1875,9 @@ router.post('/time-sync-nodes', requirePermission('settings', 'write'), async (r
 router.get('/auto-ping', requirePermission('settings', 'read'), async (req, res) => {
   try {
     const autoPingSourceId = req.query.sourceId as string | undefined;
-    const autoPingManager = resolveSourceManager(autoPingSourceId);
+    // Sessions come from THIS source's own radio; a source with none (MQTT
+    // broker/bridge, disconnected TCP) has no sessions, not the primary's (#5375).
+    const autoPingManager = resolveOwnMeshtasticManager(autoPingSourceId);
     // Per-source settings layered on top of globals (source override wins)
     const sourceOverrides = autoPingSourceId
       ? await databaseService.settings.getSourceSettings(autoPingSourceId)
@@ -1885,7 +1892,7 @@ router.get('/auto-ping', requirePermission('settings', 'read'), async (req, res)
       autoPingMaxPings: parseInt((await readSetting('autoPingMaxPings')) || '20', 10),
       autoPingTimeoutSeconds: parseInt((await readSetting('autoPingTimeoutSeconds')) || '60', 10),
     };
-    const sessions = await autoPingManager.getAutoPingSessions();
+    const sessions = autoPingManager ? await autoPingManager.getAutoPingSessions() : [];
     res.json({ settings, sessions });
   } catch (error) {
     logger.error('Error fetching auto-ping settings:', error);

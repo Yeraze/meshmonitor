@@ -2,7 +2,7 @@ import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { calculateDistance } from '../../utils/distance.js';
-import { resolveSourceManager } from '../utils/resolveSourceManager.js';
+import { resolveOwnMeshtasticManager } from '../utils/resolveSourceManager.js';
 import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
 
 type DistanceAction = 'delete' | 'ignore';
@@ -270,11 +270,14 @@ class AutoDeleteByDistanceService {
               processedNodes.push(nodeInfo);
 
               // Device sync: throttled + short-circuit on unsupported firmware
-              if (!firmwareUnsupported) {
+              // Sync to THIS source's own radio only. An MQTT broker/bridge
+              // source has none; syncing the ignore to the primary TCP radio
+              // would be an admin packet on the wrong device (#5375).
+              const manager = resolveOwnMeshtasticManager(nodeSourceId);
+              if (!firmwareUnsupported && manager) {
                 if (pendingSyncDelay) {
                   await new Promise((resolve) => setTimeout(resolve, SYNC_DELAY_MS));
                 }
-                const manager = resolveSourceManager(nodeSourceId);
                 try {
                   await manager.sendIgnoredNode(nodeNum);
                   pendingSyncDelay = true;
