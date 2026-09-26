@@ -15,3 +15,17 @@
   font-weight: 600;
   color: var(--color-text);
 }
+
+/*
+ * Inline mesh-impact warning under a setting's description (#5376): the
+ * TX-target window next to the node window limits which nodes MeshMonitor
+ * transmits to.
+ */
+.txWarning {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: normal;
+  color: var(--color-warning);
+}

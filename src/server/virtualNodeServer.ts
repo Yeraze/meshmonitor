@@ -824,8 +824,11 @@ export class VirtualNodeServer extends EventEmitter {
   private async sendNodeInfosFromDb(clientId: string): Promise<{ sent: number; disconnected: boolean }> {
     const sourceId = this.config.meshtasticManager.sourceId;
     const maxNodeAgeHours = await getMaxNodeAgeHours(databaseService.settings, sourceId);
-    const maxNodeAgeDays = maxNodeAgeHours / 24;
-    const allNodes = await databaseService.nodes.getActiveNodes(maxNodeAgeDays, sourceId);
+    // maxNodeAgeHours 0 = "unlimited" (#4947, #5376): replay every node,
+    // matching what the MeshMonitor Nodes list shows.
+    const allNodes = maxNodeAgeHours > 0
+      ? await databaseService.nodes.getActiveNodes(maxNodeAgeHours / 24, sourceId)
+      : await databaseService.nodes.getHeardNodes(sourceId);
     let sent = 0;
 
     // Broadcast pseudo-node — see issue #2602. Existing installations may

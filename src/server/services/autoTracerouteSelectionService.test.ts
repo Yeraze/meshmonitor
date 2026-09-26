@@ -239,3 +239,31 @@ describe('selectNodeNeedingTraceroute — combine modes', () => {
     expect(s).toEqual([1, 2, 3, 4]);
   });
 });
+
+describe('selectNodeNeedingTraceroute — active-node cutoff (#5376)', () => {
+  async function cutoffFor(maxNodeAgeHours: number): Promise<number> {
+    const getEligibleNodesForTraceroute = vi.fn().mockResolvedValue([]);
+    await selectNodeNeedingTraceroute(LOCAL, 'src-a', {
+      filterCfg: config(),
+      maxNodeAgeHours,
+      nodesRepo: { getEligibleNodesForTraceroute } as never,
+      normalizeBigInts: (n: DbNode) => n,
+    });
+    return getEligibleNodesForTraceroute.mock.calls[0][1] as number;
+  }
+
+  it('uses the given window as the lastHeard cutoff', async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const cutoff = await cutoffFor(48);
+    expect(nowSec - cutoff).toBeGreaterThanOrEqual(48 * 3600 - 2);
+    expect(nowSec - cutoff).toBeLessThanOrEqual(48 * 3600 + 2);
+  });
+
+  it('never turns a 0 ("unlimited") window into cutoff = now; falls back to the 24h TX default', async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const cutoff = await cutoffFor(0);
+    // Before #5376 this was `now`, so no node was ever eligible.
+    expect(nowSec - cutoff).toBeGreaterThanOrEqual(24 * 3600 - 2);
+    expect(nowSec - cutoff).toBeLessThanOrEqual(24 * 3600 + 2);
+  });
+});

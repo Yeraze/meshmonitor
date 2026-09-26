@@ -358,6 +358,23 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
+   * Every node ever heard (non-null `lastHeard`), most-recently-heard first.
+   * The unbounded twin of getActiveNodes, for maxNodeAgeHours = 0 ("unlimited",
+   * #4947/#5376). Unlike getAllNodes it still skips never-heard placeholder
+   * rows (FK/topology breadcrumbs).
+   */
+  async getHeardNodes(sourceId: SourceScope): Promise<DbNode[]> {
+    const { nodes } = this.tables;
+    const result = await this.db
+      .select()
+      .from(nodes)
+      .where(and(isNotNull(nodes.lastHeard), this.withSourceScope(nodes, sourceId)))
+      .orderBy(desc(nodes.lastHeard));
+
+    return this.normalizeBigInts(result) as DbNode[];
+  }
+
+  /**
    * Get active nodes (heard within sinceDays), most-recently-heard first.
    *
    * When `limit` is a positive number, at most that many nodes are returned —

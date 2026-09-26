@@ -9,6 +9,7 @@
 export const VALID_SETTINGS_KEYS = [
   'maxNodeAgeHours',
   'maxInfraNodeAgeHours', // #4899 — separate age window for MeshCore repeaters/room servers
+  'txTargetMaxAgeHoursWhenUnlimited', // #5376 — TX-target window when maxNodeAgeHours is 0
   'tracerouteIntervalMinutes',
   'temperatureUnit',
   'distanceUnit',
@@ -584,6 +585,9 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   // #4899 — standalone per-source Infrastructure age cutoff (advType 2/3),
   // NOT one of the frozen ten Node Display keys / migration-131 seed.
   'maxInfraNodeAgeHours',
+  // #5376 — per-source TX-target window used when maxNodeAgeHours is 0
+  // ("unlimited"); bounds auto-traceroute / remote-admin / remote LocalStats.
+  'txTargetMaxAgeHoursWhenUnlimited',
   'inactiveNodeThresholdHours',
   'inactiveNodeCheckIntervalMinutes',
   'inactiveNodeCooldownHours',
