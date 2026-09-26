@@ -195,6 +195,7 @@ import { migration as createCoverageSurveysMigration, runMigration173Postgres, r
 import { migration as resetPostgresSequencesMigration, runMigration174Postgres, runMigration174Mysql } from '../server/migrations/174_reset_postgres_sequences.js';
 import { migration as addNodeAircraftClassificationMigration, runMigration175Postgres, runMigration175Mysql } from '../server/migrations/175_add_node_aircraft_classification.js';
 import { migration as userMapPreferencesAircraftDisplayModeMigration, runMigration176Postgres, runMigration176Mysql } from '../server/migrations/176_user_map_preferences_aircraft_display_mode.js';
+import { migration as addNodeAircraftAgeOutMigration, runMigration177Postgres, runMigration177Mysql } from '../server/migrations/177_add_node_aircraft_ageout.js';
 
 // ============================================================================
 // Registry
@@ -2857,4 +2858,19 @@ registry.register({
   sqlite: (db) => userMapPreferencesAircraftDisplayModeMigration.up(db),
   postgres: (client) => runMigration176Postgres(client),
   mysql: (pool) => runMigration176Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 177: aircraft age-out + "confirmed fixed" columns on `nodes`
+// (#5364/#5365 Phase 2). Four nullable columns, no default, no index;
+// `upsertNode` never writes them.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 177,
+  name: 'add_node_aircraft_ageout',
+  settingsKey: 'migration_177_add_node_aircraft_ageout',
+  sqlite: (db) => addNodeAircraftAgeOutMigration.up(db),
+  postgres: (client) => runMigration177Postgres(client),
+  mysql: (pool) => runMigration177Mysql(pool),
 });

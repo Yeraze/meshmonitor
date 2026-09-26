@@ -50,6 +50,7 @@ import { pkiDecryptionService } from './services/pkiDecryptionService.js';
 import { getSourcePkiKeyStore, isPkiDmDecryptionGloballyEnabled } from './services/sourcePkiKeyStore.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { aircraftClassificationService } from './services/aircraftClassificationService.js';
+import { aircraftAgeOutService } from './services/aircraftAgeOutService.js';
 import {
   ToastThrottle,
   shouldSuppressToast,
@@ -7901,8 +7902,15 @@ class MeshtasticManager implements ISourceManager {
           );
 
           // Likely-aircraft classification (#5364/#5365): non-throwing,
-          // coalescing queue — see aircraftClassificationService.ts.
-          aircraftClassificationService.schedule(this.sourceId, fromNum);
+          // coalescing queue — see aircraftClassificationService.ts. A LIVE
+          // position (not a fw2.8 NodeDB replay) also goes through the Phase 2
+          // auto-lift (D3), which lifts an aged-out aircraft's DB-only ignore
+          // and then queues the same classification.
+          if (isLiveReception(meshPacket.rxTime, Date.now())) {
+            void aircraftAgeOutService.onLivePosition(this.sourceId, fromNum);
+          } else {
+            aircraftClassificationService.schedule(this.sourceId, fromNum);
+          }
 
           // Check geofence triggers for this node's new position. Skip when
           // a user-set override is in effect — the override is the authoritative
@@ -9691,7 +9699,13 @@ class MeshtasticManager implements ISourceManager {
           // would otherwise trigger a local admin command on every NodeInfo.
           const now = Date.now();
           const lastPush = this.ignoreReapplyCooldown.get(nodeNum) ?? 0;
-          if (now - lastPush >= IGNORE_REAPPLY_COOLDOWN_MS) {
+          if (databaseService.ignoredNodes.getIgnoreReasonCached?.(nodeNum, this.sourceId) === 'aircraft') {
+            // #5364/#5365 Phase 2 D1: an aircraft age-out ignore is DB-only.
+            // Never push it to the radio: the device would then drop the
+            // node's packets, and the live-position auto-lift (D3) could
+            // never see it come back.
+            logger.debug(`🚫 Node ${nodeId} is an aged-out aircraft (DB-only ignore); not re-applying on local device`);
+          } else if (now - lastPush >= IGNORE_REAPPLY_COOLDOWN_MS) {
             this.ignoreReapplyCooldown.set(nodeNum, now);
             logger.debug(`🚫 Node ${nodeId} on persistent ignore list but device reports un-ignored — re-applying on local device (#2601)`);
             void (async () => {

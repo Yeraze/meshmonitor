@@ -18,6 +18,7 @@ import { sendMessagePushNotification } from './services/messagePushNotifier.js';
 import mqttPacketLogService from './services/mqttPacketLogService.js';
 import { autoDeleteByDistanceService } from './services/autoDeleteByDistanceService.js';
 import { aircraftClassificationService } from './services/aircraftClassificationService.js';
+import { aircraftAgeOutService } from './services/aircraftAgeOutService.js';
 import databaseService from '../services/database.js';
 import { isBlankMacAddr } from '../utils/nodeFieldBlanks.js';
 
@@ -96,7 +97,7 @@ import {
 import { calculateDistance } from '../utils/distance.js';
 import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
 import { canonicalTelemetryType, canonicalTelemetryUnit } from './utils/telemetryKeys.js';
-import { resolveLastHeardSec } from './utils/replayGuard.js';
+import { resolveLastHeardSec, isLiveReception } from './utils/replayGuard.js';
 import { plausibleRxTime } from './utils/messageTime.js';
 import { shouldDiscardPosition } from '../utils/nullIsland.js';
 import { getDiscardInvalidPositions } from '../utils/positionIngestConfig.js';
@@ -530,7 +531,13 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
         // Likely-aircraft classification (#5364/#5365): non-throwing,
         // coalescing queue — see aircraftClassificationService.ts. Only for a
         // trustworthy fix with an altitude to classify.
-        if (!positionIsBogus && typeof alt === 'number') {
+        const hasAlt = !positionIsBogus && typeof alt === 'number';
+        // Phase 2 D3: a LIVE, trustworthy fix lifts an aged-out aircraft's
+        // DB-only ignore (retained/replayed frames never count), then queues
+        // the classification only when there is an altitude, as before.
+        if (!positionIsBogus && isLiveReception(packet.rxTime, Date.now())) {
+          void aircraftAgeOutService.onLivePosition(sourceId, fromNum, { classify: hasAlt });
+        } else if (hasAlt) {
           aircraftClassificationService.schedule(sourceId, fromNum);
         }
       }).catch(err => logger.error('MQTT upsertNode failed:', err));

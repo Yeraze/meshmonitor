@@ -499,6 +499,86 @@ function runIgnoredNodesTests(getBackend: () => TestBackend) {
       deleteSpy.mockRestore();
     }
   });
+
+  // --- aircraft age-out reason (#5364/#5365 Phase 2) ---
+
+  it('addAircraftIgnoreAsync - inserts reason "aircraft", ignoredBy "aircraft-age-out", cached with its reason', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+    const inserted = await repo.addAircraftIgnoreAsync(12345, SRC_A, '!abcd1234', 'Plane', 'PL');
+    expect(inserted).toBe(true);
+    const nodes = await repo.getIgnoredNodesAsync(SRC_A);
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].reason).toBe('aircraft');
+    expect(nodes[0].ignoredBy).toBe('aircraft-age-out');
+    expect(repo.isIgnoredCached(12345, SRC_A)).toBe(true);
+    expect(repo.getIgnoreReasonCached(12345, SRC_A)).toBe('aircraft');
+    // Idempotent: a second call inserts nothing.
+    expect(await repo.addAircraftIgnoreAsync(12345, SRC_A, '!abcd1234')).toBe(false);
+  });
+
+  it('addAircraftIgnoreAsync - never downgrades a manual or geo ignore', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+    await repo.addIgnoredNodeAsync(1, SRC_A, '!00000001', null, null, 'admin');
+    await repo.addGeoIgnoreAsync(2, SRC_A, '!00000002');
+    expect(await repo.addAircraftIgnoreAsync(1, SRC_A, '!00000001')).toBe(false);
+    expect(await repo.addAircraftIgnoreAsync(2, SRC_A, '!00000002')).toBe(false);
+    const byNum = new Map((await repo.getIgnoredNodesAsync(SRC_A)).map((n) => [Number(n.nodeNum), n.reason]));
+    expect(byNum.get(1)).toBe('manual');
+    expect(byNum.get(2)).toBe('geo');
+    expect(repo.getIgnoreReasonCached(1, SRC_A)).toBe('manual');
+    expect(repo.getIgnoreReasonCached(2, SRC_A)).toBe('geo');
+  });
+
+  it('liftAircraftIgnoreAsync - lifts only "aircraft" rows; manual and geo stay', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+    await repo.addAircraftIgnoreAsync(3, SRC_A, '!00000003');
+    await repo.addIgnoredNodeAsync(4, SRC_A, '!00000004', null, null, 'admin');
+    await repo.addGeoIgnoreAsync(5, SRC_A, '!00000005');
+
+    expect(await repo.liftAircraftIgnoreAsync(3, SRC_A)).toBe(true);
+    expect(await repo.liftAircraftIgnoreAsync(4, SRC_A)).toBe(false);
+    expect(await repo.liftAircraftIgnoreAsync(5, SRC_A)).toBe(false);
+    expect(await repo.liftAircraftIgnoreAsync(99, SRC_A)).toBe(false);
+
+    expect(repo.isIgnoredCached(3, SRC_A)).toBe(false);
+    expect(await repo.isNodeIgnoredAsync(4, SRC_A)).toBe(true);
+    expect(await repo.isNodeIgnoredAsync(5, SRC_A)).toBe(true);
+    // The geo lift must not remove an aircraft row either.
+    await repo.addAircraftIgnoreAsync(6, SRC_A, '!00000006');
+    expect(await repo.liftGeoIgnoreAsync(6, SRC_A)).toBe(false);
+    expect(await repo.isNodeIgnoredAsync(6, SRC_A)).toBe(true);
+  });
+
+  it('liftAircraftIgnoreAsync - scoped to its source', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+    await repo.addAircraftIgnoreAsync(7, SRC_A, '!00000007');
+    await repo.addAircraftIgnoreAsync(7, SRC_B, '!00000007');
+    expect(await repo.liftAircraftIgnoreAsync(7, SRC_A)).toBe(true);
+    expect(await repo.isNodeIgnoredAsync(7, SRC_B)).toBe(true);
+    expect(repo.getIgnoreReasonCached(7, SRC_B)).toBe('aircraft');
+  });
+
+  it('a manual ignore over an aircraft row upgrades the cached reason', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+    await repo.addAircraftIgnoreAsync(8, SRC_A, '!00000008');
+    await repo.addIgnoredNodeAsync(8, SRC_A, '!00000008', null, null, 'admin');
+    expect(repo.getIgnoreReasonCached(8, SRC_A)).toBe('manual');
+    expect(await repo.liftAircraftIgnoreAsync(8, SRC_A)).toBe(false);
+  });
+
+  it('primeCacheAsync restores the cached reason', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+    await repo.addAircraftIgnoreAsync(9, SRC_A, '!00000009');
+    const fresh = new IgnoredNodesRepository(backend.drizzleDb, backend.dbType);
+    expect(await fresh.primeCacheAsync()).toBe(true);
+    expect(fresh.getIgnoreReasonCached(9, SRC_A)).toBe('aircraft');
+  });
 }
 
 // --- SQLite Backend ---

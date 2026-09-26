@@ -43,6 +43,7 @@ interface TestDeps {
   sampleFn: ReturnType<typeof vi.fn>;
   writeFn: ReturnType<typeof vi.fn>;
   emitFn: ReturnType<typeof vi.fn>;
+  setFixedFn: ReturnType<typeof vi.fn>;
   clock: { now: number };
 }
 
@@ -59,6 +60,7 @@ function makeDeps(): TestDeps {
     if (existing) nodes.set(key, { ...existing, ...c });
   });
   const emitFn = vi.fn();
+  const setFixedFn = vi.fn(async () => undefined);
   const provider = { type: 'terrarium' as const, sample: sampleFn };
 
   const deps: AircraftClassificationDeps = {
@@ -67,6 +69,7 @@ function makeDeps(): TestDeps {
     listForReclassify: vi.fn(async () => [] as AircraftReclassifyRow[]),
     listUnclassifiedWithAltitude: vi.fn(async () => [] as number[]),
     clearClassification: vi.fn(async () => 0),
+    setFixed: setFixedFn as unknown as AircraftClassificationDeps['setFixed'],
     getSourceSetting: vi.fn(async (sourceId: string, key: string) => sourceSettings.get(`${sourceId}:${key}`) ?? null),
     getGlobalSetting: vi.fn(async (key: string) => globalSettings.get(key) ?? null),
     listSources: vi.fn(async () => [] as Array<{ id: string; type: string }>),
@@ -77,7 +80,7 @@ function makeDeps(): TestDeps {
     clearTimer: clearTimeout,
   };
 
-  return { deps, nodes, sourceSettings, globalSettings, sampleFn, writeFn, emitFn, clock };
+  return { deps, nodes, sourceSettings, globalSettings, sampleFn, writeFn, emitFn, setFixedFn, clock };
 }
 
 afterEach(() => {
@@ -454,5 +457,59 @@ describe('AircraftClassificationService — backfillAll (D11)', () => {
     expect(deps.listUnclassifiedWithAltitude).not.toHaveBeenCalledWith('src-disabled');
     expect(deps.writeClassification).toHaveBeenCalledWith(100, 'src-a', expect.anything());
     expect(emitFn).not.toHaveBeenCalled(); // silent — D11
+  });
+});
+
+// #5364/#5365 Phase 2 (D4): the "confirmed fixed" anchor.
+describe('AircraftClassificationService — fixed anchor', () => {
+  const M = 1 / 111_320; // ~1 m of latitude
+
+  it('a marked node within 1 km of its anchor stays not-aircraft and keeps the mark; no event', async () => {
+    const { deps, nodes, writeFn, emitFn, setFixedFn } = makeDeps();
+    nodes.set('src-a:100', makeNode({
+      nodeNum: 100, altitude: 9000, latitude: 45 + 300 * M, longitude: -75,
+      aircraftFixedAt: 1, aircraftFixedLatitude: 45, aircraftFixedLongitude: -75,
+    } as any));
+    const svc = new AircraftClassificationService(deps);
+    svc.schedule('src-a', 100);
+    await svc.drainForTest();
+    expect(setFixedFn).not.toHaveBeenCalled();
+    expect(emitFn).not.toHaveBeenCalled();
+    expect(writeFn.mock.calls.at(-1)?.[2].likelyAircraft).toBe(false);
+  });
+
+  it('beyond 1 km the mark is cleared and the node is classified normally (event fires)', async () => {
+    const { deps, nodes, writeFn, emitFn, setFixedFn } = makeDeps();
+    nodes.set('src-a:101', makeNode({
+      nodeNum: 101, altitude: 9000, latitude: 45 + 2000 * M, longitude: -75,
+      aircraftFixedAt: 1, aircraftFixedLatitude: 45, aircraftFixedLongitude: -75,
+    } as any));
+    const svc = new AircraftClassificationService(deps);
+    svc.schedule('src-a', 101);
+    await svc.drainForTest();
+    expect(setFixedFn).toHaveBeenCalledWith(101, 'src-a', null);
+    expect(writeFn.mock.calls.at(-1)?.[2].likelyAircraft).toBe(true);
+    expect(emitFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('reclassifySource honours the anchor and releases a moved node', async () => {
+    const { deps, sourceSettings, setFixedFn, writeFn } = makeDeps();
+    sourceSettings.set('src-a:aircraftDetectionEnabled', 'true');
+    const base = {
+      groundElevation: null, likelyAircraft: false, aircraftBasis: 'msl', heightAboveGround: null,
+      positionOverrideEnabled: false, latitudeOverride: null, longitudeOverride: null, altitudeOverride: null,
+      altitude: 9000, aircraftFixedLatitude: 45, aircraftFixedLongitude: -75,
+    };
+    (deps.listForReclassify as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { ...base, nodeNum: 1, latitude: 45 + 100 * M, longitude: -75 },
+      { ...base, nodeNum: 2, latitude: 45 + 5000 * M, longitude: -75 },
+    ] as AircraftReclassifyRow[]);
+    const svc = new AircraftClassificationService(deps);
+    await svc.reclassifySource('src-a');
+    expect(setFixedFn).toHaveBeenCalledTimes(1);
+    expect(setFixedFn).toHaveBeenCalledWith(2, 'src-a', null);
+    // Node 1 stayed false (no write); node 2 flips to true.
+    expect(writeFn.mock.calls.map((c) => c[0])).toEqual([2]);
+    expect(writeFn.mock.calls[0][2].likelyAircraft).toBe(true);
   });
 });

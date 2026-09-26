@@ -240,6 +240,13 @@ export function mapDbNodeToDeviceInfo(
   if (node.heightAboveGround !== null && node.heightAboveGround !== undefined) {
     deviceInfo.heightAboveGround = node.heightAboveGround;
   }
+  // #5364/#5365 Phase 2: aged-out and "confirmed fixed" marks. Absent = not set.
+  if (node.aircraftAgedOutAt !== null && node.aircraftAgedOutAt !== undefined) {
+    deviceInfo.aircraftAgedOutAt = Number(node.aircraftAgedOutAt);
+  }
+  if (node.aircraftFixedAt !== null && node.aircraftFixedAt !== undefined) {
+    deviceInfo.aircraftFixedAt = Number(node.aircraftFixedAt);
+  }
 
   return deviceInfo;
 }

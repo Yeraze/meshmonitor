@@ -98,6 +98,10 @@ const SQLITE_CREATE = `
     groundElevation REAL,
     heightAboveGround REAL,
     aircraftClassifiedAt INTEGER,
+    aircraftAgedOutAt INTEGER,
+    aircraftFixedAt INTEGER,
+    aircraftFixedLatitude REAL,
+    aircraftFixedLongitude REAL,
     createdAt INTEGER NOT NULL,
     updatedAt INTEGER NOT NULL,
     sourceId TEXT NOT NULL DEFAULT 'default',
@@ -182,6 +186,10 @@ const POSTGRES_CREATE = `
     "groundElevation" DOUBLE PRECISION,
     "heightAboveGround" DOUBLE PRECISION,
     "aircraftClassifiedAt" BIGINT,
+    "aircraftAgedOutAt" BIGINT,
+    "aircraftFixedAt" BIGINT,
+    "aircraftFixedLatitude" DOUBLE PRECISION,
+    "aircraftFixedLongitude" DOUBLE PRECISION,
     "createdAt" BIGINT NOT NULL,
     "updatedAt" BIGINT NOT NULL,
     "sourceId" TEXT NOT NULL DEFAULT 'default',
@@ -266,6 +274,10 @@ const MYSQL_CREATE = `
     groundElevation DOUBLE,
     heightAboveGround DOUBLE,
     aircraftClassifiedAt BIGINT,
+    aircraftAgedOutAt BIGINT,
+    aircraftFixedAt BIGINT,
+    aircraftFixedLatitude DOUBLE,
+    aircraftFixedLongitude DOUBLE,
     createdAt BIGINT NOT NULL,
     updatedAt BIGINT NOT NULL,
     sourceId VARCHAR(36) NOT NULL DEFAULT 'default',
@@ -474,6 +486,144 @@ function runAircraftTests(getBackend: () => TestBackend) {
   });
 }
 
+/** Phase 2 (#5364/#5365): age-out + "confirmed fixed" repository methods. */
+function runAgeOutTests(getBackend: () => TestBackend) {
+  const OTHER = 'src-b';
+  const flag = (repo: NodesRepository, n: number, src = SOURCE) =>
+    repo.setAircraftClassification(n, src, {
+      likelyAircraft: true, aircraftBasis: 'msl', groundElevation: null, heightAboveGround: null, aircraftClassifiedAt: Date.now(),
+    });
+
+  it('markAircraftAgedOut / clearAircraftAgedOut round-trip isIgnored + aircraftAgedOutAt', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+    const repo = new NodesRepository(backend.drizzleDb, backend.dbType);
+    await repo.upsertNode(makeNode(200), SOURCE);
+    const at = Date.now();
+    await repo.markAircraftAgedOut(200, SOURCE, at);
+    let node = await repo.getNode(200, SOURCE);
+    expect(node?.isIgnored).toBe(true);
+    expect(Number(node?.aircraftAgedOutAt)).toBe(at);
+    expect(await repo.getAircraftAgedOutAt(200, SOURCE)).toBe(at);
+
+    await repo.clearAircraftAgedOut(200, SOURCE);
+    node = await repo.getNode(200, SOURCE);
+    expect(node?.isIgnored).toBe(false);
+    expect(node?.aircraftAgedOutAt ?? null).toBeNull();
+    expect(await repo.getAircraftAgedOutAt(200, SOURCE)).toBeNull();
+  });
+
+  it('clearAircraftAgedOutMark nulls only the mark, leaving isIgnored alone', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+    const repo = new NodesRepository(backend.drizzleDb, backend.dbType);
+    await repo.upsertNode(makeNode(201), SOURCE);
+    await repo.markAircraftAgedOut(201, SOURCE, Date.now());
+    await repo.clearAircraftAgedOutMark(201, SOURCE);
+    const node = await repo.getNode(201, SOURCE);
+    expect(node?.aircraftAgedOutAt ?? null).toBeNull();
+    expect(node?.isIgnored).toBe(true);
+  });
+
+  it('setAircraftFixed sets the anchor and clears the flag; null clears only the mark', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+    const repo = new NodesRepository(backend.drizzleDb, backend.dbType);
+    await repo.upsertNode(makeNode(202, { altitude: 9000 }), SOURCE);
+    await flag(repo, 202);
+    const at = Date.now();
+    await repo.setAircraftFixed(202, SOURCE, { atMs: at, lat: 40.5, lon: -105.25 });
+    let node = await repo.getNode(202, SOURCE);
+    expect(node?.likelyAircraft).toBe(false);
+    expect(Number(node?.aircraftFixedAt)).toBe(at);
+    expect(Number(node?.aircraftFixedLatitude)).toBeCloseTo(40.5);
+    expect(Number(node?.aircraftFixedLongitude)).toBeCloseTo(-105.25);
+
+    const rows = await repo.getAircraftReclassifyRows(SOURCE);
+    const row = rows.find((r) => r.nodeNum === 202);
+    expect(Number(row?.aircraftFixedLatitude)).toBeCloseTo(40.5);
+
+    await repo.setAircraftFixed(202, SOURCE, null);
+    node = await repo.getNode(202, SOURCE);
+    expect(node?.aircraftFixedAt ?? null).toBeNull();
+    expect(node?.aircraftFixedLatitude ?? null).toBeNull();
+    expect(node?.likelyAircraft).toBe(false);
+  });
+
+  it('listAircraftAgeOutCandidates returns only flagged rows of this source, normalised', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+    const repo = new NodesRepository(backend.drizzleDb, backend.dbType);
+    const heard = Math.floor(Date.now() / 1000) - 3600;
+    await repo.upsertNode(makeNode(210, { altitude: 9000, lastHeard: heard, latitude: 40, longitude: -105 }), SOURCE);
+    await repo.upsertNode(makeNode(211, { altitude: 100 }), SOURCE);
+    await repo.upsertNode(makeNode(210, { altitude: 9000 }), OTHER);
+    await flag(repo, 210);
+    await flag(repo, 210, OTHER);
+    await repo.setAircraftClassification(211, SOURCE, {
+      likelyAircraft: false, aircraftBasis: 'msl', groundElevation: null, heightAboveGround: null, aircraftClassifiedAt: Date.now(),
+    });
+    await repo.markAircraftAgedOut(210, OTHER, Date.now());
+
+    const list = await repo.listAircraftAgeOutCandidates(SOURCE);
+    expect(list.map((c) => c.nodeNum)).toEqual([210]);
+    const c = list[0];
+    expect(c.lastHeard).toBe(heard);
+    expect(c.isFavorite).toBe(false);
+    expect(c.isIgnored).toBe(false);
+    expect(c.aircraftAgedOutAt).toBeNull();
+    expect(Number(c.latitude)).toBeCloseTo(40);
+
+    // Source isolation: the other source's aged-out row is its own.
+    const other = await repo.listAircraftAgeOutCandidates(OTHER);
+    expect(other).toHaveLength(1);
+    expect(other[0].isIgnored).toBe(true);
+    expect(other[0].aircraftAgedOutAt).not.toBeNull();
+  });
+
+  it('clearAircraftClassification also drops the fixed mark but keeps aircraftAgedOutAt', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+    const repo = new NodesRepository(backend.drizzleDb, backend.dbType);
+    await repo.upsertNode(makeNode(220, { altitude: 9000 }), SOURCE);
+    await repo.upsertNode(makeNode(221, { altitude: 9000 }), SOURCE);
+    await repo.setAircraftFixed(220, SOURCE, { atMs: Date.now(), lat: 1, lon: 2 });
+    await flag(repo, 221);
+    const at = Date.now();
+    await repo.markAircraftAgedOut(221, SOURCE, at);
+
+    await repo.clearAircraftClassification(SOURCE);
+    const n220 = await repo.getNode(220, SOURCE);
+    expect(n220?.aircraftFixedAt ?? null).toBeNull();
+    expect(n220?.aircraftFixedLatitude ?? null).toBeNull();
+    const n221 = await repo.getNode(221, SOURCE);
+    expect(Number(n221?.aircraftAgedOutAt)).toBe(at);
+    expect(n221?.isIgnored).toBe(true);
+  });
+
+  it('upsertNode never clobbers the Phase 2 columns', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+    const repo = new NodesRepository(backend.drizzleDb, backend.dbType);
+    await repo.upsertNode(makeNode(230, { altitude: 9000 }), SOURCE);
+    const at = Date.now();
+    await repo.markAircraftAgedOut(230, SOURCE, at);
+    await repo.setAircraftFixed(230, SOURCE, { atMs: at, lat: 3, lon: 4 });
+    await repo.upsertNode(makeNode(230, { altitude: 9100, batteryLevel: 50 }), SOURCE);
+    const node = await repo.getNode(230, SOURCE);
+    expect(Number(node?.aircraftAgedOutAt)).toBe(at);
+    expect(Number(node?.aircraftFixedAt)).toBe(at);
+    expect(Number(node?.aircraftFixedLatitude)).toBeCloseTo(3);
+    expect(Number(node?.aircraftFixedLongitude)).toBeCloseTo(4);
+
+    // Fresh INSERT leaves them null.
+    await repo.upsertNode(makeNode(231, { altitude: 9000 }), SOURCE);
+    const fresh = await repo.getNode(231, SOURCE);
+    expect(fresh?.aircraftAgedOutAt ?? null).toBeNull();
+    expect(fresh?.aircraftFixedAt ?? null).toBeNull();
+  });
+}
+
 describe('NodesRepository aircraft classification - SQLite Backend', () => {
   let backend: TestBackend;
   beforeAll(() => {
@@ -486,6 +636,7 @@ describe('NodesRepository aircraft classification - SQLite Backend', () => {
     await clearTable(backend, 'nodes');
   });
   runAircraftTests(() => backend);
+  runAgeOutTests(() => backend);
 });
 
 describe.skipIf(!postgresAvailable)('NodesRepository aircraft classification - PostgreSQL Backend', () => {
@@ -501,6 +652,7 @@ describe.skipIf(!postgresAvailable)('NodesRepository aircraft classification - P
     await clearTable(backend, 'nodes');
   });
   runAircraftTests(() => backend);
+  runAgeOutTests(() => backend);
 });
 
 describe.skipIf(!mysqlAvailable)('NodesRepository aircraft classification - MySQL Backend', () => {
@@ -516,4 +668,5 @@ describe.skipIf(!mysqlAvailable)('NodesRepository aircraft classification - MySQ
     await clearTable(backend, 'nodes');
   });
   runAircraftTests(() => backend);
+  runAgeOutTests(() => backend);
 });

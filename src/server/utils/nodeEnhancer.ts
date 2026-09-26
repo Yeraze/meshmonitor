@@ -279,6 +279,9 @@ export async function maskNodeLocationByChannel<T>(
     delete masked.positionPrecisionBits;
     delete masked.positionGpsAccuracy;
     delete masked.positionHdop;
+    // #5364/#5365 Phase 2: the "confirmed fixed" anchor is a position too.
+    delete masked.aircraftFixedLatitude;
+    delete masked.aircraftFixedLongitude;
     return masked as T;
   });
 }

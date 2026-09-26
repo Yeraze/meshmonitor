@@ -31,7 +31,14 @@ export interface IgnoredNodeRecord {
   shortName: string | null;
   ignoredAt: number;
   ignoredBy: string | null;
-  reason: 'manual' | 'geo';
+  reason: IgnoreReason;
+}
+
+/** Why a node is ignored. `'aircraft'` = aged out by the aircraft sweep (#5364/#5365 Phase 2). */
+export type IgnoreReason = 'manual' | 'geo' | 'aircraft';
+
+function normalizeReason(v: unknown): IgnoreReason {
+  return v === 'geo' || v === 'aircraft' ? v : 'manual';
 }
 
 /**
@@ -50,8 +57,12 @@ export class IgnoredNodesRepository extends BaseRepository {
    * (`primeCacheAsync` / `primeCacheSqlite`) and kept in lock-step by every
    * add/remove below, so `isIgnoredCached` is an O(1) lookup. All mutations to
    * `ignored_nodes` route through this repository, so the cache cannot drift.
+   *
+   * The value is the row's `reason` (#5364/#5365 Phase 2): the NodeDB sync
+   * must know an ignore is `'aircraft'` (DB-only, D1) so it never re-pushes
+   * it to the device.
    */
-  private ignoredCache = new Set<string>();
+  private ignoredCache = new Map<string, IgnoreReason>();
 
   constructor(db: DrizzleDatabase, dbType: DatabaseType) {
     super(db, dbType);
@@ -73,7 +84,7 @@ export class IgnoredNodesRepository extends BaseRepository {
       const rows = await this.getIgnoredNodesAsync();
       this.ignoredCache.clear();
       for (const row of rows) {
-        this.ignoredCache.add(this.cacheKey(row.nodeNum, row.sourceId));
+        this.ignoredCache.set(this.cacheKey(row.nodeNum, row.sourceId), normalizeReason(row.reason));
       }
       logger.debug(`Primed ignored-node cache with ${this.ignoredCache.size} entr${this.ignoredCache.size === 1 ? 'y' : 'ies'}`);
       return true;
@@ -94,12 +105,12 @@ export class IgnoredNodesRepository extends BaseRepository {
     const { ignoredNodes } = this.tables;
     try {
       const rows = db
-        .select({ nodeNum: ignoredNodes.nodeNum, sourceId: ignoredNodes.sourceId })
+        .select({ nodeNum: ignoredNodes.nodeNum, sourceId: ignoredNodes.sourceId, reason: ignoredNodes.reason })
         .from(ignoredNodes)
-        .all() as Array<{ nodeNum: number; sourceId: string }>;
+        .all() as Array<{ nodeNum: number; sourceId: string; reason: string | null }>;
       this.ignoredCache.clear();
       for (const row of rows) {
-        this.ignoredCache.add(this.cacheKey(Number(row.nodeNum), row.sourceId));
+        this.ignoredCache.set(this.cacheKey(Number(row.nodeNum), row.sourceId), normalizeReason(row.reason));
       }
       logger.debug(`Primed ignored-node cache (SQLite) with ${this.ignoredCache.size} entr${this.ignoredCache.size === 1 ? 'y' : 'ies'}`);
       return true;
@@ -117,6 +128,11 @@ export class IgnoredNodesRepository extends BaseRepository {
    */
   isIgnoredCached(nodeNum: number, sourceId: string): boolean {
     return this.ignoredCache.has(this.cacheKey(nodeNum, sourceId));
+  }
+
+  /** Cached ignore reason, or null when the node is not ignored on this source. */
+  getIgnoreReasonCached(nodeNum: number, sourceId: string): IgnoreReason | null {
+    return this.ignoredCache.get(this.cacheKey(nodeNum, sourceId)) ?? null;
   }
 
   /**
@@ -148,7 +164,7 @@ export class IgnoredNodesRepository extends BaseRepository {
     // Update the in-memory mirror before the DB write so fire-and-forget callers
     // (e.g. DatabaseService.setNodeIgnored) make the change visible to the
     // synchronous upsert path immediately, with no microtask-window race.
-    this.ignoredCache.add(this.cacheKey(nodeNum, sourceId));
+    this.ignoredCache.set(this.cacheKey(nodeNum, sourceId), 'manual');
 
     await this.upsert(
       ignoredNodes,
@@ -195,6 +211,34 @@ export class IgnoredNodesRepository extends BaseRepository {
     longName?: string,
     shortName?: string,
   ): Promise<boolean> {
+    return this.addReasonIgnore('geo', 'geo-filter', nodeNum, sourceId, nodeId, longName, shortName);
+  }
+
+  /**
+   * Aircraft age-out ignore (#5364/#5365 Phase 2, D1). Same semantics as
+   * {@link addGeoIgnoreAsync}: inserts `reason: 'aircraft'` and does nothing
+   * on conflict, so a manual or geo ignore is never downgraded. DB-only; no
+   * admin packet goes to any radio. Returns whether a new row was inserted.
+   */
+  async addAircraftIgnoreAsync(
+    nodeNum: number,
+    sourceId: string,
+    nodeId: string,
+    longName?: string,
+    shortName?: string,
+  ): Promise<boolean> {
+    return this.addReasonIgnore('aircraft', 'aircraft-age-out', nodeNum, sourceId, nodeId, longName, shortName);
+  }
+
+  private async addReasonIgnore(
+    reason: Exclude<IgnoreReason, 'manual'>,
+    ignoredBy: string,
+    nodeNum: number,
+    sourceId: string,
+    nodeId: string,
+    longName?: string,
+    shortName?: string,
+  ): Promise<boolean> {
     const { ignoredNodes } = this.tables;
     const insertData = {
       nodeNum,
@@ -203,22 +247,24 @@ export class IgnoredNodesRepository extends BaseRepository {
       longName: longName ?? null,
       shortName: shortName ?? null,
       ignoredAt: Date.now(),
-      ignoredBy: 'geo-filter',
-      reason: 'geo',
+      ignoredBy,
+      reason,
     };
 
     // Mirror update first (see addIgnoredNodeAsync) so the ignore is visible
     // to the synchronous upsert path without waiting on the DB round-trip.
     // Safe even when the insert below is a no-op (row already existed): the
-    // node was already ignored under either reason, so the cache was already
-    // set (or is being correctly set for the very first time here).
-    this.ignoredCache.add(this.cacheKey(nodeNum, sourceId));
+    // node was already ignored under some reason, so the cache was already
+    // set (or is being correctly set for the very first time here). An
+    // existing entry keeps its reason: the insert below never downgrades.
+    const key = this.cacheKey(nodeNum, sourceId);
+    if (!this.ignoredCache.has(key)) this.ignoredCache.set(key, reason);
 
     const result = await this.insertIgnore(ignoredNodes, insertData);
     const inserted = this.getAffectedRows(result) > 0;
 
     if (inserted) {
-      logger.debug(`Geo-ignored node ${nodeNum} (${nodeId}) for source ${sourceId}`);
+      logger.debug(`Ignored node ${nodeNum} (${nodeId}) for source ${sourceId} (reason: ${reason})`);
     }
 
     return inserted;
@@ -231,6 +277,23 @@ export class IgnoredNodesRepository extends BaseRepository {
    * decision). Returns whether a geo-ignore row was actually removed.
    */
   async liftGeoIgnoreAsync(nodeNum: number, sourceId: string): Promise<boolean> {
+    return this.liftReasonIgnore('geo', nodeNum, sourceId);
+  }
+
+  /**
+   * Lift an aircraft age-out ignore (#5364/#5365 Phase 2, D3). Only removes
+   * `reason: 'aircraft'` rows; manual and geo ignores are never touched.
+   * Returns whether a row was actually removed.
+   */
+  async liftAircraftIgnoreAsync(nodeNum: number, sourceId: string): Promise<boolean> {
+    return this.liftReasonIgnore('aircraft', nodeNum, sourceId);
+  }
+
+  private async liftReasonIgnore(
+    liftReason: Exclude<IgnoreReason, 'manual'>,
+    nodeNum: number,
+    sourceId: string,
+  ): Promise<boolean> {
     const { ignoredNodes } = this.tables;
     const rowScope = and(eq(ignoredNodes.nodeNum, nodeNum), eq(ignoredNodes.sourceId, sourceId));
 
@@ -240,8 +303,8 @@ export class IgnoredNodesRepository extends BaseRepository {
       .where(rowScope);
 
     const reason = rows[0]?.reason;
-    if (reason !== 'geo') {
-      // Absent, or a manual ignore the geo filter must not touch.
+    if (reason !== liftReason) {
+      // Absent, or an ignore of another reason this lift must not touch.
       return false;
     }
 
@@ -250,7 +313,7 @@ export class IgnoredNodesRepository extends BaseRepository {
       .where(and(
         eq(ignoredNodes.nodeNum, nodeNum),
         eq(ignoredNodes.sourceId, sourceId),
-        eq(ignoredNodes.reason, 'geo'),
+        eq(ignoredNodes.reason, liftReason),
       ));
 
     // Cache eviction happens AFTER the delete is confirmed — deliberately
@@ -258,7 +321,7 @@ export class IgnoredNodesRepository extends BaseRepository {
     // safe to mirror early (worst case: the node is briefly ignored a moment
     // sooner). A removal is not: between the SELECT above and the DELETE, a
     // concurrent addIgnoredNodeAsync may have upgraded the row to 'manual',
-    // making our reason='geo'-guarded DELETE a no-op. Evicting the cache
+    // making our reason-guarded DELETE a no-op. Evicting the cache
     // first would then leave a live 'manual' DB row invisible to
     // isIgnoredCached until the next prime (phantom un-ignore). So we
     // re-check the row after the delete; MySQL lacks .returning(), so a
@@ -272,12 +335,12 @@ export class IgnoredNodesRepository extends BaseRepository {
     if (remaining.length > 0) {
       // A concurrent manual upgrade won the race — the node is still (and
       // must remain) ignored. Leave the cache entry in place.
-      logger.debug(`Geo-ignore lift for node ${nodeNum} on source ${sourceId} lost race to a manual upgrade; leaving ignore in place`);
+      logger.debug(`${liftReason} ignore lift for node ${nodeNum} on source ${sourceId} lost race to a manual upgrade; leaving ignore in place`);
       return false;
     }
 
     this.ignoredCache.delete(this.cacheKey(nodeNum, sourceId));
-    logger.debug(`Lifted geo-ignore for node ${nodeNum} on source ${sourceId}`);
+    logger.debug(`Lifted ${liftReason} ignore for node ${nodeNum} on source ${sourceId}`);
     return true;
   }
 
