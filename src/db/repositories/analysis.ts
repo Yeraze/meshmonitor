@@ -72,6 +72,24 @@ export interface GetPositionsArgs {
   cursor?: string | null;
 }
 
+/** Args for {@link AnalysisRepository.getPositionsForNodes} (#5364/#5365 Phase 3). */
+export interface GetPositionsForNodesArgs {
+  sourceIds: string[];
+  nodeNums: number[];
+  sinceMs: number;
+}
+
+/** nodeNums per `IN (...)` chunk — keeps the bound-parameter count modest on every backend. */
+export const POSITIONS_FOR_NODES_CHUNK = 500;
+
+/**
+ * Hard ceiling on rows read per telemetry type per chunk. A flight trail
+ * needs a few hundred fixes; this only stops a misclassified node that
+ * reports every few seconds from pulling a week of rows into memory. The
+ * NEWEST rows win when the cap bites.
+ */
+export const POSITIONS_FOR_NODES_ROW_CAP = 50_000;
+
 interface Cursor {
   ts: number;
   nodeNum: number;
@@ -425,6 +443,98 @@ export class AnalysisRepository {
         : null;
 
     return { items, pageSize, hasMore, nextCursor };
+  }
+
+  /**
+   * Every position fix for the given nodes on the given sources since
+   * `sinceMs`, in ascending time order (#5364/#5365 Phase 3, flight trails).
+   *
+   * Built like {@link getPositions}: lat / lon / alt telemetry rows pivoted by
+   * `(sourceId, nodeNum, timestamp)`, Null Island fixes skipped. Not
+   * paginated; `nodeNums` is chunked by {@link POSITIONS_FOR_NODES_CHUNK} and
+   * each stream is capped at {@link POSITIONS_FOR_NODES_ROW_CAP} rows.
+   *
+   * A nodeNum is scoped only by the source list: a pair `(sourceId, nodeNum)`
+   * the caller did not ask for can come back when the same nodeNum exists on
+   * another listed source. Callers that care filter on the pair.
+   */
+  async getPositionsForNodes(args: GetPositionsForNodesArgs): Promise<PositionRow[]> {
+    if (args.sourceIds.length === 0 || args.nodeNums.length === 0) return [];
+
+    const telemetry = pickTelemetryTable(this.dbType);
+    const uniqueNodeNums = Array.from(new Set(args.nodeNums.map(Number)));
+    const selectShape = {
+      nodeNum: telemetry.nodeNum,
+      sourceId: telemetry.sourceId,
+      timestamp: telemetry.timestamp,
+      value: telemetry.value,
+    };
+
+    /* eslint-disable @typescript-eslint/no-explicit-any -- Drizzle cross-dialect union */
+    const runQuery = async (telemetryType: string, nodeNums: number[]): Promise<TelemRow[]> => {
+      const rows: any[] = await (this.db as any)
+        .select(selectShape)
+        .from(telemetry)
+        .where(
+          and(
+            inArray(telemetry.sourceId, args.sourceIds),
+            inArray(telemetry.nodeNum, nodeNums),
+            gte(telemetry.timestamp, args.sinceMs),
+            eq(telemetry.telemetryType, telemetryType),
+          ),
+        )
+        .orderBy(desc(telemetry.timestamp))
+        .limit(POSITIONS_FOR_NODES_ROW_CAP);
+      return rows.map((r) => ({
+        nodeNum: Number(r.nodeNum),
+        sourceId: r.sourceId ?? null,
+        timestamp: Number(r.timestamp),
+        value: Number(r.value),
+      }));
+    };
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+
+    const out: PositionRow[] = [];
+    for (let i = 0; i < uniqueNodeNums.length; i += POSITIONS_FOR_NODES_CHUNK) {
+      const chunk = uniqueNodeNums.slice(i, i + POSITIONS_FOR_NODES_CHUNK);
+      const latRows = await runQuery('latitude', chunk);
+      if (latRows.length === 0) continue;
+      const lonRows = await runQuery('longitude', chunk);
+      if (lonRows.length === 0) continue;
+      const altRows = await runQuery('altitude', chunk);
+
+      const lonByKey = new Map<string, number>();
+      for (const r of lonRows) {
+        if (r.sourceId == null) continue;
+        lonByKey.set(pairKey(r.sourceId, r.nodeNum, r.timestamp), r.value);
+      }
+      const altByKey = new Map<string, number>();
+      for (const r of altRows) {
+        if (r.sourceId == null) continue;
+        altByKey.set(pairKey(r.sourceId, r.nodeNum, r.timestamp), r.value);
+      }
+
+      for (const lat of latRows) {
+        if (lat.sourceId == null) continue;
+        const key = pairKey(lat.sourceId, lat.nodeNum, lat.timestamp);
+        const lon = lonByKey.get(key);
+        if (lon === undefined) continue;
+        // Null Island (0,0) guard, as in getPositions (#3763).
+        if (isBogusPosition(lat.value, lon)) continue;
+        const alt = altByKey.get(key);
+        out.push({
+          nodeNum: lat.nodeNum,
+          sourceId: lat.sourceId,
+          latitude: lat.value,
+          longitude: lon,
+          altitude: alt === undefined ? null : alt,
+          timestamp: lat.timestamp,
+        });
+      }
+    }
+
+    out.sort((a, b) => a.timestamp - b.timestamp);
+    return out;
   }
 
   /**
