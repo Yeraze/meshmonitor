@@ -393,6 +393,49 @@ describe('evaluateC2', () => {
     const ctx = makeContext([makeNode({ nodeNum: 1, sourceIds: ['src-fallback'] })], cadence);
     expect(evaluateC2(ctx)[0].sourceIds).toEqual(['src-fallback']);
   });
+
+  describe('local node exemption (#5388)', () => {
+    function localCtx(cadence: Map<number, NodeCadence>, local: Record<number, string[]>, nodes?: PooledNode[]) {
+      const ctx = makeContext(nodes ?? [makeNode({ nodeNum: 1, sourceIds: ['src-a', 'src-b'] })], cadence);
+      ctx.localNodeSources = new Map(Object.entries(local).map(([n, ids]) => [Number(n), new Set(ids)]));
+      return ctx;
+    }
+
+    it('does not flag a 60s telemetry stream that came only from the source where the node is local', () => {
+      const cadence = new Map([[1, { position: null, telemetry: makeCadenceStats({ sourceIds: ['src-a'] }) }]]);
+      expect(evaluateC2(localCtx(cadence, { 1: ['src-a'] }))).toEqual([]);
+    });
+
+    it('still flags the same nodeNum when the fast stream was heard over the mesh on another source', () => {
+      const cadence = new Map([[1, { position: null, telemetry: makeCadenceStats({ sourceIds: ['src-b'] }) }]]);
+      const findings = evaluateC2(localCtx(cadence, { 1: ['src-a'] }));
+      expect(findings).toHaveLength(1);
+      expect(findings[0].sourceIds).toEqual(['src-b']);
+    });
+
+    it('still flags a remote node over-broadcasting on a source that has a different local node', () => {
+      const cadence = new Map([[2, { position: null, telemetry: makeCadenceStats({ sourceIds: ['src-a'] }) }]]);
+      const findings = evaluateC2(localCtx(cadence, { 1: ['src-a'] }, [makeNode({ nodeNum: 2 })]));
+      expect(findings).toHaveLength(1);
+      expect(findings[0].nodeNum).toBe(2);
+    });
+
+    it('does not quote a local-only telemetry stream as the other stream', () => {
+      const cadence = new Map([
+        [
+          1,
+          {
+            position: makeCadenceStats({ medianIntervalSeconds: 100, sourceIds: [] }),
+            telemetry: makeCadenceStats({ medianIntervalSeconds: 60, sourceIds: ['src-a'] }),
+          },
+        ],
+      ]);
+      const findings = evaluateC2(localCtx(cadence, { 1: ['src-a'] }));
+      expect(findings).toHaveLength(1);
+      expect(findings[0].evidence.stream).toBe('position');
+      expect(findings[0].evidence.otherStreamMedianSeconds).toBeNull();
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

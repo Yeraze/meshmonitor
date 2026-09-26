@@ -60,6 +60,7 @@ import {
   type ResolvedMeshIssueThresholds,
 } from './meshIssues/thresholds.js';
 import { positionSpanKm } from './nodeMobilityService.js';
+import { resolveLocalNodeNums } from '../utils/localNodeNums.js';
 import type { MeshIssueFinding } from './meshIssues/types.js';
 
 /**
@@ -438,7 +439,21 @@ class MeshIssuesAnalysisService {
     // Phase 3 WP2) — built unconditionally (same precedent as the RF graph
     // in 5d), so tierCSkips/coverage stay accurate even when Tier C is
     // toggled off; only the EVALUATION below is gated.
-    const cadence = await this.buildCadenceMap(telemetry, sourceIds, sinceMs, thresholds);
+    //
+    // Each source's own directly-connected node is left out of cadence on
+    // THAT source only (#5388): its phone-API deviceMetrics (~60s) are stored
+    // like mesh telemetry but never went on air at that rate. The same
+    // nodeNum heard over the mesh on another source still counts.
+    const localNodeSources = await this.resolveLocalNodeSources(sourceIds);
+    const cadenceTelemetry =
+      localNodeSources.size === 0
+        ? telemetry
+        : buildTelemetrySeries(
+            telemetryInputs.filter(
+              (r) => !(r.sourceId != null && localNodeSources.get(Number(r.nodeNum))?.has(r.sourceId)),
+            ),
+          );
+    const cadence = await this.buildCadenceMap(cadenceTelemetry, sourceIds, sinceMs, thresholds, localNodeSources);
 
     // 5g. A5 telemetry-cadence clause (post-epic follow-up #4964, the P1
     // deferral) — dedicated-router nodes only (ROUTER/ROUTER_LATE, a small
@@ -482,6 +497,7 @@ class MeshIssuesAnalysisService {
       thresholds,
       nowMs,
       windowHours: opts.lookbackHours,
+      localNodeSources,
     };
     if (thresholds.tierCEnabled) findings.push(...evaluateAllTierC(tierCCtx));
 
@@ -562,6 +578,31 @@ class MeshIssuesAnalysisService {
   }
 
   /**
+   * nodeNum -> source ids where that node is our directly-connected local
+   * node (#5388). Read from the per-source setting each manager writes on
+   * connect, so a source that is disconnected right now is still covered.
+   * MQTT sources have no local node and simply drop out. A read failure
+   * degrades to "no local nodes known" (the pre-#5388 behaviour) rather
+   * than aborting the run.
+   */
+  private async resolveLocalNodeSources(sourceIds: string[]): Promise<Map<number, Set<string>>> {
+    const out = new Map<number, Set<string>>();
+    let bySource: Map<string, number>;
+    try {
+      bySource = await resolveLocalNodeNums(sourceIds);
+    } catch (err) {
+      logger.warn(`[meshIssues] local node lookup failed, C2 local-node exemption off this run: ${(err as Error)?.message ?? err}`);
+      return out;
+    }
+    for (const [sourceId, nodeNum] of bySource) {
+      const set = out.get(nodeNum);
+      if (set) set.add(sourceId);
+      else out.set(nodeNum, new Set([sourceId]));
+    }
+    return out;
+  }
+
+  /**
    * Position-span lookups (meters) for infra-role nodes only, in bounded
    * chunks of `POSITION_SPAN_CHUNK_SIZE`. Infra nodes are a small fraction of
    * the DB; a full-mesh per-node loop is not what this does.
@@ -605,7 +646,8 @@ class MeshIssuesAnalysisService {
    * Tier A) already dedupes by `(nodeNum, type, timestamp)`, and one
    * device-metrics packet writes several rows sharing one timestamp, so the
    * union of distinct timestamps across the four series is a faithful count
-   * of device-telemetry broadcasts.
+   * of device-telemetry broadcasts. The caller passes a series with each
+   * source's own local node already removed for that source (#5388).
    *
    * Position cadence is two-stage and bounded: stage 1 is one portable
    * GROUP BY aggregate for the whole mesh, giving a MEAN inter-arrival that
@@ -620,6 +662,7 @@ class MeshIssuesAnalysisService {
     sourceIds: string[],
     sinceMs: number,
     thresholds: ResolvedMeshIssueThresholds,
+    localNodeSources: Map<number, Set<string>> = new Map(),
   ): Promise<Map<number, NodeCadence>> {
     const cadence = new Map<number, NodeCadence>();
 
@@ -645,22 +688,40 @@ class MeshIssuesAnalysisService {
       sourceIds,
     });
 
+    // Stage 1 pools every source, local rows included — that can only make a
+    // local node MORE likely to be a candidate, and stage 2 then re-reads it
+    // without the sources where it is local (#5388).
     const candidateNodeNums: number[] = [];
+    const localCandidates: Array<{ nodeNum: number; sourceIds: string[] }> = [];
     for (const agg of aggregates) {
       if (agg.sampleCount < OVER_BROADCAST_MIN_SAMPLES) continue;
       const meanIntervalSeconds = (agg.lastTimestamp - agg.firstTimestamp) / 1000 / (agg.sampleCount - 1);
       if (meanIntervalSeconds < thresholds.overBroadcastSeconds * OVER_BROADCAST_CANDIDATE_FACTOR) {
-        candidateNodeNums.push(Number(agg.nodeNum));
+        const nodeNum = Number(agg.nodeNum);
+        const localSources = localNodeSources.get(nodeNum);
+        if (!localSources) {
+          candidateNodeNums.push(nodeNum);
+          continue;
+        }
+        const meshSourceIds = sourceIds.filter((id) => !localSources.has(id));
+        // Local on every source we read: nothing mesh-heard to measure.
+        if (meshSourceIds.length > 0) localCandidates.push({ nodeNum, sourceIds: meshSourceIds });
       }
     }
 
+    // Local nodes are one per source at most, so one query each is bounded.
+    const chunks: Array<{ nodeNums: number[]; sourceIds: string[] }> = [];
     for (let i = 0; i < candidateNodeNums.length; i += POSITION_SPAN_CHUNK_SIZE) {
-      const chunk = candidateNodeNums.slice(i, i + POSITION_SPAN_CHUNK_SIZE);
+      chunks.push({ nodeNums: candidateNodeNums.slice(i, i + POSITION_SPAN_CHUNK_SIZE), sourceIds });
+    }
+    for (const c of localCandidates) chunks.push({ nodeNums: [c.nodeNum], sourceIds: c.sourceIds });
+
+    for (const { nodeNums: chunk, sourceIds: chunkSourceIds } of chunks) {
       const rows = await databaseService.getTelemetryTimestampsAsync({
         nodeNums: chunk,
         telemetryTypes: ['latitude'],
         sinceMs,
-        sourceIds,
+        sourceIds: chunkSourceIds,
       });
       const timestampsByNode = new Map<number, number[]>();
       for (const row of rows) {
