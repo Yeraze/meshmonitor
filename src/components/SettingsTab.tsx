@@ -2229,8 +2229,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           <h3>{t('settings.node_display')}</h3>
           <div className="setting-item">
             <label htmlFor="maxNodeAge">
-              {t('settings.max_node_age_label')}
-              <span className="setting-description">{t('settings.max_node_age_description')}</span>
+              {t('settings.node_window_label')}
+              <span className="setting-description">{t('settings.node_window_description')}</span>
             </label>
             <input
               id="maxNodeAge"

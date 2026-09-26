@@ -1,0 +1,11 @@
+/*
+ * NodeAgeWindowSuffix — scoped styles (#5344). Sits inside a list header
+ * (`h3` / pane title), so keep it quieter than the count beside it.
+ */
+
+.suffix {
+  font-size: 0.8em;
+  font-weight: 400;
+  color: var(--color-text-subtle);
+  white-space: nowrap;
+}

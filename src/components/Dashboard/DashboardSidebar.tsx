@@ -158,7 +158,7 @@ function getActivityBadge(
   total: number,
   active: number | undefined,
   t: (key: string, opts?: any) => string,
-): { text: string; tone: 'live' | 'partial' | 'idle'; title: string } | null {
+): { count: string; window: string; tone: 'live' | 'partial' | 'idle'; title: string } | null {
   if (active === undefined || total <= 0) return null;
   // Live = >50% of heard nodes still active; partial = some but minority;
   // idle = none heard recently. Picking a ratio rather than absolute count
@@ -167,9 +167,14 @@ function getActivityBadge(
   const tone: 'live' | 'partial' | 'idle' =
     active === 0 ? 'idle' : active * 2 >= total ? 'live' : 'partial';
   return {
-    text: t('source.node_activity', { active, total }),
+    // #5344: name the fixed 2h window in the visible text and say it is not a
+    // filter, so users don't hunt for the control that sets it. The count and
+    // the "active · 2h" role label render as separate spans so the label can
+    // sit quieter than the numbers.
+    count: t('source.node_activity_count', { active, total }),
+    window: t('source.node_activity_window'),
     tone,
-    title: t('source.node_activity_title', { active, total }),
+    title: t('source.node_activity_recent_title', { active, total }),
   };
 }
 
@@ -798,17 +803,18 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
             </div>
 
             <div
-              className="dashboard-source-card-status"
+              className={`dashboard-source-card-status ${styles.statusRow}`}
               title={status && !status.connected ? (status as { lastError?: string }).lastError ?? undefined : undefined}
             >
               <span className={`dashboard-status-dot ${dotClass}`} />
               <span>{label}</span>
               {activityBadge && (
                 <span
-                  className={`dashboard-activity-badge dashboard-activity-${activityBadge.tone}`}
+                  className={`dashboard-activity-badge dashboard-activity-${activityBadge.tone} ${styles.activityBadge}`}
                   title={activityBadge.title}
                 >
-                  {activityBadge.text}
+                  <span className={styles.activityCount}>{activityBadge.count}</span>
+                  <span className={styles.activityWindow}>{activityBadge.window}</span>
                 </span>
               )}
               {(() => {
