@@ -1,3 +1,5 @@
+import { formatAgeDuration } from './ageWindow.js';
+
 /**
  * Non-linear stops for the Map Features "Maximum age" slider (#4770).
  *
@@ -60,8 +62,9 @@ export function nearestAgeStopIndex(stops: number[], hours: number): number {
 
 /**
  * Human-readable label for an age-filter stop. The top stop (>= `maxHours`)
- * renders as `allLabel`; otherwise sub-day values read as `${h}h` and longer
- * ones as `${d}d` (with a trailing `${h}h` only when not a whole number of
+ * renders as `allLabel`; otherwise the duration comes from the shared
+ * {@link formatAgeDuration} (#5344), so under two days reads as `${h}h` and
+ * longer as `${d}d` (with a trailing `${h}h` only when not a whole number of
  * days).
  */
 export function formatAgeStop(hours: number, maxHours: number, allLabel = 'All'): string {
@@ -70,8 +73,5 @@ export function formatAgeStop(hours: number, maxHours: number, allLabel = 'All')
   // a "never" cap (0) from labelling every finite stop as "All".
   if (!Number.isFinite(hours)) return allLabel;
   if (Number.isFinite(maxHours) && maxHours > 0 && hours >= maxHours) return allLabel;
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  const remainingHours = hours % 24;
-  return remainingHours === 0 ? `${days}d` : `${days}d ${remainingHours}h`;
+  return formatAgeDuration(hours);
 }

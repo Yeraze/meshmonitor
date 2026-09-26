@@ -556,7 +556,7 @@ Virtual Node behavior and the firmware limitation.
 Alongside the receive-only toggle, MeshCore **Settings** exposes a small set of per-source controls that shape how MeshMonitor talks to the mesh through that specific source:
 
 - **Default Path Hash Size** — how many bytes of a route's next-hop identity to include when sending direct messages that carry a cached route. The default matches the companion firmware default; lower values shave a byte or two off each direct send, higher values reduce ambiguity on very dense networks. Leave it alone unless you have a specific reason to tune it.
-- **Maximum infrastructure node age (hours)** — a separate age window for repeaters and room servers. The main **Maximum Age of Active Nodes** setting applies to all MeshCore nodes; this second slider lets you keep infrastructure nodes on the map for longer than mobile companions. Two views honor it: the map's node-list, and the neighbours summary. Set it to `0` to inherit the main age window.
+- **Maximum infrastructure node age (hours)** — a separate age window for repeaters and room servers. The main **Node list & map window** setting applies to all MeshCore nodes; this second slider lets you keep infrastructure nodes on the map for longer than mobile companions. Two views honor it: the map's node-list, and the neighbours summary. Set it to `0` to inherit the main age window.
 - **Telemetry time window** — the telemetry panel in a MeshCore node's details view exposes a time-window selector so you can flip the charts between the last hour, day, or week without leaving the panel.
 
 ## Autopoll Neighbours

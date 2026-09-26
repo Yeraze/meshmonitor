@@ -162,6 +162,25 @@ describe('DashboardSidebar', () => {
     expect(live?.textContent).toMatch(/source\.node_activity/);
   });
 
+  it('labels the activity badge as a fixed 2h informational stat, not a filter (#5344)', () => {
+    const statusMap = new Map<string, SourceStatus | null>([
+      ['src-1', { sourceId: 'src-1', connected: true, activeNodeCount: 4 }],
+      ['src-2', { sourceId: 'src-2', connected: false }],
+      ['src-3', null],
+    ]);
+    renderSidebar({ statusMap });
+    const badge = document.querySelector('.dashboard-activity-badge');
+    // Visible text and tooltip use the role-explicit keys; en.json wording is
+    // pinned in src/utils/ageWindow.locale.test.ts.
+    // Count and role label are separate children so the pill stays short and
+    // the label can be styled quieter; the tooltip keeps the full explanation.
+    const parts = Array.from(badge?.children ?? []).map((el) => el.textContent);
+    expect(parts).toEqual(['source.node_activity_count', 'source.node_activity_window']);
+    expect(badge?.getAttribute('title')).toBe('source.node_activity_recent_title');
+    // The status row may wrap so the pill never clips at the card edge.
+    expect(badge?.parentElement?.className).toMatch(/statusRow/);
+  });
+
   it('renders mesh-activity badge with idle tone when zero nodes heard recently', () => {
     const statusMap = new Map<string, SourceStatus | null>([
       ['src-1', { sourceId: 'src-1', connected: true, activeNodeCount: 0 }],

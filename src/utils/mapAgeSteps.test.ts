@@ -74,21 +74,22 @@ describe('formatAgeStop', () => {
   });
 
   it('renders multi-day stops in days', () => {
-    expect(formatAgeStop(24, 720)).toBe('1d');
+    expect(formatAgeStop(24, 720)).toBe('24h');
     expect(formatAgeStop(72, 720)).toBe('3d');
     expect(formatAgeStop(168, 720)).toBe('7d');
     expect(formatAgeStop(336, 720)).toBe('14d');
   });
 
   it('appends trailing hours for non-whole-day stops', () => {
-    expect(formatAgeStop(30, 720)).toBe('1d 6h');
+    expect(formatAgeStop(30, 720)).toBe('30h');
+    expect(formatAgeStop(54, 720)).toBe('2d 6h');
   });
 
   it('labels the unlimited (Infinity) stop as All, and keeps finite stops labelled under a never/0 cap (#4947)', () => {
     expect(formatAgeStop(Infinity, 0)).toBe('All');
     expect(formatAgeStop(Infinity, Infinity, 'Alle')).toBe('Alle');
     // With a "never" (0) cap, finite stops must NOT all collapse to "All".
-    expect(formatAgeStop(24, 0)).toBe('1d');
+    expect(formatAgeStop(24, 0)).toBe('24h');
     expect(formatAgeStop(6, 0)).toBe('6h');
   });
 });

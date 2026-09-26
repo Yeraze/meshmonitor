@@ -521,4 +521,25 @@ describe('map controls: attribution clearance + zoom-to-fit (#4495, #4496)', () 
     const memo = src.match(/const fitAllPositions[\s\S]{0,400}/)?.[0] ?? '';
     expect(memo).toMatch(/nodePositions\.get\(node\.nodeNum\)/);
   });
+
+  // #5344: NodesTab's full surface needs Leaflet plus a large context stack, so
+  // pin the wiring at the source boundary. The rendered wording is covered by
+  // MapAgeFilterControl.test.tsx / NodeAgeWindowSuffix.test.tsx, and
+  // DashboardMap.test.tsx renders the same control at runtime.
+  describe('node-age window is visible in the header and the Map age filter (#5344)', () => {
+    const src = readFileSync(resolve('src/components/NodesTab.tsx'), 'utf8');
+    const dashSrc = readFileSync(resolve('src/components/Dashboard/DashboardMap.tsx'), 'utf8');
+
+    it('shows the Settings window beside the Nodes count', () => {
+      expect(src).toMatch(/<h3>Nodes \([\s\S]{0,2000}\)<NodeAgeWindowSuffix hours=\{maxNodeAgeHours\} \/><\/h3>/);
+    });
+
+    it('renders the shared MapAgeFilterControl in BOTH Map Features panels', () => {
+      expect(src).toMatch(/<MapAgeFilterControl\s+maxNodeAgeHours=\{maxNodeAgeHours\}\s+effectiveMaxAgeHours=\{effectiveMapMaxAge\}\s+onChange=\{setMapMaxAgeHours\}/);
+      expect(dashSrc).toMatch(/<MapAgeFilterControl\s+maxNodeAgeHours=\{maxNodeAgeHours\}\s+effectiveMaxAgeHours=\{effectiveMaxAge\}\s+onChange=\{setMapMaxAgeHours\}/);
+      // Neither panel may re-inline its own slider (#5177: one panel drifted).
+      expect(src).not.toContain('ageFilterStops(');
+      expect(dashSrc).not.toContain('ageFilterStops(');
+    });
+  });
 });

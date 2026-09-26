@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import NodeAgeWindowSuffix from '../NodeAgeWindowSuffix';
 import { useTranslation } from 'react-i18next';
 import { MeshCoreNode } from './hooks/useMeshCore';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
@@ -373,6 +374,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
           <>
           <span>{t('meshcore.nav.nodes', 'Nodes')}</span>
           <span className="pane-count">{rows.length}</span>
+          <NodeAgeWindowSuffix hours={maxNodeAgeHours} variant="meshcore" />
           {onImportContact && (
             <button
               type="button"
