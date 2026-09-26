@@ -180,11 +180,11 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
 
       <div className="setting-item">
         <label htmlFor="maxNodeAge">
-          {t('settings.max_node_age_label', 'Maximum Age of Active Nodes (hours)')}
+          {t('settings.node_window_label', 'Node list & map window (hours)')}
           <span className="setting-description">
             {t(
-              'meshcore.settings.node_display.max_age_description',
-              'Nodes not heard within this window are hidden from the Nodes list and the map. Favorites and your own node are always shown. Use 0 to show all nodes ever heard (useful for stealthy MeshCore companions that advertise rarely). This does not change which nodes Auto-Pathfinding targets — see Automations → Target Filter.',
+              'meshcore.settings.node_display.window_description',
+              "Default time window for the Nodes list and map: nodes not heard within it are hidden. Favorites and your own node always show. Use 0 to show all nodes ever heard (useful for stealthy MeshCore companions that advertise rarely). The map's age filter can narrow this window but never widen it. This does not change which nodes Auto-Pathfinding targets; see Automations > Target Filter.",
             )}
           </span>
         </label>

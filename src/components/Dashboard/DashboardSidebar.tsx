@@ -167,9 +167,11 @@ function getActivityBadge(
   const tone: 'live' | 'partial' | 'idle' =
     active === 0 ? 'idle' : active * 2 >= total ? 'live' : 'partial';
   return {
-    text: t('source.node_activity', { active, total }),
+    // #5344: name the fixed 2h window in the visible text and say it is not a
+    // filter, so users don't hunt for the control that sets it.
+    text: t('source.node_activity_recent', { active, total }),
     tone,
-    title: t('source.node_activity_title', { active, total }),
+    title: t('source.node_activity_recent_title', { active, total }),
   };
 }
 
