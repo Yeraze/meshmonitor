@@ -12,6 +12,7 @@ import { buildGroupedNodeItems, countNodesByCategory, GroupedNodeListItem, RoleG
 import { effectiveMapMaxAgeHours } from '../utils/mapAge';
 import { resolveClusterZoomThreshold, resolveClusteredMapCenterTargetZoom } from '../utils/mapZoomAnimation';
 import MapAgeFilterControl from './map/MapAgeFilterControl';
+import MapAircraftDisplayControl from './map/MapAircraftDisplayControl';
 import NodeAgeWindowSuffix from './NodeAgeWindowSuffix';
 import { downsamplePositionHistory, MAX_RENDERED_POSITION_POINTS } from '../utils/positionHistoryDownsample';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
@@ -570,6 +571,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setShowAccuracyRegions,
     spreadNodes,
     setSpreadNodes,
+    aircraftDisplayMode,
+    setAircraftDisplayMode,
     pendingCenterNodeNum,
     setPendingCenterNodeNum,
     showPolarGrid,
@@ -1687,6 +1690,14 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // #3549: per-node "Hide from Map" suppresses the marker only; the node remains in the list above.
   const nodesWithPosition = processedNodes.filter(node => !node.hideFromMap && hasValidEffectivePosition(node));
 
+  // Likely-aircraft count for the Map Features hint line (#5364/#5365 Phase 1
+  // WP4) — counted pre-Hide, so the number reflects everything classified,
+  // not just what the current display mode happens to show.
+  const aircraftCountOnMap = useMemo(
+    () => nodesWithPosition.filter((n) => n.likelyAircraft === true).length,
+    [nodesWithPosition],
+  );
+
   // Memoize node positions to prevent React-Leaflet from resetting marker positions
   // Creating new [lat, lng] arrays causes React-Leaflet to move markers, destroying spiderfier state
   // Uses getEffectivePosition to respect position overrides (Issue #1526)
@@ -1794,6 +1805,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       // chosen age. Favorites are always shown, matching the standard
       // node age filter. Default (slider at max) is a no-op.
       if (!node.isFavorite && node.lastHeard && node.lastHeard < mapAgeCutoffSeconds) return false;
+      // Likely-aircraft Hide (#5364/#5365 Phase 1 WP4): suppress the marker,
+      // except a favourite is never hidden by this toggle.
+      if (aircraftDisplayMode === 'hide' && node.likelyAircraft === true && !node.isFavorite) return false;
       return true;
     });
   // #4704: node features for the 3D surface — the same visible+positioned set
@@ -1868,6 +1882,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       const hops = isLocalNode ? 0 : getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
       const shouldAnimate = showAnimations && animatedNodes.has(node.user?.id || '');
       const position = nodePositions.get(node.nodeNum)!;
+      // Likely-aircraft badge (#5364/#5365 Phase 1 WP4): 'show' never marks;
+      // 'mark'/'hide' both badge a flagged node still on the map (Hide already
+      // removed non-favourites above, so a badged node here is a favourite).
+      const markAircraft = aircraftDisplayMode !== 'show' && node.likelyAircraft === true;
 
       // Calculate opacity based on last heard time
       const markerOpacity = calculateNodeOpacity(
@@ -1890,7 +1908,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       return {
         key: markerKey,
         position,
-        iconSig: `${node.nodeNum}-${hops}-${isSelected}-${node.user?.role}-${node.isUnmessagable ? 1 : 0}-${node.user?.shortName}-${showLabel}-${shouldAnimate}-${showRoute && isSelected}-${mapPinStyle}-${mapPinColorMode}`,
+        iconSig: `${node.nodeNum}-${hops}-${isSelected}-${node.user?.role}-${node.isUnmessagable ? 1 : 0}-${markAircraft ? 1 : 0}-${node.user?.shortName}-${showLabel}-${shouldAnimate}-${showRoute && isSelected}-${mapPinStyle}-${mapPinColorMode}`,
         buildIcon: () =>
           createNodeIcon({
             variant: 'meshtastic',
@@ -1899,6 +1917,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
             isRouter,
             roleCategory,
             isUnmessagable: !!node.isUnmessagable,
+            isLikelyAircraft: markAircraft,
             shortName: node.user?.shortName,
             showLabel: showLabel || shouldAnimate,
             animate: shouldAnimate,
@@ -2649,6 +2668,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                           <span className="node-indicator-icon" title={t('nodes.has_remote_admin')}><UiIcon name="wrench" size={15} /></span>
                         )}
                         {node.isUnmessagable && <NodeUnmessageableBadge />}
+                        {node.likelyAircraft && (
+                          <span className="node-indicator-icon" title={t('nodes.likely_aircraft', 'Likely aircraft')}>
+                            <UiIcon name="aircraft" size={15} />
+                          </span>
+                        )}
                         {/* #4720: mark a node we have no NODEINFO for. The row is
                             otherwise indistinguishable from a synced one unless you
                             hold nodes:write, which reveals the Copy NodeInfo action
@@ -2886,6 +2910,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                     maxNodeAgeHours={maxNodeAgeHours}
                     effectiveMaxAgeHours={effectiveMapMaxAge}
                     onChange={setMapMaxAgeHours}
+                  />
+                  {/* Likely aircraft (#5364/#5365 Phase 1 WP4): shared with
+                      DashboardMap so Show/Mark/Hide can't drift between panels. */}
+                  <MapAircraftDisplayControl
+                    mode={aircraftDisplayMode}
+                    onChange={setAircraftDisplayMode}
+                    aircraftCount={aircraftCountOnMap}
                   />
                   <label className="map-control-item">
                     <input

@@ -56,6 +56,7 @@ import { getDiscardInvalidPositions } from '../../utils/positionDisplayConfig';
 import { effectiveMapMaxAgeHours } from '../../utils/mapAge';
 import { isMeshCoreInfrastructureAdvType } from '../MeshCore/meshcoreRole';
 import MapAgeFilterControl from '../map/MapAgeFilterControl';
+import MapAircraftDisplayControl from '../map/MapAircraftDisplayControl';
 import { resolveMapEndpoint } from '../../utils/nodeHelpers';
 import api from '../../services/api';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
@@ -317,6 +318,8 @@ export default function DashboardMap({
     setMapMaxAgeHours,
     spreadNodes,
     setSpreadNodes,
+    aircraftDisplayMode,
+    setAircraftDisplayMode,
   } = useMapContext();
   const showRfNodes = isMqttOnlySource ? true : rawShowRfNodes;
   const showUdpNodes = isMqttOnlySource ? true : rawShowUdpNodes;
@@ -387,6 +390,9 @@ export default function DashboardMap({
     const nodesWithTruePos = nodes
       .filter((n) => !n.isIgnored)
       .filter((n) => !n.hideFromMap) // #3549: per-node "Hide from Map" suppresses the marker only
+      // Likely-aircraft Hide (#5364/#5365 Phase 1 WP4): suppress the marker,
+      // except a favourite is never hidden by this toggle.
+      .filter((n) => !(aircraftDisplayMode === 'hide' && n.likelyAircraft === true && !n.isFavorite))
       .filter(passesAgeGate)
       .filter((n) => nodePassesTransportFilter(n, { showRfNodes, showUdpNodes, showMqttNodes }, ageCutoffTime))
       .map((n) => ({ node: n, truePos: getNodeLatLng(n) }))
@@ -412,10 +418,18 @@ export default function DashboardMap({
     return { nodesWithPosition: positionedNodes, nowMs: referenceNowMs, cutoffTime: ageCutoffTime };
   // `spreadNodes` (#5177) changes every resolved position without changing any
   // node, so it has to be a dependency or toggling it leaves the markers put.
-  }, [nodes, effectiveMaxAge, effectiveInfraMaxAge, infraNever, showRfNodes, showUdpNodes, showMqttNodes, spreadNodes]);
+  }, [nodes, effectiveMaxAge, effectiveInfraMaxAge, infraNever, showRfNodes, showUdpNodes, showMqttNodes, spreadNodes, aircraftDisplayMode]);
 
   // Array form of node positions for MapBoundsUpdater (fit bounds).
   const nodePositions: [number, number][] = nodesWithPosition.map((e) => [e.pos.lat, e.pos.lng]);
+
+  // Likely-aircraft count for the Map Features hint line (#5364/#5365 Phase 1
+  // WP4) — counted from the full incoming node set (pre-Hide), matching
+  // NodesTab's "everything classified" semantics.
+  const aircraftCountOnMap = useMemo(
+    () => nodes.filter((n) => n.likelyAircraft === true).length,
+    [nodes],
+  );
 
   // #4704: node markers for the 3D surface — same visible+positioned node list
   // the 2D markers use, mapped to the shape `Base3DMap` expects. Computed
@@ -699,10 +713,13 @@ export default function DashboardMap({
           node.lastHeard != null ? node.lastHeard * 1000 : null,
         );
 
+    // Likely-aircraft badge (#5364/#5365 Phase 1 WP4): 'show' never marks.
+    const markAircraft = aircraftDisplayMode !== 'show' && node.likelyAircraft === true;
+
     return {
       key: markerKey,
       position: [pos.lat, pos.lng],
-      iconSig: `${hops}|${shortName ?? ''}|${isRouter ? 1 : 0}|${roleCategory}|${node.isUnmessagable ? 1 : 0}|${mapPinStyle}|${mapPinColorMode}`,
+      iconSig: `${hops}|${shortName ?? ''}|${isRouter ? 1 : 0}|${roleCategory}|${node.isUnmessagable ? 1 : 0}|${markAircraft ? 1 : 0}|${mapPinStyle}|${mapPinColorMode}`,
       buildIcon: () =>
         createNodeIcon({
           variant: 'meshtastic',
@@ -711,6 +728,7 @@ export default function DashboardMap({
           isRouter,
           roleCategory,
           isUnmessagable: !!node.isUnmessagable,
+          isLikelyAircraft: markAircraft,
           shortName,
           showLabel: true,
           pinStyle: mapPinStyle,
@@ -991,6 +1009,13 @@ export default function DashboardMap({
             maxNodeAgeHours={maxNodeAgeHours}
             effectiveMaxAgeHours={effectiveMaxAge}
             onChange={setMapMaxAgeHours}
+          />
+          {/* Likely aircraft (#5364/#5365 Phase 1 WP4): shared with NodesTab so
+              Show/Mark/Hide can't drift between panels. */}
+          <MapAircraftDisplayControl
+            mode={aircraftDisplayMode}
+            onChange={setAircraftDisplayMode}
+            aircraftCount={aircraftCountOnMap}
           />
           <label className="map-control-item">
             <input
