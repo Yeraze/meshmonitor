@@ -22,6 +22,7 @@ Epic: `AIRCRAFT_DETECTION_EPIC.md`. Phase 1 (PR #5386) added the classifier, the
   - While the mark is set, the classifier returns not-aircraft if the node is within 1 km of the anchor.
   - A position more than 1 km from the anchor clears the mark, and the node is classified normally.
   - The fixed rule runs whenever detection is on, whether or not age-out is enabled.
+- **D5 Once per silence (added in validation).** A node is aged out at most once per silence. The sweep skips a node whose `aircraftAgedOutAt` is newer than its `lastHeard`, so a hand un-ignore keeps the mark and sticks until the node is heard again. A hand ignore clears the mark, since the node is then a manual ignore.
 - **Protection.** Favourites (`isFavorite`) and the source's local node are never aged out. Nodes that are already ignored (for any reason) are skipped.
 
 ## Mesh impact

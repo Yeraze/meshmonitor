@@ -131,9 +131,10 @@ describe('ignoredNodeRoutes — reason surfacing + permissions', () => {
     expect(res.status).toBe(403);
   });
 
-  // #5364/#5365 Phase 2: an aged-out aircraft shows reason 'aircraft', and a
-  // hand un-ignore also clears the node's aircraftAgedOutAt (this source only).
-  it('GET surfaces reason "aircraft"; DELETE clears aircraftAgedOutAt on that source only', async () => {
+  // #5364/#5365 Phase 2: an aged-out aircraft shows reason 'aircraft'. A hand
+  // un-ignore lifts the ignore on that source only and KEEPS aircraftAgedOutAt,
+  // so the next sweep doesn't re-ignore the node during the same silence.
+  it('GET surfaces reason "aircraft"; DELETE un-ignores on that source only and keeps the aged-out mark', async () => {
     harness = await createRouteTestApp({ mount: (app) => app.use('/', ignoredNodeRoutes) });
     const num = 0x0a0b0c10;
     const at = 1_800_000_000_000;
@@ -154,7 +155,7 @@ describe('ignoredNodeRoutes — reason surfacing + permissions', () => {
 
     const a = await harness.db.nodes.getNode(num, harness.sourceA);
     expect(a?.isIgnored).toBe(false);
-    expect(a?.aircraftAgedOutAt ?? null).toBeNull();
+    expect(Number(a?.aircraftAgedOutAt)).toBe(at);
     const b = await harness.db.nodes.getNode(num, harness.sourceB);
     expect(b?.isIgnored).toBe(true);
     expect(Number(b?.aircraftAgedOutAt)).toBe(at);

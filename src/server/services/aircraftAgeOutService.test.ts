@@ -127,6 +127,19 @@ describe('AircraftAgeOutService.runSweep — age-out pass', () => {
     expect(r.deleted).toBe(1);
   });
 
+  it('ages a node out at most once per silence (a hand un-ignore sticks until it is heard again)', async () => {
+    const heardSec = Math.floor((NOW - 48 * HOUR) / 1000);
+    // Aged out after it was last heard, then un-ignored by hand: left alone.
+    const unIgnored = cand(4, { lastHeard: heardSec, aircraftAgedOutAt: NOW - 2 * HOUR });
+    // Aged out once, heard again since, now silent again: eligible.
+    const heardSince = cand(5, { lastHeard: heardSec, aircraftAgedOutAt: heardSec * 1000 - HOUR });
+    const { deps } = makeDeps({ settings: AGE_ON, candidates: [unIgnored, heardSince] });
+    const r = await new AircraftAgeOutService(deps).runSweep(SRC, NOW);
+    expect(deps.addAircraftIgnore).toHaveBeenCalledTimes(1);
+    expect((deps.addAircraftIgnore as any).mock.calls[0][0]).toBe(5);
+    expect(r.agedOut).toBe(1);
+  });
+
   it('respects the hours window (a node heard inside N hours is kept)', async () => {
     const recent = cand(2, { lastHeard: Math.floor((NOW - 30 * HOUR) / 1000) });
     const old = cand(3, { lastHeard: Math.floor((NOW - 50 * HOUR) / 1000) });

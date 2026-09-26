@@ -180,6 +180,10 @@ export class AircraftAgeOutService {
         if (localNodeNum != null && c.nodeNum === localNodeNum) continue;
         // A never-heard row has nothing to age from; leave it.
         if (c.lastHeard == null || c.lastHeard >= cutoffSec) continue;
+        // Aged out at most once per silence: a mark newer than the last time
+        // the node was heard means we already aged it out and someone lifted
+        // the ignore by hand. Leave it until it is heard again.
+        if (c.aircraftAgedOutAt != null && c.aircraftAgedOutAt >= c.lastHeard * 1000) continue;
         try {
           if (ageOut.action === 'delete') {
             await this.deps.deleteNode(c.nodeNum, sourceId);

@@ -5773,9 +5773,13 @@ class DatabaseService {
     // Update the node row (isIgnored flag) + in-memory cache for all dialects.
     await this.nodes.setNodeIgnored(nodeNum, isIgnored, sourceId);
 
-    // #5364/#5365 Phase 2: a hand un-ignore of an aged-out aircraft also
-    // drops its "aged out" mark, so the map stops drawing it as aged out.
-    if (!isIgnored) {
+    // #5364/#5365 Phase 2: a hand un-ignore KEEPS the "aged out" mark. With
+    // isIgnored false the map no longer draws the node as aged out, and the
+    // sweep reads the mark as "already aged out during this silence", so it
+    // won't re-ignore the node an hour later. The mark stops counting once
+    // the node is heard again (lastHeard moves past it). A hand IGNORE drops
+    // the mark: the node is now a manual ignore, not an aged-out aircraft.
+    if (isIgnored) {
       await this.nodes.clearAircraftAgedOutMark(nodeNum, sourceId);
     }
 

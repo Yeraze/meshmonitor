@@ -212,7 +212,7 @@ Aircraft pass through and do not come back, so their nodes pile up. Age-out clea
 - **Age out likely aircraft** — off by default. Needs detection on.
 - **Age out after (hours)** — a flagged node not heard for this long is aged out. Default **24**, range 6–168.
 - **Action** — **Ignore** (default) or **Delete**.
-  - **Ignore** puts the node on the [Ignored Nodes](/features/automation#ignored-nodes) list with the reason **Aged-out aircraft**. This happens in MeshMonitor's database only: nothing is sent to any radio. You can un-ignore it there.
+  - **Ignore** puts the node on the [Ignored Nodes](/features/automation#ignored-nodes) list with the reason **Aged-out aircraft**. This happens in MeshMonitor's database only: nothing is sent to any radio. You can un-ignore it there, or with **Un-ignore Node** on its Node Details page. An aircraft you un-ignore by hand is not aged out again until it has been heard and then gone quiet once more.
   - **Delete** removes the node and all its history, including positions. It cannot be undone.
 - **Last run** — when the sweep last ran on this source, and how many nodes it aged out, reclassified as fixed, and returned.
 
