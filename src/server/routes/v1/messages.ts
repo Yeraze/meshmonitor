@@ -470,7 +470,7 @@ router.post('/', messageLimiter, async (req: Request, res: Response) => {
 
     // An MQTT broker/bridge source has no radio of its own; resolveSourceManager()
     // would send through the PRIMARY TCP radio instead (#5375).
-    if (refuseNonMeshtasticSource(res, msgSourceId, 'message sends')) return;
+    if (await refuseNonMeshtasticSource(res, msgSourceId, 'message sends')) return;
 
     const meshChannel = channel !== undefined ? parseInt(channel) : 0;
     const trimmedText = text.trim();

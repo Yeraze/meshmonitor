@@ -255,7 +255,7 @@ router.post(
 
       // Accepting writes a channel to the source's own radio. An MQTT
       // broker/bridge source has none; never write the primary's (#5375).
-      if (refuseNonMeshtasticSource(res, sourceId, 'channel writes')) return;
+      if (await refuseNonMeshtasticSource(res, sourceId, 'channel writes')) return;
 
       const offer = await databaseService.meshBeaconOffers.getOffer(sourceId, nodeNum);
       if (!offer) return fail(res, 404, 'BEACON_OFFER_NOT_FOUND', 'No beacon offer from that node on this source');

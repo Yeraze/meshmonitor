@@ -1002,7 +1002,14 @@ router.post('/nodes/:nodeId/favorite-lock', requirePermission('nodes', 'write', 
 router.get('/auto-favorite/status', requirePermission('nodes', 'read'), async (req, res) => {
   try {
     const afSourceId = req.query.sourceId as string | undefined;
-    const afManager = resolveSourceManager(afSourceId);
+    // THIS source's own radio only. A source with no live Meshtastic manager
+    // (MQTT broker/bridge, a disconnected TCP source) has no local node to
+    // auto-favorite for; report that instead of the primary's status (#5375).
+    const afManager = resolveOwnMeshtasticManager(afSourceId);
+    if (!afManager) {
+      res.json({ localNodeRole: null, firmwareVersion: null, supportsFavorites: false, autoFavoriteNodes: [] });
+      return;
+    }
     // Prefer the manager's in-memory local node (populated at connect time). This avoids
     // the legacy global 'localNodeNum' settings key, which is clobbered across sources.
     const localNodeNumInt = afManager.getLocalNodeInfo()?.nodeNum;
@@ -1859,7 +1866,8 @@ router.post('/nodes/refresh', requirePermission('nodes', 'write'), requireMeshta
 // Settings endpoints
 
 // Force-stop an active auto-ping session
-router.post('/auto-ping/stop/:nodeNum', requirePermission('settings', 'write'), (req, res) => {
+// Sessions live on the source's own manager; never stop the primary's (#5375).
+router.post('/auto-ping/stop/:nodeNum', requirePermission('settings', 'write'), requireMeshtasticDeviceSource('body', 'auto-ping controls'), (req, res) => {
   try {
     const nodeNum = parseInt(req.params.nodeNum, 10);
     if (isNaN(nodeNum)) {

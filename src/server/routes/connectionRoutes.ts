@@ -4,6 +4,31 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { isMeshtasticManager, isMqttConnectionStatusManager } from '../sourceManagerTypes.js';
+import { requireMeshtasticDeviceSource } from '../utils/requireMeshtasticDeviceSource.js';
+
+const NOT_CONNECTED = {
+  connected: false,
+  nodeResponsive: false,
+  configuring: false,
+  userDisconnected: false,
+};
+
+/**
+ * Connection status for a sourceId that is NOT a live Meshtastic manager, or
+ * undefined when the caller should use the Meshtastic manager as before.
+ * resolveSourceManager() would report the PRIMARY radio's status for these
+ * (#5375): an MQTT broker/bridge reports its own broker link; any other
+ * non-Meshtastic source (MeshCore, Reticulum) or an id with no live manager
+ * reports a stable "not connected".
+ */
+async function nonMeshtasticConnectionStatus(sourceId: string | undefined): Promise<Record<string, unknown> | undefined> {
+  if (!sourceId) return undefined;
+  const mgr = sourceManagerRegistry.getManager(sourceId);
+  if (mgr && isMeshtasticManager(mgr)) return undefined;
+  if (mgr && isMqttConnectionStatusManager(mgr)) return { ...(await mgr.getConnectionStatus()) };
+  return { ...NOT_CONNECTED };
+}
 import { getEnvironmentConfig } from '../config/environment.js';
 
 const router = Router();
@@ -18,17 +43,10 @@ router.get('/', optionalAuth(), async (req: Request, res: Response) => {
     // "not connected" response instead of silently falling back to the legacy
     // singleton. The singleton is the primary source's manager and would
     // otherwise leak its state across sources.
-    if (connSourceId && !sourceManagerRegistry.getManager(connSourceId)) {
-      res.json({
-        connected: false,
-        nodeResponsive: false,
-        configuring: false,
-        userDisconnected: false,
-      });
-      return;
-    }
-    const connManager = resolveSourceManager(connSourceId);
-    const status = await connManager.getConnectionStatus();
+    // The same applies to a non-Meshtastic source (#5375): report its own
+    // state, never the primary radio's.
+    const ownStatus = await nonMeshtasticConnectionStatus(connSourceId);
+    const status = ownStatus ?? await resolveSourceManager(connSourceId).getConnectionStatus();
     // Hide nodeIp from anonymous users
     if (!req.session.userId) {
       const { nodeIp: _nodeIp, ...statusWithoutNodeIp } = status;
@@ -42,7 +60,9 @@ router.get('/', optionalAuth(), async (req: Request, res: Response) => {
   }
 });
 
-router.post('/disconnect', requirePermission('connection', 'write'), async (req: Request, res: Response) => {
+// Disconnect / reconnect / configure act on a Meshtastic TCP link. A
+// non-Meshtastic sourceId would act on the PRIMARY radio instead (#5375).
+router.post('/disconnect', requirePermission('connection', 'write'), requireMeshtasticDeviceSource('body', 'connection controls'), async (req: Request, res: Response) => {
   try {
     const { sourceId: disconnectSourceId } = req.body;
     const disconnectManager = (resolveSourceManager(disconnectSourceId));
@@ -65,7 +85,7 @@ router.post('/disconnect', requirePermission('connection', 'write'), async (req:
 });
 
 // User-initiated reconnect endpoint
-router.post('/reconnect', requirePermission('connection', 'write'), async (req: Request, res: Response) => {
+router.post('/reconnect', requirePermission('connection', 'write'), requireMeshtasticDeviceSource('body', 'connection controls'), async (req: Request, res: Response) => {
   try {
     const { sourceId: reconnectSourceId } = req.body;
     const reconnectManager = (resolveSourceManager(reconnectSourceId));
@@ -94,6 +114,14 @@ router.post('/reconnect', requirePermission('connection', 'write'), async (req: 
 router.get('/info', requireAuth(), async (req: Request, res: Response) => {
   try {
     const ciSourceId = req.query.sourceId as string | undefined;
+    // A non-Meshtastic source has no node address or TCP override to show;
+    // report its own status and say so, not the primary's link (#5375).
+    const ownStatus = await nonMeshtasticConnectionStatus(ciSourceId);
+    if (ownStatus) {
+      const { nodeIp: _nodeIp, ...rest } = ownStatus;
+      res.json({ ...rest, hasLocalRadio: false });
+      return;
+    }
     const ciManager = resolveSourceManager(ciSourceId);
     const status = await ciManager.getConnectionStatus();
     const env = getEnvironmentConfig();
@@ -114,7 +142,7 @@ router.get('/info', requireAuth(), async (req: Request, res: Response) => {
 });
 
 // Configure connection IP address (admin only)
-router.post('/configure', requireAdmin(), async (req: Request, res: Response) => {
+router.post('/configure', requireAdmin(), requireMeshtasticDeviceSource('body', 'connection controls'), async (req: Request, res: Response) => {
   try {
     const { nodeIp } = req.body;
 

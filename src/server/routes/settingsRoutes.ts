@@ -22,7 +22,7 @@ import { invalidateCoverageMqttEnabled } from '../services/coverageMqttSettings.
 import { COVERAGE_MQTT_ENABLED_SETTING } from '../../utils/coverage.js';
 import { VALID_SETTINGS_KEYS, GLOBAL_ONLY_SETTINGS_KEYS, stripSecretSettings } from '../constants/settings.js';
 import { ok, fail } from '../utils/apiResponse.js';
-import { resolveSourceManager, resolveOwnMeshtasticManager } from '../utils/resolveSourceManager.js';
+import { resolveOwnMeshtasticManager } from '../utils/resolveSourceManager.js';
 import { validateFilterNameRegexOnSave } from '../utils/filterNameRegex.js';
 import { positionEstimationScheduler } from '../services/positionEstimationScheduler.js';
 import {
@@ -1861,7 +1861,9 @@ router.post('/time-sync-nodes', requirePermission('settings', 'write'), async (r
 router.get('/auto-ping', requirePermission('settings', 'read'), async (req, res) => {
   try {
     const autoPingSourceId = req.query.sourceId as string | undefined;
-    const autoPingManager = resolveSourceManager(autoPingSourceId);
+    // Sessions come from THIS source's own radio; a source with none (MQTT
+    // broker/bridge, disconnected TCP) has no sessions, not the primary's (#5375).
+    const autoPingManager = resolveOwnMeshtasticManager(autoPingSourceId);
     // Per-source settings layered on top of globals (source override wins)
     const sourceOverrides = autoPingSourceId
       ? await databaseService.settings.getSourceSettings(autoPingSourceId)
@@ -1876,7 +1878,7 @@ router.get('/auto-ping', requirePermission('settings', 'read'), async (req, res)
       autoPingMaxPings: parseInt((await readSetting('autoPingMaxPings')) || '20', 10),
       autoPingTimeoutSeconds: parseInt((await readSetting('autoPingTimeoutSeconds')) || '60', 10),
     };
-    const sessions = await autoPingManager.getAutoPingSessions();
+    const sessions = autoPingManager ? await autoPingManager.getAutoPingSessions() : [];
     res.json({ settings, sessions });
   } catch (error) {
     logger.error('Error fetching auto-ping settings:', error);

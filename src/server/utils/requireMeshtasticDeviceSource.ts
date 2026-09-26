@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { fail } from './apiResponse.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMeshtasticManager } from '../sourceManagerTypes.js';
+import databaseService from '../../services/database.js';
 
 /**
  * True when `sourceId` names a registered source whose manager is NOT a
@@ -15,26 +16,73 @@ export function isNonMeshtasticSource(sourceId: string | undefined | null): bool
   return !!manager && !isMeshtasticManager(manager);
 }
 
+interface SourceRefusal {
+  status: number;
+  code: 'SOURCE_NOT_MESHTASTIC' | 'SOURCE_NOT_CONNECTED';
+  message: string;
+}
+
+/**
+ * Decide whether `sourceId` may use a Meshtastic-manager route, or why not.
+ *
+ * - No sourceId: allowed (legacy single-source path, the primary).
+ * - Live Meshtastic manager: allowed.
+ * - Live non-Meshtastic manager (mqtt_broker, mqtt_bridge, meshcore,
+ *   reticulum): 400 SOURCE_NOT_MESHTASTIC.
+ * - No live manager but a source row exists (a disabled MQTT source, a
+ *   disconnected TCP source): refused as well, since resolveSourceManager()
+ *   would hand back the PRIMARY radio for it (#5375). 409
+ *   SOURCE_NOT_CONNECTED for a meshtastic_tcp row, 400 SOURCE_NOT_MESHTASTIC
+ *   for any other type.
+ * - No row at all: allowed, so the route's own 404/validation still runs.
+ */
+export async function checkMeshtasticDeviceSource(
+  sourceId: string | undefined | null,
+  what = 'device operations',
+): Promise<SourceRefusal | null> {
+  if (typeof sourceId !== 'string' || sourceId.length === 0) return null;
+  const notMeshtastic = (): SourceRefusal => ({
+    status: 400,
+    code: 'SOURCE_NOT_MESHTASTIC',
+    message: `Source "${sourceId}" has no local Meshtastic device; ${what} are not available for it.`,
+  });
+  const manager = sourceManagerRegistry.getManager(sourceId);
+  if (manager) return isMeshtasticManager(manager) ? null : notMeshtastic();
+
+  let row: { type?: string } | null;
+  try {
+    row = await databaseService.sources.getSource(sourceId);
+  } catch {
+    return null;
+  }
+  if (!row) return null;
+  if (row.type === 'meshtastic_tcp') {
+    return {
+      status: 409,
+      code: 'SOURCE_NOT_CONNECTED',
+      message: `Source "${sourceId}" is not connected; ${what} are not available until it reconnects.`,
+    };
+  }
+  return notMeshtastic();
+}
+
 /**
  * In-handler form of {@link requireMeshtasticDeviceSource}, for routes whose
  * sourceId comes from a path param or another place the middleware cannot
- * read. Sends 400 SOURCE_NOT_MESHTASTIC and returns true when `sourceId` is a
- * non-Meshtastic source; returns false (and sends nothing) otherwise.
+ * read. Sends the refusal from {@link checkMeshtasticDeviceSource} and
+ * resolves true when the source is refused; resolves false (and sends
+ * nothing) otherwise.
  *
  * `what` names the refused operation in the error message.
  */
-export function refuseNonMeshtasticSource(
+export async function refuseNonMeshtasticSource(
   res: Response,
   sourceId: string | undefined | null,
   what = 'device operations',
-): boolean {
-  if (typeof sourceId !== 'string' || !isNonMeshtasticSource(sourceId)) return false;
-  fail(
-    res,
-    400,
-    'SOURCE_NOT_MESHTASTIC',
-    `Source "${sourceId}" has no local Meshtastic device; ${what} are not available for it.`,
-  );
+): Promise<boolean> {
+  const refusal = await checkMeshtasticDeviceSource(sourceId, what);
+  if (!refusal) return false;
+  fail(res, refusal.status, refusal.code, refusal.message);
   return true;
 }
 
@@ -62,11 +110,11 @@ export function requireMeshtasticDeviceSource(
   from: 'query' | 'body' | 'either' = 'either',
   what = 'device operations',
 ) {
-  return (req: Request, res: Response, next: NextFunction): void => {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const fromQuery = req.query?.sourceId;
     const fromBody = req.body?.sourceId;
     const raw = from === 'query' ? fromQuery : from === 'body' ? fromBody : (fromQuery ?? fromBody);
-    if (typeof raw === 'string' && refuseNonMeshtasticSource(res, raw, what)) return;
+    if (typeof raw === 'string' && (await refuseNonMeshtasticSource(res, raw, what))) return;
     next();
   };
 }

@@ -3393,7 +3393,9 @@ function App() {
         onFetchSystemStatus={fetchSystemStatus}
         onShowLoginModal={() => setShowLoginModal(true)}
         onLogout={() => setActiveTab('nodes')}
-        onNodeClick={handleNodeClick}
+        // The node-info modal shows and edits a TCP node address; an MQTT
+        // source has none (#5375).
+        onNodeClick={isMqtt ? undefined : handleNodeClick}
         sourceName={sourceName}
         onBackToSources={sourceId ? () => navigate('/', { state: { showList: true } }) : undefined}
         mqttReadOnly={isMqttBridge}
@@ -3995,7 +3997,9 @@ function App() {
         systemStatus={systemStatus}
         onClose={() => setShowStatusModal(false)}
         connectionStatus={connectionStatus}
-        canManageConnection={hasPermission('connection', 'write')}
+        // An MQTT source has no radio link of its own; disconnect/reconnect
+        // would act on the primary radio, so the server refuses them (#5375).
+        canManageConnection={hasPermission('connection', 'write') && !isMqtt}
         onDisconnect={handleDisconnect}
         onReconnect={handleReconnect}
       />

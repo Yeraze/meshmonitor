@@ -36,7 +36,9 @@ router.get('/last', requirePermission('automation', 'read'), async (req: Request
   }
 });
 
-router.get('/preview', requirePermission('automation', 'read'), async (req: Request, res: Response) => {
+// Preview tokens resolve against the source's local node; a non-Meshtastic
+// source has none, so refuse rather than preview the primary's (#5375).
+router.get('/preview', requirePermission('automation', 'read'), requireMeshtasticDeviceSource('query', 'announcements'), async (req: Request, res: Response) => {
   try {
     const message = req.query.message as string;
     if (!message) {

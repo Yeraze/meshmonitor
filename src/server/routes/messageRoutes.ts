@@ -1720,7 +1720,7 @@ router.post('/send', optionalAuth(), async (req, res) => {
     // An MQTT broker/bridge (or any non-Meshtastic) source has no radio of its
     // own; resolveSourceManager() would hand back the PRIMARY TCP manager and
     // transmit through a radio the user did not pick (#5375). Refuse instead.
-    if (refuseNonMeshtasticSource(res, reqSourceId, 'message sends')) return;
+    if (await refuseNonMeshtasticSource(res, reqSourceId, 'message sends')) return;
 
     // Route to the correct source manager when sourceId is provided
     const activeManager = (resolveSourceManager(reqSourceId));

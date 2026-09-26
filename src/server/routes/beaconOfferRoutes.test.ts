@@ -16,6 +16,7 @@ vi.mock('../utils/resolveSourceManager.js', () => ({
 
 import beaconOfferRoutes from './beaconOfferRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 
 const NODE = 0xaabbccdd;
 const PSK = 'AQIDBAUGBwgJCgsMDQ4PEA==';
@@ -54,6 +55,19 @@ afterEach(async () => {
 });
 
 const url = (path = '') => `/api/sources/${harness.sourceA}/beacon-offers${path}`;
+
+// #5375: send / radio-write routes refuse a source with a row but no live
+// manager (it would otherwise fall back to the primary radio). Every source
+// these tests name is a live Meshtastic source, so give each one a manager.
+let liveManagerSpy: ReturnType<typeof vi.spyOn> | undefined;
+beforeEach(() => {
+  const original = sourceManagerRegistry.getManager.bind(sourceManagerRegistry);
+  liveManagerSpy = vi.spyOn(sourceManagerRegistry, 'getManager').mockImplementation(((id: string) =>
+    original(id) ?? ({ sourceId: id, sourceType: 'meshtastic_tcp' } as never)) as typeof sourceManagerRegistry.getManager);
+});
+afterEach(() => {
+  liveManagerSpy?.mockRestore();
+});
 
 describe('GET /api/sources/:id/beacon-offers', () => {
   it('never serializes the offered channel key', async () => {

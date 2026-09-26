@@ -20,6 +20,8 @@ import deviceStatusRoutes from './deviceStatusRoutes.js';
 import pollRoutes from './pollRoutes.js';
 import nodesRoutes from './nodesRoutes.js';
 import announceRoutes from './announceRoutes.js';
+import connectionRoutes from './connectionRoutes.js';
+import settingsRoutes from './settingsRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 import { sourceManagerRegistry, type ISourceManager } from '../sourceManagerRegistry.js';
 
@@ -57,6 +59,13 @@ describe('non-Meshtastic sources never transmit through the primary radio (#5375
       refreshNodeDatabase: vi.fn().mockResolvedValue(undefined),
       sendFavoriteNode: vi.fn().mockResolvedValue(undefined),
       sendAutoAnnouncement: vi.fn().mockResolvedValue(undefined),
+      previewAnnouncementMessage: vi.fn().mockResolvedValue('preview from TCP'),
+      userDisconnect: vi.fn().mockResolvedValue(undefined),
+      userReconnect: vi.fn().mockResolvedValue(true),
+      setNodeIpOverride: vi.fn().mockResolvedValue(undefined),
+      getAutoPingSessions: vi.fn().mockResolvedValue([{ nodeNum: PEER_NODE_NUM }]),
+      stopAutoPingSession: vi.fn(),
+      supportsFavorites: vi.fn().mockReturnValue(true),
       sendRemoveFavoriteNode: vi.fn().mockResolvedValue(undefined),
       startDistanceDeleteScheduler: vi.fn().mockResolvedValue(undefined),
       stopDistanceDeleteScheduler: vi.fn(),
@@ -73,7 +82,7 @@ describe('non-Meshtastic sources never transmit through the primary radio (#5375
       getStatus: vi.fn().mockReturnValue({ sourceId: BROKER_SOURCE_ID, sourceName: 'Home Mqtt', sourceType: 'mqtt_broker', connected: true }),
       getLocalNodeInfo: vi.fn().mockReturnValue(null),
       getAllNodesAsync: vi.fn().mockResolvedValue([]),
-      getConnectionStatus: vi.fn().mockResolvedValue({ connected: true, nodeResponsive: true, configuring: false, nodeIp: '', userDisconnected: false }),
+      getConnectionStatus: vi.fn().mockResolvedValue({ connected: true, nodeResponsive: true, configuring: false, nodeIp: 'broker.local', userDisconnected: false }),
       getDeviceConfig: vi.fn().mockResolvedValue(null),
       startDistanceDeleteScheduler: vi.fn().mockResolvedValue(undefined),
       stopDistanceDeleteScheduler: vi.fn(),
@@ -90,6 +99,8 @@ describe('non-Meshtastic sources never transmit through the primary radio (#5375
         app.use('/', pollRoutes);
         app.use('/', nodesRoutes);
         app.use('/announce', announceRoutes);
+        app.use('/connection', connectionRoutes);
+        app.use('/settings', settingsRoutes);
       },
     });
     await harness.db.sources.createSource({
@@ -256,6 +267,121 @@ describe('non-Meshtastic sources never transmit through the primary radio (#5375
       expect(res.status).toBe(200);
       expect(res.body.deviceSync.status).toBe('skipped');
       expect(tcpManager.sendFavoriteNode).not.toHaveBeenCalled();
+    });
+  });
+  describe('sources with no live manager', () => {
+    const DISABLED_MQTT_ID = 'rt-mqtt-disabled-5375';
+
+    beforeEach(async () => {
+      await harness.db.sources.createSource({ id: DISABLED_MQTT_ID, name: 'Off Mqtt', type: 'mqtt_broker', config: {}, enabled: false });
+    });
+    afterEach(async () => {
+      await harness.db.sources.deleteSource(DISABLED_MQTT_ID).catch(() => {});
+    });
+
+    it('refuses a disabled MQTT source with SOURCE_NOT_MESHTASTIC', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post('/messages/send').send({ sourceId: DISABLED_MQTT_ID, text: 'hi', channel: 0 });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('SOURCE_NOT_MESHTASTIC');
+      expect(tcpManager.sendTextMessage).not.toHaveBeenCalled();
+    });
+
+    it('refuses a disconnected TCP source with SOURCE_NOT_CONNECTED instead of using the primary', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post('/traceroute').send({ sourceId: harness.sourceB, destination: PEER_NODE_NUM, channel: 0 });
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe('SOURCE_NOT_CONNECTED');
+      expect(tcpManager.sendTraceroute).not.toHaveBeenCalled();
+    });
+
+    it('leaves an unknown sourceId to the route (no guard refusal)', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post('/messages/send').send({ sourceId: 'no-such-source-5375', text: 'hi', channel: 0 });
+      expect(['SOURCE_NOT_MESHTASTIC', 'SOURCE_NOT_CONNECTED']).not.toContain(res.body.code);
+    });
+
+    it('omitted sourceId keeps the legacy primary path', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post('/messages/send').send({ text: 'hi', channel: 0 });
+      expect(res.status).toBe(200);
+      expect(tcpManager.sendTextMessage).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('connection routes', () => {
+    it('POST /connection/disconnect, /reconnect and /configure refuse an mqtt_broker source', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      for (const [path, body] of [
+        ['/connection/disconnect', {}],
+        ['/connection/reconnect', {}],
+        ['/connection/configure', { nodeIp: '10.0.0.9' }],
+      ] as const) {
+        const res = await agent.post(path).send({ ...body, sourceId: BROKER_SOURCE_ID });
+        expect(res.status, path).toBe(400);
+        expect(res.body.code, path).toBe('SOURCE_NOT_MESHTASTIC');
+      }
+      expect(tcpManager.userDisconnect).not.toHaveBeenCalled();
+      expect(tcpManager.userReconnect).not.toHaveBeenCalled();
+      expect(tcpManager.setNodeIpOverride).not.toHaveBeenCalled();
+    });
+
+    it('GET /connection reports the broker\'s own link, not the primary radio', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get('/connection').query({ sourceId: BROKER_SOURCE_ID });
+      expect(res.status).toBe(200);
+      expect(res.body.nodeIp).toBe('broker.local');
+      expect(tcpManager.getConnectionStatus).not.toHaveBeenCalled();
+    });
+
+    it('GET /connection/info says the broker has no local radio and leaks no TCP address', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get('/connection/info').query({ sourceId: BROKER_SOURCE_ID });
+      expect(res.status).toBe(200);
+      expect(res.body.hasLocalRadio).toBe(false);
+      expect(JSON.stringify(res.body)).not.toContain('10.0.0.1');
+      expect(tcpManager.getConnectionStatus).not.toHaveBeenCalled();
+    });
+
+    it('GET /connection still reports the TCP source itself (positive control)', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get('/connection').query({ sourceId: harness.sourceA });
+      expect(res.status).toBe(200);
+      expect(res.body.nodeIp).toBe('10.0.0.1');
+    });
+  });
+
+  describe('read-only automation status', () => {
+    it('GET /announce/preview refuses an mqtt_broker source', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get('/announce/preview').query({ sourceId: BROKER_SOURCE_ID, message: 'hi {LONG_NAME}' });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('SOURCE_NOT_MESHTASTIC');
+      expect(tcpManager.previewAnnouncementMessage).not.toHaveBeenCalled();
+    });
+
+    it('GET /auto-favorite/status reports no local node for an mqtt_broker source', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get('/auto-favorite/status').query({ sourceId: BROKER_SOURCE_ID });
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ localNodeRole: null, firmwareVersion: null, supportsFavorites: false, autoFavoriteNodes: [] });
+      expect(tcpManager.supportsFavorites).not.toHaveBeenCalled();
+    });
+
+    it('GET /settings/auto-ping lists no sessions for an mqtt_broker source', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get('/settings/auto-ping').query({ sourceId: BROKER_SOURCE_ID });
+      expect(res.status).toBe(200);
+      expect(res.body.sessions).toEqual([]);
+      expect(tcpManager.getAutoPingSessions).not.toHaveBeenCalled();
+    });
+
+    it('POST /auto-ping/stop refuses an mqtt_broker source', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post(`/auto-ping/stop/${PEER_NODE_NUM}`).send({ sourceId: BROKER_SOURCE_ID });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('SOURCE_NOT_MESHTASTIC');
+      expect(tcpManager.stopAutoPingSession).not.toHaveBeenCalled();
     });
   });
 });
