@@ -286,13 +286,14 @@ class MockConnection extends EventEmitter {
   public addOrUpdateContactCalls: Array<any[]> = [];
   async addOrUpdateContact(...args: any[]) {
     this.addOrUpdateContactCalls.push(args);
-    const [pk, , , outPathLen, outPath] = args;
+    const [pk, , , outPathLen, outPath, advName] = args;
     const target = this.contactsResponse.find(
       (ct: any) => ct.publicKey && Buffer.from(ct.publicKey).equals(Buffer.from(pk)),
     );
     if (target) {
       if (typeof outPathLen === 'number') target.outPathLen = outPathLen;
       if (outPath) target.outPath = outPath;
+      if (typeof advName === 'string') target.advName = advName;
     }
   }
 }
@@ -593,6 +594,63 @@ describe('MeshCoreNativeBackend', () => {
     expect(lastAdvert).toBe(42);
     expect(advLat).toBe(1);
     expect(advLon).toBe(2);
+  });
+
+  // #5350: the Virtual Node's AddUpdateContact relay renames through this.
+  describe('set_contact_name (#5350)', () => {
+    const KEY_HEX = 'abcdef' + '00'.repeat(29);
+    const KEY = Uint8Array.from([0xab, 0xcd, 0xef, ...new Array(29).fill(0)]);
+
+    async function makeBackend() {
+      const backend = new MeshCoreNativeBackend('src-1', { connectionType: 'serial', serialPort: '/dev/ttyUSB0' });
+      await backend.connect();
+      const conn = lastInstanceRef.current as MockConnection;
+      const path = new Uint8Array(64);
+      path.set([0x41, 0x42]);
+      conn.contactsResponse = [
+        { publicKey: KEY, type: AdvType.Repeater, flags: 0xa1, outPathLen: 0x41, outPath: path, advName: 'Rptr', lastAdvert: 42, advLat: 1, advLon: 2 },
+      ];
+      return { backend, conn };
+    }
+
+    it('rewrites only the name, re-sending every other device field unchanged', async () => {
+      const { backend, conn } = await makeBackend();
+      const resp = await backend.sendCommand('set_contact_name', { public_key: KEY_HEX, name: 'North Hill' });
+      expect(resp.success).toBe(true);
+      expect(conn.addOrUpdateContactCalls).toHaveLength(1);
+      const [, type, flags, outPathLen, outPath, advName, lastAdvert, advLat, advLon] = conn.addOrUpdateContactCalls[0];
+      expect(type).toBe(AdvType.Repeater);
+      expect(flags).toBe(0xa1); // favourite + telemetry bits kept
+      expect(outPathLen).toBe(0x41); // packed 2-byte-hash length kept
+      expect(Array.from((outPath as Uint8Array).subarray(0, 2))).toEqual([0x41, 0x42]);
+      expect(advName).toBe('North Hill');
+      expect([lastAdvert, advLat, advLon]).toEqual([42, 1, 2]);
+    });
+
+    it('trusts the read-back when the ack errored but the device stored the name', async () => {
+      const { backend, conn } = await makeBackend();
+      conn.addOrUpdateContact = async (...args: any[]) => {
+        conn.contactsResponse[0].advName = args[5];
+        throw undefined; // meshcore.js rejects with no argument on Err
+      };
+      const resp = await backend.sendCommand('set_contact_name', { public_key: KEY_HEX, name: 'North Hill' });
+      expect(resp.success).toBe(true);
+    });
+
+    it('fails when the read-back shows the name was not stored', async () => {
+      const { backend, conn } = await makeBackend();
+      conn.addOrUpdateContact = async () => { /* device ignored the write */ };
+      const resp = await backend.sendCommand('set_contact_name', { public_key: KEY_HEX, name: 'North Hill' });
+      expect(resp.success).toBe(false);
+      expect(resp.error).toMatch(/not confirmed on device/i);
+    });
+
+    it('rejects a name longer than the firmware 31-byte limit without writing', async () => {
+      const { backend, conn } = await makeBackend();
+      const resp = await backend.sendCommand('set_contact_name', { public_key: KEY_HEX, name: 'x'.repeat(32) });
+      expect(resp.success).toBe(false);
+      expect(conn.addOrUpdateContactCalls).toHaveLength(0);
+    });
   });
 
   // #4631: set_out_path must trust the DEVICE read-back, not the tag-less

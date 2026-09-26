@@ -2037,6 +2037,54 @@ export class MeshCoreNativeBackend extends EventEmitter {
         return { ok: true, updated, missing };
       }
 
+      case 'set_contact_name': {
+        // Rename a contact in the device's saved contact table via
+        // CMD_ADD_UPDATE_CONTACT (opcode 9), keeping every other field
+        // (type, flags, out_path, advert time, coords) exactly as the device
+        // holds it. Used by the Virtual Node's AddUpdateContact relay (#5350).
+        // Local serial write, no RF.
+        //
+        // Same shape as set_out_path (#4631): the Ok/Err ack is tag-less and a
+        // concurrent command's Err can cannibalise it, so serialize the
+        // read-modify-write on the shared-ack lock, swallow a write rejection,
+        // and let a read-back of the stored name decide the outcome.
+        const publicKey = await this.resolvePublicKey(params.public_key as string);
+        if (!publicKey) throw new Error('Set-contact-name target not found');
+        const name = String(params.name ?? '');
+        // Firmware ContactInfo.name is char[32] incl. the NUL terminator.
+        if (Buffer.byteLength(name, 'utf8') > 31) throw new Error('set_contact_name: name longer than 31 bytes');
+        const targetHex = bytesToHex(publicKey);
+        const timeoutMs = Number(params.timeout_ms) || 15_000;
+        const verified = await this.runExclusiveRadioOp(async () => this.withTimeout((async () => {
+          const before = (await c.getContacts()) as RawDeviceContact[];
+          const contact = before.find((ct) => bytesToHex(ct.publicKey) === targetHex);
+          if (!contact) throw new Error('Set-contact-name target not in device contact list');
+          try {
+            await c.addOrUpdateContact(
+              contact.publicKey,
+              contact.type,
+              typeof contact.flags === 'number' ? contact.flags : 0,
+              contact.outPathLen,
+              contact.outPath,
+              name,
+              contact.lastAdvert,
+              contact.advLat,
+              contact.advLon,
+            );
+          } catch (writeErr) {
+            const detail = writeErr instanceof Error ? writeErr.message : writeErr == null ? 'no ack (uncorrelated Err)' : String(writeErr);
+            logger.debug(`[MeshCore] set_contact_name write ack errored for ${targetHex} (${detail}); verifying via read-back`);
+          }
+          const after = (await c.getContacts()) as RawDeviceContact[];
+          const updated = after.find((ct) => bytesToHex(ct.publicKey) === targetHex);
+          return !!updated && updated.advName === name;
+        })(), timeoutMs, 'set_contact_name'), 'set_contact_name');
+        if (!verified) {
+          throw new Error('set_contact_name not confirmed on device: read-back shows the name was not stored');
+        }
+        return { ok: true };
+      }
+
       case 'send_message': {
         const to = params.to as string | null | undefined;
         const text = String(params.text ?? '');

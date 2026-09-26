@@ -120,7 +120,7 @@ describe('virtualNodeConfigFromSource', () => {
 
   it('returns the config when enabled is true', () => {
     const vn = virtualNodeConfigFromSource({ virtualNode: { enabled: true, port: 5001, allowAdminCommands: true } });
-    expect(vn).toEqual({ enabled: true, port: 5001, allowAdminCommands: true, allowPkiExport: false });
+    expect(vn).toEqual({ enabled: true, port: 5001, allowAdminCommands: true, allowPkiExport: false, allowPkiImport: false });
   });
 
   it(`falls back to DEFAULT_VIRTUAL_NODE_PORT (${DEFAULT_VIRTUAL_NODE_PORT}) when port is missing`, () => {
@@ -169,5 +169,23 @@ describe('virtualNodeConfigFromSource', () => {
       virtualNode: { enabled: true, port: 5001, allowPkiExport: true },
     });
     expect(pkiOnly?.allowAdminCommands).toBe(false);
+  });
+
+  // #5350: import replaces the node identity, so it has its own switch.
+  it('passes allowPkiImport through only when explicitly true, independent of the other gates', () => {
+    expect(virtualNodeConfigFromSource({ virtualNode: { enabled: true, port: 5001 } })?.allowPkiImport).toBe(false);
+    expect(
+      virtualNodeConfigFromSource({
+        virtualNode: { enabled: true, port: 5001, allowPkiImport: 'true' as unknown as boolean },
+      })?.allowPkiImport,
+    ).toBe(false);
+    const importOnly = virtualNodeConfigFromSource({ virtualNode: { enabled: true, port: 5001, allowPkiImport: true } });
+    expect(importOnly).toEqual({
+      enabled: true, port: 5001, allowAdminCommands: false, allowPkiExport: false, allowPkiImport: true,
+    });
+    const exportAndAdmin = virtualNodeConfigFromSource({
+      virtualNode: { enabled: true, port: 5001, allowPkiExport: true, allowAdminCommands: true },
+    });
+    expect(exportAndAdmin?.allowPkiImport).toBe(false);
   });
 });

@@ -1561,6 +1561,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         manager: this,
         allowAdminCommands: vn.allowAdminCommands,
         allowPkiExport: vn.allowPkiExport,
+        allowPkiImport: vn.allowPkiImport,
       });
       await this.virtualNodeServer.start();
     } catch (err) {
@@ -5437,6 +5438,46 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       return true;
     } catch (error) {
       logger.error('[MeshCore] removeContact threw:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Rename a contact in the device's saved contact table, keeping its type,
+   * flags, route and advert fields as the device holds them. On success the
+   * in-memory contact + meshcore_nodes row take the new name. Companion only;
+   * a local serial write (no RF), so receive-only mode does not block it.
+   * Used by the Virtual Node's AddUpdateContact relay (#5350).
+   */
+  async setContactName(publicKey: string, name: string): Promise<boolean> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
+      logger.warn('[MeshCore] Set-contact-name requires Companion firmware');
+      return false;
+    }
+    if (!this.connected) return false;
+    // Firmware ContactInfo.name is char[32] incl. the NUL terminator.
+    if (Buffer.byteLength(name, 'utf8') > 31) {
+      logger.warn(`[MeshCore:${this.sourceId}] setContactName: name longer than 31 UTF-8 bytes`);
+      return false;
+    }
+    try {
+      const response = await this.sendBridgeCommand('set_contact_name', { public_key: publicKey, name });
+      if (!response.success) {
+        logger.warn(`[MeshCore] set_contact_name failed for ${publicKey.substring(0, 16)}…: ${response.error}`);
+        return false;
+      }
+      const existing = this.contacts.get(publicKey);
+      if (existing) {
+        const updated: MeshCoreContact = { ...existing, advName: name, name };
+        this.contacts.set(publicKey, updated);
+        void this.persistContact(updated);
+        this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
+        dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
+      }
+      logger.debug(`[MeshCore:${this.sourceId}] Renamed contact ${publicKey.substring(0, 16)}…`);
+      return true;
+    } catch (error) {
+      logger.error('[MeshCore] setContactName threw:', error);
       return false;
     }
   }

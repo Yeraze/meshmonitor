@@ -81,11 +81,20 @@ export const ResponseCodes = {
   ChannelMsgRecv: 8,
   CurrTime: 9,
   NoMoreMessages: 10,
+  ExportContact: 11,
   BatteryVoltage: 12,
   DeviceInfo: 13,
   PrivateKey: 14,
   Disabled: 15,
   ChannelInfo: 18,
+  Stats: 24,
+} as const;
+
+/** Sub-type byte of GetStats(56) / Stats(24) (mirrors firmware STATS_TYPE_*). */
+export const StatsTypes = {
+  Core: 0,
+  Radio: 1,
+  Packets: 2,
 } as const;
 
 /** Push codes the node emits on live events (subset). */
@@ -366,6 +375,96 @@ export function parseSendTelemetryReq(payload: Buffer): SendTelemetryReqCmd {
 export function parseSendStatusReq(payload: Buffer): SendStatusReqCmd {
   if (payload.length < 1 + 32) throw new Error('SendStatusReq: short payload');
   return { publicKey: payload.subarray(1, 33).toString('hex') };
+}
+
+// ─────────────────────── contact / device command parsers (#5350) ───────────────────────
+// Layouts from meshcore.js `sendCommand*` builders, cross-checked against the
+// firmware's companion_radio MyMesh.cpp handlers.
+
+/**
+ * `[code][publicKey:32]`: the shared shape of ResetPath(13), RemoveContact(15)
+ * and ShareContact(16). Returns the key as lowercase hex.
+ */
+export function parseContactKeyCommand(payload: Buffer, name: string): { publicKey: string } {
+  if (payload.length < 1 + 32) throw new Error(`${name}: short payload`);
+  return { publicKey: payload.subarray(1, 33).toString('hex') };
+}
+
+/**
+ * ExportContact(17): `[code]` exports the node's own identity, `[code][publicKey:32]`
+ * exports that contact. Firmware picks "self" whenever the frame is shorter than
+ * a full key, so a partial key also means self.
+ */
+export function parseExportContact(payload: Buffer): { publicKey: string | null } {
+  if (payload.length < 1 + 32) return { publicKey: null };
+  return { publicKey: payload.subarray(1, 33).toString('hex') };
+}
+
+/**
+ * ImportContact(18): `[code][advert packet bytes…]`. Firmware requires
+ * `len > 2 + 32 + 64` (header + pubkey + signature at minimum) and otherwise
+ * falls through to its unsupported-command reply; we throw so the caller can
+ * answer Err(IllegalArg).
+ */
+export function parseImportContact(payload: Buffer): { advertBytes: Buffer } {
+  if (payload.length <= 2 + 32 + 64) throw new Error('ImportContact: short payload');
+  return { advertBytes: Buffer.from(payload.subarray(1)) };
+}
+
+export interface AddUpdateContactCmd {
+  publicKey: string;
+  type: number;
+  flags: number;
+  /** Signed: -1 (0xff) is OUT_PATH_UNKNOWN. */
+  outPathLen: number;
+  outPath: Buffer;
+  advName: string;
+  lastAdvert: number;
+  advLat: number;
+  advLon: number;
+}
+
+/**
+ * AddUpdateContact(9):
+ *   `[code][publicKey:32][type][flags][outPathLen:i8][outPath:64][advName:32 cstring][lastAdvert:u32]`
+ *   optionally followed by `[advLat:i32][advLon:i32]` and then `[lastMod:u32]`.
+ * Firmware accepts the frame at `len >= 36` but then copies the 64+32+4 bytes
+ * unconditionally, so a short frame there reads stack garbage. We require the
+ * full mandatory block instead.
+ */
+export function parseAddUpdateContact(payload: Buffer): AddUpdateContactCmd {
+  const MIN = 1 + 32 + 1 + 1 + 1 + 64 + 32 + 4;
+  if (payload.length < MIN) throw new Error('AddUpdateContact: short payload');
+  let o = 1;
+  const publicKey = payload.subarray(o, o + 32).toString('hex'); o += 32;
+  const type = payload[o++];
+  const flags = payload[o++];
+  const outPathLen = payload.readInt8(o); o += 1;
+  const outPath = Buffer.from(payload.subarray(o, o + 64)); o += 64;
+  const nameBytes = payload.subarray(o, o + 32); o += 32;
+  const nul = nameBytes.indexOf(0);
+  const advName = nameBytes.subarray(0, nul === -1 ? nameBytes.length : nul).toString('utf8');
+  const lastAdvert = payload.readUInt32LE(o); o += 4;
+  const hasCoords = payload.length >= o + 8;
+  const advLat = hasCoords ? payload.readInt32LE(o) : 0;
+  const advLon = hasCoords ? payload.readInt32LE(o + 4) : 0;
+  return { publicKey, type, flags, outPathLen, outPath, advName, lastAdvert, advLat, advLon };
+}
+
+/**
+ * Reboot(19): `[code]"reboot"`. Firmware only reboots when the six-byte magic
+ * string is present, so a bare or mistyped frame is rejected here too.
+ */
+export function parseReboot(payload: Buffer): void {
+  if (payload.length < 1 + 6 || payload.subarray(1, 7).toString('latin1') !== 'reboot') {
+    throw new Error('Reboot: missing "reboot" confirmation string');
+  }
+}
+
+/** GetStats(56): `[code][statsType:u8]`. */
+export function parseGetStats(payload: Buffer): { statsType: number } {
+  if (payload.length < 2) throw new Error('GetStats: short payload');
+  return { statsType: payload[1] };
 }
 
 /**
@@ -963,6 +1062,72 @@ export function encodeNoMoreMessages(): Buffer {
 /** Encode an Ok(0) response. */
 export function encodeOk(): Buffer {
   return Buffer.from([ResponseCodes.Ok]);
+}
+
+/**
+ * Encode an ExportContact(11) response: `[11][signed advert packet bytes…]`.
+ * meshcore.js reads the whole remainder as `advertPacketBytes` (#5350).
+ */
+export function encodeExportContact(advertBytes: Uint8Array | number[]): Buffer {
+  return Buffer.concat([Buffer.from([ResponseCodes.ExportContact]), Buffer.from(advertBytes)]);
+}
+
+const u16 = (v: number | null | undefined): number => Math.max(0, Math.min(0xffff, Math.trunc(v ?? 0) || 0));
+const u32 = (v: number | null | undefined): number => Math.max(0, Math.min(0xffffffff, Math.trunc(v ?? 0) || 0));
+const i8 = (v: number | null | undefined): number => Math.max(-128, Math.min(127, Math.round(v ?? 0) || 0));
+const i16 = (v: number | null | undefined): number => Math.max(-32768, Math.min(32767, Math.round(v ?? 0) || 0));
+
+/**
+ * Stats(24) response for STATS_TYPE_CORE:
+ *   `[24][0][batteryMv:u16][uptimeSecs:u32][errFlags:u16][queueLen:u8]`
+ * Firmware layout (MyMesh.cpp CMD_GET_STATS). Missing values encode as 0.
+ */
+export function encodeStatsCore(s: {
+  batteryMv?: number; uptimeSecs?: number; errors?: number; queueLen?: number;
+}): Buffer {
+  const b = Buffer.alloc(2 + 2 + 4 + 2 + 1);
+  b[0] = ResponseCodes.Stats;
+  b[1] = StatsTypes.Core;
+  b.writeUInt16LE(u16(s.batteryMv), 2);
+  b.writeUInt32LE(u32(s.uptimeSecs), 4);
+  b.writeUInt16LE(u16(s.errors), 8);
+  b[10] = Math.max(0, Math.min(0xff, Math.trunc(s.queueLen ?? 0) || 0));
+  return b;
+}
+
+/**
+ * Stats(24) response for STATS_TYPE_RADIO:
+ *   `[24][1][noiseFloor:i16][lastRssi:i8][lastSnr×4:i8][txAirSecs:u32][rxAirSecs:u32]`
+ * `lastSnr` is taken in dB and re-scaled to the wire's quarter-dB steps.
+ */
+export function encodeStatsRadio(s: {
+  noiseFloor?: number; lastRssi?: number; lastSnr?: number; txAirSecs?: number; rxAirSecs?: number;
+}): Buffer {
+  const b = Buffer.alloc(2 + 2 + 1 + 1 + 4 + 4);
+  b[0] = ResponseCodes.Stats;
+  b[1] = StatsTypes.Radio;
+  b.writeInt16LE(i16(s.noiseFloor), 2);
+  b.writeInt8(i8(s.lastRssi), 4);
+  b.writeInt8(i8((s.lastSnr ?? 0) * 4), 5);
+  b.writeUInt32LE(u32(s.txAirSecs), 6);
+  b.writeUInt32LE(u32(s.rxAirSecs), 10);
+  return b;
+}
+
+/**
+ * Stats(24) response for STATS_TYPE_PACKETS:
+ *   `[24][2][recv][sent][sentFlood][sentDirect][recvFlood][recvDirect][recvErrors]` (all u32 LE)
+ */
+export function encodeStatsPackets(s: {
+  recv?: number; sent?: number; floodTx?: number; directTx?: number;
+  floodRx?: number; directRx?: number; recvErrors?: number | null;
+}): Buffer {
+  const values = [s.recv, s.sent, s.floodTx, s.directTx, s.floodRx, s.directRx, s.recvErrors];
+  const b = Buffer.alloc(2 + 4 * values.length);
+  b[0] = ResponseCodes.Stats;
+  b[1] = StatsTypes.Packets;
+  values.forEach((v, i) => b.writeUInt32LE(u32(v), 2 + 4 * i));
+  return b;
 }
 
 /**
