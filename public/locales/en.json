@@ -5315,7 +5315,7 @@
   "nodes.quick_age.label": "Node age window",
   "nodes.quick_age.setting": "Setting ({{window}})",
   "nodes.quick_age.title_override": "This view shows nodes heard in this window ({{window}}). Only you see this, and your setting ({{setting}}) is unchanged. Pick \"Setting\" to go back.",
-  "nodes.quick_age.title_override_meshcore": "This view shows companions, repeaters, and room servers heard in this window ({{window}}). Only you see this, and your setting ({{setting}}) is unchanged. Pick \"Setting\" to go back.",
+  "nodes.quick_age.title_override_meshcore": "This view shows companions, repeaters, and room servers heard in this window ({{window}}). Only you see this, and both node window settings are unchanged. Pick \"Setting\" to go back.",
   "source.connect": "Connect",
   "source.connecting": "Connecting…",
   "source.connect_help": "Manually connect to this source. Auto-connect is disabled, so this source won't reconnect on its own.",

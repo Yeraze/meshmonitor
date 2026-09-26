@@ -34,7 +34,7 @@ export default function NodeQuickAgeFilter({ settingsHours, variant = 'meshtasti
       ? t('nodes.quick_age.title_override_meshcore', {
           window: formatAgeWindow(quickHours, t),
           setting: settingWindow,
-          defaultValue: 'This view shows companions, repeaters, and room servers heard in this window ({{window}}). Only you see this, and your setting ({{setting}}) is unchanged. Pick "Setting" to go back.',
+          defaultValue: 'This view shows companions, repeaters, and room servers heard in this window ({{window}}). Only you see this, and both node window settings are unchanged. Pick "Setting" to go back.',
         })
       : t('nodes.quick_age.title_override', {
           window: formatAgeWindow(quickHours, t),

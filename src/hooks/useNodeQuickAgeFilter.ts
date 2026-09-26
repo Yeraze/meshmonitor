@@ -8,6 +8,7 @@
  */
 import { useCallback, useSyncExternalStore } from 'react';
 import {
+  NODE_QUICK_AGE_STORAGE_KEY,
   type NodeQuickAgeHours,
   parseNodeQuickAgeHours,
   readNodeQuickAgeHours,
@@ -17,10 +18,26 @@ import {
 let current: NodeQuickAgeHours = readNodeQuickAgeHours();
 const listeners = new Set<() => void>();
 
+// Keep other tabs of this browser in step: a pick in one tab fires `storage`
+// in the rest (same pattern as meshcoreUnreadStore).
+function onStorage(e: StorageEvent): void {
+  if (e.key !== null && e.key !== NODE_QUICK_AGE_STORAGE_KEY) return;
+  const next = readNodeQuickAgeHours();
+  if (next === current) return;
+  current = next;
+  listeners.forEach((l) => l());
+}
+
 function subscribe(listener: () => void): () => void {
+  if (listeners.size === 0 && typeof window !== 'undefined') {
+    window.addEventListener('storage', onStorage);
+  }
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
+    if (listeners.size === 0 && typeof window !== 'undefined') {
+      window.removeEventListener('storage', onStorage);
+    }
   };
 }
 

@@ -75,6 +75,15 @@ describe('NodeQuickAgeFilter', () => {
     expect(b.getAttribute('title')).toMatch(/companions, repeaters, and room servers/);
   });
 
+  it('follows a pick made in another tab of this browser (storage event)', () => {
+    render(<NodeQuickAgeFilter settingsHours={24} />);
+    localStorage.setItem(NODE_QUICK_AGE_STORAGE_KEY, '720');
+    act(() => {
+      window.dispatchEvent(new StorageEvent('storage', { key: NODE_QUICK_AGE_STORAGE_KEY }));
+    });
+    expect(picker().value).toBe('720');
+  });
+
   it('notes the separate infrastructure window on MeshCore lists', () => {
     render(<NodeQuickAgeFilter settingsHours={72} variant="meshcore" />);
     expect(picker().getAttribute('title')).toMatch(/Repeaters and room servers use their own window/);
