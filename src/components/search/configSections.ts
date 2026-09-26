@@ -41,7 +41,16 @@ export type Translate = TFunction;
  * section lives on without importing that 3,000-line component.
  */
 export const GLOBAL_SETTINGS_SECTIONS = new Set([
-  'settings-language', 'settings-units', 'settings-appearance', 'settings-link-previews',
+  'settings-language', 'settings-units',
+  // Sorting preferences (#5368) — `preferredSortField`/`preferredSortDirection`/
+  // `preferredDashboardSortOption` are plain global settings keys with no
+  // per-source scoping (no sourceId column backs any of them), so the section
+  // belongs here, not in SOURCE_SETTINGS_SECTIONS. It was misfiled into the
+  // per-source set during the Settings split (#5182), which made it
+  // unreachable from the Global Settings page even though its backing
+  // props/context were already wired up there.
+  'settings-sorting',
+  'settings-appearance', 'settings-link-previews',
   'settings-privacy', 'settings-meshcore-messaging', 'settings-map',
   'settings-security',
   'settings-remote-admin',
@@ -64,7 +73,7 @@ export const GLOBAL_SETTINGS_SECTIONS = new Set([
 
 /** Settings sections that belong to a source's own Settings tab. */
 export const SOURCE_SETTINGS_SECTIONS = new Set([
-  'settings-sorting', 'settings-node-display', 'settings-telemetry',
+  'settings-node-display', 'settings-telemetry',
   'settings-notifications', 'settings-packet-monitor', 'settings-solar',
   'settings-firmware', 'settings-reset-ui',
   // Coverage Report reception recording (#5277 P2 WP3 MQTT gateways, P3 WP4
