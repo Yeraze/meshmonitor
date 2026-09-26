@@ -62,7 +62,9 @@ export interface AircraftAgeOutDeps {
 
 /**
  * Pair latitude/longitude telemetry rows into fixes. Both rows of one fix are
- * written with the same `timestamp` (receive time, ms), so pair on that.
+ * written with the same `timestamp` (receive time, ms), so pair on that. Two
+ * fixes sharing a timestamp collapse to the last one read, which is fine for
+ * a "did it move" check.
  */
 export function pairPositionRows(
   rows: Array<{ telemetryType: string; timestamp: number; value: number }>,
@@ -219,13 +221,6 @@ export class AircraftAgeOutService {
   }
 
   /**
-   * D3 auto-lift. Call only for a live reception. If the node is an aged-out
-   * aircraft, lift its `'aircraft'` ignore (manual and geo rows are never
-   * touched) and clear the aged-out mark. Then (re)queues classification
-   * unless `opts.classify` is false (the MQTT path only classifies a fix that
-   * carries an altitude). Never throws; the caller does not await it.
-   */
-  /**
    * Entry point for the position write sites. A live reception goes through
    * the D3 auto-lift (`onLivePosition`); a replayed one (fw2.8 NodeDB replay,
    * retained MQTT frame) only queues classification, as in Phase 1. Sync,
@@ -249,6 +244,13 @@ export class AircraftAgeOutService {
     }
   }
 
+  /**
+   * D3 auto-lift. Call only for a live reception. If the node is an aged-out
+   * aircraft, lift its `'aircraft'` ignore (manual and geo rows are never
+   * touched) and clear the aged-out mark. Then (re)queues classification
+   * unless `opts.classify` is false (the MQTT path only classifies a fix that
+   * carries an altitude). Never throws; the caller does not await it.
+   */
   async onLivePosition(sourceId: string, nodeNum: number, opts: { classify?: boolean } = {}): Promise<void> {
     try {
       // Cheap pre-check: a node that isn't ignored at all can't be aged out.
