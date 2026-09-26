@@ -314,7 +314,17 @@ function mergeNodeRecords(records: any[]): any {
         k === 'positionTimestamp' ||
         k === 'isFavorite' ||
         k === 'isIgnored' ||
-        k === 'lastHeard'
+        k === 'lastHeard' ||
+        // Aircraft classification + the altitude it was computed from
+        // (#5364/#5365 Phase 1 WP4): carried only from the SAME record as the
+        // chosen position (below), like `positionTimestamp` — a flag spliced
+        // in from another source's row would describe a fix that isn't the
+        // one being rendered.
+        k === 'altitude' ||
+        k === 'likelyAircraft' ||
+        k === 'aircraftBasis' ||
+        k === 'groundElevation' ||
+        k === 'heightAboveGround'
       ) {
         continue;
       }
@@ -381,6 +391,16 @@ function mergeNodeRecords(records: any[]): any {
     if (withPosition.positionTimestamp != null) {
       merged.positionTimestamp = withPosition.positionTimestamp;
     }
+    // Aircraft classification + the altitude it was computed from
+    // (#5364/#5365 Phase 1 WP4): assigned even when null (unlike the fields
+    // above) so a value spliced in from another source's row via the generic
+    // loop can't leak through — the client twin of the server's
+    // `mergeNodesAcrossSources.ts` unconditional copy from `bestPosition`.
+    merged.altitude = withPosition.altitude ?? null;
+    merged.likelyAircraft = withPosition.likelyAircraft ?? null;
+    merged.aircraftBasis = withPosition.aircraftBasis ?? null;
+    merged.groundElevation = withPosition.groundElevation ?? null;
+    merged.heightAboveGround = withPosition.heightAboveGround ?? null;
   }
 
   merged.lastHeard = sortedNewestFirst.reduce(
