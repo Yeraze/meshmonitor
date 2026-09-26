@@ -22,6 +22,7 @@ export type DataEventType =
   | 'node:mobility'
   | 'node:rebooted'
   | 'node:powerChanged'
+  | 'node:aircraft'
   | 'message:new'
   | 'channel:updated'
   | 'telemetry:batch'
@@ -117,6 +118,29 @@ export interface NodePowerChangedData {
   /** The new battery reading: percent for Meshtastic, millivolts for MeshCore
    *  (the MeshCore path is a voltage heuristic — see poweredState.ts). */
   batteryLevel: number;
+}
+
+/**
+ * A node's transition INTO the likely-aircraft flagged state (#5364/#5365,
+ * decision D9) — backs `trigger.becameLikelyAircraft`. Only raised for
+ * `reason: 'position'` classification jobs when `previous !== true && current
+ * === true`; backfill and settings recomputes are silent (D6/D9/D11), so this
+ * is the only path that fires the automation event.
+ */
+export interface NodeAircraftData {
+  nodeNum: number;
+  /** The persisted flag before this update (read from the DB row, not memory). */
+  previous: boolean | null;
+  current: true;
+  basis: 'agl' | 'msl';
+  /** Meters MSL used for the classification. */
+  altitude: number;
+  groundElevation: number | null;
+  heightAboveGround: number | null;
+  /** The threshold that was crossed (AGL or MSL, matching `basis`). */
+  thresholdM: number;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 export interface ConnectionStatusData {
@@ -235,6 +259,27 @@ class DataEventEmitter extends EventEmitter {
     };
     this.emit('data', event);
     logger.debug(`[DataEventEmitter] Node power changed: ${data.nodeNum ?? data.publicKey ?? '?'} (powered ${data.previousPowered} → ${data.powered}, battery ${data.batteryLevel})`);
+  }
+
+  /**
+   * Emit a likely-aircraft transition event (used by
+   * trigger.becameLikelyAircraft, #5364/#5365). Raised by the aircraft
+   * classification service only for `reason: 'position'` jobs on a
+   * `previous !== true -> current === true` transition — never for a silent
+   * backfill or settings recompute. Deliberately does NOT also emit
+   * `node:updated` (D10): that feeds `trigger.nodeUpdated` and the
+   * node-back-online recovery check, and a classifier write is not that kind
+   * of activity.
+   */
+  emitNodeAircraft(data: NodeAircraftData, sourceId?: string): void {
+    const event: DataEvent = {
+      type: 'node:aircraft',
+      data,
+      timestamp: Date.now(),
+      sourceId,
+    };
+    this.emit('data', event);
+    logger.debug(`[DataEventEmitter] Node likely aircraft: ${data.nodeNum} (${data.basis}, ${data.heightAboveGround ?? data.altitude}m, threshold ${data.thresholdM}m)`);
   }
 
   /**
