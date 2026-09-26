@@ -17,7 +17,7 @@ const mockDb = vi.hoisted(() => ({
     getPositionTelemetryByNode: vi.fn(),
   },
   analysis: { getTraceroutes: vi.fn(), getNeighbors: vi.fn() },
-  settings: { getSetting: vi.fn() },
+  settings: { getSetting: vi.fn(), getLocalNodeNumForSource: vi.fn() },
   getMeshIssuesAsync: vi.fn(),
   upsertMeshIssueFindingAsync: vi.fn(),
   bumpMeshIssueCleanRunAsync: vi.fn(),
@@ -75,6 +75,7 @@ import { dataEventEmitter } from './dataEventEmitter.js';
 import { logger } from '../../utils/logger.js';
 import { meshIssuesAnalysisService, MAX_CORPUS_PAGES } from './meshIssuesAnalysisService.js';
 import { DeviceRole } from '../../constants/index.js';
+import { evaluateC2 } from './meshIssues/rulesTierC.js';
 
 /** A fresh RfGraph-shaped stub each call — buildRfGraph is mocked, but the
  *  service reads/mutates `graph.stats.availability.packetLog` in place, so
@@ -209,6 +210,7 @@ describe('meshIssuesAnalysisService.runAnalysis', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockDb.settings.getSetting.mockResolvedValue(null);
+    mockDb.settings.getLocalNodeNumForSource.mockResolvedValue(null);
     mockDb.telemetry.getTelemetryByTypesSince.mockResolvedValue([]);
     mockDb.telemetry.getPositionTelemetryByNode.mockResolvedValue([]);
     mockDb.analysis.getTraceroutes.mockResolvedValue({
@@ -984,6 +986,124 @@ describe('meshIssuesAnalysisService.runAnalysis', () => {
       expect(posCadence).toBeTruthy();
       expect(posCadence.sampleCount).toBe(3);
       expect(posCadence.medianIntervalSeconds).toBe(10); // two 10s gaps -> median 10s
+    });
+  });
+
+  describe('C2 local-node exemption, per source (#5388)', () => {
+    /** `count` device-metrics rows for one node, `stepMs` apart, on one source. */
+    function telemetryRows(nodeNum: number, sourceId: string, count: number, stepMs: number, offsetMs = 0) {
+      return Array.from({ length: count }, (_, i) => ({
+        nodeNum,
+        telemetryType: 'airUtilTx',
+        timestamp: NOW - 3_600_000 + offsetMs + i * stepMs,
+        value: 1,
+        sourceId,
+      }));
+    }
+
+    function localNums(map: Record<string, string>) {
+      mockDb.settings.getLocalNodeNumForSource.mockImplementation(async (id: string) => map[id] ?? null);
+    }
+
+    async function runAndEvaluateC2() {
+      await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+      const ctx = mockRulesTierC.evaluateAllTierC.mock.calls[0][0];
+      return { ctx, findings: evaluateC2(ctx) };
+    }
+
+    beforeEach(() => {
+      mockDb.sources.getAllSources.mockResolvedValue([
+        makeSource(),
+        makeSource({ id: 'src-b', name: 'Source B' }),
+      ]);
+    });
+
+    it("does not flag a source's own local node for its 60s phone-API telemetry", async () => {
+      mockDb.nodes.getAllNodes.mockResolvedValue([makeNodeRow({ role: DeviceRole.CLIENT })]);
+      localNums({ 'src-a': '100' });
+      mockDb.telemetry.getTelemetryByTypesSince.mockResolvedValue(telemetryRows(100, 'src-a', 20, 60_000));
+
+      const { ctx, findings } = await runAndEvaluateC2();
+
+      expect(ctx.localNodeSources.get(100)).toEqual(new Set(['src-a']));
+      expect(ctx.cadence.get(100)?.telemetry ?? null).toBeNull();
+      expect(findings).toEqual([]);
+    });
+
+    it('still flags the same nodeNum when another source hears it over the mesh at a high cadence', async () => {
+      mockDb.nodes.getAllNodes.mockResolvedValue([
+        makeNodeRow({ role: DeviceRole.CLIENT }),
+        makeNodeRow({ role: DeviceRole.CLIENT, sourceId: 'src-b' }),
+      ]);
+      localNums({ 'src-a': '100' });
+      mockDb.telemetry.getTelemetryByTypesSince.mockResolvedValue([
+        ...telemetryRows(100, 'src-a', 40, 60_000),
+        ...telemetryRows(100, 'src-b', 20, 120_000, 7_000),
+      ]);
+
+      const { ctx, findings } = await runAndEvaluateC2();
+
+      const tel = ctx.cadence.get(100)?.telemetry;
+      expect(tel.sourceIds).toEqual(['src-b']);
+      expect(tel.medianIntervalSeconds).toBe(120);
+      expect(findings).toHaveLength(1);
+      expect(findings[0].sourceIds).toEqual(['src-b']);
+    });
+
+    it('still flags a remote node over-broadcasting on a source with a local node', async () => {
+      mockDb.nodes.getAllNodes.mockResolvedValue([
+        makeNodeRow({ role: DeviceRole.CLIENT }),
+        makeNodeRow({ nodeNum: 300, nodeId: '!0000012c', role: DeviceRole.CLIENT }),
+      ]);
+      localNums({ 'src-a': '100' });
+      mockDb.telemetry.getTelemetryByTypesSince.mockResolvedValue([
+        ...telemetryRows(100, 'src-a', 20, 60_000),
+        ...telemetryRows(300, 'src-a', 20, 60_000),
+      ]);
+
+      const { findings } = await runAndEvaluateC2();
+
+      expect(findings.map((f) => f.nodeNum)).toEqual([300]);
+    });
+
+    it('re-reads a local node\'s position cadence without the source where it is local', async () => {
+      mockDb.nodes.getAllNodes.mockResolvedValue([makeNodeRow({ role: DeviceRole.CLIENT })]);
+      localNums({ 'src-a': '100' });
+      mockDb.getTelemetryCadenceAggregatesAsync.mockResolvedValue([
+        { nodeNum: 100, telemetryType: 'latitude', sampleCount: 10, firstTimestamp: 0, lastTimestamp: 9000 },
+        { nodeNum: 300, telemetryType: 'latitude', sampleCount: 10, firstTimestamp: 0, lastTimestamp: 9000 },
+      ]);
+
+      await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      const calls = mockDb.getTelemetryTimestampsAsync.mock.calls.map((c) => c[0]);
+      expect(calls).toHaveLength(2);
+      expect(calls[0]).toMatchObject({ nodeNums: [300], sourceIds: ['src-a', 'src-b'] });
+      expect(calls[1]).toMatchObject({ nodeNums: [100], sourceIds: ['src-b'] });
+    });
+
+    it('skips the position re-read entirely when the node is local on every source', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([makeSource()]);
+      mockDb.nodes.getAllNodes.mockResolvedValue([makeNodeRow({ role: DeviceRole.CLIENT })]);
+      localNums({ 'src-a': '100' });
+      mockDb.getTelemetryCadenceAggregatesAsync.mockResolvedValue([
+        { nodeNum: 100, telemetryType: 'latitude', sampleCount: 10, firstTimestamp: 0, lastTimestamp: 9000 },
+      ]);
+
+      await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      expect(mockDb.getTelemetryTimestampsAsync).not.toHaveBeenCalled();
+    });
+
+    it('degrades to no exemption (and does not abort) when the local node lookup throws', async () => {
+      mockDb.nodes.getAllNodes.mockResolvedValue([makeNodeRow({ role: DeviceRole.CLIENT })]);
+      mockDb.settings.getLocalNodeNumForSource.mockRejectedValue(new Error('boom'));
+      mockDb.telemetry.getTelemetryByTypesSince.mockResolvedValue(telemetryRows(100, 'src-a', 20, 60_000));
+
+      const { ctx, findings } = await runAndEvaluateC2();
+
+      expect(ctx.localNodeSources.size).toBe(0);
+      expect(findings).toHaveLength(1);
     });
   });
 

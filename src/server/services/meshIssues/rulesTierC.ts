@@ -73,6 +73,17 @@ export interface TierCRuleContext {
    *  `lookbackHours`, not a code constant, so it cannot live in
    *  `thresholds.ts`). */
   windowHours: number;
+  /**
+   * nodeNum -> the source ids on which that node is MeshMonitor's own
+   * directly-connected local node (#5388). A local node streams
+   * deviceMetrics to its client over the phone API every ~60s, far faster
+   * than it broadcasts to the mesh, and those rows land in `telemetry` like
+   * mesh-heard ones. The service already drops those (sourceId, nodeNum)
+   * rows before building `cadence`; C2 also refuses a stream whose samples
+   * came only from such sources, so a stray local series can never read as
+   * over-broadcasting. Optional: absent means no local nodes are known.
+   */
+  localNodeSources?: Map<number, Set<string>>;
 }
 
 function roleName(role: number | null): string {
@@ -256,8 +267,26 @@ export function evaluateC1TimeOffset(ctx: TierCRuleContext): MeshIssueFinding[] 
 // C2 — Over-broadcasting
 // ---------------------------------------------------------------------------
 
-function cadenceQualifies(stats: CadenceStats | null, thresholdSeconds: number): boolean {
+/**
+ * True when every source that fed `stats` is one where this node is our own
+ * directly-connected local node (#5388) — i.e. the samples are phone-API
+ * cadence, not mesh broadcasts. A stream with no recorded sources (position
+ * stage 2 does not carry them) is never treated as local here; the service
+ * excludes local sources from that query instead.
+ */
+function isLocalOnlyStream(stats: CadenceStats, localSources: Set<string> | undefined): boolean {
+  if (!localSources || localSources.size === 0) return false;
+  if (stats.sourceIds.length === 0) return false;
+  return stats.sourceIds.every((id) => localSources.has(id));
+}
+
+function cadenceQualifies(
+  stats: CadenceStats | null,
+  thresholdSeconds: number,
+  localSources?: Set<string>,
+): boolean {
   if (!stats) return false;
+  if (isLocalOnlyStream(stats, localSources)) return false;
   if (stats.sampleCount < OVER_BROADCAST_MIN_SAMPLES) return false;
   if (stats.medianIntervalSeconds == null) return false;
   return stats.medianIntervalSeconds < thresholdSeconds;
@@ -274,8 +303,9 @@ export function evaluateC2(ctx: TierCRuleContext): MeshIssueFinding[] {
     const cadence = ctx.cadence.get(node.nodeNum);
     if (!cadence) continue;
 
-    const positionQualifies = cadenceQualifies(cadence.position, ctx.thresholds.overBroadcastSeconds);
-    const telemetryQualifies = cadenceQualifies(cadence.telemetry, ctx.thresholds.overBroadcastSeconds);
+    const localSources = ctx.localNodeSources?.get(node.nodeNum);
+    const positionQualifies = cadenceQualifies(cadence.position, ctx.thresholds.overBroadcastSeconds, localSources);
+    const telemetryQualifies = cadenceQualifies(cadence.telemetry, ctx.thresholds.overBroadcastSeconds, localSources);
     if (!positionQualifies && !telemetryQualifies) continue;
 
     // When both streams qualify, emit ONE finding for the faster (lower
@@ -305,6 +335,9 @@ export function evaluateC2(ctx: TierCRuleContext): MeshIssueFinding[] {
       chosen = cadence.telemetry!;
       other = cadence.position;
     }
+
+    // Never quote a local-only (phone-API) series as the "other stream" either.
+    if (other && isLocalOnlyStream(other, localSources)) other = null;
 
     const medianSeconds = chosen.medianIntervalSeconds!;
     const powered = isPowered(node.batteryLevel);
