@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { optionalAuth, requireAdmin } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
+import { requireMeshtasticDeviceSource } from '../utils/requireMeshtasticDeviceSource.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMeshCoreManager } from '../sourceManagerTypes.js';
 
@@ -47,7 +48,7 @@ router.get('/device/tx-status', optionalAuth(), async (req: Request, res: Respon
 // MM-SEC-5: gated on `requireAdmin()` because the response includes the
 // device's PKI private key. Any holder of that key can decrypt PKI DMs the
 // local node receives and forge signed packets from it.
-router.get('/device/security-keys', requireAdmin(), async (req: Request, res: Response) => {
+router.get('/device/security-keys', requireAdmin(), requireMeshtasticDeviceSource('query'), async (req: Request, res: Response) => {
   try {
     const skSourceId = req.query.sourceId as string | undefined;
     const skManager = resolveSourceManager(skSourceId);

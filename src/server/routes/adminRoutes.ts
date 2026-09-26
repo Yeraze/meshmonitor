@@ -17,6 +17,7 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { requireAdmin } from '../auth/authMiddleware.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
+import { requireMeshtasticDeviceSource } from '../utils/requireMeshtasticDeviceSource.js';
 import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
 import { getRoutingErrorName, validateMeshBeaconConfigPayload } from '../constants/meshtastic.js';
 import { CONFIG_TYPE_MAP, MODULE_FIELD_BY_ID, DEVICE_FIELD_BY_ID } from '../constants/configTypes.js';
@@ -221,7 +222,7 @@ router.post('/auto-favorite-targets/:nodeNum/run', requireAdmin(), async (req, r
   }
 });
 
-router.post('/load-config', requireAdmin(), async (req, res) => {
+router.post('/load-config', requireAdmin(), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { nodeNum, configType, channelIndex, sourceId: adminLoadSourceId } = req.body;
 
@@ -639,7 +640,7 @@ router.post('/load-config', requireAdmin(), async (req, res) => {
   }
 });
 
-router.post('/ensure-session-passkey', requireAdmin(), async (req, res) => {
+router.post('/ensure-session-passkey', requireAdmin(), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { nodeNum, sourceId: espSourceId } = req.body;
 
@@ -718,7 +719,7 @@ router.post('/ensure-session-passkey', requireAdmin(), async (req, res) => {
   }
 });
 
-router.post('/session-passkey-status', requireAdmin(), async (req, res) => {
+router.post('/session-passkey-status', requireAdmin(), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { nodeNum, sourceId: spsSourceId } = req.body;
 
@@ -745,7 +746,7 @@ router.post('/session-passkey-status', requireAdmin(), async (req, res) => {
   }
 });
 
-router.post('/get-channel', requireAdmin(), async (req, res) => {
+router.post('/get-channel', requireAdmin(), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { nodeNum, channelIndex, sourceId: gcSourceId } = req.body;
 
@@ -840,7 +841,7 @@ router.post('/get-channel', requireAdmin(), async (req, res) => {
   }
 });
 
-router.post('/load-owner', requireAdmin(), async (req, res) => {
+router.post('/load-owner', requireAdmin(), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { nodeNum, sourceId: loSourceId } = req.body;
 
@@ -903,7 +904,7 @@ router.post('/load-owner', requireAdmin(), async (req, res) => {
   }
 });
 
-router.post('/get-device-metadata', requireAdmin(), async (req, res) => {
+router.post('/get-device-metadata', requireAdmin(), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { nodeNum, sourceId: gdmSourceId } = req.body;
 
@@ -991,7 +992,7 @@ router.post('/get-device-metadata', requireAdmin(), async (req, res) => {
   }
 });
 
-router.post('/reboot', requireAdmin(), async (req, res) => {
+router.post('/reboot', requireAdmin(), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { nodeNum, seconds = 10, sourceId: arSourceId } = req.body;
 
@@ -1035,7 +1036,7 @@ router.delete('/suppressed-ghosts/:nodeNum', requireAdmin(), async (req, res) =>
   }
 });
 
-router.post('/set-time', requireAdmin(), async (req, res) => {
+router.post('/set-time', requireAdmin(), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { nodeNum, sourceId: astSourceId } = req.body;
 
@@ -1055,7 +1056,7 @@ router.post('/set-time', requireAdmin(), async (req, res) => {
   }
 });
 
-router.post('/export-config', requireAdmin(), async (req, res) => {
+router.post('/export-config', requireAdmin(), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { nodeNum, channelIds, includeLoraConfig, sourceId: aecSourceId } = req.body;
 
@@ -1190,7 +1191,7 @@ router.post('/export-config', requireAdmin(), async (req, res) => {
   }
 });
 
-router.post('/import-config', requireAdmin(), async (req, res) => {
+router.post('/import-config', requireAdmin(), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { nodeNum, url: configUrl, sourceId: aicSourceId } = req.body;
 
@@ -1727,7 +1728,7 @@ export function adminRetryDelayMs(attempt: number): number {
   return Math.min(attempt, 3) * 5_000;
 }
 
-router.post('/commands', requireAdmin(), async (req, res) => {
+router.post('/commands', requireAdmin(), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { command, nodeNum, sourceId: acSourceId, ...params } = req.body;
 

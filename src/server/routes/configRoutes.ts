@@ -14,6 +14,7 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
+import { requireMeshtasticDeviceSource } from '../utils/requireMeshtasticDeviceSource.js';
 import { resolveSourceConnectionConfig } from '../utils/resolveSourceConnectionConfig.js';
 import { isValidModuleConfigType } from '../constants/moduleConfig.js';
 import { validateMeshBeaconConfigPayload } from '../constants/meshtastic.js';
@@ -87,7 +88,7 @@ router.get('/', optionalAuth(), async (req, res) => {
 
 // Configuration endpoints
 // GET current configuration
-router.get('/current', requirePermission('configuration', 'read'), (req, res) => {
+router.get('/current', requirePermission('configuration', 'read'), requireMeshtasticDeviceSource('query'), (req, res) => {
   try {
     const ccSourceId = req.query.sourceId as string | undefined;
     const ccManager = resolveSourceManager(ccSourceId);
@@ -101,7 +102,7 @@ router.get('/current', requirePermission('configuration', 'read'), (req, res) =>
   }
 });
 
-router.post('/device', requirePermission('configuration', 'write'), async (req, res) => {
+router.post('/device', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { sourceId: cfgDevSourceId, ...config } = req.body;
     const cfgDevManager = resolveSourceManager(cfgDevSourceId);
@@ -113,7 +114,7 @@ router.post('/device', requirePermission('configuration', 'write'), async (req, 
   }
 });
 
-router.post('/network', requirePermission('configuration', 'write'), async (req, res) => {
+router.post('/network', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { sourceId: cfgNetSourceId, ...config } = req.body;
     const cfgNetManager = resolveSourceManager(cfgNetSourceId);
@@ -125,7 +126,7 @@ router.post('/network', requirePermission('configuration', 'write'), async (req,
   }
 });
 
-router.post('/lora', requirePermission('configuration', 'write'), async (req, res) => {
+router.post('/lora', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { sourceId: cfgLoraSourceId, ...config } = req.body;
     const cfgLoraManager = resolveSourceManager(cfgLoraSourceId);
@@ -158,7 +159,7 @@ router.post('/lora', requirePermission('configuration', 'write'), async (req, re
   }
 });
 
-router.post('/position', requirePermission('configuration', 'write'), async (req, res) => {
+router.post('/position', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { sourceId: cfgPosSourceId, ...config } = req.body;
     const cfgPosManager = resolveSourceManager(cfgPosSourceId);
@@ -170,7 +171,7 @@ router.post('/position', requirePermission('configuration', 'write'), async (req
   }
 });
 
-router.post('/mqtt', requirePermission('configuration', 'write'), async (req, res) => {
+router.post('/mqtt', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { sourceId: cfgMqttSourceId, ...config } = req.body;
     const cfgMqttManager = resolveSourceManager(cfgMqttSourceId);
@@ -182,7 +183,7 @@ router.post('/mqtt', requirePermission('configuration', 'write'), async (req, re
   }
 });
 
-router.post('/neighborinfo', requirePermission('configuration', 'write'), async (req, res) => {
+router.post('/neighborinfo', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req, res) => {
   logger.debug('🔍 DEBUG: /config/neighborinfo endpoint called with body:', safeJson(req.body));
   try {
     const { sourceId: cfgNiSourceId, ...config } = req.body;
@@ -195,7 +196,7 @@ router.post('/neighborinfo', requirePermission('configuration', 'write'), async 
   }
 });
 
-router.post('/power', requirePermission('configuration', 'write'), async (req, res) => {
+router.post('/power', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { sourceId: cfgPwrSourceId, ...config } = req.body;
     const cfgPwrManager = resolveSourceManager(cfgPwrSourceId);
@@ -207,7 +208,7 @@ router.post('/power', requirePermission('configuration', 'write'), async (req, r
   }
 });
 
-router.post('/display', requirePermission('configuration', 'write'), async (req, res) => {
+router.post('/display', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { sourceId: cfgDispSourceId, ...config } = req.body;
     const cfgDispManager = resolveSourceManager(cfgDispSourceId);
@@ -219,7 +220,7 @@ router.post('/display', requirePermission('configuration', 'write'), async (req,
   }
 });
 
-router.post('/module/telemetry', requirePermission('configuration', 'write'), async (req, res) => {
+router.post('/module/telemetry', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { sourceId: cfgTelSourceId, ...config } = req.body;
     const cfgTelManager = resolveSourceManager(cfgTelSourceId);
@@ -237,7 +238,7 @@ router.post('/module/telemetry', requirePermission('configuration', 'write'), as
 // this handler permanently unreachable (found while adding TX-disabled 409 mapping,
 // issue #4294 — the frontend's `/api/config/module/request` call was 400ing with
 // "Invalid module type: request" instead of ever reaching this handler).
-router.post('/module/request', requirePermission('configuration', 'write'), async (req, res) => {
+router.post('/module/request', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { configType, sourceId: cfgModReqSourceId } = req.body;
     if (configType === undefined) {
@@ -258,7 +259,7 @@ router.post('/module/request', requirePermission('configuration', 'write'), asyn
 
 // Generic module config endpoint - handles extnotif, storeforward, rangetest, cannedmsg, audio,
 // remotehardware, detectionsensor, paxcounter, serial, ambientlighting, statusmessage, trafficmanagement
-router.post('/module/:moduleType', requirePermission('configuration', 'write'), async (req, res) => {
+router.post('/module/:moduleType', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { moduleType } = req.params;
     const { sourceId: cfgModSourceId, ...config } = req.body;
@@ -291,7 +292,7 @@ router.post('/module/:moduleType', requirePermission('configuration', 'write'), 
   }
 });
 
-router.post('/owner', requirePermission('configuration', 'write'), async (req, res) => {
+router.post('/owner', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { longName, shortName, isUnmessagable, isLicensed, sourceId: ownerSourceId } = req.body;
     if (!longName || !shortName) {
@@ -307,7 +308,7 @@ router.post('/owner', requirePermission('configuration', 'write'), async (req, r
   }
 });
 
-router.post('/request', requirePermission('configuration', 'write'), async (req, res) => {
+router.post('/request', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { configType, sourceId: cfgReqSourceId } = req.body;
     if (configType === undefined) {

@@ -28,3 +28,24 @@ export function resolveSourceManager(
   // meshcore ids deliberately fall back to the primary/fallback manager
   return getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
 }
+
+/**
+ * Resolve the Meshtastic manager that owns `sourceId`'s OWN device, or null.
+ *
+ * Unlike {@link resolveSourceManager}, this never borrows another source's
+ * manager. An explicit sourceId that is not a registered Meshtastic manager
+ * (an mqtt_broker / mqtt_bridge / meshcore / reticulum source, or a source
+ * that is not connected) returns null. Use it anywhere the answer is "this
+ * source's local node": identity, firmware, device config, keys. Falling back
+ * there shows a different source's device (#5367).
+ *
+ * No sourceId keeps the legacy single-source resolution (primary, then
+ * `fallbackManager`).
+ */
+export function resolveOwnMeshtasticManager(
+  sourceId: string | undefined | null
+): MeshtasticManager | null {
+  if (!sourceId) return getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
+  const manager = sourceManagerRegistry.getManager(sourceId);
+  return manager && isMeshtasticManager(manager) ? (manager as MeshtasticManager) : null;
+}
