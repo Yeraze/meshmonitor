@@ -55,9 +55,9 @@ A mountaintop repeater must **not** be treated as an aircraft.
 **Exit:** the classifier is unit-tested (AGL, MSL fallback, elevation unavailable, mountaintop case), per-source isolation is tested, and the badge and filter are verified in both panels in the browser.
 
 ### Phase 2: age-out and reclassify as fixed
-- [ ] A per-source age-out service modelled on `autoDeleteByDistance`: likely aircraft + position older than 24 h + not heard recently → Ignore (or Delete).
-- [ ] Reclassify as fixed: a likely-aircraft node that is still heard and has been stationary for 24 h / N fixes stops being flagged.
-- [ ] A "Show aged-out" review toggle.
+- [x] A per-source age-out service modelled on `autoDeleteByDistance`: likely aircraft + position older than 24 h + not heard recently → Ignore (or Delete).
+- [x] Reclassify as fixed: a likely-aircraft node that is still heard and has been stationary for 24 h / N fixes stops being flagged.
+- [x] A "Show aged-out" review toggle.
 
 **Exit:** the timer persists across restarts, and saving settings does not re-arm it (see the CLAUDE.md mesh checklist). Favourites and the local node are protected.
 
@@ -71,3 +71,5 @@ A mountaintop repeater must **not** be treated as an aircraft.
 - 2026-09-26: epic planned; ADS-B split to #5374; Phase 1 started on `feature/aircraft-p1-classifier`.
 - 2026-09-26: Phase 1 spec approved (AIRCRAFT_P1_SPEC.md; migrations 175–176). Follow-up found: every reconnect schedules an extra hourly Auto-Favorite sweep timer (pre-existing; the strike rule's 45 min gap makes it harmless for this feature).
 - 2026-09-26: Phase 1 validated in the browser on the dev container. Badge, popup line and Show / Mark / Hide work in both map panels; settings and the Auto-Favorite switch render. Two fixes from validation: the Dashboard hint counted flagged nodes outside the age window ("19 on the map" with none drawn), and the Node Display help text ran two sentences together. PR opened.
+- 2026-09-26: Phase 2 spec approved (AIRCRAFT_P2_SPEC.md; migration 177). DB-only ignore with reason 'aircraft', 24 h default, auto-lift on a live position, fixed rule 24 h / <200 m / >=3 fixes with a 1 km release.
+- 2026-09-26: Phase 2 validated on the dev container. The first sweep aged out 19 (Florida MQTT) and 21 (broker) nodes; the timer survived a restart; Show aged-out, the popup line, the Ignored Nodes reason and the settings block all work. Fix from validation: a hand un-ignore was undone by the next sweep, so a node is now aged out at most once per silence. Also found: the #2601 re-apply would have pushed aircraft ignores to the radio, which is now skipped for reason 'aircraft'. PR opened.
