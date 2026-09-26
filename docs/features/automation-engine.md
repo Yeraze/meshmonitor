@@ -80,6 +80,7 @@ Every automation has exactly one trigger (the **WHEN**). Each trigger exposes a 
 | **A watched node rebooted** | An uptime reset is detected (uptime decreases without a matching graceful reboot) | Multi-select of nodes; suppresses matched self-triggered reboots so an automation-initiated `deviceReboot` doesn't re-fire the alert |
 | **A watched node's external power changed** | A node reports losing or restoring external power (voltage / power-source telemetry) | Multi-select of nodes; separate `lost` vs `restored` fires, both exposed as `{{ trigger.event }}` |
 | **A watched node's battery is trending down** | A node's battery drops through a threshold with a sustained negative slope over the window | Multi-select of nodes; threshold percent (default 25); window hours (default 24). Doubles as a solar underperformance proxy on nodes that normally recharge each day |
+| **A node becomes a likely aircraft** | A node's reported altitude puts it more than the source's [likely-aircraft](/features/settings#likely-aircraft-detection) threshold above the terrain (or the sea-level fallback, when terrain elevation is unavailable) | Any node — narrow with a **Source is one of…** condition on a wide MQTT feed. Meshtastic only |
 
 ### Became mobile & left home (tamper / theft monitoring)
 
@@ -90,6 +91,29 @@ These two triggers are designed for fleets of **stationary** GPS nodes (rooftops
 - **Left home** — on the first position after you add a node to the rule, MeshMonitor stores that fix as the node’s **home** for this automation. Later fixes farther than **Threshold (metres)** fire the automation. Returning within the threshold re-arms it. Homes are stored in the database so a MeshMonitor restart does not silently re-home a stolen node.
 - Prefer **Cooldown applies to = node** so one stolen site does not suppress alerts for the rest of the fleet.
 - Pair with **Send a message** (channel) and/or **Send a notification** (Apprise) actions.
+
+### Became likely aircraft
+
+Fires once when a node's [likely-aircraft flag](/features/settings#likely-aircraft-detection) turns
+on — including the first time it's ever set, not only a `false` → `true` flip. It does **not** fire
+for a silent backfill or a silent recompute after a settings change (both change the flag without
+raising the event), and it fires again only after the node drops back below the threshold and then
+crosses it once more. Sends nothing to the mesh — the classification itself is local math plus
+outbound elevation-tile fetches. Meshtastic only (including MQTT sources); a wide MQTT feed can see
+many aircraft at once, so narrow the rule with a **Source is one of…** condition.
+
+Tokens available on this trigger:
+
+| Token | Resolves to |
+| --- | --- |
+| `{{ trigger.nodeNum }}` | The node's number |
+| `{{ trigger.altitude }}` | Reported altitude (m, MSL) |
+| `{{ trigger.heightAboveGround }}` | Height above ground (m) — only set when `basis` is `agl` |
+| `{{ trigger.groundElevation }}` | Ground elevation at the node's position (m) |
+| `{{ trigger.basis }}` | `agl` (height-above-ground basis) or `msl` (sea-level fallback basis) |
+| `{{ trigger.thresholdM }}` | The threshold (in meters) that was crossed |
+| `{{ trigger.previousLikelyAircraft }}` | The flag's previous value (`false` or empty/unset) |
+| `{{ trigger.latitude }}` / `{{ trigger.longitude }}` | The node's position when it was classified |
 
 ### Message trigger & channel-name matching
 

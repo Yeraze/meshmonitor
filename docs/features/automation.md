@@ -1999,6 +1999,7 @@ Navigate to **Settings > Automation** and find the **Auto Favorite** section.
 |---------|-------------|---------|
 | Enable Auto Favorite | Toggle the feature on/off | Off |
 | Stale Hours | Hours since last heard before a node is considered stale and unfavorited | 24 |
+| Exclude likely aircraft | Never auto-favorite a node flagged by [likely-aircraft detection](/features/settings#likely-aircraft-detection); remove one that was already auto-favorited before it got flagged | On |
 
 ### Eligibility Rules
 
@@ -2023,6 +2024,15 @@ Targets must also:
 - Not have `favoriteLocked = true` (manually managed)
 
 > **Tip:** On a `Client_Base` local node, nearby `Client` / `Client_Mute` devices are intentionally skipped by auto-favorite. If you want those pinned, favorite them **manually** by clicking the star.
+
+### Excluding Likely Aircraft
+
+The **Exclude likely aircraft** switch, on by default, keeps [likely-aircraft detection](/features/settings#likely-aircraft-detection) and Auto Favorite from fighting each other:
+
+- A node currently flagged as a likely aircraft is never auto-favorited, even if it otherwise meets the eligibility rules above.
+- The exclusion only does anything while **both** the switch and likely-aircraft detection are on for this source. If detection is off, the switch is shown disabled with a link back to **Settings → Node Display** to turn it on.
+- A node that was auto-favorited *before* it got flagged (for example, heard once at altitude before its NodeInfo arrived) is removed once it has been seen flagged at **two consecutive hourly sweeps at least 45 minutes apart**. One flagged sweep alone is not enough — this protects against a single bad GPS altitude reading. The 45-minute gap also keeps a quick restart or reconnect from being mistaken for a second sweep.
+- Manual (locked) favorites and a user's own favorites are never touched by this exclusion, exactly like the rest of Auto Favorite's sweep.
 
 ### Permissions
 
