@@ -41,6 +41,8 @@ const mocks = vi.hoisted(() => ({
     showRfNodes: true,
     showUdpNodes: true,
     showMqttNodes: true,
+    // #5364/#5365 Phase 2 "Show aged-out".
+    showAgedOutAircraft: false,
   },
   // Segments handed to the shared TraceroutePathsLayer on the last render.
   tracerouteSegments: [] as Array<{ fromNodeNum: number; toNodeNum: number; isMqtt: boolean }>,
@@ -171,7 +173,22 @@ vi.mock('../../contexts/MapContext', () => ({
     setShowWaypoints: vi.fn(),
     showPolarGrid: false,
     setShowPolarGrid: vi.fn(),
+    showAgedOutAircraft: mocks.mapContext.showAgedOutAircraft,
+    setShowAgedOutAircraft: vi.fn(),
   }),
+}));
+
+// #5364/#5365 Phase 2: expose the props the map hands the shared aircraft
+// control, so the "N aged out" count can be asserted without i18n text.
+vi.mock('../map/MapAircraftDisplayControl', () => ({
+  default: (p: any) => (
+    <div
+      data-testid="aircraft-control"
+      data-aged-out-count={String(p.agedOutCount)}
+      data-show-aged-out={String(p.showAgedOut)}
+      data-has-toggle={String(typeof p.onShowAgedOutChange === 'function')}
+    />
+  ),
 }));
 
 // Polar grid (#3971) pulls the source list + per-source status to resolve each
@@ -410,6 +427,7 @@ describe('DashboardMap', () => {
       showRfNodes: true,
       showUdpNodes: true,
       showMqttNodes: true,
+      showAgedOutAircraft: false,
     };
     mocks.tracerouteSegments = [];
     // Reset the shared settings mock to "no Default Map Center configured".
@@ -711,6 +729,50 @@ describe('DashboardMap', () => {
     );
     const markers = screen.getAllByTestId('map-marker');
     expect(markers.length).toBe(1);
+  });
+
+  describe('Show aged-out (#5364/#5365 Phase 2)', () => {
+    // Aged out long ago: older than the map window, which it must bypass.
+    const agedOutAircraft = {
+      user: { id: 'node-ac', shortName: 'AC', longName: 'Aged Aircraft' },
+      position: { latitude: 36.8, longitude: -81.8 },
+      hopsAway: 1,
+      role: 1,
+      lastHeard: stale,
+      isIgnored: true,
+      likelyAircraft: true,
+      aircraftAgedOutAt: Date.now() - 3600_000,
+    };
+    // Ignored for another reason (manual/geo): never shown by this toggle.
+    const otherIgnoredAircraft = { ...ignoredNodeWithPosition, likelyAircraft: true };
+
+    it('hides aged-out aircraft by default but still counts them for the hint', () => {
+      render(<DashboardMap {...defaultProps} nodes={[nodeWithPosition, agedOutAircraft, otherIgnoredAircraft]} />);
+      expect(screen.getAllByTestId('map-marker')).toHaveLength(1);
+      const ctl = screen.getByTestId('aircraft-control');
+      expect(ctl.getAttribute('data-has-toggle')).toBe('true');
+      expect(ctl.getAttribute('data-show-aged-out')).toBe('false');
+      expect(ctl.getAttribute('data-aged-out-count')).toBe('1');
+    });
+
+    it('draws aged-out aircraft dimmed when on; manual/geo ignores stay hidden', () => {
+      mocks.mapContext.showAgedOutAircraft = true;
+      render(<DashboardMap {...defaultProps} nodes={[nodeWithPosition, agedOutAircraft, otherIgnoredAircraft]} />);
+      const markers = screen.getAllByTestId('map-marker');
+      expect(markers).toHaveLength(2);
+      expect(markers.map((m) => m.getAttribute('data-opacity'))).toContain('0.45');
+      expect(screen.getByTestId('aircraft-control').getAttribute('data-aged-out-count')).toBe('1');
+    });
+
+    it('counts only aged-out nodes the map would draw (transport filter applies)', () => {
+      mocks.mapContext.showAgedOutAircraft = true;
+      mocks.mapContext.showRfNodes = false;
+      mocks.mapContext.showUdpNodes = false;
+      mocks.mapContext.showMqttNodes = false;
+      render(<DashboardMap {...defaultProps} nodes={[agedOutAircraft]} />);
+      expect(screen.queryAllByTestId('map-marker')).toHaveLength(0);
+      expect(screen.getByTestId('aircraft-control').getAttribute('data-aged-out-count')).toBe('0');
+    });
   });
 
   it('shows empty state when the only positioned node is ignored', () => {

@@ -61,6 +61,31 @@ describe('MapAircraftDisplayControl', () => {
     expect((screen.getByDisplayValue('hide') as HTMLInputElement).checked).toBe(true);
   });
 
+  describe('Show aged-out (#5364/#5365 Phase 2)', () => {
+    it('is not rendered without onShowAgedOutChange', () => {
+      render(<MapAircraftDisplayControl mode="mark" onChange={vi.fn()} />);
+      expect(screen.queryByTestId('map-aircraft-show-aged-out')).not.toBeInTheDocument();
+      expect(screen.queryByText(/aged out\./)).not.toBeInTheDocument();
+    });
+
+    it('renders the checkbox with the current state and reports toggles', () => {
+      const onToggle = vi.fn();
+      render(
+        <MapAircraftDisplayControl mode="mark" onChange={vi.fn()} showAgedOut={false} onShowAgedOutChange={onToggle} agedOutCount={4} />,
+      );
+      const box = screen.getByRole('checkbox', { name: 'Show aged-out' }) as HTMLInputElement;
+      expect(box.checked).toBe(false);
+      fireEvent.click(box);
+      expect(onToggle).toHaveBeenCalledWith(true);
+      expect(screen.getByText(/4 aged out\./)).toBeInTheDocument();
+    });
+
+    it('shows the checkbox checked when on', () => {
+      render(<MapAircraftDisplayControl mode="hide" onChange={vi.fn()} showAgedOut onShowAgedOutChange={vi.fn()} />);
+      expect((screen.getByRole('checkbox', { name: 'Show aged-out' }) as HTMLInputElement).checked).toBe(true);
+    });
+  });
+
   it('contains no emoji in its rendered text', () => {
     const { container } = render(
       <MapAircraftDisplayControl mode="mark" onChange={vi.fn()} aircraftCount={2} />,

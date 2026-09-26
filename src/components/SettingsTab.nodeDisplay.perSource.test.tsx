@@ -40,7 +40,7 @@
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, within, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, within, fireEvent, waitFor } from '@testing-library/react';
 import SettingsTab from './SettingsTab';
 import { SourceProvider } from '../contexts/SourceContext';
 import { NODE_DISPLAY_SETTING_KEYS, SETTINGS_TAB_PER_SOURCE_KEYS } from '../constants/nodeDisplayDefaults';
@@ -623,5 +623,105 @@ describe('SettingsTab — likely-aircraft detection (#5364/#5365 Phase 1 WP5)', 
     // Sanity: nothing with the same id exists twice (would indicate a leak
     // outside the Node Display section).
     expect(document.querySelectorAll('#aircraftDetectionEnabled').length).toBe(1);
+  });
+});
+
+describe('SettingsTab — aircraft age-out (#5364/#5365 Phase 2)', () => {
+  const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+
+  it('an unset source shows the defaults: off, 24 h, Ignore, and "not yet" for the last run', async () => {
+    render(
+      <SourceProvider sourceId="source-a" sourceType="meshtastic_tcp">
+        <SettingsTab {...baseProps} mode="source" />
+      </SourceProvider>
+    );
+
+    await waitFor(() => {
+      expect(byId<HTMLInputElement>('aircraftAgeOutEnabled').checked).toBe(false);
+      expect(byId<HTMLInputElement>('aircraftAgeOutHours').value).toBe('24');
+      expect(byId<HTMLSelectElement>('aircraftAgeOutAction').value).toBe('ignore');
+    });
+    // Hours and action are inactive while age-out is off.
+    expect(byId<HTMLInputElement>('aircraftAgeOutHours').disabled).toBe(true);
+    expect(byId<HTMLSelectElement>('aircraftAgeOutAction').disabled).toBe(true);
+    expect(screen.getByTestId('aircraft-age-out-last-run')).toHaveTextContent('settings.aircraft.age_out_last_run_never');
+    expect(screen.queryByTestId('aircraft-age-out-delete-warning')).not.toBeInTheDocument();
+  });
+
+  it('loads stored values and the read-only last-run line', async () => {
+    serverSettings = {
+      aircraftAgeOutEnabled: 'true',
+      aircraftAgeOutHours: '48',
+      aircraftAgeOutAction: 'delete',
+      aircraftAgeOutLastRunAt: String(Date.UTC(2026, 8, 26, 12, 0, 0)),
+      aircraftAgeOutLastResult: JSON.stringify({ agedOut: 2, fixed: 1, lifted: 3, deleted: 0 }),
+    };
+    render(<SettingsTab {...baseProps} mode="source" />);
+
+    await waitFor(() => {
+      expect(byId<HTMLInputElement>('aircraftAgeOutEnabled').checked).toBe(true);
+      expect(byId<HTMLInputElement>('aircraftAgeOutHours').value).toBe('48');
+      expect(byId<HTMLSelectElement>('aircraftAgeOutAction').value).toBe('delete');
+    });
+    // Delete carries its warning next to the select.
+    expect(screen.getByTestId('aircraft-age-out-delete-warning')).toHaveTextContent('settings.aircraft.age_out_delete_warning');
+    expect(screen.getByTestId('aircraft-age-out-last-run')).toHaveTextContent('settings.aircraft.age_out_last_run');
+    expect(screen.getByTestId('aircraft-age-out-last-run')).not.toHaveTextContent('never');
+  });
+
+  it('clamps hours into 6-168 on change', async () => {
+    serverSettings = { aircraftAgeOutEnabled: 'true' };
+    render(<SettingsTab {...baseProps} mode="source" />);
+
+    const hours = await waitFor(() => {
+      const el = byId<HTMLInputElement>('aircraftAgeOutHours');
+      expect(el.disabled).toBe(false);
+      return el;
+    });
+    fireEvent.change(hours, { target: { value: '2' } });
+    await waitFor(() => expect(hours.value).toBe('6'));
+    fireEvent.change(hours, { target: { value: '500' } });
+    await waitFor(() => expect(hours.value).toBe('168'));
+  });
+
+  it('saving sends the three postable keys on the scoped POST only, never the server-written pair', async () => {
+    serverSettings = {
+      aircraftAgeOutLastRunAt: '1700000000000',
+      aircraftAgeOutLastResult: JSON.stringify({ agedOut: 1, fixed: 0, lifted: 0, deleted: 0 }),
+    };
+    render(
+      <SourceProvider sourceId="source-a" sourceType="meshtastic_tcp">
+        <SettingsTab {...baseProps} mode="source" />
+      </SourceProvider>
+    );
+
+    const enabled = await waitFor(() => {
+      const el = byId<HTMLInputElement>('aircraftAgeOutEnabled');
+      expect(el).not.toBeNull();
+      return el;
+    });
+    fireEvent.click(enabled);
+    await waitFor(() => expect(byId<HTMLInputElement>('aircraftAgeOutHours').disabled).toBe(false));
+    fireEvent.change(byId<HTMLInputElement>('aircraftAgeOutHours'), { target: { value: '72' } });
+    fireEvent.change(byId<HTMLSelectElement>('aircraftAgeOutAction'), { target: { value: 'delete' } });
+    await waitFor(() => expect(byId<HTMLSelectElement>('aircraftAgeOutAction').value).toBe('delete'));
+    expect(saveBarCapture.current!.hasChanges).toBe(true);
+
+    await saveBarCapture.current!.onSave();
+
+    const calls = csrfFetchMock.mock.calls as [string, RequestInit][];
+    const scopedCall = calls.find(([url]) => url.includes('sourceId='));
+    const globalCall = calls.find(([url]) => !url.includes('sourceId='));
+    const scopedBody = JSON.parse(scopedCall![1].body as string);
+    const globalBody = JSON.parse(globalCall![1].body as string);
+    expect(scopedBody.aircraftAgeOutEnabled).toBe('true');
+    expect(scopedBody.aircraftAgeOutHours).toBe('72');
+    expect(scopedBody.aircraftAgeOutAction).toBe('delete');
+    for (const key of ['aircraftAgeOutEnabled', 'aircraftAgeOutHours', 'aircraftAgeOutAction',
+      'aircraftAgeOutLastRunAt', 'aircraftAgeOutLastResult']) {
+      expect(globalBody).not.toHaveProperty(key);
+    }
+    expect(scopedBody).not.toHaveProperty('aircraftAgeOutLastRunAt');
+    expect(scopedBody).not.toHaveProperty('aircraftAgeOutLastResult');
   });
 });

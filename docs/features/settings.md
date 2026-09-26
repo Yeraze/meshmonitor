@@ -204,6 +204,24 @@ To avoid a node flapping in and out of the flag near the threshold, a small hyst
 
 **Effect**: Saving these settings recomputes existing nodes on this source immediately, from their already-stored altitude and ground elevation — no new tile fetches. Turning detection off clears the flag for every node on the source (the stored ground elevation itself is kept).
 
+#### Age-out and reclassify as fixed
+
+Aircraft pass through and do not come back, so their nodes pile up. Age-out cleans them up.
+
+**Fields** (same section, per source):
+- **Age out likely aircraft** — off by default. Needs detection on.
+- **Age out after (hours)** — a flagged node not heard for this long is aged out. Default **24**, range 6–168.
+- **Action** — **Ignore** (default) or **Delete**.
+  - **Ignore** puts the node on the [Ignored Nodes](/features/automation#ignored-nodes) list with the reason **Aged-out aircraft**. This happens in MeshMonitor's database only: nothing is sent to any radio. You can un-ignore it there.
+  - **Delete** removes the node and all its history, including positions. It cannot be undone.
+- **Last run** — when the sweep last ran on this source, and how many nodes it aged out, reclassified as fixed, and returned.
+
+**How it works**: A sweep runs about once an hour for each source. Favorites and the source's own node are never aged out, and a node that is already ignored for another reason is left alone. Saving settings or restarting MeshMonitor does not trigger a sweep.
+
+When an ignored aircraft sends a new live position, its ignore is lifted and it is classified again. Manual and geo ignores are never lifted this way.
+
+The same sweep also looks for nodes that were flagged but sit still: a flagged node heard in the last 24 hours with at least 3 position fixes, all within 200 m of each other, is **reclassified as fixed**. Its flag is cleared and it stays unflagged while it is within 1 km of that spot. If it moves further than 1 km, it is classified normally again. This check runs whenever detection is on, even with age-out off.
+
 ## Node Details Block
 
 **Location**: Messages page, displayed when a node is selected in the conversation list

@@ -1713,10 +1713,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // WP4) — counted pre-Hide, so the number reflects everything classified,
   // not just what the current display mode happens to show. Aged-out
   // aircraft have their own count (below).
-  const aircraftCountOnMap = useMemo(
-    () => nodesWithPosition.filter((n) => n.likelyAircraft === true && !isAgedOutAircraft(n)).length,
-    [nodesWithPosition],
-  );
+  // Plain filter, not useMemo: `nodesWithPosition` is a fresh array every
+  // render, so a memo keyed on it never hit anyway.
+  const aircraftCountOnMap = nodesWithPosition.filter(
+    (n) => n.likelyAircraft === true && !isAgedOutAircraft(n),
+  ).length;
 
   // Memoize node positions to prevent React-Leaflet from resetting marker positions
   // Creating new [lat, lng] arrays causes React-Leaflet to move markers, destroying spiderfier state

@@ -162,6 +162,37 @@ describe('SignalItems', () => {
     expect(screen.getByText('Likely aircraft · 6.1 km above sea level')).toBeInTheDocument();
   });
 
+  it('shows "Aged out (likely aircraft)" only for an age-out ignore (#5364/#5365 Phase 2)', () => {
+    const agedOut = toNodeCardModel(
+      { nodeNum: 1, position: { altitude: 3200 }, likelyAircraft: true, isIgnored: true, aircraftAgedOutAt: 1_700_000_000_000 },
+      'meshtastic',
+    );
+    const { unmount } = render(<><SignalItems model={agedOut} showAltitude /></>);
+    expect(screen.getByText('Aged out (likely aircraft)')).toBeInTheDocument();
+    unmount();
+
+    // A manual/geo ignore (no aircraftAgedOutAt), or a lifted node (not ignored), never shows it.
+    for (const raw of [
+      { nodeNum: 2, isIgnored: true, aircraftAgedOutAt: null },
+      { nodeNum: 3, isIgnored: false, aircraftAgedOutAt: 1_700_000_000_000 },
+    ]) {
+      const { unmount: u } = render(<><SignalItems model={toNodeCardModel(raw, 'meshtastic')} showAltitude /></>);
+      expect(screen.queryByText('Aged out (likely aircraft)')).not.toBeInTheDocument();
+      u();
+    }
+  });
+
+  it('shows "Reclassified as fixed" when the node carries the fixed mark', () => {
+    const fixed = toNodeCardModel({ nodeNum: 1, aircraftFixedAt: 1_700_000_000_000 }, 'meshtastic');
+    expect(fixed.aircraftFixed).toBe(true);
+    const { unmount } = render(<><SignalItems model={fixed} showAltitude /></>);
+    expect(screen.getByText('Reclassified as fixed')).toBeInTheDocument();
+    unmount();
+
+    render(<><SignalItems model={toNodeCardModel({ nodeNum: 2, aircraftFixedAt: null }, 'meshtastic')} showAltitude /></>);
+    expect(screen.queryByText('Reclassified as fixed')).not.toBeInTheDocument();
+  });
+
   it('hides the aircraft summary row when the node is not flagged', () => {
     const model = toNodeCardModel({ nodeNum: 1, position: { altitude: 100 } }, 'meshtastic');
     render(<><SignalItems model={model} showAltitude /></>);
