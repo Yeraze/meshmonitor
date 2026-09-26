@@ -236,6 +236,8 @@ Tick **Flight trails** under the likely-aircraft modes to draw the recent path o
 
 Trails are drawn from positions MeshMonitor has already stored, so they send nothing over the mesh.
 
+MQTT sources store position history too, the same as a connected radio, so aircraft heard only over MQTT get trails. A position relayed by several gateways is stored once. History for an MQTT node starts from when you upgrade to this version.
+
 ### GNSS Satellite Overlay
 
 MeshMonitor can show a node's live GPS constellation geometry:

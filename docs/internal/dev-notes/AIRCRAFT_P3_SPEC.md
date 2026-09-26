@@ -17,6 +17,7 @@ Epic: `AIRCRAFT_DETECTION_EPIC.md`.
   - Tooltip or popup on the line: node name, plus the time of the nearest fix.
 - **D4 Toggle.** A "Flight trails" checkbox under Likely aircraft in `MapAircraftDisplayControl`, with the lookback slider shown only when the box is on.
   - Both are saved per user on the server, like `aircraftDisplayMode`. Off by default.
+- **D5 MQTT position history (added in validation).** MQTT sources stored no position telemetry, so 49 of the 51 flagged nodes on the dev data could never have a trail. The user chose to store history for **every** MQTT node, like TCP sources: `src/server/utils/mqttPositionHistory.ts`, called from the `mqttIngestion.ts` POSITION case for trustworthy fixes that survive the inline distance check. A 10-minute seen-set keyed on (source, sender, packet id) stores a packet relayed by several gateways once. Rows match the TCP shape (receive time in `timestamp`, the sender's clock in `packetTimestamp`) and are purged by the same 7-day telemetry retention.
 - **3D is out of scope.** The 3D view shows no position history today either.
 
 ## Mesh impact
