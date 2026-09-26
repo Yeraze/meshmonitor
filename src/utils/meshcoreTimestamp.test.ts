@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { isPlausibleMeshCoreTimeMs, plausibleMeshCoreTimeMs } from './meshcoreTimestamp.js';
+import {
+  isPlausibleMeshCoreTimeMs,
+  isFutureDriftedMeshCoreTimeMs,
+  plausibleMeshCoreTimeMs,
+  plausibleMeshCoreTimeMsOrUndefined,
+} from './meshcoreTimestamp.js';
 
 const NOW = 1_800_000_000_000; // ms, arbitrary fixed reference point
 
@@ -27,6 +32,28 @@ describe('isPlausibleMeshCoreTimeMs', () => {
   it('rejects non-finite values', () => {
     expect(isPlausibleMeshCoreTimeMs(NaN, NOW)).toBe(false);
     expect(isPlausibleMeshCoreTimeMs(Infinity, NOW)).toBe(false);
+  });
+});
+
+describe('isFutureDriftedMeshCoreTimeMs', () => {
+  it('flags only values past the future-skew allowance', () => {
+    expect(isFutureDriftedMeshCoreTimeMs(3_700_000_000_000, NOW)).toBe(true); // ~2087
+    expect(isFutureDriftedMeshCoreTimeMs(NOW + 3_600_000, NOW)).toBe(false); // 1h ahead
+    expect(isFutureDriftedMeshCoreTimeMs(946_684_800_000, NOW)).toBe(false); // too old is not "future"
+    expect(isFutureDriftedMeshCoreTimeMs(NaN, NOW)).toBe(false);
+  });
+});
+
+describe('plausibleMeshCoreTimeMsOrUndefined', () => {
+  it('passes a plausible ms value through', () => {
+    expect(plausibleMeshCoreTimeMsOrUndefined(NOW - 60_000, NOW)).toBe(NOW - 60_000);
+  });
+
+  it('returns undefined for missing or implausible values', () => {
+    expect(plausibleMeshCoreTimeMsOrUndefined(undefined, NOW)).toBeUndefined();
+    expect(plausibleMeshCoreTimeMsOrUndefined(null, NOW)).toBeUndefined();
+    expect(plausibleMeshCoreTimeMsOrUndefined(946_684_800_000, NOW)).toBeUndefined(); // 2000
+    expect(plausibleMeshCoreTimeMsOrUndefined(3_700_000_000_000, NOW)).toBeUndefined(); // ~2087
   });
 });
 

@@ -77,7 +77,7 @@ import {
   MESHCORE_AUTOMATED_FLOOD_ADVERT_MIN_INTERVAL_MS,
 } from '../types/meshcoreAdvert.js';
 import { MeshCoreZeroHopAdvertUnsupportedError, classifyRepeaterAdvertReply } from './utils/meshcoreAdvert.js';
-import { plausibleMeshCoreTimeMs, isPlausibleMeshCoreTimeMs } from './utils/meshcoreTimestamp.js';
+import { plausibleMeshCoreTimeMs, plausibleMeshCoreTimeMsOrUndefined } from '../utils/meshcoreTimestamp.js';
 
 // Dynamic imports for optional serialport dependency
 // These are loaded only when MeshCore is enabled to avoid requiring native build tools
@@ -3425,9 +3425,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           const rawAdvertMs = advertSec > 0
             ? (advertSec < 1e12 ? advertSec * 1000 : advertSec)
             : undefined;
-          const advertMs = rawAdvertMs !== undefined && isPlausibleMeshCoreTimeMs(rawAdvertMs, nowMs)
-            ? rawAdvertMs
-            : undefined;
+          const advertMs = plausibleMeshCoreTimeMsOrUndefined(rawAdvertMs);
           this.contacts.set(c.public_key, {
             publicKey: c.public_key,
             advName: c.adv_name,
@@ -3492,7 +3490,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           snr: n.snr ?? undefined,
           latitude: n.latitude ?? undefined,
           longitude: n.longitude ?? undefined,
-          lastSeen: n.lastHeard ?? undefined,
+          // Drop a drifted value stored before #5339 rather than seed it.
+          lastSeen: plausibleMeshCoreTimeMsOrUndefined(n.lastHeard),
           outPath: n.outPath ?? null,
           pathLen: n.pathLen ?? null,
         });
@@ -7130,7 +7129,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           publicKey: n.publicKey,
           name: n.name || 'Unknown',
           advType: (n.advType ?? MeshCoreDeviceType.UNKNOWN) as MeshCoreDeviceType,
-          lastHeard: n.lastHeard ?? undefined,
+          // A drifted value stored before #5339 would pin this node at the top
+          // (or bottom) of Last Heard sort and dodge the max-age filter.
+          lastHeard: plausibleMeshCoreTimeMsOrUndefined(n.lastHeard),
           rssi: n.rssi ?? undefined,
           snr: n.snr ?? undefined,
           latitude: n.latitude ?? undefined,

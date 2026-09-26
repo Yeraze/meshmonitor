@@ -9,6 +9,7 @@ import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 import { shouldDiscardPosition } from '../../utils/nullIsland.js';
 import { getDiscardInvalidPositions } from '../../utils/positionIngestConfig.js';
+import { isFutureDriftedMeshCoreTimeMs } from '../../utils/meshcoreTimestamp.js';
 
 /**
  * meshcore_nodes columns where an incoming `null` in upsertNode means "clear
@@ -474,10 +475,16 @@ export class MeshCoreRepository extends BaseRepository {
       // A lower incoming value is therefore never news: it is a staler
       // observer's opinion, not evidence the node went away. Drop it and keep
       // what we have. (Null/undefined was already dropped by the merge above.)
+      //
+      // Except when the stored value is itself implausible (#5339): a drifted
+      // sender RTC wrote year 2087 here before ingest checked it, and "only
+      // forward" would then freeze that value until 2087. Any real
+      // observation replaces it.
       if (
         typeof updateSet.lastHeard === 'number' &&
         typeof existing.lastHeard === 'number' &&
-        updateSet.lastHeard <= existing.lastHeard
+        updateSet.lastHeard <= existing.lastHeard &&
+        !isFutureDriftedMeshCoreTimeMs(Number(existing.lastHeard), now)
       ) {
         delete updateSet.lastHeard;
       }

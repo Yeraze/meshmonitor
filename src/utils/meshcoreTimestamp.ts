@@ -17,7 +17,7 @@
  * fallback (it doesn't).
  *
  * Mirrors the precedent set for the Meshtastic ingestion paths
- * (`server/utils/messageTime.ts`'s `plausibleRxTime`, #4206), which guards
+ * (`src/server/utils/messageTime.ts`'s `plausibleRxTime`, #4206), which guards
  * only a floor (unsynced nodes reporting seconds-since-boot land near Unix
  * epoch). MeshCore's drift runs in both directions, so this adds a ceiling
  * too.
@@ -43,6 +43,17 @@ export function isPlausibleMeshCoreTimeMs(ms: number, nowMs: number = Date.now()
 }
 
 /**
+ * Whether an epoch-ms value sits further ahead of `nowMs` than ordinary clock
+ * skew allows, i.e. could only have come from a drifted RTC. The one-sided
+ * half of {@link isPlausibleMeshCoreTimeMs}, for callers where a too-OLD value
+ * heals itself (the next real observation is newer) but a too-NEW one never
+ * would.
+ */
+export function isFutureDriftedMeshCoreTimeMs(ms: number, nowMs: number = Date.now()): boolean {
+  return Number.isFinite(ms) && ms > nowMs + MAX_FUTURE_SKEW_MS;
+}
+
+/**
  * Resolve a MeshCore device-reported epoch-SECONDS timestamp (e.g. the wire
  * `sender_timestamp`) to epoch ms, falling back to `nowMs` (MeshMonitor's own
  * receipt clock; injectable for tests) when the value is missing,
@@ -58,4 +69,17 @@ export function plausibleMeshCoreTimeMs(
   if (typeof senderTimestampSec !== 'number' || senderTimestampSec <= 0) return nowMs;
   const ms = senderTimestampSec * 1000;
   return isPlausibleMeshCoreTimeMs(ms, nowMs) ? ms : nowMs;
+}
+
+/**
+ * Pass an epoch-ms value through only if it is plausible; otherwise
+ * `undefined`. Also covers rows stored before this gate existed (#5339): a
+ * drifted `lastHeard` of year 2087 would otherwise keep a node at the top of
+ * Last Heard sort and dodge the max-age filter until then.
+ */
+export function plausibleMeshCoreTimeMsOrUndefined(
+  ms: number | null | undefined,
+  nowMs: number = Date.now(),
+): number | undefined {
+  return typeof ms === 'number' && isPlausibleMeshCoreTimeMs(ms, nowMs) ? ms : undefined;
 }
