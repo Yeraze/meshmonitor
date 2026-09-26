@@ -44,13 +44,13 @@ A mountaintop repeater must **not** be treated as an aircraft.
 ## Phases
 
 ### Phase 1: classifier, Auto-Favorite exclusion, map badge and filter
-- [ ] Server-computed per-node classification, persisted per source:
+- [x] Server-computed per-node classification, persisted per source:
   - AGL, the ground elevation used, and the classification basis (`agl` / `msl` / `unknown`).
   - Recomputed on position updates; the tile cache is reused.
-- [ ] Per-source settings: enable, AGL threshold (default 500 m), MSL fallback (default 5000 m).
-- [ ] Auto-Favorite: an add gate, plus a sweep removal reason that uses the `autoFavoriteNodes` provenance list.
-- [ ] Map: an aircraft badge via `createNodeIcon` (following the isUnmessagable pattern, and included in `iconSig`), and a Show / Mark / Hide control in both Map Features panels.
-- [ ] Automation trigger "became likely aircraft".
+- [x] Per-source settings: enable, AGL threshold (default 500 m), MSL fallback (default 5000 m).
+- [x] Auto-Favorite: an add gate, plus a sweep removal reason that uses the `autoFavoriteNodes` provenance list.
+- [x] Map: an aircraft badge via `createNodeIcon` (following the isUnmessagable pattern, and included in `iconSig`), and a Show / Mark / Hide control in both Map Features panels.
+- [x] Automation trigger "became likely aircraft".
 
 **Exit:** the classifier is unit-tested (AGL, MSL fallback, elevation unavailable, mountaintop case), per-source isolation is tested, and the badge and filter are verified in both panels in the browser.
 
@@ -70,3 +70,4 @@ A mountaintop repeater must **not** be treated as an aircraft.
 
 - 2026-09-26: epic planned; ADS-B split to #5374; Phase 1 started on `feature/aircraft-p1-classifier`.
 - 2026-09-26: Phase 1 spec approved (AIRCRAFT_P1_SPEC.md; migrations 175–176). Follow-up found: every reconnect schedules an extra hourly Auto-Favorite sweep timer (pre-existing; the strike rule's 45 min gap makes it harmless for this feature).
+- 2026-09-26: Phase 1 validated in the browser on the dev container. Badge, popup line and Show / Mark / Hide work in both map panels; settings and the Auto-Favorite switch render. Two fixes from validation: the Dashboard hint counted flagged nodes outside the age window ("19 on the map" with none drawn), and the Node Display help text ran two sentences together. PR opened.

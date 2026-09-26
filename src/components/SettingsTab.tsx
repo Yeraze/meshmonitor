@@ -2509,17 +2509,17 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             />
           </div>
           <div className="setting-item">
-            <span className="setting-description">
+            <p className="setting-description">
               {t('settings.aircraft.help_threshold', 'A node is flagged when its reported altitude is more than this height above the terrain at its position. When terrain data is unavailable, only the sea-level fallback applies.')}
-            </span>
+            </p>
             {!draft.elevationEnabled && (
-              <span className="setting-description" style={{ color: 'var(--color-warning)' }}>
+              <p className="setting-description" style={{ color: 'var(--color-warning)' }}>
                 {t('settings.aircraft.warn_elevation_disabled', 'Terrain elevation is off (Global Settings → Elevation): only the sea-level fallback is used.')}
-              </span>
+              </p>
             )}
-            <span className="setting-description">
+            <p className="setting-description">
               {t('settings.aircraft.help_effects', 'Flagged nodes get an aircraft badge on the map and can be hidden in Map Features. Auto-Favorite exclusion is set in Automation → Auto Favorite.')}
-            </span>
+            </p>
           </div>
         </div>}
 
