@@ -46,6 +46,13 @@ interface SidebarProps {
    * sourced from an MQTT bridge.
    */
   mqttReadOnly?: boolean;
+  /**
+   * When true, hides Device Configuration and Remote Administration even
+   * though the source can still send. An MQTT broker source has no local
+   * radio, so those entries could only ever reach a different source's
+   * device (#5367). Implied by `mqttReadOnly`.
+   */
+  hideDeviceConfig?: boolean;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -65,7 +72,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   packetLogEnabled,
   hasReadableVirtualChannels = false,
   mqttReadOnly = false,
+  hideDeviceConfig = false,
 }) => {
+  const noDeviceConfig = mqttReadOnly || hideDeviceConfig;
   const { t } = useTranslation();
 
   // Pin state persisted to localStorage - when pinned, sidebar won't auto-collapse on nav click
@@ -219,7 +228,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     ...(!mqttReadOnly && hasPermission('automation', 'read')
       ? [navItem('automation', t('nav.automation'), 'bot')]
       : []),
-    ...(!mqttReadOnly && hasPermission('configuration', 'read')
+    ...(!noDeviceConfig && hasPermission('configuration', 'read')
       ? [navItem('configuration', t('nav.device'), 'configuration')]
       : []),
     /* MQTT Bridge sources have no device-config surface; surface a dedicated
@@ -232,7 +241,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   const adminItems: SourceNavItem[] = [
     ...(isAdmin ? [navItem('users', t('nav.users'), 'users')] : []),
-    ...(isAdmin && !mqttReadOnly ? [navItem('admin', t('nav.admin_commands'), 'zap')] : []),
+    ...(isAdmin && !noDeviceConfig ? [navItem('admin', t('nav.admin_commands'), 'zap')] : []),
     ...(hasPermission('audit', 'read') ? [navItem('audit', t('nav.audit_log'), 'reports')] : []),
     ...(hasPermission('security', 'read') ? [navItem('security', t('nav.security'), 'security')] : []),
   ];

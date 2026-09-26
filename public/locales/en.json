@@ -2003,6 +2003,7 @@
   "dashboard.export_csv": "Export CSV",
   "info.title": "Device Information & Configuration",
   "info.connection_status": "Connection Status",
+  "info.no_local_node": "This source is an MQTT feed. It has no local node, so there is no node identity or device configuration to show.",
   "info.node_address": "Node Address:",
   "info.node_id": "Node ID:",
   "info.node_name": "Node Name:",

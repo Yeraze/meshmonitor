@@ -58,7 +58,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
   connectionStatus,
   nodeAddress,
   deviceInfo,
-  deviceConfig,
+  deviceConfig: deviceConfigProp,
   nodes,
   channels,
   messages,
@@ -80,12 +80,20 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
   const { hasPermission } = useAuth();
   const canReadTraceroute = hasPermission('traceroute', 'read');
   const canWriteTraceroute = hasPermission('traceroute', 'write');
-  const showTransport = !isMqttOnlySourceType(sourceType);
+  const isMqttOnlySource = isMqttOnlySourceType(sourceType);
+  const showTransport = !isMqttOnlySource;
+  // An MQTT broker/bridge source has no local node, so it has no device
+  // identity or config of its own. Never render one for it, even if a
+  // stale or misrouted payload carries another source's (#5367).
+  const deviceConfig = isMqttOnlySource ? null : deviceConfigProp;
   const { data: dashboardSources = [] } = useDashboardSources();
   const activeSource = activeSourceId
     ? dashboardSources.find((s) => s.id === activeSourceId)
     : undefined;
-  const displayNodeAddress = getSourceEndpointLabel(activeSource) ?? nodeAddress;
+  // `nodeAddress` is the server's Meshtastic node IP (the env default when the
+  // source row has no host). An MQTT-only source has no node, so only show
+  // an address its own config supplies (#5367).
+  const displayNodeAddress = getSourceEndpointLabel(activeSource) ?? (isMqttOnlySource ? null : nodeAddress);
   const [longestActiveSegment, setLongestActiveSegment] = useState<RouteSegmentRecords | null>(null);
   const [recordHolderSegment, setRecordHolderSegment] = useState<RouteSegmentRecords | null>(null);
   const [loadingSegments, setLoadingSegments] = useState(false);
@@ -200,7 +208,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
   };
 
   const fetchSecurityKeys = async () => {
-    if (connectionStatus !== 'connected' || !isAuthenticated) return;
+    if (connectionStatus !== 'connected' || !isAuthenticated || isMqttOnlySource) return;
 
     setLoadingSecurityKeys(true);
     try {
@@ -447,8 +455,13 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
       <div className="device-info">
         <div className="info-section">
           <h3>{t('info.connection_status')}</h3>
-          {isAuthenticated && (
+          {isAuthenticated && displayNodeAddress && (
             <p><strong>{t('info.node_address')}</strong> {displayNodeAddress}</p>
+          )}
+          {isMqttOnlySource && (
+            <p className="info-no-local-node" data-testid="info-no-local-node">
+              {t('info.no_local_node', 'This source is an MQTT feed. It has no local node, so there is no node identity or device configuration to show.')}
+            </p>
           )}
           {deviceConfig?.basic?.nodeId && (
             <p><strong>{t('info.node_id')}</strong> {deviceConfig.basic.nodeId}</p>
