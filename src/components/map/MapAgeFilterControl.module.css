@@ -1,0 +1,16 @@
+/*
+ * MapAgeFilterControl — scoped styles (#5344).
+ * The slider track itself keeps the shared `.position-history-slider` rules.
+ */
+
+.showing {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.hint {
+  font-size: 0.75rem;
+  line-height: 1.3;
+  color: var(--color-text-subtle);
+}
