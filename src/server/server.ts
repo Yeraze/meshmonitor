@@ -34,6 +34,7 @@ import { autoEnrichmentScheduler } from './services/autoEnrichmentScheduler.js';
 import { meshIssuesScheduler } from './services/meshIssuesScheduler.js';
 import { autoFavoriteManagementScheduler } from './services/autoFavoriteManagementService.js';
 import { aircraftClassificationService, BACKFILL_DELAY_MS as AIRCRAFT_BACKFILL_DELAY_MS } from './services/aircraftClassificationService.js';
+import { aircraftAgeOutScheduler } from './services/aircraftAgeOutScheduler.js';
 import { systemRestoreService } from './services/systemRestoreService.js';
 import { duplicateKeySchedulerService } from './services/duplicateKeySchedulerService.js';
 import { waypointRebroadcastSchedulerService } from './services/waypointRebroadcastSchedulerService.js';
@@ -405,6 +406,11 @@ setTimeout(async () => {
       void aircraftClassificationService.backfillAll().catch((e) =>
         logger.warn('Aircraft backfill failed:', e));
     }, AIRCRAFT_BACKFILL_DELAY_MS).unref?.();
+
+    // Aircraft age-out + reclassify-as-fixed sweep (#5364/#5365 Phase 2):
+    // hourly, first tick 5 min after boot. The per-source last run is
+    // persisted, so a restart never counts as (or forces) a run.
+    aircraftAgeOutScheduler.initialize();
 
     // Start the Automation Engine (#3653) — loads enabled automations and
     // subscribes to the event bus so they fire on live mesh traffic.
@@ -1205,6 +1211,8 @@ function gracefulShutdown(reason: string, exitCode = 0): void {
     } catch (error) {
       logger.error('Error stopping CoT feed server:', error);
     }
+
+    aircraftAgeOutScheduler.shutdown();
 
     // Disconnect from Meshtastic
     try {

@@ -159,6 +159,9 @@ export async function buildSourceNodes(source: SourceRow, user: ReqUser): Promis
       delete stripped.latitudeOverride;
       delete stripped.longitudeOverride;
       delete stripped.altitudeOverride;
+      // The aircraft "fixed" anchor may be the private override itself (#5364/#5365 P2).
+      delete stripped.aircraftFixedLatitude;
+      delete stripped.aircraftFixedLongitude;
       return stripped;
     }
 

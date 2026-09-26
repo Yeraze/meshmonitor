@@ -130,4 +130,34 @@ describe('ignoredNodeRoutes — reason surfacing + permissions', () => {
 
     expect(res.status).toBe(403);
   });
+
+  // #5364/#5365 Phase 2: an aged-out aircraft shows reason 'aircraft'. A hand
+  // un-ignore lifts the ignore on that source only and KEEPS aircraftAgedOutAt,
+  // so the next sweep doesn't re-ignore the node during the same silence.
+  it('GET surfaces reason "aircraft"; DELETE un-ignores on that source only and keeps the aged-out mark', async () => {
+    harness = await createRouteTestApp({ mount: (app) => app.use('/', ignoredNodeRoutes) });
+    const num = 0x0a0b0c10;
+    const at = 1_800_000_000_000;
+    for (const src of [harness.sourceA, harness.sourceB]) {
+      await harness.db.nodes.upsertNode({ nodeNum: num, nodeId: nodeIdFor(num), longName: 'Plane', shortName: 'PL' }, src);
+      await harness.db.addAircraftIgnoreAsync(num, src, nodeIdFor(num), 'Plane', 'PL');
+      await harness.db.markAircraftAgedOutAsync(num, src, at);
+    }
+
+    const agent = await harness.loginAs(harness.admin);
+    const list = await agent.get(`/?sourceId=${harness.sourceA}`);
+    expect(list.status).toBe(200);
+    expect(list.body[0].reason).toBe('aircraft');
+    expect(list.body[0].ignoredBy).toBe('aircraft-age-out');
+
+    const del = await agent.delete(`/${nodeIdFor(num)}?sourceId=${harness.sourceA}`);
+    expect(del.status).toBe(200);
+
+    const a = await harness.db.nodes.getNode(num, harness.sourceA);
+    expect(a?.isIgnored).toBe(false);
+    expect(Number(a?.aircraftAgedOutAt)).toBe(at);
+    const b = await harness.db.nodes.getNode(num, harness.sourceB);
+    expect(b?.isIgnored).toBe(true);
+    expect(Number(b?.aircraftAgedOutAt)).toBe(at);
+  });
 });

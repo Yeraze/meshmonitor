@@ -70,6 +70,27 @@ describe('mapAircraftMode wiring (#5364/#5365 Phase 1 WP4)', () => {
     expect(read(rel)).toContain('aircraftDisplayMode');
   });
 
+  // #5364/#5365 Phase 2 "Show aged-out": both panels must pass the checkbox
+  // and its count, or the toggle ships to one panel only (#5177 again).
+  it.each(MAP_FEATURES_PANELS)('%s wires the Show aged-out checkbox and count', (rel) => {
+    const src = read(rel);
+    expect(src).toContain('showAgedOutAircraft');
+    expect(src).toMatch(/onShowAgedOutChange=\{setShowAgedOutAircraft\}/);
+    expect(src).toMatch(/agedOutCount=\{/);
+    // The aged-out predicate is shared, never re-implemented inline.
+    expect(src).toContain('isAgedOutAircraft(');
+  });
+
+  it('App hands NodesTab the aged-out list from useSourceView', () => {
+    expect(read('src/App.tsx')).toMatch(/agedOutAircraftNodes=\{agedOutAircraftNodes\}/);
+    expect(read('src/hooks/useSourceView.ts')).toContain('agedOutAircraftNodes');
+  });
+
+  it('Map Analysis follows Show aged-out too (useAnalysisNodes + NodeMarkersLayer)', () => {
+    expect(read('src/components/MapAnalysis/useAnalysisNodes.ts')).toContain('showAgedOutAircraft');
+    expect(read('src/components/MapAnalysis/layers/NodeMarkersLayer.tsx')).toContain('isAgedOutAircraft(');
+  });
+
   it('Map Analysis has no Map Features panel of its own but still honours Hide (useAnalysisNodes)', () => {
     const src = read('src/components/MapAnalysis/useAnalysisNodes.ts');
     expect(src).toContain('aircraftDisplayMode');

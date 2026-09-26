@@ -207,6 +207,18 @@ describe('mapDbNodeToDeviceInfo', () => {
     expect(result.aircraftBasis).toBeUndefined();
     expect(result.groundElevation).toBeUndefined();
     expect(result.heightAboveGround).toBeUndefined();
+    expect(result.aircraftAgedOutAt).toBeUndefined();
+    expect(result.aircraftFixedAt).toBeUndefined();
+  });
+
+  it('maps the Phase 2 aged-out and fixed marks (#5364/#5365)', () => {
+    const node = {
+      nodeNum: 1, nodeId: '!00000001', longName: '', shortName: '',
+      aircraftAgedOutAt: '1700000000000', aircraftFixedAt: 1_700_000_000_500,
+    };
+    const result: any = mapDbNodeToDeviceInfo(node);
+    expect(result.aircraftAgedOutAt).toBe(1_700_000_000_000);
+    expect(result.aircraftFixedAt).toBe(1_700_000_000_500);
   });
 });
 
