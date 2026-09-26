@@ -526,3 +526,29 @@ describe('InfoTab never shows device identity on an MQTT-only source (#5367)', (
     expect(screen.queryByTestId('info-no-local-node')).not.toBeInTheDocument();
   });
 });
+
+describe('InfoTab virtual node section (#5380)', () => {
+  it('does not render PKI export/import rows, which live on the MeshCore Node Info view', async () => {
+    mockUseSource.mockReturnValue({ sourceId: 'source-a', sourceName: 'Source A', sourceType: 'meshtastic_tcp' });
+    mockApiService.getVirtualNodeStatus.mockResolvedValue({
+      sources: [{
+        sourceId: 'source-a',
+        sourceName: 'Source A',
+        enabled: true,
+        isRunning: true,
+        allowAdminCommands: true,
+        allowPkiExport: true,
+        allowPkiImport: false,
+        clientCount: 0,
+        clients: [],
+      }],
+    });
+
+    render(<InfoTab {...baseProps} nodes={[]} />);
+
+    // The admin-commands row proves the VN block rendered for this source.
+    expect(await screen.findByText('info.virtual_node_admin_commands')).toBeInTheDocument();
+    expect(screen.queryByText('info.virtual_node_pki_export')).not.toBeInTheDocument();
+    expect(screen.queryByText('info.virtual_node_pki_import')).not.toBeInTheDocument();
+  });
+});

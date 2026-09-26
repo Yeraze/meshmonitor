@@ -24,6 +24,7 @@ import { ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveCo
 import { ConnectionStatus } from './hooks/useMeshCore';
 import { useTelemetry } from '../../hooks/useTelemetry';
 import { CollapsibleSection } from './CollapsibleSection';
+import { MeshCoreVirtualNodeCard } from './MeshCoreVirtualNodeCard';
 import apiService from '../../services/api';
 
 const HOURS_OPTIONS = [1, 6, 24, 72, 168] as const;
@@ -354,6 +355,8 @@ export const MeshCoreInfoView: React.FC<MeshCoreInfoViewProps> = ({ baseUrl, sou
           )}
           </CollapsibleSection>
         </section>
+
+        <MeshCoreVirtualNodeCard sourceId={sourceId} />
       </div>
 
       {isCompanion && (
