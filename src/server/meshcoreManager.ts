@@ -3414,17 +3414,17 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           // Preserve the real Last Heard across reconnect (#3645). The companion
           // reports each contact's last advert time (epoch seconds) — use it for
           // lastSeen instead of the reconnect wall-clock, which previously reset
-          // every node's Last Heard to "now". Falls back to now when the device
-          // didn't report an advert time, OR when it did but the value can't be
-          // a real receive time (unsynced RTC drifted years off, #5339) — an
-          // implausible lastSeen doesn't just display wrong, it wrecks Last
-          // Heard sort order and the node-visibility max-age filter for as long
-          // as that drifted value sticks around. (Guard handles a value already
+          // every node's Last Heard to "now". Falls back to now only when the
+          // device didn't report an advert time. (Guard handles a value already
           // in ms, mirroring MeshCoreContactDetailPanel.)
           const advertSec = typeof c.last_advert === 'number' ? c.last_advert : 0;
           const rawAdvertMs = advertSec > 0
             ? (advertSec < 1e12 ? advertSec * 1000 : advertSec)
             : undefined;
+          // `last_advert` is the SENDER's clock. One that can't be a real
+          // receive time (unsynced RTC drifted years off, #5339) counts as no
+          // advert time at all: trusting it wrecks Last Heard sort order and
+          // the max-age filter for as long as the drifted value sticks around.
           const advertMs = plausibleMeshCoreTimeMsOrUndefined(rawAdvertMs);
           this.contacts.set(c.public_key, {
             publicKey: c.public_key,
