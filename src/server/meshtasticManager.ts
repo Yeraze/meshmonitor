@@ -49,6 +49,7 @@ import { channelDecryptionService } from './services/channelDecryptionService.js
 import { pkiDecryptionService } from './services/pkiDecryptionService.js';
 import { getSourcePkiKeyStore, isPkiDmDecryptionGloballyEnabled } from './services/sourcePkiKeyStore.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
+import { aircraftClassificationService } from './services/aircraftClassificationService.js';
 import {
   ToastThrottle,
   shouldSuppressToast,
@@ -7897,6 +7898,10 @@ class MeshtasticManager implements ISourceManager {
             logger.error(`Failed to update mobility for ${nodeId}:`, err)
           );
 
+          // Likely-aircraft classification (#5364/#5365): non-throwing,
+          // coalescing queue — see aircraftClassificationService.ts.
+          aircraftClassificationService.schedule(this.sourceId, fromNum);
+
           // Check geofence triggers for this node's new position. Skip when
           // a user-set override is in effect — the override is the authoritative
           // location for that node and doesn't change with incoming packets, so
@@ -10082,6 +10087,10 @@ class MeshtasticManager implements ISourceManager {
         }).catch(err =>
           logger.error(`Failed to update mobility for ${nodeId}:`, err)
         );
+
+        // Likely-aircraft classification (#5364/#5365): non-throwing,
+        // coalescing queue — see aircraftClassificationService.ts.
+        aircraftClassificationService.schedule(this.sourceId, nodeNumForTelemetry);
       }
     } catch (error) {
       logger.error('❌ Error processing NodeInfo protobuf:', error);

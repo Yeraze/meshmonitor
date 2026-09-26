@@ -104,11 +104,20 @@ vi.mock('./meshtasticProtobufService.js', () => ({
   },
 }));
 
+// Likely-aircraft classification (#5364/#5365): the POSITION_APP path only
+// needs to prove it *calls* `schedule()` after the upsert resolves — the
+// classification pipeline itself is covered by
+// `aircraftClassificationService.test.ts`.
+vi.mock('./services/aircraftClassificationService.js', () => ({
+  aircraftClassificationService: { schedule: vi.fn() },
+}));
+
 import { ingestServiceEnvelope, _resetMqttIngestCachesForTest } from './mqttIngestion.js';
 import { setDiscardInvalidPositions, __resetDiscardInvalidPositionsForTest } from '../utils/positionIngestConfig.js';
 import { MqttPacketFilter, type ServiceEnvelopeShape } from './mqttPacketFilter.js';
 import databaseService from '../services/database.js';
 import meshtasticProtobufService from './meshtasticProtobufService.js';
+import { aircraftClassificationService } from './services/aircraftClassificationService.js';
 import { CHANNEL_DB_OFFSET, TransportMechanism } from './constants/meshtastic.js';
 
 const NODE_IN = 0x7ff80a48;
@@ -476,6 +485,9 @@ describe('ingestServiceEnvelope — POSITION Null Island guard (#3763)', () => {
     expect(arg.latitude).toBeUndefined();
     expect(arg.longitude).toBeUndefined();
     expect(arg.altitude).toBeUndefined(); // even though the payload carried altitude: 0
+    // Bogus fix → no aircraft classification job (#5364/#5365 spec §4.4).
+    await new Promise((r) => setTimeout(r, 0));
+    expect(aircraftClassificationService.schedule).not.toHaveBeenCalled();
   });
 
   it('strips a precision-obscured (0,0) fix that arrives re-centered as (offset, offset)', async () => {
@@ -517,6 +529,10 @@ describe('ingestServiceEnvelope — POSITION Null Island guard (#3763)', () => {
     const arg = (databaseService.upsertNodeAsync as any).mock.calls[0][0];
     expect(arg.latitude).toBeCloseTo(43.7, 5);
     expect(arg.longitude).toBeCloseTo(-79.3, 5);
+    // A trustworthy fix with an altitude schedules aircraft classification
+    // after the upsert resolves (#5364/#5365 spec §4.4).
+    await new Promise((r) => setTimeout(r, 0));
+    expect(aircraftClassificationService.schedule).toHaveBeenCalledWith('bridge-1', NODE_IN);
   });
 });
 
