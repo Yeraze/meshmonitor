@@ -98,6 +98,24 @@ describe('neighborInfoRoutes', () => {
       expect(resB.body).toHaveLength(1);
     });
 
+    it('keeps every link when maxNodeAgeHours is 0 ("never / show all", #5338)', async () => {
+      const now = Math.floor(Date.now() / 1000);
+      await harness.db.settings.setSourceSettings(harness.sourceA, { maxNodeAgeHours: '0' });
+      await harness.db.nodes.upsertNode({ nodeNum: 111, nodeId: '!0000006f', longName: 'Alpha' }, harness.sourceA);
+      await harness.db.nodes.upsertNode({ nodeNum: 222, nodeId: '!000000de', longName: 'Beta' }, harness.sourceA);
+      const thirtyDaysAgo = now - 30 * 24 * 3600;
+      await harness.db.neighbors.insertNeighborInfo(
+        { nodeNum: 111, neighborNodeNum: 222, timestamp: thirtyDaysAgo * 1000, createdAt: now },
+        harness.sourceA,
+      );
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get(`/?sourceId=${harness.sourceA}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+    });
+
     it('marks links as bidirectional when reverse link exists', async () => {
       const now = Math.floor(Date.now() / 1000);
       await harness.db.nodes.upsertNode({ nodeNum: 111, nodeId: '!0000006f', longName: 'Node' }, harness.sourceA);
