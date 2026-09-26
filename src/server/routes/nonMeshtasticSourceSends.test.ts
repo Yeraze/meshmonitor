@@ -22,6 +22,8 @@ import nodesRoutes from './nodesRoutes.js';
 import announceRoutes from './announceRoutes.js';
 import connectionRoutes from './connectionRoutes.js';
 import settingsRoutes from './settingsRoutes.js';
+import { backupRouter } from './backupRoutes.js';
+import { deviceRestoreService } from '../services/deviceRestoreService.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 import { sourceManagerRegistry, type ISourceManager } from '../sourceManagerRegistry.js';
 
@@ -101,6 +103,7 @@ describe('non-Meshtastic sources never transmit through the primary radio (#5375
         app.use('/announce', announceRoutes);
         app.use('/connection', connectionRoutes);
         app.use('/settings', settingsRoutes);
+        app.use('/backup', backupRouter);
       },
     });
     await harness.db.sources.createSource({
@@ -295,6 +298,22 @@ describe('non-Meshtastic sources never transmit through the primary radio (#5375
       expect(tcpManager.sendTraceroute).not.toHaveBeenCalled();
     });
 
+    it('GET /device/tx-status never reports the primary radio for a disabled MQTT source', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get('/device/tx-status').query({ sourceId: DISABLED_MQTT_ID });
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ txEnabled: false, udpRelayEnabled: false, canTransmit: false, hasLocalRadio: false });
+      expect(tcpManager.getDeviceConfig).not.toHaveBeenCalled();
+    });
+
+    it('GET /device/tx-status reports a disconnected TCP source as not connected, not the primary', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get('/device/tx-status').query({ sourceId: harness.sourceB });
+      expect(res.status).toBe(200);
+      expect(res.body.connected).toBe(false);
+      expect(tcpManager.getDeviceConfig).not.toHaveBeenCalled();
+    });
+
     it('leaves an unknown sourceId to the route (no guard refusal)', async () => {
       const agent = await harness.loginAs(harness.admin);
       const res = await agent.post('/messages/send').send({ sourceId: 'no-such-source-5375', text: 'hi', channel: 0 });
@@ -306,6 +325,18 @@ describe('non-Meshtastic sources never transmit through the primary radio (#5375
       const res = await agent.post('/messages/send').send({ text: 'hi', channel: 0 });
       expect(res.status).toBe(200);
       expect(tcpManager.sendTextMessage).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('device backup restore', () => {
+    it('POST /backup/restore/:file refuses an mqtt_broker source and never touches the primary radio', async () => {
+      const restoreSpy = vi.spyOn(deviceRestoreService, 'restoreBackup');
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post('/backup/restore/backup-5375.yaml').send({ sourceId: BROKER_SOURCE_ID });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('SOURCE_NOT_MESHTASTIC');
+      expect(restoreSpy).not.toHaveBeenCalled();
+      restoreSpy.mockRestore();
     });
   });
 

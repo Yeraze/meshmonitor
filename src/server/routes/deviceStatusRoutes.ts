@@ -4,6 +4,7 @@ import { logger } from '../../utils/logger.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { requireMeshtasticDeviceSource } from '../utils/requireMeshtasticDeviceSource.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import databaseService from '../../services/database.js';
 import { isMeshCoreManager, isMeshtasticManager } from '../sourceManagerTypes.js';
 
 const router = Router();
@@ -33,6 +34,22 @@ router.get('/device/tx-status', optionalAuth(), async (req: Request, res: Respon
       if (mgr && !isMeshtasticManager(mgr)) {
         res.json({ txEnabled: false, udpRelayEnabled: false, canTransmit: false, hasLocalRadio: false });
         return;
+      }
+      // No live manager but a source row (a disabled MQTT/MeshCore source, a
+      // disconnected TCP source): never report the primary's TX state. A
+      // disconnected TCP source's TX setting is unknown until it reconnects,
+      // so it reports the permissive default (sends are refused with
+      // SOURCE_NOT_CONNECTED anyway) rather than a false "TX disabled" banner.
+      if (!mgr) {
+        const row = await databaseService.sources.getSource(txSourceId).catch(() => null);
+        if (row?.type === 'meshtastic_tcp') {
+          res.json({ txEnabled: true, udpRelayEnabled: false, canTransmit: true, connected: false });
+          return;
+        }
+        if (row) {
+          res.json({ txEnabled: false, udpRelayEnabled: false, canTransmit: false, hasLocalRadio: false });
+          return;
+        }
       }
     }
     const txManager = resolveSourceManager(txSourceId);
