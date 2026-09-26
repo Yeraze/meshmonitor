@@ -220,6 +220,11 @@ components:
           type: integer
           description: Unix timestamp of last contact
           example: 1699564800
+        firstHeard:
+          type: integer
+          nullable: true
+          description: Unix timestamp (seconds) this source first heard the node; null if unknown
+          example: 1690000000
         snr:
           type: number
           format: float
@@ -862,6 +867,11 @@ components:
         lastHeard:
           type: integer
           example: 1699564800
+        firstHeard:
+          type: integer
+          nullable: true
+          description: Unix timestamp (seconds) this source first heard the node; null if unknown
+          example: 1690000000
 
     TopologyEdge:
       type: object
