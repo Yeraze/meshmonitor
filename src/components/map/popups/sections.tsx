@@ -310,6 +310,7 @@ export const LastHeardFooter: React.FC<LastHeardFooterProps> = ({
       </div>
       {firstHeard != null && (
         <div className="node-popup-footer" data-testid="popup-first-heard">
+          <span className="node-popup-icon"><UiIcon name="calendar" /></span>
           {t('node_details.first_heard', 'First Heard')}: {format(firstHeard)}
         </div>
       )}

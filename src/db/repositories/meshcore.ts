@@ -203,6 +203,7 @@ export interface MeshCoreGroupedPacket {
   observerCount: number;
   /** Total rows in the group — receptions, not distinct observers. */
   receptionCount: number;
+  /** MIN(timestamp) over this group's receptions. Not `meshcore_nodes.firstHeard` (#5390). */
   firstHeard: number;
   lastHeard: number;
 }
