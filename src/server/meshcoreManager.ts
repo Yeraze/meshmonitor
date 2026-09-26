@@ -4110,11 +4110,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       }
       const existing = this.contacts.get(publicKey);
       if (existing) {
+        // Leave lastSeen alone (#5341): a path reset is a local write to the
+        // companion, not evidence the node was heard. The DM-ack-timeout retry
+        // calls this precisely BECAUSE the node went silent, so stamping "now"
+        // here bumped an offline node's Last Heard on every failed DM.
         const updated: MeshCoreContact = {
           ...existing,
           outPath: null,
           pathLen: null,
-          lastSeen: Date.now(),
         };
         this.contacts.set(publicKey, updated);
         void this.persistContact(updated);
@@ -4930,11 +4933,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       const hex = hopTokens.join(',');
       const existing = this.contacts.get(publicKey);
       if (existing) {
+        // Leave lastSeen alone (#5341): set_out_path is a serial-only write to
+        // the companion, not a reception from the node.
         const updated: MeshCoreContact = {
           ...existing,
           outPath: hex,
           pathLen: hopCount,
-          lastSeen: Date.now(),
         };
         this.contacts.set(publicKey, updated);
         void this.persistContact(updated);

@@ -135,3 +135,52 @@ describe('MeshCoreManager — Last Heard preserved across reconnect (#3645)', ()
     expect(second).toBe(first); // preserved, not bumped to the new reconnect time
   });
 });
+
+describe('MeshCoreManager — local path writes do not count as "heard" (#5341)', () => {
+  const HEARD_AT = 1_700_000_000_000;
+
+  function connectedWithContact(): MeshCoreManager {
+    const m = new MeshCoreManager('src-a');
+    (m as any).deviceType = MeshCoreDeviceType.COMPANION;
+    (m as any).connected = true;
+    (m as any).contacts.set(KEY, {
+      publicKey: KEY,
+      advType: MeshCoreDeviceType.COMPANION,
+      lastSeen: HEARD_AT,
+      outPath: 'a3',
+      pathLen: 1,
+    });
+    (m as any).sendBridgeCommand = async () => ({ id: '1', success: true, data: {} });
+    return m;
+  }
+
+  beforeEach(() => { upsertNode.mockClear(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('resetContactPath keeps the known lastSeen (the DM-ack-timeout retry calls it on a silent node)', async () => {
+    vi.setSystemTime(1_800_000_000_000);
+    const m = connectedWithContact();
+
+    expect(await m.resetContactPath(KEY)).toBe(true);
+
+    const contact = m.getContact(KEY);
+    expect(contact?.outPath).toBeNull();
+    expect(contact?.lastSeen).toBe(HEARD_AT);
+    expect(upsertNode).toHaveBeenCalledWith(
+      expect.objectContaining({ publicKey: KEY, lastHeard: HEARD_AT }),
+      'src-a',
+    );
+  });
+
+  it('setContactOutPath keeps the known lastSeen', async () => {
+    vi.setSystemTime(1_800_000_000_000);
+    const m = connectedWithContact();
+
+    const result = await m.setContactOutPath(KEY, Uint8Array.from([0x7f]));
+
+    expect(result.applied).toBe(true);
+    const contact = m.getContact(KEY);
+    expect(contact?.outPath).toBe('7f');
+    expect(contact?.lastSeen).toBe(HEARD_AT);
+  });
+});
