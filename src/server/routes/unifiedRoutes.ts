@@ -365,7 +365,7 @@ router.get('/channels', async (req: Request, res: Response) => {
  *     text, emoji, replyId,
  *     timestamp,        // canonical device time (earliest rxTime seen) — for display
  *     createdAt,        // earliest server DB arrival time across receptions — for ordering/cursor
- *     receptions: [{ sourceId, sourceName, hopStart, hopLimit,
+ *     receptions: [{ sourceId, sourceName, hopStart, hopLimit, hopCount,
  *                    rxSnr, rxRssi, rxTime, timestamp }]
  *   }
  */
@@ -394,6 +394,12 @@ router.get('/messages', async (req: Request, res: Response) => {
       sourceType: string;
       hopStart: number | null;
       hopLimit: number | null;
+      /**
+       * Decoded hop count (#5366). MeshCore only: meshcore_messages stores the
+       * already-unpacked `path_len` hop count (bottom 6 bits). Meshtastic
+       * receptions leave this null and the client derives hopStart - hopLimit.
+       */
+      hopCount: number | null;
       rxSnr: number | null;
       rxRssi: number | null;
       rxTime: number | null;
@@ -509,6 +515,7 @@ router.get('/messages', async (req: Request, res: Response) => {
           sourceType: source.type,
           hopStart: null,
           hopLimit: null,
+          hopCount: m.hopCount ?? null,
           rxSnr: m.snr ?? null,
           rxRssi: m.rssi ?? null,
           rxTime: null,
@@ -736,6 +743,7 @@ router.get('/messages', async (req: Request, res: Response) => {
             sourceType: source.type,
             hopStart: m.hopStart ?? null,
             hopLimit: m.hopLimit ?? null,
+            hopCount: null,
             rxSnr: m.rxSnr ?? null,
             rxRssi: m.rxRssi ?? null,
             rxTime,

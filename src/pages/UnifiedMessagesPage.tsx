@@ -37,6 +37,8 @@ import { UiIcon } from '../components/icons';
 import { resolveReplyPreview } from '../utils/replyPreview';
 import { getSourceColor } from '../utils/sourceColors';
 import { isAnyMeshCoreSourceType } from '../utils/nodeTypeCategory';
+import { hopDisplay } from './unifiedHops';
+import HopBadge from '../components/unified/HopBadge';
 
 type TFn = (key: string, options?: Record<string, unknown>) => string;
 
@@ -49,6 +51,8 @@ interface Reception {
   sourceType?: string;
   hopStart: number | null;
   hopLimit: number | null;
+  /** Decoded hop count (MeshCore only; Meshtastic derives from hopStart/hopLimit). */
+  hopCount?: number | null;
   rxSnr: number | null;
   rxRssi: number | null;
   rxTime: number | null;
@@ -126,18 +130,6 @@ function formatDateDivider(timestampMs: number, t: TFn): string {
   if (d.toDateString() === yesterday.toDateString()) return t('unified.messages.date_yesterday');
   return d.toLocaleDateString();
 }
-
-function hopDisplay(start: number | null, limit: number | null, t: TFn): string {
-  if (start != null && limit != null) {
-    const hops = start - limit;
-    if (hops <= 0) return t('unified.messages.hop_direct');
-    return t(hops === 1 ? 'unified.messages.hop_count_one' : 'unified.messages.hop_count_other', { count: hops });
-  }
-  if (start != null) return t('unified.messages.hop_start_only', { value: start });
-  if (limit != null) return t('unified.messages.hop_limit_only', { value: limit });
-  return '—';
-}
-
 
 // ── Component ────────────────────────────────────────────────────────────
 
@@ -573,6 +565,7 @@ export default function UnifiedMessagesPage() {
                           {t('unified.messages.meshcore_badge', 'MeshCore')}
                         </span>
                       )}
+                      <HopBadge reception={r} sourceName={r.sourceName} />
                     </span>
                   ))}
                   {receptionCount > 1 && (
@@ -680,7 +673,7 @@ export default function UnifiedMessagesPage() {
                           </span>
                         ) : null}
                       </td>
-                      <td>{hopDisplay(r.hopStart, r.hopLimit, t)}</td>
+                      <td>{hopDisplay(r, t)}</td>
                       <td>{r.rxSnr != null ? `${r.rxSnr.toFixed(1)} dB` : '—'}</td>
                       <td>{r.rxRssi != null ? `${r.rxRssi} dBm` : '—'}</td>
                       <td>{formatTimeWithSeconds(r.timestamp)}</td>
