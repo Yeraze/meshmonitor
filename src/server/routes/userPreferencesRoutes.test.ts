@@ -214,4 +214,49 @@ describe('userPreferencesRoutes', () => {
       expect(get.body.preferences).toMatchObject({ aircraftDisplayMode: 'show', showPaths: true });
     });
   });
+  /** #5364/#5365 Phase 3: flight trails toggle + lookback, per user. */
+  describe('aircraft flight trails (#5364/#5365 Phase 3)', () => {
+    it('defaults to off with a 6 h lookback for a user who never saved it', async () => {
+      const agent = await harness.loginAs(harness.limited);
+      await agent.post('/map-preferences').send({ showPaths: true });
+
+      const get = await agent.get('/map-preferences');
+      expect(get.body.preferences).toMatchObject({ showAircraftTrails: false, aircraftTrailHours: 6 });
+    });
+
+    it('saves and returns showAircraftTrails and aircraftTrailHours', async () => {
+      const agent = await harness.loginAs(harness.limited);
+
+      const post = await agent.post('/map-preferences').send({ showAircraftTrails: true, aircraftTrailHours: 24 });
+      expect(post.status).toBe(200);
+
+      const get = await agent.get('/map-preferences');
+      expect(get.body.preferences).toMatchObject({ showAircraftTrails: true, aircraftTrailHours: 24 });
+    });
+
+    it.each([0, 169, 2.5, '6', null])('400s on aircraftTrailHours=%s', async (value) => {
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.post('/map-preferences').send({ aircraftTrailHours: value });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('INVALID_PREFERENCE');
+    });
+
+    it('400s on a non-boolean showAircraftTrails', async () => {
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.post('/map-preferences').send({ showAircraftTrails: 'yes' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('INVALID_PREFERENCE');
+    });
+
+    it('accepts the 1 and 168 bounds', async () => {
+      const agent = await harness.loginAs(harness.limited);
+      expect((await agent.post('/map-preferences').send({ aircraftTrailHours: 1 })).status).toBe(200);
+      expect((await agent.post('/map-preferences').send({ aircraftTrailHours: 168 })).status).toBe(200);
+
+      const get = await agent.get('/map-preferences');
+      expect(get.body.preferences.aircraftTrailHours).toBe(168);
+    });
+  });
 });

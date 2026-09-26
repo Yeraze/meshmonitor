@@ -99,3 +99,20 @@ describe('userMapPreferences — aircraftDisplayMode (#5364/#5365, migration 176
     }
   });
 });
+
+describe('userMapPreferences — aircraft flight trails (#5364/#5365 Phase 3)', () => {
+  it('maps both trail fields to snake_case columns on all three backends', () => {
+    for (const table of [
+      schema.userMapPreferencesSqlite,
+      schema.userMapPreferencesPostgres,
+      schema.userMapPreferencesMysql,
+    ]) {
+      const columns = table as unknown as {
+        showAircraftTrails: { name: string };
+        aircraftTrailHours: { name: string };
+      };
+      expect(columns.showAircraftTrails.name).toBe('show_aircraft_trails');
+      expect(columns.aircraftTrailHours.name).toBe('aircraft_trail_hours');
+    }
+  });
+});
