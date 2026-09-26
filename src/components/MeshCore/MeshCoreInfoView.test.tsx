@@ -173,6 +173,50 @@ describe('MeshCoreInfoView', () => {
     expect(screen.queryByTestId('meshcore-info-graphs')).toBeNull();
   });
 
+  it('mounts the Virtual Node card with PKI rows for this source (#5380)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const json = (body: unknown) =>
+          new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+        if (url.endsWith('/meshcore/info')) {
+          return json({
+            success: true,
+            data: {
+              sourceId: 'src-vn',
+              connected: true,
+              deviceType: 1,
+              deviceTypeName: 'Companion',
+              identity: { publicKey: PK, name: 'VN Host', advType: 1 },
+              latest: null,
+              telemetryRef: null,
+            },
+          });
+        }
+        if (url.endsWith('/api/virtual-node/status')) {
+          return json({
+            sources: [{
+              sourceId: 'src-vn', sourceName: 'VN', enabled: true, isRunning: true,
+              allowAdminCommands: false, allowPkiExport: true, allowPkiImport: false,
+              clientCount: 1, clients: [],
+            }],
+          });
+        }
+        return json([]);
+      }) as unknown as typeof fetch,
+    );
+
+    render(
+      withQueryClient(
+        <MeshCoreInfoView baseUrl="" sourceId="src-vn" status={null} />,
+      ),
+    );
+
+    expect(await screen.findByTestId('meshcore-info-virtual-node')).toBeTruthy();
+    expect(screen.getByTestId('meshcore-vn-pki-export').textContent).toBe('info.virtual_node_admin_allowed');
+    expect(screen.getByTestId('meshcore-vn-pki-import').textContent).toBe('info.virtual_node_admin_blocked');
+  });
+
   it('renders an empty-state when the source has no localNode', async () => {
     vi.stubGlobal(
       'fetch',
