@@ -26,6 +26,7 @@
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
+import { isLiveReception } from '../utils/replayGuard.js';
 import { aircraftClassificationService, AIRCRAFT_EXCLUDED_SOURCE_TYPES } from './aircraftClassificationService.js';
 import {
   AIRCRAFT_FIXED_WINDOW_MS,
@@ -220,6 +221,30 @@ export class AircraftAgeOutService {
    * unless `opts.classify` is false (the MQTT path only classifies a fix that
    * carries an altitude). Never throws; the caller does not await it.
    */
+  /**
+   * Entry point for the position write sites. A live reception goes through
+   * the D3 auto-lift (`onLivePosition`); a replayed one (fw2.8 NodeDB replay,
+   * retained MQTT frame) only queues classification, as in Phase 1. Sync,
+   * never throws, never awaited.
+   */
+  handlePositionReception(
+    sourceId: string,
+    nodeNum: number,
+    rxTimeSec: number | null | undefined,
+    nowMs: number,
+    opts: { classify?: boolean } = {},
+  ): void {
+    try {
+      if (isLiveReception(rxTimeSec, nowMs)) {
+        void this.onLivePosition(sourceId, nodeNum, opts);
+      } else if (opts.classify !== false) {
+        this.deps.scheduleClassification(sourceId, nodeNum);
+      }
+    } catch (err) {
+      logger.debug(`Aircraft position hook failed for ${nodeNum}@${sourceId}: ${err}`);
+    }
+  }
+
   async onLivePosition(sourceId: string, nodeNum: number, opts: { classify?: boolean } = {}): Promise<void> {
     try {
       // Cheap pre-check: a node that isn't ignored at all can't be aged out.

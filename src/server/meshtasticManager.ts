@@ -7906,11 +7906,7 @@ class MeshtasticManager implements ISourceManager {
           // position (not a fw2.8 NodeDB replay) also goes through the Phase 2
           // auto-lift (D3), which lifts an aged-out aircraft's DB-only ignore
           // and then queues the same classification.
-          if (isLiveReception(meshPacket.rxTime, Date.now())) {
-            void aircraftAgeOutService.onLivePosition(this.sourceId, fromNum);
-          } else {
-            aircraftClassificationService.schedule(this.sourceId, fromNum);
-          }
+          aircraftAgeOutService.handlePositionReception(this.sourceId, fromNum, meshPacket.rxTime, Date.now());
 
           // Check geofence triggers for this node's new position. Skip when
           // a user-set override is in effect — the override is the authoritative
