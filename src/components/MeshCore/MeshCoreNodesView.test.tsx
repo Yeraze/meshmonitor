@@ -4,8 +4,9 @@
  * Sort behavior for the MeshCore Nodes list, the per-row "More details"
  * quick-access (#3350), and the header Discover menu (#3351).
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { setNodeQuickAgeHours } from '../../hooks/useNodeQuickAgeFilter';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -492,6 +493,54 @@ describe('MeshCoreNodesView — per-source age filter (#4412 Phase 4)', () => {
     ];
     render(<MeshCoreNodesView nodes={testNodes} contacts={[]} />);
     fireEvent.change(screen.getByPlaceholderText('Search nodes…'), { target: { value: 'Recent' } });
+    expect(listedNames()).toEqual(['Recent']);
+  });
+});
+
+describe('MeshCoreNodesView — Nodes tab quick age filter (#5387)', () => {
+  afterEach(() => {
+    act(() => setNodeQuickAgeHours(null));
+  });
+  const PK_RECENT = '7'.repeat(64);
+  const PK_OLD = '8'.repeat(64);
+  const PK_REPEATER = '9'.repeat(64);
+  // This file's i18n mock returns the key for object-style options.
+  const pickerName = 'nodes.quick_age.label';
+
+  it('overrides the companion window from the header picker, list and map alike', () => {
+    const testNodes: MeshCoreNode[] = [
+      { publicKey: PK_RECENT, name: 'Recent', advType: 1, lastHeard: NOW - 2 * HOUR_MS },
+      { publicKey: PK_OLD, name: 'Old', advType: 1, lastHeard: NOW - 72 * HOUR_MS },
+    ];
+    const testContacts: MeshCoreContact[] = [
+      { publicKey: PK_RECENT, advName: 'Recent', lastSeen: NOW - 2 * HOUR_MS },
+      { publicKey: PK_OLD, advName: 'Old', lastSeen: NOW - 72 * HOUR_MS },
+    ];
+    const mapKeys = () => {
+      const props = meshCoreMapProps.mock.calls.at(-1)?.[0] as { contacts: MeshCoreContact[] };
+      return props.contacts.map((c) => c.publicKey).sort();
+    };
+    render(<MeshCoreNodesView nodes={testNodes} contacts={testContacts} />);
+    expect(listedNames()).toEqual(['Recent']);
+    expect(mapKeys()).toEqual([PK_RECENT]);
+
+    fireEvent.change(screen.getByRole('combobox', { name: pickerName }), { target: { value: '168' } });
+    expect(listedNames()).toEqual(['Recent', 'Old']);
+    expect(mapKeys()).toEqual([PK_RECENT, PK_OLD].sort());
+
+    fireEvent.change(screen.getByRole('combobox', { name: pickerName }), { target: { value: 'setting' } });
+    expect(listedNames()).toEqual(['Recent']);
+  });
+
+  it('also overrides the infrastructure window, so 24h hides a 2-day-old repeater', () => {
+    const testNodes: MeshCoreNode[] = [
+      { publicKey: PK_RECENT, name: 'Recent', advType: 1, lastHeard: NOW - 2 * HOUR_MS },
+      { publicKey: PK_REPEATER, name: 'Repeater', advType: 2, lastHeard: NOW - 48 * HOUR_MS },
+    ];
+    render(<MeshCoreNodesView nodes={testNodes} contacts={[]} />);
+    expect(listedNames()).toEqual(['Recent', 'Repeater']);
+
+    act(() => setNodeQuickAgeHours(24));
     expect(listedNames()).toEqual(['Recent']);
   });
 });

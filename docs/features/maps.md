@@ -202,7 +202,9 @@ slider says what the map shows right now, such as `Showing: last 6h`.
 
 The slider can only **narrow** the **Node list & map window** setting
 (**Settings → Node Display**), never widen it. Its top stop follows that
-setting and says so: `All (24h from Settings)`.
+setting and says so: `All (24h from Settings)`. On the Nodes tab, when you pick a
+window in the Nodes list header's quick age filter, the slider narrows that window
+instead and reads `All (7d from Nodes filter)`.
 
 **Show all** (0): the **Node list & map window** setting accepts `0` to mean "no age cap". At `0` the slider's top stop reads `All (no limit in Settings)` and MeshMonitor never hides a node for being stale. Useful for post-mortem review of a mesh you don't intend to prune.
 

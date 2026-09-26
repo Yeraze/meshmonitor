@@ -27,7 +27,9 @@ See [Multi-Source → Connection Types](/features/multi-source) for the full lis
 
 ### Node list & map window
 
-**Description**: The default time window for the Nodes list and the map. Nodes not heard within it are hidden. The Nodes list header shows the active window (for example `Nodes (122) · last 24h`, or `· all` at `0`). The map's **Map age filter** can narrow this window but never widen it.
+**Description**: The default time window for the Nodes list and the map. Nodes not heard within it are hidden. The Nodes list header shows the active window (for example `Nodes (122) · Setting (last 24h)`, or `Setting (all)` at `0`). The map's **Map age filter** can narrow this window but never widen it.
+
+**Quick age filter**: the window picker in the Nodes list header lets you view a different window (last 24h, 3d, 7d, 30d, or all) without changing this setting. It overrides the setting for the Nodes list and its map, wider or narrower, and only for you: the choice is kept in your browser and never saved to the server. Pick **Setting** to go back. On MeshCore sources it replaces both the companion and the repeater/room server windows. Background jobs, the Messages tab, and the Dashboard map keep using this setting.
 
 *Formerly labeled "Maximum Age of Active Nodes".*
 
